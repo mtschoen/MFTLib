@@ -13,7 +13,7 @@ public partial class NativeCoverageTests
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public void ParseMFTRecords_NonResidentAttributeList_Succeeds(bool failAttributeListAllocation)
+    public void ParseMFTRecords_NonResidentAttributeList_RequiresReadableData(bool failAttributeListAllocation)
     {
         // Non-resident AttributeList with data runs pointing to valid data in the file.
         // Exercises ReadNonResidentData success path (lines 142-145, 147).
@@ -62,7 +62,17 @@ public partial class NativeCoverageTests
             try
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.IsTrue(result.TotalRecords > 0);
+                if (failAttributeListAllocation)
+                {
+                    Assert.AreEqual("The volume could not be read completely.", result.ErrorMessage);
+                    Assert.AreEqual(0UL, result.UsedRecords);
+                    Assert.AreEqual(IntPtr.Zero, result.Entries);
+                }
+                else
+                {
+                    Assert.AreEqual(string.Empty, result.ErrorMessage);
+                    Assert.AreEqual(1024UL, result.TotalRecords);
+                }
             }
             finally
             {
@@ -95,13 +105,24 @@ public partial class NativeCoverageTests
 
             WriteFileRecord(data, 5120, 2);
             WriteEndMarker(data, 5120 + 0x38);
+            WriteFileRecord(data, 6144, 3);
+            WriteEndMarker(data, 6144 + 0x38);
             File.WriteAllBytes(path, data);
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
                 fileStream.SafeFileHandle.DangerousGetHandle(), 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            MFTLibNative._freeMftResult(resultPointer);
+            try
+            {
+                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+                Assert.AreEqual(string.Empty, result.ErrorMessage);
+                Assert.AreEqual(1024UL, result.TotalRecords);
+            }
+            finally
+            {
+                MFTLibNative._freeMftResult(resultPointer);
+            }
         }
         finally
         {
@@ -116,7 +137,8 @@ public partial class NativeCoverageTests
     [DataRow(0)]
     [DataRow(1)]
     [DataRow(2)]
-    public void ParseMFTRecords_MalformedExtensionRecord_IsIgnored(int malformedKind)
+    [DataRow(3)]
+    public void ParseMFTRecords_MalformedExtensionRecord_FailsTheParse(int malformedKind)
     {
         var path = Path.GetTempFileName();
         try
@@ -139,7 +161,13 @@ public partial class NativeCoverageTests
                 if (malformedKind == 2)
                 {
                     data[extensionAttribute + 4] = 0x18;
+                    data[extensionAttribute + 8] = 1; // nonresident header cannot fit
                     WriteEndMarker(data, extensionAttribute + 0x18);
+                }
+                else if (malformedKind == 3)
+                {
+                    WriteEndMarker(data, extensionAttribute);
+                    data[extensionRecord + 510] = 0;
                 }
             }
 
@@ -149,7 +177,23 @@ public partial class NativeCoverageTests
             var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
                 fileStream.SafeFileHandle.DangerousGetHandle(), 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            MFTLibNative._freeMftResult(resultPointer);
+            try
+            {
+                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+                var expected = malformedKind switch
+                {
+                    0 => "Invalid MFT extension record magic",
+                    3 => "MFT extension record has an invalid fixup",
+                    _ => "MFT extension record has a malformed attribute"
+                };
+                Assert.AreEqual(expected, result.ErrorMessage);
+                Assert.AreEqual(0UL, result.UsedRecords);
+                Assert.AreEqual(IntPtr.Zero, result.Entries);
+            }
+            finally
+            {
+                MFTLibNative._freeMftResult(resultPointer);
+            }
         }
         finally
         {
@@ -163,11 +207,17 @@ public partial class NativeCoverageTests
     // --- Extension record Data attribute parsing ---
 
     [TestMethod]
-    public void ParseMFTRecords_ResidentAttributeList_WithExtensionRecord()
+    [DataRow(false, false, false, false)]
+    [DataRow(true, false, false, false)]
+    [DataRow(false, true, false, false)]
+    [DataRow(true, true, false, false)]
+    [DataRow(true, true, true, false)]
+    [DataRow(true, false, false, true)]
+    public void ParseMFTRecords_ResidentAttributeList_WithExtensionRecord(
+        bool metadataFirst, bool reverseDataOrder, bool uncoveredData, bool namedData)
     {
-        // Record 0 has Data + resident AttributeList pointing to record 1.
-        // Record 1 has a Data attribute with additional data runs.
-        // Exercises lines 1042, 1050-1052 (extension record Data attribute parsing).
+        // Record 1 reaches records 64..67. An earlier metadata reference must not
+        // prevent that merge; a second data extension at record 64 requires VCN ordering.
         var path = Path.GetTempFileName();
         try
         {
@@ -176,13 +226,38 @@ public partial class NativeCoverageTests
             // --- Record 0 at offset 4096 ---
             WriteFileRecord(data, 4096);
 
-            // Attribute 1: Data (non-resident) → clusters 1..256 (1MB)
+            // The base run covers records 0..63.
             var a1 = 4096 + 0x38;
-            var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
+            var a1Len = WriteNonResidentDataAttribute(data, a1, 64L * 1024, 1, 16);
 
-            // Attribute 2: AttributeList (resident) with one entry pointing to segment 1
+            // Use the existing list writer, then give each entry its type and lowest VCN.
             var a2 = a1 + a1Len;
-            var a2Len = WriteResidentAttributeList(data, a2, 1);
+            uint secondDataRecord = uncoveredData ? 9999U : 64U;
+            uint metadataRecord = namedData ? 9999U : 65U;
+            var references = reverseDataOrder
+                ? metadataFirst
+                    ? new[] { metadataRecord, secondDataRecord, 1U, 0U }
+                    : new[] { secondDataRecord, 1U, metadataRecord, 0U }
+                : metadataFirst
+                    ? new[] { metadataRecord, 1U, 0U }
+                    : new[] { 1U, metadataRecord, 0U };
+            var a2Len = WriteResidentAttributeList(data, a2, references);
+            for (var index = 0; index < references.Length; index++)
+            {
+                var entry = a2 + 0x18 + index * 28;
+                if (references[index] == metadataRecord)
+                {
+                    data[entry] = namedData ? (byte)0x80 : (byte)0x30;
+                    data[entry + 6] = namedData ? (byte)1 : (byte)0;
+                    data[entry + 7] = namedData ? (byte)26 : (byte)0;
+                    data[entry + 26] = namedData ? (byte)'x' : (byte)0;
+                }
+                else
+                {
+                    var lowestVcn = references[index] == 1 ? 16L : references[index] == 0 ? 0L : 17L;
+                    BitConverter.GetBytes(lowestVcn).CopyTo(data, entry + 8);
+                }
+            }
 
             // End marker
             WriteEndMarker(data, a2 + a2Len);
@@ -190,10 +265,19 @@ public partial class NativeCoverageTests
             // --- Record 1 at offset 5120 (4096 + 1024) ---
             WriteFileRecord(data, 5120, 0x0002);
 
-            // Extension record Data attribute → cluster 300, 1 cluster (4KB = 4 records)
+            // Extension record Data attribute at cluster 100 adds four records.
             var ext1 = 5120 + 0x38;
-            var ext1Len = WriteNonResidentDataAttribute(data, ext1, 4096, 300, 1);
+            var ext1Len = WriteNonResidentDataAttribute(data, ext1, 4096, 100, 1);
             WriteEndMarker(data, ext1 + ext1Len);
+
+            WriteFileRecord(data, 100 * 4096, 0x0002);
+            var secondAttribute = 100 * 4096 + 0x38;
+            var secondLength = reverseDataOrder
+                ? WriteNonResidentDataAttribute(data, secondAttribute, 4096, 101, 1)
+                : 0;
+            WriteEndMarker(data, secondAttribute + secondLength);
+            WriteFileRecord(data, 100 * 4096 + 1024, 0x0002);
+            WriteEndMarker(data, 100 * 4096 + 1024 + 0x38);
 
             File.WriteAllBytes(path, data);
 
@@ -204,8 +288,17 @@ public partial class NativeCoverageTests
             try
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                // Should succeed  -  extension record adds 4 more records (1024 + 4)
-                Assert.IsTrue(result.TotalRecords > 0);
+                if (uncoveredData)
+                {
+                    Assert.AreEqual("The volume could not be read completely.", result.ErrorMessage);
+                    Assert.AreEqual(0UL, result.TotalRecords);
+                    Assert.AreEqual(IntPtr.Zero, result.Entries);
+                }
+                else
+                {
+                    Assert.AreEqual(string.Empty, result.ErrorMessage);
+                    Assert.AreEqual(reverseDataOrder ? 72UL : 68UL, result.TotalRecords);
+                }
             }
             finally
             {
@@ -224,7 +317,7 @@ public partial class NativeCoverageTests
     // --- ReadMFTRecord: record not found in data runs ---
 
     [TestMethod]
-    public void ParseMFTRecords_ExtensionRecordNotInRuns_StillParses()
+    public void ParseMFTRecords_ExtensionRecordNotInRuns_FailsTheParse()
     {
         // AttributeList points to segment 9999 which is beyond the data runs.
         // Exercises lines 166-170 (ReadMFTRecord "not found").
@@ -251,8 +344,9 @@ public partial class NativeCoverageTests
             try
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                // Should still parse  -  failed extension read is skipped
-                Assert.IsTrue(result.TotalRecords > 0);
+                Assert.AreEqual("The volume could not be read completely.", result.ErrorMessage);
+                Assert.AreEqual(0UL, result.UsedRecords);
+                Assert.AreEqual(IntPtr.Zero, result.Entries);
             }
             finally
             {

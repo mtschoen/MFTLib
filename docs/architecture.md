@@ -60,8 +60,15 @@
       descriptor on an NTFS image or device and the boot sector's `clustersPerFileRecord` names it. The
       `SetVolumeRecordSizeOverride` test hook wins on both, so a synthetic image parses the same way everywhere.
       A failed or short read of an MFT batch is never taken for the end of the MFT: it fails the parse with
-      `The volume could not be read completely.` and no entries. A short read of a nonresident attribute-list run fails
-      that read instead of looping.
+      `The volume could not be read completely.` and no entries. The same rejection applies when record zero's
+      nonresident `$ATTRIBUTE_LIST` cannot be loaded, or an unnamed `$DATA` extension record is not covered by the
+      current validated runs or has a failed or short read. Such an extension with wrong FILE magic, invalid fixup,
+      or a malformed attribute chain also fails the scan with no entries and a reason naming the extension
+      record. Extension runs are validated before appending them or using them for another record lookup.
+      Bootstrap follows only unnamed `$DATA` references in ascending lowest VCN, skips record zero and
+      duplicate records, and requires each followed record to be readable and valid through the runs merged
+      so far. References for other attribute types or named streams are not read because they contribute
+      no runs to the `$MFT`'s unnamed data stream.
     - **Cache directory ownership**: cached opens require an explicit nonblank
       application-owned `FileIndexOptions.CacheDirectory`, even with no drives.
       Missing configuration throws `ArgumentException` before directory creation.

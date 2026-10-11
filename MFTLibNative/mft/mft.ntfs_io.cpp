@@ -232,8 +232,8 @@ uint8_t* ReadNonResidentData(HANDLE volumeHandle, const ATTRIBUTE_RECORD_HEADER*
     return buffer;
 }
 
-bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster,
-                   ParseGeometry geometry, uint8_t* buffer, uint64_t recordNumber) {
+const wchar_t* ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster,
+                             ParseGeometry geometry, uint8_t* buffer, uint64_t recordNumber) {
     // The runs are validated by the caller (TryMeasureRuns on the base runs, and on each extension's
     // runs before they were appended), so their lengths and disk offsets below cannot overflow. A segment number
     // has 48 bits and a record size at most 16, so the byte offset fits 64 bits.
@@ -250,15 +250,19 @@ bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uin
             DWORD bytesRead;
             if ((Read(volumeHandle, buffer, VolumeOffset{diskOffset}, geometry.recordSize, &bytesRead) == 0) ||
                 bytesRead != geometry.recordSize) {
-                return false;
+                return kIncompleteVolumeReadMessage;
             }
-            return ApplyFixup(buffer, geometry.recordSize);
+            const auto* header = reinterpret_cast<const FILE_RECORD_SEGMENT_HEADER*>(buffer);
+            if (header->MultiSectorHeader.Magic != kFileRecordMagic) {
+                return L"Invalid MFT extension record magic";
+            }
+            return ApplyFixup(buffer, geometry.recordSize) ? nullptr : L"MFT extension record has an invalid fixup";
         }
 
         currentOffset += runBytes;
     }
 
-    return false;
+    return kIncompleteVolumeReadMessage;
 }
 
 AttributeStep NextAttribute(uint8_t* record, uint32_t recordSize, size_t* offset, PATTRIBUTE_RECORD_HEADER* attribute) {

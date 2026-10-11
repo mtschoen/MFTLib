@@ -75,6 +75,7 @@ std::optional<ParseGeometry> QueryVolumeRecordSize(HANDLE volumeHandle) {
 
 constexpr wchar_t kMalformedRecordZeroMessage[] = L"MFT record 0 has a malformed attribute";
 constexpr wchar_t kRunsOutsideVolumeMessage[] = L"The MFT data runs lie outside the volume";
+constexpr wchar_t kMalformedExtensionMessage[] = L"MFT extension record has a malformed attribute";
 
 // A chunk is at least one record, no more records than the MFT holds, and small enough that its
 // byte count fits the DWORD a read takes.
@@ -133,69 +134,78 @@ uint64_t VolumeReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) {
 
 bool VolumeReadIncomplete(const void* ctx) { return static_cast<const VolumeReadContext*>(ctx)->readFailed; }
 
-// Parse record 0's $ATTRIBUTE_LIST entries into a de-duplicated list of the
-// extension record numbers they reference.
+// Collect only unnamed $DATA references, ordered by lowest VCN before de-duplicating
+// extension record numbers. Other attributes cannot contribute to the $MFT run list.
 std::vector<uint64_t> CollectExtensionRecordNumbers(uint8_t* attrListData, uint64_t attrListSize) {
-    std::vector<uint64_t> extensionRecords;
+    std::vector<PATTRIBUTE_LIST_ENTRY> dataEntries;
     uint64_t offset = 0;
     while (offset + sizeof(ATTRIBUTE_LIST_ENTRY) <= attrListSize) {
         auto* entry = reinterpret_cast<PATTRIBUTE_LIST_ENTRY>(attrListData + offset);
         if (entry->RecordLength == 0) {
             break;
         }
-        uint64_t segNum = static_cast<uint64_t>(entry->SegmentReference.SegmentNumberLowPart) |
-                          (static_cast<uint64_t>(entry->SegmentReference.SegmentNumberHighPart) << 32);
-        if (segNum != 0) {
-            if (std::find(extensionRecords.begin(), extensionRecords.end(), segNum) == extensionRecords.end()) {
-                extensionRecords.push_back(segNum);
-            }
+        if (entry->AttributeTypeCode == Data && entry->AttributeNameLength == 0) {
+            dataEntries.push_back(entry);
         }
         offset += entry->RecordLength;
+    }
+    std::sort(dataEntries.begin(), dataEntries.end(),
+              [](const auto* left, const auto* right) { return left->LowestVcn.QuadPart < right->LowestVcn.QuadPart; });
+    std::vector<uint64_t> extensionRecords;
+    for (const auto* entry : dataEntries) {
+        uint64_t recordNumber = static_cast<uint64_t>(entry->SegmentReference.SegmentNumberLowPart) |
+                                (static_cast<uint64_t>(entry->SegmentReference.SegmentNumberHighPart) << 32);
+        if (recordNumber != 0 &&
+            std::find(extensionRecords.begin(), extensionRecords.end(), recordNumber) == extensionRecords.end()) {
+            extensionRecords.push_back(recordNumber);
+        }
     }
     return extensionRecords;
 }
 
-// Append the $DATA runs of one already-read extension record to mftRuns. A record whose attribute
-// chain leaves the record contributes nothing. False, with mftRuns unchanged, when the runs it
-// declares would leave the volume or overflow the $MFT's size: no later lookup may use them.
+// Append the unnamed $DATA runs of one validated extension record to mftRuns. Null on success, otherwise
+// a failure message with mftRuns unchanged. A malformed attribute chain or invalid runs must never
+// drive a later lookup. Named streams contribute no runs.
 // totalBytes is the cumulative size of mftRuns, which are already validated; only the new runs are
 // measured and added to it, so the merge stays linear in the total number of runs.
-bool AppendRecordDataRuns(uint8_t* extRecord, uint32_t recordSize, uint32_t bytesPerCluster,
-                          std::vector<DataRun>& mftRuns, uint64_t& totalBytes) {
+const wchar_t* AppendRecordDataRuns(uint8_t* extRecord, uint32_t recordSize, uint32_t bytesPerCluster,
+                                    std::vector<DataRun>& mftRuns, uint64_t& totalBytes) {
     const auto* extHdr = reinterpret_cast<const FILE_RECORD_SEGMENT_HEADER*>(extRecord);
-    if (extHdr->MultiSectorHeader.Magic != kFileRecordMagic) {
-        return true;
-    }
     std::vector<DataRun> additionalRuns;
     size_t offset = extHdr->FirstAttributeOffset;
     PATTRIBUTE_RECORD_HEADER extAttr = nullptr;
     AttributeStep step = NextAttribute(extRecord, recordSize, &offset, &extAttr);
     while (step == AttributeStep::Attribute) {
-        if (extAttr->TypeCode == Data) {
+        if (extAttr->TypeCode == Data && extAttr->NameLength == 0) {
             auto attributeRuns = ParseDataRuns(extAttr);
+            if (extAttr->FormCode == 1 && attributeRuns.empty()) {
+                return kMalformedExtensionMessage;
+            }
             additionalRuns.insert(additionalRuns.end(), attributeRuns.begin(), attributeRuns.end());
         }
         step = NextAttribute(extRecord, recordSize, &offset, &extAttr);
     }
     if (step != AttributeStep::End) {
-        return true;
+        return kMalformedExtensionMessage;
     }
     uint64_t additionalBytes = 0;
     if (!TryMeasureRuns(additionalRuns, bytesPerCluster, &additionalBytes) ||
         additionalBytes > (std::numeric_limits<uint64_t>::max)() - totalBytes) {
-        return false;
+        return kRunsOutsideVolumeMessage;
     }
     mftRuns.insert(mftRuns.end(), additionalRuns.begin(), additionalRuns.end());
     totalBytes += additionalBytes;
-    return true;
+    return nullptr;
 }
 
-// Follow record 0's $ATTRIBUTE_LIST (when present) to its extension records and
-// append their $DATA runs to mftRuns, completing the $MFT's run list. An extension record that cannot
-// be read or found is skipped; one whose runs lie outside the volume stops the merge and returns false.
+// Follow only unnamed $DATA references in ascending lowest VCN, requiring each extension
+// to be readable and valid through the runs merged so far; other references are not read.
+// Append their validated runs to mftRuns, completing the $MFT's run list. Null on success,
+// otherwise the failure message.
 // mftRuns arrive validated with cumulative size totalBytes, which grows with each accepted extension.
-bool MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attrListAttr, uint32_t bytesPerCluster,
-                            ParseGeometry geometry, std::vector<DataRun>& mftRuns, uint64_t& totalBytes) {
+const wchar_t* MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attrListAttr,
+                                      uint32_t bytesPerCluster, ParseGeometry geometry, std::vector<DataRun>& mftRuns,
+                                      uint64_t& totalBytes) {
     uint8_t* attrListData;
     uint64_t attrListSize = 0;
     if (attrListAttr->FormCode == 1) {
@@ -205,9 +215,12 @@ bool MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attrLi
         if (attrListAttr->Form.Resident.ValueOffset < kResidentHeaderSize ||
             static_cast<size_t>(attrListAttr->Form.Resident.ValueOffset) + attrListAttr->Form.Resident.ValueLength >
                 attrListAttr->RecordLength) {
-            return true;
+            return nullptr;
         }
         attrListSize = attrListAttr->Form.Resident.ValueLength;
+        if (attrListSize == 0) {
+            return nullptr;
+        }
         attrListData = static_cast<uint8_t*>(malloc(static_cast<size_t>(attrListSize)));
         if (attrListData != nullptr) {
             memcpy(attrListData, reinterpret_cast<uint8_t*>(attrListAttr) + attrListAttr->Form.Resident.ValueOffset,
@@ -215,21 +228,23 @@ bool MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attrLi
         }
     }
     if (attrListData == nullptr) {
-        return true;
+        return kIncompleteVolumeReadMessage;
     }
 
     std::vector<uint64_t> extensionRecords = CollectExtensionRecordNumbers(attrListData, attrListSize);
     std::vector<uint8_t> extRecord(geometry.recordSize);
-    bool merged = true;
+    const wchar_t* failure = nullptr;
     for (auto recNum : extensionRecords) {
-        if (ReadMFTRecord(volumeHandle, mftRuns, bytesPerCluster, geometry, extRecord.data(), recNum) &&
-            !AppendRecordDataRuns(extRecord.data(), geometry.recordSize, bytesPerCluster, mftRuns, totalBytes)) {
-            merged = false;
+        failure = ReadMFTRecord(volumeHandle, mftRuns, bytesPerCluster, geometry, extRecord.data(), recNum);
+        if (failure == nullptr) {
+            failure = AppendRecordDataRuns(extRecord.data(), geometry.recordSize, bytesPerCluster, mftRuns, totalBytes);
+        }
+        if (failure != nullptr) {
             break;
         }
     }
     free(attrListData);
-    return merged;
+    return failure;
 }
 
 }  // namespace
@@ -329,9 +344,10 @@ EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, uint32_t
         return result;
     }
     if (attrListSearch.attribute != nullptr) {
-        if (!MergeExtensionDataRuns(volumeHandle, attrListSearch.attribute, bytesPerCluster, *geometry, mftRuns,
-                                    totalMftBytes)) {
-            SetErrorMessage(result->errorMessage, kRunsOutsideVolumeMessage);
+        const auto* failure = MergeExtensionDataRuns(volumeHandle, attrListSearch.attribute, bytesPerCluster, *geometry,
+                                                     mftRuns, totalMftBytes);
+        if (failure != nullptr) {
+            SetErrorMessage(result->errorMessage, failure);
             return result;
         }
     }
@@ -346,13 +362,8 @@ EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, uint32_t
     ctx.geometry = *geometry;
 
     free(result);
-    const ParseSource source{VolumeReadChunk,
-                             &ctx,
-                             totalRecords,
-                             *geometry,
-                             VolumeReadIncomplete,
-                             false,
-                             L"The volume could not be read completely."};
+    const ParseSource source{
+        VolumeReadChunk, &ctx, totalRecords, *geometry, VolumeReadIncomplete, false, kIncompleteVolumeReadMessage};
     return ParseMFTImpl(source, ParseRequest{includeFreed != 0, ctx.bufferSizeRecords, control, callback, context});
 }
 }

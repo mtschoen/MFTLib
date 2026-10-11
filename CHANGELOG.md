@@ -2,6 +2,8 @@
 
 ## 0.3.0
 
+- Fail a volume scan with no entries when the `$MFT` attribute list cannot be read completely or an unnamed `$DATA` extension record is unreadable, outside the runs merged in lowest-VCN order, or invalid, instead of returning an inventory with missing runs.
+
 - Saturate skipped-record diagnostics at `int.MaxValue` for every MFT producer instead of failing completed local or broker scans on overflow.
 
 - Add `MftIndexSources.FromMftDumpFile(filePath, driveLetter)`: an index source that loads a saved `$MFT` file as one virtual drive, in process, with no broker and no elevation, on Windows and Linux. Open it with one drive `new IndexedDrive(letter, "dump:/" + letter, 0)`, `NoCache` and `ProducerPolicy.Mft`. A dump is untrusted: an empty file, a record size other than 1024 or 4096, a partial final record, an invalid fixup on an allocated record, a file that cannot be read to its opened length, a missing or invalid root, duplicate record numbers or a parent outside the index each fail the scan with its own message in `DriveStatus.FailureMessage`.

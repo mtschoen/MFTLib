@@ -25,6 +25,8 @@ struct VolumeOffset {
 // shared declaration here. An anonymous namespace in a header is an ODR hazard
 // (each including TU would get its own internal-linkage copy).
 namespace detail {
+inline constexpr wchar_t kIncompleteVolumeReadMessage[] = L"The volume could not be read completely.";
+
 // Checks the update sequence array before reading or writing through it, then restores each
 // sector's last word. False when the array does not sit inside the first sector after the fixed
 // header, does not cover exactly the record's sectors, or a sector's last word is not the update
@@ -70,10 +72,10 @@ uint8_t* ReadNonResidentData(HANDLE volumeHandle, const ATTRIBUTE_RECORD_HEADER*
                              uint64_t* outSize);
 
 // mftRuns must already be validated, with a cumulative size TryMeasureRuns accepted: the lookup does
-// not remeasure the list, so it stays linear in the runs it visits. False when the record is not
-// covered by them or its read fails.
-bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster,
-                   ParseGeometry geometry, uint8_t* buffer, uint64_t recordNumber);
+// not remeasure the list, so it stays linear in the runs it visits. Null on success, otherwise the
+// failure message: an uncovered, failed or short read, invalid FILE magic, or invalid fixup.
+const wchar_t* ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster,
+                             ParseGeometry geometry, uint8_t* buffer, uint64_t recordNumber);
 }  // namespace detail
 }  // namespace mftlib::ntfs
 

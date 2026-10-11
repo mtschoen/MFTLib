@@ -122,12 +122,8 @@ public partial class NativeCoverageTests
         }
     }
 
-    // NOTE: live-volume read-failure tests (ParseMFTRecords_ReadFailDuringParse,
-    // _VolumeReadChunkFail_Returns, _ReadFailDuringExtensionRecords) were removed:
-    // they opened \\.\C: and parsed the whole drive (36-89s each) to hit branches
-    // that the synthetic-file siblings below (_VolumeReadChunkFail_ReturnsZeroUsedRecords,
-    // _ReadFailDuringNonResidentAttributeList, _ReadFailDuringExtensionRecordRead)
-    // already cover in milliseconds with no admin.
+    // Synthetic image handles exercise batch, attribute-list and extension-record read failures
+    // without administrator access. Each failure rejects the scan with no entries.
 
     // --- ParseMFTRecords Read failure on MFT record 0 ---
 

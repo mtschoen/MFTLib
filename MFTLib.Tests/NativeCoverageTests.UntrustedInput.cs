@@ -109,24 +109,24 @@ public partial class NativeCoverageTests
     }
 
     [TestMethod]
-    public void ParseMFTRecords_AttributeListRunLengthsWrapTheByteTotal_IgnoresTheList()
+    public void ParseMFTRecords_AttributeListRunLengthsWrapTheByteTotal_FailsTheParse()
     {
         var image = BuildImageWithNonResidentList(
             4096, new ForgedRun(1, 128, 1, 2), new ForgedRun(RunLengthThatWrapsTheByteCount, 0, 7, 1));
-        AssertParsedAs(image, BaseMftRecords, "a wrapped byte total must not size the buffer");
+        AssertIncompleteExtensionInput(image);
     }
 
     [TestMethod]
-    public void ParseMFTRecords_AttributeListSizeExceedsItsRuns_IgnoresTheList()
+    public void ParseMFTRecords_AttributeListSizeExceedsItsRuns_FailsTheParse()
     {
         var image = BuildImageWithNonResidentList(8192, new ForgedRun(1, 128, 1, 2));
-        AssertParsedAs(image, BaseMftRecords, "bytes past the runs were never read");
+        AssertIncompleteExtensionInput(image);
     }
 
     [TestMethod]
     [DataRow((1L << 51) + 1, DisplayName = "starts beyond the range")]
     [DataRow((1L << 51) - 1, DisplayName = "ends beyond the range")]
-    public void ParseMFTRecords_AttributeListRunBeyondTheSeekRange_IgnoresTheList(long cluster)
+    public void ParseMFTRecords_AttributeListRunBeyondTheSeekRange_FailsTheParse(long cluster)
     {
         // Cluster 2^51 + 1 is byte 2^63 + 4096. A signed seek there fails, and a read that ignores the failure
         // takes its bytes from the previous read's position, where this image keeps a valid list entry.
@@ -135,7 +135,7 @@ public partial class NativeCoverageTests
             data, next, 0x20, 4096, EncodeRuns(new ForgedRun(1, cluster, 1, 7)));
         WriteEndMarker(data, next + length);
         WriteExtensionSegmentTwo(data, MftRunOffset + 1024);
-        AssertParsedAs(data, BaseMftRecords, "an unseekable run must not read from a stale position");
+        AssertIncompleteExtensionInput(data);
     }
 
     [TestMethod]
@@ -168,14 +168,14 @@ public partial class NativeCoverageTests
     }
 
     [TestMethod]
-    public void ParseMFTRecords_AttributeListShorterThanItsHeader_IgnoresTheList()
+    public void ParseMFTRecords_AttributeListShorterThanItsHeader_FailsTheParse()
     {
         var data = BuildRecordZeroImage(out var next);
         data[next] = 0x20;
         data[next + 4] = 0x30;
         data[next + 8] = 0x01; // non-resident, but too short to hold the non-resident header
         WriteEndMarker(data, next + 0x30);
-        AssertParsedAs(data, BaseMftRecords, "a short attribute holds no sizes or runs to read");
+        AssertIncompleteExtensionInput(data);
     }
 
     [TestMethod]
@@ -188,14 +188,14 @@ public partial class NativeCoverageTests
     }
 
     [TestMethod]
-    public void ParseMFTRecords_ExtensionRecordWithoutFileSignature_IgnoresTheExtension()
+    public void ParseMFTRecords_ExtensionRecordWithoutFileSignature_FailsTheParse()
     {
         var data = BuildRecordZeroImage(out var next);
         next += WriteResidentAttributeList(data, next, AttributeListSegmentTwo);
         WriteEndMarker(data, next);
         WriteExtensionSegmentTwo(data, MftRunOffset + 1024);
         data[ExtensionRecordOffset] = 0x00; // the update sequence array is intact, the signature is not
-        AssertParsedAs(data, BaseMftRecords, "only a FILE record can carry runs");
+        AssertInvalidExtensionInput(data, "Invalid MFT extension record magic");
     }
 
     [TestMethod]
@@ -305,7 +305,7 @@ public partial class NativeCoverageTests
     }
 
     [TestMethod]
-    public void ParseMFTRecords_ExtensionAttributeLongerThanItsRecord_IgnoresTheExtension()
+    public void ParseMFTRecords_ExtensionAttributeLongerThanItsRecord_FailsTheParse()
     {
         var data = BuildRecordZeroImage(out var next);
         next += WriteResidentAttributeList(data, next, AttributeListSegmentTwo);
@@ -314,11 +314,11 @@ public partial class NativeCoverageTests
         var attribute = ExtensionRecordOffset + 0x38;
         WriteNonResidentDataAttribute(data, attribute, 4096, 300, 1);
         BitConverter.GetBytes(0x2000).CopyTo(data, attribute + 4);
-        AssertParsedAs(data, BaseMftRecords, "its runs lie inside the record but its length does not");
+        AssertInvalidExtensionInput(data, "MFT extension record has a malformed attribute");
     }
 
     [TestMethod]
-    public void ParseMFTRecords_ExtensionAttributeChainWithoutEndMarker_IgnoresTheExtension()
+    public void ParseMFTRecords_ExtensionAttributeChainWithoutEndMarker_FailsTheParse()
     {
         var data = BuildRecordZeroImage(out var next);
         next += WriteResidentAttributeList(data, next, AttributeListSegmentTwo);
@@ -331,7 +331,17 @@ public partial class NativeCoverageTests
             data[attribute + 4] = 0x20;
         }
 
-        AssertParsedAs(data, BaseMftRecords, "an unterminated chain is not a record");
+        AssertInvalidExtensionInput(data, "MFT extension record has a malformed attribute");
+    }
+
+    private static void AssertIncompleteExtensionInput(byte[] image) =>
+        AssertInvalidExtensionInput(image, "The volume could not be read completely.");
+
+    private static void AssertInvalidExtensionInput(byte[] image, string message)
+    {
+        var outcome = ParseImage(image, image.Length);
+        AssertParseFailedWithNoOutput(outcome);
+        Assert.AreEqual(message, outcome.ErrorMessage);
     }
 
     [TestMethod]

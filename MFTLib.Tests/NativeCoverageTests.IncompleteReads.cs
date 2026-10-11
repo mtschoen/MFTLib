@@ -121,9 +121,27 @@ public partial class NativeCoverageTests
     [TestMethod]
     [DataRow(AttributeListOffset, DisplayName = "end of file at the run")]
     [DataRow(AttributeListOffset + 512, DisplayName = "end of file inside the run")]
-    public void ParseMFTRecords_NonResidentAttributeListRunEndsEarly_ReturnsInsteadOfLooping(int length)
+    public void ParseMFTRecords_NonResidentAttributeListRunEndsEarly_FailsTheParse(int length)
     {
         var outcome = ParseImage(BuildNonResidentAttributeListImage(), length);
-        Assert.AreEqual(4UL, outcome.TotalRecords);
+        AssertParseFailedWithNoOutput(outcome);
+        Assert.AreEqual("The volume could not be read completely.", outcome.ErrorMessage);
+    }
+
+    [TestMethod]
+    [DataRow(5120, DisplayName = "extension starts at end of file")]
+    [DataRow(5632, DisplayName = "extension is half a record")]
+    public void ParseMFTRecords_ExtensionRecordReadEndsEarly_FailsTheParse(int length)
+    {
+        var image = BuildMultiBatchImage();
+        var list = MftRunOffset + 0x38 + 0x48;
+        Array.Clear(image, list, sizeof(uint)); // replace the existing end marker's complete type code
+        WriteEndMarker(image, list + WriteResidentAttributeList(image, list, 1));
+        WriteFileRecord(image, 5120, 2);
+        WriteEndMarker(image, 5120 + 0x38);
+        var outcome = ParseImage(image, length);
+        AssertParseFailedWithNoOutput(outcome);
+        Assert.AreEqual("The volume could not be read completely.", outcome.ErrorMessage);
+        Assert.AreEqual(0UL, outcome.TotalRecords, "reject the extension before starting the batch scan");
     }
 }

@@ -42,7 +42,9 @@ public partial class NativeCoverageTests
             try
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.IsTrue(result.TotalRecords > 0);
+                Assert.AreEqual("The volume could not be read completely.", result.ErrorMessage);
+                Assert.AreEqual(0UL, result.UsedRecords);
+                Assert.AreEqual(IntPtr.Zero, result.Entries);
             }
             finally
             {
@@ -137,10 +139,11 @@ public partial class NativeCoverageTests
             Array.Copy(attrListSize, 0, data, a2 + 0x30, 8); // FileSize
             Array.Copy(attrListSize, 0, data, a2 + 0x38, 8); // ValidDataLength
             // Data run: cluster 300, 1 cluster
-            data[a2 + 0x40] = 0x11; // 1-byte length, 1-byte offset
+            data[a2 + 0x40] = 0x21; // 1-byte length, 2-byte signed offset
             data[a2 + 0x41] = 0x01; // 1 cluster
-            data[a2 + 0x42] = 0x80; // cluster 128  -  use unsigned to avoid sign-extend issues
-            data[a2 + 0x43] = 0x00; // terminator
+            data[a2 + 0x42] = 0x80; // cluster 128
+            data[a2 + 0x43] = 0x00;
+            data[a2 + 0x44] = 0x00; // terminator
 
             WriteEndMarker(data, a2 + 0x48);
 
@@ -154,8 +157,9 @@ public partial class NativeCoverageTests
             try
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                // Parse continues even if attribute list read fails
-                Assert.IsTrue(result.TotalRecords > 0);
+                Assert.AreEqual("The volume could not be read completely.", result.ErrorMessage);
+                Assert.AreEqual(0UL, result.UsedRecords);
+                Assert.AreEqual(IntPtr.Zero, result.Entries);
             }
             finally
             {
