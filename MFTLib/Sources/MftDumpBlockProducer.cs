@@ -15,13 +15,15 @@ internal delegate IEnumerable<IReadOnlyList<MftRecord>> MftDumpRecordSource(MftD
 ///     so a path replaced during a scan cannot mix two files, and the next request opens whatever
 ///     the path then names. It never touches the live volume that shares the dump's drive letter:
 ///     the block carries a zero journal cursor and the request's volume serial.
+///     Dump and local-volume scans share the process's parse-thread allocator; cancellation,
+///     failure and completion release each request's registration.
 /// </summary>
 internal sealed class MftDumpBlockProducer
 {
     const int RecordBatchSize = 4096;
 
     readonly string _dumpFilePath;
-    readonly MftDumpRecordSource _readRecords;
+    readonly MftDumpRecordSource? _readRecords;
 
     /// <summary>Builds a producer for one dump file.</summary>
     /// <param name="dumpFilePath">The full path of the dump, opened anew by each request.</param>
@@ -30,7 +32,7 @@ internal sealed class MftDumpBlockProducer
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dumpFilePath);
         _dumpFilePath = dumpFilePath;
-        _readRecords = readRecords ?? ParseInput;
+        _readRecords = readRecords;
     }
 
     /// <summary>
@@ -39,20 +41,34 @@ internal sealed class MftDumpBlockProducer
     /// <exception cref="IOException">The dump could not be opened.</exception>
     /// <exception cref="InvalidDataException">The dump's content was rejected; the message says which check failed.</exception>
     /// <exception cref="OperationCanceledException">The token stopped the scan.</exception>
-    internal Task<MftBlockProduceResult> ProduceAsync(MftBlockProduceRequest request,
+    internal async Task<MftBlockProduceResult> ProduceAsync(MftBlockProduceRequest request,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return Task.Run(() => Produce(request, cancellationToken), cancellationToken);
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return await Task.FromCanceled<MftBlockProduceResult>(cancellationToken).ConfigureAwait(false);
+        }
+
+        using var registration = await LocalMftBlockProducer.SharedAllocator.AdmitAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var allowance = registration.Allowance;
+        return await Task.Run(() => Produce(request, allowance, cancellationToken), cancellationToken)
+            .ConfigureAwait(false);
     }
 
-    MftBlockProduceResult Produce(MftBlockProduceRequest request, CancellationToken cancellationToken)
+    MftBlockProduceResult Produce(MftBlockProduceRequest request, ParseThreadAllowance allowance,
+        CancellationToken cancellationToken)
     {
         using var input = MftDumpInput.Open(_dumpFilePath);
 
         // The first batch is read before the block exists: reading it runs the whole parse, so a
         // dump the parser rejects costs no block, whose size follows the dump's length.
-        using var batches = _readRecords(input, ParseProgress(request), cancellationToken).GetEnumerator();
+        var progress = ParseProgress(request);
+        var source = _readRecords is { } readRecords
+            ? readRecords(input, progress, cancellationToken)
+            : input.ReadRecordBatches(RecordBatchSize, progress, cancellationToken, allowance);
+        using var batches = source.GetEnumerator();
         var hasBatch = batches.MoveNext();
 
         BlockFile? block = BlockFile.Create(MftBlockCapacity.CreateOptions(input.VolumeInformation,
@@ -85,12 +101,6 @@ internal sealed class MftDumpBlockProducer
             yield return batches.Current;
             hasBatch = batches.MoveNext();
         }
-    }
-
-    static IEnumerable<IReadOnlyList<MftRecord>> ParseInput(MftDumpInput input, IProgress<MftScanProgress>? progress,
-        CancellationToken cancellationToken)
-    {
-        return input.ReadRecordBatches(RecordBatchSize, progress, cancellationToken);
     }
 
     // Both adapters deliver on the reporting thread, so the parse total is seen before the

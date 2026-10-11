@@ -112,12 +112,17 @@ internal sealed class MftDumpInput : IDisposable
     /// <summary>
     ///     Parses the opened file, then yields its records in materialized batches of at most
     ///     <paramref name="batchSize" />. The parse starts on the first enumeration.
+    ///     A supplied allowance follows allocator rebalancing at each native parse chunk.
     /// </summary>
+    /// <param name="batchSize">The maximum number of records materialized per batch.</param>
+    /// <param name="progress">Receives native parse progress.</param>
+    /// <param name="cancellationToken">Stops parsing and batch enumeration.</param>
+    /// <param name="parseThreads">The admitted scan's allowance; null lets the native parser use every processor.</param>
     public IEnumerable<MftRecord[]> ReadRecordBatches(int batchSize, IProgress<MftScanProgress>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, ParseThreadAllowance? parseThreads = null)
     {
-        using var result = Parse(new MftFileScanOptions(progress, CancellationToken: cancellationToken,
-            BufferSizeRecords: 0));
+        using var result = Parse(new MftFileScanOptions(progress, ParseThreads: parseThreads,
+            CancellationToken: cancellationToken, BufferSizeRecords: 0));
         foreach (var batch in result.MaterializeBatches(batchSize))
         {
             cancellationToken.ThrowIfCancellationRequested();

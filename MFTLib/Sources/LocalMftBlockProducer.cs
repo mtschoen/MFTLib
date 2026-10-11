@@ -11,7 +11,7 @@ namespace MFTLib;
 /// </summary>
 internal sealed class LocalMftBlockProducer
 {
-    static readonly ParseThreadAllocator SharedAllocator = new(Environment.ProcessorCount);
+    internal static readonly ParseThreadAllocator SharedAllocator = new(Environment.ProcessorCount);
 
     readonly BrokerScanOptions? _scanOptions;
     readonly Seams _seams;

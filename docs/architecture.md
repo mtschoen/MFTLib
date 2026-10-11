@@ -33,7 +33,9 @@
       (`The dump contains required record numbers outside the index range.`). A record whose own number does not fit
       is skipped and counted by the row writer; a record the parser omits for a malformed attribute is not counted.
       Import is allocated records only. Content rejections are `InvalidDataException`, an open failure is `IOException`
-      carrying the platform error code, cancellation stays `OperationCanceledException`.
+      carrying the platform error code, cancellation stays `OperationCanceledException`. Every request is admitted
+      through the same process-wide `ParseThreadAllocator` as local-volume scans and carries its changing allowance
+      into the native dump parse. Completion, failure and cancellation release the registration and admit queued scans.
     - **Dump files are untrusted input**: every file parse runs on one native core in `mft/mft.dump_input.cpp`
       (`OpenMftDumpInput`, `ParseMftDumpInput`, `CloseMftDumpInput`, UTF-8 paths, exported on every platform; there
       is no other file parse, and it never returns freed records). The file is opened once and sized, and its
@@ -88,7 +90,7 @@
       journal cursor armed before a cached scan, with no broker process or pipe. It has no watch source, so watch start and
       per-drive catch-up refuse with `Drive {letter}: this source does not support watching.`,
       batched start and catch-up report `NotApplicable`, and `DriveWatchStatus.Supported` is false. Concurrent
-      direct scans share the process's parse threads through `ParseThreadAllocator`. Cache reopening
+      direct live-volume and dump scans share the process's parse threads through `ParseThreadAllocator`. Cache reopening
       adopts only when the journal id matches and its next USN exactly equals the stamped cursor;
       recreation, trimming or movement causes a rescan, with `JournalAdvanced` reporting movement
       without retention-size hints. An unavailable or incoherent journal observation adopts without loss.
