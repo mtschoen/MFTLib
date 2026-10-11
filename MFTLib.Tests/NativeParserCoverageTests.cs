@@ -164,13 +164,12 @@ public partial class NativeParserCoverageTests
         }
     }
 
-    // --- mft.parse_core.cpp lines 313-314: the post-loop "final report"
-    // branch, reached only when the loop body never runs (first chunk read
-    // fails) while totalRecords (computed from the MFT data runs before any
-    // read is attempted) is still nonzero. ---
+    // --- A first chunk read that fails (totalRecords is computed from the MFT
+    // data runs before any read is attempted, so it is still nonzero) fails the
+    // parse and reports no progress: the scan did not reach any record. ---
 
     [TestMethod]
-    public void ParseMFTRecordsWithProgress_RealCallback_FirstChunkReadFails_ReportsFinalOnly()
+    public void ParseMFTRecordsWithProgress_RealCallback_FirstChunkReadFails_FailsWithoutProgress()
     {
         var path = Path.GetTempFileName();
         try
@@ -199,8 +198,8 @@ public partial class NativeParserCoverageTests
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
                 Assert.AreEqual(0UL, result.UsedRecords);
-                Assert.AreEqual(1, invocations.Count, "Only the synthetic final report should fire");
-                Assert.AreEqual(invocations[0].Total, invocations[0].Scanned);
+                Assert.IsFalse(string.IsNullOrEmpty(result.ErrorMessage), "a failed first chunk must fail the parse");
+                Assert.AreEqual(0, invocations.Count, "a scan that read nothing reports no progress");
             }
             finally
             {

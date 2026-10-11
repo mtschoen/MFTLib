@@ -255,6 +255,7 @@ public class WatchHostModeTests
         IReadOnlyList<string>? relaunchedWith = null;
         var scanner = new SampleHost
         {
+            _listDrives = () => [WatchFirstRunTests.Facts(@"C:\")],
             _elevationNeed = _ => ElevationNeed.SelfElevate,
             _isElevated = () => false,
             _canSelfElevate = () => true,

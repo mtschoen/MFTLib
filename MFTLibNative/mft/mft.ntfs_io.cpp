@@ -12,6 +12,10 @@
 #include "../internal.h"
 #include "mft.internal.h"
 
+#ifndef _WIN32
+    #include <unistd.h>
+#endif
+
 namespace mftlib::ntfs::detail {
 
 #ifdef _WIN32
@@ -22,6 +26,29 @@ BOOL Read(HANDLE handle, void* buffer, VolumeOffset from, DWORD count, PDWORD by
     auto high = static_cast<LONG>(from.value >> 32);
     SetFilePointer(handle, static_cast<LONG>(from.value & 0xFFFFFFFF), &high, FILE_BEGIN);
     return ReadFile(handle, buffer, count, bytesRead, nullptr);
+}
+#else
+// The handle is a file descriptor. Like ReadFile on a file, a read that reaches the end of the
+// file succeeds with fewer bytes than asked for.
+BOOL Read(HANDLE handle, void* buffer, VolumeOffset from, DWORD count, PDWORD bytesRead) {
+    *bytesRead = 0;
+    if (ShouldFailRead()) {
+        return FALSE;
+    }
+    const auto fileDescriptor = static_cast<int>(reinterpret_cast<intptr_t>(handle));
+    auto* target = static_cast<uint8_t*>(buffer);
+    while (*bytesRead < count) {
+        const ssize_t got = ::pread(fileDescriptor, target + *bytesRead, count - *bytesRead,
+                                    static_cast<off_t>(from.value + *bytesRead));
+        if (got < 0) {
+            return FALSE;
+        }
+        if (got == 0) {
+            break;
+        }
+        *bytesRead += static_cast<DWORD>(got);
+    }
+    return TRUE;
 }
 #endif  // _WIN32
 
@@ -94,7 +121,6 @@ std::vector<DataRun> ParseDataRuns(const ATTRIBUTE_RECORD_HEADER* attr) {
     return runs;
 }
 
-#ifdef _WIN32
 uint8_t* ReadNonResidentData(HANDLE volumeHandle, const ATTRIBUTE_RECORD_HEADER* attr, uint32_t bytesPerCluster,
                              uint64_t* outSize) {
     auto runs = ParseDataRuns(attr);
@@ -118,10 +144,11 @@ uint8_t* ReadNonResidentData(HANDLE volumeHandle, const ATTRIBUTE_RECORD_HEADER*
         uint64_t runOffset = 0;
         while (runOffset < runBytes && bufferOffset < allocSize) {
             auto chunkSize = static_cast<DWORD>((std::min)(static_cast<uint64_t>(0x10000000ULL), runBytes - runOffset));
-            DWORD bytesRead;
+            DWORD bytesRead = 0;
             if (Read(volumeHandle, buffer + bufferOffset,
                      VolumeOffset{(static_cast<uint64_t>(run.clusterOffset) * bytesPerCluster) + runOffset}, chunkSize,
-                     &bytesRead) == 0) {
+                     &bytesRead) == 0 ||
+                bytesRead != chunkSize) {
                 free(buffer);
                 *outSize = 0;
                 return nullptr;
@@ -159,7 +186,6 @@ bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uin
 
     return false;
 }
-#endif  // _WIN32
 
 PATTRIBUTE_RECORD_HEADER FindAttribute(uint8_t* record, ATTRIBUTE_TYPE_CODE type) {
     const auto* fileRecord = reinterpret_cast<const FILE_RECORD_SEGMENT_HEADER*>(record);

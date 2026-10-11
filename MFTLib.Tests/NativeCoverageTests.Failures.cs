@@ -87,6 +87,8 @@ public partial class NativeCoverageTests
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
                 Assert.AreEqual(0UL, result.UsedRecords);
+                Assert.AreEqual(IntPtr.Zero, result.Entries);
+                Assert.IsFalse(string.IsNullOrEmpty(result.ErrorMessage), "a failed batch read must fail the parse");
             }
             finally
             {

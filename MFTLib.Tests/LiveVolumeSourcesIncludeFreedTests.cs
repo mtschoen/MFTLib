@@ -42,7 +42,7 @@ public class LiveVolumeSourcesIncludeFreedTests
     [DataRow(true)]
     public void ScanDriveRecordBatches_KeepsFreedRecordsOnlyWhenAsked(bool includeFreed)
     {
-        if (WindowsOnlyNative.SkipWithoutVolumeParse())
+        if (WindowsOnlyLiveScan.Skip())
         {
             return;
         }
@@ -74,7 +74,7 @@ public class LiveVolumeSourcesIncludeFreedTests
     [TestMethod]
     public void BlockScan_WithTheOption_WritesTheFreedRecordAsADeletedRow()
     {
-        if (WindowsOnlyNative.SkipWithoutVolumeParse())
+        if (WindowsOnlyLiveScan.Skip())
         {
             return;
         }

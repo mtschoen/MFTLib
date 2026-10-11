@@ -12,20 +12,53 @@
 #include "../ntfs.h"
 #include "../mft_api.h"
 #include "../internal.h"
+#include "../core/platform.h"
 #include "mft.internal.h"
+
+#ifndef _WIN32
+    #include <unistd.h>
+#endif
 
 using namespace mftlib::ntfs;
 using namespace mftlib::ntfs::detail;
 
 namespace {
 
-#ifdef _WIN32
+#ifndef _WIN32
+const HANDLE INVALID_HANDLE_VALUE = reinterpret_cast<HANDLE>(static_cast<intptr_t>(-1));
+
+// The record size the boot sector declares: a positive clustersPerFileRecord counts clusters, a
+// negative one is the base-2 logarithm of the size in bytes.
+std::optional<ParseGeometry> ReadBootSectorRecordSize(HANDLE volumeHandle) {
+    NTFS_BPB bpb{};
+    const auto fileDescriptor = static_cast<int>(reinterpret_cast<intptr_t>(volumeHandle));
+    if (::pread(fileDescriptor, &bpb, sizeof(bpb), 0) != static_cast<ssize_t>(sizeof(bpb))) {
+        return std::nullopt;
+    }
+    const auto encoded = static_cast<int8_t>(bpb.clustersPerFileRecord & 0xFFU);
+    constexpr int kLargestShift = 31;
+    uint64_t recordSize = 0;
+    if (encoded < 0 && -encoded <= kLargestShift) {
+        recordSize = uint64_t{1} << -encoded;
+    } else if (encoded > 0) {
+        recordSize = static_cast<uint64_t>(encoded) * bpb.bytesPerSector * bpb.sectorsPerCluster;
+    }
+    if (recordSize > UINT32_MAX || !IsSupportedRecordSize(static_cast<uint32_t>(recordSize))) {
+        return std::nullopt;
+    }
+    return ParseGeometry{static_cast<uint32_t>(recordSize)};
+}
+#endif
+
+// The record size override wins. Otherwise Windows asks the file system and, off Windows, where
+// the handle is a file descriptor on an NTFS image or device, the boot sector says.
 std::optional<ParseGeometry> QueryVolumeRecordSize(HANDLE volumeHandle) {
     uint32_t overrideSize = VolumeRecordSizeOverride();
     if (overrideSize != 0) {
         return IsSupportedRecordSize(overrideSize) ? std::optional<ParseGeometry>(ParseGeometry{overrideSize})
                                                    : std::nullopt;
     }
+#ifdef _WIN32
     NTFS_VOLUME_DATA_BUFFER data{};
     DWORD returned = 0;
     if (DeviceIoControl(volumeHandle, FSCTL_GET_NTFS_VOLUME_DATA, nullptr, 0, &data, sizeof(data), &returned,
@@ -34,6 +67,9 @@ std::optional<ParseGeometry> QueryVolumeRecordSize(HANDLE volumeHandle) {
         return std::nullopt;
     }
     return ParseGeometry{data.BytesPerFileRecordSegment};
+#else
+    return ReadBootSectorRecordSize(volumeHandle);
+#endif
 }
 
 struct VolumeReadContext {
@@ -45,10 +81,16 @@ struct VolumeReadContext {
     uint64_t positionInBlock = 0;
     uint32_t bufferSizeRecords = 0;
     ParseGeometry geometry{};
+    bool readFailed = false;
 };
 
+// Loads the next batch of whole records. A failed or short read ends the input and is
+// remembered, so the parse reports it instead of taking it for the end of the MFT.
 uint64_t VolumeReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) {
     auto* volumeCtx = static_cast<VolumeReadContext*>(ctx);
+    if (volumeCtx->readFailed) {
+        return 0;
+    }
     while (volumeCtx->filesRemaining == 0) {
         volumeCtx->runIndex++;
         if (volumeCtx->runIndex >= volumeCtx->mftRuns->size()) {
@@ -61,12 +103,15 @@ uint64_t VolumeReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) {
 
     const auto& run = (*volumeCtx->mftRuns)[volumeCtx->runIndex];
     uint64_t filesToLoad = (std::min)(volumeCtx->filesRemaining, static_cast<uint64_t>(volumeCtx->bufferSizeRecords));
-    DWORD readBytes;
+    const auto requestedBytes = static_cast<DWORD>(filesToLoad * volumeCtx->geometry.recordSize);
+    DWORD readBytes = 0;
     auto ioStart = SteadyClock::now();
     if (Read(volumeCtx->volumeHandle, targetBuffer,
              VolumeOffset{(static_cast<uint64_t>(run.clusterOffset) * volumeCtx->bytesPerCluster) +
                           volumeCtx->positionInBlock},
-             static_cast<DWORD>(filesToLoad * volumeCtx->geometry.recordSize), &readBytes) == 0) {
+             requestedBytes, &readBytes) == 0 ||
+        readBytes != requestedBytes) {
+        volumeCtx->readFailed = true;
         return 0;
     }
     ioMs += ElapsedMs(ioStart, SteadyClock::now());
@@ -74,6 +119,8 @@ uint64_t VolumeReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) {
     volumeCtx->filesRemaining -= filesToLoad;
     return filesToLoad;
 }
+
+bool VolumeReadIncomplete(const void* ctx) { return static_cast<const VolumeReadContext*>(ctx)->readFailed; }
 
 // Parse record 0's $ATTRIBUTE_LIST entries into a de-duplicated list of the
 // extension record numbers they reference.
@@ -99,7 +146,7 @@ std::vector<uint64_t> CollectExtensionRecordNumbers(uint8_t* attrListData, uint6
 
 // Append the $DATA runs of one already-read extension record to mftRuns.
 void AppendRecordDataRuns(uint8_t* extRecord, std::vector<DataRun>& mftRuns) {
-    const auto* extHdr = reinterpret_cast<const PFILE_RECORD_SEGMENT_HEADER>(extRecord);
+    const auto* extHdr = reinterpret_cast<const FILE_RECORD_SEGMENT_HEADER*>(extRecord);
     if (extHdr->MultiSectorHeader.Magic != kFileRecordMagic) {
         return;
     }
@@ -152,7 +199,6 @@ void MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attrLi
     }
     free(attrListData);
 }
-#endif  // _WIN32
 
 }  // namespace
 
@@ -167,7 +213,6 @@ EXPORT void FreeMftResult(MftParseResult* result) {
     }
 }
 
-#ifdef _WIN32
 // Parses every allocated base record of a volume; includeFreed nonzero also emits freed base records.
 EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, uint32_t includeFreed,
                                                    uint32_t bufferSizeRecords, const MftParseControl* control,
@@ -191,7 +236,8 @@ EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, uint32_t
     NTFS_BPB bpb;
     DWORD bytesRead;
     if ((Read(volumeHandle, &bpb, VolumeOffset{0}, 512, &bytesRead) == 0) || bytesRead != 512) {
-        SetErrorMessage(result->errorMessage, L"Failed to read boot sector. Error: %lu", GetLastError());
+        SetErrorMessage(result->errorMessage, L"Failed to read boot sector. Error: %lu",
+                        static_cast<unsigned long>(mftlib::platform::last_error()));
         return result;
     }
     if (bpb.name[0] != 'N' || bpb.name[1] != 'T' || bpb.name[2] != 'F' || bpb.name[3] != 'S') {
@@ -209,7 +255,7 @@ EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, uint32_t
         return result;
     }
 
-    const auto* fileRecord0 = reinterpret_cast<const PFILE_RECORD_SEGMENT_HEADER>(record0.data());
+    const auto* fileRecord0 = reinterpret_cast<const FILE_RECORD_SEGMENT_HEADER*>(record0.data());
     if (fileRecord0->MultiSectorHeader.Magic != kFileRecordMagic) {
         SetErrorMessage(result->errorMessage, L"Invalid MFT record 0 magic");
         return result;
@@ -251,16 +297,13 @@ EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, uint32_t
     ctx.geometry = *geometry;
 
     free(result);
-    const ParseSource source{VolumeReadChunk, &ctx, totalRecords, *geometry};
+    const ParseSource source{VolumeReadChunk,
+                             &ctx,
+                             totalRecords,
+                             *geometry,
+                             VolumeReadIncomplete,
+                             false,
+                             L"The volume could not be read completely."};
     return ParseMFTImpl(source, ParseRequest{includeFreed != 0, bufferSizeRecords, control, callback, context});
 }
-#endif  // _WIN32
-
-#ifndef _WIN32
-EXPORT MftParseResult* ParseMFTRecordsWithProgress(void* /*volumeHandle*/, uint32_t /*includeFreed*/,
-                                                   uint32_t /*bufferSizeRecords*/, const MftParseControl* /*control*/,
-                                                   MftProgressCallback /*callback*/, void* /*context*/) {
-    return CreateParseResult(L"Direct volume parsing is not supported on Linux");
-}
-#endif
 }

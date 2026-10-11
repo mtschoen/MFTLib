@@ -286,10 +286,10 @@ MftParseResult* FinishCancelled(ParseState& state, MftParseResult* result) {
 }
 
 // Free the partial output of a parse whose input ended early, failed or changed size.
-MftParseResult* FinishIncomplete(ParseState& state, MftParseResult* result) {
+MftParseResult* FinishIncomplete(ParseState& state, MftParseResult* result, const ParseSource& source) {
     DiscardOutput(state);
-    result->invalidInput = 1;
-    SetErrorMessage(result->errorMessage, L"The dump file could not be read completely.");
+    result->invalidInput = source.incompleteIsInvalidInput ? 1 : 0;
+    SetErrorMessage(result->errorMessage, source.incompleteMessage);
     return result;
 }
 
@@ -348,7 +348,7 @@ MftParseResult* ParseMFTImpl(const ParseSource& source, const ParseRequest& requ
         return FinishCancelled(state, result);
     }
     if (outcome == ParseOutcome::Incomplete) {
-        return FinishIncomplete(state, result);
+        return FinishIncomplete(state, result, source);
     }
     if (outcome == ParseOutcome::Failed) {
         result->entries = state.output.entries;

@@ -1,4 +1,5 @@
 #include "platform.h"
+#include "../internal.h"
 
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -53,6 +54,10 @@ int64_t pread_at(const File* file, void* buf, size_t count, FileOffset offset) {
     if (file == nullptr) {
         return -1;
     }
+    if (ShouldFailPlatformRead()) {
+        errno = EACCES;
+        return -1;
+    }
     ssize_t totalBytes = 0;
     auto* bytePtr = static_cast<char*>(buf);
     int64_t currentOffset = offset.value;
@@ -74,6 +79,9 @@ int64_t pread_at(const File* file, void* buf, size_t count, FileOffset offset) {
 
 int64_t pwrite_at(const File* file, const void* buf, size_t count, FileOffset offset) {
     if (file == nullptr) {
+        return -1;
+    }
+    if (ShouldFailPlatformWrite()) {
         return -1;
     }
     ssize_t totalBytes = 0;

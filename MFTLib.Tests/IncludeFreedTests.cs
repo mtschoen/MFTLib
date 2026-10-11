@@ -34,11 +34,6 @@ public class IncludeFreedTests
     [TestMethod]
     public void Fixture_IncludeFreed_EmitsValidatedBaseRecords()
     {
-        if (WindowsOnlyNative.SkipWithoutVolumeParse())
-        {
-            return;
-        }
-
         var fixture = File.ReadAllBytes(_fixturePath);
         var ordinary = Parse(fixture, false, out _);
         Assert.IsTrue(ordinary.All(record => record.InUse));
@@ -78,11 +73,6 @@ public class IncludeFreedTests
     [TestMethod]
     public void LiveOrigin_UnderAFreedParent_KeepsItsRowWhenFreedRowsAreIncluded()
     {
-        if (WindowsOnlyNative.SkipWithoutVolumeParse())
-        {
-            return;
-        }
-
         var fixture = File.ReadAllBytes(_fixturePath);
         WriteParent(fixture, 9, 12, 0);
 

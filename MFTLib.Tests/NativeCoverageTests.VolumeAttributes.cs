@@ -151,6 +151,7 @@ public partial class NativeCoverageTests
             File.WriteAllBytes(path, data);
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
             NativeTestHooks.NativeSetReadFailCountdown(2); // fail 2nd Read
             var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
                 fileStream.SafeFileHandle.DangerousGetHandle(), 256);

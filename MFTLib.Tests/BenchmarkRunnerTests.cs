@@ -165,6 +165,11 @@ public class BenchmarkRunnerTests
     [TestMethod]
     public async Task Run_Index_MftCache_OpensWithJournalIsolationEnabled()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("An MFT block names a drive letter, and only Windows has a drive root to open it under.");
+        }
+
         var directory = Path.Combine(Path.GetTempPath(), $"benchmark-index-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
         var drive = Path.GetPathRoot(directory)![0];
@@ -187,7 +192,8 @@ public class BenchmarkRunnerTests
                 writer.Complete(DateTime.UtcNow, null);
             }
             _runner._getStopwatchElapsedMs = _ => 1;
-            Assert.AreEqual(0, await _runner.RunAsync(["index", "--cache-directory", directory]));
+            Assert.AreEqual(0, await _runner.RunAsync(["index", "--cache-directory", directory]),
+                string.Join('\n', _consoleLines));
             StringAssert.Contains(string.Join('\n', _consoleLines), "Rows: 6");
             StringAssert.Contains(string.Join('\n', _consoleLines), "Name-pool bytes: 0 (0.00% of file)");
         }

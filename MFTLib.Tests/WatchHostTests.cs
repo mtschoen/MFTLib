@@ -51,6 +51,7 @@ public class WatchHostTests
         var lines = new List<string>();
         var scanner = new SampleHost
         {
+            _listDrives = TwoDrives,
             _elevationNeed = _ => ElevationNeed.SelfElevate,
             _isElevated = () => false,
             _canSelfElevate = () => false,

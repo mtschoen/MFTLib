@@ -3,8 +3,9 @@ namespace MFTLib.Tests.TestSupport;
 /// <summary>
 ///     Builds files the volume parser (ParseMFTRecordsWithProgress) accepts in place of a volume
 ///     handle: an NTFS boot sector at offset 0 and an MFT starting at cluster 1 (offset 4096), with
-///     512-byte sectors and 4096-byte clusters. Parse them with 1024-byte records forced through
-///     SetVolumeRecordSizeOverride so the host volume's record size does not matter.
+///     512-byte sectors and 4096-byte clusters. The boot sector declares 1024-byte records, which the
+///     parser reads off Windows; on Windows the record size comes from the volume holding the file, so
+///     a test that depends on it forces 1024 through SetVolumeRecordSizeOverride.
 /// </summary>
 static class SyntheticNtfsImage
 {
@@ -59,6 +60,7 @@ static class SyntheticNtfsImage
         data[0x0C] = 0x02; // bytesPerSector = 512
         data[0x0D] = 0x08; // sectorsPerCluster = 8 (4096 bytes/cluster)
         data[0x30] = 0x01; // mftStart = cluster 1 (offset 4096)
+        data[0x40] = 0xF6; // clustersPerFileRecord = -10: 2^10 = 1024-byte records
         return data;
     }
 

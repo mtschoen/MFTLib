@@ -129,7 +129,8 @@ MftParseResult* ParseDump(const MftDumpInput& input, ParseRequest request) {
     const uint64_t largestChunk = (std::min)(totalRecords, uint64_t{(std::numeric_limits<uint32_t>::max)()});
     request.bufferSizeRecords = static_cast<uint32_t>(std::clamp<uint64_t>(request.bufferSizeRecords, 1, largestChunk));
     DumpReadContext context{&input, totalRecords, request.bufferSizeRecords};
-    const ParseSource source{ReadDumpChunk, &context, totalRecords, input.geometry, DumpReadIncomplete, true};
+    const ParseSource source{ReadDumpChunk,      &context, totalRecords,           input.geometry,
+                             DumpReadIncomplete, true,     kIncompleteReadMessage, true};
     return ParseMFTImpl(source, request);
 }
 

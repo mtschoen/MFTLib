@@ -54,10 +54,10 @@ for isolation from concurrently running test classes. The same rule applies to
 any member of `NativeTestHooks` (the native failure-injection and observation
 hooks), whose calls mutate process-global native state. The guard checks compiled
 IL references, including nested generated methods and local test helpers. Run it
-on Windows as well as Linux: Linux compilation excludes several Windows-only test
-classes. For stress validation, use 32 ClassLevel MSTest workers with the
-existing Linux platform exclusions in `scripts/coverage-linux.sh`; do not add
-new exclusions to hide seam races.
+on Windows as well as Linux: the Linux build leaves out the real WMI tests and its
+run filters out `UsnJournalSyntheticTests`. For stress validation, use 32 ClassLevel
+MSTest workers with the existing Linux platform exclusions in `scripts/coverage-linux.sh`;
+do not add new exclusions to hide seam races.
 
 Cached opens require an explicit nonblank `FileIndexOptions.CacheDirectory`,
 including empty-drive opens. Missing configuration throws `ArgumentException`

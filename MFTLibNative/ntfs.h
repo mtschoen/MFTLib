@@ -23,6 +23,8 @@ union LARGE_INTEGER {
     };
 };
 using BOOL = int;
+constexpr BOOL FALSE = 0;
+constexpr BOOL TRUE = 1;
 using DWORD = uint32_t;
 using HANDLE = void*;
 using PDWORD = DWORD*;

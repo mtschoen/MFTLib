@@ -55,6 +55,13 @@
       attribute is read. These rejections set `MftParseResult.invalidInput`, which
       `MftResult` throws as `InvalidDataException`; no caller classifies a failure by its text. Message buffers are
       UTF-16 (`MftMessageChar`) on every platform, so the managed struct layouts match the native ones on Linux.
+      The volume export `ParseMFTRecordsWithProgress` is compiled on every platform. On Windows its handle is a
+      volume (or a file) and `FSCTL_GET_NTFS_VOLUME_DATA` names the record size; elsewhere its handle is a file
+      descriptor on an NTFS image or device and the boot sector's `clustersPerFileRecord` names it. The
+      `SetVolumeRecordSizeOverride` test hook wins on both, so a synthetic image parses the same way everywhere.
+      A failed or short read of an MFT batch is never taken for the end of the MFT: it fails the parse with
+      `The volume could not be read completely.` and no entries. A short read of a nonresident attribute-list run fails
+      that read instead of looping.
     - **Cache directory ownership**: cached opens require an explicit nonblank
       application-owned `FileIndexOptions.CacheDirectory`, even with no drives.
       Missing configuration throws `ArgumentException` before directory creation.

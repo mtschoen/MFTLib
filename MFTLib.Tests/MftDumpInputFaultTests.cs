@@ -63,11 +63,6 @@ public class MftDumpInputFaultTests
     [TestMethod]
     public void Open_HeaderReadFailsOnThePlatform_IsRejectedAsIncomplete()
     {
-        if (WindowsOnlyNative.SkipWithoutPlatformReadHook())
-        {
-            return;
-        }
-
         NativeTestHooks.NativeSetFailPlatformRead(1);
 
         var failure = Assert.ThrowsException<InvalidDataException>(() => MftDumpInput.Open(_path));
@@ -78,11 +73,6 @@ public class MftDumpInputFaultTests
     [TestMethod]
     public void Parse_ChunkReadFailsOnThePlatform_FailsAsIncomplete()
     {
-        if (WindowsOnlyNative.SkipWithoutPlatformReadHook())
-        {
-            return;
-        }
-
         using var input = MftDumpInput.Open(_path);
         NativeTestHooks.NativeSetFailPlatformRead(2);
 

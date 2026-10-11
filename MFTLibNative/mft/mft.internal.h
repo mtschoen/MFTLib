@@ -32,13 +32,12 @@ namespace detail {
 bool ApplyFixup(uint8_t* record, uint32_t recordSize);
 std::vector<DataRun> ParseDataRuns(const ATTRIBUTE_RECORD_HEADER* attr);
 PATTRIBUTE_RECORD_HEADER FindAttribute(uint8_t* record, ATTRIBUTE_TYPE_CODE type);
-#ifdef _WIN32
+// Off Windows the handle is a file descriptor, so an image file stands in for the volume.
 BOOL Read(HANDLE handle, void* buffer, VolumeOffset from, DWORD count, PDWORD bytesRead);
 uint8_t* ReadNonResidentData(HANDLE volumeHandle, const ATTRIBUTE_RECORD_HEADER* attr, uint32_t bytesPerCluster,
                              uint64_t* outSize);
 bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster,
                    ParseGeometry geometry, uint8_t* buffer, uint64_t recordNumber);
-#endif
 }  // namespace detail
 }  // namespace mftlib::ntfs
 
@@ -150,6 +149,10 @@ struct ParseSource {
     // True for a file, which is untrusted: an allocated record with an invalid fixup fails the
     // parse. A volume only passes over such a record.
     bool rejectInvalidFixup = false;
+    // What a parse whose incomplete callback answered true reports: the error message, and
+    // whether the failure counts as rejected content (invalidInput) rather than an I/O fault.
+    const wchar_t* incompleteMessage = L"The input could not be read completely.";
+    bool incompleteIsInvalidInput = false;
 };
 
 // What the caller asked of one parse. control may be null (every processor, never cancelled).
@@ -168,5 +171,6 @@ MftParseResult* CreateParseResult(const wchar_t* message = nullptr);
 
 // A parse stopped by control->cancelRequested returns a result with no entries, cancelled set
 // to 1 and errorMessage "Parse cancelled". A parse whose source reports incomplete input, or
-// that rejects an invalid fixup, returns a result with invalidInput set to 1.
+// that rejects an invalid fixup, returns a result with no entries and incompleteMessage as its
+// errorMessage; invalidInput is set to 1 when the source says its content was rejected.
 MftParseResult* ParseMFTImpl(const ParseSource& source, const ParseRequest& request);

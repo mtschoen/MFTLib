@@ -61,21 +61,11 @@ mkdir -p "$REPORT_DIR"
 if [ "$RUN_MANAGED" -eq 1 ]; then
     mkdir -p "$MANAGED_REPORT_DIR"
 
-    # Classes excluded on Linux (they hold tests that parse an image through the volume export, a stub off Windows):
-    #   MftResultTests, MftVolumeTests, NativeCoverageTests, NativeParserCoverageTests,
-    #   UsnJournalSyntheticTests (UsnJournalSyntheticTests P/Invokes the USN test hooks
-    #   + usn_journal exports, all #ifdef _WIN32, so they don't exist in libMFTLibNative.so)
-    # Plus individual tests that need Windows-side platform behavior:
-    #   MockVolumeTests.GetVolumeHandle_InvalidVolume_ThrowsIOException
-    #   DefaultElevatedEntryRunnerTests.RunBroker_ValidControlPipe_ServesUntilControlCloses_ExitsWithCode0 (real named pipe)
+    # UsnJournalSyntheticTests is the only class left out on Linux: its subject is usn_journal.cpp, the
+    # Win32 DeviceIoControl, OVERLAPPED, event and CancelIoEx plumbing that is compiled only on Windows,
+    # so libMFTLibNative.so has neither the USN exports nor the USN test hooks it P/Invokes.
     # Coverlet only writes output when the run is green, so failing tests must be filtered.
-    FILTER='FullyQualifiedName!~MftResultTests'
-    FILTER+='&FullyQualifiedName!~MftVolumeTests'
-    FILTER+='&FullyQualifiedName!~NativeCoverageTests'
-    FILTER+='&FullyQualifiedName!~NativeParserCoverageTests'
-    FILTER+='&FullyQualifiedName!~UsnJournalSyntheticTests'
-    FILTER+='&FullyQualifiedName!=MFTLib.Tests.MockVolumeTests.GetVolumeHandle_InvalidVolume_ThrowsIOException'
-    FILTER+='&FullyQualifiedName!=MFTLib.Tests.DefaultElevatedEntryRunnerTests.RunBroker_ValidControlPipe_ServesUntilControlCloses_ExitsWithCode0'
+    FILTER='FullyQualifiedName!~UsnJournalSyntheticTests'
 
     echo
     echo "==> [managed] dotnet test with coverlet"

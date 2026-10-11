@@ -42,6 +42,7 @@ public partial class NativeCoverageTests
         {
             // Write 4KB of garbage  -  enough for boot sector read, but not NTFS
             File.WriteAllBytes(path, new byte[4096]);
+            NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
@@ -74,6 +75,7 @@ public partial class NativeCoverageTests
         try
         {
             File.WriteAllBytes(path, new byte[4096]);
+            NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
 
             // Fail the first Read (boot sector)

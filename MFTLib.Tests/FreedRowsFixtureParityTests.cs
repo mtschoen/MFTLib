@@ -38,11 +38,6 @@ public class FreedRowsFixtureParityTests
     [TestMethod]
     public void ManagedTrustRule_SplitsTheFixturesFreedRecordsByTheirParentChain()
     {
-        if (WindowsOnlyNative.SkipWithoutVolumeParse())
-        {
-            return;
-        }
-
         using var scanned = FixtureVolume.Parse(_imagePath, File.ReadAllBytes(_fixturePath), true);
         var freedRecords = scanned.Where(record => !record.InUse).Select(record => record.RecordNumber).ToArray();
         using var block = BlockFile.Create(new BlockFileCreateOptions
@@ -71,11 +66,6 @@ public class FreedRowsFixtureParityTests
     [TestMethod]
     public void NativeScan_ReportsEveryRecordsReferencedParentSequence()
     {
-        if (WindowsOnlyNative.SkipWithoutVolumeParse())
-        {
-            return;
-        }
-
         using var result = FixtureVolume.Parse(_imagePath, File.ReadAllBytes(_fixturePath), true);
         var sequences = result.ToDictionary(record => record.RecordNumber, record => record.ParentSequenceNumber);
 

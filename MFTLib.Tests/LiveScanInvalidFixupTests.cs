@@ -40,11 +40,6 @@ public class LiveScanInvalidFixupTests
     [TestMethod]
     public void VolumeParse_AllocatedRecordWithAnInvalidFixup_IsCountedAndItsNeighboursAreReturned()
     {
-        if (WindowsOnlyNative.SkipWithoutVolumeParse())
-        {
-            return;
-        }
-
         var (imagePath, corruptRecord) = WriteImageWithOneCorruptFixup();
         using var image = File.OpenHandle(imagePath);
 
@@ -66,7 +61,7 @@ public class LiveScanInvalidFixupTests
     [TestMethod]
     public void LiveBlockScan_AllocatedRecordWithAnInvalidFixup_IsAddedToTheSkippedRecordCount()
     {
-        if (WindowsOnlyNative.SkipWithoutVolumeParse())
+        if (WindowsOnlyLiveScan.Skip())
         {
             return;
         }
@@ -89,7 +84,7 @@ public class LiveScanInvalidFixupTests
     [TestMethod]
     public async Task FromLocalVolumes_AllocatedRecordWithAnInvalidFixup_IsReportedAsASkippedRecord()
     {
-        if (WindowsOnlyNative.SkipWithoutVolumeParse())
+        if (WindowsOnlyLiveScan.Skip())
         {
             return;
         }
@@ -115,7 +110,7 @@ public class LiveScanInvalidFixupTests
     [TestMethod]
     public void LiveBlockScan_NoInvalidFixup_SkipsNothing()
     {
-        if (WindowsOnlyNative.SkipWithoutVolumeParse())
+        if (WindowsOnlyLiveScan.Skip())
         {
             return;
         }
@@ -159,11 +154,6 @@ public class LiveScanInvalidFixupTests
     public void VolumeParse_BootstrapRecordWithAnInvalidFixup_FailsWithoutReturningRecords(string caseId,
         bool corruptLayout)
     {
-        if (WindowsOnlyNative.SkipWithoutVolumeParse())
-        {
-            return;
-        }
-
         var imagePath = Path.Combine(_directory, $"corrupt-bootstrap-{caseId}.img");
         SyntheticNtfsImage.Write(imagePath, 64);
         NativeTestHooks.NativeSetVolumeRecordSizeOverride(RecordSize);

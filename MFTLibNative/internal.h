@@ -6,6 +6,8 @@
 #include <cassert>
 #include <cstdio>
 #include <cstdint>
+// aislop-ignore-next-line CppUnusedIncludeDirective -- std::swprintf below needs this on GCC/Clang
+#include <cwchar>
 #include <vector>
 
 #include "mft_api.h"
