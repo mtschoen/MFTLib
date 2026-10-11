@@ -3,8 +3,9 @@
 #
 # Packs MFTLib on Linux with the given Release library (a test-only pack under version 0.0.0-package-smoke, never
 # published), restores it from a local feed into scripts/package-smoke with an empty package cache, and runs that
-# console project. The host must resolve the library from the package's runtimes folder.
-# A run from a Windows checkout under WSL rewrites MFTLib/obj with a Linux restore; restore on Windows again afterwards.
+# console project. The host must resolve the library from the package's runtimes folder. Pack and consumer
+# intermediates and outputs land in a temporary directory, so a run from a Windows checkout under WSL leaves the
+# checkout untouched.
 set -eu
 set -o pipefail
 
@@ -23,8 +24,13 @@ FEED="$WORK/feed"
 mkdir -p "$FEED"
 
 echo "==> packing MFTLib $VERSION with $LIBRARY"
+# Redirect the restore and build intermediates out of the checkout. This cannot use BaseIntermediateOutputPath:
+# that would move the SDK's default obj/** exclusion along with it, and a Windows-built checkout's existing
+# MFTLib/obj generated sources would then compile a second time (duplicate attribute errors).
 dotnet pack "$ROOT/MFTLib/MFTLib.csproj" -c Release -p:Platform=x64 "-p:Version=$VERSION" \
-    "-p:MFTLibLinuxNativeLibrary=$LIBRARY" "-p:PackageOutputPath=$FEED" --nologo
+    "-p:MFTLibLinuxNativeLibrary=$LIBRARY" "-p:PackageOutputPath=$FEED" \
+    "-p:MSBuildProjectExtensionsPath=$WORK/pack-obj/" "-p:IntermediateOutputPath=$WORK/pack-int/" \
+    "-p:BaseOutputPath=$WORK/pack-bin/" "-p:NuspecOutputPath=$WORK/pack-nuspec/" --nologo
 
 # Entry names are stored uncompressed in a zip, so grep finds them without unzip.
 grep -aq 'runtimes/linux-x64/native/libMFTLibNative.so' "$FEED/MFTLib.$VERSION.nupkg" || {

@@ -7,11 +7,19 @@ namespace MFTLib.Tests;
 [TestClass]
 public class AgentInstructionsTests
 {
+    public TestContext TestContext { get; set; } = null!;
+
     [TestMethod]
     public void WholeDocument_RemainsBelowCharacterBudget()
     {
         var text = ReadInstructions();
         var characters = CountCharacters(text);
+        if (characters > 14500)
+        {
+            TestContext.WriteLine(
+                $"warning: AGENTS.md has {characters} characters, within 500 of the 15000 budget.");
+        }
+
         Assert.IsTrue(characters < 15000,
             $"AGENTS.md has {characters} characters; it must stay below 15000. " +
             "Move narrative unchanged into linked docs pages.");
