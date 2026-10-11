@@ -6,13 +6,13 @@ namespace MFTLib.Tests;
 
 public partial class JournalBrokerHostTests
 {
-    const string DiagClientLogPath = @"C:\broker-diag-tests\client\broker-diagnostics.log";
+    const string DiagClientLogPath = @"C:\broker-diag-tests\client\broker-diagnostics.ui.log";
     const ulong DiagOwnLogReference = 9101;
     const ulong DiagClientLogReference = 9102;
 
     static string DiagOwnLogPath => BrokerDiagnostics.LogPath;
 
-    static UsnJournalEntry DiagEntry(ulong recordNumber, string fileName = "broker-diagnostics.log") =>
+    static UsnJournalEntry DiagEntry(ulong recordNumber, string fileName = "broker-diagnostics.broker.log") =>
         JournalEntries.Create(recordNumber, 110, fileName);
 
     // Point diagnostics at a synthetic C:-rooted directory and resolve both log paths to fixed file

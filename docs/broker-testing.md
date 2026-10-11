@@ -83,7 +83,10 @@ process, which ends with the reason "The broker process was disposed.". The hand
 still disposes normally after a crash.
 
 A test creates an owned temporary log directory and calls
-`BrokerDiagnostics.Enable("client", temporaryDirectory)`. Mark the fixture nonparallel
+`BrokerDiagnostics.Enable("client", temporaryDirectory)` and reads
+`broker-diagnostics.client.log`; the broker writes `broker-diagnostics.broker.log`.
+Roles contain only nonempty ASCII letters, digits, dash and underscore; invalid roles
+throw `ArgumentException` before changing diagnostics state. Mark the fixture nonparallel
 because diagnostics configuration and environment switches are process-global.
 It awaits `BrokerDiagnosticsIsolation.FlushAsync` to
 read the log file deterministically, writes its own marker line with
@@ -93,8 +96,8 @@ setting and environment-controlled enablement. Reset does not clear environment
 variables; tests restore any switches they changed.
 
 Child-dispatch tests reject missing or valueless `--diag-log`, relative or nonnormalized
-paths, directory-only arguments (including an existing directory named `broker-diagnostics.log`),
-names other than `broker-diagnostics.log`, `.` or `..`
+paths, directory-only arguments (including an existing directory named `broker-diagnostics.ui.log`),
+names other than `broker-diagnostics.<role>.log` or invalid role segments, `.` or `..`
 components, invalid characters, and reserved device directory names in the ordinary Windows namespace. Each rejection
 handles broker mode, skips the runner, and exits with code 1. Client-produced paths in
 owned directories containing spaces, including Windows extended-length paths, remain valid.

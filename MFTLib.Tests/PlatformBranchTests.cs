@@ -10,7 +10,7 @@ public class PlatformBranchTests
     [TestMethod]
     public void ResolveLogPath_WindowsHost_ResolvesAgainstTheCurrentDirectory()
     {
-        var relative = Path.Combine("logs", "broker-diagnostics.log");
+        var relative = Path.Combine("logs", "broker-diagnostics.client.log");
 
         Assert.AreEqual(Path.GetFullPath(relative), BrokerDiagnostics.ResolveLogPath(relative, isWindows: true));
     }
@@ -18,8 +18,8 @@ public class PlatformBranchTests
     [TestMethod]
     public void ResolveLogPath_NonWindowsHostWithADriveRoot_KeepsTheWindowsPathUnchanged()
     {
-        const string driveRooted = @"C:\broker-diag\broker-diagnostics.log";
-        var extended = string.Concat(@"\\", "?", @"\D:", @"\broker-diag\broker-diagnostics.log");
+        const string driveRooted = @"C:\broker-diag\broker-diagnostics.client.log";
+        var extended = string.Concat(@"\\", "?", @"\D:", @"\broker-diag\broker-diagnostics.client.log");
 
         Assert.AreEqual(driveRooted, BrokerDiagnostics.ResolveLogPath(driveRooted, isWindows: false));
         Assert.AreEqual(extended, BrokerDiagnostics.ResolveLogPath(extended, isWindows: false));
@@ -28,7 +28,7 @@ public class PlatformBranchTests
     [TestMethod]
     public void ResolveLogPath_NonWindowsHostWithARelativePath_ResolvesAgainstTheCurrentDirectory()
     {
-        var relative = Path.Combine("logs", "broker-diagnostics.log");
+        var relative = Path.Combine("logs", "broker-diagnostics.client.log");
 
         Assert.AreEqual(Path.GetFullPath(relative), BrokerDiagnostics.ResolveLogPath(relative, isWindows: false));
     }
@@ -43,7 +43,7 @@ public class PlatformBranchTests
     [TestMethod]
     public void NormalizePath_NonWindowsHost_ReturnsThePathAsGiven()
     {
-        const string path = @"logs\..\broker-diagnostics.log";
+        const string path = @"logs\..\broker-diagnostics.client.log";
 
         Assert.AreEqual(path, BrokerDiagnosticsLogFilter.NormalizePath(path, isWindows: false));
         Assert.AreEqual(Path.GetFullPath(path), BrokerDiagnosticsLogFilter.NormalizePath(path, isWindows: true));

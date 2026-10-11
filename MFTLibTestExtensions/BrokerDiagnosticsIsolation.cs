@@ -17,11 +17,12 @@ public static class BrokerDiagnosticsIsolation
     public static void Reset() => BrokerDiagnostics.ResetToDefaults();
 
     /// <summary>
-    ///     Waits until every line already queued reaches the log file, so a test can read what a broker
-    ///     under test logged. Use <see cref="BrokerDiagnosticsIsolation.Log" /> to queue a test line.
+    ///     Waits until every line already queued has been appended or dropped, so a test can read what a broker
+    ///     under test logged in <c>broker-diagnostics.&lt;role&gt;.log</c>. Use <see cref="BrokerDiagnosticsIsolation.Log" />
+    ///     to queue a test line. Drop notices name queue saturation or the latest append failure.
     /// </summary>
     /// <param name="cancellationToken">Cancels the wait.</param>
-    /// <returns>A task that completes when the queued lines are written.</returns>
+    /// <returns>A task that completes when the queued lines have been processed.</returns>
     public static Task FlushAsync(CancellationToken cancellationToken) => BrokerDiagnostics.FlushAsync(cancellationToken);
 
     /// <summary>

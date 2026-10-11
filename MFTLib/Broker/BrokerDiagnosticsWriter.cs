@@ -4,9 +4,9 @@ namespace MFTLib;
 
 /// <summary>
 ///     The process's diagnostics sink: callers enqueue formatted lines without waiting for the log, and
-///     one background task appends them in order. A record that finds the buffer full is dropped
-///     and counted, and so is a record whose append throws; before its next append the writer
-///     first reports the count, so a gap in the log is always visible as a gap.
+///     one background task appends them in order. Queue saturation and append failures are counted
+///     separately; before its next append the writer reports their counts and the latest append
+///     exception's type and message, so a gap in the log names its cause.
 /// </summary>
 internal sealed class BrokerDiagnosticsWriter
 {
@@ -23,6 +23,9 @@ internal sealed class BrokerDiagnosticsWriter
     readonly Lock _flushLock = new();
     readonly List<(long Target, TaskCompletionSource Completion)> _flushWaiters = [];
     long _dropped;
+    // Only the drain touches append failure state; retain the latest cause without an unbounded list.
+    long _appendFailures;
+    string? _lastAppendFailure;
     long _accepted;
     long _processed;
 
@@ -47,7 +50,7 @@ internal sealed class BrokerDiagnosticsWriter
     }
 
     /// <summary>
-    ///     Queues one line. Never waits for the drain; a full buffer drops the line and counts it,
+    ///     Queues one line. Never waits for the drain; a full queue drops the line and counts it,
     ///     and a writer that was completed refuses it the same way.
     /// </summary>
     public bool TryEnqueue(string line)
@@ -107,19 +110,21 @@ internal sealed class BrokerDiagnosticsWriter
     void Append(string line)
     {
         var pending = Interlocked.Exchange(ref _dropped, 0);
-        if (pending > 0)
+        if (pending > 0 || _appendFailures > 0)
         {
             try
             {
                 _appendLine(
-                    $"[{_roleProvider()}:{Environment.ProcessId}:diagnostics]  {pending} records dropped: buffer full");
+                    $"[{_roleProvider()}:{Environment.ProcessId}:diagnostics]  {pending + _appendFailures} records dropped: {DropReason(pending)}");
+                _appendFailures = 0;
+                _lastAppendFailure = null;
             }
             catch (Exception exception)
             {
                 // Best-effort only: diagnostics must never disturb the run. The report stays
                 // owed and this record joins the count.
-                _ = exception;
-                Interlocked.Add(ref _dropped, pending + 1);
+                Interlocked.Add(ref _dropped, pending);
+                RecordAppendFailure(exception);
                 return;
             }
         }
@@ -130,9 +135,26 @@ internal sealed class BrokerDiagnosticsWriter
         }
         catch (Exception exception)
         {
-            _ = exception;
-            Interlocked.Increment(ref _dropped);
+            RecordAppendFailure(exception);
         }
+    }
+
+    string DropReason(long queueDrops)
+    {
+        if (_appendFailures == 0)
+        {
+            return "queue full";
+        }
+
+        return queueDrops == 0
+            ? $"append failed: {_lastAppendFailure}"
+            : $"queue full ({queueDrops}); append failed ({_appendFailures}): {_lastAppendFailure}";
+    }
+
+    void RecordAppendFailure(Exception exception)
+    {
+        _appendFailures++;
+        _lastAppendFailure = $"{exception.GetType().Name}: {exception.Message}";
     }
 
     void NotifyProcessed()

@@ -15,7 +15,8 @@ public static class ElevatedEntryPoint
     ///     <see cref="System.Environment.GetCommandLineArgs" />) is simply skipped because it matches
     ///     no flag.
     ///     With <c>--diag</c>, <c>--diag-log</c> must be a normalized, fully qualified path
-    ///     named <c>broker-diagnostics.log</c> that does not name an existing directory, without
+    ///     named <c>broker-diagnostics.&lt;role&gt;.log</c>, with a nonempty role containing only
+    ///     ASCII letters, digits, dash and underscore, that does not name an existing directory, without
     ///     invalid characters or reserved directory names in the ordinary Windows namespace.
     ///     Extended-length Windows paths allow literal reserved names. Rejected arguments exit
     ///     with code 1 without running the broker.
@@ -72,7 +73,7 @@ public static class ElevatedEntryPoint
     {
         if (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path) ||
             path.IndexOfAny(Path.GetInvalidPathChars()) >= 0 ||
-            Path.GetFileName(path) != BrokerDiagnostics.LogFileName || Directory.Exists(path))
+            !BrokerDiagnostics.IsValidLogFileName(Path.GetFileName(path)) || Directory.Exists(path))
         {
             return null;
         }

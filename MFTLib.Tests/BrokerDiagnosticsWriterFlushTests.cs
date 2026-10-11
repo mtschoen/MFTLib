@@ -10,6 +10,51 @@ public class BrokerDiagnosticsWriterFlushTests
     static readonly TimeSpan HangGuard = ScriptedWatchSource.HangGuard;
 
     [TestMethod]
+    public async Task Append_QueueDropsAndRepeatedAppendFailures_RetainsBothCausesUntilRecovery()
+    {
+        var gate = new TestGate();
+        var lines = new List<string>();
+        var offline = new System.Runtime.CompilerServices.StrongBox<bool>(true);
+        var writer = new BrokerDiagnosticsWriter(line =>
+        {
+            gate.MarkEntered();
+            gate.WaitForRelease();
+            if (offline.Value)
+            {
+                throw new IOException("sink unavailable");
+            }
+
+            lines.Add(line);
+        });
+        try
+        {
+            Assert.IsTrue(writer.TryEnqueue("held record"));
+            await gate.Entered.WaitAsync(HangGuard);
+            for (var index = 0; index < BrokerDiagnosticsWriter.Capacity; index++)
+            {
+                Assert.IsTrue(writer.TryEnqueue("queued record"));
+            }
+
+            Assert.IsFalse(writer.TryEnqueue("queue overflow"));
+            gate.Release();
+            await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            offline.Value = false;
+            Assert.IsTrue(writer.TryEnqueue("recovered record"));
+            await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+
+            Assert.AreEqual(2, lines.Count);
+            StringAssert.Contains(lines[0], $"{BrokerDiagnosticsWriter.Capacity + 2} records dropped: queue full (1); append failed ({BrokerDiagnosticsWriter.Capacity + 1}): IOException: sink unavailable");
+            Assert.AreEqual("recovered record", lines[1]);
+        }
+        finally
+        {
+            gate.Release();
+            writer.Complete();
+            await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+        }
+    }
+
+    [TestMethod]
     public async Task FlushAsync_TakenWhileARecordIsBeingDropped_CompletesOnceTheQueuedRecordsAreAppended()
     {
         var gate = new TestGate();
@@ -39,7 +84,7 @@ public class BrokerDiagnosticsWriterFlushTests
 
         // Every queued record, plus the report of the one that was dropped.
         Assert.AreEqual(1 + BrokerDiagnosticsWriter.Capacity + 1, lines.Count);
-        Assert.AreEqual(1, lines.Count(line => line.Contains("1 records dropped: buffer full", StringComparison.Ordinal)));
+        Assert.AreEqual(1, lines.Count(line => line.Contains("1 records dropped: queue full", StringComparison.Ordinal)));
     }
 
     [TestMethod]

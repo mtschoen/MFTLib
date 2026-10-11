@@ -4,7 +4,7 @@ namespace MFTLib;
 ///     Opt-in broker diagnostics. When environment variable
 ///     <c>MFTLIB_BROKER_DIAG=1</c> is set (or <see cref="Enable" /> has been called),
 ///     <see cref="Log" /> appends a timestamped, role-tagged line to
-///     <c>broker-diagnostics.log</c> in the configured directory; otherwise it is a no-op.
+///     <c>broker-diagnostics.&lt;role&gt;.log</c> in the configured directory; otherwise it is a no-op.
 ///     Consumers pass their own app-data directory to <see cref="Enable" /> after early
 ///     broker dispatch; environment-only opt-in defaults to the OS temp directory.
 ///     The elevated child receives diagnostics via <c>--diag</c> and the absolute
@@ -27,13 +27,24 @@ public static class BrokerDiagnostics
 {
     static bool _forced;
 
-    // Tag distinguishing the caller process from the elevated broker child in the
-    // shared log file. The broker child sets it to "broker" via Enable.
+    // Each role owns a separate log file. The broker child sets its role to "broker" via Enable.
     static string _role = "client";
 
     static string _logDirectory = Path.GetTempPath();
 
-    internal const string LogFileName = "broker-diagnostics.log";
+    const string LogFilePrefix = "broker-diagnostics.";
+    const string LogFileSuffix = ".log";
+
+    internal static string LogFileName => $"{LogFilePrefix}{_role}{LogFileSuffix}";
+
+    internal static bool IsValidRole(string? role) =>
+        !string.IsNullOrEmpty(role) && role.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
+
+    internal static bool IsValidLogFileName(string fileName) =>
+        fileName.Length > LogFilePrefix.Length + LogFileSuffix.Length &&
+        fileName.StartsWith(LogFilePrefix, StringComparison.Ordinal) &&
+        fileName.EndsWith(LogFileSuffix, StringComparison.Ordinal) &&
+        IsValidRole(fileName[LogFilePrefix.Length..^LogFileSuffix.Length]);
 
     /// <summary>
     ///     Full path of this process's diagnostics log file. The client forwards it to the
@@ -87,11 +98,18 @@ public static class BrokerDiagnostics
     ///     Force diagnostics on for this process and tag its log lines with
     ///     <paramref name="role" />. Used by the elevated broker child, which cannot rely on
     ///     inheriting the <c>MFTLIB_BROKER_DIAG</c> env var across the <c>runas</c> launch.
+    ///     Appends to <c>broker-diagnostics.&lt;role&gt;.log</c> in the supplied directory.
     /// </summary>
-    /// <param name="role">The role tag included in each log line.</param>
+    /// <param name="role">The nonempty role tag and file-name segment: ASCII letters, digits, dash and underscore only.</param>
     /// <param name="logDirectory">The caller-owned log directory. The caller creates it before logging.</param>
+    /// <exception cref="ArgumentException">The role is not a valid file-name segment.</exception>
     public static void Enable(string role, string logDirectory)
     {
+        if (!IsValidRole(role))
+        {
+            throw new ArgumentException("The diagnostics role must contain only ASCII letters, digits, dash and underscore.", nameof(role));
+        }
+
         _logDirectory = logDirectory;
         _role = role;
         _forced = true;

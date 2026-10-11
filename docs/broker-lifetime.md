@@ -40,12 +40,18 @@
 
 After early child dispatch, clients call `BrokerDiagnostics.Enable(role, logDirectory)`
 with an application-owned directory they create themselves. Environment-only opt-in
-(`MFTLIB_BROKER_DIAG=1`) uses the OS temp directory. The launcher forwards the resolved
+(`MFTLIB_BROKER_DIAG=1`) uses the OS temp directory and the `client` role. Each role
+appends to its own `broker-diagnostics.<role>.log`. Roles are nonempty ASCII letters,
+digits, dash and underscore only; invalid roles throw `ArgumentException` at `Enable`.
+Drop notices distinguish `queue full` from `append failed`, including the latest append
+exception's type and message; failed notices retain the counts until recovery.
+The launcher forwards the resolved
 absolute log path as quoted `--diag-log` alongside `--diag`. Child dispatch derives its
 directory from that path, enables the broker role, and supplies the client path to
 journal self-filtering before invoking the runner. The path must already be normalized,
-fully qualified, and named `broker-diagnostics.log`. Missing or valueless paths,
-directory-only arguments (including an existing directory named `broker-diagnostics.log`),
+fully qualified, and named `broker-diagnostics.<role>.log` with the same role validation.
+The broker writes `broker-diagnostics.broker.log` in that directory. Missing or valueless paths,
+directory-only arguments (including an existing directory named `broker-diagnostics.ui.log`),
 different file names, `.` or `..` components, invalid characters,
 and reserved device directory names in the ordinary Windows namespace are handled broker launches that exit with
 code 1 without serving a session or falling through to application startup. Without `--diag`, dispatch ignores

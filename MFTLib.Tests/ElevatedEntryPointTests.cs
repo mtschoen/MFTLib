@@ -8,7 +8,7 @@ public class ElevatedEntryPointTests
 {
     static readonly string InvalidDiagnosticsDirectory = Path.Combine(Path.GetTempPath(), "Invalid diagnostics " + Guid.NewGuid().ToString("N"));
     static readonly string ClientLogPath = Path.Combine(Path.GetTempPath(), "Client diagnostics " + Guid.NewGuid().ToString("N"),
-        "broker-diagnostics.log");
+        "broker-diagnostics.ui.log");
     static readonly string[] BrokerArgs = ["--broker", "--pipe", "mftlib-pipe-123"];
     static readonly string[] LeadingExecutablePathArgs = [@"C:\apps\SomeApp.exe", "--broker", "--pipe", "p"];
     static readonly string[] ScanOnlyArgs = ["--scan-only"];
@@ -17,7 +17,7 @@ public class ElevatedEntryPointTests
     static readonly string[] BrokerWithDiagIncludeSelfArgs =
         ["--broker", "--pipe", "p", "--diag", "--diag-log", ClientLogPath, "--diag-include-self"];
     static readonly string[] DiagLogWithoutDiagArgs =
-        ["--broker", "--pipe", "p", "--diag-log", @"C:\client-app\broker-diagnostics.log"];
+        ["--broker", "--pipe", "p", "--diag-log", @"C:\client-app\broker-diagnostics.ui.log"];
     static readonly string[] PipeFlagWithNoValueArgs = ["--broker", "--pipe"];
     static readonly string[] NoPipeFlagArgs = ["--broker"];
 
@@ -85,7 +85,7 @@ public class ElevatedEntryPointTests
         try
         {
             Directory.CreateDirectory(clientDirectory);
-            BrokerDiagnostics.Enable("client", clientDirectory);
+            BrokerDiagnostics.Enable("Client-2_test", clientDirectory);
             var suppliedPath = BrokerDiagnostics.LogPath;
             BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "client-enabled-check");
             await BrokerDiagnostics.FlushAsync(CancellationToken.None);
@@ -96,14 +96,16 @@ public class ElevatedEntryPointTests
             Assert.IsTrue(handled);
             Assert.AreEqual(1, runner.BrokerCalls);
             Assert.IsNull(exitCode);
-            Assert.AreEqual(suppliedPath, BrokerDiagnostics.LogPath,
+            var brokerPath = Path.Combine(clientDirectory, "broker-diagnostics.broker.log");
+            Assert.AreEqual(brokerPath, BrokerDiagnostics.LogPath,
                 "The child must configure the supplied directory before any diagnostics write.");
             Assert.AreEqual(suppliedPath, BrokerDiagnostics.ClientLogPath);
             BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "diag-enabled-check");
             await BrokerDiagnostics.FlushAsync(CancellationToken.None);
-            var artifact = await File.ReadAllTextAsync(suppliedPath);
+            var artifact = await File.ReadAllTextAsync(brokerPath);
             StringAssert.Contains(artifact, "[broker:");
-            StringAssert.Contains(artifact, "client-enabled-check");
+            Assert.IsFalse(artifact.Contains("client-enabled-check", StringComparison.Ordinal));
+            StringAssert.Contains(await File.ReadAllTextAsync(suppliedPath), "client-enabled-check");
             StringAssert.Contains(artifact, "diag-enabled-check");
         }
         finally
@@ -153,13 +155,19 @@ public class ElevatedEntryPointTests
     {
         yield return [new[] { "--broker", "--diag" }];
         yield return [new[] { "--broker", "--diag", "--diag-log" }];
-        string[] paths = ["", " ", "relative/broker-diagnostics.log", "--diag-include-self",
+        string[] paths = ["", " ", "relative/broker-diagnostics.ui.log", "--diag-include-self",
             Path.Combine(Path.GetTempPath(), "bad\0path"), Path.GetPathRoot(Path.GetTempPath())!, Path.GetTempPath(),
             Path.TrimEndingDirectorySeparator(InvalidDiagnosticsDirectory),
             Path.Combine(InvalidDiagnosticsDirectory, BrokerDiagnostics.LogFileName),
             Path.Combine(InvalidDiagnosticsDirectory, "."),
             Path.Combine(InvalidDiagnosticsDirectory, ".."),
             Path.Combine(InvalidDiagnosticsDirectory, "wrong-name.log"),
+            Path.Combine(InvalidDiagnosticsDirectory, "broker-diagnostics.log"),
+            Path.Combine(InvalidDiagnosticsDirectory, "broker-diagnostics..log"),
+            Path.Combine(InvalidDiagnosticsDirectory, "broker-diagnostics.ui.role.log"),
+            Path.Combine(InvalidDiagnosticsDirectory, "broker-diagnostics.ui role.log"),
+            Path.Combine(InvalidDiagnosticsDirectory, "broker-diagnostics.ui!.log"),
+            Path.Combine(InvalidDiagnosticsDirectory, "broker-diagnostics.ui.LOG"),
             Path.Combine(InvalidDiagnosticsDirectory, ".", BrokerDiagnostics.LogFileName),
             Path.Combine(InvalidDiagnosticsDirectory, "..", BrokerDiagnostics.LogFileName)];
         foreach (var path in paths)
@@ -177,7 +185,7 @@ public class ElevatedEntryPointTests
 
             yield return [new[] { "--broker", "--diag", "--diag-log", @"C:relative.log" }];
             yield return [new[] { "--broker", "--diag", "--diag-log", Path.Combine(Path.GetTempPath(), "bad|name.log") }];
-            yield return [new[] { "--broker", "--diag", "--diag-log", Path.Combine(Path.GetTempPath(), "bad?directory", "broker-diagnostics.log") }];
+            yield return [new[] { "--broker", "--diag", "--diag-log", Path.Combine(Path.GetTempPath(), "bad?directory", "broker-diagnostics.ui.log") }];
         }
     }
 

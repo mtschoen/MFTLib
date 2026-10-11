@@ -44,7 +44,7 @@ public class BrokerDiagnosticsTests
         BrokerDiagnosticsIsolation.Reset();
 
         Assert.IsFalse(BrokerDiagnostics.Enabled);
-        Assert.AreEqual(Path.Combine(Path.GetTempPath(), BrokerDiagnostics.LogFileName), BrokerDiagnostics.LogPath);
+        Assert.AreEqual(Path.Combine(Path.GetTempPath(), "broker-diagnostics.client.log"), BrokerDiagnostics.LogPath);
     }
 
     [DataTestMethod]
@@ -65,7 +65,7 @@ public class BrokerDiagnosticsTests
             await BrokerDiagnostics.FlushAsync(CancellationToken.None);
         }
 
-        var path = Path.Combine(_temporaryRoot, "broker-diagnostics.log");
+        var path = Path.Combine(_temporaryRoot, "broker-diagnostics.client.log");
         Assert.IsTrue(File.Exists(path));
         StringAssert.Contains(await File.ReadAllTextAsync(path), message);
     }
@@ -80,7 +80,7 @@ public class BrokerDiagnosticsTests
         BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "environment-opt-in");
         await BrokerDiagnostics.FlushAsync(CancellationToken.None);
 
-        Assert.AreEqual(Path.Combine(Path.GetTempPath(), BrokerDiagnostics.LogFileName), BrokerDiagnostics.LogPath);
+        Assert.AreEqual(Path.Combine(Path.GetTempPath(), "broker-diagnostics.client.log"), BrokerDiagnostics.LogPath);
         Assert.AreEqual(1, lines.Count);
         StringAssert.Contains(lines[0], "[client:");
         StringAssert.Contains(lines[0], "environment-opt-in");
@@ -92,7 +92,7 @@ public class BrokerDiagnosticsTests
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", null);
         BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "should-not-appear");
 
-        var path = Path.Combine(_temporaryRoot, "broker-diagnostics.log");
+        var path = Path.Combine(_temporaryRoot, "broker-diagnostics.client.log");
         Assert.IsFalse(File.Exists(path));
     }
 
@@ -104,7 +104,7 @@ public class BrokerDiagnosticsTests
         BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "forced-on");
         await BrokerDiagnostics.FlushAsync(CancellationToken.None);
 
-        var path = Path.Combine(_temporaryRoot, "broker-diagnostics.log");
+        var path = Path.Combine(_temporaryRoot, "broker-diagnostics.broker.log");
         Assert.IsTrue(File.Exists(path));
         StringAssert.Contains(await File.ReadAllTextAsync(path), "[broker:");
     }
@@ -130,7 +130,7 @@ public class BrokerDiagnosticsTests
         BrokerDiagnostics.LogFrame(BrokerDiagnostics.DriveChannel('C', 3), "read", 6, 42);
         await BrokerDiagnostics.FlushAsync(CancellationToken.None);
 
-        var path = Path.Combine(_temporaryRoot, "broker-diagnostics.log");
+        var path = Path.Combine(_temporaryRoot, "broker-diagnostics.client.log");
         Assert.IsTrue(File.Exists(path));
         var line = await File.ReadAllTextAsync(path);
         StringAssert.Contains(line, "frame read kind=6 len=42 t=");
@@ -138,6 +138,96 @@ public class BrokerDiagnosticsTests
     }
 
     static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(30);
+
+    [DataTestMethod]
+    [DataRow("ui")]
+    [DataRow("Client-2_test")]
+    [DataRow("-")]
+    [DataRow("_")]
+    public void Enable_ValidRole_UsesRoleSpecificFile(string role)
+    {
+        BrokerDiagnostics.Enable(role, _temporaryRoot);
+        Assert.AreEqual(Path.Combine(_temporaryRoot, $"broker-diagnostics.{role}.log"), BrokerDiagnostics.LogPath);
+    }
+
+    [DataTestMethod]
+    [DataRow(null)]
+    [DataRow("")]
+    [DataRow("../ui")]
+    [DataRow("ui\\broker")]
+    [DataRow("ui.log")]
+    [DataRow("ui role")]
+    [DataRow("ui:")]
+    [DataRow("ui\0")]
+    [DataRow("\u00e9")]
+    public void Enable_InvalidRole_RejectsWithoutChangingDiagnostics(string? role)
+    {
+        var originalPath = BrokerDiagnostics.LogPath;
+        Assert.ThrowsException<ArgumentException>(() => BrokerDiagnostics.Enable(role!, _temporaryRoot));
+        Assert.IsFalse(BrokerDiagnostics.Enabled);
+        Assert.AreEqual(originalPath, BrokerDiagnostics.LogPath);
+    }
+
+    [TestMethod]
+    public async Task Log_DifferentRoles_HeldFileDoesNotDropOtherRoleRecords()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Windows file sharing is the subject of this regression.");
+        }
+
+        BrokerDiagnostics.Enable("ui", _temporaryRoot);
+        var clientPath = BrokerDiagnostics.LogPath;
+        BrokerDiagnostics.Enable("broker", _temporaryRoot);
+        var brokerPath = BrokerDiagnostics.LogPath;
+        Exception? appendFailure = null;
+        var clientWriter = new BrokerDiagnosticsWriter(line =>
+        {
+            try
+            {
+                File.AppendAllText(clientPath, line + Environment.NewLine);
+            }
+            catch (Exception exception)
+            {
+                appendFailure = exception;
+                throw;
+            }
+        }, () => "ui");
+        var brokerWriter = new BrokerDiagnosticsWriter(
+            line => File.AppendAllText(brokerPath, line + Environment.NewLine), () => "broker");
+        try
+        {
+            using (new FileStream(clientPath, FileMode.Append, FileAccess.Write, FileShare.Read))
+            {
+                Assert.IsTrue(clientWriter.TryEnqueue("held-client-record"));
+                for (var index = 0; index < 20; index++)
+                {
+                    Assert.IsTrue(brokerWriter.TryEnqueue($"broker-record-{index}"));
+                }
+
+                await Task.WhenAll(clientWriter.FlushAsync(CancellationToken.None),
+                    brokerWriter.FlushAsync(CancellationToken.None)).WaitAsync(TestTimeout);
+            }
+
+            Assert.IsNotNull(appendFailure);
+            var failure = appendFailure;
+            Assert.IsTrue(clientWriter.TryEnqueue("client-recovered"));
+            await clientWriter.FlushAsync(CancellationToken.None).WaitAsync(TestTimeout);
+            var clientLines = await File.ReadAllLinesAsync(clientPath);
+            StringAssert.Contains(clientLines[0], $"1 records dropped: append failed: {failure.GetType().Name}: {failure.Message}");
+            Assert.IsFalse(clientLines[0].Contains("buffer full", StringComparison.Ordinal));
+            CollectionAssert.AreEqual(new[] { "client-recovered" }, clientLines.Skip(1).ToArray());
+            CollectionAssert.AreEqual(Enumerable.Range(0, 20).Select(index => $"broker-record-{index}").ToArray(),
+                await File.ReadAllLinesAsync(brokerPath));
+        }
+        finally
+        {
+            clientWriter.Complete();
+            brokerWriter.Complete();
+            await Task.WhenAll(clientWriter.FlushAsync(CancellationToken.None),
+                brokerWriter.FlushAsync(CancellationToken.None)).WaitAsync(TestTimeout);
+        }
+    }
 
     [TestMethod]
     public async Task Log_CarriesChannelTag()
@@ -214,7 +304,7 @@ public class BrokerDiagnosticsTests
     }
 
     [TestMethod]
-    public async Task Log_BufferFull_DropsAndReportsCount()
+    public async Task Log_QueueFull_DropsAndReportsCount()
     {
         BrokerDiagnostics.Enable("client", _temporaryRoot);
         var gate = new TestGate();
@@ -236,7 +326,7 @@ public class BrokerDiagnosticsTests
         gate.Release();
         await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(TestTimeout);
 
-        Assert.AreEqual(1, lines.Count(line => line.Contains("5 records dropped: buffer full", StringComparison.Ordinal)));
+        Assert.AreEqual(1, lines.Count(line => line.Contains("5 records dropped: queue full", StringComparison.Ordinal)));
         Assert.AreEqual(1 + BrokerDiagnosticsWriter.Capacity + 1, lines.Count);
     }
 
@@ -262,7 +352,7 @@ public class BrokerDiagnosticsTests
         await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(TestTimeout);
 
         Assert.AreEqual(2, lines.Count);
-        StringAssert.Contains(lines[0], "2 records dropped: buffer full");
+        StringAssert.Contains(lines[0], "2 records dropped: append failed: IOException: sink offline");
         StringAssert.Contains(lines[1], "third");
     }
 }

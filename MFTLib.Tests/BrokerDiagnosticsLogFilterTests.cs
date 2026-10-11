@@ -6,8 +6,8 @@ namespace MFTLib.Tests;
 [DoNotParallelize]
 public class BrokerDiagnosticsLogFilterTests
 {
-    const string OwnLogPath = @"C:\broker-diag\broker-diagnostics.log";
-    const string ClientLogPath = @"C:\client-diag\broker-diagnostics.log";
+    const string OwnLogPath = @"C:\broker-diag\broker-diagnostics.broker.log";
+    const string ClientLogPath = @"C:\broker-diag\broker-diagnostics.ui.log";
     const ulong OwnLogReference = 9101;
     const ulong ClientLogReference = 9102;
 
@@ -37,8 +37,8 @@ public class BrokerDiagnosticsLogFilterTests
         var filter = new BrokerDiagnosticsLogFilter(OwnLogPath, ClientLogPath);
         var entries = new[]
         {
-            Entry(OwnLogReference, "broker-diagnostics.log"),
-            Entry(ClientLogReference, "broker-diagnostics.log"),
+            Entry(OwnLogReference, "broker-diagnostics.broker.log"),
+            Entry(ClientLogReference, "broker-diagnostics.ui.log"),
             Entry(4242, "unrelated.txt")
         };
 
@@ -56,7 +56,7 @@ public class BrokerDiagnosticsLogFilterTests
         var resolvable = new System.Runtime.CompilerServices.StrongBox<bool>(false);
         BrokerDiagnosticsLogFilter._resolveFileReference = _ => resolvable.Value ? OwnLogReference : null;
         var filter = new BrokerDiagnosticsLogFilter(OwnLogPath, null);
-        var entries = new[] { Entry(OwnLogReference, "broker-diagnostics.log") };
+        var entries = new[] { Entry(OwnLogReference, "broker-diagnostics.broker.log") };
 
         Assert.AreEqual(1, filter.Filter("C", entries).Length);
 
@@ -67,13 +67,13 @@ public class BrokerDiagnosticsLogFilterTests
     [TestMethod]
     public void Filter_ScopesReferencesToTheLogPathsDrive()
     {
-        const string otherDriveClientPath = @"D:\client-diag\broker-diagnostics.log";
+        const string otherDriveClientPath = @"D:\client-diag\broker-diagnostics.ui.log";
         BrokerDiagnosticsLogFilter._resolveFileReference = path =>
             path == OwnLogPath ? OwnLogReference :
             path == otherDriveClientPath ? ClientLogReference :
             null;
         var filter = new BrokerDiagnosticsLogFilter(OwnLogPath, otherDriveClientPath);
-        var entries = new[] { Entry(ClientLogReference, "broker-diagnostics.log") };
+        var entries = new[] { Entry(ClientLogReference, "broker-diagnostics.ui.log") };
 
         // The D-rooted path never resolves for a C batch, so the entry is kept there...
         Assert.AreEqual(1, filter.Filter("C", entries).Length);
@@ -91,8 +91,8 @@ public class BrokerDiagnosticsLogFilterTests
     }
 
     [DataTestMethod]
-    [DataRow(@"\\?\C:\broker-diag\broker-diagnostics.log", DisplayName = "extended drive root")]
-    [DataRow(@"\\.\C:\broker-diag\broker-diagnostics.log", DisplayName = "device drive root")]
+    [DataRow(@"\\?\C:\broker-diag\broker-diagnostics.broker.log", DisplayName = "extended drive root")]
+    [DataRow(@"\\.\C:\broker-diag\broker-diagnostics.broker.log", DisplayName = "device drive root")]
     public void Filter_PrefixedDriveRootPath_ResolvesAndFiltersMatchingEntries(string prefixedPath)
     {
         var resolvedPath = string.Empty;
@@ -105,7 +105,7 @@ public class BrokerDiagnosticsLogFilterTests
         var filter = new BrokerDiagnosticsLogFilter(prefixedPath, null);
         var entries = new[]
         {
-            Entry(OwnLogReference, "broker-diagnostics.log"),
+            Entry(OwnLogReference, "broker-diagnostics.broker.log"),
             Entry(4242, "unrelated.txt")
         };
 
@@ -140,7 +140,7 @@ public class BrokerDiagnosticsLogFilterTests
         // Batch 1: initial log file entries are dropped.
         var batch1 = new[]
         {
-            Entry(initialReference, "broker-diagnostics.log"),
+            Entry(initialReference, "broker-diagnostics.broker.log"),
             Entry(4242, "unrelated1.txt")
         };
         var kept1 = filter.Filter("C", batch1);
@@ -154,8 +154,8 @@ public class BrokerDiagnosticsLogFilterTests
         // Batch 2: contains an entry from the renamed original file AND an entry from the new replacement file.
         var batch2 = new[]
         {
-            Entry(initialReference, "broker-diagnostics.log.bak"),
-            Entry(replacementReference, "broker-diagnostics.log"),
+            Entry(initialReference, "broker-diagnostics.broker.log.bak"),
+            Entry(replacementReference, "broker-diagnostics.broker.log"),
             Entry(4243, "unrelated2.txt")
         };
         var kept2 = filter.Filter("C", batch2);
@@ -166,7 +166,7 @@ public class BrokerDiagnosticsLogFilterTests
         // Batch 3: further writes to the replacement file continue to be dropped.
         var batch3 = new[]
         {
-            Entry(replacementReference, "broker-diagnostics.log"),
+            Entry(replacementReference, "broker-diagnostics.broker.log"),
             Entry(4244, "unrelated3.txt")
         };
         var kept3 = filter.Filter("C", batch3);
@@ -228,7 +228,7 @@ public class BrokerDiagnosticsLogFilterTests
     public void CreateLogFilter_WhenDiagnosticsEnabled_ReturnsFilterThatDropsBothLogs()
     {
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", "1");
-        BrokerDiagnostics.Enable("client", @"C:\broker-diag");
+        BrokerDiagnostics.Enable("broker", @"C:\broker-diag");
         // Key the seam on the combined path so the test is portable (Path.Combine joins
         // with the host separator).
         var ownPath = BrokerDiagnostics.LogPath;
@@ -245,8 +245,8 @@ public class BrokerDiagnosticsLogFilterTests
             Assert.IsNotNull(filter);
             var entries = new[]
             {
-                Entry(OwnLogReference, "broker-diagnostics.log"),
-                Entry(ClientLogReference, "broker-diagnostics.log"),
+                Entry(OwnLogReference, "broker-diagnostics.broker.log"),
+                Entry(ClientLogReference, "broker-diagnostics.ui.log"),
                 Entry(4242, "unrelated.txt")
             };
             var kept = filter.Filter("C", entries);
@@ -291,7 +291,7 @@ public class BrokerDiagnosticsLogFilterTests
         Directory.CreateDirectory(directory);
         try
         {
-            var logPath = Path.Combine(directory, "broker-diagnostics.log");
+            var logPath = Path.Combine(directory, "broker-diagnostics.broker.log");
             File.WriteAllText(logPath, "seed");
             var reference = BrokerDiagnosticsLogFilter.ResolveFileReference(logPath);
             Assert.IsTrue(reference.HasValue);
@@ -306,7 +306,7 @@ public class BrokerDiagnosticsLogFilterTests
                 TimestampUtc = DateTime.UnixEpoch,
                 Reason = UsnReason.Close,
                 FileAttributes = FileAttributes.Normal,
-                FileName = "broker-diagnostics.log"
+                FileName = "broker-diagnostics.broker.log"
             });
             var unrelated = Entry(4242, "unrelated.txt");
             var drive = Path.GetPathRoot(logPath)![0].ToString();
@@ -329,7 +329,7 @@ public class BrokerDiagnosticsLogFilterTests
         // a file that does not exist cannot be opened, so the reference stays null.
         BrokerDiagnosticsLogFilter._resolveFileReference = BrokerDiagnosticsLogFilter.ResolveFileReference;
         var missing = Path.Combine(Path.GetTempPath(),
-            $"mftlib-missing-{Guid.NewGuid():N}", "broker-diagnostics.log");
+            $"mftlib-missing-{Guid.NewGuid():N}", "broker-diagnostics.broker.log");
 
         Assert.IsNull(BrokerDiagnosticsLogFilter.ResolveFileReference(missing));
     }

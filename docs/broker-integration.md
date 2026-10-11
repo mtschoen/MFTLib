@@ -490,11 +490,14 @@ Applications with their own opt-in switch should honor either that switch or
 `MFTLIB_BROKER_DIAG=1` by calling `Enable("client", appDataDirectory)` after child
 dispatch. MFTLib propagates `--diag` and the quoted absolute `--diag-log` across the
 `runas` boundary. The elevated broker derives the directory from that existing path
-and appends broker-role lines to `broker-diagnostics.log` in the same directory. It
+and appends broker-role lines to `broker-diagnostics.broker.log` in the same directory,
+separately from the client's `broker-diagnostics.client.log`. Each role writes to
+`broker-diagnostics.<role>.log`; roles must be nonempty ASCII letters, digits, dash
+and underscore only, or `Enable` throws `ArgumentException`. The broker
 does not rely on inherited environment or application configuration before dispatch.
 A diagnostics-enabled child requires an already normalized, fully qualified path named
-`broker-diagnostics.log`. Missing or valueless paths, directory-only arguments (including an
-existing directory named `broker-diagnostics.log`), different
+`broker-diagnostics.<role>.log`, with the same role validation. Missing or valueless paths,
+directory-only arguments (including an existing directory named `broker-diagnostics.client.log`), different
 file names, `.` or `..` components, invalid characters, and Windows reserved device
 directory names in the ordinary namespace are rejected with exit code 1
 before serving a session; broker mode remains handled so normal startup never runs.
@@ -503,7 +506,9 @@ the `.`/`..` and invalid-character component checks.
 
 Diagnostics are best effort and disabled by default. Writes are queued so disk
 logging does not block a channel. Each line carries its control or drive-channel
-tag. While diagnostics are enabled, the broker filters the diagnostics logs' own
+tag. Drop notices distinguish `queue full` from `append failed`, including the latest
+append exception's type and message. Counts survive failed notices until the sink recovers.
+While diagnostics are enabled, the broker filters the diagnostics logs' own
 journal entries from the watch stream. Set
 `MFTLIB_BROKER_DIAG_INCLUDE_SELF=1` before launching to retain those entries
 while debugging diagnostics themselves.
