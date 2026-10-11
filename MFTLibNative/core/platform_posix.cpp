@@ -62,7 +62,8 @@ int64_t pread_at(const File* file, void* buf, size_t count, FileOffset offset) {
     auto* bytePtr = static_cast<char*>(buf);
     int64_t currentOffset = offset.value;
     while (count > 0) {
-        ssize_t bytesRead = ::pread(file->fd, bytePtr, count, currentOffset);
+        ssize_t bytesRead =
+            RetryInterruptedSystemCall([&]() { return ::pread(file->fd, bytePtr, count, currentOffset); });
         if (bytesRead < 0) {
             return -1;
         }
@@ -88,7 +89,8 @@ int64_t pwrite_at(const File* file, const void* buf, size_t count, FileOffset of
     const auto* bytePtr = static_cast<const char*>(buf);
     int64_t currentOffset = offset.value;
     while (count > 0) {
-        ssize_t bytesWritten = ::pwrite(file->fd, bytePtr, count, currentOffset);
+        ssize_t bytesWritten =
+            RetryInterruptedSystemCall([&]() { return ::pwrite(file->fd, bytePtr, count, currentOffset); });
         if (bytesWritten < 0) {
             return -1;
         }

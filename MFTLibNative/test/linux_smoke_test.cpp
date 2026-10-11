@@ -1,11 +1,13 @@
 // linux_smoke_test.cpp - native end-to-end + error-path tests on POSIX.
 #include <array>
+#include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
 
+#include "internal.h"
 #include "mft/mft_fixture.h"
 #include "mft_api.h"
 #include "ntfs.h"
@@ -379,6 +381,69 @@ bool test_max_threads_clamping() {
 #include "linux_smoke_test.freed.cpp"
 #include "linux_smoke_test.dump.cpp"
 
+bool test_retry_interrupted_repeated_eintr() {
+    constexpr int kFailures = 3;
+    constexpr ssize_t kExpectedCount = 42;
+    int invocations = 0;
+    const auto callable = [&invocations]() -> ssize_t {
+        invocations++;
+        if (invocations <= kFailures) {
+            errno = EINTR;
+            return -1;
+        }
+        errno = 0;
+        return kExpectedCount;
+    };
+
+    errno = 0;
+    const auto result = RetryInterruptedSystemCall(callable);
+    if (result != kExpectedCount || invocations != kFailures + 1) {
+        std::fprintf(stderr, "  FAIL: expected count %lld and %d invocations; got result=%lld invocations=%d\n",
+                     static_cast<long long>(kExpectedCount), kFailures + 1, static_cast<long long>(result),
+                     invocations);
+        return false;
+    }
+    return true;
+}
+
+bool test_retry_interrupted_zero_stale_eintr() {
+    int invocations = 0;
+    const auto callable = [&invocations]() -> ssize_t {
+        invocations++;
+        errno = EINTR;
+        return 0;
+    };
+
+    errno = EINTR;
+    const auto result = RetryInterruptedSystemCall(callable);
+    if (result != 0 || invocations != 1) {
+        std::fprintf(stderr, "  FAIL: expected result 0 and 1 invocation; got result=%lld invocations=%d\n",
+                     static_cast<long long>(result), invocations);
+        return false;
+    }
+    return true;
+}
+
+bool test_retry_interrupted_genuine_error() {
+    int invocations = 0;
+    const auto callable = [&invocations]() -> ssize_t {
+        invocations++;
+        errno = EIO;
+        return -1;
+    };
+
+    errno = 0;
+    const auto result = RetryInterruptedSystemCall(callable);
+    if (result != -1 || errno != EIO || invocations != 1) {
+        std::fprintf(
+            stderr,
+            "  FAIL: expected result -1, errno EIO (%d), and 1 invocation; got result=%lld errno=%d invocations=%d\n",
+            EIO, static_cast<long long>(result), errno, invocations);
+        return false;
+    }
+    return true;
+}
+
 struct TestCase {
     const char* name;
     bool (*fn)();
@@ -387,7 +452,7 @@ struct TestCase {
 }  // namespace
 
 int main() {
-    const std::array<TestCase, 25> tests = {{
+    const std::array<TestCase, 28> tests = {{
         {"abi_version", test_abi_version},
         {"dump_excludes_freed", test_dump_excludes_freed},
         {"round_trip", test_round_trip},
@@ -413,6 +478,9 @@ int main() {
         {"dump_input_hostile_fixups", test_dump_input_hostile_fixups},
         {"dump_input_changed_length", test_dump_input_changed_length},
         {"dump_input_null_arguments", test_dump_input_null_arguments},
+        {"retry_interrupted_repeated_eintr", test_retry_interrupted_repeated_eintr},
+        {"retry_interrupted_zero_stale_eintr", test_retry_interrupted_zero_stale_eintr},
+        {"retry_interrupted_genuine_error", test_retry_interrupted_genuine_error},
     }};
 
     int passedCount = 0;

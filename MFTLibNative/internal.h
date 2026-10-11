@@ -10,6 +10,10 @@
 #include <cwchar>
 #include <vector>
 
+#ifndef _WIN32
+    #include <cerrno>
+#endif
+
 #include "mft_api.h"
 
 using SteadyClock = std::chrono::steady_clock;
@@ -67,6 +71,19 @@ inline int32_t LoadSharedInt32(const int32_t* field) {
     return __atomic_load_n(field, __ATOMIC_ACQUIRE);
 #endif
 }
+
+#ifndef _WIN32
+// Retries an interrupted POSIX system call while it fails with EINTR.
+template <typename Invocation>
+inline auto RetryInterruptedSystemCall(Invocation invocation) {
+    while (true) {
+        const auto result = invocation();
+        if (result >= 0 || errno != EINTR) {
+            return result;
+        }
+    }
+}
+#endif
 
 struct MftParseControl;
 

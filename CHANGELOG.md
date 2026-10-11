@@ -12,6 +12,7 @@
 - Add the Benchmark `index` scenario for synthetic or cache-only blocks, reporting per-drive block geometry, name-pool share, and median warm exact and substring `Search` latency.
 - The MFTLib package carries `runtimes/linux-x64/native/libMFTLibNative.so`, the Release library built on Ubuntu 24.04, so a package user on Linux can load an MFT dump with `MftIndexSources.FromMftDumpFile`; it requires glibc 2.33 and GLIBCXX_3.4.22. `scripts/release.ps1` builds it in WSL, `scripts/Test-ReleasePackages.ps1` requires the entry, and the `linux-package` CI job packs and runs a consumer project against it (`docs/linux-package.md`).
 - Native ABI 7: the parser no longer filters names or resolves paths. Deleted: the native name filter, path table and resolve pass, the `ParseMFTFromFile`, `ParseMFTFromFileUtf8` and `ParseMFTFromFileUtf8WithProgress` exports, the UTF-16 generator exports, `MatchFlags`, `MftScanPhase`, `MftScanProgress.Phase`, the progress callback's phase argument, the path fields of the native result, and the internal `MftVolume.StreamMftFromFile`, `MftRecord.FullPath` and `MftRecord.ToString`. `ParseMFTRecordsWithProgress` takes `includeFreed` in place of the filter and flags, the UTF-8 generators are exported on every platform, and a saved image parses only through `MftDumpInput`, which never returns freed records. No public member changes.
+- POSIX volume and dump reads and writes retry when interrupted by signals (EINTR) instead of reporting a failed read or incomplete dump.
 
 ### Public API cleanup
 

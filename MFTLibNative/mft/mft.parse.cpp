@@ -33,7 +33,9 @@ const HANDLE INVALID_HANDLE_VALUE = reinterpret_cast<HANDLE>(static_cast<intptr_
 std::optional<ParseGeometry> ReadBootSectorRecordSize(HANDLE volumeHandle) {
     NTFS_BPB bpb{};
     const auto fileDescriptor = static_cast<int>(reinterpret_cast<intptr_t>(volumeHandle));
-    if (::pread(fileDescriptor, &bpb, sizeof(bpb), 0) != static_cast<ssize_t>(sizeof(bpb))) {
+    const ssize_t bytesRead =
+        RetryInterruptedSystemCall([&]() { return ::pread(fileDescriptor, &bpb, sizeof(bpb), 0); });
+    if (bytesRead != static_cast<ssize_t>(sizeof(bpb))) {
         return std::nullopt;
     }
     const auto encoded = static_cast<int8_t>(bpb.clustersPerFileRecord & 0xFFU);

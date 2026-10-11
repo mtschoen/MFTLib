@@ -46,8 +46,10 @@ BOOL Read(HANDLE handle, void* buffer, VolumeOffset from, DWORD count, PDWORD by
     const auto fileDescriptor = static_cast<int>(reinterpret_cast<intptr_t>(handle));
     auto* target = static_cast<uint8_t*>(buffer);
     while (*bytesRead < count) {
-        const ssize_t got = ::pread(fileDescriptor, target + *bytesRead, count - *bytesRead,
-                                    static_cast<off_t>(from.value + *bytesRead));
+        const ssize_t got = RetryInterruptedSystemCall([&]() {
+            return ::pread(fileDescriptor, target + *bytesRead, count - *bytesRead,
+                           static_cast<off_t>(from.value + *bytesRead));
+        });
         if (got < 0) {
             return FALSE;
         }
