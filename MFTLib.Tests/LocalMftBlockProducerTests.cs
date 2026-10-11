@@ -137,6 +137,19 @@ public class LocalMftBlockProducerTests
     }
 
     [TestMethod]
+    public async Task Produce_SaturatesSkippedRecordCount()
+    {
+        var producer = new LocalMftBlockProducer(null, Scripted(scan: (_, _, _, _, _, _) =>
+            [new[] { Record(5, ".", 3) }, new MftOmittedRecords((long)int.MaxValue + 1)]));
+
+        var result = await ProducerOf(producer)(Request(), TestContext.CancellationTokenSource.Token);
+        using var block = result.Block;
+
+        Assert.AreEqual(int.MaxValue, result.SkippedRecordCount);
+        Assert.IsTrue(block.Header.IsComplete);
+    }
+
+    [TestMethod]
     public async Task Produce_GivesTheSourceAnOperationReporterThatNeedsNoHost()
     {
         var producer = new LocalMftBlockProducer(null, Scripted(scan: (_, _, operation, _, _, _) =>

@@ -53,7 +53,7 @@ internal sealed class BrokerMftBlockProducer
         {
             ValidateBlock(block, request.VolumeSerial, result.ArmedCursor, request.CacheTag);
             return new MftBlockProduceResult(block, result.ArmedCursor.JournalIdentifier, result.ArmedCursor.NextUsn,
-                SkippedRecordCount: checked((int)result.Block.SkippedRecordCount))
+                SkippedRecordCount: MftBlockScan.SaturateSkippedRecordCount(result.Block.SkippedRecordCount))
             {
                 CatchUpLoss = result.CatchUpLoss
             };

@@ -6,33 +6,19 @@ namespace MFTLib.Tests;
 [TestClass]
 public class BrokerMftBlockProducerProtocolTests : BrokerBlockTestBase
 {
-    [TestMethod]
-    public async Task Produce_PreservesMaximumSkippedRecordCount()
+    [DataTestMethod]
+    [DataRow((long)int.MaxValue)]
+    [DataRow((long)int.MaxValue + 1)]
+    public async Task Produce_SaturatesSkippedRecordCount(long skippedRecordCount)
     {
         await using var broker = new ScriptedBroker();
         var resultTask = ProduceAsync(broker.Process, Request(Target()));
 
-        await SendCompleteScanAsync(broker, int.MaxValue);
+        await SendCompleteScanAsync(broker, skippedRecordCount);
         var result = await resultTask.WaitAsync(HangGuard);
         result.Block.Dispose();
 
         Assert.AreEqual(int.MaxValue, result.SkippedRecordCount);
-    }
-
-    [TestMethod]
-    public async Task Produce_SkippedRecordCountOverflowThrowsAndDisposesBlock()
-    {
-        await using var broker = new ScriptedBroker();
-        var request = Request(Target());
-        var resultTask = ProduceAsync(broker.Process, request);
-
-        await SendCompleteScanAsync(broker, (long)int.MaxValue + 1);
-        await Assert.ThrowsExceptionAsync<OverflowException>(() => resultTask.WaitAsync(HangGuard));
-
-        var section = broker.Sections.Single();
-        Assert.AreEqual(1, section.Lifetime.DisposeCount);
-        BlockFileAssertions.IsDisposed(section.Block);
-        Assert.IsFalse(File.Exists(request.BlockPath));
     }
 
     [TestMethod]

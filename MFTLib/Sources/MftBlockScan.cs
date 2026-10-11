@@ -11,6 +11,10 @@ internal static class MftBlockScan
     // The processing step each flushed range of the completed block publishes.
     internal const string FlushStep = "block flush";
 
+    /// <summary>Fits a scan's skipped count into the public diagnostic without failing a completed scan.</summary>
+    internal static int SaturateSkippedRecordCount(long skippedRecordCount) =>
+        (int)Math.Min(skippedRecordCount, int.MaxValue);
+
     /// <summary>Writes all batches through the filter, stamps the journal cursor, then completes the block.</summary>
     /// <param name="block">The block section to fill.</param>
     /// <param name="stamp">The journal cursor and completion clock to stamp into the block; a dump or uncached local producer passes a zero cursor.</param>

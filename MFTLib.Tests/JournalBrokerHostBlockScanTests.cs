@@ -173,13 +173,13 @@ public class JournalBrokerHostBlockScanTests
             new JournalBrokerHost.VolumeSources(_ => ArmedCursor, source, (_, cursor, _) => ([], cursor)));
     }
 
-    // Scans drive C into a section named "section-C" and returns every frame the drive pipe carried.
     [TestMethod]
-    public async Task ScanChannel_AndSharedScanFunction_ProduceIdenticalBlocksAndSkippedCounts()
+    public async Task ScanChannel_ForwardsSharedScanArgumentsAndProducesExpectedRows()
     {
         MftRecord[][] batches =
         [
-            [Record(5, ".", 3), Record(20, "file.txt"), Record(21, "")],
+            [Record(5, ".", 3), Record(10, "folder", 3),
+                new MftRecord(20, 10, new MftRecordFields(1), "file.txt"), Record(21, "")],
             [Record(30, "other.txt"), new MftRecord(1UL << 33, 5, new MftRecordFields(1), "huge")]
         ];
         var completedUtc = new DateTime(2026, 9, 3, 0, 0, 0, DateTimeKind.Utc);
@@ -203,6 +203,42 @@ public class JournalBrokerHostBlockScanTests
         Assert.AreEqual(skippedByHost, result.SkippedRecordCount);
         Assert.AreEqual(2L, result.SkippedRecordCount);
         CollectionAssert.AreEqual(BlockBytes(hostWriter.Block), BlockBytes(directBlock));
+        await AssertExpectedRowsAsync(hostWriter.Block);
+        await AssertExpectedRowsAsync(directBlock);
+    }
+
+    static async Task AssertExpectedRowsAsync(BlockFile block)
+    {
+        Assert.AreEqual(4u, block.Header.LiveRowCount);
+        Assert.AreEqual(31u, block.Header.RowCount);
+        Assert.AreEqual(RowFlags.None, block.Rows[21].Flags);
+        var rootPath = Path.Combine(Path.GetTempPath(), "scan-oracle");
+        var snapshot = Snapshot.Create([new DriveBlock('C', 0, block, rootPath)]);
+        try
+        {
+            (string RelativePath, uint Row, string Name, uint Parent, RowFlags Flags)[] expected =
+            [
+                ("", 5, ".", 5, RowFlags.InUse | RowFlags.Directory),
+                ("folder", 10, "folder", 5, RowFlags.InUse | RowFlags.Directory),
+                ("folder/file.txt", 20, "file.txt", 10, RowFlags.InUse),
+                ("other.txt", 30, "other.txt", 5, RowFlags.InUse)
+            ];
+            foreach (var row in expected)
+            {
+                var entry = LookupEngine.Find(snapshot, Path.Combine(rootPath, row.RelativePath));
+                Assert.IsNotNull(entry, $"Expected lookup for {row.RelativePath}");
+                Assert.AreEqual(row.Row, entry.Value.RowIndex);
+                Assert.AreEqual(row.Name, entry.Value.Name);
+                Assert.AreEqual(row.Parent, entry.Value.Row.ParentRow);
+                Assert.AreEqual(row.Flags, entry.Value.Row.Flags);
+            }
+
+            Assert.IsNull(LookupEngine.Find(snapshot, Path.Combine(rootPath, "huge")));
+        }
+        finally
+        {
+            await snapshot.ReleaseNowAsync();
+        }
     }
 
     [TestMethod]

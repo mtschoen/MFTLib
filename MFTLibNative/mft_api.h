@@ -12,8 +12,8 @@
 
 constexpr uint32_t MFT_NATIVE_ABI_VERSION = 7;
 
-// One UTF-16 code unit of a parse error message. wchar_t is 16 bits on Windows and 32 bits
-// elsewhere, so the parse structs declare their message buffers in this type and keep one
+// One UTF-16 code unit of a native error message. wchar_t is 16 bits on Windows and 32 bits
+// elsewhere, so the result structs declare their message buffers in this type and keep one
 // layout on every platform.
 #ifdef _WIN32
 using MftMessageChar = wchar_t;
@@ -114,7 +114,7 @@ struct UsnJournalInfo {
     uint64_t maximumSize;
     uint64_t allocationDelta;
     // NOLINTNEXTLINE(modernize-avoid-c-arrays)
-    wchar_t errorMessage[256];
+    MftMessageChar errorMessage[256];
 };
 
 struct UsnJournalEntry {
@@ -136,8 +136,12 @@ struct UsnJournalResult {
     int64_t nextUsn;           // cursor for next read
     uint64_t journalId;        // journal ID for staleness detection
     // NOLINTNEXTLINE(modernize-avoid-c-arrays)
-    wchar_t errorMessage[256];
+    MftMessageChar errorMessage[256];
 };
+
+static_assert(sizeof(UsnJournalInfo) == 568, "UsnJournalInfo is seven 64-bit fields and 256 UTF-16 message units");
+static_assert(sizeof(UsnJournalResult) == 536 + sizeof(UsnJournalEntry*),
+              "UsnJournalResult is three 64-bit fields, a pointer and 256 UTF-16 message units");
 
 #pragma pack(pop)
 
