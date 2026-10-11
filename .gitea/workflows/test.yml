@@ -92,6 +92,11 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File scripts/build-windows.tests.ps1
 
+      - name: Test pinned aislop checkout gate
+        if: steps.changed-files.outputs.skip_build != 'true'
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/ci-aislop.tests.ps1
+
       - name: Test coverage status guard
         if: steps.changed-files.outputs.skip_build != 'true'
         shell: pwsh
@@ -348,6 +353,10 @@ jobs:
         if: steps.changed-files.outputs.skip_build != 'true'
         run: bash scripts/sync_consumers.tests.sh
 
+      - name: Test the CI preflight dispatcher
+        if: steps.changed-files.outputs.skip_build != 'true'
+        run: bash scripts/ci-preflight.tests.sh
+
       # The hash is computed in the shell: hashFiles() can evaluate to an empty
       # string on act_runner, which freezes the cache at its first snapshot
       # (project-ci-setup.md, "hashFiles silently evaluates empty").
@@ -400,14 +409,8 @@ jobs:
           restore-keys: |
             linux-nuget-
 
-      - name: Restore test project
-        run: dotnet restore MFTLib.Tests/MFTLib.Tests.csproj
-
-      - name: Build test project (managed only)
-        run: dotnet build MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-restore
-
-      - name: Run agent instruction tests
-        run: dotnet test MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-build --filter "FullyQualifiedName~AgentInstructionsTests"
+      - name: Restore, build and run agent instruction tests (managed only)
+        run: bash scripts/test-agent-instructions.sh
 
   # Builds the Release linux-x64 library the 0.3.0 package ships, runs the acceptance checks on it,
   # and proves a package user on Linux can load an MFT dump with the library resolved from the

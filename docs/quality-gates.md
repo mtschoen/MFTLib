@@ -16,6 +16,75 @@ Windows jobs run on the host-mode `windows-latest` runner, where toolchains are 
 
 For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .NET version mismatch, PS7 + dotnet test comma-splitting, etc.), read `~/schoen-lab/packages/local_ci/docs/project-ci-setup.md` before modifying the workflow. Runner-account environment needs (pwsh on PATH, `DOTNET_INSTALL_DIR`) are fixed at the runner service level - do not add per-workflow bootstrap steps for them.
 
+## Local CI preflight
+
+Run from Git Bash on Windows or Bash on Linux:
+
+```bash
+bash tools/ci-preflight.sh --changed-from gitea/main
+bash tools/ci-preflight.sh --all
+bash tools/ci-preflight.sh --only coverage-status
+```
+
+Scopes: `docs`, `preflight-tests`, `build-script`, `coverage-status`, `windows`,
+`linux`, `linux-package`, `sync`, and `aislop`. Repeat `--only` to select several.
+Unknown arguments, unknown scopes, missing values and mixed modes exit 2.
+Every selected gate runs in the foreground, even after another gate fails.
+Any gate failure exits 1; successful host-reproducible gates exit 0. `SKIP`
+never means that the unavailable gate passed. The final verdict explicitly
+covers only the selected host gates, not the complete remote CI verdict.
+
+`--changed-from` uses the workflows' direct-base-tip diff and exact path rule:
+a nonempty diff containing only `.aislop/fork-commit`, `docs/`, or root `*.md`
+skips the build, coverage and package jobs. It includes working-tree changes
+and untracked unignored files because preflight tests the working tree.
+Empty diffs and inspection failures run all gates. No network fetch is made;
+refresh the reference before running if its local tip is stale. Docs and
+aislop always run, as in CI.
+
+| Scope/gate | Windows | Linux | Shared CI implementation |
+| --- | --- | --- | --- |
+| `docs` | Run | Run | `scripts/test-agent-instructions.sh`: restore, managed build, AgentInstructionsTests |
+| `preflight-tests` | Run | Run | `scripts/ci-preflight.tests.sh`, also run in the Linux CI job |
+| `build-script` / `build-script` | Run | Skip | `scripts/build-windows.tests.ps1` |
+| `build-script` / `aislop-tests` | Run | Skip | `scripts/ci-aislop.tests.ps1`, independent scanner regression gate |
+| `coverage-status` | Run (pwsh) | Run (requires pwsh) | `scripts/test-coverage-status.ps1`, offline publisher regression tests |
+| `windows` | Run | Skip | `scripts/run-coverage.ps1 -NonInteractive`, including native and managed build |
+| `linux` | Skip | Run | `scripts/coverage-linux.sh`, native and managed coverage |
+| `linux-package` | Skip | Run | `build-linux.sh`, `check-linux-native.sh`, `smoke-package-linux.sh` under `scripts/` |
+| `sync` | Run | Run | `scripts/sync_consumers.tests.sh`, offline transport fixtures |
+| `aislop` | Run | Skip | Windows build plus exact pinned scanner and CI file-count sanity check |
+
+Install the same prerequisites as the selected CI jobs beforehand: .NET 10,
+Windows MSVC/amd64 MSBuild, reportgenerator, pwsh, Git/Bash, and the C# scanner
+tools; Linux coverage/package scopes need CMake, Ninja, g++, gcovr and Python.
+The aislop scope also requires Node and the built pinned fork checkout, with no
+global aislop launcher required.
+Missing tools on a supported platform fail their gate rather than silently skip.
+NuGet restore may need a populated offline cache. Preflight does not install tools.
+
+The aislop gate uses the already-built fork checkout at `AISLOP_HOME` or
+`~/aislop`. It verifies its clean tracked source and exact HEAD against
+`.aislop/fork-commit`, the same pin read by `.gitea/workflows/aislop.yml`, then
+runs `node <checkout>/dist/cli.js --version` followed by
+`node <checkout>/dist/cli.js ci . --json`. It prints that checkout's version,
+checkout commit and required CI commit. A different or unidentifiable commit
+is refused, not merely warned: CI uses the pinned scanner, and a semantic
+version alone cannot prove identity. Provision/build
+that exact fork commit before running. The local JSON report is at
+`.aislop/preflight/report.json`. Like CI, fewer than ten scanned files fails.
+
+The runtime also lists checks that cannot be reproduced offline on either host:
+coverage status publication (Gitea token and historical main-line statuses),
+consumer pin publication (manual workflow writing other repositories), and
+Actions provisioning, cache transfers and artifact uploads. Windows post-clean
+init verification is main-push-only and destructively cleans its CI checkout;
+local PR preflight reports it skipped. `RequiresAdmin` tests remain excluded
+by the same noninteractive coverage script CI uses. Linux-only gates require
+a Linux run; Windows coverage and aislop require a Windows run.
+
+The command is not a pr-crew preflight-protocol opt-in, and the crew does not invoke it.
+
 ## Quality gate: aislop
 
 This project uses **aislop** as a deterministic quality gate for AI-written code
