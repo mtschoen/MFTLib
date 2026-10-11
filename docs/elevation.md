@@ -34,6 +34,22 @@ launch it. A session-construction failure is printed as `Error creating broker s
 A lazy launch failure is reported through the affected drive as `Error on drive X: ...`;
 a later drive can retry a failed launch using the session's normal retry behavior.
 
+## Double-click and bare launches
+
+A sample started from Explorer owns its console window, which closes when the process ends. Each sample therefore
+prints `Press any key to close this window.` and waits for a key press before exit when this process is the only one
+attached to its console, neither input nor output is redirected, and `MFTLIB_SAMPLE_UNATTENDED` is not `1`. A run from an
+existing shell never waits. The success, the usage after a parse error (exit 2) and an elevation that was declined
+(exit 1) are all left on screen this way.
+
+Direct local scans relaunch themselves elevated, and the elevated run writes to `output.log` beside the executable; the
+unelevated console prints that path before it starts the elevated run, and the elevated window closes without waiting.
+
+Watch with no arguments is `watch` over every ready NTFS fixed drive: it prints which drives it chose, scans each with a
+running row count (a line each 250000 rows within a scan phase), then prints changes until a key press. `--seconds N`
+replaces the key press with a fixed length, and an unattended run, or one whose input is redirected, watches for ten
+seconds. `scan-drive` makes one pass per listed drive and returns. Any drive that failed makes the exit code 1.
+
 ## Unattended: the owner said to proceed autonomously, or nobody is at the desktop
 
 Set the environment variable once for the whole session; every lane and child process inherits it.

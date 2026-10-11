@@ -42,7 +42,7 @@ partial class SampleHost
             // An elevated self-elevating run is the relaunched child, so its output goes to a file.
             if (need is ElevationNeed.SelfElevate)
             {
-                RedirectStdout(Path.Combine(AppContext.BaseDirectory, "output.log"));
+                RedirectStdout(OutputLogPath);
             }
 
             return run();
@@ -67,9 +67,14 @@ partial class SampleHost
         }
 
         _writeLine("Not running as administrator. Attempting to self-elevate...");
-        if (_canSelfElevate() && ConfirmElevation(arguments, SelfElevationReason) && _tryRunElevated(arguments, ElevationUtilities.DefaultElevatedTimeout))
+        if (_canSelfElevate() && ConfirmElevation(arguments, SelfElevationReason))
         {
-            return 0;
+            // Announced before the attempt: a failed elevated run leaves its error only in that file.
+            _writeLine($"The elevated run writes its output to {OutputLogPath}");
+            if (_tryRunElevated(arguments, ElevationUtilities.DefaultElevatedTimeout))
+            {
+                return 0;
+            }
         }
 
         PrintElevationFailure(arguments);
@@ -96,8 +101,12 @@ partial class SampleHost
         _writeLine("------------------------------------------------------------------");
     }
 
+    // The elevated child's window closes when it ends, so its output goes to this file beside the executable.
+    static string OutputLogPath => Path.Combine(AppContext.BaseDirectory, "output.log");
+
     void RedirectStdout(string logPath)
     {
+        _outputRedirectedToFile = true;
         var stdout = _acrtIobFunc(1);
         _wFreopen(logPath, "w", stdout);
     }

@@ -15,8 +15,9 @@ partial class SampleHost
             : throw new PlatformNotSupportedException("The broker is Windows only.");
     }
 
-    // One broker, so one elevation prompt, serves every drive of the run. False means no broker session could be created, so nothing ran.
-    internal async Task<bool> RunThroughBrokerAsync(WatchArguments parsed, CancellationToken cancellationToken)
+    // One broker, so one elevation prompt, serves every drive of the run. The exit code is 1 when no broker session could be
+    // created, so nothing ran, or when any drive failed; otherwise 0.
+    internal async Task<int> RunThroughBrokerAsync(WatchArguments parsed, CancellationToken cancellationToken)
     {
         BrokerSession session;
         try
@@ -26,7 +27,7 @@ partial class SampleHost
         catch (Exception exception)
         {
             _writeLine($"Error creating broker session: {exception.Message}");
-            return false;
+            return 1;
         }
 
         await using var ownedSession = session.ConfigureAwait(false);
@@ -37,49 +38,80 @@ partial class SampleHost
         }
 
         var source = session.CreateIndexSource(parsed.ScanOptions);
-        foreach (var drive in parsed.Drives)
-        {
-            await RunOnDriveAsync(session, source, parsed, drive, cancellationToken).ConfigureAwait(false);
-        }
+        var failureCount = parsed.Mode is ProgramMode.Watch
+            ? await WatchDrivesAsync(source, parsed, cancellationToken).ConfigureAwait(false)
+            : await RunEachDriveAsync(session, source, parsed, cancellationToken).ConfigureAwait(false);
 
         if (session.HasEnded)
         {
             _writeLine($"Broker ended: {await session.Ended.ConfigureAwait(false)}");
         }
 
-        return true;
+        if (failureCount > 0)
+        {
+            _writeLine($"{failureCount} drive operation(s) failed.");
+        }
+
+        return failureCount > 0 ? 1 : 0;
     }
 
-    async Task RunOnDriveAsync(BrokerSession session, MftIndexSource source, WatchArguments parsed, string drive, CancellationToken cancellationToken)
+    async Task<int> RunEachDriveAsync(BrokerSession session, MftIndexSource source, WatchArguments parsed, CancellationToken cancellationToken)
     {
-        var letter = drive.TrimEnd(':');
-        _writeLine($"=== Drive {letter}: ===");
+        var failureCount = 0;
+        foreach (var drive in parsed.Drives)
+        {
+            if (!await RunOnDriveAsync(session, source, parsed, drive.TrimEnd(':'), cancellationToken).ConfigureAwait(false))
+            {
+                failureCount++;
+            }
+        }
+
+        return failureCount;
+    }
+
+    // Opens one drive's index and writes its status line; a failure after the open disposes the index again.
+    async Task<FileIndex> OpenDriveAsync(MftIndexSource source, WatchArguments parsed, string letter, CancellationToken cancellationToken)
+    {
+        var cached = parsed.Mode is not ProgramMode.ScanDrive;
+        var options = new FileIndexOptions
+        {
+            Drives = [_resolveDrive(letter)],
+            NoCache = !cached,
+            CacheDirectory = cached ? Path.Combine(ResolveCacheDirectory(parsed), parsed.PolicyDirectoryName) : null,
+            CacheTag = cached ? WatchArguments.CacheTag : default,
+            Diagnostics = cached ? _writeLine : null,
+            MftSource = source,
+            Progress = new PhaseReporter(_writeLine)
+        };
+
+        var index = await FileIndex.OpenAsync(options, cancellationToken).ConfigureAwait(false);
         try
         {
-            var cached = parsed.Mode is not ProgramMode.ScanDrive;
-            var options = new FileIndexOptions
-            {
-                Drives = [_resolveDrive(letter)],
-                NoCache = !cached,
-                CacheDirectory = cached ? Path.Combine(ResolveCacheDirectory(parsed), parsed.PolicyDirectoryName) : null,
-                CacheTag = cached ? WatchArguments.CacheTag : default,
-                Diagnostics = cached ? _writeLine : null,
-                MftSource = source,
-                Progress = new PhaseReporter(_writeLine)
-            };
-
-            await using var index = await FileIndex.OpenAsync(options, cancellationToken).ConfigureAwait(false);
             Action<DriveStatus> report = cached ? WriteDriveDetail : WriteStatus;
             report(index.Drives.Single());
+            return index;
+        }
+        catch
+        {
+            await index.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    // True when the drive ran to its end; a failure is printed and false.
+    async Task<bool> RunOnDriveAsync(BrokerSession session, MftIndexSource source, WatchArguments parsed, string letter, CancellationToken cancellationToken)
+    {
+        _writeLine($"=== Drive {letter}: ===");
+        var succeeded = true;
+        try
+        {
+            await using var index = await OpenDriveAsync(source, parsed, letter, cancellationToken).ConfigureAwait(false);
             var driveLetter = char.ToUpperInvariant(letter[0]);
             switch (parsed.Mode)
             {
-                case ProgramMode.Watch:
-                    await WatchDriveAsync(index, parsed.Seconds, cancellationToken).ConfigureAwait(false);
-                    break;
                 case ProgramMode.Rescan:
                     await index.RescanAsync(driveLetter, cancellationToken).ConfigureAwait(false);
-                    report(index.Drives.Single());
+                    WriteDriveDetail(index.Drives.Single());
                     break;
                 case ProgramMode.Journal:
                     await WriteJournalAsync(session, index, driveLetter, parsed, cancellationToken).ConfigureAwait(false);
@@ -90,9 +122,11 @@ partial class SampleHost
         }
         catch (Exception exception)
         {
+            succeeded = false;
             _writeLine($"Error on drive {letter}: {exception.Message}");
         }
 
         _writeLine(string.Empty);
+        return succeeded;
     }
 }

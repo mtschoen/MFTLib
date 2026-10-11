@@ -7,21 +7,23 @@ namespace MFTLib.Tests;
 public class WatchArgumentsTests
 {
     [TestMethod]
-    public void TryParse_NoArguments_ScansTheDefaultDrive()
+    public void TryParse_NoArguments_WatchesAndLeavesTheDrivesToTheHost()
     {
         Assert.IsTrue(WatchArguments.TryParse([], out var parsed, out var error));
 
         Assert.IsNull(error);
-        Assert.AreEqual(ProgramMode.ScanDrive, parsed.Mode);
-        CollectionAssert.AreEqual(new[] { "G" }, parsed.Drives.ToArray());
+        Assert.AreEqual(ProgramMode.Watch, parsed.Mode);
+        Assert.AreEqual(0, parsed.Drives.Count);
+        Assert.IsNull(parsed.Seconds);
+        Assert.IsTrue(parsed.NeedsDrives);
     }
 
     [TestMethod]
-    public void TryParse_OnlyDriveLetters_ScansEachDrive()
+    public void TryParse_OnlyDriveLetters_WatchesEachDrive()
     {
         Assert.IsTrue(WatchArguments.TryParse(["C", "D:"], out var parsed, out _));
 
-        Assert.AreEqual(ProgramMode.ScanDrive, parsed.Mode);
+        Assert.AreEqual(ProgramMode.Watch, parsed.Mode);
         CollectionAssert.AreEqual(new[] { "C", "D" }, parsed.Drives.ToArray());
     }
 
@@ -37,11 +39,24 @@ public class WatchArgumentsTests
     }
 
     [TestMethod]
-    public void TryParse_ModeWithoutDrives_UsesTheDefaultDrive()
+    public void TryParse_ModeWithoutDrives_LeavesTheDrivesToTheHost()
     {
         Assert.IsTrue(WatchArguments.TryParse(["scan-drive"], out var parsed, out _));
 
-        CollectionAssert.AreEqual(new[] { "G" }, parsed.Drives.ToArray());
+        Assert.AreEqual(ProgramMode.ScanDrive, parsed.Mode);
+        Assert.AreEqual(0, parsed.Drives.Count);
+    }
+
+    [DataTestMethod]
+    [DataRow("cache", false)]
+    [DataRow("elevation-status", false)]
+    [DataRow("rescan", true)]
+    [DataRow("journal", true)]
+    public void NeedsDrives_OnlyTheModesThatOpenAnIndex(string name, bool expected)
+    {
+        Assert.IsTrue(WatchArguments.TryParse([name], out var parsed, out _));
+
+        Assert.AreEqual(expected, parsed.NeedsDrives);
     }
 
     [TestMethod]
@@ -50,8 +65,8 @@ public class WatchArgumentsTests
         Assert.IsFalse(WatchArguments.TryParse(["scan-drive", "C", "--verbose"], out var parsed, out var error));
 
         Assert.AreEqual("Unknown option --verbose.", error);
-        Assert.AreEqual(ProgramMode.ScanDrive, parsed.Mode);
-        CollectionAssert.AreEqual(new[] { "G" }, parsed.Drives.ToArray());
+        Assert.AreEqual(ProgramMode.Watch, parsed.Mode);
+        Assert.AreEqual(0, parsed.Drives.Count);
     }
 
     [TestMethod]
@@ -75,12 +90,12 @@ public class WatchArgumentsTests
     [DataRow("watch", "Watch")]
     [DataRow("rescan", "Rescan")]
     [DataRow("journal", "Journal")]
-    public void TryParse_IndexMode_SelectsItAndDefaultsTheDrive(string name, string mode)
+    public void TryParse_IndexMode_SelectsItAndLeavesTheDrives(string name, string mode)
     {
         Assert.IsTrue(WatchArguments.TryParse([name], out var parsed, out _));
 
         Assert.AreEqual(mode, parsed.Mode.ToString());
-        CollectionAssert.AreEqual(new[] { "G" }, parsed.Drives.ToArray());
+        Assert.AreEqual(0, parsed.Drives.Count);
         Assert.AreEqual(ElevationNeed.BrokerLaunch, parsed.Need);
     }
 
@@ -90,7 +105,8 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--seconds", "45"], out var parsed, out _));
 
         Assert.AreEqual(45, parsed.Seconds);
-        Assert.AreEqual(WatchArguments.DefaultSeconds, WatchArguments.TryParse(["watch"], out var plain, out _) ? plain.Seconds : -1);
+        Assert.IsTrue(WatchArguments.TryParse(["watch"], out var plain, out _));
+        Assert.IsNull(plain.Seconds, "Without --seconds an attended watch runs until a key press.");
     }
 
     [DataTestMethod]
@@ -186,7 +202,7 @@ public class WatchArgumentsTests
 
     [DataTestMethod]
     [DataRow(new[] { "scan-drive", "C", "--seconds", "5" }, "Option --seconds does not apply to scan-drive.")]
-    [DataRow(new[] { "C", "--seconds", "5" }, "Option --seconds does not apply to scan-drive.")]
+    [DataRow(new[] { "C", "--allocation-delta", "5" }, "Option --allocation-delta does not apply to watch.")]
     [DataRow(new[] { "watch", "C", "--maximum-size", "1" }, "Option --maximum-size does not apply to watch.")]
     [DataRow(new[] { "rescan", "C", "--allocation-delta", "1" }, "Option --allocation-delta does not apply to rescan.")]
     [DataRow(new[] { "journal", "C", "--seconds", "3" }, "Option --seconds does not apply to journal.")]

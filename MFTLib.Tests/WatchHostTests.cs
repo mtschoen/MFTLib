@@ -20,6 +20,7 @@ public class WatchHostTests
         var lines = new List<string>();
         var scanner = new SampleHost
         {
+            _listDrives = TwoDrives,
             _elevationNeed = _ => ElevationNeed.SelfElevate,
             _isElevated = () => false,
             _canSelfElevate = () => true,
@@ -94,14 +95,14 @@ public class WatchHostTests
     // --- Run: elevated paths ---
 
     [TestMethod]
-    public void Run_Elevated_NoArgs_UsesDefaultDriveG()
+    public void Run_Elevated_NoArgs_CoversTheMachinesNtfsFixedDrives()
     {
         var scannedDrives = new List<string>();
         var scanner = ElevatedScanner(scannedDrives, new List<string>());
 
         scanner.Run([]);
 
-        CollectionAssert.AreEqual(new[] { "G" }, scannedDrives);
+        CollectionAssert.AreEqual(new[] { "C", "D" }, scannedDrives);
     }
 
     [TestMethod]
@@ -168,12 +169,16 @@ public class WatchHostTests
 
     // --- Helpers ---
 
+    static IReadOnlyList<SampleHost.DriveFacts> TwoDrives() =>
+        [WatchFirstRunTests.Facts(@"C:\"), WatchFirstRunTests.Facts(@"D:\")];
+
     // An elevated run that needs elevation itself, over a drive resolver that records each drive and then fails, so
     // no volume or broker is touched.
     static SampleHost ElevatedScanner(List<string> scannedDrives, List<string> lines)
     {
         return new SampleHost
         {
+            _listDrives = TwoDrives,
             _elevationNeed = _ => ElevationNeed.SelfElevate,
             _isElevated = () => true,
             _acrtIobFunc = _ => IntPtr.Zero,

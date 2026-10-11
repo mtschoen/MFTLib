@@ -33,19 +33,25 @@ partial class SampleHost
             : $"Catch-up held; watch supported: {status.Watch.Supported}");
     }
 
-    // Reports each scan phase once, on the reporting thread, so the output keeps its order.
+    // Reports each scan phase when it starts and again each time another ProgressRowInterval rows were written within it,
+    // on the reporting thread so the output keeps its order. The interval counts rows, never time.
     internal sealed class PhaseReporter(Action<string> writeLine) : IProgress<IndexScanProgress>
     {
+        internal const uint ProgressRowInterval = 250_000;
+
         IndexScanPhase? _lastPhase;
+        uint _lastReportedRows;
 
         public void Report(IndexScanProgress value)
         {
-            if (_lastPhase == value.Phase)
+            var sameSpan = _lastPhase == value.Phase;
+            if (sameSpan && value.RowsWritten - _lastReportedRows < ProgressRowInterval)
             {
                 return;
             }
 
             _lastPhase = value.Phase;
+            _lastReportedRows = value.RowsWritten;
             writeLine($"  {value.DriveLetter}: {value.Phase}: {value.RowsWritten} rows{(value.TotalRows is { } total ? $" of {total}" : string.Empty)}{(value.Outcome is { } outcome ? $" ({outcome})" : string.Empty)}{(value.CurrentDirectory is { } directory ? $" in {directory}" : string.Empty)}");
         }
     }

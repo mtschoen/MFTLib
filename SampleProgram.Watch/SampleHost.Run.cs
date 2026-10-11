@@ -15,6 +15,11 @@ partial class SampleHost
             return 2;
         }
 
+        if (!TryChooseDrives(ref parsed))
+        {
+            return 1;
+        }
+
         if (parsed.Mode is not (ProgramMode.ScanDrive or ProgramMode.ElevationStatus))
         {
             try
@@ -41,12 +46,12 @@ partial class SampleHost
     int RunBroker(WatchArguments parsed)
     {
         // The console entry point has no synchronization context, so blocking here cannot deadlock.
-        if (!RunThroughBrokerAsync(parsed, CancellationToken.None).GetAwaiter().GetResult())
+        var exitCode = RunThroughBrokerAsync(parsed, CancellationToken.None).GetAwaiter().GetResult();
+        if (exitCode == 0)
         {
-            return 1;
+            _writeLine($"Completed at {DateTime.Now}");
         }
 
-        _writeLine($"Completed at {DateTime.Now}");
-        return 0;
+        return exitCode;
     }
 }

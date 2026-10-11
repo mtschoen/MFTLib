@@ -128,6 +128,14 @@ on local scans so the inventory can count them.
 `SampleProgram.Watch` supports `scan-drive`, `watch`, `rescan`, `journal`, `cache`
 and `elevation-status`. Its `cache` verb uses policy-digest folders to keep different
 scan policies in distinct sample cache directories.
+Launched with no arguments, `SampleProgram.Watch` scans and then watches every ready NTFS
+fixed drive, names the drives it chose, prints a running row count while it scans and prints
+each change until a key press (`--seconds N` sets a length instead; an unattended run
+watches for ten seconds). `scan-drive` is a single pass per drive. The exit code is 1 when
+any drive failed. Naming drives, for example `watch C D`, replaces the default set.
+`SampleProgram.Direct` with no arguments prints its usage. Both samples hold their console
+window open for a key press at exit when the process owns that window, so a double-click
+leaves the output readable; `MFTLIB_SAMPLE_UNATTENDED=1` skips the wait.
 
 ```powershell
 .\SampleProgram.Direct\bin\x64\Release\net10.0\SampleProgram.Direct.exe search C --name notes

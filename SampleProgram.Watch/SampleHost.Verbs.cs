@@ -8,24 +8,6 @@ partial class SampleHost
 {
     internal Func<TimeSpan, CancellationToken, Task> _delay = Task.Delay;
 
-    async Task WatchDriveAsync(FileIndex index, int seconds, CancellationToken cancellationToken)
-    {
-        var changes = 0;
-        index.WatchStateChanged += state => _writeLine($"  watch {state.DriveLetter}: {state.CatchUpState} (version {state.StateVersion}){(state.Fault is { } fault ? $", fault {fault.Kind}" : string.Empty)}");
-        index.WatchFaulted += fault => _writeLine($"  watch fault {fault.DriveLetter}: {fault.Kind}: {fault.Exception.Message}{(fault.Exception is JournalCatchUpLostException lost ? $" (recovery stopped: {lost.RecoveryStopped})" : string.Empty)}");
-        index.Changed += change =>
-        {
-            Interlocked.Increment(ref changes);
-            _writeLine($"  {change.Kind}: {change.Path}{(change.PreviousPath is { } previous ? $" (was {previous})" : string.Empty)} at {change.Timestamp:u}, entry {change.Entry.Name}");
-        };
-        WriteResults("start", await index.StartWatchingAsync(cancellationToken).ConfigureAwait(false));
-        WriteResults("catch-up", await index.WaitForCatchUpAsync(cancellationToken).ConfigureAwait(false));
-        await _delay(TimeSpan.FromSeconds(seconds), cancellationToken).ConfigureAwait(false);
-        WriteResults("stop", await index.StopWatchingAsync(cancellationToken).ConfigureAwait(false));
-        var rows = index.Enumerate(new SearchQuery(null), cancellationToken).Count();
-        _writeLine($"Saw {changes} changes in {seconds} seconds; the index now holds {rows} entries");
-    }
-
     void WriteResults(string operation, IEnumerable<DriveOperationResult> results)
     {
         foreach (var result in results)

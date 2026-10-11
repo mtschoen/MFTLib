@@ -8,7 +8,7 @@ internal sealed partial record WatchArguments
     internal static bool TryParse(string[] arguments, out WatchArguments parsed,
         [NotNullWhen(false)] out string? error)
     {
-        var mode = ProgramMode.ScanDrive;
+        var mode = ProgramMode.Watch;
         var start = 0;
         if (arguments.Length > 0 && ProgramModes.Names.TryGetValue(arguments[0], out var named))
         {
@@ -23,7 +23,7 @@ internal sealed partial record WatchArguments
         var candidate = new WatchArguments(mode, [])
         {
             DirectoryScanFileNames = directoriesOnly ? [] : keep?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
-            Seconds = seconds is >= 1 and <= MaximumSeconds ? (int)seconds : DefaultSeconds,
+            Seconds = seconds is >= 1 and <= MaximumSeconds ? (int)seconds : null,
             MaximumSize = reader.Number("--maximum-size"),
             AllocationDelta = reader.Number("--allocation-delta"),
             CacheDirectory = reader.Text("--cache-directory"),
@@ -33,13 +33,11 @@ internal sealed partial record WatchArguments
         error = reader.Error ?? Validate(candidate, keep, directoriesOnly, seconds) ?? NotApplicable(candidate.Mode, reader.Supplied) ?? NotADrive(tokens);
         if (error is not null)
         {
-            parsed = new WatchArguments(ProgramMode.ScanDrive, [DefaultDrive]);
+            parsed = new WatchArguments(ProgramMode.Watch, []);
             return false;
         }
 
-        var listsDrives = mode is ProgramMode.Cache or ProgramMode.ElevationStatus;
-        var drives = tokens.Select(token => char.ToUpperInvariant(token[0]).ToString()).ToList();
-        parsed = candidate with { Drives = drives.Count == 0 && !listsDrives ? [DefaultDrive] : drives };
+        parsed = candidate with { Drives = tokens.Select(token => char.ToUpperInvariant(token[0]).ToString()).ToList() };
         return true;
     }
 
