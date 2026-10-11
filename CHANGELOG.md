@@ -2,6 +2,8 @@
 
 ## 0.3.0
 
+- The samples wait indefinitely for an elevated child process, so scans of large volumes and prompt delays can complete without an artificial timeout.
+
 - Fail a volume scan with no entries when the `$MFT` attribute list cannot be read completely or an unnamed `$DATA` extension record is unreadable, outside the runs merged in lowest-VCN order, or invalid, instead of returning an inventory with missing runs.
 
 - Saturate skipped-record diagnostics at `int.MaxValue` for every MFT producer instead of failing completed local or broker scans on overflow.
@@ -229,7 +231,7 @@ Consumer migration for these removals: file-wizard `file-wizard/CliRunner.Databa
 
 ### Fixed
 
-- A confirmed elevated relaunch that returned false - no elevated child ran (the launch failed or the UAC prompt was cancelled), or the child exited nonzero or exceeded `ElevationUtilities.DefaultElevatedTimeout` - printed "AUTOMATIC ELEVATION FAILED" and "requires Administrative privileges". The samples now print that the elevated run did not complete successfully and name the announced `output.log` as where its output lies if the run started; the declined-dialog and cannot-self-elevate cases keep the previous text.
+- A confirmed elevated relaunch that returned false - no elevated child ran (the launch failed or the UAC prompt was cancelled), or the child exited nonzero - printed "AUTOMATIC ELEVATION FAILED" and "requires Administrative privileges". The samples print that the elevated run did not complete successfully and name the announced `output.log` as where its output lies if the run started; the declined-dialog and cannot-self-elevate cases keep the original text.
 - `SampleProgram.Watch` launched by double-click scanned only drive G and closed its window. With no arguments it now scans and watches every ready NTFS fixed drive, names the drives it chose, prints a running row count while scanning and prints changes until a key press (`--seconds N` replaces the key press). Both samples hold an owned console window open for a key press at exit (`MFTLIB_SAMPLE_UNATTENDED=1` skips it), Watch exits 1 when any drive failed, and Direct prints the `output.log` path on the unelevated console before it starts the elevated run ([MFTLib#411](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/411)).
 - `FileIndex.StartWatchingAsync` honors cancellation while the broker-backed watch source opens the drive channel and writes `StartWatch`; cancellation closes that operation's pipe before the start throws ([MFTLib#250](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/250))
 - Broker watch startup errors add cached-cursor rescan guidance only when a live journal query confirms a changed journal identifier or a checkpoint older than `FirstUsn`. Unrelated messages containing words such as "cursor" or "deleted" no longer trigger that guidance, and lost-cursor guidance no longer depends on native error wording. If the journal cannot answer, the original error is preserved. Broker frames and the native ABI are unchanged.

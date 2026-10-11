@@ -81,21 +81,31 @@ public class SampleHostFirstRunTests
     [DataRow(false)]
     public void Run_ElevatedRelaunchTookOver_NamesTheOutputLogOnTheUnelevatedConsole(bool childSucceeded)
     {
+        string[] arguments = ["scan", "C"];
         var lines = new List<string>();
+        IReadOnlyList<string>? relaunchedWith = null;
+        var elevationTimeout = TimeSpan.Zero;
         var host = new DirectHost
         {
             _isWindows = () => true,
             _isElevated = () => false,
             _canSelfElevate = () => true,
-            _tryRunElevated = (_, _) => childSucceeded,
+            _tryRunElevated = (relaunchArguments, timeout) =>
+            {
+                relaunchedWith = relaunchArguments;
+                elevationTimeout = timeout;
+                return childSucceeded;
+            },
             _getEnvironmentVariable = _ => null,
             _writeLine = lines.Add
         };
         SampleHostElevationNoticeTests.AcknowledgeDeliberately(host);
 
-        var result = host.Run(["scan", "C"]);
+        var result = host.Run(arguments);
 
         Assert.AreEqual(childSucceeded ? 0 : 1, result);
+        CollectionAssert.AreEqual(arguments, relaunchedWith!.ToArray());
+        Assert.AreEqual(Timeout.InfiniteTimeSpan, elevationTimeout);
         Assert.IsTrue(lines.Contains($"The elevated run writes its output to {Path.Combine(AppContext.BaseDirectory, "output.log")}"), string.Join(Environment.NewLine, lines));
         if (!childSucceeded)
         {

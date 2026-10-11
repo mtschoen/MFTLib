@@ -71,7 +71,7 @@ partial class SampleHost
         {
             // Announced before the attempt: a failed elevated run leaves its error only in that file.
             _writeLine($"The elevated run writes its output to {OutputLogPath}");
-            if (_tryRunElevated(arguments, ElevationUtilities.DefaultElevatedTimeout))
+            if (_tryRunElevated(arguments, Timeout.InfiniteTimeSpan))
             {
                 return 0;
             }
@@ -86,9 +86,8 @@ partial class SampleHost
 
     // A false result from the confirmed relaunch covers both "no elevated child ran" (the launch
     // failed, or the UAC prompt was cancelled) and "the child ran but did not finish successfully"
-    // (a nonzero exit, or it exceeded ElevationUtilities.DefaultElevatedTimeout). The notice says
-    // the run did not complete successfully and names the announced log as where its output lies
-    // if a run started.
+    // (a nonzero exit). The notice says the run did not complete successfully and names the announced
+    // log as where its output lies if a run started.
     void PrintElevatedRunIncomplete()
     {
         _writeLine("------------------------------------------------------------------");

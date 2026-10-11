@@ -228,7 +228,7 @@ public class WatchHostModeTests
 
         Assert.AreEqual(0, result);
         CollectionAssert.AreEqual(arguments, relaunchedWith!.ToArray());
-        Assert.AreEqual(ElevationUtilities.DefaultElevatedTimeout, elevationTimeout);
+        Assert.AreEqual(Timeout.InfiniteTimeSpan, elevationTimeout);
     }
 
     // The library quotes each element for the child's command line, so the scanner hands over the

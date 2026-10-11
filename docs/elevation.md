@@ -42,8 +42,9 @@ attached to its console, neither input nor output is redirected, and `MFTLIB_SAM
 existing shell never waits. The success, the usage after a parse error (exit 2) and an elevation that was declined
 (exit 1) are all left on screen this way.
 
-Direct local scans relaunch themselves elevated, and the elevated run writes to `output.log` beside the executable; the
-unelevated console prints that path before it starts the elevated run, and the elevated window closes without waiting.
+Direct local scans relaunch themselves elevated, waiting indefinitely for the elevated child process to finish; the
+elevated run writes to `output.log` beside the executable, the unelevated console prints that path before it starts
+the elevated run, and the elevated window closes without waiting.
 
 Watch with no arguments is `watch` over every ready NTFS fixed drive: it prints which drives it chose, scans each with a
 running row count (a line each 250000 rows within a scan phase), then prints changes until a key press. `--seconds N`
