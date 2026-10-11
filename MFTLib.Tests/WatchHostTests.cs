@@ -94,6 +94,43 @@ public class WatchHostTests
         Assert.IsFalse(lines.Any(line => line.Contains("AUTOMATIC ELEVATION FAILED")));
     }
 
+    [DataTestMethod]
+    [DataRow("scan-drive C", DisplayName = "scan-drive")]
+    [DataRow("", DisplayName = "default-watch-mode")]
+    public void Run_Unattended_NeverLaunchesTheBroker(string commandLine)
+    {
+        var arguments = commandLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var lines = new List<string>();
+        var brokerLaunched = false;
+        var scanner = new SampleHost
+        {
+            _listDrives = TwoDrives,
+            _cacheDirectory = @"C:\unused-cache",
+            _isElevated = () => false,
+            _createBrokerSession = () =>
+            {
+                brokerLaunched = true;
+                throw new AssertFailedException("An unattended run must not launch the broker.");
+            },
+            _getProcessPath = () => @"C:\tools\SampleProgram.Watch.exe",
+            _writeLine = lines.Add
+        };
+        WatchNoticeSupport.AcknowledgeDeliberately(scanner);
+        scanner._getEnvironmentVariable = name => name == SampleHost.UnattendedVariableName ? "1" : null;
+
+        var result = scanner.Run(arguments);
+
+        Assert.AreEqual(1, result);
+        Assert.IsFalse(brokerLaunched, "An unattended run must not launch the broker.");
+        Assert.IsTrue(lines.Any(line => line.Contains("Running unattended (MFTLIB_SAMPLE_UNATTENDED=1): elevation skipped")));
+        Assert.IsTrue(lines.Any(line => line.Contains("AUTOMATIC ELEVATION FAILED")));
+        Assert.IsTrue(lines.Any(line => line.StartsWith($"Arguments ({arguments.Length})", StringComparison.Ordinal)));
+        foreach (var argument in arguments)
+        {
+            Assert.IsTrue(lines.Contains($"  {argument}"), $"Argument {argument} was not listed.");
+        }
+    }
+
     // --- Run: elevated paths ---
 
     [TestMethod]
