@@ -20,74 +20,86 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Pin-only PRs (a bump of .aislop/fork-commit, opened by the aislop fork's
-      # sync-consumers workflow) don't touch anything this job builds or tests.
+      # Docs-only and pin-only PRs (.aislop/fork-commit, docs/, or top-level *.md)
+      # don't touch anything this job builds or tests.
       # Detect that case and skip the rest of the job's steps (still SUCCESS,
       # not skipped-as-failure, so branch protection's required check is
       # satisfied) instead of paying for a full build+test cycle. Never use
       # workflow-level paths/paths-ignore for this: on Gitea that leaves the
       # required check permanently pending for any PR that doesn't touch the
       # matched paths (gitea issue 36895).
-      - name: Determine changed files (pin-only PR early exit)
+      - name: Determine changed files (docs-only or pin-only early exit)
         id: changed-files
         shell: pwsh
         env:
           EVENT_BEFORE: ${{ github.event.before }}
           EVENT_AFTER: ${{ github.event.after }}
         run: |
-          $pinOnly = $false
+          $skipBuild = $false
           try {
             if ($env:GITHUB_EVENT_NAME -eq "pull_request" -and $env:GITHUB_BASE_REF) {
               git fetch --depth=1 origin $env:GITHUB_BASE_REF 2>$null
               if ($LASTEXITCODE -eq 0) {
-                $changed = @(git diff --name-only FETCH_HEAD HEAD 2>$null)
+                $changed = @(git diff --no-renames --name-only FETCH_HEAD HEAD 2>$null | Where-Object { $_ -and $_.Trim() -ne "" })
                 Write-Host "Changed files vs $($env:GITHUB_BASE_REF):"
                 $changed | ForEach-Object { Write-Host $_ }
-                if ($changed.Count -eq 1 -and $changed[0] -eq ".aislop/fork-commit") {
-                  $pinOnly = $true
+                if ($changed.Count -gt 0) {
+                  $nonMatching = $changed | Where-Object {
+                    $norm = $_.Trim().Replace('\', '/')
+                    $norm -notmatch '^(\.aislop/fork-commit|docs/.*|[^/]+\.md)$'
+                  }
+                  if ($nonMatching.Count -eq 0) {
+                    $skipBuild = $true
+                  }
                 }
               }
             } elseif ($env:GITHUB_EVENT_NAME -eq "push" -and $env:EVENT_BEFORE -and $env:EVENT_BEFORE -ne "0000000000000000000000000000000000000000") {
               git fetch --depth=1 origin $env:EVENT_BEFORE 2>$null
               if ($LASTEXITCODE -eq 0) {
-                $changed = @(git diff --name-only $env:EVENT_BEFORE $env:EVENT_AFTER 2>$null)
+                $changed = @(git diff --no-renames --name-only $env:EVENT_BEFORE $env:EVENT_AFTER 2>$null | Where-Object { $_ -and $_.Trim() -ne "" })
                 Write-Host "Changed files ($($env:EVENT_BEFORE)..$($env:EVENT_AFTER)):"
                 $changed | ForEach-Object { Write-Host $_ }
-                if ($changed.Count -eq 1 -and $changed[0] -eq ".aislop/fork-commit") {
-                  $pinOnly = $true
+                if ($changed.Count -gt 0) {
+                  $nonMatching = $changed | Where-Object {
+                    $norm = $_.Trim().Replace('\', '/')
+                    $norm -notmatch '^(\.aislop/fork-commit|docs/.*|[^/]+\.md)$'
+                  }
+                  if ($nonMatching.Count -eq 0) {
+                    $skipBuild = $true
+                  }
                 }
               }
             }
           } catch {
             Write-Host "Changed-file detection failed, running the job in full: $_"
-            $pinOnly = $false
+            $skipBuild = $false
           }
-          "pin_only=$($pinOnly.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "skip_build=$($skipBuild.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Setup MSBuild
-        if: steps.changed-files.outputs.pin_only != 'true'
+        if: steps.changed-files.outputs.skip_build != 'true'
         uses: microsoft/setup-msbuild@v2
 
       - name: Install reportgenerator
-        if: steps.changed-files.outputs.pin_only != 'true'
+        if: steps.changed-files.outputs.skip_build != 'true'
         shell: pwsh
         run: |
           dotnet tool update --global dotnet-reportgenerator-globaltool
           echo "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Test Windows build script
-        if: steps.changed-files.outputs.pin_only != 'true'
+        if: steps.changed-files.outputs.skip_build != 'true'
         shell: pwsh
         run: pwsh -NoProfile -File scripts/build-windows.tests.ps1
 
       - name: Test coverage status guard
-        if: steps.changed-files.outputs.pin_only != 'true'
+        if: steps.changed-files.outputs.skip_build != 'true'
         shell: pwsh
         run: pwsh -NoProfile -File scripts/test-coverage-status.ps1
 
       - name: Run coverage
         id: coverage
-        if: steps.changed-files.outputs.pin_only != 'true'
+        if: steps.changed-files.outputs.skip_build != 'true'
         shell: pwsh
         working-directory: ${{ github.workspace }}
         run: |
@@ -117,7 +129,7 @@ jobs:
           exit $process.ExitCode
 
       - name: Upload coverage artifact
-        if: always() && steps.changed-files.outputs.pin_only != 'true'
+        if: always() && steps.changed-files.outputs.skip_build != 'true'
         uses: actions/upload-artifact@v3
         with:
           name: windows-coverage
@@ -128,7 +140,7 @@ jobs:
             MFTLib.Tests/coverage-run.stderr.log
 
       - name: Post coverage status
-        if: always() && steps.changed-files.outputs.pin_only != 'true'
+        if: always() && steps.changed-files.outputs.skip_build != 'true'
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -149,7 +161,7 @@ jobs:
       # tracked modifications; a fresh checkout would reset them). The git
       # clean only ever discards state this job no longer needs.
       - name: Verify git clean -ffxd leaves a clean tree
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.pin_only != 'true'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.skip_build != 'true'
         shell: pwsh
         run: |
           git clean -ffxd
@@ -170,7 +182,7 @@ jobs:
           Write-Host "git clean -ffxd left a clean tree."
 
       - name: Run init.ps1 (post-clean restore, first run)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.pin_only != 'true'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.skip_build != 'true'
         shell: pwsh
         run: |
           pwsh -NoProfile -File .\init.ps1
@@ -191,7 +203,7 @@ jobs:
           Write-Host "init.ps1 (first run) left a clean tree."
 
       - name: Run init.ps1 again (idempotency)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.pin_only != 'true'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.skip_build != 'true'
         shell: pwsh
         run: |
           pwsh -NoProfile -File .\init.ps1
@@ -212,7 +224,7 @@ jobs:
           Write-Host "init.ps1 is idempotent: git status is clean after a second run."
 
       - name: Run init.bat via cmd.exe (documented .\ prefix)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.pin_only != 'true'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.skip_build != 'true'
         shell: cmd
         # NoDefaultCurrentDirectoryInExePath is a per-machine setting (AGENTS.md
         # documents it for the maintainer's own workstation), so this step
@@ -225,7 +237,7 @@ jobs:
           if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
       - name: Verify tree is clean after init.bat
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.pin_only != 'true'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.skip_build != 'true'
         shell: pwsh
         run: |
           $status = git status --porcelain
@@ -241,7 +253,7 @@ jobs:
           Write-Host "git status is clean after init.bat."
 
       - name: Run init.ps1 -Build (native + managed build path)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.pin_only != 'true'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.skip_build != 'true'
         shell: pwsh
         run: |
           pwsh -NoProfile -File .\init.ps1 -Build
@@ -251,7 +263,7 @@ jobs:
           }
 
       - name: Verify tree is clean after the full init path
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.pin_only != 'true'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.skip_build != 'true'
         shell: pwsh
         run: |
           $status = git status --porcelain
@@ -275,49 +287,65 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Pin-only PRs (a bump of .aislop/fork-commit, opened by the aislop fork's
-      # sync-consumers workflow) don't touch anything this job builds or tests.
+      # Docs-only and pin-only PRs (.aislop/fork-commit, docs/, or top-level *.md)
+      # don't touch anything this job builds or tests.
       # Detect that case and skip the rest of the job's steps (still SUCCESS,
       # not skipped-as-failure, so branch protection's required check is
       # satisfied) instead of paying for a full build+test cycle. Never use
       # workflow-level paths/paths-ignore for this: on Gitea that leaves the
       # required check permanently pending for any PR that doesn't touch the
       # matched paths (gitea issue 36895).
-      - name: Determine changed files (pin-only PR early exit)
+      - name: Determine changed files (docs-only or pin-only early exit)
         id: changed-files
         shell: bash
         env:
           EVENT_BEFORE: ${{ github.event.before }}
           EVENT_AFTER: ${{ github.event.after }}
         run: |
-          PIN_ONLY=false
+          SKIP_BUILD=false
+          check_files() {
+            local changed="$1"
+            local count=0
+            local all_matched=true
+            if [ -n "$changed" ]; then
+              while IFS= read -r file; do
+                file="${file%$'\r'}"
+                [ -z "$file" ] && continue
+                count=$((count + 1))
+                if [[ ! "$file" =~ ^(\.aislop/fork-commit|docs/.*|[^/]+\.md)$ ]]; then
+                  all_matched=false
+                  break
+                fi
+              done <<< "$changed"
+              if [ "$count" -gt 0 ] && [ "$all_matched" = true ]; then
+                SKIP_BUILD=true
+              fi
+            fi
+          }
+
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ] && [ -n "$GITHUB_BASE_REF" ]; then
             if git fetch --depth=1 origin "$GITHUB_BASE_REF" 2>/dev/null; then
-              CHANGED=$(git diff --name-only FETCH_HEAD HEAD 2>/dev/null || true)
+              CHANGED=$(git diff --no-renames --name-only FETCH_HEAD HEAD 2>/dev/null || true)
               echo "Changed files vs $GITHUB_BASE_REF:"
               echo "$CHANGED"
-              if [ "$CHANGED" = ".aislop/fork-commit" ]; then
-                PIN_ONLY=true
-              fi
+              check_files "$CHANGED"
             fi
           elif [ "$GITHUB_EVENT_NAME" = "push" ] && [ -n "$EVENT_BEFORE" ] && [ "$EVENT_BEFORE" != "0000000000000000000000000000000000000000" ]; then
             if git fetch --depth=1 origin "$EVENT_BEFORE" 2>/dev/null; then
-              CHANGED=$(git diff --name-only "$EVENT_BEFORE" "$EVENT_AFTER" 2>/dev/null || true)
+              CHANGED=$(git diff --no-renames --name-only "$EVENT_BEFORE" "$EVENT_AFTER" 2>/dev/null || true)
               echo "Changed files ($EVENT_BEFORE..$EVENT_AFTER):"
               echo "$CHANGED"
-              if [ "$CHANGED" = ".aislop/fork-commit" ]; then
-                PIN_ONLY=true
-              fi
+              check_files "$CHANGED"
             fi
           fi
-          echo "pin_only=$PIN_ONLY" >> "$GITHUB_OUTPUT"
+          echo "skip_build=$SKIP_BUILD" >> "$GITHUB_OUTPUT"
 
       # Needs only bash, git and jq, all present on ubuntu-latest, so it runs
       # ahead of the toolchain setup and gives a fast signal on the fan-out
       # script itself. Issue #194: the script reported success while matching
       # no consumer at all, and nothing in CI exercised it.
       - name: Test the consumer sync script
-        if: steps.changed-files.outputs.pin_only != 'true'
+        if: steps.changed-files.outputs.skip_build != 'true'
         run: bash scripts/sync_consumers.tests.sh
 
       # The hash is computed in the shell: hashFiles() can evaluate to an empty
@@ -325,11 +353,11 @@ jobs:
       # (project-ci-setup.md, "hashFiles silently evaluates empty").
       - name: Compute NuGet cache key
         id: nuget-hash
-        if: steps.changed-files.outputs.pin_only != 'true'
+        if: steps.changed-files.outputs.skip_build != 'true'
         run: echo "sha=$(git ls-files '*.csproj' | sort | xargs sha256sum | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Cache NuGet packages
-        if: steps.changed-files.outputs.pin_only != 'true'
+        if: steps.changed-files.outputs.skip_build != 'true'
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
@@ -338,15 +366,48 @@ jobs:
             linux-nuget-
 
       - name: Run coverage
-        if: steps.changed-files.outputs.pin_only != 'true'
+        if: steps.changed-files.outputs.skip_build != 'true'
         run: bash scripts/coverage-linux.sh
 
       - name: Upload coverage artifact
-        if: always() && steps.changed-files.outputs.pin_only != 'true'
+        if: always() && steps.changed-files.outputs.skip_build != 'true'
         uses: actions/upload-artifact@v3
         with:
           name: linux-coverage
           path: coverage-report/
+
+  # Fast, cheap check that always runs on every PR and push to validate documentation
+  # invariants (AgentInstructionsTests character budgets and doc links) without building
+  # the native C++ library or running the full test suite.
+  docs:
+    runs-on: ubuntu-latest
+    container:
+      image: gitea.fleet.sticktoitive.net/schoen/runner-images:latest
+      options: --ulimit nofile=65536:65536
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute NuGet cache key
+        id: nuget-hash
+        run: echo "sha=$(git ls-files '*.csproj' | sort | xargs sha256sum | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: linux-nuget-${{ steps.nuget-hash.outputs.sha }}-${{ vars.CACHE_EPOCH }}
+          restore-keys: |
+            linux-nuget-
+
+      - name: Restore test project
+        run: dotnet restore MFTLib.Tests/MFTLib.Tests.csproj
+
+      - name: Build test project (managed only)
+        run: dotnet build MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-restore
+
+      - name: Run agent instruction tests
+        run: dotnet test MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-build --filter "FullyQualifiedName~AgentInstructionsTests"
 
   # Builds the Release linux-x64 library the 0.3.0 package ships, runs the acceptance checks on it,
   # and proves a package user on Linux can load an MFT dump with the library resolved from the
@@ -362,22 +423,70 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Determine changed files (docs-only or pin-only early exit)
+        id: changed-files
+        shell: bash
+        env:
+          EVENT_BEFORE: ${{ github.event.before }}
+          EVENT_AFTER: ${{ github.event.after }}
+        run: |
+          SKIP_BUILD=false
+          check_files() {
+            local changed="$1"
+            local count=0
+            local all_matched=true
+            if [ -n "$changed" ]; then
+              while IFS= read -r file; do
+                file="${file%$'\r'}"
+                [ -z "$file" ] && continue
+                count=$((count + 1))
+                if [[ ! "$file" =~ ^(\.aislop/fork-commit|docs/.*|[^/]+\.md)$ ]]; then
+                  all_matched=false
+                  break
+                fi
+              done <<< "$changed"
+              if [ "$count" -gt 0 ] && [ "$all_matched" = true ]; then
+                SKIP_BUILD=true
+              fi
+            fi
+          }
+
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] && [ -n "$GITHUB_BASE_REF" ]; then
+            if git fetch --depth=1 origin "$GITHUB_BASE_REF" 2>/dev/null; then
+              CHANGED=$(git diff --no-renames --name-only FETCH_HEAD HEAD 2>/dev/null || true)
+              echo "Changed files vs $GITHUB_BASE_REF:"
+              echo "$CHANGED"
+              check_files "$CHANGED"
+            fi
+          elif [ "$GITHUB_EVENT_NAME" = "push" ] && [ -n "$EVENT_BEFORE" ] && [ "$EVENT_BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            if git fetch --depth=1 origin "$EVENT_BEFORE" 2>/dev/null; then
+              CHANGED=$(git diff --no-renames --name-only "$EVENT_BEFORE" "$EVENT_AFTER" 2>/dev/null || true)
+              echo "Changed files ($EVENT_BEFORE..$EVENT_AFTER):"
+              echo "$CHANGED"
+              check_files "$CHANGED"
+            fi
+          fi
+          echo "skip_build=$SKIP_BUILD" >> "$GITHUB_OUTPUT"
+
       - name: Build the Release library and run its smoke test
+        if: steps.changed-files.outputs.skip_build != 'true'
         run: bash scripts/build-linux.sh
 
       # Explicit bash with pipefail: the container default is sh -e, which would return tee's status and let a failing check pass.
       - name: Check the library
+        if: steps.changed-files.outputs.skip_build != 'true'
         shell: bash
         run: |
           set -o pipefail
           bash scripts/check-linux-native.sh build/linux/libMFTLibNative.so | tee build/linux/native-check.txt
 
       - name: Smoke test the package
+        if: steps.changed-files.outputs.skip_build != 'true'
         run: bash scripts/smoke-package-linux.sh build/linux/libMFTLibNative.so
 
       # For a person to download from the run page; the REST artifacts endpoint does not list v3 uploads.
       - name: Upload library artifact
-        if: always()
+        if: always() && steps.changed-files.outputs.skip_build != 'true'
         uses: actions/upload-artifact@v3
         with:
           name: linux-native-${{ github.sha }}

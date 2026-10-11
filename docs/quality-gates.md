@@ -2,9 +2,13 @@
 
 ## CI
 
-Gitea Actions workflow at `.gitea/workflows/test.yml` runs `windows` + `linux` jobs on every PR and on push to `main` or to a `pr-crew/merge-train/**` branch (the merge train validates a batch there before landing it). Both run their respective coverage scripts (`scripts/run-coverage.ps1 -NonInteractive` and `scripts/coverage-linux.sh`). Branch protection on `main` requires both `(pull_request)` checks to pass before merge.
+Gitea Actions workflow at `.gitea/workflows/test.yml` defines four jobs on every PR and on push to `main` or to a `pr-crew/merge-train/**` branch (the merge train validates a batch there before landing it): `windows`, `linux`, `docs`, and `linux-package`. The coverage jobs (`windows` and `linux`) run their respective coverage scripts (`scripts/run-coverage.ps1 -NonInteractive` and `scripts/coverage-linux.sh`). Branch protection on `main` requires both `(pull_request)` checks to pass before merge.
 
-The `windows` job also runs the post-clean init verification (`git clean -ffxd`, `init.ps1` twice, `init.bat`, `init.ps1 -Build`, and a clean-tree check after each) described in [checkout maintenance](checkout-maintenance.md). It runs only on the push to `main`: each of those steps is guarded by `github.event_name == 'push' && github.ref == 'refs/heads/main'` (plus the pin-only check), never by workflow-level `paths`, which leaves a required check pending on Gitea (issue 36895). The steps stay in the same job and checkout, after the build and tests, because the first `git clean -ffxd` plus `git status --porcelain` assertion detects a build or test that modified a tracked file. A pull request therefore never proves the clean-tree invariant; the merge to `main` does.
+The `windows`, `linux`, and `linux-package` jobs each begin with a changed-files detection step (`skip_build`). When every changed path is `.aislop/fork-commit`, under `docs/`, or a top-level markdown file (`*.md` at the repository root, including `AGENTS.md`), these three jobs skip their compilation, test, and packaging steps and finish green. Any detection error or unhandled diff fails open and runs the jobs in full. Workflow-level `paths` or `paths-ignore` filters are avoided because they leave required status checks pending permanently on Gitea (issue 36895).
+
+The `docs` job always runs without an early exit. Running on the Linux fleet runner image, it restores `MFTLib.Tests.csproj`, performs a managed-only build (`dotnet build MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-restore`), and executes `AgentInstructionsTests` to verify character budgets and document link integrity. Because `AgentInstructionsTests` requires no native code and `Directory.Build.targets` copies `MFTLibNative` only when present, the job remains fast and cheap while ensuring docs changes are validated.
+
+The `windows` job also runs the post-clean init verification (`git clean -ffxd`, `init.ps1` twice, `init.bat`, `init.ps1 -Build`, and a clean-tree check after each) described in [checkout maintenance](checkout-maintenance.md). It runs only on the push to `main`: each of those steps is guarded by `github.event_name == 'push' && github.ref == 'refs/heads/main'` (plus the skip-build check), never by workflow-level `paths`, which leaves a required check pending on Gitea (issue 36895). The steps stay in the same job and checkout, after the build and tests, because the first `git clean -ffxd` plus `git status --porcelain` assertion detects a build or test that modified a tracked file. A pull request therefore never proves the clean-tree invariant; the merge to `main` does.
 
 The `linux-package` job builds the Release linux-x64 library, runs `scripts/check-linux-native.sh` on it and smoke-tests the packed library through `scripts/smoke-package-linux.sh`; the release rebuilds the library in WSL, since Gitea lists no CI artifact over REST ([Linux package](linux-package.md)). Add `test / linux-package (pull_request)` to the branch protection checks when the job has run once.
 
@@ -80,6 +84,6 @@ endings. The test project copies the source document to
 Run `dotnet test MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --filter FullyQualifiedName~AgentInstructionsTests`.
 Run `wc -m AGENTS.md` in a UTF-8 locale for the independent whole-file count.
 After editing the document, build before using `--no-build` so the tested copy
-is current. The existing Windows and Linux coverage jobs run these tests.
+is current. The `docs` job, as well as the Windows and Linux coverage jobs, run these tests.
 Keep operational rules in the root file; move narrative unchanged into its
 linked reference pages instead of raising the limits.
