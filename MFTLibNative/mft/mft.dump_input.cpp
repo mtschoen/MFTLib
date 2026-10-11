@@ -156,7 +156,7 @@ EXPORT MftDumpInput* OpenMftDumpInput(const char* filePathUtf8, MftDumpInputInfo
             }
 
             const DumpInspection inspection = InspectDump(file);
-            auto* input = (inspection.rejection != nullptr || ShouldFailAlloc())
+            auto* input = (inspection.rejection != nullptr || ShouldFailAllocation())
                               ? nullptr
                               : new (std::nothrow) MftDumpInput{file, inspection.lengthBytes, inspection.geometry};
             if (input == nullptr) {

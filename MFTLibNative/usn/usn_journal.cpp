@@ -35,7 +35,7 @@ UsnJournalResult* UsnResultBoundary(Operation operation, int64_t startUsn) noexc
 }
 
 uint8_t* AllocatePages(size_t byteCount) {
-    return ShouldFailAlloc()
+    return ShouldFailAllocation()
                ? nullptr
                : static_cast<uint8_t*>(VirtualAlloc(nullptr, byteCount, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
 }
@@ -145,10 +145,10 @@ void ApplyUsnReadError(UsnJournalResult* result, DWORD error, const wchar_t* fai
 
 // Copies the fixed fields and (clamped) filename of a USN_RECORD_V2 into entry.
 void CopyUsnRecordToEntry(UsnJournalEntry& entry, const USN_RECORD_V2* usnRecord) {
-    constexpr uint64_t fileRefMask = 0x0000FFFFFFFFFFFF;
+    constexpr uint64_t fileReferenceMask = 0x0000FFFFFFFFFFFF;
     memset(&entry, 0, sizeof(UsnJournalEntry));
-    entry.recordNumber = usnRecord->FileReferenceNumber & fileRefMask;
-    entry.parentRecordNumber = usnRecord->ParentFileReferenceNumber & fileRefMask;
+    entry.recordNumber = usnRecord->FileReferenceNumber & fileReferenceMask;
+    entry.parentRecordNumber = usnRecord->ParentFileReferenceNumber & fileReferenceMask;
     entry.sequenceNumber = static_cast<uint16_t>(usnRecord->FileReferenceNumber >> 48);
     entry.usn = usnRecord->Usn;
     entry.timestamp = usnRecord->TimeStamp.QuadPart;
@@ -180,15 +180,15 @@ bool GrowUsnEntries(UsnJournalResult* result, uint64_t& capacity) {
 // Counts the USN records packed in [readBuffer + 8, readBuffer + bytesReturned).
 uint64_t CountUsnRecords(const uint8_t* readBuffer, DWORD bytesReturned) {
     uint64_t count = 0;
-    const uint8_t* scanPtr = readBuffer + sizeof(int64_t);
-    const uint8_t* endPtr = readBuffer + bytesReturned;
-    while (scanPtr + sizeof(USN_RECORD_V2) <= endPtr) {
-        const auto* rec = reinterpret_cast<const USN_RECORD_V2*>(scanPtr);
-        if (rec->RecordLength == 0) {
+    const uint8_t* scanPointer = readBuffer + sizeof(int64_t);
+    const uint8_t* endPointer = readBuffer + bytesReturned;
+    while (scanPointer + sizeof(USN_RECORD_V2) <= endPointer) {
+        const auto* usnRecord = reinterpret_cast<const USN_RECORD_V2*>(scanPointer);
+        if (usnRecord->RecordLength == 0) {
             break;
         }
         count++;
-        scanPtr += rec->RecordLength;
+        scanPointer += usnRecord->RecordLength;
     }
     return count;
 }
@@ -215,14 +215,14 @@ void PopulateWatchEntries(UsnJournalResult* result, const uint8_t* readBuffer, D
     }
     result->nextUsn = bufferNextUsn;
 
-    const uint8_t* endPtr = readBuffer + bytesReturned;
-    const uint8_t* recordPtr = readBuffer + sizeof(int64_t);
-    for (uint64_t i = 0; i < count && recordPtr + sizeof(USN_RECORD_V2) <= endPtr; i++) {
-        const auto* usnRecord = reinterpret_cast<const USN_RECORD_V2*>(recordPtr);
+    const uint8_t* endPointer = readBuffer + bytesReturned;
+    const uint8_t* recordPointer = readBuffer + sizeof(int64_t);
+    for (uint64_t i = 0; i < count && recordPointer + sizeof(USN_RECORD_V2) <= endPointer; i++) {
+        const auto* usnRecord = reinterpret_cast<const USN_RECORD_V2*>(recordPointer);
         auto& entry = result->entries[i];
         CopyUsnRecordToEntry(entry, usnRecord);
         result->entryCount++;
-        recordPtr += usnRecord->RecordLength;
+        recordPointer += usnRecord->RecordLength;
     }
 }
 }  // namespace
@@ -253,7 +253,7 @@ EXPORT UsnJournalInfo* QueryUsnJournal(HANDLE volumeHandle) {
             info->firstUsn = journalData.FirstUsn;
             info->nextUsn = journalData.NextUsn;
             info->lowestValidUsn = journalData.LowestValidUsn;
-            info->maxUsn = journalData.MaxUsn;
+            info->maximumUsn = journalData.MaxUsn;
             info->maximumSize = journalData.MaximumSize;
             info->allocationDelta = journalData.AllocationDelta;
             return info;
@@ -327,11 +327,11 @@ EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, u
 
                 nextUsn = bufferNextUsn;
 
-                uint8_t* recordPtr = readBuffer + sizeof(int64_t);
-                const uint8_t* endPtr = readBuffer + bytesReturned;
+                uint8_t* recordPointer = readBuffer + sizeof(int64_t);
+                const uint8_t* endPointer = readBuffer + bytesReturned;
 
-                while (recordPtr + sizeof(USN_RECORD_V2) <= endPtr) {
-                    const auto* usnRecord = reinterpret_cast<const USN_RECORD_V2*>(recordPtr);
+                while (recordPointer + sizeof(USN_RECORD_V2) <= endPointer) {
+                    const auto* usnRecord = reinterpret_cast<const USN_RECORD_V2*>(recordPointer);
                     if (usnRecord->RecordLength == 0) {
                         break;
                     }
@@ -345,7 +345,7 @@ EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, u
                     CopyUsnRecordToEntry(entry, usnRecord);
 
                     result->entryCount++;
-                    recordPtr += usnRecord->RecordLength;
+                    recordPointer += usnRecord->RecordLength;
                 }
             }
 
@@ -385,7 +385,7 @@ EXPORT UsnJournalResult* WatchUsnJournalBatchCancelable(HANDLE volumeHandle, int
             auto readData = MakeReadRequest(startUsn, journalIdentifier, 1);
 
             OVERLAPPED overlapped{};
-            overlapped.hEvent = ShouldFailAlloc() ? nullptr : CreateEventW(nullptr, TRUE, FALSE, nullptr);
+            overlapped.hEvent = ShouldFailAllocation() ? nullptr : CreateEventW(nullptr, TRUE, FALSE, nullptr);
             const NativeScopeExit event([&]() {
                 if (overlapped.hEvent != nullptr) {
                     CloseHandle(overlapped.hEvent);

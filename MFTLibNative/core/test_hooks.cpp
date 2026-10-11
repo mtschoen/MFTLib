@@ -17,8 +17,8 @@
 #include "exception_barrier.h"
 
 namespace {
-unsigned g_maxThreads = 0;
-int g_allocFailCountdown = 0;
+unsigned g_maximumThreads = 0;
+int g_allocationFailureCountdown = 0;
 std::atomic<int> g_exceptionMode{0};
 std::atomic<int> g_threadStartCountdown{0};
 int g_readFailCountdown = 0;
@@ -69,8 +69,8 @@ unsigned EffectiveThreadCount(const MftParseControl* control) {
             threadCount = static_cast<unsigned>(std::clamp<int64_t>(allowance, 1, processorCount));
         }
     }
-    if (g_maxThreads > 0 && g_maxThreads < threadCount) {
-        threadCount = g_maxThreads;
+    if (g_maximumThreads > 0 && g_maximumThreads < threadCount) {
+        threadCount = g_maximumThreads;
     }
     return threadCount;
 }
@@ -86,11 +86,11 @@ ParseThreadRecording::~ParseThreadRecording() noexcept {
     }
 }
 
-bool ShouldFailAlloc() {
-    if (g_allocFailCountdown <= 0) {
+bool ShouldFailAllocation() {
+    if (g_allocationFailureCountdown <= 0) {
         return false;
     }
-    return --g_allocFailCountdown == 0;
+    return --g_allocationFailureCountdown == 0;
 }
 
 void ThrowInjectedException(ExceptionTestPoint point) {
@@ -159,12 +159,12 @@ bool UsnIoInjectSuccess(void* outBuffer, unsigned long outBufferSize, unsigned l
     uint32_t size = g_usnIoSize[g_usnIoHead];
     g_usnIoHead = (g_usnIoHead + 1) % 8;
     g_usnIoCount--;
-    unsigned long copyLen = size < outBufferSize ? size : outBufferSize;
-    if ((data != nullptr) && (copyLen != 0U)) {
-        memcpy(outBuffer, data, copyLen);
+    unsigned long copyLength = size < outBufferSize ? size : outBufferSize;
+    if ((data != nullptr) && (copyLength != 0U)) {
+        memcpy(outBuffer, data, copyLength);
     }
     if (bytesReturned != nullptr) {
-        *bytesReturned = copyLen;
+        *bytesReturned = copyLength;
     }
     return true;
 }
@@ -201,9 +201,9 @@ bool TryUsnWatchPipeRead(HANDLE handle, void* buffer, DWORD size, DWORD* bytesRe
 #endif
 
 extern "C" {
-EXPORT void SetMaxThreads(unsigned maxThreads) { g_maxThreads = maxThreads; }
+EXPORT void SetMaxThreads(unsigned maximumThreads) { g_maximumThreads = maximumThreads; }
 EXPORT void SetAllocFailCountdown(int countdown) {
-    g_allocFailCountdown = (std::max)(countdown, 0);
+    g_allocationFailureCountdown = (std::max)(countdown, 0);
     g_exceptionMode = countdown < 0 ? countdown : 0;
     // The I/O thread and first parse worker start before the next start fails.
     g_threadStartCountdown = 3;
@@ -263,8 +263,8 @@ EXPORT void SetUsnWatchPipe(HANDLE handle, HANDLE beforeIssue, HANDLE continueIs
 }
 EXPORT void ResetTestState() {
     NativeBoundary([&]() {
-    g_maxThreads = 0;
-    g_allocFailCountdown = 0;
+    g_maximumThreads = 0;
+    g_allocationFailureCountdown = 0;
     g_exceptionMode = 0;
     g_readFailCountdown = 0;
     g_failFileSize = 0;
@@ -289,8 +289,8 @@ EXPORT void ResetTestState() {
 #else
 EXPORT void ResetTestState() {
     NativeBoundary([&]() {
-    g_maxThreads = 0;
-    g_allocFailCountdown = 0;
+    g_maximumThreads = 0;
+    g_allocationFailureCountdown = 0;
     g_exceptionMode = 0;
     g_readFailCountdown = 0;
     g_failFileSize = 0;

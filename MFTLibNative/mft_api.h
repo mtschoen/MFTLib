@@ -113,7 +113,7 @@ struct UsnJournalInfo {
     int64_t firstUsn;
     int64_t nextUsn;
     int64_t lowestValidUsn;
-    int64_t maxUsn;
+    int64_t maximumUsn;
     uint64_t maximumSize;
     uint64_t allocationDelta;
     // NOLINTNEXTLINE(modernize-avoid-c-arrays)

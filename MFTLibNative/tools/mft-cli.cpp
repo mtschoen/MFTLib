@@ -75,11 +75,11 @@ std::string utf16_to_utf8(const uint16_t* utf16Units, size_t unitCount) {
     return out;
 }
 
-std::string wide_to_utf8(const MftMessageChar* wideStr, size_t maximumLength) {
+std::string wide_to_utf8(const MftMessageChar* wideString, size_t maximumLength) {
     std::string out;
     out.reserve(maximumLength);
     for (size_t i = 0; i < maximumLength; i++) {
-        auto codePoint = static_cast<uint32_t>(static_cast<std::make_unsigned_t<MftMessageChar>>(wideStr[i]));
+        auto codePoint = static_cast<uint32_t>(static_cast<std::make_unsigned_t<MftMessageChar>>(wideString[i]));
         if (codePoint == 0) {
             break;
         }
@@ -145,16 +145,16 @@ int main(int argc, char** argv) {
         print_usage(argv[0]);
         return 2;
     }
-    std::string cmd = argv[1];
+    std::string command = argv[1];
     const char* path = argv[2];
     std::string pattern;
-    if (cmd == "search") {
+    if (command == "search") {
         if (argc < 4) {
             print_usage(argv[0]);
             return 2;
         }
         pattern = argv[3];
-    } else if (cmd != "dump") {
+    } else if (command != "dump") {
         print_usage(argv[0]);
         return 2;
     }
@@ -163,8 +163,8 @@ int main(int argc, char** argv) {
     MftDumpInputInfo info{};
     MftDumpInput* input = OpenMftDumpInput(path, &info);
     if (input == nullptr) {
-        std::string msg = wide_to_utf8(info.errorMessage, 256);
-        std::fprintf(stderr, "FAIL: %s\n", msg.c_str());
+        std::string message = wide_to_utf8(info.errorMessage, 256);
+        std::fprintf(stderr, "FAIL: %s\n", message.c_str());
         return 1;
     }
     MftParseResult* parseResult = ParseMftDumpInput(input, kBufferSizeRecords, nullptr, nullptr, nullptr);
@@ -174,8 +174,8 @@ int main(int argc, char** argv) {
         return 1;
     }
     if (parseResult->errorMessage[0] != 0) {
-        std::string msg = wide_to_utf8(parseResult->errorMessage, 256);
-        std::fprintf(stderr, "FAIL: %s\n", msg.c_str());
+        std::string message = wide_to_utf8(parseResult->errorMessage, 256);
+        std::fprintf(stderr, "FAIL: %s\n", message.c_str());
         FreeMftResult(parseResult);
         return 1;
     }
@@ -185,7 +185,7 @@ int main(int argc, char** argv) {
                 static_cast<unsigned long long>(parseResult->usedRecords), parseResult->ioTimeMs,
                 parseResult->parseTimeMs, parseResult->totalTimeMs);
 
-    int exitCode = (cmd == "dump") ? do_dump(parseResult) : do_search(parseResult, pattern);
+    int exitCode = (command == "dump") ? do_dump(parseResult) : do_search(parseResult, pattern);
     FreeMftResult(parseResult);
     return exitCode;
 }

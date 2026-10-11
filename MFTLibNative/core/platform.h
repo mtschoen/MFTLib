@@ -24,19 +24,19 @@ File* open_write(const char* path_utf8);
 int64_t size_of(const File* file);
 
 // Reads up to count bytes at offset. Returns bytes read (>=0) or -1 on error.
-int64_t pread_at(const File* file, void* buf, size_t count, FileOffset offset);
+int64_t pread_at(const File* file, void* buffer, size_t count, FileOffset offset);
 
 // Writes count bytes at offset. Returns bytes written or -1 on error.
-int64_t pwrite_at(const File* file, const void* buf, size_t count, FileOffset offset);
+int64_t pwrite_at(const File* file, const void* buffer, size_t count, FileOffset offset);
 
 // Closes the file. Safe with nullptr.
 void close_file(File* file);
 
 // Allocate a large aligned buffer (page-aligned). Returns nullptr on failure.
-void* big_alloc(size_t bytes);
+void* big_allocate(size_t bytes);
 
-// Free a buffer returned from big_alloc. Size must match.
-void big_free(void* ptr, size_t bytes);
+// Free a buffer returned from big_allocate. Size must match.
+void big_free(void* pointer, size_t bytes);
 
 // Returns the OS-level error code from the most recent failed call on this thread
 // (GetLastError on Win32, errno on POSIX). Useful for enriching error messages.

@@ -23,7 +23,7 @@ extern "C" MftParseResult* ParseMftDumpInput(const MftDumpInput* input, uint32_t
 extern "C" void CloseMftDumpInput(MftDumpInput* input);
 extern "C" void SetAllocFailCountdown(int countdown);
 extern "C" void SetReadFailCountdown(int countdown);
-extern "C" void SetMaxThreads(unsigned maxThreads);
+extern "C" void SetMaxThreads(unsigned maximumThreads);
 extern "C" void ResetTestState();
 
 namespace {
@@ -276,7 +276,7 @@ bool test_fixture_sizes() {
 // Opens the synthetic fixture, then arms the allocation countdown so that the parse's
 // allocationOrdinal-th allocation fails. Arming after the open keeps the open's own input
 // allocation out of the count. Null when the fixture cannot be written or opened.
-MftDumpInput* open_fixture_with_alloc_failure(int allocationOrdinal) {
+MftDumpInput* open_fixture_with_allocation_failure(int allocationOrdinal) {
     if (!generate_fixture()) {
         return nullptr;
     }
@@ -289,8 +289,8 @@ MftDumpInput* open_fixture_with_alloc_failure(int allocationOrdinal) {
 }
 
 // The parse's first allocation is its result, so failing it returns no result at all.
-bool test_alloc_failure_path() {
-    MftDumpInput* input = open_fixture_with_alloc_failure(1);
+bool test_allocation_failure_path() {
+    MftDumpInput* input = open_fixture_with_allocation_failure(1);
     if (input == nullptr) {
         remove_fixture();
         return false;
@@ -310,8 +310,8 @@ bool test_alloc_failure_path() {
 
 // The parse allocates its result, two read buffers, the entry array, then the string pool:
 // the fifth allocation.
-bool test_string_pool_alloc_failure() {
-    MftDumpInput* input = open_fixture_with_alloc_failure(5);
+bool test_string_pool_allocation_failure() {
+    MftDumpInput* input = open_fixture_with_allocation_failure(5);
     if (input == nullptr) {
         remove_fixture();
         return false;
@@ -359,7 +359,7 @@ bool test_generate_unwritable_path() {
     return testPassed;
 }
 
-bool test_max_threads_clamping() {
+bool test_maximum_threads_clamping() {
     SetMaxThreads(1);
     if (!generate_fixture()) {
         ResetTestState();
@@ -470,7 +470,7 @@ bool test_retry_interrupted_genuine_error() {
 
 struct TestCase {
     const char* name;
-    bool (*fn)();
+    bool (*testFunction)();
 };
 
 }  // namespace
@@ -487,11 +487,11 @@ int main() {
         {"fixture_sizes", test_fixture_sizes},
         {"parse_missing_file", test_parse_missing_file},
         {"parse_empty_file", test_parse_empty_file},
-        {"alloc_failure_path", test_alloc_failure_path},
-        {"string_pool_alloc_failure", test_string_pool_alloc_failure},
+        {"allocation_failure_path", test_allocation_failure_path},
+        {"string_pool_allocation_failure", test_string_pool_allocation_failure},
         {"read_failure_path", test_read_failure_path},
         {"generate_unwritable_path", test_generate_unwritable_path},
-        {"max_threads_clamping", test_max_threads_clamping},
+        {"maximum_threads_clamping", test_maximum_threads_clamping},
         {"malformed_attribute_offset", test_malformed_attribute_offset},
         {"malformed_nonresident_data_length", test_malformed_nonresident_data_length},
         {"zero_length_file_name", test_zero_length_file_name},
@@ -512,7 +512,7 @@ int main() {
     int failedCount = 0;
     for (const auto& testCase : tests) {
         std::printf("[%s] running\n", testCase.name);
-        if (testCase.fn()) {
+        if (testCase.testFunction()) {
             std::printf("[%s] PASS\n", testCase.name);
             passedCount++;
         } else {

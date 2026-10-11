@@ -53,7 +53,7 @@ public class UsnJournalTests
             FirstUsn = 0,
             NextUsn = 42000,
             LowestValidUsn = 100,
-            MaxUsn = long.MaxValue,
+            MaximumUsn = long.MaxValue,
             MaximumSize = 32 * 1024 * 1024,
             AllocationDelta = 4 * 1024 * 1024
         };

@@ -39,8 +39,8 @@ using UPDATE_SEQUENCE_NUMBER = USHORT;
 using UPDATE_SEQUENCE_ARRAY = UPDATE_SEQUENCE_NUMBER[1];
 
 constexpr uint32_t DEFAULT_FILE_RECORD_SIZE = 1024;
-constexpr uint32_t MIN_FILE_RECORD_SIZE = 512;
-constexpr uint32_t MAX_FILE_RECORD_SIZE = 65536;
+constexpr uint32_t MINIMUM_FILE_RECORD_SIZE = 512;
+constexpr uint32_t MAXIMUM_FILE_RECORD_SIZE = 65536;
 constexpr uint32_t kFileRecordMagic = 0x454C4946;
 constexpr uint16_t kRecordInUse = 0x0001;
 constexpr uint16_t kRecordDirectory = 0x0002;
@@ -50,7 +50,7 @@ struct ParseGeometry {
 };
 
 inline bool IsSupportedRecordSize(uint32_t value) {
-    return value >= MIN_FILE_RECORD_SIZE && value <= MAX_FILE_RECORD_SIZE && (value % 512U) == 0U &&
+    return value >= MINIMUM_FILE_RECORD_SIZE && value <= MAXIMUM_FILE_RECORD_SIZE && (value % 512U) == 0U &&
            (value & (value - 1U)) == 0U;
 }
 

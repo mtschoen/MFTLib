@@ -46,7 +46,7 @@ bool TryMeasureRuns(const std::vector<DataRun>& runs, uint32_t bytesPerCluster, 
 // The runs of a non-resident attribute. Empty when the attribute is resident, its header or mapping
 // pairs do not fit its length, a run field is wider than eight bytes, or a run is cut off by the end
 // of the attribute: a run list is complete or not used.
-std::vector<DataRun> ParseDataRuns(const ATTRIBUTE_RECORD_HEADER* attr);
+std::vector<DataRun> ParseDataRuns(const ATTRIBUTE_RECORD_HEADER* attribute);
 
 // Steps through a record's attributes without leaving the record. *offset starts at the record's
 // FirstAttributeOffset and advances past each attribute returned. Malformed when an attribute header
@@ -69,7 +69,7 @@ BOOL Read(HANDLE handle, void* buffer, VolumeOffset from, DWORD count, PDWORD by
 // The first fileSize bytes of a non-resident attribute, read in whole clusters, or null when the
 // attribute is malformed, its runs are out of range or shorter than fileSize, or a read fails.
 // *outSize is the number of bytes in the returned buffer, all of them read.
-uint8_t* ReadNonResidentData(HANDLE volumeHandle, const ATTRIBUTE_RECORD_HEADER* attr, uint32_t bytesPerCluster,
+uint8_t* ReadNonResidentData(HANDLE volumeHandle, const ATTRIBUTE_RECORD_HEADER* attribute, uint32_t bytesPerCluster,
                              uint64_t* outSize);
 
 // mftRuns must already be validated, with a cumulative size TryMeasureRuns accepted: the lookup does
@@ -149,8 +149,8 @@ struct SliceResult {
     void append(const ParsedEntry& entry) {
         uint64_t stringOffset = strings.size();
         if (entry.nameLength > 0 && entry.name != nullptr) {
-            const auto* src = reinterpret_cast<const uint16_t*>(entry.name);
-            strings.insert(strings.end(), src, src + entry.nameLength);
+            const auto* source = reinterpret_cast<const uint16_t*>(entry.name);
+            strings.insert(strings.end(), source, source + entry.nameLength);
         }
         const MftCompactEntry compact{
             entry.recordNumber,   entry.parentRecordNumber,  stringOffset, entry.fileAttributes,
@@ -186,18 +186,18 @@ bool AppendSlice(CompactOutput& output, const SliceResult& slice, MftMessageChar
 void ProcessRecordSlice(uint8_t* buffer, SliceRange range, uint64_t recordBase, SliceResult* slice,
                         const ScanContext& scan);
 
-using ReadChunkFn = uint64_t (*)(void* context, uint8_t* targetBuffer, double& ioMs);
-using InputIncompleteFn = bool (*)(const void* context);
+using ReadChunkFunction = uint64_t (*)(void* context, uint8_t* targetBuffer, double& ioMs);
+using InputIncompleteFunction = bool (*)(const void* context);
 
 // Where a parse reads its records and how far it trusts them.
 struct ParseSource {
-    ReadChunkFn readChunk = nullptr;
+    ReadChunkFunction readChunk = nullptr;
     void* context = nullptr;
     uint64_t totalRecords = 0;
     ParseGeometry geometry{};
     // Asked once the last chunk is read: true when the input ended early, failed or changed
     // size, which fails the parse. Null for a source that cannot tell.
-    InputIncompleteFn incomplete = nullptr;
+    InputIncompleteFunction incomplete = nullptr;
     // True for a file, which is untrusted: an allocated record with an invalid fixup fails the
     // parse. A volume only passes over such a record.
     bool rejectInvalidFixup = false;

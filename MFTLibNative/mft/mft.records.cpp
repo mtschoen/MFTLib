@@ -31,9 +31,9 @@ struct RecordAttributes {
 
 bool TryExtractStandardInformation(const ATTRIBUTE_RECORD_HEADER* attribute, StandardInformationValues* values) {
     constexpr size_t kResidentHeaderSize = 0x18;
-    constexpr size_t kMinStandardInformationSize = 36;
+    constexpr size_t kMinimumStandardInformationSize = 36;
     if (attribute->Form.Resident.ValueOffset < kResidentHeaderSize ||
-        static_cast<size_t>(attribute->Form.Resident.ValueOffset) + kMinStandardInformationSize >
+        static_cast<size_t>(attribute->Form.Resident.ValueOffset) + kMinimumStandardInformationSize >
             attribute->RecordLength) {
         return false;
     }
@@ -47,20 +47,22 @@ bool TryExtractStandardInformation(const ATTRIBUTE_RECORD_HEADER* attribute, Sta
     return true;
 }
 
-bool TryExtractFileName(const ATTRIBUTE_RECORD_HEADER* attribute, PFILE_NAME* outNameAttr) {
+bool TryExtractFileName(const ATTRIBUTE_RECORD_HEADER* attribute, PFILE_NAME* outNameAttribute) {
     constexpr size_t kResidentHeaderSize = 0x18;
-    constexpr size_t kMinFileNameHeaderSize = 66;
+    constexpr size_t kMinimumFileNameHeaderSize = 66;
     if (attribute->Form.Resident.ValueOffset < kResidentHeaderSize ||
-        static_cast<size_t>(attribute->Form.Resident.ValueOffset) + kMinFileNameHeaderSize > attribute->RecordLength) {
+        static_cast<size_t>(attribute->Form.Resident.ValueOffset) + kMinimumFileNameHeaderSize >
+            attribute->RecordLength) {
         return false;
     }
-    auto* nameAttr = reinterpret_cast<PFILE_NAME>(const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(attribute)) +
-                                                  attribute->Form.Resident.ValueOffset);
-    size_t requiredNameSize = kMinFileNameHeaderSize + (static_cast<size_t>(nameAttr->FileNameLength) * sizeof(WCHAR));
+    auto* nameAttribute = reinterpret_cast<PFILE_NAME>(
+        const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(attribute)) + attribute->Form.Resident.ValueOffset);
+    size_t requiredNameSize =
+        kMinimumFileNameHeaderSize + (static_cast<size_t>(nameAttribute->FileNameLength) * sizeof(WCHAR));
     if (static_cast<size_t>(attribute->Form.Resident.ValueOffset) + requiredNameSize > attribute->RecordLength) {
         return false;
     }
-    *outNameAttr = nameAttr;
+    *outNameAttribute = nameAttribute;
     return true;
 }
 
@@ -142,35 +144,35 @@ bool ScanRecordAttributes(PFILE_RECORD_SEGMENT_HEADER record, ParseGeometry geom
 
 // Scan one eligible base record. If it has a validated non-DOS FileName, fill *outEntry
 // and return true. A freed base record is eligible only when the scan includes freed rows.
-bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext& scan, ParsedEntry* outEntry) {
-    auto* rec = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(recPtr);
+bool ScanRecordForEntry(uint8_t* recordPointer, uint64_t recordIndex, const ScanContext& scan, ParsedEntry* outEntry) {
+    auto* recordHeader = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(recordPointer);
 
-    if (rec->MultiSectorHeader.Magic != kFileRecordMagic) {
+    if (recordHeader->MultiSectorHeader.Magic != kFileRecordMagic) {
         return false;
     }
-    if ((rec->Flags & kRecordInUse) == 0 && !scan.includeFreed) {
+    if ((recordHeader->Flags & kRecordInUse) == 0 && !scan.includeFreed) {
         return false;
     }
 
-    uint64_t baseRef = static_cast<uint64_t>(rec->BaseFileRecordSegment.SegmentNumberLowPart) |
-                       (static_cast<uint64_t>(rec->BaseFileRecordSegment.SegmentNumberHighPart) << 32);
-    if (baseRef != 0) {
+    uint64_t baseReference = static_cast<uint64_t>(recordHeader->BaseFileRecordSegment.SegmentNumberLowPart) |
+                             (static_cast<uint64_t>(recordHeader->BaseFileRecordSegment.SegmentNumberHighPart) << 32);
+    if (baseReference != 0) {
         return false;
     }
     // A freed extension record can still carry its base reference; a base record's
     // whole reference, sequence included, is zero.
-    if ((rec->Flags & kRecordInUse) == 0 && rec->BaseFileRecordSegment.SequenceNumber != 0) {
+    if ((recordHeader->Flags & kRecordInUse) == 0 && recordHeader->BaseFileRecordSegment.SequenceNumber != 0) {
         return false;
     }
 
     RecordAttributes attributes{};
-    if (!ScanRecordAttributes(rec, scan.geometry, &attributes) || attributes.nameAttribute == nullptr) {
+    if (!ScanRecordAttributes(recordHeader, scan.geometry, &attributes) || attributes.nameAttribute == nullptr) {
         return false;
     }
-    auto* nameAttr = attributes.nameAttribute;
+    auto* nameAttribute = attributes.nameAttribute;
 
-    bool isDirectory = (rec->Flags & kRecordDirectory) != 0;
-    outEntry->flags = rec->Flags;
+    bool isDirectory = (recordHeader->Flags & kRecordDirectory) != 0;
+    outEntry->flags = recordHeader->Flags;
     if (isDirectory) {
         outEntry->size = 0;
     } else if (attributes.dataPresent) {
@@ -180,19 +182,20 @@ bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext
         outEntry->flags |= MFT_ENTRY_FLAG_SIZE_UNKNOWN;
     }
 
-    uint64_t parent = static_cast<uint64_t>(nameAttr->ParentDirectory.SegmentNumberLowPart) |
-                      (static_cast<uint64_t>(nameAttr->ParentDirectory.SegmentNumberHighPart) << 32);
+    uint64_t parent = static_cast<uint64_t>(nameAttribute->ParentDirectory.SegmentNumberLowPart) |
+                      (static_cast<uint64_t>(nameAttribute->ParentDirectory.SegmentNumberHighPart) << 32);
 
     outEntry->recordNumber = recordIndex;
     outEntry->parentRecordNumber = parent;
     outEntry->fileAttributes = attributes.standardInformation.present ? attributes.standardInformation.fileAttributes
-                                                                      : nameAttr->FileAttributes;
-    outEntry->sequenceNumber = rec->SequenceNumber;
-    outEntry->parentSequenceNumber = nameAttr->ParentDirectory.SequenceNumber;
-    outEntry->modifiedTime = attributes.standardInformation.present ? attributes.standardInformation.modifiedTime
-                                                                    : static_cast<int64_t>(nameAttr->ModificationTime);
-    outEntry->name = nameAttr->FileName;
-    outEntry->nameLength = nameAttr->FileNameLength;
+                                                                      : nameAttribute->FileAttributes;
+    outEntry->sequenceNumber = recordHeader->SequenceNumber;
+    outEntry->parentSequenceNumber = nameAttribute->ParentDirectory.SequenceNumber;
+    outEntry->modifiedTime = attributes.standardInformation.present
+                                 ? attributes.standardInformation.modifiedTime
+                                 : static_cast<int64_t>(nameAttribute->ModificationTime);
+    outEntry->name = nameAttribute->FileName;
+    outEntry->nameLength = nameAttribute->FileNameLength;
     return true;
 }
 
@@ -219,7 +222,7 @@ bool EnsureCapacity(Element*& data, uint64_t& capacity, uint64_t used, uint64_t 
         SetErrorMessageBuffer(errorMessage, MFT_ERROR_MESSAGE_UNITS, messages.overflow);
         return false;
     }
-    auto* grown = ShouldFailAlloc()
+    auto* grown = ShouldFailAllocation()
                       ? nullptr
                       : static_cast<Element*>(realloc(data, static_cast<size_t>(newCapacity) * sizeof(Element)));
     if (grown == nullptr) {

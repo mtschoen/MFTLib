@@ -9,7 +9,7 @@ struct UsnJournalInfoNative
     public long FirstUsn;
     public long NextUsn;
     public long LowestValidUsn;
-    public long MaxUsn;
+    public long MaximumUsn;
     public ulong MaximumSize;
     public ulong AllocationDelta;
 

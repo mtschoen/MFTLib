@@ -113,10 +113,10 @@ bool TryAdd(uint64_t addend, uint64_t other, uint64_t* sum) {
     return true;
 }
 
-bool IsWellFormedNonresident(const ATTRIBUTE_RECORD_HEADER* attr) {
-    return attr->FormCode == 1 && attr->RecordLength >= kNonresidentAttributeHeaderSize &&
-           attr->Form.Nonresident.MappingPairsOffset >= kNonresidentAttributeHeaderSize &&
-           attr->Form.Nonresident.MappingPairsOffset <= attr->RecordLength;
+bool IsWellFormedNonresident(const ATTRIBUTE_RECORD_HEADER* attribute) {
+    return attribute->FormCode == 1 && attribute->RecordLength >= kNonresidentAttributeHeaderSize &&
+           attribute->Form.Nonresident.MappingPairsOffset >= kNonresidentAttributeHeaderSize &&
+           attribute->Form.Nonresident.MappingPairsOffset <= attribute->RecordLength;
 }
 
 // Reads a little-endian run field of fieldBytes (at most eight) bytes; a signed field is sign-extended.
@@ -154,33 +154,34 @@ bool TryMeasureRuns(const std::vector<DataRun>& runs, uint32_t bytesPerCluster, 
     return true;
 }
 
-std::vector<DataRun> ParseDataRuns(const ATTRIBUTE_RECORD_HEADER* attr) {
+std::vector<DataRun> ParseDataRuns(const ATTRIBUTE_RECORD_HEADER* attribute) {
     std::vector<DataRun> runs;
-    if (!IsWellFormedNonresident(attr)) {
+    if (!IsWellFormedNonresident(attribute)) {
         return runs;
     }
 
-    const auto* runPtr = reinterpret_cast<const uint8_t*>(attr) + attr->Form.Nonresident.MappingPairsOffset;
-    const auto* endPtr = reinterpret_cast<const uint8_t*>(attr) + attr->RecordLength;
+    const auto* runPointer =
+        reinterpret_cast<const uint8_t*>(attribute) + attribute->Form.Nonresident.MappingPairsOffset;
+    const auto* endPointer = reinterpret_cast<const uint8_t*>(attribute) + attribute->RecordLength;
     uint64_t cluster = 0;
 
-    while (runPtr < endPtr) {
-        const auto* header = reinterpret_cast<const RunHeader*>(runPtr);
+    while (runPointer < endPointer) {
+        const auto* header = reinterpret_cast<const RunHeader*>(runPointer);
         if (header->lengthFieldBytes == 0) {
             break;
         }
         const size_t lengthBytes = header->lengthFieldBytes;
         const size_t offsetBytes = header->offsetFieldBytes;
         if (lengthBytes > kMaximumRunFieldBytes || offsetBytes > kMaximumRunFieldBytes ||
-            static_cast<size_t>(endPtr - runPtr) < 1 + lengthBytes + offsetBytes) {
+            static_cast<size_t>(endPointer - runPointer) < 1 + lengthBytes + offsetBytes) {
             return {};
         }
-        runPtr++;
+        runPointer++;
 
-        const uint64_t length = ReadRunField(runPtr, lengthBytes, false);
-        runPtr += lengthBytes;
-        const uint64_t offset = ReadRunField(runPtr, offsetBytes, true);
-        runPtr += offsetBytes;
+        const uint64_t length = ReadRunField(runPointer, lengthBytes, false);
+        runPointer += lengthBytes;
+        const uint64_t offset = ReadRunField(runPointer, offsetBytes, true);
+        runPointer += offsetBytes;
 
         cluster += offset;
         runs.push_back({static_cast<int64_t>(cluster), length});
@@ -189,14 +190,14 @@ std::vector<DataRun> ParseDataRuns(const ATTRIBUTE_RECORD_HEADER* attr) {
     return runs;
 }
 
-uint8_t* ReadNonResidentData(HANDLE volumeHandle, const ATTRIBUTE_RECORD_HEADER* attr, uint32_t bytesPerCluster,
+uint8_t* ReadNonResidentData(HANDLE volumeHandle, const ATTRIBUTE_RECORD_HEADER* attribute, uint32_t bytesPerCluster,
                              uint64_t* outSize) {
     *outSize = 0;
-    if (!IsWellFormedNonresident(attr)) {
+    if (!IsWellFormedNonresident(attribute)) {
         return nullptr;
     }
-    const auto runs = ParseDataRuns(attr);
-    const auto fileSize = static_cast<uint64_t>(attr->Form.Nonresident.FileSize);
+    const auto runs = ParseDataRuns(attribute);
+    const auto fileSize = static_cast<uint64_t>(attribute->Form.Nonresident.FileSize);
     uint64_t totalClusterBytes = 0;
     if (!TryMeasureRuns(runs, bytesPerCluster, &totalClusterBytes) || fileSize == 0 || fileSize > totalClusterBytes) {
         return nullptr;
@@ -205,7 +206,7 @@ uint8_t* ReadNonResidentData(HANDLE volumeHandle, const ATTRIBUTE_RECORD_HEADER*
     const uint64_t remainder = fileSize % bytesPerCluster;
     const uint64_t readLimit = remainder == 0 ? fileSize : fileSize + (bytesPerCluster - remainder);
 
-    auto* buffer = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(malloc(static_cast<size_t>(readLimit)));
+    auto* buffer = ShouldFailAllocation() ? nullptr : static_cast<uint8_t*>(malloc(static_cast<size_t>(readLimit)));
     if (buffer == nullptr) {
         return nullptr;
     }

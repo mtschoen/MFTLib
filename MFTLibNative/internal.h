@@ -23,8 +23,8 @@ static inline double ElapsedMs(TimePoint start, TimePoint end) {
     return std::chrono::duration<double, std::milli>(end - start).count();
 }
 
-template <typename... Args>
-void SetErrorMessageBuffer(wchar_t* buffer, size_t bufferLength, const wchar_t* format, Args... arguments) {
+template <typename... Arguments>
+void SetErrorMessageBuffer(wchar_t* buffer, size_t bufferLength, const wchar_t* format, Arguments... arguments) {
     if (buffer == nullptr || bufferLength == 0) {
         return;
     }
@@ -42,8 +42,8 @@ void SetErrorMessageBuffer(wchar_t* buffer, size_t bufferLength, const wchar_t* 
 #ifndef _WIN32
 // A parse message buffer holds UTF-16 units and wchar_t is wider here, so the text is formatted
 // as wchar_t and narrowed unit by unit. Every message is ASCII text and numbers.
-template <typename... Args>
-void SetErrorMessageBuffer(char16_t* buffer, size_t bufferLength, const wchar_t* format, Args... arguments) {
+template <typename... Arguments>
+void SetErrorMessageBuffer(char16_t* buffer, size_t bufferLength, const wchar_t* format, Arguments... arguments) {
     if (buffer == nullptr || bufferLength == 0) {
         return;
     }
@@ -56,9 +56,9 @@ void SetErrorMessageBuffer(char16_t* buffer, size_t bufferLength, const wchar_t*
 }
 #endif
 
-template <typename Unit, size_t N, typename... Args>
+template <typename Unit, size_t N, typename... Arguments>
 // NOLINTNEXTLINE(modernize-avoid-c-arrays): array-reference parameter deduces the fixed C-ABI buffer size
-void SetErrorMessage(Unit (&buffer)[N], const wchar_t* format, Args... arguments) {
+void SetErrorMessage(Unit (&buffer)[N], const wchar_t* format, Arguments... arguments) {
     SetErrorMessageBuffer(buffer, N, format, arguments...);
 }
 
@@ -120,7 +120,7 @@ class ParseThreadRecording {
 };
 
 // Test hook declarations (defined in core/test_hooks.cpp)
-bool ShouldFailAlloc();
+bool ShouldFailAllocation();
 // Negative SetAllocFailCountdown modes inject exceptions without adding ABI exports.
 enum class ExceptionTestPoint : int8_t {
     ParseAllocation = -1,

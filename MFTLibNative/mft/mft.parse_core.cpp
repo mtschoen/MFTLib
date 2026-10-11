@@ -40,10 +40,10 @@ struct ChunkSpan {
 
 struct ChunkReader {
     const ParseSource* source = nullptr;
-    std::array<uint8_t*, 2>* buf = nullptr;
+    std::array<uint8_t*, 2>* chunkBuffers = nullptr;
 
     uint64_t read(int bufferIndex, double& ioMs) const {
-        return source->readChunk(source->context, (*buf)[bufferIndex], ioMs);
+        return source->readChunk(source->context, (*chunkBuffers)[bufferIndex], ioMs);
     }
 
     bool incomplete() const { return source->incomplete != nullptr && source->incomplete(source->context); }
@@ -52,36 +52,39 @@ struct ChunkReader {
 // Allocate the two double-buffer I/O buffers and the initial compact entry/string arrays.
 // On failure, frees whatever was allocated, sets the error message, and returns false.
 // (big_free is a no-op on nullptr.)
-bool AllocateParseBuffers(std::array<uint8_t*, 2>& buf, size_t bufSize, ParseState& state, MftParseResult* result) {
-    buf[0] = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(mftlib::platform::big_alloc(bufSize));
-    buf[1] = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(mftlib::platform::big_alloc(bufSize));
-    if ((buf[0] == nullptr) || (buf[1] == nullptr)) {
-        mftlib::platform::big_free(buf[0], bufSize);
-        mftlib::platform::big_free(buf[1], bufSize);
+bool AllocateParseBuffers(std::array<uint8_t*, 2>& chunkBuffers, size_t bufferSize, ParseState& state,
+                          MftParseResult* result) {
+    chunkBuffers[0] =
+        ShouldFailAllocation() ? nullptr : static_cast<uint8_t*>(mftlib::platform::big_allocate(bufferSize));
+    chunkBuffers[1] =
+        ShouldFailAllocation() ? nullptr : static_cast<uint8_t*>(mftlib::platform::big_allocate(bufferSize));
+    if ((chunkBuffers[0] == nullptr) || (chunkBuffers[1] == nullptr)) {
+        mftlib::platform::big_free(chunkBuffers[0], bufferSize);
+        mftlib::platform::big_free(chunkBuffers[1], bufferSize);
         SetErrorMessage(result->errorMessage, L"Failed to allocate I/O buffers");
         return false;
     }
 
-    state.output.entries = ShouldFailAlloc()
+    state.output.entries = ShouldFailAllocation()
                                ? nullptr
                                : static_cast<MftCompactEntry*>(
                                      malloc(static_cast<size_t>(state.output.entryCapacity) * sizeof(MftCompactEntry)));
     if (state.output.entries == nullptr) {
-        mftlib::platform::big_free(buf[0], bufSize);
-        mftlib::platform::big_free(buf[1], bufSize);
+        mftlib::platform::big_free(chunkBuffers[0], bufferSize);
+        mftlib::platform::big_free(chunkBuffers[1], bufferSize);
         SetErrorMessage(result->errorMessage, L"Failed to allocate entry array");
         return false;
     }
 
     state.output.strings =
-        ShouldFailAlloc()
+        ShouldFailAllocation()
             ? nullptr
             : static_cast<uint16_t*>(malloc(static_cast<size_t>(state.output.stringCapacity) * sizeof(uint16_t)));
     if (state.output.strings == nullptr) {
         free(state.output.entries);
         state.output.entries = nullptr;
-        mftlib::platform::big_free(buf[0], bufSize);
-        mftlib::platform::big_free(buf[1], bufSize);
+        mftlib::platform::big_free(chunkBuffers[0], bufferSize);
+        mftlib::platform::big_free(chunkBuffers[1], bufferSize);
         SetErrorMessage(result->errorMessage, L"Failed to allocate string pool");
         return false;
     }
@@ -103,13 +106,14 @@ bool IsCancelRequested(const MftParseControl* control) {
 uint64_t FixupRange(uint8_t* buffer, SliceRange range, ParseGeometry geometry) {
     uint64_t allocatedInvalidRecords = 0;
     for (uint64_t i = range.start; i < range.end; i++) {
-        auto* recPtr = buffer + (static_cast<size_t>(geometry.recordSize) * i);
-        auto* rec = reinterpret_cast<FILE_RECORD_SEGMENT_HEADER*>(recPtr);
-        if (rec->MultiSectorHeader.Magic != kFileRecordMagic || ApplyFixup(recPtr, geometry.recordSize)) {
+        auto* recordPointer = buffer + (static_cast<size_t>(geometry.recordSize) * i);
+        auto* recordHeader = reinterpret_cast<FILE_RECORD_SEGMENT_HEADER*>(recordPointer);
+        if (recordHeader->MultiSectorHeader.Magic != kFileRecordMagic ||
+            ApplyFixup(recordPointer, geometry.recordSize)) {
             continue;
         }
-        allocatedInvalidRecords += (rec->Flags & kRecordInUse) != 0 ? 1 : 0;
-        rec->MultiSectorHeader.Magic = 0;
+        allocatedInvalidRecords += (recordHeader->Flags & kRecordInUse) != 0 ? 1 : 0;
+        recordHeader->MultiSectorHeader.Magic = 0;
     }
     return allocatedInvalidRecords;
 }
@@ -162,14 +166,14 @@ bool ParseChunkSerial(uint8_t* buffer, ChunkSpan chunk, const ScanContext& scan,
     return AppendSlice(state.output, batchSlice, result->errorMessage);
 }
 
-// Fix up and parse one chunk across numThreads workers, then merge their slices.
+// Fix up and parse one chunk across threadCount workers, then merge their slices.
 // Returns false if a fixup was rejected or the merge ran out of memory (error already set).
-bool ParseChunkParallel(uint8_t* buffer, ChunkSpan chunk, unsigned numThreads, const ScanContext& scan,
+bool ParseChunkParallel(uint8_t* buffer, ChunkSpan chunk, unsigned threadCount, const ScanContext& scan,
                         ParseState& state, MftParseResult* result) {
     auto fixupStart = SteadyClock::now();
-    std::vector<SliceResult> slices(numThreads);
-    std::vector<double> threadFixupMs(numThreads, 0.0);
-    unsigned actualThreads = ForEachRange(chunk.chunkSize, numThreads, [&](unsigned index, SliceRange range) {
+    std::vector<SliceResult> slices(threadCount);
+    std::vector<double> threadFixupMs(threadCount, 0.0);
+    unsigned actualThreads = ForEachRange(chunk.chunkSize, threadCount, [&](unsigned index, SliceRange range) {
         ThrowInjectedException(ExceptionTestPoint::ParseAllocation);
         ThrowInjectedException(ExceptionTestPoint::WorkerFailure);
         const uint64_t initialCapacity = std::max<uint64_t>((range.end - range.start) / 4, 64);
@@ -179,10 +183,10 @@ bool ParseChunkParallel(uint8_t* buffer, ChunkSpan chunk, unsigned numThreads, c
     });
 
     double totalElapsed = ElapsedMs(fixupStart, SteadyClock::now());
-    double maxFixup =
+    double maximumFixup =
         (actualThreads > 0) ? *std::max_element(threadFixupMs.begin(), threadFixupMs.begin() + actualThreads) : 0.0;
-    state.fixupMs += maxFixup;
-    state.parseMs += totalElapsed - maxFixup;
+    state.fixupMs += maximumFixup;
+    state.parseMs += totalElapsed - maximumFixup;
 
     uint64_t invalidFixupRecords = 0;
     for (const auto& slice : slices) {
@@ -192,8 +196,8 @@ bool ParseChunkParallel(uint8_t* buffer, ChunkSpan chunk, unsigned numThreads, c
         return RejectInvalidFixup(result);
     }
     state.invalidFixupRecords += invalidFixupRecords;
-    for (unsigned ti = 0; ti < actualThreads; ti++) {
-        if (!AppendSlice(state.output, slices[ti], result->errorMessage)) {
+    for (unsigned threadIndex = 0; threadIndex < actualThreads; threadIndex++) {
+        if (!AppendSlice(state.output, slices[threadIndex], result->errorMessage)) {
             return false;
         }
     }
@@ -220,14 +224,14 @@ ParseOutcome ParseAllChunks(ChunkReader& reader, const ScanContext& scan, ParseS
     uint64_t recordIndex = 0;
     uint64_t lastReportedRecords = 0;
     uint64_t currentChunkSize = reader.read(0, state.ioMs);
-    int curBuf = 0;
+    int currentBufferIndex = 0;
 
     while (currentChunkSize > 0) {
         if (IsCancelRequested(scan.control)) {
             return ParseOutcome::Cancelled;
         }
-        const unsigned numThreads = EffectiveThreadCount(scan.control);
-        state.threadRecording->Record(numThreads);
+        const unsigned threadCount = EffectiveThreadCount(scan.control);
+        state.threadRecording->Record(threadCount);
 
         uint64_t nextChunkSize = 0;
         double nextIoMs = 0;
@@ -235,7 +239,7 @@ ParseOutcome ParseAllChunks(ChunkReader& reader, const ScanContext& scan, ParseS
         auto ioThread = StartNativeThread(
             [&]() {
                 ThrowInjectedException(ExceptionTestPoint::ReadWorker);
-                nextChunkSize = reader.read(1 - curBuf, nextIoMs);
+                nextChunkSize = reader.read(1 - currentBufferIndex, nextIoMs);
             },
             readFailure);
         const NativeScopeExit joined([&]() {
@@ -244,10 +248,10 @@ ParseOutcome ParseAllChunks(ChunkReader& reader, const ScanContext& scan, ParseS
             }
         });
 
-        uint8_t* buffer = (*reader.buf)[curBuf];
+        uint8_t* buffer = (*reader.chunkBuffers)[currentBufferIndex];
         const ChunkSpan chunk{recordIndex, currentChunkSize};
-        const bool mergedOk = numThreads > 1 ? ParseChunkParallel(buffer, chunk, numThreads, scan, state, result)
-                                             : ParseChunkSerial(buffer, chunk, scan, state, result);
+        const bool mergedOk = threadCount > 1 ? ParseChunkParallel(buffer, chunk, threadCount, scan, state, result)
+                                              : ParseChunkSerial(buffer, chunk, scan, state, result);
         if (!mergedOk) {
             ioThread.join();
             return ParseOutcome::Failed;
@@ -271,7 +275,7 @@ ParseOutcome ParseAllChunks(ChunkReader& reader, const ScanContext& scan, ParseS
         state.ioMs += nextIoMs;
 
         currentChunkSize = nextChunkSize;
-        curBuf = 1 - curBuf;
+        currentBufferIndex = 1 - currentBufferIndex;
     }
 
     if (reader.incomplete()) {
@@ -312,7 +316,7 @@ MftParseResult* FinishIncomplete(ParseState& state, MftParseResult* result, cons
 }  // namespace
 
 MftParseResult* CreateParseResult(const wchar_t* message) {
-    auto* result = ShouldFailAlloc() ? nullptr : static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
+    auto* result = ShouldFailAllocation() ? nullptr : static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
     if (result == nullptr) {
         return nullptr;
     }
@@ -334,8 +338,8 @@ MftParseResult* ParseMFTImpl(const ParseSource& source, const ParseRequest& requ
     }
     ParseState state = {};
     state.threadRecording = &threadRecording;
-    std::array<uint8_t*, 2> buf = {};
-    const size_t bufSize = static_cast<size_t>(request.bufferSizeRecords) * source.geometry.recordSize;
+    std::array<uint8_t*, 2> chunkBuffers = {};
+    const size_t bufferSize = static_cast<size_t>(request.bufferSizeRecords) * source.geometry.recordSize;
     return NativeBoundary(
         [&]() {
             const uint64_t totalRecords = source.totalRecords;
@@ -349,16 +353,16 @@ MftParseResult* ParseMFTImpl(const ParseSource& source, const ParseRequest& requ
             state.output.entryCapacity = std::clamp<uint64_t>(totalRecords / 4, 1024, kMaximumInitialEntries);
             state.output.stringCapacity = std::max<uint64_t>(state.output.entryCapacity * 32, 1024);
 
-            if (!AllocateParseBuffers(buf, bufSize, state, result)) {
+            if (!AllocateParseBuffers(chunkBuffers, bufferSize, state, result)) {
                 return result;
             }
             const NativeScopeExit buffers([&]() {
-                mftlib::platform::big_free(buf[0], bufSize);
-                mftlib::platform::big_free(buf[1], bufSize);
+                mftlib::platform::big_free(chunkBuffers[0], bufferSize);
+                mftlib::platform::big_free(chunkBuffers[1], bufferSize);
             });
 
             const ScanContext scan{request.includeFreed, totalRecords, geometry, control, source.rejectInvalidFixup};
-            ChunkReader reader{&source, &buf};
+            ChunkReader reader{&source, &chunkBuffers};
             ProgressHook progress{request.callback, request.progressContext, wallStart};
             const ParseOutcome outcome = ParseAllChunks(reader, scan, state, result, progress);
 

@@ -13,7 +13,7 @@
 namespace mftlib::platform {
 
 struct File {
-    int fd;
+    int fileDescriptor;
 };
 
 File* open_read(const char* path_utf8) {
@@ -52,13 +52,13 @@ int64_t size_of(const File* file) {
         return -1;
     }
     struct stat fileStat{};
-    if (::fstat(file->fd, &fileStat) != 0) {
+    if (::fstat(file->fileDescriptor, &fileStat) != 0) {
         return -1;
     }
     return static_cast<int64_t>(fileStat.st_size);
 }
 
-int64_t pread_at(const File* file, void* buf, size_t count, FileOffset offset) {
+int64_t pread_at(const File* file, void* buffer, size_t count, FileOffset offset) {
     if (file == nullptr) {
         return -1;
     }
@@ -67,11 +67,11 @@ int64_t pread_at(const File* file, void* buf, size_t count, FileOffset offset) {
         return -1;
     }
     ssize_t totalBytes = 0;
-    auto* bytePtr = static_cast<char*>(buf);
+    auto* bytePointer = static_cast<char*>(buffer);
     int64_t currentOffset = offset.value;
     while (count > 0) {
-        ssize_t bytesRead =
-            RetryInterruptedSystemCall([&]() { return ::pread(file->fd, bytePtr, count, currentOffset); });
+        ssize_t bytesRead = RetryInterruptedSystemCall(
+            [&]() { return ::pread(file->fileDescriptor, bytePointer, count, currentOffset); });
         if (bytesRead < 0) {
             return -1;
         }
@@ -79,14 +79,14 @@ int64_t pread_at(const File* file, void* buf, size_t count, FileOffset offset) {
             break;  // EOF
         }
         totalBytes += bytesRead;
-        bytePtr += bytesRead;
+        bytePointer += bytesRead;
         currentOffset += bytesRead;
         count -= static_cast<size_t>(bytesRead);
     }
     return totalBytes;
 }
 
-int64_t pwrite_at(const File* file, const void* buf, size_t count, FileOffset offset) {
+int64_t pwrite_at(const File* file, const void* buffer, size_t count, FileOffset offset) {
     if (file == nullptr) {
         return -1;
     }
@@ -94,11 +94,11 @@ int64_t pwrite_at(const File* file, const void* buf, size_t count, FileOffset of
         return -1;
     }
     ssize_t totalBytes = 0;
-    const auto* bytePtr = static_cast<const char*>(buf);
+    const auto* bytePointer = static_cast<const char*>(buffer);
     int64_t currentOffset = offset.value;
     while (count > 0) {
-        ssize_t bytesWritten =
-            RetryInterruptedSystemCall([&]() { return ::pwrite(file->fd, bytePtr, count, currentOffset); });
+        ssize_t bytesWritten = RetryInterruptedSystemCall(
+            [&]() { return ::pwrite(file->fileDescriptor, bytePointer, count, currentOffset); });
         if (bytesWritten < 0) {
             return -1;
         }
@@ -106,7 +106,7 @@ int64_t pwrite_at(const File* file, const void* buf, size_t count, FileOffset of
             break;
         }
         totalBytes += bytesWritten;
-        bytePtr += bytesWritten;
+        bytePointer += bytesWritten;
         currentOffset += bytesWritten;
         count -= static_cast<size_t>(bytesWritten);
     }
@@ -118,20 +118,20 @@ void close_file(File* file) {
     if (!owned) {
         return;
     }
-    if (owned->fd >= 0) {
-        ::close(owned->fd);
+    if (owned->fileDescriptor >= 0) {
+        ::close(owned->fileDescriptor);
     }
 }
 
-void* big_alloc(size_t bytes) {
-    void* allocatedPtr = nullptr;
-    if (posix_memalign(&allocatedPtr, 4096, bytes) != 0) {
+void* big_allocate(size_t bytes) {
+    void* allocatedPointer = nullptr;
+    if (posix_memalign(&allocatedPointer, 4096, bytes) != 0) {
         return nullptr;
     }
-    return allocatedPtr;
+    return allocatedPointer;
 }
 
-void big_free(void* ptr, size_t /*bytes*/) { std::free(ptr); }
+void big_free(void* pointer, size_t /*bytes*/) { std::free(pointer); }
 
 uint32_t last_error() { return static_cast<uint32_t>(errno); }
 

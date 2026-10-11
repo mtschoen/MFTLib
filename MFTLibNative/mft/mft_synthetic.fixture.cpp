@@ -130,17 +130,17 @@ void BuildFixtureRecord(uint8_t* record, const FixtureRecordSpec& spec) {
         fileSize = spec.secondData.size;
     }
 
-    uint64_t allocSize = 0;
+    uint64_t allocatedSize = 0;
     if (spec.firstData.present) {
         if (useFirstDataAttribute) {
-            allocSize = spec.firstData.resident ? fileSize : ((fileSize + 4096ULL - 1ULL) & ~(4096ULL - 1ULL));
+            allocatedSize = spec.firstData.resident ? fileSize : ((fileSize + 4096ULL - 1ULL) & ~(4096ULL - 1ULL));
         } else if (spec.secondData.present) {
-            allocSize = (spec.secondData.size + 4096ULL - 1ULL) & ~(4096ULL - 1ULL);
+            allocatedSize = (spec.secondData.size + 4096ULL - 1ULL) & ~(4096ULL - 1ULL);
         }
     }
     const SyntheticMeta meta = {
-        modifiedTime, modifiedTime, modifiedTime,        modifiedTime,
-        fileSize,     allocSize,    spec.fileAttributes, (spec.headerFlags & kRecordDirectory) != 0U,
+        modifiedTime, modifiedTime,  modifiedTime,        modifiedTime,
+        fileSize,     allocatedSize, spec.fileAttributes, (spec.headerFlags & kRecordDirectory) != 0U,
     };
 
     uint8_t computedNameLength = (spec.name != nullptr) ? static_cast<uint8_t>(wcslen(spec.name)) : 0;
@@ -202,7 +202,7 @@ void BuildFreedFixtureRecords(uint8_t* buffer) {
 
 bool GenerateFixtureMFTImpl(const char* filePath) {
     const size_t fileSize = static_cast<size_t>(kFixtureRecordCount * kFixtureRecordSize);
-    auto* buffer = static_cast<uint8_t*>(ShouldFailAlloc() ? nullptr : mftlib::platform::big_alloc(fileSize));
+    auto* buffer = static_cast<uint8_t*>(ShouldFailAllocation() ? nullptr : mftlib::platform::big_allocate(fileSize));
     if (buffer == nullptr) {
         return false;
     }
