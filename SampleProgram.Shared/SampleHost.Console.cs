@@ -19,10 +19,20 @@ partial class SampleHost
     // An elevated relaunch writes to output.log and its window closes at once; the unelevated parent holds the window.
     bool _outputRedirectedToFile;
 
-    /// <summary>Runs the command line, then holds an attended, self-owned console window open until a key press.</summary>
+    /// <summary>Runs the command line, reports an escaping failure as one readable line, then holds an attended, self-owned console window open until a key press.</summary>
     internal int RunAndPause(string[] arguments)
     {
-        var exitCode = Run(arguments);
+        int exitCode;
+        try
+        {
+            exitCode = Run(arguments);
+        }
+        catch (Exception exception)
+        {
+            WriteFailure("Error: ", exception);
+            exitCode = 1;
+        }
+
         if (!_outputRedirectedToFile && !IsUnattended() && _ownsConsoleWindow())
         {
             _writeLine(PausePrompt);
@@ -30,6 +40,17 @@ partial class SampleHost
         }
 
         return exitCode;
+    }
+
+    // The type and message of the failure and of everything it wraps, one line each; no stack trace.
+    void WriteFailure(string prefix, Exception exception)
+    {
+        _writeLine($"{prefix}{exception.GetType().Name}: {exception.Message}");
+        IEnumerable<Exception> inner = exception is AggregateException aggregate ? aggregate.InnerExceptions : exception.InnerException is { } single ? [single] : [];
+        foreach (var cause in inner)
+        {
+            WriteFailure("  caused by ", cause);
+        }
     }
 
     // A console window launched from Explorer has this process alone attached; a shell run has the shell attached too.

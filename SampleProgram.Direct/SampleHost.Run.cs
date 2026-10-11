@@ -44,17 +44,6 @@ partial class SampleHost
         }
     }
 
-    // The type and message of the failure and of everything it wraps, one line each; no stack trace.
-    void WriteFailure(string prefix, Exception exception)
-    {
-        _writeLine($"{prefix}{exception.GetType().Name}: {exception.Message}");
-        IEnumerable<Exception> inner = exception is AggregateException aggregate ? aggregate.InnerExceptions : exception.InnerException is { } single ? [single] : [];
-        foreach (var cause in inner)
-        {
-            WriteFailure("  caused by ", cause);
-        }
-    }
-
     /// <summary>The scan options a local source gets: freed records are kept only when the query will show them.</summary>
     internal static BrokerScanOptions ScanOptions(DirectArguments parsed) => new() { IncludeFreed = parsed.IncludeFreed };
 

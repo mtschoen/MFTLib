@@ -255,6 +255,7 @@ Consumer migration for these removals: file-wizard `file-wizard/CliRunner.Databa
 - Added `BrokerTestHarness` tests exercising control requests, scans, watches, liveness, connection failures, and held writes through the public `MFTLibTestExtensions` surface.
 - Added volume-query tests for `QueryVolume`/`VolumeInfo` wire frames, host handling, the client volume query, `NtfsVolumeInformation.MftRecordCount`, and an admin-elevated live query.
 - MFTLib.Tests runs test classes in parallel (`[assembly: Parallelize]` with `ExecutionScope.ClassLevel` in `MSTestSettings.cs`); methods within a class stay sequential. A class that touches a process-global seam carries class-level `[DoNotParallelize]`, enforced by `NativeSeamIsolationTests` from compiled IL, and a test that asserts on a side effect of a finalizable object holds that object through the assertion (`docs/test-isolation.md`, [MFTLib#382](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/382))
+- Both samples report a verb that throws as one `Error: <type>: <message>` line (plus one `caused by` line per inner exception) and exit 1, and a double-clicked window still waits for a key press.
 
 ## 0.2.0
 
