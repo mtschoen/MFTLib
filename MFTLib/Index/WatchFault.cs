@@ -10,8 +10,7 @@ public enum WatchFaultKind
     Subscriber,
 
     /// <summary>
-    ///     The drive's own watch failed (its read threw <see cref="DriveWatchFaultException" />).
-    ///     The drive's watch has ended and its recovery has started: the drive reads
+    ///     The drive's own watch failed (its read threw the watch's drive failure). The drive's watch has ended and its recovery has started: the drive reads
     ///     <see cref="WatchCatchUpState.Recovering" /> while the index rescans it and then starts
     ///     its watch again from the new block's cursor.
     /// </summary>

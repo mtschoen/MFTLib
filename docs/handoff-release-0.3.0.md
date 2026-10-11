@@ -60,8 +60,9 @@ and depends on exactly MFTLib 0.3.0. Both symbol packages must exist.
 The default WSL prerequisite is `wsl -d Ubuntu-24.04`; direct invocation of
 `scripts/build-linux-native.ps1 -Distribution <name>` selects another distribution.
 `scripts/check-linux-native.sh` requires x86-64 ELF, no `__gcov` symbols, no RPATH
-or RUNPATH, and the exports `OpenMftDumpInput`, `ParseMftDumpInput` and
-`CloseMftDumpInput`; it prints the highest imported GLIBC and GLIBCXX versions.
+or RUNPATH, and the exports `OpenMftDumpInput`, `ParseMftDumpInput`,
+`CloseMftDumpInput`, `ParseMFTRecordsWithProgress`, `FreeMftResult` and
+`GetMftNativeAbiVersion`; it prints the highest imported GLIBC and GLIBCXX versions.
 See [Linux package](linux-package.md) for the build and package acceptance contract.
 
 ## Smoke checks

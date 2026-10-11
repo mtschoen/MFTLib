@@ -1,4 +1,4 @@
-This recipe is retired with the consumer bridges tracked by [file-wizard issue 288 (NuGet bridge retirement)](https://gitea.fleet.sticktoitive.net/schoen/file-wizard/issues/288) and [git-wizard issue 134 (NuGet bridge retirement)](https://gitea.fleet.sticktoitive.net/schoen/git-wizard/issues/134).
+This recipe will be retired with the consumer bridges tracked by [file-wizard issue 288 (NuGet bridge retirement)](https://gitea.fleet.sticktoitive.net/schoen/file-wizard/issues/288) and [git-wizard issue 134 (NuGet bridge retirement)](https://gitea.fleet.sticktoitive.net/schoen/git-wizard/issues/134); until then it is the current mechanism, documented below.
 
 # Consumer submodule and CI recipe
 

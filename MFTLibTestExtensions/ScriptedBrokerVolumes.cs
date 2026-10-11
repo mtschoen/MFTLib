@@ -3,8 +3,9 @@ using MFTLib;
 namespace MFTLibTestExtensions;
 
 /// <summary>
-///     The fake volumes an in-process broker serves. A null source refuses that operation, as the real
-///     host does.
+///     The fake volumes an in-process broker serves. A null ScanDrive, WatchDrive or
+///     GrowUsnJournal refuses that operation, as the real host does; a null ReadJournal answers
+///     "nothing new" from every cursor.
 /// </summary>
 public sealed record ScriptedBrokerVolumes
 {

@@ -1,5 +1,6 @@
 # Run native coverage with elevation (for USN journal tests that need admin).
-# Self-elevates if needed. The elevated process runs hidden and streams its output
+# Self-elevates if needed. The elevated process runs in a visible console window that
+# closes when it exits, and streams its output
 # to a log file as it goes; the visible parent prints new log lines and a heartbeat
 # while waiting, so a healthy long run is distinguishable from a hung one.
 #

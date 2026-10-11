@@ -3,7 +3,7 @@
 #
 # Fails unless the library is a 64-bit x86-64 ELF shared object built without coverage
 # instrumentation, carries no RPATH or RUNPATH, and exports the native entry points the managed
-# dump source calls. Prints the glibc and libstdc++ symbol versions it requires; those measured
+# sources call. Prints the glibc and libstdc++ symbol versions it requires; those measured
 # versions are the floor the package README states.
 set -eu
 set -o pipefail
@@ -39,7 +39,7 @@ if readelf -d "$LIBRARY" | grep -Eq '\((RPATH|RUNPATH)\)'; then
     exit 1
 fi
 
-for entry in OpenMftDumpInput ParseMftDumpInput CloseMftDumpInput; do
+for entry in OpenMftDumpInput ParseMftDumpInput CloseMftDumpInput ParseMFTRecordsWithProgress FreeMftResult GetMftNativeAbiVersion; do
     if ! grep -Eq " T $entry\$" <<<"$SYMBOLS"; then
         echo "error: the library does not export $entry." >&2
         exit 1

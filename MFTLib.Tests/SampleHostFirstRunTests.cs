@@ -97,6 +97,13 @@ public class SampleHostFirstRunTests
 
         Assert.AreEqual(childSucceeded ? 0 : 1, result);
         Assert.IsTrue(lines.Contains($"The elevated run writes its output to {Path.Combine(AppContext.BaseDirectory, "output.log")}"), string.Join(Environment.NewLine, lines));
+        if (!childSucceeded)
+        {
+            Assert.IsTrue(lines.Exists(line => line.Contains("THE ELEVATED RUN DID NOT COMPLETE SUCCESSFULLY", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
+            Assert.IsTrue(lines.Exists(line => line.Contains("If the elevated run started, its output is in", StringComparison.Ordinal) && line.Contains("output.log", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
+            Assert.IsFalse(lines.Exists(line => line.Contains("AUTOMATIC ELEVATION FAILED", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
+            Assert.IsFalse(lines.Exists(line => line.Contains("requires Administrative privileges", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
+        }
     }
 
     [TestMethod]

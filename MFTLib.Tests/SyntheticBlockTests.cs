@@ -38,22 +38,22 @@ public partial class SyntheticBlockTests
         _directories.Dispose();
     }
 
-    static SyntheticBlockOptions Options() => new() { JournalCursor = Cursor, CompletedUtc = Moment };
+    static SyntheticBlockOptions Options() => new() { JournalCursor = Cursor, Completed = Moment };
 
     static SyntheticRow[] SampleRows() =>
     [
-        new SyntheticRow(0, "$MFT", 0) { ModifiedUtc = Moment },
-        new SyntheticRow(5, ".", 5) { IsDirectory = true, ModifiedUtc = Moment },
-        new SyntheticRow(6, "docs", 5) { IsDirectory = true, ModifiedUtc = Moment },
+        new SyntheticRow(0, "$MFT", 0) { Modified = Moment },
+        new SyntheticRow(5, ".", 5) { IsDirectory = true, Modified = Moment },
+        new SyntheticRow(6, "docs", 5) { IsDirectory = true, Modified = Moment },
         new SyntheticRow(7, "report.txt", 6)
         {
             Size = 1234,
             Attributes = FileAttributes.ReadOnly | FileAttributes.Archive,
-            ModifiedUtc = Moment.AddHours(1),
+            Modified = Moment.AddHours(1),
             SequenceNumber = 9
         },
-        new SyntheticRow(8, "unsized.bin", 6) { Size = null, ModifiedUtc = Moment },
-        new SyntheticRow(9, "gone.tmp", 6) { IsTombstone = true, Size = 5, ModifiedUtc = Moment }
+        new SyntheticRow(8, "unsized.bin", 6) { Size = null, Modified = Moment },
+        new SyntheticRow(9, "gone.tmp", 6) { IsTombstone = true, Size = 5, Modified = Moment }
     ];
 
     string Seed(IEnumerable<SyntheticRow>? rows = null, SyntheticBlockOptions? options = null) =>
@@ -77,7 +77,7 @@ public partial class SyntheticBlockTests
         CacheTag = cacheTag
     };
 
-    static SyntheticMftProducer SampleProducer() => new(_ => SampleRows()) { JournalCursor = Cursor, CompletedUtc = Moment };
+    static SyntheticMftProducer SampleProducer() => new(_ => SampleRows()) { JournalCursor = Cursor, Completed = Moment };
 
     [TestMethod]
     public void MaximumPathDepth_IsTheDepthTheIndexResolves()
@@ -180,8 +180,8 @@ public partial class SyntheticBlockTests
         {
             Assert.AreEqual(10u, editor.RowCount);
             Assert.AreEqual("report.txt", editor.ReadRow(7).Name);
-            editor.WriteRow(new SyntheticRow(7, "renamed.txt", 6) { Size = 77, ModifiedUtc = Moment });
-            editor.WriteRow(new SyntheticRow(10, "added.txt", 6) { Size = 1, ModifiedUtc = Moment });
+            editor.WriteRow(new SyntheticRow(7, "renamed.txt", 6) { Size = 77, Modified = Moment });
+            editor.WriteRow(new SyntheticRow(10, "added.txt", 6) { Size = 1, Modified = Moment });
             editor.SetAttributes(6, FileAttributes.Hidden | FileAttributes.Directory);
         });
 
@@ -313,7 +313,7 @@ public partial class SyntheticBlockTests
         Assert.AreEqual(ProducerKind.Mft, header.ProducerKind);
         Assert.AreEqual(10u, header.RowCount, "the highest used slot plus one, tombstones included");
         Assert.AreEqual(tag, header.CacheTag);
-        Assert.AreEqual(Moment, header.CompletedUtc);
+        Assert.AreEqual(Moment, header.Completed);
     }
 
     [TestMethod]

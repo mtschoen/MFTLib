@@ -58,9 +58,7 @@ public partial class BenchmarkRunner
         return SaveAndCompareBaseline(output, outputPath, compareBaselinePath, Log);
     }
 
-    // Reports are written and threshold-compared only when the caller asks for it. An earlier
-    // revision did both unconditionally against tracked files, which made the exit code depend on
-    // a file the same run had just overwritten and made any smoke-sized run fail its own gate.
+    // Reports are written and threshold-compared only when the caller asks for it.
     static string? GetOptionValue(string[] arguments, string optionName)
     {
         for (var index = 0; index < arguments.Length - 1; index++)

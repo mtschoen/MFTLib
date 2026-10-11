@@ -6,7 +6,7 @@ name: aislop
 # Runs on Windows (not Linux like test.yml's other jobs): MFTLib.sln includes the
 # native MFTLibNative.vcxproj, which only loads/builds under MSBuild + MSVC, and
 # both jb inspectcode and roslynator load the full solution. lint.csharp.jbProjects
-# in .aislop/config.yml scopes jb inspection to the five C# projects so the C++
+# in .aislop/config.yml scopes jb inspection to the six C# projects so the C++
 # tree stays on its own clang-tidy/cppcheck gate.
 #
 # The C# engine lives ONLY in the personal fork gitea.fleet.sticktoitive.net/

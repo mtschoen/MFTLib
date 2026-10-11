@@ -5,7 +5,7 @@ namespace MFTLibTestExtensions;
 /// <summary>
 ///     A scripted stand-in for the live watch an index runs beside its scan: every start the index
 ///     requests is recorded and answered with a fresh <see cref="ScriptedDriveWatch" /> the test
-///     then drives. Starts can be made to fail, per drive or once, or held until a test releases them.
+///     then drives. A start fails when the <see cref="StartFailure" /> callback returns an exception.
 /// </summary>
 public sealed class ScriptedWatchSource : IIndexWatchSource
 {

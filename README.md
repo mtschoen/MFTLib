@@ -130,8 +130,8 @@ and `elevation-status`. Its `cache` verb uses policy-digest folders to keep diff
 scan policies in distinct sample cache directories.
 Launched with no arguments, `SampleProgram.Watch` scans and then watches every ready NTFS
 fixed drive, names the drives it chose, prints a running row count while it scans and prints
-each change until a key press (`--seconds N` sets a length instead; an unattended run
-watches for ten seconds). `scan-drive` is a single pass per drive. The exit code is 1 when
+each change until a key press (`--seconds N` sets a length instead; an unattended run that is
+elevated watches for ten seconds, and one that is not elevated exits 1 without watching). `scan-drive` is a single pass per drive. The exit code is 1 when
 any drive failed. Naming drives, for example `watch C D`, replaces the default set.
 `SampleProgram.Direct` with no arguments prints its usage. Both samples hold their console
 window open for a key press at exit when the process owns that window, so a double-click

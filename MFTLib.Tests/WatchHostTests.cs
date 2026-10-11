@@ -90,7 +90,8 @@ public class WatchHostTests
 
         var result = scanner.Run(["C"]);
         Assert.AreEqual(1, result);
-        Assert.IsTrue(lines.Any(line => line.Contains("AUTOMATIC ELEVATION FAILED")));
+        Assert.IsTrue(lines.Any(line => line.Contains("THE ELEVATED RUN DID NOT COMPLETE SUCCESSFULLY")));
+        Assert.IsFalse(lines.Any(line => line.Contains("AUTOMATIC ELEVATION FAILED")));
     }
 
     // --- Run: elevated paths ---

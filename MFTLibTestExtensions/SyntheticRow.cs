@@ -30,7 +30,7 @@ public sealed record SyntheticRow(uint Row, string Name, uint ParentRow)
     public long? Size { get; init; } = 0;
 
     /// <summary>The last write time. Only its UTC ticks are stored.</summary>
-    public DateTime ModifiedUtc { get; init; }
+    public DateTime Modified { get; init; }
 
     /// <summary>The NTFS record sequence number, or zero.</summary>
     public ushort SequenceNumber { get; init; }

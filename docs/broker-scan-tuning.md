@@ -35,8 +35,8 @@ processor count divided by `n`, with the remainder assigned in admission order.
 Whenever a scan starts, finishes, or is cancelled, the host rebalances every
 running scan's `ParseThreadAllowance`.
 
-The native parser reads its current allowance at the start of every MFT chunk
-and before path resolution. A chunk already in progress finishes with the count
+The native parser reads its current allowance at the start of every MFT chunk.
+A chunk already in progress finishes with the count
 it started with, so admission can make the total briefly exceed the processor
 count for at most one chunk. Callers do not choose a thread count:
 `BrokerScanOptions`, `MftBlockProduceRequest`, and the broker wire request carry

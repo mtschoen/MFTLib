@@ -47,8 +47,9 @@ unelevated console prints that path before it starts the elevated run, and the e
 
 Watch with no arguments is `watch` over every ready NTFS fixed drive: it prints which drives it chose, scans each with a
 running row count (a line each 250000 rows within a scan phase), then prints changes until a key press. `--seconds N`
-replaces the key press with a fixed length, and an unattended run, or one whose input is redirected, watches for ten
-seconds. `scan-drive` makes one pass per listed drive and returns. Any drive that failed makes the exit code 1.
+replaces the key press with a fixed length, and a run that is watching stops on its own after ten
+seconds when it is unattended or its input is redirected. An unattended run that is not elevated
+exits 1 without watching, as the Unattended section below describes. `scan-drive` makes one pass per listed drive and returns. Any drive that failed makes the exit code 1.
 
 ## Unattended: the owner said to proceed autonomously, or nobody is at the desktop
 

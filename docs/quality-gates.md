@@ -2,7 +2,7 @@
 
 ## CI
 
-Gitea Actions workflow at `.gitea/workflows/test.yml` defines four jobs on every PR and on push to `main` or to a `pr-crew/merge-train/**` branch (the merge train validates a batch there before landing it): `windows`, `linux`, `docs`, and `linux-package`. The coverage jobs (`windows` and `linux`) run their respective coverage scripts (`scripts/run-coverage.ps1 -NonInteractive` and `scripts/coverage-linux.sh`). Branch protection on `main` requires both `(pull_request)` checks to pass before merge.
+Gitea Actions workflow at `.gitea/workflows/test.yml` defines four jobs on every PR and on push to `main` or to a `pr-crew/merge-train/**` branch (the merge train validates a batch there before landing it): `windows`, `linux`, `docs`, and `linux-package`. The coverage jobs (`windows` and `linux`) run their respective coverage scripts (`scripts/run-coverage.ps1 -NonInteractive` and `scripts/coverage-linux.sh`). Branch protection on `main` requires the `test / windows`, `test / linux`, `test / linux-package` and `aislop / quality-gate` `(pull_request)` checks to pass before merge; the `test / docs (pull_request)` check runs on every pull request but is not a required check.
 
 The `windows`, `linux`, and `linux-package` jobs each begin with a changed-files detection step (`skip_build`). When every changed path is `.aislop/fork-commit`, under `docs/`, or a top-level markdown file (`*.md` at the repository root, including `AGENTS.md`), these three jobs skip their compilation, test, and packaging steps and finish green. Any detection error or unhandled diff fails open and runs the jobs in full. Workflow-level `paths` or `paths-ignore` filters are avoided because they leave required status checks pending permanently on Gitea (issue 36895).
 
@@ -10,7 +10,7 @@ The `docs` job always runs without an early exit. Running on the Linux fleet run
 
 The `windows` job also runs the post-clean init verification (`git clean -ffxd`, `init.ps1` twice, `init.bat`, `init.ps1 -Build`, and a clean-tree check after each) described in [checkout maintenance](checkout-maintenance.md). It runs only on the push to `main`: each of those steps is guarded by `github.event_name == 'push' && github.ref == 'refs/heads/main'` (plus the skip-build check), never by workflow-level `paths`, which leaves a required check pending on Gitea (issue 36895). The steps stay in the same job and checkout, after the build and tests, because the first `git clean -ffxd` plus `git status --porcelain` assertion detects a build or test that modified a tracked file. A pull request therefore never proves the clean-tree invariant; the merge to `main` does.
 
-The `linux-package` job builds the Release linux-x64 library, runs `scripts/check-linux-native.sh` on it and smoke-tests the packed library through `scripts/smoke-package-linux.sh`; the release rebuilds the library in WSL, since Gitea lists no CI artifact over REST ([Linux package](linux-package.md)). Add `test / linux-package (pull_request)` to the branch protection checks when the job has run once.
+The `linux-package` job builds the Release linux-x64 library, runs `scripts/check-linux-native.sh` on it and smoke-tests the packed library through `scripts/smoke-package-linux.sh`; the release rebuilds the library in WSL, since Gitea lists no CI artifact over REST ([Linux package](linux-package.md)).
 
 Windows jobs run on the host-mode `windows-latest` runner, where toolchains are provisioned on the host: no `actions/setup-*` step belongs in a job that runs on it (`microsoft/setup-msbuild` only locates MSBuild and is allowed). The Linux jobs run in the fleet runner image `gitea.fleet.sticktoitive.net/schoen/runner-images:latest`, which bakes cmake, ninja, gcovr and the .NET SDK 10.0 and inherits g++, gcov and make from its base: they install no tools and use no `actions/setup-dotnet` step.
 
@@ -43,7 +43,7 @@ things to keep in rough sync. Call the installed binary directly - do NOT use
 It runs on **windows-latest**, not Linux like the rest of the fleet: `MFTLib.sln`
 includes the native `MFTLibNative.vcxproj`, which only loads/builds under
 MSBuild + MSVC, and both jb inspectcode and roslynator load the full solution.
-`lint.csharp.jbProjects` in `.aislop/config.yml` scopes jb inspection to the five
+`lint.csharp.jbProjects` in `.aislop/config.yml` scopes jb inspection to the six
 C# projects so the C++ tree stays on its own clang-tidy/cppcheck gate. The
 workflow installs `aislop` by cloning the `schoen/aislop` fork from Gitea at the
 commit pinned in `.aislop/fork-commit` (built with `pnpm`) and runs it via `node`.
@@ -51,9 +51,9 @@ It deliberately does NOT use `actions/setup-node`
 (its 7zr extraction dies with exit code 2 on the host-mode act_runner). The
 build step calls `scripts/build-windows.ps1`, the same Windows recipe used by coverage and `init.ps1 -Build`. The shared script requires amd64 MSBuild; a 32-bit binary cannot resolve legacy SYSTEM-profile checkout paths. See the traps in
 `~/schoen-lab/packages/local_ci/docs/project-ci-setup.md`. `aislop / quality-gate
-(pull_request)` is one of the required status checks in the branch protection
+(pull_request)` is one of the four required status checks in the branch protection
 rule on `main`, alongside `test / windows (pull_request)`, `test / linux (pull_request)` and `test / linux-package (pull_request)`, so a failing gate
-blocks the merge.
+blocks the merge. The `test / docs (pull_request)` check runs on every pull request but is not a required check.
 
 The global pin is a commit-ish, not a version. Do not assume a tag: the `v0.14.1`
 tag and the commit currently installed both report version `0.14.1` but are

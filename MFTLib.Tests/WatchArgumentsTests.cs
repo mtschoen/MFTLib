@@ -86,6 +86,13 @@ public class WatchArgumentsTests
         }
     }
 
+    [TestMethod]
+    public void Usage_QualifiesTheUnattendedDefaultAsElevated()
+    {
+        StringAssert.Contains(WatchArguments.Usage, $"an unattended elevated one for {WatchArguments.DefaultSeconds} seconds");
+        StringAssert.Contains(WatchArguments.Usage, "an unattended run that is not elevated exits 1 without watching");
+    }
+
     [DataTestMethod]
     [DataRow("watch", "Watch")]
     [DataRow("rescan", "Rescan")]

@@ -79,7 +79,7 @@ MFTLibTestExtensions.SyntheticBlock :: method public static Edit(string blockPat
 MFTLibTestExtensions.SyntheticBlock :: method public static WriteCached(string cacheDirectory, char driveLetter, uint volumeSerial, MFTLibTestExtensions.SyntheticBlockOptions options, System.Collections.Generic.IEnumerable<MFTLibTestExtensions.SyntheticRow> rows) : string
 MFTLibTestExtensions.SyntheticBlock :: property public static MaximumPathDepth { get; } : int
 MFTLibTestExtensions.SyntheticBlock :: type public static class
-MFTLibTestExtensions.SyntheticBlockEditor :: method public Complete(System.DateTime completedUtc) : void
+MFTLibTestExtensions.SyntheticBlockEditor :: method public Complete(System.DateTime completed) : void
 MFTLibTestExtensions.SyntheticBlockEditor :: method public CorruptNamePool() : void
 MFTLibTestExtensions.SyntheticBlockEditor :: method public MarkCompactionNeeded() : void
 MFTLibTestExtensions.SyntheticBlockEditor :: method public MarkSizesUnknown(System.Func<MFTLibTestExtensions.SyntheticRow, bool> matches) : int
@@ -96,7 +96,7 @@ MFTLibTestExtensions.SyntheticBlockOptions :: method public override ToString() 
 MFTLibTestExtensions.SyntheticBlockOptions :: method public static op_Equality(MFTLibTestExtensions.SyntheticBlockOptions? left, MFTLibTestExtensions.SyntheticBlockOptions? right) : bool
 MFTLibTestExtensions.SyntheticBlockOptions :: method public static op_Inequality(MFTLibTestExtensions.SyntheticBlockOptions? left, MFTLibTestExtensions.SyntheticBlockOptions? right) : bool
 MFTLibTestExtensions.SyntheticBlockOptions :: property public CacheTag { get; init; } : MFTLib.Index.CacheTag
-MFTLibTestExtensions.SyntheticBlockOptions :: property public CompletedUtc { get; init; } : System.DateTime
+MFTLibTestExtensions.SyntheticBlockOptions :: property public Completed { get; init; } : System.DateTime
 MFTLibTestExtensions.SyntheticBlockOptions :: property public JournalCursor { get; init; } : MFTLibTestExtensions.SyntheticJournalCursor
 MFTLibTestExtensions.SyntheticBlockOptions :: property public ProducerKind { get; init; } : MFTLib.Index.ProducerKind
 MFTLibTestExtensions.SyntheticBlockOptions :: property public RootRow { get; init; } : uint
@@ -106,9 +106,9 @@ MFTLibTestExtensions.SyntheticCacheTag :: method public static GetVersion(MFTLib
 MFTLibTestExtensions.SyntheticCacheTag :: type public static class
 MFTLibTestExtensions.SyntheticCheckpointLoss :: method public static WithJournalPositions(MFTLib.Index.JournalCheckpointLoss report, long checkpointUsn, long firstUsn, long nextUsn) : MFTLib.Index.JournalCheckpointLoss
 MFTLibTestExtensions.SyntheticCheckpointLoss :: type public static class
-MFTLibTestExtensions.SyntheticDriveHeader :: constructor public (MFTLib.Index.ProducerKind ProducerKind, uint RowCount, MFTLib.Index.CacheTag CacheTag, System.DateTime CompletedUtc)
+MFTLibTestExtensions.SyntheticDriveHeader :: constructor public (MFTLib.Index.ProducerKind ProducerKind, uint RowCount, MFTLib.Index.CacheTag CacheTag, System.DateTime Completed)
 MFTLibTestExtensions.SyntheticDriveHeader :: method public <Clone>$() : MFTLibTestExtensions.SyntheticDriveHeader
-MFTLibTestExtensions.SyntheticDriveHeader :: method public Deconstruct(out MFTLib.Index.ProducerKind ProducerKind, out uint RowCount, out MFTLib.Index.CacheTag CacheTag, out System.DateTime CompletedUtc) : void
+MFTLibTestExtensions.SyntheticDriveHeader :: method public Deconstruct(out MFTLib.Index.ProducerKind ProducerKind, out uint RowCount, out MFTLib.Index.CacheTag CacheTag, out System.DateTime Completed) : void
 MFTLibTestExtensions.SyntheticDriveHeader :: method public Equals(MFTLibTestExtensions.SyntheticDriveHeader? other) : bool
 MFTLibTestExtensions.SyntheticDriveHeader :: method public override Equals(object? obj) : bool
 MFTLibTestExtensions.SyntheticDriveHeader :: method public override GetHashCode() : int
@@ -116,7 +116,7 @@ MFTLibTestExtensions.SyntheticDriveHeader :: method public override ToString() :
 MFTLibTestExtensions.SyntheticDriveHeader :: method public static op_Equality(MFTLibTestExtensions.SyntheticDriveHeader? left, MFTLibTestExtensions.SyntheticDriveHeader? right) : bool
 MFTLibTestExtensions.SyntheticDriveHeader :: method public static op_Inequality(MFTLibTestExtensions.SyntheticDriveHeader? left, MFTLibTestExtensions.SyntheticDriveHeader? right) : bool
 MFTLibTestExtensions.SyntheticDriveHeader :: property public CacheTag { get; init; } : MFTLib.Index.CacheTag
-MFTLibTestExtensions.SyntheticDriveHeader :: property public CompletedUtc { get; init; } : System.DateTime
+MFTLibTestExtensions.SyntheticDriveHeader :: property public Completed { get; init; } : System.DateTime
 MFTLibTestExtensions.SyntheticDriveHeader :: property public ProducerKind { get; init; } : MFTLib.Index.ProducerKind
 MFTLibTestExtensions.SyntheticDriveHeader :: property public RowCount { get; init; } : uint
 MFTLibTestExtensions.SyntheticDriveHeader :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticDriveHeader>
@@ -194,7 +194,7 @@ MFTLibTestExtensions.SyntheticJournalWindow :: type public readonly struct : Sys
 MFTLibTestExtensions.SyntheticMftProducer :: constructor public (System.Func<char, System.Collections.Generic.IEnumerable<MFTLibTestExtensions.SyntheticRow>> rowsForDrive)
 MFTLibTestExtensions.SyntheticMftProducer :: property public BeforeProduceAsync { get; set; } : System.Func<char, System.Threading.CancellationToken, System.Threading.Tasks.Task>?
 MFTLibTestExtensions.SyntheticMftProducer :: property public CatchUpLoss { get; set; } : System.Func<char, MFTLib.Index.JournalCheckpointLoss?>?
-MFTLibTestExtensions.SyntheticMftProducer :: property public CompletedUtc { get; set; } : System.DateTime
+MFTLibTestExtensions.SyntheticMftProducer :: property public Completed { get; set; } : System.DateTime
 MFTLibTestExtensions.SyntheticMftProducer :: property public JournalCursor { get; set; } : MFTLibTestExtensions.SyntheticJournalCursor
 MFTLibTestExtensions.SyntheticMftProducer :: type public sealed class
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockDeletionResult(MFTLib.Index.CachedBlockFile file, MFTLib.Index.CachedBlockDeletionOutcome outcome, string? failureReason) : MFTLib.Index.CachedBlockDeletionResult
@@ -222,7 +222,7 @@ MFTLibTestExtensions.SyntheticRow :: property public Attributes { get; init; } :
 MFTLibTestExtensions.SyntheticRow :: property public IsDirectory { get; init; } : bool
 MFTLibTestExtensions.SyntheticRow :: property public IsFree { get; init; } : bool
 MFTLibTestExtensions.SyntheticRow :: property public IsTombstone { get; init; } : bool
-MFTLibTestExtensions.SyntheticRow :: property public ModifiedUtc { get; init; } : System.DateTime
+MFTLibTestExtensions.SyntheticRow :: property public Modified { get; init; } : System.DateTime
 MFTLibTestExtensions.SyntheticRow :: property public Name { get; init; } : string
 MFTLibTestExtensions.SyntheticRow :: property public ParentRow { get; init; } : uint
 MFTLibTestExtensions.SyntheticRow :: property public Row { get; init; } : uint

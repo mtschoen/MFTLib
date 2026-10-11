@@ -75,10 +75,26 @@ partial class SampleHost
             {
                 return 0;
             }
+
+            PrintElevatedRunIncomplete();
+            return 1;
         }
 
         PrintElevationFailure(arguments);
         return 1;
+    }
+
+    // A false result from the confirmed relaunch covers both "no elevated child ran" (the launch
+    // failed, or the UAC prompt was cancelled) and "the child ran but did not finish successfully"
+    // (a nonzero exit, or it exceeded ElevationUtilities.DefaultElevatedTimeout). The notice says
+    // the run did not complete successfully and names the announced log as where its output lies
+    // if a run started.
+    void PrintElevatedRunIncomplete()
+    {
+        _writeLine("------------------------------------------------------------------");
+        _writeLine("THE ELEVATED RUN DID NOT COMPLETE SUCCESSFULLY.");
+        _writeLine($"If the elevated run started, its output is in {OutputLogPath}");
+        _writeLine("------------------------------------------------------------------");
     }
 
     /// <summary>

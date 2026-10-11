@@ -12,8 +12,12 @@ public enum JournalCheckpointLossDetection
     /// <summary>
     ///     Found while opening the drive, checking a cached block's checkpoint before adopting
     ///     it. The rescan this explains has already happened, so there is nothing to do about
-    ///     the drive itself: the report is the standing explanation of why this session
-    ///     cold-scanned, and of the journal size that would have avoided it.
+    ///     the drive itself, unless the open was cache-only
+    ///     (<see cref="FileIndexOptions.InitialOpenCacheOnly" />): that open never scans, adopts the
+    ///     block anyway, and refuses the drive's watch start until
+    ///     <see cref="FileIndex.RescanAsync(char, CancellationToken)" />. Otherwise the report is
+    ///     the standing explanation of why this session cold-scanned, and of the journal size
+    ///     that would have avoided it.
     /// </summary>
     DriveOpening,
 

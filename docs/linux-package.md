@@ -12,9 +12,10 @@ The Release library built by `scripts/build-linux.sh`, never the coverage build 
 no older build container, no static libstdc++. `scripts/check-linux-native.sh <library>` is the
 acceptance check. It fails unless the library is a 64-bit x86-64 ELF shared object, shows no
 `__gcov` symbol in `nm -D`, carries no RPATH or RUNPATH, and exports `OpenMftDumpInput`,
-`ParseMftDumpInput` and `CloseMftDumpInput`. It prints the highest `GLIBC_` and `GLIBCXX_` symbol
+`ParseMftDumpInput`, `CloseMftDumpInput`, `ParseMFTRecordsWithProgress`, `FreeMftResult` and
+`GetMftNativeAbiVersion`. It prints the highest `GLIBC_` and `GLIBCXX_` symbol
 version the library imports (`objdump -T`); those printed values are the floor the package README
-states. Measured at the base of this slice: glibc 2.33 and GLIBCXX_3.4.22. Update the README
+states. The current floors are glibc 2.33 and GLIBCXX_3.4.22, as this check prints them. Update the README
 sentence when the check prints different values.
 
 ## How a release gets the library

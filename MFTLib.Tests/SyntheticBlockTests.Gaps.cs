@@ -13,9 +13,9 @@ public partial class SyntheticBlockTests
 {
     static SyntheticRow[] EnumerationRows() =>
     [
-        new SyntheticRow(0, "root", 0) { IsDirectory = true, ModifiedUtc = Moment },
-        new SyntheticRow(1, "keep.txt", 0) { Size = 10, ModifiedUtc = Moment },
-        new SyntheticRow(2, "zebra.txt", 0) { Size = 20, ModifiedUtc = Moment }
+        new SyntheticRow(0, "root", 0) { IsDirectory = true, Modified = Moment },
+        new SyntheticRow(1, "keep.txt", 0) { Size = 10, Modified = Moment },
+        new SyntheticRow(2, "zebra.txt", 0) { Size = 20, Modified = Moment }
     ];
 
     string SeedEnumerationBlock() =>
@@ -90,7 +90,7 @@ public partial class SyntheticBlockTests
         Assert.AreEqual(3, marked);
         var rows = SyntheticBlock.ReadRows(path, Serial).ToDictionary(row => row.Name);
         Assert.IsNull(rows["report.txt"].Size);
-        Assert.AreEqual(Moment.AddHours(1), rows["report.txt"].ModifiedUtc, "only the size changes");
+        Assert.AreEqual(Moment.AddHours(1), rows["report.txt"].Modified, "only the size changes");
         Assert.AreEqual(FileAttributes.ReadOnly | FileAttributes.Archive, rows["report.txt"].Attributes);
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
         Assert.IsFalse(index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)).Single().IsSizeKnown);
@@ -139,14 +139,14 @@ public partial class SyntheticBlockTests
     public async Task Complete_WithTheStoredTimestamp_LeavesTheScanTimestampUnchanged()
     {
         var path = Seed();
-        var stored = SyntheticBlock.ReadHeader(path, Serial).CompletedUtc;
+        var stored = SyntheticBlock.ReadHeader(path, Serial).Completed;
         SyntheticBlock.Edit(path, Serial, editor =>
         {
             editor.MarkSizeUnknown(7);
             editor.Complete(stored);
         });
 
-        Assert.AreEqual(Moment, SyntheticBlock.ReadHeader(path, Serial).CompletedUtc);
+        Assert.AreEqual(Moment, SyntheticBlock.ReadHeader(path, Serial).Completed);
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
         Assert.AreEqual(Moment, index.Drives.Single().Block.ScanTimestamp);
     }

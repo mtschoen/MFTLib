@@ -32,7 +32,7 @@ public sealed record CachedBlockFile
     /// <summary>Distinguishes two volumes mounted at one letter over time; parsed from the file name.</summary>
     public uint VolumeSerial { get; init; }
 
-    /// <summary>Where the block file lives; pass it to the cache-directory operations that take a block path.</summary>
+    /// <summary>Where the block file lives.</summary>
     public string Path { get; init; }
 
     /// <summary>The on-disk length at enumeration time, which a concurrent writer may since have changed.</summary>

@@ -113,8 +113,7 @@ public partial class BenchmarkRunner
 
     internal Func<string, string> _readAllText = File.ReadAllText;
 
-    // Parses a dump at the volume scan's chunk size, the chunk size this benchmark has always
-    // measured, rather than the dump entry's own 64 MiB default.
+    // Parses a dump at the volume scan's chunk size rather than the dump entry's own 64 MiB default.
     static MftResult ParseDump(string path)
     {
         using var input = MftDumpInput.Open(path);

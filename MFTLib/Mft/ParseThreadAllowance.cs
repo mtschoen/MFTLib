@@ -1,8 +1,8 @@
 namespace MFTLib;
 
 /// <summary>
-///     The number of threads an MFT parse may use. The parser reads it at the start of every chunk
-///     and again before path resolution, so a change made while a parse runs takes effect at the next
+///     The number of threads an MFT parse may use. The parser reads it at the start of every chunk,
+///     so a change made while a parse runs takes effect at the next
 ///     of those points; a chunk already in progress finishes with the count it started with. The
 ///     parser never uses more threads than the machine has processors.
 ///     One allowance attaches to one running parse at a time: passing it to a parse while another

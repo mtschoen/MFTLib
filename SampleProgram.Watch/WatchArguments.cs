@@ -23,8 +23,9 @@ internal sealed partial record WatchArguments(ProgramMode Mode, IReadOnlyList<st
     internal static string Usage =>
         "Usage: SampleProgram.Watch [mode] [drive ...] [--directories-only | --keep-name A,B]" + Environment.NewLine +
         "  modes: " + string.Join(", ", ProgramModes.Names.Keys) + " (default watch); with no drive, every ready NTFS fixed drive" + Environment.NewLine +
-        "  watch [--seconds N]  (without --seconds an attended watch runs until a key press, an unattended one for " + DefaultSeconds + " seconds)" + Environment.NewLine +
-        "  journal [--maximum-size B --allocation-delta B]  cache [--cache-directory D] [--clear]  (each scan policy caches under D/policy-DIGEST)";
+        "  watch [--seconds N] [--cache-directory D]  (without --seconds an attended watch runs until a key press, an unattended elevated one for " + DefaultSeconds + " seconds; an unattended run that is not elevated exits 1 without watching)" + Environment.NewLine +
+        "  rescan [--cache-directory D]  journal [--cache-directory D] [--maximum-size B --allocation-delta B]  cache [--cache-directory D] [--clear]" + Environment.NewLine +
+        "  (each scan policy caches under D/policy-DIGEST; scan-drive accepts and ignores --cache-directory)";
 
     // The flags each mode reads; any other flag on the command line is a usage error rather than silently ignored.
     static readonly Dictionary<ProgramMode, string[]> ModeFlags = new()

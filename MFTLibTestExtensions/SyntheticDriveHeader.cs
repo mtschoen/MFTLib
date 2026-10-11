@@ -10,9 +10,9 @@ namespace MFTLibTestExtensions;
 /// <param name="ProducerKind">Which producer built the block.</param>
 /// <param name="RowCount">The block's highest used slot plus one, free slots and deleted files included.</param>
 /// <param name="CacheTag">The consumer cache identity stored in the header.</param>
-/// <param name="CompletedUtc">The scan timestamp stored in the header, which <see cref="SyntheticBlockEditor.Complete" /> can write back unchanged.</param>
+/// <param name="Completed">The scan timestamp stored in the header, which <see cref="SyntheticBlockEditor.Complete" /> can write back unchanged.</param>
 public sealed record SyntheticDriveHeader(ProducerKind ProducerKind, uint RowCount, CacheTag CacheTag,
-    DateTime CompletedUtc)
+    DateTime Completed)
 {
     internal static SyntheticDriveHeader From(BlockFile block)
     {

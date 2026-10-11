@@ -28,7 +28,7 @@ internal sealed partial record DirectArguments(DirectVerb Verb, string Drive)
         "               [--min-size N] [--max-size N] [--after D] [--before D] [--stream] [--limit N] [--include-freed]",
         "  tree DRIVE [--path P] [--depth N]    open DRIVE --path P    largest DRIVE [--count N] [--under P]",
         "  duplicate-names DRIVE [--count N]    scan DRIVE",
-        "  --source, --dump-file and --include-freed apply to every verb; any other flag a verb does not list is refused.");
+        "  --source and --dump-file apply to every verb; --include-freed applies to every verb but is a parse error with --source dump; any other flag a verb does not list is refused.");
 
     // The flags every verb reads (the source and the scan it asks for), and the ones each verb adds.
     static readonly string[] CommonFlags = ["--source", "--dump-file", "--include-freed"];

@@ -111,11 +111,11 @@ public sealed class SyntheticBlockEditor
     }
 
     /// <summary>Replaces the scan timestamp and flushes the block.</summary>
-    /// <param name="completedUtc">The new scan timestamp; <see cref="SyntheticDriveHeader.CompletedUtc" /> from <see cref="SyntheticIndexInspection.ReadHeader" /> writes the stored one back.</param>
-    public void Complete(DateTime completedUtc)
+    /// <param name="completed">The new scan timestamp; <see cref="SyntheticDriveHeader.Completed" /> from <see cref="SyntheticIndexInspection.ReadHeader" /> writes the stored one back.</param>
+    public void Complete(DateTime completed)
     {
         EnsureOpen();
-        _writer.Complete(completedUtc, null);
+        _writer.Complete(completed, null);
     }
 
     /// <summary>

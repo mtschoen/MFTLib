@@ -10,7 +10,7 @@ namespace MFTLibTestExtensions;
 /// </summary>
 public static class SyntheticBlock
 {
-    /// <summary>The deepest path the index resolves. A parent chain longer than this is cut off, so a test of that limit builds a chain one row longer.</summary>
+    /// <summary>The deepest path the index resolves. A parent chain longer than this makes path resolution throw <see cref="InvalidDataException" />, so a test of that limit builds a chain one row longer.</summary>
     public static int MaximumPathDepth => BlockLayout.MaximumPathDepth;
 
     /// <summary>The file an index looks for when it warm-starts a drive, so a seeded block is adopted only at this path.</summary>
@@ -136,7 +136,7 @@ public static class SyntheticBlock
             }
 
             writer.SetJournalCursor(options.JournalCursor.JournalIdentifier, options.JournalCursor.NextUsn);
-            writer.Complete(options.CompletedUtc, null);
+            writer.Complete(options.Completed, null);
             return block;
         }
         catch
@@ -165,7 +165,7 @@ public static class SyntheticBlock
         }
 
         var columns = new RowColumns(row.ParentRow, flags, (uint)row.Attributes, row.Size ?? 0,
-            row.ModifiedUtc.Ticks, row.SequenceNumber);
+            row.Modified.Ticks, row.SequenceNumber);
         if (!writer.TryWriteRow(row.Row, row.Name, columns))
         {
             throw new InvalidOperationException(
@@ -182,7 +182,7 @@ public static class SyntheticBlock
             IsTombstone = stored.IsDeleted,
             Attributes = (FileAttributes)stored.Attributes,
             Size = stored.SizeKnown ? stored.Size : null,
-            ModifiedUtc = stored.ModifiedUtc,
+            Modified = stored.ModifiedUtc,
             SequenceNumber = block.SequenceNumbers[(int)row]
         };
     }

@@ -4,7 +4,7 @@ namespace MFTLib.Index;
 public enum IndexScanPhase
 {
     /// <summary>
-    ///     Emitted by <see cref="EnumerationProducer" /> while walking managed filesystem directories.
+    ///     Emitted by the enumeration producer while walking managed filesystem directories.
     /// </summary>
     Enumerating,
 
