@@ -397,9 +397,19 @@ public class SampleHostElevationNoticeTests
     {
         var events = new List<string>();
         var delayedCaller = new TaskCompletionSource();
-        var clock = new CallerGatedClock(Environment.CurrentManagedThreadId, delayedCaller);
+        var clock = new FakeTimeProvider();
         var scanner = Scanner(new List<string>(), events, []);
         scanner._timeProvider = clock;
+        var beepCount = 0;
+        scanner._messageBeep = _ =>
+        {
+            if (++beepCount > 1)
+            {
+                delayedCaller.Task.Wait();
+            }
+
+            return true;
+        };
         scanner._dialogScheduler = new AfterRunScheduler(() =>
         {
             clock.Advance(TimeSpan.FromMinutes(10));
@@ -409,6 +419,61 @@ public class SampleHostElevationNoticeTests
         scanner._messageBox = (_, _, _, _) =>
         {
             events.Add("dialog");
+            var answer = answers.Dequeue();
+            clock.Advance(TimeSpan.FromSeconds(answer.Seconds));
+            return answer.Result;
+        };
+
+        var result = scanner.Run(["scan", "C"]);
+
+        Assert.AreEqual(0, result);
+        CollectionAssert.AreEqual(new[] { "dialog", "dialog", "elevate" }, events);
+    }
+
+    [DataTestMethod]
+    [DataRow(SampleHost.MessageBoxResultOk)]
+    [DataRow(SampleHost.MessageBoxResultCancel)]
+    public void Run_NotElevated_ImmediateAnswerThenForcedCallerDelayAtNextBeep_IsStillAccidentalAndShownAgain(int button)
+    {
+        var events = new List<string>();
+        var delayedCaller = new TaskCompletionSource();
+        var callerReachedNextBeep = new TaskCompletionSource();
+        var callerWaitingOnDelayedCaller = new TaskCompletionSource();
+        var secondDialogStarted = new TaskCompletionSource();
+        var hookFinishedAdvance = new TaskCompletionSource();
+        var clock = new FakeTimeProvider();
+        var scanner = Scanner(new List<string>(), events, []);
+        scanner._timeProvider = clock;
+        var beepCount = 0;
+        scanner._messageBeep = _ =>
+        {
+            if (++beepCount > 1)
+            {
+                callerReachedNextBeep.TrySetResult();
+                callerWaitingOnDelayedCaller.TrySetResult();
+                delayedCaller.Task.Wait();
+            }
+
+            return true;
+        };
+        scanner._dialogScheduler = new AfterRunScheduler(() =>
+        {
+            callerReachedNextBeep.Task.Wait();
+            Task.WaitAny(callerWaitingOnDelayedCaller.Task, secondDialogStarted.Task);
+            clock.Advance(TimeSpan.FromMinutes(10));
+            delayedCaller.TrySetResult();
+            hookFinishedAdvance.TrySetResult();
+        });
+        var answers = new Queue<(int Result, double Seconds)>([(button, 0), (SampleHost.MessageBoxResultOk, 3)]);
+        scanner._messageBox = (_, _, _, _) =>
+        {
+            events.Add("dialog");
+            if (events.Count == 2)
+            {
+                secondDialogStarted.TrySetResult();
+                hookFinishedAdvance.Task.Wait();
+            }
+
             var answer = answers.Dequeue();
             clock.Advance(TimeSpan.FromSeconds(answer.Seconds));
             return answer.Result;
@@ -449,22 +514,6 @@ public class SampleHostElevationNoticeTests
 
         CollectionAssert.AreEqual(new[] { "dialog" }, atTimeoutEvents);
         CollectionAssert.AreEqual(new[] { "dialog", "elevate" }, earlierEvents);
-    }
-
-    // Reading the time on the caller's thread waits for the release, which comes only after the dialog thread has
-    // finished and the clock has moved on, so a caller that reads the clock would see the delayed time.
-    sealed class CallerGatedClock(int callerThread, TaskCompletionSource release) : FakeTimeProvider
-    {
-        public override DateTimeOffset GetUtcNow()
-        {
-            if (Environment.CurrentManagedThreadId == callerThread)
-            {
-                // Blocks only a caller that reads the clock, which is the behavior under test.
-                release.Task.Wait();
-            }
-
-            return base.GetUtcNow();
-        }
     }
 
     // Runs each queued task on a new thread, then a hook once the task has completed.
