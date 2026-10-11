@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using Benchmark;
 using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -9,6 +10,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 [TestClass]
+[SupportedOSPlatform("windows")]
 [DoNotParallelize] // changes Environment.CurrentDirectory and PATH, which every concurrently running test class shares
 public class BenchmarkRunnerTests
 {

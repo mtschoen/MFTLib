@@ -1,10 +1,12 @@
 using System.Management;
+using System.Runtime.Versioning;
 using Benchmark;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
 [TestClass]
+[SupportedOSPlatform("windows")]
 public class SystemInfoTests
 {
     // --- DefaultGetBuildConfiguration ---

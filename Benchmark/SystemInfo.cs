@@ -3,8 +3,6 @@ using System.Management;
 
 namespace Benchmark;
 
-#pragma warning disable CA1416 // Validate platform compatibility - Benchmark is Windows-only
-
 class SystemInfo
 {
     internal Func<string> _getBuildConfiguration = DefaultGetBuildConfiguration;

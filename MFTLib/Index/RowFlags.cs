@@ -1,12 +1,9 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace MFTLib.Index;
 
 /// <summary>
 ///     Per-row state packed into the 16-bit row flags field.
 /// </summary>
 [Flags]
-[SuppressMessage("Naming", "CA1711", Justification = "Flags suffix is conventional here; renaming breaks consumers.")]
 internal enum RowFlags : ushort
 {
     /// <summary>No per-row state is set.</summary>

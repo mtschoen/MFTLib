@@ -87,7 +87,7 @@ if (Test-Path $coberturaOutput) {
 if ($HtmlReport) {
     $htmlOutput = Join-Path $solutionRoot "native-coverage-html"
     Write-Host "`n=== Generating HTML report ===" -ForegroundColor Cyan
-    dotnet tool run reportgenerator -- "-reports:$coberturaOutput" "-targetdir:$htmlOutput" "-reporttypes:Html" "-filefilters:+*dllmain.cpp" 2>$null
+    dotnet tool run reportgenerator -- "-reports:$coberturaOutput" "-targetdir:$htmlOutput" "-reporttypes:Html" 2>$null
     if ($LASTEXITCODE -eq 0) {
         Write-Host "HTML report: $htmlOutput\index.html"
     } else {

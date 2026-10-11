@@ -88,7 +88,3 @@ exclude:
   - "**/Debug/**"
   - "**/Release/**"
   - "x64/**"
-  - "build/**"
-  - "**/*.Designer.cs"
-  - "**/*.g.cs"
-  - "MFTLibNative/build/**"

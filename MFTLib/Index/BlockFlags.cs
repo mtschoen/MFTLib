@@ -1,5 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace MFTLib.Index;
 
 /// <summary>
@@ -8,7 +6,6 @@ namespace MFTLib.Index;
 ///     <see cref="CompactionNeeded" /> means a mutation could not fit and the block needs a rescan.
 /// </summary>
 [Flags]
-[SuppressMessage("Naming", "CA1711", Justification = "Flags suffix is conventional here; renaming breaks consumers.")]
 internal enum BlockFlags : uint
 {
     /// <summary>No header-level state is set.</summary>

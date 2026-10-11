@@ -143,14 +143,9 @@ dotnet_naming_rule.parameters_locals_camel.symbols = parameters_locals
 dotnet_naming_rule.parameters_locals_camel.style = camel_case
 dotnet_naming_rule.parameters_locals_camel.severity = warning
 
-# ReSharper inspection overrides
-# ClassCannotBeInstantiated: known false positive on partial classes whose
-# private constructor + static factory method live in a different partial file.
-# https://www.jetbrains.com/help/resharper/ClassCannotBeInstantiated.html
+# ClassCannotBeInstantiated: false positive on the partial classes FileIndex (MFTLib/Index/FileIndex.*.cs),
+# MftVolume (MFTLib/Journal/MftVolume.*.cs) and WatchCatchUpState, whose constructor lives in a different partial file.
 resharper_class_cannot_be_instantiated_highlighting = none
-
-# CheckNamespace: the flat MFTLib namespace is deliberate public API design.
-resharper_check_namespace_highlighting = none
 
 #### Per-project relaxations ####
 # Test project: CA1707 (underscores in member names) is the NUnit
@@ -160,10 +155,3 @@ resharper_check_namespace_highlighting = none
 [MFTLib.Tests/**.cs]
 dotnet_diagnostic.CA1707.severity = none
 dotnet_diagnostic.CA1861.severity = none
-
-# These public members are consumed by file-wizard and git-wizard.
-[MFTLib/Journal/UsnReason.cs]
-resharper_unused_member_global_highlighting = none
-
-[MFTLib/Broker/SharedMemory/IMmfWriter.cs]
-resharper_unused_member_in_super_global_highlighting = none

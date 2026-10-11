@@ -1,3 +1,5 @@
+# Disabled checks: modernize-use-trailing-return-type is a style the tree does not use;
+# readability-magic-numbers fires on every ABI constant and record layout size, where the literal is the specification.
 Checks: >
   clang-diagnostic-*,
   clang-analyzer-*,
