@@ -56,7 +56,7 @@ public class FileIndexWatchRescanCheckpointLossTests
         var lostDrive = harness.DriveFor('U');
         Assert.AreEqual(uFault.Exception.Message, lostDrive.Watch.FailureMessage);
         Assert.AreEqual(lostBefore, lostDrive.Watch.CheckpointLoss);
-        Assert.AreEqual(WatchCatchUpState.Recovering, lostDrive.Watch.CatchUpState, "U's recovery is still held");
+        Assert.AreEqual(WatchState.Recovering, lostDrive.Watch.State, "U's recovery is still held");
         Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
 
         // U's own fault is still outstanding, so its stop reports it.

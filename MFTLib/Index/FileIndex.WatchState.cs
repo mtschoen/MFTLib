@@ -3,10 +3,11 @@ namespace MFTLib.Index;
 public sealed partial class FileIndex
 {
     /// <summary>
-    ///     Raised once for every change of a drive's <see cref="DriveWatchStatus.CatchUpState" />, with
-    ///     the drive's new state and its new <see cref="DriveWatchStatus.StateVersion" />: a start,
+    ///     Raised once for every change of a drive's <see cref="DriveWatchStatus.State" />, with
+    ///     the drive's <see cref="DriveStatus.Watch" /> after the change, whose
+    ///     <see cref="DriveWatchStatus.StateVersion" /> is the change's version: a start,
     ///     a catch-up, a fault, a recovery being queued, finishing (the restarted watch reads
-    ///     <see cref="WatchCatchUpState.CatchingUp" />, then <see cref="WatchCatchUpState.CaughtUp" />)
+    ///     <see cref="WatchState.CatchingUp" />, then <see cref="WatchState.CaughtUp" />)
     ///     or failing, a rescan retiring and replacing the watch, a lost catch-up, a refused start,
     ///     a stop, and disposal. Every version of a drive is delivered exactly once, after the change
     ///     is visible in <see cref="Drives" />, by a thread that changed the drive's state: a drive's
@@ -22,7 +23,7 @@ public sealed partial class FileIndex
     ///         changes can be delivered concurrently. A handler must therefore not block waiting for
     ///         another change of the same drive. A consumer that also reads <see cref="Drives" />,
     ///         for example to seed a subscription made after the index opened, applies an event only
-    ///         when its <see cref="DriveWatchState.StateVersion" /> is larger than the last one it applied
+    ///         when its <see cref="DriveWatchStatus.StateVersion" /> is larger than the last one it applied
     ///         for that drive, since its read can be newer than an event still being delivered. A
     ///         decision a consumer tagged with a version is superseded by any event of the same drive
     ///         with a larger one, which is how it orders its own publication against a fault that
@@ -34,19 +35,19 @@ public sealed partial class FileIndex
     ///         thrown by handlers are discarded, and every subscriber still receives every change.
     ///     </para>
     /// </summary>
-    public event Action<DriveWatchState>? WatchStateChanged;
+    public event Action<WatchStateChange>? WatchStateChanged;
 
     /// <summary>
     ///     The one place a drive's watch state change is recorded: derives the drive's state, and
     ///     when it differs from the state last noted, bumps the drive's version and queues the
     ///     change, with the fault that caused it, for <see cref="RaiseWatchStateChanged" />. Every
-    ///     section that changes an input of <see cref="GetWatchCatchUpStateLocked" /> calls this
+    ///     section that changes an input of <see cref="GetWatchStateLocked" /> calls this
     ///     before it releases the lock; a call that finds no change does nothing. The caller holds
     ///     <see cref="_stateLock" />.
     /// </summary>
     void NoteWatchStateLocked(DriveRuntime runtime, WatchFault? cause = null)
     {
-        var state = GetWatchCatchUpStateLocked(runtime.DriveLetter);
+        var state = GetWatchStateLocked(runtime.DriveLetter);
         if (state == runtime.NotedWatchState)
         {
             return;
@@ -55,8 +56,31 @@ public sealed partial class FileIndex
         runtime.NotedWatchState = state;
         runtime.WatchStateVersion++;
         (runtime.PendingWatchStates ??= []).Add(
-            new DriveWatchState(runtime.DriveLetter, state, runtime.WatchStateVersion, cause));
+            new WatchStateChange(runtime.DriveLetter, DescribeWatchLocked(runtime), cause));
     }
+
+    /// <summary>
+    ///     The one builder of a drive's <see cref="DriveWatchStatus" />, shared by
+    ///     <see cref="Drives" /> and the changes <see cref="WatchStateChanged" /> delivers. A change is
+    ///     only ever noted for a drive with a block: a watch is requested only against a block,
+    ///     and blocks are never removed. The caller holds <see cref="_stateLock" />.
+    /// </summary>
+    DriveWatchStatus DescribeWatchLocked(DriveRuntime runtime) =>
+        DescribeWatchLocked(runtime,
+            _driveBlocks.First(driveBlock => char.ToUpperInvariant(driveBlock.DriveLetter) == runtime.DriveLetter));
+
+    DriveWatchStatus DescribeWatchLocked(DriveRuntime runtime, DriveBlock driveBlock) =>
+        new()
+        {
+            Supported = driveBlock.ProducerKind == ProducerKind.Mft && WatchSourceOrNull is not null,
+            Requested = runtime.WatchRequested,
+            State = GetWatchStateLocked(driveBlock.DriveLetter),
+            StateVersion = runtime.WatchStateVersion,
+            FailureMessage = _watchFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
+            ConsecutiveLostCatchUps = runtime.ConsecutiveLostCatchUps,
+            RecoveryStopped = runtime.RecoveryStopped,
+            CheckpointLoss = _checkpointLossesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal)
+        };
 
     /// <summary>
     ///     Delivers the drive's noted changes to every subscriber, in version order, isolating
@@ -78,7 +102,7 @@ public sealed partial class FileIndex
 
         try
         {
-            List<DriveWatchState>? pending;
+            List<WatchStateChange>? pending;
             lock (_stateLock)
             {
                 pending = runtime.PendingWatchStates;
@@ -96,7 +120,7 @@ public sealed partial class FileIndex
                 {
                     try
                     {
-                        Deliver((Action<DriveWatchState>)handler, change);
+                        Deliver((Action<WatchStateChange>)handler, change);
                     }
                     catch (Exception exception)
                     {

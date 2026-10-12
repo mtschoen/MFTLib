@@ -11,7 +11,7 @@ public enum WatchFaultKind
 
     /// <summary>
     ///     The drive's own watch failed (its read threw the watch's drive failure). The drive's watch has ended and its recovery has started: the drive reads
-    ///     <see cref="WatchCatchUpState.Recovering" /> while the index rescans it and then starts
+    ///     <see cref="WatchState.Recovering" /> while the index rescans it and then starts
     ///     its watch again from the new block's cursor.
     /// </summary>
     Drive,
@@ -42,7 +42,7 @@ public enum WatchFaultKind
     /// <summary>
     ///     The recovery of a faulted drive did not restore its watch: its scan or its restart
     ///     failed, or the restarted watch failed before it first caught up (the exception is then
-    ///     that watch's own failure). The drive stays <see cref="WatchCatchUpState.Faulted" />, with
+    ///     that watch's own failure). The drive stays <see cref="WatchState.Faulted" />, with
     ///     no further automatic recovery, until <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> or
     ///     <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" /> is called for it.
     /// </summary>

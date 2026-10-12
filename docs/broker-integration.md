@@ -316,7 +316,7 @@ index.WatchFaulted += fault =>
         drive => drive.DriveLetter == fault.DriveLetter);
 
     Console.Error.WriteLine(
-        $"Drive {fault.DriveLetter}: {fault.Kind}, {status.Watch.CatchUpState}, " +
+        $"Drive {fault.DriveLetter}: {fault.Kind}, {status.Watch.State}, " +
         $"automatic recovery: {fault.IsRecovering}");
 };
 ```
@@ -337,8 +337,8 @@ Subscriber fault still leaves the watch running.
 | Drive watch fault | The host reported an error on that drive's watch. `FileIndex` publishes `WatchFaultKind.Drive`, changes the drive to `Recovering`, and rescans it automatically. Observe the recovery rather than starting a competing lifecycle operation. |
 | `JournalCatchUpLostException` | A scan completed, but the journal proved that the cursor armed before it had become unreadable. `WatchFaultKind.CatchUpLost` reports every attempt. Automatic retries stop when `RecoveryStopped` is true. Grow the journal when appropriate, then rescan; a successful rescan starts the watch if it is requested. |
 | `WatchFaultKind.RescanRestart` | A rescan replaced the block but could not start its watch. The scan returns success. The exception and `DriveWatchStatus.FailureMessage` identify the rescan; the inner exception is the start failure. No automatic recovery starts. A consumer start or rescan retries it, and stop rethrows the fault once. |
-| `WatchCatchUpState.Recovering` | A drive or apply fault is being recovered, or a lost catch-up is being retried. Queries still use the current complete block, which may be behind the volume. |
-| `WatchCatchUpState.Faulted` | Recovery did not restore the watch, a channel was lost, a start was refused, or the catch-up loss limit was reached. Inspect `DriveWatchStatus.FailureMessage` and the fault exception. Call `RescanAsync` or `StartWatchingAsync` after the triggering condition is fixed. An unresumable block must be rescanned first. |
+| `WatchState.Recovering` | A drive or apply fault is being recovered, or a lost catch-up is being retried. Queries still use the current complete block, which may be behind the volume. |
+| `WatchState.Faulted` | Recovery did not restore the watch, a channel was lost, a start was refused, or the catch-up loss limit was reached. Inspect `DriveWatchStatus.FailureMessage` and the fault exception. Call `RescanAsync` or `StartWatchingAsync` after the triggering condition is fixed. An unresumable block must be rescanned first. |
 
 `WatchFaultKind.Apply` follows the same automatic recovery path as
 `WatchFaultKind.Drive`. If the replacement watch faults before it first reaches
@@ -352,44 +352,44 @@ restarting the watch and reports the stopped watch instance's outstanding fault
 once.
 
 To follow a drive's state without polling `Drives`, subscribe to
-`WatchStateChanged`. It delivers every change of a drive's `DriveWatchStatus.CatchUpState` once,
-with that drive's next `DriveWatchStatus.StateVersion`, before the `WatchFaulted` of the
-fault that caused it (`DriveWatchState.Fault`). A finished automatic recovery is
+`WatchStateChanged`. It delivers every change of a drive's `DriveWatchStatus.State` once, as a
+`WatchStateChange` whose `Watch` is the drive's `DriveWatchStatus` with its next
+`StateVersion`, before the `WatchFaulted` of the fault that caused it
+(`WatchStateChange.Fault`). A finished automatic recovery is
 `Recovering`, then `CatchingUp` when the restarted watch registers, then
 `CaughtUp`. One drive's changes arrive in version order, but a read of `Drives`
 can be newer than an event still being delivered, so keep the last version
-applied per drive, seed it from `Drives` (which reads the state and the version
+applied per drive, seed it from `Drives[i].Watch` (which reads the state and the version
 together), and drop older events:
 
 ```csharp
 var gate = new Lock();
 var applied = new Dictionary<char, long>();
-void ApplyWatchState(DriveWatchState state)
+void ApplyWatchState(char driveLetter, DriveWatchStatus watch)
 {
     // The check and the publication share one lock, so an older event
     // delivered concurrently can never publish after a newer one.
     lock (gate)
     {
-        if (applied.TryGetValue(state.DriveLetter, out var version) && version >= state.StateVersion)
+        if (applied.TryGetValue(driveLetter, out var version) && version >= watch.StateVersion)
         {
             return;
         }
 
-        applied[state.DriveLetter] = state.StateVersion;
-        Publish(state.DriveLetter, state.CatchUpState);
+        applied[driveLetter] = watch.StateVersion;
+        Publish(driveLetter, watch.State);
     }
 }
-index.WatchStateChanged += ApplyWatchState;
+index.WatchStateChanged += change => ApplyWatchState(change.DriveLetter, change.Watch);
 foreach (var status in index.Drives)
 {
-    ApplyWatchState(status.ToWatchState());
+    ApplyWatchState(status.DriveLetter, status.Watch);
 }
 ```
 
-Subscribe first, then seed through the same version check. `ToWatchState()` uses
-the captured snapshot's drive, catch-up state and exact version (including zero),
-without reading the index again. Its `Fault` is null because the snapshot does not
-retain the event fault; failure text is not converted into an exception.
+Subscribe first, then seed through the same version check. A seeded snapshot
+carries the drive's exact version, including zero. `WatchStateChange.Fault` is
+set only on events; a snapshot retains failure text in `Watch.FailureMessage`.
 
 A decision a consumer tags with the version it read, such as "this drive is
 ready", is superseded by any later event of that drive, including a fault that

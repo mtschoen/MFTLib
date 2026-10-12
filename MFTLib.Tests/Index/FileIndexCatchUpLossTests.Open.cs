@@ -29,7 +29,7 @@ public partial class FileIndexCatchUpLossTests
         Assert.AreEqual(0, drive.Watch.ConsecutiveLostCatchUps);
         Assert.IsFalse(drive.Watch.RecoveryStopped);
         Assert.AreEqual(StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss, "the retry keeps the report the loss produced");
-        Assert.AreEqual(WatchCatchUpState.NotStarted, drive.Watch.CatchUpState);
+        Assert.AreEqual(WatchState.NotStarted, drive.Watch.State);
         CollectionAssert.AreEqual(new[] { LossScriptedCache.CanonicalBlockName }, cache.BlockFileNames());
         await index.StartWatchingAsync('T', Token);
         Assert.AreEqual(1, cache.Source.TargetsFor('T').Count, "the retried block is resumable");
@@ -51,7 +51,7 @@ public partial class FileIndexCatchUpLossTests
         Assert.AreEqual(3, drive.Watch.ConsecutiveLostCatchUps);
         Assert.IsTrue(drive.Watch.RecoveryStopped, "exhaustion is visible before open completes");
         Assert.AreEqual(StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss);
-        Assert.AreEqual(WatchCatchUpState.Faulted, drive.Watch.CatchUpState);
+        Assert.AreEqual(WatchState.Faulted, drive.Watch.State);
         StringAssert.Contains(drive.Watch.FailureMessage, "12288");
         CollectionAssert.AreEqual(new[] { LossScriptedCache.CanonicalBlockName }, cache.BlockFileNames());
         var refusal = await ThrowsAsync<InvalidOperationException>(() => index.StartWatchingAsync('T', Token));

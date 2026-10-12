@@ -96,7 +96,7 @@ public class FileIndexMidSessionCheckpointLossTests
 
         var drive = harness.DriveFor('T');
         Assert.IsNotNull(drive.Watch.FailureMessage, "the watch still reports that it died");
-        Assert.AreEqual(WatchCatchUpState.Recovering, drive.Watch.CatchUpState);
+        Assert.AreEqual(WatchState.Recovering, drive.Watch.State);
 
         var loss = drive.Watch.CheckpointLoss;
         Assert.IsNotNull(loss);

@@ -182,9 +182,9 @@ public sealed partial class FileIndex
 
     /// <summary>
     ///     Publishes what a lost catch-up means for the drive before its fault is raised. Below the
-    ///     limit a watched drive reads <see cref="WatchCatchUpState.Recovering" /> while the next
+    ///     limit a watched drive reads <see cref="WatchState.Recovering" /> while the next
     ///     scan runs. At the limit the drive's watch is refused with the exception as its failure,
-    ///     so it reads <see cref="WatchCatchUpState.Faulted" /> with the exception's message.
+    ///     so it reads <see cref="WatchState.Faulted" /> with the exception's message.
     /// </summary>
     JournalCatchUpLostException RecordLostCatchUp(DriveRuntime runtime, JournalCheckpointLoss catchUpLoss,
         int consecutiveLostCatchUps)

@@ -1,15 +1,14 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     Where one drive's live watch stands in draining the journal backlog that was present when
-///     the drive's current watch started. It is derived in this order: <see cref="Recovering" />
-///     while the index rebuilds a watched drive's block; otherwise the current watch's own state;
-///     otherwise <see cref="Faulted" /> when the drive's last start or restart failed or was
-///     refused; otherwise <see cref="CatchingUp" /> while the watch is requested and its
-///     replacement has not started yet (a rescan retired the old one); otherwise
+///     Where one drive's live watch stands. It is derived in this order:
+///     <see cref="Recovering" /> while the index rebuilds a watched drive's block; otherwise the
+///     current watch's own state; otherwise <see cref="Faulted" /> when the drive's last start or
+///     restart failed or was refused; otherwise <see cref="CatchingUp" /> while the watch is
+///     requested and its replacement has not started yet (a rescan retired the old one); otherwise
 ///     <see cref="NotStarted" />.
 /// </summary>
-public enum WatchCatchUpState
+public enum WatchState
 {
     /// <summary>
     ///     The drive's watch is not requested and no start of it failed: it was never started, or
@@ -70,7 +69,7 @@ public sealed partial class FileIndex
             Waiter = waiter ?? new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         }
 
-        public WatchCatchUpState State { get; private set; } = WatchCatchUpState.CatchingUp;
+        public WatchState State { get; private set; } = WatchState.CatchingUp;
 
         /// <summary>
         ///     Completes once per instance: with the catch-up, with the drive's watch failure, or
@@ -82,12 +81,12 @@ public sealed partial class FileIndex
 
         public void Complete()
         {
-            if (State != WatchCatchUpState.CatchingUp)
+            if (State != WatchState.CatchingUp)
             {
                 return;
             }
 
-            State = WatchCatchUpState.CaughtUp;
+            State = WatchState.CaughtUp;
             Waiter.TrySetResult();
         }
 
@@ -115,7 +114,7 @@ public sealed partial class FileIndex
         /// </summary>
         public TaskCompletionSource MarkFaulted(Exception exception)
         {
-            State = WatchCatchUpState.Faulted;
+            State = WatchState.Faulted;
             _fault = exception;
             if (Waiter.Task.IsCompleted)
             {

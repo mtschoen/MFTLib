@@ -398,17 +398,7 @@ public sealed partial class FileIndex : IAsyncDisposable
                 SkippedRecordCount = _skippedRecordCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
                 AccessDeniedSubtreeCount = _accessDeniedSubtreeCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal)
             },
-            Watch = new DriveWatchStatus
-            {
-                Supported = driveBlock.ProducerKind == ProducerKind.Mft && WatchSourceOrNull is not null,
-                Requested = runtime.WatchRequested,
-                CatchUpState = GetWatchCatchUpStateLocked(driveBlock.DriveLetter),
-                StateVersion = runtime.WatchStateVersion,
-                FailureMessage = _watchFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-                ConsecutiveLostCatchUps = runtime.ConsecutiveLostCatchUps,
-                RecoveryStopped = runtime.RecoveryStopped,
-                CheckpointLoss = _checkpointLossesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal)
-            }
+            Watch = DescribeWatchLocked(runtime, driveBlock)
         };
     }
 

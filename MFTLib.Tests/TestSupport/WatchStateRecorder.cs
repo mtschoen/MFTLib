@@ -22,7 +22,7 @@ internal sealed class WatchStateRecorder
         index.WatchFaulted += Record;
     }
 
-    /// <summary>Every recorded <see cref="DriveWatchState" /> and <see cref="WatchFault" />, in order.</summary>
+    /// <summary>Every recorded <see cref="WatchStateChange" /> and <see cref="WatchFault" />, in order.</summary>
     public IReadOnlyList<object> Events
     {
         get
@@ -38,13 +38,13 @@ internal sealed class WatchStateRecorder
     public IReadOnlyList<object> EventsFor(char driveLetter) => [.. Events.Where(item => DriveOf(item) == driveLetter)];
 
     /// <summary>The drive's recorded states, in order.</summary>
-    public IReadOnlyList<DriveWatchState> StatesFor(char driveLetter) =>
-        [.. EventsFor(driveLetter).OfType<DriveWatchState>()];
+    public IReadOnlyList<WatchStateChange> StatesFor(char driveLetter) =>
+        [.. EventsFor(driveLetter).OfType<WatchStateChange>()];
 
     /// <summary>Completes with the first state of the drive, recorded or future, that <paramref name="match" /> accepts.</summary>
-    public async Task<DriveWatchState> WaitForStateAsync(char driveLetter, Func<DriveWatchState, bool> match) =>
-        (DriveWatchState)await WaitForAsync(item =>
-            item is DriveWatchState state && state.DriveLetter == driveLetter && match(state));
+    public async Task<WatchStateChange> WaitForStateAsync(char driveLetter, Func<WatchStateChange, bool> match) =>
+        (WatchStateChange)await WaitForAsync(item =>
+            item is WatchStateChange state && state.DriveLetter == driveLetter && match(state));
 
     /// <summary>Completes with the first fault of <paramref name="kind" /> on the drive that this recorder has seen.</summary>
     public async Task<WatchFault> WaitForFaultAsync(WatchFaultKind kind, char driveLetter) =>
@@ -52,7 +52,7 @@ internal sealed class WatchStateRecorder
             item is WatchFault fault && fault.Kind == kind && fault.DriveLetter == driveLetter);
 
     static char DriveOf(object item) =>
-        item is DriveWatchState state ? state.DriveLetter : ((WatchFault)item).DriveLetter;
+        item is WatchStateChange state ? state.DriveLetter : ((WatchFault)item).DriveLetter;
 
     Task<object> WaitForAsync(Func<object, bool> match)
     {
@@ -91,7 +91,7 @@ internal sealed class WatchStateRecorder
         }
     }
 
-    void Record(DriveWatchState state) => Record((object)state);
+    void Record(WatchStateChange state) => Record((object)state);
 
     void Record(WatchFault fault) => Record((object)fault);
 }

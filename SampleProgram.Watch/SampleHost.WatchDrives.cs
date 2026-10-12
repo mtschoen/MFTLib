@@ -95,7 +95,7 @@ partial class SampleHost
     DriveChangeCounter ReportChanges(FileIndex index)
     {
         var counter = new DriveChangeCounter();
-        index.WatchStateChanged += state => _writeLine($"  watch {state.DriveLetter}: {state.CatchUpState} (version {state.StateVersion}){(state.Fault is { } fault ? $", fault {fault.Kind}" : string.Empty)}");
+        index.WatchStateChanged += state => _writeLine($"  watch {state.DriveLetter}: {state.Watch.State} (version {state.Watch.StateVersion}){(state.Fault is { } fault ? $", fault {fault.Kind}" : string.Empty)}");
         index.WatchFaulted += fault => _writeLine($"  watch fault {fault.DriveLetter}: {fault.Kind}: {fault.Exception.Message}{(fault.Exception is JournalCatchUpLostException lost ? $" (recovery stopped: {lost.RecoveryStopped})" : string.Empty)}");
         index.Changed += change =>
         {

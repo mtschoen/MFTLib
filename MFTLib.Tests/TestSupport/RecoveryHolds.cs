@@ -5,7 +5,7 @@ namespace MFTLib.Tests.TestSupport;
 /// <summary>
 ///     For tests whose subject is a watch fault's own bookkeeping rather than the recovery it
 ///     queues (spec 2.6.5): the drive's recovery stays queued, so the drive keeps its faulted
-///     instance and reads <see cref="WatchCatchUpState.Recovering" />.
+///     instance and reads <see cref="WatchState.Recovering" />.
 /// </summary>
 internal static class RecoveryHolds
 {

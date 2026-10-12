@@ -102,9 +102,9 @@ public class BrokerIndexWatchSourceFaultTests
         Assert.IsInstanceOfType<BrokerChannelLostException>(fault.Exception);
         Assert.AreEqual('T', ((BrokerChannelLostException)fault.Exception).DriveLetter);
         Assert.AreEqual(1, harness.Faults.Count);
-        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').Watch.CatchUpState);
+        Assert.AreEqual(WatchState.Faulted, harness.DriveFor('T').Watch.State);
         Assert.IsNotNull(harness.DriveFor('T').Watch.FailureMessage);
-        Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('U').Watch.CatchUpState);
+        Assert.AreEqual(WatchState.CaughtUp, harness.DriveFor('U').Watch.State);
         Assert.IsNull(harness.DriveFor('U').Watch.FailureMessage);
         Assert.IsFalse(broker.Process.Ended.IsCompleted, "one lost drive channel does not end the process");
     }

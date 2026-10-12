@@ -29,7 +29,7 @@ public class FileIndexWatchCatchUpLinkedWaitTests
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         await wait.WaitAsync(ScriptedWatchSource.HangGuard);
 
-        Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('T').Watch.CatchUpState);
+        Assert.AreEqual(WatchState.CaughtUp, harness.DriveFor('T').Watch.State);
         await harness.Index.StopWatchingAsync('T', Token);
     }
 

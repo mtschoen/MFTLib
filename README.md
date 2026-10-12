@@ -297,7 +297,7 @@ the report and the refusal. The refused start retains the watch request, so the
 successful rescan starts the watch from the fresh cursor.
 
 A loss found mid-session sits alongside `Watch.FailureMessage` and
-`Watch.CatchUpState`. It answers the question those two cannot: the watch did not
+`Watch.State`. It answers the question those two cannot: the watch did not
 merely stop, the journal moved past where it had reached. `Drive` and `Apply`
 faults recover by rescanning automatically; `Channel` faults do not. A scan-time
 loss records `JournalCheckpointLossDetection.ScanCatchUp`, publishes the complete
@@ -318,20 +318,19 @@ It is true for Drive and Apply, and for CatchUpLost carrying a
 false, including Subscriber faults whose watches continue running. The value describes
 that notification, not subsequent watch health.
 
-To seed a late subscriber's watch-state view, convert an already captured status:
+`FileIndex.WatchStateChanged` delivers a `WatchStateChange` whose `Watch` is the same
+`DriveWatchStatus` that `DriveStatus.Watch` reports, so a late subscriber seeds its
+watch-state view straight from `index.Drives`:
 
 ```csharp
 foreach (var drive in index.Drives)
 {
-    DriveWatchState state = drive.ToWatchState();
-    Console.WriteLine($"Drive {state.DriveLetter}: {state.CatchUpState}, version {state.StateVersion}");
+    Console.WriteLine($"Drive {drive.DriveLetter}: {drive.Watch.State}, version {drive.Watch.StateVersion}");
 }
 ```
 
-`ToWatchState()` preserves the drive, catch-up state and exact version without
-rereading the index. Its `Fault` is null because a snapshot retains failure text,
-not an event fault. Subscribe before reading `Drives` and merge snapshots and
-events through the same per-drive version check, as shown in the
+Subscribe before reading `Drives` and merge snapshots and events through the same
+per-drive version check, as shown in the
 [broker integration guide](docs/broker-integration.md#5-handle-faults-and-recovery).
 
 **In a fault handler, branch on `DetectedDuring`, not on the loss being
@@ -563,7 +562,7 @@ until automatic recovery is exhausted, and settles `Ready`
 with its last block unresumable if every attempt lost it. `OpenAsync` raises no
 `WatchFaulted` event because the caller cannot subscribe before it returns; inspect
 `DriveWatchStatus.RecoveryStopped`, `CheckpointLoss`, `FailureMessage`, and
-`CatchUpState` instead. The drive's watch is refused until a manual `RescanAsync`
+`State` instead. The drive's watch is refused until a manual `RescanAsync`
 produces a resumable block. The refusal retains the watch request, so a successful
 rescan clears the refusal and starts the watch.
 
@@ -666,7 +665,7 @@ with the native error message. Common causes include:
 - `Subscriber`: a `Changed` handler threw. The drive keeps watching, and this is announced
   once for that drive's current watch.
 - `Drive` or `Apply`: the watch or batch application failed. The drive publishes
-  `WatchCatchUpState.Recovering` before the event, rescans itself, and starts a fresh watch
+  `WatchState.Recovering` before the event, rescans itself, and starts a fresh watch
   from the replacement block.
 - `CatchUpLost`: a scan completed, but the journal no longer held the cursor armed before
   it. The exception is `JournalCatchUpLostException`; the drive records a
@@ -680,7 +679,7 @@ with the native error message. Common causes include:
   inner exception is the start failure. The drive stays `Faulted` without automatic recovery
   until a consumer starts or rescans it. Stop rethrows this fault once.
 - `Recovery`: an automatic recovery scan or restart failed, or its restarted watch failed before
-  reaching `WatchCatchUpState.CaughtUp`. The drive stays `Faulted` until the consumer calls
+  reaching `WatchState.CaughtUp`. The drive stays `Faulted` until the consumer calls
   `RescanAsync` or `StartWatchingAsync` for that drive.
 
 A bounded catch-up read that returns entries without advancing its cursor fails that
@@ -697,7 +696,7 @@ index.WatchFaulted += fault =>
         case WatchFaultKind.Drive:
         case WatchFaultKind.Apply:
             Console.WriteLine(
-                $"Drive {fault.DriveLetter}: {status.Watch.CatchUpState == WatchCatchUpState.Recovering}");
+                $"Drive {fault.DriveLetter}: {status.Watch.State == WatchState.Recovering}");
             break;
 
         case WatchFaultKind.CatchUpLost
@@ -728,11 +727,11 @@ catch-up. Queries can lag until the new watch reports `CaughtUp`.
 
 During automatic recovery, a catch-up wait faults immediately with the fault that started
 the recovery. To observe the replacement watch reaching `CaughtUp`, subscribe to
-`FileIndex.WatchStateChanged`: it reports every change of a drive's `DriveWatchStatus.CatchUpState` with the
-drive's next `DriveWatchStatus.StateVersion`, before the `WatchFaulted` of the fault that
+`FileIndex.WatchStateChanged`: it reports every change of a drive's `DriveWatchStatus.State` as a `WatchStateChange`
+whose `Watch` carries the drive's next `DriveWatchStatus.StateVersion`, before the `WatchFaulted` of the fault that
 caused it, so a recovery reads `Recovering`, then `CatchingUp`, then `CaughtUp` with no
 polling. One drive's events arrive in version order; a consumer that also reads `Drives`
-applies an event only when its version is newer than the last it applied for that drive. When a lost catch-up
+applies an event only when its `Watch.StateVersion` is newer than the last it applied for that drive. When a lost catch-up
 reaches the retry limit, `JournalCatchUpLostException.RecoveryStopped` is true, the drive
 keeps its last queryable block, and its watch is refused until a manual rescan succeeds.
 

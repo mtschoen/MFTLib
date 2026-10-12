@@ -177,7 +177,7 @@ public sealed partial class FileIndex
     ///     current one and the index is not being disposed: the failure message, the outstanding
     ///     fault, the faulted slot, and the faulted state. Then the checkpoint-loss check, then,
     ///     for a <see cref="WatchFaultKind.Drive" /> or <see cref="WatchFaultKind.Apply" /> fault,
-    ///     the recovery ticket that makes the drive read <see cref="WatchCatchUpState.Recovering" />,
+    ///     the recovery ticket that makes the drive read <see cref="WatchState.Recovering" />,
     ///     then the catch-up waiter's fault, then <see cref="WatchFaulted" />, so a waiter or a
     ///     handler that reads <see cref="Drives" /> already sees why the drive stopped and that it
     ///     is recovering, and only then the recovery itself.

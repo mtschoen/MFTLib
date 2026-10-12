@@ -74,7 +74,7 @@ public class WatchFailureObservationTests
             {
                 await HostChannelHarness.WriteFrameAsync(host, BrokerProtocol.WriteCaughtUp);
                 await index.WaitForCatchUpAsync('T', token);
-                Assert.AreEqual(WatchCatchUpState.CaughtUp, index.Drives.Single().Watch.CatchUpState);
+                Assert.AreEqual(WatchState.CaughtUp, index.Drives.Single().Watch.State);
             }
 
             await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteStalled(writer, marker));
@@ -83,7 +83,7 @@ public class WatchFailureObservationTests
             Assert.AreEqual('T', fault.DriveLetter);
             Assert.AreEqual(marker, fault.Exception.Message);
             var status = index.Drives.Single();
-            Assert.AreEqual(WatchCatchUpState.Faulted, status.Watch.CatchUpState);
+            Assert.AreEqual(WatchState.Faulted, status.Watch.State);
             Assert.AreEqual(marker, status.Watch.FailureMessage);
 
             if (requestLateWaits)

@@ -33,7 +33,7 @@ public class FileIndexWatchFailedRescanTests
         var after = harness.DriveFor('T');
         Assert.AreSame(original, harness.Index.Root('T').DriveBlock);
         Assert.AreEqual(before.Watch.FailureMessage, after.Watch.FailureMessage);
-        Assert.AreEqual(WatchCatchUpState.Faulted, after.Watch.CatchUpState);
+        Assert.AreEqual(WatchState.Faulted, after.Watch.State);
         Assert.AreEqual(before.Watch.CheckpointLoss, after.Watch.CheckpointLoss);
         Assert.AreEqual(startCount, harness.Source.TargetsFor('T').Count, "the condemned cursor is never started again");
     }
@@ -179,14 +179,14 @@ public class FileIndexWatchFailedRescanTests
         Assert.IsNull(drive.FailureMessage);
         Assert.IsNull(drive.Watch.FailureMessage);
         Assert.IsNull(drive.Watch.CheckpointLoss);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, drive.Watch.CatchUpState);
+        Assert.AreEqual(WatchState.CatchingUp, drive.Watch.State);
         var handle = harness.Source.WatchFor('T');
         await handle.Publish(new JournalBatch([WatchHarness.Create(9, "recovered.txt")], 13, 9500));
         var caughtUp = harness.Index.WaitForCatchUpAsync('T', Token);
         await handle.Publish(new DriveCaughtUp());
         await caughtUp.WaitAsync(ScriptedWatchSource.HangGuard);
         Assert.AreEqual(9500L, harness.Index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
-        Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('T').Watch.CatchUpState);
+        Assert.AreEqual(WatchState.CaughtUp, harness.DriveFor('T').Watch.State);
         await harness.Index.StopWatchingAsync('T', Token);
     }
 }

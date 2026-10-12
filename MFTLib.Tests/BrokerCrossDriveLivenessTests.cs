@@ -42,7 +42,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         await index.WaitForCatchUpAsync('T', token);
         var runOfT = await scenario.Broker.Watch('T').RunAsync(1);
         var runOfU = await scenario.Broker.Watch('U').RunAsync(1);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, scenario.DriveOf('U').Watch.CatchUpState, "U has a backlog to read");
+        Assert.AreEqual(WatchState.CatchingUp, scenario.DriveOf('U').Watch.State, "U has a backlog to read");
         scenario.BeginCadence('T', 'U');
         scenario.FreezeHostWrites('T');
 
@@ -51,7 +51,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         runOfU.Push(40, "backlog.txt", tipOfU.NextUsn);
         await backlogApplied;
         await index.WaitForCatchUpAsync('U', token).WaitAsync(HangGuard);
-        Assert.AreEqual(WatchCatchUpState.CaughtUp, scenario.DriveOf('U').Watch.CatchUpState);
+        Assert.AreEqual(WatchState.CaughtUp, scenario.DriveOf('U').Watch.State);
 
         // One tick less than the limit on the client's clock: T has heard nothing for 25 seconds.
         for (var interval = 0; interval < IntervalsToStallLimit - 1; interval++)
@@ -60,14 +60,14 @@ public sealed partial class BrokerCrossDriveLivenessTests
         }
 
         Assert.AreEqual(0, scenario.FaultsOf('T').Count, "T is silent but inside the stall limit");
-        Assert.AreEqual(WatchCatchUpState.CaughtUp, scenario.DriveOf('T').Watch.CatchUpState);
+        Assert.AreEqual(WatchState.CaughtUp, scenario.DriveOf('T').Watch.State);
         await scenario.AdvanceIntervalAsync('T');
 
         var fault = await scenario.FaultAsync(WatchFaultKind.Channel, 'T');
         var lost = (BrokerChannelLostException)fault.Exception;
         Assert.AreEqual('T', lost.DriveLetter);
         Assert.AreEqual(StallMessage, lost.Message);
-        Assert.AreEqual(WatchCatchUpState.Faulted, scenario.DriveOf('T').Watch.CatchUpState);
+        Assert.AreEqual(WatchState.Faulted, scenario.DriveOf('T').Watch.State);
         Assert.IsNotNull(scenario.DriveOf('T').Watch.FailureMessage);
         CollectionAssert.AreEqual(new[] { WatchFaultKind.Channel }, scenario.FaultsOf('T').Select(other => other.Kind).ToArray(),
             "the lost channel starts no recovery");
@@ -85,7 +85,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         runOfU.Push(41, "after.txt", tipOfU.NextUsn + 100);
         await afterApplied;
         Assert.AreEqual(0, scenario.FaultsOf('U').Count);
-        Assert.AreEqual(WatchCatchUpState.CaughtUp, scenario.DriveOf('U').Watch.CatchUpState);
+        Assert.AreEqual(WatchState.CaughtUp, scenario.DriveOf('U').Watch.State);
         Assert.IsFalse(runOfU.Cancelled.IsCompleted, "U's host watch was never cancelled");
         Assert.AreEqual(1, scenario.Broker.Watch('U').StartedCount);
         Assert.IsFalse(scenario.Broker.Process.Ended.IsCompleted, "only T's channel was lost");
@@ -133,7 +133,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
             Assert.AreEqual('T', lost.DriveLetter);
             StringAssert.Contains(lost.Message, "wedged loop");
             StringAssert.Contains(lost.Message, "made no progress for 30 seconds");
-            Assert.AreEqual(WatchCatchUpState.Faulted, scenario.DriveOf('T').Watch.CatchUpState);
+            Assert.AreEqual(WatchState.Faulted, scenario.DriveOf('T').Watch.State);
             CollectionAssert.AreEqual(new[] { WatchFaultKind.Channel },
                 scenario.FaultsOf('T').Select(other => other.Kind).ToArray(), "no recovery starts");
             Assert.AreEqual(1, scenario.ScansOf('T'), "no recovery scan");
@@ -183,7 +183,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
 
         Assert.AreEqual(0, scenario.Faults.Count);
         Assert.IsFalse(scenario.Broker.Process.Ended.IsCompleted);
-        Assert.IsTrue(index.Drives.All(drive => drive.Watch.CatchUpState == WatchCatchUpState.CaughtUp));
+        Assert.IsTrue(index.Drives.All(drive => drive.Watch.State == WatchState.CaughtUp));
         var applied = ChangeSignal.WhenApplied(index, "late.txt");
         runOfT.Push(40, "late.txt", ScriptedWatchBrokerHarness.DefaultTip.NextUsn + 100);
         await applied;
@@ -245,7 +245,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         secondRunOfT.Push(41, "recovered.txt", ScriptedWatchBrokerHarness.DefaultTip.NextUsn + 100);
         await applied;
 
-        Assert.AreEqual(WatchCatchUpState.CaughtUp, scenario.DriveOf('T').Watch.CatchUpState);
+        Assert.AreEqual(WatchState.CaughtUp, scenario.DriveOf('T').Watch.State);
         Assert.IsNull(scenario.DriveOf('T').Watch.FailureMessage);
         CollectionAssert.AreEqual(new[] { WatchFaultKind.Drive },
             scenario.FaultsOf('T').Select(other => other.Kind).ToArray(), "recovered: no Recovery fault");

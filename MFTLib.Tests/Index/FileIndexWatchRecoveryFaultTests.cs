@@ -124,6 +124,6 @@ public class FileIndexWatchRecoveryFaultTests
 
         Assert.AreSame(restartFailure, recoveryFault.Exception);
         Assert.AreEqual("rearm failed", harness.DriveFor('C').Watch.FailureMessage);
-        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('C').Watch.CatchUpState);
+        Assert.AreEqual(WatchState.Faulted, harness.DriveFor('C').Watch.State);
     }
 }

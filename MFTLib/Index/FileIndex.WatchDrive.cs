@@ -5,8 +5,8 @@ public sealed partial class FileIndex
     /// <summary>
     ///     Starts the live watch of one MFT-backed drive from the journal cursor persisted in its
     ///     current block header. The drive's <see cref="DriveWatchStatus.FailureMessage" /> is
-    ///     cleared and its <see cref="DriveWatchStatus.CatchUpState" /> begins at
-    ///     <see cref="WatchCatchUpState.CatchingUp" />. Every other drive is untouched. A drive that
+    ///     cleared and its <see cref="DriveWatchStatus.State" /> begins at
+    ///     <see cref="WatchState.CatchingUp" />. Every other drive is untouched. A drive that
     ///     is already watching is left as it is and the call completes. A drive whose previous
     ///     watch faulted is started afresh, which supersedes a queued automatic recovery.
     ///     <para>
@@ -16,7 +16,7 @@ public sealed partial class FileIndex
     ///         this task with <see cref="OperationCanceledException" />. A source whose start throws
     ///         fails this task with that exception, sets the drive's
     ///         <see cref="DriveWatchStatus.FailureMessage" />, and leaves its
-    ///         <see cref="DriveWatchStatus.CatchUpState" /> at <see cref="WatchCatchUpState.Faulted" />.
+    ///         <see cref="DriveWatchStatus.State" /> at <see cref="WatchState.Faulted" />.
     ///         That failure, and a refusal over an unresumable block, still record the watch as
     ///         requested (<see cref="DriveWatchStatus.Requested" />), so the rescan that replaces
     ///         the block starts it.
@@ -306,7 +306,7 @@ public sealed partial class FileIndex
     ///     not watching; any other failure is recorded against the drive. A failed restart of an
     ///     automatic <paramref name="recovery" /> is the failure that
     ///     recovery then reports as <see cref="WatchFaultKind.Recovery" />, so the drive's move to
-    ///     <see cref="WatchCatchUpState.Faulted" /> carries that fault.
+    ///     <see cref="WatchState.Faulted" /> carries that fault.
     /// </summary>
     void AbandonFailedStart(DriveRuntime runtime, WatchInstance instance, Exception exception,
         RecoveryTicket? recovery, CancellationToken cancellationToken)

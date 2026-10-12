@@ -33,13 +33,13 @@ public sealed partial class FileIndex
 
         /// <summary>
         ///     A recovery is queued or running for the drive's faulted watch; the drive reads
-        ///     <see cref="WatchCatchUpState.Recovering" />.
+        ///     <see cref="WatchState.Recovering" />.
         /// </summary>
         Recovering,
 
         /// <summary>
         ///     A recovery restarted the drive's watch, which has not reached
-        ///     <see cref="WatchCatchUpState.CaughtUp" /> yet. A fault of that watch now ends the
+        ///     <see cref="WatchState.CaughtUp" /> yet. A fault of that watch now ends the
         ///     recovery with <see cref="WatchFaultKind.Recovery" /> instead of queuing another.
         /// </summary>
         RecoveredAwaitingCatchUp
@@ -90,7 +90,7 @@ public sealed partial class FileIndex
 
         /// <summary>
         ///     Set while a scan operation of a watched drive retries after a lost catch-up, which is
-        ///     what makes the drive read <see cref="WatchCatchUpState.Recovering" />.
+        ///     what makes the drive read <see cref="WatchState.Recovering" />.
         /// </summary>
         public bool RetryingLostCatchUp;
 
@@ -138,17 +138,17 @@ public sealed partial class FileIndex
         /// <summary>
         ///     The failure of the drive's last start when that start left no current instance: the
         ///     source threw, or the drive's block cannot be resumed. It is what makes the drive read
-        ///     <see cref="WatchCatchUpState.Faulted" /> with no instance, and what a catch-up wait
+        ///     <see cref="WatchState.Faulted" /> with no instance, and what a catch-up wait
         ///     then faults with. The start already threw it to its caller, so a stop never rethrows
         ///     it; the drive's next start, a stop, or a rescan that replaces the block clears it.
         /// </summary>
         public Exception? RefusedStartFault;
 
         /// <summary>
-        ///     The <see cref="WatchCatchUpState" /> last noted for the drive, which
+        ///     The <see cref="WatchState" /> last noted for the drive, which
         ///     <see cref="FileIndex.NoteWatchStateLocked" /> compares the derived state against.
         /// </summary>
-        public WatchCatchUpState NotedWatchState;
+        public WatchState NotedWatchState;
 
         /// <summary>The drive's <see cref="DriveWatchStatus.StateVersion" />.</summary>
         public long WatchStateVersion;
@@ -157,7 +157,7 @@ public sealed partial class FileIndex
         ///     Noted changes not yet delivered through <see cref="FileIndex.WatchStateChanged" />, in
         ///     version order.
         /// </summary>
-        public List<DriveWatchState>? PendingWatchStates;
+        public List<WatchStateChange>? PendingWatchStates;
 
         /// <summary>
         ///     Serializes delivery of this drive's <see cref="FileIndex.WatchStateChanged" />, held from

@@ -60,7 +60,7 @@ public sealed partial class FileIndex
     ///         watch. <see cref="WatchFaultKind.RescanRestart" /> is raised once, with the start
     ///         failure as the inner exception and a message explaining that the rescan replaced the
     ///         block but could not start its watch. <see cref="DriveWatchStatus.FailureMessage" />
-    ///         carries that message; the drive stays <see cref="WatchCatchUpState.Faulted" /> until
+    ///         carries that message; the drive stays <see cref="WatchState.Faulted" /> until
     ///         a consumer starts or rescans it. No automatic recovery is queued. Stop rethrows that
     ///         outstanding fault once. An automatic recovery's failed restart reports
     ///         <see cref="WatchFaultKind.Recovery" />.
@@ -69,7 +69,7 @@ public sealed partial class FileIndex
     ///         A change applied before publication can be delivered afterwards, and the replacement
     ///         watch can replay it during catch-up. Consumers must tolerate repeated
     ///         <see cref="Changed" /> events across a successful swap. Queries may lag the old
-    ///         watch's last updates until the new watch reports <see cref="WatchCatchUpState.CaughtUp" />.
+    ///         watch's last updates until the new watch reports <see cref="WatchState.CaughtUp" />.
     ///     </para>
     ///     <para>
     ///         <paramref name="cancellationToken" /> is linked to the index's disposal, so

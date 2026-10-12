@@ -259,7 +259,7 @@ public class MftDumpApplicabilityTests
     {
         Assert.IsFalse(status.Watch.Supported);
         Assert.IsFalse(status.Watch.Requested);
-        Assert.AreEqual(WatchCatchUpState.NotStarted, status.Watch.CatchUpState);
+        Assert.AreEqual(WatchState.NotStarted, status.Watch.State);
     }
 
     static FileIndexOptions WithDrives(params IndexedDrive[] drives) =>

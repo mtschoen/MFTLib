@@ -77,7 +77,7 @@ public sealed partial class FileIndex
     /// <summary>
     ///     Stores a recovery ticket for a drive whose current instance just faulted with a
     ///     <see cref="WatchFaultKind.Drive" /> or <see cref="WatchFaultKind.Apply" /> fault, which
-    ///     makes the drive read <see cref="WatchCatchUpState.Recovering" />, and returns it for
+    ///     makes the drive read <see cref="WatchState.Recovering" />, and returns it for
     ///     <see cref="StartRecovery" /> once the fault has been raised. Returns null when the
     ///     instance is no longer the drive's current faulted watch, its watch is no longer
     ///     requested, or the index is being disposed.
@@ -111,7 +111,7 @@ public sealed partial class FileIndex
     ///     One recovery: takes the drive's lifecycle gate, revalidates the ticket, and runs the
     ///     rescan body with the gate held. A recovery that fails while its ticket is still the
     ///     drive's raises <see cref="WatchFaultKind.Recovery" /> after releasing the gate, and the
-    ///     drive stays <see cref="WatchCatchUpState.Faulted" /> until the consumer rescans or starts
+    ///     drive stays <see cref="WatchState.Faulted" /> until the consumer rescans or starts
     ///     it. Never throws, and always completes its ticket.
     /// </summary>
     async Task RunRecoveryAsync(DriveRuntime runtime, RecoveryTicket ticket)

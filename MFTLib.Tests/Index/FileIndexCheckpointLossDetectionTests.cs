@@ -127,7 +127,7 @@ public class FileIndexCheckpointLossDetectionTests
 
         var drive = index.Drives.Single();
         Assert.IsNotNull(drive.Watch.FailureMessage, "the watch still reports that it died");
-        Assert.AreEqual(WatchCatchUpState.Recovering, drive.Watch.CatchUpState);
+        Assert.AreEqual(WatchState.Recovering, drive.Watch.State);
 
         var loss = drive.Watch.CheckpointLoss;
         Assert.IsNotNull(loss, "an unrelated fault must not delete a true report from the open");

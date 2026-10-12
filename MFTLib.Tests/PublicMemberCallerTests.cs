@@ -31,8 +31,6 @@ public class PublicMemberCallerTests
             "git-wizard GitWizard/WindowsDefender.cs passes the timeout to TryRunElevated",
         ["property MFTLib.Index.WatchFault.IsRecovering : System.Boolean"] =
             "file-wizard FileWizard/JournalWatcher.cs and git-wizard GitWizard/Watch/IndexVolumeChangeSource.cs classify automatic fault recovery",
-        ["method MFTLib.Index.DriveStatus.ToWatchState() : MFTLib.Index.DriveWatchState"] =
-            "file-wizard FileWizardMaui/MainPage.WatchStates.cs and git-wizard GitWizard/Watch/IndexVolumeChangeSource.WatchStates.cs seed watch state from a captured status",
         ["type MFTLib.BrokerDiagnostics"] =
             "file-wizard file-wizard/ProgramEntry.cs and FileWizardMaui/App.xaml.cs enable broker diagnostics at startup",
         ["method MFTLib.BrokerDiagnostics.Enable(System.String, System.String) : System.Void"] =

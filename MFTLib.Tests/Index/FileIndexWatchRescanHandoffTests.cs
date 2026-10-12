@@ -56,7 +56,7 @@ public class FileIndexWatchRescanHandoffTests
                 Assert.AreEqual(1, changes.Count);
                 await source.WatchFor('T').Publish(WatchHarness.Batch(9, "replayed.txt", 700));
                 Assert.AreEqual(2, changes.Count);
-                Assert.AreEqual(WatchCatchUpState.CatchingUp, index.Drives.Single().Watch.CatchUpState);
+                Assert.AreEqual(WatchState.CatchingUp, index.Drives.Single().Watch.State);
                 await source.WatchFor('T').Publish(new DriveCaughtUp());
                 await index.WaitForCatchUpAsync('T', Token);
                 Assert.AreEqual(1, index.Search(new SearchQuery("replayed.txt", NameMatchMode.Exact), Token).Count);
@@ -134,7 +134,7 @@ public class FileIndexWatchRescanHandoffTests
             await harness.Index.StopWatchingAsync('T', Token);
             production.Release();
             await rescan.WaitAsync(ScriptedWatchSource.HangGuard);
-            Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').Watch.CatchUpState);
+            Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
         }
 
         Assert.AreEqual(1, handle.DisposeCount);
@@ -195,8 +195,8 @@ public class FileIndexWatchRescanHandoffTests
             restart.MarkEntered();
             restart.WaitForRelease();
         };
-        WatchCatchUpState? stateAtFault = null;
-        index.WatchFaulted += _ => stateAtFault = index.Drives.Single().Watch.CatchUpState;
+        WatchState? stateAtFault = null;
+        index.WatchFaulted += _ => stateAtFault = index.Drives.Single().Watch.State;
         var publishing = harness.TrackGate();
         harness.Index.PublishInsideWriteGateForTest = _ => publishing.MarkEntered();
         production.Release();
@@ -208,7 +208,7 @@ public class FileIndexWatchRescanHandoffTests
         await restart.Entered.WaitAsync(ScriptedWatchSource.HangGuard);
         Assert.AreNotSame(original, harness.Index.Root('T').DriveBlock);
         Assert.AreEqual(0, harness.RecoveryCount('T'));
-        Assert.AreEqual(WatchCatchUpState.Faulted, stateAtFault);
+        Assert.AreEqual(WatchState.Faulted, stateAtFault);
         restart.Release();
         await rescan.WaitAsync(ScriptedWatchSource.HangGuard);
         Assert.AreEqual(2, harness.ProductionCount('T'));

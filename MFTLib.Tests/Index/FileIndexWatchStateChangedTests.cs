@@ -8,7 +8,7 @@ namespace MFTLib.Tests.Index;
 
 /// <summary>
 ///     <see cref="FileIndex.WatchStateChanged" />: every change of a drive's
-///     <see cref="DriveWatchStatus.CatchUpState" /> is delivered once, with the drive's next
+///     <see cref="DriveWatchStatus.State" /> is delivered once, with the drive's next
 ///     <see cref="DriveWatchStatus.StateVersion" />, before the <see cref="FileIndex.WatchFaulted" />
 ///     of the fault that caused it, with the state lock free. Each case drives the index through the
 ///     harness's scripted producer and handles and reads the order the handlers ran in; no clock is
@@ -35,8 +35,8 @@ public partial class FileIndexWatchStateChangedTests
     [
         .. recorder.EventsFor(driveLetter).Select(item => item switch
         {
-            DriveWatchState { Fault: { } fault } state => $"{state.CatchUpState}:{state.StateVersion}:{fault.Kind}",
-            DriveWatchState state => $"{state.CatchUpState}:{state.StateVersion}",
+            WatchStateChange { Fault: { } fault } state => $"{state.Watch.State}:{state.Watch.StateVersion}:{fault.Kind}",
+            WatchStateChange state => $"{state.Watch.State}:{state.Watch.StateVersion}",
             _ => $"!{((WatchFault)item).Kind}"
         })
     ];
@@ -64,19 +64,18 @@ public partial class FileIndexWatchStateChangedTests
                 continue;
             }
 
-            Assert.IsTrue(events.Take(position).OfType<DriveWatchState>().Any(state => Equals(state.Fault, fault)),
+            Assert.IsTrue(events.Take(position).OfType<WatchStateChange>().Any(state => Equals(state.Fault, fault)),
                 $"{fault.Kind} of {driveLetter} was reported before any state change carrying it: " +
                 string.Join(", ", History(recorder, driveLetter)));
         }
     }
 
-    /// <summary>The drive's status agrees with the last event: same state, same version.</summary>
+    /// <summary>The last event's snapshot is the drive's status snapshot: every field agrees.</summary>
     static void AssertStatusMatchesLastEvent(WatchHarness harness, WatchStateRecorder recorder, char driveLetter)
     {
         var last = recorder.StatesFor(driveLetter)[^1];
         var status = harness.DriveFor(driveLetter);
-        Assert.AreEqual(last.CatchUpState, status.Watch.CatchUpState);
-        Assert.AreEqual(last.StateVersion, status.Watch.StateVersion);
+        Assert.AreEqual(status.Watch, last.Watch);
     }
 
     [TestMethod]
@@ -114,8 +113,8 @@ public partial class FileIndexWatchStateChangedTests
         var failedHandle = harness.Source.WatchFor('T');
 
         failedHandle.FailDrive(new IOException("T's journal wrapped"));
-        var restarted = await recorder.WaitForStateAsync('T', state => state.StateVersion > 4);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, restarted.CatchUpState);
+        var restarted = await recorder.WaitForStateAsync('T', state => state.Watch.StateVersion > 4);
+        Assert.AreEqual(WatchState.CatchingUp, restarted.Watch.State);
 
         // The restarted watch registers, and reports CatchingUp, before its source returns the
         // handle the recovery then publishes.
@@ -196,7 +195,7 @@ public partial class FileIndexWatchStateChangedTests
         await harness.Index.StartWatchingAsync('T', Token).WaitAsync(HangGuard);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
-        _ = await recorder.WaitForStateAsync('T', state => state.StateVersion == 5);
+        _ = await recorder.WaitForStateAsync('T', state => state.Watch.StateVersion == 5);
         await harness.WaitForRecoveryAsync('T');
 
         if (loseChannel)
@@ -350,6 +349,9 @@ public partial class FileIndexWatchStateChangedTests
 
         await ThrowsAsync<IOException>(() => harness.Index.StartWatchingAsync('T', Token).WaitAsync(HangGuard));
         AssertHistory(recorder, 'T', "CatchingUp:1", "Faulted:2");
+        var faulted = recorder.StatesFor('T')[^1];
+        Assert.AreEqual("no channel", faulted.Watch.FailureMessage);
+        AssertStatusMatchesLastEvent(harness, recorder, 'T');
         await harness.Index.StopWatchingAsync('T', Token).WaitAsync(HangGuard);
 
         AssertHistory(recorder, 'T', "CatchingUp:1", "Faulted:2", "NotStarted:3");
@@ -404,7 +406,7 @@ public partial class FileIndexWatchStateChangedTests
         await harness.Index.StartWatchingAsync('T', Token).WaitAsync(HangGuard);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         var readiness = harness.DriveFor('T');
-        Assert.AreEqual(WatchCatchUpState.CaughtUp, readiness.Watch.CatchUpState);
+        Assert.AreEqual(WatchState.CaughtUp, readiness.Watch.State);
         var recoveryScan = harness.HoldNextProduction('T');
 
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
@@ -413,17 +415,17 @@ public partial class FileIndexWatchStateChangedTests
         var inOrder = new VersionedDriveState();
         foreach (var state in recorder.StatesFor('T'))
         {
-            inOrder.Apply(state.CatchUpState, state.StateVersion);
+            inOrder.Apply(state.Watch.State, state.Watch.StateVersion);
         }
 
-        inOrder.Apply(readiness.Watch.CatchUpState, readiness.Watch.StateVersion);
-        Assert.AreEqual(WatchCatchUpState.Recovering, inOrder.State, "the stale readiness lost to the later fault");
+        inOrder.Apply(readiness.Watch.State, readiness.Watch.StateVersion);
+        Assert.AreEqual(WatchState.Recovering, inOrder.State, "the stale readiness lost to the later fault");
 
         var reversed = new VersionedDriveState();
-        reversed.Apply(readiness.Watch.CatchUpState, readiness.Watch.StateVersion);
+        reversed.Apply(readiness.Watch.State, readiness.Watch.StateVersion);
         foreach (var state in recorder.StatesFor('T').Reverse())
         {
-            reversed.Apply(state.CatchUpState, state.StateVersion);
+            reversed.Apply(state.Watch.State, state.Watch.StateVersion);
         }
 
         Assert.AreEqual(inOrder.State, reversed.State);
@@ -442,7 +444,7 @@ public partial class FileIndexWatchStateChangedTests
     {
         using var harness = new WatchHarness('T');
         var index = harness.Index;
-        var observations = new List<(DriveWatchState Event, bool StateLockHeld, long VisibleVersion)>();
+        var observations = new List<(WatchStateChange Event, bool StateLockHeld, long VisibleVersion)>();
         Task? rejectedStop = null;
         index.WatchStateChanged += state =>
         {
@@ -457,13 +459,13 @@ public partial class FileIndexWatchStateChangedTests
         Assert.AreEqual(2, observations.Count);
         foreach (var (state, stateLockHeld, visibleVersion) in observations)
         {
-            Assert.IsFalse(stateLockHeld, $"version {state.StateVersion} was delivered under the state lock");
-            Assert.IsTrue(visibleVersion >= state.StateVersion, "a change is visible before it is delivered");
+            Assert.IsFalse(stateLockHeld, $"version {state.Watch.StateVersion} was delivered under the state lock");
+            Assert.IsTrue(visibleVersion >= state.Watch.StateVersion, "a change is visible before it is delivered");
         }
 
         var rejection = await ThrowsAsync<InvalidOperationException>(() => rejectedStop!);
         StringAssert.Contains(rejection.Message, "WatchStateChanged");
-        Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('T').Watch.CatchUpState);
+        Assert.AreEqual(WatchState.CaughtUp, harness.DriveFor('T').Watch.State);
         await index.StopWatchingAsync('T', Token).WaitAsync(HangGuard);
     }
 
@@ -500,11 +502,11 @@ public partial class FileIndexWatchStateChangedTests
     /// <summary>A consumer's view of one drive that applies only states newer than the one it holds.</summary>
     sealed class VersionedDriveState
     {
-        public WatchCatchUpState State { get; private set; }
+        public WatchState State { get; private set; }
 
         public long Version { get; private set; }
 
-        public void Apply(WatchCatchUpState state, long version)
+        public void Apply(WatchState state, long version)
         {
             if (version <= Version)
             {

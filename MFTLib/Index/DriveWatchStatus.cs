@@ -26,43 +26,29 @@ public sealed record DriveWatchStatus
     public bool Requested { get; init; }
 
     /// <summary>
-    ///     Where this drive's live watch stands in draining the journal backlog that was present
-    ///     when its current watch started. <see cref="WatchCatchUpState.NotStarted" /> while the
-    ///     drive's watch is not requested (<see cref="Requested" /> is false) and no start of
-    ///     it failed: before its first <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" />
-    ///     and again after <see cref="FileIndex.StopWatchingAsync(CancellationToken)" />.
-    ///     <see cref="WatchCatchUpState.CatchingUp" /> while the watch applies its backlog,
-    ///     <see cref="WatchCatchUpState.CaughtUp" /> once that backlog has been applied and the
-    ///     drive is on live entries, and <see cref="WatchCatchUpState.Faulted" /> when the drive's
-    ///     watch fails, its start or automatic restart fails, or its start is refused, with detail
-    ///     in <see cref="FailureMessage" />: a drive whose automatic recovery failed reads
-    ///     <see cref="WatchCatchUpState.Faulted" />, not <see cref="WatchCatchUpState.NotStarted" />,
-    ///     although no watch is running. A <see cref="FileIndex.RescanAsync(char, CancellationToken)" />
-    ///     of a drive whose watch is requested reads <see cref="WatchCatchUpState.CatchingUp" />
-    ///     from the moment it retires the old watch until the replacement catches up. Always
-    ///     <see cref="WatchCatchUpState.NotStarted" /> for a drive that cannot be watched at all
-    ///     (an enumeration-backed block). A drive a cache-only open adopted despite a lost journal
-    ///     checkpoint reads <see cref="WatchCatchUpState.Faulted" /> instead once
-    ///     <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" /> has refused it: it could be watched if its
-    ///     cursor were resumable, so this says the watch was refused rather than never attempted.
-    ///     The same holds for a drive whose consecutive scan catch-up losses exhausted automatic
-    ///     recovery (<see cref="RecoveryStopped" />).
-    ///     <see cref="WatchCatchUpState.Recovering" /> while a recovery of the drive is queued or
-    ///     running after a <see cref="WatchFaultKind.Drive" /> or <see cref="WatchFaultKind.Apply" />
-    ///     fault, or a scan of a watched drive retries after a lost catch-up.
+    ///     Where this drive's live watch stands. <see cref="WatchState.NotStarted" /> while the
+    ///     watch is not requested and no start of it failed, and always for a drive that cannot be
+    ///     watched. <see cref="WatchState.CatchingUp" /> while the watch applies its backlog, or
+    ///     while a rescan has retired the old watch and the replacement has not caught up.
+    ///     <see cref="WatchState.CaughtUp" /> once the backlog has been applied.
+    ///     <see cref="WatchState.Recovering" /> while the index rebuilds a watched drive's block.
+    ///     <see cref="WatchState.Faulted" /> when the watch failed or was refused, with detail in
+    ///     <see cref="FailureMessage" />, including a drive whose automatic recovery failed
+    ///     (<see cref="RecoveryStopped" />) or whose cache-only open adopted a block with a lost
+    ///     journal checkpoint that a start then refused.
     /// </summary>
-    public WatchCatchUpState CatchUpState { get; init; }
+    public WatchState State { get; init; }
 
     /// <summary>
-    ///     How many times this drive's <see cref="CatchUpState" /> has changed since the index
+    ///     How many times this drive's <see cref="State" /> has changed since the index
     ///     opened: zero while it has never changed (a cold open whose scans reach the catch-up-loss
-    ///     limit opens in <see cref="WatchCatchUpState.Faulted" /> with version 1), and one more
-    ///     with every change, each of which <see cref="FileIndex.WatchStateChanged" /> delivers with
-    ///     this same number. Read together with <see cref="CatchUpState" /> from one
-    ///     <see cref="FileIndex.Drives" /> snapshot, it seeds a subscriber that joins late: an event
-    ///     whose <see cref="DriveWatchState.StateVersion" /> is not larger than the one already applied
-    ///     for the drive is older news and is dropped. Versions of different drives are
-    ///     independent.
+    ///     limit opens in <see cref="WatchState.Faulted" /> with version 1), and one more
+    ///     with every change, each of which <see cref="FileIndex.WatchStateChanged" /> delivers in a
+    ///     <see cref="WatchStateChange.Watch" /> carrying this same number. The
+    ///     <see cref="DriveStatus.Watch" /> of one <see cref="FileIndex.Drives" /> snapshot seeds a
+    ///     subscriber that joins late: an event whose <see cref="WatchStateChange.Watch" /> has a
+    ///     version not larger than the one already applied for the drive is older news and is
+    ///     dropped. Versions of different drives are independent.
     /// </summary>
     public long StateVersion { get; init; }
 

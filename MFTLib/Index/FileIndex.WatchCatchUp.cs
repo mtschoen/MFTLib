@@ -3,36 +3,36 @@ namespace MFTLib.Index;
 public sealed partial class FileIndex
 {
     /// <summary>
-    ///     The drive's <see cref="DriveWatchStatus.CatchUpState" />, from its watch records:
-    ///     <see cref="WatchCatchUpState.Recovering" /> while a recovery of the drive is queued or
+    ///     The drive's <see cref="DriveWatchStatus.State" />, from its watch records:
+    ///     <see cref="WatchState.Recovering" /> while a recovery of the drive is queued or
     ///     running or a scan of the watched drive retries after a lost catch-up, the current
     ///     instance's slot while it runs,
-    ///     <see cref="WatchCatchUpState.Faulted" /> for a faulted instance or a failed or refused
-    ///     start, <see cref="WatchCatchUpState.CatchingUp" /> while the watch is requested and its
-    ///     replacement has not registered yet, and <see cref="WatchCatchUpState.NotStarted" />
+    ///     <see cref="WatchState.Faulted" /> for a faulted instance or a failed or refused
+    ///     start, <see cref="WatchState.CatchingUp" /> while the watch is requested and its
+    ///     replacement has not registered yet, and <see cref="WatchState.NotStarted" />
     ///     otherwise. The caller holds <see cref="_stateLock" />.
     /// </summary>
-    WatchCatchUpState GetWatchCatchUpStateLocked(char driveLetter)
+    WatchState GetWatchStateLocked(char driveLetter)
     {
         var runtime = GetDriveRuntime(driveLetter);
         if (runtime.RetryingLostCatchUp || runtime.RecoveryState == RecoveryState.Recovering)
         {
-            return WatchCatchUpState.Recovering;
+            return WatchState.Recovering;
         }
 
         if (runtime.Current is { } instance)
         {
             return instance.State == WatchInstanceState.Faulted
-                ? WatchCatchUpState.Faulted
+                ? WatchState.Faulted
                 : instance.CatchUp.State;
         }
 
         if (runtime.RefusedStartFault is not null)
         {
-            return WatchCatchUpState.Faulted;
+            return WatchState.Faulted;
         }
 
-        return runtime.WatchRequested ? WatchCatchUpState.CatchingUp : WatchCatchUpState.NotStarted;
+        return runtime.WatchRequested ? WatchState.CatchingUp : WatchState.NotStarted;
     }
 
     /// <summary>
@@ -103,9 +103,9 @@ public sealed partial class FileIndex
     ///     is on live entries. It completes immediately when the drive is already caught up,
     ///     faults with the drive's exception when its watch fails (before or after this call) or
     ///     its last start failed or was refused, faults at once while the drive reads
-    ///     <see cref="WatchCatchUpState.Recovering" /> (with the fault that ended its watch, or
+    ///     <see cref="WatchState.Recovering" /> (with the fault that ended its watch, or
     ///     the lost catch-up a scan is retrying; a consumer that wants the recovered watch waits
-    ///     again once the drive reads <see cref="WatchCatchUpState.CatchingUp" />, which
+    ///     again once the drive reads <see cref="WatchState.CatchingUp" />, which
     ///     <see cref="WatchStateChanged" /> reports), and is
     ///     cancelled when that watch is stopped, retired by a
     ///     rescan, or the index is disposed. A wait issued after a rescan retired the drive's
@@ -113,9 +113,9 @@ public sealed partial class FileIndex
     ///     completes with the replacement's catch-up and faults when the replacement cannot start.
     ///     When the wait faults because the watch failed, <see cref="Drives" /> already reflects
     ///     that fault and any checkpoint loss it found, and, for a fault that queues an automatic
-    ///     recovery, the drive reads <see cref="WatchCatchUpState.Recovering" />; a fault that
-    ///     recovers no further leaves it <see cref="WatchCatchUpState.Faulted" />, and a stop that
-    ///     overtook it leaves it <see cref="WatchCatchUpState.NotStarted" />. <paramref name="cancellationToken" /> and the index's
+    ///     recovery, the drive reads <see cref="WatchState.Recovering" />; a fault that
+    ///     recovers no further leaves it <see cref="WatchState.Faulted" />, and a stop that
+    ///     overtook it leaves it <see cref="WatchState.NotStarted" />. <paramref name="cancellationToken" /> and the index's
     ///     disposal cancel the wait itself without touching the drive's watch. The wait's
     ///     continuation never runs inline on the thread that settles it.
     /// </summary>

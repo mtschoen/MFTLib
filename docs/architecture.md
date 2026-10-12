@@ -117,13 +117,13 @@
       delegate, the watch source and drive watch interfaces and their records are internal;
       only MFTLib implements them, and tests build sources through `MFTLibTestExtensions`.
     - **Watch state events**: `FileIndex.WatchStateChanged` reports every change of a drive's
-      derived `DriveWatchStatus.CatchUpState` with a per-drive `StateVersion`, noted by one helper inside the
+      derived `DriveWatchStatus.State` as a `WatchStateChange` whose `Watch` is the drive's `DriveWatchStatus`
+      with a per-drive `StateVersion`, built by the same helper `Drives` uses and noted by one helper inside the
       state-lock section that made the change and delivered with neither `_stateLock` nor a write
       gate held, one drive at a time in version order, before the `WatchFaulted` of the fault
       that caused it. Handlers follow the `Changed`/`WatchFaulted` reentrancy rules. The full
-      contract is in `docs/watch-lifetime.md`. `DriveStatus.ToWatchState()` converts a captured
-      snapshot to that event shape with the same drive, state and version and a null fault;
-      snapshots retain failure text, not event faults. `WatchFault.IsRecovering` classifies
+      contract is in `docs/watch-lifetime.md`. A consumer seeds its history from `Drives[i].Watch`, the same
+      type an event carries; event faults live only on the event. `WatchFault.IsRecovering` classifies
       recovery associated with a fault notification rather than querying current watch health.
     - **Lazy Materialization**: `MftRecord` stores native pointers; strings are only created on access.
     - **Memory Safety**: `ToArray()` and `Materialize()` ensure strings are stable in managed memory after native buffers are freed.

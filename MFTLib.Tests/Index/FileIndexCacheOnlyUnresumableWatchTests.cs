@@ -133,11 +133,11 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         var unresumable = index.Drives.Single(drive => drive.DriveLetter == 'T');
         Assert.IsNotNull(unresumable.Watch.FailureMessage, "the refusal must be reported, not silent");
         StringAssert.Contains(unresumable.Watch.FailureMessage, "RescanAsync");
-        Assert.AreEqual(WatchCatchUpState.Faulted, unresumable.Watch.CatchUpState);
+        Assert.AreEqual(WatchState.Faulted, unresumable.Watch.State);
 
         var healthy = index.Drives.Single(drive => drive.DriveLetter == 'U');
         Assert.IsNull(healthy.Watch.FailureMessage);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, healthy.Watch.CatchUpState);
+        Assert.AreEqual(WatchState.CatchingUp, healthy.Watch.State);
 
         await source.WatchFor('U').Publish(new JournalBatch(
             [WatchHarness.Create(recordNumber: 9, "after.txt")], JournalIdentifier: CachedJournalIdentifier, NextUsn: 9_500));
@@ -176,8 +176,8 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         Assert.IsNull(recovered.Watch.CheckpointLoss, "the rescan replaced the block the report described");
         Assert.IsNull(recovered.Watch.FailureMessage);
         Assert.IsTrue(recovered.Watch.Requested);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp,
-            index.Drives.Single(drive => drive.DriveLetter == 'T').Watch.CatchUpState);
+        Assert.AreEqual(WatchState.CatchingUp,
+            index.Drives.Single(drive => drive.DriveLetter == 'T').Watch.State);
         await source.WatchFor('T').Publish(new JournalBatch(
             [WatchHarness.Create(recordNumber: 9, "after.txt")], JournalIdentifier: CachedJournalIdentifier, NextUsn: 5_000));
         Assert.AreEqual(5_000L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
@@ -217,7 +217,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
 
         var before = index.Drives.Single(drive => drive.DriveLetter == 'T');
         Assert.IsNotNull(before.Watch.FailureMessage);
-        Assert.AreEqual(WatchCatchUpState.Faulted, before.Watch.CatchUpState);
+        Assert.AreEqual(WatchState.Faulted, before.Watch.State);
         Assert.IsNotNull(before.Watch.CheckpointLoss);
 
         var thrown = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(
@@ -231,7 +231,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         Assert.AreEqual("synthetic scan failure for T", after.FailureMessage);
         Assert.IsNotNull(after.Watch.FailureMessage, "the refusal must stay reported after a failed scan");
         StringAssert.Contains(after.Watch.FailureMessage, "RescanAsync");
-        Assert.AreEqual(WatchCatchUpState.Faulted, after.Watch.CatchUpState);
+        Assert.AreEqual(WatchState.Faulted, after.Watch.State);
         Assert.IsNotNull(after.Watch.CheckpointLoss, "the block did not change, so the original loss still explains it");
         Assert.AreEqual(before.Watch.CheckpointLoss, after.Watch.CheckpointLoss);
 
@@ -278,7 +278,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
             var status = index.Drives.Single();
             Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
             Assert.IsFalse(status.Watch.Requested);
-            Assert.AreEqual(WatchCatchUpState.NotStarted, status.Watch.CatchUpState);
+            Assert.AreEqual(WatchState.NotStarted, status.Watch.State);
             Assert.AreEqual(1, source.TargetsFor('T').Count);
         }
         finally
@@ -318,14 +318,14 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         await index.StartWatchingAsync('T', Token);
         source.WatchFor('T').LoseChannel(new IOException("the channel went away"));
         await channelFaulted.Task.WaitAsync(ScriptedWatchSource.HangGuard);
-        Assert.AreEqual(WatchCatchUpState.Faulted, index.Drives.Single().Watch.CatchUpState);
+        Assert.AreEqual(WatchState.Faulted, index.Drives.Single().Watch.State);
 
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => index.RescanAsync('T', Token));
 
         var status = index.Drives.Single();
         Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
         Assert.IsFalse(status.Watch.Requested);
-        Assert.AreEqual(WatchCatchUpState.NotStarted, status.Watch.CatchUpState);
+        Assert.AreEqual(WatchState.NotStarted, status.Watch.State);
         Assert.IsNull(status.Watch.FailureMessage, "the superseded watch's channel failure no longer describes the drive");
         var notWatched = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
             () => index.WaitForCatchUpAsync('T', Token));
@@ -350,7 +350,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         Assert.AreEqual(0, source.Starts.Count, "no drive survived to reach the watch source");
         var status = index.Drives.Single();
         Assert.AreEqual(refusal.Message, status.Watch.FailureMessage);
-        Assert.AreEqual(WatchCatchUpState.Faulted, status.Watch.CatchUpState);
+        Assert.AreEqual(WatchState.Faulted, status.Watch.State);
 
         // The refusal is the drive's last start failure, so a catch-up wait faults with it.
         var waitFailure = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
@@ -363,7 +363,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         await index.StopWatchingAsync('T', Token);
         var stopped = index.Drives.Single();
         Assert.IsFalse(stopped.Watch.Requested);
-        Assert.AreEqual(WatchCatchUpState.NotStarted, stopped.Watch.CatchUpState);
+        Assert.AreEqual(WatchState.NotStarted, stopped.Watch.State);
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(
             () => index.StopWatchingAsync('T', Token));
     }

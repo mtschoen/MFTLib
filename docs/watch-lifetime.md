@@ -6,10 +6,11 @@
       `JournalCatchUpLostException` with `RecoveryStopped` false. It is false for `Subscriber`,
       `Channel`, `Recovery`, `RescanRestart`, and other catch-up exceptions. It describes recovery
       associated with that notification, not the drive's subsequent live-watch health.
-    - **Snapshot conversion**: `DriveStatus.ToWatchState()` converts the already captured
-      drive letter, `Watch.CatchUpState` and `Watch.StateVersion` to a `DriveWatchState` without
-      rereading the index. The version is preserved exactly, including zero. `Fault` is null:
-      snapshots do not retain event faults, and `Watch.FailureMessage` never reconstructs one.
+    - **One snapshot shape**: `DriveStatus.Watch` and `WatchStateChange.Watch` are the same
+      `DriveWatchStatus`, built by one helper under `_stateLock`, so a consumer seeds its history
+      from `Drives[i].Watch` and applies events by the same `StateVersion` check. The version is
+      exact, including zero. `WatchStateChange.Fault` exists only on events: a snapshot retains
+      `Watch.FailureMessage`, never a fault.
     - **Catch-up recovery exhaustion**: `DriveWatchStatus.RecoveryStopped` records exhausted
       automatic recovery from consecutive scan catch-up losses, independently of watch requests
       and refused-start faults. It is set under the stop-decision state lock before loss
@@ -24,7 +25,7 @@
       `InvalidOperationException`.
     - **Watch and catch-up lifetime**: each MFT-backed drive has an independent
       internal `IIndexDriveWatch`, pump, stop source, and catch-up slot. `StartWatchingAsync(X)` begins at
-      `WatchCatchUpState.CatchingUp`; journal batches through the tip captured at start are applied
+      `WatchState.CatchingUp`; journal batches through the tip captured at start are applied
       before `DriveCaughtUp` moves X to `CaughtUp`. `WaitForCatchUpAsync(X)` follows that instance:
       it completes when X catches up, faults with X's watch fault, and is cancelled when stop,
       rescan, or disposal retires the instance. A pump fault settles the wait last: the fault,
@@ -60,15 +61,16 @@
       never starts a drive nobody asked to watch. A batched start answering `NotApplicable`
       records no request. A restart whose rescan replaced the block with one that cannot be
       watched withdraws the request and supersedes any retained faulted watch with its failure
-      message, so the drive reads `NotStarted` either way. `DriveWatchStatus.CatchUpState` derives, in order: `Recovering`; the current instance's
+      message, so the drive reads `NotStarted` either way. `DriveWatchStatus.State` derives, in order: `Recovering`; the current instance's
       state; `Faulted` for a failed or refused start; `CatchingUp` while requested with no
       instance; otherwise `NotStarted`.
-    - **Watch state events**: `FileIndex.WatchStateChanged` delivers a `DriveWatchState`
-      (`DriveLetter`, `CatchUpState`, `StateVersion`, `Fault`) for every change of a drive's derived
-      `CatchUpState`, and `DriveWatchStatus.StateVersion` carries the same per-drive counter: zero
+    - **Watch state events**: `FileIndex.WatchStateChanged` delivers a `WatchStateChange`
+      (`DriveLetter`, `Watch`, `Fault`) for every change of a drive's derived
+      `State`, where `Watch` is the drive's `DriveWatchStatus` after the change and its
+      `StateVersion` is the per-drive counter: zero
       at open unless open-time scans exhausted catch-up retries (which leaves the drive `Faulted`
       with version 1), one more per change, independent across drives. Every section that changes an
-      input of `GetWatchCatchUpStateLocked` (start registration, a start whose source threw or its
+      input of `GetWatchStateLocked` (start registration, a start whose source threw or its
       caller cancelled, a refused start, catch-up, pump fault settlement, recovery queued and
       ended, lost-catch-up retry and its end, rescan commit and recovery clear, a replacement's
       refusal or failed restart, stop, disposal) calls `NoteWatchStateLocked` before releasing

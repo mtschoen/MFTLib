@@ -336,8 +336,8 @@ untouched.
 The source captures the journal tip for the arm. Backlog batches between the persisted
 cursor and that tip are streamed and applied to the block in place, advancing the header's
 `USN next USN` and updating `LiveRowCount` and file rows under the drive's write gate. A
-`DriveCaughtUp` item transitions `DriveWatchStatus.CatchUpState` from
-`WatchCatchUpState.CatchingUp` to `WatchCatchUpState.CaughtUp`. Live mutations continue on
+`DriveCaughtUp` item transitions `DriveWatchStatus.State` from
+`WatchState.CatchingUp` to `WatchState.CaughtUp`. Live mutations continue on
 the same handle.
 
 `FileIndex.WaitForCatchUpAsync(char, CancellationToken)` follows that drive's current
@@ -351,7 +351,7 @@ follows the replacement handle.
 Failed or cancelled production leaves the watch and its waits untouched. Cancelling the wait's own
 token cancels only the wait, not the drive's watch.
 
-A `Drive` or `Apply` fault moves the drive to `WatchCatchUpState.Recovering` and starts an
+A `Drive` or `Apply` fault moves the drive to `WatchState.Recovering` and starts an
 automatic rescan. A wait issued during recovery faults immediately with the exception that
 ended the prior watch. After recovery starts the replacement handle and the drive reads
 `CatchingUp`, call the wait again to follow that handle. If recovery fails, or the
@@ -375,7 +375,7 @@ index's disposal token.
 
 Calling either wait form is optional. The index observes each handle's failure even when
 no caller waits; faults still reach `WatchFaulted`, `DriveWatchStatus.FailureMessage`, and
-`DriveWatchStatus.CatchUpState`.
+`DriveWatchStatus.State`.
 
 ## Sidecars
 
