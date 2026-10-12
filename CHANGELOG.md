@@ -4,7 +4,7 @@
 
 - Native exports contain C++ exceptions and report failures through their existing error or null/false channels. Parse worker allocation failures and thread-start failures return no entries, join started workers and preserve the host process.
 
-- The samples wait indefinitely for an elevated child process, so scans of large volumes and prompt delays can complete without an artificial timeout.
+- The samples wait indefinitely for an elevated child process, so a scan of a large volume can complete without an artificial timeout.
 
 - Fail a volume scan with no entries when the `$MFT` attribute list cannot be read completely or an unnamed `$DATA` extension record is unreadable, outside the runs merged in lowest-VCN order, or invalid, instead of returning an inventory with missing runs.
 
