@@ -91,9 +91,9 @@ public class BrokerFrameWriteLimitTests
     public async Task ScanDriveAsync_KeepListOverTheLimit_ThrowsArgumentExceptionAndTheProcessStaysUsable()
     {
         await using var broker = new InProcessBroker(CreateHost());
-        var options = new BrokerScanOptions
+        var options = new MftScanOptions
         {
-            DirectoryScanFileNames = KeepList(32_700)
+            RetainedFileNames = KeepList(32_700)
         };
 
         var exception = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>

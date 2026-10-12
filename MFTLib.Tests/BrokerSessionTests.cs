@@ -627,7 +627,7 @@ public class BrokerSessionTests
         });
 
         var plain = session.CreateIndexSource();
-        var scanned = session.CreateIndexSource(new BrokerScanOptions());
+        var scanned = session.CreateIndexSource(new MftScanOptions());
 
         Assert.IsNotNull(plain);
         Assert.IsNotNull(scanned);

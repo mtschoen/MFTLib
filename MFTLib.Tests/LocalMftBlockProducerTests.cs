@@ -72,7 +72,7 @@ public class LocalMftBlockProducerTests
     [TestMethod]
     public void Factory_BuildsASourceWithNoWatchDumpOrUnavailableReason()
     {
-        var source = MftIndexSources.FromLocalVolumes(new BrokerScanOptions());
+        var source = MftIndexSources.FromLocalVolumes(new MftScanOptions());
 
         Assert.IsNull(source.WatchSource);
         Assert.IsNull(source.DumpIdentity);
@@ -302,7 +302,7 @@ public class LocalMftBlockProducerTests
     {
         var indexReports = new List<IndexScanProgress>();
         var scanReports = new List<BrokerScanProgress>();
-        var options = new BrokerScanOptions { Progress = new DirectProgress<BrokerScanProgress>(scanReports.Add) };
+        var options = new MftScanOptions { Progress = new DirectProgress<BrokerScanProgress>(scanReports.Add) };
         var producer = new LocalMftBlockProducer(options, Scripted());
 
         var result = await ProducerOf(producer)(

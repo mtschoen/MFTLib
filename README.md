@@ -168,7 +168,7 @@ index each fail the scan with a message in `DriveStatus.FailureMessage`.
 
 ## Freed MFT records
 
-Freed MFT records are opt-in. `BrokerScanOptions.IncludeFreed` (default false) makes a cold scan
+Freed MFT records are opt-in. `MftScanOptions.IncludeFreed` (default false) makes a cold scan
 of a live volume, direct or through the broker, also import the records NTFS has freed; the
 dump source offers no such option. Each freed record becomes a row whose `FileEntry.IsDeleted`
 is true and which exists for that scan only: a later watch applies journal events to live rows
@@ -185,7 +185,7 @@ produced it, so a consumer that changes `IncludeFreed` also changes its `CacheTa
 var options = new FileIndexOptions
 {
     Drives = [new IndexedDrive('C', @"C:\", volumeSerial)],
-    MftSource = MftIndexSources.FromLocalVolumes(new BrokerScanOptions { IncludeFreed = true }),
+    MftSource = MftIndexSources.FromLocalVolumes(new MftScanOptions { IncludeFreed = true }),
     CacheDirectory = cacheDirectory,
     CacheTag = new CacheTag("APPX", 2)
 };

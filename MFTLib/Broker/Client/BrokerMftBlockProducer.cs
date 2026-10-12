@@ -9,7 +9,7 @@ namespace MFTLib;
 internal sealed class BrokerMftBlockProducer
 {
     readonly Func<CancellationToken, Task<BrokerProcess>> _connectAsync;
-    readonly BrokerScanOptions? _scanOptions;
+    readonly MftScanOptions? _scanOptions;
 
     /// <summary>Builds a producer over the given broker connection and scan defaults.</summary>
     /// <param name="connectAsync">
@@ -18,7 +18,7 @@ internal sealed class BrokerMftBlockProducer
     /// <param name="scanOptions">Base options for every scan: retention, freed-record inclusion and progress.</param>
     internal BrokerMftBlockProducer(
         Func<CancellationToken, Task<BrokerProcess>> connectAsync,
-        BrokerScanOptions? scanOptions = null)
+        MftScanOptions? scanOptions = null)
     {
         ArgumentNullException.ThrowIfNull(connectAsync);
         _connectAsync = connectAsync;
@@ -37,7 +37,7 @@ internal sealed class BrokerMftBlockProducer
     // and the loss travels with it so the index can refuse to watch from the block's cursor.
     async Task<MftBlockProduceResult> ProduceAsync(MftBlockProduceRequest request, CancellationToken cancellationToken)
     {
-        var options = (_scanOptions ?? new BrokerScanOptions()) with
+        var options = (_scanOptions ?? new MftScanOptions()) with
         {
             Progress = BrokerProgressAdapter.Create(request, _scanOptions?.Progress)
         };

@@ -134,7 +134,7 @@ public sealed class BrokerSession : IAsyncDisposable
     /// </summary>
     /// <param name="scanOptions">Base options for every scan: retention, freed-record inclusion and progress.</param>
     /// <returns>A source whose scans and watches run on this session's process.</returns>
-    public MftIndexSource CreateIndexSource(BrokerScanOptions? scanOptions = null) =>
+    public MftIndexSource CreateIndexSource(MftScanOptions? scanOptions = null) =>
         new BrokerMftBlockProducer(ConnectAsync, scanOptions).CreateIndexSource();
 
     /// <summary>

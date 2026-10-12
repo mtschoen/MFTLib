@@ -39,7 +39,7 @@ The native parser reads its current allowance at the start of every MFT chunk.
 A chunk already in progress finishes with the count
 it started with, so admission can make the total briefly exceed the processor
 count for at most one chunk. Callers do not choose a thread count:
-`BrokerScanOptions`, `MftBlockProduceRequest`, and the broker wire request carry
+`MftScanOptions`, `MftBlockProduceRequest`, and the broker wire request carry
 none. The same allocator governs open scans, single-drive and batched rescans,
 and automatic recovery scans.
 

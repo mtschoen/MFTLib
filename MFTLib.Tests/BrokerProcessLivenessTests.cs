@@ -380,7 +380,7 @@ public class BrokerProcessLivenessTests
         public async Task<ScriptedScan> StartScanAsync(char letter, IProgress<BrokerScanProgress>? progress = null)
         {
             var scan = Broker.Process.ScanDriveAsync(letter, TestBlockSections.Target(),
-                new BrokerScanOptions { Progress = progress }, CancellationToken.None);
+                new MftScanOptions { Progress = progress }, CancellationToken.None);
             await AnswerQueryVolumeAsync(Volume);
             var open = await Broker.ReadRequestAsync();
             Assert.AreEqual(BrokerFrameKind.OpenChannel, open.Kind);

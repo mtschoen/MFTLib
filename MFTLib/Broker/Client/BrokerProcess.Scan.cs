@@ -16,13 +16,13 @@ internal sealed partial class BrokerProcess
     /// <param name="options">Row filtering and progress for the scan.</param>
     /// <param name="cancellationToken">Closes the channel and releases the section.</param>
     /// <exception cref="ArgumentException">
-    ///     <see cref="BrokerScanOptions.DirectoryScanFileNames" /> is too long for one request frame. Nothing is sent.
+    ///     <see cref="MftScanOptions.RetainedFileNames" /> is too long for one request frame. Nothing is sent.
     /// </exception>
     /// <exception cref="InvalidOperationException">The broker reported the scan failed.</exception>
     /// <exception cref="BrokerChannelLostException">The channel or the process was lost first.</exception>
     /// <exception cref="TimeoutException">The broker did not answer the volume query or the channel open within the reply timeout.</exception>
     internal async Task<BrokerDriveScanResult> ScanDriveAsync(char driveLetter, BlockScanTarget target,
-        BrokerScanOptions options, CancellationToken cancellationToken)
+        MftScanOptions options, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(options);
@@ -63,9 +63,9 @@ internal sealed partial class BrokerProcess
     }
 
     async Task<BrokerDriveScanResult> ScanOnChannelAsync(char letter, string sectionName, BlockFile block,
-        ReleaseOnce sectionLifetime, BrokerScanOptions options, CancellationToken cancellationToken)
+        ReleaseOnce sectionLifetime, MftScanOptions options, CancellationToken cancellationToken)
     {
-        var frameLength = BrokerProtocol.ArmAndScanFrameLength(sectionName, options.DirectoryScanFileNames);
+        var frameLength = BrokerProtocol.ArmAndScanFrameLength(sectionName, options.RetainedFileNames);
         if (frameLength > BrokerFrameStream.MaximumFrameLength)
         {
             throw new ArgumentException(FormattableString.Invariant(
@@ -74,7 +74,7 @@ internal sealed partial class BrokerProcess
         }
 
         var channel = await OpenChannelAsync(letter, writer => BrokerProtocol.WriteArmAndScan(writer, sectionName,
-            options.DirectoryScanFileNames, options.IncludeFreed), cancellationToken).ConfigureAwait(false);
+            options.RetainedFileNames, options.IncludeFreed), cancellationToken).ConfigureAwait(false);
         await using var ownedChannel = channel.ConfigureAwait(false);
         var collector = new ScanFrames(channel, options.Progress);
         var armed = await collector.ReadArmedCursorAsync(cancellationToken).ConfigureAwait(false);

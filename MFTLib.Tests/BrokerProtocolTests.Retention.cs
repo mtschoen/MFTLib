@@ -23,11 +23,11 @@ public partial class BrokerProtocolTests
         var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out _);
         if (names is null)
         {
-            Assert.IsNull(frame.DirectoryScanFileNames);
+            Assert.IsNull(frame.RetainedFileNames);
         }
         else
         {
-            CollectionAssert.AreEqual(names, frame.DirectoryScanFileNames!.ToArray());
+            CollectionAssert.AreEqual(names, frame.RetainedFileNames!.ToArray());
         }
     }
 

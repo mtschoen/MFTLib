@@ -202,7 +202,7 @@ public class MftBlockRowWriterTests
         ];
 
         var result = MftBlockRowWriter.WriteBatches(
-            new BlockWriter(block), [records], new MftBlockRowFilter(DirectoryScanFileNames: null),
+            new BlockWriter(block), [records], new MftBlockRowFilter(RetainedFileNames: null),
             null, CancellationToken.None);
 
         Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, block.Rows[5].Flags);
@@ -222,7 +222,7 @@ public class MftBlockRowWriterTests
         ];
 
         var result = MftBlockRowWriter.WriteBatches(
-            new BlockWriter(block), [records], new MftBlockRowFilter(DirectoryScanFileNames: []),
+            new BlockWriter(block), [records], new MftBlockRowFilter(RetainedFileNames: []),
             null, CancellationToken.None);
 
         Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, block.Rows[5].Flags);
@@ -243,7 +243,7 @@ public class MftBlockRowWriterTests
         ];
 
         var result = MftBlockRowWriter.WriteBatches(
-            new BlockWriter(block), [records], new MftBlockRowFilter(DirectoryScanFileNames: [".git"]),
+            new BlockWriter(block), [records], new MftBlockRowFilter(RetainedFileNames: [".git"]),
             null, CancellationToken.None);
 
         Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, block.Rows[5].Flags);

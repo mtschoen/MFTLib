@@ -152,7 +152,7 @@ public class BrokerProcessLaunchTests
         var process = await BrokerProcess.LaunchAsync(launchBroker, cancellation.Token);
         try
         {
-            var result = await process.ScanDriveAsync('C', TestBlockSections.Target(), new BrokerScanOptions(),
+            var result = await process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
                 cancellation.Token);
             // The real section factory built this block; a block returned from a scan is the caller's.
             using var block = result.Block.Block;

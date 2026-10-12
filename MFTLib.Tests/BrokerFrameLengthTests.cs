@@ -34,7 +34,7 @@ public class BrokerFrameLengthTests
         var totalLength = BinaryPrimitives.ReadInt32LittleEndian(buffer.WrittenSpan);
         Assert.AreEqual(16_777_067, totalLength);
         Assert.IsTrue(totalLength <= BrokerFrameStream.MaximumFrameLength);
-        Assert.AreEqual(names.Length, BrokerProtocol.ReadFrame(buffer.WrittenSpan, out _).DirectoryScanFileNames!.Count);
+        Assert.AreEqual(names.Length, BrokerProtocol.ReadFrame(buffer.WrittenSpan, out _).RetainedFileNames!.Count);
     }
 
     [TestMethod]
@@ -111,7 +111,7 @@ public class BrokerFrameLengthTests
     public async Task Client_DriveFrameLengthBeyondMaximum_ScanFailsWithChannelLost()
     {
         await using var broker = new ScriptedBroker();
-        var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new BrokerScanOptions(),
+        var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
             CancellationToken.None);
         await broker.AnswerQueryVolumeAsync(new NtfsVolumeInformation(1024 * 1000, 1024));
         await using var pipe = await broker.AcceptChannelAsync();

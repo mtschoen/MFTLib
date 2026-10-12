@@ -89,7 +89,7 @@ public partial class BrokerProcessTests
         var activeProcess = handleWithScan.Process;
         try
         {
-            var scanTask = activeProcess.ScanDriveAsync('C', TestBlockSections.Target(), new BrokerScanOptions(),
+            var scanTask = activeProcess.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
                 CancellationToken.None);
             await scanStarted.Entered.WaitAsync(HangGuard);
 
@@ -186,7 +186,7 @@ public partial class BrokerProcessTests
         await using var handle = BrokerTestHarness.StartInProcess(ScriptedVolumes());
 
         var failure = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
-            handle.Process.ScanDriveAsync('C', ScanTarget(), new BrokerScanOptions(), CancellationToken.None)
+            handle.Process.ScanDriveAsync('C', ScanTarget(), new MftScanOptions(), CancellationToken.None)
                 .WaitAsync(HangGuard));
 
         StringAssert.Contains(failure.Message, "no scan source");
@@ -208,9 +208,9 @@ public partial class BrokerProcessTests
     [DataRow(ScanRecordingCase.FirstCallbackHeld)]
     public async Task ScriptedScan_WritesTheBatchesThroughTheRealWriterAndRecordsTheRequest(ScanRecordingCase recordingCase)
     {
-        var options = new BrokerScanOptions
+        var options = new MftScanOptions
         {
-            DirectoryScanFileNames = [".git"]
+            RetainedFileNames = [".git"]
         };
 
         if (recordingCase == ScanRecordingCase.FirstCallbackHeld)
@@ -281,7 +281,7 @@ public partial class BrokerProcessTests
 
             var recorded = singleHandle.Scans.Single();
             Assert.AreEqual("C", recorded.DriveLetter);
-            CollectionAssert.AreEqual(new[] { ".git" }, recorded.DirectoryScanFileNames!.ToArray());
+            CollectionAssert.AreEqual(new[] { ".git" }, recorded.RetainedFileNames!.ToArray());
             return;
         }
 
@@ -294,7 +294,7 @@ public partial class BrokerProcessTests
         Assert.IsTrue(result.Block.Block.Header.RowCount > 0);
         var scan = singleHandle.Scans.Single();
         Assert.AreEqual("C", scan.DriveLetter);
-        CollectionAssert.AreEqual(new[] { ".git" }, scan.DirectoryScanFileNames!.ToArray());
+        CollectionAssert.AreEqual(new[] { ".git" }, scan.RetainedFileNames!.ToArray());
     }
 
     [TestMethod]
@@ -308,16 +308,16 @@ public partial class BrokerProcessTests
             ScanDrive = _ => [[SyntheticRecord(5, ".", 3)]]
         });
         await handle.Process.ScanDriveAsync('C', TestBlockSections.Target(),
-            new BrokerScanOptions { DirectoryScanFileNames = names }, CancellationToken.None).WaitAsync(HangGuard);
+            new MftScanOptions { RetainedFileNames = names }, CancellationToken.None).WaitAsync(HangGuard);
         var scan = handle.Scans.Single();
         if (names is null)
         {
-            Assert.IsNull(scan.DirectoryScanFileNames);
+            Assert.IsNull(scan.RetainedFileNames);
         }
         else
         {
-            Assert.IsNotNull(scan.DirectoryScanFileNames);
-            Assert.AreEqual(0, scan.DirectoryScanFileNames.Count);
+            Assert.IsNotNull(scan.RetainedFileNames);
+            Assert.AreEqual(0, scan.RetainedFileNames.Count);
         }
     }
 
@@ -335,7 +335,7 @@ public partial class BrokerProcessTests
             parsedSeen.Task.Wait(HangGuard);
             return [[SyntheticRecord(5, ".", 3)], [SyntheticRecord(20, "file.txt")]];
         }));
-        var options = new BrokerScanOptions
+        var options = new MftScanOptions
         {
             Progress = new SynchronousProgress<BrokerScanProgress>(report =>
             {
@@ -402,7 +402,7 @@ public partial class BrokerProcessTests
         };
         await using var handle = BrokerTestHarness.StartInProcess(volumes);
 
-        var scan = await handle.Process.ScanDriveAsync('C', TestBlockSections.Target(), new BrokerScanOptions(),
+        var scan = await handle.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
             CancellationToken.None).WaitAsync(HangGuard);
         var settings = await handle.Process.GrowUsnJournalAsync('C', 0x08000000, 0x01000000, CancellationToken.None)
             .WaitAsync(HangGuard);

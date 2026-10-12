@@ -141,7 +141,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         await using var broker = new InProcessBroker(CreateHost());
         var brokerSamples = new List<BrokerScanProgress>();
 
-        var result = await ProduceAsync(broker.Process, Request(Target()), new BrokerScanOptions
+        var result = await ProduceAsync(broker.Process, Request(Target()), new MftScanOptions
         {
             Progress = new SynchronousProgress<BrokerScanProgress>(brokerSamples.Add)
         }).WaitAsync(HangGuard);

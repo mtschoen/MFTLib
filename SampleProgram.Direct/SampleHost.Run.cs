@@ -45,7 +45,7 @@ partial class SampleHost
     }
 
     /// <summary>The scan options a local source gets: freed records are kept only when the query will show them.</summary>
-    internal static BrokerScanOptions ScanOptions(DirectArguments parsed) => new() { IncludeFreed = parsed.IncludeFreed };
+    internal static MftScanOptions ScanOptions(DirectArguments parsed) => new() { IncludeFreed = parsed.IncludeFreed };
 
     static MftIndexSource CreateSourceNative(DirectArguments parsed)
     {

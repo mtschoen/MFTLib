@@ -13,19 +13,19 @@ internal sealed class LocalMftBlockProducer
 {
     internal static readonly ParseThreadAllocator SharedAllocator = new(Environment.ProcessorCount);
 
-    readonly BrokerScanOptions? _scanOptions;
+    readonly MftScanOptions? _scanOptions;
     readonly Seams _seams;
     readonly ParseThreadAllocator _allocator;
 
     /// <summary>Builds a producer over the live volume seams.</summary>
     /// <param name="scanOptions">Retention, freed-record inclusion and progress for every scan.</param>
-    internal LocalMftBlockProducer(BrokerScanOptions? scanOptions = null)
+    internal LocalMftBlockProducer(MftScanOptions? scanOptions = null)
         : this(scanOptions, Seams.Live)
     {
     }
 
     /// <summary>Builds a producer over the given volume seams and parse-thread allocator.</summary>
-    internal LocalMftBlockProducer(BrokerScanOptions? scanOptions, Seams seams,
+    internal LocalMftBlockProducer(MftScanOptions? scanOptions, Seams seams,
         ParseThreadAllocator? allocator = null)
     {
         _scanOptions = scanOptions;
@@ -67,7 +67,7 @@ internal sealed class LocalMftBlockProducer
     MftBlockProduceResult Produce(MftBlockProduceRequest request, ParseThreadAllowance allowance,
         CancellationToken cancellationToken)
     {
-        var options = _scanOptions ?? new BrokerScanOptions();
+        var options = _scanOptions ?? new MftScanOptions();
         var drive = request.DriveLetter.ToString();
         BlockFile? block = BlockFile.Create(MftBlockCapacity.CreateOptions(
             _seams.QueryVolumeInformation(drive), request.BlockPath, request.VolumeSerial, request.DeleteOnClose,
@@ -80,7 +80,7 @@ internal sealed class LocalMftBlockProducer
                 IdleOperation.Instance, progress,
                 new MftRecordScanOptions { IncludeFreed = options.IncludeFreed }, cancellationToken);
             var result = MftBlockScan.WriteToBlock(block, new BlockStamp(cursor, _seams.Clock), batches,
-                new MftBlockRowFilter(options.DirectoryScanFileNames, options.IncludeFreed),
+                new MftBlockRowFilter(options.RetainedFileNames, options.IncludeFreed),
                 new BlockWriteReporting(progress, null), cancellationToken);
             BrokerMftBlockProducer.ValidateBlock(block, request.VolumeSerial, cursor, request.CacheTag);
             var produced = new MftBlockProduceResult(block, cursor.JournalIdentifier, cursor.NextUsn,
@@ -96,7 +96,7 @@ internal sealed class LocalMftBlockProducer
 
     // Null when neither the index request nor the scan options want progress, so no samples are composed.
     static DirectProgress<BlockWriteProgress>? CreateProgress(MftBlockProduceRequest request,
-        BrokerScanOptions options)
+        MftScanOptions options)
     {
         var destination = BrokerProgressAdapter.Create(request, options.Progress);
         if (destination is null)

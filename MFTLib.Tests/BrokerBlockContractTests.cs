@@ -14,7 +14,7 @@ public class BrokerBlockContractTests : BrokerBlockTestBase
         await using var broker = new ScriptedBroker();
 
         await Assert.ThrowsExceptionAsync<ArgumentNullException>(() =>
-            broker.Process.ScanDriveAsync('C', null!, new BrokerScanOptions(), CancellationToken.None).WaitAsync(HangGuard));
+            broker.Process.ScanDriveAsync('C', null!, new MftScanOptions(), CancellationToken.None).WaitAsync(HangGuard));
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
 
         Assert.AreEqual(0, broker.Sections.All().Count);
@@ -32,7 +32,7 @@ public class BrokerBlockContractTests : BrokerBlockTestBase
             return VolumeInformation;
         }));
 
-        var result = await broker.Process.ScanDriveAsync('c', Target(), new BrokerScanOptions(), CancellationToken.None)
+        var result = await broker.Process.ScanDriveAsync('c', Target(), new MftScanOptions(), CancellationToken.None)
             .WaitAsync(HangGuard);
         result.Block.Block.Dispose();
 

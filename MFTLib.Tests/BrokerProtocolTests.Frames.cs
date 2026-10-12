@@ -47,7 +47,7 @@ public partial class BrokerProtocolTests
         Assert.AreEqual("C", frame.Drive);
         Assert.AreEqual("mftlib-drive-C-1", frame.PipeName);
         Assert.AreEqual(0, frame.Entries.Length);
-        Assert.IsNull(frame.DirectoryScanFileNames);
+        Assert.IsNull(frame.RetainedFileNames);
     }
 
     [TestMethod]

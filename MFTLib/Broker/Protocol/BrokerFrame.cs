@@ -62,7 +62,7 @@ internal readonly record struct BrokerFrame
     public UsnJournalEntry[] Entries { get; private init; }
     public long SkippedRecordCount { get; private init; }
     public string? Message { get; private init; }
-    public IReadOnlyCollection<string>? DirectoryScanFileNames { get; private init; }
+    public IReadOnlyCollection<string>? RetainedFileNames { get; private init; }
 
     /// <summary>
     ///     A scan's progress. The drive belongs to the channel, so a frame read off the wire carries
@@ -177,13 +177,13 @@ internal readonly record struct BrokerFrame
     }
 
     public static BrokerFrame ArmAndScan(string sectionName,
-        IReadOnlyCollection<string>? directoryScanFileNames = null, bool includeFreed = false)
+        IReadOnlyCollection<string>? retainedFileNames = null, bool includeFreed = false)
     {
         return Empty(BrokerFrameKind.ArmAndScan, 0) with
         {
             SectionName = sectionName,
             IncludeFreed = includeFreed,
-            DirectoryScanFileNames = directoryScanFileNames
+            RetainedFileNames = retainedFileNames
         };
     }
 

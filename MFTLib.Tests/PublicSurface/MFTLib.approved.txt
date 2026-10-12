@@ -2,22 +2,11 @@ MFTLib.BrokerDiagnostics :: method public static Enable(string role, string logD
 MFTLib.BrokerDiagnostics :: type public static class
 MFTLib.BrokerLauncher :: method public static Launch(string brokerArguments) : bool
 MFTLib.BrokerLauncher :: type public static class
-MFTLib.BrokerScanOptions :: constructor public ()
-MFTLib.BrokerScanOptions :: method public <Clone>$() : MFTLib.BrokerScanOptions
-MFTLib.BrokerScanOptions :: method public Equals(MFTLib.BrokerScanOptions? other) : bool
-MFTLib.BrokerScanOptions :: method public override Equals(object? obj) : bool
-MFTLib.BrokerScanOptions :: method public override GetHashCode() : int
-MFTLib.BrokerScanOptions :: method public override ToString() : string
-MFTLib.BrokerScanOptions :: method public static op_Equality(MFTLib.BrokerScanOptions? left, MFTLib.BrokerScanOptions? right) : bool
-MFTLib.BrokerScanOptions :: method public static op_Inequality(MFTLib.BrokerScanOptions? left, MFTLib.BrokerScanOptions? right) : bool
-MFTLib.BrokerScanOptions :: property public DirectoryScanFileNames { get; init; } : System.Collections.Generic.IReadOnlyCollection<string>?
-MFTLib.BrokerScanOptions :: property public IncludeFreed { get; init; } : bool
-MFTLib.BrokerScanOptions :: type public sealed class : System.IEquatable<MFTLib.BrokerScanOptions>
 MFTLib.BrokerSession :: constructor public ()
 MFTLib.BrokerSession :: constructor public (System.Func<string, bool> launchBroker, System.TimeSpan? connectTimeout = default)
 MFTLib.BrokerSession :: event public Connected : System.Action?
 MFTLib.BrokerSession :: event public Connecting : System.Action?
-MFTLib.BrokerSession :: method public CreateIndexSource(MFTLib.BrokerScanOptions? scanOptions = default) : MFTLib.Index.MftIndexSource
+MFTLib.BrokerSession :: method public CreateIndexSource(MFTLib.MftScanOptions? scanOptions = default) : MFTLib.Index.MftIndexSource
 MFTLib.BrokerSession :: method public DisposeAsync() : System.Threading.Tasks.ValueTask
 MFTLib.BrokerSession :: method public GrowUsnJournalAsync(char driveLetter, long maximumSize, long allocationDelta, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.UsnJournalSettings>
 MFTLib.BrokerSession :: property public Ended { get; } : System.Threading.Tasks.Task<string>
@@ -32,9 +21,20 @@ MFTLib.IElevationProvider :: method public abstract CanSelfElevate() : bool
 MFTLib.IElevationProvider :: method public abstract IsElevated() : bool
 MFTLib.IElevationProvider :: method public abstract TryRunElevated(System.Collections.Generic.IReadOnlyList<string> arguments, System.TimeSpan timeout) : bool
 MFTLib.IElevationProvider :: type public interface
-MFTLib.MftIndexSources :: method public static FromLocalVolumes(MFTLib.BrokerScanOptions? scanOptions = default) : MFTLib.Index.MftIndexSource
+MFTLib.MftIndexSources :: method public static FromLocalVolumes(MFTLib.MftScanOptions? scanOptions = default) : MFTLib.Index.MftIndexSource
 MFTLib.MftIndexSources :: method public static FromMftDumpFile(string filePath, char driveLetter) : MFTLib.Index.MftIndexSource
 MFTLib.MftIndexSources :: type public static class
+MFTLib.MftScanOptions :: constructor public ()
+MFTLib.MftScanOptions :: method public <Clone>$() : MFTLib.MftScanOptions
+MFTLib.MftScanOptions :: method public Equals(MFTLib.MftScanOptions? other) : bool
+MFTLib.MftScanOptions :: method public override Equals(object? obj) : bool
+MFTLib.MftScanOptions :: method public override GetHashCode() : int
+MFTLib.MftScanOptions :: method public override ToString() : string
+MFTLib.MftScanOptions :: method public static op_Equality(MFTLib.MftScanOptions? left, MFTLib.MftScanOptions? right) : bool
+MFTLib.MftScanOptions :: method public static op_Inequality(MFTLib.MftScanOptions? left, MFTLib.MftScanOptions? right) : bool
+MFTLib.MftScanOptions :: property public IncludeFreed { get; init; } : bool
+MFTLib.MftScanOptions :: property public RetainedFileNames { get; init; } : System.Collections.Generic.IReadOnlyCollection<string>?
+MFTLib.MftScanOptions :: type public sealed class : System.IEquatable<MFTLib.MftScanOptions>
 MFTLib.UsnJournalSettings :: method public Equals(MFTLib.UsnJournalSettings other) : bool
 MFTLib.UsnJournalSettings :: method public override Equals(object obj) : bool
 MFTLib.UsnJournalSettings :: method public override GetHashCode() : int

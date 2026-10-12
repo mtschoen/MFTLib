@@ -68,8 +68,8 @@ public class JournalBrokerHostBlockScanTests
         Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Error));
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
         Assert.AreEqual("section-C", blockWriter.LastSectionName);
-        Assert.IsNotNull(blockWriter.LastFilter.DirectoryScanFileNames);
-        CollectionAssert.AreEqual(new[] { ".git" }, blockWriter.LastFilter.DirectoryScanFileNames.ToArray());
+        Assert.IsNotNull(blockWriter.LastFilter.RetainedFileNames);
+        CollectionAssert.AreEqual(new[] { ".git" }, blockWriter.LastFilter.RetainedFileNames.ToArray());
         Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, blockWriter.Block.Rows[5].Flags);
         Assert.AreEqual(RowFlags.None, blockWriter.Block.Rows[20].Flags);
     }
@@ -287,10 +287,10 @@ public class JournalBrokerHostBlockScanTests
     }
 
     static async Task<List<BrokerFrame>> ScanAsync(JournalBrokerHost host, IBlockSectionWriter? blockWriter,
-        IReadOnlyCollection<string>? directoryScanFileNames = null)
+        IReadOnlyCollection<string>? retainedFileNames = null)
     {
         await using var harness = new HostChannelHarness(host, blockWriter);
-        var pipe = await harness.OpenScanChannelAsync('C', "section-C", directoryScanFileNames);
+        var pipe = await harness.OpenScanChannelAsync('C', "section-C", retainedFileNames);
         return await HostChannelHarness.ReadToEndAsync(pipe);
     }
 

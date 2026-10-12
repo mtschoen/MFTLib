@@ -54,7 +54,7 @@ await using var broker = BrokerTestHarness.StartInProcess(new ScriptedBrokerVolu
 ```
 
 `InProcessBrokerHandle.Scans` lists every scan the host served, in order, as an
-`InProcessBrokerScan` (the drive and nullable `DirectoryScanFileNames` the client
+`InProcessBrokerScan` (the drive and nullable `RetainedFileNames` the client
 requested), so a test asserts what it asked for. Null means full retention, an empty
 collection means directories only, and names mean directories plus matching files.
 The observation preserves null versus empty. The harness does not offer the section

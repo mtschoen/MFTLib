@@ -19,7 +19,7 @@ public static partial class MftIndexSources
     /// </summary>
     /// <param name="scanOptions">Retention and freed-record inclusion; null scans every in-use record.</param>
     /// <returns>The source to assign to <see cref="FileIndexOptions.MftSource" />.</returns>
-    public static MftIndexSource FromLocalVolumes(BrokerScanOptions? scanOptions = null)
+    public static MftIndexSource FromLocalVolumes(MftScanOptions? scanOptions = null)
     {
         return new LocalMftBlockProducer(scanOptions).CreateIndexSource();
     }

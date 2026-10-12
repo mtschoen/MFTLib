@@ -25,7 +25,7 @@ public class BrokerIncludeFreedTests : BrokerBlockTestBase
         }));
 
         var result = await ProduceAsync(broker.Process, Request(Target()),
-            new BrokerScanOptions { IncludeFreed = includeFreed }).WaitAsync(HangGuard);
+            new MftScanOptions { IncludeFreed = includeFreed }).WaitAsync(HangGuard);
         var block = result.Block;
 
         CollectionAssert.AreEqual(new[] { includeFreed }, seen);

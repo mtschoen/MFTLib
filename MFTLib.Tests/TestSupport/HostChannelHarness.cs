@@ -96,11 +96,11 @@ internal sealed class HostChannelHarness : IAsyncDisposable
     }
 
     public async Task<Stream> OpenScanChannelAsync(char drive, string sectionName = "section",
-        IReadOnlyCollection<string>? directoryScanFileNames = null)
+        IReadOnlyCollection<string>? retainedFileNames = null)
     {
         var pipe = await OpenChannelAsync(drive);
         await WriteFrameAsync(pipe,
-            writer => BrokerProtocol.WriteArmAndScan(writer, sectionName, directoryScanFileNames));
+            writer => BrokerProtocol.WriteArmAndScan(writer, sectionName, retainedFileNames));
         return pipe;
     }
 

@@ -235,7 +235,7 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse([mode, "C", "--keep-name", "a.txt", "--cache-directory", "folder"], out var parsed, out var error), error);
 
         Assert.AreEqual("folder", parsed.CacheDirectory);
-        CollectionAssert.AreEqual(new[] { "a.txt" }, parsed.DirectoryScanFileNames!.ToArray());
+        CollectionAssert.AreEqual(new[] { "a.txt" }, parsed.RetainedFileNames!.ToArray());
     }
 
     [DataTestMethod]
@@ -283,15 +283,15 @@ public class WatchArgumentsTests
     }
 
     [TestMethod]
-    public void ScanOptions_RetentionStates_MapToTheBrokerScanOptions()
+    public void ScanOptions_RetentionStates_MapToTheMftScanOptions()
     {
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", "desktop.ini, .gitignore"], out var parsed, out _));
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C"], out var plain, out _));
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--directories-only"], out var directories, out _));
 
         var options = parsed.ScanOptions!;
-        CollectionAssert.AreEqual(new[] { "desktop.ini", ".gitignore" }, options.DirectoryScanFileNames!.ToArray());
-        Assert.AreEqual(0, directories.ScanOptions!.DirectoryScanFileNames!.Count);
+        CollectionAssert.AreEqual(new[] { "desktop.ini", ".gitignore" }, options.RetainedFileNames!.ToArray());
+        Assert.AreEqual(0, directories.ScanOptions!.RetainedFileNames!.Count);
         Assert.AreNotEqual(plain.PolicyDirectoryName, directories.PolicyDirectoryName);
         Assert.AreNotEqual(parsed.PolicyDirectoryName, directories.PolicyDirectoryName);
         Assert.AreEqual(new MFTLib.Index.CacheTag("SMPW", 2), WatchArguments.CacheTag);

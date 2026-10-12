@@ -147,9 +147,9 @@ var options = new FileIndexOptions
 {
     Drives = drives,
     CacheDirectory = cacheDirectory,
-    MftSource = session.CreateIndexSource(new BrokerScanOptions
+    MftSource = session.CreateIndexSource(new MftScanOptions
     {
-        DirectoryScanFileNames = null // Full scan; [] keeps directories only.
+        RetainedFileNames = null // Full scan; [] keeps directories only.
     })
 };
 
@@ -176,7 +176,7 @@ instead. Every scan of an MFT-backed drive then fails with
 and starting a watch throws `InvalidOperationException` with the same
 message. Cached blocks still open.
 
-The optional `BrokerScanOptions.DirectoryScanFileNames` selects retention: null keeps
+The optional `MftScanOptions.RetainedFileNames` selects retention: null keeps
 all eligible records, an empty collection keeps directories only, and a nonempty
 collection keeps directories plus files whose names match ordinally, ignoring case.
 `IncludeFreed` controls freed-record inclusion independently. Scan progress reaches the application as `IndexScanProgress`
@@ -219,7 +219,7 @@ advanced cursor, or `CatchUpLost` with the journal facts of the proven loss.
 writer before a frame is sent and by the reader before it is allocated. The
 library's own frames stay far below it: a watch `JournalBatch` from the native
 source is one 64 KiB journal read, and `Error` and `Stalled` text is cut to
-32,768 UTF-16 units. A `BrokerScanOptions.DirectoryScanFileNames` list that makes the
+32,768 UTF-16 units. An `MftScanOptions.RetainedFileNames` list that makes the
 `ArmAndScan` request exceed the limit (32,640 maximum-length names with the
 default section name) is refused with an
 `ArgumentException` before anything is sent. A journal batch over the limit

@@ -1,14 +1,14 @@
 namespace MFTLib;
 
-/// <summary>Configures row filtering and progress for a cold scan.</summary>
-public sealed record BrokerScanOptions
+/// <summary>Configures row filtering, freed-record inclusion and progress for a cold MFT scan, broker-backed or in-process.</summary>
+public sealed record MftScanOptions
 {
     /// <summary>
     ///     Null retains all eligible records. An empty collection retains directories only;
     ///     a nonempty collection also retains files whose names match ordinally, ignoring case.
     ///     Freed records remain controlled independently by <see cref="IncludeFreed" />.
     /// </summary>
-    public IReadOnlyCollection<string>? DirectoryScanFileNames { get; init; }
+    public IReadOnlyCollection<string>? RetainedFileNames { get; init; }
     /// <summary>
     ///     When true, the scan also imports MFT records that NTFS has freed: each becomes a row
     ///     with <see cref="MFTLib.Index.FileEntry.IsDeleted" /> true that exists only for this scan, and a later

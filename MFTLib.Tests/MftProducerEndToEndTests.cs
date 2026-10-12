@@ -84,9 +84,9 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
             parsingReceived.Task.Wait(HangGuard, cancellationToken);
             return Records();
         }));
-        var source = new BrokerMftBlockProducer(Connect(broker.Process), new BrokerScanOptions
+        var source = new BrokerMftBlockProducer(Connect(broker.Process), new MftScanOptions
         {
-            DirectoryScanFileNames = ["NOTES.TXT"],
+            RetainedFileNames = ["NOTES.TXT"],
             Progress = new SynchronousProgress<BrokerScanProgress>(value =>
             {
                 progress.Add(value);

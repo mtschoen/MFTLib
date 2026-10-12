@@ -34,7 +34,7 @@ public partial class BrokerProcessTests
                     WaitForCancellation(scanning, sourceCancelled, cancellationToken)),
             wrapClientStream: ControlOnly(corrupt));
 
-        var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new BrokerScanOptions(),
+        var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
             CancellationToken.None);
         await scanning.Entered.WaitAsync(HangGuard);
         var query = broker.Process.QueryVolumeAsync('D', CancellationToken.None);

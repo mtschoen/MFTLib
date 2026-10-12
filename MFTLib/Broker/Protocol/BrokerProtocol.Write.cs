@@ -87,10 +87,10 @@ internal static partial class BrokerProtocol
 
     // The ArmAndScan frame's length (kind byte plus payload), so a caller can refuse a keep list
     // the frame limit cannot carry before anything is sent.
-    public static long ArmAndScanFrameLength(string sectionName, IReadOnlyCollection<string>? directoryScanFileNames)
+    public static long ArmAndScanFrameLength(string sectionName, IReadOnlyCollection<string>? retainedFileNames)
     {
         var length = 1L + 4 + 2L * sectionName.Length + 4 + 4;
-        foreach (var name in directoryScanFileNames ?? [])
+        foreach (var name in retainedFileNames ?? [])
         {
             length += 4 + 2L * name.Length;
         }
@@ -100,11 +100,11 @@ internal static partial class BrokerProtocol
 
     // payload: [sectionName string][includeFreed i32, 0 or 1][nameCount i32, -1 for null][per name: name string]
     public static void WriteArmAndScan(IBufferWriter<byte> writer, string sectionName,
-        IReadOnlyCollection<string>? directoryScanFileNames = null, bool includeFreed = false)
+        IReadOnlyCollection<string>? retainedFileNames = null, bool includeFreed = false)
     {
         var payload = new PayloadWriter().String(sectionName).Int32(includeFreed ? 1 : 0);
-        payload.Int32(directoryScanFileNames?.Count ?? -1);
-        foreach (var name in directoryScanFileNames ?? [])
+        payload.Int32(retainedFileNames?.Count ?? -1);
+        foreach (var name in retainedFileNames ?? [])
         {
             payload.String(name);
         }

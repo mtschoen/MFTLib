@@ -26,7 +26,7 @@ public partial class BrokerProtocolTests
 
         Assert.AreEqual(BrokerFrameKind.ArmAndScan, frame.Kind);
         Assert.AreEqual("mftlib-scan-C", frame.SectionName);
-        Assert.IsNull(frame.DirectoryScanFileNames);
+        Assert.IsNull(frame.RetainedFileNames);
         Assert.IsNull(frame.Drive, "The drive pipe names no drive.");
         Assert.AreEqual(0, frame.Entries.Length);
     }
@@ -40,7 +40,7 @@ public partial class BrokerProtocolTests
             writer, "s", KeepFileNamesGitAndNonAscii, includeFreed));
 
         Assert.AreEqual(includeFreed, frame.IncludeFreed);
-        CollectionAssert.AreEqual(KeepFileNamesGitAndNonAscii, frame.DirectoryScanFileNames!.ToArray());
+        CollectionAssert.AreEqual(KeepFileNamesGitAndNonAscii, frame.RetainedFileNames!.ToArray());
     }
 
     [TestMethod]
@@ -63,7 +63,7 @@ public partial class BrokerProtocolTests
         var frame = RoundTrip(writer => BrokerProtocol.WriteArmAndScan(
             writer, "s", KeepFileNamesGitAndNonAscii)); // non-ASCII to prove UTF-16
 
-        CollectionAssert.AreEqual(KeepFileNamesGitAndNonAscii, frame.DirectoryScanFileNames!.ToArray());
+        CollectionAssert.AreEqual(KeepFileNamesGitAndNonAscii, frame.RetainedFileNames!.ToArray());
     }
 
     [TestMethod]
@@ -458,7 +458,7 @@ public partial class BrokerProtocolTests
     {
         var frame = BrokerFrame.ArmAndScan("section");
 
-        Assert.IsNull(frame.DirectoryScanFileNames);
+        Assert.IsNull(frame.RetainedFileNames);
     }
 
     [TestMethod]

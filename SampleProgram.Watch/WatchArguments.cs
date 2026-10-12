@@ -38,7 +38,7 @@ internal sealed partial record WatchArguments(ProgramMode Mode, IReadOnlyList<st
         [ProgramMode.ElevationStatus] = []
     };
 
-    internal IReadOnlyList<string>? DirectoryScanFileNames { get; init; }
+    internal IReadOnlyList<string>? RetainedFileNames { get; init; }
     /// <summary>The <c>--seconds</c> a watch runs for; null waits for a key press when attended.</summary>
     internal int? Seconds { get; init; }
     internal long? MaximumSize { get; init; }
@@ -53,8 +53,8 @@ internal sealed partial record WatchArguments(ProgramMode Mode, IReadOnlyList<st
     internal ElevationNeed Need => Mode is ProgramMode.Cache or ProgramMode.ElevationStatus ? ElevationNeed.None : ElevationNeed.BrokerLaunch;
 
     /// <summary>The scan options the broker source gets; null scans every record, as the library does by default.</summary>
-    internal BrokerScanOptions? ScanOptions =>
-        DirectoryScanFileNames is null ? null : new BrokerScanOptions { DirectoryScanFileNames = DirectoryScanFileNames };
+    internal MftScanOptions? ScanOptions =>
+        RetainedFileNames is null ? null : new MftScanOptions { RetainedFileNames = RetainedFileNames };
 
     /// <summary>A cached block holds what its scan retained, so a different retention policy is a different identity.</summary>
     internal static CacheTag CacheTag => new("SMPW", 2);
@@ -70,8 +70,8 @@ internal sealed partial record WatchArguments(ProgramMode Mode, IReadOnlyList<st
     {
         get
         {
-            var marker = DirectoryScanFileNames is null ? "full" : "directories";
-            var canonical = $"{marker}\0{string.Join('\0', (DirectoryScanFileNames ?? []).Order(StringComparer.Ordinal))}";
+            var marker = RetainedFileNames is null ? "full" : "directories";
+            var canonical = $"{marker}\0{string.Join('\0', (RetainedFileNames ?? []).Order(StringComparer.Ordinal))}";
             return PolicyDirectoryPrefix + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
         }
     }

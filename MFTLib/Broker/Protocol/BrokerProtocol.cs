@@ -132,14 +132,14 @@ internal static partial class BrokerProtocol
         }
 
         var nameCount = payload.NullableNameCount();
-        List<string>? directoryScanFileNames = nameCount == -1 ? null : new(nameCount);
-        while (directoryScanFileNames is not null && directoryScanFileNames.Count < nameCount)
+        List<string>? retainedFileNames = nameCount == -1 ? null : new(nameCount);
+        while (retainedFileNames is not null && retainedFileNames.Count < nameCount)
         {
-            directoryScanFileNames.Add(payload.String());
+            retainedFileNames.Add(payload.String());
         }
 
         payload.RequireComplete();
-        return BrokerFrame.ArmAndScan(sectionName, directoryScanFileNames, includeFreedValue == 1);
+        return BrokerFrame.ArmAndScan(sectionName, retainedFileNames, includeFreedValue == 1);
     }
 
     static BrokerFrame ReadJournalBatchFrame(ref PayloadReader payload)

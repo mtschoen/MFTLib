@@ -22,7 +22,7 @@ internal sealed partial record WatchArguments
         var seconds = reader.Number("--seconds");
         var candidate = new WatchArguments(mode, [])
         {
-            DirectoryScanFileNames = directoriesOnly ? [] : keep?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+            RetainedFileNames = directoriesOnly ? [] : keep?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             Seconds = seconds is >= 1 and <= MaximumSeconds ? (int)seconds : null,
             MaximumSize = reader.Number("--maximum-size"),
             AllocationDelta = reader.Number("--allocation-delta"),
@@ -59,7 +59,7 @@ internal sealed partial record WatchArguments
         return candidate switch
         {
             _ when directoriesOnly && keep is not null => "Options --directories-only and --keep-name cannot be combined.",
-            _ when keep is not null && candidate.DirectoryScanFileNames is { Count: 0 } => "Option --keep-name needs a file name; use --directories-only for directories alone.",
+            _ when keep is not null && candidate.RetainedFileNames is { Count: 0 } => "Option --keep-name needs a file name; use --directories-only for directories alone.",
             _ when seconds is < 1 or > MaximumSeconds => $"Option --seconds must be from 1 to {MaximumSeconds}.",
             { Mode: ProgramMode.Journal } when candidate.MaximumSize.HasValue != candidate.AllocationDelta.HasValue
                 => "journal needs --maximum-size and --allocation-delta together.",
