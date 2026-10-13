@@ -144,7 +144,7 @@ dotnet_naming_rule.parameters_locals_camel.style = camel_case
 dotnet_naming_rule.parameters_locals_camel.severity = warning
 
 # ClassCannotBeInstantiated: false positive on the partial classes FileIndex (MFTLib/Index/FileIndex.*.cs),
-# MftVolume (MFTLib/Journal/MftVolume.*.cs) and WatchCatchUpState, whose constructor lives in a different partial file.
+# and MftVolume (MFTLib/Journal/MftVolume.*.cs), whose constructors live in different partial files.
 resharper_class_cannot_be_instantiated_highlighting = none
 
 #### Per-project relaxations ####
