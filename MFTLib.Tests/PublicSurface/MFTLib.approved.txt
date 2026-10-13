@@ -10,7 +10,6 @@ MFTLib.BrokerSession :: method public CreateIndexSource(MFTLib.MftScanOptions? s
 MFTLib.BrokerSession :: method public DisposeAsync() : System.Threading.Tasks.ValueTask
 MFTLib.BrokerSession :: method public GrowUsnJournalAsync(char driveLetter, long maximumSize, long allocationDelta, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.UsnJournalSettings>
 MFTLib.BrokerSession :: property public Ended { get; } : System.Threading.Tasks.Task<string>
-MFTLib.BrokerSession :: property public HasEnded { get; } : bool
 MFTLib.BrokerSession :: type public sealed class : System.IAsyncDisposable
 MFTLib.ElevatedEntryPoint :: method public static TryHandle(string[] arguments) : bool
 MFTLib.ElevatedEntryPoint :: type public static class

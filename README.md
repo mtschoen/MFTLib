@@ -449,7 +449,8 @@ await using var index = await FileIndex.OpenAsync(options, cancellationToken);
 
 The session owns the broker process: a launch that fails (the UAC prompt declined, a connect
 timeout) is not remembered, so the next use asks again; a process that ends stays ended
-(`HasEnded`, `Ended`) and every later use throws `InvalidOperationException`. Dispose the
+(`Ended` completes with the reason) and every later use throws `InvalidOperationException`; a use after
+disposal throws `ObjectDisposedException`. Dispose the
 indexes, then the session. Scans run only through the index source, and
 `BrokerSession.GrowUsnJournalAsync` is the one direct broker operation:
 

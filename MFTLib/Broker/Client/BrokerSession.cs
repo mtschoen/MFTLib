@@ -22,11 +22,11 @@ namespace MFTLib;
 ///         and fails its callers with <see cref="OperationCanceledException" />.
 ///     </para>
 ///     <para>
-///         A process that ends stays ended. <see cref="HasEnded" /> turns true and stays true,
-///         <see cref="Ended" /> completes with the reason, and every later use throws
-///         <see cref="InvalidOperationException" /> naming it. The session never relaunches behind the
-///         indexes that still reference the dead process: the owner closes those indexes, disposes this
-///         session and creates a new one.
+///         A process that ends stays ended. <see cref="Ended" /> completes with the reason, and every later
+///         use throws <see cref="InvalidOperationException" /> naming it. The session never relaunches behind
+///         the indexes that still reference the dead process: the owner closes those indexes, disposes this
+///         session and creates a new one. <see cref="Ended" /> reports only a broker that ended: disposing the
+///         session never completes it, and every use after disposal throws <see cref="ObjectDisposedException" />.
 ///     </para>
 ///     <para>
 ///         <see cref="Connecting" /> and <see cref="Connected" /> run on the launching thread-pool thread, outside
@@ -39,7 +39,6 @@ namespace MFTLib;
 /// </remarks>
 public sealed class BrokerSession : IAsyncDisposable
 {
-    const string DisposedReason = "The broker session was disposed.";
     const string DisposedWhileConnectingReason = "The broker session was disposed while connecting.";
 
     readonly Func<CancellationToken, Task<BrokerProcess>> _launchAsync;
@@ -48,6 +47,7 @@ public sealed class BrokerSession : IAsyncDisposable
     readonly CancellationTokenSource _stopping = new();
     readonly TaskCompletionSource<string> _ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
     Task<BrokerProcess>? _launch;
+    Task<BrokerProcess>? _launcherResult;
     BrokerProcess? _process;
     Task _endObservation = Task.CompletedTask;
     Task? _disposal;
@@ -93,29 +93,9 @@ public sealed class BrokerSession : IAsyncDisposable
     }
 
     /// <summary>
-    ///     True once the process has ended or the session was disposed. Reads the process's end directly, so an
-    ///     end that has completed is visible before the session's own observer runs, and never waits for a launch.
-    /// </summary>
-    public bool HasEnded
-    {
-        get
-        {
-            if (_ended.Task.IsCompleted)
-            {
-                return true;
-            }
-
-            lock (_gate)
-            {
-                return _process?.Ended.IsCompleted == true;
-            }
-        }
-    }
-
-    /// <summary>
-    ///     Completes once, with the reason, when the process ends. Completes at disposal with
-    ///     "The broker session was disposed." when the process had not ended, so a session that never launched
-    ///     still completes. Never faults.
+    ///     Completes once, with the reason, shortly after the launched process ends. Never completes at disposal,
+    ///     so a session that never launched, or that is disposed while its process is alive, never completes it.
+    ///     Read <c>Ended.IsCompleted</c> for a flag. Never faults.
     /// </summary>
     public Task<string> Ended => _ended.Task;
 
@@ -165,11 +145,17 @@ public sealed class BrokerSession : IAsyncDisposable
     {
         lock (_gate)
         {
+            // A process end that completed but is not yet observed is still published with its own reason.
+            // Only the first call looks: after it, the process's end may be the disposal's own.
+            var launcherResult = Volatile.Read(ref _launcherResult);
+            var process = _process ?? (launcherResult is { IsCompletedSuccessfully: true } ? launcherResult.Result : null);
+            if (!_disposed && process is { Ended.IsCompleted: true } ended)
+            {
+                _ended.TrySetResult(CompletedReason(ended.Ended));
+            }
+
             _disposed = true;
-            // A process end that completed but is not yet observed keeps its own reason.
-            _ended.TrySetResult(_process is { Ended.IsCompleted: true } ended
-                ? CompletedReason(ended.Ended)
-                : DisposedReason);
+
             return new ValueTask(_disposal ??= DisposeCoreAsync(_launch));
         }
     }
@@ -200,6 +186,7 @@ public sealed class BrokerSession : IAsyncDisposable
     // Callers hold _gate.
     void ThrowIfEnded()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         var reason = _ended.Task.IsCompleted
             ? CompletedReason(_ended.Task)
             : _process is { Ended.IsCompleted: true } process ? CompletedReason(process.Ended) : null;
@@ -232,7 +219,10 @@ public sealed class BrokerSession : IAsyncDisposable
             ThrowIfDisposedWhileConnecting();
             Raise(Connecting);
             ThrowIfDisposedWhileConnecting();
-            var process = await _launchAsync(stoppingToken).ConfigureAwait(false);
+            var launcherResult = _launchAsync(stoppingToken);
+            // Disposal must see a completed launcher even while ownership publication waits for _gate.
+            Volatile.Write(ref _launcherResult, launcherResult);
+            var process = await launcherResult.ConfigureAwait(false);
             bool abandoned;
             lock (_gate)
             {
@@ -278,7 +268,15 @@ public sealed class BrokerSession : IAsyncDisposable
     async Task ObserveEndAsync(BrokerProcess process)
     {
         var reason = await process.Ended.ConfigureAwait(false);
-        _ended.TrySetResult(reason);
+        lock (_gate)
+        {
+            // Disposal ends the process it owns; that end is not a broker end. A real end that completed
+            // before disposal began was published by DisposeAsync.
+            if (!_disposed)
+            {
+                _ended.TrySetResult(reason);
+            }
+        }
     }
 
     // Every subscriber runs even when an earlier one throws; the first exception then propagates.

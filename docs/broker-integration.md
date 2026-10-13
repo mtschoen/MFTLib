@@ -104,24 +104,21 @@ Launch rules:
 
 End rules:
 
-- `Ended` is a `Task<string>` that completes once with the process's end reason (the control pipe
-  was lost, the broker exited), or at disposal with "The broker session was disposed." when the
-  process had not ended. It never faults.
-- `HasEnded` turns true when the process ends or the session is disposed and stays true. It reads
-  the process's end directly, so an end that has completed is visible before `Ended`'s
-  continuations run, and it never waits for a launch. It does not distinguish a process that died
-  from a session its owner disposed: to report only a dead process, check your own disposal flag
-  first, or read the reason `Ended` completed with.
+- `Ended` is a `Task<string>` that completes once, shortly after the launched process ends, with
+  the end reason (the control pipe was lost, the broker exited). It never completes at disposal: a
+  session that never launched, or that is disposed while its process is alive, never completes it.
+  It never faults. Read `Ended.IsCompleted` for a flag.
 - `Ended` continuations run asynchronously, never under a gate the session holds, so a continuation
-  may call any member: `HasEnded`, `DisposeAsync`, or a use that throws `InvalidOperationException`
+  may call any member: `DisposeAsync`, or a use that throws `InvalidOperationException`
   (`ObjectDisposedException` after disposal).
 - A session whose process ended stays ended: every later use throws `InvalidOperationException`
   naming the reason, and the session never relaunches behind the indexes that still reference the
   dead process. After `Ended`, close the indexes built over the session, dispose it, create a new
   session and open new indexes.
 - `DisposeAsync` is idempotent. It cancels and awaits an in-flight launch, so a process that
-  arrives after disposal began is reclaimed and disposed, then disposes the process, and completes
-  `Ended` if the process had not ended. Any use after disposal throws `ObjectDisposedException`.
+  arrives after disposal began is reclaimed and disposed, then disposes the process. A process
+  end that completed before disposal still completes `Ended`. Any use after disposal throws
+  `ObjectDisposedException`.
 
 `BrokerSession.GrowUsnJournalAsync(driveLetter, maximumSize, allocationDelta, cancellationToken)`
 launches the broker if no use has yet, grows the journal, and returns the settings read back

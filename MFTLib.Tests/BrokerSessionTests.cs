@@ -16,7 +16,7 @@ namespace MFTLib.Tests;
 [TestClass]
 [DoNotParallelize]
 [SupportedOSPlatform("windows")]
-public class BrokerSessionTests
+public partial class BrokerSessionTests
 {
     static readonly TimeSpan HangGuard = HostChannelHarness.HangGuard;
 
@@ -38,7 +38,7 @@ public class BrokerSessionTests
             return Task.FromResult(brokerProcess);
         });
         Assert.AreEqual(0, launches);
-        Assert.IsFalse(session.HasEnded);
+        Assert.IsFalse(session.Ended.IsCompleted);
 
         var callers = new List<Task<BrokerProcess>>();
         for (var caller = 0; caller < 8; caller++)
@@ -51,7 +51,7 @@ public class BrokerSessionTests
         Assert.IsTrue(processes.All(process => ReferenceEquals(process, brokerProcess)));
         Assert.AreEqual(1, launches);
         Assert.IsFalse(processes[0].Ended.IsCompleted);
-        Assert.IsFalse(session.HasEnded);
+        Assert.IsFalse(session.Ended.IsCompleted);
     }
 
     [TestMethod]
@@ -114,7 +114,7 @@ public class BrokerSessionTests
         var failure = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() =>
             session.ConnectAsync(CancellationToken.None));
         Assert.AreEqual("the UAC prompt was declined", failure.Message);
-        Assert.IsFalse(session.HasEnded, "a declined prompt does not end the session");
+        Assert.IsFalse(session.Ended.IsCompleted, "a declined prompt does not end the session");
         Assert.AreEqual(1, connecting);
         Assert.AreEqual(0, connected);
 
@@ -258,7 +258,7 @@ public class BrokerSessionTests
             session.ConnectAsync(CancellationToken.None)).WaitAsync(HangGuard);
         await disposal!.WaitAsync(HangGuard);
 
-        Assert.IsTrue(session.HasEnded);
+        Assert.IsFalse(session.Ended.IsCompleted, "disposal is not a broker end");
         Assert.AreEqual(0, launches, "the launcher ran after a Connecting subscriber disposed the session");
         Assert.IsInstanceOfType<OperationCanceledException>(failure);
     }
@@ -328,12 +328,11 @@ public class BrokerSessionTests
             return Task.FromResult(brokerProcess);
         });
         var first = await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard);
-        Assert.IsFalse(session.HasEnded);
+        Assert.IsFalse(session.Ended.IsCompleted);
 
         handle.Crash();
         var reason = await first.Ended.WaitAsync(HangGuard);
 
-        Assert.IsTrue(session.HasEnded, "an end that has completed is visible before the observer runs");
         var refusal = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() =>
             session.ConnectAsync(CancellationToken.None));
         StringAssert.Contains(refusal.Message, reason);
@@ -363,7 +362,6 @@ public class BrokerSessionTests
 
         var expected = await brokerProcess.Ended.WaitAsync(HangGuard);
         Assert.AreEqual(expected, await session.Ended.WaitAsync(HangGuard));
-        Assert.IsTrue(session.HasEnded);
         Assert.AreEqual(1, launches);
     }
 
@@ -379,7 +377,6 @@ public class BrokerSessionTests
 
         await session.DisposeAsync();
 
-        Assert.IsTrue(session.HasEnded);
         Assert.AreEqual(reason, await session.Ended.WaitAsync(HangGuard));
         await WatchDeduplicationTestSupport.ThrowsAsync<ObjectDisposedException>(() =>
             session.ConnectAsync(CancellationToken.None));
@@ -403,19 +400,22 @@ public class BrokerSessionTests
     }
 
     [TestMethod]
-    public async Task Ended_ContinuationCallingBackIntoTheSessionCompletesWhenTheSessionIsDisposedFirst()
+    public async Task Ended_StaysIncompleteWhenTheOwnerDisposesALiveSession()
     {
         await using var handle = StartBroker();
         var brokerProcess = handle.Process;
         var session = CreateSession(_ => Task.FromResult(brokerProcess));
         await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard);
-        var callback = CallBackIntoSessionOnEndedAsync(session);
 
         await session.DisposeAsync();
-        var (beforeDispose, afterDispose) = await callback.WaitAsync(HangGuard);
 
-        Assert.IsInstanceOfType<ObjectDisposedException>(beforeDispose);
-        Assert.IsInstanceOfType<ObjectDisposedException>(afterDispose);
+        Assert.IsTrue(brokerProcess.Ended.IsCompleted, "disposal ends the process it owns");
+        Assert.IsFalse(session.Ended.IsCompleted, "disposal is not a broker end");
+        var refusal = await WatchDeduplicationTestSupport.ThrowsAsync<ObjectDisposedException>(() =>
+            session.ConnectAsync(CancellationToken.None));
+        Assert.AreEqual(typeof(BrokerSession).FullName, refusal.ObjectName);
+        await WatchDeduplicationTestSupport.ThrowsAsync<ObjectDisposedException>(() =>
+            session.GrowUsnJournalAsync('C', 2, 1, CancellationToken.None));
     }
 
     // A continuation on Ended that calls back into the session: it must complete, so it was not run
@@ -424,7 +424,6 @@ public class BrokerSessionTests
         CallBackIntoSessionOnEndedAsync(BrokerSession session)
     {
         await session.Ended.ConfigureAwait(false);
-        Assert.IsTrue(session.HasEnded);
         var beforeDispose = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() =>
             session.ConnectAsync(CancellationToken.None)).ConfigureAwait(false);
         await session.DisposeAsync().ConfigureAwait(false);
@@ -439,7 +438,7 @@ public class BrokerSessionTests
         Task.Run(() =>
         {
             _ = session.ConnectAsync(CancellationToken.None);
-            _ = session.HasEnded;
+            _ = session.Ended.IsCompleted;
             _ = session.Ended;
         }).WaitAsync(HangGuard);
 
@@ -456,8 +455,7 @@ public class BrokerSessionTests
         await session.DisposeAsync();
 
         Assert.IsTrue(process.Ended.IsCompleted);
-        Assert.IsTrue(session.HasEnded);
-        Assert.IsTrue(session.Ended.IsCompleted, "Ended completes at disposal when the process had not ended");
+        Assert.IsFalse(session.Ended.IsCompleted, "disposing a live process is not a broker end");
         await WatchDeduplicationTestSupport.ThrowsAsync<ObjectDisposedException>(() =>
             session.ConnectAsync(CancellationToken.None));
     }
@@ -476,8 +474,8 @@ public class BrokerSessionTests
         await session.DisposeAsync();
 
         Assert.AreEqual(0, launches);
-        Assert.IsTrue(session.HasEnded);
-        Assert.IsTrue(session.Ended.IsCompleted);
+        Assert.IsFalse(session.Ended.IsCompleted, "disposal is not a broker end");
+        Assert.IsFalse(session.Ended.IsCompleted);
         await WatchDeduplicationTestSupport.ThrowsAsync<ObjectDisposedException>(() =>
             session.ConnectAsync(CancellationToken.None));
     }
@@ -510,7 +508,7 @@ public class BrokerSessionTests
         await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => connecting);
         await Task.WhenAll(first, second).WaitAsync(HangGuard);
         Assert.IsTrue(brokerProcess.Ended.IsCompleted);
-        Assert.IsTrue(session.HasEnded);
+        Assert.IsFalse(session.Ended.IsCompleted, "reclaiming a late process is not a broker end");
         Assert.AreEqual(1, launch.Count);
     }
 
@@ -547,7 +545,7 @@ public class BrokerSessionTests
         // A use immediately followed by disposal, both from the user interface thread, before the launch starts.
         var (use, disposal) = await userInterface.RunAsync(() =>
             (session.ConnectAsync(CancellationToken.None), session.DisposeAsync().AsTask())).WaitAsync(HangGuard);
-        Assert.IsTrue(session.HasEnded);
+        Assert.IsFalse(session.Ended.IsCompleted, "disposal is not a broker end");
         launchScheduler.RunPending();
         await disposal.WaitAsync(HangGuard);
         var failure = await WatchDeduplicationTestSupport.ThrowsAsync<Exception>(() => use).WaitAsync(HangGuard);
@@ -567,7 +565,7 @@ public class BrokerSessionTests
         var connecting = session.ConnectAsync(CancellationToken.None);
         await launch.Entered.WaitAsync(HangGuard);
 
-        Assert.IsFalse(session.HasEnded);
+        Assert.IsFalse(session.Ended.IsCompleted);
         Assert.IsFalse(session.Ended.IsCompleted);
         Assert.IsFalse(connecting.IsCompleted);
 
@@ -700,7 +698,7 @@ public class BrokerSessionTests
 
         StringAssert.Contains(first.Message, "UAC prompt was declined");
         Assert.AreEqual(2, prompts);
-        Assert.IsFalse(session.HasEnded);
+        Assert.IsFalse(session.Ended.IsCompleted);
     }
 
     [TestMethod]

@@ -42,7 +42,7 @@ partial class SampleHost
             ? await WatchDrivesAsync(source, parsed, cancellationToken).ConfigureAwait(false)
             : await RunEachDriveAsync(session, source, parsed, cancellationToken).ConfigureAwait(false);
 
-        if (session.HasEnded)
+        if (session.Ended.IsCompleted)
         {
             _writeLine($"Broker ended: {await session.Ended.ConfigureAwait(false)}");
         }
