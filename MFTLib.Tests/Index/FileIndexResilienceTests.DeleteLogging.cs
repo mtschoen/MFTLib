@@ -28,8 +28,8 @@ public partial class FileIndexResilienceTests
 
         var failed = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, failed.State);
-        Assert.AreEqual(DriveFailureKind.CacheDeclined, failed.FailureKind);
-        Assert.AreEqual(BlockSource.None, failed.Block.Source);
+        Assert.AreEqual(DriveFailureKind.CacheDeclined, failed.Failure?.Kind);
+        Assert.IsNull(failed.Block!);
     }
 
     [TestMethod]
@@ -93,7 +93,7 @@ public partial class FileIndexResilienceTests
             await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
             var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
-            Assert.AreEqual(BlockSource.ProducedByScan, index.Drives[0].Block.Source);
+            Assert.AreEqual(BlockSource.ProducedByScan, index.Drives[0].Block!.Source);
             var line = deletions.SingleOrDefault(entry => entry.Contains(blockPath));
             Assert.IsNotNull(line, "the wrong-root discard must be logged with its path");
             StringAssert.Contains(line, nameof(BlockValidationResult.WrongRootDirectory));

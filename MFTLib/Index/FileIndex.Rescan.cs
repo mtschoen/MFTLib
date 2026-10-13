@@ -51,7 +51,7 @@ public sealed partial class FileIndex
     ///         instance and its catch-up waits untouched. Journal changes applied during production
     ///         remain on the old block, including when its renamed file is restored. A producer
     ///         returning no block fails this task with <see cref="InvalidOperationException" />
-    ///         carrying its failure, also reported by <see cref="DriveStatus.FailureMessage" />.
+    ///         carrying its failure, also reported by <see cref="DriveStatus.Failure" />.
     ///         A failed retry after publishing a lost catch-up keeps that unresumable block and
     ///         refuses its watch.
     ///     </para>
@@ -152,8 +152,9 @@ public sealed partial class FileIndex
         if (produced.Block is not { } block)
         {
             DiscardUnproducedTarget(drive, target, retired);
-            RecordRescanProducerFailure(runtime.DriveLetter, produced.ProducerFailureMessage);
-            return new ScanAttempt(Published: false, produced.ProducerFailure, produced.ProducerFailureMessage);
+            var failureMessage = produced.RequireFailureMessage(runtime.DriveLetter);
+            RecordRescanProducerFailure(runtime.DriveLetter, failureMessage);
+            return new ScanAttempt(Published: false, produced.ProducerFailure, failureMessage);
         }
 
         (int ConsecutiveLostCatchUps, WatchHandoff Handoff) publication;
@@ -205,7 +206,7 @@ public sealed partial class FileIndex
     ///     drive has one, and otherwise on the drive's blockless status, keyed by letter, which
     ///     then reads <see cref="DriveFailureKind.ProducerFailed" />.
     /// </summary>
-    void RecordRescanProducerFailure(char driveLetter, string? message, bool endsOpenSettle = false)
+    void RecordRescanProducerFailure(char driveLetter, string message, bool endsOpenSettle = false)
     {
         lock (_stateLock)
         {
@@ -216,15 +217,7 @@ public sealed partial class FileIndex
 
             if (TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal))
             {
-                if (message is null)
-                {
-                    _mftProducerFailureMessagesByOrdinal.Remove(driveOrdinal);
-                }
-                else
-                {
-                    _mftProducerFailureMessagesByOrdinal[driveOrdinal] = message;
-                }
-
+                _mftProducerFailureMessagesByOrdinal[driveOrdinal] = message;
                 return;
             }
 
@@ -233,8 +226,7 @@ public sealed partial class FileIndex
             {
                 _blocklessDriveStatuses[index] = _blocklessDriveStatuses[index] with
                 {
-                    FailureMessage = message,
-                    FailureKind = DriveFailureKind.ProducerFailed
+                    Failure = new DriveFailure(DriveFailureKind.ProducerFailed, message)
                 };
             }
 

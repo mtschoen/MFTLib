@@ -85,7 +85,7 @@ public class FileIndexCheckpointLossLifetimeTests
             Options(ProduceMftShapedBlock, drives: drives), CancellationToken.None);
         foreach (var drive in index.Drives)
         {
-            Assert.AreEqual(BlockSource.ProducedByScan, drive.Block.Source);
+            Assert.AreEqual(BlockSource.ProducedByScan, drive.Block!.Source);
         }
     }
 
@@ -126,7 +126,7 @@ public class FileIndexCheckpointLossLifetimeTests
         Assert.AreEqual('T', failed.Watch.CheckpointLoss.DriveLetter);
 
         var settled = index.Drives.Single(drive => drive.DriveLetter == 'U');
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, settled.Block.Source);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, settled.Block!.Source);
         Assert.IsNull(settled.Watch.CheckpointLoss,
             "a drive that reused the failed drive's ordinal must not inherit its report");
     }
@@ -151,8 +151,8 @@ public class FileIndexCheckpointLossLifetimeTests
 
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, status.Block.Source);
-        Assert.AreEqual(DriveFailureKind.None, status.FailureKind);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, status.Block!.Source);
+        Assert.IsNull(status.Failure);
 
         var loss = status.Watch.CheckpointLoss;
         Assert.IsNotNull(loss, "a cache-only open must still say why the checkpoint could not be resumed");
@@ -175,7 +175,7 @@ public class FileIndexCheckpointLossLifetimeTests
 
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
-        Assert.AreEqual(DriveFailureKind.None, status.FailureKind);
+        Assert.IsNull(status.Failure);
 
         var loss = status.Watch.CheckpointLoss;
         Assert.IsNotNull(loss);
@@ -195,8 +195,8 @@ public class FileIndexCheckpointLossLifetimeTests
             Options(ProduceMftShapedBlock, cacheOnly: true, drives: drive), CancellationToken.None);
 
         var status = index.Drives.Single();
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, status.Block.Source);
-        Assert.AreEqual(DriveFailureKind.None, status.FailureKind);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, status.Block!.Source);
+        Assert.IsNull(status.Failure);
         Assert.IsNull(status.Watch.CheckpointLoss);
     }
 

@@ -164,7 +164,7 @@ await using var index = await FileIndex.OpenAsync(options, CancellationToken.Non
 A dump is untrusted. An empty file, a record size other than 1024 or 4096, a partial
 final record, an invalid fixup on an allocated record, a file unreadable to its opened
 length, a missing or invalid root, duplicate record numbers or a parent outside the
-index each fail the scan with a message in `DriveStatus.FailureMessage`.
+index each fail the scan with a message in `DriveStatus.Failure.Message`.
 
 ## Freed MFT records
 
@@ -520,11 +520,14 @@ tree instead. The two are never mixed within one open: a drive whose MFT scan fa
 reported `DriveState.Failed` and never falls back to a directory walk, and the
 enumeration producer runs only when a caller chooses `ProducerPolicy.Enumeration`
 explicitly, never as an inherited fallback decision. Why a `DriveState.Failed` drive has
-no block is reported as `DriveStatus.FailureKind`: `CacheDeclined` when
+no block is reported as `DriveStatus.Failure.Kind`: `CacheDeclined` when
 `FileIndexOptions.InitialOpenCacheOnly` found no usable cache and forbade a scan, `InUse` when
 another live `FileIndex` holds the cache block's owner lock, and `ProducerFailed` when the MFT
 producer itself failed. A failed drive of either kind accepts a per-drive
-`FileIndex.RescanAsync`, which scans it and clears the kind on success.
+`FileIndex.RescanAsync`, which scans it and clears `DriveStatus.Failure` on success. `DriveStatus.Block` is null
+unless the drive is `Ready`. A failed `RescanAsync`, or a failed catch-up retry scan during the initial
+`OpenAsync`, can leave a drive `Ready` with its previous block and `Failure.Kind` `ProducerFailed`.
+A successful scan publication clears that failure.
 
 `FileIndexOptions.NoCache` blocks are created with `FileOptions.DeleteOnClose`, so the
 operating system removes them when the last handle closes, including when the process

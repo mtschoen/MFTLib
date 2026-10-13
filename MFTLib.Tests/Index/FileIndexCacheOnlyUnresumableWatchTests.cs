@@ -89,7 +89,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
             Options(ProduceMftShapedBlock, watchSource: null, cacheOnly: false, drives), Token);
         foreach (var drive in index.Drives)
         {
-            Assert.AreEqual(BlockSource.ProducedByScan, drive.Block.Source);
+            Assert.AreEqual(BlockSource.ProducedByScan, drive.Block!.Source);
         }
     }
 
@@ -172,7 +172,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         Assert.AreEqual(new IndexWatchTarget('T', CachedJournalIdentifier, CachedNextUsn), source.TargetsFor('T').Single(),
             "the rescan starts the requested watch from the fresh cursor");
         var recovered = index.Drives.Single(drive => drive.DriveLetter == 'T');
-        Assert.AreEqual(BlockSource.ProducedByScan, recovered.Block.Source);
+        Assert.AreEqual(BlockSource.ProducedByScan, recovered.Block!.Source);
         Assert.IsNull(recovered.Watch.CheckpointLoss, "the rescan replaced the block the report described");
         Assert.IsNull(recovered.Watch.FailureMessage);
         Assert.IsTrue(recovered.Watch.Requested);
@@ -228,7 +228,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
             "a failed rescan must not start the cursor the journal still cannot resume");
 
         var after = index.Drives.Single(drive => drive.DriveLetter == 'T');
-        Assert.AreEqual("synthetic scan failure for T", after.FailureMessage);
+        Assert.AreEqual("synthetic scan failure for T", after.Failure?.Message);
         Assert.IsNotNull(after.Watch.FailureMessage, "the refusal must stay reported after a failed scan");
         StringAssert.Contains(after.Watch.FailureMessage, "RescanAsync");
         Assert.AreEqual(WatchState.Faulted, after.Watch.State);

@@ -86,7 +86,7 @@ public class LocalMftBlockProducerCursorTests
         Assert.AreEqual(noCache ? DriveState.Ready : DriveState.Failed, status.State);
         if (!noCache)
         {
-            Assert.AreEqual(DriveFailureKind.ProducerFailed, status.FailureKind);
+            Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind);
             Assert.AreEqual(0, Directory.GetFiles(directories.CacheDirectory, "*.mlix").Length);
         }
     }

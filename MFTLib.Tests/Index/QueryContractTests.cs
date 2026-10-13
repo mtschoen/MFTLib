@@ -25,12 +25,13 @@ public class QueryContractTests
     [TestMethod]
     public void DriveStatus_DefaultsMatchThePublishedContract()
     {
-        var status = SyntheticNotifications.CreateDriveStatus('T', DriveState.Ready, BlockSource.None, 40, false,
-            new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc));
+        var status = SyntheticNotifications.CreateDriveStatus('T', DriveState.Ready,
+            SyntheticNotifications.CreateDriveBlockStatus(BlockSource.ProducedByScan, 40, false,
+                new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc)), null);
 
-        Assert.AreEqual(0, status.Block.AccessDeniedSubtreeCount);
+        Assert.AreEqual(0, status.Block!.AccessDeniedSubtreeCount);
         Assert.IsNull(status.Watch.FailureMessage);
-        Assert.AreEqual(DriveFailureKind.None, status.FailureKind);
+        Assert.IsNull(status.Failure);
     }
 
     [TestMethod]

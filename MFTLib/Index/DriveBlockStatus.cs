@@ -1,8 +1,8 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     The block behind one drive's <see cref="DriveStatus" />, captured with that status. Every
-///     value is zero for a drive with no block.
+///     The block behind one drive's <see cref="DriveStatus" />, captured with that status. Present
+///     only on a <see cref="DriveState.Ready" /> drive.
 /// </summary>
 public sealed record DriveBlockStatus
 {
@@ -11,8 +11,7 @@ public sealed record DriveBlockStatus
     }
 
     /// <summary>
-    ///     Where the block behind this status came from. <see cref="BlockSource.None" /> for a
-    ///     drive with no block. Reads <see cref="BlockSource.ProducedByScan" /> after a successful
+    ///     Where the block behind this status came from. Reads <see cref="BlockSource.ProducedByScan" /> after a successful
     ///     rescan, because that rescan is what produced the current block.
     /// </summary>
     public BlockSource Source { get; init; }
@@ -20,7 +19,7 @@ public sealed record DriveBlockStatus
     /// <summary>
     ///     The current block's cache-slot backing, captured with this status. Read
     ///     <see cref="FileIndex.Drives" /> again after a rescan for an updated value.
-    ///     <see cref="CacheSlotState.NotApplicable" /> for NoCache or blockless drives.
+    ///     <see cref="CacheSlotState.NotApplicable" /> for NoCache drives.
     ///     This does not identify another owner or promise that a private block's slot
     ///     is still held elsewhere. <see cref="Source" /> independently describes
     ///     how the current block was obtained.
@@ -28,15 +27,14 @@ public sealed record DriveBlockStatus
     public CacheSlotState CacheSlot { get; init; }
 
     /// <summary>
-    ///     Rows that are in use and not tombstoned: the rows a query can return. Zero for a
-    ///     drive with no block.
+    ///     Rows that are in use and not tombstoned: the rows a query can return.
     /// </summary>
     public uint LiveRowCount { get; init; }
 
     /// <summary>
     ///     UTC time at which the current block's production completed, stamped into its header.
     ///     A block adopted from the cache keeps its original time, so this is the block's age,
-    ///     not the time the index opened. <see cref="DateTime.MinValue" /> for a drive with no block.
+    ///     not the time the index opened.
     /// </summary>
     public DateTime ScanTimestamp { get; init; }
 

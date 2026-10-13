@@ -116,10 +116,10 @@ public class FileIndexConcurrentRescanTests
         var driveT = index.Drives.Single(drive => drive.DriveLetter == 'T');
         var driveU = index.Drives.Single(drive => drive.DriveLetter == 'U');
         Assert.AreEqual(DriveState.Failed, driveT.State);
-        Assert.AreEqual(DriveFailureKind.ProducerFailed, driveT.FailureKind);
-        Assert.AreEqual("T lost its volume", driveT.FailureMessage);
+        Assert.AreEqual(DriveFailureKind.ProducerFailed, driveT.Failure?.Kind);
+        Assert.AreEqual("T lost its volume", driveT.Failure?.Message);
         Assert.AreEqual(DriveState.Ready, driveU.State);
-        Assert.IsNull(driveU.FailureMessage);
+        Assert.IsNull(driveU.Failure);
         GC.KeepAlive(index);
     }
 
@@ -140,9 +140,9 @@ public class FileIndexConcurrentRescanTests
         await ThrowsAsync<InvalidOperationException>(() => rescanU.WaitAsync(HangGuard));
 
         Assert.AreEqual("T lost its volume",
-            index.Drives.Single(drive => drive.DriveLetter == 'T').FailureMessage);
+            index.Drives.Single(drive => drive.DriveLetter == 'T').Failure?.Message);
         Assert.AreEqual("U declined elevation",
-            index.Drives.Single(drive => drive.DriveLetter == 'U').FailureMessage);
+            index.Drives.Single(drive => drive.DriveLetter == 'U').Failure?.Message);
     }
 
     [TestMethod]

@@ -10,24 +10,21 @@ namespace SampleProgram.Direct;
 partial class SampleHost
 {
     // An offline or failed drive settles without a usable index, so a verb stops here with the reason.
-    static void ThrowIfNotReady(DriveStatus status)
+    static DriveBlockStatus RequireReadyBlock(DriveStatus status)
     {
-        if (status.State == DriveState.Failed)
+        if (status is { State: DriveState.Failed, Failure: { } failure })
         {
-            throw new InvalidOperationException(status.FailureMessage ?? $"The drive failed: {status.FailureKind}");
+            throw new InvalidOperationException($"The drive failed ({failure.Kind}): {failure.Message}");
         }
 
         // An offline drive settles without a scan, so there is no catch-up to report.
-        if (status.State == DriveState.Offline)
-        {
-            throw new InvalidOperationException("The drive is offline; nothing was scanned.");
-        }
+        return status.Block ?? throw new InvalidOperationException("The drive is offline; nothing was scanned.");
     }
 
     void WriteStatus(DriveStatus status)
     {
-        ThrowIfNotReady(status);
-        _writeLine($"Index holds {status.Block.LiveRowCount} rows; {status.Block.SkippedRecordCount} records skipped");
+        var block = RequireReadyBlock(status);
+        _writeLine($"Index holds {block.LiveRowCount} rows; {block.SkippedRecordCount} records skipped");
         _writeLine(status.Watch.CheckpointLoss is { } loss
             ? $"Catch-up lost: {loss.Cause}"
             : $"Catch-up held; watch supported: {status.Watch.Supported}");

@@ -1,6 +1,5 @@
-MFTLib.Index.BlockSource :: field public const None : MFTLib.Index.BlockSource = 0
-MFTLib.Index.BlockSource :: field public const ProducedByScan : MFTLib.Index.BlockSource = 2
-MFTLib.Index.BlockSource :: field public const WarmStartedFromCache : MFTLib.Index.BlockSource = 1
+MFTLib.Index.BlockSource :: field public const ProducedByScan : MFTLib.Index.BlockSource = 1
+MFTLib.Index.BlockSource :: field public const WarmStartedFromCache : MFTLib.Index.BlockSource = 0
 MFTLib.Index.BlockSource :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.Index.BlockValidationResult :: field public const Incomplete : MFTLib.Index.BlockValidationResult = 3
 MFTLib.Index.BlockValidationResult :: field public const InconsistentRegions : MFTLib.Index.BlockValidationResult = 5
@@ -100,11 +99,20 @@ MFTLib.Index.DriveBlockStatus :: property public ScanTimestamp { get; init; } : 
 MFTLib.Index.DriveBlockStatus :: property public SkippedRecordCount { get; init; } : int
 MFTLib.Index.DriveBlockStatus :: property public Source { get; init; } : MFTLib.Index.BlockSource
 MFTLib.Index.DriveBlockStatus :: type public sealed class : System.IEquatable<MFTLib.Index.DriveBlockStatus>
-MFTLib.Index.DriveFailureKind :: field public const CacheDeclined : MFTLib.Index.DriveFailureKind = 1
-MFTLib.Index.DriveFailureKind :: field public const CacheTagMismatch : MFTLib.Index.DriveFailureKind = 4
-MFTLib.Index.DriveFailureKind :: field public const InUse : MFTLib.Index.DriveFailureKind = 3
-MFTLib.Index.DriveFailureKind :: field public const None : MFTLib.Index.DriveFailureKind = 0
-MFTLib.Index.DriveFailureKind :: field public const ProducerFailed : MFTLib.Index.DriveFailureKind = 2
+MFTLib.Index.DriveFailure :: method public <Clone>$() : MFTLib.Index.DriveFailure
+MFTLib.Index.DriveFailure :: method public Equals(MFTLib.Index.DriveFailure? other) : bool
+MFTLib.Index.DriveFailure :: method public override Equals(object? obj) : bool
+MFTLib.Index.DriveFailure :: method public override GetHashCode() : int
+MFTLib.Index.DriveFailure :: method public override ToString() : string
+MFTLib.Index.DriveFailure :: method public static op_Equality(MFTLib.Index.DriveFailure? left, MFTLib.Index.DriveFailure? right) : bool
+MFTLib.Index.DriveFailure :: method public static op_Inequality(MFTLib.Index.DriveFailure? left, MFTLib.Index.DriveFailure? right) : bool
+MFTLib.Index.DriveFailure :: property public Kind { get; init; } : MFTLib.Index.DriveFailureKind
+MFTLib.Index.DriveFailure :: property public Message { get; init; } : string
+MFTLib.Index.DriveFailure :: type public sealed class : System.IEquatable<MFTLib.Index.DriveFailure>
+MFTLib.Index.DriveFailureKind :: field public const CacheDeclined : MFTLib.Index.DriveFailureKind = 0
+MFTLib.Index.DriveFailureKind :: field public const CacheTagMismatch : MFTLib.Index.DriveFailureKind = 3
+MFTLib.Index.DriveFailureKind :: field public const InUse : MFTLib.Index.DriveFailureKind = 2
+MFTLib.Index.DriveFailureKind :: field public const ProducerFailed : MFTLib.Index.DriveFailureKind = 1
 MFTLib.Index.DriveFailureKind :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.Index.DriveOperationOutcome :: field public const Failed : MFTLib.Index.DriveOperationOutcome = 1
 MFTLib.Index.DriveOperationOutcome :: field public const NotApplicable : MFTLib.Index.DriveOperationOutcome = 2
@@ -134,10 +142,9 @@ MFTLib.Index.DriveStatus :: method public override GetHashCode() : int
 MFTLib.Index.DriveStatus :: method public override ToString() : string
 MFTLib.Index.DriveStatus :: method public static op_Equality(MFTLib.Index.DriveStatus? left, MFTLib.Index.DriveStatus? right) : bool
 MFTLib.Index.DriveStatus :: method public static op_Inequality(MFTLib.Index.DriveStatus? left, MFTLib.Index.DriveStatus? right) : bool
-MFTLib.Index.DriveStatus :: property public Block { get; init; } : MFTLib.Index.DriveBlockStatus
+MFTLib.Index.DriveStatus :: property public Block { get; init; } : MFTLib.Index.DriveBlockStatus?
 MFTLib.Index.DriveStatus :: property public DriveLetter { get; init; } : char
-MFTLib.Index.DriveStatus :: property public FailureKind { get; init; } : MFTLib.Index.DriveFailureKind
-MFTLib.Index.DriveStatus :: property public FailureMessage { get; init; } : string?
+MFTLib.Index.DriveStatus :: property public Failure { get; init; } : MFTLib.Index.DriveFailure?
 MFTLib.Index.DriveStatus :: property public State { get; init; } : MFTLib.Index.DriveState
 MFTLib.Index.DriveStatus :: property public Watch { get; init; } : MFTLib.Index.DriveWatchStatus
 MFTLib.Index.DriveStatus :: type public sealed class : System.IEquatable<MFTLib.Index.DriveStatus>

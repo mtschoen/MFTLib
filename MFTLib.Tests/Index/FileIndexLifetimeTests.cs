@@ -60,11 +60,11 @@ public class FileIndexLifetimeTests
         DateTime firstTimestamp;
         await using (var first = await FileIndex.OpenAsync(Options(), CancellationToken.None))
         {
-            firstTimestamp = first.Drives[0].Block.ScanTimestamp;
+            firstTimestamp = first.Drives[0].Block!.ScanTimestamp;
         }
 
         await using var second = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        Assert.AreEqual(firstTimestamp, second.Drives[0].Block.ScanTimestamp);
+        Assert.AreEqual(firstTimestamp, second.Drives[0].Block!.ScanTimestamp);
     }
 
 
@@ -92,7 +92,7 @@ public class FileIndexLifetimeTests
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         Assert.AreEqual(DriveState.Offline, index.Drives[0].State);
-        Assert.AreEqual(0u, index.Drives[0].Block.LiveRowCount);
+        Assert.IsNull(index.Drives[0].Block);
         Assert.IsNull(SyntheticIndexInspection.ReadHeader(index, 'Z'));
     }
 

@@ -121,7 +121,7 @@ public partial class SyntheticBlockTests
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
         var drive = index.Drives.Single();
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, drive.Block.Source);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, drive.Block!.Source);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
         Assert.AreEqual(Moment, drive.Block.ScanTimestamp);
         Assert.AreEqual(10u, index.HeaderOf().RowCount);
@@ -202,7 +202,7 @@ public partial class SyntheticBlockTests
 
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
-        Assert.AreEqual(4u, index.Drives.Single().Block.LiveRowCount);
+        Assert.AreEqual(4u, index.Drives.Single().Block!.LiveRowCount);
     }
 
     [TestMethod]
@@ -214,7 +214,7 @@ public partial class SyntheticBlockTests
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
         var drive = index.Drives.Single();
-        Assert.IsTrue(drive.Block.CompactionNeeded);
+        Assert.IsTrue(drive.Block!.CompactionNeeded);
         Assert.AreEqual(DriveState.Ready, drive.State);
         Assert.AreEqual(1, index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)).Count);
     }
@@ -232,7 +232,7 @@ public partial class SyntheticBlockTests
 
         await using (var index = await FileIndex.OpenAsync(CacheOnly(), Token))
         {
-            Assert.AreEqual(later, index.Drives.Single().Block.ScanTimestamp);
+            Assert.AreEqual(later, index.Drives.Single().Block!.ScanTimestamp);
         }
 
         using var block = BlockFile.Open(path, Serial, out _)!;
@@ -252,7 +252,7 @@ public partial class SyntheticBlockTests
         var producer = SampleProducer();
         await using var index = await FileIndex.OpenAsync(Scanning(producer), Token);
         var drive = index.Drives.Single();
-        Assert.AreEqual(BlockSource.ProducedByScan, drive.Block.Source);
+        Assert.AreEqual(BlockSource.ProducedByScan, drive.Block!.Source);
     }
 
     [TestMethod]
@@ -353,7 +353,7 @@ public partial class SyntheticBlockTests
         await using (var index = await FileIndex.OpenAsync(Scanning(producer, tag), Token))
         {
             var drive = index.Drives.Single();
-            Assert.AreEqual(BlockSource.ProducedByScan, drive.Block.Source);
+            Assert.AreEqual(BlockSource.ProducedByScan, drive.Block!.Source);
             Assert.AreEqual(3, drive.Block.SkippedRecordCount);
             Assert.AreEqual(Moment, drive.Block.ScanTimestamp);
             Assert.AreEqual(1234, index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)).Single().Size);
@@ -414,8 +414,8 @@ public partial class SyntheticBlockTests
             await using var failedIndex = await FileIndex.OpenAsync(Scanning(producer), Token);
             var failedDrive = failedIndex.Drives.Single();
             Assert.AreEqual(DriveState.Failed, failedDrive.State);
-            Assert.AreEqual(DriveFailureKind.ProducerFailed, failedDrive.FailureKind);
-            StringAssert.Contains(failedDrive.FailureMessage, "catch-up evaluation failed");
+            Assert.AreEqual(DriveFailureKind.ProducerFailed, failedDrive.Failure?.Kind);
+            StringAssert.Contains(failedDrive.Failure?.Message, "catch-up evaluation failed");
             return;
         }
 

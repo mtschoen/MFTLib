@@ -64,11 +64,10 @@ public class FileIndexDriveStatusTests
         Assert.AreEqual(2, index.Drives.Count);
         Assert.AreEqual('Z', index.Drives[0].DriveLetter);
         Assert.AreEqual(DriveState.Offline, index.Drives[0].State);
-        Assert.AreEqual(0u, index.Drives[0].Block.LiveRowCount);
-        Assert.AreEqual(BlockSource.None, index.Drives[0].Block.Source);
+        Assert.IsNull(index.Drives[0].Block);
         Assert.AreEqual(WatchState.NotStarted, index.Drives[0].Watch.State);
         Assert.IsFalse(index.Drives[0].Watch.Supported);
-        Assert.AreEqual(DriveFailureKind.None, index.Drives[0].FailureKind);
+        Assert.IsNull(index.Drives[0].Failure);
         Assert.AreEqual('T', index.Drives[1].DriveLetter);
         Assert.AreEqual(DriveState.Ready, index.Drives[1].State);
     }
@@ -89,8 +88,9 @@ public class FileIndexDriveStatusTests
         }, TestContext.CancellationTokenSource.Token);
 
         var status = index.Drives.Single();
-        Assert.AreEqual(3u, status.Block.LiveRowCount);
+        Assert.AreEqual(3u, status.Block!.LiveRowCount);
         Assert.IsTrue(status.Block.LiveRowCount <= index.HeaderOf().RowCount);
+        Assert.IsNull(status.Failure);
     }
 
     [TestMethod]
@@ -147,8 +147,8 @@ public class FileIndexDriveStatusTests
         var options = Options(progress: new DeleteSubtreeOnReport(documentsPath, vanishingPath));
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
-        Assert.AreEqual(1, index.Drives[0].Block.AccessDeniedSubtreeCount);
-        Assert.AreEqual(0, index.Drives[0].Block.SkippedRecordCount);
+        Assert.AreEqual(1, index.Drives[0].Block!.AccessDeniedSubtreeCount);
+        Assert.AreEqual(0, index.Drives[0].Block!.SkippedRecordCount);
     }
 
     [TestMethod]
@@ -159,15 +159,15 @@ public class FileIndexDriveStatusTests
         var progress = new DeleteSubtreeOnReport(documentsPath, vanishingPath);
 
         await using var index = await FileIndex.OpenAsync(Options(progress: progress), CancellationToken.None);
-        Assert.AreEqual(0, index.Drives[0].Block.AccessDeniedSubtreeCount);
-        Assert.AreEqual(0, index.Drives[0].Block.SkippedRecordCount);
+        Assert.AreEqual(0, index.Drives[0].Block!.AccessDeniedSubtreeCount);
+        Assert.AreEqual(0, index.Drives[0].Block!.SkippedRecordCount);
 
         Directory.CreateDirectory(vanishingPath);
         await File.WriteAllTextAsync(Path.Combine(vanishingPath, "inner.txt"), "gone soon");
         await index.RescanAsync('T', CancellationToken.None);
 
-        Assert.AreEqual(1, index.Drives[0].Block.AccessDeniedSubtreeCount);
-        Assert.AreEqual(0, index.Drives[0].Block.SkippedRecordCount);
+        Assert.AreEqual(1, index.Drives[0].Block!.AccessDeniedSubtreeCount);
+        Assert.AreEqual(0, index.Drives[0].Block!.SkippedRecordCount);
     }
 
     [TestMethod]

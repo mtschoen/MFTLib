@@ -1,8 +1,14 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     One drive's current state. Online status carries block-header data in <see cref="Block" />;
-///     blockless status carries zero values there. <see cref="Watch" /> carries the live-watch state.
+///     One drive's current state. <see cref="Watch" /> carries the live-watch state. The lawful combinations of
+///     <see cref="State" />, <see cref="Block" /> and <see cref="Failure" />:
+///     <list type="bullet">
+///         <item><description><see cref="DriveState.Ready" /> with a block and no failure.</description></item>
+///         <item><description><see cref="DriveState.Ready" /> with a retained block and a <see cref="DriveFailureKind.ProducerFailed" /> failure after a failed rescan or a failed catch-up retry scan during <see cref="FileIndex.OpenAsync" />.</description></item>
+///         <item><description><see cref="DriveState.Offline" /> with neither.</description></item>
+///         <item><description><see cref="DriveState.Failed" /> with a failure and no block.</description></item>
+///     </list>
 /// </summary>
 public sealed record DriveStatus
 {
@@ -22,32 +28,18 @@ public sealed record DriveStatus
     public DriveState State { get; init; }
 
     /// <summary>
-    ///     Why this drive is <see cref="DriveState.Failed" />:
-    ///     <see cref="DriveFailureKind.CacheDeclined" /> when a cache-only open declined it for
-    ///     lack of a usable cache block, <see cref="DriveFailureKind.CacheTagMismatch" /> when
-    ///     the cached block's tag did not match the requested tag, <see cref="DriveFailureKind.InUse" /> when the cache
-    ///     block is locked by another live index, <see cref="DriveFailureKind.ProducerFailed" />
-    ///     when its MFT producer failed. <see cref="DriveFailureKind.None" /> in every other
-    ///     state, including <see cref="DriveState.Offline" />. A successful
-    ///     <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> of a failed drive clears this back to
-    ///     <see cref="DriveFailureKind.None" /> along with the state; a failed rescan of a
-    ///     cache-declined drive moves it to <see cref="DriveFailureKind.ProducerFailed" />,
-    ///     because the scan itself is now what failed.
+    ///     Why this drive failed; null unless it did. Non-null while the drive is
+    ///     <see cref="DriveState.Failed" />, and while a <see cref="DriveState.Ready" /> drive retains its previous
+    ///     block after a failed <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> or a failed catch-up
+    ///     retry scan during <see cref="FileIndex.OpenAsync" />. Both retained-block failures read
+    ///     <see cref="DriveFailureKind.ProducerFailed" />. A successful scan publication clears it. A failed
+    ///     rescan of a cache-declined drive moves it to <see cref="DriveFailureKind.ProducerFailed" />, because
+    ///     the scan itself is now what failed. An <see cref="DriveState.Offline" /> drive has none.
     /// </summary>
-    public DriveFailureKind FailureKind { get; init; }
+    public DriveFailure? Failure { get; init; }
 
-    /// <summary>
-    ///     The detail behind <see cref="FailureKind" />: the MFT producer's error when the
-    ///     producer failed during opening or its latest rescan, or the cache-only refusal when
-    ///     <see cref="FileIndexOptions.InitialOpenCacheOnly" /> declined the drive. A drive that
-    ///     fails during opening has <see cref="DriveState.Failed" /> and no block. A failed
-    ///     rescan leaves the previous block in place. Null after a successful MFT production,
-    ///     when enumeration was selected explicitly, or on a warm start.
-    /// </summary>
-    public string? FailureMessage { get; init; }
-
-    /// <summary>The block behind this status; zero values for a drive with no block. Never null.</summary>
-    public DriveBlockStatus Block { get; init; } = new();
+    /// <summary>The block behind this status; null unless <see cref="State" /> is <see cref="DriveState.Ready" />.</summary>
+    public DriveBlockStatus? Block { get; init; }
 
     /// <summary>This drive's live-watch state; defaults for a drive that is not watched. Never null.</summary>
     public DriveWatchStatus Watch { get; init; } = new();

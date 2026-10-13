@@ -131,7 +131,7 @@ internal static class DuplicateNameSieve
         long total = 0;
         foreach (var drive in index.Drives)
         {
-            total += drive.Block.LiveRowCount;
+            total += drive.Block?.LiveRowCount ?? 0;
         }
 
         return total;

@@ -229,7 +229,7 @@ public partial class FileIndexCatchUpLossTests
         Assert.AreSame(producerFailure, thrown.InnerException);
         StringAssert.Contains(thrown.Message, producerFailure.Message);
         var drive = harness.DriveFor('T');
-        Assert.AreEqual(producerFailure.Message, drive.FailureMessage);
+        Assert.AreEqual(producerFailure.Message, drive.Failure?.Message);
         Assert.AreEqual(0, drive.Watch.ConsecutiveLostCatchUps);
         Assert.IsNull(drive.Watch.CheckpointLoss);
         Assert.AreEqual(0, WatchDeduplicationTestSupport.CatchUpLosses(harness, 'T').Length);

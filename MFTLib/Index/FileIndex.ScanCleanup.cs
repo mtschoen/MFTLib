@@ -47,8 +47,7 @@ public sealed partial class FileIndex
             ClaimSettledCountLocked(driveLetter);
             _blocklessDriveStatuses.Add(new DriveStatus(driveLetter, DriveState.Failed)
             {
-                FailureMessage = settled.ProducerFailureMessage,
-                FailureKind = failureKind,
+                Failure = new DriveFailure(failureKind, settled.RequireFailureMessage(driveLetter)),
                 // A cache-only open declines the drive precisely because the checkpoint was
                 // lost, so this is where that reason has to reach the consumer: the drive ends
                 // up with no block, and so never travels through DescribeDrive.

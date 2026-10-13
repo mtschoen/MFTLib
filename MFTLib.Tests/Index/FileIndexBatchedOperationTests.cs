@@ -340,6 +340,6 @@ public class FileIndexBatchedOperationTests
 
         StringAssert.Contains(thrown.Message, "the scan could not read the volume");
         Assert.AreSame(failure, thrown.InnerException);
-        Assert.AreEqual("the scan could not read the volume", harness.DriveFor('T').FailureMessage);
+        Assert.AreEqual("the scan could not read the volume", harness.DriveFor('T').Failure?.Message);
     }
 }

@@ -48,7 +48,7 @@ public class MftDumpRescanTests
         Assert.AreEqual(33L, index.Find(RenamedPath)!.Value.Size);
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.IsNull(drive.FailureMessage);
+        Assert.IsNull(drive.Failure);
         Assert.IsFalse(drive.Watch.Supported);
     }
 
@@ -70,13 +70,13 @@ public class MftDumpRescanTests
         Assert.AreEqual(11L, index.Find(NotesPath)!.Value.Size, "the last good block still answers queries");
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(InvalidFixupMessage, drive.FailureMessage);
+        Assert.AreEqual(InvalidFixupMessage, drive.Failure?.Message);
 
         await File.WriteAllBytesAsync(path, Renamed(1024));
         await index.RescanAsync('D', CancellationToken.None);
 
         Assert.IsNotNull(index.Find(RenamedPath));
-        Assert.IsNull(index.Drives.Single().FailureMessage, "a later good rescan clears the failure");
+        Assert.IsNull(index.Drives.Single().Failure, "a later good rescan clears the failure");
     }
 
     [TestMethod]

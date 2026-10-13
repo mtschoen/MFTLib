@@ -159,7 +159,7 @@ public sealed partial class FileIndex
     {
         if (lostBlockInPlace)
         {
-            RecordRescanProducerFailure(driveLetter, failed.ProducerFailureMessage, endsOpenSettle: true);
+            RecordRescanProducerFailure(driveLetter, failed.RequireFailureMessage(driveLetter), endsOpenSettle: true);
         }
         else
         {

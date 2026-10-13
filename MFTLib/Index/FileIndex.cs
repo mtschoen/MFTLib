@@ -387,7 +387,9 @@ public sealed partial class FileIndex : IAsyncDisposable
             driveBlock.DriveLetter,
             DriveState.Ready)
         {
-            FailureMessage = _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
+            Failure = _mftProducerFailureMessagesByOrdinal.TryGetValue(driveBlock.DriveOrdinal, out var producerMessage)
+                ? new DriveFailure(DriveFailureKind.ProducerFailed, producerMessage)
+                : null,
             Block = new DriveBlockStatus
             {
                 Source = _blockSourcesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),

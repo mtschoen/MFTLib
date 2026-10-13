@@ -9,13 +9,6 @@ namespace MFTLib.Index;
 public enum BlockSource
 {
     /// <summary>
-    ///     The drive has no block: it was offline at open, its MFT producer failed, or a
-    ///     cache-only open found no usable cache or a mismatched cache tag, or the cache slot
-    ///     was in use. <see cref="DriveStatus.FailureKind" /> distinguishes these failures.
-    /// </summary>
-    None,
-
-    /// <summary>
     ///     The block was adopted from a valid file in the cache directory. Its contents are as
     ///     old as <see cref="DriveBlockStatus.ScanTimestamp" /> says.
     /// </summary>

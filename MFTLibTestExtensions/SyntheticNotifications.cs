@@ -106,29 +106,47 @@ public static class SyntheticNotifications
         };
 
     /// <summary>
-    ///     Builds one drive status. A fixture sets the optional failure, cache-slot and watch values with a
+    ///     Builds one drive status from its state, block and failure. A fixture sets the watch values with a
     ///     <c>with</c> expression on the result, nesting one for <see cref="DriveStatus.Watch" /> (for example
     ///     <c>status with { Watch = status.Watch with { Supported = true } }</c>).
     /// </summary>
     /// <param name="driveLetter">The drive.</param>
     /// <param name="state">Whether the drive can answer queries, needs a rescan, or has no block.</param>
+    /// <param name="block">The block behind a <see cref="DriveState.Ready" /> drive; null otherwise.</param>
+    /// <param name="failure">Why the drive failed; null for a drive that did not.</param>
+    /// <returns>The status.</returns>
+    public static DriveStatus CreateDriveStatus(char driveLetter, DriveState state, DriveBlockStatus? block,
+        DriveFailure? failure) =>
+        new(driveLetter, state)
+        {
+            Block = block,
+            Failure = failure
+        };
+
+    /// <summary>
+    ///     Builds the block part of a drive status. A fixture sets the optional cache-slot and skipped-record
+    ///     values with a <c>with</c> expression on the result.
+    /// </summary>
     /// <param name="blockSource">Where the block came from.</param>
     /// <param name="liveRowCount">The rows a query can return.</param>
     /// <param name="compactionNeeded">The block header compaction flag.</param>
     /// <param name="scanTimestamp">When the current block production completed.</param>
-    /// <returns>The status.</returns>
-    public static DriveStatus CreateDriveStatus(char driveLetter, DriveState state, BlockSource blockSource,
-        uint liveRowCount, bool compactionNeeded, DateTime scanTimestamp) =>
-        new(driveLetter, state)
+    /// <returns>The block status.</returns>
+    public static DriveBlockStatus CreateDriveBlockStatus(BlockSource blockSource, uint liveRowCount,
+        bool compactionNeeded, DateTime scanTimestamp) =>
+        new()
         {
-            Block = new DriveBlockStatus
-            {
-                Source = blockSource,
-                LiveRowCount = liveRowCount,
-                CompactionNeeded = compactionNeeded,
-                ScanTimestamp = scanTimestamp
-            }
+            Source = blockSource,
+            LiveRowCount = liveRowCount,
+            CompactionNeeded = compactionNeeded,
+            ScanTimestamp = scanTimestamp
         };
+
+    /// <summary>Builds a drive failure.</summary>
+    /// <param name="kind">Which failure it is.</param>
+    /// <param name="message">The detail a consumer shows.</param>
+    /// <returns>The failure.</returns>
+    public static DriveFailure CreateDriveFailure(DriveFailureKind kind, string message) => new(kind, message);
 
     /// <summary>
     ///     Builds a journal checkpoint loss report with no derived sizes and no raw journal positions. A

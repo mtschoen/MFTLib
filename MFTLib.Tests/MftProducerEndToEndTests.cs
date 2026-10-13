@@ -123,7 +123,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.IsTrue(created.Header.SlotCapacity < 1_000_000);
         Assert.IsTrue(created.Header.IsComplete);
         Assert.IsTrue(created.Header.IsCompactionNeeded);
-        Assert.IsTrue(index.Drives[0].Block.CompactionNeeded);
+        Assert.IsTrue(index.Drives[0].Block!.CompactionNeeded);
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf('C').ProducerKind);
         Assert.IsNotNull(index.Find(At("documents", "notes.txt")));
@@ -223,8 +223,8 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf('C').ProducerKind);
         Assert.IsTrue(index.Drives[0].Watch.Supported);
-        Assert.IsFalse(index.Drives[0].Block.CompactionNeeded);
-        Assert.IsNull(index.Drives[0].FailureMessage);
+        Assert.IsFalse(index.Drives[0].Block!.CompactionNeeded);
+        Assert.IsNull(index.Drives[0].Failure);
     }
 
     static IEnumerable<IReadOnlyList<MftRecord>> Records() =>

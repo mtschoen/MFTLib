@@ -121,8 +121,8 @@ public class FileIndexCacheTagTests
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, status.State);
-        Assert.AreEqual(DriveFailureKind.ProducerFailed, status.FailureKind);
-        StringAssert.Contains(status.FailureMessage!, "cache tag");
+        Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind);
+        StringAssert.Contains(status.Failure?.Message!, "cache tag");
         Assert.IsFalse(File.Exists(BlockPath));
     }
 
@@ -151,7 +151,7 @@ public class FileIndexCacheTagTests
         };
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, index.Drives.Single().Block.Source);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, index.Drives.Single().Block!.Source);
         Assert.IsNull(index.Drives.Single().Watch.CheckpointLoss);
     }
 
@@ -182,22 +182,22 @@ public class FileIndexCacheTagTests
             if (cacheOnly)
             {
                 Assert.AreEqual(DriveState.Failed, status.State);
-                Assert.AreEqual(DriveFailureKind.CacheTagMismatch, status.FailureKind);
-                Assert.AreEqual(BlockSource.None, status.Block.Source);
+                Assert.AreEqual(DriveFailureKind.CacheTagMismatch, status.Failure?.Kind);
+                Assert.IsNull(status.Block!);
                 Assert.IsFalse(File.Exists(BlockPath));
                 await index.RescanAsync('T', CancellationToken.None);
                 Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
-                Assert.AreEqual(DriveFailureKind.None, index.Drives.Single().FailureKind);
+                Assert.IsNull(index.Drives.Single().Failure);
             }
             else
             {
                 Assert.AreEqual(DriveState.Ready, status.State);
-                Assert.AreEqual(BlockSource.ProducedByScan, status.Block.Source);
+                Assert.AreEqual(BlockSource.ProducedByScan, status.Block!.Source);
             }
         }
         Assert.AreEqual(requested, CacheDirectory.InspectCached(Cache).Single().CacheTag);
         await using var reopened = await FileIndex.OpenAsync(Options(requested, true), CancellationToken.None);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, reopened.Drives.Single().Block.Source);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, reopened.Drives.Single().Block!.Source);
     }
 
     [TestMethod]
@@ -216,10 +216,10 @@ public class FileIndexCacheTagTests
         {
             Assert.IsTrue(diagnostics.Any(line => line.Contains("cache validation failed: WrongFormatVersion")),
                 "the rejected block's deletion names the reason");
-            Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().Block.Source);
+            Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().Block!.Source);
         }
         await using var reopened = await FileIndex.OpenAsync(Options(OriginalTag), CancellationToken.None);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, reopened.Drives.Single().Block.Source);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, reopened.Drives.Single().Block!.Source);
     }
 
     [TestMethod]
@@ -233,12 +233,12 @@ public class FileIndexCacheTagTests
         await using (var declined = await FileIndex.OpenAsync(
             Options(requested, true) with { Diagnostics = diagnostics.Add }, CancellationToken.None))
         {
-            Assert.AreEqual(DriveFailureKind.InUse, declined.Drives.Single().FailureKind);
+            Assert.AreEqual(DriveFailureKind.InUse, declined.Drives.Single().Failure?.Kind);
         }
         await using (var privateIndex = await FileIndex.OpenAsync(
             Options(requested) with { Diagnostics = diagnostics.Add }, CancellationToken.None))
         {
-            Assert.AreEqual(BlockSource.ProducedByScan, privateIndex.Drives.Single().Block.Source);
+            Assert.AreEqual(BlockSource.ProducedByScan, privateIndex.Drives.Single().Block!.Source);
             Assert.AreEqual(requested, privateIndex.CurrentSnapshot.DriveBlocks.Single().Block.Header.CacheTag);
         }
         Assert.IsFalse(diagnostics.Any(line => line.Contains("Cache tag mismatch")));

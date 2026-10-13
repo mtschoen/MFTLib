@@ -153,7 +153,7 @@ public class FileIndexRescanCleanupTests
         {
             Assert.AreSame(producerFailure, thrown.InnerException);
             var drive = index.Drives.Single();
-            Assert.AreEqual("the producer lost the volume", drive.FailureMessage);
+            Assert.AreEqual("the producer lost the volume", drive.Failure?.Message);
             Assert.AreEqual(DriveState.Ready, drive.State,
                 "the drive keeps its previous block when its rescan's producer fails");
             Assert.AreEqual(1, Directory.GetFiles(_cacheDirectory, "*.retired-*").Length,
@@ -189,7 +189,7 @@ public class FileIndexRescanCleanupTests
         await using var index = await FileIndex.OpenAsync(options, Token);
         var declined = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, declined.State);
-        Assert.AreEqual(DriveFailureKind.CacheDeclined, declined.FailureKind);
+        Assert.AreEqual(DriveFailureKind.CacheDeclined, declined.Failure?.Kind);
 
         await index.WaitForDriveWriteGateForTest('T');
         try
@@ -207,7 +207,7 @@ public class FileIndexRescanCleanupTests
 
             var drive = index.Drives.Single();
             Assert.AreEqual(DriveState.Failed, drive.State);
-            Assert.AreEqual(DriveFailureKind.CacheDeclined, drive.FailureKind,
+            Assert.AreEqual(DriveFailureKind.CacheDeclined, drive.Failure?.Kind,
                 "the rolled-back adoption leaves the drive blockless");
         }
         finally

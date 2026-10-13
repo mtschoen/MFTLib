@@ -94,21 +94,22 @@ public partial class FileIndexCatchUpLossTests
     }
 
     [TestMethod]
-    public async Task Rescan_ProducerFailureWithNoMessage_ClearsTheDrivesReportedFailureMessage()
+    public async Task Rescan_ProducerFailureWithNoMessage_ThrowsNamingTheDriveAndKeepsThePreviousFailure()
     {
         using var harness = new WatchHarness('T');
         harness.FailNextProduction('T', new MessagelessException("the first scan failed", new IOException()));
         await ThrowsAsync<InvalidOperationException>(() => harness.Index.RescanAsync('T', Token));
-        Assert.AreEqual("the first scan failed", harness.DriveFor('T').FailureMessage);
+        Assert.AreEqual("the first scan failed", harness.DriveFor('T').Failure?.Message);
 
         harness.FailNextProduction('T', new MessagelessException());
-        await ThrowsAsync<InvalidOperationException>(() => harness.Index.RescanAsync('T', Token));
-        Assert.IsNull(harness.DriveFor('T').FailureMessage);
+        var messageless = await ThrowsAsync<InvalidOperationException>(() => harness.Index.RescanAsync('T', Token));
+        StringAssert.Contains(messageless.Message, "Drive T failed without a failure message");
+        Assert.AreEqual("the first scan failed", harness.DriveFor('T').Failure?.Message);
         Assert.AreEqual(DriveState.Ready, harness.DriveFor('T').State);
 
         harness.FailNextProduction('T', new MessagelessException("the third scan failed"));
         await ThrowsAsync<InvalidOperationException>(() => harness.Index.RescanAsync('T', Token));
-        Assert.AreEqual("the third scan failed", harness.DriveFor('T').FailureMessage);
+        Assert.AreEqual("the third scan failed", harness.DriveFor('T').Failure?.Message);
     }
 
     /// <summary>A producer failure whose <see cref="Message" /> can be null, which no framework exception produces.</summary>

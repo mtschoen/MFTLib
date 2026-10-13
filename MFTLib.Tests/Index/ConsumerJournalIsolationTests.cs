@@ -83,7 +83,7 @@ public class ConsumerJournalIsolationTests
     async Task SeedAsync()
     {
         await using var index = await FileIndex.OpenAsync(Options(false), Token);
-        Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().Block.Source);
+        Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().Block!.Source);
         Assert.AreEqual(1, _productions);
     }
 
@@ -106,7 +106,7 @@ public class ConsumerJournalIsolationTests
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.AreEqual(cacheOnly ? 1 : 2, _productions);
         Assert.AreEqual(cacheOnly ? BlockSource.WarmStartedFromCache : BlockSource.ProducedByScan,
-            status.Block.Source);
+            status.Block!.Source);
         Assert.IsNotNull(status.Watch.CheckpointLoss);
         Assert.AreEqual(recreated ? JournalCheckpointLossCause.JournalRecreated
             : JournalCheckpointLossCause.CheckpointTrimmed, status.Watch.CheckpointLoss.Cause);
@@ -138,7 +138,7 @@ public class ConsumerJournalIsolationTests
         var source = new ScriptedWatchSource();
         await using var index = await FileIndex.OpenAsync(Options(true, source), Token);
         Assert.AreEqual(1, _productions);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, index.Drives.Single().Block.Source);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, index.Drives.Single().Block!.Source);
         Assert.IsNull(index.Drives.Single().Watch.CheckpointLoss);
         await index.StartWatchingAsync('T', Token);
         Assert.AreEqual('T', source.Starts.Single().DriveLetter);
@@ -209,7 +209,7 @@ public class ConsumerJournalIsolationTests
             throw new IOException("synthetic test body failure");
         });
         await using var restored = await FileIndex.OpenAsync(Options(true), Token);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, restored.Drives.Single().Block.Source);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, restored.Drives.Single().Block!.Source);
         Assert.AreEqual(1, _productions);
         Assert.IsNull(restored.Drives.Single().Watch.CheckpointLoss);
     }

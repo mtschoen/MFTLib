@@ -5,7 +5,7 @@ namespace MFTLib.Index;
 ///     compaction, reported independently by <see cref="DriveBlockStatus.CompactionNeeded" />.
 ///     <see cref="Offline" /> means the drive was unavailable at open; <see cref="Failed" />
 ///     means its producer failed, a cache-only open found no usable block or a mismatched
-///     cache tag, or its cache slot was in use, distinguished by <see cref="DriveStatus.FailureKind" />.
+///     cache tag, or its cache slot was in use, distinguished by <see cref="DriveFailure.Kind" />.
 ///     No handles are minted for an offline or failed drive.
 /// </summary>
 public enum DriveState
@@ -19,8 +19,7 @@ public enum DriveState
     /// <summary>
     ///     The drive has no block: its MFT producer failed, a cache-only open found no usable
     ///     cache, the cache tag did not match, or the cache block is owned by another live index.
-    ///     <see cref="DriveStatus.FailureKind" /> says which, and
-    ///     <see cref="DriveStatus.FailureMessage" /> carries the detail.
+    ///     <see cref="DriveStatus.Failure" /> says which and carries the detail.
     /// </summary>
     Failed
 }

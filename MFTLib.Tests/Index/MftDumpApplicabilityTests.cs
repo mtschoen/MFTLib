@@ -24,7 +24,7 @@ public class MftDumpApplicabilityTests
 
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(BlockSource.ProducedByScan, drive.Block.Source);
+        Assert.AreEqual(BlockSource.ProducedByScan, drive.Block!.Source);
         Assert.IsFalse(drive.Watch.Supported, "a dump drive does not support watching");
         Assert.AreEqual(string.Empty, index.CacheDirectoryPath, "a dump index resolves and creates no cache directory");
     }
@@ -36,8 +36,8 @@ public class MftDumpApplicabilityTests
 
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, drive.State);
-        Assert.AreEqual(DriveFailureKind.ProducerFailed, drive.FailureKind);
-        Assert.AreEqual("The dump file cannot be opened.", drive.FailureMessage);
+        Assert.AreEqual(DriveFailureKind.ProducerFailed, drive.Failure?.Kind);
+        Assert.AreEqual("The dump file cannot be opened.", drive.Failure?.Message);
         Assert.IsFalse(drive.Watch.Supported);
     }
 

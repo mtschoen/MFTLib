@@ -25,7 +25,7 @@ public partial class FileIndexCatchUpLossTests
         Assert.AreEqual(2, cache.Productions);
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(BlockSource.ProducedByScan, drive.Block.Source);
+        Assert.AreEqual(BlockSource.ProducedByScan, drive.Block!.Source);
         Assert.AreEqual(0, drive.Watch.ConsecutiveLostCatchUps);
         Assert.IsFalse(drive.Watch.RecoveryStopped);
         Assert.AreEqual(StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss, "the retry keeps the report the loss produced");
@@ -73,7 +73,7 @@ public partial class FileIndexCatchUpLossTests
         Assert.AreEqual(1, drive.Watch.ConsecutiveLostCatchUps);
         Assert.IsFalse(drive.Watch.RecoveryStopped);
         Assert.AreEqual(StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss);
-        Assert.AreEqual("the retry scan failed", drive.FailureMessage);
+        Assert.AreEqual("the retry scan failed", drive.Failure?.Message);
         CollectionAssert.AreEqual(new[] { LossScriptedCache.CanonicalBlockName }, cache.BlockFileNames());
         var refusal = await ThrowsAsync<InvalidOperationException>(() => index.StartWatchingAsync('T', Token));
         StringAssert.Contains(refusal.Message, "RescanAsync");

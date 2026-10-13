@@ -23,7 +23,7 @@ public class DirectDuplicateNameSieveTests
         }, CancellationToken.None);
         foreach (var drive in index.Drives)
         {
-            Assert.AreEqual(DriveState.Ready, drive.State, drive.FailureMessage);
+            Assert.AreEqual(DriveState.Ready, drive.State, drive.Failure?.Message);
         }
 
         return index;

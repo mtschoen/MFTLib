@@ -75,7 +75,7 @@ public class FileIndexWatchFailedRescanTests
             var thrown = await ThrowsAsync<InvalidOperationException>(
                 () => rescan.WaitAsync(ScriptedWatchSource.HangGuard));
             Assert.AreSame(productionFailure, thrown.InnerException);
-            Assert.AreEqual(productionFailure.Message, harness.DriveFor('T').FailureMessage);
+            Assert.AreEqual(productionFailure.Message, harness.DriveFor('T').Failure?.Message);
         }
 
         AssertStillFaulted(harness, before, original, startCount);
@@ -140,7 +140,7 @@ public class FileIndexWatchFailedRescanTests
 
         Assert.AreSame(producerFailure, thrown.InnerException);
         Assert.AreSame(original, harness.Index.Root('T').DriveBlock);
-        Assert.AreEqual("rescan producer failed", harness.DriveFor('T').FailureMessage);
+        Assert.AreEqual("rescan producer failed", harness.DriveFor('T').Failure?.Message);
         Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
         Assert.AreEqual(0, firstHandle.DisposeCount, "the original watch is still running");
         var starts = harness.Source.TargetsFor('T');
@@ -176,7 +176,7 @@ public class FileIndexWatchFailedRescanTests
         Assert.AreEqual(new IndexWatchTarget('T', 13, 9000), starts[1]);
         Assert.AreNotSame(original, harness.Index.Root('T').DriveBlock);
         var drive = harness.DriveFor('T');
-        Assert.IsNull(drive.FailureMessage);
+        Assert.IsNull(drive.Failure);
         Assert.IsNull(drive.Watch.FailureMessage);
         Assert.IsNull(drive.Watch.CheckpointLoss);
         Assert.AreEqual(WatchState.CatchingUp, drive.Watch.State);

@@ -326,7 +326,7 @@ public partial class FileIndexWatchRescanTests
         await using var index = await FileIndex.OpenAsync(CacheOnlyWatchOptions(source, failDriveT: false), Token);
         var declined = index.Drives.Single(drive => drive.DriveLetter == 'T');
         Assert.AreEqual(DriveState.Failed, declined.State);
-        Assert.AreEqual(DriveFailureKind.CacheDeclined, declined.FailureKind);
+        Assert.AreEqual(DriveFailureKind.CacheDeclined, declined.Failure?.Kind);
         await index.StartWatchingAsync('U', Token);
 
         await index.RescanAsync('T', Token);
@@ -335,7 +335,7 @@ public partial class FileIndexWatchRescanTests
         Assert.AreEqual(0, source.TargetsFor('T').Count);
         var recovered = index.Drives.Single(drive => drive.DriveLetter == 'T');
         Assert.AreEqual(DriveState.Ready, recovered.State);
-        Assert.AreEqual(DriveFailureKind.None, recovered.FailureKind);
+        Assert.IsNull(recovered.Failure);
         Assert.AreEqual(WatchState.NotStarted, recovered.Watch.State);
 
         await index.StartWatchingAsync('T', Token);
@@ -367,8 +367,8 @@ public partial class FileIndexWatchRescanTests
         StringAssert.Contains(thrown.Message, "elevation declined");
         var status = index.Drives.Single(drive => drive.DriveLetter == 'T');
         Assert.AreEqual(DriveState.Failed, status.State);
-        Assert.AreEqual(DriveFailureKind.ProducerFailed, status.FailureKind);
-        Assert.AreEqual("elevation declined", status.FailureMessage);
+        Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind);
+        Assert.AreEqual("elevation declined", status.Failure?.Message);
         Assert.AreEqual(0, source.TargetsFor('T').Count, "a still-blockless drive is never watched");
 
         // The other drive never noticed.

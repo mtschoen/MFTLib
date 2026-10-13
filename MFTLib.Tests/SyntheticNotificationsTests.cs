@@ -224,8 +224,8 @@ public class SyntheticNotificationsTests
     [TestMethod]
     public void CreateDriveStatus_ForwardsEveryValueAndLeavesTheOptionalOnesDefault()
     {
-        var status = SyntheticNotifications.CreateDriveStatus('T', DriveState.Ready, BlockSource.WarmStartedFromCache,
-            40, true, Moment);
+        var status = SyntheticNotifications.CreateDriveStatus('T', DriveState.Ready,
+            SyntheticNotifications.CreateDriveBlockStatus(BlockSource.WarmStartedFromCache, 40, true, Moment), null);
         status = status with { Watch = status.Watch with { Supported = true } };
 
         Assert.AreEqual(
@@ -243,12 +243,12 @@ public class SyntheticNotificationsTests
             status);
         Assert.AreEqual('T', status.DriveLetter);
         Assert.AreEqual(DriveState.Ready, status.State);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, status.Block.Source);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, status.Block!.Source);
         Assert.AreEqual(40u, status.Block.LiveRowCount);
         Assert.IsTrue(status.Block.CompactionNeeded);
         Assert.AreEqual(Moment, status.Block.ScanTimestamp);
         Assert.IsTrue(status.Watch.Supported);
-        Assert.AreEqual(DriveFailureKind.None, status.FailureKind);
+        Assert.IsNull(status.Failure);
         Assert.IsNull(status.Watch.FailureMessage);
         Assert.IsNull(status.Watch.CheckpointLoss);
     }
@@ -256,11 +256,25 @@ public class SyntheticNotificationsTests
     [TestMethod]
     public void CreateDriveStatus_AcceptsAWithExpressionForTheOptionalValues()
     {
-        var status = SyntheticNotifications.CreateDriveStatus('T', DriveState.Ready, BlockSource.None, 0, false,
-            DateTime.MinValue);
+        var status = SyntheticNotifications.CreateDriveStatus('T', DriveState.Ready,
+            SyntheticNotifications.CreateDriveBlockStatus(BlockSource.ProducedByScan, 0, false, DateTime.MinValue),
+            null);
         status = status with { Watch = status.Watch with { FailureMessage = "watch failed" } };
 
         Assert.AreEqual("watch failed", status.Watch.FailureMessage);
+    }
+
+    [TestMethod]
+    public void CreateDriveStatus_CarriesAFailureAndNoBlockForAFailedDrive()
+    {
+        var failure = SyntheticNotifications.CreateDriveFailure(DriveFailureKind.CacheDeclined, "no usable cache");
+
+        var status = SyntheticNotifications.CreateDriveStatus('T', DriveState.Failed, null, failure);
+
+        Assert.AreEqual(DriveState.Failed, status.State);
+        Assert.IsNull(status.Block);
+        Assert.AreEqual(DriveFailureKind.CacheDeclined, status.Failure?.Kind);
+        Assert.AreEqual("no usable cache", status.Failure?.Message);
     }
 
     [TestMethod]

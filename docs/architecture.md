@@ -23,7 +23,7 @@
       source. It checks its arguments (`A dump file path is required.`, `The logical drive key must be an ASCII
       letter.`), makes the path absolute once and never opens the file; every scan and rescan opens the path anew, so
       a missing or rejected dump is a `ProducerFailed` drive, or a failed rescan that keeps the last block, with the
-      reason in `DriveStatus.FailureMessage`. `MftDumpBlockProducer` is a direct producer with no broker, pipe or
+      reason in `DriveStatus.Failure.Message`. `MftDumpBlockProducer` is a direct producer with no broker, pipe or
       session: one `MftDumpInput` per request sizes the block (`NtfsVolumeInformation(fileLength, recordSize)`, never
       the live volume sharing the letter) and supplies every record, the shared `MftBlockScan.WriteToBlock` writes a
       plain `BlockFile` with full retention, and the block carries a zero journal cursor. Record size is 1024 or

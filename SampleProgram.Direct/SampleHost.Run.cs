@@ -69,7 +69,7 @@ partial class SampleHost
         var index = await FileIndex.OpenAsync(options, cancellationToken).ConfigureAwait(false);
         try
         {
-            ThrowIfNotReady(index.Drives.Single());
+            RequireReadyBlock(index.Drives.Single());
             return index;
         }
         catch

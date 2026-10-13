@@ -66,7 +66,7 @@ public class MftIndexSourceTests
     {
         using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(Options(new MftIndexSource(ProduceMftShapedBlock)), Token);
-        Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().Block.Source);
+        Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().Block!.Source);
     }
 
     [TestMethod]
@@ -120,8 +120,8 @@ public class MftIndexSourceTests
 
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, status.State);
-        Assert.AreEqual(DriveFailureKind.ProducerFailed, status.FailureKind);
-        Assert.AreEqual("Drive T: the broker is not running.", status.FailureMessage);
+        Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind);
+        Assert.AreEqual("Drive T: the broker is not running.", status.Failure?.Message);
     }
 
     [TestMethod]

@@ -31,7 +31,7 @@ public partial class SyntheticBlockTests
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
         Assert.AreEqual(0, index.Search(new SearchQuery("stale.bin", NameMatchMode.Exact)).Count);
-        Assert.AreEqual(5u, index.Drives.Single().Block.LiveRowCount, "the tombstone and the free slot are not live");
+        Assert.AreEqual(5u, index.Drives.Single().Block!.LiveRowCount, "the tombstone and the free slot are not live");
     }
 
     [TestMethod]
@@ -148,7 +148,7 @@ public partial class SyntheticBlockTests
 
         Assert.AreEqual(Moment, SyntheticBlock.ReadHeader(path, Serial).Completed);
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
-        Assert.AreEqual(Moment, index.Drives.Single().Block.ScanTimestamp);
+        Assert.AreEqual(Moment, index.Drives.Single().Block!.ScanTimestamp);
     }
 
     [DataTestMethod]
@@ -191,7 +191,7 @@ public partial class SyntheticBlockTests
             CacheOnly() with { CacheTag = originalTag }, Token);
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, drive.State);
-        Assert.AreEqual(DriveFailureKind.CacheTagMismatch, drive.FailureKind);
-        Assert.AreEqual(BlockSource.None, drive.Block.Source);
+        Assert.AreEqual(DriveFailureKind.CacheTagMismatch, drive.Failure?.Kind);
+        Assert.IsNull(drive.Block!);
     }
 }

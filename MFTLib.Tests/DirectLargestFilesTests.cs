@@ -46,7 +46,7 @@ public class DirectLargestFilesTests
             InitialOpenCacheOnly = true,
             ProducerPolicy = ProducerPolicy.Enumeration
         }, CancellationToken.None);
-        Assert.AreEqual(DriveState.Ready, index.Drives.Single().State, index.Drives.Single().FailureMessage);
+        Assert.AreEqual(DriveState.Ready, index.Drives.Single().State, index.Drives.Single().Failure?.Message);
         return index;
     }
 
