@@ -25,8 +25,8 @@ MFTLib has never shipped to an external consumer. file-wizard and git-wizard are
 # Build only (restore + native + managed, without checkout initialization)
 .\scripts\build-windows.ps1
 
-# Build managed projects (or one sample)
-dotnet build -c Release -p:Platform=x64
+# Build the managed library (or one sample)
+dotnet build MFTLib/MFTLib.csproj -c Release -p:Platform=x64
 dotnet build SampleProgram.Watch\SampleProgram.Watch.csproj -c Release -p:Platform=x64
 ```
 
@@ -89,7 +89,7 @@ cat .\SampleProgram.Direct\bin\x64\Release\net10.0\output.log
 
 ## Architecture
 
-[Components and ABI](docs/architecture.md): preserve native thread safety, runtime record geometry and validated compact ABI/stride before parsing. Materialize lazy native-backed strings before freeing buffers. Preserve streaming/batched APIs and elevation dispatch. The samples self-elevate; Benchmark uses synthetic data. `MFTLibTestExtensions` ships separately, never inside MFTLib; its harness exposes production process/channel outcomes. The linked contracts specify layouts and component responsibilities.
+[Components and ABI](docs/architecture.md): preserve native thread safety, runtime record geometry and validated compact ABI/stride before parsing. Materialize lazy native-backed strings before freeing buffers. Preserve streaming/batched APIs and elevation dispatch. Direct local scans self-elevate; Watch stays unelevated and its broker elevates; Benchmark uses synthetic data. `MFTLibTestExtensions` ships separately, never inside MFTLib; its harness exposes production process/channel outcomes. The linked contracts specify layouts and component responsibilities.
 
 [Public surface](docs/architecture.md): `PublicSurfaceTests` pins every public type and member of MFTLib and MFTLibTestExtensions to `MFTLib.Tests/PublicSurface/*.approved.txt`; update it in the same pull request. Public members need a sample or reasoned consumer caller (`PublicMemberCallerTests`). Test-only access goes through `MFTLibTestExtensions`, which forwards to internal code. `InternalsVisibleTo` never names a consumer assembly. A pull request that grows an approved file names, in its body, the consumer production caller of every added member.
 

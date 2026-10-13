@@ -113,7 +113,7 @@
       Dump blocks retain zero cursors and require NoCache, so they never reach a cache freshness check. The factory
       opens nothing until the first scan; a process that cannot open the volume fails the drive
       as `ProducerFailed`. A null `MftSource` is a configuration error for
-      `ProducerPolicy.Mft` and is ignored by `ProducerPolicy.Enumeration`. The block producer
+      `ProducerPolicy.Mft` when a scan or watch is needed and is ignored by `ProducerPolicy.Enumeration`. The block producer
       delegate, the watch source and drive watch interfaces and their records are internal;
       only MFTLib implements them, and tests build sources through `MFTLibTestExtensions`.
     - **Watch state events**: `FileIndex.WatchStateChanged` reports every change of a drive's
@@ -151,7 +151,8 @@
   real broker host in process over in-memory control and drive pipes and returns an `InProcessBrokerHandle`
   connected to it, with `Crash()` to simulate broker death and `Scans`
   to read the scans it served. A test scripts the host through `ScriptedBrokerVolumes` (journal cursor,
-  scan, catch-up, watch, volume query and journal grow sources) and `ScriptedScan`; the client clock,
+  scan, catch-up, watch and journal grow sources) and `ScriptedScan`; the harness supplies fixed
+  volume sizing (256 KiB of 1024-byte records). The volume-query override, client clock,
   per-pipe connection failures and held host writes stay internal seams for `MFTLib.Tests`. Host faults surface only through production behavior:
   the `InProcessBrokerHandle.Ended` task, an `IOException` on pending operations, and
   `Error` frames; disposing the process never throws a host fault. `SyntheticBlock`,

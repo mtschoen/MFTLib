@@ -558,7 +558,7 @@ carries the drive letter, `SettledDriveCount` (this drive was the n-th to settle
 counted from 1), and the total configured drive count, so a consumer can render "3 of 9 drives settled" while the open
 is still in flight. Keep the report with the largest `SettledDriveCount`, not simply
 the last callback to arrive. A declined or failed drive still counts toward the total and
-still reports. Block ordinals follow the same order for drives with a block;
+still reports. Block ordinals follow first block adoption, which can precede final settling;
 `FileIndex.Drives` keeps the configured order. It defaults to null, which reports
 and allocates nothing, and it fires on warm starts too, unlike
 `FileIndexOptions.Progress`, which samples only while a producer runs.
@@ -662,7 +662,7 @@ consumer parsing block file names.
 
 `IsValid` and `IsDisposed` remain readable after disposal, and `ToString()` returns
 a diagnostic string. Reads of mapped entry data throw as described above.
-`DriveBlockStatus.Source` is `None` when no block is available,
+`DriveStatus.Block` is null when no block is available. `DriveBlockStatus.Source` is
 `WarmStartedFromCache` for an adopted cache block, or `ProducedByScan` after a scan.
 `CacheDirectory.InspectCached` returns `CachedBlockStatus` records whose `File` is a `CachedBlockFile` containing the
 drive letter, volume serial, full cache-file path, size, and last-write time, plus
@@ -766,8 +766,8 @@ broker-host faults.
 
 Do not call a lifecycle method from inside that index's `Changed`, `WatchFaulted` or
 `WatchStateChanged` handler. Start, stop, rescan, an unsettled catch-up wait, disposal, and their batched forms
-fail immediately with `InvalidOperationException`. Queue the operation, for example with
-`Task.Run`, so it begins after the handler returns. Queries, `Drives`, and already-settled
+fail immediately with `InvalidOperationException`. Queue the operation behind an explicit
+signal released after the handler returns; `Task.Run` alone does not guarantee that ordering. Queries, `Drives`, and already-settled
 catch-up waits are allowed.
 
 A broker `Error` frame fails only its pending operation with the host's message. Losing

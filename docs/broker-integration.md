@@ -277,8 +277,8 @@ and catch-up wait also have token-only all-drive forms. Batched calls preserve r
 for every drive they started to settle, and report per-drive failures without
 hiding successful siblings.
 
-`StartWatchingAsync` completes when each successful drive has a returned watch
-handle and its pump is reading. It does not wait for the journal backlog.
+`StartWatchingAsync` completes when each successful drive has a published watch
+handle and its pump is scheduled. It does not wait for the journal backlog.
 `WaitForCatchUpAsync` waits for the drive's caught-up marker per drive.
 
 `StopWatchingAsync(cancellationToken)` stops every configured drive and consumes
