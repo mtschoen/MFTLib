@@ -100,12 +100,12 @@ internal sealed class WatchHarness : IDisposable
     public BlockFile BlockFor(char driveLetter) => _producedBlocks[char.ToUpperInvariant(driveLetter)];
 
     public DriveStatus DriveFor(char driveLetter) =>
-        Index.Drives.Single(drive => drive.DriveLetter == char.ToUpperInvariant(driveLetter));
+        Index.Drives.Single(drive => drive.Drive == char.ToUpperInvariant(driveLetter));
 
     /// <summary>Completes with the first fault of <paramref name="kind" /> on the drive, recorded or future.</summary>
     public Task<WatchFault> WaitForFaultAsync(WatchFaultKind kind, char driveLetter)
     {
-        bool Match(WatchFault fault) => fault.Kind == kind && fault.DriveLetter == char.ToUpperInvariant(driveLetter);
+        bool Match(WatchFault fault) => fault.Kind == kind && fault.Drive == char.ToUpperInvariant(driveLetter);
         lock (_faults)
         {
             if (_faults.FirstOrDefault(Match) is { } recorded)
@@ -285,14 +285,14 @@ internal sealed class WatchHarness : IDisposable
     {
         _faultStatuses.Record(Index, fault);
         List<TaskCompletionSource<WatchFault>> matched = [];
-        _ = Index.TryGetRecoveryCompletionForTest(fault.DriveLetter, out var recovery);
+        _ = Index.TryGetRecoveryCompletionForTest((fault.Drive).Letter, out var recovery);
         lock (_faults)
         {
             _faults.Add(fault);
             if (recovery is not null)
             {
-                var recoveries = _recoveriesByDrive.GetValueOrDefault(fault.DriveLetter) ?? [];
-                _recoveriesByDrive[fault.DriveLetter] = recoveries;
+                var recoveries = _recoveriesByDrive.GetValueOrDefault(fault.Drive.Letter) ?? [];
+                _recoveriesByDrive[(fault.Drive).Letter] = recoveries;
                 if (!recoveries.Contains(recovery))
                 {
                     recoveries.Add(recovery);
@@ -318,7 +318,7 @@ internal sealed class WatchHarness : IDisposable
     async Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var driveLetter = char.ToUpperInvariant(request.DriveLetter);
+        var driveLetter = char.ToUpperInvariant((request.Drive).Letter);
         _productionCountsByDrive.AddOrUpdate(driveLetter, 1, (_, count) => count + 1);
         if (_blocklessDrives.Contains(driveLetter))
         {

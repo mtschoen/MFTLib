@@ -47,15 +47,15 @@ public class CacheDirectoryEnumerationTests
         WriteFile(CacheDirectory.BlockFileName('F', 2) + ".retired-" + Guid.NewGuid().ToString("N"), "retired");
 
         var cached = CacheDirectory.EnumerateCached(_cacheDirectory)
-            .OrderBy(entry => entry.DriveLetter).ToArray();
+            .OrderBy(entry => entry.Drive.Letter).ToArray();
 
         Assert.AreEqual(2, cached.Length);
-        Assert.AreEqual('C', cached[0].DriveLetter);
+        Assert.AreEqual('C', cached[0].Drive);
         Assert.AreEqual(0x0BADF00Du, cached[0].VolumeSerial);
         Assert.AreEqual(first, cached[0].Path);
         Assert.AreEqual(new FileInfo(first).Length, cached[0].SizeBytes);
         Assert.AreEqual(File.GetLastWriteTimeUtc(first), cached[0].LastWriteTime);
-        Assert.AreEqual('D', cached[1].DriveLetter);
+        Assert.AreEqual('D', cached[1].Drive);
         Assert.AreEqual(0x12345678u, cached[1].VolumeSerial);
         Assert.AreEqual(second, cached[1].Path);
     }
@@ -73,7 +73,7 @@ public class CacheDirectoryEnumerationTests
         }
 
         var cached = CacheDirectory.EnumerateCached(_cacheDirectory)
-            .Select(entry => (entry.DriveLetter, entry.VolumeSerial)).ToArray();
+            .Select(entry => (entry.Drive.Letter, entry.VolumeSerial)).ToArray();
 
         CollectionAssert.AreEquivalent(expected, cached);
     }

@@ -66,21 +66,21 @@ public class WatchFailureObservationTests
         try
         {
             // The scripted host answers the channel open and reads StartWatch before the start can return.
-            var starting = index.StartWatchingAsync('T', token);
+            var starting = index.StartWatchingAsync(['T'], token);
             await using var host = await broker.AcceptChannelAsync();
             Assert.AreEqual(BrokerFrameKind.StartWatch, (await HostChannelHarness.ReadFrameAsync(host))?.Kind);
             await starting;
             if (caughtUpFirst)
             {
                 await HostChannelHarness.WriteFrameAsync(host, BrokerProtocol.WriteCaughtUp);
-                await index.WaitForCatchUpAsync('T', token);
+                await index.WaitForCatchUpAsync(['T'], token);
                 Assert.AreEqual(WatchState.CaughtUp, index.Drives.Single().Watch.State);
             }
 
             await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteStalled(writer, marker));
             var fault = await announced.Task.WaitAsync(token);
             Assert.AreEqual(WatchFaultKind.Channel, fault.Kind);
-            Assert.AreEqual('T', fault.DriveLetter);
+            Assert.AreEqual('T', fault.Drive);
             Assert.AreEqual(marker, fault.Exception.Message);
             var status = index.Drives.Single();
             Assert.AreEqual(WatchState.Faulted, status.Watch.State);
@@ -88,16 +88,16 @@ public class WatchFailureObservationTests
 
             if (requestLateWaits)
             {
-                var late = await WatchDeduplicationTestSupport.ThrowsAsync<BrokerChannelLostException>(
-                    () => index.WaitForCatchUpAsync('T', token));
+                var late = await DriveResultAssertions.FailureAsync<BrokerChannelLostException>(
+                    () => index.WaitForCatchUpAsync(['T'], token));
                 Assert.AreSame(fault.Exception, late);
-                var lateBatch = (await index.WaitForCatchUpAsync(token)).Single();
+                var lateBatch = (await index.WaitForCatchUpAsync(index.Drives.Select(drive => drive.Drive), token)).Single();
                 Assert.AreEqual(DriveOperationOutcome.Failed, lateBatch.Outcome);
                 Assert.AreSame(fault.Exception, lateBatch.Failure);
             }
 
-            var stopped = await WatchDeduplicationTestSupport.ThrowsAsync<BrokerChannelLostException>(
-                () => index.StopWatchingAsync('T', token));
+            var stopped = await DriveResultAssertions.FailureAsync<BrokerChannelLostException>(
+                () => index.StopWatchingAsync(['T'], token));
             Assert.AreSame(fault.Exception, stopped);
             return [new WeakReference(index), new WeakReference(source)];
         }
@@ -129,7 +129,7 @@ public class WatchFailureObservationTests
 
         var failure = await WatchDeduplicationTestSupport.ThrowsAsync<DriveWatchFaultException>(
             () => first.WaitAsync(HostChannelHarness.HangGuard));
-        Assert.AreEqual('T', failure.DriveLetter);
+        Assert.AreEqual('T', failure.Drive);
         Assert.AreEqual(marker, failure.Message);
         return [new WeakReference(source)];
     }

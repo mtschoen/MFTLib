@@ -79,7 +79,7 @@ public class FileIndexCheckpointLossLifetimeTests
 
     async Task SeedCacheAsync(params IndexedDrive[] drives)
     {
-        using var journals = OverrideJournals(drives.ToDictionary(drive => drive.DriveLetter, _ => HealthyWindow));
+        using var journals = OverrideJournals(drives.ToDictionary(drive => drive.Drive, _ => HealthyWindow));
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, drives: drives), CancellationToken.None);
         foreach (var drive in index.Drives)
@@ -102,7 +102,7 @@ public class FileIndexCheckpointLossLifetimeTests
         var second = Drive('U', _secondTreeRoot);
         await SeedCacheAsync(first, second);
 
-        using var journals = OverrideJournals(new Dictionary<char, JournalWindow>
+        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow>
         {
             ['T'] = TrimmedWindow,   // T loses its checkpoint
             ['U'] = HealthyWindow    // U can still resume
@@ -111,7 +111,7 @@ public class FileIndexCheckpointLossLifetimeTests
         // T's cold scan then fails, so T never occupies an ordinal and U reuses it.
         Task<MftBlockProduceResult> Producer(MftBlockProduceRequest request, CancellationToken token)
         {
-            return request.DriveLetter == 'T'
+            return request.Drive == 'T'
                 ? throw new IOException("synthetic scan failure for T")
                 : ProduceMftShapedBlock(request, token);
         }
@@ -119,12 +119,12 @@ public class FileIndexCheckpointLossLifetimeTests
         await using var index = await FileIndex.OpenAsync(
             Options(Producer, drives: [first, second]), CancellationToken.None);
 
-        var failed = index.Drives.Single(drive => drive.DriveLetter == 'T');
+        var failed = index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Failed, failed.State);
         Assert.IsNotNull(failed.Watch.CheckpointLoss, "the failed drive keeps the report that describes it");
-        Assert.AreEqual('T', failed.Watch.CheckpointLoss.DriveLetter);
+        Assert.AreEqual('T', failed.Watch.CheckpointLoss.Drive);
 
-        var settled = index.Drives.Single(drive => drive.DriveLetter == 'U');
+        var settled = index.Drives.Single(drive => drive.Drive == 'U');
         Assert.AreEqual(BlockSource.WarmStartedFromCache, settled.Block!.Source);
         Assert.IsNull(settled.Watch.CheckpointLoss,
             "a drive that reused the failed drive's ordinal must not inherit its report");
@@ -144,7 +144,7 @@ public class FileIndexCheckpointLossLifetimeTests
         var drive = Drive('T', _firstTreeRoot);
         await SeedCacheAsync(drive);
 
-        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = TrimmedWindow });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = TrimmedWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, cacheOnly: true, drives: drive), CancellationToken.None);
 
@@ -156,7 +156,7 @@ public class FileIndexCheckpointLossLifetimeTests
         var loss = status.Watch.CheckpointLoss;
         Assert.IsNotNull(loss, "a cache-only open must still say why the checkpoint could not be resumed");
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
-        Assert.AreEqual('T', loss.DriveLetter);
+        Assert.AreEqual('T', loss.Drive);
         Assert.AreEqual(CachedNextUsn, loss.CheckpointUsn);
         Assert.AreEqual(500L, loss.BytesBehind);
         Assert.AreEqual(4_096L, loss.SizeThatWouldHaveRetained);
@@ -168,7 +168,7 @@ public class FileIndexCheckpointLossLifetimeTests
         var drive = Drive('T', _firstTreeRoot);
         await SeedCacheAsync(drive);
 
-        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = Recreated });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = Recreated });
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, cacheOnly: true, drives: drive), CancellationToken.None);
 
@@ -189,7 +189,7 @@ public class FileIndexCheckpointLossLifetimeTests
         var drive = Drive('T', _firstTreeRoot);
         await SeedCacheAsync(drive);
 
-        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = HealthyWindow });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, cacheOnly: true, drives: drive), CancellationToken.None);
 
@@ -211,12 +211,12 @@ public class FileIndexCheckpointLossLifetimeTests
         var drive = Drive('T', _firstTreeRoot);
         await SeedCacheAsync(drive);
 
-        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = TrimmedWindow });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = TrimmedWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, drives: drive), CancellationToken.None);
         Assert.IsNotNull(index.Drives.Single().Watch.CheckpointLoss);
 
-        await index.RescanAsync('T', CancellationToken.None);
+        await index.RescanAsync(['T'], CancellationToken.None);
 
         Assert.IsNull(index.Drives.Single().Watch.CheckpointLoss,
             "the rescan replaced the block the report described");

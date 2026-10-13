@@ -21,7 +21,7 @@ internal sealed class FaultStatusLog
             return;
         }
 
-        var status = index.Drives.Single(drive => drive.DriveLetter == char.ToUpperInvariant(fault.DriveLetter));
+        var status = index.Drives.Single(drive => drive.Drive == char.ToUpperInvariant((fault.Drive).Letter));
         lock (_gate)
         {
             _catchUpLossStatuses.Add(status);
@@ -33,7 +33,7 @@ internal sealed class FaultStatusLog
     {
         lock (_gate)
         {
-            return [.. _catchUpLossStatuses.Where(status => status.DriveLetter == char.ToUpperInvariant(driveLetter))];
+            return [.. _catchUpLossStatuses.Where(status => status.Drive == char.ToUpperInvariant(driveLetter))];
         }
     }
 }

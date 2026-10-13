@@ -33,7 +33,7 @@ public class MftDumpBlockProducerTests
 
     MftBlockProduceRequest Request() => new()
     {
-        DriveLetter = 'T',
+        Drive = 'T',
         VolumeSerial = 0,
         BlockPath = Path.Combine(_directory, "block.mlix"),
         DeleteOnClose = true

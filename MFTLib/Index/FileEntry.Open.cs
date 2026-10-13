@@ -25,7 +25,7 @@ public readonly partial record struct FileEntry
         if (driveBlock.RootDirectoryPath is not { } anyPathOnVolume)
         {
             throw new InvalidOperationException(
-                $"Drive block {driveBlock.DriveLetter} has no configured root directory to open by file id.");
+                $"Drive block {driveBlock.Drive} has no configured root directory to open by file id.");
         }
 
         return _openById(anyPathOnVolume, RowIndex, driveBlock.Block.SequenceNumbers[(int)RowIndex], access);

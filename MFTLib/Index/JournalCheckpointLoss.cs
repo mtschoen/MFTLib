@@ -16,7 +16,7 @@ public enum JournalCheckpointLossDetection
     ///     the drive itself, unless the open was cache-only
     ///     (<see cref="FileIndexOptions.InitialOpenCacheOnly" />): that open never scans, adopts the
     ///     block anyway, and refuses the drive's watch start until
-    ///     <see cref="FileIndex.RescanAsync(char, CancellationToken)" />. Otherwise the report is
+    ///     <see cref="FileIndex.RescanAsync" />. Otherwise the report is
     ///     the standing explanation of why this session cold-scanned, and of the journal size
     ///     that would have avoided it.
     /// </summary>
@@ -30,7 +30,7 @@ public enum JournalCheckpointLossDetection
     ///     before the cursor advanced. The drive stays behind until a rescan rebuilds it. A <see cref="WatchFaultKind.Drive" /> or
     ///     <see cref="WatchFaultKind.Apply" /> fault starts that rescan automatically; after any other
     ///     fault, or once automatic recovery is exhausted, only
-    ///     <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> does. A
+    ///     <see cref="FileIndex.RescanAsync" /> does. A
     ///     watch fault that leaves the report reading <see cref="DriveOpening" />, or leaves it
     ///     null, was not the journal outrunning the index.
     /// </summary>
@@ -88,22 +88,22 @@ public sealed record JournalCheckpointLoss
     /// <param name="detectedDuring">Which check found the loss.</param>
     /// <param name="cause">Which situation the loss was.</param>
     /// <param name="journalSettings">The journal's sizing when the loss was detected.</param>
-    internal JournalCheckpointLoss(char driveLetter, JournalCheckpointLossDetection detectedDuring,
+    internal JournalCheckpointLoss(DriveKey driveLetter, JournalCheckpointLossDetection detectedDuring,
         JournalCheckpointLossCause cause, UsnJournalSettings journalSettings)
     {
-        DriveLetter = driveLetter;
+        Drive = driveLetter;
         DetectedDuring = detectedDuring;
         Cause = cause;
         JournalSettings = journalSettings;
     }
 
     /// <summary>Upper case, matching the letter this drive was configured with.</summary>
-    public char DriveLetter { get; init; }
+    public DriveKey Drive { get; init => field = value.Validated(); }
 
     /// <summary>
     ///     Which check found this, and so which moment the report comes from.
     ///     A report is replaced only by a newer report for the same drive or cleared by a
-    ///     successful <see cref="FileIndex.RescanAsync(char, CancellationToken)" />, never by an unrelated watch fault,
+    ///     successful <see cref="FileIndex.RescanAsync" />, never by an unrelated watch fault,
     ///     so a handler that acts on a loss treats this as the report's origin and does not
     ///     assume the fault it is handling was the journal's doing.
     /// </summary>

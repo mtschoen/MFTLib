@@ -90,7 +90,7 @@ public ref struct IndexRowEnumerator
         {
             ThrowIfDisposed();
             var driveBlock = _driveBlock ?? throw new InvalidOperationException("The enumerator has no current row.");
-            return new IndexRow(_snapshot, driveBlock.DriveLetter, driveBlock.DriveOrdinal, _scanner.CurrentRowIndex,
+            return new IndexRow(_snapshot, driveBlock.Drive, driveBlock.DriveOrdinal, _scanner.CurrentRowIndex,
                 in _scanner.Current, _scanner.CurrentName);
         }
     }

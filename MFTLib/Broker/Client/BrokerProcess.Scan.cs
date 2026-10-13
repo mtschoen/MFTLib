@@ -32,7 +32,7 @@ internal sealed partial class BrokerProcess
         {
             volume = await QueryVolumeAsync(letter, cancellationToken).ConfigureAwait(false);
         }
-        catch (BrokerChannelLostException exception) when (exception.DriveLetter is null)
+        catch (BrokerChannelLostException exception) when (exception.Drive is null)
         {
             throw new BrokerChannelLostException(letter,
                 $"Drive {letter} scan could not start: {exception.Message}", exception);
@@ -112,7 +112,7 @@ internal sealed partial class BrokerProcess
     // frame, is a lost channel.
     sealed class ScanFrames(BrokerDriveChannel channel, IProgress<BrokerScanProgress>? progress)
     {
-        readonly char _letter = channel.DriveLetter;
+        readonly char _letter = channel.Drive;
 
         public async Task<UsnJournalCursor> ReadArmedCursorAsync(CancellationToken cancellationToken)
         {
@@ -130,7 +130,7 @@ internal sealed partial class BrokerProcess
                     case BrokerFrameKind.ScanProgress:
                         if (frame.Progress is { } sample)
                         {
-                            progress?.Report(sample with { DriveLetter = _letter.ToString() });
+                            progress?.Report(sample with { Drive = _letter.ToString() });
                         }
 
                         break;

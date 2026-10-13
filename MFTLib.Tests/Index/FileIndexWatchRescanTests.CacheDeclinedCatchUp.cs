@@ -15,22 +15,22 @@ public partial class FileIndexWatchRescanTests
             .WaitAsync(HangGuard);
         try
         {
-            await index.StartWatchingAsync('U', Token).WaitAsync(HangGuard);
+            await index.StartWatchingAsync(['U'], Token).WaitAsync(HangGuard);
 
             // U catches up at once; T is adopted by the rescan and joins the watch by its own start.
             await source.WatchFor('U').Publish(new DriveCaughtUp());
-            await index.RescanAsync('T', Token).WaitAsync(HangGuard);
-            await index.StartWatchingAsync('T', Token).WaitAsync(HangGuard);
+            await index.RescanAsync(['T'], Token).WaitAsync(HangGuard);
+            await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
 
             // The no-list wait covers the adopted drive rather than completing on U alone.
-            var aggregateWait = index.WaitForCatchUpAsync(Token);
+            var aggregateWait = index.WaitForCatchUpAsync(index.Drives.Select(drive => drive.Drive), Token);
             Assert.IsFalse(aggregateWait.IsCompleted);
 
             await source.WatchFor('T').Publish(new DriveCaughtUp());
             var results = await aggregateWait.WaitAsync(HangGuard);
             Assert.IsTrue(results.All(result => result.Outcome == DriveOperationOutcome.Succeeded));
 
-            var stopped = await index.StopWatchingAsync(Token).WaitAsync(HangGuard);
+            var stopped = await index.StopWatchingAsync(index.Drives.Select(drive => drive.Drive), Token).WaitAsync(HangGuard);
             Assert.IsTrue(stopped.All(result => result.Outcome == DriveOperationOutcome.Succeeded));
         }
         finally

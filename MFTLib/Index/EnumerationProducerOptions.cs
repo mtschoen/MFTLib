@@ -11,5 +11,5 @@ internal sealed record EnumerationProducerOptions
     public required string RootDirectory { get; init; }
 
     /// <summary>Drive letter reported by entries produced by this enumeration.</summary>
-    public required char DriveLetter { get; init; }
+    public required DriveKey Drive { get; init; }
 }

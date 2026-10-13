@@ -125,7 +125,7 @@ public class FileIndexOwnerLockTests
 
             await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
             progress.Armed = true;
-            var rescan = first.RescanAsync('T', cancellationTokenSource.Token);
+            var rescan = first.RescanAsync(['T'], cancellationTokenSource.Token);
             await progress.Reported;
 
             // The rescan is blocked mid-scan with the canonical file renamed aside. The second
@@ -163,7 +163,7 @@ public class FileIndexOwnerLockTests
             var oldSnapshot = first.CurrentSnapshot;
 
             await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
-            await first.RescanAsync('T', CancellationToken.None);
+            await first.RescanAsync(['T'], CancellationToken.None);
 
             var retiredPaths = Directory
                 .EnumerateFiles(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*")
@@ -215,7 +215,7 @@ public class FileIndexOwnerLockTests
             // While the first index owns the slot, the second index's rescan must not rename the
             // canonical file aside: it scans privately again.
             await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
-            await second.RescanAsync('T', CancellationToken.None);
+            await second.RescanAsync(['T'], CancellationToken.None);
 
             var secondPrivatePath = second.CurrentSnapshot.GetDriveBlock(secondOrdinal).Block.Path;
             Assert.AreEqual(CacheSlotState.PrivateFallback, second.Drives.Single().Block!.CacheSlot);
@@ -233,7 +233,7 @@ public class FileIndexOwnerLockTests
 
             Assert.AreEqual(CacheSlotState.PrivateFallback, second.Drives.Single().Block!.CacheSlot);
 
-            await second.RescanAsync('T', CancellationToken.None);
+            await second.RescanAsync(['T'], CancellationToken.None);
 
             Assert.AreEqual(CacheSlotState.OwnedCanonical, second.Drives.Single().Block!.CacheSlot);
             Assert.AreEqual(BlockSource.ProducedByScan, second.Drives.Single().Block!.Source);
@@ -256,7 +256,7 @@ public class FileIndexOwnerLockTests
         Assert.AreEqual(DriveFailureKind.InUse, second.Drives.Single().Failure?.Kind);
         Assert.IsNull(second.Drives.Single().Block);
 
-        await second.RescanAsync('T', CancellationToken.None);
+        await second.RescanAsync(['T'], CancellationToken.None);
 
         var status = second.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
@@ -274,7 +274,7 @@ public class FileIndexOwnerLockTests
         Assert.AreEqual(CacheSlotState.NotApplicable, index.Drives.Single().Block!.CacheSlot);
         Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().Block!.Source);
 
-        await index.RescanAsync('T', CancellationToken.None);
+        await index.RescanAsync(['T'], CancellationToken.None);
 
         Assert.AreEqual(CacheSlotState.NotApplicable, index.Drives.Single().Block!.CacheSlot);
         Assert.IsFalse(File.Exists(CanonicalPath));
@@ -299,7 +299,7 @@ public class FileIndexOwnerLockTests
         Assert.AreEqual(DriveState.Failed, index.Drives.Single().State);
         Assert.IsNull(index.Drives.Single().Block);
 
-        await index.RescanAsync('T', CancellationToken.None);
+        await index.RescanAsync(['T'], CancellationToken.None);
 
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
         Assert.AreEqual(CacheSlotState.OwnedCanonical, index.Drives.Single().Block!.CacheSlot);
@@ -337,7 +337,7 @@ public class FileIndexOwnerLockTests
 
             using var cancellation = new CancellationTokenSource();
             progress.Armed = true;
-            var rescan = second.RescanAsync('T', cancellation.Token);
+            var rescan = second.RescanAsync(['T'], cancellation.Token);
             try
             {
                 await progress.Reported.WaitAsync(TimeSpan.FromSeconds(30));
@@ -371,7 +371,7 @@ public class FileIndexOwnerLockTests
             if (cancel)
             {
                 progress.Armed = false;
-                await second.RescanAsync('T', CancellationToken.None);
+                await second.RescanAsync(['T'], CancellationToken.None);
                 Assert.AreEqual(CacheSlotState.OwnedCanonical, second.Drives.Single().Block!.CacheSlot);
             }
         }

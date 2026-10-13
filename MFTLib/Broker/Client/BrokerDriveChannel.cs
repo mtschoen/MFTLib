@@ -24,7 +24,7 @@ internal sealed class BrokerDriveChannel : IAsyncDisposable
     internal BrokerDriveChannel(char driveLetter, BrokerPipeListener pipe, Stream stream, string tag,
         Action<BrokerDriveChannel> closed, TimeProvider timeProvider)
     {
-        DriveLetter = driveLetter;
+        Drive = driveLetter;
         _pipe = pipe;
         _stream = stream;
         _tag = tag;
@@ -32,7 +32,7 @@ internal sealed class BrokerDriveChannel : IAsyncDisposable
         _closed = closed;
     }
 
-    public char DriveLetter { get; }
+    public char Drive { get; }
 
     /// <summary>Writes one frame; a pipe that cannot take it is a lost channel.</summary>
     public async Task WriteAsync(Action<ArrayBufferWriter<byte>> write, CancellationToken cancellationToken)
@@ -47,8 +47,8 @@ internal sealed class BrokerDriveChannel : IAsyncDisposable
         }
         catch (Exception exception) when (exception is IOException or ObjectDisposedException)
         {
-            throw new BrokerChannelLostException(DriveLetter,
-                $"Drive {DriveLetter} broker channel could not be written: {exception.Message}", exception);
+            throw new BrokerChannelLostException(Drive,
+                $"Drive {Drive} broker channel could not be written: {exception.Message}", exception);
         }
     }
 
@@ -64,14 +64,14 @@ internal sealed class BrokerDriveChannel : IAsyncDisposable
         {
             var frame = await _reader.ReadAsync(read.Token).ConfigureAwait(false);
             return frame is { Kind: BrokerFrameKind.Stalled } stalled
-                ? throw new BrokerChannelLostException(DriveLetter, stalled.RequireMessage())
+                ? throw new BrokerChannelLostException(Drive, stalled.RequireMessage())
                 : frame;
         }
         catch (OperationCanceledException exception) when (_closing.IsCancellationRequested &&
                                                            !cancellationToken.IsCancellationRequested)
         {
-            throw new BrokerChannelLostException(DriveLetter,
-                $"Drive {DriveLetter} broker channel was closed while a read was pending.", exception);
+            throw new BrokerChannelLostException(Drive,
+                $"Drive {Drive} broker channel was closed while a read was pending.", exception);
         }
     }
 

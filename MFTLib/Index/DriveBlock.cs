@@ -14,11 +14,11 @@ internal sealed class DriveBlock
     string? _deleteAtPathOverride;
     Action<string>? _deleteDiagnostics;
 
-    public DriveBlock(char driveLetter, ushort driveOrdinal, BlockFile block, string? rootDirectoryPath = null,
+    public DriveBlock(DriveKey driveLetter, ushort driveOrdinal, BlockFile block, string? rootDirectoryPath = null,
         bool isMftDump = false)
     {
         ArgumentNullException.ThrowIfNull(block);
-        DriveLetter = driveLetter;
+        Drive = driveLetter.Validated();
         DriveOrdinal = driveOrdinal;
         Block = block;
         ProducerKind = block.Header.ProducerKind;
@@ -36,7 +36,7 @@ internal sealed class DriveBlock
     /// </summary>
     public bool IsMftDump { get; }
 
-    public char DriveLetter { get; }
+    public DriveKey Drive { get; }
 
     public ushort DriveOrdinal { get; }
 
@@ -152,7 +152,7 @@ internal sealed class DriveBlock
             if (_referenceCount == 0)
             {
                 throw new InvalidOperationException(
-                    $"Drive block {DriveLetter} was released more times than it was referenced.");
+                    $"Drive block {Drive} was released more times than it was referenced.");
             }
 
             _referenceCount--;

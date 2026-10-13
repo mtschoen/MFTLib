@@ -123,7 +123,7 @@ public class JournalCheckpointCheckTests
 
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
-        Assert.AreEqual('C', loss.DriveLetter);
+        Assert.AreEqual('C', loss.Drive);
         Assert.AreEqual(900L, loss.CheckpointUsn);
         Assert.AreEqual(1_000L, loss.FirstUsn);
         Assert.AreEqual(5_000L, loss.NextUsn);
@@ -243,7 +243,7 @@ public class JournalCheckpointCheckTests
 
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
-        Assert.AreEqual('C', loss.DriveLetter);
+        Assert.AreEqual('C', loss.Drive);
         Assert.AreEqual(0L, loss.CheckpointUsn);
         Assert.AreEqual(1L, loss.FirstUsn);
         Assert.AreEqual(long.MaxValue, loss.NextUsn);

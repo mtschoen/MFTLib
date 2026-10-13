@@ -26,13 +26,13 @@ public sealed class BrokerFileIndexRescanTests
         var token = harness.CancellationToken;
         var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateIndexSource();
         await using var index = await scenario.OpenIndexAsync(source.Producer, source.WatchSource!, token);
-        await index.StartWatchingAsync('T', token);
-        await index.StartWatchingAsync('U', token);
+        await index.StartWatchingAsync(['T'], token);
+        await index.StartWatchingAsync(['U'], token);
         var firstT = await harness.Watch('T').RunAsync(1);
         var firstU = await harness.Watch('U').RunAsync(1);
         var scanning = scenario.HoldSecondScanOfT();
 
-        var rescan = index.RescanAsync('T', token);
+        var rescan = index.RescanAsync(['T'], token);
         await scanning.Entered.WaitAsync(HangGuard);
 
         try
@@ -65,8 +65,8 @@ public sealed class BrokerFileIndexRescanTests
         var appliedOnT = ChangeSignal.WhenApplied(index, "after.txt");
         secondT.Push(41, "after.txt", 300);
         await appliedOnT;
-        await index.StopWatchingAsync('T', token);
-        await index.StopWatchingAsync('U', token);
+        await index.StopWatchingAsync(['T'], token);
+        await index.StopWatchingAsync(['U'], token);
     }
 
     [TestMethod]
@@ -88,16 +88,16 @@ public sealed class BrokerFileIndexRescanTests
         {
             await using var index = await scenario.OpenIndexAsync(producer.CreateIndexSource().Producer, source, token);
 
-            var start = index.StartWatchingAsync('T', token);
+            var start = index.StartWatchingAsync(['T'], token);
             await connectGate.Entered.WaitAsync(HangGuard);
             Assert.IsFalse(start.IsCompleted, "StartWatchingAsync completed before the broker connected.");
 
             connectGate.Release();
             await start.WaitAsync(HangGuard);
-            await index.RescanAsync('U', token);
+            await index.RescanAsync(['U'], token);
 
             Assert.IsTrue(index.Drives.All(drive => drive.Watch.FailureMessage == null));
-            await index.StopWatchingAsync('T', token);
+            await index.StopWatchingAsync(['T'], token);
         }
         finally
         {
@@ -120,15 +120,15 @@ public sealed class BrokerFileIndexRescanTests
             : connect(connectToken));
         await using var index = await scenario.OpenIndexAsync(producer.CreateIndexSource().Producer, source, token);
 
-        var thrown = await WatchDeduplicationTestSupport.ThrowsAsync<IOException>(() => index.StartWatchingAsync('T', token));
+        var thrown = await DriveResultAssertions.FailureAsync<IOException>(() => index.StartWatchingAsync(['T'], token));
 
         Assert.AreSame(connectionFailure, thrown);
-        Assert.AreEqual(WatchState.Faulted, index.Drives.Single(drive => drive.DriveLetter == 'T').Watch.State);
-        await index.StopWatchingAsync('T', token);
-        await index.StartWatchingAsync('T', token);
-        await index.RescanAsync('T', token);
+        Assert.AreEqual(WatchState.Faulted, index.Drives.Single(drive => drive.Drive == 'T').Watch.State);
+        await index.StopWatchingAsync(['T'], token);
+        await index.StartWatchingAsync(['T'], token);
+        await index.RescanAsync(['T'], token);
         Assert.IsTrue(index.Drives.All(drive => drive.Watch.FailureMessage == null));
-        await index.StopWatchingAsync('T', token);
+        await index.StopWatchingAsync(['T'], token);
     }
 
     [TestMethod]
@@ -156,15 +156,15 @@ public sealed class BrokerFileIndexRescanTests
             await using var index = await scenario.OpenIndexAsync(producer.CreateIndexSource().Producer, source, token);
             using var startCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
 
-            var start = index.StartWatchingAsync('T', startCancellation.Token);
+            var start = index.StartWatchingAsync(['T'], startCancellation.Token);
             await connectGate.Entered.WaitAsync(HangGuard);
             await startCancellation.CancelAsync();
 
             await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => start.WaitAsync(HangGuard));
-            await index.StartWatchingAsync('T', token);
-            await index.RescanAsync('T', token);
+            await index.StartWatchingAsync(['T'], token);
+            await index.RescanAsync(['T'], token);
             Assert.IsTrue(index.Drives.All(drive => drive.Watch.FailureMessage == null));
-            await index.StopWatchingAsync('T', token);
+            await index.StopWatchingAsync(['T'], token);
         }
         finally
         {

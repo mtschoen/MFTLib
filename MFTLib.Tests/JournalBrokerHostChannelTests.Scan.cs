@@ -36,7 +36,7 @@ public partial class JournalBrokerHostChannelTests
         Assert.IsTrue(frames.Count > 3, "At least the final progress sample precedes ScanReady.");
         var finalProgress = frames[^3].Progress!.Value;
         Assert.AreEqual(BrokerScanPhase.Transferring, finalProgress.Phase);
-        Assert.AreEqual(string.Empty, finalProgress.DriveLetter, "The drive belongs to the channel, not the frame.");
+        Assert.AreEqual(string.Empty, finalProgress.Drive, "The drive belongs to the channel, not the frame.");
         Assert.AreEqual(BrokerFrameKind.ScanReady, frames[^2].Kind);
         Assert.AreEqual(21u, sectionWriter.Block.Header.RowCount);
         Assert.AreEqual(sectionWriter.Block.Header.NamePoolUsed, finalProgress.BytesProcessed);
@@ -59,7 +59,7 @@ public partial class JournalBrokerHostChannelTests
 
         AssertScanReadyThen(frames, BrokerFrameKind.CatchUpLost);
         var loss = frames[^1].RequireCatchUpLoss('C');
-        Assert.AreEqual('C', loss.DriveLetter);
+        Assert.AreEqual('C', loss.Drive);
         Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, loss.DetectedDuring);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
         Assert.AreEqual(Armed.NextUsn, loss.CheckpointUsn);

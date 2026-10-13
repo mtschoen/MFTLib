@@ -14,9 +14,9 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
     readonly Lock _stateLock = new();
     readonly List<IndexWatchTarget> _targets = [];
     readonly List<ScriptedDriveWatch> _watches = [];
-    readonly Dictionary<char, HeldStart> _holdsByDrive = [];
-    readonly Dictionary<char, Exception> _failuresByDrive = [];
-    readonly Dictionary<char, List<StartWaiter>> _startWaiters = [];
+    readonly Dictionary<DriveKey, HeldStart> _holdsByDrive = [];
+    readonly Dictionary<DriveKey, Exception> _failuresByDrive = [];
+    readonly Dictionary<DriveKey, List<StartWaiter>> _startWaiters = [];
     HeldStart? _nextHold;
     Exception? _nextFailure;
 
@@ -24,7 +24,7 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
     public bool CatchUpOnStart { get; init; }
 
     /// <summary>Consulted on every start: a non-null result is thrown instead of starting.</summary>
-    public Func<char, Exception?>? StartFailure { get; set; }
+    public Func<DriveKey, Exception?>? StartFailure { get; set; }
 
     /// <summary>Every start requested, in order, including starts that were then failed or held.</summary>
     public IReadOnlyList<ScriptedWatchStart> Starts
@@ -34,7 +34,7 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
             lock (_stateLock)
             {
                 return [.. _targets.Select(target =>
-                    new ScriptedWatchStart(target.DriveLetter, new SyntheticJournalCursor(target.JournalIdentifier, target.NextUsn)))];
+                    new ScriptedWatchStart(target.Drive, new SyntheticJournalCursor(target.JournalIdentifier, target.NextUsn)))];
             }
         }
     }
@@ -67,8 +67,11 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
     /// <param name="driveLetter">The drive to look up.</param>
     /// <returns>The most recent watch for that drive.</returns>
     /// <exception cref="InvalidOperationException">No watch was handed out for the drive.</exception>
-    public ScriptedDriveWatch WatchFor(char driveLetter) =>
-        Watches.Last(watch => Same(watch.DriveLetter, driveLetter));
+    public ScriptedDriveWatch WatchFor(DriveKey driveLetter)
+    {
+        driveLetter.Validated();
+        return Watches.Last(watch => Same(watch.Drive, driveLetter));
+    }
 
     /// <summary>
     ///     Completes with the watch handed out for the drive as its <paramref name="startNumber" />th, counting
@@ -82,20 +85,21 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
     /// <param name="cancellationToken">Ends the wait with <see cref="OperationCanceledException" />.</param>
     /// <returns>The watch the index received.</returns>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="startNumber" /> is less than one.</exception>
-    public Task<ScriptedDriveWatch> WaitForStartAsync(char driveLetter, int startNumber,
+    public Task<ScriptedDriveWatch> WaitForStartAsync(DriveKey driveLetter, int startNumber,
         CancellationToken cancellationToken)
     {
+        driveLetter.Validated();
         ArgumentOutOfRangeException.ThrowIfLessThan(startNumber, 1);
         var waiter = new StartWaiter(startNumber);
         lock (_stateLock)
         {
-            var handedOut = _watches.Where(watch => Same(watch.DriveLetter, driveLetter)).ToList();
+            var handedOut = _watches.Where(watch => Same(watch.Drive, driveLetter)).ToList();
             if (handedOut.Count >= startNumber)
             {
                 return Task.FromResult(handedOut[startNumber - 1]);
             }
 
-            var key = char.ToUpperInvariant(driveLetter);
+            var key = driveLetter;
             if (!_startWaiters.TryGetValue(key, out var waiters))
             {
                 waiters = [];
@@ -121,17 +125,17 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
     /// <summary>Makes the next start of one drive throw <paramref name="failure" />, whichever call order the starts arrive in.</summary>
     /// <param name="driveLetter">The drive whose next start fails.</param>
     /// <param name="failure">The exception the start throws.</param>
-    internal void FailNextStartFor(char driveLetter, Exception failure)
+    internal void FailNextStartFor(DriveKey driveLetter, Exception failure)
     {
         lock (_stateLock)
         {
-            _failuresByDrive[char.ToUpperInvariant(driveLetter)] = failure;
+            _failuresByDrive[driveLetter] = failure;
         }
     }
 
     /// <summary>The targets requested for one drive, in order.</summary>
-    internal IReadOnlyList<IndexWatchTarget> TargetsFor(char driveLetter) =>
-        Targets.Where(target => Same(target.DriveLetter, driveLetter)).ToArray();
+    internal IReadOnlyList<IndexWatchTarget> TargetsFor(DriveKey driveLetter) =>
+        Targets.Where(target => Same(target.Drive, driveLetter)).ToArray();
 
     /// <summary>
     ///     Parks the next start on <paramref name="gate" /> until it is released. With
@@ -148,11 +152,11 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
     }
 
     /// <summary>Parks the next start of one drive on <paramref name="gate" />, whichever call order the starts arrive in.</summary>
-    internal void HoldStartFor(char driveLetter, TestGate gate, bool observeToken = true)
+    internal void HoldStartFor(DriveKey driveLetter, TestGate gate, bool observeToken = true)
     {
         lock (_stateLock)
         {
-            _holdsByDrive[char.ToUpperInvariant(driveLetter)] = new HeldStart(gate, observeToken);
+            _holdsByDrive[driveLetter] = new HeldStart(gate, observeToken);
         }
     }
 
@@ -164,7 +168,7 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
         lock (_stateLock)
         {
             _targets.Add(target);
-            var driveLetter = char.ToUpperInvariant(target.DriveLetter);
+            var driveLetter = target.Drive;
             if (!_holdsByDrive.Remove(driveLetter, out hold))
             {
                 hold = _nextHold;
@@ -185,7 +189,7 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
                 .WaitAsync(HangGuard, CancellationToken.None).ConfigureAwait(false);
         }
 
-        failure ??= StartFailure?.Invoke(target.DriveLetter);
+        failure ??= StartFailure?.Invoke(target.Drive);
         if (failure is not null)
         {
             throw failure;
@@ -206,17 +210,17 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
         List<StartWaiter> satisfied = [];
         lock (_stateLock)
         {
-            var previous = _watches.LastOrDefault(existing => Same(existing.DriveLetter, target.DriveLetter));
+            var previous = _watches.LastOrDefault(existing => Same(existing.Drive, target.Drive));
             if (previous is { DisposeCount: 0 })
             {
                 throw new InvalidOperationException(
-                    $"A watch for drive {target.DriveLetter} was started while the previous one was still running.");
+                    $"A watch for drive {target.Drive} was started while the previous one was still running.");
             }
 
             _watches.Add(watch);
-            if (_startWaiters.TryGetValue(char.ToUpperInvariant(target.DriveLetter), out var waiters))
+            if (_startWaiters.TryGetValue(target.Drive, out var waiters))
             {
-                var startNumber = _watches.Count(existing => Same(existing.DriveLetter, target.DriveLetter));
+                var startNumber = _watches.Count(existing => Same(existing.Drive, target.Drive));
                 satisfied = [.. waiters.Where(waiter => waiter.StartNumber <= startNumber)];
                 waiters.RemoveAll(satisfied.Contains);
             }
@@ -235,7 +239,7 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
         return watch;
     }
 
-    static bool Same(char left, char right) => char.ToUpperInvariant(left) == char.ToUpperInvariant(right);
+    static bool Same(DriveKey left, DriveKey right) => left == right;
 
     sealed record HeldStart(TestGate Gate, bool ObserveToken);
 

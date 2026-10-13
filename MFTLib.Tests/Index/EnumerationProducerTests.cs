@@ -62,7 +62,7 @@ public class EnumerationProducerTests
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = _treeRoot,
-            DriveLetter = 'T'
+            Drive = 'T'
         });
 
         result = producer.Produce(created.Writer, progress: null, CancellationToken.None);
@@ -177,7 +177,7 @@ public class EnumerationProducerTests
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = _treeRoot,
-            DriveLetter = 'T'
+            Drive = 'T'
         });
 
         producer.Produce(created.Writer, new SynchronousProgress<IndexScanProgress>(observed.Add),
@@ -186,7 +186,7 @@ public class EnumerationProducerTests
         Assert.AreEqual(7u, created.Writer.RowCount);
         Assert.IsTrue(observed.Count > 0, "the walk visited at least one directory");
         Assert.AreEqual(IndexScanPhase.Enumerating, observed[0].Phase);
-        Assert.AreEqual('T', observed[0].DriveLetter);
+        Assert.AreEqual('T', observed[0].Drive);
         CollectionAssert.AllItemsAreUnique(observed.Select(report => report.CurrentDirectory!).ToArray());
         Assert.IsTrue(observed[^1].RowsWritten > observed[0].RowsWritten,
             "later reports reflect more rows written as the walk progresses");
@@ -201,7 +201,7 @@ public class EnumerationProducerTests
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = _treeRoot,
-            DriveLetter = 'T'
+            Drive = 'T'
         });
         var progress = new RecordingProgress();
 
@@ -280,7 +280,7 @@ public class EnumerationProducerTests
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = Path.Combine(_treeRoot, "does-not-exist"),
-            DriveLetter = 'T'
+            Drive = 'T'
         });
 
         var result = producer.Produce(created.Writer, progress: null, CancellationToken.None);
@@ -300,7 +300,7 @@ public class EnumerationProducerTests
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = _treeRoot,
-            DriveLetter = 'T'
+            Drive = 'T'
         });
 
         // ReSharper disable once AccessToDisposedClosure

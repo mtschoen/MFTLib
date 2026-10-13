@@ -42,7 +42,7 @@ public class MftDumpRescanTests
         Assert.IsNotNull(index.Find(NotesPath));
 
         await File.WriteAllBytesAsync(path, Renamed(replacementRecordSize));
-        await index.RescanAsync('D', CancellationToken.None);
+        await index.RescanAsync(['D'], CancellationToken.None);
 
         Assert.IsNull(index.Find(NotesPath));
         Assert.AreEqual(33L, index.Find(RenamedPath)!.Value.Size);
@@ -61,7 +61,8 @@ public class MftDumpRescanTests
         invalid[7 * 1024 + 510] ^= 0xFF;
 
         await File.WriteAllBytesAsync(path, invalid);
-        var failure = await CatchAsync(() => index.RescanAsync('D', CancellationToken.None));
+        var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+            () => index.RescanAsync(['D'], CancellationToken.None));
 
         Assert.IsInstanceOfType<InvalidOperationException>(failure);
         Assert.IsInstanceOfType<InvalidDataException>(failure.InnerException);
@@ -73,7 +74,7 @@ public class MftDumpRescanTests
         Assert.AreEqual(InvalidFixupMessage, drive.Failure?.Message);
 
         await File.WriteAllBytesAsync(path, Renamed(1024));
-        await index.RescanAsync('D', CancellationToken.None);
+        await index.RescanAsync(['D'], CancellationToken.None);
 
         Assert.IsNotNull(index.Find(RenamedPath));
         Assert.IsNull(index.Drives.Single().Failure, "a later good rescan clears the failure");
@@ -86,7 +87,8 @@ public class MftDumpRescanTests
         await using var index = await OpenAsync(MftIndexSources.FromMftDumpFile(path, 'D'));
 
         File.Delete(path);
-        var failure = await CatchAsync(() => index.RescanAsync('D', CancellationToken.None));
+        var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+            () => index.RescanAsync(['D'], CancellationToken.None));
 
         Assert.IsInstanceOfType<IOException>(failure.InnerException);
         StringAssert.StartsWith(failure.InnerException.Message, "Failed to open file. Error: ");
@@ -102,9 +104,8 @@ public class MftDumpRescanTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
-        var failure = await CatchAsync(() => index.RescanAsync('D', cancellation.Token));
-
-        Assert.IsInstanceOfType<OperationCanceledException>(failure);
+        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(
+            () => index.RescanAsync(['D'], cancellation.Token));
         Assert.IsNotNull(index.Find(NotesPath));
         Assert.IsNull(index.Find(RenamedPath));
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
@@ -118,9 +119,8 @@ public class MftDumpRescanTests
         var producer = new MftDumpBlockProducer(path, CancelOnTheSecondScan(cancellation));
         await using var index = await OpenAsync(Source(producer, path));
 
-        var failure = await CatchAsync(() => index.RescanAsync('D', cancellation.Token));
-
-        Assert.IsInstanceOfType<OperationCanceledException>(failure);
+        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(
+            () => index.RescanAsync(['D'], cancellation.Token));
         Assert.IsNotNull(index.Find(NotesPath));
         using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         Assert.IsTrue(exclusive.Length > 0, "the cancelled scan closed its input");
@@ -153,7 +153,7 @@ public class MftDumpRescanTests
         await using var secondIndex = await OpenAsync(MftIndexSources.FromMftDumpFile(second, 'd'));
 
         await File.WriteAllBytesAsync(first, Renamed(1024));
-        await secondIndex.RescanAsync('D', CancellationToken.None);
+        await secondIndex.RescanAsync(['D'], CancellationToken.None);
 
         Assert.IsNotNull(firstIndex.Find(NotesPath), "the first index was not rescanned");
         Assert.IsNull(firstIndex.Find(RenamedPath));
@@ -162,15 +162,12 @@ public class MftDumpRescanTests
     }
 
     [TestMethod]
-    public async Task StartWatching_OnAFactoryDumpSource_IsRefused()
+    public async Task StartWatching_OnAFactoryDumpSource_IsNotApplicable()
     {
         var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
         await using var index = await OpenAsync(MftIndexSources.FromMftDumpFile(path, 'D'));
 
-        var refusal = await CatchAsync(() => index.StartWatchingAsync('D', CancellationToken.None));
-
-        Assert.IsInstanceOfType<InvalidOperationException>(refusal);
-        StringAssert.Contains(refusal.Message, MftIndexSource.NoWatchReason);
+        await DriveResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync(['D'], CancellationToken.None));
     }
 
     static MftDumpRecordSource CancelOnTheSecondScan(CancellationTokenSource cancellation)
@@ -213,19 +210,5 @@ public class MftDumpRescanTests
         var records = MftDumpFixture.StandardRecords();
         records[7] = new DumpRecord("Renamed.txt", 6) { Size = 33 };
         return MftDumpFixture.Build(recordSize, 16, records);
-    }
-
-    static async Task<Exception> CatchAsync(Func<Task> action)
-    {
-        try
-        {
-            await action();
-        }
-        catch (Exception exception)
-        {
-            return exception;
-        }
-
-        throw new AssertFailedException("The operation was expected to fail.");
     }
 }

@@ -102,16 +102,16 @@ public class FileIndexWatchTests
     }
 
     [TestMethod]
-    public async Task StartWatchingAsync_OnAMixedIndexWithoutASource_ThrowsInvalidOperation()
+    public async Task StartWatchingAsync_OnAMixedIndexWithoutASource_ReportsNotApplicable()
     {
         Assert.IsFalse(_index.Drives[1].Watch.Supported);
         Assert.IsFalse(_index.Drives[0].Watch.Supported, "no source offers a watch source");
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => _index.StartWatchingAsync('T', CancellationToken.None));
+        await DriveResultAssertions.NotApplicableAsync(
+            () => _index.StartWatchingAsync(['T'], CancellationToken.None));
     }
 
     [TestMethod]
-    public async Task StartWatchingAsync_OnAnEnumerationDrive_ThrowsWithoutCallingSource()
+    public async Task StartWatchingAsync_OnAnEnumerationDrive_ReportsNotApplicableWithoutCallingSource()
     {
         var source = new FailIfCalledWatchSource();
 
@@ -122,10 +122,9 @@ public class FileIndexWatchTests
             MftSource = TestMftSources.WatchOnly(source)
         }, CancellationToken.None);
 
-        var thrown = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => index.StartWatchingAsync('E', CancellationToken.None));
+        await DriveResultAssertions.NotApplicableAsync(
+            () => index.StartWatchingAsync(['E'], CancellationToken.None));
 
-        StringAssert.Contains(thrown.Message, "no MFT-backed block");
         Assert.IsFalse(source.WasCalled);
     }
 
@@ -274,9 +273,9 @@ public class FileIndexWatchTests
         Assert.IsTrue(_index.Drives[0].Block!.CompactionNeeded);
         Assert.IsNotNull(_index.Find(Path.Combine(_treeRoot, "Documents", "readme.md")));
 
-        await _index.RescanAsync('T', CancellationToken.None);
+        await _index.RescanAsync(['T'], CancellationToken.None);
 
-        var replaced = _index.Drives.Single(drive => drive.DriveLetter == 'T');
+        var replaced = _index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Ready, replaced.State);
         Assert.IsFalse(replaced.Block!.CompactionNeeded);
         Assert.IsNotNull(_index.Find(Path.Combine(_treeRoot, "Documents", "readme.md")));
@@ -402,7 +401,7 @@ public class FileIndexWatchTests
         {
             WasCalled = true;
             throw new AssertFailedException(
-                $"Source was asked to start drive {target.DriveLetter} with cancellation {cancellationToken.CanBeCanceled}.");
+                $"Source was asked to start drive {target.Drive} with cancellation {cancellationToken.CanBeCanceled}.");
         }
     }
 }

@@ -39,7 +39,7 @@ public class CacheDirectoryDeletionTests
         }
         var messages = new List<string>();
 
-        var results = CacheDirectory.DeleteCached(_directory, new HashSet<char> { 'T' }, messages.Add);
+        var results = CacheDirectory.DeleteCached(_directory, new HashSet<char> { 'T' }.Select(letter => new DriveKey(letter)), messages.Add);
 
         CollectionAssert.AreEquivalent(selected, results.Select(result => result.File.Path).ToArray());
         foreach (var result in results)
@@ -58,9 +58,10 @@ public class CacheDirectoryDeletionTests
             Assert.IsTrue(File.Exists(path));
         }
         Assert.IsFalse(File.Exists(BlockOwnerLock.LockPathFor(excluded)));
-        Assert.AreEqual(0, CacheDirectory.DeleteCached(_directory, new HashSet<char>()).Count);
-        Assert.AreEqual(0, CacheDirectory.DeleteCached(_directory, new HashSet<char> { 'u' }).Count);
-        Assert.IsFalse(File.Exists(BlockOwnerLock.LockPathFor(excluded)));
+        Assert.AreEqual(0, CacheDirectory.DeleteCached(_directory, new HashSet<char>().Select(letter => new DriveKey(letter))).Count);
+        Assert.AreEqual(CachedBlockDeletionOutcome.Deleted, CacheDirectory.DeleteCached(_directory, ['u']).Single().Outcome);
+        Assert.IsFalse(File.Exists(excluded));
+        Assert.IsTrue(File.Exists(BlockOwnerLock.LockPathFor(excluded)));
     }
 
     [TestMethod]

@@ -11,9 +11,9 @@ namespace MFTLib.Tests.Index;
 ///     the drive (see <see cref="FileIndexCheckpointLossLifetimeTests" />), because a cache-only
 ///     open never watches and the block is still a correct snapshot as of its age. But starting a
 ///     live watch from that block's cursor would resume from a position the journal no longer
-///     holds, so <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" /> refuses such
+///     holds, so <see cref="FileIndex.StartWatchingAsync" /> refuses such
 ///     a drive and says why, recording the watch as requested the way a start whose source threw
-///     does. A successful <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> writes a
+///     does. A successful <see cref="FileIndex.RescanAsync" /> writes a
 ///     fresh cursor, clears the refusal, and starts the requested watch. The journal
 ///     read is swapped out through <c>JournalCheckpointCheck.OverrideJournalForTest</c>, so these
 ///     run on every platform and never touch a real volume.
@@ -83,7 +83,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
     /// <summary>Writes the drives' cache blocks while the journal still holds every checkpoint.</summary>
     async Task SeedCacheAsync(params IndexedDrive[] drives)
     {
-        using var journals = OverrideJournals(drives.ToDictionary(drive => drive.DriveLetter, _ => HealthyWindow));
+        using var journals = OverrideJournals(drives.ToDictionary(drive => drive.Drive, _ => HealthyWindow));
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, watchSource: null, cacheOnly: false, drives), Token);
         foreach (var drive in index.Drives)
@@ -99,8 +99,8 @@ public class FileIndexCacheOnlyUnresumableWatchTests
     static async Task<InvalidOperationException> RefuseStartAsync(FileIndex index, char driveLetter,
         CancellationToken token)
     {
-        var refusal = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => index.StartWatchingAsync(driveLetter, token));
+        var refusal = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+            () => index.StartWatchingAsync([driveLetter], token));
         StringAssert.Contains(refusal.Message, "RescanAsync");
         return refusal;
     }
@@ -113,28 +113,28 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         await SeedCacheAsync(driveT, driveU);
 
         var source = new ScriptedWatchSource();
-        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, source, cacheOnly: true, driveT, driveU), Token);
 
         // Both drives are adopted (cache-only never fails a drive for a lost checkpoint alone).
-        Assert.AreEqual(DriveState.Ready, index.Drives.Single(drive => drive.DriveLetter == 'T').State);
-        Assert.AreEqual(DriveState.Ready, index.Drives.Single(drive => drive.DriveLetter == 'U').State);
-        Assert.IsNotNull(index.Drives.Single(drive => drive.DriveLetter == 'T').Watch.CheckpointLoss);
-        Assert.IsNull(index.Drives.Single(drive => drive.DriveLetter == 'U').Watch.CheckpointLoss);
+        Assert.AreEqual(DriveState.Ready, index.Drives.Single(drive => drive.Drive == 'T').State);
+        Assert.AreEqual(DriveState.Ready, index.Drives.Single(drive => drive.Drive == 'U').State);
+        Assert.IsNotNull(index.Drives.Single(drive => drive.Drive == 'T').Watch.CheckpointLoss);
+        Assert.IsNull(index.Drives.Single(drive => drive.Drive == 'U').Watch.CheckpointLoss);
 
         await RefuseStartAsync(index, 'T', Token);
-        await index.StartWatchingAsync('U', Token);
+        await index.StartWatchingAsync(['U'], Token);
 
-        Assert.AreEqual('U', source.Starts.Single().DriveLetter,
+        Assert.AreEqual('U', source.Starts.Single().Drive,
             "the drive whose checkpoint could not be resumed must never reach the watch source");
 
-        var unresumable = index.Drives.Single(drive => drive.DriveLetter == 'T');
+        var unresumable = index.Drives.Single(drive => drive.Drive == 'T');
         Assert.IsNotNull(unresumable.Watch.FailureMessage, "the refusal must be reported, not silent");
         StringAssert.Contains(unresumable.Watch.FailureMessage, "RescanAsync");
         Assert.AreEqual(WatchState.Faulted, unresumable.Watch.State);
 
-        var healthy = index.Drives.Single(drive => drive.DriveLetter == 'U');
+        var healthy = index.Drives.Single(drive => drive.Drive == 'U');
         Assert.IsNull(healthy.Watch.FailureMessage);
         Assert.AreEqual(WatchState.CatchingUp, healthy.Watch.State);
 
@@ -142,7 +142,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
             [WatchHarness.Create(recordNumber: 9, "after.txt")], JournalIdentifier: CachedJournalIdentifier, NextUsn: 9_500));
         Assert.AreEqual(9_500L, index.Root('U').DriveBlock.Block.Header.UsnNextUsn);
 
-        await index.StopWatchingAsync('U', Token);
+        await index.StopWatchingAsync(['U'], Token);
     }
 
     /// <summary>
@@ -158,31 +158,31 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         await SeedCacheAsync(driveT, driveU);
 
         var source = new ScriptedWatchSource();
-        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, source, cacheOnly: true, driveT, driveU), Token);
-        await index.StartWatchingAsync('U', Token);
+        await index.StartWatchingAsync(['U'], Token);
         await RefuseStartAsync(index, 'T', Token);
-        Assert.IsTrue(index.Drives.Single(drive => drive.DriveLetter == 'T').Watch.Requested,
+        Assert.IsTrue(index.Drives.Single(drive => drive.Drive == 'T').Watch.Requested,
             "a refused start records the request, as a start whose source threw does");
 
-        await index.RescanAsync('T', Token);
+        await index.RescanAsync(['T'], Token);
 
         Assert.AreEqual(new IndexWatchTarget('T', CachedJournalIdentifier, CachedNextUsn), source.TargetsFor('T').Single(),
             "the rescan starts the requested watch from the fresh cursor");
-        var recovered = index.Drives.Single(drive => drive.DriveLetter == 'T');
+        var recovered = index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(BlockSource.ProducedByScan, recovered.Block!.Source);
         Assert.IsNull(recovered.Watch.CheckpointLoss, "the rescan replaced the block the report described");
         Assert.IsNull(recovered.Watch.FailureMessage);
         Assert.IsTrue(recovered.Watch.Requested);
         Assert.AreEqual(WatchState.CatchingUp,
-            index.Drives.Single(drive => drive.DriveLetter == 'T').Watch.State);
+            index.Drives.Single(drive => drive.Drive == 'T').Watch.State);
         await source.WatchFor('T').Publish(new JournalBatch(
             [WatchHarness.Create(recordNumber: 9, "after.txt")], JournalIdentifier: CachedJournalIdentifier, NextUsn: 5_000));
         Assert.AreEqual(5_000L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
 
-        await index.StopWatchingAsync('T', Token);
-        await index.StopWatchingAsync('U', Token);
+        await index.StopWatchingAsync(['T'], Token);
+        await index.StopWatchingAsync(['U'], Token);
     }
 
     /// <summary>
@@ -202,31 +202,31 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         Task<MftBlockProduceResult> Producer(MftBlockProduceRequest request, CancellationToken token)
         {
             // The producer throws, and the scanning code turns that into a scan with no block.
-            return char.ToUpperInvariant(request.DriveLetter) == 'T'
+            return char.ToUpperInvariant((request.Drive).Letter) == 'T'
                 ? throw scanFailure
                 : ProduceMftShapedBlock(request, token);
         }
 
         var source = new ScriptedWatchSource();
-        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(Producer, source, cacheOnly: true, driveT, driveU), Token);
-        await index.StartWatchingAsync('U', Token);
+        await index.StartWatchingAsync(['U'], Token);
         await RefuseStartAsync(index, 'T', Token);
 
-        var before = index.Drives.Single(drive => drive.DriveLetter == 'T');
+        var before = index.Drives.Single(drive => drive.Drive == 'T');
         Assert.IsNotNull(before.Watch.FailureMessage);
         Assert.AreEqual(WatchState.Faulted, before.Watch.State);
         Assert.IsNotNull(before.Watch.CheckpointLoss);
 
-        var thrown = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(
-            () => index.RescanAsync('T', Token));
+        var thrown = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+            () => index.RescanAsync(['T'], Token));
 
         Assert.AreSame(scanFailure, thrown.InnerException);
         Assert.AreEqual(0, source.TargetsFor('T').Count,
             "a failed rescan must not start the cursor the journal still cannot resume");
 
-        var after = index.Drives.Single(drive => drive.DriveLetter == 'T');
+        var after = index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual("synthetic scan failure for T", after.Failure?.Message);
         Assert.IsNotNull(after.Watch.FailureMessage, "the refusal must stay reported after a failed scan");
         StringAssert.Contains(after.Watch.FailureMessage, "RescanAsync");
@@ -239,7 +239,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
             [WatchHarness.Create(recordNumber: 9, "u.txt")], JournalIdentifier: CachedJournalIdentifier, NextUsn: 9_000));
         Assert.AreEqual(9_000L, index.Root('U').DriveBlock.Block.Header.UsnNextUsn);
 
-        await index.StopWatchingAsync('U', Token);
+        await index.StopWatchingAsync(['U'], Token);
     }
 
     /// <summary>
@@ -253,7 +253,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         var driveT = Drive('T', _firstTreeRoot);
         await SeedCacheAsync(driveT);
         var source = new ScriptedWatchSource();
-        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = HealthyWindow });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = HealthyWindow });
         var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
             Drives = [driveT],
@@ -263,14 +263,14 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         try
         {
             Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind, "the cached MFT block warm-started");
-            await index.StartWatchingAsync('T', Token);
-            Task? wait = null;
-            index.BeforeRestartDecisionForTest = _ => wait ??= index.WaitForCatchUpAsync('T', CancellationToken.None);
+            await index.StartWatchingAsync(['T'], Token);
+            Task<IReadOnlyList<DriveOperationResult>>? wait = null;
+            index.BeforeRestartDecisionForTest = _ => wait ??= index.WaitForCatchUpAsync(['T'], CancellationToken.None);
 
-            await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => index.RescanAsync('T', Token));
+            await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.RescanAsync(['T'], Token));
 
             Assert.IsNotNull(wait);
-            var failure = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(
+            var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
                 () => wait.WaitAsync(ScriptedWatchSource.HangGuard));
             StringAssert.Contains(failure.Message, "no MFT-backed block");
             var status = index.Drives.Single();
@@ -297,7 +297,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         var driveT = Drive('T', _firstTreeRoot);
         await SeedCacheAsync(driveT);
         var source = new ScriptedWatchSource();
-        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = HealthyWindow });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
             Drives = [driveT],
@@ -312,22 +312,20 @@ public class FileIndexCacheOnlyUnresumableWatchTests
                 channelFaulted.TrySetResult();
             }
         };
-        await index.StartWatchingAsync('T', Token);
+        await index.StartWatchingAsync(['T'], Token);
         source.WatchFor('T').LoseChannel(new IOException("the channel went away"));
         await channelFaulted.Task.WaitAsync(ScriptedWatchSource.HangGuard);
         Assert.AreEqual(WatchState.Faulted, index.Drives.Single().Watch.State);
 
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => index.RescanAsync('T', Token));
+        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.RescanAsync(['T'], Token));
 
         var status = index.Drives.Single();
         Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
         Assert.IsFalse(status.Watch.Requested);
         Assert.AreEqual(WatchState.NotStarted, status.Watch.State);
         Assert.IsNull(status.Watch.FailureMessage, "the superseded watch's channel failure no longer describes the drive");
-        var notWatched = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => index.WaitForCatchUpAsync('T', Token));
-        StringAssert.Contains(notWatched.Message, "is not being watched");
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => index.StopWatchingAsync('T', Token));
+        await DriveResultAssertions.NotApplicableAsync(() => index.WaitForCatchUpAsync(['T'], Token));
+        await DriveResultAssertions.NotApplicableAsync(() => index.StopWatchingAsync(['T'], Token));
         Assert.AreEqual(1, source.TargetsFor('T').Count);
     }
 
@@ -349,7 +347,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         await SeedCacheAsync(driveT);
 
         var source = new ScriptedWatchSource();
-        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = TrimmedWindow });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = TrimmedWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, source, cacheOnly: true, driveT), Token);
 
@@ -361,18 +359,17 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         Assert.AreEqual(WatchState.Faulted, status.Watch.State);
 
         // The refusal is the drive's last start failure, so a catch-up wait faults with it.
-        var waitFailure = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => index.WaitForCatchUpAsync('T', Token));
+        var waitFailure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+            () => index.WaitForCatchUpAsync(['T'], Token));
         StringAssert.Contains(waitFailure.Message, "RescanAsync");
 
         // The refusal records the request, so a stop withdraws it without rethrowing the refusal,
         // which the start already threw; after that there is nothing left to stop.
         Assert.IsTrue(status.Watch.Requested);
-        await index.StopWatchingAsync('T', Token);
+        await index.StopWatchingAsync(['T'], Token);
         var stopped = index.Drives.Single();
         Assert.IsFalse(stopped.Watch.Requested);
         Assert.AreEqual(WatchState.NotStarted, stopped.Watch.State);
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => index.StopWatchingAsync('T', Token));
+        await DriveResultAssertions.NotApplicableAsync(() => index.StopWatchingAsync(['T'], Token));
     }
 }

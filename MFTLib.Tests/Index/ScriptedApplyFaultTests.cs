@@ -21,8 +21,8 @@ public class ScriptedApplyFaultTests
     {
         using var harness = new WatchHarness('T', 'U');
         harness.Index.HoldEveryRecovery();
-        await harness.Index.StartWatchingAsync('T', Token);
-        await harness.Index.StartWatchingAsync('U', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
+        await harness.Index.StartWatchingAsync(['U'], Token);
         var failure = new InvalidOperationException("the batch cannot be applied");
 
         harness.Source.WatchFor('T').FailApply(failure);
@@ -41,7 +41,7 @@ public class ScriptedApplyFaultTests
         using var harness = new WatchHarness('T');
         harness.Index.HoldEveryRecovery();
         var applying = harness.HoldFirstApply('T');
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         var watch = harness.Source.WatchFor('T');
 
         var before = watch.Queue(WatchHarness.Batch(10, "before.txt", nextUsn: 5000));
@@ -61,7 +61,7 @@ public class ScriptedApplyFaultTests
     public async Task FailApply_RecoversTheDriveOntoAFreshWatchThatAcceptsBatches()
     {
         using var harness = new WatchHarness('T');
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         var faulted = harness.Source.WatchFor('T');
 
         faulted.FailApply(new IOException("apply failed"));
@@ -81,7 +81,7 @@ public class ScriptedApplyFaultTests
     {
         using var harness = new WatchHarness('T');
         harness.Index.HoldEveryRecovery();
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         var watch = harness.Source.WatchFor('T');
 
         Assert.ThrowsException<ArgumentNullException>(() => watch.FailApply(null!));

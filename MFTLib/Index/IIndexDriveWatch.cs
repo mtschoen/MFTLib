@@ -11,7 +11,7 @@ namespace MFTLib.Index;
 internal interface IIndexDriveWatch : IAsyncDisposable
 {
     /// <summary>Gets the drive the index uses to associate this watch's batches and faults with a drive block.</summary>
-    char DriveLetter { get; }
+    DriveKey Drive { get; }
 
     /// <summary>
     ///     Yields the drive's <see cref="JournalBatch" /> items, and one <see cref="DriveCaughtUp" />

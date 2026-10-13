@@ -109,7 +109,7 @@ public class FileIndexLifetimeTests
     {
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         await Assert.ThrowsExceptionAsync<ArgumentException>(
-            () => index.RescanAsync('Q', CancellationToken.None));
+            () => index.RescanAsync(['Q'], CancellationToken.None));
     }
 
     [TestMethod]
@@ -138,7 +138,7 @@ public class FileIndexLifetimeTests
         var rowsBefore = index.HeaderOf().RowCount;
 
         await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
-        await index.RescanAsync('T', CancellationToken.None);
+        await index.RescanAsync(['T'], CancellationToken.None);
 
         Assert.AreNotSame(oldSnapshot, index.CurrentSnapshot);
         Assert.IsTrue(oldEntry.IsDirectory);

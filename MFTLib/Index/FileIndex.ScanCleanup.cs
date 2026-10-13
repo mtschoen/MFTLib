@@ -20,14 +20,14 @@ public sealed partial class FileIndex
         {
             // Cache-mode rescans can leave a renamed ".retired-*" sibling if a prior attempt
             // aborted before removing it; swept here, under the held owner lock.
-            CleanupRetiredSiblings(drive.DriveLetter, drive.VolumeSerial);
+            CleanupRetiredSiblings(drive.Drive, drive.VolumeSerial);
             return CanonicalSlotOutcome.Owned;
         }
 
         return _options.InitialOpenCacheOnly ? CanonicalSlotOutcome.DeclinedInUse : CanonicalSlotOutcome.NotOwned;
     }
 
-    void RecordOfflineDrive(char driveLetter)
+    void RecordOfflineDrive(DriveKey driveLetter)
     {
         lock (_stateLock)
         {
@@ -40,7 +40,7 @@ public sealed partial class FileIndex
     ///     Records a drive that opening left with no block, from its settled result and keyed by
     ///     letter, since a drive that never adds a block never takes an ordinal.
     /// </summary>
-    void RecordFailedDrive(char driveLetter, DriveFailureKind failureKind, PendingDriveResult settled)
+    void RecordFailedDrive(DriveKey driveLetter, DriveFailureKind failureKind, PendingDriveResult settled)
     {
         lock (_stateLock)
         {
@@ -58,7 +58,7 @@ public sealed partial class FileIndex
     }
 
     string CanonicalBlockPath(IndexedDrive drive) =>
-        Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(drive.DriveLetter, drive.VolumeSerial));
+        Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(drive.Drive, drive.VolumeSerial));
 
     CacheSlotState DescribeCacheSlot(bool ownsCanonicalSlot) =>
         _options.NoCache
@@ -81,7 +81,7 @@ public sealed partial class FileIndex
         if (_options.NoCache)
         {
             return new ScanBlockTarget(Path.Combine(Path.GetTempPath(),
-                $"mftlib-nocache-{Guid.NewGuid():N}-{CacheDirectory.BlockFileName(drive.DriveLetter, drive.VolumeSerial)}"),
+                $"mftlib-nocache-{Guid.NewGuid():N}-{CacheDirectory.BlockFileName(drive.Drive, drive.VolumeSerial)}"),
                 DeleteOnClose: true, OwnsCanonicalSlot: false);
         }
 
@@ -93,7 +93,7 @@ public sealed partial class FileIndex
         }
 
         return new ScanBlockTarget(Path.Combine(Path.GetTempPath(),
-            $"mftlib-private-{Guid.NewGuid():N}-{CacheDirectory.BlockFileName(drive.DriveLetter, drive.VolumeSerial)}"),
+            $"mftlib-private-{Guid.NewGuid():N}-{CacheDirectory.BlockFileName(drive.Drive, drive.VolumeSerial)}"),
             DeleteOnClose: true, OwnsCanonicalSlot: false);
     }
 
@@ -103,7 +103,7 @@ public sealed partial class FileIndex
     /// </summary>
     bool EnsureCanonicalOwnership(IndexedDrive drive)
     {
-        var driveLetter = char.ToUpperInvariant(drive.DriveLetter);
+        var driveLetter = drive.Drive;
         lock (_stateLock)
         {
             if (_canonicalLocksByLetter.ContainsKey(driveLetter))
@@ -127,9 +127,9 @@ public sealed partial class FileIndex
     }
 
     /// <summary>The caller holds <see cref="_stateLock" />.</summary>
-    void ReleaseCanonicalOwnershipLocked(char driveLetter)
+    void ReleaseCanonicalOwnershipLocked(DriveKey driveLetter)
     {
-        if (_canonicalLocksByLetter.Remove(char.ToUpperInvariant(driveLetter), out var ownerLock))
+        if (_canonicalLocksByLetter.Remove(driveLetter, out var ownerLock))
         {
             ownerLock.Dispose();
         }
@@ -141,7 +141,7 @@ public sealed partial class FileIndex
     /// </summary>
     readonly Func<string, string, IEnumerable<string>> _enumerateCacheFiles;
 
-    void CleanupRetiredSiblings(char driveLetter, uint volumeSerial)
+    void CleanupRetiredSiblings(DriveKey driveLetter, uint volumeSerial)
     {
         var pattern = CacheDirectory.BlockFileName(driveLetter, volumeSerial) + ".retired-*";
         try

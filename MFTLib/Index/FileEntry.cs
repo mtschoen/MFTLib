@@ -83,7 +83,7 @@ public readonly partial record struct FileEntry
         get
         {
             var driveBlock = DriveBlock;
-            return new IndexRecordKey(driveBlock.DriveLetter, _rowIndex, driveBlock.ProducerKind);
+            return new IndexRecordKey(driveBlock.Drive, _rowIndex, driveBlock.ProducerKind);
         }
     }
 

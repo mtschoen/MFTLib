@@ -37,9 +37,9 @@ public sealed partial class BrokerCrossDriveLivenessTests
         var token = scenario.Token;
         var tipOfU = new UsnJournalCursor(WatchHarness.JournalIdentifier, ScriptedWatchBrokerHarness.DefaultTip.NextUsn + 100);
         scenario.Broker.SetTip('U', tipOfU);
-        await index.StartWatchingAsync('T', token);
-        await index.StartWatchingAsync('U', token);
-        await index.WaitForCatchUpAsync('T', token);
+        await index.StartWatchingAsync(['T'], token);
+        await index.StartWatchingAsync(['U'], token);
+        await index.WaitForCatchUpAsync(['T'], token);
         var runOfT = await scenario.Broker.Watch('T').RunAsync(1);
         var runOfU = await scenario.Broker.Watch('U').RunAsync(1);
         Assert.AreEqual(WatchState.CatchingUp, scenario.DriveOf('U').Watch.State, "U has a backlog to read");
@@ -50,7 +50,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         var backlogApplied = ChangeSignal.WhenApplied(index, "backlog.txt");
         runOfU.Push(40, "backlog.txt", tipOfU.NextUsn);
         await backlogApplied;
-        await index.WaitForCatchUpAsync('U', token).WaitAsync(HangGuard);
+        await index.WaitForCatchUpAsync(['U'], token).WaitAsync(HangGuard);
         Assert.AreEqual(WatchState.CaughtUp, scenario.DriveOf('U').Watch.State);
 
         // One tick less than the limit on the client's clock: T has heard nothing for 25 seconds.
@@ -65,7 +65,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
 
         var fault = await scenario.FaultAsync(WatchFaultKind.Channel, 'T');
         var lost = (BrokerChannelLostException)fault.Exception;
-        Assert.AreEqual('T', lost.DriveLetter);
+        Assert.AreEqual('T', lost.Drive);
         Assert.AreEqual(StallMessage, lost.Message);
         Assert.AreEqual(WatchState.Faulted, scenario.DriveOf('T').Watch.State);
         Assert.IsNotNull(scenario.DriveOf('T').Watch.FailureMessage);
@@ -109,10 +109,10 @@ public sealed partial class BrokerCrossDriveLivenessTests
         try
         {
             scenario.Broker.Watch('T').WedgeNextRunInProcessing("wedged loop", wedged);
-            await index.StartWatchingAsync('T', token);
-            await index.StartWatchingAsync('U', token);
-            await index.WaitForCatchUpAsync('T', token);
-            await index.WaitForCatchUpAsync('U', token);
+            await index.StartWatchingAsync(['T'], token);
+            await index.StartWatchingAsync(['U'], token);
+            await index.WaitForCatchUpAsync(['T'], token);
+            await index.WaitForCatchUpAsync(['U'], token);
             await wedged.Entered.WaitAsync(HangGuard);
             var runOfU = await scenario.Broker.Watch('U').RunAsync(1);
             scenario.BeginCadence('T', 'U');
@@ -130,7 +130,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
 
             var fault = await scenario.FaultAsync(WatchFaultKind.Channel, 'T');
             var lost = (BrokerChannelLostException)fault.Exception;
-            Assert.AreEqual('T', lost.DriveLetter);
+            Assert.AreEqual('T', lost.Drive);
             StringAssert.Contains(lost.Message, "wedged loop");
             StringAssert.Contains(lost.Message, "made no progress for 30 seconds");
             Assert.AreEqual(WatchState.Faulted, scenario.DriveOf('T').Watch.State);
@@ -169,10 +169,10 @@ public sealed partial class BrokerCrossDriveLivenessTests
         await using var scenario = await CrossDriveScenario.OpenAsync();
         var index = scenario.Index;
         var token = scenario.Token;
-        await index.StartWatchingAsync('T', token);
-        await index.StartWatchingAsync('U', token);
-        await index.WaitForCatchUpAsync('T', token);
-        await index.WaitForCatchUpAsync('U', token);
+        await index.StartWatchingAsync(['T'], token);
+        await index.StartWatchingAsync(['U'], token);
+        await index.WaitForCatchUpAsync(['T'], token);
+        await index.WaitForCatchUpAsync(['U'], token);
         var runOfT = await scenario.Broker.Watch('T').RunAsync(1);
         scenario.BeginCadence('T', 'U');
 
@@ -226,10 +226,10 @@ public sealed partial class BrokerCrossDriveLivenessTests
         await using var scenario = await CrossDriveScenario.OpenAsync();
         var index = scenario.Index;
         var token = scenario.Token;
-        await index.StartWatchingAsync('T', token);
-        await index.StartWatchingAsync('U', token);
-        await index.WaitForCatchUpAsync('T', token);
-        await index.WaitForCatchUpAsync('U', token);
+        await index.StartWatchingAsync(['T'], token);
+        await index.StartWatchingAsync(['U'], token);
+        await index.WaitForCatchUpAsync(['T'], token);
+        await index.WaitForCatchUpAsync(['U'], token);
         var firstRunOfT = await scenario.Broker.Watch('T').RunAsync(1);
         var runOfU = await scenario.Broker.Watch('U').RunAsync(1);
 

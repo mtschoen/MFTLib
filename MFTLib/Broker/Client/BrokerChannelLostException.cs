@@ -21,9 +21,9 @@ internal sealed class BrokerChannelLostException : IOException
     internal BrokerChannelLostException(char? driveLetter, string message, Exception? innerException = null)
         : base(message, innerException)
     {
-        DriveLetter = driveLetter;
+        Drive = driveLetter;
     }
 
     /// <summary>The drive whose channel was lost, or null when the control pipe was.</summary>
-    internal char? DriveLetter { get; }
+    internal char? Drive { get; }
 }

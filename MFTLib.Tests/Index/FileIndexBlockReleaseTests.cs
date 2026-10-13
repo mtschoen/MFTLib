@@ -1,7 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
-using MFTLib.Tests.TestSupport;
 using System.Runtime.CompilerServices;
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -86,7 +86,7 @@ public class FileIndexBlockReleaseTests
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         var retiredHandle = index.Search(new SearchQuery("readme.md", NameMatchMode.Exact)).Single();
         await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
-        await index.RescanAsync('T', CancellationToken.None);
+        await index.RescanAsync(['T'], CancellationToken.None);
         var currentHandle = index.Search(new SearchQuery("second.md", NameMatchMode.Exact)).Single();
 
         await index.DisposeAsync();
@@ -174,7 +174,7 @@ public class FileIndexBlockReleaseTests
             };
 
             await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
-            await index.RescanAsync('T', CancellationToken.None);
+            await index.RescanAsync(['T'], CancellationToken.None);
 
             // Stands in for the snapshot finalizer: the same non-waiting release call, held at the
             // exact point the finalizer reaches once the flag is set and before a block is unmapped.
@@ -353,7 +353,7 @@ public class FileIndexBlockReleaseTests
         try
         {
             await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
-            await index.RescanAsync('T', CancellationToken.None);
+            await index.RescanAsync(['T'], CancellationToken.None);
             Assert.AreNotSame(borrow.Snapshot, index.CurrentSnapshot,
                 "the rescan did not retire the borrowed snapshot, so this proves nothing");
 
@@ -398,13 +398,13 @@ public class FileIndexBlockReleaseTests
             };
 
             await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
-            await index.RescanAsync('T', CancellationToken.None);
+            await index.RescanAsync(['T'], CancellationToken.None);
 
             var competingRelease = Task.Run(retiredRelease.Release);
             TestGate.WaitSynchronously(reachedTheGate.Entered);
 
             await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "third.md"), "third");
-            await index.RescanAsync('T', CancellationToken.None);
+            await index.RescanAsync(['T'], CancellationToken.None);
 
             var disposal = index.DisposeAsync().AsTask();
 
@@ -436,7 +436,7 @@ public class FileIndexBlockReleaseTests
             CancellationToken.None);
         GC.SuppressFinalize(index.CurrentSnapshot);
         await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
-        await index.RescanAsync('T', CancellationToken.None);
+        await index.RescanAsync(['T'], CancellationToken.None);
         return index;
     }
 
@@ -445,7 +445,7 @@ public class FileIndexBlockReleaseTests
     {
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
-        await index.RescanAsync('T', CancellationToken.None);
+        await index.RescanAsync(['T'], CancellationToken.None);
         return index;
     }
 }

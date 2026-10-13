@@ -34,7 +34,7 @@ public sealed partial class FileIndex
     /// </remarks>
     void RecordCheckpointLossForFaultedDrive(DriveRuntime runtime, WatchInstance instance)
     {
-        var driveLetter = runtime.DriveLetter;
+        var driveLetter = runtime.Drive;
         var driveBlock = instance.ArmedBlock;
         ulong journalIdentifier;
         long watchPositionUsn;
@@ -78,7 +78,7 @@ public sealed partial class FileIndex
     bool IsCurrentWatchOverItsBlockLocked(DriveRuntime runtime, WatchInstance instance)
     {
         return ReferenceEquals(runtime.Current, instance) &&
-               ReferenceEquals(FindWatchableDriveBlockLocked(runtime.DriveLetter), instance.ArmedBlock);
+               ReferenceEquals(FindWatchableDriveBlockLocked(runtime.Drive), instance.ArmedBlock);
     }
 
     /// <summary>
@@ -86,12 +86,12 @@ public sealed partial class FileIndex
     ///     <see cref="_stateLock" /> and compares the instance, not the ordinal, so a block a
     ///     rescan replaced is recognizable as a different one.
     /// </summary>
-    DriveBlock? FindWatchableDriveBlockLocked(char driveLetter)
+    DriveBlock? FindWatchableDriveBlockLocked(DriveKey driveLetter)
     {
-        var upperLetter = char.ToUpperInvariant(driveLetter);
+        var upperLetter = driveLetter;
         foreach (var driveBlock in _driveBlocks)
         {
-            if (char.ToUpperInvariant(driveBlock.DriveLetter) == upperLetter &&
+            if (driveBlock.Drive == upperLetter &&
                 driveBlock.ProducerKind == ProducerKind.Mft && !driveBlock.IsMftDump)
             {
                 return driveBlock;
@@ -122,7 +122,7 @@ public sealed partial class FileIndex
             : "a cache-only open adopted its cached block despite a journal checkpoint that could no longer " +
               "be resumed.";
         var failure = new InvalidOperationException(
-            $"Drive {driveBlock.DriveLetter} cannot be watched: {because} Call FileIndex.RescanAsync " +
+            $"Drive {driveBlock.Drive} cannot be watched: {because} Call FileIndex.RescanAsync " +
             "for this drive before watching it.");
         _watchFailureMessagesByOrdinal[driveBlock.DriveOrdinal] = failure.Message;
         runtime.WatchRequested = true;
@@ -143,7 +143,7 @@ public sealed partial class FileIndex
     InvalidOperationException RefuseStartWithoutWatchableBlockLocked(DriveRuntime runtime, bool restart)
     {
         var failure = new InvalidOperationException(
-            $"Drive {runtime.DriveLetter} has no MFT-backed block, so there is no journal cursor to watch from.");
+            $"Drive {runtime.Drive} has no MFT-backed block, so there is no journal cursor to watch from.");
         if (!restart)
         {
             return failure;
@@ -158,7 +158,7 @@ public sealed partial class FileIndex
             superseded.OutstandingFault = null;
         }
 
-        if (TryGetDriveOrdinalLocked(runtime.DriveLetter, out var driveOrdinal))
+        if (TryGetDriveOrdinalLocked(runtime.Drive, out var driveOrdinal))
         {
             _watchFailureMessagesByOrdinal.Remove(driveOrdinal);
         }
@@ -170,6 +170,6 @@ public sealed partial class FileIndex
     static IndexWatchTarget BuildWatchTarget(DriveBlock driveBlock)
     {
         ref readonly var header = ref driveBlock.Block.Header;
-        return new IndexWatchTarget(driveBlock.DriveLetter, header.UsnJournalIdentifier, header.UsnNextUsn);
+        return new IndexWatchTarget(driveBlock.Drive, header.UsnJournalIdentifier, header.UsnNextUsn);
     }
 }

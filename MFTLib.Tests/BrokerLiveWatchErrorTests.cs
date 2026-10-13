@@ -31,7 +31,7 @@ public class BrokerLiveWatchErrorTests
 
         var fault = await WatchReads.ThrowsNextAsync<DriveWatchFaultException>(reader);
         Assert.AreEqual("journal wrapped", fault.Message);
-        Assert.AreEqual('C', fault.DriveLetter);
+        Assert.AreEqual('C', fault.Drive);
     }
 
     [TestMethod]
@@ -75,7 +75,7 @@ public class BrokerLiveWatchErrorTests
         await HostChannelHarness.WriteFrameAsync(hostD, BrokerProtocol.WriteCaughtUp);
 
         var lost = await WatchReads.ThrowsNextAsync<BrokerChannelLostException>(readerC);
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
         StringAssert.Contains(lost.Message, nameof(BrokerFrameKind.Cursor));
         Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerD));
     }
@@ -95,7 +95,7 @@ public class BrokerLiveWatchErrorTests
         await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteStalled(writer, "the volume stopped answering"));
 
         var lost = await WatchReads.ThrowsNextAsync<BrokerChannelLostException>(reader);
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
         Assert.AreEqual("the volume stopped answering", lost.Message);
     }
 
@@ -141,7 +141,7 @@ public class BrokerLiveWatchErrorTests
         await host.DisposeAsync();
 
         var lost = await WatchReads.ThrowsNextAsync<BrokerChannelLostException>(reader);
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
         StringAssert.Contains(lost.Message, "Truncated broker frame");
         Assert.IsFalse(process.Ended.IsCompleted, "a broken drive pipe loses that drive's channel, not the process");
     }

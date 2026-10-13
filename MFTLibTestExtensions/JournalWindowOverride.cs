@@ -9,7 +9,7 @@ internal sealed class JournalWindowOverride : IDisposable
     readonly IDisposable _restore;
     bool _disposed;
 
-    JournalWindowOverride(Func<char, SyntheticJournalWindow?> journal)
+    JournalWindowOverride(Func<DriveKey, SyntheticJournalWindow?> journal)
     {
         _restore = JournalCheckpointCheck.OverrideJournalForTest(drive =>
             journal(drive) is { } window
@@ -18,7 +18,7 @@ internal sealed class JournalWindowOverride : IDisposable
                 : null);
     }
 
-    internal static IDisposable Create(Func<char, SyntheticJournalWindow?> journal)
+    internal static IDisposable Create(Func<DriveKey, SyntheticJournalWindow?> journal)
     {
         ArgumentNullException.ThrowIfNull(journal);
         lock (OwnershipLock)

@@ -100,20 +100,20 @@ public class FileIndexDisposalRaceTests
 
             // Parks inside the scan while holding the drive's lifecycle gate, so the call below
             // queues behind it.
-            var gateHolder = index.RescanAsync('T', CancellationToken.None);
+            var gateHolder = index.RescanAsync(['T'], CancellationToken.None);
             Assert.IsTrue(progress.WaitUntilParked(),
                 "the first rescan never reached its progress callback, so it never took the gate");
 
             // Runs its own disposal check and queues on the gate while the flag is still clear.
-            var queuedRescan = index.RescanAsync('T', CancellationToken.None);
+            var queuedRescan = index.RescanAsync(['T'], CancellationToken.None);
 
             // Sets the disposal flag and cancels the token both rescans are linked to, then waits
             // for the drive's gates.
             var disposal = index.DisposeAsync();
 
             progress.Release();
-            await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => gateHolder);
-            await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => queuedRescan);
+            await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => gateHolder);
+            await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => queuedRescan);
             await disposal;
             Assert.IsTrue(original.IsReleased, "the block neither rescan replaced was released by the disposal");
         }
@@ -140,10 +140,10 @@ public class FileIndexDisposalRaceTests
         {
             progress.Armed = true;
             var original = index.Root('T').DriveBlock;
-            var gateHolder = index.RescanAsync('T', CancellationToken.None);
+            var gateHolder = index.RescanAsync(['T'], CancellationToken.None);
             Assert.IsTrue(progress.WaitUntilParked(),
                 "the first rescan never reached its progress callback, so it never took the gate");
-            var queuedRescan = index.RescanAsync('T', CancellationToken.None);
+            var queuedRescan = index.RescanAsync(['T'], CancellationToken.None);
             var settledInTheWindow = false;
             Action releaseTheScan = progress.Release;
             index.DisposedFlagSetForTest = () =>
@@ -163,9 +163,9 @@ public class FileIndexDisposalRaceTests
             var disposal = index.DisposeAsync().AsTask();
 
             Assert.IsTrue(settledInTheWindow, "both rescans settled before disposal cancelled its token");
-            await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => gateHolder)
+            await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => gateHolder)
                 .WaitAsync(HandoffTimeout);
-            await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => queuedRescan)
+            await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => queuedRescan)
                 .WaitAsync(HandoffTimeout);
             await disposal.WaitAsync(HandoffTimeout);
             Assert.IsTrue(original.IsReleased, "the block neither rescan replaced was released by the disposal");
@@ -184,8 +184,8 @@ public class FileIndexDisposalRaceTests
         var index = await FileIndex.OpenAsync(Options(progress), CancellationToken.None);
         await index.DisposeAsync();
 
-        await Assert.ThrowsExceptionAsync<ObjectDisposedException>(
-            () => index.RescanAsync('T', CancellationToken.None));
+        await WatchDeduplicationTestSupport.ThrowsAsync<ObjectDisposedException>(
+            () => index.RescanAsync(['T'], CancellationToken.None));
     }
 
     [TestMethod]

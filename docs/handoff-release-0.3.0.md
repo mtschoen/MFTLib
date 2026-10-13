@@ -69,8 +69,8 @@ See [Linux package](linux-package.md) for the build and package acceptance contr
 
 - Open an index through `BrokerSession.CreateIndexSource()`, start and catch up
   watches on two drives, and verify `Changed` events identify each drive's changes.
-  Restart one drive with `RescanAsync('C')` while its sibling keeps watching;
-  finish with `StopWatchingAsync(cancellationToken)` and inspect all drive results.
+  Restart one drive with `RescanAsync(['C'], cancellationToken)` while its sibling keeps watching;
+  finish with `StopWatchingAsync(index.Drives.Select(status => status.Drive), cancellationToken)` and inspect all drive results.
 - Simulate broker death and confirm terminal `WatchFaultKind.Channel` faults;
   a fresh session and new indexes supply the next connection. Check recoverable
   `Drive` and `Apply` faults separately through their recovery state events.

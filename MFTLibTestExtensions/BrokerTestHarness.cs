@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using MFTLib;
+using MFTLib.Index;
 
 namespace MFTLibTestExtensions;
 
@@ -65,23 +66,23 @@ public static class BrokerTestHarness
         var grow = volumes.GrowUsnJournal;
         return new JournalBrokerHost(
             new JournalBrokerHost.VolumeSources(
-                driveLetter => queryCursor(driveLetter).ToProduction(),
+                driveLetter => queryCursor(new DriveKey(driveLetter[0])).ToProduction(),
                 scan is null
                     ? null
                     : (driveLetter, parseThreads, operation, progress, _, cancellationToken) =>
-                        ConvertScan(scan(new ScriptedScan(driveLetter, parseThreads, operation, progress,
+                        ConvertScan(scan(new ScriptedScan(new DriveKey(driveLetter[0]), parseThreads, operation, progress,
                             cancellationToken))),
                 scan is null ? null : (driveLetter, since, maximumBufferReads) =>
-                    ConvertJournal(readJournal(driveLetter, since.ToSynthetic(), maximumBufferReads)),
+                    ConvertJournal(readJournal(new DriveKey(driveLetter[0]), since.ToSynthetic(), maximumBufferReads)),
                 watch is null
                     ? null
                     : (driveLetter, since, _, cancellationToken) =>
-                        ConvertWatch(watch(driveLetter, since.ToSynthetic(), cancellationToken), cancellationToken),
-                driveLetter => queryVolume(driveLetter),
-                grow is null ? null : (driveLetter, maximumSize, allocationDelta) => grow(driveLetter, maximumSize, allocationDelta)));
+                        ConvertWatch(watch(new DriveKey(driveLetter[0]), since.ToSynthetic(), cancellationToken), cancellationToken),
+                driveLetter => queryVolume(new DriveKey(driveLetter[0])),
+                grow is null ? null : (driveLetter, maximumSize, allocationDelta) => grow(new DriveKey(driveLetter[0]), maximumSize, allocationDelta)));
     }
 
-    static (SyntheticJournalRecord[] Entries, SyntheticJournalCursor Updated) NothingNew(string driveLetter,
+    static (SyntheticJournalRecord[] Entries, SyntheticJournalCursor Updated) NothingNew(DriveKey driveLetter,
         SyntheticJournalCursor since, int maximumBufferReads) => ([], since);
 
     static IEnumerable<IReadOnlyList<MftRecord>> ConvertScan(
@@ -107,7 +108,7 @@ public static class BrokerTestHarness
         }
     }
 
-    static NtfsVolumeInformation SmallVolume(string driveLetter) => new(256 * 1024, 1024);
+    static NtfsVolumeInformation SmallVolume(DriveKey driveLetter) => new(256 * 1024, 1024);
 
     // The start MFTLib's own tests use: any host, section writer and client section factory, plus the
     // client's clock, per-pipe connection failures and held host writes, a wrapper around each client end

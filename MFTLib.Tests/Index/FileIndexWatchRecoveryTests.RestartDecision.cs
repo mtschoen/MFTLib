@@ -16,13 +16,13 @@ public partial class FileIndexWatchRecoveryTests
     {
         using var harness = new WatchHarness('T');
         var index = harness.Index;
-        await index.StartWatchingAsync('T', Token).WaitAsync(HangGuard);
+        await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
         Task? stop = null;
         index.RestartRequestedForTest = letter =>
         {
             if (letter == 'T' && stop is null)
             {
-                stop = index.StopWatchingAsync('T', Token);
+                stop = index.StopWatchingAsync(['T'], Token);
             }
         };
         var registrationsReached = 0;
@@ -32,14 +32,14 @@ public partial class FileIndexWatchRecoveryTests
             return Task.CompletedTask;
         };
 
-        await harness.Index.RescanAsync('T', Token).WaitAsync(HangGuard);
+        await harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard);
 
         Assert.IsNotNull(stop, "the restart read the watch as still requested");
         await stop.WaitAsync(HangGuard);
         Assert.AreEqual(0, registrationsReached, "the start's first step already saw the stop");
         Assert.AreEqual(1, harness.Source.TargetsFor('T').Count, "no watch starts after the stop");
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => index.StopWatchingAsync('T', Token), "the stop's cleared request stands").WaitAsync(HangGuard);
+        await DriveResultAssertions.NotApplicableAsync(
+            () => index.StopWatchingAsync(['T'], Token), "the stop's cleared request stands").WaitAsync(HangGuard);
     }
 }

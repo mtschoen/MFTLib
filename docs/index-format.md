@@ -333,7 +333,7 @@ the row resets the cycle, since the MFT segment was reused by a new file.
 ## Watch catch-up
 
 Each MFT-backed drive has its own watch handle and catch-up state. When
-`FileIndex.StartWatchingAsync(char, CancellationToken)` starts a drive, or a rescan restarts
+`FileIndex.StartWatchingAsync([drive], cancellationToken)` starts a drive, or a rescan restarts
 one whose watch is still requested, that drive arms from the journal cursor persisted in its
 block header (`USN journal identifier` and `USN next USN`). Other drives' handles and blocks are
 untouched.
@@ -345,11 +345,11 @@ cursor and that tip are streamed and applied to the block in place, advancing th
 `WatchState.CatchingUp` to `WatchState.CaughtUp`. Live mutations continue on
 the same handle.
 
-`FileIndex.WaitForCatchUpAsync(char, CancellationToken)` follows that drive's current
-handle. It completes immediately when the drive is already caught up, faults with the
-drive's exception when the watch failed or its last start was refused, and throws
-`InvalidOperationException` when the drive's watch is not requested and it has no current
-watch. Stop and index disposal cancel a pending wait when they retire that handle. A rescan
+`FileIndex.WaitForCatchUpAsync([drive], cancellationToken)` follows that drive's current
+handle. Its result succeeds immediately when the drive is already caught up, is `Failed` with the
+drive's exception when the watch failed or its last start was refused, and is `NotApplicable`
+when the drive's watch is not requested and it has no current watch. Stop retires that handle
+with a cancelled per-drive result; index disposal cancels the whole wait. A rescan
 keeps it attached during production and cancels it only when the replacement commits and
 retires the old handle; a wait issued after that commit and before the replacement registers
 follows the replacement handle.
@@ -365,20 +365,19 @@ and leaves the drive `Faulted` until a consumer starts or rescans it. A `Channel
 not recover automatically. A successful manual rescan whose replacement watch cannot start
 raises `RescanRestart` and leaves the drive `Faulted` without automatic recovery; the scan
 returns normally. The fault and `DriveWatchStatus.FailureMessage` name the rescan, and the start failure
-is the inner exception. Stop rethrows the fault once. Across a successful swap, old `Changed`
+is the inner exception. Stop returns the fault once as `Failed`. Across a successful swap, old `Changed`
 events can arrive after publication and repeat during the new watch's catch-up; queries can
 lag until it reports `CaughtUp`.
 
-`WaitForCatchUpAsync(char, CancellationToken)` waits for one drive and throws its failure.
-The token-only all-drive overload returns one
-`DriveOperationResult` per configured drive in request order after every drive has settled.
+`WaitForCatchUpAsync(IEnumerable<DriveKey>, CancellationToken)` returns one
+`DriveOperationResult` per requested drive in request order after every drive has settled.
 A failed drive has `DriveOperationOutcome.Failed` and carries the exception in `Failure`;
 it does not end the waits for other drives. A drive with no watch is `NotApplicable`. The
-overload with only a `CancellationToken` uses every drive in `FileIndexOptions.Drives`
-order. Caller cancellation cancels the batched call; disposal cancels it through the
+caller passes `index.Drives.Select(status => status.Drive)` to wait for every drive.
+Caller cancellation cancels the call; disposal cancels it through the
 index's disposal token.
 
-Calling either wait form is optional. The index observes each handle's failure even when
+Calling the wait is optional. The index observes each handle's failure even when
 no caller waits; faults still reach `WatchFaulted`, `DriveWatchStatus.FailureMessage`, and
 `DriveWatchStatus.State`.
 

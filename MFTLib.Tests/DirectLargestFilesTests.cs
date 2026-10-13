@@ -41,7 +41,7 @@ public class DirectLargestFilesTests
     {
         var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive(builder.DriveLetter, builder.DirectoryPath, builder.VolumeSerial, ProducerPolicy.Enumeration)],
+            Drives = [new IndexedDrive(builder.Drive, builder.DirectoryPath, builder.VolumeSerial, ProducerPolicy.Enumeration)],
             CacheDirectory = builder.DirectoryPath,
             InitialOpenCacheOnly = true,
         }, CancellationToken.None);

@@ -17,7 +17,7 @@ public partial class BrokerProcessTests
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
             broker.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
 
-        Assert.IsNull(lost.DriveLetter);
+        Assert.IsNull(lost.Drive);
         await broker.Process.Ended.WaitAsync(HangGuard);
         await broker.DisposeAsync();
     }
@@ -40,7 +40,7 @@ public partial class BrokerProcessTests
         var query = broker.Process.QueryVolumeAsync('D', CancellationToken.None);
 
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
         await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => query.WaitAsync(HangGuard));
         await broker.Process.Ended.WaitAsync(HangGuard);
         AssertSectionReleased(broker.Sections.Single());

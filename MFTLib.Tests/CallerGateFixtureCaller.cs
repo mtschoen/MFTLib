@@ -7,7 +7,7 @@ namespace MFTLib.Tests;
 
 static class CallerGateFixtureCaller
 {
-    internal static Func<string, IReadOnlySet<char>?, Action<CachedBlockRejection>?, IReadOnlyList<CachedBlockStatus>>
+    internal static Func<string, IEnumerable<DriveKey>?, Action<CachedBlockRejection>?, IReadOnlyList<CachedBlockStatus>>
         ReferenceThreeParameterInspectCached() => CacheDirectory.InspectCached;
 }
 

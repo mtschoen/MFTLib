@@ -46,7 +46,7 @@ internal sealed class BrokerMftBlockProducer
             CacheTag = request.CacheTag
         };
         var process = await _connectAsync(cancellationToken).ConfigureAwait(false);
-        var result = await process.ScanDriveAsync(request.DriveLetter, target, options, cancellationToken)
+        var result = await process.ScanDriveAsync(request.Drive.Letter, target, options, cancellationToken)
             .ConfigureAwait(false);
         var block = result.Block.Block;
         try

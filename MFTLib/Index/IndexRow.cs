@@ -11,11 +11,11 @@ public readonly ref struct IndexRow
     readonly ushort _driveOrdinal;
     readonly uint _rowIndex;
 
-    internal IndexRow(Snapshot snapshot, char driveLetter, ushort driveOrdinal, uint rowIndex,
+    internal IndexRow(Snapshot snapshot, DriveKey driveLetter, ushort driveOrdinal, uint rowIndex,
         ref readonly FileRow row, ReadOnlySpan<char> name)
     {
         _snapshot = snapshot;
-        DriveLetter = driveLetter;
+        Drive = driveLetter;
         _driveOrdinal = driveOrdinal;
         _rowIndex = rowIndex;
         _row = ref row;
@@ -26,7 +26,7 @@ public readonly ref struct IndexRow
     public ReadOnlySpan<char> Name { get; }
 
     /// <summary>The configured logical drive key, including for virtual dump drives.</summary>
-    public char DriveLetter { get; }
+    public DriveKey Drive { get; }
 
     /// <summary>
     ///     The file length in bytes, or zero for directories and unknown sizes. This is the length the last

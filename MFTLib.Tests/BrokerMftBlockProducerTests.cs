@@ -129,7 +129,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         result.Block.Dispose();
 
         Assert.IsTrue(samples.Count > 0, "the broker reported no progress to the index channel");
-        Assert.IsTrue(samples.All(sample => sample.DriveLetter == 'C'));
+        Assert.IsTrue(samples.All(sample => sample.Drive == 'C'));
         Assert.IsTrue(samples.Any(sample => sample.Phase == IndexScanPhase.Transferring));
         Assert.IsTrue(samples.All(sample => sample.TotalRows is null || sample.TotalRows.Value >= sample.RowsWritten),
             "when present, total rows should not be less than rows written");

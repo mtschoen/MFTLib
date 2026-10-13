@@ -34,7 +34,7 @@ public class FileEntryTests
         _builder.Complete(ScanMoment);
 
         var block = _builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock(_builder.DriveLetter, 0, block);
+        var driveBlock = new DriveBlock(_builder.Drive, 0, block);
         _snapshot = Snapshot.Create([driveBlock]);
     }
 
@@ -89,7 +89,7 @@ public class FileEntryTests
         var entry = FileEntry.Create(_snapshot, 0, _fileRow);
         var id = entry.RecordKey;
 
-        Assert.AreEqual('T', id.DriveLetter);
+        Assert.AreEqual('T', id.Drive);
         Assert.AreEqual(_fileRow, id.RecordNumber);
         Assert.AreEqual(ProducerKind.Enumeration, id.ProducerKind);
     }
@@ -144,7 +144,7 @@ public class FileEntryTests
         builder.MutateHeader((ref header) => header.ProducerKind = ProducerKind.Mft);
 
         var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock(builder.DriveLetter, 0, block);
+        var driveBlock = new DriveBlock(builder.Drive, 0, block);
         var snapshot = Snapshot.Create([driveBlock]);
         try
         {

@@ -15,7 +15,7 @@ public sealed partial class FileIndex
     /// </summary>
     /// <remarks>
     ///     The rescan holds the drive's lifecycle gate from entry to exit, so a
-    ///     <see cref="StartWatchingAsync(char, CancellationToken)" /> of the same drive waits for it, and the canonical
+    ///     <see cref="StartWatchingAsync" /> of the same drive waits for it, and the canonical
     ///     file's rename-aside, the scan into the canonical path, and the restore on failure are
     ///     serialized per drive. Nothing else serializes it: rescans of different drives produce at
     ///     the same time, and each commits under its own drive's write gate. A blockless drive is
@@ -80,7 +80,7 @@ public sealed partial class FileIndex
     ///         after publication the replacement is owned by the index and its handoff finishes.
     ///     </para>
     /// </remarks>
-    public async Task RescanAsync(char driveLetter, CancellationToken cancellationToken)
+    async Task RescanDriveAsync(DriveKey driveLetter, CancellationToken cancellationToken)
     {
         if (RejectInsideHandler(nameof(RescanAsync)) is { } rejection)
         {
@@ -89,7 +89,7 @@ public sealed partial class FileIndex
 
         ObjectDisposedException.ThrowIf(_disposed, this);
         var runtime = GetDriveRuntime(driveLetter);
-        var drive = _driveConfigurations[runtime.DriveLetter];
+        var drive = _driveConfigurations[runtime.Drive];
         using var rescanCancellation =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, DisposalToken);
         await runtime.LifecycleGate.WaitAsync(rescanCancellation.Token).ConfigureAwait(false);
@@ -128,7 +128,7 @@ public sealed partial class FileIndex
         RecoveryTicket? recovery, CancellationToken cancellationToken)
     {
         ThrowIfCancelledByDisposal(cancellationToken);
-        var superseded = FindBlockForRescan(runtime.DriveLetter);
+        var superseded = FindBlockForRescan(runtime.Drive);
 
         // The rename-aside is licensed by the owner lock: an index that does not hold it (its
         // block came from a private scan while another index owned the slot) rescans privately
@@ -152,8 +152,8 @@ public sealed partial class FileIndex
         if (produced.Block is not { } block)
         {
             DiscardUnproducedTarget(drive, target, retired);
-            var failureMessage = produced.RequireFailureMessage(runtime.DriveLetter);
-            RecordRescanProducerFailure(runtime.DriveLetter, failureMessage);
+            var failureMessage = produced.RequireFailureMessage(runtime.Drive);
+            RecordRescanProducerFailure(runtime.Drive, failureMessage);
             return new ScanAttempt(Published: false, produced.ProducerFailure, failureMessage);
         }
 
@@ -182,7 +182,7 @@ public sealed partial class FileIndex
     ///     The drive's published block, or null for a drive that has none because a cache-only
     ///     open declined it or its producer failed. An offline drive cannot be rescanned.
     /// </summary>
-    DriveBlock? FindBlockForRescan(char driveLetter)
+    DriveBlock? FindBlockForRescan(DriveKey driveLetter)
     {
         lock (_stateLock)
         {
@@ -206,7 +206,7 @@ public sealed partial class FileIndex
     ///     drive has one, and otherwise on the drive's blockless status, keyed by letter, which
     ///     then reads <see cref="DriveFailureKind.ProducerFailed" />.
     /// </summary>
-    void RecordRescanProducerFailure(char driveLetter, string message, bool endsOpenSettle = false)
+    void RecordRescanProducerFailure(DriveKey driveLetter, string message, bool endsOpenSettle = false)
     {
         lock (_stateLock)
         {
@@ -234,7 +234,7 @@ public sealed partial class FileIndex
         }
     }
 
-    int FindBlocklessStatusIndexLocked(char driveLetter) =>
+    int FindBlocklessStatusIndexLocked(DriveKey driveLetter) =>
         _blocklessDriveStatuses.FindIndex(status =>
-            char.ToUpperInvariant(status.DriveLetter) == char.ToUpperInvariant(driveLetter));
+            status.Drive == driveLetter);
 }

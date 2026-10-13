@@ -20,9 +20,9 @@ public static class CacheDirectory
     /// <param name="driveLetter">Drive letter for the cached volume.</param>
     /// <param name="volumeSerial">NTFS volume serial number encoded in the filename.</param>
     /// <returns>The filename without a directory component.</returns>
-    internal static string BlockFileName(char driveLetter, uint volumeSerial)
+    internal static string BlockFileName(DriveKey driveLetter, uint volumeSerial)
     {
-        return $"{char.ToUpperInvariant(driveLetter)}-{volumeSerial:X8}{BlockFileExtension}";
+        return $"{driveLetter}-{volumeSerial:X8}{BlockFileExtension}";
     }
 
     /// <summary>
@@ -92,11 +92,11 @@ public static class CacheDirectory
     /// </summary>
     /// <param name="cacheDirectoryPath">The cache directory to inspect.</param>
     /// <param name="driveLetters">
-    ///     Uppercase drive letters to include, or null for all. Filtering happens before any
+    ///     Drive keys to include, or null for all. The default key is rejected. Filtering happens before any
     ///     lock attempt, so excluded blocks have no lock file opened or created.
     /// </param>
     public static IReadOnlyList<CachedBlockStatus> InspectCached(
-        string cacheDirectoryPath, IReadOnlySet<char>? driveLetters = null)
+        string cacheDirectoryPath, IEnumerable<DriveKey>? driveLetters = null)
         => InspectCached(cacheDirectoryPath, driveLetters, null);
 
     /// <summary>
@@ -110,7 +110,7 @@ public static class CacheDirectory
     /// </summary>
     /// <param name="cacheDirectoryPath">The cache directory to inspect.</param>
     /// <param name="driveLetters">
-    ///     Uppercase drive letters to include, or null for all. Filtering happens before any
+    ///     Drive keys to include, or null for all. The default key is rejected. Filtering happens before any
     ///     lock attempt, so excluded blocks have no lock file opened or created.
     /// </param>
     /// <param name="rejectedFile">
@@ -122,14 +122,15 @@ public static class CacheDirectory
     ///     and do not mutate the directory during enumeration.
     /// </param>
     public static IReadOnlyList<CachedBlockStatus> InspectCached(
-        string cacheDirectoryPath, IReadOnlySet<char>? driveLetters,
+        string cacheDirectoryPath, IEnumerable<DriveKey>? driveLetters,
         Action<CachedBlockRejection>? rejectedFile)
     {
         ArgumentException.ThrowIfNullOrEmpty(cacheDirectoryPath);
+        var selected = ValidateSelection(driveLetters);
         var statuses = new List<CachedBlockStatus>();
         foreach (var file in EnumerateCached(cacheDirectoryPath, rejectedFile))
         {
-            if (driveLetters is not null && !driveLetters.Contains(file.DriveLetter))
+            if (selected is not null && !selected.Contains(file.Drive))
             {
                 continue;
             }
@@ -157,7 +158,7 @@ public static class CacheDirectory
         var producerKind = block.Header.ProducerKind;
         var rootDirectory = producerKind switch
         {
-            ProducerKind.Mft => $"{file.DriveLetter}:\\",
+            ProducerKind.Mft => $"{file.Drive}:\\",
             ProducerKind.Enumeration when block.Header.RowCount > 0 =>
                 NamePool.ReadRowName(block, 0).ToString(),
             _ => null
@@ -178,7 +179,7 @@ public static class CacheDirectory
     ///     Filenames this class did not write are silently excluded.
     /// </summary>
     /// <param name="cacheDirectoryPath">The cache directory to clear.</param>
-    /// <param name="driveLetters">Uppercase drive letters to include, or null for all.</param>
+    /// <param name="driveLetters">Drive keys to include, or null for all. The default key is rejected.</param>
     /// <param name="diagnostics">
     ///     Optional synchronous success logger, invoked while ownership is held. It should return
     ///     promptly and not throw. Callback exceptions propagate after deletion; ownership is released.
@@ -189,7 +190,7 @@ public static class CacheDirectory
     ///     unrelated names and subdirectories are not candidates.
     /// </remarks>
     public static IReadOnlyList<CachedBlockDeletionResult> DeleteCached(
-        string cacheDirectoryPath, IReadOnlySet<char>? driveLetters = null,
+        string cacheDirectoryPath, IEnumerable<DriveKey>? driveLetters = null,
         Action<string>? diagnostics = null)
         => DeleteCached(cacheDirectoryPath, driveLetters, diagnostics, null);
 
@@ -201,7 +202,7 @@ public static class CacheDirectory
     ///     Results describe each attempt, not a reservation against later cache creation.
     /// </summary>
     /// <param name="cacheDirectoryPath">The cache directory to clear.</param>
-    /// <param name="driveLetters">Uppercase drive letters to include, or null for all.</param>
+    /// <param name="driveLetters">Drive keys to include, or null for all. The default key is rejected.</param>
     /// <param name="diagnostics">
     ///     Optional synchronous success logger, invoked while ownership is held. It should return
     ///     promptly and not throw. Callback exceptions propagate after deletion; ownership is released.
@@ -220,14 +221,15 @@ public static class CacheDirectory
     ///     unrelated names and subdirectories are not candidates.
     /// </remarks>
     internal static IReadOnlyList<CachedBlockDeletionResult> DeleteCached(
-        string cacheDirectoryPath, IReadOnlySet<char>? driveLetters,
+        string cacheDirectoryPath, IEnumerable<DriveKey>? driveLetters,
         Action<string>? diagnostics, Action<CachedBlockRejection>? rejectedFile)
     {
         ArgumentException.ThrowIfNullOrEmpty(cacheDirectoryPath);
+        var selected = ValidateSelection(driveLetters);
         var results = new List<CachedBlockDeletionResult>();
         foreach (var file in EnumerateCached(cacheDirectoryPath, rejectedFile))
         {
-            if (driveLetters is not null && !driveLetters.Contains(file.DriveLetter))
+            if (selected is not null && !selected.Contains(file.Drive))
             {
                 continue;
             }
@@ -284,6 +286,9 @@ public static class CacheDirectory
         diagnostics?.Invoke($"Deleted block file '{file.Path}': clearing a cached block.");
         return new CachedBlockDeletionResult(file, CachedBlockDeletionOutcome.Deleted, null);
     }
+
+    static HashSet<DriveKey>? ValidateSelection(IEnumerable<DriveKey>? drives) =>
+        drives?.Select(drive => drive.Validated()).ToHashSet();
 
     const string BlockFileExtension = ".mlix";
 

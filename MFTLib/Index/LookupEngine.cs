@@ -6,7 +6,7 @@ namespace MFTLib.Index;
 /// </summary>
 internal static class LookupEngine
 {
-    internal static FileEntry Root(Snapshot snapshot, char driveLetter,
+    internal static FileEntry Root(Snapshot snapshot, DriveKey driveLetter,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(snapshot);

@@ -192,7 +192,7 @@ public class MftDumpValidationTests
         Assert.AreEqual(16u, parsing[^1].TotalRows);
         Assert.AreEqual(7u, transferring[^1].RowsWritten);
         Assert.IsNull(transferring[^1].TotalRows);
-        Assert.IsTrue(samples.All(sample => sample.DriveLetter == 'D' && sample.Outcome is null));
+        Assert.IsTrue(samples.All(sample => sample.Drive == 'D' && sample.Outcome is null));
         Assert.IsTrue(samples.IndexOf(parsing[^1]) < samples.IndexOf(transferring[0]),
             "the parse total is reported before the first transfer sample");
     }
@@ -435,7 +435,7 @@ public class MftDumpValidationTests
 
     MftBlockProduceRequest Request() => new()
     {
-        DriveLetter = 'D',
+        Drive = 'D',
         VolumeSerial = 0,
         BlockPath = Path.Combine(_directory, $"{Guid.NewGuid():N}.mlix"),
         DeleteOnClose = true

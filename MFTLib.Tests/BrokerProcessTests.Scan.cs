@@ -63,7 +63,7 @@ public partial class BrokerProcessTests
         result.Block.Block.Dispose();
 
         Assert.IsTrue(reports.Count > 0);
-        Assert.IsTrue(reports.All(report => report.DriveLetter == "C"), "The channel's drive fills the sample.");
+        Assert.IsTrue(reports.All(report => report.Drive == "C"), "The channel's drive fills the sample.");
         Assert.AreEqual(BrokerScanPhase.Transferring, reports[^1].Phase);
     }
 
@@ -110,7 +110,7 @@ public partial class BrokerProcessTests
         Assert.IsNull(result.AdvancedCursor);
         var loss = result.CatchUpLoss;
         Assert.IsNotNull(loss);
-        Assert.AreEqual('C', loss.DriveLetter);
+        Assert.AreEqual('C', loss.Drive);
         Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, loss.DetectedDuring);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
         Assert.AreEqual(Armed.NextUsn, loss.CheckpointUsn);
@@ -143,7 +143,7 @@ public partial class BrokerProcessTests
             pipe => HostChannelHarness.WriteFrameAsync(pipe,
                 writer => BrokerProtocol.WriteCatchUpLost(writer, TrimmedLoss())));
 
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
         StringAssert.Contains(lost.Message, "CatchUpLost");
     }
 
@@ -158,7 +158,7 @@ public partial class BrokerProcessTests
             pipe => HostChannelHarness.WriteFrameAsync(pipe,
                 writer => BrokerProtocol.WriteScanCompleted(writer, Armed)));
 
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
         StringAssert.Contains(lost.Message, "ScanCompleted");
     }
 
@@ -171,7 +171,7 @@ public partial class BrokerProcessTests
             pipe => HostChannelHarness.WriteFrameAsync(pipe,
                 writer => BrokerProtocol.WriteJournalBatch(writer, Armed, [])));
 
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
         StringAssert.Contains(lost.Message, "JournalBatch");
         StringAssert.Contains(lost.Message, "ScanCompleted or CatchUpLost");
     }
@@ -188,7 +188,7 @@ public partial class BrokerProcessTests
                 writer => BrokerProtocol.WriteScanCompleted(writer, Armed)),
             pipe => WriteRawAsync(pipe, [10, 0, 0, 0, (byte)BrokerFrameKind.Heartbeat]));
 
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
         StringAssert.Contains(lost.Message, "Truncated");
     }
 
@@ -202,7 +202,7 @@ public partial class BrokerProcessTests
                 writer => BrokerProtocol.WriteScanCompleted(writer, Armed)),
             pipe => WriteRawAsync(pipe, [0, 0, 0, 0]));
 
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
         StringAssert.Contains(lost.Message, "too short");
     }
 
@@ -218,7 +218,7 @@ public partial class BrokerProcessTests
 
         var produced = await producer(new MftBlockProduceRequest
         {
-            DriveLetter = 'C',
+            Drive = 'C',
             VolumeSerial = target.VolumeSerial,
             BlockPath = target.Path,
             DeleteOnClose = true
@@ -322,7 +322,7 @@ public partial class BrokerProcessTests
 
         var produced = await producer(new MftBlockProduceRequest
         {
-            DriveLetter = 'C',
+            Drive = 'C',
             VolumeSerial = target.VolumeSerial,
             BlockPath = target.Path,
             DeleteOnClose = true,
@@ -333,7 +333,7 @@ public partial class BrokerProcessTests
         Assert.IsNull(produced.CatchUpLoss);
         Assert.AreEqual(brokerReports.Count, indexReports.Count);
         Assert.IsTrue(indexReports.Count > 0);
-        Assert.IsTrue(indexReports.All(report => report.DriveLetter == 'C'));
+        Assert.IsTrue(indexReports.All(report => report.Drive == 'C'));
         Assert.AreEqual(IndexScanPhase.Transferring, indexReports[^1].Phase);
         Assert.AreEqual((uint?)brokerReports[^1].TotalRecords, indexReports[^1].TotalRows);
     }
@@ -349,7 +349,7 @@ public partial class BrokerProcessTests
         await broker.CloseControlAsync();
 
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
     }
 
     // Blocks the host's scan until its channel is cancelled, then reports that it saw the cancellation.
@@ -378,7 +378,7 @@ public partial class BrokerProcessTests
     {
         var lost = await ScanScriptedAsync(pipe => WriteRawAsync(pipe, rawBytes));
 
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
         StringAssert.Contains(lost.Message, "Truncated");
     }
 
@@ -416,7 +416,7 @@ public partial class BrokerProcessTests
 
         var produced = await producer(new MftBlockProduceRequest
         {
-            DriveLetter = 'C',
+            Drive = 'C',
             VolumeSerial = target.VolumeSerial,
             BlockPath = target.Path,
             DeleteOnClose = true

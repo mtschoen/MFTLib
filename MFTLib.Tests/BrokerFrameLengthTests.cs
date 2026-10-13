@@ -103,7 +103,7 @@ public class BrokerFrameLengthTests
         await broker.WriteControlAsync(writer => WriteLengthPrefix(writer, int.MaxValue));
 
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
-        Assert.IsNull(lost.DriveLetter);
+        Assert.IsNull(lost.Drive);
         StringAssert.Contains(await ended.WaitAsync(HangGuard), "2147483647");
     }
 
@@ -120,7 +120,7 @@ public class BrokerFrameLengthTests
         await HostChannelHarness.WriteFrameAsync(pipe, writer => WriteLengthPrefix(writer, int.MaxValue));
 
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
         Assert.IsInstanceOfType<InvalidDataException>(lost.InnerException);
     }
 

@@ -70,7 +70,7 @@ public class FileIndexBlockSourceTests
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         Assert.AreEqual(BlockSource.WarmStartedFromCache, reopened.Drives.Single().Block!.Source);
 
-        await reopened.RescanAsync('T', CancellationToken.None);
+        await reopened.RescanAsync(['T'], CancellationToken.None);
 
         Assert.AreEqual(BlockSource.ProducedByScan, reopened.Drives.Single().Block!.Source);
     }
@@ -111,7 +111,7 @@ public class FileIndexBlockSourceTests
             foreach (var status in index.Drives.Where(
                          drive => drive.Block!.Source == BlockSource.WarmStartedFromCache).ToArray())
             {
-                await index.RescanAsync(status.DriveLetter, CancellationToken.None);
+                await index.RescanAsync([status.Drive], CancellationToken.None);
             }
         }
 

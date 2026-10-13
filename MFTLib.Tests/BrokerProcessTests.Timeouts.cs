@@ -83,7 +83,7 @@ public partial class BrokerProcessTests
 
         Assert.IsTrue(connectionBound.Fired);
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => open.WaitAsync(HangGuard));
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
         StringAssert.Contains(lost.Message, "did not connect within 30 seconds");
         await Assert.ThrowsExceptionAsync<IOException>(() =>
             broker.Pipes.ConnectAsync(request.RequirePipeName(), CancellationToken.None));

@@ -58,7 +58,7 @@ public class FileIndexScanFinishedTests
     static IndexScanProgress FinishedOf(ConcurrentQueue<IndexScanProgress> samples, char driveLetter,
         int expectedFinishedCount = 1)
     {
-        var drive = samples.Where(sample => sample.DriveLetter == driveLetter).ToArray();
+        var drive = samples.Where(sample => sample.Drive == driveLetter).ToArray();
         var finished = drive.Where(sample => sample.Phase == IndexScanPhase.Finished).ToArray();
         Assert.AreEqual(expectedFinishedCount, finished.Length, $"drive {driveLetter} finished count");
         Assert.AreEqual(IndexScanPhase.Finished, drive[^1].Phase, "Finished follows every other sample");
@@ -69,7 +69,7 @@ public class FileIndexScanFinishedTests
 
     static Task<MftBlockProduceResult> ProduceBlock(MftBlockProduceRequest request)
     {
-        request.Progress?.Report(new IndexScanProgress(request.DriveLetter, IndexScanPhase.ParsingMft, 1));
+        request.Progress?.Report(new IndexScanProgress(request.Drive, IndexScanPhase.ParsingMft, 1));
         return Task.FromResult(new MftBlockProduceResult(
             SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment),
             JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
@@ -95,7 +95,7 @@ public class FileIndexScanFinishedTests
             Assert.AreEqual(IndexScanOutcome.Succeeded, finished.Outcome);
             Assert.IsTrue(finished.RowsWritten > 0);
             Assert.IsTrue(samples.Any(sample =>
-                sample.DriveLetter == driveLetter && sample.Phase == IndexScanPhase.Enumerating));
+                sample.Drive == driveLetter && sample.Phase == IndexScanPhase.Enumerating));
         }
     }
 
@@ -158,11 +158,11 @@ public class FileIndexScanFinishedTests
             TestContext.CancellationTokenSource.Token);
         Assert.AreEqual(IndexScanOutcome.Succeeded, FinishedOf(samples, 'T').Outcome);
 
-        await index.RescanAsync('T', TestContext.CancellationTokenSource.Token);
+        await index.RescanAsync(['T'], TestContext.CancellationTokenSource.Token);
 
         Assert.AreEqual(IndexScanOutcome.Succeeded, FinishedOf(samples, 'T', expectedFinishedCount: 2).Outcome);
         Assert.AreEqual(1, samples.Count(sample =>
-            sample.DriveLetter == 'U' && sample.Phase == IndexScanPhase.Finished));
+            sample.Drive == 'U' && sample.Phase == IndexScanPhase.Finished));
     }
 
     sealed class ThrowingOnFinished : IProgress<IndexScanProgress>

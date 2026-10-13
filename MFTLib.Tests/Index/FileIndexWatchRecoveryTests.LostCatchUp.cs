@@ -2,7 +2,6 @@ using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -21,7 +20,7 @@ public partial class FileIndexWatchRecoveryTests
     public async Task RecoveryRescan_LosesCatchUpTwiceThenSucceeds_ReachesCaughtUp_NoRecoveryFault()
     {
         using var harness = new WatchHarness('T');
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         harness.ScriptScans('T', Lost('T'), Lost('T'), Held());
         var producedBefore = harness.ProductionCount('T');
 
@@ -49,7 +48,7 @@ public partial class FileIndexWatchRecoveryTests
     public async Task RecoveryRescan_CatchUpLostThreeTimes_StopsWithRecoveryStopped_StaysFaulted_NoFurtherRecovery()
     {
         using var harness = new WatchHarness('T');
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         harness.ScriptScans('T', Lost('T'), Lost('T'), Lost('T'), Held());
         var producedBefore = harness.ProductionCount('T');
 
@@ -85,14 +84,14 @@ public partial class FileIndexWatchRecoveryTests
     public async Task StopDuringCatchUpRetry_CommitsWithoutRestartAndStopsRetrying()
     {
         using var harness = new WatchHarness('T');
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         var held = harness.TrackGate();
         harness.ScriptScans('T', Lost('T', hold: held), Held());
         var producedBefore = harness.ProductionCount('T');
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
         await held.Entered.WaitAsync(HangGuard);
 
-        await ThrowsAsync<DriveWatchFaultException>(() => harness.Index.StopWatchingAsync('T', Token));
+        await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => harness.Index.StopWatchingAsync(['T'], Token));
         held.Release();
         await harness.WaitForRecoveryAsync('T');
 
@@ -109,8 +108,8 @@ public partial class FileIndexWatchRecoveryTests
     public async Task CatchUpCounts_ArePerDrive_OtherDriveRecoversNormally()
     {
         using var harness = new WatchHarness('T', 'U');
-        await harness.Index.StartWatchingAsync('T', Token);
-        await harness.Index.StartWatchingAsync('U', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
+        await harness.Index.StartWatchingAsync(['U'], Token);
         harness.ScriptScans('T', Lost('T'), Lost('T'), Lost('T'));
 
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
@@ -135,14 +134,14 @@ public partial class FileIndexWatchRecoveryTests
     public async Task ManualRescanAfterCatchUpStop_RestoresWatchAndResetsCount()
     {
         using var harness = new WatchHarness('T');
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         harness.ScriptScans('T', Lost('T'), Lost('T'), Lost('T'));
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
         await harness.WaitForRecoveryAsync('T');
         Assert.AreEqual(WatchState.Faulted, harness.DriveFor('T').Watch.State);
 
-        await harness.Index.RescanAsync('T', Token).WaitAsync(HangGuard);
+        await harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard);
 
         var drive = harness.DriveFor('T');
         Assert.AreEqual(0, drive.Watch.ConsecutiveLostCatchUps);
@@ -160,15 +159,15 @@ public partial class FileIndexWatchRecoveryTests
     public async Task WaitForCatchUp_WhileARescanRetriesALostCatchUp_FaultsAtOnceWithTheLoss()
     {
         using var harness = new WatchHarness('T');
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         var heldRetry = harness.TrackGate();
         harness.ScriptScans('T', Lost('T'), Held(heldRetry));
-        var rescan = harness.Index.RescanAsync('T', Token);
+        var rescan = harness.Index.RescanAsync(['T'], Token);
         await heldRetry.Entered.WaitAsync(HangGuard);
         Assert.AreEqual(WatchState.Recovering, harness.DriveFor('T').Watch.State);
 
-        var thrown = await ThrowsAsync<JournalCatchUpLostException>(
-            () => harness.Index.WaitForCatchUpAsync('T', Token).WaitAsync(HangGuard));
+        var thrown = await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(
+            () => harness.Index.WaitForCatchUpAsync(['T'], Token).WaitAsync(HangGuard));
 
         Assert.AreSame(WatchDeduplicationTestSupport.CatchUpLosses(harness, 'T').Single(), thrown);
         heldRetry.Release();

@@ -1,20 +1,21 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     The batched entry points: each fans the single-drive operation out over the requested drives
-///     concurrently, waits for every one to settle, and returns one result per drive in the order
-///     given. They throw only for caller errors (a null list, a duplicate letter, a letter not in the
-///     index, a disposed index) and for cancellation, which is thrown after every per-drive
-///     operation has settled, so nothing a call started outlives it.
+///     Lifecycle operations run requested drives concurrently and return one result per key in
+///     request order. Caller errors and cancellation fail the whole call. Each sequence is
+///     materialized and validated before any operation starts; duplicate and unconfigured keys
+///     and the default key are rejected. An empty sequence returns an empty list unless cancelled.
 /// </summary>
 public sealed partial class FileIndex
 {
     /// <summary>
-    ///     Starts the watch of each listed drive; see <see cref="StartWatchingAsync(char, CancellationToken)" />.
-    ///     A drive with no MFT-backed block is <see cref="DriveOperationOutcome.NotApplicable" /> and
-    ///     records no watch request, so a later rescan does not start it.
+    ///     Starts each drive's watch from its block's journal cursor, returning when the channel
+    ///     is connected and StartWatch is written. Already running watches remain running.
+    ///     A source without a watch or a drive without an MFT-backed block is NotApplicable and
+    ///     records no request. A refused or failed start is Failed and retains the watch request
+    ///     for rescan recovery, except when the caller cancels it.
     /// </summary>
-    internal Task<IReadOnlyList<DriveOperationResult>> StartWatchingAsync(IReadOnlyList<char> driveLetters,
+    public Task<IReadOnlyList<DriveOperationResult>> StartWatchingAsync(IEnumerable<DriveKey> drives,
         CancellationToken cancellationToken)
     {
         if (RejectedTask<IReadOnlyList<DriveOperationResult>>(nameof(StartWatchingAsync)) is { } rejected)
@@ -22,23 +23,17 @@ public sealed partial class FileIndex
             return rejected;
         }
 
-        return RunBatchAsync(driveLetters, HasWatchableBlock, letter => StartWatchingAsync(letter, cancellationToken),
-            cancellationToken);
+        return RunBatchAsync(drives, HasWatchableBlock,
+            key => StartDriveWatchingAsync(key, cancellationToken), cancellationToken);
     }
 
-    /// <summary>Starts the watch of every drive, in <see cref="FileIndexOptions.Drives" /> order.</summary>
-    public Task<IReadOnlyList<DriveOperationResult>> StartWatchingAsync(CancellationToken cancellationToken)
-    {
-        if (RejectedTask<IReadOnlyList<DriveOperationResult>>(nameof(StartWatchingAsync)) is { } rejected)
-        {
-            return rejected;
-        }
-
-        return StartWatchingAsync(AllDriveLetters(), cancellationToken);
-    }
-
-    /// <summary>Stops the watch of each listed drive; see <see cref="StopWatchingAsync(CancellationToken)" />.</summary>
-    internal Task<IReadOnlyList<DriveOperationResult>> StopWatchingAsync(IReadOnlyList<char> driveLetters,
+    /// <summary>
+    ///     Stops each requested watch and drains its teardown. An outstanding watch or subscriber
+    ///     fault is returned once as Failed. A drive with no requested, current or retiring watch
+    ///     is NotApplicable. Stop wins over a concurrent rescan or recovery and prevents its restart.
+    ///     Cancellation bounds the teardown wait, while teardown continues independently.
+    /// </summary>
+    public Task<IReadOnlyList<DriveOperationResult>> StopWatchingAsync(IEnumerable<DriveKey> drives,
         CancellationToken cancellationToken)
     {
         if (RejectedTask<IReadOnlyList<DriveOperationResult>>(nameof(StopWatchingAsync)) is { } rejected)
@@ -46,23 +41,18 @@ public sealed partial class FileIndex
             return rejected;
         }
 
-        return RunBatchAsync(driveLetters, IsWatching, letter => StopWatchingAsync(letter, cancellationToken),
-            cancellationToken);
+        return RunBatchAsync(drives, IsWatching,
+            key => StopDriveWatchingAsync(key, cancellationToken), cancellationToken);
     }
 
-    /// <summary>Stops the watch of every drive, in <see cref="FileIndexOptions.Drives" /> order.</summary>
-    public Task<IReadOnlyList<DriveOperationResult>> StopWatchingAsync(CancellationToken cancellationToken)
-    {
-        if (RejectedTask<IReadOnlyList<DriveOperationResult>>(nameof(StopWatchingAsync)) is { } rejected)
-        {
-            return rejected;
-        }
-
-        return StopWatchingAsync(AllDriveLetters(), cancellationToken);
-    }
-
-    /// <summary>Rescans each listed drive; see <see cref="RescanAsync(char, CancellationToken)" />.</summary>
-    public Task<IReadOnlyList<DriveOperationResult>> RescanAsync(IReadOnlyList<char> driveLetters,
+    /// <summary>
+    ///     Rebuilds each requested drive and publishes its replacement snapshot. Failed production
+    ///     retains its block and healthy watch and is reported as Failed. Publication retires the
+    ///     old watch and restarts it only while requested. A replacement watch start failure raises
+    ///     RescanRestart while the successful scan is reported as Succeeded. Exhausted catch-up
+    ///     recovery returns Failed with JournalCatchUpLostException and keeps the last block.
+    /// </summary>
+    public Task<IReadOnlyList<DriveOperationResult>> RescanAsync(IEnumerable<DriveKey> drives,
         CancellationToken cancellationToken)
     {
         if (RejectedTask<IReadOnlyList<DriveOperationResult>>(nameof(RescanAsync)) is { } rejected)
@@ -70,51 +60,37 @@ public sealed partial class FileIndex
             return rejected;
         }
 
-        return RunBatchAsync(driveLetters, applicable: null, letter => RescanAsync(letter, cancellationToken),
-            cancellationToken);
+        return RunBatchAsync(drives, applicable: null,
+            key => RescanDriveAsync(key, cancellationToken), cancellationToken);
     }
 
     /// <summary>
-    ///     Waits for the initial catch-up of each listed drive; see
-    ///     <see cref="WaitForCatchUpAsync(char, CancellationToken)" />. A drive whose watch faults
-    ///     or is superseded is <see cref="DriveOperationOutcome.Failed" /> and does not end the wait
-    ///     for the others.
+    ///     Follows each drive's current catch-up instance, or its pending replacement. A faulted
+    ///     or superseded instance is Failed; an unwatched drive is NotApplicable. A healthy watch
+    ///     survives failed rescan production; replacement publication retires its wait. Caller
+    ///     cancellation and index disposal cancel this wait without stopping the watches.
+    ///     An unsettled wait rejects callback reentrancy; settled waits remain readable.
     /// </summary>
-    internal Task<IReadOnlyList<DriveOperationResult>> WaitForCatchUpAsync(IReadOnlyList<char> driveLetters,
+    public Task<IReadOnlyList<DriveOperationResult>> WaitForCatchUpAsync(IEnumerable<DriveKey> drives,
         CancellationToken cancellationToken)
     {
-        var letters = ValidateBatch(driveLetters);
-        Task?[] waits;
-        lock (_stateLock)
-        {
-            waits = [.. letters.Select(letter => GetCatchUpWaitLocked(GetDriveRuntime(letter)))];
-        }
-
-        if (!cancellationToken.IsCancellationRequested && waits.Any(wait => wait is { IsCompleted: false }) &&
-            RejectedTask<IReadOnlyList<DriveOperationResult>>(nameof(WaitForCatchUpAsync)) is { } rejected)
-        {
-            return rejected;
-        }
-
-        return new BatchedCatchUpWait(letters, waits, cancellationToken, DisposalToken).Completion;
-    }
-
-    /// <summary>
-    ///     A test seam: invoked by the no-list catch-up wait before it resolves the drive
-    ///     list, so a test can begin disposal in exactly that window.
-    /// </summary>
-    internal Action? BeforeNoListWaitResolvesDrivesForTest { get; set; }
-
-    /// <summary>Waits for the initial catch-up of every drive, in <see cref="FileIndexOptions.Drives" /> order.</summary>
-    public Task<IReadOnlyList<DriveOperationResult>> WaitForCatchUpAsync(CancellationToken cancellationToken)
-    {
-        // A disposed index settles no drive's wait, and disposal can begin at any step before the
-        // per-drive settle check, so from inside a handler a disposal failure of any of those
-        // steps answers with the guard's exception instead.
         try
         {
             BeforeNoListWaitResolvesDrivesForTest?.Invoke();
-            return WaitForCatchUpAsync(AllDriveLetters(), cancellationToken);
+            var keys = ValidateBatch(drives);
+            Task?[] waits;
+            lock (_stateLock)
+            {
+                waits = [.. keys.Select(key => GetCatchUpWaitLocked(GetDriveRuntime(key)))];
+            }
+
+            if (!cancellationToken.IsCancellationRequested && waits.Any(wait => wait is { IsCompleted: false }) &&
+                RejectedTask<IReadOnlyList<DriveOperationResult>>(nameof(WaitForCatchUpAsync)) is { } rejected)
+            {
+                return rejected;
+            }
+
+            return new BatchedCatchUpWait(keys, waits, cancellationToken, DisposalToken).Completion;
         }
         catch (ObjectDisposedException disposal) when (IsInsideHandlerOfThisIndex())
         {
@@ -123,8 +99,10 @@ public sealed partial class FileIndex
         }
     }
 
-    /// <summary>Whether a start applies: the source offers a watch and the drive has an MFT-backed block to watch from.</summary>
-    bool HasWatchableBlock(char driveLetter)
+    /// <summary>A test seam invoked before catch-up wait admission.</summary>
+    internal Action? BeforeNoListWaitResolvesDrivesForTest { get; set; }
+
+    bool HasWatchableBlock(DriveKey driveLetter)
     {
         lock (_stateLock)
         {
@@ -132,8 +110,7 @@ public sealed partial class FileIndex
         }
     }
 
-    /// <summary>Whether a stop applies: the drive is watching, or its watch is requested or retiring.</summary>
-    bool IsWatching(char driveLetter)
+    bool IsWatching(DriveKey driveLetter)
     {
         lock (_stateLock)
         {
@@ -144,70 +121,54 @@ public sealed partial class FileIndex
     static bool IsWatchingLocked(DriveRuntime runtime) =>
         runtime.WatchRequested || runtime.Current is not null || runtime.Retiring is not null;
 
-    char[] AllDriveLetters()
+    async Task<IReadOnlyList<DriveOperationResult>> RunBatchAsync(IEnumerable<DriveKey> drives,
+        Func<DriveKey, bool>? applicable, Func<DriveKey, Task> operation, CancellationToken cancellationToken)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return [.. _options.Drives.Select(drive => drive.DriveLetter)];
-    }
-
-    /// <summary>
-    ///     Validates the list, runs <paramref name="operation" /> for every drive it applies to
-    ///     (<paramref name="applicable" />, or all when null) concurrently, reports the others
-    ///     <see cref="DriveOperationOutcome.NotApplicable" />, and returns once all have settled.
-    ///     A cancelled token then throws, whatever the results say.
-    /// </summary>
-    async Task<IReadOnlyList<DriveOperationResult>> RunBatchAsync(IReadOnlyList<char> driveLetters,
-        Func<char, bool>? applicable, Func<char, Task> operation, CancellationToken cancellationToken)
-    {
-        var letters = ValidateBatch(driveLetters);
-        var results = await Task.WhenAll(letters.Select(letter => RunOneAsync(letter, applicable, operation)))
+        var keys = ValidateBatch(drives);
+        var results = await Task.WhenAll(keys.Select(key => RunOneAsync(key, applicable, operation)))
             .ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         return results;
     }
 
-    /// <summary>
-    ///     The caller errors a batched call throws before it starts anything: a null list, a disposed
-    ///     index, a letter not in the index, a letter listed twice.
-    /// </summary>
-    char[] ValidateBatch(IReadOnlyList<char> driveLetters)
+    DriveKey[] ValidateBatch(IEnumerable<DriveKey> drives)
     {
-        ArgumentNullException.ThrowIfNull(driveLetters);
+        ArgumentNullException.ThrowIfNull(drives);
         ObjectDisposedException.ThrowIf(_disposed, this);
-        HashSet<char> seen = [];
-        foreach (var letter in driveLetters)
+        var keys = drives.ToArray();
+        HashSet<DriveKey> seen = [];
+        foreach (var key in keys)
         {
-            var upperLetter = char.ToUpperInvariant(letter);
-            if (!_driveRuntimes.ContainsKey(upperLetter))
+            if (!_driveRuntimes.ContainsKey(key.Validated()))
             {
-                throw new ArgumentException($"Drive {letter} is not part of this index.", nameof(driveLetters));
+                throw new ArgumentException($"Drive {key} is not part of this index.", nameof(drives));
             }
 
-            if (!seen.Add(upperLetter))
+            if (!seen.Add(key))
             {
-                throw new ArgumentException($"Drive {letter} is listed more than once.", nameof(driveLetters));
+                throw new ArgumentException($"Drive {key} is listed more than once.", nameof(drives));
             }
         }
 
-        return [.. driveLetters];
+        return keys;
     }
 
-    static async Task<DriveOperationResult> RunOneAsync(char driveLetter, Func<char, bool>? applicable,
-        Func<char, Task> operation)
+    static async Task<DriveOperationResult> RunOneAsync(DriveKey drive, Func<DriveKey, bool>? applicable,
+        Func<DriveKey, Task> operation)
     {
         try
         {
-            if (applicable is not null && !applicable(driveLetter))
+            if (applicable is not null && !applicable(drive))
             {
-                return new DriveOperationResult(driveLetter, DriveOperationOutcome.NotApplicable, null);
+                return new DriveOperationResult(drive, DriveOperationOutcome.NotApplicable, null);
             }
 
-            await operation(driveLetter).ConfigureAwait(false);
-            return new DriveOperationResult(driveLetter, DriveOperationOutcome.Succeeded, null);
+            await operation(drive).ConfigureAwait(false);
+            return new DriveOperationResult(drive, DriveOperationOutcome.Succeeded, null);
         }
         catch (Exception failure)
         {
-            return new DriveOperationResult(driveLetter, DriveOperationOutcome.Failed, failure);
+            return new DriveOperationResult(drive, DriveOperationOutcome.Failed, failure);
         }
     }
 }

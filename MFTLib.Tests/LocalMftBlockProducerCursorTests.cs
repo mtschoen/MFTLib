@@ -38,7 +38,7 @@ public class LocalMftBlockProducerCursorTests
             });
         var result = await new LocalMftBlockProducer(null, seams).CreateIndexSource().Producer(new MftBlockProduceRequest
         {
-            DriveLetter = 'T',
+            Drive = 'T',
             VolumeSerial = 123,
             BlockPath = Path.Combine(directories.CacheDirectory, "cached.mlix")
         }, TestContext.CancellationTokenSource.Token);

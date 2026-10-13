@@ -148,14 +148,15 @@ public sealed partial class FileIndex
     /// </exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
-    public FileEntry Root(char driveLetter, CancellationToken cancellationToken = default)
+    public FileEntry Root(DriveKey driveLetter, CancellationToken cancellationToken = default)
     {
+        driveLetter = driveLetter.Validated();
         QueryScope query;
         DriveState? blocklessDriveState;
         lock (_stateLock)
         {
             blocklessDriveState = _blocklessDriveStatuses.FirstOrDefault(drive =>
-                char.ToUpperInvariant(drive.DriveLetter) == char.ToUpperInvariant(driveLetter))?.State;
+                drive.Drive == driveLetter)?.State;
             query = AdmitQuery(cancellationToken);
         }
 

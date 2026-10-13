@@ -1,7 +1,6 @@
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -23,18 +22,18 @@ public class FileIndexDisposalOrderTests
     public async Task Dispose_DuringGatedRescans_CancelsThemAwaitsPumpsReleasesGates()
     {
         using var harness = new WatchHarness('T', 'U', 'V');
-        await harness.Index.StartWatchingAsync('V', Token);
+        await harness.Index.StartWatchingAsync(['V'], Token);
         var watchOfV = harness.Source.WatchFor('V');
         var heldT = harness.HoldNextProduction('T');
         var heldU = harness.HoldNextProduction('U');
-        var rescanT = harness.Index.RescanAsync('T', Token);
-        var rescanU = harness.Index.RescanAsync('U', Token);
+        var rescanT = harness.Index.RescanAsync(['T'], Token);
+        var rescanU = harness.Index.RescanAsync(['U'], Token);
         await Task.WhenAll(heldT.Entered, heldU.Entered).WaitAsync(HangGuard);
 
         await harness.Index.DisposeAsync().AsTask().WaitAsync(HangGuard);
 
-        await ThrowsAsync<OperationCanceledException>(() => rescanT.WaitAsync(HangGuard));
-        await ThrowsAsync<OperationCanceledException>(() => rescanU.WaitAsync(HangGuard));
+        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescanT.WaitAsync(HangGuard));
+        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescanU.WaitAsync(HangGuard));
         Assert.AreEqual(1, watchOfV.DisposeCount, "disposal awaited V's pump, which disposed its handle");
         foreach (var driveLetter in "TUV")
         {
@@ -48,12 +47,12 @@ public class FileIndexDisposalOrderTests
     {
         using var harness = new WatchHarness('T');
         var held = harness.HoldNextProduction('T');
-        var rescan = harness.Index.RescanAsync('T', CancellationToken.None);
+        var rescan = harness.Index.RescanAsync(['T'], CancellationToken.None);
         await held.Entered.WaitAsync(HangGuard);
 
         var disposal = harness.Index.DisposeAsync().AsTask();
 
-        await ThrowsAsync<OperationCanceledException>(() => rescan.WaitAsync(HangGuard));
+        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescan.WaitAsync(HangGuard));
         await disposal.WaitAsync(HangGuard);
     }
 

@@ -244,7 +244,7 @@ internal sealed unsafe partial class BlockFile : IDisposable
     ///     missing or unreadable file reports <see cref="BlockValidationResult.WrongMagic" />
     ///     rather than throwing: "no usable block here" is one outcome with one response. Only the
     ///     slot owner, or a caller that confirmed the file is quiescent, may call this: opening a block
-    ///     another index is writing is undefined and racy (see <see cref="CacheDirectory.InspectCached(string, System.Collections.Generic.IReadOnlySet{char})" />).
+    ///     another index is writing is undefined and racy (see <see cref="CacheDirectory.InspectCached(string, System.Collections.Generic.IEnumerable{DriveKey})" />).
     /// </summary>
     public static BlockFile? Open(string path, uint expectedVolumeSerial, out BlockValidationResult validation)
     {

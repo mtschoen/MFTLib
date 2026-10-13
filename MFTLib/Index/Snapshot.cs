@@ -85,7 +85,7 @@ internal sealed class Snapshot
             }
 
             throw new InvalidOperationException(
-                $"Drive block {driveBlock.DriveLetter} was already released and cannot join a snapshot.");
+                $"Drive block {driveBlock.Drive} was already released and cannot join a snapshot.");
         }
 
         return new Snapshot(new SnapshotRelease([.. taken]));
@@ -97,11 +97,11 @@ internal sealed class Snapshot
     }
 
     /// <summary>Null when no current drive block has this letter.</summary>
-    public DriveBlock? FindDriveBlock(char driveLetter)
+    public DriveBlock? FindDriveBlock(DriveKey driveLetter)
     {
         foreach (var candidate in _release.DriveBlocks)
         {
-            if (char.ToUpperInvariant(candidate.DriveLetter) == char.ToUpperInvariant(driveLetter))
+            if (candidate.Drive == driveLetter.Validated())
             {
                 return candidate;
             }

@@ -33,7 +33,7 @@ public class FileIndexWatchRescanHandoffTests
             }, Token);
             var changes = new System.Collections.Concurrent.ConcurrentQueue<FileChange>();
             index.Changed += changes.Enqueue;
-            await index.StartWatchingAsync('T', Token);
+            await index.StartWatchingAsync(['T'], Token);
             index.BeforeWatchChangedForTest = _ =>
             {
                 delivering.MarkEntered();
@@ -44,7 +44,7 @@ public class FileIndexWatchRescanHandoffTests
                 var delivered = source.WatchFor('T').Queue(WatchHarness.Batch(9, "replayed.txt", 700));
                 await delivering.Entered.WaitAsync(ScriptedWatchSource.HangGuard);
                 var original = index.Root('T').DriveBlock;
-                var rescan = index.RescanAsync('T', Token);
+                var rescan = index.RescanAsync(['T'], Token);
                 Assert.AreNotSame(original, index.Root('T').DriveBlock,
                     "publication need not wait for an already applied change's delivery");
                 Assert.AreEqual(0, changes.Count);
@@ -57,9 +57,9 @@ public class FileIndexWatchRescanHandoffTests
                 Assert.AreEqual(2, changes.Count);
                 Assert.AreEqual(WatchState.CatchingUp, index.Drives.Single().Watch.State);
                 await source.WatchFor('T').Publish(new DriveCaughtUp());
-                await index.WaitForCatchUpAsync('T', Token);
+                await index.WaitForCatchUpAsync(['T'], Token);
                 Assert.AreEqual(1, index.Search(new SearchQuery("replayed.txt", NameMatchMode.Exact), Token).Count);
-                await index.StopWatchingAsync('T', Token);
+                await index.StopWatchingAsync(['T'], Token);
             }
             finally
             {
@@ -77,9 +77,9 @@ public class FileIndexWatchRescanHandoffTests
     {
         using var harness = new WatchHarness('T');
         var index = harness.Index;
-        await index.StartWatchingAsync('T', Token);
+        await index.StartWatchingAsync(['T'], Token);
         var original = index.Root('T').DriveBlock;
-        var catchUp = index.WaitForCatchUpAsync('T', Token);
+        var catchUp = index.WaitForCatchUpAsync(['T'], Token);
         var applying = harness.TrackGate();
         index.ApplyJournalEntriesEnteredForTest = _ =>
         {
@@ -95,11 +95,11 @@ public class FileIndexWatchRescanHandoffTests
         };
         harness.SetNextProducedCursor('T', 13, 9000);
 
-        var rescan = index.RescanAsync('T', Token);
+        var rescan = index.RescanAsync(['T'], Token);
 
         Assert.AreNotSame(original, index.Root('T').DriveBlock, "publication precedes the pump drain");
         Assert.IsFalse(rescan.IsCompleted);
-        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => catchUp);
+        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => catchUp);
         await index.WaitForDriveWriteGateForTest('T').WaitAsync(ScriptedWatchSource.HangGuard);
         index.ReleaseDriveWriteGateForTest('T');
         applying.Release();
@@ -107,7 +107,7 @@ public class FileIndexWatchRescanHandoffTests
         await queued.WaitAsync(ScriptedWatchSource.HangGuard);
         Assert.AreEqual(0, harness.Changes.Count);
         Assert.AreEqual(new IndexWatchTarget('T', 13, 9000), harness.Source.TargetsFor('T')[1]);
-        await index.StopWatchingAsync('T', Token);
+        await index.StopWatchingAsync(['T'], Token);
     }
 
     [DataTestMethod]
@@ -116,21 +116,21 @@ public class FileIndexWatchRescanHandoffTests
     public async Task StopOrDisposal_DuringProduction_EndsTheOriginalWatch(bool dispose)
     {
         using var harness = new WatchHarness('T');
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         var handle = harness.Source.WatchFor('T');
         var production = harness.HoldNextProduction('T');
-        var rescan = harness.Index.RescanAsync('T', Token);
+        var rescan = harness.Index.RescanAsync(['T'], Token);
         await production.Entered.WaitAsync(ScriptedWatchSource.HangGuard);
         Assert.AreEqual(0, handle.DisposeCount, "production keeps the original watch until stop or disposal");
         if (dispose)
         {
             var disposal = harness.Index.DisposeAsync().AsTask();
-            await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => rescan);
+            await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescan);
             await disposal.WaitAsync(ScriptedWatchSource.HangGuard);
         }
         else
         {
-            await harness.Index.StopWatchingAsync('T', Token);
+            await harness.Index.StopWatchingAsync(['T'], Token);
             production.Release();
             await rescan.WaitAsync(ScriptedWatchSource.HangGuard);
             Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
@@ -147,9 +147,9 @@ public class FileIndexWatchRescanHandoffTests
     {
         using var harness = new WatchHarness('T');
         var index = harness.Index;
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         Task? disposal = null;
-        void BeginDisposal(char _) => disposal = index.DisposeAsync().AsTask();
+        void BeginDisposal(DriveKey _) => disposal = index.DisposeAsync().AsTask();
         if (afterDecision)
         {
             harness.Index.RestartRequestedForTest = BeginDisposal;
@@ -161,8 +161,8 @@ public class FileIndexWatchRescanHandoffTests
 
         var failure = new OperationCanceledException("production failed");
         harness.FailNextProduction('T', failure);
-        var thrown = await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(
-            () => harness.Index.RescanAsync('T', Token));
+        var thrown = await DriveResultAssertions.FailureAsync<OperationCanceledException>(
+            () => harness.Index.RescanAsync(['T'], Token));
         Assert.AreSame(failure, thrown);
         Assert.IsNull(disposal, "a failed scan never enters a restart checkpoint");
         await harness.Index.DisposeAsync();
@@ -173,7 +173,7 @@ public class FileIndexWatchRescanHandoffTests
     {
         using var harness = new WatchHarness('T');
         var index = harness.Index;
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         var faultSettled = harness.TrackGate();
         harness.Index.PumpFaultSettlementWrapperForTest = settle =>
         {
@@ -183,7 +183,7 @@ public class FileIndexWatchRescanHandoffTests
         };
         var production = harness.HoldNextProduction('T');
         var original = harness.Index.Root('T').DriveBlock;
-        var rescan = harness.Index.RescanAsync('T', Token);
+        var rescan = harness.Index.RescanAsync(['T'], Token);
         await production.Entered.WaitAsync(ScriptedWatchSource.HangGuard);
         Assert.AreEqual(0, harness.Source.WatchFor('T').DisposeCount);
         harness.Source.WatchFor('T').FailDrive(new IOException("fault before commit"));
@@ -211,6 +211,6 @@ public class FileIndexWatchRescanHandoffTests
         restart.Release();
         await rescan.WaitAsync(ScriptedWatchSource.HangGuard);
         Assert.AreEqual(2, harness.ProductionCount('T'));
-        await harness.Index.StopWatchingAsync('T', Token);
+        await harness.Index.StopWatchingAsync(['T'], Token);
     }
 }

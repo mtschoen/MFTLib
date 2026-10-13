@@ -25,7 +25,7 @@ internal sealed partial class JournalBrokerHost
                 var (recordsProcessed, totalRecords) = UpdateCounts(progress);
                 writer.TryWrite(new BrokerScanProgress
                 {
-                    DriveLetter = driveLetter,
+                    Drive = driveLetter,
                     Phase = progress.Phase,
                     RecordsProcessed = recordsProcessed,
                     BytesProcessed = progress.BytesProcessed,

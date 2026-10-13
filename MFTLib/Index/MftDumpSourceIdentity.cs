@@ -7,26 +7,21 @@ namespace MFTLib.Index;
 /// </summary>
 internal sealed record MftDumpSourceIdentity
 {
-    internal MftDumpSourceIdentity(string dumpFilePath, char driveLetter)
+    internal MftDumpSourceIdentity(string dumpFilePath, DriveKey driveLetter)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dumpFilePath);
-        if (!char.IsAsciiLetter(driveLetter))
-        {
-            throw new ArgumentException("A dump's logical drive key must be an ASCII letter.", nameof(driveLetter));
-        }
-
         DumpFilePath = Path.GetFullPath(dumpFilePath);
-        DriveLetter = char.ToUpperInvariant(driveLetter);
+        Drive = driveLetter.Validated();
     }
 
     /// <summary>The full path of the dump file the source loads, resolved against the current directory once.</summary>
     internal string DumpFilePath { get; }
 
     /// <summary>The letter the index files the dump under, in upper case; it names no live volume.</summary>
-    internal char DriveLetter { get; }
+    internal DriveKey Drive { get; }
 
     /// <summary>The prefix of every path this dump renders, which no host path can start with.</summary>
-    internal string Root => MftDumpPaths.CanonicalRoot(DriveLetter);
+    internal string Root => MftDumpPaths.CanonicalRoot(Drive);
 
     /// <summary>
     ///     Checks the options a dump index opens with, before any file or cache write.
@@ -35,13 +30,13 @@ internal sealed record MftDumpSourceIdentity
     internal void ValidateOptions(FileIndexOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        if (options.Drives is not [{ } drive] || char.ToUpperInvariant(drive.DriveLetter) != DriveLetter)
+        if (options.Drives is not [{ } drive] || drive.Drive != Drive)
         {
             throw new ArgumentException("The dump source requires exactly its configured logical drive key.",
                 nameof(options));
         }
 
-        if (!MftDumpPaths.IsCanonicalRoot(drive.RootDirectory, DriveLetter))
+        if (!MftDumpPaths.IsCanonicalRoot(drive.RootDirectory, Drive))
         {
             throw new ArgumentException($"A dump root must be {Root}.", nameof(options));
         }

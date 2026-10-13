@@ -71,8 +71,8 @@ public sealed partial class FileIndex
     ///     The checkpoint of an operation that was admitted before disposal began (a rescan, a
     ///     recovery's scan, a start or a restart): once disposal has begun, the operation is
     ///     cancelled by it and ends with <see cref="OperationCanceledException" />, the outcome
-    ///     <see cref="RescanAsync(char, CancellationToken)" /> and
-    ///     <see cref="StartWatchingAsync(char, CancellationToken)" /> document for a disposal during
+    ///     <see cref="RescanAsync" /> and
+    ///     <see cref="StartWatchingAsync" /> document for a disposal during
     ///     the call. The operation's own token is not enough to tell: disposal sets the flag before
     ///     it cancels the disposal token, and a token linked to the disposal token is cancelled by a
     ///     callback that <see cref="CancellationTokenSource.CancelAsync" /> runs later still.
@@ -103,7 +103,7 @@ public sealed partial class FileIndex
     /// </summary>
     async Task ReleaseSnapshotsForDisposalAsync(ExceptionDispatchInfo? cancellationFailure)
     {
-        var runtimes = _driveRuntimes.Values.OrderBy(runtime => runtime.DriveLetter).ToArray();
+        var runtimes = _driveRuntimes.Values.OrderBy(runtime => runtime.Drive.Letter).ToArray();
         foreach (var runtime in runtimes)
         {
             await runtime.LifecycleGate.WaitAsync().ConfigureAwait(false);

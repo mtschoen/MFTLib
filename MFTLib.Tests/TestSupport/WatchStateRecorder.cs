@@ -44,15 +44,15 @@ internal sealed class WatchStateRecorder
     /// <summary>Completes with the first state of the drive, recorded or future, that <paramref name="match" /> accepts.</summary>
     public async Task<WatchStateChange> WaitForStateAsync(char driveLetter, Func<WatchStateChange, bool> match) =>
         (WatchStateChange)await WaitForAsync(item =>
-            item is WatchStateChange state && state.DriveLetter == driveLetter && match(state));
+            item is WatchStateChange state && state.Drive == driveLetter && match(state));
 
     /// <summary>Completes with the first fault of <paramref name="kind" /> on the drive that this recorder has seen.</summary>
     public async Task<WatchFault> WaitForFaultAsync(WatchFaultKind kind, char driveLetter) =>
         (WatchFault)await WaitForAsync(item =>
-            item is WatchFault fault && fault.Kind == kind && fault.DriveLetter == driveLetter);
+            item is WatchFault fault && fault.Kind == kind && fault.Drive == driveLetter);
 
     static char DriveOf(object item) =>
-        item is WatchStateChange state ? state.DriveLetter : ((WatchFault)item).DriveLetter;
+        item is WatchStateChange state ? state.Drive.Letter : ((WatchFault)item).Drive.Letter;
 
     Task<object> WaitForAsync(Func<object, bool> match)
     {

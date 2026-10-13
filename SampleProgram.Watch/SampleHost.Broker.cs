@@ -110,7 +110,9 @@ partial class SampleHost
             switch (parsed.Mode)
             {
                 case ProgramMode.Rescan:
-                    await index.RescanAsync(driveLetter, cancellationToken).ConfigureAwait(false);
+                    var results = await index.RescanAsync([driveLetter], cancellationToken).ConfigureAwait(false);
+                    WriteResults("rescan", results);
+                    succeeded = results.All(result => result.Outcome == DriveOperationOutcome.Succeeded);
                     WriteDriveDetail(index.Drives.Single());
                     break;
                 case ProgramMode.Journal:

@@ -11,7 +11,7 @@ public sealed class MftIndexSource
     /// <param name="producer">Fills the block that each MFT-backed drive scan requests.</param>
     /// <param name="watchSource">
     ///     Starts each drive's live watch. Null means the index cannot watch an MFT-backed drive:
-    ///     <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" /> throws
+    ///     <see cref="FileIndex.StartWatchingAsync" /> throws
     ///     <see cref="InvalidOperationException" />.
     /// </param>
     /// <param name="dumpIdentity">
@@ -40,7 +40,7 @@ public sealed class MftIndexSource
     {
         UnavailableReason = unavailableReason;
         Producer = (request, _) => Task.FromException<MftBlockProduceResult>(
-            new InvalidOperationException(FormatUnavailable(request.DriveLetter, unavailableReason)));
+            new InvalidOperationException(FormatUnavailable(request.Drive, unavailableReason)));
     }
 
     internal MftBlockProducer Producer { get; }
@@ -71,5 +71,5 @@ public sealed class MftIndexSource
         return new MftIndexSource(reason);
     }
 
-    internal static string FormatUnavailable(char driveLetter, string reason) => $"Drive {driveLetter}: {reason}.";
+    internal static string FormatUnavailable(DriveKey driveLetter, string reason) => $"Drive {driveLetter}: {reason}.";
 }

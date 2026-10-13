@@ -30,7 +30,7 @@ public class SyntheticCheckpointLossTests
         Assert.AreEqual(1000L, copy.CheckpointUsn);
         Assert.AreEqual(5000L, copy.FirstUsn);
         Assert.AreEqual(9000L, copy.NextUsn);
-        Assert.AreEqual('T', copy.DriveLetter);
+        Assert.AreEqual('T', copy.Drive);
         Assert.AreEqual(JournalCheckpointLossDetection.LiveWatch, copy.DetectedDuring);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, copy.Cause);
         Assert.AreEqual(4096L, copy.JournalSettings.AllocationDelta);

@@ -43,6 +43,6 @@ public class VolumeQueryClientTests : BrokerBlockTestBase
         Assert.AreEqual(8_000_000L, volume.MftRecordCount);
         Assert.AreEqual(1024U, volume.BytesPerFileRecordSegment);
         Assert.AreEqual(8_192_000_000L, volume.MftValidDataLength);
-        Assert.IsNull(exception.DriveLetter);
+        Assert.IsNull(exception.Drive);
     }
 }

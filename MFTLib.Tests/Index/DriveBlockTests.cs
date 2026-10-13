@@ -25,7 +25,7 @@ public class DriveBlockTests
 
         Assert.AreEqual(0, driveBlock.ReferenceCount);
         Assert.IsFalse(driveBlock.IsReleased);
-        Assert.AreEqual('T', driveBlock.DriveLetter);
+        Assert.AreEqual('T', driveBlock.Drive);
         Assert.AreEqual(ProducerKind.Enumeration, driveBlock.ProducerKind);
 
         Assert.IsTrue(driveBlock.TryAddReference());

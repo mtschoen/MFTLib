@@ -80,7 +80,7 @@ public class FileIndexRescanCleanupTests
         try
         {
             using var rescanCancellation = new CancellationTokenSource();
-            var rescan = index.RescanAsync('T', rescanCancellation.Token);
+            var rescan = index.RescanAsync(['T'], rescanCancellation.Token);
 
             // The rescan has produced its replacement block and is parked at the write gate.
             await producerReturned.Task.WaitAsync(ScriptedWatchSource.HangGuard);
@@ -144,8 +144,8 @@ public class FileIndexRescanCleanupTests
         Assert.IsTrue(File.Exists(canonicalPath));
 
         failTheScan.Value = true;
-        var thrown = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(
-            () => index.RescanAsync('T', Token));
+        var thrown = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+            () => index.RescanAsync(['T'], Token));
 
         try
         {
@@ -192,7 +192,7 @@ public class FileIndexRescanCleanupTests
         try
         {
             using var rescanCancellation = new CancellationTokenSource();
-            var rescan = index.RescanAsync('T', rescanCancellation.Token);
+            var rescan = index.RescanAsync(['T'], rescanCancellation.Token);
 
             await producerEntered.Task.WaitAsync(ScriptedWatchSource.HangGuard);
             // Cancel before the producer returns: the scan completes normally, and the
@@ -229,14 +229,14 @@ public class FileIndexRescanCleanupTests
     public async Task RescanAsync_AfterTheSourceEndedWithoutAStop_ClearsTheStaleFaultedCatchUp()
     {
         using var harness = new WatchHarness();
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         harness.Source.WatchFor('T').End();
         await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
         Assert.AreEqual(WatchState.Faulted, harness.DriveFor('T').Watch.State);
         Assert.IsNotNull(harness.DriveFor('T').Watch.FailureMessage);
 
         harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
-        await harness.Index.RescanAsync('T', Token);
+        await harness.Index.RescanAsync(['T'], Token);
 
         var drive = harness.DriveFor('T');
         Assert.AreEqual(DriveState.Ready, drive.State);

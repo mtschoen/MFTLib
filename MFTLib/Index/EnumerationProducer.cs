@@ -109,7 +109,7 @@ internal sealed class EnumerationProducer
             cancellationToken.ThrowIfCancellationRequested();
             var (directoryPath, directoryRow) = pending.Dequeue();
             EnumerateOneDirectory(state, directoryPath, directoryRow, pending, cancellationToken);
-            progress?.Report(new IndexScanProgress(Options.DriveLetter, IndexScanPhase.Enumerating, state.NextRow)
+            progress?.Report(new IndexScanProgress(Options.Drive, IndexScanPhase.Enumerating, state.NextRow)
             {
                 CurrentDirectory = directoryPath
             });

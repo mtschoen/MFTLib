@@ -1,7 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -23,8 +22,8 @@ public class FileIndexWatchRecoveryFaultTests
     public async Task RecoveredDrive_StopDoesNotRethrowItsFault(bool applyFailure)
     {
         using var harness = new WatchHarness('C', 'D');
-        await harness.Index.StartWatchingAsync('C', Token);
-        await harness.Index.StartWatchingAsync('D', Token);
+        await harness.Index.StartWatchingAsync(['C'], Token);
+        await harness.Index.StartWatchingAsync(['D'], Token);
         harness.SetNextProducedCursor('C', 13, 9000);
         if (applyFailure)
         {
@@ -44,8 +43,8 @@ public class FileIndexWatchRecoveryFaultTests
         Assert.AreEqual(1, harness.Source.TargetsFor('D').Count);
         await harness.Source.WatchFor('D').Publish(WatchHarness.Batch(9, "still-watching.txt", nextUsn: 9500));
         Assert.AreEqual(9500L, harness.BlockFor('D').Header.UsnNextUsn);
-        await harness.Index.StopWatchingAsync('C', Token);
-        await harness.Index.StopWatchingAsync('D', Token);
+        await harness.Index.StopWatchingAsync(['C'], Token);
+        await harness.Index.StopWatchingAsync(['D'], Token);
     }
 
     [TestMethod]
@@ -53,15 +52,15 @@ public class FileIndexWatchRecoveryFaultTests
     {
         using var harness = new WatchHarness('C', 'D');
         var newFailure = new IOException("new C fault");
-        await harness.Index.StartWatchingAsync('C', Token);
-        await harness.Index.StartWatchingAsync('D', Token);
+        await harness.Index.StartWatchingAsync(['C'], Token);
+        await harness.Index.StartWatchingAsync(['D'], Token);
         harness.Source.WatchFor('C').FailDrive(new IOException("old C fault"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'C');
         await harness.WaitForRecoveryAsync('C');
         harness.Source.WatchFor('C').LoseChannel(newFailure);
         await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'C');
 
-        var thrown = await ThrowsAsync<IOException>(() => harness.Index.StopWatchingAsync('C', Token));
+        var thrown = await DriveResultAssertions.FailureAsync<IOException>(() => harness.Index.StopWatchingAsync(['C'], Token));
         Assert.AreSame(newFailure, thrown);
     }
 
@@ -71,9 +70,9 @@ public class FileIndexWatchRecoveryFaultTests
         using var harness = new WatchHarness('C', 'D', 'E');
         var remainingFailure = new IOException("D remains faulted");
         var newFailure = new IOException("new C fault");
-        await harness.Index.StartWatchingAsync('C', Token);
-        await harness.Index.StartWatchingAsync('D', Token);
-        await harness.Index.StartWatchingAsync('E', Token);
+        await harness.Index.StartWatchingAsync(['C'], Token);
+        await harness.Index.StartWatchingAsync(['D'], Token);
+        await harness.Index.StartWatchingAsync(['E'], Token);
         harness.Source.WatchFor('C').FailDrive(new IOException("old C fault"));
         harness.Source.WatchFor('D').LoseChannel(remainingFailure);
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'C');
@@ -82,13 +81,13 @@ public class FileIndexWatchRecoveryFaultTests
         harness.Source.WatchFor('C').LoseChannel(newFailure);
         await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'C');
 
-        var thrown = await ThrowsAsync<IOException>(() => harness.Index.StopWatchingAsync('D', Token));
+        var thrown = await DriveResultAssertions.FailureAsync<IOException>(() => harness.Index.StopWatchingAsync(['D'], Token));
         Assert.AreSame(remainingFailure, thrown);
-        var recoveredThrown = await ThrowsAsync<IOException>(() => harness.Index.StopWatchingAsync('C', Token));
+        var recoveredThrown = await DriveResultAssertions.FailureAsync<IOException>(() => harness.Index.StopWatchingAsync(['C'], Token));
         Assert.AreSame(newFailure, recoveredThrown);
         Assert.AreEqual(1, harness.Source.TargetsFor('D').Count);
         Assert.AreEqual(1, harness.Source.TargetsFor('E').Count);
-        await harness.Index.StopWatchingAsync('E', Token);
+        await harness.Index.StopWatchingAsync(['E'], Token);
     }
 
     [TestMethod]
@@ -97,17 +96,17 @@ public class FileIndexWatchRecoveryFaultTests
         using var harness = new WatchHarness('C', 'D');
         var subscriberFailure = new InvalidOperationException("subscriber remains broken");
         harness.Index.Changed += _ => throw subscriberFailure;
-        await harness.Index.StartWatchingAsync('C', Token);
-        await harness.Index.StartWatchingAsync('D', Token);
+        await harness.Index.StartWatchingAsync(['C'], Token);
+        await harness.Index.StartWatchingAsync(['D'], Token);
         harness.Source.WatchFor('C').FailDrive(new IOException("old C fault"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'C');
         await harness.Source.WatchFor('D').Publish(WatchHarness.Batch(9, "subscriber.txt", nextUsn: 9000));
         await harness.WaitForRecoveryAsync('C');
 
-        var thrown = await ThrowsAsync<InvalidOperationException>(() => harness.Index.StopWatchingAsync('D', Token));
+        var thrown = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => harness.Index.StopWatchingAsync(['D'], Token));
         Assert.AreSame(subscriberFailure, thrown);
         Assert.AreEqual(1, harness.Faults.Count(fault => fault.Kind == WatchFaultKind.Subscriber));
-        await harness.Index.StopWatchingAsync('C', Token);
+        await harness.Index.StopWatchingAsync(['C'], Token);
     }
 
     [TestMethod]
@@ -115,7 +114,7 @@ public class FileIndexWatchRecoveryFaultTests
     {
         using var harness = new WatchHarness('C', 'D');
         var restartFailure = new IOException("rearm failed");
-        await harness.Index.StartWatchingAsync('C', Token);
+        await harness.Index.StartWatchingAsync(['C'], Token);
         harness.Source.FailNextStart(restartFailure);
         harness.Source.WatchFor('C').FailDrive(new IOException("C never recovered"));
 

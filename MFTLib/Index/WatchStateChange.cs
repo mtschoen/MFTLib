@@ -15,7 +15,11 @@ namespace MFTLib.Index;
 ///     is null for a change a consumer's own call made, such as a start, a stop, a rescan, or a
 ///     start whose source threw, and for a watch catching up.
 /// </summary>
-/// <param name="DriveLetter">The drive whose watch changed state.</param>
+/// <param name="Drive">The drive whose watch changed state.</param>
 /// <param name="Watch">The drive's <see cref="DriveStatus.Watch" /> after the change.</param>
 /// <param name="Fault">The fault that caused the change, or null when there is none.</param>
-public sealed record WatchStateChange(char DriveLetter, DriveWatchStatus Watch, WatchFault? Fault);
+public sealed record WatchStateChange(DriveKey Drive, DriveWatchStatus Watch, WatchFault? Fault)
+{
+    /// <summary>Identifies the watch whose state changed; default keys are rejected.</summary>
+    public DriveKey Drive { get; init => field = value.Validated(); } = Drive.Validated();
+}

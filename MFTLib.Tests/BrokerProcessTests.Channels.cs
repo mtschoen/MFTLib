@@ -97,7 +97,7 @@ public partial class BrokerProcessTests
             broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, Armed),
                 CancellationToken.None).WaitAsync(HangGuard));
 
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
         await clientEnd.Disposed.WaitAsync(HangGuard);
         await (await hostEnd.Task.WaitAsync(HangGuard)).Disposed.WaitAsync(HangGuard);
         Assert.IsFalse(broker.Process.Ended.IsCompleted, "A lost drive channel leaves the process running.");

@@ -7,7 +7,7 @@ namespace MFTLib.Tests;
 
 /// <summary>
 ///     The public block facade of MFTLibTestExtensions: every member is exercised here, through a real
-///     <see cref="FileIndex" /> open, <see cref="CacheDirectory.InspectCached(string, IReadOnlySet{char}?)" /> or a direct
+///     <see cref="FileIndex" /> open, <see cref="CacheDirectory.InspectCached(string, IEnumerable{DriveKey}?)" /> or a direct
 ///     <see cref="BlockFile" /> read, so the block it writes is judged by the production reader.
 /// </summary>
 [TestClass]
@@ -370,11 +370,11 @@ public partial class SyntheticBlockTests
     {
         var producer = SampleProducer();
         await using var index = await FileIndex.OpenAsync(Scanning(producer), Token);
-        CollectionAssert.AreEqual(new[] { 'T' }, producer.ProducedDrives.ToArray());
+        CollectionAssert.AreEqual(new DriveKey[] { 'T' }, producer.ProducedDrives.ToArray());
 
-        await index.RescanAsync('T', Token);
+        await index.RescanAsync(['T'], Token);
 
-        CollectionAssert.AreEqual(new[] { 'T', 'T' }, producer.ProducedDrives.ToArray());
+        CollectionAssert.AreEqual(new DriveKey[] { 'T', 'T' }, producer.ProducedDrives.ToArray());
     }
 
     [TestMethod]

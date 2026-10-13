@@ -7,7 +7,7 @@ public sealed partial class FileIndex
     ///     and kept until it is disposed. Every watch and rescan operation on a drive acts on that
     ///     drive's entry only. The dictionary itself is never modified after construction.
     /// </summary>
-    readonly Dictionary<char, DriveRuntime> _driveRuntimes = [];
+    readonly Dictionary<DriveKey, DriveRuntime> _driveRuntimes = [];
 
     /// <summary>
     ///     <c>Starting</c>: the source has been invoked and has not
@@ -66,12 +66,12 @@ public sealed partial class FileIndex
     /// </remarks>
     sealed class DriveRuntime
     {
-        public DriveRuntime(char driveLetter)
+        public DriveRuntime(DriveKey driveLetter)
         {
-            DriveLetter = driveLetter;
+            Drive = driveLetter;
         }
 
-        public char DriveLetter { get; }
+        public DriveKey Drive { get; }
 
         /// <summary>Serializes start and rescan for this drive. Never taken under the state lock.</summary>
         public SemaphoreSlim LifecycleGate { get; } = new(1, 1);
@@ -178,10 +178,10 @@ public sealed partial class FileIndex
         readonly TaskCompletionSource _drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
         readonly CancellationTokenRegistration _disposalLink;
 
-        public WatchInstance(char driveLetter, long generation, DriveBlock armedBlock,
+        public WatchInstance(DriveKey driveLetter, long generation, DriveBlock armedBlock,
             TaskCompletionSource? catchUpWaiter, CancellationToken disposalToken)
         {
-            DriveLetter = driveLetter;
+            Drive = driveLetter;
             Generation = generation;
             ArmedBlock = armedBlock;
             CatchUp = new WatchCatchUpSlot(catchUpWaiter);
@@ -194,7 +194,7 @@ public sealed partial class FileIndex
                 static state => (state as CancellationTokenSource)?.Cancel(), StartCancellation);
         }
 
-        public char DriveLetter { get; }
+        public DriveKey Drive { get; }
 
         public long Generation { get; }
 
@@ -270,9 +270,9 @@ public sealed partial class FileIndex
     }
 
     /// <summary>The drive's runtime, or <see cref="ArgumentException" /> for a letter not in this index.</summary>
-    DriveRuntime GetDriveRuntime(char driveLetter)
+    DriveRuntime GetDriveRuntime(DriveKey driveLetter)
     {
-        return _driveRuntimes.TryGetValue(char.ToUpperInvariant(driveLetter), out var runtime)
+        return _driveRuntimes.TryGetValue(driveLetter.Validated(), out var runtime)
             ? runtime
             : throw new ArgumentException($"Drive {driveLetter} is not part of this index.", nameof(driveLetter));
     }

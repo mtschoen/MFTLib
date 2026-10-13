@@ -101,7 +101,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         AssertReady(index);
         Assert.AreEqual(BrokerScanPhase.Parsing, progress[0].Phase);
         Assert.AreEqual(BrokerScanPhase.Transferring, progress[^1].Phase);
-        Assert.IsTrue(progress.All(value => value.DriveLetter == "C"));
+        Assert.IsTrue(progress.All(value => value.Drive == "C"));
         Assert.IsTrue(progress[^1].BytesProcessed > 0);
         Assert.IsTrue(index.Find(At("documents"))!.Value.IsDirectory);
         Assert.IsNotNull(index.Find(At("documents", "notes.txt")));
@@ -152,7 +152,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         var previousBlock = previous.DriveBlock.Block;
         var firstBlockCursor = new UsnJournalCursor(previousBlock.Header.UsnJournalIdentifier, previousBlock.Header.UsnNextUsn);
 
-        await index.StartWatchingAsync('C', CancellationToken.None).WaitAsync(HangGuard);
+        await index.StartWatchingAsync(['C'], CancellationToken.None).WaitAsync(HangGuard);
 
         Assert.AreEqual(ArmedCursor, firstBlockCursor);
         Assert.AreNotEqual(AdvancedCursor, firstBlockCursor, "catch-up advanced past the armed cursor");
@@ -160,7 +160,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.AreEqual(new ScriptedWatchStart('C', firstBlockCursor.ToSynthetic()), firstStart);
 
         Volatile.Write(ref rearmed.Value, 1);
-        await index.RescanAsync('C', CancellationToken.None).WaitAsync(HangGuard);
+        await index.RescanAsync(['C'], CancellationToken.None).WaitAsync(HangGuard);
 
         Assert.AreEqual(2, scanCount.Value);
         var replacementBlock = index.Root('C').DriveBlock.Block;

@@ -20,11 +20,15 @@ public enum DriveOperationOutcome
 }
 
 /// <summary>The result of one drive's part of a batched <see cref="FileIndex" /> operation.</summary>
-/// <param name="DriveLetter">The drive, as the caller named it.</param>
+/// <param name="Drive">The normalized drive key.</param>
 /// <param name="Outcome">What the operation did for the drive.</param>
 /// <param name="Failure">
-///     The exception the single-drive form would have thrown when <paramref name="Outcome" /> is
+///     The per-drive exception when <paramref name="Outcome" /> is
 ///     <see cref="DriveOperationOutcome.Failed" />; otherwise null. For a stop, the fault that had
 ///     ended the drive's watch.
 /// </param>
-public sealed record DriveOperationResult(char DriveLetter, DriveOperationOutcome Outcome, Exception? Failure);
+public sealed record DriveOperationResult(DriveKey Drive, DriveOperationOutcome Outcome, Exception? Failure)
+{
+    /// <summary>Matches the request key; assigning the invalid default throws ArgumentException.</summary>
+    public DriveKey Drive { get; init => field = value.Validated(); } = Drive.Validated();
+}

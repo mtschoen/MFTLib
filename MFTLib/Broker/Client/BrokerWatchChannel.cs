@@ -10,7 +10,7 @@ namespace MFTLib;
 /// </summary>
 internal sealed class BrokerWatchChannel(BrokerDriveChannel channel) : IIndexDriveWatch
 {
-    public char DriveLetter { get; } = channel.DriveLetter;
+    public DriveKey Drive { get; } = channel.Drive;
 
     /// <summary>
     ///     Yields the drive's batches and its caught-up marker. The host's <c>Error</c> frame throws
@@ -25,8 +25,8 @@ internal sealed class BrokerWatchChannel(BrokerDriveChannel channel) : IIndexDri
         while (true)
         {
             var frame = await channel.ReadAsync(cancellationToken).ConfigureAwait(false)
-                        ?? throw new BrokerChannelLostException(DriveLetter,
-                            $"Drive {DriveLetter} watch channel was closed by the broker.");
+                        ?? throw new BrokerChannelLostException(Drive.Letter,
+                            $"Drive {Drive} watch channel was closed by the broker.");
             switch (frame.Kind)
             {
                 case BrokerFrameKind.Heartbeat:
@@ -41,11 +41,11 @@ internal sealed class BrokerWatchChannel(BrokerDriveChannel channel) : IIndexDri
                     break;
 
                 case BrokerFrameKind.Error:
-                    throw new DriveWatchFaultException(DriveLetter, frame.RequireMessage());
+                    throw new DriveWatchFaultException(Drive, frame.RequireMessage());
 
                 default:
-                    throw new BrokerChannelLostException(DriveLetter,
-                        $"Drive {DriveLetter} watch channel sent {frame.Kind}, which a watch does not carry.");
+                    throw new BrokerChannelLostException(Drive.Letter,
+                        $"Drive {Drive} watch channel sent {frame.Kind}, which a watch does not carry.");
             }
         }
     }

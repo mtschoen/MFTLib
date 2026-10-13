@@ -15,15 +15,15 @@ public sealed record IndexDriveOpened
     /// <param name="driveLetter">The settled drive, in upper case.</param>
     /// <param name="settledDriveCount">The settle order of this drive, counted from 1.</param>
     /// <param name="totalDriveCount">How many drives the open was configured with.</param>
-    internal IndexDriveOpened(char driveLetter, int settledDriveCount, int totalDriveCount)
+    internal IndexDriveOpened(DriveKey driveLetter, int settledDriveCount, int totalDriveCount)
     {
-        DriveLetter = driveLetter;
+        Drive = driveLetter;
         SettledDriveCount = settledDriveCount;
         TotalDriveCount = totalDriveCount;
     }
 
-    /// <summary>The settled drive, in upper case, so it matches <see cref="DriveStatus.DriveLetter" /> of a drive configured with an upper-case letter.</summary>
-    public char DriveLetter { get; init; }
+    /// <summary>The normalized key of the settled drive, matching <see cref="DriveStatus.Drive" />.</summary>
+    public DriveKey Drive { get; init => field = value.Validated(); }
 
     /// <summary>
     ///     This drive was the <see cref="SettledDriveCount" />-th of the open's drives to settle, counted

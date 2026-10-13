@@ -30,8 +30,8 @@ public sealed class ScriptedDriveWatch : IIndexDriveWatch
         Target = target;
     }
 
-    /// <summary>The drive letter exactly as the index passed it to the source, in whatever case it used.</summary>
-    public char DriveLetter => Target.DriveLetter;
+    /// <summary>Identifies the watch the index requested, shared by its recorded start and generated faults.</summary>
+    public DriveKey Drive => Target.Drive;
 
     /// <summary>The journal position the index resumed this watch from: the cursor of the block it started on.</summary>
     internal UsnJournalCursor StartCursor => new(Target.JournalIdentifier, Target.NextUsn);
@@ -92,7 +92,7 @@ public sealed class ScriptedDriveWatch : IIndexDriveWatch
     public void FailDrive(Exception exception)
     {
         ArgumentNullException.ThrowIfNull(exception);
-        var fault = new DriveWatchFaultException(DriveLetter, exception.Message, exception);
+        var fault = new DriveWatchFaultException(Drive, exception.Message, exception);
         _completionFault = fault;
         _items.Writer.TryComplete(fault);
     }
@@ -139,7 +139,7 @@ public sealed class ScriptedDriveWatch : IIndexDriveWatch
         var consumed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!_items.Writer.TryWrite(new PendingItem(item, consumed)))
         {
-            throw new InvalidOperationException($"The watch for drive {DriveLetter} is closed.");
+            throw new InvalidOperationException($"The watch for drive {Drive} is closed.");
         }
 
         return consumed.Task;
@@ -214,7 +214,7 @@ public sealed class ScriptedDriveWatch : IIndexDriveWatch
         _disposed.TrySetResult();
         if (count > 1)
         {
-            throw new InvalidOperationException($"The watch for drive {DriveLetter} was disposed twice.");
+            throw new InvalidOperationException($"The watch for drive {Drive} was disposed twice.");
         }
 
         return ValueTask.CompletedTask;

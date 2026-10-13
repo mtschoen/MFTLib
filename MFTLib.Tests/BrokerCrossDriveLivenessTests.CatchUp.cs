@@ -38,10 +38,10 @@ public sealed partial class BrokerCrossDriveLivenessTests
         var channelsBefore = scenario.ChannelsOpenedFor('T');
         journal.FailEveryRead();
 
-        var rescanOfT = index.RescanAsync('T', token);
-        var rescanOfU = index.RescanAsync('U', token);
+        var rescanOfT = index.RescanAsync(['T'], token);
+        var rescanOfU = index.RescanAsync(['U'], token);
         await rescanOfU.WaitAsync(HangGuard);
-        var thrown = await WatchDeduplicationTestSupport.ThrowsAsync<JournalCatchUpLostException>(() => rescanOfT.WaitAsync(HangGuard));
+        var thrown = await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(() => rescanOfT.WaitAsync(HangGuard));
 
         Assert.AreEqual(3, scenario.ChannelsOpenedFor('T') - channelsBefore, "T opens exactly three scan channels");
         Assert.AreEqual(4, scenario.ScansOf('T'), "the open's scan and three lost ones");
@@ -66,7 +66,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         Assert.AreEqual(JournalSizeArithmetic.SizeThatWouldHaveRetained(ArmedCursor.NextUsn, TrimmedWindow.NextUsn,
             TrimmedWindow.AllocationDelta), report.SizeThatWouldHaveRetained);
         Assert.AreEqual(report, statusesAtLoss[^1].Watch.CheckpointLoss);
-        await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() => index.StartWatchingAsync('T', token));
+        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.StartWatchingAsync(['T'], token));
 
         // U completed normally in the same run.
         Assert.AreEqual(2, scenario.ScansOf('U'));
@@ -77,9 +77,9 @@ public sealed partial class BrokerCrossDriveLivenessTests
 
         // The source is fixed: a manual rescan succeeds, the count resets and a start is accepted.
         journal.Fix();
-        await index.RescanAsync('T', token).WaitAsync(HangGuard);
+        await index.RescanAsync(['T'], token).WaitAsync(HangGuard);
         Assert.AreEqual(0, scenario.DriveOf('T').Watch.ConsecutiveLostCatchUps);
-        await index.StartWatchingAsync('T', token);
+        await index.StartWatchingAsync(['T'], token);
         Assert.AreEqual(ArmedCursor, (await scenario.Broker.Watch('T').RunAsync(1)).Since);
         Assert.AreEqual(hostClockAtStart, scenario.HostClock.GetUtcNow(), "no time passed on the host");
         Assert.AreEqual(clientClockAtStart, scenario.ClientClock.GetUtcNow(), "no time passed on the client");
@@ -102,7 +102,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         var channelsBefore = scenario.ChannelsOpenedFor('T');
         journal.FailNextReads(1);
 
-        await index.RescanAsync('T', token).WaitAsync(HangGuard);
+        await index.RescanAsync(['T'], token).WaitAsync(HangGuard);
 
         Assert.AreEqual(2, scenario.ChannelsOpenedFor('T') - channelsBefore, "the lost scan and the one that held");
         var fault = scenario.FaultsOf('T').Single();
@@ -116,7 +116,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
             "the report the lost scan produced is kept");
         Assert.AreEqual(1, index.Search(new SearchQuery("scan-T-3.txt", NameMatchMode.Exact), token).Count, "T's block is the second scan's");
         Assert.AreEqual(0, index.Search(new SearchQuery("scan-T-2.txt", NameMatchMode.Exact), token).Count);
-        await index.StartWatchingAsync('T', token);
+        await index.StartWatchingAsync(['T'], token);
         Assert.AreEqual(ArmedCursor, (await scenario.Broker.Watch('T').RunAsync(1)).Since,
             "the watch starts from the second block's cursor");
     }
@@ -137,8 +137,8 @@ public sealed partial class BrokerCrossDriveLivenessTests
         var channelsBefore = scenario.ChannelsOpenedFor('T');
         journal.FailEveryRead();
 
-        var failure = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(
-            () => index.RescanAsync('T', token).WaitAsync(HangGuard));
+        var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+            () => index.RescanAsync(['T'], token).WaitAsync(HangGuard));
 
         StringAssert.Contains(failure.Message, ScriptedCatchUp.FailureMessage);
         Assert.AreEqual(1, scenario.ChannelsOpenedFor('T') - channelsBefore, "one scan channel, no retry");

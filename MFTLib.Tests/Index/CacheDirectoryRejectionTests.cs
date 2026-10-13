@@ -54,12 +54,12 @@ public class CacheDirectoryRejectionTests
                 return CacheDirectory.EnumerateCached(_directory, rejectedFile)
                     .Select(file => file.Path).ToArray();
             case "inspect":
-                var statuses = CacheDirectory.InspectCached(_directory, drives, rejectedFile);
+                var statuses = CacheDirectory.InspectCached(_directory, drives?.Select(letter => new DriveKey(letter)), rejectedFile);
                 Assert.IsTrue(statuses.All(status =>
                     status.Availability == CachedBlockAvailability.Available));
                 return statuses.Select(status => status.File.Path).ToArray();
             case "delete":
-                var results = CacheDirectory.DeleteCached(_directory, drives, null, rejectedFile);
+                var results = CacheDirectory.DeleteCached(_directory, drives?.Select(letter => new DriveKey(letter)), null, rejectedFile);
                 Assert.IsTrue(results.All(result => result.Outcome == CachedBlockDeletionOutcome.Deleted));
                 return results.Select(result => result.File.Path).ToArray();
             default:

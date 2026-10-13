@@ -18,8 +18,8 @@ internal sealed class MutatorFixture : IAsyncDisposable
     {
         _builder = SyntheticBlockBuilder.MftShaped();
         var block = _builder.OpenForWriting();
-        var driveBlock = new DriveBlock(_builder.DriveLetter, 0, block,
-            rootDirectoryPath: TestDriveRoot.For(_builder.DriveLetter));
+        var driveBlock = new DriveBlock(_builder.Drive, 0, block,
+            rootDirectoryPath: TestDriveRoot.For(_builder.Drive));
         _snapshot = Snapshot.Create([driveBlock]);
         _mutator = new JournalMutator(new BlockWriter(block));
     }

@@ -35,7 +35,7 @@ internal sealed class BrokerProgressAdapter(MftBlockProduceRequest request,
         }
 
         request.Progress.Report(new IndexScanProgress(
-            request.DriveLetter,
+            request.Drive,
             sample.Phase == BrokerScanPhase.Parsing
                 ? IndexScanPhase.ParsingMft
                 : IndexScanPhase.Transferring,

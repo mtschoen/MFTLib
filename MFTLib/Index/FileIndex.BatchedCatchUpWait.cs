@@ -13,7 +13,7 @@ public sealed partial class FileIndex
     /// </summary>
     sealed class BatchedCatchUpWait
     {
-        readonly char[] _driveLetters;
+        readonly DriveKey[] _driveLetters;
         readonly DriveOperationResult[] _results;
         readonly int[] _settled;
         readonly CancellationToken _callerToken;
@@ -27,7 +27,7 @@ public sealed partial class FileIndex
         /// <param name="waits">Each drive's catch-up task, or null for a drive with nothing to wait for.</param>
         /// <param name="callerToken">Cancels the wait; the wait then throws once every drive has settled.</param>
         /// <param name="disposalToken">The index's disposal, which cancels the wait the same way.</param>
-        public BatchedCatchUpWait(char[] driveLetters, Task?[] waits, CancellationToken callerToken,
+        public BatchedCatchUpWait(DriveKey[] driveLetters, Task?[] waits, CancellationToken callerToken,
             CancellationToken disposalToken)
         {
             _driveLetters = driveLetters;

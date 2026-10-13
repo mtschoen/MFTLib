@@ -18,15 +18,15 @@ public sealed record IndexScanProgress
     ///     The final broker transfer sample uses the known parsing total, otherwise the block row count, raised to at least the maximum parsing count.
     ///     Finished samples carry the final block row count on success, otherwise zero.
     /// </param>
-    internal IndexScanProgress(char driveLetter, IndexScanPhase phase, uint rowsWritten)
+    internal IndexScanProgress(DriveKey driveLetter, IndexScanPhase phase, uint rowsWritten)
     {
-        DriveLetter = driveLetter;
+        Drive = driveLetter;
         Phase = phase;
         RowsWritten = rowsWritten;
     }
 
     /// <summary>Drive whose block is being produced.</summary>
-    public char DriveLetter { get; init; }
+    public DriveKey Drive { get; init => field = value.Validated(); }
 
     /// <summary>Current stage of the scan.</summary>
     public IndexScanPhase Phase { get; init; }

@@ -9,7 +9,7 @@ public class SyntheticIndexSourceTests
 {
     static MftBlockProduceRequest Request(string blockPath) => new()
     {
-        DriveLetter = 'T',
+        Drive = 'T',
         VolumeSerial = 0x1234,
         BlockPath = blockPath,
         DeleteOnClose = true
@@ -31,7 +31,7 @@ public class SyntheticIndexSourceTests
         using var block = result.Block;
 
         Assert.AreSame(watches, source.WatchSource);
-        CollectionAssert.AreEqual(new[] { 'T' }, producer.ProducedDrives.ToArray());
+        CollectionAssert.AreEqual(new DriveKey[] { 'T' }, producer.ProducedDrives.ToArray());
         Assert.IsTrue(block.Header.RowCount > 0);
     }
 

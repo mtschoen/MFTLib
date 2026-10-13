@@ -73,7 +73,7 @@ internal sealed class OpenScenario : IDisposable
     public int ProductionsOf(char driveLetter) => _productions.GetValueOrDefault(driveLetter);
 
     public IEnumerable<IndexDriveOpened> ReportsFor(char driveLetter) =>
-        _reports.Where(report => report.DriveLetter == driveLetter);
+        _reports.Where(report => report.Drive == driveLetter);
 
     /// <summary>Forgets every report so far, for a test that opens the index more than once.</summary>
     public void ResetReports()
@@ -139,7 +139,7 @@ internal sealed class OpenScenario : IDisposable
 
     async Task<MftBlockProduceResult> ProduceAsync(MftBlockProduceRequest request, CancellationToken cancellationToken)
     {
-        var driveLetter = char.ToUpperInvariant(request.DriveLetter);
+        var driveLetter = char.ToUpperInvariant((request.Drive).Letter);
         Interlocked.Increment(ref _activeProducers);
         try
         {

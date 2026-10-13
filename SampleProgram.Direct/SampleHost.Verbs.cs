@@ -43,10 +43,10 @@ partial class SampleHost
     // One mixed-row pass explains what the scan retained without materializing names or entry lists.
     void WriteInventory(FileIndex index, CancellationToken cancellationToken)
     {
-        var counts = new Dictionary<char, (long Files, long Directories, long Deleted)>();
+        var counts = new Dictionary<DriveKey, (long Files, long Directories, long Deleted)>();
         foreach (var row in index.EnumerateRows(new SearchQuery(null, IncludeDeleted: true), cancellationToken))
         {
-            counts.TryGetValue(row.DriveLetter, out var count);
+            counts.TryGetValue(row.Drive, out var count);
             if (row.IsDeleted)
             {
                 count.Deleted++;
@@ -60,14 +60,14 @@ partial class SampleHost
                 count.Files++;
             }
 
-            counts[row.DriveLetter] = count;
+            counts[row.Drive] = count;
         }
 
         foreach (var drive in index.Drives)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            counts.TryGetValue(drive.DriveLetter, out var count);
-            _writeLine($"{drive.DriveLetter}: {count.Files} live files, {count.Directories} live directories, {count.Deleted} retained deleted rows");
+            counts.TryGetValue(drive.Drive, out var count);
+            _writeLine($"{drive.Drive.Letter}: {count.Files} live files, {count.Directories} live directories, {count.Deleted} retained deleted rows");
         }
     }
 
@@ -155,7 +155,7 @@ partial class SampleHost
     void OpenFile(FileEntry entry)
     {
         var key = entry.RecordKey;
-        _writeLine($"{entry.Path}: record {key.RecordNumber} on {key.DriveLetter} ({key.ProducerKind}), {entry.Attributes}, modified {entry.LastWriteTime:u}, parent {entry.Parent?.Path}, valid {entry.IsValid}, disposed {entry.IsDisposed}");
+        _writeLine($"{entry.Path}: record {key.RecordNumber} on {key.Drive} ({key.ProducerKind}), {entry.Attributes}, modified {entry.LastWriteTime:u}, parent {entry.Parent?.Path}, valid {entry.IsValid}, disposed {entry.IsDisposed}");
         using var stream = OpenOrDescribe(entry);
         var buffer = new byte[16];
         var read = stream.Read(buffer, 0, buffer.Length);

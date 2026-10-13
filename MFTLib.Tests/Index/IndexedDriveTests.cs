@@ -10,11 +10,9 @@ public class IndexedDriveTests
 {
     [TestMethod]
     [SupportedOSPlatform("windows")]
-    [DataRow("C")]
-    [DataRow("C:")]
-    [DataRow(@"C:\")]
-    [DataRow("c:/")]
-    public void FromWindowsVolume_NormalizesEverySpellingToTheSameDrive(string spelling)
+    [DataRow('C')]
+    [DataRow('c')]
+    public void FromWindowsVolume_NormalizesKeysToTheSameDrive(char spelling)
     {
         using var restore = IndexedDrive.OverrideVolumeSerialReaderForTest(root =>
         {
@@ -24,7 +22,7 @@ public class IndexedDriveTests
 
         var drive = IndexedDrive.FromWindowsVolume(spelling);
 
-        Assert.AreEqual('C', drive.DriveLetter);
+        Assert.AreEqual('C', drive.Drive);
         Assert.AreEqual(@"C:\", drive.RootDirectory);
         Assert.AreEqual(0xDEADBEEFu, drive.VolumeSerial);
     }
@@ -35,20 +33,16 @@ public class IndexedDriveTests
     {
         using var restore = IndexedDrive.OverrideVolumeSerialReaderForTest(_ => null);
 
-        var failure = Assert.ThrowsException<IOException>(() => IndexedDrive.FromWindowsVolume("Q"));
+        var failure = Assert.ThrowsException<IOException>(() => IndexedDrive.FromWindowsVolume('Q'));
 
         StringAssert.Contains(failure.Message, "Q");
     }
 
     [TestMethod]
     [SupportedOSPlatform("windows")]
-    [DataRow("")]
-    [DataRow("CD")]
-    [DataRow("1")]
-    [DataRow(@"\\server\share")]
-    public void FromWindowsVolume_RejectsAnythingThatIsNotADriveLetter(string spelling)
+    public void FromWindowsVolume_RejectsDefaultKey()
     {
-        Assert.ThrowsException<ArgumentException>(() => IndexedDrive.FromWindowsVolume(spelling));
+        Assert.ThrowsException<ArgumentException>(() => IndexedDrive.FromWindowsVolume(default));
     }
 
     [TestMethod]
@@ -61,7 +55,7 @@ public class IndexedDriveTests
         }
 
         var systemRoot = Path.GetPathRoot(Environment.SystemDirectory)!;
-        var drive = IndexedDrive.FromWindowsVolume(systemRoot);
+        var drive = IndexedDrive.FromWindowsVolume(systemRoot[0]);
 
         Assert.AreNotEqual(0u, drive.VolumeSerial);
         Assert.AreEqual(systemRoot, drive.RootDirectory);

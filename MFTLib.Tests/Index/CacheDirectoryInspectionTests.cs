@@ -92,12 +92,12 @@ public class CacheDirectoryInspectionTests
         Assert.IsFalse(File.Exists(BlockOwnerLock.LockPathFor(included)));
         Assert.IsFalse(File.Exists(BlockOwnerLock.LockPathFor(excluded)));
 
-        var result = CacheDirectory.InspectCached(_cacheDirectory, new HashSet<char> { 'C' });
+        var result = CacheDirectory.InspectCached(_cacheDirectory, new HashSet<char> { 'C' }.Select(letter => new DriveKey(letter)));
 
         Assert.AreEqual(included, result.Single().File.Path);
         Assert.IsTrue(File.Exists(BlockOwnerLock.LockPathFor(included)));
         Assert.IsFalse(File.Exists(BlockOwnerLock.LockPathFor(excluded)));
-        Assert.AreEqual(0, CacheDirectory.InspectCached(_cacheDirectory, new HashSet<char>()).Count);
+        Assert.AreEqual(0, CacheDirectory.InspectCached(_cacheDirectory, new HashSet<char>().Select(letter => new DriveKey(letter))).Count);
         Assert.IsFalse(File.Exists(BlockOwnerLock.LockPathFor(excluded)));
         AssertReleased(included);
     }
@@ -108,7 +108,7 @@ public class CacheDirectoryInspectionTests
         var enumeration = CreateBlock('C');
         var mft = CreateBlock('D', ProducerKind.Mft);
         var statuses = CacheDirectory.InspectCached(_cacheDirectory)
-            .OrderBy(status => status.File.DriveLetter).ToArray();
+            .OrderBy(status => status.File.Drive.Letter).ToArray();
 
         Assert.AreEqual(2, statuses.Length);
         Assert.AreEqual(_cacheDirectory, statuses[0].RootDirectory);
@@ -137,7 +137,7 @@ public class CacheDirectoryInspectionTests
         var available = CreateBlock('D');
 
         var statuses = CacheDirectory.InspectCached(_cacheDirectory)
-            .OrderBy(status => status.File.DriveLetter).ToArray();
+            .OrderBy(status => status.File.Drive.Letter).ToArray();
 
         Assert.AreEqual(2, statuses.Length);
         Assert.AreEqual(CachedBlockAvailability.InUse, statuses[0].Availability);
@@ -158,7 +158,7 @@ public class CacheDirectoryInspectionTests
         CreateBlock('F');
 
         var statuses = CacheDirectory.InspectCached(_cacheDirectory)
-            .OrderBy(status => status.File.DriveLetter).ToArray();
+            .OrderBy(status => status.File.Drive.Letter).ToArray();
 
         Assert.AreEqual(4, statuses.Length);
         var reasons = new[] { BlockValidationResult.WrongVolumeSerial,

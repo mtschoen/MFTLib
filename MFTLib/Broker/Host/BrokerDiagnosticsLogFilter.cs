@@ -153,7 +153,7 @@ sealed class BrokerDiagnosticsLogFilter
         // Standard Windows drive-letter path: "C:\...", "C:/...", "C:file"
         if (path.Length >= 2 && path[1] == ':' && char.IsAsciiLetter(path[0]))
         {
-            driveLetter = char.ToUpperInvariant(path[0]).ToString();
+            driveLetter = new Index.DriveKey(path[0]).ToString();
             return true;
         }
 
@@ -167,7 +167,7 @@ sealed class BrokerDiagnosticsLogFilter
             path[5] == ':' &&
             char.IsAsciiLetter(path[4]))
         {
-            driveLetter = char.ToUpperInvariant(path[4]).ToString();
+            driveLetter = new Index.DriveKey(path[4]).ToString();
             return true;
         }
 
@@ -178,7 +178,7 @@ sealed class BrokerDiagnosticsLogFilter
                 var fullPath = Path.GetFullPath(path);
                 if (fullPath.Length >= 2 && fullPath[1] == ':' && char.IsAsciiLetter(fullPath[0]))
                 {
-                    driveLetter = char.ToUpperInvariant(fullPath[0]).ToString();
+                    driveLetter = new Index.DriveKey(fullPath[0]).ToString();
                     return true;
                 }
             }

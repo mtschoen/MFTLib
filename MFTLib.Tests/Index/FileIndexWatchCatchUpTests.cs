@@ -17,7 +17,7 @@ public class FileIndexWatchCatchUpTests
     {
         using var harness = new WatchHarness();
         harness.Index.HoldEveryRecovery();
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
 
         harness.Source.WatchFor('T').FailDrive(new IOException("journal wrapped"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
@@ -29,10 +29,10 @@ public class FileIndexWatchCatchUpTests
     public async Task StopWatchingAsync_ResetsCatchUpToNotStarted()
     {
         using var harness = new WatchHarness();
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
 
-        await harness.Index.StopWatchingAsync('T', Token);
+        await harness.Index.StopWatchingAsync(['T'], Token);
 
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
     }
@@ -41,13 +41,13 @@ public class FileIndexWatchCatchUpTests
     public async Task RescanAsync_ReArmResetsTheDriveToCatchingUp()
     {
         using var harness = new WatchHarness('T', 'U');
-        await harness.Index.StartWatchingAsync('T', Token);
-        await harness.Index.StartWatchingAsync('U', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
+        await harness.Index.StartWatchingAsync(['U'], Token);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         Assert.AreEqual(WatchState.CaughtUp, harness.DriveFor('T').Watch.State);
 
         harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
-        await harness.Index.RescanAsync('T', Token);
+        await harness.Index.RescanAsync(['T'], Token);
 
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('U').Watch.State);
@@ -57,10 +57,10 @@ public class FileIndexWatchCatchUpTests
     public async Task WaitForCatchUpAsync_CompletesOnlyAfterTheBacklogIsApplied()
     {
         using var harness = new WatchHarness();
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         var handle = harness.Source.WatchFor('T');
 
-        var wait = harness.Index.WaitForCatchUpAsync('T', Token);
+        var wait = harness.Index.WaitForCatchUpAsync(['T'], Token);
         await handle.Publish(WatchHarness.Batch(recordNumber: 9, "new.txt"));
         Assert.IsFalse(wait.IsCompleted);
 
@@ -72,10 +72,10 @@ public class FileIndexWatchCatchUpTests
     public async Task WaitForCatchUpAsync_CompletesImmediatelyWhenAlreadyCaughtUp()
     {
         using var harness = new WatchHarness();
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
 
-        var wait = harness.Index.WaitForCatchUpAsync('T', Token);
+        var wait = harness.Index.WaitForCatchUpAsync(['T'], Token);
 
         Assert.IsTrue(wait.IsCompleted);
     }
@@ -84,13 +84,13 @@ public class FileIndexWatchCatchUpTests
     public async Task WaitForCatchUpAsync_FaultsWhenTheDrivesWatchFaults()
     {
         using var harness = new WatchHarness();
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         var failure = new IOException("journal wrapped");
-        var wait = harness.Index.WaitForCatchUpAsync('T', Token);
+        var wait = harness.Index.WaitForCatchUpAsync(['T'], Token);
 
         harness.Source.WatchFor('T').FailDrive(failure);
 
-        var thrown = await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(() => wait);
+        var thrown = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => wait);
         Assert.AreSame(failure, thrown.InnerException);
     }
 
@@ -99,14 +99,14 @@ public class FileIndexWatchCatchUpTests
     {
         using var harness = new WatchHarness();
         harness.Index.HoldEveryRecovery();
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         var failure = new IOException("journal wrapped");
         harness.Source.WatchFor('T').FailDrive(failure);
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
 
-        var wait = harness.Index.WaitForCatchUpAsync('T', Token);
+        var wait = harness.Index.WaitForCatchUpAsync(['T'], Token);
 
-        var thrown = await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(() => wait);
+        var thrown = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => wait);
         Assert.AreSame(failure, thrown.InnerException);
     }
 
@@ -114,12 +114,12 @@ public class FileIndexWatchCatchUpTests
     public async Task WaitForCatchUpAsync_AfterARescanReArm_CompletesAfterTheReArmedCatchUp()
     {
         using var harness = new WatchHarness();
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
 
         harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
-        await harness.Index.RescanAsync('T', Token);
-        var wait = harness.Index.WaitForCatchUpAsync('T', Token);
+        await harness.Index.RescanAsync(['T'], Token);
+        var wait = harness.Index.WaitForCatchUpAsync(['T'], Token);
         Assert.IsFalse(wait.IsCompleted);
 
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
@@ -130,20 +130,20 @@ public class FileIndexWatchCatchUpTests
     public async Task WaitForCatchUpAsync_PendingAcrossARescanReArm_IsCancelledWithTheSupersededArm()
     {
         using var harness = new WatchHarness();
-        await harness.Index.StartWatchingAsync('T', Token);
-        var wait = harness.Index.WaitForCatchUpAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
+        var wait = harness.Index.WaitForCatchUpAsync(['T'], Token);
 
-        await harness.Index.RescanAsync('T', Token);
+        await harness.Index.RescanAsync(['T'], Token);
 
-        await Assert.ThrowsExceptionAsync<TaskCanceledException>(() => wait);
+        await DriveResultAssertions.FailureAsync<TaskCanceledException>(() => wait);
     }
 
     [TestMethod]
     public async Task WaitForCatchUpAsync_DisposingTheIndexCancelsAPendingWait()
     {
         var harness = new WatchHarness();
-        await harness.Index.StartWatchingAsync('T', Token);
-        var wait = harness.Index.WaitForCatchUpAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
+        var wait = harness.Index.WaitForCatchUpAsync(['T'], Token);
 
         await harness.Index.DisposeAsync();
 
@@ -155,16 +155,16 @@ public class FileIndexWatchCatchUpTests
     public async Task WaitForCatchUpAsync_CallerCancellationEndsTheWaitButNotTheCatchUp()
     {
         using var harness = new WatchHarness();
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         using var caller = new CancellationTokenSource();
-        var wait = harness.Index.WaitForCatchUpAsync('T', caller.Token);
+        var wait = harness.Index.WaitForCatchUpAsync(['T'], caller.Token);
 
         await caller.CancelAsync();
 
         await Assert.ThrowsExceptionAsync<TaskCanceledException>(() => wait);
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
 
-        var replacementWait = harness.Index.WaitForCatchUpAsync('T', Token);
+        var replacementWait = harness.Index.WaitForCatchUpAsync(['T'], Token);
         Assert.IsFalse(replacementWait.IsCompleted, "the replacement wait remains pending until the drive catches up");
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         await replacementWait.WaitAsync(ScriptedWatchSource.HangGuard);
@@ -175,31 +175,31 @@ public class FileIndexWatchCatchUpTests
     {
         using var harness = new WatchHarness();
 
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => harness.Index.WaitForCatchUpAsync('T', Token));
+        await DriveResultAssertions.NotApplicableAsync(
+            () => harness.Index.WaitForCatchUpAsync(['T'], Token));
     }
 
     [TestMethod]
     public async Task WaitForCatchUpAsync_ThrowsForADriveThatIsNotInTheIndex()
     {
         using var harness = new WatchHarness();
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
 
-        await Assert.ThrowsExceptionAsync<ArgumentException>(
-            () => harness.Index.WaitForCatchUpAsync('X', Token));
+        await WatchDeduplicationTestSupport.ThrowsAsync<ArgumentException>(
+            () => harness.Index.WaitForCatchUpAsync(['X'], Token));
     }
 
     [TestMethod]
     public async Task WaitForCatchUpAsync_ChannelLoss_FaultsPendingWait()
     {
         using var harness = new WatchHarness();
-        await harness.Index.StartWatchingAsync('T', Token);
-        var wait = harness.Index.WaitForCatchUpAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
+        var wait = harness.Index.WaitForCatchUpAsync(['T'], Token);
 
         var failure = new IOException("stream died");
         harness.Source.WatchFor('T').LoseChannel(failure);
 
-        var thrown = await Assert.ThrowsExceptionAsync<IOException>(() => wait);
+        var thrown = await DriveResultAssertions.FailureAsync<IOException>(() => wait);
         Assert.AreSame(failure, thrown);
     }
 
@@ -208,18 +208,18 @@ public class FileIndexWatchCatchUpTests
     {
         using var harness = new WatchHarness();
         harness.Index.HoldEveryRecovery();
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
 
-        var caughtUpWait = harness.Index.WaitForCatchUpAsync('T', Token);
+        var caughtUpWait = harness.Index.WaitForCatchUpAsync(['T'], Token);
         Assert.IsTrue(caughtUpWait.IsCompletedSuccessfully);
 
         var failure = new IOException("journal wrapped");
         harness.Source.WatchFor('T').FailDrive(failure);
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
 
-        var singleWait = harness.Index.WaitForCatchUpAsync('T', Token);
-        var thrown = await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(() => singleWait);
+        var singleWait = harness.Index.WaitForCatchUpAsync(['T'], Token);
+        var thrown = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => singleWait);
         Assert.AreSame(failure, thrown.InnerException);
     }
 
@@ -227,7 +227,7 @@ public class FileIndexWatchCatchUpTests
     public async Task DriveCaughtUpItem_Repeated_LeavesTheDriveCaughtUpWithoutAFault()
     {
         using var harness = new WatchHarness();
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         var handle = harness.Source.WatchFor('T');
         await handle.Publish(new DriveCaughtUp());
 
@@ -235,18 +235,18 @@ public class FileIndexWatchCatchUpTests
 
         Assert.AreEqual(WatchState.CaughtUp, harness.DriveFor('T').Watch.State);
         Assert.AreEqual(0, harness.Faults.Count);
-        await harness.Index.WaitForCatchUpAsync('T', Token).WaitAsync(ScriptedWatchSource.HangGuard);
+        await harness.Index.WaitForCatchUpAsync(['T'], Token).WaitAsync(ScriptedWatchSource.HangGuard);
     }
 
     [TestMethod]
     public async Task WaitForCatchUpAsync_TokenAlreadyCancelled_ReturnsACancelledTaskAndLeavesTheWatch()
     {
         using var harness = new WatchHarness();
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
 
-        var wait = harness.Index.WaitForCatchUpAsync('T', cancellation.Token);
+        var wait = harness.Index.WaitForCatchUpAsync(['T'], cancellation.Token);
 
         Assert.IsTrue(wait.IsCanceled);
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);

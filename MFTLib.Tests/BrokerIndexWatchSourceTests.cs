@@ -29,8 +29,8 @@ public class BrokerIndexWatchSourceTests
         var runD = await harness.Watch('D').RunAsync(1);
         Assert.AreEqual(new UsnJournalCursor(7, 100), runC.Since);
         Assert.AreEqual(new UsnJournalCursor(7, 200), runD.Since);
-        Assert.AreEqual('C', handleC.DriveLetter);
-        Assert.AreEqual('D', handleD.DriveLetter);
+        Assert.AreEqual('C', handleC.Drive);
+        Assert.AreEqual('D', handleD.Drive);
         Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerC));
         Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerD));
         runC.Push(1, "c.txt", 110);
@@ -133,7 +133,7 @@ public class BrokerIndexWatchSourceTests
         (await harness.Watch('C').RunAsync(1)).End();
 
         var lost = await WatchReads.ThrowsNextAsync<BrokerChannelLostException>(reader);
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
     }
 
     [TestMethod]
@@ -198,14 +198,14 @@ public class BrokerIndexWatchSourceTests
         using var harness = new WatchHarness(new HoldFirstDisposalSource(inner, teardown), 'T');
         var index = harness.Index;
         broker.Watch('T').IgnoreCancellationInNextRun();
-        await index.StartWatchingAsync('T', token);
+        await index.StartWatchingAsync(['T'], token);
         var first = await broker.Watch('T').RunAsync(1);
         await first.Entered.WaitAsync(HangGuard);
 
         // The first watch's teardown is held at the handle's disposal, so the stop's wait for it
         // really runs out: the token is cancelled once the stop is waiting on that teardown.
         using var stopTimeout = new CancellationTokenSource();
-        var stop = index.StopWatchingAsync('T', stopTimeout.Token);
+        var stop = index.StopWatchingAsync(['T'], stopTimeout.Token);
         await teardown.Entered.WaitAsync(HangGuard);
         Assert.IsFalse(stop.IsCompleted, "the stop waits for the held teardown");
         await stopTimeout.CancelAsync();
@@ -216,7 +216,7 @@ public class BrokerIndexWatchSourceTests
         teardown.Release();
         await first.Cancelled.WaitAsync(HangGuard);
 
-        await index.StartWatchingAsync('T', token);
+        await index.StartWatchingAsync(['T'], token);
         var second = await broker.Watch('T').RunAsync(2);
         var freshApplied = ChangeSignal.WhenApplied(index, "fresh.txt");
         second.Push(9, "fresh.txt", 300);
@@ -251,7 +251,7 @@ public class BrokerIndexWatchSourceTests
 
     sealed class HeldDisposalWatch(IIndexDriveWatch inner, TestGate teardown) : IIndexDriveWatch
     {
-        public char DriveLetter => inner.DriveLetter;
+        public DriveKey Drive => inner.Drive;
 
         public IAsyncEnumerable<WatchStreamItem> ReadAsync(CancellationToken cancellationToken) =>
             inner.ReadAsync(cancellationToken);

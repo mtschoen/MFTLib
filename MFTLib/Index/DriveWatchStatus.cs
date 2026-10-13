@@ -15,10 +15,10 @@ public sealed record DriveWatchStatus
 
     /// <summary>
     ///     True while this drive's watch is requested: from a
-    ///     <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" />, including one whose
+    ///     <see cref="FileIndex.StartWatchingAsync" />, including one whose
     ///     source threw or that was refused over an unresumable block, until
-    ///     <see cref="FileIndex.StopWatchingAsync(CancellationToken)" />, a start its own caller
-    ///     cancelled, or disposal. A <see cref="FileIndex.RescanAsync(char, CancellationToken)" />
+    ///     <see cref="FileIndex.StopWatchingAsync" />, a start its own caller
+    ///     cancelled, or disposal. A <see cref="FileIndex.RescanAsync" />
     ///     starts the drive's watch on the replacement block only while this is true; a rescan never
     ///     starts a drive whose watch was not requested. A drive a batched start answered
     ///     <see cref="DriveOperationOutcome.NotApplicable" /> is not requested.
@@ -57,14 +57,14 @@ public sealed record DriveWatchStatus
     ///     it. The drive stays <see cref="DriveState.Ready" />: its block is valid and every query
     ///     still answers from it, but nothing after the failing batch has been applied. Also set
     ///     when the source failed to start the drive's watch. Cleared when the drive's watch is
-    ///     started again by <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" /> or by a rescan. Null while
+    ///     started again by <see cref="FileIndex.StartWatchingAsync" /> or by a rescan. Null while
     ///     the watch is healthy or has never failed.
     ///     <para>
     ///         Also set, without the watch ever having started, for a drive a cache-only open
     ///         adopted despite a lost journal checkpoint: starting it would resume from a cursor
-    ///         the journal no longer holds, so <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" /> refuses
-    ///         it and explains why here. Only <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> clears this one,
-    ///         since a plain <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" /> refuses the same drive
+    ///         the journal no longer holds, so <see cref="FileIndex.StartWatchingAsync" /> refuses
+    ///         it and explains why here. Only <see cref="FileIndex.RescanAsync" /> clears this one,
+    ///         since a plain <see cref="FileIndex.StartWatchingAsync" /> refuses the same drive
     ///         again with the same message.
     ///     </para>
     /// </summary>
@@ -82,7 +82,7 @@ public sealed record DriveWatchStatus
     ///     True when consecutive scan catch-up losses exhausted automatic recovery for this drive.
     ///     Published before the loss notification or open completion. Failed or cancelled scans
     ///     and stopping the watch preserve it; publishing a successful catch-up clears it.
-    ///     Call <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> to restore a resumable block.
+    ///     Call <see cref="FileIndex.RescanAsync" /> to restore a resumable block.
     /// </summary>
     public bool RecoveryStopped { get; init; }
 
@@ -103,7 +103,7 @@ public sealed record DriveWatchStatus
     ///         that case the drive keeps its block and its rows, with its cursor at the lost
     ///         position. A <c>WatchFaultKind.Drive</c> read failure applied nothing past it; an
     ///         <c>WatchFaultKind.Apply</c> fault may have left part of its last batch applied ahead
-    ///         of the cursor. <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> makes it current
+    ///         of the cursor. <see cref="FileIndex.RescanAsync" /> makes it current
     ///         again. The third path reads no journal in the index: a scan whose catch-up the
     ///         broker proved lost publishes its block with the broker's report,
     ///         <see cref="JournalCheckpointLossDetection.ScanCatchUp" />, which replaces any older

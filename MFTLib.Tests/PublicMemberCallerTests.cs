@@ -45,16 +45,10 @@ public class PublicMemberCallerTests
             "reached through IAsyncDisposable, so no IL names it; file-wizard file-wizard/BrokerSmoke.cs disposes the session with await using",
         ["method MFTLib.Index.CacheDirectory.EnsureCreated(System.String) : System.IO.DirectoryInfo"] =
             "file-wizard FileWizard/ContentHashSidecar.cs creates the cache directory before it writes beside it",
-        ["method MFTLib.Index.CacheDirectory.InspectCached(System.String, System.Collections.Generic.IReadOnlySet`1<System.Char>) : System.Collections.Generic.IReadOnlyList`1<MFTLib.Index.CachedBlockStatus>"] =
+        ["method MFTLib.Index.CacheDirectory.InspectCached(System.String, System.Collections.Generic.IEnumerable`1<MFTLib.Index.DriveKey>) : System.Collections.Generic.IReadOnlyList`1<MFTLib.Index.CachedBlockStatus>"] =
             "git-wizard GitWizard/MftIndexCacheInspection.cs inspects every cached block of a directory",
         ["method MFTLib.Index.CacheTag.ToString() : System.String"] =
             "reached through string interpolation, which emits no member reference; file-wizard file-wizard/BlockCacheCatalog.cs:98 and git-wizard GitWizard/MftIndexCacheStatusFormatter.cs:50 print the stored and requested tags",
-        ["method MFTLib.Index.FileIndex.RescanAsync(System.Collections.Generic.IReadOnlyList`1<System.Char>, System.Threading.CancellationToken) : System.Threading.Tasks.Task`1<System.Collections.Generic.IReadOnlyList`1<MFTLib.Index.DriveOperationResult>>"] =
-            "file-wizard FileWizard/FileIndexHost.cs and git-wizard GitWizard/Discovery/RepositoryDiscoveryCoordinator.cs rescan a chosen set of drives",
-        ["method MFTLib.Index.FileIndex.StartWatchingAsync(System.Char, System.Threading.CancellationToken) : System.Threading.Tasks.Task"] =
-            "file-wizard FileWizardMaui/MainPage.DriveRescan.cs restarts the watch of one rescanned drive",
-        ["method MFTLib.Index.FileIndex.WaitForCatchUpAsync(System.Char, System.Threading.CancellationToken) : System.Threading.Tasks.Task"] =
-            "git-wizard GitWizard/Watch/IndexVolumeChangeSource.Startup.cs waits for each drive in turn",
         ["method MFTLib.Index.FileEntry.Children(System.Threading.CancellationToken) : System.Collections.Generic.IReadOnlyList`1<MFTLib.Index.FileEntry>"] =
             "git-wizard GitWizard/GitWizardApi.IndexDiscovery.cs lists the children of a directory entry",
         ["method MFTLib.Index.MftIndexSource.Unavailable(System.String) : MFTLib.Index.MftIndexSource"] =
@@ -67,7 +61,7 @@ public class PublicMemberCallerTests
             "file-wizard FileWizard/FileIndexHost.cs forwards the open progress sink",
         ["type MFTLib.Index.IndexDriveOpened"] =
             "file-wizard FileWizardMaui.Logic/OpenProgressPresenter.cs shows each settled drive",
-        ["property MFTLib.Index.IndexDriveOpened.DriveLetter : System.Char"] =
+        ["property MFTLib.Index.IndexDriveOpened.Drive : MFTLib.Index.DriveKey"] =
             "file-wizard FileWizardMaui.Logic/OpenProgressPresenter.cs shows each settled drive",
         ["property MFTLib.Index.IndexDriveOpened.SettledDriveCount : System.Int32"] =
             "file-wizard FileWizardMaui.Logic/OpenProgressPresenter.cs shows each settled drive",
@@ -338,7 +332,7 @@ public class PublicMemberCallerTests
 
     /// <summary>
     ///     The exempt key names one member: overloads that differ by generic arity, indexers that differ by
-    ///     parameter, and real FileIndex overloads each get their own text, so one entry never covers a sibling.
+    ///     parameter, and real cache inspection overloads each get their own text, so one entry never covers a sibling.
     /// </summary>
     [TestMethod]
     public void AnExemptEntry_CoversExactlyOneMember()
@@ -348,14 +342,14 @@ public class PublicMemberCallerTests
         Assert.AreEqual(fixtureDisplays.Count, fixtureDisplays.Distinct().Count(), string.Join("; ", fixtureDisplays));
 
         var surface = ReadSurface(LibraryPath);
-        var exempt = surface.Members.Single(member => member.Display.StartsWith(
-            "method MFTLib.Index.FileIndex.RescanAsync(System.Collections.Generic.IReadOnlyList`1<System.Char>", StringComparison.Ordinal));
+        var exempt = surface.Members.Single(member => member.Display ==
+            "method MFTLib.Index.CacheDirectory.InspectCached(System.String, System.Collections.Generic.IEnumerable`1<MFTLib.Index.DriveKey>) : System.Collections.Generic.IReadOnlyList`1<MFTLib.Index.CachedBlockStatus>");
         var unreferenced = FindUnreferenced(surface, new HashSet<string>(),
             new Dictionary<string, string> { [exempt.Display] = "control" });
 
         Assert.IsFalse(unreferenced.Contains(exempt));
         Assert.IsTrue(unreferenced.Any(member => member.Display.StartsWith(
-            "method MFTLib.Index.FileIndex.RescanAsync(System.Char,", StringComparison.Ordinal)));
+            "method MFTLib.Index.CacheDirectory.InspectCached(System.String, System.Collections.Generic.IEnumerable`1<MFTLib.Index.DriveKey>, System.Action", StringComparison.Ordinal)));
     }
 
     [TestMethod]

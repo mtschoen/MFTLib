@@ -1,6 +1,6 @@
 using MFTLib.Index;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 using MFTLib.Tests.TestSupport;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
 
@@ -85,7 +85,7 @@ public class FileIndexEnumerateRowsTests
         {
             var entry = row.ToEntry();
             Assert.AreEqual(entry.Name, row.Name.ToString());
-            Assert.AreEqual(entry.RecordKey.DriveLetter, row.DriveLetter);
+            Assert.AreEqual(entry.RecordKey.Drive, row.Drive);
             Assert.AreEqual(entry.Size, row.Size);
             Assert.AreEqual(entry.IsSizeKnown, row.IsSizeKnown);
             Assert.AreEqual(entry.IsDirectory, row.IsDirectory);

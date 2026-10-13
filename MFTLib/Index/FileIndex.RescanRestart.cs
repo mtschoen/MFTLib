@@ -3,7 +3,7 @@ namespace MFTLib.Index;
 public sealed partial class FileIndex
 {
     /// <summary>
-    ///     The body of <see cref="RescanAsync(char, CancellationToken)" /> once it holds the drive's lifecycle gate, and of
+    ///     The body of <see cref="RescanAsync" /> once it holds the drive's lifecycle gate, and of
     ///     a recovery (<paramref name="recovery" />): run the scan operation, retiring the watch
     ///     at publication, then restart it when it is still requested. A manual rescan first
     ///     clears the drive's recovery ticket, which it supersedes.
@@ -11,7 +11,7 @@ public sealed partial class FileIndex
     async Task RescanWithGateHeldAsync(DriveRuntime runtime, IndexedDrive drive, RecoveryTicket? recovery,
         CancellationToken cancellationToken)
     {
-        var driveLetter = runtime.DriveLetter;
+        var driveLetter = runtime.Drive;
         if (recovery is null)
         {
             lock (_stateLock)
@@ -48,7 +48,7 @@ public sealed partial class FileIndex
 
     /// <summary>
     ///     True when the drive's published block cannot be resumed; a watch that is still requested
-    ///     then records the refusal <see cref="StartWatchingAsync(char, CancellationToken)" /> would record, without a start.
+    ///     then records the refusal <see cref="StartWatchingAsync" /> would record, without a start.
     /// </summary>
     bool RefuseWatchOverUnresumableBlock(DriveRuntime runtime)
     {
@@ -56,7 +56,7 @@ public sealed partial class FileIndex
         {
             lock (_stateLock)
             {
-                if (FindWatchableDriveBlockLocked(runtime.DriveLetter) is not { } driveBlock ||
+                if (FindWatchableDriveBlockLocked(runtime.Drive) is not { } driveBlock ||
                     !_unresumableCheckpointsByOrdinal.TryGetValue(driveBlock.DriveOrdinal, out var reason))
                 {
                     return false;
@@ -124,7 +124,7 @@ public sealed partial class FileIndex
             }
 
             runtime.RefusedStartFault = null;
-            if (TryGetDriveOrdinalLocked(runtime.DriveLetter, out var driveOrdinal))
+            if (TryGetDriveOrdinalLocked(runtime.Drive, out var driveOrdinal))
             {
                 _watchFailureMessagesByOrdinal.Remove(driveOrdinal);
             }
@@ -138,13 +138,13 @@ public sealed partial class FileIndex
     /// <summary>
     ///     Starts the drive's watch again, with the lifecycle gate the rescan holds, when it is
     ///     still requested and the index is not being disposed. Not bounded by the rescan's token;
-    ///     see <see cref="RescanAsync(char, CancellationToken)" />. A recovery's restart names its ticket, which marks the
+    ///     see <see cref="RescanAsync" />. A recovery's restart names its ticket, which marks the
     ///     restarted watch as awaiting its first catch-up. Disposal cancels the operation at
     ///     this checkpoint even when the watch is not requested; a recovery drops it quietly.
     /// </summary>
     Task RestartRequestedWatchAsync(DriveRuntime runtime, RecoveryTicket? recovery)
     {
-        BeforeRestartDecisionForTest?.Invoke(runtime.DriveLetter);
+        BeforeRestartDecisionForTest?.Invoke(runtime.Drive);
         bool requested;
         lock (_stateLock)
         {
@@ -158,7 +158,7 @@ public sealed partial class FileIndex
             return Task.CompletedTask;
         }
 
-        RestartRequestedForTest?.Invoke(runtime.DriveLetter);
+        RestartRequestedForTest?.Invoke(runtime.Drive);
         return StartWatchingCoreAsync(runtime, gateHeld: true, recovery, CancellationToken.None);
     }
 
@@ -166,14 +166,14 @@ public sealed partial class FileIndex
     ///     A test seam: invoked with the drive letter once a rescan's or a recovery's restart has
     ///     read that the watch is still requested, before the start re-reads it.
     /// </summary>
-    internal Action<char>? RestartRequestedForTest { get; set; }
+    internal Action<DriveKey>? RestartRequestedForTest { get; set; }
 
     /// <summary>
     ///     A test seam: invoked with the drive letter once a rescan or a recovery has finished its
     ///     scans, before its restart reads whether the index is being disposed and whether the
     ///     watch is still requested.
     /// </summary>
-    internal Action<char>? BeforeRestartDecisionForTest { get; set; }
+    internal Action<DriveKey>? BeforeRestartDecisionForTest { get; set; }
 
     /// <summary>
     ///     Retains a failed rescan restart as a faulted instance, so stop takes its outstanding
@@ -183,9 +183,9 @@ public sealed partial class FileIndex
     bool RecordRescanRestartFailure(DriveRuntime runtime, WatchInstance instance, Exception startFailure)
     {
         var failure = new InvalidOperationException(
-            $"A rescan replaced drive {runtime.DriveLetter}'s block and the watch could not be started on it.",
+            $"A rescan replaced drive {runtime.Drive}'s block and the watch could not be started on it.",
             startFailure);
-        var fault = new WatchFault(WatchFaultKind.RescanRestart, runtime.DriveLetter, failure);
+        var fault = new WatchFault(WatchFaultKind.RescanRestart, runtime.Drive, failure);
         lock (_stateLock)
         {
             if (_disposed || !ReferenceEquals(runtime.Current, instance))

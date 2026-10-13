@@ -16,7 +16,7 @@ public sealed partial class FileIndex
     ///     disposal cancels, by a queued recovery before it waits for the drive's lifecycle gate, so
     ///     a test can hold a recovery that has not started yet.
     /// </summary>
-    internal Func<char, CancellationToken, Task>? RecoveryBeforeLifecycleGateForTest { get; set; }
+    internal Func<DriveKey, CancellationToken, Task>? RecoveryBeforeLifecycleGateForTest { get; set; }
 
     /// <summary>
     ///     A test seam: when set, a recovery calls it as <c>wrapper(complete)</c> around exactly the
@@ -121,7 +121,7 @@ public sealed partial class FileIndex
         {
             if (RecoveryBeforeLifecycleGateForTest is { } beforeGate)
             {
-                await beforeGate(runtime.DriveLetter, ticket.Cancellation.Token).ConfigureAwait(false);
+                await beforeGate(runtime.Drive, ticket.Cancellation.Token).ConfigureAwait(false);
             }
 
             await runtime.LifecycleGate.WaitAsync(ticket.Cancellation.Token).ConfigureAwait(false);
@@ -162,7 +162,7 @@ public sealed partial class FileIndex
             return !_disposed && runtime.WatchRequested && ReferenceEquals(runtime.Recovery, ticket) &&
                    ReferenceEquals(runtime.Current, ticket.FailedInstance) &&
                    ticket.FailedInstance.State == WatchInstanceState.Faulted &&
-                   ReferenceEquals(FindWatchableDriveBlockLocked(runtime.DriveLetter), ticket.FailedBlock);
+                   ReferenceEquals(FindWatchableDriveBlockLocked(runtime.Drive), ticket.FailedBlock);
         }
     }
 
@@ -177,7 +177,7 @@ public sealed partial class FileIndex
     {
         try
         {
-            await RescanWithGateHeldAsync(runtime, _driveConfigurations[runtime.DriveLetter], ticket,
+            await RescanWithGateHeldAsync(runtime, _driveConfigurations[runtime.Drive], ticket,
                 ticket.Cancellation.Token).ConfigureAwait(false);
             return null;
         }
@@ -215,7 +215,7 @@ public sealed partial class FileIndex
                     runtime.RecoveryState = RecoveryState.None;
                 }
 
-                reported = failure is null ? null : new WatchFault(WatchFaultKind.Recovery, runtime.DriveLetter, failure);
+                reported = failure is null ? null : new WatchFault(WatchFaultKind.Recovery, runtime.Drive, failure);
                 NoteWatchStateLocked(runtime, reported);
             }
         }

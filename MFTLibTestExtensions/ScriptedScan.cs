@@ -1,4 +1,5 @@
 using MFTLib;
+using MFTLib.Index;
 
 namespace MFTLibTestExtensions;
 
@@ -8,10 +9,10 @@ public sealed class ScriptedScan
     readonly IBrokerOperationReporter _operation;
     readonly IProgress<BlockWriteProgress>? _progress;
 
-    internal ScriptedScan(string driveLetter, ParseThreadAllowance parseThreads, IBrokerOperationReporter operation,
+    internal ScriptedScan(DriveKey driveLetter, ParseThreadAllowance parseThreads, IBrokerOperationReporter operation,
         IProgress<BlockWriteProgress>? progress, CancellationToken cancellationToken)
     {
-        DriveLetter = driveLetter;
+        Drive = driveLetter.Validated();
         ParseThreads = parseThreads;
         CancellationToken = cancellationToken;
         _operation = operation;
@@ -19,7 +20,7 @@ public sealed class ScriptedScan
     }
 
     /// <summary>The drive the client asked to scan, as the host names it.</summary>
-    public string DriveLetter { get; }
+    public DriveKey Drive { get; }
 
     /// <summary>The scan's share of the host's parse threads.</summary>
     internal ParseThreadAllowance ParseThreads { get; }

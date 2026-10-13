@@ -19,6 +19,6 @@ public static class SyntheticIndexSource
     static Task<MftBlockProduceResult> RefuseScan(MftBlockProduceRequest request, CancellationToken cancellationToken)
     {
         return Task.FromException<MftBlockProduceResult>(
-            new InvalidOperationException($"Drive {request.DriveLetter}: no synthetic producer was supplied."));
+            new InvalidOperationException($"Drive {request.Drive}: no synthetic producer was supplied."));
     }
 }

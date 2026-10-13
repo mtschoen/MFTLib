@@ -31,16 +31,16 @@ public sealed record FileIndexOptions
     ///     or incompatible) is reported as <see cref="DriveState.Failed" /> with
     ///     <see cref="DriveFailureKind.CacheDeclined" />, <see cref="DriveFailureKind.CacheTagMismatch" />
     ///     (or <see cref="DriveFailureKind.InUse" /> when the cache block's owner lock cannot be acquired)
-    ///     instead of falling back to a scan, and <see cref="FileIndex.RescanAsync(char, CancellationToken)" />
+    ///     instead of falling back to a scan, and <see cref="FileIndex.RescanAsync" />
     ///     remains available to scan it later.
     ///     A cache block whose journal checkpoint the journal no longer holds is different: this
     ///     open never watches, and the block is still a correct snapshot as of its age, so it is
     ///     adopted instead of declined, with <see cref="DriveWatchStatus.CheckpointLoss" /> set to say
     ///     why the checkpoint could not be resumed. A later
-    ///     <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" /> for such a drive throws
+    ///     <see cref="FileIndex.StartWatchingAsync" /> for such a drive returns a failed result carrying
     ///     <see cref="InvalidOperationException" /> (see <see cref="DriveWatchStatus.FailureMessage" />) and retains
     ///     the watch request (<see cref="DriveWatchStatus.Requested" />) until a stop withdraws it or a successful
-    ///     <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> gives the drive a fresh cursor and starts the watch.
+    ///     <see cref="FileIndex.RescanAsync" /> gives the drive a fresh cursor and starts the watch.
     /// </summary>
     public bool InitialOpenCacheOnly { get; init; }
 
@@ -84,8 +84,8 @@ public sealed record FileIndexOptions
     ///     settle order, so keep the report with the largest count rather than the last one
     ///     received. A declined or failed drive still counts toward the total and still reports.
     ///     Null (the default) reports and allocates nothing. Only the initial open reports;
-    ///     <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> stays silent, because its caller already awaits
-    ///     the one drive it rescans. Unlike <see cref="Progress" />, which samples only while a
+    ///     <see cref="FileIndex.RescanAsync" /> stays silent, because its caller already awaits
+    ///     the requested drives' results. Unlike <see cref="Progress" />, which samples only while a
     ///     producer runs, this fires on warm starts too. Marshalling belongs to the
     ///     <see cref="IProgress{T}" /> implementation, the same convention <see cref="Progress" />
     ///     uses.

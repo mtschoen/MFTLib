@@ -35,14 +35,15 @@ partial class SampleHost
 
             foreach (var (_, index, _) in watched)
             {
-                operations.AddRange(Report("start", await index.StartWatchingAsync(cancellationToken).ConfigureAwait(false)));
-                operations.AddRange(Report("catch-up", await index.WaitForCatchUpAsync(cancellationToken).ConfigureAwait(false)));
+                var keys = index.Drives.Select(drive => drive.Drive).ToArray();
+                operations.AddRange(Report("start", await index.StartWatchingAsync(keys, cancellationToken).ConfigureAwait(false)));
+                operations.AddRange(Report("catch-up", await index.WaitForCatchUpAsync(keys, cancellationToken).ConfigureAwait(false)));
             }
 
             var waited = await WaitWhileWatchingAsync(parsed, watched.Select(entry => entry.Letter), cancellationToken).ConfigureAwait(false);
             foreach (var (letter, index, counter) in watched)
             {
-                operations.AddRange(Report("stop", await index.StopWatchingAsync(cancellationToken).ConfigureAwait(false)));
+                operations.AddRange(Report("stop", await index.StopWatchingAsync(index.Drives.Select(drive => drive.Drive), cancellationToken).ConfigureAwait(false)));
                 var rows = index.Enumerate(new SearchQuery(null), cancellationToken).Count();
                 _writeLine($"=== Drive {letter}: ===");
                 _writeLine($"Saw {counter.Count} changes {waited}; the index now holds {rows} entries");
@@ -95,8 +96,8 @@ partial class SampleHost
     DriveChangeCounter ReportChanges(FileIndex index)
     {
         var counter = new DriveChangeCounter();
-        index.WatchStateChanged += state => _writeLine($"  watch {state.DriveLetter}: {state.Watch.State} (version {state.Watch.StateVersion}){(state.Fault is { } fault ? $", fault {fault.Kind}" : string.Empty)}");
-        index.WatchFaulted += fault => _writeLine($"  watch fault {fault.DriveLetter}: {fault.Kind}: {fault.Exception.Message}{(fault.Exception is JournalCatchUpLostException lost ? $" (recovery stopped: {lost.RecoveryStopped})" : string.Empty)}");
+        index.WatchStateChanged += state => _writeLine($"  watch {state.Drive}: {state.Watch.State} (version {state.Watch.StateVersion}){(state.Fault is { } fault ? $", fault {fault.Kind}" : string.Empty)}");
+        index.WatchFaulted += fault => _writeLine($"  watch fault {fault.Drive}: {fault.Kind}: {fault.Exception.Message}{(fault.Exception is JournalCatchUpLostException lost ? $" (recovery stopped: {lost.RecoveryStopped})" : string.Empty)}");
         index.Changed += change =>
         {
             counter.Add();

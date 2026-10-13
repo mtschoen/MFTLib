@@ -68,7 +68,7 @@ internal sealed class LocalMftBlockProducer
         CancellationToken cancellationToken)
     {
         var options = _scanOptions ?? new MftScanOptions();
-        var drive = request.DriveLetter.ToString();
+        var drive = request.Drive.ToString();
         BlockFile? block = BlockFile.Create(MftBlockCapacity.CreateOptions(
             _seams.QueryVolumeInformation(drive), request.BlockPath, request.VolumeSerial, request.DeleteOnClose,
             request.CacheTag));
@@ -107,7 +107,7 @@ internal sealed class LocalMftBlockProducer
         var stopwatch = Stopwatch.StartNew();
         return new DirectProgress<BlockWriteProgress>(value => destination.Report(new BrokerScanProgress
         {
-            DriveLetter = request.DriveLetter.ToString(),
+            Drive = request.Drive.ToString(),
             Phase = value.Phase,
             RecordsProcessed = value.RecordsProcessed,
             BytesProcessed = value.BytesProcessed,

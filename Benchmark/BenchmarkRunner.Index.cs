@@ -99,7 +99,7 @@ public partial class BenchmarkRunner
         }
 
         var exitCode = 0;
-        foreach (var candidate in cached.OrderBy(candidate => candidate.File.DriveLetter))
+        foreach (var candidate in cached.OrderBy(candidate => candidate.File.Drive.Letter))
         {
             if (candidate.Availability != CachedBlockAvailability.Available || candidate.RootDirectory is null ||
                 candidate.CacheTag is not { } cacheTag)
@@ -114,14 +114,14 @@ public partial class BenchmarkRunner
                 CacheDirectory = directory,
                 InitialOpenCacheOnly = true,
                 CacheTag = cacheTag,
-                Drives = [new IndexedDrive(candidate.File.DriveLetter, candidate.RootDirectory, candidate.File.VolumeSerial,
+                Drives = [new IndexedDrive(candidate.File.Drive, candidate.RootDirectory, candidate.File.VolumeSerial,
                     candidate.ProducerKind == ProducerKind.Enumeration ? ProducerPolicy.Enumeration : ProducerPolicy.Mft)]
             }, CancellationToken.None);
             using var borrow = index.BorrowCurrentSnapshot();
-            var drive = borrow.Snapshot.FindDriveBlock(candidate.File.DriveLetter);
+            var drive = borrow.Snapshot.FindDriveBlock(candidate.File.Drive);
             if (drive is null)
             {
-                _writeLineToConsole($"Error: Drive {candidate.File.DriveLetter}: {index.Drives[0].State}.");
+                _writeLineToConsole($"Error: Drive {candidate.File.Drive}: {index.Drives[0].State}.");
                 exitCode = 1;
                 continue;
             }
@@ -135,7 +135,7 @@ public partial class BenchmarkRunner
     {
         var header = drive.Block.Header;
         var bytes = drive.Block.Length;
-        _writeLineToConsole($"Drive: {drive.DriveLetter}");
+        _writeLineToConsole($"Drive: {drive.Drive}");
         _writeLineToConsole($"  Rows: {header.RowCount}");
         _writeLineToConsole($"  Slot capacity: {header.SlotCapacity}");
         _writeLineToConsole($"  File bytes: {bytes}");

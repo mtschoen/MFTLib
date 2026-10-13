@@ -12,7 +12,7 @@ public class SnapshotTests
     static DriveBlock OpenDriveBlock(SyntheticBlockBuilder builder, ushort ordinal)
     {
         var block = builder.OpenForReading(out _)!;
-        return new DriveBlock(builder.DriveLetter, ordinal, block);
+        return new DriveBlock(builder.Drive, ordinal, block);
     }
 
     static SyntheticBlockBuilder CompletedBuilder(char driveLetter)

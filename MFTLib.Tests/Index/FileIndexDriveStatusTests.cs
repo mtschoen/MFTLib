@@ -60,13 +60,13 @@ public class FileIndexDriveStatusTests
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
         Assert.AreEqual(2, index.Drives.Count);
-        Assert.AreEqual('Z', index.Drives[0].DriveLetter);
+        Assert.AreEqual('Z', index.Drives[0].Drive);
         Assert.AreEqual(DriveState.Offline, index.Drives[0].State);
         Assert.IsNull(index.Drives[0].Block);
         Assert.AreEqual(WatchState.NotStarted, index.Drives[0].Watch.State);
         Assert.IsFalse(index.Drives[0].Watch.Supported);
         Assert.IsNull(index.Drives[0].Failure);
-        Assert.AreEqual('T', index.Drives[1].DriveLetter);
+        Assert.AreEqual('T', index.Drives[1].Drive);
         Assert.AreEqual(DriveState.Ready, index.Drives[1].State);
     }
 
@@ -105,8 +105,8 @@ public class FileIndexDriveStatusTests
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
-        var exception = await Assert.ThrowsExceptionAsync<ArgumentException>(
-            () => index.RescanAsync('Z', CancellationToken.None));
+        var exception = await DriveResultAssertions.FailureAsync<ArgumentException>(
+            () => index.RescanAsync(['Z'], CancellationToken.None));
         StringAssert.Contains(exception.Message, "has no block");
     }
 
@@ -160,7 +160,7 @@ public class FileIndexDriveStatusTests
 
         Directory.CreateDirectory(vanishingPath);
         await File.WriteAllTextAsync(Path.Combine(vanishingPath, "inner.txt"), "gone soon");
-        await index.RescanAsync('T', CancellationToken.None);
+        await index.RescanAsync(['T'], CancellationToken.None);
 
         Assert.AreEqual(1, index.Drives[0].Block!.AccessDeniedSubtreeCount);
         Assert.AreEqual(0, index.Drives[0].Block!.SkippedRecordCount);
@@ -178,12 +178,12 @@ public class FileIndexDriveStatusTests
         var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
         try
         {
-            var before = index.Drives.Select(drive => drive.DriveLetter).ToArray();
+            var before = index.Drives.Select(drive => drive.Drive).ToArray();
 
             configured.Add(new IndexedDrive('U', _treeRoot, 0x0BADF00E));
 
-            CollectionAssert.AreEqual(before, index.Drives.Select(drive => drive.DriveLetter).ToArray());
-            CollectionAssert.AreEqual(new[] { 'T' }, before);
+            CollectionAssert.AreEqual(before, index.Drives.Select(drive => drive.Drive).ToArray());
+            CollectionAssert.AreEqual(new DriveKey[] { 'T' }, before);
         }
         finally
         {
@@ -238,7 +238,7 @@ public class FileIndexDriveStatusTests
 
             Assert.AreEqual(1, configured.EnumerationCount);
             CollectionAssert.AreEqual(new[] { 'Z', 'T' },
-                statuses.Select(drive => drive.DriveLetter).ToArray());
+                statuses.Select(drive => drive.Drive.Letter).ToArray());
             Assert.AreEqual(DriveState.Offline, statuses[0].State);
             Assert.AreEqual(DriveState.Ready, statuses[1].State);
         }

@@ -40,7 +40,7 @@ public abstract class BrokerBlockTestBase
 
     internal static MftBlockProduceRequest Request(BlockScanTarget target) => new()
     {
-        DriveLetter = 'C',
+        Drive = 'C',
         VolumeSerial = target.VolumeSerial,
         BlockPath = target.Path,
         DeleteOnClose = true

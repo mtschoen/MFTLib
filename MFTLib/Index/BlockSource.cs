@@ -17,7 +17,7 @@ public enum BlockSource
     /// <summary>
     ///     This index produced the block: a first-ever cold scan during <c>OpenAsync</c>, a cold
     ///     scan after an existing block was rejected,
-    ///     or a successful <see cref="FileIndex.RescanAsync(char, CancellationToken)" />.
+    ///     or a successful <see cref="FileIndex.RescanAsync" />.
     /// </summary>
     ProducedByScan
 }

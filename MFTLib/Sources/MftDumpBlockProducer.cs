@@ -109,7 +109,7 @@ internal sealed class MftDumpBlockProducer
     {
         return request.Progress is { } progress
             ? new DirectProgress<MftScanProgress>(sample => progress.Report(
-                new IndexScanProgress(request.DriveLetter, IndexScanPhase.ParsingMft, ClampRows(sample.RecordsScanned))
+                new IndexScanProgress(request.Drive, IndexScanPhase.ParsingMft, ClampRows(sample.RecordsScanned))
                 {
                     TotalRows = ClampRows(sample.TotalRecords)
                 }))
@@ -120,7 +120,7 @@ internal sealed class MftDumpBlockProducer
     {
         return request.Progress is { } progress
             ? new DirectProgress<BlockWriteProgress>(sample => progress.Report(
-                new IndexScanProgress(request.DriveLetter, IndexScanPhase.Transferring,
+                new IndexScanProgress(request.Drive, IndexScanPhase.Transferring,
                     ClampRows(sample.RecordsProcessed))))
             : null;
     }

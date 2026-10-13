@@ -42,13 +42,13 @@ public class FileIndexWatchRescanCacheTests
             }, token);
             try
             {
-                await index.StartWatchingAsync('T', token);
+                await index.StartWatchingAsync(['T'], token);
                 var original = index.Root('T').DriveBlock;
                 var handle = source.WatchFor('T');
-                var catchUp = index.WaitForCatchUpAsync('T', token);
+                var catchUp = index.WaitForCatchUpAsync(['T'], token);
                 using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
                 rescanRequested.SetResult();
-                var rescan = index.RescanAsync('T', cancellation.Token);
+                var rescan = index.RescanAsync(['T'], cancellation.Token);
                 await production.Entered.WaitAsync(ScriptedWatchSource.HangGuard);
                 Assert.AreEqual(0, handle.DisposeCount);
                 Assert.AreEqual(1, Directory.GetFiles(directory.FullName, "*.retired-*").Length);
@@ -61,7 +61,7 @@ public class FileIndexWatchRescanCacheTests
                 else
                 {
                     production.Release();
-                    await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() => rescan);
+                    await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => rescan);
                 }
 
                 Assert.AreSame(original, index.Root('T').DriveBlock);
@@ -75,7 +75,7 @@ public class FileIndexWatchRescanCacheTests
                 Assert.AreEqual(700L, restored.Header.UsnNextUsn);
                 await handle.Publish(new DriveCaughtUp());
                 await catchUp.WaitAsync(ScriptedWatchSource.HangGuard);
-                await index.StopWatchingAsync('T', token);
+                await index.StopWatchingAsync(['T'], token);
             }
             finally
             {

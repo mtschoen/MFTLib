@@ -96,7 +96,7 @@ public class ConsumerJournalIsolationTests
         var windows = new ConcurrentDictionary<char, SyntheticJournalWindow>();
         windows['T'] = Healthy;
         using var scope = JournalIsolation.OverrideJournalWindow(
-            drive => windows.TryGetValue(drive, out var window) ? window : null);
+            drive => windows.TryGetValue((drive).Letter, out var window) ? window : null);
         await SeedAsync();
         windows['T'] = Lost(recreated);
         var source = new ScriptedWatchSource();
@@ -116,8 +116,8 @@ public class ConsumerJournalIsolationTests
 
         if (cacheOnly)
         {
-            var refusal = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-                () => index.StartWatchingAsync('T', Token));
+            var refusal = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+                () => index.StartWatchingAsync(['T'], Token));
             StringAssert.Contains(refusal.Message, "RescanAsync");
             Assert.AreEqual(0, source.Starts.Count);
             status = index.Drives.Single();
@@ -139,11 +139,11 @@ public class ConsumerJournalIsolationTests
         Assert.AreEqual(1, _productions);
         Assert.AreEqual(BlockSource.WarmStartedFromCache, index.Drives.Single().Block!.Source);
         Assert.IsNull(index.Drives.Single().Watch.CheckpointLoss);
-        await index.StartWatchingAsync('T', Token);
-        Assert.AreEqual('T', source.Starts.Single().DriveLetter);
+        await index.StartWatchingAsync(['T'], Token);
+        Assert.AreEqual('T', source.Starts.Single().Drive);
         Assert.AreEqual(WatchState.CatchingUp, index.Drives.Single().Watch.State);
         Assert.IsNull(index.Drives.Single().Watch.FailureMessage);
-        await index.StopWatchingAsync('T', Token);
+        await index.StopWatchingAsync(['T'], Token);
     }
 
     [DataTestMethod]
@@ -155,14 +155,14 @@ public class ConsumerJournalIsolationTests
         var windows = new ConcurrentDictionary<char, SyntheticJournalWindow>();
         windows['T'] = Healthy;
         using var scope = JournalIsolation.OverrideJournalWindow(
-            drive => windows.TryGetValue(drive, out var window) ? window : null);
+            drive => windows.TryGetValue((drive).Letter, out var window) ? window : null);
         await SeedAsync();
         var source = new ScriptedWatchSource();
         await using var index = await FileIndex.OpenAsync(Options(false, source), Token);
         index.HoldEveryRecovery();
         var announced = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         index.WatchFaulted += _ => announced.TrySetResult();
-        await index.StartWatchingAsync('T', Token);
+        await index.StartWatchingAsync(['T'], Token);
         var handle = source.WatchFor('T');
         await handle.Publish(new JournalBatch([], JournalIdentifier: 7, NextUsn: 2_000));
         windows['T'] = observation switch
@@ -190,7 +190,7 @@ public class ConsumerJournalIsolationTests
             Assert.AreEqual(observation == 1 ? JournalCheckpointLossCause.CheckpointTrimmed
                 : JournalCheckpointLossCause.JournalRecreated, status.Watch.CheckpointLoss.Cause);
         }
-        await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(() => index.StopWatchingAsync('T', Token));
+        await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => index.StopWatchingAsync(['T'], Token));
     }
 
     [TestMethod]

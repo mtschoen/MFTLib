@@ -55,7 +55,7 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
         Assert.AreEqual("C", sent.Drive);
         Assert.AreEqual(0x08000000L, sent.JournalMaximumSize);
         Assert.AreEqual(0x01000000L, sent.JournalAllocationDelta);
-        Assert.IsNull(exception.DriveLetter);
+        Assert.IsNull(exception.Drive);
         Assert.IsFalse(string.IsNullOrEmpty(exception.Message));
     }
 

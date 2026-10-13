@@ -12,7 +12,7 @@ partial class SampleHost
     {
         foreach (var result in results)
         {
-            _writeLine($"  {operation} {result.DriveLetter}: {result.Outcome}{(result.Failure is { } failure ? $" ({failure.Message})" : string.Empty)}");
+            _writeLine($"  {operation} {result.Drive.ToString()}: {result.Outcome}{(result.Failure is { } failure ? $" ({failure.Message})" : string.Empty)}");
         }
     }
 
@@ -21,11 +21,11 @@ partial class SampleHost
     {
         WriteStatus(status);
         var block = RequireReadyBlock(status);
-        _writeLine($"Cache {status.DriveLetter}: block {block.Source}, slot {block.CacheSlot}, scanned {block.ScanTimestamp:u}, compaction needed {block.CompactionNeeded}");
+        _writeLine($"Cache {status.Drive}: block {block.Source}, slot {block.CacheSlot}, scanned {block.ScanTimestamp:u}, compaction needed {block.CompactionNeeded}");
         _writeLine($"Watch: {status.Watch.State} v{status.Watch.StateVersion}, requested {status.Watch.Requested}; recovery stopped {status.Watch.RecoveryStopped}; denied subtrees {block.AccessDeniedSubtreeCount}{(status.Watch.FailureMessage is { } failure ? $"; {failure}" : string.Empty)}");
         if (status.Watch.CheckpointLoss is { } loss)
         {
-            _writeLine($"Checkpoint lost on {loss.DriveLetter}: {loss.Cause} during {loss.DetectedDuring}; {loss.BytesBehind} bytes behind, journal {loss.JournalSettings.MaximumSize}/{loss.JournalSettings.AllocationDelta}, {loss.SizeThatWouldHaveRetained} would have kept it");
+            _writeLine($"Checkpoint lost on {loss.Drive}: {loss.Cause} during {loss.DetectedDuring}; {loss.BytesBehind} bytes behind, journal {loss.JournalSettings.MaximumSize}/{loss.JournalSettings.AllocationDelta}, {loss.SizeThatWouldHaveRetained} would have kept it");
         }
     }
 
@@ -44,7 +44,7 @@ partial class SampleHost
     int RunCache(WatchArguments parsed)
     {
         var root = ResolveCacheDirectory(parsed);
-        var letters = parsed.Drives.Count == 0 ? null : parsed.Drives.Select(drive => char.ToUpperInvariant(drive[0])).ToHashSet();
+        var letters = parsed.Drives.Count == 0 ? null : parsed.Drives.Select(drive => new DriveKey(drive[0])).ToArray();
         IEnumerable<string> policies = Directory.Exists(root)
             ? Directory.EnumerateDirectories(root, WatchArguments.PolicyDirectoryPrefix + "*").Order(StringComparer.Ordinal)
             : [];
@@ -53,14 +53,14 @@ partial class SampleHost
             var origin = directory == root ? "root" : Path.GetFileName(directory);
             foreach (var block in CacheDirectory.InspectCached(directory, letters, rejection => _writeLine($"  rejected {rejection.Path}: {rejection.Reason}")))
             {
-                _writeLine($"{block.File.DriveLetter}: {block.File.Path} (serial {block.File.VolumeSerial}, root {block.RootDirectory}), {block.Availability}, {block.File.SizeBytes} bytes, validation {block.Validation}, {block.ProducerKind}, tag {block.CacheTag}, written {block.File.LastWriteTime:u}, policy {origin}");
+                _writeLine($"{block.File.Drive}: {block.File.Path} (serial {block.File.VolumeSerial}, root {block.RootDirectory}), {block.Availability}, {block.File.SizeBytes} bytes, validation {block.Validation}, {block.ProducerKind}, tag {block.CacheTag}, written {block.File.LastWriteTime:u}, policy {origin}");
             }
 
             if (parsed.Clear)
             {
                 foreach (var result in CacheDirectory.DeleteCached(directory, letters, _writeLine))
                 {
-                    _writeLine($"  {result.File.DriveLetter}: {result.Outcome}{(result.FailureReason is { } reason ? $" ({reason})" : string.Empty)}");
+                    _writeLine($"  {result.File.Drive}: {result.Outcome}{(result.FailureReason is { } reason ? $" ({reason})" : string.Empty)}");
                 }
             }
         }

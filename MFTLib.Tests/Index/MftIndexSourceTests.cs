@@ -63,7 +63,7 @@ public class MftIndexSourceTests
     /// <summary>Writes the drive's cache block while the journal still holds its checkpoint.</summary>
     async Task SeedCacheAsync()
     {
-        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = HealthyWindow });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(Options(new MftIndexSource(ProduceMftShapedBlock)), Token);
         Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().Block!.Source);
     }
@@ -105,7 +105,7 @@ public class MftIndexSourceTests
         var source = MftIndexSource.Unavailable(Reason);
 
         var thrown = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => source.Producer(new MftBlockProduceRequest { DriveLetter = 'T', VolumeSerial = 1, BlockPath = "unused" },
+            () => source.Producer(new MftBlockProduceRequest { Drive = 'T', VolumeSerial = 1, BlockPath = "unused" },
                 Token));
 
         Assert.AreEqual("Drive T: the broker is not running.", thrown.Message);
@@ -124,31 +124,31 @@ public class MftIndexSourceTests
     }
 
     [TestMethod]
-    public async Task Unavailable_StillOpensTheCachedBlockButRefusesToWatchWithTheReason()
+    public async Task Unavailable_StillOpensTheCachedBlockAndReportsWatchingNotApplicable()
     {
         await SeedCacheAsync();
-        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = HealthyWindow });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(Options(MftIndexSource.Unavailable(Reason)), Token);
 
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
-        var refusal = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => index.StartWatchingAsync('T', Token));
-        Assert.AreEqual("Drive T: the broker is not running.", refusal.Message);
+        await DriveResultAssertions.NotApplicableAsync(
+            () => index.StartWatchingAsync(['T'], Token));
+        Assert.IsFalse(index.Drives.Single().Watch.Requested);
     }
 
     [TestMethod]
-    public async Task SourceWithoutWatchSource_RefusesToWatchWithTheNoWatchingMessage()
+    public async Task SourceWithoutWatchSource_ReportsWatchingNotApplicable()
     {
         await SeedCacheAsync();
-        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = HealthyWindow });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(Options(new MftIndexSource(ProduceMftShapedBlock)), Token);
 
-        var refusal = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => index.StartWatchingAsync('T', Token));
+        await DriveResultAssertions.NotApplicableAsync(
+            () => index.StartWatchingAsync(['T'], Token));
 
-        Assert.AreEqual("Drive T: this source does not support watching.", refusal.Message);
+        Assert.IsFalse(index.Drives.Single().Watch.Requested);
     }
 
     [TestMethod]
@@ -156,14 +156,14 @@ public class MftIndexSourceTests
     {
         await SeedCacheAsync();
         var watchSource = new ScriptedWatchSource();
-        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = HealthyWindow });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(new MftIndexSource(ProduceMftShapedBlock, watchSource)), Token);
 
-        await index.StartWatchingAsync('T', Token);
+        await index.StartWatchingAsync(['T'], Token);
 
         Assert.AreEqual(1, watchSource.Starts.Count);
-        Assert.AreEqual('T', watchSource.Starts[0].DriveLetter);
+        Assert.AreEqual('T', watchSource.Starts[0].Drive);
     }
 
     [TestMethod]

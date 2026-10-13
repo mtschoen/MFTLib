@@ -78,7 +78,7 @@ public class FileIndexCacheTagTests
     {
         using var block = Build(new MftBlockProduceRequest
         {
-            DriveLetter = 'T',
+            Drive = 'T',
             VolumeSerial = 123,
             BlockPath = BlockPath,
             CacheTag = tag
@@ -101,7 +101,7 @@ public class FileIndexCacheTagTests
         {
             Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
             Assert.AreEqual(OriginalTag, index.CurrentSnapshot.DriveBlocks.Single().Block.Header.CacheTag);
-            await index.RescanAsync('T', CancellationToken.None);
+            await index.RescanAsync(['T'], CancellationToken.None);
             Assert.AreEqual(OriginalTag, index.CurrentSnapshot.DriveBlocks.Single().Block.Header.CacheTag);
         }
         if (noCache)
@@ -188,7 +188,7 @@ public class FileIndexCacheTagTests
                 Assert.AreEqual(DriveFailureKind.CacheTagMismatch, status.Failure?.Kind);
                 Assert.IsNull(status.Block!);
                 Assert.IsFalse(File.Exists(BlockPath));
-                await index.RescanAsync('T', CancellationToken.None);
+                await index.RescanAsync(['T'], CancellationToken.None);
                 Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
                 Assert.IsNull(index.Drives.Single().Failure);
             }

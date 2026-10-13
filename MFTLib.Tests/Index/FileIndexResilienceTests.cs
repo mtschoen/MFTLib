@@ -180,7 +180,7 @@ public partial class FileIndexResilienceTests
 
         public void Report(IndexDriveOpened value)
         {
-            if (value.DriveLetter == driveLetter)
+            if (value.Drive == driveLetter)
             {
                 _reported.TrySetResult();
             }
@@ -200,7 +200,7 @@ public partial class FileIndexResilienceTests
 
         public void Report(IndexScanProgress value)
         {
-            if (char.ToUpperInvariant(value.DriveLetter) != driveLetter)
+            if (char.ToUpperInvariant((value.Drive).Letter) != driveLetter)
             {
                 return;
             }
@@ -237,7 +237,7 @@ public partial class FileIndexResilienceTests
         await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
         progress.Armed = true;
 
-        await AssertThrowsCancellation(() => index.RescanAsync('T', cancellationTokenSource.Token));
+        await AssertThrowsCancellation(() => index.RescanAsync(['T'], cancellationTokenSource.Token));
 
         Assert.AreEqual(rowsBefore, index.HeaderOf().RowCount);
         Assert.AreEqual(timestampBefore, index.Drives[0].Block!.ScanTimestamp);
@@ -260,7 +260,7 @@ public partial class FileIndexResilienceTests
             await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
             progress.Armed = true;
 
-            await AssertThrowsCancellation(() => index.RescanAsync('T', cancellationTokenSource.Token));
+            await AssertThrowsCancellation(() => index.RescanAsync(['T'], cancellationTokenSource.Token));
 
             var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
             Assert.IsTrue(File.Exists(blockPath), "the canonical file must be restored, not left renamed aside");
@@ -300,7 +300,7 @@ public partial class FileIndexResilienceTests
             Assert.IsTrue(File.Exists(firstPath));
 
             await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
-            await index.RescanAsync('T', CancellationToken.None);
+            await index.RescanAsync(['T'], CancellationToken.None);
             secondPath = GetCurrentBlockPath(index, driveOrdinal);
 
             Assert.AreNotEqual(firstPath, secondPath);
@@ -327,7 +327,7 @@ public partial class FileIndexResilienceTests
             Assert.IsTrue(File.Exists(firstPath));
 
             await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
-            await index.RescanAsync('T', CancellationToken.None);
+            await index.RescanAsync(['T'], CancellationToken.None);
             Assert.AreNotEqual(firstPath, GetCurrentBlockPath(index, driveOrdinal));
 
             GC.Collect();
@@ -351,7 +351,7 @@ public partial class FileIndexResilienceTests
         var canonicalPath = oldSnapshot.GetDriveBlock(driveOrdinal).Block.Path;
 
         await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
-        await index.RescanAsync('T', CancellationToken.None);
+        await index.RescanAsync(['T'], CancellationToken.None);
 
         var newPath = index.CurrentSnapshot.GetDriveBlock(driveOrdinal).Block.Path;
         Assert.AreEqual(canonicalPath, newPath, "the new block takes the same canonical cache path");
@@ -374,11 +374,11 @@ public partial class FileIndexResilienceTests
         var firstSnapshot = index.CurrentSnapshot;
 
         await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
-        await index.RescanAsync('T', CancellationToken.None);
+        await index.RescanAsync(['T'], CancellationToken.None);
         var secondSnapshot = index.CurrentSnapshot;
 
         await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "third.md"), "third");
-        await index.RescanAsync('T', CancellationToken.None);
+        await index.RescanAsync(['T'], CancellationToken.None);
 
         var retiredPaths = Directory
             .EnumerateFiles(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*")
@@ -434,7 +434,7 @@ public partial class FileIndexResilienceTests
         File.Delete(canonicalPath);
 
         await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
-        await index.RescanAsync('T', CancellationToken.None);
+        await index.RescanAsync(['T'], CancellationToken.None);
 
         Assert.IsTrue(File.Exists(canonicalPath));
         Assert.AreEqual(0, Directory.EnumerateFiles(_cacheDirectory,

@@ -37,7 +37,7 @@ public sealed partial class FileIndex
     ///         Inside any <see cref="Changed" />, <see cref="WatchFaulted" /> or
     ///         <see cref="WatchStateChanged" /> handler of this index,
     ///         whichever drive it concerns, <c>StartWatchingAsync</c>, <c>StopWatchingAsync</c>,
-    ///         <c>RescanAsync</c>, <c>DisposeAsync</c>, their batched forms and a
+    ///         <c>RescanAsync</c>, <c>DisposeAsync</c> and a
     ///         <c>WaitForCatchUpAsync</c> that has not yet settled fail at once with
     ///         <see cref="InvalidOperationException" />, because each can wait for a pump that is itself
     ///         blocked in a handler. The rejection also covers work the handler starts and that runs
@@ -53,14 +53,14 @@ public sealed partial class FileIndex
     ///     drive's write gate is taken, so a test can hold a pump in the middle of applying a batch
     ///     it has already read.
     /// </summary>
-    internal Action<char>? ApplyJournalEntriesEnteredForTest { get; set; }
+    internal Action<DriveKey>? ApplyJournalEntriesEnteredForTest { get; set; }
 
     /// <summary>
     ///     A test seam: invoked with the drive letter while an apply holds its drive's write gate,
     ///     after the batch passed its instance check and read the current snapshot, and before the
     ///     block is mutated.
     /// </summary>
-    internal Action<char>? ApplyJournalEntriesInsideWriteGateForTest { get; set; }
+    internal Action<DriveKey>? ApplyJournalEntriesInsideWriteGateForTest { get; set; }
 
     /// <summary>
     ///     Applies one journal batch to a drive's block in place and raises
@@ -83,7 +83,7 @@ public sealed partial class FileIndex
     ///     <see cref="Changed" /> is raised, so a subscriber's handler never runs while a commit
     ///     is blocked waiting on this call.
     /// </remarks>
-    internal IReadOnlyList<FileChange> ApplyJournalEntries(char driveLetter,
+    internal IReadOnlyList<FileChange> ApplyJournalEntries(DriveKey driveLetter,
         IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn)
     {
         var changes = ApplyJournalEntriesCore(driveLetter, instance: null, entries, journalIdentifier, nextUsn);
@@ -99,13 +99,13 @@ public sealed partial class FileIndex
     ///     from is still published, and is otherwise dropped, returning no changes. A retiring pump's
     ///     last batch therefore never reaches a successor's block.
     /// </summary>
-    IReadOnlyList<FileChange> ApplyJournalEntriesCore(char driveLetter, WatchInstance? instance,
+    IReadOnlyList<FileChange> ApplyJournalEntriesCore(DriveKey driveLetter, WatchInstance? instance,
         IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(entries);
-        var upperDriveLetter = char.ToUpperInvariant(driveLetter);
-        if (!_driveConfigurations.ContainsKey(upperDriveLetter))
+        var validatedDrive = driveLetter.Validated();
+        if (!_driveConfigurations.ContainsKey(validatedDrive))
         {
             throw new ArgumentException($"Drive {driveLetter} is not part of this index.", nameof(driveLetter));
         }
@@ -118,7 +118,7 @@ public sealed partial class FileIndex
 
         if (instance is not null)
         {
-            ApplyJournalEntriesEnteredForTest?.Invoke(upperDriveLetter);
+            ApplyJournalEntriesEnteredForTest?.Invoke(validatedDrive);
         }
 
         // ApplyJournalEntries is synchronous by its public contract (it returns
@@ -126,11 +126,11 @@ public sealed partial class FileIndex
         // not on a Task: it is the synchronous counterpart to the commit's WaitAsync, not
         // sync-over-async. An automated scanner can mistake any ".Wait()" call for blocking on
         // a Task; this one is not.
-        var writeGate = GetDriveRuntime(upperDriveLetter).WriteGate;
+        var writeGate = GetDriveRuntime(validatedDrive).WriteGate;
         writeGate.Wait();
         try
         {
-            if (instance is not null && !IsRunningWatchOverItsBlock(upperDriveLetter, instance))
+            if (instance is not null && !IsRunningWatchOverItsBlock(validatedDrive, instance))
             {
                 return [];
             }
@@ -147,7 +147,7 @@ public sealed partial class FileIndex
                     $"Drive {driveLetter} was indexed by an enumeration producer and does not support journal mutation.");
             }
 
-            ApplyJournalEntriesInsideWriteGateForTest?.Invoke(upperDriveLetter);
+            ApplyJournalEntriesInsideWriteGateForTest?.Invoke(validatedDrive);
             var writer = new BlockWriter(driveBlock.Block);
             var mutator = new JournalMutator(writer);
             return mutator.Apply(snapshot, driveOrdinal, entries, journalIdentifier, nextUsn);
@@ -158,7 +158,7 @@ public sealed partial class FileIndex
         }
     }
 
-    bool IsRunningWatchOverItsBlock(char driveLetter, WatchInstance instance)
+    bool IsRunningWatchOverItsBlock(DriveKey driveLetter, WatchInstance instance)
     {
         lock (_stateLock)
         {

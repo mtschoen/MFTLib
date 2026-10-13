@@ -49,7 +49,7 @@ partial class SampleHost
 
             _lastPhase = value.Phase;
             _lastReportedRows = value.RowsWritten;
-            writeLine($"  {value.DriveLetter}: {value.Phase}: {value.RowsWritten} rows{(value.TotalRows is { } total ? $" of {total}" : string.Empty)}{(value.Outcome is { } outcome ? $" ({outcome})" : string.Empty)}{(value.CurrentDirectory is { } directory ? $" in {directory}" : string.Empty)}");
+            writeLine($"  {value.Drive}: {value.Phase}: {value.RowsWritten} rows{(value.TotalRows is { } total ? $" of {total}" : string.Empty)}{(value.Outcome is { } outcome ? $" ({outcome})" : string.Empty)}{(value.CurrentDirectory is { } directory ? $" in {directory}" : string.Empty)}");
         }
     }
 }

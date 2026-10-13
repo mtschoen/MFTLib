@@ -31,7 +31,7 @@ public class BrokerDeathTests
         await EndHostAsync(broker, host);
 
         var lost = await WatchDeduplicationTestSupport.ThrowsAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
         await broker.Process.Ended.WaitAsync(HangGuard);
     }
 
@@ -52,10 +52,10 @@ public class BrokerDeathTests
         var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator();
         await using var __ = reader.ConfigureAwait(false);
         var late = await WatchReads.ThrowsNextAsync<BrokerChannelLostException>(reader);
-        Assert.AreEqual('C', late.DriveLetter);
+        Assert.AreEqual('C', late.Drive);
         var restart = await WatchDeduplicationTestSupport.ThrowsAsync<BrokerChannelLostException>(() =>
             source.StartAsync(new IndexWatchTarget('D', 7, 100), CancellationToken.None));
-        Assert.AreEqual('D', restart.DriveLetter);
+        Assert.AreEqual('D', restart.Drive);
     }
 
     [TestMethod]
@@ -65,8 +65,8 @@ public class BrokerDeathTests
         var token = broker.CancellationToken;
         var source = new BrokerMftBlockProducer(broker.ConnectAsync).CreateIndexSource().WatchSource!;
         using var harness = new WatchHarness(source, 'T', 'U');
-        await harness.Index.StartWatchingAsync('T', token);
-        await harness.Index.StartWatchingAsync('U', token);
+        await harness.Index.StartWatchingAsync(['T'], token);
+        await harness.Index.StartWatchingAsync(['U'], token);
         await broker.Watch('T').RunAsync(1);
         await broker.Watch('U').RunAsync(1);
 
@@ -75,9 +75,9 @@ public class BrokerDeathTests
         var faultT = await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
         var faultU = await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'U');
         await broker.Process.Ended.WaitAsync(HangGuard);
-        Assert.AreEqual('T', ((BrokerChannelLostException)faultT.Exception).DriveLetter);
-        Assert.AreEqual('U', ((BrokerChannelLostException)faultU.Exception).DriveLetter);
-        CollectionAssert.AreEquivalent(new[] { 'T', 'U' }, harness.Faults.Select(fault => fault.DriveLetter).ToArray());
+        Assert.AreEqual('T', ((BrokerChannelLostException)faultT.Exception).Drive);
+        Assert.AreEqual('U', ((BrokerChannelLostException)faultU.Exception).Drive);
+        CollectionAssert.AreEquivalent(new DriveKey[] { 'T', 'U' }, harness.Faults.Select(fault => fault.Drive).ToArray());
         Assert.IsTrue(harness.Faults.All(fault => fault.Kind == WatchFaultKind.Channel));
         Assert.IsNotNull(harness.DriveFor('T').Watch.FailureMessage);
         Assert.IsNotNull(harness.DriveFor('U').Watch.FailureMessage);

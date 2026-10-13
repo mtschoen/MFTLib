@@ -64,7 +64,7 @@ public class FileIndexProducerSelectionTests
             Assert.AreEqual(0, index.Drives.Single().Block!.AccessDeniedSubtreeCount);
 
             skippedRecordCount[0] = 0;
-            await index.RescanAsync('T', CancellationToken.None);
+            await index.RescanAsync(['T'], CancellationToken.None);
 
             Assert.AreEqual(0, index.Drives.Single().Block!.SkippedRecordCount);
             Assert.AreEqual(0, index.Drives.Single().Block!.AccessDeniedSubtreeCount);
@@ -86,18 +86,18 @@ public class FileIndexProducerSelectionTests
         {
             Drives = [new IndexedDrive('T', firstRoot, 1), new IndexedDrive('U', secondRoot, 2)],
             CacheDirectory = _cacheDirectory,
-            MftSource = new MftIndexSource((request, _) => request.DriveLetter == 'T'
+            MftSource = new MftIndexSource((request, _) => request.Drive == 'T'
                 ? throw new UnauthorizedAccessException("elevation declined")
                 : Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, 7, 4096, FixedMoment),
                     7, 4096, 0)))
         }, TestContext.CancellationTokenSource.Token);
 
-        var failed = index.Drives.Single(drive => drive.DriveLetter == 'T');
+        var failed = index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Failed, failed.State);
         Assert.AreEqual("elevation declined", failed.Failure?.Message);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, failed.Failure?.Kind);
         Assert.IsNull(failed.Block);
-        var ready = index.Drives.Single(drive => drive.DriveLetter == 'U');
+        var ready = index.Drives.Single(drive => drive.Drive == 'U');
         Assert.AreEqual(DriveState.Ready, ready.State);
         Assert.IsNull(ready.Failure);
         Assert.IsNotNull(ready.Block);
@@ -113,7 +113,7 @@ public class FileIndexProducerSelectionTests
         Directory.CreateDirectory(_cacheDirectory);
         using (SeededBlocks.Build(new MftBlockProduceRequest
         {
-            DriveLetter = 'U',
+            Drive = 'U',
             VolumeSerial = 2,
             BlockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('U', 2))
         }, 7, 4096, FixedMoment))
@@ -128,8 +128,8 @@ public class FileIndexProducerSelectionTests
         }, TestContext.CancellationTokenSource.Token);
 
         Assert.AreEqual("elevation declined",
-            index.Drives.Single(drive => drive.DriveLetter == 'T').Failure?.Message);
-        var warmStarted = index.Drives.Single(drive => drive.DriveLetter == 'U');
+            index.Drives.Single(drive => drive.Drive == 'T').Failure?.Message);
+        var warmStarted = index.Drives.Single(drive => drive.Drive == 'U');
         Assert.AreEqual(DriveState.Ready, warmStarted.State);
         Assert.IsNull(warmStarted.Failure);
     }
@@ -249,8 +249,8 @@ public class FileIndexProducerSelectionTests
         var options = Options(ProducerPolicy.Mft, Produce);
         await using (var index = await FileIndex.OpenAsync(options, CancellationToken.None))
         {
-            await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(
-                () => index.RescanAsync('T', CancellationToken.None));
+            await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+                () => index.RescanAsync(['T'], CancellationToken.None));
 
             Assert.AreEqual(4096L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
             Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
@@ -287,11 +287,11 @@ public class FileIndexProducerSelectionTests
 
         await using var index = await FileIndex.OpenAsync(Options(ProducerPolicy.Mft, Produce),
             CancellationToken.None);
-        await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(
-            () => index.RescanAsync('T', CancellationToken.None));
+        await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+            () => index.RescanAsync(['T'], CancellationToken.None));
         Assert.AreEqual("elevation declined during rescan", index.Drives.Single().Failure?.Message);
 
-        await index.RescanAsync('T', CancellationToken.None);
+        await index.RescanAsync(['T'], CancellationToken.None);
 
         Assert.IsNull(index.Drives.Single().Failure);
         Assert.AreEqual(12288L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
@@ -312,7 +312,7 @@ public class FileIndexProducerSelectionTests
             CancellationToken.None);
         var previousRoot = index.Root('T');
 
-        await index.RescanAsync('T', CancellationToken.None);
+        await index.RescanAsync(['T'], CancellationToken.None);
 
         Assert.AreEqual(2, invocationCount);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
@@ -444,7 +444,7 @@ public class FileIndexProducerSelectionTests
         // Record 20's create leaves its cycle open in ReportedReasonCycles leading up to rescan.
         Assert.AreEqual(1, index.ApplyJournalEntries('T', [created], 7, 5004).Count);
 
-        await index.RescanAsync('T', TestContext.CancellationTokenSource.Token);
+        await index.RescanAsync(['T'], TestContext.CancellationTokenSource.Token);
 
         // On the replaced block, the open cycle was discarded with the old DriveBlock;
         // the close record is treated as a first-sighted create rather than coalesced.
@@ -475,7 +475,7 @@ public class FileIndexProducerSelectionTests
         Assert.AreEqual(DriveState.Failed, index.Drives.Single().State);
         Assert.AreEqual(DriveFailureKind.CacheDeclined, index.Drives.Single().Failure?.Kind);
 
-        await index.RescanAsync('T', TestContext.CancellationTokenSource.Token);
+        await index.RescanAsync(['T'], TestContext.CancellationTokenSource.Token);
 
         Assert.AreEqual(1, invocationCount);
         var status = index.Drives.Single();
@@ -500,8 +500,8 @@ public class FileIndexProducerSelectionTests
         }, TestContext.CancellationTokenSource.Token);
         Assert.AreEqual(DriveFailureKind.CacheDeclined, index.Drives.Single().Failure?.Kind);
 
-        await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(
-            () => index.RescanAsync('T', TestContext.CancellationTokenSource.Token));
+        await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+            () => index.RescanAsync(['T'], TestContext.CancellationTokenSource.Token));
 
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, status.State);
@@ -533,7 +533,7 @@ public class FileIndexProducerSelectionTests
         Assert.AreEqual(DriveState.Failed, index.Drives.Single().State);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, index.Drives.Single().Failure?.Kind);
 
-        await index.RescanAsync('T', TestContext.CancellationTokenSource.Token);
+        await index.RescanAsync(['T'], TestContext.CancellationTokenSource.Token);
 
         Assert.AreEqual(2, invocationCount);
         var status = index.Drives.Single();

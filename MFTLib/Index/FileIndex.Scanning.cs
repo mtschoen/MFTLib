@@ -14,7 +14,7 @@ public sealed partial class FileIndex
     {
         foreach (var drive in _options.Drives)
         {
-            _driveConfigurations[char.ToUpperInvariant(drive.DriveLetter)] = drive;
+            _driveConfigurations[drive.Drive] = drive;
         }
 
         var total = _options.Drives.Count;
@@ -52,7 +52,7 @@ public sealed partial class FileIndex
             return;
         }
 
-        var driveLetter = char.ToUpperInvariant(drive.DriveLetter);
+        var driveLetter = drive.Drive;
         int settledCount;
         lock (_stateLock)
         {
@@ -70,7 +70,7 @@ public sealed partial class FileIndex
     /// </summary>
     async Task AddDriveAsync(IndexedDrive drive, CancellationToken cancellationToken)
     {
-        var driveLetter = char.ToUpperInvariant(drive.DriveLetter);
+        var driveLetter = drive.Drive;
         if (!IsMftDumpDrive(driveLetter) && !Directory.Exists(drive.RootDirectory))
         {
             RecordOfflineDrive(driveLetter);
@@ -138,7 +138,7 @@ public sealed partial class FileIndex
     (DriveBlock Adopted, int ConsecutiveLostCatchUps) AdoptOpenedDrive(IndexedDrive drive, BlockFile block,
         PendingDriveResult settled, DriveBlock? replacing = null)
     {
-        var runtime = GetDriveRuntime(drive.DriveLetter);
+        var runtime = GetDriveRuntime(drive.Drive);
         lock (_stateLock)
         {
             var driveOrdinal = replacing is null ? (ushort)_driveBlocks.Count : replacing.DriveOrdinal;
@@ -155,7 +155,7 @@ public sealed partial class FileIndex
             RecordPendingResultLocked(runtime, driveOrdinal, settled, clearsCheckpointLoss: false);
             if (settled.CatchUpLoss is null || runtime.ConsecutiveLostCatchUps >= LostCatchUpRecoveryLimit)
             {
-                ClaimSettledCountLocked(drive.DriveLetter);
+                ClaimSettledCountLocked(drive.Drive);
             }
 
             return (adopted, runtime.ConsecutiveLostCatchUps);
@@ -240,7 +240,7 @@ public sealed partial class FileIndex
     {
         var request = new MftBlockProduceRequest
         {
-            DriveLetter = drive.DriveLetter,
+            Drive = drive.Drive,
             VolumeSerial = drive.VolumeSerial,
             BlockPath = blockPath,
             DeleteOnClose = deleteOnClose,
@@ -287,11 +287,11 @@ public sealed partial class FileIndex
     ///         its age, so it is adopted anyway rather than failing the drive. The result says so,
     ///         and the adoption marks the block unresumable in
     ///         <see cref="_unresumableCheckpointsByOrdinal" /> so a later
-    ///         <see cref="StartWatchingAsync(char, CancellationToken)" /> refuses to start a watch from a cursor the
+    ///         <see cref="StartWatchingAsync" /> refuses to start a watch from a cursor the
     ///         journal no longer holds.
     ///     </para>
     /// </summary>
-    WarmStartResult RejectUnresumableCheckpoint(char driveLetter, WarmStartResult warmStart)
+    WarmStartResult RejectUnresumableCheckpoint(DriveKey driveLetter, WarmStartResult warmStart)
     {
         if (warmStart.Block is not { } candidate || candidate.Header.ProducerKind != ProducerKind.Mft)
         {
@@ -414,7 +414,7 @@ public sealed partial class FileIndex
             var producer = new EnumerationProducer(new EnumerationProducerOptions
             {
                 RootDirectory = drive.RootDirectory,
-                DriveLetter = drive.DriveLetter
+                Drive = drive.Drive
             });
 
             var result = producer.Produce(writer, _options.Progress, cancellationToken);

@@ -576,7 +576,7 @@ public partial class BrokerSessionTests
     [TestMethod]
     public async Task GrowUsnJournalAsync_LaunchesOnFirstUseAndForwardsTheRequest()
     {
-        var received = new List<(string Drive, long MaximumSize, long AllocationDelta)>();
+        var received = new List<(DriveKey Drive, long MaximumSize, long AllocationDelta)>();
         await using var handle = StartBroker((drive, maximumSize, allocationDelta) =>
         {
             received.Add((drive, maximumSize, allocationDelta));
@@ -597,7 +597,7 @@ public partial class BrokerSessionTests
         Assert.AreEqual(0x01000000L, settings.AllocationDelta);
         Assert.AreEqual(1, launches);
         Assert.AreEqual(1, received.Count);
-        Assert.AreEqual("C", received[0].Drive);
+        Assert.AreEqual('C', received[0].Drive);
     }
 
     [TestMethod]
@@ -747,7 +747,7 @@ public partial class BrokerSessionTests
             BrokerTestHarness.CreateSession(null!));
     }
 
-    static InProcessBrokerHandle StartBroker(Func<string, long, long, UsnJournalSettings>? grow = null) =>
+    static InProcessBrokerHandle StartBroker(Func<DriveKey, long, long, UsnJournalSettings>? grow = null) =>
         BrokerTestHarness.StartInProcess(new ScriptedBrokerVolumes
         {
             QueryJournalCursor = _ => throw new NotSupportedException("no scan in this test"),

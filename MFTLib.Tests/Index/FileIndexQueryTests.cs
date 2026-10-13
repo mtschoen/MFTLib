@@ -179,7 +179,7 @@ public class FileIndexQueryTests
                 outcome = await RootAfterAdmissionAsync(index, driveLetter, async () =>
                 {
                     canProduce = true;
-                    await index.RescanAsync('T', CancellationToken.None);
+                    await index.RescanAsync(['T'], CancellationToken.None);
                     Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
                     Assert.IsNotNull(index.Drives.Single().Block);
                 });
@@ -200,7 +200,7 @@ public class FileIndexQueryTests
 
             Assert.IsInstanceOfType<ArgumentException>(outcome);
             var exception = (ArgumentException)outcome;
-            StringAssert.Contains(exception.Message, $"Drive {driveLetter} has no block (state: {state}).");
+            StringAssert.Contains(exception.Message, $"Drive {new DriveKey(driveLetter)} has no block (state: {state}).");
             Assert.IsFalse(exception.Message.Contains("not part of this index", StringComparison.Ordinal));
             Assert.AreEqual(nameof(driveLetter), exception.ParamName);
         }
@@ -230,7 +230,7 @@ public class FileIndexQueryTests
 
         Assert.IsInstanceOfType<ArgumentException>(outcome);
         var exception = (ArgumentException)outcome;
-        Assert.AreEqual(new ArgumentException($"Drive {driveLetter} is not part of this index.", nameof(driveLetter)).Message,
+        Assert.AreEqual(new ArgumentException($"Drive {new DriveKey(driveLetter)} is not part of this index.", nameof(driveLetter)).Message,
             exception.Message);
         Assert.AreEqual(nameof(driveLetter), exception.ParamName);
     }
@@ -331,7 +331,7 @@ public class FileIndexQueryTests
     public void Search_AfterARescanSeesNewFiles()
     {
         File.WriteAllText(Path.Combine(_treeRoot, "Documents", "added.md"), "added");
-        _index.RescanAsync('T', CancellationToken.None).GetAwaiter().GetResult();
+        _index.RescanAsync(['T'], CancellationToken.None).GetAwaiter().GetResult();
 
         Assert.AreEqual(1, _index.Search(new SearchQuery("added")).Count);
     }
@@ -340,7 +340,7 @@ public class FileIndexQueryTests
     public void HandleFromAnOldSnapshot_StaysReadableAcrossARescan()
     {
         var before = _index.Find(Path.Combine(_treeRoot, "Documents", "readme.md"))!.Value;
-        _index.RescanAsync('T', CancellationToken.None).GetAwaiter().GetResult();
+        _index.RescanAsync(['T'], CancellationToken.None).GetAwaiter().GetResult();
 
         // The old block stays mapped because this handle still references its snapshot.
         Assert.AreEqual("readme.md", before.Name);

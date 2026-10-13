@@ -18,7 +18,7 @@ internal static class CheckpointCacheTestSupport
     public static JournalWindow TrimmedWindow =>
         new(CachedJournalIdentifier, CachedNextUsn + 500, CachedNextUsn + 4_000, 64, 128L * 1024 * 1024);
 
-    public static IDisposable OverrideJournals(IReadOnlyDictionary<char, JournalWindow> byDrive) =>
+    public static IDisposable OverrideJournals(IReadOnlyDictionary<DriveKey, JournalWindow> byDrive) =>
         JournalCheckpointCheck.OverrideJournalForTest(
-            drive => byDrive.TryGetValue(char.ToUpperInvariant(drive), out var window) ? window : null);
+            drive => byDrive.TryGetValue(drive, out var window) ? window : null);
 }

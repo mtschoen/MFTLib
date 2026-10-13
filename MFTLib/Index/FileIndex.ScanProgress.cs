@@ -33,7 +33,7 @@ public sealed partial class FileIndex
         }
         finally
         {
-            ReportFinished(drive.DriveLetter, outcome, rowsWritten);
+            ReportFinished(drive.Drive, outcome, rowsWritten);
         }
     }
 
@@ -42,7 +42,7 @@ public sealed partial class FileIndex
     ///     <see cref="FileIndexOptions.Diagnostics" />: the scan's result is already decided, so the
     ///     handler must neither replace the original exception nor strand a produced block.
     /// </summary>
-    void ReportFinished(char driveLetter, IndexScanOutcome outcome, uint rowsWritten)
+    void ReportFinished(DriveKey driveLetter, IndexScanOutcome outcome, uint rowsWritten)
     {
         try
         {

@@ -25,7 +25,7 @@ static class JournalCheckpointCheck
     ///     A test seam with no synchronization, which is safe only while the test host runs
     ///     one test at a time. Mirrors <see cref="UsnJournalSettingsQuery._queryOverride" />.
     /// </summary>
-    internal static Func<char, JournalWindow?>? _journalOverride;
+    internal static Func<DriveKey, JournalWindow?>? _journalOverride;
 
     static int _liveJournalReadsForbidden;
 
@@ -44,7 +44,7 @@ static class JournalCheckpointCheck
     ///     which one produced it rather than leaving a reader to infer it from context that is
     ///     gone by the time the report is read.
     /// </param>
-    public static JournalCheckpointLoss? Check(char driveLetter, ulong checkpointJournalIdentifier, long checkpointUsn,
+    public static JournalCheckpointLoss? Check(DriveKey driveLetter, ulong checkpointJournalIdentifier, long checkpointUsn,
         JournalCheckpointLossDetection detectedDuring)
         => CheckObservation(driveLetter, checkpointJournalIdentifier, checkpointUsn, detectedDuring, requireUnmoved: false);
 
@@ -53,11 +53,11 @@ static class JournalCheckpointCheck
     ///     precedence, then any unequal next USN requires a rescan. An unavailable or incoherent
     ///     observation reports nothing, just as the resumability check does.
     /// </summary>
-    internal static JournalCheckpointLoss? CheckUnmoved(char driveLetter, ulong checkpointJournalIdentifier,
+    internal static JournalCheckpointLoss? CheckUnmoved(DriveKey driveLetter, ulong checkpointJournalIdentifier,
         long checkpointUsn, JournalCheckpointLossDetection detectedDuring)
         => CheckObservation(driveLetter, checkpointJournalIdentifier, checkpointUsn, detectedDuring, requireUnmoved: true);
 
-    static JournalCheckpointLoss? CheckObservation(char driveLetter, ulong checkpointJournalIdentifier, long checkpointUsn,
+    static JournalCheckpointLoss? CheckObservation(DriveKey driveLetter, ulong checkpointJournalIdentifier, long checkpointUsn,
         JournalCheckpointLossDetection detectedDuring, bool requireUnmoved)
     {
         if (ProcessJournal.Read(driveLetter) is not { } journal)
@@ -139,13 +139,13 @@ static class JournalCheckpointCheck
     ///     through its own instance; a test builds another instance to exercise the unguarded
     ///     path without touching the process's guard.
     /// </summary>
-    internal sealed class JournalReader(Func<bool> liveReadsForbidden, Func<char, JournalWindow?> readLive)
+    internal sealed class JournalReader(Func<bool> liveReadsForbidden, Func<DriveKey, JournalWindow?> readLive)
     {
         /// <summary>
         ///     The override when one is installed, otherwise nothing while live reads are
         ///     forbidden, otherwise the live journal.
         /// </summary>
-        public JournalWindow? Read(char driveLetter)
+        public JournalWindow? Read(DriveKey driveLetter)
         {
             if (_journalOverride is { } journalOverride)
             {
@@ -169,14 +169,14 @@ static class JournalCheckpointCheck
     ///     The real unelevated read, reachable from a test that deliberately wants a real
     ///     volume even while <see cref="ForbidLiveJournalReads" /> is active.
     /// </summary>
-    internal static JournalWindow? ReadLiveJournal(char driveLetter) =>
+    internal static JournalWindow? ReadLiveJournal(DriveKey driveLetter) =>
         ReadLiveJournal(driveLetter, OperatingSystem.IsWindows());
 
     /// <summary>
-    ///     The read behind <see cref="ReadLiveJournal(char)" />, given whether the host is Windows,
+    ///     The read behind <see cref="ReadLiveJournal(DriveKey)" />, given whether the host is Windows,
     ///     so the answer off Windows is tested on every platform.
     /// </summary>
-    internal static JournalWindow? ReadLiveJournal(char driveLetter, bool isWindows)
+    internal static JournalWindow? ReadLiveJournal(DriveKey driveLetter, bool isWindows)
     {
         if (!isWindows || !OperatingSystem.IsWindows())
         {
@@ -207,21 +207,21 @@ static class JournalCheckpointCheck
     ///     Stops this process's automatic checkpoint observations reading any real volume's journal for the rest of its life, so a
     ///     warm start in a test decides the same way whatever drive letters the host happens
     ///     to have. One way and idempotent, like the cache-directory guard; a test that wants
-    ///     a real volume installs an override over <see cref="ReadLiveJournal(char)" />.
+    ///     a real volume installs an override over <see cref="ReadLiveJournal(DriveKey)" />.
     /// </summary>
     internal static void ForbidLiveJournalReads()
     {
         Interlocked.Exchange(ref _liveJournalReadsForbidden, 1);
     }
 
-    internal static IDisposable OverrideJournalForTest(Func<char, JournalWindow?> journal)
+    internal static IDisposable OverrideJournalForTest(Func<DriveKey, JournalWindow?> journal)
     {
         var previous = _journalOverride;
         _journalOverride = journal;
         return new RestoreJournal(previous);
     }
 
-    sealed class RestoreJournal(Func<char, JournalWindow?>? previous) : IDisposable
+    sealed class RestoreJournal(Func<DriveKey, JournalWindow?>? previous) : IDisposable
     {
         public void Dispose()
         {

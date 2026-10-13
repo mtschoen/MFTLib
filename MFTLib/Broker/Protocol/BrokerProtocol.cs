@@ -185,7 +185,7 @@ internal static partial class BrokerProtocol
 
         return new BrokerScanProgress
         {
-            DriveLetter = string.Empty,
+            Drive = string.Empty,
             Phase = phase,
             RecordsProcessed = recordsProcessed,
             BytesProcessed = bytesProcessed,

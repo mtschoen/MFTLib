@@ -10,7 +10,7 @@ namespace MFTLib.Tests.Index;
 ///     from <see cref="FileIndex.OpenAsync" />, after that drive settles, whatever the outcome,
 ///     numbered by <see cref="IndexDriveOpened.SettledDriveCount" /> in settle order. Drives settle
 ///     concurrently, so these cases assert on each drive's report by letter and on the set of
-///     counts, never on which drive settled first. <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> stays silent.
+///     counts, never on which drive settled first. <see cref="FileIndex.RescanAsync" /> stays silent.
 /// </summary>
 [TestClass]
 public class FileIndexOpenProgressTests
@@ -60,14 +60,14 @@ public class FileIndexOpenProgressTests
 
     static void AssertReport(IndexDriveOpened report, char driveLetter, int total)
     {
-        Assert.AreEqual(driveLetter, report.DriveLetter);
+        Assert.AreEqual(driveLetter, report.Drive);
         Assert.AreEqual(total, report.TotalDriveCount);
     }
 
     /// <summary>The drive's settled outcome, which the open report no longer repeats.</summary>
     static void AssertSettled(FileIndex index, char driveLetter, BlockSource? blockSource, DriveState state)
     {
-        var status = index.Drives.Single(drive => drive.DriveLetter == driveLetter);
+        var status = index.Drives.Single(drive => drive.Drive == driveLetter);
         Assert.AreEqual(blockSource, status.Block?.Source);
         Assert.AreEqual(state, status.State);
     }
@@ -78,7 +78,7 @@ public class FileIndexOpenProgressTests
         var settledCounts = reports.Select(report => report.SettledDriveCount).Order().ToArray();
         CollectionAssert.AreEqual(Enumerable.Range(1, reports.Count).ToArray(), settledCounts,
             "every settle takes the next count once");
-        return reports.Single(report => report.DriveLetter == driveLetter);
+        return reports.Single(report => report.Drive == driveLetter);
     }
 
     [TestMethod]
@@ -129,7 +129,7 @@ public class FileIndexOpenProgressTests
         AssertSettled(index, 'T', BlockSource.WarmStartedFromCache, DriveState.Ready);
         AssertReport(ReportOf(reports, 'U'), 'U', 2);
         AssertSettled(index, 'U', null, DriveState.Failed);
-        Assert.AreEqual(DriveState.Failed, index.Drives.Single(drive => drive.DriveLetter == 'U').State);
+        Assert.AreEqual(DriveState.Failed, index.Drives.Single(drive => drive.Drive == 'U').State);
     }
 
     [TestMethod]
@@ -203,7 +203,7 @@ public class FileIndexOpenProgressTests
             TestContext.CancellationTokenSource.Token);
         Assert.AreEqual(1, reports.Count);
 
-        await index.RescanAsync('T', TestContext.CancellationTokenSource.Token);
+        await index.RescanAsync(['T'], TestContext.CancellationTokenSource.Token);
 
         Assert.AreEqual(1, reports.Count, "a rescan has its own awaitable surface and stays silent on open progress");
     }

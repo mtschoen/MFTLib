@@ -93,7 +93,7 @@ public class LiveScanInvalidFixupTests
         ServeImageAsVolume(imagePath);
         var request = new MftBlockProduceRequest
         {
-            DriveLetter = 'C',
+            Drive = 'C',
             VolumeSerial = 0,
             BlockPath = Path.Combine(_directory, "local.mlix"),
             DeleteOnClose = true

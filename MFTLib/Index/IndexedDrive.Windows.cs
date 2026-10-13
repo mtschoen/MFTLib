@@ -14,27 +14,16 @@ public sealed partial record IndexedDrive
 
     /// <summary>
     ///     Builds a drive from a Windows drive letter, reading its real volume serial so a
-    ///     re-lettered or replaced volume never matches the wrong cached block. Accepts "C",
-    ///     "C:", "C:\", and "c:/"; anything that is not a single drive letter is rejected,
-    ///     including UNC roots, which have no serial of this shape.
+    ///     re-lettered or replaced volume never matches the wrong cached block.
     /// </summary>
     [SupportedOSPlatform("windows")]
-    public static IndexedDrive FromWindowsVolume(string drive)
+    public static IndexedDrive FromWindowsVolume(DriveKey drive)
     {
-        ArgumentNullException.ThrowIfNull(drive);
-        var trimmed = drive.TrimEnd('\\', '/');
-        if (trimmed.Length is not (1 or 2) || !char.IsAsciiLetter(trimmed[0]) ||
-            (trimmed.Length == 2 && trimmed[1] != ':'))
-        {
-            throw new ArgumentException($"'{drive}' is not a Windows drive letter.", nameof(drive));
-        }
-
-        var driveLetter = char.ToUpperInvariant(trimmed[0]);
-        var rootDirectory = driveLetter + @":\";
+        var rootDirectory = drive.Letter + @":\";
         var reader = _volumeSerialReaderOverride ?? ReadVolumeSerial;
         var serial = reader(rootDirectory) ?? throw new IOException(
-            $"Could not read the volume serial for drive {driveLetter}.");
-        return new IndexedDrive(driveLetter, rootDirectory, serial);
+            $"Could not read the volume serial for drive {drive}.");
+        return new IndexedDrive(drive, rootDirectory, serial);
     }
 
     [SupportedOSPlatform("windows")]

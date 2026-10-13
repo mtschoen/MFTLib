@@ -12,7 +12,7 @@ public sealed partial class FileIndex
     ///     A test seam: invoked with the drive letter while a commit holds the drive's write gate,
     ///     before it takes the state lock to publish.
     /// </summary>
-    internal Action<char>? PublishInsideWriteGateForTest { get; set; }
+    internal Action<DriveKey>? PublishInsideWriteGateForTest { get; set; }
 
     /// <summary>Why a published block's journal cursor cannot be resumed by a watch.</summary>
     enum UnresumableCheckpointReason
@@ -25,7 +25,7 @@ public sealed partial class FileIndex
     }
 
     /// <summary>
-    ///     Unresumable blocks by ordinal, with the reason. <see cref="StartWatchingAsync(char, CancellationToken)" /> refuses
+    ///     Unresumable blocks by ordinal, with the reason. <see cref="StartWatchingAsync" /> refuses
     ///     such a drive's watch, since starting it from that block's cursor would resume from a
     ///     position the journal no longer holds. A scan whose catch-up holds replaces the block and
     ///     clears the entry.
@@ -65,7 +65,7 @@ public sealed partial class FileIndex
                 }
 
                 var lost = RecordLostCatchUp(runtime, catchUpLoss, attempt.ConsecutiveLostCatchUps);
-                RaiseWatchFaulted(new WatchFault(WatchFaultKind.CatchUpLost, runtime.DriveLetter, lost));
+                RaiseWatchFaulted(new WatchFault(WatchFaultKind.CatchUpLost, runtime.Drive, lost));
                 if (lost.RecoveryStopped)
                 {
                     throw lost;
@@ -112,7 +112,7 @@ public sealed partial class FileIndex
     async Task ScanOpenedDriveAsync(IndexedDrive drive, bool ownsCanonicalSlot, PendingDriveResult opened,
         CancellationToken cancellationToken)
     {
-        var runtime = GetDriveRuntime(drive.DriveLetter);
+        var runtime = GetDriveRuntime(drive.Drive);
         DriveBlock? adopted = null;
         while (true)
         {
@@ -138,7 +138,7 @@ public sealed partial class FileIndex
             if (settled.Block is not { } block)
             {
                 DiscardUnproducedTarget(drive, target, retired);
-                RecordOpenProducerFailure(runtime.DriveLetter, settled, lostBlockInPlace: adopted is not null);
+                RecordOpenProducerFailure(runtime.Drive, settled, lostBlockInPlace: adopted is not null);
                 return;
             }
 
@@ -155,7 +155,7 @@ public sealed partial class FileIndex
         }
     }
 
-    void RecordOpenProducerFailure(char driveLetter, PendingDriveResult failed, bool lostBlockInPlace)
+    void RecordOpenProducerFailure(DriveKey driveLetter, PendingDriveResult failed, bool lostBlockInPlace)
     {
         if (lostBlockInPlace)
         {
@@ -189,7 +189,7 @@ public sealed partial class FileIndex
     JournalCatchUpLostException RecordLostCatchUp(DriveRuntime runtime, JournalCheckpointLoss catchUpLoss,
         int consecutiveLostCatchUps)
     {
-        var driveLetter = runtime.DriveLetter;
+        var driveLetter = runtime.Drive;
         var recoveryStopped = consecutiveLostCatchUps >= LostCatchUpRecoveryLimit;
         var lost = new JournalCatchUpLostException(recoveryStopped,
             DescribeLostCatchUp(driveLetter, consecutiveLostCatchUps, recoveryStopped, catchUpLoss));
@@ -223,7 +223,7 @@ public sealed partial class FileIndex
         return lost;
     }
 
-    static string DescribeLostCatchUp(char driveLetter, int consecutiveLostCatchUps, bool recoveryStopped,
+    static string DescribeLostCatchUp(DriveKey driveLetter, int consecutiveLostCatchUps, bool recoveryStopped,
         JournalCheckpointLoss catchUpLoss)
     {
         if (!recoveryStopped)

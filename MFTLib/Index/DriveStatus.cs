@@ -15,14 +15,14 @@ public sealed record DriveStatus
     /// <summary>Creates a status with the values every drive has, whether or not it has a block or a watch.</summary>
     /// <param name="driveLetter">The drive.</param>
     /// <param name="state">Whether the drive has a queryable block, is offline, or failed without a block.</param>
-    internal DriveStatus(char driveLetter, DriveState state)
+    internal DriveStatus(DriveKey driveLetter, DriveState state)
     {
-        DriveLetter = driveLetter;
+        Drive = driveLetter;
         State = state;
     }
 
     /// <summary>Identifies the drive in every per-drive <see cref="FileIndex" /> call; one status exists per configured drive, including failed and offline ones.</summary>
-    public char DriveLetter { get; init; }
+    public DriveKey Drive { get; init => field = value.Validated(); }
 
     /// <summary>Whether the drive has a queryable block, is offline, or failed without a block. Compaction is reported independently by <see cref="DriveBlockStatus.CompactionNeeded" />.</summary>
     public DriveState State { get; init; }
@@ -30,7 +30,7 @@ public sealed record DriveStatus
     /// <summary>
     ///     Why this drive failed; null unless it did. Non-null while the drive is
     ///     <see cref="DriveState.Failed" />, and while a <see cref="DriveState.Ready" /> drive retains its previous
-    ///     block after a failed <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> or a failed catch-up
+    ///     block after a failed <see cref="FileIndex.RescanAsync" /> or a failed catch-up
     ///     retry scan during <see cref="FileIndex.OpenAsync" />. Both retained-block failures read
     ///     <see cref="DriveFailureKind.ProducerFailed" />. A successful scan publication clears it. A failed
     ///     rescan of a cache-declined drive moves it to <see cref="DriveFailureKind.ProducerFailed" />, because

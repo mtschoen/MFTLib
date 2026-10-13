@@ -8,7 +8,7 @@ public static partial class MftIndexSources
     ///     A source that loads an MFT dump file (a saved copy of a volume's <c>$MFT</c>) as one
     ///     virtual drive. It needs no elevation and no broker, and it works on every platform.
     ///     Open the index with exactly one drive, <c>new IndexedDrive(letter, "dump:/" + letter, 0)</c>, where
-    ///     <c>letter</c> is <paramref name="driveLetter" /> in upper case (the root must match the upper-case letter exactly),
+    ///     <c>letter</c> is <paramref name="driveLetter" />'s normalized upper-case letter (the root must match the upper-case letter exactly),
     ///     with <see cref="FileIndexOptions.NoCache" /> set and the drive's
     ///     <see cref="IndexedDrive.ProducerPolicy" /> set to <see cref="ProducerPolicy.Mft" />.
     ///     The dump is scanned in full. A dump drive cannot be watched, has no journal settings, and its
@@ -21,21 +21,15 @@ public static partial class MftIndexSources
     ///     <see cref="DriveFailure.Message" />. Each scan and rescan opens the path
     ///     anew and reads only the file it opened, so the file must not be rewritten in place during a scan.
     /// </param>
-    /// <param name="driveLetter">The letter the index files the dump under; any ASCII letter, taken in upper case.</param>
+    /// <param name="driveLetter">The logical drive key the index files the dump under.</param>
     /// <returns>The source to assign to <see cref="FileIndexOptions.MftSource" />.</returns>
     /// <exception cref="ArgumentException"><paramref name="filePath" /> is null, empty or white space.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="driveLetter" /> is not an ASCII letter.</exception>
-    public static MftIndexSource FromMftDumpFile(string filePath, char driveLetter)
+    /// <exception cref="ArgumentException"><paramref name="driveLetter" /> is the default key.</exception>
+    public static MftIndexSource FromMftDumpFile(string filePath, DriveKey driveLetter)
     {
         if (string.IsNullOrWhiteSpace(filePath))
         {
             throw new ArgumentException("A dump file path is required.", nameof(filePath));
-        }
-
-        if (!char.IsAsciiLetter(driveLetter))
-        {
-            throw new ArgumentOutOfRangeException(nameof(driveLetter), driveLetter,
-                "The logical drive key must be an ASCII letter.");
         }
 
         var identity = new MftDumpSourceIdentity(filePath, driveLetter);

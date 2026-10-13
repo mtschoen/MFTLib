@@ -16,7 +16,7 @@ public partial class FileIndexPerDriveWatchTests
     {
         using var harness = new WatchHarness();
         var index = harness.Index;
-        await index.StartWatchingAsync('T', Token).WaitAsync(HangGuard);
+        await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
         var oldHandle = harness.Source.WatchFor('T');
         var applying = harness.HoldFirstApply('T');
         _ = oldHandle.Queue(WatchHarness.Batch(9, "held.txt", nextUsn: 700));
@@ -25,10 +25,10 @@ public partial class FileIndexPerDriveWatchTests
         await alreadyCancelled.CancelAsync().WaitAsync(HangGuard);
         var stopToken = alreadyCancelled.Token;
         await ThrowsAsync<OperationCanceledException>(
-            () => index.StopWatchingAsync('T', stopToken)).WaitAsync(HangGuard);
+            () => index.StopWatchingAsync(['T'], stopToken)).WaitAsync(HangGuard);
         var producedBefore = harness.ProductionCount('T');
 
-        var rescan = index.RescanAsync('T', Token);
+        var rescan = index.RescanAsync(['T'], Token);
 
         Assert.IsFalse(rescan.IsCompleted, "the rescan waits for the retiring instance");
         Assert.AreEqual(producedBefore + 1, harness.ProductionCount('T'), "production precedes the drain");

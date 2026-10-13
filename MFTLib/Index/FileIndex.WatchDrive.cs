@@ -11,8 +11,8 @@ public sealed partial class FileIndex
     ///     watch faulted is started afresh, which supersedes a queued automatic recovery.
     ///     <para>
     ///         The returned task completes once the drive's handle is published and its pump is scheduled.
-    ///         Use <see cref="WaitForCatchUpAsync(char, CancellationToken)" /> to wait until the drive is caught up.
-    ///         A <see cref="StopWatchingAsync(CancellationToken)" /> or
+    ///         Use <see cref="WaitForCatchUpAsync" /> to wait until the drive is caught up.
+    ///         A <see cref="StopWatchingAsync" /> or
     ///         <see cref="DisposeAsync" /> during the start cancels the source's start and fails
     ///         this task with <see cref="OperationCanceledException" />. A source whose start throws
     ///         fails this task with that exception, sets the drive's
@@ -29,9 +29,9 @@ public sealed partial class FileIndex
     ///     cannot watch (<see cref="MftIndexSource.Unavailable" />),
     ///     or the drive's block cursor cannot be resumed, because a cache-only open adopted it
     ///     despite a lost journal checkpoint or because the scan that produced it lost its journal
-    ///     catch-up: <see cref="RescanAsync(char, CancellationToken)" /> the drive first.
+    ///     catch-up: <see cref="RescanAsync" /> the drive first.
     /// </exception>
-    public Task StartWatchingAsync(char driveLetter, CancellationToken cancellationToken)
+    Task StartDriveWatchingAsync(DriveKey driveLetter, CancellationToken cancellationToken)
     {
         if (RejectedTask(nameof(StartWatchingAsync)) is { } rejected)
         {
@@ -43,7 +43,7 @@ public sealed partial class FileIndex
     }
 
     /// <summary>
-    ///     The start behind <see cref="StartWatchingAsync(char, CancellationToken)" />, and the restart a rescan or a
+    ///     The start behind <see cref="StartWatchingAsync" />, and the restart a rescan or a
     ///     recovery (<paramref name="recovery" />) runs while it already holds the drive's lifecycle
     ///     gate (<paramref name="gateHeld" />), which this then never reacquires.
     /// </summary>
@@ -79,7 +79,7 @@ public sealed partial class FileIndex
     ///     A test seam: awaited with the drive letter by a rescan's or a recovery's restart just
     ///     before it registers the drive's new instance.
     /// </summary>
-    internal Func<char, Task>? RestartBeforeRegistrationForTest { get; set; }
+    internal Func<DriveKey, Task>? RestartBeforeRegistrationForTest { get; set; }
 
     /// <summary>
     ///     A consumer's start (no <paramref name="recovery" />) clears the drive's recovery ticket,
@@ -89,7 +89,7 @@ public sealed partial class FileIndex
         CancellationToken cancellationToken)
     {
         ThrowIfCancelledByDisposal(cancellationToken);
-        var driveLetter = runtime.DriveLetter;
+        var driveLetter = runtime.Drive;
         var source = WatchSourceOrNull ?? throw new InvalidOperationException(
             MftIndexSource.FormatUnavailable(driveLetter,
                 _options.MftSource?.UnavailableReason ?? MftIndexSource.NoWatchReason));
@@ -144,7 +144,7 @@ public sealed partial class FileIndex
     (DriveBlock ArmedBlock, Task? PreviousDrain)? PrepareStart(DriveRuntime runtime, bool restart,
         RecoveryTicket? recovery)
     {
-        var driveLetter = runtime.DriveLetter;
+        var driveLetter = runtime.Drive;
         lock (_stateLock)
         {
             try
@@ -198,7 +198,7 @@ public sealed partial class FileIndex
         bool restart, RecoveryTicket? recovery, CancellationToken cancellationToken)
     {
         var instance = registration.Instance;
-        var driveLetter = runtime.DriveLetter;
+        var driveLetter = runtime.Drive;
         IIndexDriveWatch handle;
         try
         {
@@ -238,7 +238,7 @@ public sealed partial class FileIndex
         }
 
         throw new OperationCanceledException(
-            $"The watch for drive {instance.DriveLetter} (start {instance.Generation}) was stopped while it was starting.");
+            $"The watch for drive {instance.Drive} (start {instance.Generation}) was stopped while it was starting.");
     }
 
     /// <summary>
@@ -276,7 +276,7 @@ public sealed partial class FileIndex
                 _ = RetireCurrentLocked(runtime);
             }
 
-            var instance = new WatchInstance(runtime.DriveLetter, runtime.NextGeneration++, armedBlock,
+            var instance = new WatchInstance(runtime.Drive, runtime.NextGeneration++, armedBlock,
                 TakeRestartPendingWaiterLocked(runtime), DisposalToken);
             runtime.Current = instance;
             if (!restart)
@@ -332,7 +332,7 @@ public sealed partial class FileIndex
                     // retired this instance, so a recovery restart still current is still ticketed.
                     if (recovery is not null)
                     {
-                        cause = new WatchFault(WatchFaultKind.Recovery, runtime.DriveLetter, exception);
+                        cause = new WatchFault(WatchFaultKind.Recovery, runtime.Drive, exception);
                     }
                 }
 

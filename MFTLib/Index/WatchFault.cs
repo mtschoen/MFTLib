@@ -44,8 +44,8 @@ public enum WatchFaultKind
     ///     The recovery of a faulted drive did not restore its watch: its scan or its restart
     ///     failed, or the restarted watch failed before it first caught up (the exception is then
     ///     that watch's own failure). The drive stays <see cref="WatchState.Faulted" />, with
-    ///     no further automatic recovery, until <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> or
-    ///     <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" /> is called for it.
+    ///     no further automatic recovery, until <see cref="FileIndex.RescanAsync" /> or
+    ///     <see cref="FileIndex.StartWatchingAsync" /> is called for it.
     /// </summary>
     Recovery,
 
@@ -68,11 +68,11 @@ public sealed record WatchFault
     /// <param name="kind">Which boundary raised the fault.</param>
     /// <param name="driveLetter">The drive the fault names.</param>
     /// <param name="exception">The exception that ended or disturbed the watch.</param>
-    internal WatchFault(WatchFaultKind kind, char driveLetter, Exception exception)
+    internal WatchFault(WatchFaultKind kind, DriveKey driveLetter, Exception exception)
     {
         ArgumentNullException.ThrowIfNull(exception);
         Kind = kind;
-        DriveLetter = driveLetter;
+        Drive = driveLetter;
         Exception = exception;
     }
 
@@ -80,7 +80,7 @@ public sealed record WatchFault
     public WatchFaultKind Kind { get; init; }
 
     /// <summary>The drive whose watch or scan faulted; a fault always names one drive.</summary>
-    public char DriveLetter { get; init; }
+    public DriveKey Drive { get; init => field = value.Validated(); }
 
     /// <summary>The failure itself; its type depends on <see cref="Kind" />, for example a <see cref="JournalCatchUpLostException" /> for a lost catch-up.</summary>
     public Exception Exception { get; init; }

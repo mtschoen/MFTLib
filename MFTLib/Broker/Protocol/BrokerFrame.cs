@@ -66,7 +66,7 @@ internal readonly record struct BrokerFrame
 
     /// <summary>
     ///     A scan's progress. The drive belongs to the channel, so a frame read off the wire carries
-    ///     an empty <see cref="BrokerScanProgress.DriveLetter" />.
+    ///     an empty <see cref="BrokerScanProgress.Drive" />.
     /// </summary>
     public BrokerScanProgress? Progress { get; private init; }
 

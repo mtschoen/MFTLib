@@ -47,7 +47,7 @@ public sealed partial class FileIndex
     /// </summary>
     void NoteWatchStateLocked(DriveRuntime runtime, WatchFault? cause = null)
     {
-        var state = GetWatchStateLocked(runtime.DriveLetter);
+        var state = GetWatchStateLocked(runtime.Drive);
         if (state == runtime.NotedWatchState)
         {
             return;
@@ -56,7 +56,7 @@ public sealed partial class FileIndex
         runtime.NotedWatchState = state;
         runtime.WatchStateVersion++;
         (runtime.PendingWatchStates ??= []).Add(
-            new WatchStateChange(runtime.DriveLetter, DescribeWatchLocked(runtime), cause));
+            new WatchStateChange(runtime.Drive, DescribeWatchLocked(runtime), cause));
     }
 
     /// <summary>
@@ -67,14 +67,14 @@ public sealed partial class FileIndex
     /// </summary>
     DriveWatchStatus DescribeWatchLocked(DriveRuntime runtime) =>
         DescribeWatchLocked(runtime,
-            _driveBlocks.First(driveBlock => char.ToUpperInvariant(driveBlock.DriveLetter) == runtime.DriveLetter));
+            _driveBlocks.First(driveBlock => driveBlock.Drive == runtime.Drive));
 
     DriveWatchStatus DescribeWatchLocked(DriveRuntime runtime, DriveBlock driveBlock) =>
         new()
         {
             Supported = driveBlock.ProducerKind == ProducerKind.Mft && WatchSourceOrNull is not null,
             Requested = runtime.WatchRequested,
-            State = GetWatchStateLocked(driveBlock.DriveLetter),
+            State = GetWatchStateLocked(driveBlock.Drive),
             StateVersion = runtime.WatchStateVersion,
             FailureMessage = _watchFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             ConsecutiveLostCatchUps = runtime.ConsecutiveLostCatchUps,

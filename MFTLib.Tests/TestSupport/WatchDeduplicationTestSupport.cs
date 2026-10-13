@@ -16,7 +16,7 @@ internal static class WatchDeduplicationTestSupport
     };
 
     public static JournalCatchUpLostException[] CatchUpLosses(WatchHarness harness, char driveLetter) =>
-        harness.Faults.Where(fault => fault.Kind == WatchFaultKind.CatchUpLost && fault.DriveLetter == driveLetter)
+        harness.Faults.Where(fault => fault.Kind == WatchFaultKind.CatchUpLost && fault.Drive == driveLetter)
             .Select(fault => (JournalCatchUpLostException)fault.Exception).ToArray();
 
     public static async Task<TException> ThrowsAsync<TException>(Func<Task> action) where TException : Exception
@@ -32,5 +32,4 @@ internal static class WatchDeduplicationTestSupport
 
         throw new AssertFailedException($"Expected {typeof(TException).Name} to be thrown.");
     }
-
 }

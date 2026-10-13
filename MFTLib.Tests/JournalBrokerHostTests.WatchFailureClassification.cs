@@ -24,7 +24,7 @@ public partial class JournalBrokerHostTests
         var queriedDrives = new List<char>();
         using var journal = JournalCheckpointCheck.OverrideJournalForTest(drive =>
         {
-            queriedDrives.Add(drive);
+            queriedDrives.Add((drive).Letter);
             return new JournalWindow(7UL, 100L, 1000L, 64L, 4096L);
         });
 

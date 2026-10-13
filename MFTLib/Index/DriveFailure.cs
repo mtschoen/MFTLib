@@ -4,7 +4,7 @@ namespace MFTLib.Index;
 ///     Why one drive failed: the kind a consumer branches on and the message it shows. Carried by
 ///     <see cref="DriveStatus.Failure" /> while a drive is <see cref="DriveState.Failed" />, and while a
 ///     <see cref="DriveState.Ready" /> drive retains its previous block after a failed
-///     <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> or a failed catch-up retry scan during
+///     <see cref="FileIndex.RescanAsync" /> or a failed catch-up retry scan during
 ///     <see cref="FileIndex.OpenAsync" />.
 /// </summary>
 public sealed record DriveFailure

@@ -50,10 +50,10 @@ public class FileIndexPerDriveProducerPolicyTests
         AssertDrive(index, 'U', ProducerKind.Enumeration);
         var rows = index.Search(new SearchQuery(".txt"));
         CollectionAssert.AreEquivalent(new[] { "scanned.txt", "walked.txt" }, rows.Select(row => row.Name).ToArray());
-        CollectionAssert.AreEquivalent(new[] { 'T', 'U' }, rows.Select(row => row.RecordKey.DriveLetter).ToArray());
+        CollectionAssert.AreEquivalent(new[] { 'T', 'U' }, rows.Select(row => row.RecordKey.Drive.Letter).ToArray());
 
-        await index.RescanAsync('T', CancellationToken.None);
-        await index.RescanAsync('U', CancellationToken.None);
+        await index.RescanAsync(['T'], CancellationToken.None);
+        await index.RescanAsync(['U'], CancellationToken.None);
         AssertDrive(index, 'T', ProducerKind.Mft);
         AssertDrive(index, 'U', ProducerKind.Enumeration);
     }
@@ -67,12 +67,12 @@ public class FileIndexPerDriveProducerPolicyTests
         };
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
-        var failed = index.Drives.Single(drive => drive.DriveLetter == 'T');
+        var failed = index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Failed, failed.State);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, failed.Failure?.Kind);
         Assert.IsNull(failed.Block);
         AssertDrive(index, 'U', ProducerKind.Enumeration);
-        Assert.AreEqual('U', index.Search(new SearchQuery("walked.txt")).Single().RecordKey.DriveLetter);
+        Assert.AreEqual(new DriveKey('U'), index.Search(new SearchQuery("walked.txt")).Single().RecordKey.Drive);
     }
 
     [TestMethod]
@@ -98,7 +98,7 @@ public class FileIndexPerDriveProducerPolicyTests
             MftSource = null
         }, CancellationToken.None);
 
-        var failed = index.Drives.Single(drive => drive.DriveLetter == 'T');
+        var failed = index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Failed, failed.State);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, failed.Failure?.Kind);
         Assert.AreEqual("ProducerPolicy.Mft requires FileIndexOptions.MftSource to be set.", failed.Failure?.Message);
@@ -116,9 +116,9 @@ public class FileIndexPerDriveProducerPolicyTests
 
         await using var index = await FileIndex.OpenAsync(options with { MftSource = null }, CancellationToken.None);
         AssertDrive(index, 'T', ProducerKind.Mft, BlockSource.WarmStartedFromCache);
-        var failure = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => index.StartWatchingAsync('T', CancellationToken.None));
-        Assert.AreEqual("Drive T: this source does not support watching.", failure.Message);
+        await DriveResultAssertions.NotApplicableAsync(
+            () => index.StartWatchingAsync(['T'], CancellationToken.None));
+        Assert.IsFalse(index.Drives.Single().Watch.Requested);
     }
 
     [TestMethod]
@@ -185,24 +185,24 @@ public class FileIndexPerDriveProducerPolicyTests
             MftSource = SyntheticIndexSource.Create(Producer(), watches)
         }, CancellationToken.None);
 
-        Assert.IsFalse(index.Drives.Single(drive => drive.DriveLetter == 'U').Watch.Supported);
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => index.StartWatchingAsync('U', CancellationToken.None));
-        var results = await index.StartWatchingAsync(CancellationToken.None);
-        Assert.AreEqual(DriveOperationOutcome.NotApplicable, results.Single(result => result.DriveLetter == 'U').Outcome);
-        Assert.AreEqual(DriveOperationOutcome.Succeeded, results.Single(result => result.DriveLetter == 'T').Outcome);
-        await index.WaitForCatchUpAsync('T', CancellationToken.None);
-        Assert.AreEqual(WatchState.CaughtUp, index.Drives.Single(drive => drive.DriveLetter == 'T').Watch.State);
-        Assert.AreEqual('T', watches.Starts.Single().DriveLetter);
-        await index.RescanAsync('U', CancellationToken.None);
-        Assert.AreEqual(WatchState.CaughtUp, index.Drives.Single(drive => drive.DriveLetter == 'T').Watch.State);
-        Assert.IsFalse(index.Drives.Single(drive => drive.DriveLetter == 'U').Watch.Supported);
+        Assert.IsFalse(index.Drives.Single(drive => drive.Drive == 'U').Watch.Supported);
+        await DriveResultAssertions.NotApplicableAsync(
+            () => index.StartWatchingAsync(['U'], CancellationToken.None));
+        var results = await index.StartWatchingAsync(index.Drives.Select(drive => drive.Drive), CancellationToken.None);
+        Assert.AreEqual(DriveOperationOutcome.NotApplicable, results.Single(result => result.Drive == 'U').Outcome);
+        Assert.AreEqual(DriveOperationOutcome.Succeeded, results.Single(result => result.Drive == 'T').Outcome);
+        await index.WaitForCatchUpAsync(['T'], CancellationToken.None);
+        Assert.AreEqual(WatchState.CaughtUp, index.Drives.Single(drive => drive.Drive == 'T').Watch.State);
+        Assert.AreEqual(new DriveKey('T'), watches.Starts.Single().Drive);
+        await index.RescanAsync(['U'], CancellationToken.None);
+        Assert.AreEqual(WatchState.CaughtUp, index.Drives.Single(drive => drive.Drive == 'T').Watch.State);
+        Assert.IsFalse(index.Drives.Single(drive => drive.Drive == 'U').Watch.Supported);
     }
 
     static void AssertDrive(FileIndex index, char letter, ProducerKind kind,
         BlockSource source = BlockSource.ProducedByScan)
     {
-        var status = index.Drives.Single(drive => drive.DriveLetter == letter);
+        var status = index.Drives.Single(drive => drive.Drive == letter);
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.IsNotNull(status.Block);
         Assert.AreEqual(source, status.Block.Source);

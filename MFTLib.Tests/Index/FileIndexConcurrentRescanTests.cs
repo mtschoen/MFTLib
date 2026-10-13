@@ -3,7 +3,6 @@ using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -57,8 +56,8 @@ public class FileIndexConcurrentRescanTests
         var heldT = harness.HoldNextProduction('T');
         var heldU = harness.HoldNextProduction('U');
 
-        var rescanT = harness.Index.RescanAsync('T', Token);
-        var rescanU = harness.Index.RescanAsync('U', Token);
+        var rescanT = harness.Index.RescanAsync(['T'], Token);
+        var rescanU = harness.Index.RescanAsync(['U'], Token);
         await Task.WhenAll(heldT.Entered, heldU.Entered).WaitAsync(HangGuard);
         heldT.Release();
         heldU.Release();
@@ -74,8 +73,8 @@ public class FileIndexConcurrentRescanTests
         var producers = new GatedProducers(this);
         await using var index = await FileIndex.OpenAsync(producers.CacheOnlyOptions(), Token);
 
-        var rescanT = index.RescanAsync('T', Token);
-        var rescanU = index.RescanAsync('U', Token);
+        var rescanT = index.RescanAsync(['T'], Token);
+        var rescanU = index.RescanAsync(['U'], Token);
         await producers.BothEnteredAsync();
         producers.Release('T');
         producers.Release('U');
@@ -84,8 +83,8 @@ public class FileIndexConcurrentRescanTests
         Assert.IsTrue(index.TryGetDriveOrdinal('T', out var ordinalT));
         Assert.IsTrue(index.TryGetDriveOrdinal('U', out var ordinalU));
         Assert.AreNotEqual(ordinalT, ordinalU);
-        Assert.AreEqual('T', index.CurrentSnapshot.GetDriveBlock(ordinalT).DriveLetter);
-        Assert.AreEqual('U', index.CurrentSnapshot.GetDriveBlock(ordinalU).DriveLetter);
+        Assert.AreEqual('T', index.CurrentSnapshot.GetDriveBlock(ordinalT).Drive);
+        Assert.AreEqual('U', index.CurrentSnapshot.GetDriveBlock(ordinalU).Drive);
     }
 
     [DataTestMethod]
@@ -97,15 +96,15 @@ public class FileIndexConcurrentRescanTests
         producers.Fail('T', new IOException("T lost its volume"));
         await using var index = await FileIndex.OpenAsync(producers.CacheOnlyOptions(), Token);
 
-        var rescanT = index.RescanAsync('T', Token);
-        var rescanU = index.RescanAsync('U', Token);
+        var rescanT = index.RescanAsync(['T'], Token);
+        var rescanU = index.RescanAsync(['U'], Token);
         await producers.BothEnteredAsync();
         foreach (var driveLetter in failedDriveFirst ? "TU" : "UT")
         {
             producers.Release(driveLetter);
             if (driveLetter == 'T')
             {
-                await ThrowsAsync<InvalidOperationException>(() => rescanT.WaitAsync(HangGuard));
+                await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => rescanT.WaitAsync(HangGuard));
             }
             else
             {
@@ -113,8 +112,8 @@ public class FileIndexConcurrentRescanTests
             }
         }
 
-        var driveT = index.Drives.Single(drive => drive.DriveLetter == 'T');
-        var driveU = index.Drives.Single(drive => drive.DriveLetter == 'U');
+        var driveT = index.Drives.Single(drive => drive.Drive == 'T');
+        var driveU = index.Drives.Single(drive => drive.Drive == 'U');
         Assert.AreEqual(DriveState.Failed, driveT.State);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, driveT.Failure?.Kind);
         Assert.AreEqual("T lost its volume", driveT.Failure?.Message);
@@ -131,25 +130,25 @@ public class FileIndexConcurrentRescanTests
         producers.Fail('U', new UnauthorizedAccessException("U declined elevation"));
         await using var index = await FileIndex.OpenAsync(producers.CacheOnlyOptions(), Token);
 
-        var rescanT = index.RescanAsync('T', Token);
-        var rescanU = index.RescanAsync('U', Token);
+        var rescanT = index.RescanAsync(['T'], Token);
+        var rescanU = index.RescanAsync(['U'], Token);
         await producers.BothEnteredAsync();
         producers.Release('T');
         producers.Release('U');
-        await ThrowsAsync<InvalidOperationException>(() => rescanT.WaitAsync(HangGuard));
-        await ThrowsAsync<InvalidOperationException>(() => rescanU.WaitAsync(HangGuard));
+        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => rescanT.WaitAsync(HangGuard));
+        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => rescanU.WaitAsync(HangGuard));
 
         Assert.AreEqual("T lost its volume",
-            index.Drives.Single(drive => drive.DriveLetter == 'T').Failure?.Message);
+            index.Drives.Single(drive => drive.Drive == 'T').Failure?.Message);
         Assert.AreEqual("U declined elevation",
-            index.Drives.Single(drive => drive.DriveLetter == 'U').Failure?.Message);
+            index.Drives.Single(drive => drive.Drive == 'U').Failure?.Message);
     }
 
     [TestMethod]
     public async Task BatchOnT_DoesNotWaitForUCommit()
     {
         using var harness = new WatchHarness('T', 'U');
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         var commitOfU = harness.TrackGate();
         harness.Index.PublishInsideWriteGateForTest = driveLetter =>
         {
@@ -162,7 +161,7 @@ public class FileIndexConcurrentRescanTests
         // Off the test's thread: the held commit blocks the thread that reaches it.
         var index = harness.Index;
         var token = Token;
-        var rescanU = Task.Run(() => index.RescanAsync('U', token));
+        var rescanU = Task.Run(() => index.RescanAsync(['U'], token));
         await commitOfU.Entered.WaitAsync(HangGuard);
 
         await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(9, "during.txt", nextUsn: 700));
@@ -177,7 +176,7 @@ public class FileIndexConcurrentRescanTests
     public async Task PublishForU_MidBatchOnT_IsSafe()
     {
         using var harness = new WatchHarness('T', 'U');
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         var batchOnT = harness.TrackGate();
         harness.Index.ApplyJournalEntriesInsideWriteGateForTest = driveLetter =>
         {
@@ -191,7 +190,7 @@ public class FileIndexConcurrentRescanTests
         await batchOnT.Entered.WaitAsync(HangGuard);
         var snapshotDuringBatch = harness.Index.CurrentSnapshot;
 
-        await harness.Index.RescanAsync('U', Token).WaitAsync(HangGuard);
+        await harness.Index.RescanAsync(['U'], Token).WaitAsync(HangGuard);
         Assert.AreNotSame(snapshotDuringBatch, harness.Index.CurrentSnapshot, "U's commit retired the snapshot");
         batchOnT.Release();
         await consumed.WaitAsync(HangGuard);
@@ -211,7 +210,7 @@ public class FileIndexConcurrentRescanTests
         bool? otherGatesFree = null;
         index.ApplyJournalEntriesInsideWriteGateForTest = driveLetter =>
         {
-            ownGateFree = index.AreDriveGatesFreeForTest(driveLetter);
+            ownGateFree = index.AreDriveGatesFreeForTest((driveLetter).Letter);
             otherGatesFree = index.AreDriveGatesFreeForTest('U');
         };
 
@@ -269,7 +268,7 @@ public class FileIndexConcurrentRescanTests
         async Task<MftBlockProduceResult> ProduceAsync(MftBlockProduceRequest request,
             CancellationToken cancellationToken)
         {
-            var driveLetter = char.ToUpperInvariant(request.DriveLetter);
+            var driveLetter = char.ToUpperInvariant((request.Drive).Letter);
             var gate = _gates[driveLetter];
             gate.MarkEntered();
             await gate.WaitForReleaseAsync(cancellationToken);

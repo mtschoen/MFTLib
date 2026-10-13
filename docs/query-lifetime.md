@@ -19,6 +19,8 @@
 
     - **Row enumeration**: `FileIndex.EnumerateRows` takes its snapshot borrow when `foreach` begins
       (`GetEnumerator()`), and `foreach` releases it on completion, `break`, an exception or cancellation.
+      `IndexRow.Drive` and retained handles' `RecordKey.Drive` are normalized `DriveKey` values;
+      `Root` takes a `DriveKey` and rejects its invalid default value.
       The token is observed before the first row and at least every 4096 scanned rows, including rows
       rejected by the query. The result (`IndexRowEnumerable`), its enumerator (`IndexRowEnumerator`) and
       each `IndexRow` are ref structs: holding one across an `await`, capturing it in a lambda or storing

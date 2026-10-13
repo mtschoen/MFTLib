@@ -33,7 +33,7 @@ public class BrokerIndexWatchSourceFaultTests
         runD.Fail(new IOException("journal wrapped"));
 
         var fault = await WatchReads.ThrowsNextAsync<DriveWatchFaultException>(readerD);
-        Assert.AreEqual('D', fault.DriveLetter);
+        Assert.AreEqual('D', fault.Drive);
         Assert.AreEqual("journal wrapped", fault.Message);
         runC.Push(1, "c.txt", 110);
         var batch = await WatchReads.NextBatchAsync(readerC);
@@ -62,8 +62,8 @@ public class BrokerIndexWatchSourceFaultTests
         var faultC = await WatchReads.ThrowsNextAsync<DriveWatchFaultException>(readerC);
         var faultD = await WatchReads.ThrowsNextAsync<DriveWatchFaultException>(readerD);
 
-        Assert.AreEqual(('C', "C wrapped"), (faultC.DriveLetter, faultC.Message));
-        Assert.AreEqual(('D', "D wrapped"), (faultD.DriveLetter, faultD.Message));
+        Assert.AreEqual(('C', "C wrapped"), (faultC.Drive, faultC.Message));
+        Assert.AreEqual(('D', "D wrapped"), (faultD.Drive, faultD.Message));
     }
 
     [TestMethod]
@@ -86,11 +86,11 @@ public class BrokerIndexWatchSourceFaultTests
         var source = new BrokerMftBlockProducer(broker.ConnectAsync).CreateIndexSource().WatchSource!;
         using var harness = new WatchHarness(source, 'T', 'U');
         var index = harness.Index;
-        await index.StartWatchingAsync('T', token);
-        await index.StartWatchingAsync('U', token);
+        await index.StartWatchingAsync(['T'], token);
+        await index.StartWatchingAsync(['U'], token);
         var runT = await broker.Watch('T').RunAsync(1);
         var runU = await broker.Watch('U').RunAsync(1);
-        await index.WaitForCatchUpAsync('U', token).WaitAsync(HostChannelHarness.HangGuard);
+        await index.WaitForCatchUpAsync(['U'], token).WaitAsync(HostChannelHarness.HangGuard);
 
         // The host closes T's pipe: its watch ends without a word.
         runT.End();
@@ -100,7 +100,7 @@ public class BrokerIndexWatchSourceFaultTests
         await appliedOnU;
 
         Assert.IsInstanceOfType<BrokerChannelLostException>(fault.Exception);
-        Assert.AreEqual('T', ((BrokerChannelLostException)fault.Exception).DriveLetter);
+        Assert.AreEqual('T', ((BrokerChannelLostException)fault.Exception).Drive);
         Assert.AreEqual(1, harness.Faults.Count);
         Assert.AreEqual(WatchState.Faulted, harness.DriveFor('T').Watch.State);
         Assert.IsNotNull(harness.DriveFor('T').Watch.FailureMessage);
@@ -117,19 +117,19 @@ public class BrokerIndexWatchSourceFaultTests
         var source = new BrokerMftBlockProducer(broker.ConnectAsync).CreateIndexSource().WatchSource!;
         using var harness = new WatchHarness(source, 'T', 'U');
         var index = harness.Index;
-        await index.StartWatchingAsync('T', token);
-        await index.StartWatchingAsync('U', token);
+        await index.StartWatchingAsync(['T'], token);
+        await index.StartWatchingAsync(['U'], token);
         var runU = await broker.Watch('U').RunAsync(1);
 
         (await broker.Watch('T').RunAsync(1)).Fail(new IOException("journal wrapped"));
 
         var fault = await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
         Assert.IsInstanceOfType<DriveWatchFaultException>(fault.Exception);
-        Assert.AreEqual('T', ((DriveWatchFaultException)fault.Exception).DriveLetter);
+        Assert.AreEqual('T', ((DriveWatchFaultException)fault.Exception).Drive);
         Assert.AreEqual("journal wrapped", fault.Exception.Message);
         var appliedOnU = ChangeSignal.WhenApplied(index, "u.txt");
         runU.Push(10, "u.txt", 300);
         await appliedOnU;
-        Assert.IsTrue(harness.Faults.All(raised => raised.DriveLetter == 'T'), "only T raised a fault");
+        Assert.IsTrue(harness.Faults.All(raised => raised.Drive == 'T'), "only T raised a fault");
     }
 }

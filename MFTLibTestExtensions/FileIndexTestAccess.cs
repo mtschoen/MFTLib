@@ -14,7 +14,7 @@ public static class FileIndexTestAccess
     /// <param name="entries">The synthetic journal records to apply.</param>
     /// <param name="cursor">The journal identifier and post-batch cursor stamped into the block.</param>
     /// <returns>The changes applied to the drive.</returns>
-    public static IReadOnlyList<FileChange> ApplyJournalEntries(FileIndex index, char driveLetter,
+    public static IReadOnlyList<FileChange> ApplyJournalEntries(FileIndex index, DriveKey driveLetter,
         IReadOnlyList<SyntheticJournalRecord> entries, SyntheticJournalCursor cursor)
     {
         ArgumentNullException.ThrowIfNull(index);

@@ -42,7 +42,7 @@
       `JournalCheckpointLoss` keeps the checkpoint, first and next USN positions internal: the broker
       protocol carries them, report equality covers them, and `BytesBehind` and
       `SizeThatWouldHaveRetained` derive from them. `JournalCatchUpLostException` carries only
-      `RecoveryStopped` and its message; the drive is the fault's `WatchFault.DriveLetter`, and the
+       `RecoveryStopped` and its message; the drive is the fault's `WatchFault.Drive`, and the
       recovery-stopped flag and the report are the drive's `DriveStatus.Watch` values, which a
       `WatchFaulted` handler reads when the fault is raised.
       A stopped-loss message with a retained-size suggestion names the public

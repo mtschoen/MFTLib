@@ -39,7 +39,7 @@ public class FileIndexMidSessionCheckpointLossTests
     static IDisposable TrimmedForTOnly()
     {
         return JournalCheckpointCheck.OverrideJournalForTest(driveLetter =>
-            char.ToUpperInvariant(driveLetter) == 'T'
+            char.ToUpperInvariant((driveLetter).Letter) == 'T'
                 ? new JournalWindow(WatchedJournalIdentifier, ArmedUsn + 500, ArmedUsn + 4_000,
                     AllocationDelta, MaximumSize)
                 : new JournalWindow(WatchedJournalIdentifier, 0, ArmedUsn + 4_000, AllocationDelta, MaximumSize));
@@ -51,9 +51,9 @@ public class FileIndexMidSessionCheckpointLossTests
         harness.Index.HoldEveryRecovery();
         try
         {
-            foreach (var driveLetter in harness.Index.Drives.Select(drive => drive.DriveLetter))
+            foreach (var driveLetter in harness.Index.Drives.Select(drive => drive.Drive))
             {
-                await harness.Index.StartWatchingAsync(driveLetter, Token);
+                await harness.Index.StartWatchingAsync([driveLetter], Token);
             }
 
             return harness;
@@ -101,7 +101,7 @@ public class FileIndexMidSessionCheckpointLossTests
         var loss = drive.Watch.CheckpointLoss;
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
-        Assert.AreEqual('T', loss.DriveLetter);
+        Assert.AreEqual('T', loss.Drive);
         Assert.AreEqual(ArmedUsn, loss.CheckpointUsn);
         Assert.AreEqual(ArmedUsn + 500, loss.FirstUsn);
         Assert.AreEqual(ArmedUsn + 4_000, loss.NextUsn);
@@ -111,8 +111,8 @@ public class FileIndexMidSessionCheckpointLossTests
         // The 4000-byte span rounds to 4032, then the trimming margin adds one 64-byte delta.
         Assert.AreEqual(4_096L, loss.SizeThatWouldHaveRetained);
 
-        await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(
-            () => harness.Index.StopWatchingAsync('T', Token));
+        await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
+            () => harness.Index.StopWatchingAsync(['T'], Token));
     }
 
     /// <summary>
@@ -140,8 +140,8 @@ public class FileIndexMidSessionCheckpointLossTests
             "the watch position, not the cursor the drive was armed from");
         Assert.AreEqual(500L, loss.BytesBehind);
 
-        await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(
-            () => harness.Index.StopWatchingAsync('T', Token));
+        await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
+            () => harness.Index.StopWatchingAsync(['T'], Token));
     }
 
     [TestMethod]
@@ -155,13 +155,13 @@ public class FileIndexMidSessionCheckpointLossTests
         var loss = harness.DriveFor('T').Watch.CheckpointLoss;
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.JournalRecreated, loss.Cause);
-        Assert.AreEqual('T', loss.DriveLetter);
+        Assert.AreEqual('T', loss.Drive);
         Assert.AreEqual(ArmedUsn, loss.CheckpointUsn);
         Assert.IsNull(loss.SizeThatWouldHaveRetained, "different journal instances have no comparable span");
         Assert.IsNull(loss.BytesBehind);
 
-        await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(
-            () => harness.Index.StopWatchingAsync('T', Token));
+        await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
+            () => harness.Index.StopWatchingAsync(['T'], Token));
     }
 
     /// <summary>
@@ -176,7 +176,7 @@ public class FileIndexMidSessionCheckpointLossTests
         var queriedDrives = new ConcurrentQueue<char>();
         using var journal = JournalCheckpointCheck.OverrideJournalForTest(driveLetter =>
         {
-            queriedDrives.Enqueue(char.ToUpperInvariant(driveLetter));
+            queriedDrives.Enqueue(char.ToUpperInvariant((driveLetter).Letter));
             return new JournalWindow(WatchedJournalIdentifier, ArmedUsn - 50, ArmedUsn + 4_000,
                 AllocationDelta, MaximumSize);
         });
@@ -189,8 +189,8 @@ public class FileIndexMidSessionCheckpointLossTests
         CollectionAssert.AreEqual(new[] { 'T' }, queriedDrives.ToArray(),
             "the journal is asked once, and its answer is what decides");
 
-        await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(
-            () => harness.Index.StopWatchingAsync('T', Token));
+        await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
+            () => harness.Index.StopWatchingAsync(['T'], Token));
     }
 
     [TestMethod]
@@ -205,8 +205,8 @@ public class FileIndexMidSessionCheckpointLossTests
         Assert.IsNotNull(drive.Watch.FailureMessage);
         Assert.IsNull(drive.Watch.CheckpointLoss, "a volume that cannot answer reports nothing rather than guessing");
 
-        await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(
-            () => harness.Index.StopWatchingAsync('T', Token));
+        await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
+            () => harness.Index.StopWatchingAsync(['T'], Token));
     }
 
     /// <summary>One drive losing its position says nothing about another drive's.</summary>
@@ -223,10 +223,10 @@ public class FileIndexMidSessionCheckpointLossTests
         Assert.IsNull(harness.DriveFor('U').Watch.CheckpointLoss,
             "U's watch died too, but its position is still in the journal");
 
-        await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(
-            () => harness.Index.StopWatchingAsync('T', Token));
-        await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(
-            () => harness.Index.StopWatchingAsync('U', Token));
+        await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
+            () => harness.Index.StopWatchingAsync(['T'], Token));
+        await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
+            () => harness.Index.StopWatchingAsync(['U'], Token));
     }
 
     /// <summary>
@@ -244,7 +244,7 @@ public class FileIndexMidSessionCheckpointLossTests
         }
 
         harness.SetNextProducedCursor('T', WatchedJournalIdentifier, ArmedUsn + 4_000);
-        await harness.Index.RescanAsync('T', Token);
+        await harness.Index.RescanAsync(['T'], Token);
 
         Assert.IsNull(harness.DriveFor('T').Watch.CheckpointLoss,
             "the rescan replaced the block whose cursor the report described");
@@ -296,7 +296,7 @@ public class FileIndexMidSessionCheckpointLossTests
         {
             if (fault.Kind == WatchFaultKind.Drive)
             {
-                seenByHandler.TrySetResult(index.Drives.Single(drive => drive.DriveLetter == 'T').Watch.CheckpointLoss);
+                seenByHandler.TrySetResult(index.Drives.Single(drive => drive.Drive == 'T').Watch.CheckpointLoss);
             }
         };
 
@@ -308,7 +308,7 @@ public class FileIndexMidSessionCheckpointLossTests
         Assert.AreEqual(JournalCheckpointLossDetection.LiveWatch, loss.DetectedDuring);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
 
-        await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(
-            () => harness.Index.StopWatchingAsync('T', Token));
+        await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
+            () => harness.Index.StopWatchingAsync(['T'], Token));
     }
 }

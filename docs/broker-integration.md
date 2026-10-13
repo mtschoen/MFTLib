@@ -254,26 +254,27 @@ never replaces the scan's own exception or result.
 
 ## 4. Start and stop per-drive watches
 
-The all-drive forms fan out concurrently and return one `DriveOperationResult`
-per configured drive:
+Each lifecycle verb accepts `IEnumerable<DriveKey>`, fans out concurrently and returns one
+`DriveOperationResult` per requested drive. Use the current status keys for all drives:
 
 ```csharp
-var starts = await index.StartWatchingAsync(cancellationToken);
+var drives = index.Drives.Select(status => status.Drive).ToArray();
+var starts = await index.StartWatchingAsync(drives, cancellationToken);
 foreach (var result in starts)
 {
     if (result.Outcome == DriveOperationOutcome.Failed)
     {
         Console.Error.WriteLine(
-            $"Drive {result.DriveLetter} did not start: {result.Failure}");
+            $"Drive {result.Drive} did not start: {result.Failure}");
     }
 }
 
-var catchUps = await index.WaitForCatchUpAsync(cancellationToken);
+var catchUps = await index.WaitForCatchUpAsync(drives, cancellationToken);
 ```
 
-Single-drive `StartWatchingAsync`, `WaitForCatchUpAsync` and `RescanAsync` act on
-one letter. `RescanAsync(driveLetters)` acts on the supplied list. Start, stop
-and catch-up wait also have token-only all-drive forms. Batched calls preserve request order in their result list, wait
+`StartWatchingAsync`, `StopWatchingAsync`, `WaitForCatchUpAsync` and `RescanAsync`
+each have one method with the same enumerable-key and cancellation-token parameters.
+For one drive, pass `[drive]` and read the single result. Requests preserve order in their result list, wait
 for every drive they started to settle, and report per-drive failures without
 hiding successful siblings.
 
@@ -281,7 +282,7 @@ hiding successful siblings.
 handle and its pump is scheduled. It does not wait for the journal backlog.
 `WaitForCatchUpAsync` waits for the drive's caught-up marker per drive.
 
-`StopWatchingAsync(cancellationToken)` stops every configured drive and consumes
+`StopWatchingAsync(drives, cancellationToken)` stops each requested drive and consumes
 each watch instance's outstanding fault once, placing it in the affected drive's
 failed result. `DisposeAsync` does not rethrow
 watch faults.
@@ -310,10 +311,10 @@ Subscribe before starting watches:
 index.WatchFaulted += fault =>
 {
     var status = index.Drives.Single(
-        drive => drive.DriveLetter == fault.DriveLetter);
+        drive => drive.Drive == fault.Drive);
 
     Console.Error.WriteLine(
-        $"Drive {fault.DriveLetter}: {fault.Kind}, {status.Watch.State}, " +
+        $"Drive {fault.Drive}: {fault.Kind}, {status.Watch.State}, " +
         $"automatic recovery: {fault.IsRecovering}");
 };
 ```
@@ -361,8 +362,8 @@ together), and drop older events:
 
 ```csharp
 var gate = new Lock();
-var applied = new Dictionary<char, long>();
-void ApplyWatchState(char driveLetter, DriveWatchStatus watch)
+var applied = new Dictionary<DriveKey, long>();
+void ApplyWatchState(DriveKey driveLetter, DriveWatchStatus watch)
 {
     // The check and the publication share one lock, so an older event
     // delivered concurrently can never publish after a newer one.
@@ -377,10 +378,10 @@ void ApplyWatchState(char driveLetter, DriveWatchStatus watch)
         Publish(driveLetter, watch.State);
     }
 }
-index.WatchStateChanged += change => ApplyWatchState(change.DriveLetter, change.Watch);
+index.WatchStateChanged += change => ApplyWatchState(change.Drive, change.Watch);
 foreach (var status in index.Drives)
 {
-    ApplyWatchState(status.DriveLetter, status.Watch);
+    ApplyWatchState(status.Drive, status.Watch);
 }
 ```
 
@@ -436,9 +437,9 @@ Journal growth is an explicit, persistent system change. After user consent:
 3. Call `broker.GrowUsnJournalAsync(driveLetter, target.MaximumSize,
    target.AllocationDelta, cancellationToken)`. The broker refuses a maximum at or
    below the current size and returns the settings read back after success.
-4. Call `index.RescanAsync(driveLetter, cancellationToken)`.
+4. Call `index.RescanAsync([drive], cancellationToken)` and inspect its result.
 5. The successful rescan clears the refusal and starts the watch if it is requested.
-   Call `index.StartWatchingAsync(driveLetter, cancellationToken)` only if watching
+   Call `index.StartWatchingAsync([drive], cancellationToken)` only if watching
    has not been requested.
 
 ```csharp
@@ -449,7 +450,11 @@ if (loss.TryGetGrowthTarget(out var target))
     {
         await broker.GrowUsnJournalAsync(driveLetter, target.MaximumSize,
             target.AllocationDelta, cancellationToken);
-        await index.RescanAsync(driveLetter, cancellationToken);
+        var results = await index.RescanAsync([driveLetter], cancellationToken);
+        foreach (var result in results.Where(result => result.Failure is not null))
+        {
+            Console.Error.WriteLine($"Rescan {result.Drive}: {result.Failure}");
+        }
     }
 }
 ```

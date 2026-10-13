@@ -12,7 +12,7 @@ public sealed partial class FileIndex
     ///     replacement has not registered yet, and <see cref="WatchState.NotStarted" />
     ///     otherwise. The caller holds <see cref="_stateLock" />.
     /// </summary>
-    WatchState GetWatchStateLocked(char driveLetter)
+    WatchState GetWatchStateLocked(DriveKey driveLetter)
     {
         var runtime = GetDriveRuntime(driveLetter);
         if (runtime.RetryingLostCatchUp || runtime.RecoveryState == RecoveryState.Recovering)
@@ -97,53 +97,4 @@ public sealed partial class FileIndex
         TakeRestartPendingWaiterLocked(runtime)?.TrySetCanceled();
     }
 
-    /// <summary>
-    ///     Waits for one drive's initial journal catch-up: the returned task completes once the
-    ///     backlog present when the drive's current watch started has been applied and the drive
-    ///     is on live entries. It completes immediately when the drive is already caught up,
-    ///     faults with the drive's exception when its watch fails (before or after this call) or
-    ///     its last start failed or was refused, faults at once while the drive reads
-    ///     <see cref="WatchState.Recovering" /> (with the fault that ended its watch, or
-    ///     the lost catch-up a scan is retrying; a consumer that wants the recovered watch waits
-    ///     again once the drive reads <see cref="WatchState.CatchingUp" />, which
-    ///     <see cref="WatchStateChanged" /> reports), and is
-    ///     cancelled when that watch is stopped, retired by a
-    ///     rescan, or the index is disposed. A wait issued after a rescan retired the drive's
-    ///     requested watch and before its replacement registered follows the replacement: it
-    ///     completes with the replacement's catch-up and faults when the replacement cannot start.
-    ///     When the wait faults because the watch failed, <see cref="Drives" /> already reflects
-    ///     that fault and any checkpoint loss it found, and, for a fault that queues an automatic
-    ///     recovery, the drive reads <see cref="WatchState.Recovering" />; a fault that
-    ///     recovers no further leaves it <see cref="WatchState.Faulted" />, and a stop that
-    ///     overtook it leaves it <see cref="WatchState.NotStarted" />. <paramref name="cancellationToken" /> and the index's
-    ///     disposal cancel the wait itself without touching the drive's watch. The wait's
-    ///     continuation never runs inline on the thread that settles it.
-    /// </summary>
-    /// <exception cref="ArgumentException"><paramref name="driveLetter" /> is not part of this index.</exception>
-    /// <exception cref="InvalidOperationException">The drive's watch is not requested and it has no current watch.</exception>
-    public Task WaitForCatchUpAsync(char driveLetter, CancellationToken cancellationToken)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        var runtime = GetDriveRuntime(driveLetter);
-        if (cancellationToken.IsCancellationRequested)
-        {
-            return Task.FromCanceled(cancellationToken);
-        }
-
-        Task wait;
-        lock (_stateLock)
-        {
-            wait = GetCatchUpWaitLocked(runtime) ?? throw new InvalidOperationException(
-                _options.MftSource is { WatchSource: null, UnavailableReason: null }
-                    ? MftIndexSource.FormatUnavailable(runtime.DriveLetter, MftIndexSource.NoWatchReason)
-                    : $"Drive {driveLetter} is not being watched, so there is no catch-up to wait for.");
-        }
-
-        if (!wait.IsCompleted && RejectedTask(nameof(WaitForCatchUpAsync)) is { } rejected)
-        {
-            return rejected;
-        }
-
-        return AwaitQueuedAsync(wait, cancellationToken, DisposalToken);
-    }
 }

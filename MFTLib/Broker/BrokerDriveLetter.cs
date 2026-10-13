@@ -31,7 +31,7 @@ internal static class BrokerDriveLetter
             return false;
         }
 
-        normalizedDrive = char.ToUpperInvariant(span[0]).ToString();
+        normalizedDrive = new Index.DriveKey(span[0]).ToString();
         return true;
     }
 }

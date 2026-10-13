@@ -56,7 +56,7 @@ internal sealed partial class BrokerProcess
             await RequestAsync((writer, requestId) => BrokerProtocol.WriteOpenChannel(writer, requestId, drive, pipeName),
                 BrokerFrameKind.ChannelOpened, cancellationToken).ConfigureAwait(false);
         }
-        catch (BrokerChannelLostException exception) when (exception.DriveLetter is null)
+        catch (BrokerChannelLostException exception) when (exception.Drive is null)
         {
             throw new BrokerChannelLostException(letter,
                 $"Drive {letter} channel could not be opened: {exception.Message}", exception);
@@ -106,8 +106,8 @@ internal sealed partial class BrokerProcess
         {
             if (Volatile.Read(ref _disposed) != 0)
             {
-                throw new BrokerChannelLostException(channel.DriveLetter,
-                    $"Drive {channel.DriveLetter} channel could not be opened: the broker process was disposed.");
+                throw new BrokerChannelLostException(channel.Drive,
+                    $"Drive {channel.Drive} channel could not be opened: the broker process was disposed.");
             }
 
             _channels.Add(channel);

@@ -21,7 +21,7 @@ public partial class BrokerProcessTests
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
 
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
         await sourceCancelled.Task.WaitAsync(HangGuard);
         var section = broker.Sections.Single();
         AssertSectionReleased(section);
@@ -56,7 +56,7 @@ public partial class BrokerProcessTests
             await dispose.WaitAsync(HangGuard);
 
             var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
-            Assert.AreEqual('C', lost.DriveLetter);
+            Assert.AreEqual('C', lost.Drive);
             AssertSectionReleased(broker.Sections.Single());
         }
         finally
@@ -121,7 +121,7 @@ public partial class BrokerProcessTests
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
 
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
         AssertSectionReleased(broker.Sections.Single());
     }
 
@@ -179,7 +179,7 @@ public partial class BrokerProcessTests
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
 
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
         AssertSectionReleased(broker.Sections.Single());
     }
 
@@ -202,7 +202,7 @@ public partial class BrokerProcessTests
         tracking.Release();
 
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => open.WaitAsync(HangGuard));
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
         await (await hostEnd.Task.WaitAsync(HangGuard)).Disposed.WaitAsync(HangGuard);
     }
 }

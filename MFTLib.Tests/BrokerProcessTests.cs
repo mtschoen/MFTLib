@@ -182,7 +182,7 @@ public partial class BrokerProcessTests
         await broker.CloseControlAsync();
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => first.WaitAsync(HangGuard));
 
-        Assert.IsNull(lost.DriveLetter);
+        Assert.IsNull(lost.Drive);
         Assert.AreEqual(0, broker.Process.PendingRequestCountForTest);
     }
 

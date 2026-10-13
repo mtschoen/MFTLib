@@ -34,7 +34,7 @@ public sealed partial class FileIndex
         /// <param name="driveLetter">The drive, named in the exception when the message is missing.</param>
         /// <returns>The message every blockless result carries.</returns>
         /// <exception cref="InvalidOperationException">The result has no failure message.</exception>
-        public string RequireFailureMessage(char driveLetter) =>
+        public string RequireFailureMessage(DriveKey driveLetter) =>
             ProducerFailureMessage ?? throw new InvalidOperationException(
                 $"Drive {driveLetter} failed without a failure message.");
 
@@ -56,8 +56,8 @@ public sealed partial class FileIndex
     ///     <see cref="IDisposable" />.
     /// </summary>
     DriveBlock BuildDriveBlock(IndexedDrive drive, ushort driveOrdinal, BlockFile block) =>
-        new(drive.DriveLetter, driveOrdinal, block, rootDirectoryPath: drive.RootDirectory,
-            isMftDump: IsMftDumpDrive(drive.DriveLetter));
+        new(drive.Drive, driveOrdinal, block, rootDirectoryPath: drive.RootDirectory,
+            isMftDump: IsMftDumpDrive(drive.Drive));
 
     /// <summary>
     ///     Writes every field of a published result against its ordinal and counts its catch-up:
@@ -123,17 +123,17 @@ public sealed partial class FileIndex
         await runtime.WriteGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            PublishInsideWriteGateForTest?.Invoke(runtime.DriveLetter);
+            PublishInsideWriteGateForTest?.Invoke(runtime.Drive);
             lock (_stateLock)
             {
                 ThrowIfCancelledByDisposal(cancellationToken);
-                var replacesBlock = TryGetDriveOrdinalLocked(runtime.DriveLetter, out var driveOrdinal);
+                var replacesBlock = TryGetDriveOrdinalLocked(runtime.Drive, out var driveOrdinal);
                 if (!replacesBlock)
                 {
                     driveOrdinal = (ushort)_driveBlocks.Count;
                 }
 
-                var driveBlock = BuildDriveBlock(_driveConfigurations[runtime.DriveLetter], driveOrdinal, block);
+                var driveBlock = BuildDriveBlock(_driveConfigurations[runtime.Drive], driveOrdinal, block);
                 var blocks = new List<DriveBlock>(_driveBlocks);
                 if (replacesBlock)
                 {
@@ -159,7 +159,7 @@ public sealed partial class FileIndex
                 {
                     _driveBlocks.Add(driveBlock);
                     _blocklessDriveStatuses.RemoveAll(status =>
-                        char.ToUpperInvariant(status.DriveLetter) == runtime.DriveLetter);
+                        status.Drive == runtime.Drive);
                 }
 
                 RecordPendingResultLocked(runtime, driveOrdinal, produced, clearsCheckpointLoss);

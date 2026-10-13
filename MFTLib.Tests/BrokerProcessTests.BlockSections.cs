@@ -1,6 +1,6 @@
 using MFTLib.Index;
-using MFTLibTestExtensions;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -91,7 +91,7 @@ public partial class BrokerProcessTests
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanProgress(writer,
             new BrokerScanProgress
             {
-                DriveLetter = "C",
+                Drive = "C",
                 Phase = BrokerScanPhase.Parsing,
                 RecordsProcessed = 50,
                 BytesProcessed = 1000,
@@ -102,7 +102,7 @@ public partial class BrokerProcessTests
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanProgress(writer,
             new BrokerScanProgress
             {
-                DriveLetter = "C",
+                Drive = "C",
                 Phase = BrokerScanPhase.Parsing,
                 RecordsProcessed = 100,
                 BytesProcessed = 2000,
@@ -122,7 +122,7 @@ public partial class BrokerProcessTests
         Assert.AreEqual(100, reports[1].RecordsProcessed);
         Assert.AreEqual(2000, reports[1].BytesProcessed);
         Assert.IsTrue(reports.All(report => report.TotalRecords == 100 && report.TotalBytes == 2000));
-        Assert.IsTrue(reports.All(report => report.DriveLetter == "C"),
+        Assert.IsTrue(reports.All(report => report.Drive == "C"),
             "the client fills the drive letter in from the channel a progress frame arrived on");
     }
 
@@ -148,7 +148,7 @@ public partial class BrokerProcessTests
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanProgress(writer,
             new BrokerScanProgress
             {
-                DriveLetter = "C",
+                Drive = "C",
                 Phase = BrokerScanPhase.Parsing,
                 RecordsProcessed = 10,
                 BytesProcessed = 200,

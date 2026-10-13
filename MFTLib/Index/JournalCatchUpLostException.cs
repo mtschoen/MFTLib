@@ -6,9 +6,9 @@ namespace MFTLib.Index;
 ///     A scan of one drive lost its journal catch-up: the journal proved that the cursor armed
 ///     before the scan could no longer be read when the scan finished, so the scan's block is
 ///     complete but cannot be watched from its cursor. Carried by a
-///     <see cref="WatchFaultKind.CatchUpLost" /> fault after every such scan, and thrown by
-///     <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> when the scan operation stops retrying.
-///     The exception names no drive: <see cref="WatchFault.DriveLetter" /> does, and the drive's
+///     <see cref="WatchFaultKind.CatchUpLost" /> fault after every such scan, and returned in
+///     <see cref="DriveOperationResult.Failure" /> by <see cref="FileIndex.RescanAsync" /> when the scan operation stops retrying.
+///     The exception names no drive: <see cref="WatchFault.Drive" /> does, and the drive's
 ///     <see cref="DriveWatchStatus.RecoveryStopped" /> and <see cref="DriveWatchStatus.CheckpointLoss" />
 ///     carry the recovery decision and the journal's proof.
 /// </summary>
@@ -30,7 +30,7 @@ public sealed class JournalCatchUpLostException : Exception
     /// <summary>
     ///     True when this loss exhausted automatic recovery from consecutive scan catch-up losses,
     ///     so no further scan follows automatically: the drive keeps this block,
-    ///     queryable but not watchable, until a consumer's <see cref="FileIndex.RescanAsync(char, CancellationToken)" />.
+    ///     queryable but not watchable, until a consumer's <see cref="FileIndex.RescanAsync" />.
     /// </summary>
     public bool RecoveryStopped { get; }
 }

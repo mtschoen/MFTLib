@@ -18,7 +18,7 @@ public static class SyntheticNotifications
     /// <param name="sizeBytes">The file size in bytes.</param>
     /// <param name="lastWriteTime">The file last-write time in UTC.</param>
     /// <returns>The entry.</returns>
-    public static CachedBlockFile CreateCachedBlockFile(char driveLetter, uint volumeSerial, string path,
+    public static CachedBlockFile CreateCachedBlockFile(DriveKey driveLetter, uint volumeSerial, string path,
         long sizeBytes, DateTime lastWriteTime) =>
         new(driveLetter, volumeSerial, path, sizeBytes, lastWriteTime);
 
@@ -67,7 +67,7 @@ public static class SyntheticNotifications
     /// <param name="driveLetter">The drive the fault names.</param>
     /// <param name="exception">The exception behind the fault.</param>
     /// <returns>The fault.</returns>
-    public static WatchFault CreateWatchFault(WatchFaultKind kind, char driveLetter, Exception exception) =>
+    public static WatchFault CreateWatchFault(WatchFaultKind kind, DriveKey driveLetter, Exception exception) =>
         new(kind, driveLetter, exception);
 
     /// <summary>Builds the exception a scan carries when it loses its journal catch-up.</summary>
@@ -83,7 +83,7 @@ public static class SyntheticNotifications
     /// <param name="settledDriveCount">The settle order of this drive, counted from 1.</param>
     /// <param name="totalDriveCount">How many drives the open was configured with.</param>
     /// <returns>The report.</returns>
-    public static IndexDriveOpened CreateIndexDriveOpened(char driveLetter, int settledDriveCount,
+    public static IndexDriveOpened CreateIndexDriveOpened(DriveKey driveLetter, int settledDriveCount,
         int totalDriveCount) =>
         new(driveLetter, settledDriveCount, totalDriveCount);
 
@@ -102,7 +102,7 @@ public static class SyntheticNotifications
     /// <param name="currentDirectory">The directory being enumerated, or null.</param>
     /// <param name="outcome">The terminal outcome on a finished sample; otherwise null.</param>
     /// <returns>The sample.</returns>
-    public static IndexScanProgress CreateIndexScanProgress(char driveLetter, IndexScanPhase phase,
+    public static IndexScanProgress CreateIndexScanProgress(DriveKey driveLetter, IndexScanPhase phase,
         uint rowsWritten, uint? totalRows = null, string? currentDirectory = null,
         IndexScanOutcome? outcome = null) =>
         new(driveLetter, phase, rowsWritten)
@@ -122,7 +122,7 @@ public static class SyntheticNotifications
     /// <param name="block">The block behind a <see cref="DriveState.Ready" /> drive; null otherwise.</param>
     /// <param name="failure">Why the drive failed; null for a drive that did not.</param>
     /// <returns>The status.</returns>
-    public static DriveStatus CreateDriveStatus(char driveLetter, DriveState state, DriveBlockStatus? block,
+    public static DriveStatus CreateDriveStatus(DriveKey driveLetter, DriveState state, DriveBlockStatus? block,
         DriveFailure? failure) =>
         new(driveLetter, state)
         {
@@ -166,7 +166,7 @@ public static class SyntheticNotifications
     /// <param name="detectedDuring">Which check found the loss.</param>
     /// <param name="journalSettings">The journal sizing when the loss was detected.</param>
     /// <returns>The report.</returns>
-    public static JournalCheckpointLoss CreateJournalCheckpointLoss(char driveLetter,
+    public static JournalCheckpointLoss CreateJournalCheckpointLoss(DriveKey driveLetter,
         JournalCheckpointLossCause cause, JournalCheckpointLossDetection detectedDuring,
         UsnJournalSettings journalSettings) =>
         new(driveLetter, detectedDuring, cause, journalSettings);

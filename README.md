@@ -208,15 +208,15 @@ changes instead of persisting a separate cursor.
 await using var session = new BrokerSession();
 var options = new FileIndexOptions
 {
-    Drives = [IndexedDrive.FromWindowsVolume("C:")],
+    Drives = [IndexedDrive.FromWindowsVolume('C')],
     CacheDirectory = cacheDirectory,
     MftSource = session.CreateIndexSource()
 };
 await using var index = await FileIndex.OpenAsync(options, cancellationToken);
 index.Changed += change =>
     Console.WriteLine($"{change.Kind}: {change.Path}");
-await index.StartWatchingAsync('C', cancellationToken);
-await index.WaitForCatchUpAsync('C', cancellationToken);
+var starts = await index.StartWatchingAsync(['C'], cancellationToken);
+var catchUps = await index.WaitForCatchUpAsync(['C'], cancellationToken);
 ```
 
 `Changed` events carry `FileChangeKind`, the current path, the timestamp and the
@@ -224,8 +224,8 @@ previous path for a rename. A start establishes the connection; the catch-up wai
 observes the watch reaching its live position. A data change updates an entry's
 time and attributes but not its length: `Size` and `IsSizeKnown` keep the values the
 last scan produced, so read the filesystem or rescan for a current length. Journal checkpoint loss is recorded
-on `DriveWatchStatus.CheckpointLoss`; a successful `RescanAsync('C')` supplies a fresh
-block and restarts a requested watch. `StopWatchingAsync(cancellationToken)` stops
+on `DriveWatchStatus.CheckpointLoss`; a successful `RescanAsync(['C'], cancellationToken)` supplies a fresh
+block and restarts a requested watch. `StopWatchingAsync(index.Drives.Select(drive => drive.Drive), cancellationToken)` stops
 every configured drive and returns its per-drive results.
 
 A watched volume whose change journal is too small wraps under load: records
@@ -258,25 +258,25 @@ foreach (var drive in index.Drives)
     {
         case JournalCheckpointLossCause.CheckpointTrimmed when loss.SizeThatWouldHaveRetained is { } size:
             Console.WriteLine(
-                $"Drive {loss.DriveLetter}: the last checkpoint was {loss.BytesBehind} bytes " +
+                $"Drive {loss.Drive}: the last checkpoint was {loss.BytesBehind} bytes " +
                 $"older than the journal still holds, so a full rescan was needed. A journal " +
                 $"of at least {size} bytes (it is {loss.JournalSettings.MaximumSize} now) would have kept the " +
                 "checkpoint.");
             break;
         case JournalCheckpointLossCause.CheckpointTrimmed:
             Console.WriteLine(
-                $"Drive {loss.DriveLetter}: the last checkpoint was {loss.BytesBehind} bytes " +
+                $"Drive {loss.Drive}: the last checkpoint was {loss.BytesBehind} bytes " +
                 "older than the journal still holds, so a full rescan was needed. No size to " +
                 "offer: it does not fit in a long.");
             break;
         case JournalCheckpointLossCause.JournalRecreated:
             Console.WriteLine(
-                $"Drive {loss.DriveLetter}: the change journal was recreated, so the last " +
+                $"Drive {loss.Drive}: the change journal was recreated, so the last " +
                 "checkpoint no longer refers to anything and a full rescan was needed.");
             break;
         default:
             Console.WriteLine(
-                $"Drive {loss.DriveLetter}: the journal moved past the retained cursor and the " +
+                $"Drive {loss.Drive}: the journal moved past the retained cursor and the " +
                 "source cannot catch up, so a full rescan was needed.");
             break;
     }
@@ -316,7 +316,7 @@ announced, so a handler that reads `index.Drives` already has it.
 
 ```csharp
 index.WatchFaulted += fault => Console.Error.WriteLine(
-    $"Drive {fault.DriveLetter}: {fault.Kind}, automatic recovery: {fault.IsRecovering}");
+    $"Drive {fault.Drive}: {fault.Kind}, automatic recovery: {fault.IsRecovering}");
 ```
 
 It is true for Drive and Apply, and for CatchUpLost carrying a
@@ -331,7 +331,7 @@ watch-state view straight from `index.Drives`:
 ```csharp
 foreach (var drive in index.Drives)
 {
-    Console.WriteLine($"Drive {drive.DriveLetter}: {drive.Watch.State}, version {drive.Watch.StateVersion}");
+    Console.WriteLine($"Drive {drive.Drive}: {drive.Watch.State}, version {drive.Watch.StateVersion}");
 }
 ```
 
@@ -351,8 +351,8 @@ announced; any other label may predate the fault:
 ```csharp
 index.WatchFaulted += fault =>
 {
-    var drive = index.Drives.Single(d => d.DriveLetter == fault.DriveLetter);
-    Console.Error.WriteLine($"Drive {fault.DriveLetter}: {fault.Kind}, {drive.Watch.FailureMessage}");
+    var drive = index.Drives.Single(d => d.Drive == fault.Drive);
+    Console.Error.WriteLine($"Drive {fault.Drive}: {fault.Kind}, {drive.Watch.FailureMessage}");
     if (drive.Watch.CheckpointLoss is { } loss)
     {
         // The report may be older than this fault; the label says which moment found it.
@@ -438,7 +438,7 @@ _ = session.Ended.ContinueWith(
     ended => Console.Error.WriteLine($"Broker ended: {ended.Result}"),
     TaskScheduler.Default);
 
-var drive = IndexedDrive.FromWindowsVolume("C:");
+var drive = IndexedDrive.FromWindowsVolume('C');
 var options = new FileIndexOptions
 {
     Drives = [drive],
@@ -458,7 +458,7 @@ indexes, then the session. Scans run only through the index source, and
 
 ```csharp
 UsnJournalSettings grown = await session.GrowUsnJournalAsync(
-    drive.DriveLetter,
+    drive.Drive,
     requestedMaximumSize,
     requestedAllocationDelta,
     cancellationToken);
@@ -482,38 +482,48 @@ every `WatchFaulted` notification names the affected drive. See [the block forma
 on-disk layout and [the broker integration guide](docs/broker-integration.md) for how
 the live watch bridges to the elevated broker.
 
-The single-drive lifecycle calls throw that drive's failure directly:
+`DriveKey` owns the drive's identity: construct it from an ASCII letter in either case,
+or convert implicitly from `char`. `new DriveKey('c')`, `'c'` and `'C'` identify the same
+drive. `Letter` and `ToString()` expose its upper-case letter. There is no string conversion.
+The default key is invalid: index operations, cache selections, key-bearing record constructors
+and their `Drive` initializers reject it with `ArgumentException`. Reading or formatting its
+letter also throws. Members carrying a key are named `Drive`, including `IndexedDrive`,
+statuses, results, changes' `Entry.RecordKey`, faults, rows and the test package's scan records.
+
+Each lifecycle verb takes `(IEnumerable<DriveKey> drives, CancellationToken cancellationToken)`
+and returns `Task<IReadOnlyList<DriveOperationResult>>`. A single-drive caller reads one result:
 
 ```csharp
-await index.StartWatchingAsync('C', cancellationToken);
-await index.WaitForCatchUpAsync('C', cancellationToken);
-
-await index.RescanAsync('C', cancellationToken); // Restarts C if its watch is still requested.
-IReadOnlyList<DriveOperationResult> stops = await index.StopWatchingAsync(cancellationToken);
+var start = (await index.StartWatchingAsync(['c'], cancellationToken)).Single();
+Console.WriteLine($"{start.Drive}: {start.Outcome}, {start.Failure}");
+var catchUp = (await index.WaitForCatchUpAsync(['C'], cancellationToken)).Single();
+var rescan = (await index.RescanAsync(['C'], cancellationToken)).Single();
+var stop = (await index.StopWatchingAsync(['C'], cancellationToken)).Single();
 ```
 
-The list-form rescan and all-drive lifecycle forms run drives concurrently and return one
+The methods run drives concurrently and return one
 `DriveOperationResult` per drive in request order. One drive's `Failed` result does not
 discard the others. `NotApplicable` means the operation has nothing to do for that
 drive, such as starting an enumeration-backed drive or waiting on a drive with no watch.
 
 ```csharp
-IReadOnlyList<char> driveLetters = ['C', 'D'];
+IEnumerable<DriveKey> drives = ['C', 'D'];
 
 IReadOnlyList<DriveOperationResult> starts =
-    await index.StartWatchingAsync(cancellationToken);
+    await index.StartWatchingAsync(drives, cancellationToken);
 IReadOnlyList<DriveOperationResult> catchUps =
-    await index.WaitForCatchUpAsync(cancellationToken);
+    await index.WaitForCatchUpAsync(drives, cancellationToken);
 IReadOnlyList<DriveOperationResult> rescans =
-    await index.RescanAsync(driveLetters, cancellationToken);
+    await index.RescanAsync(drives, cancellationToken);
 IReadOnlyList<DriveOperationResult> stops =
-    await index.StopWatchingAsync(cancellationToken);
+    await index.StopWatchingAsync(drives, cancellationToken);
 ```
 
-Start, stop and catch-up wait accept a token-only all-drive call in
-`FileIndexOptions.Drives` order; rescan accepts a drive letter or a drive list.
-Batched calls throw for invalid input, disposal, and
-cancellation; drive-specific operational failures stay in `DriveOperationResult.Failure`.
+For every drive, pass `index.Drives.Select(drive => drive.Drive)`. The sequence is materialized
+exactly once and validated before any drive starts. Null sequences, duplicate keys (including
+different cases), default keys and unconfigured keys are caller errors. An empty sequence returns
+an empty list unless cancelled. Disposal and caller cancellation fail the whole call;
+drive-specific operational failures stay in `DriveOperationResult.Failure`.
 
 `IndexedDrive.ProducerPolicy` selects how this drive's block is built:
 `ProducerPolicy.Mft` (the default) reads the Master File Table through
@@ -525,7 +535,7 @@ constructor parameter selects a different producer for a caller-owned root:
 ```csharp
 var drives = new[]
 {
-    IndexedDrive.FromWindowsVolume("C:"),
+    IndexedDrive.FromWindowsVolume('C'),
     new IndexedDrive('E', enumerationRoot, enumerationVolumeSerial, ProducerPolicy.Enumeration)
 };
 ```
@@ -581,7 +591,7 @@ still reports. Block ordinals follow first block adoption, which can precede fin
 `FileIndex.Drives` keeps the configured order. It defaults to null, which reports
 and allocates nothing, and it fires on warm starts too, unlike
 `FileIndexOptions.Progress`, which samples only while a producer runs.
-`RescanAsync` stays silent: its caller already awaits the one drive it rescans.
+`RescanAsync` stays silent: its caller already awaits the requested drives' results.
 Marshalling belongs to the `IProgress<T>` implementation, the same convention
 `FileIndexOptions.Progress` uses.
 
@@ -698,7 +708,7 @@ with the native error message. Common causes include:
 - the USN journal is unavailable, recreated, or wrapped; or
 - native allocation capacity is exhausted.
 
-`WatchFaulted` reports a `WatchFault` containing `Kind`, `DriveLetter`, and the original
+`WatchFaulted` reports a `WatchFault` containing `Kind`, `Drive`, and the original
 `Exception`:
 
 - `Subscriber`: a `Changed` handler threw. The drive keeps watching, and this is announced
@@ -729,19 +739,19 @@ or an `Error` when it cannot prove that loss.
 ```csharp
 index.WatchFaulted += fault =>
 {
-    var status = index.Drives.Single(drive => drive.DriveLetter == fault.DriveLetter);
+    var status = index.Drives.Single(drive => drive.Drive == fault.Drive);
     switch (fault.Kind)
     {
         case WatchFaultKind.Drive:
         case WatchFaultKind.Apply:
             Console.WriteLine(
-                $"Drive {fault.DriveLetter}: {status.Watch.State == WatchState.Recovering}");
+                $"Drive {fault.Drive}: {status.Watch.State == WatchState.Recovering}");
             break;
 
         case WatchFaultKind.CatchUpLost
             when fault.Exception is JournalCatchUpLostException lost:
             Console.WriteLine(
-                $"Drive {fault.DriveLetter}: recovery stopped {status.Watch.RecoveryStopped}, " +
+                $"Drive {fault.Drive}: recovery stopped {status.Watch.RecoveryStopped}, " +
                 $"stopped {lost.RecoveryStopped}, report {status.Watch.CheckpointLoss?.DetectedDuring}");
             break;
 
@@ -774,7 +784,7 @@ applies an event only when its `Watch.StateVersion` is newer than the last it ap
 reaches the retry limit, `JournalCatchUpLostException.RecoveryStopped` is true, the drive
 keeps its last queryable block, and its watch is refused until a manual rescan succeeds.
 
-The all-drive `StopWatchingAsync` consumes each watch's outstanding fault once,
+`StopWatchingAsync` consumes each requested watch's outstanding fault once,
 returning that exception in the affected drive's `DriveOperationResult.Failure`.
 The following edge dispositions describe current behavior: a consumer source start failure leaves
 a refused-start fault that a later stop clears without rethrowing; a fresh start supersedes

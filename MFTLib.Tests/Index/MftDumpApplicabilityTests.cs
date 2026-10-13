@@ -128,22 +128,19 @@ public class MftDumpApplicabilityTests
     }
 
     [TestMethod]
-    public async Task StartWatching_ADumpDriveIsRefusedWithAndWithoutABlock()
+    public async Task StartWatching_ADumpDriveIsNotApplicableWithAndWithoutABlock()
     {
         foreach (var producer in new MftBlockProducer[] { MftDumpIndexes.Produce, MftDumpIndexes.Fail })
         {
             await using var index = await MftDumpIndexes.OpenAsync(MftDumpIndexes.Source(producer));
 
-            var failure = await MftDumpIndexes.ThrowsAsync<InvalidOperationException>(
-                index, i => i.StartWatchingAsync('D', CancellationToken.None));
-
-            Assert.AreEqual("Drive D: this source does not support watching.", failure.Message);
+            await DriveResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync(['D'], CancellationToken.None));
             Assert.IsFalse(index.Drives.Single().Watch.Requested);
         }
     }
 
     [TestMethod]
-    public async Task StartWatching_ASourceWithNoWatchSourceIsRefusedTheSameWay()
+    public async Task StartWatching_ASourceWithNoWatchSourceIsNotApplicable()
     {
         var directories = new OwnedIndexDirectories();
         Directory.CreateDirectory(directories.TreeRoot);
@@ -158,13 +155,9 @@ public class MftDumpApplicabilityTests
         {
             await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
-            var failure = await MftDumpIndexes.ThrowsAsync<InvalidOperationException>(
-                index, i => i.StartWatchingAsync('T', CancellationToken.None));
-            var catchUp = MftDumpIndexes.Throws<InvalidOperationException>(
-                index, i => i.WaitForCatchUpAsync('T', CancellationToken.None));
-
-            Assert.AreEqual("Drive T: this source does not support watching.", failure.Message);
-            Assert.AreEqual("Drive T: this source does not support watching.", catchUp.Message);
+            await DriveResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync(['T'], CancellationToken.None));
+            await DriveResultAssertions.NotApplicableAsync(() => index.WaitForCatchUpAsync(['T'], CancellationToken.None));
+            Assert.IsFalse(index.Drives.Single().Watch.Requested);
         }
         finally
         {
@@ -173,14 +166,11 @@ public class MftDumpApplicabilityTests
     }
 
     [TestMethod]
-    public async Task WaitForCatchUp_ADumpDriveIsRefused()
+    public async Task WaitForCatchUp_ADumpDriveIsNotApplicable()
     {
         await using var index = await MftDumpIndexes.OpenAsync();
 
-        var failure = MftDumpIndexes.Throws<InvalidOperationException>(
-            index, i => i.WaitForCatchUpAsync('D', CancellationToken.None));
-
-        Assert.AreEqual("Drive D: this source does not support watching.", failure.Message);
+        await DriveResultAssertions.NotApplicableAsync(() => index.WaitForCatchUpAsync(['D'], CancellationToken.None));
     }
 
     [TestMethod]
@@ -193,16 +183,16 @@ public class MftDumpApplicabilityTests
 
             var results = new[]
             {
-                await index.StartWatchingAsync(letters, CancellationToken.None),
-                await index.StopWatchingAsync(letters, CancellationToken.None),
-                await index.WaitForCatchUpAsync(letters, CancellationToken.None),
-                await index.StartWatchingAsync(CancellationToken.None)
+                await index.StartWatchingAsync(letters.Select(letter => new DriveKey(letter)), CancellationToken.None),
+                await index.StopWatchingAsync(letters.Select(letter => new DriveKey(letter)), CancellationToken.None),
+                await index.WaitForCatchUpAsync(letters.Select(letter => new DriveKey(letter)), CancellationToken.None),
+                await index.StartWatchingAsync(index.Drives.Select(drive => drive.Drive),CancellationToken.None)
             };
 
             foreach (var result in results)
             {
                 var only = result.Single();
-                Assert.AreEqual('D', only.DriveLetter);
+                Assert.AreEqual('D', only.Drive);
                 Assert.AreEqual(DriveOperationOutcome.NotApplicable, only.Outcome);
                 Assert.IsNull(only.Failure);
             }
@@ -217,7 +207,7 @@ public class MftDumpApplicabilityTests
     {
         await using var index = await MftDumpIndexes.OpenAsync();
 
-        await index.RescanAsync('D', CancellationToken.None);
+        await index.RescanAsync(['D'], CancellationToken.None);
 
         Assert.AreEqual("dump:/D/documents", index.Find("dump:/D/documents")!.Value.Path);
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
@@ -245,7 +235,7 @@ public class MftDumpApplicabilityTests
                 }, CancellationToken.None);
 
                 Assert.AreEqual(expected, index.Drives.Single().Watch.Supported);
-                await index.RescanAsync('T', CancellationToken.None);
+                await index.RescanAsync(['T'], CancellationToken.None);
                 Assert.AreEqual(expected, index.Drives.Single().Watch.Supported);
             }
             finally

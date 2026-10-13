@@ -200,7 +200,7 @@ internal sealed partial class JournalBrokerHost
 
         var finalProgress = new BrokerScanProgress
         {
-            DriveLetter = channel.Drive,
+            Drive = channel.Drive,
             Phase = BrokerScanPhase.Transferring,
             RecordsProcessed = finalRecords,
             BytesProcessed = output.WriteResult.NamePoolUsedBytes,

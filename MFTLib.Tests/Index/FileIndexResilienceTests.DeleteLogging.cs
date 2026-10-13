@@ -112,7 +112,7 @@ public partial class FileIndexResilienceTests
         var oldSnapshot = index.CurrentSnapshot;
 
         await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
-        await index.RescanAsync('T', CancellationToken.None);
+        await index.RescanAsync(['T'], CancellationToken.None);
 
         await oldSnapshot.ReleaseNowAsync();
 
@@ -133,7 +133,7 @@ public partial class FileIndexResilienceTests
         await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
         progress.Armed = true;
 
-        await AssertThrowsCancellation(() => index.RescanAsync('T', cancellationTokenSource.Token));
+        await AssertThrowsCancellation(() => index.RescanAsync(['T'], cancellationTokenSource.Token));
 
         var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
         var line = deletions.SingleOrDefault(entry => entry.Contains(blockPath) && entry.Contains("partial"));

@@ -108,7 +108,7 @@ public partial class BrokerProtocolTests
     {
         var progress = new BrokerScanProgress
         {
-            DriveLetter = "C",
+            Drive = "C",
             Phase = BrokerScanPhase.Parsing,
             RecordsProcessed = 1000,
             BytesProcessed = 20480,
@@ -120,7 +120,7 @@ public partial class BrokerProtocolTests
 
         Assert.AreEqual(BrokerFrameKind.ScanProgress, frame.Kind);
         Assert.IsNotNull(frame.Progress);
-        Assert.AreEqual(progress with { DriveLetter = string.Empty }, frame.Progress.Value,
+        Assert.AreEqual(progress with { Drive = string.Empty }, frame.Progress.Value,
             "The wire carries no drive: the client fills it in from the channel.");
         Assert.AreEqual(BrokerScanPhase.Parsing, frame.Progress.Value.Phase);
     }
@@ -130,7 +130,7 @@ public partial class BrokerProtocolTests
     {
         var progress = new BrokerScanProgress
         {
-            DriveLetter = "D",
+            Drive = "D",
             Phase = BrokerScanPhase.Transferring,
             RecordsProcessed = 500,
             BytesProcessed = 10240,
@@ -174,7 +174,7 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(BrokerFrameKind.CatchUpLost, frame.Kind);
         Assert.IsNull(frame.Message);
         var loss = frame.RequireCatchUpLoss('C');
-        Assert.AreEqual('C', loss.DriveLetter);
+        Assert.AreEqual('C', loss.Drive);
         Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, loss.DetectedDuring);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
         Assert.AreEqual(1000L, loss.CheckpointUsn);
@@ -198,7 +198,7 @@ public partial class BrokerProtocolTests
         var frame = RoundTrip(writer => BrokerProtocol.WriteCatchUpLost(writer, recreated));
 
         var loss = frame.RequireCatchUpLoss('D');
-        Assert.AreEqual('D', loss.DriveLetter, "The drive is the channel's, not the wire's.");
+        Assert.AreEqual('D', loss.Drive, "The drive is the channel's, not the wire's.");
         Assert.AreEqual(JournalCheckpointLossCause.JournalRecreated, loss.Cause);
         Assert.IsNull(loss.BytesBehind);
         Assert.IsNull(loss.SizeThatWouldHaveRetained);
@@ -330,7 +330,7 @@ public partial class BrokerProtocolTests
     {
         var progress = new BrokerScanProgress
         {
-            DriveLetter = "C",
+            Drive = "C",
             Phase = BrokerScanPhase.Parsing,
             RecordsProcessed = 100,
             BytesProcessed = 200,
@@ -356,7 +356,7 @@ public partial class BrokerProtocolTests
     {
         var progress = new BrokerScanProgress
         {
-            DriveLetter = "C",
+            Drive = "C",
             Phase = BrokerScanPhase.Parsing,
             RecordsProcessed = 1,
             BytesProcessed = 2,
@@ -479,7 +479,7 @@ public partial class BrokerProtocolTests
     {
         var progress = new BrokerScanProgress
         {
-            DriveLetter = "E",
+            Drive = "E",
             Phase = BrokerScanPhase.Parsing,
             RecordsProcessed = 10,
             BytesProcessed = 20,

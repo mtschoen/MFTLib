@@ -23,7 +23,7 @@ public class SyntheticNotificationsTests
         var file = File();
 
         Assert.AreEqual(new CachedBlockFile('T', 7, @"C:\cache\T-7.mlix", 4096, Moment), file);
-        Assert.AreEqual('T', file.DriveLetter);
+        Assert.AreEqual('T', file.Drive);
         Assert.AreEqual(7u, file.VolumeSerial);
         Assert.AreEqual(@"C:\cache\T-7.mlix", file.Path);
         Assert.AreEqual(4096L, file.SizeBytes);
@@ -157,7 +157,7 @@ public class SyntheticNotificationsTests
 
         Assert.AreEqual(new WatchFault(WatchFaultKind.Channel, 'T', exception), fault);
         Assert.AreEqual(WatchFaultKind.Channel, fault.Kind);
-        Assert.AreEqual('T', fault.DriveLetter);
+        Assert.AreEqual('T', fault.Drive);
         Assert.AreSame(exception, fault.Exception);
     }
 
@@ -191,7 +191,7 @@ public class SyntheticNotificationsTests
         var opened = SyntheticNotifications.CreateIndexDriveOpened('T', 2, 5);
 
         Assert.AreEqual(new IndexDriveOpened('T', 2, 5), opened);
-        Assert.AreEqual('T', opened.DriveLetter);
+        Assert.AreEqual('T', opened.Drive);
         Assert.AreEqual(2, opened.SettledDriveCount);
         Assert.AreEqual(5, opened.TotalDriveCount);
     }
@@ -202,7 +202,7 @@ public class SyntheticNotificationsTests
         var progress = SyntheticNotifications.CreateIndexScanProgress('T', IndexScanPhase.Finished, 9, 10,
             @"T:\dir", IndexScanOutcome.Succeeded);
 
-        Assert.AreEqual('T', progress.DriveLetter);
+        Assert.AreEqual('T', progress.Drive);
         Assert.AreEqual(IndexScanPhase.Finished, progress.Phase);
         Assert.AreEqual(9u, progress.RowsWritten);
         Assert.AreEqual(10u, progress.TotalRows);
@@ -241,7 +241,7 @@ public class SyntheticNotificationsTests
                 Watch = new DriveWatchStatus { Supported = true }
             },
             status);
-        Assert.AreEqual('T', status.DriveLetter);
+        Assert.AreEqual('T', status.Drive);
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.AreEqual(BlockSource.WarmStartedFromCache, status.Block!.Source);
         Assert.AreEqual(40u, status.Block.LiveRowCount);
@@ -298,7 +298,7 @@ public class SyntheticNotificationsTests
                 SizeThatWouldHaveRetained = 12288
             },
             loss);
-        Assert.AreEqual('T', loss.DriveLetter);
+        Assert.AreEqual('T', loss.Drive);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
         Assert.AreEqual(JournalCheckpointLossDetection.LiveWatch, loss.DetectedDuring);
         Assert.AreEqual(4096L, loss.JournalSettings.AllocationDelta);

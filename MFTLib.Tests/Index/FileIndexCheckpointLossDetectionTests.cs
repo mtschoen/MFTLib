@@ -119,7 +119,7 @@ public class FileIndexCheckpointLossDetectionTests
         // The cold scan wrote a fresh cursor and the journal holds it, so the drive is healthy
         // now. Only the report from the open remains.
         using var journal = Journal(firstUsn: 0, nextUsn: CachedNextUsn + 4_000);
-        await index.StartWatchingAsync('T', Token);
+        await index.StartWatchingAsync(['T'], Token);
 
         await FailDriveAndWaitForFaultAsync(index, source,
             new UnauthorizedAccessException("the volume handle was revoked"));
@@ -134,8 +134,8 @@ public class FileIndexCheckpointLossDetectionTests
             "the report still describes the open, so a fault handler must not read it as its own");
         Assert.AreEqual(openReport, loss, "nothing about the open's report changed");
 
-        await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(
-            () => index.StopWatchingAsync('T', Token));
+        await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
+            () => index.StopWatchingAsync(['T'], Token));
     }
 
     /// <summary>
@@ -149,7 +149,7 @@ public class FileIndexCheckpointLossDetectionTests
         await using var index = await OpenWithAnOpenTimeLossAsync(source);
         index.HoldEveryRecovery();
 
-        await index.StartWatchingAsync('T', Token);
+        await index.StartWatchingAsync(['T'], Token);
 
         // A window distinct from the open's, so the numbers say which detection produced them.
         using var journal = Journal(firstUsn: CachedNextUsn + 900, nextUsn: CachedNextUsn + 8_000);
@@ -164,7 +164,7 @@ public class FileIndexCheckpointLossDetectionTests
         Assert.AreEqual(900L, loss.BytesBehind, "the watch's window, not the open's");
         Assert.AreEqual(CachedNextUsn + 8_000, loss.NextUsn);
 
-        await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(() => index.StopWatchingAsync('T', Token));
+        await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => index.StopWatchingAsync(['T'], Token));
     }
 
     /// <summary>

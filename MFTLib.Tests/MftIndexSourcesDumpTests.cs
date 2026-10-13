@@ -33,14 +33,13 @@ public class MftIndexSourcesDumpTests
     [DataRow('@')]
     [DataRow('[')]
     [DataRow('\u017F')]
-    public void FromMftDumpFile_KeyThatIsNotAnAsciiLetter_ThrowsArgumentOutOfRangeNamingDriveLetter(char driveLetter)
+    public void DriveKeyConversion_RejectsNonAsciiLettersBeforeDumpCreation(char driveLetter)
     {
-        var failure = Assert.ThrowsException<ArgumentOutOfRangeException>(
+        var failure = Assert.ThrowsException<ArgumentException>(
             () => MftIndexSources.FromMftDumpFile("volume.mft", driveLetter));
 
-        Assert.AreEqual("driveLetter", failure.ParamName);
-        Assert.AreEqual(driveLetter, failure.ActualValue);
-        StringAssert.StartsWith(failure.Message, "The logical drive key must be an ASCII letter.");
+        Assert.AreEqual("letter", failure.ParamName);
+        StringAssert.StartsWith(failure.Message, "The drive key must be an ASCII letter.");
     }
 
     [TestMethod]
@@ -52,7 +51,7 @@ public class MftIndexSourcesDumpTests
     {
         var source = MftIndexSources.FromMftDumpFile("volume.mft", driveLetter);
 
-        Assert.AreEqual(expected, source.DumpIdentity!.DriveLetter);
+        Assert.AreEqual(expected, source.DumpIdentity!.Drive);
         Assert.AreEqual($"dump:/{expected}", source.DumpIdentity.Root);
     }
 

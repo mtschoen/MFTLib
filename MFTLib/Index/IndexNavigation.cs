@@ -59,7 +59,7 @@ internal static class IndexNavigation
         if (driveBlock.RootDirectoryPath is not { } rootDirectoryPath)
         {
             throw new InvalidOperationException(
-                $"Drive block {driveBlock.DriveLetter} has no configured root directory to build a path from.");
+                $"Drive block {driveBlock.Drive} has no configured root directory to build a path from.");
         }
 
         var segments = CollectSegments(driveBlock.Block, rowIndex);

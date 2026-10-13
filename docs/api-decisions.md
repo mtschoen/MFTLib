@@ -69,3 +69,11 @@ an uneven set of single, list and all-drives overloads. A bare `IEnumerable<char
 become something other than an ASCII letter for Linux and enumeration roots.
 
 **Deferred on purpose:** whether a key may be a label rather than a letter.
+
+**Implementation note (2026-10-13):** the default struct value is invalid; its `Letter` and `ToString`
+and public key-accepting operations reject it with `ArgumentException`. Key-bearing record constructors
+and `Drive` init accessors validate it too. Members carrying keys are named `Drive`; the letter accessor
+on the key itself is `Letter`. Lifecycle requests are materialized once, reject duplicates before work
+starts and preserve request order, matching the list contract. Empty sequences succeed with no results
+unless cancelled. These choices keep identity and admission in one owner without adding public validation
+members or a string conversion.

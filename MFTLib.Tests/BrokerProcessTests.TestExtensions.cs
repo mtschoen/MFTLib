@@ -222,7 +222,7 @@ public partial class BrokerProcessTests
                 QueryJournalCursor = _ => ArmedSynthetic,
                 ScanDrive = scan =>
                 {
-                    if (scan.DriveLetter == "C")
+                    if (scan.Drive == 'C')
                     {
                         firstCallbackEntered.MarkEntered();
                         firstCallbackRelease.WaitForRelease();
@@ -239,19 +239,19 @@ public partial class BrokerProcessTests
             Assert.AreEqual('D', resultD.DriveLetter);
 
             Assert.AreEqual(2, handle.Scans.Count);
-            Assert.AreEqual("C", handle.Scans[0].DriveLetter);
-            Assert.AreEqual("D", handle.Scans[1].DriveLetter);
+            Assert.AreEqual('C', handle.Scans[0].Drive);
+            Assert.AreEqual('D', handle.Scans[1].Drive);
 
             firstCallbackRelease.Release();
             var resultC = await scanC.WaitAsync(HangGuard);
             Assert.AreEqual('C', resultC.DriveLetter);
             Assert.AreEqual(2, handle.Scans.Count);
-            Assert.AreEqual("C", handle.Scans[0].DriveLetter);
-            Assert.AreEqual("D", handle.Scans[1].DriveLetter);
+            Assert.AreEqual('C', handle.Scans[0].Drive);
+            Assert.AreEqual('D', handle.Scans[1].Drive);
             return;
         }
 
-        Func<string, SyntheticJournalCursor> queryCursor = recordingCase == ScanRecordingCase.CursorQueryFailure
+        Func<DriveKey, SyntheticJournalCursor> queryCursor = recordingCase == ScanRecordingCase.CursorQueryFailure
             ? _ => throw new InvalidOperationException("scripted cursor failure")
             : _ => ArmedSynthetic;
 
@@ -280,7 +280,7 @@ public partial class BrokerProcessTests
             StringAssert.Contains(failure.Message, expectedMessage);
 
             var recorded = singleHandle.Scans.Single();
-            Assert.AreEqual("C", recorded.DriveLetter);
+            Assert.AreEqual('C', recorded.Drive);
             CollectionAssert.AreEqual(new[] { ".git" }, recorded.RetainedFileNames!.ToArray());
             return;
         }
@@ -293,7 +293,7 @@ public partial class BrokerProcessTests
         Assert.AreEqual(Armed, result.AdvancedCursor, "A null ReadJournal answers nothing new from every cursor.");
         Assert.IsTrue(result.Block.Block.Header.RowCount > 0);
         var scan = singleHandle.Scans.Single();
-        Assert.AreEqual("C", scan.DriveLetter);
+        Assert.AreEqual('C', scan.Drive);
         CollectionAssert.AreEqual(new[] { ".git" }, scan.RetainedFileNames!.ToArray());
     }
 
@@ -327,10 +327,10 @@ public partial class BrokerProcessTests
         // The host throttles progress, so the scan waits until the client has seen the parse frame; the first
         // frame the host emits is never throttled, and the parse report is the first it is given.
         var parsedSeen = new TaskCompletionSource<BrokerScanProgress>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var seen = new List<(string DriveLetter, int ParseThreads, bool Cancelled)>();
+        var seen = new List<(DriveKey Drive, int ParseThreads, bool Cancelled)>();
         await using var handle = BrokerTestHarness.StartInProcess(ScriptedVolumes(scan =>
         {
-            seen.Add((scan.DriveLetter, scan.ParseThreads.Count, scan.CancellationToken.IsCancellationRequested));
+            seen.Add((scan.Drive, scan.ParseThreads.Count, scan.CancellationToken.IsCancellationRequested));
             scan.ReportParsed(2, 2);
             parsedSeen.Task.Wait(HangGuard);
             return [[SyntheticRecord(5, ".", 3)], [SyntheticRecord(20, "file.txt")]];
@@ -350,7 +350,7 @@ public partial class BrokerProcessTests
             .WaitAsync(HangGuard);
 
         Assert.AreEqual(1, seen.Count);
-        Assert.AreEqual("C", seen[0].DriveLetter);
+        Assert.AreEqual('C', seen[0].Drive);
         Assert.IsTrue(seen[0].ParseThreads >= 1);
         Assert.IsFalse(seen[0].Cancelled);
         Assert.IsTrue(parsedSeen.Task.IsCompletedSuccessfully);
@@ -372,7 +372,7 @@ public partial class BrokerProcessTests
     public void ScriptedScan_ReportParsedWithoutAProgressSinkStillMarksProcessing()
     {
         var operation = new CountingOperationReporter();
-        var scan = new ScriptedScan("C", new ParseThreadAllowance(1), operation, null, CancellationToken.None);
+        var scan = new ScriptedScan('C', new ParseThreadAllowance(1), operation, null, CancellationToken.None);
 
         scan.ReportParsed(1, null);
 

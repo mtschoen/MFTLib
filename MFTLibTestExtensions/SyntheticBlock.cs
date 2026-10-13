@@ -18,7 +18,7 @@ public static class SyntheticBlock
     /// <param name="driveLetter">The drive letter.</param>
     /// <param name="volumeSerial">The volume serial number the index reports for the drive.</param>
     /// <returns>The full path of the drive's block file.</returns>
-    public static string CachedPath(string cacheDirectory, char driveLetter, uint volumeSerial)
+    public static string CachedPath(string cacheDirectory, DriveKey driveLetter, uint volumeSerial)
     {
         ArgumentException.ThrowIfNullOrEmpty(cacheDirectory);
         return Path.Combine(cacheDirectory, CacheDirectory.BlockFileName(driveLetter, volumeSerial));
@@ -34,7 +34,7 @@ public static class SyntheticBlock
     /// <param name="options">The header values.</param>
     /// <param name="rows">The rows to write, including the root row named by <see cref="SyntheticBlockOptions.RootRow" />.</param>
     /// <returns>The full path of the block file.</returns>
-    public static string WriteCached(string cacheDirectory, char driveLetter, uint volumeSerial,
+    public static string WriteCached(string cacheDirectory, DriveKey driveLetter, uint volumeSerial,
         SyntheticBlockOptions options, IEnumerable<SyntheticRow> rows)
     {
         ArgumentNullException.ThrowIfNull(options);

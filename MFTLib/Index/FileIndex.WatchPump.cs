@@ -11,7 +11,7 @@ public sealed partial class FileIndex
     internal Action<Action>? PumpFaultSettlementWrapperForTest { get; set; }
 
     /// <summary>A test seam: invoked after apply releases the write gate, before Changed is raised.</summary>
-    internal Action<char>? BeforeWatchChangedForTest { get; set; }
+    internal Action<DriveKey>? BeforeWatchChangedForTest { get; set; }
 
     /// <summary>
     ///     One drive's pump: reads the drive's handle until it is stopped or faults, applies each
@@ -55,7 +55,7 @@ public sealed partial class FileIndex
     /// </summary>
     async Task<WatchFault?> ReadWatchAsync(DriveRuntime runtime, WatchInstance instance, IIndexDriveWatch handle)
     {
-        var driveLetter = runtime.DriveLetter;
+        var driveLetter = runtime.Drive;
         var stopToken = instance.PumpStop.Token;
         try
         {
@@ -102,7 +102,7 @@ public sealed partial class FileIndex
         IReadOnlyList<FileChange> changes;
         try
         {
-            changes = ApplyJournalEntriesCore(runtime.DriveLetter, instance, batch.Entries, batch.JournalIdentifier,
+            changes = ApplyJournalEntriesCore(runtime.Drive, instance, batch.Entries, batch.JournalIdentifier,
                 batch.NextUsn);
         }
         catch (Exception exception)
@@ -112,7 +112,7 @@ public sealed partial class FileIndex
 
         try
         {
-            BeforeWatchChangedForTest?.Invoke(runtime.DriveLetter);
+            BeforeWatchChangedForTest?.Invoke(runtime.Drive);
             RaiseChanged(changes);
         }
         catch (Exception exception)
@@ -149,7 +149,7 @@ public sealed partial class FileIndex
 
         if (first)
         {
-            RaiseWatchFaulted(new WatchFault(WatchFaultKind.Subscriber, runtime.DriveLetter, exception));
+            RaiseWatchFaulted(new WatchFault(WatchFaultKind.Subscriber, runtime.Drive, exception));
         }
     }
 
@@ -258,7 +258,7 @@ public sealed partial class FileIndex
 
     void RaiseWatchFaulted(WatchFault fault)
     {
-        RaiseWatchStateChanged(GetDriveRuntime(fault.DriveLetter));
+        RaiseWatchStateChanged(GetDriveRuntime(fault.Drive));
         try
         {
             if (WatchFaulted is { } subscribers)

@@ -138,7 +138,7 @@ await watch.PublishBatchAsync(
         Reason = SyntheticJournalReason.FileCreate | SyntheticJournalReason.Close
     }],
     new SyntheticJournalCursor(
-        source.Starts.Last(start => start.DriveLetter == watch.DriveLetter).Cursor.JournalIdentifier,
+        source.Starts.Last(start => start.Drive == watch.Drive).Cursor.JournalIdentifier,
         1300));
 await watch.PublishCaughtUpAsync();
 ```

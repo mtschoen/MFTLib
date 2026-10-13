@@ -45,7 +45,7 @@ public class BrokerProcessLivenessTests
         await session.Process.Ended.WaitAsync(HangGuard);
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
             session.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
-        Assert.IsNull(lost.DriveLetter);
+        Assert.IsNull(lost.Drive);
         Assert.AreEqual(StallMessage, lost.Message);
     }
 
@@ -90,7 +90,7 @@ public class BrokerProcessLivenessTests
 
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
             silent.Scan.WaitAsync(HangGuard));
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
         Assert.AreEqual(StallMessage, lost.Message);
         Assert.IsNull(await HostChannelHarness.ReadFrameAsync(silent.HostPipe).WaitAsync(HangGuard),
             "The client closes the silent pipe, which the host reads as EOF.");
@@ -116,7 +116,7 @@ public class BrokerProcessLivenessTests
             clock.Advance(SendInterval);
             var sample = new BrokerScanProgress
             {
-                DriveLetter = "C",
+                Drive = "C",
                 Phase = BrokerScanPhase.Parsing,
                 RecordsProcessed = report,
                 BytesProcessed = report,
@@ -155,7 +155,7 @@ public class BrokerProcessLivenessTests
         // The host never closed the channel after its terminal frame. The stall is the peer's
         // silence, not this scan closing its own channel, so the complete result is not returned.
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.Scan.WaitAsync(HangGuard));
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
         Assert.AreEqual(StallMessage, lost.Message);
     }
 
@@ -172,7 +172,7 @@ public class BrokerProcessLivenessTests
 
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
             stalled.Scan.WaitAsync(HangGuard));
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
         Assert.AreEqual(hostMessage, lost.Message);
         Assert.IsFalse(session.Process.Ended.IsCompleted);
         Assert.IsFalse(other.Scan.IsCompleted);
@@ -241,7 +241,7 @@ public class BrokerProcessLivenessTests
 
         Assert.IsTrue(stallTimer.Fired);
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => read.WaitAsync(HangGuard));
-        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual('C', lost.Drive);
         Assert.AreEqual(StallMessage, lost.Message);
         Assert.IsNull(await HostChannelHarness.ReadFrameAsync(hostPipe).WaitAsync(HangGuard));
     }

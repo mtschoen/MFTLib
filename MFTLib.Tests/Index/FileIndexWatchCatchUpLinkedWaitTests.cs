@@ -21,16 +21,16 @@ public class FileIndexWatchCatchUpLinkedWaitTests
     public async Task WaitForCatchUpAsync_WithoutACallerToken_CompletesWithTheCatchUp()
     {
         using var harness = new WatchHarness();
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
 
-        var wait = harness.Index.WaitForCatchUpAsync('T', CancellationToken.None);
+        var wait = harness.Index.WaitForCatchUpAsync(['T'], CancellationToken.None);
         Assert.IsFalse(wait.IsCompleted);
 
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         await wait.WaitAsync(ScriptedWatchSource.HangGuard);
 
         Assert.AreEqual(WatchState.CaughtUp, harness.DriveFor('T').Watch.State);
-        await harness.Index.StopWatchingAsync('T', Token);
+        await harness.Index.StopWatchingAsync(['T'], Token);
     }
 
     [TestMethod]
@@ -39,9 +39,9 @@ public class FileIndexWatchCatchUpLinkedWaitTests
         var harness = new WatchHarness();
         try
         {
-            await harness.Index.StartWatchingAsync('T', Token);
+            await harness.Index.StartWatchingAsync(['T'], Token);
 
-            var wait = harness.Index.WaitForCatchUpAsync('T', CancellationToken.None);
+            var wait = harness.Index.WaitForCatchUpAsync(['T'], CancellationToken.None);
             Assert.IsFalse(wait.IsCompleted);
 
             await harness.Index.DisposeAsync();

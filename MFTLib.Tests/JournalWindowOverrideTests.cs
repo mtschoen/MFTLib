@@ -20,7 +20,7 @@ public class JournalWindowOverrideTests
         char? observed = null;
         using var scope = JournalIsolation.OverrideJournalWindow(drive =>
         {
-            observed = drive;
+            observed = drive.Letter;
             return drive == 'T' ? Trimmed : null;
         });
         var loss = Check();

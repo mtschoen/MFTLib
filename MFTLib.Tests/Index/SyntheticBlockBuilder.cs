@@ -17,7 +17,7 @@ internal sealed class SyntheticBlockBuilder : IDisposable
     public SyntheticBlockBuilder(char driveLetter = 'T', uint volumeSerial = 0x0BADF00D,
         uint slotCapacity = 256, uint namePoolCapacity = 4096)
     {
-        DriveLetter = driveLetter;
+        Drive = driveLetter;
         VolumeSerial = volumeSerial;
         DirectoryPath = Path.Combine(Path.GetTempPath(), $"mftlib-index-{Guid.NewGuid():N}");
         Directory.CreateDirectory(DirectoryPath);
@@ -33,7 +33,7 @@ internal sealed class SyntheticBlockBuilder : IDisposable
         });
     }
 
-    public char DriveLetter { get; }
+    public char Drive { get; }
 
     public uint VolumeSerial { get; }
 

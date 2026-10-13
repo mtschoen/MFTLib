@@ -56,15 +56,15 @@ public partial class FileIndexWatchRescanTests
     {
         using var harness = new WatchHarness('T', 'U');
         harness.Index.HoldEveryRecovery();
-        await harness.Index.StartWatchingAsync('T', Token);
-        await harness.Index.StartWatchingAsync('U', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
+        await harness.Index.StartWatchingAsync(['U'], Token);
         var unrescannedHandle = harness.Source.WatchFor('U');
         harness.Source.WatchFor('T').FailDrive(new IOException("journal wrapped"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
         Assert.IsNotNull(harness.DriveFor('T').Watch.FailureMessage);
 
         harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
-        await harness.Index.RescanAsync('T', Token);
+        await harness.Index.RescanAsync(['T'], Token);
 
         var starts = harness.Source.TargetsFor('T');
         Assert.AreEqual(2, starts.Count);
@@ -77,22 +77,22 @@ public partial class FileIndexWatchRescanTests
         await harness.Source.WatchFor('T').Publish(
             new JournalBatch([WatchHarness.Create(9, "after.txt")], 13, 9500));
         Assert.AreEqual(9500L, harness.BlockFor('T').Header.UsnNextUsn);
-        await harness.Index.StopWatchingAsync('T', Token);
-        await harness.Index.StopWatchingAsync('U', Token);
+        await harness.Index.StopWatchingAsync(['T'], Token);
+        await harness.Index.StopWatchingAsync(['U'], Token);
     }
 
     [TestMethod]
     public async Task RescanAsync_WhileWatching_NeverStopsTheOtherDrive()
     {
         using var harness = new WatchHarness('T', 'U');
-        await harness.Index.StartWatchingAsync('T', Token);
-        await harness.Index.StartWatchingAsync('U', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
+        await harness.Index.StartWatchingAsync(['U'], Token);
         var otherHandle = harness.Source.WatchFor('U');
         await otherHandle.Publish(WatchHarness.Batch(9, "before.txt", nextUsn: 150));
         Assert.AreEqual(150L, harness.BlockFor('U').Header.UsnNextUsn);
 
         harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
-        await harness.Index.RescanAsync('T', Token);
+        await harness.Index.RescanAsync(['T'], Token);
 
         await otherHandle.Publish(WatchHarness.Batch(10, "after.txt", nextUsn: 250));
 
@@ -101,19 +101,19 @@ public partial class FileIndexWatchRescanTests
         Assert.AreEqual(250L, harness.BlockFor('U').Header.UsnNextUsn);
         CollectionAssert.AreEqual(new[] { "before.txt", "after.txt" },
             harness.Changes.Select(change => change.Entry.Name).ToArray());
-        await harness.Index.StopWatchingAsync('T', Token);
-        await harness.Index.StopWatchingAsync('U', Token);
+        await harness.Index.StopWatchingAsync(['T'], Token);
+        await harness.Index.StopWatchingAsync(['U'], Token);
     }
 
     [TestMethod]
     public async Task Rescan_OfT_LeavesUsPumpRunning()
     {
         using var harness = new WatchHarness('T', 'U');
-        await harness.Index.StartWatchingAsync('T', Token);
-        await harness.Index.StartWatchingAsync('U', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
+        await harness.Index.StartWatchingAsync(['U'], Token);
         var otherHandle = harness.Source.WatchFor('U');
         var producing = harness.HoldNextProduction('T');
-        var rescan = harness.Index.RescanAsync('T', Token);
+        var rescan = harness.Index.RescanAsync(['T'], Token);
         await producing.Entered.WaitAsync(HangGuard);
 
         await otherHandle.Publish(WatchHarness.Batch(10, "u.txt", nextUsn: 555));
@@ -124,8 +124,8 @@ public partial class FileIndexWatchRescanTests
         Assert.AreEqual(0, otherHandle.DisposeCount);
         producing.Release();
         await rescan.WaitAsync(HangGuard);
-        await harness.Index.StopWatchingAsync('T', Token);
-        await harness.Index.StopWatchingAsync('U', Token);
+        await harness.Index.StopWatchingAsync(['T'], Token);
+        await harness.Index.StopWatchingAsync(['U'], Token);
     }
 
     [TestMethod]
@@ -133,11 +133,11 @@ public partial class FileIndexWatchRescanTests
     {
         using var harness = new WatchHarness('T', 'U');
         var lostChannel = new IOException("U's channel was lost");
-        await harness.Index.StartWatchingAsync('T', Token);
-        await harness.Index.StartWatchingAsync('U', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
+        await harness.Index.StartWatchingAsync(['U'], Token);
         var production = harness.HoldNextProduction('T');
         harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
-        var rescan = harness.Index.RescanAsync('T', Token);
+        var rescan = harness.Index.RescanAsync(['T'], Token);
         await production.Entered.WaitAsync(HangGuard);
 
         // T's watch is running and carries no failure, so U dropping mid-scan does not touch it.
@@ -157,8 +157,8 @@ public partial class FileIndexWatchRescanTests
         await harness.Source.WatchFor('T').Publish(
             new JournalBatch([WatchHarness.Create(9, "after.txt")], 13, 9500));
         Assert.AreEqual(9500L, harness.BlockFor('T').Header.UsnNextUsn);
-        await harness.Index.StopWatchingAsync('T', Token);
-        var thrown = await ThrowsAsync<IOException>(() => harness.Index.StopWatchingAsync('U', Token));
+        await harness.Index.StopWatchingAsync(['T'], Token);
+        var thrown = await DriveResultAssertions.FailureAsync<IOException>(() => harness.Index.StopWatchingAsync(['U'], Token));
         Assert.AreSame(lostChannel, thrown);
     }
 
@@ -166,13 +166,13 @@ public partial class FileIndexWatchRescanTests
     public async Task RescanAsync_WhileWatching_DropsABatchThePumpHadAlreadyAcceptedWhenTheDriveWasRetired()
     {
         using var harness = new WatchHarness('T', 'U');
-        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
         var applying = harness.HoldFirstApply('T');
         var queued = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "stale.txt", nextUsn: 5000));
         await applying.Entered.WaitAsync(HangGuard);
 
         harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
-        var rescan = harness.Index.RescanAsync('T', Token);
+        var rescan = harness.Index.RescanAsync(['T'], Token);
         Assert.IsFalse(rescan.IsCompleted, "the rescan waits for the retiring pump to drain");
         applying.Release();
         await rescan.WaitAsync(HangGuard);
@@ -183,7 +183,7 @@ public partial class FileIndexWatchRescanTests
         Assert.AreEqual(0, harness.Changes.Count);
         Assert.AreEqual(13ul, harness.BlockFor('T').Header.UsnJournalIdentifier);
         Assert.AreEqual(9000L, harness.BlockFor('T').Header.UsnNextUsn);
-        await harness.Index.StopWatchingAsync('T', Token);
+        await harness.Index.StopWatchingAsync(['T'], Token);
     }
 
     [TestMethod]
@@ -191,15 +191,15 @@ public partial class FileIndexWatchRescanTests
     {
         using var harness = new WatchHarness('T', 'U');
         harness.Index.HoldEveryRecovery();
-        await harness.Index.StartWatchingAsync('T', Token);
-        await harness.Index.StartWatchingAsync('U', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
+        await harness.Index.StartWatchingAsync(['U'], Token);
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
         harness.Source.WatchFor('U').FailDrive(new IOException("U's journal wrapped"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
         var uFault = await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'U');
 
         harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
-        await harness.Index.RescanAsync('T', Token);
+        await harness.Index.RescanAsync(['T'], Token);
 
         var starts = harness.Source.TargetsFor('T');
         Assert.AreEqual(2, starts.Count);
@@ -213,8 +213,8 @@ public partial class FileIndexWatchRescanTests
             new JournalBatch([WatchHarness.Create(10, "t.txt")], 13, 9500));
         Assert.AreEqual(9500L, harness.BlockFor('T').Header.UsnNextUsn);
 
-        await harness.Index.StopWatchingAsync('T', Token);
-        var thrown = await ThrowsAsync<DriveWatchFaultException>(() => harness.Index.StopWatchingAsync('U', Token));
+        await harness.Index.StopWatchingAsync(['T'], Token);
+        var thrown = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => harness.Index.StopWatchingAsync(['U'], Token));
         Assert.AreSame(uFault.Exception, thrown);
     }
 
@@ -224,7 +224,7 @@ public partial class FileIndexWatchRescanTests
         using var harness = new WatchHarness('T', 'U');
 
         harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
-        await harness.Index.RescanAsync('T', Token);
+        await harness.Index.RescanAsync(['T'], Token);
 
         Assert.AreEqual(0, harness.Source.Starts.Count);
         var drive = harness.DriveFor('T');
@@ -232,19 +232,19 @@ public partial class FileIndexWatchRescanTests
         Assert.AreEqual(WatchState.NotStarted, drive.Watch.State);
         Assert.AreEqual(13ul, harness.BlockFor('T').Header.UsnJournalIdentifier);
         Assert.AreEqual(9000L, harness.BlockFor('T').Header.UsnNextUsn);
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => harness.Index.WaitForCatchUpAsync('T', Token));
+        await DriveResultAssertions.NotApplicableAsync(() => harness.Index.WaitForCatchUpAsync(['T'], Token));
     }
 
     [TestMethod]
     public async Task RescanAsync_WhoseProducerThrowsCancellation_KeepsTheDriveWatchingAndRethrows()
     {
         using var harness = new WatchHarness('T', 'U');
-        await harness.Index.StartWatchingAsync('T', Token);
-        await harness.Index.StartWatchingAsync('U', Token);
+        await harness.Index.StartWatchingAsync(['T'], Token);
+        await harness.Index.StartWatchingAsync(['U'], Token);
 
         var scanFailure = new OperationCanceledException("the scan was cancelled");
         harness.FailNextProduction('T', scanFailure);
-        var thrown = await ThrowsAsync<OperationCanceledException>(() => harness.Index.RescanAsync('T', Token));
+        var thrown = await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => harness.Index.RescanAsync(['T'], Token));
 
         Assert.AreSame(scanFailure, thrown);
 
@@ -256,8 +256,8 @@ public partial class FileIndexWatchRescanTests
 
         await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(9, "after.txt", nextUsn: 5000));
         Assert.AreEqual(5000L, harness.BlockFor('T').Header.UsnNextUsn);
-        await harness.Index.StopWatchingAsync('T', Token);
-        await harness.Index.StopWatchingAsync('U', Token);
+        await harness.Index.StopWatchingAsync(['T'], Token);
+        await harness.Index.StopWatchingAsync(['U'], Token);
     }
 
     [TestMethod]
@@ -273,7 +273,7 @@ public partial class FileIndexWatchRescanTests
             using var rescanCancellation = new CancellationTokenSource();
             harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
 
-            var rescan = harness.Index.RescanAsync('T', rescanCancellation.Token);
+            var rescan = harness.Index.RescanAsync(['T'], rescanCancellation.Token);
             var producedBlock = await WaitForReplacementBlockAsync(harness, 'T', initialProducedBlock, rescan);
             await rescanCancellation.CancelAsync();
 
@@ -304,7 +304,7 @@ public partial class FileIndexWatchRescanTests
             CacheDirectory = _cacheDirectory,
             MftSource = new MftIndexSource((request, _cancellationToken) =>
             {
-                if (failDriveT && char.ToUpperInvariant(request.DriveLetter) == 'T')
+                if (failDriveT && char.ToUpperInvariant((request.Drive).Letter) == 'T')
                 {
                     throw new UnauthorizedAccessException("elevation declined");
                 }
@@ -323,35 +323,35 @@ public partial class FileIndexWatchRescanTests
     {
         var source = new ScriptedWatchSource();
         await using var index = await FileIndex.OpenAsync(CacheOnlyWatchOptions(source, failDriveT: false), Token);
-        var declined = index.Drives.Single(drive => drive.DriveLetter == 'T');
+        var declined = index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Failed, declined.State);
         Assert.AreEqual(DriveFailureKind.CacheDeclined, declined.Failure?.Kind);
-        await index.StartWatchingAsync('U', Token);
+        await index.StartWatchingAsync(['U'], Token);
 
-        await index.RescanAsync('T', Token);
+        await index.RescanAsync(['T'], Token);
 
         // 'T' never asked to be watched, so its adoption starts nothing.
         Assert.AreEqual(0, source.TargetsFor('T').Count);
-        var recovered = index.Drives.Single(drive => drive.DriveLetter == 'T');
+        var recovered = index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Ready, recovered.State);
         Assert.IsNull(recovered.Failure);
         Assert.AreEqual(WatchState.NotStarted, recovered.Watch.State);
 
-        await index.StartWatchingAsync('T', Token);
+        await index.StartWatchingAsync(['T'], Token);
         Assert.AreEqual(new IndexWatchTarget('T', 7, 4096), source.TargetsFor('T').Single());
         Assert.AreEqual(WatchState.CatchingUp,
-            index.Drives.Single(drive => drive.DriveLetter == 'T').Watch.State);
+            index.Drives.Single(drive => drive.Drive == 'T').Watch.State);
 
         await source.WatchFor('T').Publish(new JournalBatch([WatchHarness.Create(9, "after.txt")], 7, 5000));
         Assert.AreEqual(5000L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
 
-        var caughtUp = index.WaitForCatchUpAsync('T', Token);
+        var caughtUp = index.WaitForCatchUpAsync(['T'], Token);
         await source.WatchFor('T').Publish(new DriveCaughtUp());
         await caughtUp.WaitAsync(HangGuard);
         Assert.AreEqual(WatchState.CaughtUp,
-            index.Drives.Single(drive => drive.DriveLetter == 'T').Watch.State);
-        await index.StopWatchingAsync('T', Token);
-        await index.StopWatchingAsync('U', Token);
+            index.Drives.Single(drive => drive.Drive == 'T').Watch.State);
+        await index.StopWatchingAsync(['T'], Token);
+        await index.StopWatchingAsync(['U'], Token);
     }
 
     [TestMethod]
@@ -359,12 +359,12 @@ public partial class FileIndexWatchRescanTests
     {
         var source = new ScriptedWatchSource();
         await using var index = await FileIndex.OpenAsync(CacheOnlyWatchOptions(source, failDriveT: true), Token);
-        await index.StartWatchingAsync('U', Token);
+        await index.StartWatchingAsync(['U'], Token);
 
-        var thrown = await ThrowsAsync<InvalidOperationException>(() => index.RescanAsync('T', Token));
+        var thrown = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.RescanAsync(['T'], Token));
 
         StringAssert.Contains(thrown.Message, "elevation declined");
-        var status = index.Drives.Single(drive => drive.DriveLetter == 'T');
+        var status = index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Failed, status.State);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind);
         Assert.AreEqual("elevation declined", status.Failure?.Message);
@@ -374,8 +374,8 @@ public partial class FileIndexWatchRescanTests
         Assert.AreEqual(0, source.WatchFor('U').DisposeCount);
         await source.WatchFor('U').Publish(new JournalBatch([WatchHarness.Create(9, "u.txt")], 22, 8500));
         Assert.AreEqual(8500L, index.Root('U').DriveBlock.Block.Header.UsnNextUsn);
-        await index.StopWatchingAsync('U', Token);
-        await ThrowsAsync<InvalidOperationException>(() => index.StopWatchingAsync('T', Token));
+        await index.StopWatchingAsync(['U'], Token);
+        await DriveResultAssertions.NotApplicableAsync(() => index.StopWatchingAsync(['T'], Token));
     }
 
     [TestMethod]
@@ -383,21 +383,21 @@ public partial class FileIndexWatchRescanTests
     {
         var source = new ScriptedWatchSource();
         await using var index = await FileIndex.OpenAsync(CacheOnlyWatchOptions(source, failDriveT: false), Token);
-        await index.StartWatchingAsync('U', Token);
-        await index.RescanAsync('T', Token);
-        await index.StartWatchingAsync('T', Token);
+        await index.StartWatchingAsync(['U'], Token);
+        await index.RescanAsync(['T'], Token);
+        await index.StartWatchingAsync(['T'], Token);
         var firstHandle = source.WatchFor('T');
 
         // 'T' is now watching, so the rescan retires its watch at publication and starts it
         // again afterwards.
-        await index.RescanAsync('T', Token);
+        await index.RescanAsync(['T'], Token);
 
         Assert.AreEqual(2, source.TargetsFor('T').Count);
         Assert.AreEqual(1, firstHandle.DisposeCount);
         await source.WatchFor('T').Publish(new JournalBatch([WatchHarness.Create(10, "second.txt")], 7, 6000));
         Assert.AreEqual(6000L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
-        await index.StopWatchingAsync('T', Token);
-        await index.StopWatchingAsync('U', Token);
+        await index.StopWatchingAsync(['T'], Token);
+        await index.StopWatchingAsync(['U'], Token);
     }
 
     [TestMethod]
@@ -406,22 +406,22 @@ public partial class FileIndexWatchRescanTests
         var source = new ScriptedWatchSource();
         await using var index = await FileIndex.OpenAsync(CacheOnlyWatchOptions(source, failDriveT: false), Token);
         index.HoldEveryRecovery();
-        await index.StartWatchingAsync('U', Token);
-        await index.RescanAsync('T', Token);
-        await index.StartWatchingAsync('T', Token);
+        await index.StartWatchingAsync(['U'], Token);
+        await index.RescanAsync(['T'], Token);
+        await index.StartWatchingAsync(['T'], Token);
 
         var faulted = NextFaultOf(index, 'U');
         source.WatchFor('U').FailDrive(new IOException("U journal error"));
         var fault = await faulted.WaitAsync(HangGuard);
-        Assert.IsNotNull(index.Drives.Single(drive => drive.DriveLetter == 'U').Watch.FailureMessage);
+        Assert.IsNotNull(index.Drives.Single(drive => drive.Drive == 'U').Watch.FailureMessage);
 
         await source.WatchFor('T').Publish(new JournalBatch([WatchHarness.Create(9, "surviving.txt")], 7, 5500));
         Assert.AreEqual(5500L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
-        Assert.IsNull(index.Drives.Single(drive => drive.DriveLetter == 'T').Watch.FailureMessage);
+        Assert.IsNull(index.Drives.Single(drive => drive.Drive == 'T').Watch.FailureMessage);
 
-        var thrown = await ThrowsAsync<DriveWatchFaultException>(() => index.StopWatchingAsync('U', Token));
+        var thrown = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => index.StopWatchingAsync(['U'], Token));
         Assert.AreSame(fault.Exception, thrown);
-        await index.StopWatchingAsync('T', Token);
+        await index.StopWatchingAsync(['T'], Token);
     }
 
     [TestMethod]
@@ -429,17 +429,17 @@ public partial class FileIndexWatchRescanTests
     {
         var source = new ScriptedWatchSource();
         await using var index = await FileIndex.OpenAsync(CacheOnlyWatchOptions(source, failDriveT: false), Token);
-        await index.StartWatchingAsync('U', Token);
-        await index.RescanAsync('T', Token);
-        await index.StartWatchingAsync('T', Token);
+        await index.StartWatchingAsync(['U'], Token);
+        await index.RescanAsync(['T'], Token);
+        await index.StartWatchingAsync(['T'], Token);
 
-        var catchUpTask = index.WaitForCatchUpAsync('T', Token);
+        var catchUpTask = index.WaitForCatchUpAsync(['T'], Token);
         source.WatchFor('T').End();
 
-        var thrown = await ThrowsAsync<InvalidOperationException>(() => catchUpTask.WaitAsync(HangGuard));
+        var thrown = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => catchUpTask.WaitAsync(HangGuard));
         StringAssert.Contains(thrown.Message, "ended without being stopped");
         Assert.AreEqual(WatchState.Faulted,
-            index.Drives.Single(drive => drive.DriveLetter == 'T').Watch.State);
+            index.Drives.Single(drive => drive.Drive == 'T').Watch.State);
     }
 
     [TestMethod]
@@ -447,18 +447,18 @@ public partial class FileIndexWatchRescanTests
     {
         var source = new ScriptedWatchSource();
         await using var index = await FileIndex.OpenAsync(CacheOnlyWatchOptions(source, failDriveT: false), Token);
-        await index.StartWatchingAsync('U', Token);
-        await index.RescanAsync('T', Token);
-        await index.StartWatchingAsync('T', Token);
+        await index.StartWatchingAsync(['U'], Token);
+        await index.RescanAsync(['T'], Token);
+        await index.StartWatchingAsync(['T'], Token);
 
-        var catchUpTask = index.WaitForCatchUpAsync('T', Token);
+        var catchUpTask = index.WaitForCatchUpAsync(['T'], Token);
         var sourceException = new InvalidOperationException("stream crashed");
         source.WatchFor('T').LoseChannel(sourceException);
 
-        var thrown = await ThrowsAsync<InvalidOperationException>(() => catchUpTask.WaitAsync(HangGuard));
+        var thrown = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => catchUpTask.WaitAsync(HangGuard));
         Assert.AreSame(sourceException, thrown);
         Assert.AreEqual(WatchState.Faulted,
-            index.Drives.Single(drive => drive.DriveLetter == 'T').Watch.State);
+            index.Drives.Single(drive => drive.Drive == 'T').Watch.State);
     }
 
     /// <summary>
@@ -484,7 +484,7 @@ public partial class FileIndexWatchRescanTests
         var completion = new TaskCompletionSource<WatchFault>(TaskCreationOptions.RunContinuationsAsynchronously);
         index.WatchFaulted += fault =>
         {
-            if (fault.DriveLetter == driveLetter)
+            if (fault.Drive == driveLetter)
             {
                 completion.TrySetResult(fault);
             }

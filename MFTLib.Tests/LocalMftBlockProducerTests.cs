@@ -48,7 +48,7 @@ public class LocalMftBlockProducerTests
     MftBlockProduceRequest Request(bool deleteOnClose = true, IProgress<IndexScanProgress>? progress = null,
         char driveLetter = 'T') => new()
         {
-            DriveLetter = driveLetter,
+            Drive = driveLetter,
             VolumeSerial = 123,
             BlockPath = Path.Combine(_directories.CacheDirectory,
             deleteOnClose ? $"{driveLetter}-temporary.mlix" : $"{driveLetter}-canonical.mlix"),
@@ -309,9 +309,9 @@ public class LocalMftBlockProducerTests
         result.Block.Dispose();
 
         Assert.IsTrue(indexReports.Count > 0);
-        Assert.IsTrue(indexReports.All(report => report.DriveLetter == 'T'));
+        Assert.IsTrue(indexReports.All(report => report.Drive == 'T'));
         Assert.AreEqual(indexReports.Count, scanReports.Count);
-        Assert.IsTrue(scanReports.All(report => report.DriveLetter == "T"));
+        Assert.IsTrue(scanReports.All(report => report.Drive == "T"));
     }
 
     [TestMethod]
@@ -404,33 +404,16 @@ public class LocalMftBlockProducerTests
     }
 
     [TestMethod]
-    public async Task Index_WatchStartAndCatchUpAreRefusedThroughTheNoWatchGate()
+    public async Task Index_WatchStartAndCatchUpAreNotApplicableThroughTheNoWatchGate()
     {
         var source = new LocalMftBlockProducer(null, Scripted()).CreateIndexSource();
         await using var index = await FileIndex.OpenAsync(Options(source), TestContext.CancellationTokenSource.Token);
-        char[] letters = ['T'];
-
-        var start = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => index.StartWatchingAsync('T', CancellationToken.None));
-        var catchUp = CatchUpRefusal(index);
-
-        Assert.AreEqual("Drive T: this source does not support watching.", start.Message);
-        Assert.AreEqual("Drive T: this source does not support watching.", catchUp.Message);
-        // A drive that can never be watched is not applicable to a batched start, as for a dump drive.
-        var batchedStart = (await index.StartWatchingAsync(letters, CancellationToken.None)).Single();
-        Assert.AreEqual(DriveOperationOutcome.NotApplicable, batchedStart.Outcome);
-        Assert.IsNull(batchedStart.Failure);
-        var batchedCatchUp = (await index.WaitForCatchUpAsync(letters, CancellationToken.None)).Single();
-        Assert.AreEqual(DriveOperationOutcome.NotApplicable, batchedCatchUp.Outcome);
-        Assert.IsNull(batchedCatchUp.Failure);
+        await DriveResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync(['t'], CancellationToken.None));
+        await DriveResultAssertions.NotApplicableAsync(() => index.WaitForCatchUpAsync(['t'], CancellationToken.None));
 
         Assert.IsFalse(index.Drives.Single().Watch.Supported);
         Assert.IsFalse(index.Drives.Single().Watch.Requested);
     }
-
-    static InvalidOperationException CatchUpRefusal(FileIndex index) =>
-        Assert.ThrowsException<InvalidOperationException>(
-            () => index.WaitForCatchUpAsync('T', CancellationToken.None));
 
     [TestMethod]
     public async Task Index_NonWindowsSeamSettlesProducerFailedWithTheSeamMessage()

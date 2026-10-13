@@ -105,7 +105,7 @@ internal sealed class CrossDriveScenario : IAsyncDisposable
         }
     }
 
-    public DriveStatus DriveOf(char driveLetter) => Index.Drives.Single(drive => drive.DriveLetter == driveLetter);
+    public DriveStatus DriveOf(char driveLetter) => Index.Drives.Single(drive => drive.Drive == driveLetter);
 
     /// <summary>
     ///     Holds every write the host makes to <paramref name="driveLetter" />'s pipes from now on,
@@ -119,7 +119,7 @@ internal sealed class CrossDriveScenario : IAsyncDisposable
     {
         lock (_gate)
         {
-            var matching = _faults.Where(fault => fault.Kind == kind && fault.DriveLetter == driveLetter).ToList();
+            var matching = _faults.Where(fault => fault.Kind == kind && fault.Drive == driveLetter).ToList();
             if (matching.Count >= occurrence)
             {
                 return Task.FromResult(matching[occurrence - 1]);
@@ -132,7 +132,7 @@ internal sealed class CrossDriveScenario : IAsyncDisposable
     }
 
     public IReadOnlyList<WatchFault> FaultsOf(char driveLetter) =>
-        Faults.Where(fault => fault.DriveLetter == driveLetter).ToArray();
+        Faults.Where(fault => fault.Drive == driveLetter).ToArray();
 
     /// <summary>
     ///     Starts measuring heartbeats on the control pipe and on each named drive's newest pipe,
@@ -280,9 +280,9 @@ internal sealed class CrossDriveScenario : IAsyncDisposable
         lock (_gate)
         {
             _faults.Add(fault);
-            var occurrence = _faults.Count(other => other.Kind == fault.Kind && other.DriveLetter == fault.DriveLetter);
+            var occurrence = _faults.Count(other => other.Kind == fault.Kind && other.Drive == fault.Drive);
             foreach (var waiter in _waiters.Where(waiter => waiter.Kind == fault.Kind &&
-                                                            waiter.Drive == fault.DriveLetter &&
+                                                            waiter.Drive == fault.Drive &&
                                                             waiter.Occurrence == occurrence))
             {
                 waiter.Signal.TrySetResult(fault);

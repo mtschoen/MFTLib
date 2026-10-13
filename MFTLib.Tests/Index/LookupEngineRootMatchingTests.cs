@@ -37,11 +37,11 @@ public class LookupEngineRootMatchingTests
         {
             var inner = LookupEngine.Find(snapshot, Path.Combine(innerRoot, "inner.txt"));
             Assert.IsTrue(inner.HasValue);
-            Assert.AreEqual('I', inner.Value.RecordKey.DriveLetter);
+            Assert.AreEqual('I', inner.Value.RecordKey.Drive);
 
             var outer = LookupEngine.Find(snapshot, Path.Combine(outerRoot, "outer.txt"));
             Assert.IsTrue(outer.HasValue);
-            Assert.AreEqual('O', outer.Value.RecordKey.DriveLetter);
+            Assert.AreEqual('O', outer.Value.RecordKey.Drive);
 
             // "inner.txt" is not a child of the outer block's root, so the longest root having
             // won is exactly what makes this resolve at all.
@@ -120,7 +120,7 @@ public class LookupEngineRootMatchingTests
         {
             var entry = LookupEngine.Find(snapshot, Path.Combine(root, "visible.txt"));
             Assert.IsTrue(entry.HasValue);
-            Assert.AreEqual('T', entry.Value.RecordKey.DriveLetter);
+            Assert.AreEqual('T', entry.Value.RecordKey.Drive);
         }
         finally
         {
@@ -214,7 +214,7 @@ public class LookupEngineRootMatchingTests
         {
             var entry = LookupEngine.Find(snapshot, Path.Combine(secondRoot, "file.txt"));
             Assert.IsTrue(entry.HasValue);
-            Assert.AreEqual('I', entry.Value.RecordKey.DriveLetter);
+            Assert.AreEqual('I', entry.Value.RecordKey.Drive);
             Assert.IsNull(LookupEngine.Find(outerOnly, Path.Combine(secondRoot, "file.txt")),
                 "a string prefix without a path boundary must not select the outer root");
         }

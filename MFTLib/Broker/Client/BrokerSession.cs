@@ -132,11 +132,12 @@ public sealed class BrokerSession : IAsyncDisposable
     /// <exception cref="ObjectDisposedException">The session was disposed.</exception>
     /// <exception cref="IOException">The process ended first. <see cref="Ended" /> says why.</exception>
     /// <exception cref="TimeoutException">The broker never connected, or did not answer within the reply timeout.</exception>
-    public async Task<UsnJournalSettings> GrowUsnJournalAsync(char driveLetter, long maximumSize,
+    public async Task<UsnJournalSettings> GrowUsnJournalAsync(DriveKey driveLetter, long maximumSize,
         long allocationDelta, CancellationToken cancellationToken)
     {
+        var letter = driveLetter.Letter;
         var process = await ConnectAsync(cancellationToken).ConfigureAwait(false);
-        return await process.GrowUsnJournalAsync(driveLetter, maximumSize, allocationDelta, cancellationToken)
+        return await process.GrowUsnJournalAsync(letter, maximumSize, allocationDelta, cancellationToken)
             .ConfigureAwait(false);
     }
 

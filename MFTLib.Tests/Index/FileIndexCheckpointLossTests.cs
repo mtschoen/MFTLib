@@ -113,7 +113,7 @@ public class FileIndexCheckpointLossTests
         var loss = drive.Watch.CheckpointLoss;
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
-        Assert.AreEqual('T', loss.DriveLetter);
+        Assert.AreEqual('T', loss.Drive);
         Assert.AreEqual(CachedNextUsn, loss.CheckpointUsn);
         Assert.AreEqual(CachedNextUsn + 500, loss.FirstUsn);
         Assert.AreEqual(CachedNextUsn + 4_000, loss.NextUsn);
