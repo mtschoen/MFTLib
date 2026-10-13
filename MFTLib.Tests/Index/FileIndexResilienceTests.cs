@@ -41,10 +41,9 @@ public partial class FileIndexResilienceTests
     {
         return new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial)],
+            Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial, ProducerPolicy.Enumeration)],
             CacheDirectory = _cacheDirectory,
             NoCache = noCache,
-            ProducerPolicy = ProducerPolicy.Enumeration,
             Progress = progress,
             Diagnostics = diagnostics
         };
@@ -124,9 +123,8 @@ public partial class FileIndexResilienceTests
         var warmingOpen = await FileIndex.OpenAsync(
             new FileIndexOptions
             {
-                Drives = [firstDrive],
+                Drives = [firstDrive with { ProducerPolicy = ProducerPolicy.Enumeration }],
                 CacheDirectory = _cacheDirectory,
-                ProducerPolicy = ProducerPolicy.Enumeration
             }, CancellationToken.None).WaitAsync(HangGuard);
         await warmingOpen.DisposeAsync().AsTask().WaitAsync(HangGuard);
 
@@ -135,9 +133,8 @@ public partial class FileIndexResilienceTests
         var secondParked = new ParkUntilCancelled('U', cancellationTokenSource.Token);
         var options = new FileIndexOptions
         {
-            Drives = [firstDrive, new IndexedDrive('U', secondTreeRoot, 0x0BADF00E)],
+            Drives = [firstDrive with { ProducerPolicy = ProducerPolicy.Enumeration }, new IndexedDrive('U', secondTreeRoot, 0x0BADF00E, ProducerPolicy.Enumeration)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Enumeration,
             OpenProgress = firstSettled,
             Progress = secondParked
         };

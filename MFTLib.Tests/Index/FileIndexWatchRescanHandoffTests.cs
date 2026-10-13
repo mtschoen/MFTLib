@@ -24,7 +24,6 @@ public class FileIndexWatchRescanHandoffTests
             {
                 Drives = [new IndexedDrive('T', directory.FullName, 1)],
                 CacheDirectory = directory.FullName,
-                ProducerPolicy = ProducerPolicy.Mft,
                 MftSource = new MftIndexSource((request, cancellationToken) =>
                 {
                     SeededBlocks.Write(request.BlockPath, 1, WatchHarness.JournalIdentifier, 100, moment: SeededBlocks.SeededMoment);

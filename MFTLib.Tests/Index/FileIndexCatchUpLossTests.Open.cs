@@ -110,7 +110,6 @@ public partial class FileIndexCatchUpLossTests
         {
             Drives = [new IndexedDrive('T', _treeRoot, VolumeSerial)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Mft,
             MftSource = new MftIndexSource(Produce, Source)
         };
 

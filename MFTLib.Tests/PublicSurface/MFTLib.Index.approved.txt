@@ -238,7 +238,6 @@ MFTLib.Index.FileIndexOptions :: property public InitialOpenCacheOnly { get; ini
 MFTLib.Index.FileIndexOptions :: property public MftSource { get; init; } : MFTLib.Index.MftIndexSource?
 MFTLib.Index.FileIndexOptions :: property public NoCache { get; init; } : bool
 MFTLib.Index.FileIndexOptions :: property public OpenProgress { get; init; } : System.IProgress<MFTLib.Index.IndexDriveOpened>?
-MFTLib.Index.FileIndexOptions :: property public ProducerPolicy { get; init; } : MFTLib.Index.ProducerPolicy
 MFTLib.Index.FileIndexOptions :: property public Progress { get; init; } : System.IProgress<MFTLib.Index.IndexScanProgress>?
 MFTLib.Index.FileIndexOptions :: type public sealed class : System.IEquatable<MFTLib.Index.FileIndexOptions>
 MFTLib.Index.IndexDriveOpened :: method public <Clone>$() : MFTLib.Index.IndexDriveOpened
@@ -301,9 +300,9 @@ MFTLib.Index.IndexScanProgress :: property public Phase { get; init; } : MFTLib.
 MFTLib.Index.IndexScanProgress :: property public RowsWritten { get; init; } : uint
 MFTLib.Index.IndexScanProgress :: property public TotalRows { get; init; } : uint?
 MFTLib.Index.IndexScanProgress :: type public sealed class : System.IEquatable<MFTLib.Index.IndexScanProgress>
-MFTLib.Index.IndexedDrive :: constructor public (char DriveLetter, string RootDirectory, uint VolumeSerial)
+MFTLib.Index.IndexedDrive :: constructor public (char DriveLetter, string RootDirectory, uint VolumeSerial, MFTLib.Index.ProducerPolicy ProducerPolicy = 0)
 MFTLib.Index.IndexedDrive :: method public <Clone>$() : MFTLib.Index.IndexedDrive
-MFTLib.Index.IndexedDrive :: method public Deconstruct(out char DriveLetter, out string RootDirectory, out uint VolumeSerial) : void
+MFTLib.Index.IndexedDrive :: method public Deconstruct(out char DriveLetter, out string RootDirectory, out uint VolumeSerial, out MFTLib.Index.ProducerPolicy ProducerPolicy) : void
 MFTLib.Index.IndexedDrive :: method public Equals(MFTLib.Index.IndexedDrive? other) : bool
 MFTLib.Index.IndexedDrive :: method public override Equals(object? obj) : bool
 MFTLib.Index.IndexedDrive :: method public override GetHashCode() : int
@@ -312,6 +311,7 @@ MFTLib.Index.IndexedDrive :: method public static FromWindowsVolume(string drive
 MFTLib.Index.IndexedDrive :: method public static op_Equality(MFTLib.Index.IndexedDrive? left, MFTLib.Index.IndexedDrive? right) : bool
 MFTLib.Index.IndexedDrive :: method public static op_Inequality(MFTLib.Index.IndexedDrive? left, MFTLib.Index.IndexedDrive? right) : bool
 MFTLib.Index.IndexedDrive :: property public DriveLetter { get; init; } : char
+MFTLib.Index.IndexedDrive :: property public ProducerPolicy { get; init; } : MFTLib.Index.ProducerPolicy
 MFTLib.Index.IndexedDrive :: property public RootDirectory { get; init; } : string
 MFTLib.Index.IndexedDrive :: property public VolumeSerial { get; init; } : uint
 MFTLib.Index.IndexedDrive :: type public sealed class : System.IEquatable<MFTLib.Index.IndexedDrive>

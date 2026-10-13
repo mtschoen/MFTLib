@@ -114,7 +114,8 @@ public partial class BenchmarkRunner
                 CacheDirectory = directory,
                 InitialOpenCacheOnly = true,
                 CacheTag = cacheTag,
-                Drives = [new IndexedDrive(candidate.File.DriveLetter, candidate.RootDirectory, candidate.File.VolumeSerial)]
+                Drives = [new IndexedDrive(candidate.File.DriveLetter, candidate.RootDirectory, candidate.File.VolumeSerial,
+                    candidate.ProducerKind == ProducerKind.Enumeration ? ProducerPolicy.Enumeration : ProducerPolicy.Mft)]
             }, CancellationToken.None);
             using var borrow = index.BorrowCurrentSnapshot();
             var drive = borrow.Snapshot.FindDriveBlock(candidate.File.DriveLetter);

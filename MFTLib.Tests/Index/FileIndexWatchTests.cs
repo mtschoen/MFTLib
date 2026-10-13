@@ -55,11 +55,17 @@ public class FileIndexWatchTests
             Drives =
             [
                 new IndexedDrive('T', _treeRoot, 0x0BADF00D),
-                new IndexedDrive('E', _enumerationRoot, 0x0E0E0E0E),
-                new IndexedDrive('Z', Path.Combine(_treeRoot, "does-not-exist"), 0xDEAD0000)
+                new IndexedDrive('E', _enumerationRoot, 0x0E0E0E0E, ProducerPolicy.Enumeration),
+                new IndexedDrive('Z', Path.Combine(_treeRoot, "does-not-exist"), 0xDEAD0000, ProducerPolicy.Enumeration)
             ],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Enumeration
+            MftSource = SyntheticIndexSource.Create(new SyntheticMftProducer(_ =>
+            [
+                new SyntheticRow(5, ".", 5) { IsDirectory = true },
+                new SyntheticRow(6, "Documents", 5) { IsDirectory = true },
+                new SyntheticRow(7, "readme.md", 6)
+            ])
+            { Completed = ChangeMoment })
         }, CancellationToken.None);
     }
 
@@ -111,9 +117,8 @@ public class FileIndexWatchTests
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('E', _treeRoot, 0x0E0E0E0E)],
+            Drives = [new IndexedDrive('E', _treeRoot, 0x0E0E0E0E, ProducerPolicy.Enumeration)],
             CacheDirectory = Path.Combine(_cacheDirectory, "enumeration-only"),
-            ProducerPolicy = ProducerPolicy.Enumeration,
             MftSource = TestMftSources.WatchOnly(source)
         }, CancellationToken.None);
 

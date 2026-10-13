@@ -26,7 +26,6 @@ public class FileIndexWatchRescanCacheTests
             {
                 Drives = [new IndexedDrive('T', directory.FullName, 1)],
                 CacheDirectory = directory.FullName,
-                ProducerPolicy = ProducerPolicy.Mft,
                 MftSource = new MftIndexSource(async (request, cancellationToken) =>
                 {
                     if (rescanRequested.Task.IsCompleted)

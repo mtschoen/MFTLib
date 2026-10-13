@@ -318,9 +318,8 @@ public class FileIndexEnumerateRowsTests
 
         return await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', FirstRoot, 1), new IndexedDrive('U', SecondRoot, 2)],
+            Drives = [new IndexedDrive('T', FirstRoot, 1, ProducerPolicy.Enumeration), new IndexedDrive('U', SecondRoot, 2, ProducerPolicy.Enumeration)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Enumeration
         }, CancellationToken.None);
     }
 
@@ -330,7 +329,6 @@ public class FileIndexEnumerateRowsTests
         {
             Drives = [new IndexedDrive('T', _treeRoot, TestVolumeSerial.GetNext())],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Mft,
             MftSource = new MftIndexSource((request, _) => Task.FromResult(
                 new MftBlockProduceResult(SeededBlocks.Build(request, rowCount, i => $"file{i}.dat", FixedMoment), JournalIdentifier: 7,
                     NextUsn: 4096, SkippedRecordCount: 0)))

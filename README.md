@@ -155,8 +155,7 @@ var options = new FileIndexOptions
 {
     Drives = [new IndexedDrive(letter, "dump:/" + letter, 0)],
     MftSource = MftIndexSources.FromMftDumpFile(filePath, letter),
-    NoCache = true,
-    ProducerPolicy = ProducerPolicy.Mft
+    NoCache = true
 };
 await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 ```
@@ -516,18 +515,38 @@ Start, stop and catch-up wait accept a token-only all-drive call in
 Batched calls throw for invalid input, disposal, and
 cancellation; drive-specific operational failures stay in `DriveOperationResult.Failure`.
 
-`FileIndexOptions.ProducerPolicy` selects how each drive's block is built:
+`IndexedDrive.ProducerPolicy` selects how this drive's block is built:
 `ProducerPolicy.Mft` (the default) reads the Master File Table through
 `FileIndexOptions.MftSource`, and `ProducerPolicy.Enumeration` walks the directory
-tree instead. The two are never mixed within one open: a drive whose MFT scan fails is
-reported `DriveState.Failed` and never falls back to a directory walk, and the
-enumeration producer runs only when a caller chooses `ProducerPolicy.Enumeration`
-explicitly, never as an inherited fallback decision. Why a `DriveState.Failed` drive has
+tree instead, starting at its `RootDirectory`. One index can mix MFT and enumeration
+drives. `IndexedDrive.FromWindowsVolume(...)` produces an MFT drive; the fourth
+constructor parameter selects a different producer for a caller-owned root:
+
+```csharp
+var drives = new[]
+{
+    IndexedDrive.FromWindowsVolume("C:"),
+    new IndexedDrive('E', enumerationRoot, enumerationVolumeSerial, ProducerPolicy.Enumeration)
+};
+```
+
+A drive whose MFT scan fails is reported `DriveState.Failed` and never falls back
+to a directory walk. Enumeration runs only when that drive's policy selects it.
+`MftSource` is required only for an MFT drive needing a scan or watch; a missing
+source fails that drive's scan as `ProducerFailed` with the configuration error
+message. Enumeration drives accept a null source. Only MFT-backed drives with a
+watch-capable source support watching; enumeration siblings report
+`Watch.Supported == false` and batched watch starts report `NotApplicable` for them.
+A cache block's producer must match the drive's policy: a mismatch is rejected
+under the owner lock and cold-scanned on a normal open, or reported as
+`CacheDeclined` when `InitialOpenCacheOnly` forbids a scan.
+
+Why a `DriveState.Failed` drive has
 no block is reported as `DriveStatus.Failure.Kind`: `CacheDeclined` when
 `FileIndexOptions.InitialOpenCacheOnly` found no cached block to adopt and forbade a scan,
 `CacheTagMismatch` when it found a block whose consumer cache tag differs from
 `FileIndexOptions.CacheTag`, `InUse` when another live `FileIndex` holds the cache block's
-owner lock, and `ProducerFailed` when the MFT producer itself failed. A failed drive of
+owner lock, and `ProducerFailed` when the MFT producer failed or its source is missing. A failed drive of
 any kind accepts a per-drive
 `FileIndex.RescanAsync`, which scans it and clears `DriveStatus.Failure` on success. `DriveStatus.Block` is null
 unless the drive is `Ready`. A failed `RescanAsync`, or a failed catch-up retry scan during the initial

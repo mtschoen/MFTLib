@@ -44,15 +44,12 @@ public sealed record FileIndexOptions
     /// </summary>
     public bool InitialOpenCacheOnly { get; init; }
 
-    /// <summary>Selects the default producer used for configured drives.</summary>
-    public ProducerPolicy ProducerPolicy { get; init; } = ProducerPolicy.Mft;
-
     /// <summary>
     ///     Supplies MFT-derived blocks and each drive's live watch from one place. Null is a
-    ///     configuration error when <see cref="FileIndexOptions.ProducerPolicy" /> is
-    ///     <see cref="MFTLib.Index.ProducerPolicy.Mft" /> and a scan or a watch of an MFT-backed
-    ///     drive is needed; it is ignored when the policy is
-    ///     <see cref="MFTLib.Index.ProducerPolicy.Enumeration" />. A rescan of a watched drive
+    ///     configuration error for a drive whose <see cref="IndexedDrive.ProducerPolicy" /> is
+    ///     <see cref="ProducerPolicy.Mft" /> when a scan or watch is needed. A missing source fails
+    ///     that drive's scan with <see cref="DriveFailureKind.ProducerFailed" />; enumeration drives
+    ///     ignore it, and warm MFT drives need none until a scan or watch is requested. A rescan of a watched drive
     ///     stops that drive's watch when the replacement block commits and starts a fresh one from the new
     ///     block's cursor through the same source; a rescan whose production fails or is cancelled leaves a
     ///     healthy watch running.

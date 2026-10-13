@@ -43,9 +43,8 @@ public class FileIndexProducerSelectionTests
     {
         return new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
+            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, producerPolicy)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = producerPolicy,
             MftSource = mftProducer is null ? null : new MftIndexSource(mftProducer)
         };
     }
@@ -87,7 +86,6 @@ public class FileIndexProducerSelectionTests
         {
             Drives = [new IndexedDrive('T', firstRoot, 1), new IndexedDrive('U', secondRoot, 2)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Mft,
             MftSource = new MftIndexSource((request, _) => request.DriveLetter == 'T'
                 ? throw new UnauthorizedAccessException("elevation declined")
                 : Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, 7, 4096, FixedMoment),
@@ -126,7 +124,6 @@ public class FileIndexProducerSelectionTests
         {
             Drives = [new IndexedDrive('T', firstRoot, 1), new IndexedDrive('U', secondRoot, 2)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Mft,
             MftSource = new MftIndexSource((_, _) => throw new UnauthorizedAccessException("elevation declined"))
         }, TestContext.CancellationTokenSource.Token);
 
@@ -146,7 +143,6 @@ public class FileIndexProducerSelectionTests
         {
             Drives = [new IndexedDrive('T', _treeRoot, 1)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Mft,
             MftSource = new MftIndexSource((_, _) => throw new UnauthorizedAccessException("elevation declined"))
         }, TestContext.CancellationTokenSource.Token);
 
@@ -175,7 +171,6 @@ public class FileIndexProducerSelectionTests
         {
             Drives = [new IndexedDrive('T', _treeRoot, 1)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Mft,
             MftSource = new MftIndexSource(CountingProducer),
             InitialOpenCacheOnly = true
         }, TestContext.CancellationTokenSource.Token);
@@ -191,13 +186,17 @@ public class FileIndexProducerSelectionTests
 
 
     [TestMethod]
-    public async Task DefaultPolicy_WithNoProducerIsAConfigurationError()
+    public async Task DefaultPolicy_WithNoProducerFailsTheDriveWithAConfigurationError()
     {
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => FileIndex.OpenAsync(new FileIndexOptions
+        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
             Drives = [new IndexedDrive('T', _treeRoot, 1)],
             CacheDirectory = _cacheDirectory
-        }, TestContext.CancellationTokenSource.Token));
+        }, TestContext.CancellationTokenSource.Token);
+        var failed = index.Drives.Single();
+        Assert.AreEqual(DriveState.Failed, failed.State);
+        Assert.AreEqual(DriveFailureKind.ProducerFailed, failed.Failure?.Kind);
+        Assert.AreEqual("ProducerPolicy.Mft requires FileIndexOptions.MftSource to be set.", failed.Failure?.Message);
     }
 
     [TestMethod]
@@ -208,9 +207,8 @@ public class FileIndexProducerSelectionTests
             TestContext.CancellationTokenSource.Token);
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 1)],
+            Drives = [new IndexedDrive('T', _treeRoot, 1, ProducerPolicy.Enumeration)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Enumeration,
             MftSource = new MftIndexSource((_, _) => { invocationCount++; throw new InvalidOperationException("the MFT producer must not be called"); })
         }, TestContext.CancellationTokenSource.Token);
 
@@ -229,7 +227,6 @@ public class FileIndexProducerSelectionTests
         {
             Drives = [new IndexedDrive('T', _treeRoot, 1)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Mft,
             MftSource = new MftIndexSource(static (_, token) => throw new OperationCanceledException(token))
         }, TestContext.CancellationTokenSource.Token));
     }
@@ -471,7 +468,6 @@ public class FileIndexProducerSelectionTests
         {
             Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Mft,
             MftSource = new MftIndexSource(Producer),
             InitialOpenCacheOnly = true
         }, TestContext.CancellationTokenSource.Token);
@@ -499,7 +495,6 @@ public class FileIndexProducerSelectionTests
         {
             Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Mft,
             MftSource = new MftIndexSource((_, _) => throw new UnauthorizedAccessException("elevation declined")),
             InitialOpenCacheOnly = true
         }, TestContext.CancellationTokenSource.Token);
@@ -533,7 +528,6 @@ public class FileIndexProducerSelectionTests
         {
             Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Mft,
             MftSource = new MftIndexSource(Producer)
         }, TestContext.CancellationTokenSource.Token);
         Assert.AreEqual(DriveState.Failed, index.Drives.Single().State);

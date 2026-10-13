@@ -40,9 +40,8 @@ public class FileIndexOwnerLockTests
     {
         return new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial)],
+            Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial, ProducerPolicy.Enumeration)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Enumeration,
             InitialOpenCacheOnly = cacheOnly,
             Progress = progress,
             Diagnostics = diagnostics
@@ -312,7 +311,7 @@ public class FileIndexOwnerLockTests
     {
         var options = Options() with
         {
-            ProducerPolicy = ProducerPolicy.Mft,
+            Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial)],
             MftSource = new MftIndexSource((_, _) => throw new IOException("Synthetic production failure"))
         };
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);

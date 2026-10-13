@@ -37,9 +37,8 @@ public class SyntheticIndexInspectionTests
 
     FileIndexOptions Options(string root, CacheTag cacheTag = default) => new()
     {
-        Drives = [new IndexedDrive('T', root, Serial)],
+        Drives = [new IndexedDrive('T', root, Serial, ProducerPolicy.Enumeration)],
         CacheDirectory = _directories.CacheDirectory,
-        ProducerPolicy = ProducerPolicy.Enumeration,
         CacheTag = cacheTag
     };
 

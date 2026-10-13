@@ -64,7 +64,6 @@ internal sealed class WatchHarness : IDisposable
             Drives = _blockBuilders.Select(pair => new IndexedDrive(pair.Key,
                 pair.Value.DirectoryPath, pair.Value.VolumeSerial)).ToArray(),
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Mft,
             MftSource = new MftIndexSource(Produce, watchSource ?? Source)
         }, CancellationToken.None).GetAwaiter().GetResult();
         Index.Changed += _changes.Enqueue;

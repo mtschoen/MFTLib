@@ -62,7 +62,6 @@ partial class SampleHost
             Drives = [parsed.Source is SourceKind.Dump ? new IndexedDrive(letter, "dump:/" + letter, 0) : _resolveDrive(parsed.Drive)],
             NoCache = true,
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Mft,
             MftSource = _createSource(parsed),
             Progress = new PhaseReporter(_writeLine)
         };

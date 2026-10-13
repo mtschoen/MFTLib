@@ -185,7 +185,7 @@ public sealed partial class FileIndex
     async Task<PendingDriveResult> ProduceDriveBlockCoreAsync(IndexedDrive drive, string blockPath,
         bool deleteOnClose, CancellationToken cancellationToken)
     {
-        if (_options.ProducerPolicy == ProducerPolicy.Enumeration)
+        if (drive.ProducerPolicy == ProducerPolicy.Enumeration)
         {
             using var walkLease = await EnumerationWalkLimit.EnterAsync(cancellationToken).ConfigureAwait(false);
             var (scannedBlock, walked) = await Task
@@ -200,12 +200,11 @@ public sealed partial class FileIndex
             };
         }
 
-        var producer = _options.MftSource?.Producer ?? throw new InvalidOperationException(
-            $"{nameof(ProducerPolicy)}.{nameof(ProducerPolicy.Mft)} requires " +
-            $"{nameof(FileIndexOptions)}.{nameof(FileIndexOptions.MftSource)} to be set.");
-
         try
         {
+            var producer = _options.MftSource?.Producer ?? throw new InvalidOperationException(
+                $"{nameof(ProducerPolicy)}.{nameof(ProducerPolicy.Mft)} requires " +
+                $"{nameof(FileIndexOptions)}.{nameof(FileIndexOptions.MftSource)} to be set.");
             var produced = await RunMftProducerAsync(drive, blockPath, deleteOnClose, producer, cancellationToken)
                 .ConfigureAwait(false);
             return new PendingDriveResult
@@ -342,6 +341,18 @@ public sealed partial class FileIndex
         // summary), not through IDisposable.
         if (BlockFile.Open(path, drive.VolumeSerial, out var validation) is { } block)
         {
+            var expectedProducerKind = drive.ProducerPolicy == ProducerPolicy.Enumeration
+                ? ProducerKind.Enumeration
+                : ProducerKind.Mft;
+            if (block.Header.ProducerKind != expectedProducerKind)
+            {
+                var storedProducerKind = block.Header.ProducerKind;
+                block.Dispose();
+                TryDeleteBestEffort(path,
+                    $"cache producer kind mismatch: stored {storedProducerKind}; requested {expectedProducerKind}");
+                return new WarmStartResult(null, null);
+            }
+
             if (block.Header.CacheTag != _options.CacheTag)
             {
                 return RejectCacheTag(block, path);

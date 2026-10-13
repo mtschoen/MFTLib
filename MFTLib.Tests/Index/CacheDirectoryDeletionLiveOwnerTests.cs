@@ -43,9 +43,8 @@ public class CacheDirectoryDeletionLiveOwnerTests
     {
         return new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial)],
+            Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial, ProducerPolicy.Enumeration)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Enumeration,
             InitialOpenCacheOnly = cacheOnly,
             Progress = progress
         };

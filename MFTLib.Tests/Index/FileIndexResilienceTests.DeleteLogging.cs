@@ -85,9 +85,8 @@ public partial class FileIndexResilienceTests
             var deletions = new List<string>();
             var options = new FileIndexOptions
             {
-                Drives = [new IndexedDrive('T', secondRoot, _volumeSerial)],
+                Drives = [new IndexedDrive('T', secondRoot, _volumeSerial, ProducerPolicy.Enumeration)],
                 CacheDirectory = _cacheDirectory,
-                ProducerPolicy = ProducerPolicy.Enumeration,
                 Diagnostics = deletions.Add
             };
             await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);

@@ -44,7 +44,6 @@ public class FileIndexPartialCanonicalBlockTests
     {
         Drives = [new IndexedDrive('T', _treeRoot, VolumeSerial)],
         CacheDirectory = _cacheDirectory,
-        ProducerPolicy = ProducerPolicy.Mft,
         MftSource = new MftIndexSource(producer),
         InitialOpenCacheOnly = cacheOnly,
         Diagnostics = diagnostics.Add
@@ -77,9 +76,8 @@ public class FileIndexPartialCanonicalBlockTests
         var diagnostics = new List<string>();
         var options = new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, VolumeSerial)],
+            Drives = [new IndexedDrive('T', _treeRoot, VolumeSerial, ProducerPolicy.Enumeration)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Enumeration,
             Progress = new CancelingProgress(cancellation),
             Diagnostics = diagnostics.Add
         };

@@ -214,7 +214,6 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
     {
         Drives = [new IndexedDrive('C', _rootDirectory, 123)],
         CacheDirectory = _cacheDirectory,
-        ProducerPolicy = ProducerPolicy.Mft,
         MftSource = source
     };
 

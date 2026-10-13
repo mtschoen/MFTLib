@@ -47,9 +47,8 @@ public class FileIndexScanFinishedTests
     {
         return new FileIndexOptions
         {
-            Drives = drives,
+            Drives = drives.Select(drive => drive with { ProducerPolicy = producerPolicy }).ToArray(),
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = producerPolicy,
             MftSource = mftProducer is null ? null : new MftIndexSource(mftProducer),
             Progress = new SynchronousProgress<IndexScanProgress>(samples.Enqueue)
         };

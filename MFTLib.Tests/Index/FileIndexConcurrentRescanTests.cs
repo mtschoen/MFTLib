@@ -262,7 +262,6 @@ public class FileIndexConcurrentRescanTests
         {
             Drives = [new IndexedDrive('T', owner._treeRoot, 1), new IndexedDrive('U', owner._treeRoot, 2)],
             CacheDirectory = owner._cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Mft,
             InitialOpenCacheOnly = true,
             MftSource = new MftIndexSource(ProduceAsync)
         };

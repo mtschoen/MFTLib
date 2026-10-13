@@ -58,7 +58,6 @@ public class FileIndexRescanCleanupTests
         {
             Drives = [new IndexedDrive('T', _treeRoot, 1)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Mft,
             MftSource = new MftIndexSource((request, _cancellationToken) =>
             {
                 SeededBlocks.Write(request.BlockPath, request.VolumeSerial, journalIdentifier: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment);
@@ -124,7 +123,6 @@ public class FileIndexRescanCleanupTests
         {
             Drives = [new IndexedDrive('T', _treeRoot, 1)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Mft,
             MftSource = new MftIndexSource((request, _cancellationToken) =>
             {
                 if (failTheScan.Value)
@@ -174,7 +172,6 @@ public class FileIndexRescanCleanupTests
         {
             Drives = [new IndexedDrive('T', _treeRoot, 1)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Mft,
             InitialOpenCacheOnly = true,
             MftSource = new MftIndexSource(async (request, _cancellationToken) =>
             {

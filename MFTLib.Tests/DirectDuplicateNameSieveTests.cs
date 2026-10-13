@@ -16,10 +16,9 @@ public class DirectDuplicateNameSieveTests
         var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
             Drives = builders.Select(builder => new IndexedDrive(builder.DriveLetter, builder.DirectoryPath,
-                builder.VolumeSerial)).ToArray(),
+                builder.VolumeSerial, ProducerPolicy.Enumeration)).ToArray(),
             CacheDirectory = builders[0].DirectoryPath,
-            InitialOpenCacheOnly = true,
-            ProducerPolicy = ProducerPolicy.Enumeration
+            InitialOpenCacheOnly = true
         }, CancellationToken.None);
         foreach (var drive in index.Drives)
         {

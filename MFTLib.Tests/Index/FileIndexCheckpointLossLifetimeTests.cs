@@ -70,7 +70,6 @@ public class FileIndexCheckpointLossLifetimeTests
         {
             Drives = drives.Length > 0 ? drives : [Drive('T', _firstTreeRoot)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Mft,
             MftSource = new MftIndexSource(producer),
             InitialOpenCacheOnly = cacheOnly
         };

@@ -53,7 +53,7 @@ internal sealed record MftDumpSourceIdentity
                 nameof(options));
         }
 
-        if (options.ProducerPolicy != ProducerPolicy.Mft)
+        if (drive.ProducerPolicy != ProducerPolicy.Mft)
         {
             throw new ArgumentException("Dump sources require ProducerPolicy.Mft.", nameof(options));
         }

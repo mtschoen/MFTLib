@@ -59,11 +59,11 @@ public partial class SyntheticBlockTests
     string Seed(IEnumerable<SyntheticRow>? rows = null, SyntheticBlockOptions? options = null) =>
         SyntheticBlock.WriteCached(CacheDirectoryPath, 'T', Serial, options ?? Options(), rows ?? SampleRows());
 
-    FileIndexOptions CacheOnly() => new()
+    FileIndexOptions CacheOnly(bool enumeration = false) => new()
     {
-        Drives = [new IndexedDrive('T', _directories.TreeRoot, Serial)],
+        Drives = [new IndexedDrive('T', _directories.TreeRoot, Serial,
+            enumeration ? ProducerPolicy.Enumeration : ProducerPolicy.Mft)],
         CacheDirectory = CacheDirectoryPath,
-        ProducerPolicy = ProducerPolicy.Mft,
         MftSource = new MftIndexSource((_, _) => throw new InvalidOperationException("the cache must satisfy the open")),
         InitialOpenCacheOnly = true
     };
@@ -72,7 +72,6 @@ public partial class SyntheticBlockTests
     {
         Drives = [new IndexedDrive('T', _directories.TreeRoot, Serial)],
         CacheDirectory = CacheDirectoryPath,
-        ProducerPolicy = ProducerPolicy.Mft,
         MftSource = new MftIndexSource(producer.Producer),
         CacheTag = cacheTag
     };

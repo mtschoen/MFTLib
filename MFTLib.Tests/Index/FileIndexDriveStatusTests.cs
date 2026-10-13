@@ -38,9 +38,8 @@ public class FileIndexDriveStatusTests
     {
         return new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
+            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerPolicy.Enumeration)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Enumeration,
             Progress = progress
         };
     }
@@ -52,11 +51,10 @@ public class FileIndexDriveStatusTests
         {
             Drives =
             [
-                new IndexedDrive('Z', Path.Combine(_treeRoot, "absent"), 1),
-                new IndexedDrive('T', _treeRoot, 0x0BADF00D)
+                new IndexedDrive('Z', Path.Combine(_treeRoot, "absent"), 1, ProducerPolicy.Enumeration),
+                new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerPolicy.Enumeration)
             ],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Enumeration
         };
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
@@ -82,9 +80,8 @@ public class FileIndexDriveStatusTests
             TestContext.CancellationTokenSource.Token);
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 4242)],
+            Drives = [new IndexedDrive('T', _treeRoot, 4242, ProducerPolicy.Enumeration)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Enumeration
         }, TestContext.CancellationTokenSource.Token);
 
         var status = index.Drives.Single();
@@ -100,11 +97,10 @@ public class FileIndexDriveStatusTests
         {
             Drives =
             [
-                new IndexedDrive('Z', Path.Combine(_treeRoot, "absent"), 1),
-                new IndexedDrive('T', _treeRoot, 0x0BADF00D)
+                new IndexedDrive('Z', Path.Combine(_treeRoot, "absent"), 1, ProducerPolicy.Enumeration),
+                new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerPolicy.Enumeration)
             ],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Enumeration
         };
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
@@ -173,12 +169,11 @@ public class FileIndexDriveStatusTests
     [TestMethod]
     public async Task Drives_CallerListMutatedAfterOpen_LeavesTheIndexUnchanged()
     {
-        var configured = new List<IndexedDrive> { new('T', _treeRoot, 0x0BADF00D) };
+        var configured = new List<IndexedDrive> { new('T', _treeRoot, 0x0BADF00D, ProducerPolicy.Enumeration) };
         var options = new FileIndexOptions
         {
             Drives = configured,
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Enumeration
         };
         var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
         try
@@ -227,13 +222,12 @@ public class FileIndexDriveStatusTests
     public async Task OpenAsync_CallerDriveListEnumerableOnlyOnce_OpensFromTheFirstEnumeration()
     {
         var configured = new EnumerableOnceDriveList(
-            new IndexedDrive('Z', Path.Combine(_treeRoot, "absent"), 1),
-            new IndexedDrive('T', _treeRoot, 0x0BADF00D));
+            new IndexedDrive('Z', Path.Combine(_treeRoot, "absent"), 1, ProducerPolicy.Enumeration),
+            new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerPolicy.Enumeration));
         var options = new FileIndexOptions
         {
             Drives = configured,
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Enumeration
         };
 
         var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token)

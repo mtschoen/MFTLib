@@ -34,10 +34,9 @@ public class FileIndexLifetimeTests
     {
         return new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial)],
+            Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial, policy)],
             CacheDirectory = _cacheDirectory,
             NoCache = noCache,
-            ProducerPolicy = policy
         };
     }
 

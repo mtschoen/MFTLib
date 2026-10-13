@@ -36,7 +36,6 @@ public class LocalMftCacheFreshnessTests
             {
                 Drives = [new IndexedDrive('T', directories.TreeRoot, 123)],
                 CacheDirectory = directories.CacheDirectory,
-                ProducerPolicy = ProducerPolicy.Mft,
                 MftSource = source
             };
             await using (var initial = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token))

@@ -188,7 +188,7 @@ public partial class SyntheticBlockTests
             "Header padding, all row slots, sequence numbers and the name pool must be unchanged.");
 
         await using var index = await FileIndex.OpenAsync(
-            CacheOnly() with { CacheTag = originalTag }, Token);
+            CacheOnly(enumeration) with { CacheTag = originalTag }, Token);
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, drive.State);
         Assert.AreEqual(DriveFailureKind.CacheTagMismatch, drive.Failure?.Kind);

@@ -50,10 +50,9 @@ public class FileIndexOpenProgressTests
     {
         return new FileIndexOptions
         {
-            Drives = drives,
+            Drives = drives.Select(drive => drive with { ProducerPolicy = producerPolicy }).ToArray(),
             CacheDirectory = _cacheDirectory,
             InitialOpenCacheOnly = cacheOnly,
-            ProducerPolicy = producerPolicy,
             MftSource = mftProducer is null ? null : new MftIndexSource(mftProducer),
             OpenProgress = openProgress
         };

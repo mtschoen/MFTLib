@@ -31,9 +31,8 @@ public class BlockValidationMatrixTests
     {
         return new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, volumeSerial)],
+            Drives = [new IndexedDrive('T', _treeRoot, volumeSerial, ProducerPolicy.Enumeration)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Enumeration
         };
     }
 
@@ -170,9 +169,8 @@ public class BlockValidationMatrixTests
         {
             var options = new FileIndexOptions
             {
-                Drives = [new IndexedDrive('T', differentTreeRoot, 0x0BADF00D)],
+                Drives = [new IndexedDrive('T', differentTreeRoot, 0x0BADF00D, ProducerPolicy.Enumeration)],
                 CacheDirectory = _cacheDirectory,
-                ProducerPolicy = ProducerPolicy.Enumeration
             };
 
             await AssertColdScansAsync(options, BlockValidationResult.WrongRootDirectory);

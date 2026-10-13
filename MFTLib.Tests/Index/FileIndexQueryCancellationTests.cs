@@ -26,9 +26,8 @@ public class FileIndexQueryCancellationTests
 
         _index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, TestVolumeSerial.GetNext())],
+            Drives = [new IndexedDrive('T', _treeRoot, TestVolumeSerial.GetNext(), ProducerPolicy.Enumeration)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Enumeration
         }, CancellationToken.None);
     }
 

@@ -302,7 +302,6 @@ public partial class FileIndexWatchRescanTests
         {
             Drives = [new IndexedDrive('T', _treeRoot, 1), new IndexedDrive('U', _treeRoot, 2)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Mft,
             MftSource = new MftIndexSource((request, _cancellationToken) =>
             {
                 if (failDriveT && char.ToUpperInvariant(request.DriveLetter) == 'T')

@@ -75,7 +75,6 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         {
             Drives = drives,
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Mft,
             MftSource = new MftIndexSource(producer, watchSource),
             InitialOpenCacheOnly = cacheOnly
         };
@@ -244,8 +243,8 @@ public class FileIndexCacheOnlyUnresumableWatchTests
     }
 
     /// <summary>
-    ///     An enumeration policy warm-starts a cached MFT block, which can be watched, but its
-    ///     rescan produces an enumeration block, which cannot. The restart withdraws the request
+    ///     A scripted producer replaces a cached MFT block with an unwatchable block on rescan.
+    ///     The restart defensively withdraws the request
     ///     and faults a wait issued between the retired watch and that restart.
     /// </summary>
     [TestMethod]
@@ -259,8 +258,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         {
             Drives = [driveT],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Enumeration,
-            MftSource = TestMftSources.WatchOnly(source)
+            MftSource = new MftIndexSource(ProduceUnwatchableBlock, source)
         }, Token);
         try
         {
@@ -304,8 +302,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         {
             Drives = [driveT],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Enumeration,
-            MftSource = TestMftSources.WatchOnly(source)
+            MftSource = new MftIndexSource(ProduceUnwatchableBlock, source)
         }, Token);
         var channelFaulted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         index.WatchFaulted += fault =>
@@ -332,6 +329,17 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         StringAssert.Contains(notWatched.Message, "is not being watched");
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => index.StopWatchingAsync('T', Token));
         Assert.AreEqual(1, source.TargetsFor('T').Count);
+    }
+
+    // Script a contradictory producer result to exercise the restart's defensive refusal,
+    // rather than relying on warm adoption to ignore a drive's requested producer policy.
+    static async Task<MftBlockProduceResult> ProduceUnwatchableBlock(MftBlockProduceRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await ProduceMftShapedBlock(request, cancellationToken);
+        result.Block.Header.ProducerKind = ProducerKind.Enumeration;
+        new BlockWriter(result.Block).Complete(result.Block.Header.ScanTimestampUtc, null);
+        return result;
     }
 
     [TestMethod]

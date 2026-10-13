@@ -9,7 +9,8 @@ public static partial class MftIndexSources
     ///     virtual drive. It needs no elevation and no broker, and it works on every platform.
     ///     Open the index with exactly one drive, <c>new IndexedDrive(letter, "dump:/" + letter, 0)</c>, where
     ///     <c>letter</c> is <paramref name="driveLetter" /> in upper case (the root must match the upper-case letter exactly),
-    ///     with <see cref="FileIndexOptions.NoCache" /> set and <see cref="ProducerPolicy.Mft" />.
+    ///     with <see cref="FileIndexOptions.NoCache" /> set and the drive's
+    ///     <see cref="IndexedDrive.ProducerPolicy" /> set to <see cref="ProducerPolicy.Mft" />.
     ///     The dump is scanned in full. A dump drive cannot be watched, has no journal settings, and its
     ///     entries cannot be opened: the letter is a key in the index and names no live volume.
     /// </summary>

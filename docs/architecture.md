@@ -17,7 +17,7 @@
       watching.`, the same text a source with no watch source gives, and batched start, stop and catch-up report
       `NotApplicable` with no failure. Opening validates the options before any cache path is resolved or created: exactly one drive with the identity's
       letter, root `dump:/{DRIVE}`, `VolumeSerial` zero, `NoCache`, no cache directory, tag or cache-only open, and
-      `ProducerPolicy.Mft`; a dump block is never written to or adopted from a cache. `DriveWatchStatus.Supported` is false for
+      `ProducerPolicy.Mft` on that drive (the default policy); a dump block is never written to or adopted from a cache. `DriveWatchStatus.Supported` is false for
       a dump drive and for any drive whose source has no watch source, the same fact a watch start's refusal uses.
     - **MFT dump source**: `MftIndexSources.FromMftDumpFile(filePath, driveLetter)` is the only way to build a dump
       source. It checks its arguments (`A dump file path is required.`, `The logical drive key must be an ASCII
@@ -94,6 +94,15 @@
 
     - **ABI versioning**: `MFTLibNative.EnsureCompatibleNativeAbi()` / `MftResult`'s constructor check the native ABI version and entry stride before parsing, and throw `InvalidOperationException` immediately on a managed/native mismatch instead of decoding mismatched memory. `MftDumpInput.Open` makes the same check before it opens a file.
 
+    - **Per-drive producer**: `IndexedDrive` carries `(DriveLetter, RootDirectory, VolumeSerial,
+      ProducerPolicy = ProducerPolicy.Mft)`. Each drive selects its own producer for initial scans
+      and rescans, so one index can combine MFT-scanned drives with directory-walked drives.
+      `FromWindowsVolume` selects Mft. Enumeration starts at that drive's `RootDirectory`;
+      an MFT producer failure leaves only that drive Failed and never selects enumeration.
+      Warm adoption requires the header's producer kind to match the drive's policy before
+      cache-tag, root and journal checks. A mismatch closes and best-effort deletes the rejected
+      block under the owner lock, then cold-scans; cache-only opens report `CacheDeclined`.
+      Enumeration drives have no live watch, even when their MFT siblings use a watch-capable source.
     - **MFT source**: `FileIndexOptions.MftSource` is one `MftIndexSource` carrying the block
       producer and the watch source of every MFT-backed drive, so the two cannot come from
       different connections. `BrokerSession.CreateIndexSource()` builds the broker-backed
@@ -112,8 +121,12 @@
       the cursor query and stamp zero; cached scans fail as `ProducerFailed` without an active journal.
       Dump blocks retain zero cursors and require NoCache, so they never reach a cache freshness check. The factory
       opens nothing until the first scan; a process that cannot open the volume fails the drive
-      as `ProducerFailed`. A null `MftSource` is a configuration error for
-      `ProducerPolicy.Mft` when a scan or watch is needed and is ignored by `ProducerPolicy.Enumeration`. The block producer
+      as `ProducerFailed`. A null `MftSource` is a configuration error for a drive with
+      `IndexedDrive.ProducerPolicy == ProducerPolicy.Mft` when a scan or watch is needed:
+      its scan reports `ProducerFailed` with the configuration error message, and a watch start
+      throws `InvalidOperationException`. Warm adoption needs no source. Enumeration drives
+      ignore it, so an all-enumeration open accepts null and a mixed open isolates missing-source
+      scan failures to its MFT drives. The block producer
       delegate, the watch source and drive watch interfaces and their records are internal;
       only MFTLib implements them, and tests build sources through `MFTLibTestExtensions`.
     - **Watch state events**: `FileIndex.WatchStateChanged` reports every change of a drive's

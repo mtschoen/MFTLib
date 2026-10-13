@@ -34,9 +34,8 @@ public class FileIndexBlockSourceTests
     {
         return new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
+            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, producerPolicy)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = producerPolicy,
             MftSource = mftProducer is null ? null : new MftIndexSource(mftProducer)
         };
     }
@@ -81,9 +80,8 @@ public class FileIndexBlockSourceTests
     {
         var options = new FileIndexOptions
         {
-            Drives = [new IndexedDrive('Z', Path.Combine(_treeRoot, "absent"), 1)],
+            Drives = [new IndexedDrive('Z', Path.Combine(_treeRoot, "absent"), 1, ProducerPolicy.Enumeration)],
             CacheDirectory = _cacheDirectory,
-            ProducerPolicy = ProducerPolicy.Enumeration
         };
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);

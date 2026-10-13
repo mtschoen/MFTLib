@@ -57,7 +57,6 @@ public class MftIndexSourceTests
     {
         Drives = [Drive(_treeRoot)],
         CacheDirectory = _cacheDirectory,
-        ProducerPolicy = ProducerPolicy.Mft,
         MftSource = source
     };
 
@@ -170,17 +169,18 @@ public class MftIndexSourceTests
     [TestMethod]
     public async Task NoMftSource_IsAConfigurationErrorWhenAMftDriveNeedsAScan()
     {
-        var thrown = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => FileIndex.OpenAsync(Options(null), Token));
-
-        StringAssert.Contains(thrown.Message, nameof(FileIndexOptions.MftSource));
+        await using var index = await FileIndex.OpenAsync(Options(null), Token);
+        var failed = index.Drives.Single();
+        Assert.AreEqual(DriveState.Failed, failed.State);
+        Assert.AreEqual(DriveFailureKind.ProducerFailed, failed.Failure?.Kind);
+        StringAssert.Contains(failed.Failure?.Message, nameof(FileIndexOptions.MftSource));
     }
 
     [TestMethod]
     public async Task NoMftSource_IsIgnoredByTheEnumerationPolicy()
     {
         await using var index = await FileIndex.OpenAsync(
-            Options(null) with { ProducerPolicy = ProducerPolicy.Enumeration }, Token);
+            Options(null) with { Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerPolicy.Enumeration)] }, Token);
 
         Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
     }

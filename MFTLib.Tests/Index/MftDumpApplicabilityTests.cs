@@ -71,7 +71,7 @@ public class MftDumpApplicabilityTests
             ("a cache directory", MftDumpIndexes.Options() with { CacheDirectory = "elsewhere" }, CacheMessage),
             ("cache-only", MftDumpIndexes.Options() with { InitialOpenCacheOnly = true }, CacheMessage),
             ("a cache tag", MftDumpIndexes.Options() with { CacheTag = new CacheTag("ABCD", 1) }, CacheMessage),
-            ("enumeration", MftDumpIndexes.Options() with { ProducerPolicy = ProducerPolicy.Enumeration },
+            ("enumeration", WithDrives(new IndexedDrive('D', MftDumpIndexes.Root, 0, ProducerPolicy.Enumeration)),
                 "Dump sources require ProducerPolicy.Mft.")
         };
 

@@ -5,5 +5,7 @@ namespace MFTLib.Index;
 ///     starts, and on a platform without drive letters the caller assigns
 ///     <paramref name="DriveLetter" /> as a display and lookup key. The volume serial is part of
 ///     the block's file name so a re-lettered drive never matches the wrong block.
+///     <paramref name="ProducerPolicy" /> selects how this drive's block is built on scans and rescans.
 /// </summary>
-public sealed partial record IndexedDrive(char DriveLetter, string RootDirectory, uint VolumeSerial);
+public sealed partial record IndexedDrive(char DriveLetter, string RootDirectory, uint VolumeSerial,
+    ProducerPolicy ProducerPolicy = ProducerPolicy.Mft);

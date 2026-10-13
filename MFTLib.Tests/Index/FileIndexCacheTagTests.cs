@@ -36,7 +36,6 @@ public class FileIndexCacheTagTests
         CacheDirectory = Cache,
         CacheTag = tag,
         InitialOpenCacheOnly = cacheOnly,
-        ProducerPolicy = ProducerPolicy.Mft,
         MftSource = new MftIndexSource(Produce)
     };
 
@@ -93,7 +92,11 @@ public class FileIndexCacheTagTests
     [DataRow(ProducerPolicy.Mft, true)]
     public async Task CreationAndRescanKeepTheRequestedTag(ProducerPolicy policy, bool noCache)
     {
-        var options = Options(OriginalTag) with { ProducerPolicy = policy, NoCache = noCache };
+        var options = Options(OriginalTag) with
+        {
+            Drives = [new IndexedDrive('T', Root, 123, policy)],
+            NoCache = noCache
+        };
         await using (var index = await FileIndex.OpenAsync(options, CancellationToken.None))
         {
             Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
