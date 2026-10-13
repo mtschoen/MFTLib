@@ -41,8 +41,7 @@ internal sealed record BlockFileCreateOptions
 
     /// <summary>
     ///     The consumer identity to record in the header; a mismatch on a later warm-start
-    ///     attempt makes <see cref="BlockValidationResult.WrongCacheTag" /> the outcome instead
-    ///     of <see cref="BlockValidationResult.Valid" />. Written before the block is marked
+    ///     attempt reports <see cref="BlockValidationResult.WrongCacheTag" />. Written before the block is marked
     ///     complete.
     /// </summary>
     public CacheTag CacheTag { get; init; }

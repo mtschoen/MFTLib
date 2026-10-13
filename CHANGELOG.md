@@ -105,6 +105,8 @@ Plain migration work for a consumer moving from `0.2.0`, or from a 0.3.0 preview
 - `DriveStatus.FailureKind` / `DriveStatus.FailureMessage` -> `DriveStatus.Failure?.Kind` / `DriveStatus.Failure?.Message`. Read `status.Failure?.Kind` and `status.Failure?.Message`, using a null failure for no failure. Read block details only when `status.Block` is non-null; offline and failed drives have no block, while a ready drive can retain its block alongside a producer failure.
 - `DriveFailureKind.None` -> `status.Failure is null`.
 - `BlockSource.None` -> `status.Block is null`.
+- `CachedBlockStatus.Validation` is null unless `Availability` is `Invalid`, then the rejection reason: `Validation == Valid` for an available block -> `Validation is null`; `BlockValidationResult.Valid` is removed, and the remaining members renumber from 0. `SyntheticNotifications.CreateCachedBlockStatus` takes the same nullable reason.
+- `DriveBlockStatus.CacheSlot` is a nullable `CacheSlotState`: `CacheSlot == CacheSlotState.NotApplicable` -> `CacheSlot is null`; `CacheSlotState.NotApplicable` is removed, and `OwnedCanonical` and `PrivateFallback` are 0 and 1.
 - `SyntheticNotifications.CreateDriveStatus(driveLetter, state, blockSource, liveRowCount, compactionNeeded, scanTimestamp)` -> `SyntheticNotifications.CreateDriveStatus(driveLetter, state, block, failure)`; consumer tests build those nullable values with `SyntheticNotifications.CreateDriveBlockStatus(...)` and `SyntheticNotifications.CreateDriveFailure(kind, message)`.
 
 - Targets net10.0; net8.0 consumers must upgrade.

@@ -9,7 +9,7 @@ public sealed record CachedBlockStatus
     /// <summary>Creates an inspection result.</summary>
     /// <param name="file">Filename-derived identity and directory-entry metadata.</param>
     /// <param name="availability">Whether the block was available, un-lockable, or invalid.</param>
-    /// <param name="validation">Null for InUse, Valid for Available, and the rejection reason for Invalid.</param>
+    /// <param name="validation">Null unless <paramref name="availability" /> is Invalid, then the rejection reason.</param>
     /// <param name="producerKind">The validated header's producer, or null when unavailable or invalid.</param>
     /// <param name="rootDirectory">A materialized root for a recognized valid producer, otherwise null.</param>
     internal CachedBlockStatus(CachedBlockFile file, CachedBlockAvailability availability,
@@ -29,7 +29,7 @@ public sealed record CachedBlockStatus
     /// <summary>Whether the block was available, un-lockable, or invalid.</summary>
     public CachedBlockAvailability Availability { get; init; }
 
-    /// <summary>Null for InUse, Valid for Available, and the rejection reason for Invalid.</summary>
+    /// <summary>Null unless <see cref="Availability" /> is <see cref="CachedBlockAvailability.Invalid" />, then the rejection reason.</summary>
     public BlockValidationResult? Validation { get; init; }
 
     /// <summary>The validated header's producer, or null when unavailable or invalid.</summary>

@@ -19,12 +19,12 @@ public sealed record DriveBlockStatus
     /// <summary>
     ///     The current block's cache-slot backing, captured with this status. Read
     ///     <see cref="FileIndex.Drives" /> again after a rescan for an updated value.
-    ///     <see cref="CacheSlotState.NotApplicable" /> for NoCache drives.
+    ///     Null when the block is not backed by a cache slot, as under NoCache.
     ///     This does not identify another owner or promise that a private block's slot
     ///     is still held elsewhere. <see cref="Source" /> independently describes
     ///     how the current block was obtained.
     /// </summary>
-    public CacheSlotState CacheSlot { get; init; }
+    public CacheSlotState? CacheSlot { get; init; }
 
     /// <summary>
     ///     Rows that are in use and not tombstoned: the rows a query can return.

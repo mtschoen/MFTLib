@@ -40,8 +40,8 @@
       restores its renamed-aside previous block instead.
       `DriveBlockStatus.CacheSlot` reports the current published block's backing:
       `CacheSlotState.OwnedCanonical` for the canonical slot held by this index,
-      `PrivateFallback` for a private fallback block, and `NotApplicable` for
-      NoCache and blockless (failed or offline) drives. It is independent of
+      `PrivateFallback` for a private fallback block, and null for
+      a NoCache block (a blockless drive has no `Block` at all). It is independent of
       `BlockSource`: both canonical and private scans report `ProducedByScan`.
       The status is captured under the state lock; reread `FileIndex.Drives` after
       a rescan. Taking a lock for an in-flight rescan does not change the old

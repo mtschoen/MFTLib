@@ -104,7 +104,7 @@ public partial class BenchmarkRunner
             if (candidate.Availability != CachedBlockAvailability.Available || candidate.RootDirectory is null ||
                 candidate.CacheTag is not { } cacheTag)
             {
-                _writeLineToConsole($"Error: {candidate.File.Path}: {candidate.Availability} ({candidate.Validation}).");
+                _writeLineToConsole($"Error: {candidate.File.Path}: {candidate.Availability}{(candidate.Validation is { } reason ? $" ({reason})" : "")}.");
                 exitCode = 1;
                 continue;
             }

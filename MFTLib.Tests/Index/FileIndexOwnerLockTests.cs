@@ -266,22 +266,22 @@ public class FileIndexOwnerLockTests
     }
 
     [TestMethod]
-    public async Task OpenAsync_NoCache_CacheSlotStaysNotApplicableAfterRescan()
+    public async Task OpenAsync_NoCache_CacheSlotStaysNullAfterRescan()
     {
         await using var index = await FileIndex.OpenAsync(
             Options() with { NoCache = true }, CancellationToken.None);
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
-        Assert.AreEqual(CacheSlotState.NotApplicable, index.Drives.Single().Block!.CacheSlot);
+        Assert.IsNull(index.Drives.Single().Block!.CacheSlot);
         Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().Block!.Source);
 
         await index.RescanAsync(['T'], CancellationToken.None);
 
-        Assert.AreEqual(CacheSlotState.NotApplicable, index.Drives.Single().Block!.CacheSlot);
+        Assert.IsNull(index.Drives.Single().Block!.CacheSlot);
         Assert.IsFalse(File.Exists(CanonicalPath));
     }
 
     [TestMethod]
-    public async Task OpenAsync_Offline_CacheSlotIsNotApplicable()
+    public async Task OpenAsync_Offline_HasNoBlock()
     {
         var options = Options() with
         {
@@ -307,7 +307,7 @@ public class FileIndexOwnerLockTests
     }
 
     [TestMethod]
-    public async Task OpenAsync_ProducerFailure_CacheSlotIsNotApplicable()
+    public async Task OpenAsync_ProducerFailure_HasNoBlock()
     {
         var options = Options() with
         {

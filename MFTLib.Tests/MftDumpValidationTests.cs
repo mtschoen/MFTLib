@@ -172,7 +172,7 @@ public class MftDumpValidationTests
         Assert.AreEqual(ProducerKind.Mft, header.ProducerKind);
         Assert.AreEqual(5u, header.RootRow);
         Assert.AreEqual(new CacheTag("DUMP", 3), header.CacheTag);
-        Assert.AreEqual(BlockValidationResult.Valid, BlockHeader.Validate(in header, 0, block.Length));
+        Assert.IsNull(BlockHeader.Validate(in header, 0, block.Length));
         Assert.AreEqual(11u, header.RowCount, "rows are dense by record number, and the last record is 10");
     }
 

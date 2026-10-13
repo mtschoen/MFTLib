@@ -142,7 +142,7 @@ public class LookupEngineTests
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out var validation)!;
-        Assert.AreEqual(BlockValidationResult.Valid, validation);
+        Assert.IsNull(validation);
         var snapshot = Snapshot.Create([new DriveBlock('V', 0, block, rootDirectoryPath: TestDriveRoot.For('V'))]);
         try
         {
@@ -162,7 +162,7 @@ public class LookupEngineTests
     {
         using var builder = SyntheticBlockBuilder.MftShaped();
         using var block = builder.OpenForReading(out var validation)!;
-        Assert.AreEqual(BlockValidationResult.Valid, validation);
+        Assert.IsNull(validation);
         var driveBlock = new DriveBlock('T', 0, block, rootDirectoryPath: TestDriveRoot.For('T'));
         var snapshot = Snapshot.Create([driveBlock]);
 

@@ -84,17 +84,17 @@ public class SyntheticNotificationsTests
         var file = File();
         var tag = new CacheTag("GITW", 3);
 
-        var status = SyntheticNotifications.CreateCachedBlockStatus(file, CachedBlockAvailability.Available,
-            BlockValidationResult.Valid, ProducerKind.Mft, @"T:\", tag);
+        var status = SyntheticNotifications.CreateCachedBlockStatus(file, CachedBlockAvailability.Invalid,
+            BlockValidationResult.WrongMagic, ProducerKind.Mft, @"T:\", tag);
 
         Assert.AreEqual(
-            new CachedBlockStatus(file, CachedBlockAvailability.Available, BlockValidationResult.Valid,
+            new CachedBlockStatus(file, CachedBlockAvailability.Invalid, BlockValidationResult.WrongMagic,
                 ProducerKind.Mft, @"T:\")
             { CacheTag = tag },
             status);
         Assert.AreEqual(file, status.File);
-        Assert.AreEqual(CachedBlockAvailability.Available, status.Availability);
-        Assert.AreEqual(BlockValidationResult.Valid, status.Validation);
+        Assert.AreEqual(CachedBlockAvailability.Invalid, status.Availability);
+        Assert.AreEqual(BlockValidationResult.WrongMagic, status.Validation);
         Assert.AreEqual(ProducerKind.Mft, status.ProducerKind);
         Assert.AreEqual(@"T:\", status.RootDirectory);
         Assert.AreEqual(tag, status.CacheTag);

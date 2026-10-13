@@ -74,7 +74,7 @@ internal sealed class BrokerMftBlockProducer
         }
 
         var validation = BlockHeader.Validate(in header, volumeSerial, block.Length);
-        if (validation != BlockValidationResult.Valid)
+        if (validation is not null)
         {
             throw new InvalidOperationException($"Block validation failed: {validation}.");
         }

@@ -41,7 +41,7 @@ public sealed partial class FileIndex
         /// <summary>The loss that made the open reject or distrust the drive's cached block.</summary>
         public JournalCheckpointLoss? CheckpointLoss { get; init; }
 
-        public CacheSlotState CacheSlot { get; init; }
+        public CacheSlotState? CacheSlot { get; init; }
 
         /// <summary>A cache-only open adopted the block despite <see cref="CheckpointLoss" />.</summary>
         public bool CacheOnlyUnresumable { get; init; }

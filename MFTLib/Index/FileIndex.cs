@@ -22,7 +22,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     readonly Dictionary<ushort, string> _mftProducerFailureMessagesByOrdinal = [];
     readonly Dictionary<ushort, string> _watchFailureMessagesByOrdinal = [];
     readonly Dictionary<ushort, BlockSource> _blockSourcesByOrdinal = [];
-    readonly Dictionary<ushort, CacheSlotState> _cacheSlotsByOrdinal = [];
+    readonly Dictionary<ushort, CacheSlotState?> _cacheSlotsByOrdinal = [];
 
     /// <summary>
     ///     One entry per drive whose cached block was rejected because its journal checkpoint

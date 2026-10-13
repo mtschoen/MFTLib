@@ -157,7 +157,7 @@ internal sealed class SyntheticBlockBuilder : IDisposable
         _block.Flush(null);
     }
 
-    public BlockFile? OpenForReading(out BlockValidationResult validation)
+    public BlockFile? OpenForReading(out BlockValidationResult? validation)
     {
         return BlockFile.Open(BlockPath, VolumeSerial, out validation);
     }

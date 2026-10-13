@@ -91,3 +91,22 @@ report self-describing. A single consumer is the design, not drift. The gap the 
 showed it.
 
 **Revisit only if:** file-wizard stops rendering open progress.
+
+## A state enum plus a nullable reason
+
+**Decision (2026-10-13, API review finding F14, widened to one rule):** a state enum is the field callers branch
+on; the reason or error that accompanies it is a nullable property, non-null only when there is something to
+report; a reason enum has no "nothing wrong" member. `CachedBlockStatus.Validation` is null unless
+`Availability` is `Invalid`, and `BlockValidationResult` has no `Valid`. `DriveBlockStatus.CacheSlot` is a
+nullable `CacheSlotState`, null when the block is not backed by a cache slot, and `CacheSlotState` has no
+`NotApplicable`
+([MFTLib issue 476](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/476)).
+
+**Reason:** two fields stating one fact can contradict each other, and both consumers branch on the state enum
+and only print the reason. Six of the eight state-plus-reason pairs on the public surface already had this
+shape: `DriveStatus.Failure`, `WatchStateChange.Fault`, `DriveOperationResult.Failure`,
+`CachedBlockDeletionResult.FailureReason`, `IndexScanProgress.Outcome` and `DriveWatchStatus.FailureMessage`.
+`DriveStatus` set the pattern on 2026-10-12 when `DriveFailureKind.None` and `BlockSource.None` were deleted.
+
+**Revisit only if:** a consumer needs to distinguish "checked and valid" from "not checked" on a row it cannot
+already distinguish by the state enum.

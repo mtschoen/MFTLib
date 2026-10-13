@@ -41,7 +41,7 @@ public static class SyntheticNotifications
     /// <summary>Builds an inspection result for one cached block.</summary>
     /// <param name="file">The inventory entry the inspection describes.</param>
     /// <param name="availability">Whether the block was available, un-lockable, or invalid.</param>
-    /// <param name="validation">The validation outcome, or null for an un-lockable block.</param>
+    /// <param name="validation">The rejection reason of an invalid block; null for an available or un-lockable block.</param>
     /// <param name="producerKind">The validated header producer, or null.</param>
     /// <param name="rootDirectory">The materialized root directory, or null.</param>
     /// <param name="cacheTag">The validated block tag, or null when the block could not be inspected.</param>

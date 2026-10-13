@@ -60,9 +60,9 @@ public sealed partial class FileIndex
     string CanonicalBlockPath(IndexedDrive drive) =>
         Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(drive.Drive, drive.VolumeSerial));
 
-    CacheSlotState DescribeCacheSlot(bool ownsCanonicalSlot) =>
+    CacheSlotState? DescribeCacheSlot(bool ownsCanonicalSlot) =>
         _options.NoCache
-            ? CacheSlotState.NotApplicable
+            ? null
             : ownsCanonicalSlot
                 ? CacheSlotState.OwnedCanonical
                 : CacheSlotState.PrivateFallback;

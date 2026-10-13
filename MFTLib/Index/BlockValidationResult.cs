@@ -1,14 +1,12 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     Why a block on disk was accepted or rejected. Every rejection means the same thing to
+///     Why a block on disk was rejected. Every rejection means the same thing to
 ///     the caller (discard the file and rescan) but the reason is logged so a recurring
 ///     rejection is diagnosable rather than an invisible repeated cold scan.
 /// </summary>
 public enum BlockValidationResult
 {
-    /// <summary>Allows the caller to open the cached block without a replacement scan.</summary>
-    Valid,
     /// <summary>The file is missing, unreadable, too short, or does not begin with the block-format magic value.</summary>
     WrongMagic,
     /// <summary>The file uses an unsupported block-format version.</summary>

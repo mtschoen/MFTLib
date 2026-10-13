@@ -295,7 +295,7 @@ public partial class BlockWriterTests
         }
 
         using var reopened = BlockFile.Open(_blockPath, 0x0BADF00D, out var validation);
-        Assert.AreEqual(BlockValidationResult.Valid, validation);
+        Assert.IsNull(validation);
         Assert.IsNotNull(reopened);
     }
 

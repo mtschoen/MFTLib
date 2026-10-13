@@ -71,11 +71,10 @@ public class BlockHeaderTests
     }
 
     [TestMethod]
-    public void Validate_GoodHeader_ReturnsValid()
+    public void Validate_GoodHeader_ReturnsNoRejection()
     {
         var header = ValidHeader();
-        Assert.AreEqual(BlockValidationResult.Valid,
-            BlockHeader.Validate(in header, 0xDEADBEEF, ValidFileLength()));
+        Assert.IsNull(BlockHeader.Validate(in header, 0xDEADBEEF, ValidFileLength()));
     }
 
     [TestMethod]

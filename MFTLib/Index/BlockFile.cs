@@ -246,7 +246,7 @@ internal sealed unsafe partial class BlockFile : IDisposable
     ///     slot owner, or a caller that confirmed the file is quiescent, may call this: opening a block
     ///     another index is writing is undefined and racy (see <see cref="CacheDirectory.InspectCached(string, System.Collections.Generic.IEnumerable{DriveKey})" />).
     /// </summary>
-    public static BlockFile? Open(string path, uint expectedVolumeSerial, out BlockValidationResult validation)
+    public static BlockFile? Open(string path, uint expectedVolumeSerial, out BlockValidationResult? validation)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         long length;
@@ -322,7 +322,7 @@ internal sealed unsafe partial class BlockFile : IDisposable
     }
 
     static BlockFile? OpenMapped(string path, uint expectedVolumeSerial, long length,
-        out BlockValidationResult validation)
+        out BlockValidationResult? validation)
     {
         BlockFile? block = null;
         try
@@ -331,12 +331,12 @@ internal sealed unsafe partial class BlockFile : IDisposable
                 fileOptions: FileOptions.None);
             block = new BlockFile(path, length, mappedFile, view);
             validation = BlockHeader.Validate(in block.Header, expectedVolumeSerial, length);
-            if (validation == BlockValidationResult.Valid)
+            if (validation is null)
             {
                 validation = block.ValidateNameDescriptors();
             }
 
-            if (validation == BlockValidationResult.Valid)
+            if (validation is null)
             {
                 return block;
             }
@@ -361,7 +361,7 @@ internal sealed unsafe partial class BlockFile : IDisposable
         }
     }
 
-    BlockValidationResult ValidateNameDescriptors()
+    BlockValidationResult? ValidateNameDescriptors()
     {
         var usedBytes = (ulong)Header.NamePoolUsed;
         var rows = Rows;
@@ -376,7 +376,7 @@ internal sealed unsafe partial class BlockFile : IDisposable
             }
         }
 
-        return BlockValidationResult.Valid;
+        return null;
     }
 
     void InitializeHeader(BlockFileCreateOptions options)

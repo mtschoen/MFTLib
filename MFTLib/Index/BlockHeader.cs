@@ -94,7 +94,7 @@ internal struct BlockHeader
     /// <returns>A validation result that explains whether the block is safe to use.</returns>
     [SuppressMessage("Roslynator", "RCS1242",
         Justification = "BlockHeader is explicit-layout and intentionally mutable for field-by-field disk mapping; the in-parameter signature is spec-mandated.")]
-    public static BlockValidationResult Validate(in BlockHeader header, uint expectedVolumeSerial, long fileLength)
+    public static BlockValidationResult? Validate(in BlockHeader header, uint expectedVolumeSerial, long fileLength)
     {
         if (header.Magic != BlockLayout.Magic)
         {
@@ -126,7 +126,7 @@ internal struct BlockHeader
 
     [SuppressMessage("Roslynator", "RCS1242",
         Justification = "BlockHeader is explicit-layout and intentionally mutable for field-by-field disk mapping; the in-parameter signature is spec-mandated.")]
-    static BlockValidationResult ValidateRegions(in BlockHeader header, long fileLength)
+    static BlockValidationResult? ValidateRegions(in BlockHeader header, long fileLength)
     {
         if (header.RowCount > header.SlotCapacity || header.NamePoolUsed > header.NamePoolCapacity ||
             header.RootRow >= header.RowCount)
@@ -142,6 +142,6 @@ internal struct BlockHeader
         }
 
         var required = BlockLayout.TotalBlockBytes(header.SlotCapacity, header.NamePoolCapacity);
-        return fileLength < required ? BlockValidationResult.InconsistentRegions : BlockValidationResult.Valid;
+        return fileLength < required ? BlockValidationResult.InconsistentRegions : null;
     }
 }

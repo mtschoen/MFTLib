@@ -693,9 +693,10 @@ consumer parsing block file names.
 a diagnostic string. Reads of mapped entry data throw as described above.
 `DriveStatus.Block` is null when no block is available. `DriveBlockStatus.Source` is
 `WarmStartedFromCache` for an adopted cache block, or `ProducedByScan` after a scan.
+`DriveBlockStatus.CacheSlot` is the block's cache-slot backing, or null when the block has none, as under `NoCache`.
 `CacheDirectory.InspectCached` returns `CachedBlockStatus` records whose `File` is a `CachedBlockFile` containing the
 drive letter, volume serial, full cache-file path, size, and last-write time, plus
-whether the block is available, in use by another index, or invalid.
+whether the block is available, in use by another index, or invalid. `Validation` is null unless the block is invalid, then the rejection reason.
 
 ## Errors and recovery
 

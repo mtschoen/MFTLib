@@ -57,7 +57,7 @@ public class CacheTagStorageTests
         Assert.AreEqual(tag.Version, BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(108, 4)));
         using (var reopened = BlockFile.Open(BlockPath, 123, out var validation))
         {
-            Assert.AreEqual(BlockValidationResult.Valid, validation);
+            Assert.IsNull(validation);
             Assert.IsNotNull(reopened);
             Assert.AreEqual(tag, reopened.Header.CacheTag);
         }

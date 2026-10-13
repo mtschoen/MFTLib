@@ -29,7 +29,7 @@ public class BlockFileTests
         builder.Complete(ScanMoment);
 
         using var block = builder.OpenForReading(out var validation);
-        Assert.AreEqual(BlockValidationResult.Valid, validation);
+        Assert.IsNull(validation);
         Assert.IsNotNull(block);
 
         Assert.AreEqual(BlockLayout.Magic, block.Header.Magic);

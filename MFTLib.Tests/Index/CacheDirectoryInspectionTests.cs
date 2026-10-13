@@ -118,7 +118,7 @@ public class CacheDirectoryInspectionTests
         foreach (var status in statuses)
         {
             Assert.AreEqual(CachedBlockAvailability.Available, status.Availability);
-            Assert.AreEqual(BlockValidationResult.Valid, status.Validation);
+            Assert.IsNull(status.Validation);
             Assert.AreEqual(VolumeSerial, status.File.VolumeSerial);
             Assert.AreEqual(new FileInfo(status.File.Path).Length, status.File.SizeBytes);
             AssertReleased(status.File.Path);
@@ -180,7 +180,7 @@ public class CacheDirectoryInspectionTests
         var path = CreateBlock('C', (ProducerKind)99);
         var result = CacheDirectory.InspectCached(_cacheDirectory).Single();
         Assert.AreEqual(CachedBlockAvailability.Available, result.Availability);
-        Assert.AreEqual(BlockValidationResult.Valid, result.Validation);
+        Assert.IsNull(result.Validation);
         Assert.AreEqual((ProducerKind)99, result.ProducerKind);
         Assert.IsNull(result.RootDirectory);
         AssertReleased(path);

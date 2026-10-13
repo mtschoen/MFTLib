@@ -71,7 +71,7 @@ Read `FileIndex.Drives` and inspect `DriveBlockStatus.CacheSlot`:
 | --- | --- |
 | `CacheSlotState.OwnedCanonical` | This drive's current block belongs to the canonical cache slot held by this index. |
 | `CacheSlotState.PrivateFallback` | This drive's current block was scanned privately because its canonical slot was unavailable when the scan target was selected. |
-| `CacheSlotState.NotApplicable` | NoCache is enabled, or the drive has no block (failed or offline). |
+| null | The block is not backed by a cache slot: NoCache is enabled. A failed or offline drive has no `DriveStatus.Block` to inspect. |
 
 Ready blocks retain their backing classification, including when compaction is needed. This is
 separate from `DriveBlockStatus.Source`: a canonical cold scan and a private
