@@ -77,3 +77,17 @@ on the key itself is `Letter`. Lifecycle requests are materialized once, reject 
 starts and preserve request order, matching the list contract. Empty sequences succeed with no results
 unless cancelled. These choices keep identity and admission in one owner without adding public validation
 members or a string conversion.
+
+## Open progress counts settle order and total
+
+**Decision (2026-10-13, API review finding F13):** `IndexDriveOpened` keeps both `SettledDriveCount` and
+`TotalDriveCount`. The Watch sample now prints one line per settled drive, so the notification has a sample
+caller.
+
+**Reason:** the notification was built to order for file-wizard's "drive k of N" display during warm starts
+([file-wizard issue 382](https://gitea.fleet.sticktoitive.net/schoen/file-wizard/issues/382)). Drives settle
+concurrently, so the settle counter is what lets a handler order overlapping reports, and the total keeps each
+report self-describing. A single consumer is the design, not drift. The gap the review found was that no sample
+showed it.
+
+**Revisit only if:** file-wizard stops rendering open progress.

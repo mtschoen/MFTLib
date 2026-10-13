@@ -81,7 +81,8 @@ partial class SampleHost
             CacheTag = cached ? WatchArguments.CacheTag : default,
             Diagnostics = cached ? _writeLine : null,
             MftSource = source,
-            Progress = new PhaseReporter(_writeLine)
+            Progress = new PhaseReporter(_writeLine),
+            OpenProgress = new DriveOpenedReporter(_writeLine)
         };
 
         var index = await FileIndex.OpenAsync(options, cancellationToken).ConfigureAwait(false);

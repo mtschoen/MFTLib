@@ -56,17 +56,7 @@ public class PublicMemberCallerTests
         ["method MFTLib.Index.JournalCheckpointLoss.TryGetGrowthTarget(MFTLib.UsnJournalSettings&) : System.Boolean"] =
             "file-wizard file-wizard/JournalCommand.cs and FileWizardMaui.Logic/JournalSettingsPresenter.cs, and git-wizard GitWizardUI/ViewModels/MainViewModel.Journals.cs use the recorded target for explicit journal growth",
         ["property MFTLib.Index.FileIndexOptions.InitialOpenCacheOnly : System.Boolean"] =
-            "file-wizard FileWizard/FileIndexHost.cs opens cache-only first",
-        ["property MFTLib.Index.FileIndexOptions.OpenProgress : System.IProgress`1<MFTLib.Index.IndexDriveOpened>"] =
-            "file-wizard FileWizard/FileIndexHost.cs forwards the open progress sink",
-        ["type MFTLib.Index.IndexDriveOpened"] =
-            "file-wizard FileWizardMaui.Logic/OpenProgressPresenter.cs shows each settled drive",
-        ["property MFTLib.Index.IndexDriveOpened.Drive : MFTLib.Index.DriveKey"] =
-            "file-wizard FileWizardMaui.Logic/OpenProgressPresenter.cs shows each settled drive",
-        ["property MFTLib.Index.IndexDriveOpened.SettledDriveCount : System.Int32"] =
-            "file-wizard FileWizardMaui.Logic/OpenProgressPresenter.cs shows each settled drive",
-        ["property MFTLib.Index.IndexDriveOpened.TotalDriveCount : System.Int32"] =
-            "file-wizard FileWizardMaui.Logic/OpenProgressPresenter.cs shows each settled drive"
+            "file-wizard FileWizard/FileIndexHost.cs opens cache-only first"
     };
 
     /// <summary>
