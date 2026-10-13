@@ -87,14 +87,14 @@ public class SearchEngineTests
     [TestMethod]
     public void Search_DirectoriesTrueReturnsOnlyDirectories()
     {
-        var results = SearchEngine.Search(_snapshot, new SearchQuery(null, Directories: true));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery(null, IsDirectory: true));
         Assert.IsTrue(results.All(entry => entry.IsDirectory));
     }
 
     [TestMethod]
     public void Search_DirectoriesFalseReturnsOnlyFiles()
     {
-        var results = SearchEngine.Search(_snapshot, new SearchQuery(null, Directories: false));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery(null, IsDirectory: false));
         CollectionAssert.AreEqual(new[] { "Report.docx", "holiday.jpg", "report.pdf" }, NamesOf(results));
     }
 
@@ -102,7 +102,7 @@ public class SearchEngineTests
     public void Search_SizeBoundsAreInclusive()
     {
         var results = SearchEngine.Search(_snapshot,
-            new SearchQuery(null, Directories: false, MinimumSize: 100, MaximumSize: 4096));
+            new SearchQuery(null, IsDirectory: false, MinimumSize: 100, MaximumSize: 4096));
         CollectionAssert.AreEqual(new[] { "Report.docx", "report.pdf" }, NamesOf(results));
     }
 
@@ -134,19 +134,23 @@ public class SearchEngineTests
         }
     }
 
-    [TestMethod]
-    public void Search_ModifiedBoundsAreInclusive()
+    [DataTestMethod]
+    [DataRow(true, new[] { "holiday.jpg", "report.pdf" })]
+    [DataRow(false, new[] { "Report.docx" })]
+    public void Search_LastWriteTimeBoundsAreInclusive(bool isLowerBound, string[] expectedNames)
     {
         var results = SearchEngine.Search(_snapshot,
-            new SearchQuery(null, Directories: false, ModifiedAfter: Newer));
-        CollectionAssert.AreEqual(new[] { "holiday.jpg", "report.pdf" }, NamesOf(results));
+            new SearchQuery(null, IsDirectory: false,
+                LastWriteTimeMinimum: isLowerBound ? Newer : null,
+                LastWriteTimeMaximum: isLowerBound ? null : Older));
+        CollectionAssert.AreEqual(expectedNames, NamesOf(results));
     }
 
     [TestMethod]
-    public void Search_UnderRestrictsToTheSubtreeInclusive()
+    public void Search_SubtreeRestrictsToTheEntryAndBelow()
     {
         var documents = FileEntry.Create(_snapshot, 0, _documentsRow);
-        var results = SearchEngine.Search(_snapshot, new SearchQuery(null, Under: documents));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery(null, Subtree: documents));
         CollectionAssert.AreEqual(new[] { "Documents", "Report.docx", "report.pdf" }, NamesOf(results));
     }
 
@@ -154,7 +158,7 @@ public class SearchEngineTests
     public void Search_UnderADifferentSubtreeExcludesSiblings()
     {
         var pictures = FileEntry.Create(_snapshot, 0, _picturesRow);
-        var results = SearchEngine.Search(_snapshot, new SearchQuery("report", Under: pictures));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery("report", Subtree: pictures));
         Assert.AreEqual(0, results.Count);
     }
 
@@ -162,7 +166,7 @@ public class SearchEngineTests
     public void Search_Under_InvalidAncestor_ReturnsNoResults()
     {
         var invalidAncestor = default(FileEntry);
-        var results = SearchEngine.Search(_snapshot, new SearchQuery(null, Under: invalidAncestor));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery(null, Subtree: invalidAncestor));
         Assert.AreEqual(0, results.Count);
     }
 
@@ -175,7 +179,7 @@ public class SearchEngineTests
         var token = cancellation.Token;
 
         Assert.ThrowsException<OperationCanceledException>(() =>
-            SearchEngine.Search(_snapshot, new SearchQuery(null, Under: invalidAncestor), token));
+            SearchEngine.Search(_snapshot, new SearchQuery(null, Subtree: invalidAncestor), token));
     }
 
     [TestMethod]
@@ -197,7 +201,7 @@ public class SearchEngineTests
         {
             var ancestor = FileEntry.Create(snapshot, 0, root);
             var exception = Assert.ThrowsException<InvalidDataException>(() =>
-                SearchEngine.Search(snapshot, new SearchQuery("needle.txt", Under: ancestor)));
+                SearchEngine.Search(snapshot, new SearchQuery("needle.txt", Subtree: ancestor)));
             StringAssert.Contains(exception.Message, BlockLayout.MaximumPathDepth.ToString(CultureInfo.InvariantCulture));
         }
         finally
@@ -224,7 +228,7 @@ public class SearchEngineTests
         try
         {
             var ancestor = FileEntry.Create(snapshot, 0, root);
-            var results = SearchEngine.Search(snapshot, new SearchQuery("*.txt", NameMatchMode.Glob, Under: ancestor));
+            var results = SearchEngine.Search(snapshot, new SearchQuery("*.txt", NameMatchMode.Glob, Subtree: ancestor));
             Assert.AreEqual(1, results.Count);
             Assert.AreEqual("valid.txt", results[0].Name);
         }
@@ -284,7 +288,7 @@ public class SearchEngineTests
         var token = cancellation.Token;
 
         Assert.ThrowsException<OperationCanceledException>(() =>
-            SearchEngine.Search(_snapshot, new SearchQuery(null, Under: documents), token));
+            SearchEngine.Search(_snapshot, new SearchQuery(null, Subtree: documents), token));
     }
 
     /// <summary>

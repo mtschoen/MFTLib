@@ -17,7 +17,7 @@ internal static class SearchEngine
         NameMatching.ThrowIfUndefined(query);
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (query.Under is { } underAncestor && !underAncestor.IsValid)
+        if (query.Subtree is { } underAncestor && !underAncestor.IsValid)
         {
             return [];
         }
@@ -26,7 +26,7 @@ internal static class SearchEngine
         foreach (var driveBlock in snapshot.DriveBlocks)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (query.Under is { } under && (!under.IsValid || under.DriveOrdinal != driveBlock.DriveOrdinal))
+            if (query.Subtree is { } under && (!under.IsValid || under.DriveOrdinal != driveBlock.DriveOrdinal))
             {
                 continue;
             }
@@ -53,7 +53,7 @@ internal static class SearchEngine
         ArgumentNullException.ThrowIfNull(query);
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (query.Under is { } underAncestor && !underAncestor.IsValid)
+        if (query.Subtree is { } underAncestor && !underAncestor.IsValid)
         {
             yield break;
         }
@@ -61,7 +61,7 @@ internal static class SearchEngine
         foreach (var driveBlock in snapshot.DriveBlocks)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (query.Under is { } under && (!under.IsValid || under.DriveOrdinal != driveBlock.DriveOrdinal))
+            if (query.Subtree is { } under && (!under.IsValid || under.DriveOrdinal != driveBlock.DriveOrdinal))
             {
                 continue;
             }
@@ -89,7 +89,7 @@ internal static class SearchEngine
             return false;
         }
 
-        if (query.Directories is { } wantDirectories && row.IsDirectory != wantDirectories)
+        if (query.IsDirectory is { } wantDirectories && row.IsDirectory != wantDirectories)
         {
             return false;
         }
@@ -116,12 +116,12 @@ internal static class SearchEngine
         Justification = "FileRow is explicit-layout and intentionally mutable for field-by-field disk mapping; the in-parameter signature is spec-mandated.")]
     static bool MatchesModifiedBounds(in FileRow row, SearchQuery query)
     {
-        if (query.ModifiedAfter is { } after && row.ModifiedTicks < after.Ticks)
+        if (query.LastWriteTimeMinimum is { } after && row.ModifiedTicks < after.Ticks)
         {
             return false;
         }
 
-        return query.ModifiedBefore is not { } before || row.ModifiedTicks <= before.Ticks;
+        return query.LastWriteTimeMaximum is not { } before || row.ModifiedTicks <= before.Ticks;
     }
 
     static void SearchOneDrive(Snapshot snapshot, ushort driveOrdinal, SearchQuery query,
@@ -179,7 +179,7 @@ internal static class SearchEngine
         cancellationToken.ThrowIfCancellationRequested();
 
         var block = snapshot.GetDriveBlock(driveOrdinal).Block;
-        var under = query.Under;
+        var under = query.Subtree;
         var underRow = under?.RowIndex ?? 0;
         var checkCadence = 0;
 
@@ -218,7 +218,7 @@ internal static class SearchEngine
     {
         var block = driveBlock.Block;
         var rowCount = block.Header.RowCount;
-        var underRow = query.Under?.RowIndex ?? 0;
+        var underRow = query.Subtree?.RowIndex ?? 0;
         var rowsUntilCancellationCheck = 1u;
 
         for (var rowIndex = 0u; rowIndex < rowCount; rowIndex++)
@@ -235,7 +235,7 @@ internal static class SearchEngine
                 continue;
             }
 
-            if (query.Under is not null && !IndexNavigation.IsUnder(block, rowIndex, underRow))
+            if (query.Subtree is not null && !IndexNavigation.IsUnder(block, rowIndex, underRow))
             {
                 continue;
             }

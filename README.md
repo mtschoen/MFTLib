@@ -40,7 +40,7 @@ for NTFS metadata on Windows; the index runs elsewhere through the enumeration p
   assumed fixed size
 - Native C++ I/O with parallel fixup and parsing
 - Double-buffered reads that overlap I/O and compute
-- Exact, substring, case-sensitive, size and time predicates over the packed index (`SearchQuery`)
+- Exact, substring, case-sensitive, size and last-write-time predicates with inclusive bounds, subtree and directory filters over the packed index (`SearchQuery`)
 - `FileIndex.Search` (list), `FileIndex.Enumerate` (streaming entries) and `FileIndex.EnumerateRows` (row views)
 - Live USN watch per drive through `FileIndex` and `BrokerSession`
 - Race-free scan/catch-up workflow through an elevated broker
@@ -587,7 +587,7 @@ name pool. Use `Enumerate` (streaming) or `Search` (a materialized list) when yo
 
 ```csharp
 long total = 0;
-foreach (var row in index.EnumerateRows(new SearchQuery("*.log", NameMatchMode.Glob, Directories: false)))
+foreach (var row in index.EnumerateRows(new SearchQuery("*.log", NameMatchMode.Glob, IsDirectory: false)))
 {
     if (row.IsSizeKnown)
     {
@@ -595,6 +595,13 @@ foreach (var row in index.EnumerateRows(new SearchQuery("*.log", NameMatchMode.G
     }
 }
 ```
+
+`SearchQuery.LastWriteTimeMinimum` and `LastWriteTimeMaximum` are inclusive bounds on
+`FileEntry.LastWriteTime`, which is UTC. Supply UTC `DateTime` values: their raw ticks are
+compared directly with no `DateTime.Kind` conversion. A Local-kind bound is compared as if
+its ticks were UTC. A row whose UTC last-write time equals the supplied UTC bound matches.
+For the Direct sample's `--after` and `--before` arguments, use a UTC timestamp ending in `Z`,
+such as `2026-08-01T00:00:00Z`; offset-bearing inputs can parse as Local and are not normalized.
 
 The borrow begins when `foreach` calls `GetEnumerator()` and ends on completion, `break`,
 an exception or cancellation. Each row and its name span are valid until the enumerator

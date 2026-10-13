@@ -139,7 +139,7 @@ public class DirectDuplicateNameSieveTests
         await using var index = await OpenIndexAsync(first, second);
         var groups = DuplicateNameSieve.Find(index, CancellationToken.None, 64);
         Assert.AreEqual(1, groups.Count);
-        var expected = index.Enumerate(new SearchQuery(null, Directories: false)).Select(entry => entry.RecordKey).ToArray();
+        var expected = index.Enumerate(new SearchQuery(null, IsDirectory: false)).Select(entry => entry.RecordKey).ToArray();
         CollectionAssert.AreEqual(expected, groups[0].Entries.Select(entry => entry.RecordKey).ToArray());
     }
 

@@ -68,7 +68,7 @@ public class FileIndexDisposeCancelsQueryTests
     public async Task DisposeAsync_WhileASearchWithSubtreeFilterIsRunning_CancelsItAndReleasesEveryBlock()
     {
         var outcome = await QueryAcrossDisposalAsync(
-            (index, root) => index.Search(new SearchQuery("file", Under: root)));
+            (index, root) => index.Search(new SearchQuery("file", Subtree: root)));
 
         Assert.IsInstanceOfType<OperationCanceledException>(outcome,
             $"a search with subtree filter that held the snapshot when disposal began must be cancelled, not {Describe(outcome)}");
@@ -133,7 +133,7 @@ public class FileIndexDisposeCancelsQueryTests
     public async Task DisposeAsync_WhileEnumerateRowsWithSubtreeFilterIsRunning_CancelsItAndReleasesEveryBlock()
     {
         var outcome = await QueryAcrossDisposalAsync(
-            (index, root) => ConsumeRows(index, new SearchQuery(null, Under: root)));
+            (index, root) => ConsumeRows(index, new SearchQuery(null, Subtree: root)));
 
         Assert.IsInstanceOfType<OperationCanceledException>(outcome,
             $"a row enumeration with subtree filter must be cancelled by disposal, not {Describe(outcome)}");

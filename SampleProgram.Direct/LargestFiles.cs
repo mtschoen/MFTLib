@@ -17,7 +17,7 @@ internal static class LargestFiles
 
         // A min-heap of the best so far: once it holds count entries, each larger row evicts the smallest.
         var best = new PriorityQueue<FileEntry, long>();
-        foreach (var row in index.EnumerateRows(new SearchQuery(null, Under: under, Directories: false), cancellationToken))
+        foreach (var row in index.EnumerateRows(new SearchQuery(null, Subtree: under, IsDirectory: false), cancellationToken))
         {
             if (!row.IsSizeKnown)
             {

@@ -57,8 +57,8 @@ public class FileIndexEnumerateRowsTests
         await using var index = await OpenTwoDriveIndexAsync();
 
         AssertRowsMatchSearch(index, new SearchQuery(null));
-        AssertRowsMatchSearch(index, new SearchQuery(null, Directories: false));
-        AssertRowsMatchSearch(index, new SearchQuery(null, Directories: true));
+        AssertRowsMatchSearch(index, new SearchQuery(null, IsDirectory: false));
+        AssertRowsMatchSearch(index, new SearchQuery(null, IsDirectory: true));
         AssertRowsMatchSearch(index, new SearchQuery("*.md", NameMatchMode.Glob));
         AssertRowsMatchSearch(index, new SearchQuery("readme"));
         AssertRowsMatchSearch(index, new SearchQuery("readme.md", NameMatchMode.Exact));
@@ -66,9 +66,9 @@ public class FileIndexEnumerateRowsTests
         AssertRowsMatchSearch(index, new SearchQuery(null, IncludeDeleted: true));
 
         var documents = index.Find(Path.Combine(FirstRoot, "Documents"))!.Value;
-        AssertRowsMatchSearch(index, new SearchQuery("readme", Under: documents));
-        AssertRowsMatchSearch(index, new SearchQuery(null, Under: documents));
-        AssertRowsMatchSearch(index, new SearchQuery(null, Under: default(FileEntry)));
+        AssertRowsMatchSearch(index, new SearchQuery("readme", Subtree: documents));
+        AssertRowsMatchSearch(index, new SearchQuery(null, Subtree: documents));
+        AssertRowsMatchSearch(index, new SearchQuery(null, Subtree: default(FileEntry)));
     }
 
     [TestMethod]

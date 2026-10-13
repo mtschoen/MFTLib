@@ -26,6 +26,7 @@ internal sealed partial record DirectArguments(DirectVerb Verb, string Drive)
         "Usage: SampleProgram.Direct VERB DRIVE [--source local|dump --dump-file PATH]",
         "  search DRIVE [--name P] [--exact] [--case-sensitive] [--under PATH] [--directories|--files]",
         "               [--min-size N] [--max-size N] [--after D] [--before D] [--stream] [--limit N] [--include-freed]",
+        "  --after and --before are inclusive UTC bounds; use a timestamp ending in Z, such as 2026-08-01T00:00:00Z. No Kind conversion is performed.",
         "  tree DRIVE [--path P] [--depth N]    open DRIVE --path P    largest DRIVE [--count N] [--under P]",
         "  duplicate-names DRIVE [--count N]    scan DRIVE",
         "  --source and --dump-file apply to every verb; --include-freed applies to every verb but is a parse error with --source dump; any other flag a verb does not list is refused.");

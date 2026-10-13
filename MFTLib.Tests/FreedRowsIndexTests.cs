@@ -75,7 +75,7 @@ public class FreedRowsIndexTests
         var root = index.Root('T');
 
         string[] Names(FileEntry? under) => index
-            .Search(new SearchQuery(".txt", Under: under, IncludeDeleted: true)).Select(entry => entry.Name)
+            .Search(new SearchQuery(".txt", Subtree: under, IncludeDeleted: true)).Select(entry => entry.Name)
             .Order().ToArray();
 
         CollectionAssert.AreEqual(new[] { "keep.txt", "trusted.txt" }, Names(docs));
@@ -108,7 +108,7 @@ public class FreedRowsIndexTests
         await using var index = await OpenAsync(includeFreed: true);
 
         var largeDeleted = index.Search(new SearchQuery(null, MinimumSize: 150, IncludeDeleted: true));
-        var deletedDirectories = index.Search(new SearchQuery(null, Directories: true, IncludeDeleted: true));
+        var deletedDirectories = index.Search(new SearchQuery(null, IsDirectory: true, IncludeDeleted: true));
 
         CollectionAssert.AreEqual(new[] { "orphan.txt" }, largeDeleted.Select(entry => entry.Name).ToArray());
         var goneDirectory = deletedDirectories.Single(entry => entry.IsDeleted);
@@ -127,7 +127,7 @@ public class FreedRowsIndexTests
     static void AssertRowDeletionFiltering(FileIndex index)
     {
         var names = new List<string>();
-        foreach (var row in index.EnumerateRows(new SearchQuery(null, Directories: false)))
+        foreach (var row in index.EnumerateRows(new SearchQuery(null, IsDirectory: false)))
         {
             names.Add(row.Name.ToString());
         }
@@ -137,7 +137,7 @@ public class FreedRowsIndexTests
         Assert.AreEqual(1, names.Count(name => name == "dup.txt"));
 
         var deletedNames = new List<string>();
-        foreach (var row in index.EnumerateRows(new SearchQuery(null, Directories: false, IncludeDeleted: true)))
+        foreach (var row in index.EnumerateRows(new SearchQuery(null, IsDirectory: false, IncludeDeleted: true)))
         {
             if (row.IsDeleted)
             {

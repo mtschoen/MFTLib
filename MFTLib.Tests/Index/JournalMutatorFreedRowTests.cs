@@ -87,13 +87,13 @@ public class JournalMutatorFreedRowTests
 
         var replacement = FileEntry.Create(fixture.Snapshot, 0, FreedRow);
         var deletedSubtreeSearch = SearchEngine.Search(fixture.Snapshot,
-            new SearchQuery(null, Under: replacement, IncludeDeleted: true))
+            new SearchQuery(null, Subtree: replacement, IncludeDeleted: true))
             .Where(entry => entry.IsDeleted)
             .ToList();
         Assert.AreEqual(0, deletedSubtreeSearch.Count);
 
         var deletedSubtreeEnumerate = SearchEngine.Enumerate(fixture.Snapshot,
-            new SearchQuery(null, Under: replacement, IncludeDeleted: true))
+            new SearchQuery(null, Subtree: replacement, IncludeDeleted: true))
             .Where(entry => entry.IsDeleted)
             .ToList();
         Assert.AreEqual(0, deletedSubtreeEnumerate.Count);

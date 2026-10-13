@@ -30,7 +30,7 @@ public sealed partial class FileIndex
     /// <exception cref="InvalidDataException">
     ///     A candidate's parent chain does not resolve within
     ///     128 parent hops while applying the subtree restriction
-    ///     (<see cref="SearchQuery.Under" />).
+    ///     (<see cref="SearchQuery.Subtree" />).
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="query" /> has an undefined <see cref="SearchQuery.MatchMode" />.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
@@ -62,7 +62,7 @@ public sealed partial class FileIndex
     /// <exception cref="InvalidDataException">
     ///     A candidate's parent chain does not resolve within
     ///     128 parent hops while applying the subtree
-    ///     restriction (<see cref="SearchQuery.Under" />). Where <see cref="Search" /> throws
+    ///     restriction (<see cref="SearchQuery.Subtree" />). Where <see cref="Search" /> throws
     ///     it before returning, the streaming form throws it from the MoveNext that reaches
     ///     the candidate.
     /// </exception>
@@ -103,7 +103,7 @@ public sealed partial class FileIndex
     /// <exception cref="ArgumentOutOfRangeException">At call time: <paramref name="query" /> has an undefined <see cref="SearchQuery.MatchMode" />.</exception>
     /// <exception cref="ObjectDisposedException">At GetEnumerator: the index has been disposed. At Current or MoveNext: this enumeration's shared borrow has been returned.</exception>
     /// <exception cref="OperationCanceledException">At GetEnumerator or MoveNext: caller cancellation or index disposal cancels the enumeration.</exception>
-    /// <exception cref="InvalidDataException">At MoveNext: a candidate's parent chain does not resolve within 128 parent hops while applying <see cref="SearchQuery.Under" />.</exception>
+    /// <exception cref="InvalidDataException">At MoveNext: a candidate's parent chain does not resolve within 128 parent hops while applying <see cref="SearchQuery.Subtree" />.</exception>
     public IndexRowEnumerable EnumerateRows(SearchQuery query, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(query);

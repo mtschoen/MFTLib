@@ -90,7 +90,7 @@ public class FileEntryDisposalTests
             Assert.ThrowsException<InvalidDataException>(() => entry.Path);
 
             Assert.AreEqual($"deep.txt ({entry.RecordKey})", entry.ToString());
-            StringAssert.Contains(new SearchQuery("x", Under: entry).ToString(), "deep.txt");
+            StringAssert.Contains(new SearchQuery("x", Subtree: entry).ToString(), "deep.txt");
         }
         finally
         {
@@ -136,7 +136,7 @@ public class FileEntryDisposalTests
     [TestMethod]
     public void SearchQueryToString_WithADefaultUnder_DoesNotThrow()
     {
-        var query = new SearchQuery("readme", Under: default(FileEntry));
+        var query = new SearchQuery("readme", Subtree: default(FileEntry));
 
         StringAssert.Contains(query.ToString(), "<invalid FileEntry>");
     }

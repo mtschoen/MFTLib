@@ -70,14 +70,14 @@ public ref struct IndexRowEnumerator
         // A query with no name, size, date or subtree predicate needs only the row flags, so its loop
         // skips the general predicate and reads no query field per row.
         _flagsOnly = query.NamePattern is null && query.MinimumSize is null && query.MaximumSize is null &&
-                     query.ModifiedAfter is null && query.ModifiedBefore is null && query.Under is null;
+                     query.LastWriteTimeMinimum is null && query.LastWriteTimeMaximum is null && query.Subtree is null;
         _includeDeleted = query.IncludeDeleted;
-        _filterDirectories = query.Directories.HasValue;
-        _wantDirectories = query.Directories.GetValueOrDefault();
-        _underRow = query.Under?.RowIndex ?? 0;
+        _filterDirectories = query.IsDirectory.HasValue;
+        _wantDirectories = query.IsDirectory.GetValueOrDefault();
+        _underRow = query.Subtree?.RowIndex ?? 0;
         _scanner = default;
         _driveBlock = null;
-        _nextDrive = query.Under is { IsValid: false } ? int.MaxValue : 0;
+        _nextDrive = query.Subtree is { IsValid: false } ? int.MaxValue : 0;
     }
 
     /// <summary>The current row, valid until the next <see cref="MoveNext" /> or <see cref="Dispose" />.</summary>
@@ -148,7 +148,7 @@ public ref struct IndexRowEnumerator
                 continue;
             }
 
-            if (_query.Under is not null &&
+            if (_query.Subtree is not null &&
                 !IndexNavigation.IsUnder(driveBlock.Block, _scanner.CurrentRowIndex, _underRow))
             {
                 continue;
@@ -166,7 +166,7 @@ public ref struct IndexRowEnumerator
         {
             _cancellationToken.ThrowIfCancellationRequested();
             var driveBlock = _driveBlocks[_nextDrive++];
-            if (_query.Under is { } under && under.DriveOrdinal != driveBlock.DriveOrdinal)
+            if (_query.Subtree is { } under && under.DriveOrdinal != driveBlock.DriveOrdinal)
             {
                 continue;
             }

@@ -14,12 +14,12 @@ public class QueryContractTests
 
         Assert.AreEqual("report", query.NamePattern);
         Assert.IsFalse(query.CaseSensitive);
-        Assert.IsNull(query.Under);
-        Assert.IsNull(query.Directories);
+        Assert.IsNull(query.Subtree);
+        Assert.IsNull(query.IsDirectory);
         Assert.IsNull(query.MinimumSize);
         Assert.IsNull(query.MaximumSize);
-        Assert.IsNull(query.ModifiedAfter);
-        Assert.IsNull(query.ModifiedBefore);
+        Assert.IsNull(query.LastWriteTimeMinimum);
+        Assert.IsNull(query.LastWriteTimeMaximum);
     }
 
     [TestMethod]

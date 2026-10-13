@@ -46,7 +46,7 @@ public class FileIndexEnumerateTests
         await using var index = await OpenTwoDriveIndexAsync();
 
         AssertStreamingMatchesSearch(index, new SearchQuery(null));
-        AssertStreamingMatchesSearch(index, new SearchQuery(null, Directories: false));
+        AssertStreamingMatchesSearch(index, new SearchQuery(null, IsDirectory: false));
         AssertStreamingMatchesSearch(index, new SearchQuery("*.md", NameMatchMode.Glob));
         AssertStreamingMatchesSearch(index, new SearchQuery("readme"));
         AssertStreamingMatchesSearch(index, new SearchQuery("readme.md", NameMatchMode.Exact));
@@ -54,12 +54,12 @@ public class FileIndexEnumerateTests
         AssertStreamingMatchesSearch(index, new SearchQuery(null, MinimumSize: 100));
 
         var documents = index.Find(Path.Combine(FirstRoot, "Documents"))!.Value;
-        AssertStreamingMatchesSearch(index, new SearchQuery("readme", Under: documents));
+        AssertStreamingMatchesSearch(index, new SearchQuery("readme", Subtree: documents));
 
         var pictures = index.Find(Path.Combine(SecondRoot, "Pictures"))!.Value;
-        AssertStreamingMatchesSearch(index, new SearchQuery(null, Under: pictures));
+        AssertStreamingMatchesSearch(index, new SearchQuery(null, Subtree: pictures));
 
-        AssertStreamingMatchesSearch(index, new SearchQuery(null, Under: default(FileEntry)));
+        AssertStreamingMatchesSearch(index, new SearchQuery(null, Subtree: default(FileEntry)));
     }
 
     [TestMethod]
@@ -121,7 +121,7 @@ public class FileIndexEnumerateTests
     {
         await using var index = await OpenSyntheticIndexWithDeepCandidateAsync();
         var release = index.CurrentSnapshot.ReleaseState;
-        var query = new SearchQuery("candidate", Under: index.Root('T'));
+        var query = new SearchQuery("candidate", Subtree: index.Root('T'));
 
         // Search materializes the whole match set and fails because it visits the deep candidate up front.
         try

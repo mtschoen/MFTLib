@@ -200,7 +200,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
     static List<(string Name, FileEntry Entry)> CollectFileRows(FileIndex index)
     {
         var rows = new List<(string Name, FileEntry Entry)>();
-        foreach (var row in index.EnumerateRows(new SearchQuery(null, Directories: false)))
+        foreach (var row in index.EnumerateRows(new SearchQuery(null, IsDirectory: false)))
         {
             rows.Add((row.Name.ToString(), row.ToEntry()));
         }

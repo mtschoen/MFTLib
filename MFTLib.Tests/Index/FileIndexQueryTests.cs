@@ -76,7 +76,7 @@ public class FileIndexQueryTests
     public void Search_UnderRestrictsToASubtree()
     {
         var pictures = _index.Find(Path.Combine(_treeRoot, "Pictures"))!.Value;
-        var results = _index.Search(new SearchQuery("readme", Under: pictures));
+        var results = _index.Search(new SearchQuery("readme", Subtree: pictures));
         Assert.AreEqual(1, results.Count);
         Assert.AreEqual(Path.Combine(_treeRoot, "Pictures", "readme.md"), results[0].Path);
     }
@@ -84,7 +84,7 @@ public class FileIndexQueryTests
     [TestMethod]
     public void Search_Under_InvalidAncestor_ReturnsNoResults()
     {
-        var results = _index.Search(new SearchQuery("readme", Under: default(FileEntry)));
+        var results = _index.Search(new SearchQuery("readme", Subtree: default(FileEntry)));
         Assert.AreEqual(0, results.Count);
     }
 

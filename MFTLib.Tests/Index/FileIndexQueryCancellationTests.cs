@@ -107,7 +107,7 @@ public class FileIndexQueryCancellationTests
         var token = cancellation.Token;
 
         Assert.ThrowsException<OperationCanceledException>(
-            () => _index.Search(new SearchQuery("readme", Under: root), token));
+            () => _index.Search(new SearchQuery("readme", Subtree: root), token));
     }
 
     [TestMethod]
@@ -128,7 +128,7 @@ public class FileIndexQueryCancellationTests
         var token = cancellation.Token;
 
         Assert.ThrowsException<OperationCanceledException>(
-            () => ConsumeRows(_index, new SearchQuery(null, Under: root), token));
+            () => ConsumeRows(_index, new SearchQuery(null, Subtree: root), token));
     }
 
     static void ConsumeRows(FileIndex index, SearchQuery query, CancellationToken cancellationToken)

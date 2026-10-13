@@ -22,7 +22,7 @@ internal static class DuplicateNameSieve
     {
         ArgumentNullException.ThrowIfNull(index);
         cancellationToken.ThrowIfCancellationRequested();
-        var query = new SearchQuery(null, Directories: false);
+        var query = new SearchQuery(null, IsDirectory: false);
         var bucketCount = bucketCountOverride ?? SieveBitmap.ComputeBucketCount(LiveRowCount(index));
         var passes = RunHashPasses(index, query, bucketCount, cancellationToken);
 
