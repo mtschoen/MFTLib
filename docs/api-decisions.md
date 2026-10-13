@@ -27,6 +27,10 @@ the duplication:
 The broker launcher does not use `TryRunElevated`, on purpose: that call waits for the elevated child to exit,
 and the broker has to keep running on its pipe. That is not evidence the helper is unused.
 
+**Implementation (2026-10-13, [MFTLib issue 472](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/472)):**
+the Defender sequence is `ElevationUtilities.TryAddDefenderProcessExclusions(processNames, relaunchArguments, elevation = null)`,
+one method on the existing type; [elevation](elevation.md#windows-defender-process-exclusions) holds its contract.
+
 **Revisit only if:** one consumer needs elevation behavior the other cannot share.
 
 ## The enumeration producer is a product feature, chosen per drive

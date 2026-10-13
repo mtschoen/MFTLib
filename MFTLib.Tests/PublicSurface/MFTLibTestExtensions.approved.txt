@@ -5,6 +5,8 @@ MFTLibTestExtensions.BrokerDiagnosticsIsolation :: type public static class
 MFTLibTestExtensions.BrokerTestHarness :: method public static CreateSession(System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<MFTLibTestExtensions.InProcessBrokerHandle>> launchAsync) : MFTLib.BrokerSession
 MFTLibTestExtensions.BrokerTestHarness :: method public static StartInProcess(MFTLibTestExtensions.ScriptedBrokerVolumes volumes) : MFTLibTestExtensions.InProcessBrokerHandle
 MFTLibTestExtensions.BrokerTestHarness :: type public static class
+MFTLibTestExtensions.DefenderExclusionIsolation :: method public static ScriptPowerShell(bool succeeds = true) : MFTLibTestExtensions.ScriptedPowerShell
+MFTLibTestExtensions.DefenderExclusionIsolation :: type public static class
 MFTLibTestExtensions.FileIndexTestAccess :: method public static ApplyJournalEntries(MFTLib.Index.FileIndex index, char driveLetter, System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord> entries, MFTLibTestExtensions.SyntheticJournalCursor cursor) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileChange>
 MFTLibTestExtensions.FileIndexTestAccess :: type public static class
 MFTLibTestExtensions.InProcessBrokerHandle :: method public Crash() : void
@@ -27,6 +29,9 @@ MFTLibTestExtensions.InProcessBrokerScan :: type public sealed class : System.IE
 MFTLibTestExtensions.JournalIsolation :: method public static ForbidLiveJournalReads() : void
 MFTLibTestExtensions.JournalIsolation :: method public static OverrideJournalWindow(System.Func<char, MFTLibTestExtensions.SyntheticJournalWindow?> journal) : System.IDisposable
 MFTLibTestExtensions.JournalIsolation :: type public static class
+MFTLibTestExtensions.PowerShellLaunch :: property public Elevated { get; } : bool
+MFTLibTestExtensions.PowerShellLaunch :: property public Script { get; } : string
+MFTLibTestExtensions.PowerShellLaunch :: type public sealed class
 MFTLibTestExtensions.ScriptedBrokerVolumes :: constructor public ()
 MFTLibTestExtensions.ScriptedBrokerVolumes :: method public <Clone>$() : MFTLibTestExtensions.ScriptedBrokerVolumes
 MFTLibTestExtensions.ScriptedBrokerVolumes :: method public Equals(MFTLibTestExtensions.ScriptedBrokerVolumes? other) : bool
@@ -51,6 +56,9 @@ MFTLibTestExtensions.ScriptedDriveWatch :: method public QueueBatchAsync(System.
 MFTLibTestExtensions.ScriptedDriveWatch :: property public DriveLetter { get; } : char
 MFTLibTestExtensions.ScriptedDriveWatch :: property public ReadEnded { get; } : System.Threading.Tasks.Task<bool>
 MFTLibTestExtensions.ScriptedDriveWatch :: type public sealed class : MFTLib.Index.IIndexDriveWatch, System.IAsyncDisposable
+MFTLibTestExtensions.ScriptedPowerShell :: method public Dispose() : void
+MFTLibTestExtensions.ScriptedPowerShell :: property public Launches { get; } : System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.PowerShellLaunch>
+MFTLibTestExtensions.ScriptedPowerShell :: type public sealed class : System.IDisposable
 MFTLibTestExtensions.ScriptedScan :: method public ReportParsed(long recordsProcessed, long? totalRecords) : void
 MFTLibTestExtensions.ScriptedScan :: property public CancellationToken { get; } : System.Threading.CancellationToken
 MFTLibTestExtensions.ScriptedScan :: property public DriveLetter { get; } : string

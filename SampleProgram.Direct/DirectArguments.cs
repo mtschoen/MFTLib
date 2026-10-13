@@ -29,6 +29,7 @@ internal sealed partial record DirectArguments(DirectVerb Verb, string Drive)
         "  --after and --before are inclusive UTC bounds; use a timestamp ending in Z, such as 2026-08-01T00:00:00Z. No Kind conversion is performed.",
         "  tree DRIVE [--path P] [--depth N]    open DRIVE --path P    largest DRIVE [--count N] [--under P]",
         "  duplicate-names DRIVE [--count N]    scan DRIVE",
+        "  exclude-defender                     add this executable to the Windows Defender process exclusions (needs elevation; takes no drive)",
         "  --source and --dump-file apply to every verb; --include-freed applies to every verb but is a parse error with --source dump; any other flag a verb does not list is refused.");
 
     // The flags every verb reads (the source and the scan it asks for), and the ones each verb adds.

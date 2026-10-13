@@ -20,6 +20,8 @@ partial class SampleHost
     // The one sentence that differs between the two UAC prompts this dialog precedes.
     const string SelfElevationReason = "SampleProgram relaunches itself elevated.";
     const string BrokerLaunchReason = "SampleProgram launches its broker elevated.";
+    // The opening of the sentence the reason completes; a verb that needs elevation for another purpose supplies its own.
+    const string MftNeed = "Reading a volume's MFT needs administrator rights, so ";
     internal const uint MessageBoxOkCancel = 0x00000001;
     internal const uint MessageBoxIconInformation = 0x00000040;
     internal const uint MessageBoxSystemModal = 0x00001000;
@@ -57,13 +59,13 @@ partial class SampleHost
     ///     Shows the heads-up dialog until the person answers it deliberately. Returns true for OK, false for
     ///     Cancel, for a dialog that went unanswered too long, or for a dialog the system could not show.
     /// </summary>
-    bool ConfirmElevation(string[] arguments, string reason)
+    bool ConfirmElevation(string[] arguments, string reason, string need = MftNeed)
     {
         var previousDismissalTooFast = false;
         while (true)
         {
             _messageBeep(MessageBeepIconExclamation);
-            var outcome = ShowElevationNotice(BuildElevationNotice(arguments, reason, previousDismissalTooFast));
+            var outcome = ShowElevationNotice(BuildElevationNotice(arguments, reason, previousDismissalTooFast, need));
             if (outcome is not { } answered || answered.AnsweredAt - answered.ShownAt >= ElevationNoticeTimeout)
             {
                 _writeLine("The heads-up dialog was not answered in time; treating it as Cancel.");
@@ -122,7 +124,7 @@ partial class SampleHost
         return dialog.IsCompleted ? dialog.GetAwaiter().GetResult() : null;
     }
 
-    string BuildElevationNotice(string[] arguments, string reason, bool previousDismissalTooFast)
+    string BuildElevationNotice(string[] arguments, string reason, bool previousDismissalTooFast, string need)
     {
         var text = new StringBuilder();
         if (previousDismissalTooFast)
@@ -132,7 +134,7 @@ partial class SampleHost
         }
 
         text.AppendLine("A Windows elevation (UAC) prompt will appear after you press OK.");
-        text.AppendLine("Reading a volume's MFT needs administrator rights, so " + reason);
+        text.AppendLine(need + reason);
         text.AppendLine();
         text.AppendLine("Executable: " + _getProcessPath());
         text.AppendLine(string.Create(CultureInfo.InvariantCulture, $"Arguments ({arguments.Length}), one per line exactly as received; <empty> marks an empty argument:"));

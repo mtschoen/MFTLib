@@ -17,6 +17,11 @@ partial class SampleHost
 
     internal int Run(string[] arguments)
     {
+        if (IsExcludeDefender(arguments))
+        {
+            return RunExcludeDefender(arguments);
+        }
+
         if (!DirectArguments.TryParse(arguments, out var parsed, out var error))
         {
             _writeLine(error);

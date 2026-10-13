@@ -52,6 +52,38 @@ replaces the key press with a fixed length, and an unattended run that is elevat
 watches for ten seconds. An unattended run that is not elevated exits 1 without watching, as the Unattended section
 below describes. `scan-drive` makes one pass per listed drive and returns. Any drive that failed makes the exit code 1.
 
+## Windows Defender process exclusions
+
+`ElevationUtilities.TryAddDefenderProcessExclusions(processNames, relaunchArguments, elevation = null)` adds Windows Defender
+process exclusions so scanning is not slowed. It is the one sequence both consumers use:
+
+- not Windows: returns false and launches nothing;
+- elevated: runs Windows PowerShell directly (no `runas`);
+- able to self-elevate: `IElevationProvider.TryRunElevated(relaunchArguments, 60 seconds)`, whose elevated child calls
+  the same member with the same names and, being elevated, runs the exclusions itself;
+- otherwise: an elevated Windows PowerShell through the `runas` verb (the case of `dotnet run`).
+
+The result is true only when the run exits with code zero. A declined UAC prompt, a process that does not start, a
+non-zero exit and a timeout are all false. One PowerShell runner serves both PowerShell branches, starts the Windows PowerShell under the system directory
+(`WindowsPowerShell\v1.0\powershell.exe`, by absolute path, never a name found through PATH or the current directory), and waits 30 seconds
+before it kills the process; the self-elevated child gets 60 seconds, so the outer wait always outlasts the inner one.
+
+Each name must be a plain file name: letters, digits, `.`, `-`, `_`, `+` and inner spaces, with at least one letter or
+digit. Anything else (empty, whitespace-only, quotes, semicolons, backticks, dollar signs, pipes, path separators)
+throws `ArgumentException` before anything runs, even off Windows. The script is one single-quoted
+`Add-MpPreference -ExclusionProcess` literal per name, passed to PowerShell with `-EncodedCommand`, so a name cannot
+inject a command.
+
+Tests use `MFTLibTestExtensions.DefenderExclusionIsolation.ScriptPowerShell`, a process-global scope (use a nonparallel
+fixture) that records each PowerShell launch and reports a chosen outcome. A fake `IElevationProvider` decides the
+branch, so no test raises a UAC prompt, starts a real PowerShell or changes real Defender settings.
+
+`SampleProgram.Direct exclude-defender` calls it for its own executable. The verb takes no drive and runs only when named.
+An elevated run (the relaunched child) writes to `output.log` and never waits for a key. An attended, unelevated run shows
+the heads-up dialog once, before the library call and so before either UAC route; Cancel or the five-minute timeout means
+no library call, a printed line and exit 1. Under `MFTLIB_SAMPLE_UNATTENDED=1` an unelevated run prints that elevation was
+skipped, launches nothing and exits 1.
+
 ## Unattended: the owner said to proceed autonomously, or nobody is at the desktop
 
 Set the environment variable once for the whole session; every lane and child process inherits it.
