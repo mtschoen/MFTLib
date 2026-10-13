@@ -93,6 +93,8 @@ cat .\SampleProgram.Direct\bin\x64\Release\net10.0\output.log
 
 [Public surface](docs/architecture.md): `PublicSurfaceTests` pins every public type and member of MFTLib and MFTLibTestExtensions to `MFTLib.Tests/PublicSurface/*.approved.txt`; update it in the same pull request. Public members need a sample or reasoned consumer caller (`PublicMemberCallerTests`). Test-only access goes through `MFTLibTestExtensions`, which forwards to internal code. `InternalsVisibleTo` never names a consumer assembly. A pull request that grows an approved file names, in its body, the consumer production caller of every added member.
 
+[API decisions](docs/api-decisions.md): owner rulings on the public surface, with reasons. Read it before proposing to remove, move or reshape a public member; "MFTLib never calls it" or "not an MFT primitive" does not reopen a ruling. Record each new ruling there in the same change.
+
 [Index namespace boundary](docs/architecture.md): `MFTLib.Index` must not depend on flat `MFTLib` or `MFTLib.Interop` except `UsnJournalEntry`, `UsnJournalSettings` and `UsnReason`. `MFTLib.Tests/Index/NamespaceBoundaryTests.cs` enforces the compiled-IL boundary with a mandatory negative control; growing the allowlist requires review, not an import-lint rule.
 
 [Cache identity](docs/architecture.md) and [block format](docs/index-format.md): CacheTag compares exactly, including zero; initialize before completion. Consumers bump versions for retention-policy changes. Preserve the documented mismatch, cache-only failure and diagnostic contracts.
