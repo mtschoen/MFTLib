@@ -23,8 +23,8 @@ internal struct BlockHeader
     [FieldOffset(16)] public uint VolumeSerial;
 
     /// <summary>
-    ///     Row index of the volume root. An enumeration block writes its root at row 0, so
-    ///     zero is the correct value there. An MFT block sets 5, the NTFS root directory
+    ///     Row index of the indexed root. An enumeration block writes its configured starting
+    ///     directory, which can be any directory, at row 0, so zero is the correct value there. An MFT block sets 5, the NTFS root directory
     ///     record, because record 0 is $MFT.
     /// </summary>
     [FieldOffset(20)] public uint RootRow;

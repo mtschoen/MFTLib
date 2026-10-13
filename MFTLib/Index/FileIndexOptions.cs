@@ -36,9 +36,11 @@ public sealed record FileIndexOptions
     ///     A cache block whose journal checkpoint the journal no longer holds is different: this
     ///     open never watches, and the block is still a correct snapshot as of its age, so it is
     ///     adopted instead of declined, with <see cref="DriveWatchStatus.CheckpointLoss" /> set to say
-    ///     why the checkpoint could not be resumed. Such a drive is left out of a later
-    ///     <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" /> (see <see cref="DriveWatchStatus.FailureMessage" />)
-    ///     until <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> gives it a fresh cursor.
+    ///     why the checkpoint could not be resumed. A later
+    ///     <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" /> for such a drive throws
+    ///     <see cref="InvalidOperationException" /> (see <see cref="DriveWatchStatus.FailureMessage" />) and retains
+    ///     the watch request (<see cref="DriveWatchStatus.Requested" />) until a stop withdraws it or a successful
+    ///     <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> gives the drive a fresh cursor and starts the watch.
     /// </summary>
     public bool InitialOpenCacheOnly { get; init; }
 
@@ -51,8 +53,9 @@ public sealed record FileIndexOptions
     ///     <see cref="MFTLib.Index.ProducerPolicy.Mft" /> and a scan or a watch of an MFT-backed
     ///     drive is needed; it is ignored when the policy is
     ///     <see cref="MFTLib.Index.ProducerPolicy.Enumeration" />. A rescan of a watched drive
-    ///     stops that drive's watch and starts a fresh one from the new block's cursor through the
-    ///     same source.
+    ///     stops that drive's watch when the replacement block commits and starts a fresh one from the new
+    ///     block's cursor through the same source; a rescan whose production fails or is cancelled leaves a
+    ///     healthy watch running.
     /// </summary>
     public MftIndexSource? MftSource { get; init; }
 
@@ -63,8 +66,12 @@ public sealed record FileIndexOptions
     ///     says whether it succeeded, failed or was cancelled. Drives scan concurrently, so
     ///     samples of different drives interleave. A handler that throws on the Finished sample is
     ///     contained and reported to <see cref="Diagnostics" />, so it never replaces the scan's own
-    ///     exception or result; a throw on any other sample fails that scan like any producer fault. Marshalling belongs to the
-    ///     <see cref="IProgress{T}" /> implementation.
+    ///     exception or result. A throw on any other sample fails that scan like any producer fault,
+    ///     except a <see cref="IndexScanPhase.ParsingMft" /> sample of an in-process scan, local-volume
+    ///     or dump alike: the native parse callback that carries it catches every exception from
+    ///     reporting, drops it and continues the scan. Broker-delivered samples and the managed
+    ///     transfer phase carry no such catch, so a throw from either fails the scan. Marshalling
+    ///     belongs to the <see cref="IProgress{T}" /> implementation.
     /// </summary>
     public IProgress<IndexScanProgress>? Progress { get; init; }
 

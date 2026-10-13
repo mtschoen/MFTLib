@@ -74,9 +74,9 @@ See [Linux package](linux-package.md) for the build and package acceptance contr
 - Simulate broker death and confirm terminal `WatchFaultKind.Channel` faults;
   a fresh session and new indexes supply the next connection. Check recoverable
   `Drive` and `Apply` faults separately through their recovery state events.
-- The `linux-package` job validates a Release library and package on every pull request and main push ([Linux package](linux-package.md)).
+- The `linux-package` job validates a Release library and package on every pull request and main push that changes more than docs or the scanner pin ([Linux package](linux-package.md)).
 - `scripts/package-smoke` loads a saved dump from a locally packed NuGet package ([Linux package](linux-package.md)).
-- The job artifact `linux-native-<sha>` contains the library and acceptance output for attended inspection ([Linux package](linux-package.md)).
+- When the job builds, its artifact `linux-native-<sha>` contains the library and acceptance output for attended inspection ([Linux package](linux-package.md)).
 - The glibc floor policy states the actual imported symbol versions printed by the acceptance check ([Linux package](linux-package.md)).
 
 ## Release measurement snapshot

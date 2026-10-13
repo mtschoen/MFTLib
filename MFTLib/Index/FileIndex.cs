@@ -270,8 +270,9 @@ public sealed partial class FileIndex : IAsyncDisposable
     ///         pass over the drive's rows unless its caller passes a token of its own.
     ///     </para>
     ///     <para>
-    ///         Every other member of <see cref="FileEntry" /> reads a single row rather than
-    ///         scanning, and carries no borrow. A read through a handle that is ordered after the
+    ///         Every other member of <see cref="FileEntry" /> reads in place rather than
+    ///         scanning, and carries no borrow; <see cref="FileEntry.Path" />, and <see cref="FileEntry.ToString" />
+    ///         which can build it, follow the parent chain for at most 128 hops. A read through a handle that is ordered after the
     ///         disposal throws <see cref="ObjectDisposedException" /> from the per-access check
     ///         <see cref="FileEntry.IsDisposed" /> describes.
     ///     </para>

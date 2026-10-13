@@ -6,7 +6,8 @@
       before the first row and then at least every 4096 rows from inside `RowScanner`, and each holds a borrow
       on the `Snapshot` it reads for its whole duration. `FileEntry.Children` observes only its caller's token,
       since a handle holds no index reference; disposal waits that listing out rather than cancelling it. Every
-      other `FileEntry` member reads one row and keeps the per-access `IsReleased` check instead.
+      other `FileEntry` member takes no borrow and keeps the per-access `IsReleased` check instead;
+      it reads one row, except `Path` (and `ToString`, which can build it), which follows the parent chain for at most 128 hops.
       `SnapshotRelease` counts borrows; `DisposeAsync` cancels a disposal token the five `FileIndex` queries
       and `WaitForCatchUpAsync` waits are linked to, waits for the borrows on the current and retired snapshots
       to drop, and only then unmaps. A suspended `Enumerate` enumerator holds its borrow between yields, so

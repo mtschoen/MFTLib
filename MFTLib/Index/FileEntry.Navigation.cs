@@ -3,8 +3,11 @@ namespace MFTLib.Index;
 public readonly partial record struct FileEntry
 {
     /// <summary>
-    ///     The real filesystem path, built from the block's root directory and the name chain
-    ///     using the host separator, openable and accepted by <see cref="FileIndex.Find" />.
+    ///     The path built from the block's root directory and the name chain using the host
+    ///     separator. For a live entry of a real source it is a filesystem path, openable and
+    ///     accepted by <see cref="FileIndex.Find" />. A dump entry renders a virtual <c>dump:/X</c>
+    ///     path that cannot be opened, a detached deleted row renders its bare name, and
+    ///     <see cref="FileIndex.Find" /> skips deleted entries.
     ///     Built once per call by walking the parent column upward. This allocates; nothing else
     ///     on the handle except <see cref="Name" /> does. The parent walk is limited to
     ///     128 parent hops.

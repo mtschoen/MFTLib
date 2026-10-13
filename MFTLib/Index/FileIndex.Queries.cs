@@ -6,7 +6,8 @@ public sealed partial class FileIndex
     ///     Resolves a native filesystem path to its entry. The indexed root directory that is the
     ///     longest prefix of the path selects the block, and the remaining segments are walked
     ///     down from that block's root row, one name per level. This is the inverse of
-    ///     <see cref="FileEntry.Path" />: whatever that emits, this accepts.
+    ///     <see cref="FileEntry.Path" /> for live entries: deleted entries are skipped, so their
+    ///     paths do not resolve.
     /// </summary>
     /// <param name="path">The path to resolve, in the form <see cref="FileEntry.Path" /> emits.</param>
     /// <param name="cancellationToken">

@@ -36,13 +36,15 @@ run against Gitea. A Windows release therefore cannot download the CI library. I
 
 ## CI
 
-The `linux-package` job of `.gitea/workflows/test.yml` runs on every pull request and main push.
-It builds the Release library with `scripts/build-linux.sh`, runs `scripts/check-linux-native.sh`,
+The `linux-package` job of `.gitea/workflows/test.yml` runs on every pull request and main push;
+when every changed path is docs-only or the scanner pin, its `skip_build` detection skips the
+steps below and the upload, and the job finishes green ([CI and quality gates](quality-gates.md)).
+Otherwise it builds the Release library with `scripts/build-linux.sh`, runs `scripts/check-linux-native.sh`,
 and runs `scripts/smoke-package-linux.sh`. That script packs MFTLib on Linux with the library under
 the version `0.0.0-package-smoke` (never published), restores it from a local feed with an empty
 package cache into `scripts/package-smoke`, and runs that console project. The project links the
 test dump builder `MFTLib.Tests/TestSupport/MftDumpFixture.cs`, loads a dump through
 `MftIndexSources.FromMftDumpFile`, asserts `dump:/D/documents/Notes.txt` is indexed with 11 bytes,
 and asserts the library came from `runtimes/linux-x64/native` of the output and was not copied flat.
-The job also uploads the library and the check output as an artifact named
+Unless `skip_build` skipped it, the job also uploads the library and the check output as an artifact named
 `linux-native-<commit SHA>` for a person to download from the run page.

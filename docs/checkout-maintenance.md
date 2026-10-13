@@ -55,4 +55,4 @@ Windows `init.ps1 -Build` calls `scripts/build-windows.ps1 -Configuration Releas
 
 CI verification: the `windows` job in `.gitea/workflows/test.yml` runs the clean, both init entry points, the idempotency rerun and `init.ps1 -Build` with a clean-tree assertion after each, but only on the push to `main` (see [quality gates](quality-gates.md)). A pull request does not run it, so run `git clean -ffxd && .\init.ps1` locally when a change touches init, build or ignore files.
 
-Prerequisites checked but not installed - Windows: .NET SDK, Visual Studio with the MSVC C++ workload, aislop, reportgenerator (HTML coverage only). Linux: .NET SDK, cmake, ninja, g++, aislop, gcovr (native coverage only).
+Prerequisites checked but not installed - Windows: .NET SDK, Visual Studio with the MSVC C++ workload, aislop, reportgenerator (managed coverage summaries and HTML reports). Linux: .NET SDK, cmake, ninja, g++, aislop, gcovr (native coverage only).

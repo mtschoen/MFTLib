@@ -19,9 +19,8 @@ slot, then name-pool headroom adds 25 percent or one mebibyte, whichever is
 larger. Capacity exhaustion marks the block for compaction and reports skipped
 records. Treat that as a reason to rescan.
 
-The broker protocol returns `MftValidDataLength`, `BytesPerFileRecordSegment`,
-and the derived `MftRecordCount` for that query. Code that is already elevated can call
-`NtfsVolumeInformation.Query` directly for the same values.
+The broker protocol carries only `MftValidDataLength` and `BytesPerFileRecordSegment`
+for that query. The internal client derives `MftRecordCount` from that geometry.
 
 ## Concurrent scans and parse threads
 

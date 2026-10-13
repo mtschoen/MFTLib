@@ -17,9 +17,10 @@ public enum WatchFaultKind
     Drive,
 
     /// <summary>
-    ///     The index could not apply a batch. The block is unchanged, the drive's cursor was not
-    ///     advanced, the drive's watch has ended, and its recovery has started, as for
-    ///     <see cref="Drive" />.
+    ///     The index could not apply a batch. Entries applied before the failure can remain in
+    ///     the block while the drive's cursor stays at its previous position, so the block is not
+    ///     trusted: the drive's watch has ended and its recovery has started, as for
+    ///     <see cref="Drive" />, and the rescan replaces the block.
     /// </summary>
     Apply,
 

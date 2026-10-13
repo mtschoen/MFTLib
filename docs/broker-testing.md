@@ -2,8 +2,9 @@
 
 Reference **`MFTLib.TestExtensions`** from consumer test projects. It provides an
 in-process broker harness, a scripted drive watch, synthetic journal entries and
-records, synthetic cache blocks and their editor, and opt-in guards against accidental access to the real per-user cache or
-a real volume's USN journal.
+records, synthetic cache blocks and their editor, and an opt-in guard against the index's automatic
+checkpoint observations reading a real volume's USN journal. Tests supply application-owned
+temporary cache directories.
 
 ## BrokerTestHarness
 
@@ -18,7 +19,8 @@ and filter.
 
 `BrokerTestHarness.CreateSession(launchAsync)` returns a `BrokerSession` whose launch callback hands it
 an `InProcessBrokerHandle`, so a test of code that takes a `BrokerSession` needs no
-elevation either. The callback is `Func<CancellationToken, Task<InProcessBrokerHandle>>`.
+elevation either. The session owns only the handle's process: the test retains every
+launched handle and disposes it after its indexes and the session. The callback is `Func<CancellationToken, Task<InProcessBrokerHandle>>`.
 
 `ScriptedBrokerVolumes` is the fake volumes the host serves. Only `QueryJournalCursor` is
 required; a null source refuses that operation as the real host does.
@@ -279,7 +281,9 @@ path without creating it. Dump sources prohibit cache options.
 `JournalIsolation.ForbidLiveJournalReads` is process-wide, idempotent, and
 one-way. It makes live journal observations answer "cannot say" instead of
 reading a volume. It does not throw and does not affect broker source delegates
-supplied by the test.
+supplied by the test. It covers the index's automatic checkpoint observations only:
+production scan and watch sources still query a journal cursor, and explicit
+journal settings queries still open the volume.
 
 Use `JournalIsolation.OverrideJournalWindow` when a test needs a retained,
 trimmed, or recreated journal window. The callback receives a drive letter and

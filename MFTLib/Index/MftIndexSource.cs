@@ -2,8 +2,8 @@ namespace MFTLib.Index;
 
 /// <summary>
 ///     Where an index gets the blocks of its MFT-backed drives and the live watch of each. Obtained
-///     from <c>BrokerMftBlockProducer.CreateIndexSource</c>, or from <see cref="Unavailable" />
-///     when this process cannot scan.
+///     from <see cref="MFTLib.BrokerSession.CreateIndexSource" />, <see cref="MFTLib.MftIndexSources" />, or from
+///     <see cref="Unavailable" /> when this process cannot scan.
 /// </summary>
 public sealed class MftIndexSource
 {

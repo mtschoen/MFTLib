@@ -77,11 +77,11 @@ cat .\SampleProgram.Direct\bin\x64\Release\net10.0\output.log
 
 [Clean-tree invariant](docs/checkout-maintenance.md): `git clean -ffxd` must be safe before new work. Nothing unrecoverable lives here: files are tracked and pushed or reproducible; machine-only valuable files belong outside the tree. Never add files that satisfy neither rule. No exclude list protects against `-x`; do not substitute wrappers for this invariant. Regenerate agent files after cleaning or an aislop upgrade with `aislop hook install claude --project`; generated `.claude/AISLOP.md` and `.claude/CLAUDE.md` do not restore themselves. Aislop history is disposable; the gate is absolute `failBelow: 100`.
 
-[Restore after cleaning](docs/checkout-maintenance.md): Windows uses `git clean -ffxd && .\init.ps1` or `git clean -ffxd && .\init.ps1 -Build`; cmd uses `git clean -ffxd && .\init.bat` or `git clean -ffxd && .\init.bat -Build`. Keep the `.\` prefix (`NoDefaultCurrentDirectoryInExePath=1`). Linux uses `git clean -ffxd && ./init.sh` or `git clean -ffxd && ./init.sh --build`. Restore is idempotent; build adds native plus managed Release|x64 on Windows. Windows prerequisites: .NET SDK, VS/MSVC, aislop, reportgenerator for HTML. Linux: .NET SDK, cmake, ninja, g++, aislop, gcovr for native coverage. Init checks, never installs, prerequisites.
+[Restore after cleaning](docs/checkout-maintenance.md): Windows uses `git clean -ffxd && .\init.ps1` or `git clean -ffxd && .\init.ps1 -Build`; cmd uses `git clean -ffxd && .\init.bat` or `git clean -ffxd && .\init.bat -Build`. Keep the `.\` prefix (`NoDefaultCurrentDirectoryInExePath=1`). Linux uses `git clean -ffxd && ./init.sh` or `git clean -ffxd && ./init.sh --build`. Restore is idempotent; build adds native plus managed Release|x64 on Windows. Windows prerequisites: .NET SDK, VS/MSVC, aislop, reportgenerator for managed coverage summaries and HTML. Linux: .NET SDK, cmake, ninja, g++, aislop, gcovr for native coverage. Init checks, never installs, prerequisites.
 
 ## CI and quality gates
 
-[CI rules](docs/quality-gates.md): `.gitea/workflows/test.yml` runs Windows and Linux coverage on PRs and main pushes, via `scripts/run-coverage.ps1 -NonInteractive` and `scripts/coverage-linux.sh`. Both pull-request checks and `aislop / quality-gate (pull_request)` must pass before merge. Read `~/schoen-lab/packages/local_ci/docs/project-ci-setup.md` before workflow edits. Fix runner PATH/pwsh and `DOTNET_INSTALL_DIR` at the service, never with workflow bootstrap steps.
+[CI rules](docs/quality-gates.md): `.gitea/workflows/test.yml` runs Windows and Linux coverage plus a Linux package check on PRs and main pushes, via `scripts/run-coverage.ps1 -NonInteractive` and `scripts/coverage-linux.sh`. The `test / windows`, `test / linux`, `test / linux-package` and `aislop / quality-gate` pull-request checks must pass before merge. Read `~/schoen-lab/packages/local_ci/docs/project-ci-setup.md` before workflow edits. Fix runner PATH/pwsh and `DOTNET_INSTALL_DIR` at the service, never with workflow bootstrap steps.
 
 [Aislop rules](docs/quality-gates.md): invoke installed `aislop`, never `npx aislop`. Before completion run `aislop scan .` and address findings; before committing run `aislop scan --staged`. `aislop ci .` enforces `.aislop/config.yml`'s `failBelow: 100`; failure is a failing gate.
 
@@ -109,7 +109,7 @@ cat .\SampleProgram.Direct\bin\x64\Release\net10.0\output.log
 
 ### Native error messages
 
-[Native error helper](docs/architecture.md): use `SetErrorMessage` in `MFTLibNative/internal.h` for native result `wchar_t errorMessage[256]` buffers. Windows truncation uses `_snwprintf_s(..., _TRUNCATE, ...)`; Debug asserts overflow. Avoid direct `swprintf_s` / `snprintf_s` calls at error-write sites.
+[Native error helper](docs/architecture.md): use `SetErrorMessage` in `MFTLibNative/internal.h` for native result `MftMessageChar errorMessage[256]` buffers (`wchar_t` on Windows, `char16_t` elsewhere). Windows truncation uses `_snwprintf_s(..., _TRUNCATE, ...)`; Debug asserts overflow. Avoid direct `swprintf_s` / `snprintf_s` calls at error-write sites.
 
 ## Naming
 

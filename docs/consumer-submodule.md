@@ -36,14 +36,11 @@ dotnet build external/MFTLib/MFTLibTestExtensions/MFTLibTestExtensions.csproj -c
 #### PowerShell (Windows CI)
 
 ```powershell
-# VS MSBuild is the only toolchain that can compile MFTLib's native C++
-# vcxproj. Install it x64 (microsoft/setup-msbuild@v2 with
-# msbuild-architecture: x64) so a host-mode runner does not WOW64-redirect it.
-
-# Restore first: VS MSBuild does not auto-restore SDK-style projects.
-dotnet restore
-
-msbuild external\MFTLib\MFTLibNative\MFTLibNative.vcxproj -t:Build -p:Configuration=Release -p:Platform=x64 -nologo -v:minimal
-dotnet build external\MFTLib\MFTLib\MFTLib.csproj -c Release -p:Platform=x64 --no-restore
-dotnet build external\MFTLib\MFTLibTestExtensions\MFTLibTestExtensions.csproj -c Release -p:Platform=x64 --no-restore
+# MFTLib's own script owns the Windows recipe: it restores, locates the amd64
+# Visual Studio MSBuild (the only toolchain that can compile the native C++
+# vcxproj, and the one a host-mode runner needs to avoid WOW64 redirection),
+# builds the native project with an absolute trailing-backslash SolutionDir so
+# its output lands in the submodule's root x64\Release (the only place the
+# managed projects look for MFTLibNative.dll), and then builds the managed projects.
+.\external\MFTLib\scripts\build-windows.ps1
 ```

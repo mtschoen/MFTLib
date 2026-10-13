@@ -112,8 +112,9 @@ things to keep in rough sync. Call the installed binary directly - do NOT use
 It runs on **windows-latest**, not Linux like the rest of the fleet: `MFTLib.sln`
 includes the native `MFTLibNative.vcxproj`, which only loads/builds under
 MSBuild + MSVC, and both jb inspectcode and roslynator load the full solution.
-`lint.csharp.jbProjects` in `.aislop/config.yml` scopes jb inspection to the six
-C# projects so the C++ tree stays on its own clang-tidy/cppcheck gate. The
+`lint.csharp.jbProjects` in `.aislop/config.yml` scopes the C# jb inspection to the six
+C# projects, and `lint.cpp.jbProjects` scopes the native ReSharper C++ inspection to
+`MFTLibNative`, which the same gate also scores with clang-tidy, cppcheck and clang-format. The
 workflow installs `aislop` by cloning the `schoen/aislop` fork from Gitea at the
 commit pinned in `.aislop/fork-commit` (built with `pnpm`) and runs it via `node`.
 It deliberately does NOT use `actions/setup-node`

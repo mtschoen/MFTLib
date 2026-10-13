@@ -7,7 +7,7 @@ public sealed partial class FileIndex
     /// <summary>
     ///     Raised once per applied change, in the order the journal batch delivered them, to
     ///     every subscriber, even when an earlier subscriber threw for an earlier change (or for
-    ///     this one). The mutation and the USN cursor are already durable by the time any handler
+    ///     this one). The mutation and the USN cursor are already applied to the mapped block by the time any handler
     ///     runs: the watch applies the whole batch and releases its drive's
     ///     write gate before raising this event at all, so a throwing handler never undoes anything
     ///     and never stops another handler from seeing the rest of the batch. A close record that
@@ -173,7 +173,7 @@ public sealed partial class FileIndex
     ///     invoked for every change even if that handler (or another one) already threw for an
     ///     earlier change, so one bad subscriber never starves the rest of the batch. Every
     ///     collected exception is surfaced only after delivery has fully finished, since by then
-    ///     the mutation this batch made is already durable and nothing further depends on this
+    ///     the mutation this batch made is already applied to the mapped block and nothing further depends on this
     ///     call returning normally.
     /// </summary>
     void RaiseChanged(IReadOnlyList<FileChange> changes)

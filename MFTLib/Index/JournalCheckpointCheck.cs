@@ -204,7 +204,7 @@ static class JournalCheckpointCheck
     }
 
     /// <summary>
-    ///     Stops this process reading any real volume's journal for the rest of its life, so a
+    ///     Stops this process's automatic checkpoint observations reading any real volume's journal for the rest of its life, so a
     ///     warm start in a test decides the same way whatever drive letters the host happens
     ///     to have. One way and idempotent, like the cache-directory guard; a test that wants
     ///     a real volume installs an override over <see cref="ReadLiveJournal(char)" />.

@@ -42,7 +42,11 @@ public static class BrokerTestHarness
     ///     Called at most once per launch attempt, with a token that only disposal cancels, and returns the started
     ///     in-process broker whose client the session then owns.
     /// </param>
-    /// <returns>The session; the test disposes it.</returns>
+    /// <returns>
+    ///     The session. The test disposes it after its indexes, and also retains every launched
+    ///     <see cref="InProcessBrokerHandle" /> and disposes it afterward, because the session owns only the
+    ///     handle's process and the handle alone releases the shared-memory section resources.
+    /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="launchAsync" /> is null.</exception>
     public static BrokerSession CreateSession(Func<CancellationToken, Task<InProcessBrokerHandle>> launchAsync)
     {

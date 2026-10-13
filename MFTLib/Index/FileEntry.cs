@@ -92,7 +92,10 @@ public readonly partial record struct FileEntry
     /// <exception cref="ObjectDisposedException">The owning <see cref="FileIndex" /> has been disposed.</exception>
     public string Name => new(NamePool.ReadRowName(DriveBlock.Block, _rowIndex));
 
-    /// <summary>Gets the file length in bytes, or zero for directories and unknown sizes.</summary>
+    /// <summary>
+    ///     Gets the file length in bytes, or zero for directories and unknown sizes. This is the length the
+    ///     last scan produced: a live data-change event leaves it untouched, so rescan or read the file for a current length.
+    /// </summary>
     public long Size => Row.Size;
 
     /// <summary>Determines whether <see cref="Size" /> is known.</summary>

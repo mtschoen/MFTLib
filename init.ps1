@@ -81,8 +81,8 @@ if (Test-CommandAvailable 'reportgenerator') {
     Write-Host '  reportgenerator     present'
 }
 else {
-    $missingPrerequisites.Add('reportgenerator (HTML coverage reports only) - dotnet tool install --global dotnet-reportgenerator-globaltool')
-    Write-Host '  reportgenerator     missing (HTML coverage reports only)' -ForegroundColor Yellow
+    $missingPrerequisites.Add('reportgenerator (managed coverage summaries and HTML reports) - dotnet tool install --global dotnet-reportgenerator-globaltool')
+    Write-Host '  reportgenerator     missing (managed coverage summaries and HTML reports)' -ForegroundColor Yellow
 }
 
 Write-Host ''

@@ -36,8 +36,8 @@ for NTFS metadata on Windows; the index runs elsewhere through the enumeration p
 - File index (`MFTLib.Index`) over any filesystem, with the enumeration producer on Linux
   and the MFT scan on NTFS
 - In-process scan of a live volume (`MftIndexSources.FromLocalVolumes`) or a saved MFT dump (`MftIndexSources.FromMftDumpFile`) into the same index
-- Runtime detection of the volume's MFT record size (1024 or 4096 bytes) instead of an
-  assumed fixed size
+- Runtime detection of the volume's MFT record size (a power of two from 512 through 65536
+  bytes on a live volume; a saved dump accepts 1024 or 4096) instead of an assumed fixed size
 - Native C++ I/O with parallel fixup and parsing
 - Double-buffered reads that overlap I/O and compute
 - Exact, substring, case-sensitive, size and last-write-time predicates with inclusive bounds, subtree and directory filters over the packed index (`SearchQuery`)
@@ -222,7 +222,9 @@ await index.WaitForCatchUpAsync('C', cancellationToken);
 
 `Changed` events carry `FileChangeKind`, the current path, the timestamp and the
 previous path for a rename. A start establishes the connection; the catch-up wait
-observes the watch reaching its live position. Journal checkpoint loss is recorded
+observes the watch reaching its live position. A data change updates an entry's
+time and attributes but not its length: `Size` and `IsSizeKnown` keep the values the
+last scan produced, so read the filesystem or rescan for a current length. Journal checkpoint loss is recorded
 on `DriveWatchStatus.CheckpointLoss`; a successful `RescanAsync('C')` supplies a fresh
 block and restarts a requested watch. `StopWatchingAsync(cancellationToken)` stops
 every configured drive and returns its per-drive results.
@@ -268,10 +270,15 @@ foreach (var drive in index.Drives)
                 "older than the journal still holds, so a full rescan was needed. No size to " +
                 "offer: it does not fit in a long.");
             break;
-        default:
+        case JournalCheckpointLossCause.JournalRecreated:
             Console.WriteLine(
                 $"Drive {loss.DriveLetter}: the change journal was recreated, so the last " +
                 "checkpoint no longer refers to anything and a full rescan was needed.");
+            break;
+        default:
+            Console.WriteLine(
+                $"Drive {loss.DriveLetter}: the journal moved past the retained cursor and the " +
+                "source cannot catch up, so a full rescan was needed.");
             break;
     }
 }
@@ -333,29 +340,25 @@ Subscribe before reading `Drives` and merge snapshots and events through the sam
 per-drive version check, as shown in the
 [broker integration guide](docs/broker-integration.md#5-handle-faults-and-recovery).
 
-**In a fault handler, branch on `DetectedDuring`, not on the loss being
-non-null.** A report lives until a rescan replaces the block it explains, so a
-drive that cold-scanned at open still carries that report while it is being
-watched, and an unrelated fault later would otherwise read as the journal's
-doing. `DetectedDuring` says which check found it:
+**In a fault handler, treat `DetectedDuring` as the origin of the report, not
+as proof of the fault being handled.** A report lives until a rescan replaces the
+block it explains or a newer loss replaces it. A drive that cold-scanned at open
+still carries its `DriveOpening` report while it is being watched, and automatic
+recovery keeps a `LiveWatch` report after the rescan, so an unrelated fault later
+finds an older report beside it. `DetectedDuring` says which check found it. A
+`ScanCatchUp` report is recorded before the `CatchUpLost` fault it explains is
+announced; any other label may predate the fault:
 
 ```csharp
 index.WatchFaulted += fault =>
 {
     var drive = index.Drives.Single(d => d.DriveLetter == fault.DriveLetter);
-    if (drive.Watch.CheckpointLoss is
-        {
-            DetectedDuring: JournalCheckpointLossDetection.LiveWatch or
-                JournalCheckpointLossDetection.ScanCatchUp
-        } loss)
+    Console.Error.WriteLine($"Drive {fault.DriveLetter}: {fault.Kind}, {drive.Watch.FailureMessage}");
+    if (drive.Watch.CheckpointLoss is { } loss)
     {
-        Console.WriteLine(
-            $"Drive {fault.DriveLetter}: {loss.DetectedDuring}, {loss.Cause}");
-        return;
+        // The report may be older than this fault; the label says which moment found it.
+        Console.WriteLine($"  Retained journal loss, found during {loss.DetectedDuring}: {loss.Cause}");
     }
-
-    // Anything else is a plain watch failure, whatever else the drive is carrying.
-    Console.Error.WriteLine(drive.Watch.FailureMessage);
 };
 ```
 
@@ -382,8 +385,8 @@ retention size would help, so `BytesBehind` and `SizeThatWouldHaveRetained` are 
 A consumer decides what to say from `Cause`, not from whether the size is null,
 since all causes can leave it null. `Cause` and `DetectedDuring` answer
 different questions and are read together: `Cause` says whether a journal size
-would have helped, `DetectedDuring` says whether the drive needs anything done
-about it now. A drive that warm-started, whose watch has never lost its
+would have helped, `DetectedDuring` says which check found the report, and so which
+moment it comes from. A drive that warm-started, whose watch has never lost its
 position, or whose volume could not answer the query at all, reports
 `Watch.CheckpointLoss` as null rather than guessing.
 
@@ -521,9 +524,11 @@ reported `DriveState.Failed` and never falls back to a directory walk, and the
 enumeration producer runs only when a caller chooses `ProducerPolicy.Enumeration`
 explicitly, never as an inherited fallback decision. Why a `DriveState.Failed` drive has
 no block is reported as `DriveStatus.Failure.Kind`: `CacheDeclined` when
-`FileIndexOptions.InitialOpenCacheOnly` found no usable cache and forbade a scan, `InUse` when
-another live `FileIndex` holds the cache block's owner lock, and `ProducerFailed` when the MFT
-producer itself failed. A failed drive of either kind accepts a per-drive
+`FileIndexOptions.InitialOpenCacheOnly` found no cached block to adopt and forbade a scan,
+`CacheTagMismatch` when it found a block whose consumer cache tag differs from
+`FileIndexOptions.CacheTag`, `InUse` when another live `FileIndex` holds the cache block's
+owner lock, and `ProducerFailed` when the MFT producer itself failed. A failed drive of
+any kind accepts a per-drive
 `FileIndex.RescanAsync`, which scans it and clears `DriveStatus.Failure` on success. `DriveStatus.Block` is null
 unless the drive is `Ready`. A failed `RescanAsync`, or a failed catch-up retry scan during the initial
 `OpenAsync`, can leave a drive `Ready` with its previous block and `Failure.Kind` `ProducerFailed`.
@@ -570,10 +575,13 @@ with its last block unresumable if every attempt lost it. `OpenAsync` raises no
 produces a resumable block. The refusal retains the watch request, so a successful
 rescan clears the refusal and starts the watch.
 
-`FileEntry.Path` is a real filesystem path: the drive block's root directory joined
-with the entry's name chain using the host separator. It can be opened, and
-`FileIndex.Find` accepts it back, resolving a native path against the longest
-matching indexed root. Disposing a `FileIndex` releases every block mapping it
+`FileEntry.Path` is the drive block's root directory joined with the entry's name
+chain using the host separator. For a live entry of a real source it is a
+filesystem path that can be opened, and `FileIndex.Find` accepts it back,
+resolving a native path against the longest matching indexed root. Three cases
+differ: a dump entry renders a virtual `dump:/X` path that `Open` refuses; a
+detached deleted row with no verified ancestor renders its bare name; and `Find`
+skips deleted entries, so the path of a deleted entry does not resolve. Disposing a `FileIndex` releases every block mapping it
 holds, so the `.mlix` files are closed at a point the caller chooses; a `FileEntry`
 held across that disposal reports `IsDisposed` and throws `ObjectDisposedException`
 on reads of mapped entry data.
@@ -642,8 +650,9 @@ collection and finalization return its borrow. Dispose enumerators promptly;
 collection timing is not guaranteed. `Children()`
 is the exception: a handle holds no reference to its index, so disposal waits that
 listing out instead, one pass over the drive's rows unless the caller passes a token.
-Every other `FileEntry` member reads a single row rather than scanning and carries no
-borrow, so a read ordered after the disposal throws `ObjectDisposedException` from the
+Every other `FileEntry` member reads in place rather than scanning and carries no
+borrow (`Path`, and `ToString`, which can build it, follow the parent chain for at most
+128 hops), so a read ordered after the disposal throws `ObjectDisposedException` from the
 per-access check instead.
 
 `DriveBlockStatus.Source` says whether a drive warm-started from cache or was scanned,

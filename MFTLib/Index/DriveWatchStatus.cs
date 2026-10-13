@@ -100,8 +100,10 @@ public sealed record DriveWatchStatus
     ///         the checkpoint alone. Later, a drive's live watch that faults is asked the same
     ///         question about the position it had reached, which is why a watch that dies because
     ///         the journal moved past it reports more than <see cref="FailureMessage" />. In
-    ///         that case the drive keeps its block and its rows: nothing after the position has
-    ///         been applied, and <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> is what makes it current
+    ///         that case the drive keeps its block and its rows, with its cursor at the lost
+    ///         position. A <c>WatchFaultKind.Drive</c> read failure applied nothing past it; an
+    ///         <c>WatchFaultKind.Apply</c> fault may have left part of its last batch applied ahead
+    ///         of the cursor. <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> makes it current
     ///         again. The third path reads no journal in the index: a scan whose catch-up the
     ///         broker proved lost publishes its block with the broker's report,
     ///         <see cref="JournalCheckpointLossDetection.ScanCatchUp" />, which replaces any older
@@ -110,15 +112,14 @@ public sealed record DriveWatchStatus
     ///     <para>
     ///         A report outlives the moment that produced it, so on its own it is not evidence
     ///         about a fault being handled now. Read
-    ///         <see cref="JournalCheckpointLoss.DetectedDuring" /> to tell them apart: inside
-    ///         a <see cref="FileIndex.WatchFaulted" /> handler,
-    ///         <see cref="JournalCheckpointLossDetection.LiveWatch" /> explains a watch fault, and
-    ///         <see cref="JournalCheckpointLossDetection.ScanCatchUp" /> explains a
-    ///         <see cref="WatchFaultKind.CatchUpLost" /> fault, the same way: the journal outran
-    ///         this drive. A report reading
-    ///         <see cref="JournalCheckpointLossDetection.DriveOpening" /> beside a faulted watch
-    ///         is the open's standing explanation of a cold scan and says nothing about the
-    ///         fault; an unrelated fault neither rewrites nor deletes it.
+    ///         <see cref="JournalCheckpointLoss.DetectedDuring" /> to learn which moment found it:
+    ///         <see cref="JournalCheckpointLossDetection.ScanCatchUp" /> is recorded before the
+    ///         <see cref="WatchFaultKind.CatchUpLost" /> fault it explains is announced. A report
+    ///         reading <see cref="JournalCheckpointLossDetection.DriveOpening" /> is the open's
+    ///         standing explanation of a cold scan, and one reading
+    ///         <see cref="JournalCheckpointLossDetection.LiveWatch" /> survives the automatic
+    ///         recovery of the fault that found it. Either can sit beside a later, unrelated
+    ///         fault, which neither rewrites nor deletes it.
     ///     </para>
     ///     Null when the drive warm-started, had no cache to resume, was rejected for a reason
     ///     unrelated to the journal, or has never

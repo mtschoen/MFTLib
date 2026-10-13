@@ -28,7 +28,10 @@ public readonly ref struct IndexRow
     /// <summary>The configured logical drive key, including for virtual dump drives.</summary>
     public char DriveLetter { get; }
 
-    /// <summary>The file length in bytes, or zero for directories and unknown sizes.</summary>
+    /// <summary>
+    ///     The file length in bytes, or zero for directories and unknown sizes. This is the length the last
+    ///     scan produced; a live data-change event leaves it untouched.
+    /// </summary>
     public long Size => _row.Size;
 
     /// <summary>Whether <see cref="Size" /> is known.</summary>

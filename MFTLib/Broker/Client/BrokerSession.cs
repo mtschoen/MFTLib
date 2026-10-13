@@ -112,7 +112,10 @@ public sealed class BrokerSession : IAsyncDisposable
     ///     The index source over this session, to assign to <see cref="FileIndexOptions.MftSource" />. Nothing
     ///     launches until an index scans or watches a drive.
     /// </summary>
-    /// <param name="scanOptions">Base options for every scan: retention, freed-record inclusion and progress.</param>
+    /// <param name="scanOptions">
+    ///     Base options for every scan: retention and freed-record inclusion. Scan progress arrives through
+    ///     <see cref="MFTLib.Index.FileIndexOptions.Progress" />.
+    /// </param>
     /// <returns>A source whose scans and watches run on this session's process.</returns>
     public MftIndexSource CreateIndexSource(MftScanOptions? scanOptions = null) =>
         new BrokerMftBlockProducer(ConnectAsync, scanOptions).CreateIndexSource();

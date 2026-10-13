@@ -46,7 +46,8 @@ public sealed record DriveBlockStatus
 
     /// <summary>
     ///     The MFT producer's count of records it could not place during the latest scan:
-    ///     unsupported record identifiers, empty names and exhausted block capacity. Zero for
+    ///     unsupported record identifiers, empty names, exhausted block capacity and allocated records
+    ///     the native parser omitted because their fixups are invalid. Zero for
     ///     an enumeration-backed drive and after a warm start, because the count is not stored
     ///     in the block.
     /// </summary>

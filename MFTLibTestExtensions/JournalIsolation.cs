@@ -2,13 +2,15 @@ using MFTLib.Index;
 
 namespace MFTLibTestExtensions;
 
-/// <summary>Opt-in protection against tests reading a real volume's USN journal.</summary>
+/// <summary>Opt-in protection against the index's automatic checkpoint observations reading a real volume's USN journal in tests.</summary>
 public static class JournalIsolation
 {
     /// <summary>
-    ///     Stops this test process reading any real volume's USN change journal for the
-    ///     remainder of its life. Call from the test assembly's module initializer, before
-    ///     opening any indexes. Repeated calls are safe; there is no reset.
+    ///     Stops the index's automatic checkpoint observations from reading any real volume's USN
+    ///     change journal for the remainder of this process's life. Call from the test assembly's
+    ///     module initializer, before opening any indexes. Repeated calls are safe; there is no reset.
+    ///     Production scan and watch sources still query a journal cursor, and explicit journal
+    ///     settings queries still open the volume; this guard does not restrict them.
     /// </summary>
     /// <remarks>
     ///     Opening a drive normally reads the live journal to decide whether a cached block's

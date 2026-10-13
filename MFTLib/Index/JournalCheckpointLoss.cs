@@ -1,7 +1,8 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     Which of MFTLib's two journal-position checks found the loss. A report outlives the
+///     Which of MFTLib's three journal-position checks found the loss: the open of a drive, its
+///     faulted live watch, or a scan's catch-up. A report outlives the
 ///     moment that produced it, so without this a consumer reading
 ///     <see cref="DriveWatchStatus.CheckpointLoss" /> from inside a
 ///     <see cref="FileIndex.WatchFaulted" /> handler could not tell a report about the fault it
@@ -23,8 +24,13 @@ public enum JournalCheckpointLossDetection
 
     /// <summary>
     ///     Found when the drive's live watch faulted, against the position that watch had
-    ///     reached. This one is actionable: nothing after that position has been applied, so
-    ///     the drive stays behind until <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> rebuilds it. A
+    ///     reached. This one is actionable: the cursor stayed at that position. A
+    ///     <see cref="WatchFaultKind.Drive" /> fault applied nothing past it; a
+    ///     <see cref="WatchFaultKind.Apply" /> fault may have applied part of the batch in flight
+    ///     before the cursor advanced. The drive stays behind until a rescan rebuilds it. A <see cref="WatchFaultKind.Drive" /> or
+    ///     <see cref="WatchFaultKind.Apply" /> fault starts that rescan automatically; after any other
+    ///     fault, or once automatic recovery is exhausted, only
+    ///     <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> does. A
     ///     watch fault that leaves the report reading <see cref="DriveOpening" />, or leaves it
     ///     null, was not the journal outrunning the index.
     /// </summary>
@@ -95,11 +101,11 @@ public sealed record JournalCheckpointLoss
     public char DriveLetter { get; init; }
 
     /// <summary>
-    ///     Which check found this, and so whether the drive still needs anything done about it.
+    ///     Which check found this, and so which moment the report comes from.
     ///     A report is replaced only by a newer report for the same drive or cleared by a
     ///     successful <see cref="FileIndex.RescanAsync(char, CancellationToken)" />, never by an unrelated watch fault,
-    ///     so a handler that acts on a loss reads this before deciding the fault it is handling
-    ///     was the journal's doing.
+    ///     so a handler that acts on a loss treats this as the report's origin and does not
+    ///     assume the fault it is handling was the journal's doing.
     /// </summary>
     public JournalCheckpointLossDetection DetectedDuring { get; init; }
 
