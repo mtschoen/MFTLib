@@ -9,7 +9,7 @@ public enum BlockValidationResult
 {
     /// <summary>Allows the caller to open the cached block without a replacement scan.</summary>
     Valid,
-    /// <summary>The file does not begin with the block-format magic value.</summary>
+    /// <summary>The file is missing, unreadable, too short, or does not begin with the block-format magic value.</summary>
     WrongMagic,
     /// <summary>The file uses an unsupported block-format version.</summary>
     WrongFormatVersion,

@@ -8,8 +8,8 @@ public readonly partial record struct FileEntry
     ///     accepted by <see cref="FileIndex.Find" />. A dump entry renders a virtual <c>dump:/X</c>
     ///     path that cannot be opened, a detached deleted row renders its bare name, and
     ///     <see cref="FileIndex.Find" /> skips deleted entries.
-    ///     Built once per call by walking the parent column upward. This allocates; nothing else
-    ///     on the handle except <see cref="Name" /> does. The parent walk is limited to
+    ///     Built once per call by walking the parent column upward. This allocates; other property
+    ///     reads except <see cref="Name" /> do not. The parent walk is limited to
     ///     128 parent hops.
     /// </summary>
     /// <exception cref="InvalidDataException">
@@ -36,9 +36,9 @@ public readonly partial record struct FileEntry
     }
 
     /// <summary>
-    ///     Direct children, found by scanning the parent column. A compressed-sparse-row children
-    ///     table is a measured follow-up, so this is linear in the drive's row count. Being a
-    ///     whole-drive scan rather than a single-row read, this holds a borrow on the handle's
+    ///     Direct children, materialized into an allocated list by scanning the parent column. A
+    ///     compressed-sparse-row children table is a measured follow-up, so this is linear in
+    ///     the drive's row count. Being a whole-drive scan rather than a single-row read, this holds a borrow on the handle's
     ///     snapshot for its duration, the same claim a <see cref="FileIndex" /> query takes, so a
     ///     release cannot unmap the rows it is walking; a disposal that arrives mid-scan waits
     ///     for it to finish.

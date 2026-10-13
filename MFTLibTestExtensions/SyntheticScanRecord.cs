@@ -2,8 +2,8 @@ namespace MFTLibTestExtensions;
 
 /// <summary>
 ///     One record a scripted drive scan yields. The scan feeds these through the production row writer, so the
-///     path of an entry comes from the parent column and not from the record. Only the identity and name are
-///     public; the richer columns stay internal for library tests.
+///     path of an entry comes from the parent column and not from the record. Only the identity, name and
+///     directory classification are public; the richer columns stay internal for library tests.
 /// </summary>
 public sealed record SyntheticScanRecord
 {

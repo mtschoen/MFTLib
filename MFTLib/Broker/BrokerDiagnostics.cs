@@ -3,15 +3,14 @@ namespace MFTLib;
 /// <summary>
 ///     Opt-in broker diagnostics. When environment variable
 ///     <c>MFTLIB_BROKER_DIAG=1</c> is set (or <see cref="Enable" /> has been called),
-///     <see cref="Log" /> appends a timestamped, role-tagged line to
+///     broker activity appends timestamped, role-tagged lines to
 ///     <c>broker-diagnostics.&lt;role&gt;.log</c> in the configured directory; otherwise it is a no-op.
 ///     Consumers pass their own app-data directory to <see cref="Enable" /> after early
 ///     broker dispatch; environment-only opt-in defaults to the OS temp directory.
 ///     The elevated child receives diagnostics via <c>--diag</c> and the absolute
 ///     <c>--diag-log</c> path rather than the
 ///     env var, because a <c>runas</c> launch does not reliably inherit the parent's
-///     environment. Used to reveal, on an on-hardware run, whether the cold scan used the
-///     broker or fell back to a direct scan, what cursor the broker captured vs.
+///     environment. Used to reveal, on an on-hardware run, what cursor the broker captured vs.
 ///     persisted, and the kind and byte length of every
 ///     frame on the wire, which is what localizes a pipe desync.
 ///     While diagnostics are enabled, the broker drops journal entries for the diagnostics

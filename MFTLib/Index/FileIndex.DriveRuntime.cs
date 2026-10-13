@@ -10,9 +10,9 @@ public sealed partial class FileIndex
     readonly Dictionary<char, DriveRuntime> _driveRuntimes = [];
 
     /// <summary>
-    ///     <see cref="WatchInstanceState.Starting" />: the source has been invoked and has not
-    ///     returned a handle yet. <see cref="WatchInstanceState.Running" />: the handle is published
-    ///     and the pump is reading it. <see cref="WatchInstanceState.Faulted" />: the pump ended with
+    ///     <c>Starting</c>: the source has been invoked and has not
+    ///     returned a handle yet. <c>Running</c>: the handle is published
+    ///     and the pump is scheduled. <c>Faulted</c>: the pump ended with
     ///     a fault while the instance was current.
     /// </summary>
     enum WatchInstanceState

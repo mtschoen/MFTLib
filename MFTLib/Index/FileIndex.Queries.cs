@@ -14,6 +14,7 @@ public sealed partial class FileIndex
     ///     Stops the walk. Observed before the first row is read and at least every 4096 rows
     ///     thereafter, so a cancelled query leaves the mapping promptly.
     /// </param>
+    /// <returns>The entry matching the path, or null when no entry matches.</returns>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
     public FileEntry? Find(string path, CancellationToken cancellationToken = default)
@@ -33,6 +34,7 @@ public sealed partial class FileIndex
     ///     128 parent hops while applying the subtree restriction
     ///     (<see cref="SearchQuery.Subtree" />).
     /// </exception>
+    /// <exception cref="ArgumentNullException"><paramref name="query" /> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="query" /> has an undefined <see cref="SearchQuery.MatchMode" />.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
@@ -70,6 +72,7 @@ public sealed partial class FileIndex
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="query" /> has an undefined <see cref="SearchQuery.MatchMode" />.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
+    /// <exception cref="ArgumentNullException">At call time: <paramref name="query" /> is null.</exception>
     /// <seealso cref="Search" />
     public IEnumerable<FileEntry> Enumerate(SearchQuery query, CancellationToken cancellationToken = default)
     {
@@ -139,6 +142,10 @@ public sealed partial class FileIndex
     /// </summary>
     /// <param name="driveLetter">The drive letter, as configured in <see cref="FileIndexOptions.Drives" />.</param>
     /// <param name="cancellationToken">Stops the lookup before it resolves the root row.</param>
+    /// <exception cref="ArgumentException">
+    ///     No block exists for <paramref name="driveLetter" />, including an unconfigured drive or a configured
+    ///     drive that is offline or failed without a block.
+    /// </exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
     public FileEntry Root(char driveLetter, CancellationToken cancellationToken = default)

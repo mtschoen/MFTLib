@@ -30,8 +30,8 @@ public sealed record FileIndexOptions
     ///     Opens each drive from its cache only. A drive with no usable cache (missing, corrupt,
     ///     or incompatible) is reported as <see cref="DriveState.Failed" /> with
     ///     <see cref="DriveFailureKind.CacheDeclined" />, <see cref="DriveFailureKind.CacheTagMismatch" />
-    ///     (or <see cref="DriveFailureKind.InUse" /> when another live index holds the cache block's
-    ///     owner lock) instead of falling back to a scan, and <see cref="FileIndex.RescanAsync(char, CancellationToken)" />
+    ///     (or <see cref="DriveFailureKind.InUse" /> when the cache block's owner lock cannot be acquired)
+    ///     instead of falling back to a scan, and <see cref="FileIndex.RescanAsync(char, CancellationToken)" />
     ///     remains available to scan it later.
     ///     A cache block whose journal checkpoint the journal no longer holds is different: this
     ///     open never watches, and the block is still a correct snapshot as of its age, so it is

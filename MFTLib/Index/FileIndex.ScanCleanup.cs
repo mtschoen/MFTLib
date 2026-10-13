@@ -70,7 +70,7 @@ public sealed partial class FileIndex
     /// <summary>
     ///     Where one drive's scan writes. <see cref="ScanBlockTarget.OwnsCanonicalSlot" /> is
     ///     the license every rename or delete of the canonical file checks: without it the
-    ///     canonical file belongs to another live index and is never validated, renamed, or
+    ///     canonical file is not owned by this index and is never validated, renamed, or
     ///     deleted, and the scan goes to a private delete-on-close temp file instead.
     /// </summary>
     readonly record struct ScanBlockTarget(string Path, bool DeleteOnClose, bool OwnsCanonicalSlot,
@@ -99,7 +99,7 @@ public sealed partial class FileIndex
 
     /// <summary>
     ///     Takes the drive's per-block owner lock if this index does not already hold it.
-    ///     False means another live index owns the cache slot.
+    ///     False means the lock could not be acquired because of contention or an access or I/O failure.
     /// </summary>
     bool EnsureCanonicalOwnership(IndexedDrive drive)
     {

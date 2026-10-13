@@ -13,7 +13,11 @@ public sealed record IndexScanProgress
     /// <summary>Creates one progress sample.</summary>
     /// <param name="driveLetter">The drive whose block is being produced.</param>
     /// <param name="phase">The current stage of the scan.</param>
-    /// <param name="rowsWritten">Rows written so far, or the final row count on a successful finished sample.</param>
+    /// <param name="rowsWritten">
+    ///     Records scanned during parsing, rows transferred during intermediate transfer samples, or rows written during enumeration.
+    ///     The final broker transfer sample uses the known parsing total, otherwise the block row count, raised to at least the maximum parsing count.
+    ///     Finished samples carry the final block row count on success, otherwise zero.
+    /// </param>
     internal IndexScanProgress(char driveLetter, IndexScanPhase phase, uint rowsWritten)
     {
         DriveLetter = driveLetter;
@@ -27,10 +31,17 @@ public sealed record IndexScanProgress
     /// <summary>Current stage of the scan.</summary>
     public IndexScanPhase Phase { get; init; }
 
-    /// <summary>Number of rows written so far, or final row count on a successful completion sample.</summary>
+    /// <summary>
+    ///     Records scanned during parsing, rows transferred during intermediate transfer samples, or rows written during enumeration.
+    ///     The final broker transfer sample uses the known parsing total, otherwise the block row count, raised to at least the maximum parsing count.
+    ///     A successful finished sample carries the final block row count; other finished samples carry zero.
+    /// </summary>
     public uint RowsWritten { get; init; }
 
-    /// <summary>Expected total rows when known; otherwise, null.</summary>
+    /// <summary>
+    ///     Expected total scanned records during parsing or transferred rows during intermediate transfer samples, when known; otherwise, null.
+    ///     The final broker transfer sample uses the known parsing total, otherwise the block row count, raised to at least the maximum parsing count.
+    /// </summary>
     public uint? TotalRows { get; init; }
 
     /// <summary>Current directory during enumeration, or null for producers without directories.</summary>

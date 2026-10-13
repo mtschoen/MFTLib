@@ -5,8 +5,9 @@ public enum ProducerPolicy
 {
     /// <summary>
     ///     Build every drive's block with <see cref="FileIndexOptions.MftSource" />. A drive
-    ///     whose producer fails is reported as <see cref="DriveState.Failed" /> and gets no
-    ///     block; it is never rebuilt by a directory walk instead.
+    ///     whose producer fails without a usable block is reported as <see cref="DriveState.Failed" />.
+    ///     A failed replacement scan retains the existing block and reports <see cref="DriveState.Ready" />
+    ///     with a producer failure; the drive is never rebuilt by a directory walk instead.
     /// </summary>
     Mft,
 

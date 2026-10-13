@@ -10,7 +10,7 @@ namespace MFTLibTestExtensions;
 /// <param name="ParentRow">Row number of the parent directory. The root row points at itself.</param>
 public sealed record SyntheticRow(uint Row, string Name, uint ParentRow)
 {
-    /// <summary>True for a directory. A directory's size is zero.</summary>
+    /// <summary>True for a directory. Its size defaults to zero, but an explicitly supplied size is preserved.</summary>
     public bool IsDirectory { get; init; }
 
     /// <summary>True for a row whose record was deleted; the name is kept so a change feed can still name it.</summary>

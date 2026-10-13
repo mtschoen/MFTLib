@@ -41,6 +41,6 @@ public sealed record DriveStatus
     /// <summary>The block behind this status; null unless <see cref="State" /> is <see cref="DriveState.Ready" />.</summary>
     public DriveBlockStatus? Block { get; init; }
 
-    /// <summary>This drive's live-watch state; defaults for a drive that is not watched. Never null.</summary>
+    /// <summary>This drive's watch capability and retained state, even when no watch is running. Never null.</summary>
     public DriveWatchStatus Watch { get; init; } = new();
 }

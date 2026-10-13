@@ -90,8 +90,15 @@ public static class SyntheticNotifications
     /// <summary>Builds one scan progress sample.</summary>
     /// <param name="driveLetter">The drive whose block is being produced.</param>
     /// <param name="phase">The current stage of the scan.</param>
-    /// <param name="rowsWritten">Rows written so far.</param>
-    /// <param name="totalRows">The expected total rows when known; otherwise null.</param>
+    /// <param name="rowsWritten">
+    ///     Records scanned during parsing, rows transferred during intermediate transfer samples, or rows written during enumeration.
+    ///     The final broker transfer sample uses the known parsing total, otherwise the block row count, raised to at least the maximum parsing count.
+    ///     Finished samples carry the final block row count on success, otherwise zero.
+    /// </param>
+    /// <param name="totalRows">
+    ///     Expected total scanned records during parsing or transferred rows during intermediate transfer samples, when known; otherwise null.
+    ///     The final broker transfer sample uses the known parsing total, otherwise the block row count, raised to at least the maximum parsing count.
+    /// </param>
     /// <param name="currentDirectory">The directory being enumerated, or null.</param>
     /// <param name="outcome">The terminal outcome on a finished sample; otherwise null.</param>
     /// <returns>The sample.</returns>

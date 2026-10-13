@@ -147,7 +147,7 @@ public sealed record JournalCheckpointLoss
     ///     rounded up to <see cref="UsnJournalSettings.AllocationDelta" />, plus one more allocation delta. The
     ///     margin follows NTFS's documented trimming behavior in CREATE_USN_JOURNAL_DATA and
     ///     USN_JOURNAL_DATA, not a live measurement. This is the size to offer the user
-    ///     alongside the broker's journal grow request (<c>BrokerFrameKind.GrowUsnJournal</c>), when there is one to offer.
+    ///     for <see cref="BrokerSession.GrowUsnJournalAsync" />, when there is one to offer.
     ///     Null for <see cref="JournalCheckpointLossCause.JournalRecreated" /> and
     ///     <see cref="JournalCheckpointLossCause.JournalAdvanced" />, where no size would have helped,
     ///     and also null for <see cref="JournalCheckpointLossCause.CheckpointTrimmed" />
