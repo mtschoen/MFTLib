@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -91,6 +92,222 @@ public class FileIndexQueryTests
     public void Root_ReturnsTheDriveRoot()
     {
         Assert.AreEqual(_treeRoot, _index.Root('T').Path);
+    }
+
+    [DataTestMethod]
+    [DataRow(DriveState.Offline, 'T', false, 'T')]
+    [DataRow(DriveState.Offline, 'T', false, 't')]
+    [DataRow(DriveState.Offline, 'T', true, 'T')]
+    [DataRow(DriveState.Offline, 'T', true, 't')]
+    [DataRow(DriveState.Offline, 't', false, 'T')]
+    [DataRow(DriveState.Offline, 't', false, 't')]
+    [DataRow(DriveState.Offline, 't', true, 'T')]
+    [DataRow(DriveState.Offline, 't', true, 't')]
+    [DataRow(DriveState.Failed, 'T', false, 'T')]
+    [DataRow(DriveState.Failed, 'T', false, 't')]
+    [DataRow(DriveState.Failed, 'T', true, 'T')]
+    [DataRow(DriveState.Failed, 'T', true, 't')]
+    [DataRow(DriveState.Failed, 't', false, 'T')]
+    [DataRow(DriveState.Failed, 't', false, 't')]
+    [DataRow(DriveState.Failed, 't', true, 'T')]
+    [DataRow(DriveState.Failed, 't', true, 't')]
+    public async Task Root_ReturnsTheDriveRoot_WithBlocklessDuplicate(DriveState blocklessState,
+        char duplicateLetter, bool blocklessFirst, char driveLetter)
+    {
+        var policy = blocklessState == DriveState.Offline ? ProducerPolicy.Enumeration : ProducerPolicy.Mft;
+        var ready = new IndexedDrive('T', _treeRoot, 1, policy);
+        var blockless = new IndexedDrive(duplicateLetter,
+            blocklessState == DriveState.Offline ? Path.Combine(_treeRoot, "absent") : _treeRoot, 2, policy);
+        var producer = new SyntheticMftProducer(_ => [new SyntheticRow(5, "", 5) { IsDirectory = true }]);
+        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
+        {
+            Drives = blocklessFirst ? [blockless, ready] : [ready, blockless],
+            NoCache = true,
+            MftSource = new MftIndexSource((request, cancellationToken) => request.VolumeSerial == blockless.VolumeSerial
+                ? Task.FromException<MftBlockProduceResult>(new InvalidOperationException("duplicate configuration failed"))
+                : producer.Producer(request, cancellationToken))
+        }, CancellationToken.None);
+
+        Assert.AreEqual(2, index.Drives.Count);
+        foreach (var status in index.Drives)
+        {
+            Assert.AreEqual(DriveState.Ready, status.State);
+            Assert.IsNotNull(status.Block);
+        }
+
+        Assert.AreEqual(_treeRoot, index.Find(_treeRoot)!.Value.Path);
+        Assert.AreEqual(_treeRoot, index.Root(driveLetter).Path);
+    }
+
+    [DataTestMethod]
+    [DataRow(DriveState.Failed, 'T', "normal")]
+    [DataRow(DriveState.Failed, 't', "normal")]
+    [DataRow(DriveState.Offline, 'T', "normal")]
+    [DataRow(DriveState.Offline, 't', "normal")]
+    [DataRow(DriveState.Failed, 'T', "rescan")]
+    [DataRow(DriveState.Failed, 't', "rescan")]
+    [DataRow(DriveState.Failed, 'T', "dispose-at-admission")]
+    [DataRow(DriveState.Failed, 't', "dispose-at-admission")]
+    [DataRow(DriveState.Failed, 'T', "dispose-at-drive-read")]
+    [DataRow(DriveState.Failed, 't', "dispose-at-drive-read")]
+    public async Task Root_ConfiguredDriveWithoutBlock_ReportsCurrentState(DriveState state, char driveLetter,
+        string scenario)
+    {
+        var canProduce = false;
+        var producer = new SyntheticMftProducer(_ => [new SyntheticRow(5, "", 5) { IsDirectory = true }])
+        {
+            BeforeProduceAsync = (_, _) => canProduce
+                ? Task.CompletedTask
+                : Task.FromException(new InvalidOperationException("production is disabled"))
+        };
+        var index = await FileIndex.OpenAsync(new FileIndexOptions
+        {
+            Drives = [new IndexedDrive('T', state == DriveState.Offline ? Path.Combine(_treeRoot, "absent") : _treeRoot, 1)],
+            NoCache = true,
+            MftSource = SyntheticIndexSource.Create(producer)
+        }, CancellationToken.None);
+
+        try
+        {
+            var status = index.Drives.Single();
+            Assert.AreEqual(state, status.State);
+            Assert.IsNull(status.Block);
+
+            Exception outcome;
+            if (scenario == "rescan")
+            {
+                outcome = await RootAfterAdmissionAsync(index, driveLetter, async () =>
+                {
+                    canProduce = true;
+                    await index.RescanAsync('T', CancellationToken.None);
+                    Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
+                    Assert.IsNotNull(index.Drives.Single().Block);
+                });
+            }
+            else if (scenario.StartsWith("dispose-", StringComparison.Ordinal))
+            {
+                outcome = await RootAcrossDisposalAsync(index, driveLetter, scenario == "dispose-at-drive-read");
+                if (scenario == "dispose-at-admission")
+                {
+                    Assert.IsInstanceOfType<OperationCanceledException>(outcome);
+                    return;
+                }
+            }
+            else
+            {
+                outcome = RootFailure(index, driveLetter);
+            }
+
+            Assert.IsInstanceOfType<ArgumentException>(outcome);
+            var exception = (ArgumentException)outcome;
+            StringAssert.Contains(exception.Message, $"Drive {driveLetter} has no block (state: {state}).");
+            Assert.IsFalse(exception.Message.Contains("not part of this index", StringComparison.Ordinal));
+            Assert.AreEqual(nameof(driveLetter), exception.ParamName);
+        }
+        finally
+        {
+            await index.DisposeAsync();
+        }
+    }
+
+    [DataTestMethod]
+    [DataRow('Z', "normal")]
+    [DataRow('z', "normal")]
+    [DataRow('Z', "dispose-at-admission")]
+    [DataRow('z', "dispose-at-admission")]
+    [DataRow('Z', "dispose-at-drive-read")]
+    [DataRow('z', "dispose-at-drive-read")]
+    public async Task Root_UnconfiguredDrive_ReportsNotPartOfIndex(char driveLetter, string scenario)
+    {
+        var outcome = scenario == "normal"
+            ? RootFailure(_index, driveLetter)
+            : await RootAcrossDisposalAsync(_index, driveLetter, scenario == "dispose-at-drive-read");
+        if (scenario == "dispose-at-admission")
+        {
+            Assert.IsInstanceOfType<OperationCanceledException>(outcome);
+            return;
+        }
+
+        Assert.IsInstanceOfType<ArgumentException>(outcome);
+        var exception = (ArgumentException)outcome;
+        Assert.AreEqual(new ArgumentException($"Drive {driveLetter} is not part of this index.", nameof(driveLetter)).Message,
+            exception.Message);
+        Assert.AreEqual(nameof(driveLetter), exception.ParamName);
+    }
+
+    static Exception RootFailure(FileIndex index, char driveLetter, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _ = index.Root(driveLetter, cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            return exception;
+        }
+
+        Assert.Fail("Root unexpectedly returned an entry for a missing block.");
+        throw new AssertFailedException();
+    }
+
+    static async Task<Exception> RootAfterAdmissionAsync(FileIndex index, char driveLetter, Func<Task> afterAdmission,
+        CancellationToken cancellationToken = default)
+    {
+        var admitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var released = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var snapshot = index.CurrentSnapshot;
+        snapshot.ReleaseState._readerAdmittedForTest = () =>
+        {
+            admitted.TrySetResult();
+            released.Task.GetAwaiter().GetResult();
+        };
+        var reader = Task.Run(() => RootFailure(index, driveLetter, cancellationToken));
+        try
+        {
+            await admitted.Task;
+            Assert.AreEqual(1, snapshot.ReleaseState.OutstandingBorrowCount);
+            await afterAdmission();
+        }
+        finally
+        {
+            released.TrySetResult();
+            await reader;
+            snapshot.ReleaseState._readerAdmittedForTest = null;
+        }
+
+        return await reader;
+    }
+
+    static async Task<Exception> RootAcrossDisposalAsync(FileIndex index, char driveLetter, bool atDriveRead)
+    {
+        using var callerCancellation = new CancellationTokenSource();
+        var cancellationDelivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task? disposal = null;
+        index.LifecycleGatesTakenForDisposalForTest = () => cancellationDelivered.TrySetResult();
+        index.DrivesReadBeforeLockForTest = () =>
+        {
+            disposal = index.DisposeAsync().AsTask();
+            cancellationDelivered.Task.GetAwaiter().GetResult();
+        };
+        try
+        {
+            return await RootAfterAdmissionAsync(index, driveLetter, async () =>
+            {
+                if (!atDriveRead)
+                {
+                    disposal = index.DisposeAsync().AsTask();
+                    await cancellationDelivered.Task;
+                    Assert.IsFalse(disposal.IsCompleted, "Disposal must wait for the admitted Root's borrow.");
+                }
+            }, callerCancellation.Token);
+        }
+        finally
+        {
+            index.DrivesReadBeforeLockForTest = null;
+            index.LifecycleGatesTakenForDisposalForTest = null;
+            await (disposal ?? index.DisposeAsync().AsTask());
+            Assert.IsFalse(callerCancellation.IsCancellationRequested);
+        }
     }
 
     [TestMethod]

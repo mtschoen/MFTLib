@@ -150,8 +150,27 @@ public sealed partial class FileIndex
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
     public FileEntry Root(char driveLetter, CancellationToken cancellationToken = default)
     {
-        using var query = BeginQuery(cancellationToken);
-        return LookupEngine.Root(query.Snapshot, driveLetter, query.CancellationToken);
+        QueryScope query;
+        DriveState? blocklessDriveState;
+        lock (_stateLock)
+        {
+            blocklessDriveState = _blocklessDriveStatuses.FirstOrDefault(drive =>
+                char.ToUpperInvariant(drive.DriveLetter) == char.ToUpperInvariant(driveLetter))?.State;
+            query = AdmitQuery(cancellationToken);
+        }
+
+        using (query)
+        {
+            query.Snapshot.ReleaseState._readerAdmittedForTest?.Invoke();
+            query.CancellationToken.ThrowIfCancellationRequested();
+            if (query.Snapshot.FindDriveBlock(driveLetter) is null && blocklessDriveState is { } state)
+            {
+                throw new ArgumentException($"Drive {driveLetter} has no block (state: {state}).",
+                    nameof(driveLetter));
+            }
+
+            return LookupEngine.Root(query.Snapshot, driveLetter, query.CancellationToken);
+        }
     }
 
     /// <summary>
