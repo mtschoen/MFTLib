@@ -10,7 +10,7 @@ namespace MFTLib.Index;
 ///     mapped memory or, when disposal began first, fails with <see cref="ObjectDisposedException" />
 ///     instead of dereferencing an unmapped view.
 /// </summary>
-internal sealed class BlockWriter
+internal sealed partial class BlockWriter
 {
     /// <summary>Initializes a writer for one mapped block.</summary>
     /// <param name="block">Block that receives rows, names, and header updates.</param>
@@ -46,6 +46,16 @@ internal sealed class BlockWriter
         {
             using var access = Block.TakeAccess();
             return Block.Header.RowCount;
+        }
+    }
+
+    /// <summary>The row slot count fixed at creation; a journal record for a record number at or past it cannot be stored.</summary>
+    public uint SlotCapacity
+    {
+        get
+        {
+            using var access = Block.TakeAccess();
+            return Block.Header.SlotCapacity;
         }
     }
 

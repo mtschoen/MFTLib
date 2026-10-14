@@ -119,7 +119,9 @@ public class JournalCloseCoalescingLiveTests
             "One real delete must raise exactly one Deleted change.");
         Assert.IsTrue(fixture.Block.Rows[20].IsDeleted);
         Assert.IsNotNull(lastContentClose, "Expected a close record for the create-write cycle.");
-        Assert.AreEqual(lastContentClose.Value.Ticks, ticksAfterLastContentClose,
-            "The row must take the close record's timestamp even though its change was coalesced.");
+        Assert.AreEqual(0L, ticksAfterLastContentClose,
+            "The close record's timestamp must never be written into the last-write column.");
+        Assert.IsFalse(fixture.Block.Rows[20].LastWriteTimeKnown,
+            "The create-write cycle invalidated the last-write observation and no scan restored it.");
     }
 }

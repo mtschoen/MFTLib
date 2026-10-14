@@ -144,6 +144,8 @@ public class DirectHostTests
         Assert.IsTrue(lines.Any(line => line.StartsWith("Index holds ", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
         Assert.IsTrue(lines.Contains("Catch-up held; watch supported: False"));
         Assert.IsTrue(lines.Contains("D: 4 live files, 3 live directories, 0 retained deleted rows"), string.Join(Environment.NewLine, lines));
+        Assert.IsTrue(lines.Contains("D: 1 files with unknown size, 0 with unknown last-write time, 0 hidden, newest known last write 2019-04-17 18:40:01Z"),
+            string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]

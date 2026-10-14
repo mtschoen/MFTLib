@@ -156,9 +156,9 @@ Little-endian throughout. Every region boundary is 4096-byte aligned.
 | 104 | consumer FourCC | u32 | Four ASCII bytes in source order; zero means unspecified when version is also zero |
 | 108 | consumer version | u32 | Opaque consumer-owned version; compared exactly |
 
-The format version is 3. The declared header ends at byte 112; the header
+The format version is 4. The declared header ends at byte 112; the header
 region remains one 4096-byte page and every existing field retains its offset.
-Version-2 blocks fail the existing format check and are rebuilt on the next
+Blocks of an earlier version, which cannot say whether a last-write time is an observation, fail the existing format check and are rebuilt on the next
 normal open. Cache-only opens cannot rebuild them and decline the drive.
 
 The complete flag is written last. A producer that dies mid-write leaves a block
@@ -214,9 +214,25 @@ is no lookup table.
 | 4 | attributes | u32 | NTFS file attributes |
 | 8 | name offset | u32 | Bytes into the name pool (descriptor word low 32 bits) |
 | 12 | name length | u16 | UTF-16 code units (descriptor word bits 32..47) |
-| 14 | row flags | u16 | 1 in use, 2 directory, 4 tombstone, 8 size unknown, 16 subtree skipped (descriptor word bits 48..63) |
+| 14 | row flags | u16 | 1 in use, 2 directory, 4 tombstone, 8 size unknown, 16 subtree skipped, 32 last-write time unknown (descriptor word bits 48..63) |
 | 16 | size | i64 | Bytes; zero for directories and size-unknown rows |
-| 24 | modified | i64 | UTC ticks |
+| 24 | modified | i64 | UTC ticks of the last-write time a scan observed; zero for last-write-unknown rows |
+
+The size and modified columns hold only what a producer observed. A journal record carries neither a size nor
+a last-write time, only its own event time (`FileChange.Timestamp`), which is never stored in the row. The
+journal therefore marks observations unknown instead of replacing them, and a row flagged unknown reads
+`DateTime.MinValue` as its last-write time:
+
+| Journal event | Size | Modified | Attributes |
+| --- | --- | --- | --- |
+| Create, or hydration of a row the index never had | zero, size unknown | zero, last-write unknown | from the record |
+| `DataOverwrite`, `DataExtend` or `DataTruncation` | zero, size unknown | zero, last-write unknown | from the record |
+| `BasicInfoChange` | kept, with its flag | zero, last-write unknown | from the record |
+| Rename, move, close, any other reason | kept, with its flag | kept, with its flag | from the record |
+
+A reason a record repeats from its open cycle never invalidates twice, and a close record that reports nothing new
+only refreshes the attributes. A rescan writes fresh observations and clears both flags. A last-write range
+query excludes every row flagged last-write-unknown, as a size range query excludes size-unknown rows.
 
 A deleted row has the in-use and tombstone flags together, whatever deleted it: a journal delete sets
 tombstone on a live row, and a scan that imports freed records writes the same two flags, so
@@ -317,7 +333,7 @@ Journal mutation coalesces NTFS close records. NTFS ends every open cycle with a
 that repeats the cycle's reasons plus `USN_REASON_CLOSE`, and the watch reads with
 `ReturnOnlyOnClose = 0`, so every intermediate record arrives. `JournalMutator` tracks,
 per drive block, the reasons each row's open cycle already reported; a close record that
-adds no new reason restamps the row's `ModifiedTicks` and attributes without emitting a
+adds no new reason refreshes the row's attributes without emitting a
 second change, so one real transition raises one change. Writes inside the create cycle (records
 whose reasons still include `USN_REASON_FILE_CREATE` before the cycle's close) are part of the
 creation and raise no extra changes, so a create-write-close cycle emits only `Created`.

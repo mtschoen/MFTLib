@@ -48,7 +48,7 @@ public class CacheTagStorageTests
         var tag = unspecified ? default : new CacheTag("GITW", 7);
         WriteBlock(tag);
         var bytes = File.ReadAllBytes(BlockPath);
-        Assert.AreEqual(3u, BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(4, 4)));
+        Assert.AreEqual(4u, BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(4, 4)));
         Assert.AreEqual(112, Marshal.SizeOf<BlockHeader>());
         Assert.AreEqual(104, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.CacheTagFourCc)));
         Assert.AreEqual(108, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.CacheTagVersion)));

@@ -10,7 +10,7 @@ what would justify revisiting it.
 
 ## Metadata reports observations and freshness without hidden reads
 
-**Decision (2026-10-14, implementation pending
+**Decision (2026-10-14,
 [MFTLib issue 503 (metadata freshness)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/503)):**
 the index reports the filesystem metadata it actually observed and its freshness, without implicit filesystem
 reads to refresh it. A journal event's timestamp is event time (`FileChange.Timestamp`), not a filesystem
@@ -20,13 +20,21 @@ exposes `LastWriteTime` and `Attributes` for full row-column parity with `FileEn
 `LastWriteTimeUnknown` read `LastWriteTime == DateTime.MinValue` and are excluded when `SearchQuery` specifies
 `LastWriteTimeMinimum` or `LastWriteTimeMaximum`, matching `SizeUnknown`.
 
+The journal applies these freshness rules, all through `BlockWriter` under the block's access scope with the
+descriptor word written atomically. A create or hydration of an unseen row, and a content modification
+(`DataOverwrite`, `DataExtend`, `DataTruncation`), zero the size and last-write columns and set both unknown
+flags. `BasicInfoChange` zeroes the last-write column, sets
+`LastWriteTimeUnknown` and keeps the size with its flag. Rename, move, close and every other reason update the
+parent, name and attributes only. The enumeration producer stamps root row 0 with the root directory's real
+attributes and last-write time, or sets `LastWriteTimeUnknown` when the directory cannot be read; it never
+reads the clock. A rescan writes fresh observations and clears the flags.
+
 **Reason:** the owner wants fast read-only queries and explicitly chose honest freshness over hidden reads, plus
 full `IndexRow` column parity so row loops never need `ToEntry()` just to inspect `LastWriteTime`,
 `IsLastWriteTimeKnown`, or `Attributes`. The audit reproduced a rename replacing a scanned 2020 last-write value
 with the rename's 2026 event time, which then matched a recent-write query. Journal-created entries also lack
 metadata the journal does not carry, and journal modifications (`DataOverwrite`, `DataExtend`, `DataTruncation`,
-`BasicInfoChange`) invalidate previously scanned metadata until the next scan. Until implemented, the current
-journal mutation does not meet this ruling.
+`BasicInfoChange`) invalidate previously scanned metadata until the next scan.
 
 **Revisit only if:** consumers explicitly request a separately identified metadata-refresh operation or need
 freshness information that the observation/invalidation model cannot express.

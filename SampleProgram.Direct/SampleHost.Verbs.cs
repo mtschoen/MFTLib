@@ -44,6 +44,7 @@ partial class SampleHost
     void WriteInventory(FileIndex index, CancellationToken cancellationToken)
     {
         var counts = new Dictionary<DriveKey, (long Files, long Directories, long Deleted)>();
+        var freshness = new Dictionary<DriveKey, (long UnknownSize, long UnknownLastWrite, long Hidden, DateTime Newest)>();
         foreach (var row in index.EnumerateRows(new SearchQuery(null, IncludeDeleted: true), cancellationToken))
         {
             counts.TryGetValue(row.Drive, out var count);
@@ -58,6 +59,12 @@ partial class SampleHost
             else
             {
                 count.Files++;
+                freshness.TryGetValue(row.Drive, out var seen);
+                seen.UnknownSize += row.IsSizeKnown ? 0 : 1;
+                seen.UnknownLastWrite += row.IsLastWriteTimeKnown ? 0 : 1;
+                seen.Hidden += (row.Attributes & FileAttributes.Hidden) != 0 ? 1 : 0;
+                seen.Newest = row.IsLastWriteTimeKnown && row.LastWriteTime > seen.Newest ? row.LastWriteTime : seen.Newest;
+                freshness[row.Drive] = seen;
             }
 
             counts[row.Drive] = count;
@@ -68,6 +75,8 @@ partial class SampleHost
             cancellationToken.ThrowIfCancellationRequested();
             counts.TryGetValue(drive.Drive, out var count);
             _writeLine($"{drive.Drive.Letter}: {count.Files} live files, {count.Directories} live directories, {count.Deleted} retained deleted rows");
+            freshness.TryGetValue(drive.Drive, out var seen);
+            _writeLine($"{drive.Drive.Letter}: {seen.UnknownSize} files with unknown size, {seen.UnknownLastWrite} with unknown last-write time, {seen.Hidden} hidden, newest known last write {seen.Newest:u}");
         }
     }
 
@@ -155,7 +164,7 @@ partial class SampleHost
     void OpenFile(FileEntry entry)
     {
         var key = entry.RecordKey;
-        _writeLine($"{entry.Path}: record {key.RecordNumber} on {key.Drive} ({key.ProducerKind}), {entry.Attributes}, modified {entry.LastWriteTime:u}, parent {entry.Parent?.Path}, valid {entry.IsValid}, disposed {entry.IsDisposed}");
+        _writeLine($"{entry.Path}: record {key.RecordNumber} on {key.Drive} ({key.ProducerKind}), {entry.Attributes}, modified {entry.LastWriteTime:u} (known {entry.IsLastWriteTimeKnown}), parent {entry.Parent?.Path}, valid {entry.IsValid}, disposed {entry.IsDisposed}");
         using var stream = OpenOrDescribe(entry);
         var buffer = new byte[16];
         var read = stream.Read(buffer, 0, buffer.Length);

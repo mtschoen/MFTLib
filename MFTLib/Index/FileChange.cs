@@ -8,8 +8,10 @@ namespace MFTLib.Index;
 ///     <see cref="Timestamp" /> is the UTC timestamp of the USN journal record that
 ///     produced this change, captured at the mutation like <see cref="Path" />: it does
 ///     not move when a later record in the same batch (including a coalesced close record)
-///     restamps the row, and a delete's timestamp survives the tombstone, so it is the when of
-///     the change rather than the row's current <see cref="FileEntry.LastWriteTime" />.
+///     touches the row, and a delete's timestamp survives the tombstone, so it is the event time of
+///     the change. It is never the file's last-write time: a journal record carries no such
+///     observation, so the entry reports <see cref="FileEntry.LastWriteTime" /> as scanned or marks
+///     <see cref="FileEntry.IsLastWriteTimeKnown" /> false.
 /// </summary>
 public sealed record FileChange
 {

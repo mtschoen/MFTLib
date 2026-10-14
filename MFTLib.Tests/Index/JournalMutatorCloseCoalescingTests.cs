@@ -31,8 +31,9 @@ public class JournalMutatorCloseCoalescingTests
         Assert.AreEqual(1, first.Count);
         Assert.AreEqual(FileChangeKind.Created, first[0].Kind);
         Assert.AreEqual(0, second.Count);
-        // The close record's metadata still lands on the row and advances generation.
-        Assert.AreEqual(closeMoment.Ticks, fixture.Block.Rows[9].ModifiedTicks);
+        // The close record's attributes still land on the row and advance generation; its time never does.
+        Assert.IsFalse(fixture.Block.Rows[9].LastWriteTimeKnown);
+        Assert.AreEqual(0L, fixture.Block.Rows[9].ModifiedTicks);
         Assert.AreEqual((uint)(FileAttributes.Archive | FileAttributes.ReadOnly),
             fixture.Block.Rows[9].Attributes);
         Assert.AreEqual(generationAfterCreate + 1, fixture.Block.Header.Generation,
@@ -53,8 +54,10 @@ public class JournalMutatorCloseCoalescingTests
         Assert.AreEqual(1, first.Count);
         Assert.AreEqual(FileChangeKind.Modified, first[0].Kind);
         Assert.AreEqual(0, second.Count);
-        Assert.AreEqual(closeMoment.Ticks, fixture.Block.Rows[7].ModifiedTicks);
-        Assert.AreEqual(99L, fixture.Block.Rows[7].Size);
+        Assert.IsFalse(fixture.Block.Rows[7].LastWriteTimeKnown);
+        Assert.AreEqual(0L, fixture.Block.Rows[7].ModifiedTicks);
+        Assert.IsFalse(fixture.Block.Rows[7].SizeKnown);
+        Assert.AreEqual(0L, fixture.Block.Rows[7].Size);
     }
 
     [TestMethod]
@@ -88,7 +91,8 @@ public class JournalMutatorCloseCoalescingTests
 
         CollectionAssert.AreEqual(new[] { FileChangeKind.Created },
             changes.Select(change => change.Kind).ToArray());
-        Assert.AreEqual(closeMoment.Ticks, fixture.Block.Rows[9].ModifiedTicks);
+        Assert.IsFalse(fixture.Block.Rows[9].LastWriteTimeKnown);
+        Assert.AreEqual(0L, fixture.Block.Rows[9].ModifiedTicks);
     }
 
     [TestMethod]
@@ -119,7 +123,8 @@ public class JournalMutatorCloseCoalescingTests
             UsnReason.FileCreate | UsnReason.DataExtend | UsnReason.Close,
             closeMoment, sequenceNumber: 3, FileAttributes.Archive | FileAttributes.ReadOnly)]);
         Assert.AreEqual(0, third.Count, "Close record must not emit duplicate change.");
-        Assert.AreEqual(closeMoment.Ticks, fixture.Block.Rows[9].ModifiedTicks);
+        Assert.IsFalse(fixture.Block.Rows[9].LastWriteTimeKnown);
+        Assert.AreEqual(0L, fixture.Block.Rows[9].ModifiedTicks);
         Assert.AreEqual((uint)(FileAttributes.Archive | FileAttributes.ReadOnly),
             fixture.Block.Rows[9].Attributes);
         var generationAfterClose = fixture.Block.Header.Generation;
@@ -146,7 +151,8 @@ public class JournalMutatorCloseCoalescingTests
 
         Assert.AreEqual(1, first.Count);
         Assert.AreEqual(0, second.Count);
-        Assert.AreEqual(fixture.Timestamp.Ticks, fixture.Block.Rows[7].ModifiedTicks);
+        Assert.IsFalse(fixture.Block.Rows[7].LastWriteTimeKnown);
+        Assert.AreEqual(0L, fixture.Block.Rows[7].ModifiedTicks);
     }
 
     [TestMethod]
@@ -216,8 +222,9 @@ public class JournalMutatorCloseCoalescingTests
             "The close record repeats the second rename's name and parent, so it is the echo.");
         Assert.AreEqual("second.txt", new string(NamePool.ReadRowName(fixture.Block, 7)));
         Assert.AreEqual(5u, fixture.Block.Rows[7].ParentRow);
-        // The close record still restamps the row's metadata without a change event.
-        Assert.AreEqual(closeMoment.Ticks, fixture.Block.Rows[7].ModifiedTicks);
+        // The close record leaves the scanned last-write observation alone and raises no change event.
+        Assert.IsTrue(fixture.Block.Rows[7].LastWriteTimeKnown);
+        Assert.AreEqual(new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc).Ticks, fixture.Block.Rows[7].ModifiedTicks);
     }
 
     [TestMethod]

@@ -164,8 +164,13 @@ public static class SyntheticBlock
             flags |= RowFlags.SizeUnknown;
         }
 
+        if (row.IsLastWriteTimeUnknown)
+        {
+            flags |= RowFlags.LastWriteTimeUnknown;
+        }
+
         var columns = new RowColumns(row.ParentRow, flags, (uint)row.Attributes, row.Size ?? 0,
-            row.LastWriteTime.Ticks, row.SequenceNumber);
+            row.IsLastWriteTimeUnknown ? 0 : row.LastWriteTime.Ticks, row.SequenceNumber);
         if (!writer.TryWriteRow(row.Row, row.Name, columns))
         {
             throw new InvalidOperationException(
@@ -183,6 +188,7 @@ public static class SyntheticBlock
             Attributes = (FileAttributes)stored.Attributes,
             Size = stored.SizeKnown ? stored.Size : null,
             LastWriteTime = stored.ModifiedUtc,
+            IsLastWriteTimeUnknown = !stored.LastWriteTimeKnown,
             SequenceNumber = block.SequenceNumbers[(int)row]
         };
     }

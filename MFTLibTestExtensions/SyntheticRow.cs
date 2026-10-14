@@ -29,8 +29,14 @@ public sealed record SyntheticRow(uint Row, string Name, uint ParentRow)
     /// <summary>The size in bytes, or null when the producer could not determine it.</summary>
     public long? Size { get; init; } = 0;
 
-    /// <summary>The last write time. Only its UTC ticks are stored.</summary>
+    /// <summary>The last write time. Only its UTC ticks are stored. Ignored when <see cref="IsLastWriteTimeUnknown" /> is set.</summary>
     public DateTime LastWriteTime { get; init; }
+
+    /// <summary>
+    ///     True writes the last-write-time-unknown flag, the way a journal-created row or a row whose basic
+    ///     information the journal reported changed is stored. The row then reads <see cref="DateTime.MinValue" />.
+    /// </summary>
+    public bool IsLastWriteTimeUnknown { get; init; }
 
     /// <summary>The NTFS record sequence number, or zero.</summary>
     public ushort SequenceNumber { get; init; }

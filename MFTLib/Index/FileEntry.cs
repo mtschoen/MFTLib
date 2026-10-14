@@ -99,15 +99,26 @@ public readonly partial record struct FileEntry
 
     /// <summary>
     ///     Gets the file length in bytes, or zero for directories and unknown sizes. This is the length the
-    ///     last scan produced: a live data-change event leaves it untouched, so rescan or read the file for a current length.
+    ///     last scan produced. A journal content change or a journal-created row makes the size unknown instead of
+    ///     leaving a stale value, so rescan or read the file for a current length.
     /// </summary>
     public long Size => Row.Size;
 
     /// <summary>Determines whether <see cref="Size" /> is known.</summary>
     public bool IsSizeKnown => Row.SizeKnown;
 
-    /// <summary>Gets the last-write time in UTC.</summary>
+    /// <summary>
+    ///     Gets the last-write time in UTC, as the last scan observed it, or <see cref="DateTime.MinValue" /> when
+    ///     <see cref="IsLastWriteTimeKnown" /> is false. A journal event never writes its own time here: it marks the
+    ///     value unknown instead, so a known value is always a file system observation.
+    /// </summary>
     public DateTime LastWriteTime => Row.ModifiedUtc;
+
+    /// <summary>
+    ///     Determines whether <see cref="LastWriteTime" /> is a file system observation. A row the journal created, or
+    ///     whose content or basic information the journal reported changed, is unknown until a rescan observes it.
+    /// </summary>
+    public bool IsLastWriteTimeKnown => Row.LastWriteTimeKnown;
 
     /// <summary>Gets the attribute flags captured in this snapshot, which can be stale after a later change.</summary>
     public FileAttributes Attributes => (FileAttributes)Row.Attributes;

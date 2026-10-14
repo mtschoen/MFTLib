@@ -72,7 +72,8 @@ public partial class JournalMutatorTests
         Assert.IsTrue(_block.Rows[5].IsInUse);
         Assert.IsFalse(_block.Rows[5].SizeKnown);
         Assert.IsFalse(changes[0].Entry.IsSizeKnown);
-        Assert.AreEqual(ChangeMoment.Ticks, _block.Rows[5].ModifiedTicks);
+        Assert.IsFalse(changes[0].Entry.IsLastWriteTimeKnown);
+        Assert.AreEqual(0L, _block.Rows[5].ModifiedTicks);
     }
 
     [TestMethod]
@@ -240,7 +241,7 @@ public partial class JournalMutatorTests
     }
 
     [TestMethod]
-    public void DataChange_UpdatesTheModifiedColumnAndReportsModified()
+    public void DataChange_InvalidatesTheSizeAndLastWriteTimeAndReportsModified()
     {
         var mutator = new JournalMutator(_writer);
         var changes = mutator.Apply(_snapshot, 0,
@@ -248,8 +249,10 @@ public partial class JournalMutatorTests
             journalIdentifier: 7, nextUsn: 2000);
 
         Assert.AreEqual(FileChangeKind.Modified, changes[0].Kind);
-        Assert.AreEqual(ChangeMoment.Ticks, _block.Rows[2].ModifiedTicks);
-        Assert.AreEqual(100L, _block.Rows[2].Size);
+        Assert.IsFalse(_block.Rows[2].LastWriteTimeKnown);
+        Assert.AreEqual(0L, _block.Rows[2].ModifiedTicks);
+        Assert.IsFalse(_block.Rows[2].SizeKnown);
+        Assert.AreEqual(0L, _block.Rows[2].Size);
     }
 
     [TestMethod]
@@ -296,7 +299,7 @@ public partial class JournalMutatorTests
     }
 
     [TestMethod]
-    public void Create_OfADirectory_SetsTheDirectoryFlagRatherThanSizeUnknown()
+    public void Create_OfADirectory_SetsTheDirectoryFlagAndLeavesSizeUnknown()
     {
         var mutator = new JournalMutator(_writer);
         var changes = mutator.Apply(_snapshot, 0,
@@ -306,7 +309,7 @@ public partial class JournalMutatorTests
 
         Assert.AreEqual(1, changes.Count);
         Assert.IsTrue(_block.Rows[5].IsDirectory);
-        Assert.IsTrue(_block.Rows[5].SizeKnown);
+        Assert.IsFalse(_block.Rows[5].SizeKnown);
     }
 
     [TestMethod]
@@ -381,7 +384,8 @@ public partial class JournalMutatorTests
         Assert.AreEqual((uint)FileAttributes.Archive, _block.Rows[2].Attributes);
         Assert.AreEqual(0L, _block.Rows[2].Size);
         Assert.IsFalse(_block.Rows[2].SizeKnown);
-        Assert.AreEqual(ChangeMoment.Ticks, _block.Rows[2].ModifiedTicks);
+        Assert.IsFalse(_block.Rows[2].LastWriteTimeKnown);
+        Assert.AreEqual(0L, _block.Rows[2].ModifiedTicks);
         Assert.AreEqual(fileName, new string(NamePool.ReadRowName(_block, 2)));
     }
 }

@@ -95,10 +95,7 @@ internal sealed class EnumerationProducer
         cancellationToken.ThrowIfCancellationRequested();
 
         var state = new WalkState(writer);
-        writer.TryWriteRow(0, Options.RootDirectory,
-            new RowColumns(ParentRow: 0, RowFlags.InUse | RowFlags.Directory,
-                (uint)FileAttributes.Directory, Size: 0, DateTime.UtcNow.Ticks,
-                SequenceNumber: 0)); // Enumeration has no NTFS sequence number.
+        writer.TryWriteRow(0, Options.RootDirectory, ReadRootColumns(Options.RootDirectory));
         state.NextRow = 1;
 
         var pending = new Queue<(string Path, uint RowIndex)>();
@@ -124,6 +121,40 @@ internal sealed class EnumerationProducer
         }
 
         return new EnumerationResult(writer.RowCount, state.AccessDeniedSubtreeCount, writer.CompactionNeeded);
+    }
+
+    /// <summary>
+    ///     The root row's columns, observed from the root directory itself: its real attributes and last-write
+    ///     time. A root that cannot be read still gets a row, with the last-write time marked unknown, because the
+    ///     walk that follows reports the unreadable directory as a skipped subtree. The clock is never consulted.
+    /// </summary>
+    static RowColumns ReadRootColumns(string rootDirectory)
+    {
+        var flags = RowFlags.InUse | RowFlags.Directory;
+        var attributes = FileAttributes.Directory;
+        var modifiedTicks = 0L;
+        try
+        {
+            // A missing directory reads as the 1601 epoch with no exception, which is not an observation.
+            var information = new DirectoryInfo(rootDirectory);
+            if (information.Exists)
+            {
+                attributes = information.Attributes | FileAttributes.Directory;
+                modifiedTicks = information.LastWriteTimeUtc.Ticks;
+            }
+            else
+            {
+                flags |= RowFlags.LastWriteTimeUnknown;
+            }
+        }
+        catch (Exception exception) when (exception is UnauthorizedAccessException or IOException
+                                              or ArgumentException or NotSupportedException)
+        {
+            flags |= RowFlags.LastWriteTimeUnknown;
+        }
+
+        return new RowColumns(ParentRow: 0, flags, (uint)attributes, Size: 0, modifiedTicks,
+            SequenceNumber: 0); // Enumeration has no NTFS sequence number.
     }
 
     internal static EnumerationOptions CreateDirectoryEnumerationOptions()

@@ -33,7 +33,7 @@ internal struct FileRow
     /// <summary>Size in bytes. Directories carry zero, as do rows with the size-unknown flag.</summary>
     [FieldOffset(16)] public long Size;
 
-    /// <summary>Last-write time as UTC <see cref="DateTime.Ticks" />.</summary>
+    /// <summary>Last-write time as UTC <see cref="DateTime.Ticks" />. Zero when the last-write time is unknown.</summary>
     [FieldOffset(24)] public long ModifiedTicks;
 
     /// <summary>Determines whether this slot contains a live or tombstoned row.</summary>
@@ -48,11 +48,17 @@ internal struct FileRow
     /// <summary>Determines whether <see cref="Size" /> is known.</summary>
     public readonly bool SizeKnown => (Flags & RowFlags.SizeUnknown) == 0;
 
+    /// <summary>Determines whether <see cref="ModifiedTicks" /> is a file system observation.</summary>
+    public readonly bool LastWriteTimeKnown => (Flags & RowFlags.LastWriteTimeUnknown) == 0;
+
     /// <summary>Determines whether enumeration skipped this directory's subtree after an access denial.</summary>
     public readonly bool SubtreeSkipped => (Flags & RowFlags.SubtreeSkipped) != 0;
 
-    /// <summary>Converts <see cref="ModifiedTicks" /> to a UTC <see cref="DateTime" />.</summary>
-    public readonly DateTime ModifiedUtc => new(ModifiedTicks, DateTimeKind.Utc);
+    /// <summary>
+    ///     Converts <see cref="ModifiedTicks" /> to a UTC <see cref="DateTime" />, or <see cref="DateTime.MinValue" />
+    ///     when the last-write time is unknown.
+    /// </summary>
+    public readonly DateTime ModifiedUtc => LastWriteTimeKnown ? new(ModifiedTicks, DateTimeKind.Utc) : DateTime.MinValue;
 
     /// <summary>
     ///     Reads the name offset, name length, and flags as one 64-bit value. The read is atomic

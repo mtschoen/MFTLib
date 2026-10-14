@@ -233,6 +233,7 @@ MFTLibTestExtensions.SyntheticRow :: method public static op_Inequality(MFTLibTe
 MFTLibTestExtensions.SyntheticRow :: property public Attributes { get; init; } : System.IO.FileAttributes
 MFTLibTestExtensions.SyntheticRow :: property public IsDirectory { get; init; } : bool
 MFTLibTestExtensions.SyntheticRow :: property public IsFree { get; init; } : bool
+MFTLibTestExtensions.SyntheticRow :: property public IsLastWriteTimeUnknown { get; init; } : bool
 MFTLibTestExtensions.SyntheticRow :: property public IsTombstone { get; init; } : bool
 MFTLibTestExtensions.SyntheticRow :: property public LastWriteTime { get; init; } : System.DateTime
 MFTLibTestExtensions.SyntheticRow :: property public Name { get; init; } : string

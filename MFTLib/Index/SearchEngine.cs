@@ -116,6 +116,18 @@ internal static class SearchEngine
         Justification = "FileRow is explicit-layout and intentionally mutable for field-by-field disk mapping; the in-parameter signature is spec-mandated.")]
     static bool MatchesModifiedBounds(in FileRow row, SearchQuery query)
     {
+        if (query.LastWriteTimeMinimum is null && query.LastWriteTimeMaximum is null)
+        {
+            return true;
+        }
+
+        // An unknown last-write time holds zero, which would satisfy any upper bound and fail any lower
+        // bound by accident, so a bounded query excludes the row outright, as it does for an unknown size.
+        if (!row.LastWriteTimeKnown)
+        {
+            return false;
+        }
+
         if (query.LastWriteTimeMinimum is { } after && row.ModifiedTicks < after.Ticks)
         {
             return false;

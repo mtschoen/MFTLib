@@ -182,9 +182,9 @@ public class BlockHeaderTests
     }
 
     [TestMethod]
-    public void FormatVersion_IsThree()
+    public void FormatVersion_IsFour()
     {
-        Assert.AreEqual(3u, BlockLayout.FormatVersion);
+        Assert.AreEqual(4u, BlockLayout.FormatVersion);
     }
 
     [TestMethod]

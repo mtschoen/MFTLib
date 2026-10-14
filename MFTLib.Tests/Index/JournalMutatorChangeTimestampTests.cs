@@ -6,11 +6,11 @@ namespace MFTLib.Tests.Index;
 
 /// <summary>
 ///     Every <see cref="FileChange" /> carries the timestamp of the USN journal record that
-///     produced it, captured when the mutation was applied. The row's own ModifiedTicks keeps
-///     moving while the batch runs (a coalesced close record restamps it last), so a consumer
-///     reading the row inside the notification cannot recover the originating record's time;
-///     the change carries it instead. A delete's timestamp lives on the change, not the
-///     tombstoned row, so it survives the delete.
+///     produced it, captured when the mutation was applied. The row's last-write column never
+///     holds an event time (it is a file system observation or unknown), so a consumer reading
+///     the row inside the notification cannot recover the originating record's time; the change
+///     carries it instead. A delete's timestamp lives on the change, not the tombstoned row, so
+///     it survives the delete.
 /// </summary>
 [TestClass]
 public class JournalMutatorChangeTimestampTests
@@ -46,9 +46,10 @@ public class JournalMutatorChangeTimestampTests
         Assert.AreEqual(extendMoment, changes[0].Timestamp);
         Assert.AreEqual(infoMoment, changes[1].Timestamp);
 
-        // The close record's metadata still landed on the row, which is exactly why the row
-        // cannot be the source of the change's time.
-        Assert.AreEqual(closeMoment.Ticks, fixture.Block.Rows[7].ModifiedTicks);
+        // No event time lands on the row, which is exactly why the row cannot be the source of
+        // the change's time.
+        Assert.IsFalse(fixture.Block.Rows[7].LastWriteTimeKnown);
+        Assert.AreEqual(0L, fixture.Block.Rows[7].ModifiedTicks);
 
         // The delete's timestamp survives the tombstone because it lives on the change.
         Assert.IsTrue(fixture.Block.Rows[9].IsDeleted);
@@ -73,6 +74,7 @@ public class JournalMutatorChangeTimestampTests
         Assert.AreEqual(createMoment, changes[0].Timestamp);
         Assert.AreEqual(FileChangeKind.Renamed, changes[1].Kind);
         Assert.AreEqual(renameMoment, changes[1].Timestamp);
-        Assert.AreEqual(renameMoment.Ticks, fixture.Block.Rows[9].ModifiedTicks);
+        Assert.IsFalse(fixture.Block.Rows[9].LastWriteTimeKnown);
+        Assert.AreEqual(0L, fixture.Block.Rows[9].ModifiedTicks);
     }
 }

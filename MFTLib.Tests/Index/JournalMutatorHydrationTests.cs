@@ -99,7 +99,7 @@ public class JournalMutatorHydrationTests
     }
 
     [TestMethod]
-    public async Task Hydration_OfADirectoryRow_SetsTheDirectoryFlagRatherThanSizeUnknown()
+    public async Task Hydration_OfADirectoryRow_SetsTheDirectoryFlagAndLeavesSizeUnknown()
     {
         await using var fixture = new MutatorFixture();
         var edited = UsnJournalEntry.Create(new UsnJournalEntryOptions
@@ -117,7 +117,7 @@ public class JournalMutatorHydrationTests
 
         Assert.AreEqual(FileChangeKind.Modified, change.Kind);
         Assert.IsTrue(fixture.Block.Rows[24].IsDirectory);
-        Assert.IsTrue(fixture.Block.Rows[24].SizeKnown);
+        Assert.IsFalse(fixture.Block.Rows[24].SizeKnown);
     }
 
     [TestMethod]

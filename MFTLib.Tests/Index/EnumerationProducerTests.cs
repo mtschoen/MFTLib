@@ -149,6 +149,45 @@ public class EnumerationProducerTests
     }
 
     [TestMethod]
+    public async Task Produce_RootRowCarriesTheRootDirectoriesRealLastWriteTimeAndAttributes()
+    {
+        var rootMoment = new DateTime(2021, 3, 4, 5, 6, 7, DateTimeKind.Utc);
+        Directory.SetLastWriteTimeUtc(_treeRoot, rootMoment);
+        var snapshot = Produce(out var block, out _);
+        try
+        {
+            ref readonly var root = ref block.Rows[0];
+            Assert.IsTrue(root.LastWriteTimeKnown);
+            Assert.AreEqual(rootMoment, root.ModifiedUtc, "The root row must not be stamped with the scan clock.");
+            Assert.AreEqual((uint)(new DirectoryInfo(_treeRoot).Attributes | FileAttributes.Directory), root.Attributes);
+        }
+        finally
+        {
+            await snapshot.ReleaseNowAsync();
+        }
+    }
+
+    [TestMethod]
+    public async Task Produce_UnreadableRoot_MarksTheRootLastWriteTimeUnknownInsteadOfStampingTheClock()
+    {
+        var existingRoot = _treeRoot;
+        _treeRoot = Path.Combine(existingRoot, "missing");
+        var snapshot = Produce(out var block, out _);
+        try
+        {
+            ref readonly var root = ref block.Rows[0];
+            Assert.IsFalse(root.LastWriteTimeKnown);
+            Assert.AreEqual(0L, root.ModifiedTicks);
+            Assert.IsTrue(root.IsDirectory);
+        }
+        finally
+        {
+            _treeRoot = existingRoot;
+            await snapshot.ReleaseNowAsync();
+        }
+    }
+
+    [TestMethod]
     public async Task Produce_ProducerKindOnTheBlockIsEnumerationSoIdsCarryThatKind()
     {
         var snapshot = Produce(out _, out _);

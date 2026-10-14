@@ -78,6 +78,19 @@ public class BlockFileTests
     }
 
     [TestMethod]
+    public void Open_PreviousFormatVersion_IsRejected()
+    {
+        using var builder = new SyntheticBlockBuilder();
+        builder.AddRoot();
+        builder.Complete(ScanMoment);
+        builder.MutateHeader((ref header) => header.FormatVersion = BlockLayout.FormatVersion - 1);
+
+        using var block = builder.OpenForReading(out var validation);
+        Assert.AreEqual(BlockValidationResult.WrongFormatVersion, validation);
+        Assert.IsNull(block);
+    }
+
+    [TestMethod]
     public void Open_WrongFormatVersion_IsRejected()
     {
         using var builder = new SyntheticBlockBuilder();

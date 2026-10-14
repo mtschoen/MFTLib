@@ -140,7 +140,8 @@ for a saved MFT image; `--include-freed` applies to local scans.
 The `scan` verb prints status and a one-pass inventory per drive: live files, live directories
 (including the indexed root) and retained deleted rows. Deleted files and directories contribute
 only to the deleted count; free slots contribute to none. `--include-freed` retains freed records
-on local scans so the inventory can count them.
+on local scans so the inventory can count them. A second line per drive reports the live files with
+unknown size, with unknown last-write time, with the hidden attribute, and the newest known last-write time.
 `SampleProgram.Watch` supports `scan-drive`, `watch`, `rescan`, `journal`, `cache`
 and `elevation-status`. Its `cache` verb uses policy-digest folders to keep different
 scan policies in distinct sample cache directories.
@@ -361,9 +362,12 @@ var catchUps = await index.WaitForCatchUpAsync(['C'], cancellationToken);
 
 `Changed` events carry `FileChangeKind`, the current path, the timestamp and the
 previous path for a rename. A start establishes the connection; the catch-up wait
-observes the watch reaching its live position. A data change updates an entry's
-time and attributes but not its length: `Size` and `IsSizeKnown` keep the values the
-last scan produced, so read the filesystem or rescan for a current length. Journal checkpoint loss is recorded
+observes the watch reaching its live position. A journal event never reports a file's size or last-write time, only its own
+time in `FileChange.Timestamp`. A content change makes the entry's `Size` and `LastWriteTime` unknown
+(`IsSizeKnown` and `IsLastWriteTimeKnown` are false, `LastWriteTime` reads `DateTime.MinValue`), a
+basic-information change makes `LastWriteTime` unknown, and a journal-created entry is unknown for both until
+a rescan observes it; a rename, move or close keeps both scanned observations. Read the filesystem or rescan
+for current values, and require both flags before trusting a size and time signature. Journal checkpoint loss is recorded
 on `DriveWatchStatus.CheckpointLoss`; a successful `RescanAsync(['C'], cancellationToken)` supplies a fresh
 block and restarts a requested watch. `StopWatchingAsync(index.Drives.Select(drive => drive.Drive), cancellationToken)` stops
 every configured drive and returns its per-drive results.
@@ -787,7 +791,8 @@ foreach (var row in index.EnumerateRows(new SearchQuery("*.log", NameMatchMode.G
 `SearchQuery.LastWriteTimeMinimum` and `LastWriteTimeMaximum` are inclusive bounds on
 `FileEntry.LastWriteTime`, which is UTC. Supply UTC `DateTime` values: their raw ticks are
 compared directly with no `DateTime.Kind` conversion. A Local-kind bound is compared as if
-its ticks were UTC. A row whose UTC last-write time equals the supplied UTC bound matches.
+its ticks were UTC. A row whose UTC last-write time equals the supplied UTC bound matches. A row whose
+last-write time is unknown never matches a bounded query.
 For the Direct sample's `--after` and `--before` arguments, use a UTC timestamp ending in `Z`,
 such as `2026-08-01T00:00:00Z`; offset-bearing inputs can parse as Local and are not normalized.
 

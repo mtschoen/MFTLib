@@ -27,13 +27,15 @@ namespace MFTLib.Index;
 ///     Inclusive lower bound on <see cref="FileEntry.LastWriteTime" />, which is UTC. Supply a UTC
 ///     <see cref="DateTime" />: its raw ticks are compared directly, with no <see cref="DateTime.Kind" />
 ///     conversion. A Local-kind value is compared as if its ticks were UTC. A row whose UTC last-write
-///     time equals the supplied UTC bound matches.
+///     time equals the supplied UTC bound matches. A row whose last-write time is unknown
+///     (<see cref="FileEntry.IsLastWriteTimeKnown" /> is false) is excluded.
 /// </param>
 /// <param name="LastWriteTimeMaximum">
 ///     Inclusive upper bound on <see cref="FileEntry.LastWriteTime" />, which is UTC. Supply a UTC
 ///     <see cref="DateTime" />: its raw ticks are compared directly, with no <see cref="DateTime.Kind" />
 ///     conversion. A Local-kind value is compared as if its ticks were UTC. A row whose UTC last-write
-///     time equals the supplied UTC bound matches.
+///     time equals the supplied UTC bound matches. A row whose last-write time is unknown
+///     (<see cref="FileEntry.IsLastWriteTimeKnown" /> is false) is excluded.
 /// </param>
 /// <param name="IncludeDeleted">
 ///     True also returns deleted rows: those the journal deleted and those a scan imported as freed records.
