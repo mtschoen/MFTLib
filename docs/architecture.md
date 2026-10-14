@@ -184,8 +184,14 @@
   blocks through the production block writer, so consumer tests never call the block writer. Ships as the separate
   `MFTLib.TestExtensions` NuGet package at publish time; never folded into the `MFTLib` package.
   `ScriptedWatchSource` and `ScriptedDriveWatch` script the live watch an index runs beside its scan,
+  without naming the internal `IIndexWatchSource` or `IIndexDriveWatch` (an internal adapter presents them to the index),
+
   `SyntheticIndexSource.Create` joins a producer and a watch source into the `MftIndexSource` an index takes,
   and `SyntheticJournalRecord` and `SyntheticScanRecord` supply journal and scan records.
+  Test-package shapes: a double's configuration properties are init-only, except one a test changes while the
+  double runs (`ScriptedWatchSource.StartFailure`, documented `set`); batches of `SyntheticJournalRecord` are
+  `IReadOnlyList` in every public signature; and no public type lists a non-public base type or interface
+  (`TestPackageSurfaceTests`, with a negative control).
 
 ### Native error messages
 

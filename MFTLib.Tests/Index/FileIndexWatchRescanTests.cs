@@ -313,7 +313,7 @@ public partial class FileIndexWatchRescanTests
                 return Task.FromResult(new MftBlockProduceResult(
                     BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
                     JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
-            }, source),
+            }, source.IndexSource),
             CacheMode = CacheMode.ExistingOnly
         };
     }

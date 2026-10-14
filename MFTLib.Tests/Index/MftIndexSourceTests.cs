@@ -79,9 +79,9 @@ public class MftIndexSourceTests
     {
         var watchSource = new ScriptedWatchSource();
 
-        var source = new MftIndexSource(ProduceMftShapedBlock, watchSource);
+        var source = new MftIndexSource(ProduceMftShapedBlock, watchSource.IndexSource);
 
-        Assert.AreSame(watchSource, source.WatchSource);
+        Assert.AreSame(watchSource.IndexSource, source.WatchSource);
         Assert.IsNull(new MftIndexSource(ProduceMftShapedBlock).WatchSource);
     }
 
@@ -158,7 +158,7 @@ public class MftIndexSourceTests
         var watchSource = new ScriptedWatchSource();
         using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
-            Options(new MftIndexSource(ProduceMftShapedBlock, watchSource)), Token);
+            Options(new MftIndexSource(ProduceMftShapedBlock, watchSource.IndexSource)), Token);
 
         await index.StartWatchingAsync(['T'], Token);
 

@@ -78,6 +78,12 @@ public partial class SyntheticBlockTests
 
     static SyntheticMftProducer SampleProducer() => new(_ => SampleRows()) { JournalCursor = Cursor, ScanTimestamp = Moment };
 
+    static SyntheticMftProducer SampleProducer(Func<DriveKey, CancellationToken, Task> beforeProduce) =>
+        new(_ => SampleRows()) { JournalCursor = Cursor, ScanTimestamp = Moment, BeforeProduceAsync = beforeProduce };
+
+    static SyntheticMftProducer SampleProducer(Func<DriveKey, JournalCheckpointLoss?> catchUpLoss) =>
+        new(_ => SampleRows()) { JournalCursor = Cursor, ScanTimestamp = Moment, CatchUpLoss = catchUpLoss };
+
     [TestMethod]
     public void MaximumPathDepth_IsTheDepthTheIndexResolves()
     {
@@ -346,8 +352,8 @@ public partial class SyntheticBlockTests
     public async Task Producer_WritesItsRowsThroughTheRealWriterAndReportsItsSettings()
     {
         var tag = new CacheTag("SYNT", 1);
-        var producer = SampleProducer();
-        producer.SkippedRecordCount = 3;
+        var producer = new SyntheticMftProducer(_ => SampleRows())
+        { JournalCursor = Cursor, ScanTimestamp = Moment, SkippedRecordCount = 3 };
 
         await using (var index = await FileIndex.OpenAsync(Scanning(producer, tag), Token))
         {
@@ -380,15 +386,14 @@ public partial class SyntheticBlockTests
     [TestMethod]
     public async Task Producer_BeforeProduceAsync_HoldsTheScanUntilReleased()
     {
-        var producer = SampleProducer();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        producer.BeforeProduceAsync = async (letter, cancellationToken) =>
+        var producer = SampleProducer(async (letter, cancellationToken) =>
         {
             Assert.AreEqual('T', letter);
             entered.TrySetResult();
             await release.Task.WaitAsync(cancellationToken);
-        };
+        });
 
         var opening = FileIndex.OpenAsync(Scanning(producer), Token);
         await entered.Task.WaitAsync(Token);
@@ -406,11 +411,11 @@ public partial class SyntheticBlockTests
     public async Task Producer_CatchUpLoss_SurfacesAsTheDrivesCheckpointLossAndTriggersARetry(bool throwOnEvaluation)
     {
         var loss = WatchDeduplicationTestSupport.StandardCatchUpLoss('T');
-        var producer = SampleProducer();
         if (throwOnEvaluation)
         {
-            producer.CatchUpLoss = _ => throw new InvalidOperationException("catch-up evaluation failed");
-            await using var failedIndex = await FileIndex.OpenAsync(Scanning(producer), Token);
+            var throwing = SampleProducer(
+                _ => throw new InvalidOperationException("catch-up evaluation failed"));
+            await using var failedIndex = await FileIndex.OpenAsync(Scanning(throwing), Token);
             var failedDrive = failedIndex.Drives.Single();
             Assert.AreEqual(DriveState.Failed, failedDrive.State);
             Assert.AreEqual(DriveFailureKind.ProducerFailed, failedDrive.Failure?.Kind);
@@ -419,7 +424,7 @@ public partial class SyntheticBlockTests
         }
 
         var reported = 0;
-        producer.CatchUpLoss = _ => reported++ == 0 ? loss : null;
+        var producer = SampleProducer(_ => reported++ == 0 ? loss : null);
 
         await using var index = await FileIndex.OpenAsync(Scanning(producer), Token);
 

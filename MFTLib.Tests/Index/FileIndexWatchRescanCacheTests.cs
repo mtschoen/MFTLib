@@ -38,7 +38,7 @@ public class FileIndexWatchRescanCacheTests
                     SeededBlocks.Write(request.BlockPath, 1, WatchHarness.JournalIdentifier, 100, moment: SeededBlocks.SeededMoment);
                     return new MftBlockProduceResult(BlockFile.Open(request.BlockPath, 1, out _)!,
                         WatchHarness.JournalIdentifier, 100, 0);
-                }, source)
+                }, source.IndexSource)
             }, token);
             try
             {

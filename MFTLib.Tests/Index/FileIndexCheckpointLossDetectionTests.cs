@@ -111,7 +111,7 @@ public class FileIndexCheckpointLossDetectionTests
     public async Task AnUnrelatedWatchFault_LeavesTheOpensReportIntactAndStillLabelledAsTheOpens()
     {
         var source = new ScriptedWatchSource();
-        await using var index = await OpenWithAnOpenTimeLossAsync(source);
+        await using var index = await OpenWithAnOpenTimeLossAsync(source.IndexSource);
         index.HoldEveryRecovery();
         var openReport = index.Drives.Single().Watch.CheckpointLoss;
         Assert.IsNotNull(openReport);
@@ -146,7 +146,7 @@ public class FileIndexCheckpointLossDetectionTests
     public async Task AWatchTimeLoss_ReplacesTheOpensReportAndIsLabelledAsTheWatchs()
     {
         var source = new ScriptedWatchSource();
-        await using var index = await OpenWithAnOpenTimeLossAsync(source);
+        await using var index = await OpenWithAnOpenTimeLossAsync(source.IndexSource);
         index.HoldEveryRecovery();
 
         await index.StartWatchingAsync(['T'], Token);
@@ -192,7 +192,7 @@ public class FileIndexCheckpointLossDetectionTests
     [TestMethod]
     public async Task AReportFromTheOpen_IsLabelledAsTheOpens()
     {
-        await using var index = await OpenWithAnOpenTimeLossAsync(new ScriptedWatchSource());
+        await using var index = await OpenWithAnOpenTimeLossAsync(new ScriptedWatchSource().IndexSource);
 
         Assert.AreEqual(JournalCheckpointLossDetection.DriveOpening,
             index.Drives.Single().Watch.CheckpointLoss!.DetectedDuring);

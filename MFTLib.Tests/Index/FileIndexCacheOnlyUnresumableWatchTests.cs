@@ -115,7 +115,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         var source = new ScriptedWatchSource();
         using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
-            Options(ProduceMftShapedBlock, source, cacheOnly: true, driveT, driveU), Token);
+            Options(ProduceMftShapedBlock, source.IndexSource, cacheOnly: true, driveT, driveU), Token);
 
         // Both drives are adopted (cache-only never fails a drive for a lost checkpoint alone).
         Assert.AreEqual(DriveState.Ready, index.Drives.Single(drive => drive.Drive == 'T').State);
@@ -160,7 +160,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         var source = new ScriptedWatchSource();
         using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
-            Options(ProduceMftShapedBlock, source, cacheOnly: true, driveT, driveU), Token);
+            Options(ProduceMftShapedBlock, source.IndexSource, cacheOnly: true, driveT, driveU), Token);
         await index.StartWatchingAsync(['U'], Token);
         await RefuseStartAsync(index, 'T', Token);
         Assert.IsTrue(index.Drives.Single(drive => drive.Drive == 'T').Watch.IsRequested,
@@ -210,7 +210,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         var source = new ScriptedWatchSource();
         using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
-            Options(Producer, source, cacheOnly: true, driveT, driveU), Token);
+            Options(Producer, source.IndexSource, cacheOnly: true, driveT, driveU), Token);
         await index.StartWatchingAsync(['U'], Token);
         await RefuseStartAsync(index, 'T', Token);
 
@@ -258,7 +258,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         {
             Drives = [driveT],
             CacheDirectory = _cacheDirectory,
-            MftSource = new MftIndexSource(ProduceUnwatchableBlock, source)
+            MftSource = new MftIndexSource(ProduceUnwatchableBlock, source.IndexSource)
         }, Token);
         try
         {
@@ -302,7 +302,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         {
             Drives = [driveT],
             CacheDirectory = _cacheDirectory,
-            MftSource = new MftIndexSource(ProduceUnwatchableBlock, source)
+            MftSource = new MftIndexSource(ProduceUnwatchableBlock, source.IndexSource)
         }, Token);
         var channelFaulted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         index.WatchFaulted += fault =>
@@ -349,7 +349,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         var source = new ScriptedWatchSource();
         using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = TrimmedWindow });
         await using var index = await FileIndex.OpenAsync(
-            Options(ProduceMftShapedBlock, source, cacheOnly: true, driveT), Token);
+            Options(ProduceMftShapedBlock, source.IndexSource, cacheOnly: true, driveT), Token);
 
         var refusal = await RefuseStartAsync(index, 'T', Token);
 

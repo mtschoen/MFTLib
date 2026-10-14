@@ -102,7 +102,7 @@ public class DriveKeyLifecycleTests
     [TestMethod]
     public async Task LifecycleVerbs_MaterializeEachSequenceOnceAndAcceptEmptySequences()
     {
-        using var harness = new WatchHarness(new ScriptedWatchSource { CatchUpOnStart = true }, 'T');
+        using var harness = new WatchHarness(new ScriptedWatchSource { CatchUpOnStart = true }.IndexSource, 'T');
         AssertResults(await harness.Index.StartWatchingAsync(new SingleUseSequence('t'), CancellationToken.None), ['T']);
         AssertResults(await harness.Index.WaitForCatchUpAsync(new SingleUseSequence('t'), CancellationToken.None), ['T']);
         AssertResults(await harness.Index.RescanAsync(new SingleUseSequence('t'), CancellationToken.None), ['T']);

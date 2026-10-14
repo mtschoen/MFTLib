@@ -83,7 +83,7 @@ public static class BrokerTestHarness
                     new UsnJournalSettings { MaximumSize = maximumSize, AllocationDelta = allocationDelta })));
     }
 
-    static (SyntheticJournalRecord[] Entries, SyntheticJournalCursor Updated) NothingNew(DriveKey driveLetter,
+    static (IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Updated) NothingNew(DriveKey driveLetter,
         SyntheticJournalCursor since, int maximumBufferReads) => ([], since);
 
     static IEnumerable<IReadOnlyList<MftRecord>> ConvertScan(
@@ -96,11 +96,11 @@ public static class BrokerTestHarness
     }
 
     static (UsnJournalEntry[] Entries, UsnJournalCursor Updated) ConvertJournal(
-        (SyntheticJournalRecord[] Entries, SyntheticJournalCursor Updated) result) =>
+        (IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Updated) result) =>
         (result.Entries.ToProduction(), result.Updated.ToProduction());
 
     static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> ConvertWatch(
-        IAsyncEnumerable<(SyntheticJournalRecord[] Entries, SyntheticJournalCursor Cursor)> batches,
+        IAsyncEnumerable<(IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Cursor)> batches,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await foreach (var (entries, cursor) in batches.WithCancellation(cancellationToken).ConfigureAwait(false))

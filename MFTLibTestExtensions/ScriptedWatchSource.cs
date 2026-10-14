@@ -7,7 +7,7 @@ namespace MFTLibTestExtensions;
 ///     requests is recorded and answered with a fresh <see cref="ScriptedDriveWatch" /> the test
 ///     then drives. A start fails when the <see cref="StartFailure" /> callback returns an exception.
 /// </summary>
-public sealed class ScriptedWatchSource : IIndexWatchSource
+public sealed class ScriptedWatchSource
 {
     internal static readonly TimeSpan HangGuard = TimeSpan.FromSeconds(10);
 
@@ -17,13 +17,17 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
     readonly Dictionary<DriveKey, HeldStart> _holdsByDrive = [];
     readonly Dictionary<DriveKey, Exception> _failuresByDrive = [];
     readonly Dictionary<DriveKey, List<StartWaiter>> _startWaiters = [];
+    ScriptedWatchSourceAdapter? _indexSource;
     HeldStart? _nextHold;
     Exception? _nextFailure;
 
     /// <summary>When true, every started watch queues the caught-up marker at once. Default false.</summary>
     public bool CatchUpOnStart { get; init; }
 
-    /// <summary>Consulted on every start: a non-null result is thrown instead of starting.</summary>
+    /// <summary>
+    ///     Consulted on every start: a non-null result is thrown instead of starting. Settable because a
+    ///     test changes it while the index is running, to make a later restart fail.
+    /// </summary>
     public Func<DriveKey, Exception?>? StartFailure { get; set; }
 
     /// <summary>Every start requested, in order, including starts that were then failed or held.</summary>
@@ -198,11 +202,8 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
         return HandOut(target);
     }
 
-    async Task<IIndexDriveWatch> IIndexWatchSource.StartAsync(IndexWatchTarget target,
-        CancellationToken cancellationToken)
-    {
-        return await StartAsync(target, cancellationToken).ConfigureAwait(false);
-    }
+    /// <summary>The source as the index starts watches from it, through an adapter so no public type names the internal interface.</summary>
+    internal IIndexWatchSource IndexSource => _indexSource ??= new ScriptedWatchSourceAdapter(this);
 
     ScriptedDriveWatch HandOut(IndexWatchTarget target)
     {

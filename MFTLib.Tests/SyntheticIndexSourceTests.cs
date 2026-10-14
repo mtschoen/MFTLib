@@ -30,7 +30,7 @@ public class SyntheticIndexSourceTests
         var result = await source.Producer(Request(path), CancellationToken.None);
         using var block = result.Block;
 
-        Assert.AreSame(watches, source.WatchSource);
+        Assert.AreSame(watches.IndexSource, source.WatchSource);
         CollectionAssert.AreEqual(new DriveKey[] { 'T' }, producer.ProducedDrives.ToArray());
         Assert.IsTrue(block.Header.RowCount > 0);
     }

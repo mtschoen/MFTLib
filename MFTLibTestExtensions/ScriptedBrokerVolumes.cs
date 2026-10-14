@@ -20,7 +20,7 @@ public sealed record ScriptedBrokerVolumes
     public Func<ScriptedScan, IEnumerable<IReadOnlyList<SyntheticScanRecord>>>? ScanDrive { get; init; }
 
     /// <summary>Bounded catch-up after a scan. Null answers "nothing new" from every cursor.</summary>
-    public Func<DriveKey, SyntheticJournalCursor, int, (SyntheticJournalRecord[] Entries, SyntheticJournalCursor Updated)>? ReadJournal
+    public Func<DriveKey, SyntheticJournalCursor, int, (IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Updated)>? ReadJournal
     {
         get;
         init;
@@ -28,7 +28,7 @@ public sealed record ScriptedBrokerVolumes
 
     /// <summary>Streams a drive's journal for a watch. Null refuses every watch.</summary>
     public Func<DriveKey, SyntheticJournalCursor, CancellationToken,
-        IAsyncEnumerable<(SyntheticJournalRecord[] Entries, SyntheticJournalCursor Cursor)>>? WatchDrive
+        IAsyncEnumerable<(IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Cursor)>>? WatchDrive
     { get; init; }
 
     /// <summary>Answers volume sizing queries. Null answers a small fixed volume (256 KiB of 1024-byte records).</summary>

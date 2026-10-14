@@ -418,7 +418,7 @@ public partial class BrokerProcessTests
                 .WaitAsync(HangGuard));
     }
 
-    static async IAsyncEnumerable<(SyntheticJournalRecord[] Entries, SyntheticJournalCursor Cursor)> OneBatchThenQuiet(
+    static async IAsyncEnumerable<(IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Cursor)> OneBatchThenQuiet(
         SyntheticJournalRecord[] entries, SyntheticJournalCursor cursor, [System.Runtime.CompilerServices.EnumeratorCancellation]
         CancellationToken cancellationToken)
     {
@@ -426,7 +426,7 @@ public partial class BrokerProcessTests
         await Task.Delay(Timeout.Infinite, cancellationToken);
     }
 
-    static async IAsyncEnumerable<(SyntheticJournalRecord[] Entries, SyntheticJournalCursor Cursor)> OneBatchThenEnd(
+    static async IAsyncEnumerable<(IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Cursor)> OneBatchThenEnd(
         SyntheticJournalRecord[] entries, SyntheticJournalCursor cursor, TaskCompletionSource ended)
     {
         yield return (entries, cursor);

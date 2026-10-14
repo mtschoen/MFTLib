@@ -146,7 +146,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
                 : [[Record(5, 5, ".", directory: true), Record(40, 5, "replacement.txt")]],
             readJournal: (_, since, _) => (Array.Empty<UsnJournalEntry>(), Volatile.Read(ref rearmed.Value) == 0 ? AdvancedCursor : since)));
         var producer = new BrokerMftBlockProducer(Connect(broker.Process)).CreateIndexSource().Producer;
-        await using var index = await FileIndex.OpenAsync(Options(new MftIndexSource(producer, watchSource)),
+        await using var index = await FileIndex.OpenAsync(Options(new MftIndexSource(producer, watchSource.IndexSource)),
             CancellationToken.None).WaitAsync(HangGuard);
         var previous = index.Find(At("documents", "notes.txt"))!.Value;
         var previousBlock = previous.DriveBlock.Block;

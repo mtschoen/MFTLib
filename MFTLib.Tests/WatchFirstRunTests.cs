@@ -294,7 +294,7 @@ public class WatchFirstRunTests
         };
     }
 
-    static async IAsyncEnumerable<(SyntheticJournalRecord[] Entries, SyntheticJournalCursor Cursor)> OneBatchThenQuiet(
+    static async IAsyncEnumerable<(IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Cursor)> OneBatchThenQuiet(
         SyntheticJournalRecord[] entries, SyntheticJournalCursor cursor, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         yield return (entries, cursor);

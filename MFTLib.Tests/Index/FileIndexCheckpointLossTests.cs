@@ -85,7 +85,7 @@ public class FileIndexCheckpointLossTests
 
         var options = Options() with
         {
-            MftSource = new MftIndexSource(ProduceMftShapedBlock, watchCapable ? new ScriptedWatchSource() : null)
+            MftSource = new MftIndexSource(ProduceMftShapedBlock, watchCapable ? new ScriptedWatchSource().IndexSource : null)
         };
         await using var reopened = await FileIndex.OpenAsync(options, CancellationToken.None);
 

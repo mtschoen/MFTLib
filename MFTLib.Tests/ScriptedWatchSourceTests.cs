@@ -20,11 +20,11 @@ public class ScriptedWatchSourceTests
     static IndexWatchTarget Target(char driveLetter, ulong journalIdentifier = 7, long nextUsn = 100) =>
         new(driveLetter, journalIdentifier, nextUsn);
 
-    async Task<ScriptedDriveWatch> StartAsync(ScriptedWatchSource source, IndexWatchTarget target) =>
-        (ScriptedDriveWatch)await ((IIndexWatchSource)source).StartAsync(target, Token);
+    Task<ScriptedDriveWatch> StartAsync(ScriptedWatchSource source, IndexWatchTarget target) =>
+        source.StartAsync(target, Token);
 
     static IAsyncEnumerator<WatchStreamItem> Read(ScriptedDriveWatch watch, CancellationToken cancellationToken) =>
-        ((IIndexDriveWatch)watch).ReadAsync(cancellationToken).GetAsyncEnumerator(cancellationToken);
+        watch.ReadAsync(cancellationToken).GetAsyncEnumerator(cancellationToken);
 
     [TestMethod]
     public async Task StartAsync_RecordsEachStartAndHandsOutAWatchForTheDrive()
@@ -39,6 +39,7 @@ public class ScriptedWatchSourceTests
         Assert.AreSame(watch, source.WatchFor('T'));
         Assert.AreEqual(new UsnJournalCursor(9, 250), watch.StartCursor);
         Assert.AreEqual('t', watch.Drive);
+        Assert.AreEqual('t', watch.IndexWatch.Drive);
         Assert.IsFalse(watch.ReadStarted);
     }
 
@@ -155,13 +156,13 @@ public class ScriptedWatchSourceTests
         Assert.AreSame(first, await source.WaitForStartAsync('T', 1, Token));
         Assert.IsFalse(secondWait.IsCompleted, "the drive was started once, not twice");
 
-        await ((IAsyncDisposable)first).DisposeAsync();
+        await first.DisposeWatchAsync();
         var second = await StartAsync(source, Target('T'));
 
         Assert.AreSame(second, await secondWait.WaitAsync(HangGuard, Token));
         Assert.IsFalse(thirdWait.IsCompleted);
         Assert.AreSame(second, await source.WaitForStartAsync('T', 2, Token));
-        await ((IAsyncDisposable)second).DisposeAsync();
+        await second.DisposeWatchAsync();
         var third = await StartAsync(source, Target('T'));
         Assert.AreSame(third, await thirdWait.WaitAsync(HangGuard, Token));
     }
@@ -210,7 +211,7 @@ public class ScriptedWatchSourceTests
 
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => StartAsync(source, Target('T')));
         await StartAsync(source, Target('U'));
-        await ((IAsyncDisposable)first).DisposeAsync();
+        await first.DisposeWatchAsync();
         var second = await StartAsync(source, Target('T'));
 
         Assert.AreNotSame(first, second);
@@ -223,10 +224,10 @@ public class ScriptedWatchSourceTests
         var source = new ScriptedWatchSource();
         var watch = await StartAsync(source, Target('T'));
 
-        await ((IAsyncDisposable)watch).DisposeAsync();
+        await watch.DisposeWatchAsync();
         await watch.Disposed.WaitAsync(HangGuard, Token);
 
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () => await ((IAsyncDisposable)watch).DisposeAsync());
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () => await watch.DisposeWatchAsync());
         Assert.AreEqual(2, watch.DisposeCount);
     }
 
@@ -293,7 +294,7 @@ public class ScriptedWatchSourceTests
                 watch.LoseChannel(new IOException("channel lost"));
                 break;
             case "dispose":
-                await ((IAsyncDisposable)watch).DisposeAsync();
+                await watch.DisposeWatchAsync();
                 break;
             default:
                 await EndReadAsync(watch, closeMode);
@@ -387,7 +388,7 @@ public class ScriptedWatchSourceTests
         }
 
         AssertDeliveryRejected(watch);
-        await ((IAsyncDisposable)watch).DisposeAsync();
+        await watch.DisposeWatchAsync();
         Assert.IsTrue(yieldedTask.IsCompletedSuccessfully, "disposal does not settle a receipt again");
     }
 
@@ -436,7 +437,7 @@ public class ScriptedWatchSourceTests
             gate.WaitForRelease();
         };
 
-        var disposer = Task.Run(() => ((IAsyncDisposable)watch).DisposeAsync().AsTask(), Token);
+        var disposer = Task.Run(() => watch.DisposeWatchAsync().AsTask(), Token);
         try
         {
             await gate.Entered.WaitAsync(HangGuard, Token);
@@ -474,10 +475,10 @@ public class ScriptedWatchSourceTests
         await enumerator.DisposeAsync();
     }
 
-    static async Task DisposeOnReleaseAsync(Task release, IAsyncDisposable watch)
+    static async Task DisposeOnReleaseAsync(Task release, ScriptedDriveWatch watch)
     {
         await release;
-        await watch.DisposeAsync();
+        await watch.DisposeWatchAsync();
     }
 
     static void AssertDeliveryRejected(ScriptedDriveWatch watch)

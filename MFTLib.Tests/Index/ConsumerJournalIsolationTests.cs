@@ -100,7 +100,7 @@ public class ConsumerJournalIsolationTests
         await SeedAsync();
         windows['T'] = Lost(recreated);
         var source = new ScriptedWatchSource();
-        await using var index = await FileIndex.OpenAsync(Options(cacheOnly, source), Token);
+        await using var index = await FileIndex.OpenAsync(Options(cacheOnly, source.IndexSource), Token);
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.AreEqual(cacheOnly ? 1 : 2, _productions);
@@ -135,7 +135,7 @@ public class ConsumerJournalIsolationTests
         using var scope = JournalIsolation.OverrideJournalWindow(_ => unknown ? null : Healthy);
         await SeedAsync();
         var source = new ScriptedWatchSource();
-        await using var index = await FileIndex.OpenAsync(Options(true, source), Token);
+        await using var index = await FileIndex.OpenAsync(Options(true, source.IndexSource), Token);
         Assert.AreEqual(1, _productions);
         Assert.AreEqual(BlockSource.WarmStartedFromCache, index.Drives.Single().Block!.Source);
         Assert.IsNull(index.Drives.Single().Watch.CheckpointLoss);
@@ -158,7 +158,7 @@ public class ConsumerJournalIsolationTests
             drive => windows.TryGetValue((drive).Letter, out var window) ? window : null);
         await SeedAsync();
         var source = new ScriptedWatchSource();
-        await using var index = await FileIndex.OpenAsync(Options(false, source), Token);
+        await using var index = await FileIndex.OpenAsync(Options(false, source.IndexSource), Token);
         index.HoldEveryRecovery();
         var announced = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         index.WatchFaulted += _ => announced.TrySetResult();

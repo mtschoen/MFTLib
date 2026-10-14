@@ -297,7 +297,7 @@ public class FileIndexWatchPumpTests
         public async Task<IIndexDriveWatch> StartAsync(IndexWatchTarget target, CancellationToken cancellationToken)
         {
             var handle = await inner.StartAsync(target, cancellationToken);
-            return new ThrowingDisposalHandle(handle, () => Interlocked.Increment(ref _disposalAttempts));
+            return new ThrowingDisposalHandle(handle.IndexWatch, () => Interlocked.Increment(ref _disposalAttempts));
         }
     }
 

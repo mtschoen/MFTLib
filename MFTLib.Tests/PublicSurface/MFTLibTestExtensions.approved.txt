@@ -41,9 +41,9 @@ MFTLibTestExtensions.ScriptedBrokerVolumes :: method public override ToString() 
 MFTLibTestExtensions.ScriptedBrokerVolumes :: method public static op_Equality(MFTLibTestExtensions.ScriptedBrokerVolumes? left, MFTLibTestExtensions.ScriptedBrokerVolumes? right) : bool
 MFTLibTestExtensions.ScriptedBrokerVolumes :: method public static op_Inequality(MFTLibTestExtensions.ScriptedBrokerVolumes? left, MFTLibTestExtensions.ScriptedBrokerVolumes? right) : bool
 MFTLibTestExtensions.ScriptedBrokerVolumes :: property public GrowUsnJournal { get; init; } : System.Func<MFTLib.Index.DriveKey, MFTLib.UsnJournalSettings, MFTLib.UsnJournalSettings>?
-MFTLibTestExtensions.ScriptedBrokerVolumes :: property public ReadJournal { get; init; } : System.Func<MFTLib.Index.DriveKey, MFTLibTestExtensions.SyntheticJournalCursor, int, System.ValueTuple<MFTLibTestExtensions.SyntheticJournalRecord[], MFTLibTestExtensions.SyntheticJournalCursor>>?
+MFTLibTestExtensions.ScriptedBrokerVolumes :: property public ReadJournal { get; init; } : System.Func<MFTLib.Index.DriveKey, MFTLibTestExtensions.SyntheticJournalCursor, int, System.ValueTuple<System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord>, MFTLibTestExtensions.SyntheticJournalCursor>>?
 MFTLibTestExtensions.ScriptedBrokerVolumes :: property public ScanDrive { get; init; } : System.Func<MFTLibTestExtensions.ScriptedScan, System.Collections.Generic.IEnumerable<System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticScanRecord>>>?
-MFTLibTestExtensions.ScriptedBrokerVolumes :: property public WatchDrive { get; init; } : System.Func<MFTLib.Index.DriveKey, MFTLibTestExtensions.SyntheticJournalCursor, System.Threading.CancellationToken, System.Collections.Generic.IAsyncEnumerable<System.ValueTuple<MFTLibTestExtensions.SyntheticJournalRecord[], MFTLibTestExtensions.SyntheticJournalCursor>>>?
+MFTLibTestExtensions.ScriptedBrokerVolumes :: property public WatchDrive { get; init; } : System.Func<MFTLib.Index.DriveKey, MFTLibTestExtensions.SyntheticJournalCursor, System.Threading.CancellationToken, System.Collections.Generic.IAsyncEnumerable<System.ValueTuple<System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord>, MFTLibTestExtensions.SyntheticJournalCursor>>>?
 MFTLibTestExtensions.ScriptedBrokerVolumes :: property public required QueryJournalCursor { get; init; } : System.Func<MFTLib.Index.DriveKey, MFTLibTestExtensions.SyntheticJournalCursor>
 MFTLibTestExtensions.ScriptedBrokerVolumes :: type public sealed class : System.IEquatable<MFTLibTestExtensions.ScriptedBrokerVolumes>
 MFTLibTestExtensions.ScriptedDriveWatch :: method public End() : void
@@ -55,7 +55,7 @@ MFTLibTestExtensions.ScriptedDriveWatch :: method public PublishCaughtUpAsync() 
 MFTLibTestExtensions.ScriptedDriveWatch :: method public QueueBatchAsync(System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord> entries, MFTLibTestExtensions.SyntheticJournalCursor cursor) : System.Threading.Tasks.Task
 MFTLibTestExtensions.ScriptedDriveWatch :: property public Drive { get; } : MFTLib.Index.DriveKey
 MFTLibTestExtensions.ScriptedDriveWatch :: property public ReadEnded { get; } : System.Threading.Tasks.Task<bool>
-MFTLibTestExtensions.ScriptedDriveWatch :: type public sealed class : MFTLib.Index.IIndexDriveWatch, System.IAsyncDisposable
+MFTLibTestExtensions.ScriptedDriveWatch :: type public sealed class
 MFTLibTestExtensions.ScriptedPowerShell :: method public Dispose() : void
 MFTLibTestExtensions.ScriptedPowerShell :: property public Launches { get; } : System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.PowerShellLaunch>
 MFTLibTestExtensions.ScriptedPowerShell :: type public sealed class : System.IDisposable
@@ -70,7 +70,7 @@ MFTLibTestExtensions.ScriptedWatchSource :: property public CatchUpOnStart { get
 MFTLibTestExtensions.ScriptedWatchSource :: property public StartFailure { get; set; } : System.Func<MFTLib.Index.DriveKey, System.Exception?>?
 MFTLibTestExtensions.ScriptedWatchSource :: property public Starts { get; } : System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.ScriptedWatchStart>
 MFTLibTestExtensions.ScriptedWatchSource :: property public Watches { get; } : System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.ScriptedDriveWatch>
-MFTLibTestExtensions.ScriptedWatchSource :: type public sealed class : MFTLib.Index.IIndexWatchSource
+MFTLibTestExtensions.ScriptedWatchSource :: type public sealed class
 MFTLibTestExtensions.ScriptedWatchStart :: constructor public (MFTLib.Index.DriveKey Drive, MFTLibTestExtensions.SyntheticJournalCursor Cursor)
 MFTLibTestExtensions.ScriptedWatchStart :: method public Deconstruct(out MFTLib.Index.DriveKey Drive, out MFTLibTestExtensions.SyntheticJournalCursor Cursor) : void
 MFTLibTestExtensions.ScriptedWatchStart :: method public Equals(MFTLibTestExtensions.ScriptedWatchStart other) : bool
@@ -200,10 +200,10 @@ MFTLibTestExtensions.SyntheticJournalWindow :: property public MaximumSize { get
 MFTLibTestExtensions.SyntheticJournalWindow :: property public NextUsn { get; init; } : long
 MFTLibTestExtensions.SyntheticJournalWindow :: type public readonly struct : System.IEquatable<MFTLibTestExtensions.SyntheticJournalWindow>
 MFTLibTestExtensions.SyntheticMftProducer :: constructor public (System.Func<MFTLib.Index.DriveKey, System.Collections.Generic.IEnumerable<MFTLibTestExtensions.SyntheticRow>> rowsForDrive)
-MFTLibTestExtensions.SyntheticMftProducer :: property public BeforeProduceAsync { get; set; } : System.Func<MFTLib.Index.DriveKey, System.Threading.CancellationToken, System.Threading.Tasks.Task>?
-MFTLibTestExtensions.SyntheticMftProducer :: property public CatchUpLoss { get; set; } : System.Func<MFTLib.Index.DriveKey, MFTLib.Index.JournalCheckpointLoss?>?
-MFTLibTestExtensions.SyntheticMftProducer :: property public JournalCursor { get; set; } : MFTLibTestExtensions.SyntheticJournalCursor
-MFTLibTestExtensions.SyntheticMftProducer :: property public ScanTimestamp { get; set; } : System.DateTime
+MFTLibTestExtensions.SyntheticMftProducer :: property public BeforeProduceAsync { get; init; } : System.Func<MFTLib.Index.DriveKey, System.Threading.CancellationToken, System.Threading.Tasks.Task>?
+MFTLibTestExtensions.SyntheticMftProducer :: property public CatchUpLoss { get; init; } : System.Func<MFTLib.Index.DriveKey, MFTLib.Index.JournalCheckpointLoss?>?
+MFTLibTestExtensions.SyntheticMftProducer :: property public JournalCursor { get; init; } : MFTLibTestExtensions.SyntheticJournalCursor
+MFTLibTestExtensions.SyntheticMftProducer :: property public ScanTimestamp { get; init; } : System.DateTime
 MFTLibTestExtensions.SyntheticMftProducer :: type public sealed class
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockDeletionResult(MFTLib.Index.CachedBlockFile file, MFTLib.Index.CachedBlockDeletionOutcome outcome, string? failureReason) : MFTLib.Index.CachedBlockDeletionResult
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockFile(MFTLib.Index.DriveKey drive, uint volumeSerial, string path, long size, System.DateTime lastWriteTime) : MFTLib.Index.CachedBlockFile

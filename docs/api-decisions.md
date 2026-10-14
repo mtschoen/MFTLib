@@ -330,3 +330,27 @@ The public init-only properties and record copy/equality behavior remain.
 **Revisit only if:** a concrete consumer production requirement needs the
 library to accept an application-constructed event or operation result;
 snapshot presentation and application-owned refusals do not establish that need.
+
+## The test package keeps the shapes of the consumer doubles it was hoisted from
+
+**Decision (2026-10-13, API review finding F25):** the doubles in `MFTLib.TestExtensions`
+follow three shape rules
+([MFTLib issue 484 (test package shapes)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/484)).
+Configuration properties are init-only, except a property a test changes while the
+double is running, which keeps `set` and says so in its XML summary
+(`ScriptedWatchSource.StartFailure` is the only one). Batches of
+`SyntheticJournalRecord` are `IReadOnlyList` in every public signature, including
+the `ScriptedBrokerVolumes.ReadJournal` and `WatchDrive` delegates. No public type
+lists a base type or interface that is not public: `ScriptedWatchSource` and
+`ScriptedDriveWatch` reach the index through an internal adapter instead of
+implementing `IIndexWatchSource` and `IIndexDriveWatch`.
+
+**Reason:** the package was hoisted from consumer test code and kept the accidents of
+those originals: some properties settable and others init-only for no reason, array
+parameters beside list parameters, and public classes advertising interfaces a
+consumer cannot name or implement. A consumer cannot tell a property that is safe to
+change mid-run from one that is not unless the shape says so. `TestPackageSurfaceTests`
+pins the third rule, with a negative control over an internal interface.
+
+**Revisit only if:** a consumer test needs to change a currently init-only double
+property while the double runs; that property then keeps `set` with a summary saying why.

@@ -10,7 +10,7 @@ namespace MFTLibTestExtensions;
 ///     scripts what its read yields and how it ends; the watch counts its disposals so a test can
 ///     prove the index disposed it exactly once.
 /// </summary>
-public sealed class ScriptedDriveWatch : IIndexDriveWatch
+public sealed class ScriptedDriveWatch
 {
     // Multi-reader: the read, its exit drain and disposal's drain may dequeue at the same time.
     readonly Channel<PendingItem> _items = Channel.CreateUnbounded<PendingItem>();
@@ -22,6 +22,7 @@ public sealed class ScriptedDriveWatch : IIndexDriveWatch
     bool? _readEndedCancelled;
     Exception? _cancellationFailure;
     Exception? _completionFault;
+    ScriptedDriveWatchAdapter? _indexWatch;
     int _disposeCount;
     volatile bool _readStarted;
 
@@ -145,7 +146,10 @@ public sealed class ScriptedDriveWatch : IIndexDriveWatch
         return consumed.Task;
     }
 
-    async IAsyncEnumerable<WatchStreamItem> IIndexDriveWatch.ReadAsync(
+    /// <summary>The watch as the index reads and disposes it, through an adapter so no public type names the internal interface.</summary>
+    internal IIndexDriveWatch IndexWatch => _indexWatch ??= new ScriptedDriveWatchAdapter(this);
+
+    internal async IAsyncEnumerable<WatchStreamItem> ReadAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         _readStarted = true;
@@ -207,7 +211,7 @@ public sealed class ScriptedDriveWatch : IIndexDriveWatch
         }
     }
 
-    ValueTask IAsyncDisposable.DisposeAsync()
+    internal ValueTask DisposeWatchAsync()
     {
         var count = Interlocked.Increment(ref _disposeCount);
         Close(_completionFault);

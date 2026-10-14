@@ -22,19 +22,19 @@ public sealed class SyntheticMftProducer
     }
 
     /// <summary>A watch started after the scan resumes from this position, so set it to what the test's watch source expects.</summary>
-    public SyntheticJournalCursor JournalCursor { get; set; }
+    public SyntheticJournalCursor JournalCursor { get; init; }
 
     /// <summary>Becomes <see cref="DriveBlockStatus.ScanTimestamp" />, so a test about scan age sets it explicitly.</summary>
-    public DateTime ScanTimestamp { get; set; }
+    public DateTime ScanTimestamp { get; init; }
 
     /// <summary>Becomes <see cref="DriveBlockStatus.SkippedRecordCount" />; zero means the scan placed every record.</summary>
-    internal int SkippedRecordCount { get; set; }
+    internal int SkippedRecordCount { get; init; }
 
     /// <summary>Awaited before each production builds its block, so a test can hold a scan or rescan in progress.</summary>
-    public Func<DriveKey, CancellationToken, Task>? BeforeProduceAsync { get; set; }
+    public Func<DriveKey, CancellationToken, Task>? BeforeProduceAsync { get; init; }
 
     /// <summary>The proven catch-up loss a production reports; null, or a null result, reports none.</summary>
-    public Func<DriveKey, JournalCheckpointLoss?>? CatchUpLoss { get; set; }
+    public Func<DriveKey, JournalCheckpointLoss?>? CatchUpLoss { get; init; }
 
     /// <summary>Every drive whose production has started, in order, including repeats and productions held by <see cref="BeforeProduceAsync" />.</summary>
     internal IReadOnlyList<DriveKey> ProducedDrives

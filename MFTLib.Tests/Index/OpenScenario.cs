@@ -109,7 +109,7 @@ internal sealed class OpenScenario : IDisposable
     {
         Drives = driveLetters.Select(letter => new IndexedDrive(letter, _treeRoot, SerialOf(letter))).ToArray(),
         CacheDirectory = CacheDirectory,
-        MftSource = new MftIndexSource(ProduceAsync, Source),
+        MftSource = new MftIndexSource(ProduceAsync, Source.IndexSource),
         CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
         DriveOpenProgress = new SynchronousProgress<IndexDriveOpened>(report =>
         {

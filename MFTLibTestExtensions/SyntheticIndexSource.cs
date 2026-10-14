@@ -13,7 +13,7 @@ public static class SyntheticIndexSource
     /// <returns>The source to assign to <see cref="FileIndexOptions.MftSource" />.</returns>
     public static MftIndexSource Create(SyntheticMftProducer? producer = null, ScriptedWatchSource? watches = null)
     {
-        return new MftIndexSource(producer?.Producer ?? RefuseScan, watches);
+        return new MftIndexSource(producer?.Producer ?? RefuseScan, watches?.IndexSource);
     }
 
     static Task<MftBlockProduceResult> RefuseScan(MftBlockProduceRequest request, CancellationToken cancellationToken)
