@@ -125,8 +125,8 @@ the matching test extensions package:
 
 | Scenario | Recommended API |
 | --- | --- |
-| Already elevated; scan once | `MftIndexSources.FromLocalVolumes` with `CacheMode.Disabled`, no watch |
-| Saved image on any supported platform | `MftIndexSources.FromMftDumpFile` as the only option set, no watch, no elevation |
+| Already elevated; scan once ([one-shot local query](#query-a-live-volume-once)) | `MftIndexSources.FromLocalVolumes` with `CacheMode.Disabled`, no watch |
+| Saved image on any supported platform ([dump query](#query-a-saved-mft-dump)) | `MftIndexSources.FromMftDumpFile` as the only option set, no watch, no elevation |
 | Non-elevated desktop/CLI app; one UAC prompt | `BrokerSession` with `CreateIndexSource()` |
 | Resume from a persisted journal cursor | Warm start from the cache block, whose header holds the cursor |
 | Continuously receive changes | `FileIndex.StartWatchingAsync` and `Changed` |
@@ -163,24 +163,147 @@ Watch stays unelevated and its broker elevates. Dump scans need no elevation.
 Set `MFTLIB_SAMPLE_UNATTENDED=1` to skip prompts and elevation requests in an
 unelevated unattended run. See [elevation](docs/elevation.md).
 
-The dump source loads one virtual drive in process on Windows or Linux x64. The source
-supplies the drive (its letter, root `dump:/D` and serial zero) and the uncached open, so
-`index.Drives` and `index.Root(letter)` see it with nothing else set; setting `Drives`,
-`CacheMode` (even `Disabled`), `CacheDirectory` or `CacheTag` throws `ArgumentException`:
+### Query a live volume once
+
+For a process that is already running elevated on Windows and needs a read-only NTFS snapshot
+without a broker, a watch or an application cache directory, resolve the volume with
+`IndexedDrive.FromWindowsVolume`, select `MftIndexSources.FromLocalVolumes()` and open with
+`CacheMode.Disabled`:
 
 ```csharp
-var letter = 'D';
+using MFTLib;
+using MFTLib.Index;
+
+var cancellationToken = CancellationToken.None;
+var drive = IndexedDrive.FromWindowsVolume('C');
 var options = new FileIndexOptions
 {
-    MftSource = MftIndexSources.FromMftDumpFile(filePath, letter)
+    Drives = [drive],
+    CacheMode = CacheMode.Disabled,
+    MftSource = MftIndexSources.FromLocalVolumes()
 };
-await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
+
+await using var index = await FileIndex.OpenAsync(options, cancellationToken);
+var status = index.Drives.Single();
+if (status.State != DriveState.Ready)
+{
+    throw new InvalidOperationException(
+        status.Failure is { } failure
+            ? $"Drive {status.Drive} failed ({failure.Kind}): {failure.Message}"
+            : $"Drive {status.Drive} is {status.State}.");
+}
+
+var query = new SearchQuery("*.log", NameMatchMode.Glob, IsDirectory: false);
+foreach (var entry in index.Enumerate(query, cancellationToken).Take(20))
+{
+    var observedSize = entry.IsSizeKnown ? $"{entry.Size} bytes" : "size unknown";
+    Console.WriteLine($"{entry.Path} ({observedSize}, last write observed {entry.LastWriteTime:u})");
+}
 ```
 
-A dump is untrusted. An empty file, a record size other than 1024 or 4096, a partial
-final record, an invalid fixup on an allocated record, a file unreadable to its opened
-length, a missing or invalid root, duplicate record numbers or a parent outside the
-index each fail the scan with a message in `DriveStatus.Failure.Message`.
+`IndexedDrive.FromWindowsVolume('C')` resolves `C:\` and reads the volume serial from Windows,
+so no caller-supplied serial is needed. `CacheMode.Disabled` writes a private delete-on-close
+block and ignores `CacheDirectory`. Always check `DriveStatus.State` and `DriveStatus.Failure`
+before treating zero query results as an empty drive. `IndexedDrive.FromWindowsVolume` throws
+`IOException` when Windows cannot report the volume serial, before any index exists. A drive
+whose root directory is missing settles as `DriveState.Offline`. A scan that fails, such as an
+unelevated process denied raw volume access, settles as `DriveState.Failed` with
+`DriveFailureKind.ProducerFailed` rather than throwing.
+
+One-shot means one MFT scan per open index followed by any number of in-memory queries
+(`Enumerate`, `Search`, `EnumerateRows`, `Find`, `Root`) against that snapshot; do not reopen or
+rescan the drive for each name you look up. Keep `foreach` and bounded LINQ chains such as
+`Take` inside the `await using` lifetime so the enumerator releases its snapshot borrow before
+`DisposeAsync` unmaps the block. `FileEntry.Size` (when `IsSizeKnown` is true) and
+`FileEntry.LastWriteTime` report the values observed during the scan, not a live guarantee of
+current filesystem contents.
+
+`MftIndexSources.FromLocalVolumes()` requires an already-elevated Windows process; self-elevation
+belongs to the application. `SampleProgram.Direct` owns that self-elevation flow when run as the
+compiled `.exe` (see [elevation](docs/elevation.md)):
+
+```powershell
+.\SampleProgram.Direct\bin\x64\Release\net10.0\SampleProgram.Direct.exe search C --source local --name *.log --files --stream --limit 20
+```
+
+When launched unelevated in an attended session, `SampleProgram.Direct.exe` shows its heads-up
+dialog and relaunches itself elevated through UAC. Because the elevated child's console window
+closes when the run finishes, the child redirects its standard output to
+`SampleProgram.Direct\bin\x64\Release\net10.0\output.log` beside the executable, and the
+unelevated parent prints that path before launching it. When `MFTLIB_SAMPLE_UNATTENDED=1` is set
+in an unelevated process, the sample skips the dialog and UAC prompt, prints manual-elevation
+instructions, and exits with code 1 without scanning.
+
+### Query a saved MFT dump
+
+The dump source loads one saved `$MFT` file as a virtual drive in process on Windows or Linux x64,
+with no elevation, no broker and no watch. The caller chooses the logical drive letter (`'D'`
+below) as the key in `index.Drives` and `index.Root('D')`; it names no host volume, and entries
+render virtual paths under `dump:/D`. The source supplies its own virtual drive (letter, root
+`dump:/D`, serial zero, `ProducerPolicy.Mft`) and uncached open, so `FileIndexOptions.MftSource`
+is the only drive or cache option to set; setting `Drives`, `CacheMode` (even `Disabled`),
+`CacheDirectory` or `CacheTag` throws `ArgumentException`:
+
+```csharp
+using MFTLib;
+using MFTLib.Index;
+
+var filePath = @"C:\dumps\volume.mft";
+var cancellationToken = CancellationToken.None;
+var options = new FileIndexOptions
+{
+    MftSource = MftIndexSources.FromMftDumpFile(filePath, 'D')
+};
+
+await using var index = await FileIndex.OpenAsync(options, cancellationToken);
+var status = index.Drives.Single();
+if (status.State != DriveState.Ready)
+{
+    throw new InvalidOperationException(
+        $"Dump scan failed ({status.Failure?.Kind}): {status.Failure?.Message}");
+}
+
+var query = new SearchQuery("Notes.txt", NameMatchMode.Exact);
+foreach (var entry in index.Enumerate(query, cancellationToken))
+{
+    var observedSize = entry.IsSizeKnown ? entry.Size.ToString() : "?";
+    Console.WriteLine($"{entry.Path}  {observedSize}");
+}
+```
+
+A dump is untrusted, and `FromMftDumpFile` does not open the file when constructing the source.
+Always check `DriveStatus.State` and `DriveStatus.Failure` before treating zero matches as a
+valid empty result: a missing path, an empty file, a record size other than 1024 or 4096, a
+partial final record, an invalid fixup on an allocated record, a file unreadable to its opened
+length, a missing or invalid root, duplicate record numbers or a parent outside the index each
+settle the drive as `DriveState.Failed` (`DriveFailureKind.ProducerFailed`) with the reason in
+`DriveStatus.Failure.Message`. Because a dump contains MFT metadata records rather than volume
+file streams, `FileEntry.Open` cannot read file contents from a dump entry and throws
+`InvalidOperationException`.
+
+`SampleProgram.Direct` runs the same read-only dump query from the command line without elevation
+on Windows and Linux x64:
+
+```powershell
+# Windows x64
+.\SampleProgram.Direct\bin\x64\Release\net10.0\SampleProgram.Direct.exe search D --source dump --dump-file <path> --name Notes.txt --exact --stream
+```
+
+```bash
+# Linux x64
+dotnet ./SampleProgram.Direct/bin/x64/Release/net10.0/SampleProgram.Direct.dll search D --source dump --dump-file <path> --name Notes.txt --exact --stream
+```
+
+Output depends on the supplied dump image; for the repository's standard 16-record test fixture,
+the command prints:
+
+```text
+  D: ParsingMft: 16 rows of 16
+  D: Transferring: 7 rows
+  D: Finished: 11 rows (Succeeded)
+dump:/D/documents/Notes.txt  11
+1 entries
+```
 
 ## Freed MFT records
 

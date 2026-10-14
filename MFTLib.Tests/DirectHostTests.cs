@@ -55,6 +55,28 @@ public class DirectHostTests
     }
 
     [TestMethod]
+    public void Run_DocumentedExactStreamedDumpSearch_PrintsPhasesMatchAndEntryCountWithoutElevation()
+    {
+        var lines = new List<string>();
+
+        var result = HostOver(lines).Run(
+            ["search", "D", "--source", "dump", "--dump-file", _dumpFile, "--name", "Notes.txt", "--exact", "--stream"]);
+
+        Assert.AreEqual(0, result, string.Join(Environment.NewLine, lines));
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "  D: ParsingMft: 16 rows of 16",
+                "  D: Transferring: 7 rows",
+                "  D: Finished: 11 rows (Succeeded)",
+                $"{DumpRoot}/documents/Notes.txt  11",
+                "1 entries"
+            },
+            lines,
+            string.Join(Environment.NewLine, lines));
+    }
+
+    [TestMethod]
     public void Run_StreamedSearchWithALimit_StopsAtTheLimit()
     {
         var lines = new List<string>();
@@ -237,6 +259,49 @@ public class DirectHostTests
         Assert.AreEqual(0, result);
         Assert.IsFalse(lines.Any(line => line.Contains("deleted=")), string.Join(Environment.NewLine, lines));
         Assert.IsTrue(lines.Contains("2 entries"), string.Join(Environment.NewLine, lines));
+    }
+
+    [TestMethod]
+    public void Run_DocumentedLocalStreamedSearch_StreamsMatchingFilesAndRefusesUnelevatedUnattended()
+    {
+        string[] command = ["search", "C", "--source", "local", "--name", "*.log", "--files", "--stream", "--limit", "20"];
+        var elevatedLines = new List<string>();
+        var elevatedHost = ElevatedHost(elevatedLines, _ => SyntheticIndexSource.Create(new SyntheticMftProducer(_ =>
+        [
+            new SyntheticRow(5, ".", 5) { IsDirectory = true },
+            new SyntheticRow(6, "logs", 5) { IsDirectory = true },
+            new SyntheticRow(7, "app.log", 6) { Size = 42 },
+            new SyntheticRow(8, "pending.log", 6) { Size = null },
+            new SyntheticRow(9, "archive.log", 5) { IsDirectory = true },
+            new SyntheticRow(10, "Notes.txt", 5) { Size = 11 }
+        ])));
+
+        var elevatedResult = elevatedHost.Run(command);
+
+        Assert.AreEqual(0, elevatedResult, string.Join(Environment.NewLine, elevatedLines));
+        var matches = elevatedLines.Where(line => line.Contains(".log", StringComparison.Ordinal) && !line.StartsWith("Indexing ", StringComparison.Ordinal)).ToList();
+        CollectionAssert.AreEquivalent(
+            new[]
+            {
+                $"{Path.Combine(_directory, "logs", "app.log")}  42",
+                $"{Path.Combine(_directory, "logs", "pending.log")}  ?"
+            },
+            matches,
+            string.Join(Environment.NewLine, elevatedLines));
+        Assert.IsTrue(elevatedLines.Contains("2 entries"), string.Join(Environment.NewLine, elevatedLines));
+
+        var unattendedLines = new List<string>();
+        var unattendedHost = HostOver(unattendedLines);
+        unattendedHost._isElevated = () => false;
+        unattendedHost._isWindows = () => true;
+        unattendedHost._getEnvironmentVariable = name => name == SampleHost.UnattendedVariableName ? "1" : null;
+        unattendedHost._createSource = _ => throw new AssertFailedException("An unelevated unattended run must not scan.");
+
+        var unattendedResult = unattendedHost.Run(command);
+
+        Assert.AreEqual(1, unattendedResult);
+        Assert.IsTrue(unattendedLines.Contains("Running unattended (MFTLIB_SAMPLE_UNATTENDED=1): elevation skipped, no prompt shown."));
+        Assert.IsTrue(unattendedLines.Any(line => line.Contains("AUTOMATIC ELEVATION FAILED.")));
     }
 
     [TestMethod]
