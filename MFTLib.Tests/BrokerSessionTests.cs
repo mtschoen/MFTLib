@@ -415,7 +415,7 @@ public partial class BrokerSessionTests
             session.ConnectAsync(CancellationToken.None));
         Assert.AreEqual(typeof(BrokerSession).FullName, refusal.ObjectName);
         await WatchDeduplicationTestSupport.ThrowsAsync<ObjectDisposedException>(() =>
-            session.GrowUsnJournalAsync('C', 2, 1, CancellationToken.None));
+            session.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 2, AllocationDelta = 1 }, CancellationToken.None));
     }
 
     // A continuation on Ended that calls back into the session: it must complete, so it was not run
@@ -577,10 +577,10 @@ public partial class BrokerSessionTests
     public async Task GrowUsnJournalAsync_LaunchesOnFirstUseAndForwardsTheRequest()
     {
         var received = new List<(DriveKey Drive, long MaximumSize, long AllocationDelta)>();
-        await using var handle = StartBroker((drive, maximumSize, allocationDelta) =>
+        await using var handle = StartBroker((drive, target) =>
         {
-            received.Add((drive, maximumSize, allocationDelta));
-            return new UsnJournalSettings { MaximumSize = maximumSize, AllocationDelta = allocationDelta };
+            received.Add((drive, target.MaximumSize, target.AllocationDelta));
+            return target;
         });
         var brokerProcess = handle.Process;
         var launches = 0;
@@ -590,7 +590,7 @@ public partial class BrokerSessionTests
             return Task.FromResult(brokerProcess);
         });
 
-        var settings = await session.GrowUsnJournalAsync('c', 0x08000000, 0x01000000, CancellationToken.None)
+        var settings = await session.GrowUsnJournalAsync('c', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None)
             .WaitAsync(HangGuard);
 
         Assert.AreEqual(0x08000000L, settings.MaximumSize);
@@ -598,6 +598,8 @@ public partial class BrokerSessionTests
         Assert.AreEqual(1, launches);
         Assert.AreEqual(1, received.Count);
         Assert.AreEqual('C', received[0].Drive);
+        Assert.AreEqual(0x08000000L, received[0].MaximumSize);
+        Assert.AreEqual(0x01000000L, received[0].AllocationDelta);
     }
 
     [TestMethod]
@@ -611,7 +613,7 @@ public partial class BrokerSessionTests
         await process.Ended.WaitAsync(HangGuard);
 
         await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() =>
-            session.GrowUsnJournalAsync('C', 0x08000000, 0x01000000, CancellationToken.None));
+            session.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None));
     }
 
     [TestMethod]
@@ -692,9 +694,9 @@ public partial class BrokerSessionTests
         await using var session = new BrokerSession();
 
         var first = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() =>
-            session.GrowUsnJournalAsync('C', 2, 1, CancellationToken.None));
+            session.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 2, AllocationDelta = 1 }, CancellationToken.None));
         await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() =>
-            session.GrowUsnJournalAsync('C', 2, 1, CancellationToken.None));
+            session.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 2, AllocationDelta = 1 }, CancellationToken.None));
 
         StringAssert.Contains(first.Message, "UAC prompt was declined");
         Assert.AreEqual(2, prompts);
@@ -714,9 +716,9 @@ public partial class BrokerSessionTests
         session.Connecting += () => Interlocked.Increment(ref connecting);
 
         await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() =>
-            session.GrowUsnJournalAsync('C', 2, 1, CancellationToken.None));
+            session.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 2, AllocationDelta = 1 }, CancellationToken.None));
         await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() =>
-            session.GrowUsnJournalAsync('C', 2, 1, CancellationToken.None));
+            session.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 2, AllocationDelta = 1 }, CancellationToken.None));
 
         Assert.AreEqual(2, commandLines.Count);
         StringAssert.StartsWith(commandLines[0], "--broker --pipe ");
@@ -736,7 +738,7 @@ public partial class BrokerSessionTests
         await using var session = new BrokerSession(_ => true, TimeSpan.FromSeconds(-5));
 
         await WatchDeduplicationTestSupport.ThrowsAsync<ArgumentOutOfRangeException>(() =>
-            session.GrowUsnJournalAsync('C', 2, 1, CancellationToken.None));
+            session.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 2, AllocationDelta = 1 }, CancellationToken.None));
     }
 
     [TestMethod]
@@ -747,7 +749,7 @@ public partial class BrokerSessionTests
             BrokerTestHarness.CreateSession(null!));
     }
 
-    static InProcessBrokerHandle StartBroker(Func<DriveKey, long, long, UsnJournalSettings>? grow = null) =>
+    static InProcessBrokerHandle StartBroker(Func<DriveKey, UsnJournalSettings, UsnJournalSettings>? grow = null) =>
         BrokerTestHarness.StartInProcess(new ScriptedBrokerVolumes
         {
             QueryJournalCursor = _ => throw new NotSupportedException("no scan in this test"),

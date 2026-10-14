@@ -5,8 +5,9 @@ namespace MFTLib.Index;
 public sealed partial class FileIndex
 {
     /// <summary>
-    ///     Reads current sizing without elevation. Consumers own retention targets and sizing policy;
-    ///     resizing is an explicit elevated broker operation.
+    ///     Reads current sizing without elevation. The library reports the size that would have retained
+    ///     a lost checkpoint in JournalCheckpointLoss; the consumer owns the decision to grow.
+    ///     Resizing is an explicit elevated broker operation.
     /// </summary>
     /// <param name="driveLetter">A configured drive key. The default key is invalid.</param>
     [SupportedOSPlatform("windows")]

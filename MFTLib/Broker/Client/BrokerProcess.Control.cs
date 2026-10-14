@@ -62,18 +62,17 @@ internal sealed partial class BrokerProcess
     ///     reports afterwards.
     /// </summary>
     /// <param name="driveLetter">The drive whose journal grows.</param>
-    /// <param name="maximumSize">The new maximum size in bytes; the broker refuses one at or below the current.</param>
-    /// <param name="allocationDelta">The new allocation delta in bytes.</param>
+    /// <param name="target">The requested maximum size and allocation delta in bytes; the broker refuses a maximum at or below the current.</param>
     /// <param name="cancellationToken">Stops waiting, as for <see cref="QueryVolumeAsync" />.</param>
     /// <exception cref="InvalidOperationException">The broker refused or failed the change.</exception>
     /// <exception cref="BrokerChannelLostException">The process ended first.</exception>
     /// <exception cref="TimeoutException">The broker did not answer within the reply timeout.</exception>
-    internal async Task<UsnJournalSettings> GrowUsnJournalAsync(char driveLetter, long maximumSize, long allocationDelta,
+    internal async Task<UsnJournalSettings> GrowUsnJournalAsync(char driveLetter, UsnJournalSettings target,
         CancellationToken cancellationToken)
     {
         var drive = NormalizeDrive(driveLetter);
         var reply = await RequestAsync((writer, requestId) =>
-                BrokerProtocol.WriteGrowUsnJournal(writer, requestId, drive, maximumSize, allocationDelta),
+                BrokerProtocol.WriteGrowUsnJournal(writer, requestId, drive, target.MaximumSize, target.AllocationDelta),
             BrokerFrameKind.UsnJournalSettings, cancellationToken).ConfigureAwait(false);
         return new UsnJournalSettings
         {

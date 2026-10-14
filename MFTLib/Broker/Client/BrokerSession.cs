@@ -124,20 +124,19 @@ public sealed class BrokerSession : IAsyncDisposable
     ///     Grows the drive's USN journal (never shrinks it) and returns the sizing the volume reports afterwards,
     ///     launching the broker first if no use has yet.
     /// </summary>
-    /// <param name="driveLetter">The drive whose journal grows.</param>
-    /// <param name="maximumSize">The new maximum size in bytes; the broker refuses one at or below the current.</param>
-    /// <param name="allocationDelta">The new allocation delta in bytes.</param>
+    /// <param name="drive">The drive whose journal grows.</param>
+    /// <param name="target">The requested maximum size and allocation delta in bytes; the broker refuses a maximum at or below the current.</param>
     /// <param name="cancellationToken">Ends this call's wait; it does not abort a launch other callers share.</param>
     /// <exception cref="InvalidOperationException">The process ended, the launch did not start, or the broker refused the change.</exception>
     /// <exception cref="ObjectDisposedException">The session was disposed.</exception>
     /// <exception cref="IOException">The process ended first. <see cref="Ended" /> says why.</exception>
     /// <exception cref="TimeoutException">The broker never connected, or did not answer within the reply timeout.</exception>
-    public async Task<UsnJournalSettings> GrowUsnJournalAsync(DriveKey driveLetter, long maximumSize,
-        long allocationDelta, CancellationToken cancellationToken)
+    public async Task<UsnJournalSettings> GrowUsnJournalAsync(DriveKey drive, UsnJournalSettings target,
+        CancellationToken cancellationToken)
     {
-        var letter = driveLetter.Letter;
+        var letter = drive.Letter;
         var process = await ConnectAsync(cancellationToken).ConfigureAwait(false);
-        return await process.GrowUsnJournalAsync(letter, maximumSize, allocationDelta, cancellationToken)
+        return await process.GrowUsnJournalAsync(letter, target, cancellationToken)
             .ConfigureAwait(false);
     }
 

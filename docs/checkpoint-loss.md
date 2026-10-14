@@ -59,7 +59,26 @@ greater than the report's `JournalSettings.MaximumSize`, and a positive recorded
 the recorded allocation delta. On failure the output is default, including when
 the retained size is null because it cannot fit in a `long`.
 
+`GrowthTargetRefusalReason` is a nullable `JournalGrowthTargetRefusalReason`: null
+exactly when the projection can supply a target, otherwise the first applicable
+reason in this order:
+
+1. `CheckpointNotTrimmed`: the cause is not `CheckpointTrimmed`.
+2. `RetentionSizeUnavailable`: no retained size was recorded, including overflow.
+3. `NonPositiveRetentionSize`: the recorded retention size is zero or negative.
+4. `NonPositiveAllocationDelta`: the recorded allocation delta is zero or negative.
+5. `RetentionSizeNotGreaterThanMaximum`: the retained size is at or below the recorded maximum.
+
+The reason is derived from current report values, including synthetic `with` copies.
+The live checkpoint check rejects nonpositive allocation deltas before creating a loss,
+and its representable retained sizes are positive. Those two nonpositive guards
+are reachable through `SyntheticNotifications.CreateJournalCheckpointLoss` and
+`with` expressions; the other reasons can arise from production observations.
+
 The method performs no I/O, growth or new arithmetic. It does not round again or
-invent a larger target. Query current settings immediately before requesting
+invent a larger target. The library reports the journal size that would have retained
+the checkpoint; the consumer owns the decision to grow. Pass the target struct to
+`BrokerSession.GrowUsnJournalAsync(drive, target, cancellationToken)`.
+Query current settings immediately before requesting
 growth and refuse the request if the target maximum is no longer greater than
 the current maximum. Growing cannot recover lost records; rescan afterward.

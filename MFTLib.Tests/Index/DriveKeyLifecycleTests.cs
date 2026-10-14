@@ -75,7 +75,7 @@ public class DriveKeyLifecycleTests
         await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
         {
             await using var session = BrokerTestHarness.CreateSession(_ => throw new AssertFailedException("the invalid key must not launch a broker"));
-            await session.GrowUsnJournalAsync(default, 4096, 1024, CancellationToken.None);
+            await session.GrowUsnJournalAsync(default, new UsnJournalSettings { MaximumSize = 4096, AllocationDelta = 1024 }, CancellationToken.None);
         });
         var source = new ScriptedWatchSource();
         Assert.ThrowsException<ArgumentException>(() => source.WatchFor(default));

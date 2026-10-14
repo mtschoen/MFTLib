@@ -394,17 +394,13 @@ public partial class BrokerProcessTests
         var volumes = ScriptedVolumes(_ => [[SyntheticRecord(5, ".", 3)]]) with
         {
             ReadJournal = (_, since, _) => since == advanced ? ([], since) : ([], advanced),
-            GrowUsnJournal = (_, maximumSize, allocationDelta) => new UsnJournalSettings
-            {
-                MaximumSize = maximumSize,
-                AllocationDelta = allocationDelta
-            }
+            GrowUsnJournal = (_, target) => target
         };
         await using var handle = BrokerTestHarness.StartInProcess(volumes);
 
         var scan = await handle.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
             CancellationToken.None).WaitAsync(HangGuard);
-        var settings = await handle.Process.GrowUsnJournalAsync('C', 0x08000000, 0x01000000, CancellationToken.None)
+        var settings = await handle.Process.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None)
             .WaitAsync(HangGuard);
 
         Assert.AreEqual(advanced.ToProduction(), scan.AdvancedCursor);
@@ -418,7 +414,7 @@ public partial class BrokerProcessTests
         await using var handle = BrokerTestHarness.StartInProcess(ScriptedVolumes());
 
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
-            handle.Process.GrowUsnJournalAsync('C', 0x08000000, 0x01000000, CancellationToken.None)
+            handle.Process.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None)
                 .WaitAsync(HangGuard));
     }
 

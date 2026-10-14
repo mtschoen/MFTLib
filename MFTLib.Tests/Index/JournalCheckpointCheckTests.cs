@@ -47,6 +47,7 @@ public class JournalCheckpointCheckTests
             Assert.AreEqual(0L, loss.FirstUsn);
             Assert.IsNull(loss.BytesBehind);
             Assert.IsNull(loss.SizeThatWouldHaveRetained);
+            Assert.AreEqual(JournalGrowthTargetRefusalReason.CheckpointNotTrimmed, loss.GrowthTargetRefusalReason);
         }
     }
 
@@ -132,6 +133,9 @@ public class JournalCheckpointCheckTests
         // The 4100-byte span rounds to 4160, then the trimming margin adds one 64-byte delta.
         Assert.AreEqual(100L, loss.BytesBehind);
         Assert.AreEqual(4_224L, loss.SizeThatWouldHaveRetained);
+        Assert.AreEqual(JournalGrowthTargetRefusalReason.RetentionSizeNotGreaterThanMaximum, loss.GrowthTargetRefusalReason);
+        Assert.IsFalse(loss.TryGetGrowthTarget(out var target));
+        Assert.AreEqual(default(UsnJournalSettings), target);
     }
 
     [TestMethod]
@@ -149,6 +153,7 @@ public class JournalCheckpointCheckTests
         Assert.AreEqual(900L, loss.CheckpointUsn);
         Assert.IsNull(loss.BytesBehind);
         Assert.IsNull(loss.SizeThatWouldHaveRetained);
+        Assert.AreEqual(JournalGrowthTargetRefusalReason.CheckpointNotTrimmed, loss.GrowthTargetRefusalReason);
     }
 
     /// <summary>
@@ -251,6 +256,9 @@ public class JournalCheckpointCheckTests
         Assert.AreEqual(128L * 1024 * 1024, loss.JournalSettings.MaximumSize);
         Assert.AreEqual(1L, loss.BytesBehind);
         Assert.IsNull(loss.SizeThatWouldHaveRetained);
+        Assert.AreEqual(JournalGrowthTargetRefusalReason.RetentionSizeUnavailable, loss.GrowthTargetRefusalReason);
+        Assert.IsFalse(loss.TryGetGrowthTarget(out var target));
+        Assert.AreEqual(default(UsnJournalSettings), target);
     }
 
     [TestMethod]
@@ -264,5 +272,9 @@ public class JournalCheckpointCheckTests
 
         Assert.IsNotNull(loss);
         Assert.AreEqual(largestAlignedSize, loss.SizeThatWouldHaveRetained);
+        Assert.IsNull(loss.GrowthTargetRefusalReason);
+        Assert.IsTrue(loss.TryGetGrowthTarget(out var target));
+        Assert.AreEqual(largestAlignedSize, target.MaximumSize);
+        Assert.AreEqual(64L, target.AllocationDelta);
     }
 }

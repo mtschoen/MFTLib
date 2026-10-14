@@ -79,7 +79,8 @@ public static class BrokerTestHarness
                     : (driveLetter, since, _, cancellationToken) =>
                         ConvertWatch(watch(new DriveKey(driveLetter[0]), since.ToSynthetic(), cancellationToken), cancellationToken),
                 driveLetter => queryVolume(new DriveKey(driveLetter[0])),
-                grow is null ? null : (driveLetter, maximumSize, allocationDelta) => grow(new DriveKey(driveLetter[0]), maximumSize, allocationDelta)));
+                grow is null ? null : (driveLetter, maximumSize, allocationDelta) => grow(new DriveKey(driveLetter[0]),
+                    new UsnJournalSettings { MaximumSize = maximumSize, AllocationDelta = allocationDelta })));
     }
 
     static (SyntheticJournalRecord[] Entries, SyntheticJournalCursor Updated) NothingNew(DriveKey driveLetter,

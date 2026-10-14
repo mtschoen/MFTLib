@@ -8,7 +8,7 @@ MFTLib.BrokerSession :: event public Connected : System.Action?
 MFTLib.BrokerSession :: event public Connecting : System.Action?
 MFTLib.BrokerSession :: method public CreateIndexSource(MFTLib.MftScanOptions? scanOptions = default) : MFTLib.Index.MftIndexSource
 MFTLib.BrokerSession :: method public DisposeAsync() : System.Threading.Tasks.ValueTask
-MFTLib.BrokerSession :: method public GrowUsnJournalAsync(MFTLib.Index.DriveKey driveLetter, long maximumSize, long allocationDelta, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.UsnJournalSettings>
+MFTLib.BrokerSession :: method public GrowUsnJournalAsync(MFTLib.Index.DriveKey drive, MFTLib.UsnJournalSettings target, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.UsnJournalSettings>
 MFTLib.BrokerSession :: property public Ended { get; } : System.Threading.Tasks.Task<string>
 MFTLib.BrokerSession :: type public sealed class : System.IAsyncDisposable
 MFTLib.ElevatedEntryPoint :: method public static TryHandle(string[] arguments) : bool

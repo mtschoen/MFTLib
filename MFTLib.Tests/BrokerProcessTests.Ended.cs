@@ -20,7 +20,7 @@ public partial class BrokerProcessTests
         var first = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
         Assert.AreEqual(BrokerFrameKind.QueryVolume, (await broker.ReadRequestAsync()).Kind);
         Task second = secondRequestGrows
-            ? broker.Process.GrowUsnJournalAsync('D', 1, 1, CancellationToken.None)
+            ? broker.Process.GrowUsnJournalAsync('D', new UsnJournalSettings { MaximumSize = 1, AllocationDelta = 1 }, CancellationToken.None)
             : broker.Process.QueryVolumeAsync('D', CancellationToken.None);
         Assert.AreEqual(secondRequestGrows ? BrokerFrameKind.GrowUsnJournal : BrokerFrameKind.QueryVolume,
             (await broker.ReadRequestAsync()).Kind);

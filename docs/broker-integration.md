@@ -120,9 +120,9 @@ End rules:
   end that completed before disposal still completes `Ended`. Any use after disposal throws
   `ObjectDisposedException`.
 
-`BrokerSession.GrowUsnJournalAsync(driveLetter, maximumSize, allocationDelta, cancellationToken)`
+`BrokerSession.GrowUsnJournalAsync(drive, target, cancellationToken)`
 launches the broker if no use has yet, grows the journal, and returns the settings read back
-from the volume.
+from the volume. `target` is a `UsnJournalSettings` carrying the requested maximum size and allocation delta.
 
 Consumers create index sources only through `BrokerSession.CreateIndexSource(scanOptions)`.
 Application code owns a `BrokerSession`; test sessions use
@@ -428,14 +428,15 @@ recorded allocation delta too, without querying or changing the journal. It
 refuses non-trimming losses, absent or nonpositive retention sizes, targets at
 or below the recorded maximum, and nonpositive allocation deltas. If the cause
 is `JournalRecreated`, no size would have preserved the old journal.
+`loss.GrowthTargetRefusalReason` explains a refusal and is null when a target exists.
+The library reports the size that would have retained the checkpoint; the consumer decides whether to grow.
 
 Journal growth is an explicit, persistent system change. After user consent:
 
 1. Obtain a target with `loss.TryGetGrowthTarget(out var target)`; stop if it returns false.
 2. Read fresh sizing with `index.QueryUsnJournalSettings(driveLetter)` immediately
    before growth and require `target.MaximumSize` to exceed its `MaximumSize`.
-3. Call `broker.GrowUsnJournalAsync(driveLetter, target.MaximumSize,
-   target.AllocationDelta, cancellationToken)`. The broker refuses a maximum at or
+3. Call `broker.GrowUsnJournalAsync(driveLetter, target, cancellationToken)`. The broker refuses a maximum at or
    below the current size and returns the settings read back after success.
 4. Call `index.RescanAsync([drive], cancellationToken)` and inspect its result.
 5. The successful rescan clears the refusal and starts the watch if it is requested.
@@ -448,8 +449,7 @@ if (loss.TryGetGrowthTarget(out var target))
     var current = index.QueryUsnJournalSettings(driveLetter);
     if (target.MaximumSize > current.MaximumSize)
     {
-        await broker.GrowUsnJournalAsync(driveLetter, target.MaximumSize,
-            target.AllocationDelta, cancellationToken);
+        await broker.GrowUsnJournalAsync(driveLetter, target, cancellationToken);
         var results = await index.RescanAsync([driveLetter], cancellationToken);
         foreach (var result in results.Where(result => result.Failure is not null))
         {

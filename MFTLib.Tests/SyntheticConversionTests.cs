@@ -158,11 +158,7 @@ public class SyntheticConversionTests
         var handle = BrokerTestHarness.StartInProcess(new ScriptedBrokerVolumes
         {
             QueryJournalCursor = _ => new SyntheticJournalCursor(7, 1000),
-            GrowUsnJournal = (_, maximumSize, allocationDelta) => new UsnJournalSettings
-            {
-                MaximumSize = maximumSize,
-                AllocationDelta = allocationDelta
-            }
+            GrowUsnJournal = (_, target) => target
         });
         var launches = 0;
         var session = BrokerTestHarness.CreateSession(_ =>
@@ -172,7 +168,7 @@ public class SyntheticConversionTests
         });
         try
         {
-            var settings = await session.GrowUsnJournalAsync('C', 0x08000000, 0x01000000, CancellationToken.None)
+            var settings = await session.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None)
                 .WaitAsync(ScriptedWatchSource.HangGuard);
 
             Assert.AreEqual(1, launches);

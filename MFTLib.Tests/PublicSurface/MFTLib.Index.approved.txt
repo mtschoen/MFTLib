@@ -334,6 +334,7 @@ MFTLib.Index.JournalCheckpointLoss :: property public BytesBehind { get; init; }
 MFTLib.Index.JournalCheckpointLoss :: property public Cause { get; init; } : MFTLib.Index.JournalCheckpointLossCause
 MFTLib.Index.JournalCheckpointLoss :: property public DetectedDuring { get; init; } : MFTLib.Index.JournalCheckpointLossDetection
 MFTLib.Index.JournalCheckpointLoss :: property public Drive { get; init; } : MFTLib.Index.DriveKey
+MFTLib.Index.JournalCheckpointLoss :: property public GrowthTargetRefusalReason { get; } : MFTLib.Index.JournalGrowthTargetRefusalReason?
 MFTLib.Index.JournalCheckpointLoss :: property public JournalSettings { get; init; } : MFTLib.UsnJournalSettings
 MFTLib.Index.JournalCheckpointLoss :: property public SizeThatWouldHaveRetained { get; init; } : long?
 MFTLib.Index.JournalCheckpointLoss :: type public sealed class : System.IEquatable<MFTLib.Index.JournalCheckpointLoss>
@@ -345,6 +346,12 @@ MFTLib.Index.JournalCheckpointLossDetection :: field public const DriveOpening :
 MFTLib.Index.JournalCheckpointLossDetection :: field public const LiveWatch : MFTLib.Index.JournalCheckpointLossDetection = 1
 MFTLib.Index.JournalCheckpointLossDetection :: field public const ScanCatchUp : MFTLib.Index.JournalCheckpointLossDetection = 2
 MFTLib.Index.JournalCheckpointLossDetection :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+MFTLib.Index.JournalGrowthTargetRefusalReason :: field public const CheckpointNotTrimmed : MFTLib.Index.JournalGrowthTargetRefusalReason = 0
+MFTLib.Index.JournalGrowthTargetRefusalReason :: field public const NonPositiveAllocationDelta : MFTLib.Index.JournalGrowthTargetRefusalReason = 3
+MFTLib.Index.JournalGrowthTargetRefusalReason :: field public const NonPositiveRetentionSize : MFTLib.Index.JournalGrowthTargetRefusalReason = 2
+MFTLib.Index.JournalGrowthTargetRefusalReason :: field public const RetentionSizeNotGreaterThanMaximum : MFTLib.Index.JournalGrowthTargetRefusalReason = 4
+MFTLib.Index.JournalGrowthTargetRefusalReason :: field public const RetentionSizeUnavailable : MFTLib.Index.JournalGrowthTargetRefusalReason = 1
+MFTLib.Index.JournalGrowthTargetRefusalReason :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.Index.MftIndexSource :: method public static Unavailable(string reason) : MFTLib.Index.MftIndexSource
 MFTLib.Index.MftIndexSource :: type public sealed class
 MFTLib.Index.NameMatchMode :: field public const Exact : MFTLib.Index.NameMatchMode = 0

@@ -404,11 +404,14 @@ replication agents), so surface it as a user action, not a startup default.
 Use `loss.TryGetGrowthTarget(out var target)` to obtain the recorded retention size
 and allocation delta for that action. It succeeds only for `CheckpointTrimmed`
 with a positive representable retention size greater than the recorded maximum
-and a positive allocation delta; on failure, `target` is default. The method
+and a positive allocation delta; on failure, `target` is default and
+`loss.GrowthTargetRefusalReason` explains the refusal. The nullable reason is null
+when a target is available. The library reports the size that would have retained
+the checkpoint; the consumer decides whether to grow. The method
 does not recompute sizing or query the volume. Immediately before growth, query
 fresh settings with `index.QueryUsnJournalSettings(driveLetter)` and require
-`target.MaximumSize` to exceed the current maximum. Pass `target.MaximumSize` and
-`target.AllocationDelta` to `GrowUsnJournalAsync`, then rescan the drive: growth
+`target.MaximumSize` to exceed the current maximum. Pass `target` to
+`GrowUsnJournalAsync(drive, target, cancellationToken)`, then rescan the drive: growth
 does not restore records already lost.
 
 ## Keep the application non-elevated
@@ -459,8 +462,11 @@ indexes, then the session. Scans run only through the index source, and
 ```csharp
 UsnJournalSettings grown = await session.GrowUsnJournalAsync(
     drive.Drive,
-    requestedMaximumSize,
-    requestedAllocationDelta,
+    new UsnJournalSettings
+    {
+        MaximumSize = requestedMaximumSize,
+        AllocationDelta = requestedAllocationDelta
+    },
     cancellationToken);
 ```
 

@@ -73,11 +73,12 @@ The `JournalCheckpointLoss` report in the drive's `DriveWatchStatus.CheckpointLo
 consumer what happened. `loss.TryGetGrowthTarget(out var target)` returns the recorded
 retention size and allocation delta when an eligible growth target exists. It returns
 false for non-trimming losses, absent or nonpositive retention sizes, targets at or
-below the recorded maximum, or nonpositive allocation deltas.
+below the recorded maximum, or nonpositive allocation deltas. `loss.GrowthTargetRefusalReason`
+explains refusal and is null when a target exists. The library reports the size that
+would have retained the checkpoint; the consumer decides whether to grow.
 After user consent, query fresh settings with `index.QueryUsnJournalSettings(driveLetter)`
 and require `target.MaximumSize` to exceed the current `MaximumSize`. Grow through
-`BrokerSession.GrowUsnJournalAsync` with `target.MaximumSize` and
-`target.AllocationDelta`. Then rescan the
+`BrokerSession.GrowUsnJournalAsync(driveLetter, target, cancellationToken)`. Then rescan the
 drive. Journal growth cannot recover records already discarded, so the rescan is
 required. If watching had been refused over the unresumable block, the successful
 rescan clears the refusal and starts the requested watch.

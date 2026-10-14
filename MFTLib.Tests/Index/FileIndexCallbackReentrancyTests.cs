@@ -331,7 +331,7 @@ public class FileIndexCallbackReentrancyTests
             try
             {
                 _ = index.Search(new SearchQuery("t"));
-                var grown = process.GrowUsnJournalAsync('E', 65536, 4096, CancellationToken.None)
+                var grown = process.GrowUsnJournalAsync('E', new UsnJournalSettings { MaximumSize = 65536, AllocationDelta = 4096 }, CancellationToken.None)
                     .WaitAsync(HangGuard).GetAwaiter().GetResult();
                 outcome.TrySetResult((index.Drives.Count, grown.MaximumSize, null));
             }

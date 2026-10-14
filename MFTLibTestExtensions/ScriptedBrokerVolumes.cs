@@ -34,6 +34,6 @@ public sealed record ScriptedBrokerVolumes
     /// <summary>Answers volume sizing queries. Null answers a small fixed volume (256 KiB of 1024-byte records).</summary>
     internal Func<DriveKey, NtfsVolumeInformation>? QueryVolume { get; init; }
 
-    /// <summary>Grows a drive's journal. Null refuses every grow request.</summary>
-    public Func<DriveKey, long, long, UsnJournalSettings>? GrowUsnJournal { get; init; }
+    /// <summary>Grows a drive's journal to the requested settings. Null refuses every grow request.</summary>
+    public Func<DriveKey, UsnJournalSettings, UsnJournalSettings>? GrowUsnJournal { get; init; }
 }

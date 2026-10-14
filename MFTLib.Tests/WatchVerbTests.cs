@@ -100,7 +100,7 @@ public class WatchVerbTests
     {
         await using var handle = BrokerTestHarness.StartInProcess(Volumes() with
         {
-            GrowUsnJournal = (_, maximum, delta) => new UsnJournalSettings { MaximumSize = maximum, AllocationDelta = delta }
+            GrowUsnJournal = (_, target) => target
         });
         var lines = new List<string>();
 
@@ -128,6 +128,23 @@ public class WatchVerbTests
         Assert.IsTrue(listing.Any(line => line.StartsWith("X: ", StringComparison.Ordinal) && line.Contains(", policy policy-", StringComparison.Ordinal)), "The block lives in its policy folder and the listing names it.");
         Assert.IsTrue(clearing.Any(line => line.Trim() == "X: Deleted"), string.Join(Environment.NewLine, clearing));
         Assert.AreEqual(0, afterwards.Count(line => line.StartsWith("X: ", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
+    public async Task Run_RescanAfterJournalRecreation_PrintsGrowthTargetRefusal()
+    {
+        await using (var handle = BrokerTestHarness.StartInProcess(Volumes()))
+        {
+            Assert.AreEqual(0, HostOver(handle, _ => { }).Run(["rescan", "X"]));
+        }
+
+        using var journal = JournalIsolation.OverrideJournalWindow(_ => new SyntheticJournalWindow(8, 0, 2000, 4096, 8192));
+        await using var replacement = BrokerTestHarness.StartInProcess(Volumes());
+        var lines = new List<string>();
+
+        Assert.AreEqual(0, HostOver(replacement, lines.Add).Run(["rescan", "X"]));
+
+        Assert.IsTrue(lines.Contains("Journal growth target unavailable: CheckpointNotTrimmed"), string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]

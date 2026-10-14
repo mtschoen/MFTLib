@@ -39,7 +39,7 @@ public partial class BrokerProcessTests
             return new UsnJournalSettings { MaximumSize = maximumSize * 2, AllocationDelta = allocationDelta };
         }));
 
-        var settings = await broker.Process.GrowUsnJournalAsync('E', 65536, 4096, CancellationToken.None)
+        var settings = await broker.Process.GrowUsnJournalAsync('E', new UsnJournalSettings { MaximumSize = 65536, AllocationDelta = 4096 }, CancellationToken.None)
             .WaitAsync(HangGuard);
 
         Assert.AreEqual(131072L, settings.MaximumSize);

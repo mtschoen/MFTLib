@@ -26,7 +26,8 @@ internal sealed partial class MftVolume
     /// <summary>
     ///     Query the USN journal's sizing (maximum size and allocation delta), the two
     ///     settings <see cref="GrowUsnJournal" /> changes. Returns the current maximum size
-    ///     and allocation delta. Consumers own retention targets and sizing policy.
+    ///     and allocation delta. The library reports the size that would have retained a lost
+    ///     checkpoint; the consumer owns the decision to grow.
     /// </summary>
     public UsnJournalSettings QueryUsnJournalSettings()
     {

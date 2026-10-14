@@ -26,6 +26,10 @@ partial class SampleHost
         if (status.Watch.CheckpointLoss is { } loss)
         {
             _writeLine($"Checkpoint lost on {loss.Drive}: {loss.Cause} during {loss.DetectedDuring}; {loss.BytesBehind} bytes behind, journal {loss.JournalSettings.MaximumSize}/{loss.JournalSettings.AllocationDelta}, {loss.SizeThatWouldHaveRetained} would have kept it");
+            if (loss.GrowthTargetRefusalReason is { } reason)
+            {
+                _writeLine($"Journal growth target unavailable: {reason}");
+            }
         }
     }
 
@@ -34,7 +38,8 @@ partial class SampleHost
     async Task WriteJournalAsync(BrokerSession session, FileIndex index, char letter, WatchArguments parsed, CancellationToken cancellationToken)
     {
         var settings = parsed.MaximumSize is { } maximum && parsed.AllocationDelta is { } delta
-            ? await session.GrowUsnJournalAsync(letter, maximum, delta, cancellationToken).ConfigureAwait(false)
+            ? await session.GrowUsnJournalAsync(letter,
+                new UsnJournalSettings { MaximumSize = maximum, AllocationDelta = delta }, cancellationToken).ConfigureAwait(false)
             : index.QueryUsnJournalSettings(letter);
         _writeLine($"Journal {letter}: maximum size {settings.MaximumSize}, allocation delta {settings.AllocationDelta}");
     }

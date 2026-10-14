@@ -77,8 +77,9 @@ public enum JournalCheckpointLossCause
 ///     to have kept it. The position is a cached block's checkpoint when a warm start found it
 ///     gone or moved, and the position a live watch had reached when that watch faulted.
 ///     <para>
-///         Every number here is read off the volume, not inferred. USNs are byte offsets into
-///         the journal, so the distance between two of them is a byte count.
+///         Journal positions and settings are read off the volume. USNs are byte offsets into
+///         the journal, so the distance between two of them is a byte count. The library reports
+///         the size that would have retained the checkpoint; the consumer decides whether to grow.
 ///     </para>
 /// </summary>
 public sealed record JournalCheckpointLoss
@@ -146,8 +147,8 @@ public sealed record JournalCheckpointLoss
     ///     the checkpoint readable: the journal's next USN minus the checkpoint,
     ///     rounded up to <see cref="UsnJournalSettings.AllocationDelta" />, plus one more allocation delta. The
     ///     margin follows NTFS's documented trimming behavior in CREATE_USN_JOURNAL_DATA and
-    ///     USN_JOURNAL_DATA, not a live measurement. This is the size to offer the user
-    ///     for <see cref="BrokerSession.GrowUsnJournalAsync" />, when there is one to offer.
+    ///     USN_JOURNAL_DATA, not a live measurement. The library reports this size;
+    ///     the consumer owns the decision to grow the journal.
     ///     Null for <see cref="JournalCheckpointLossCause.JournalRecreated" /> and
     ///     <see cref="JournalCheckpointLossCause.JournalAdvanced" />, where no size would have helped,
     ///     and also null for <see cref="JournalCheckpointLossCause.CheckpointTrimmed" />
@@ -157,8 +158,25 @@ public sealed record JournalCheckpointLoss
     public long? SizeThatWouldHaveRetained { get; init; }
 
     /// <summary>
+    ///     Why <see cref="TryGetGrowthTarget" /> refuses this report, or null when a target is available.
+    ///     Derived from the report's current values, including values changed by a <c>with</c> expression.
+    ///     Checks the cause, missing size, nonpositive size, nonpositive allocation delta, then the recorded maximum.
+    ///     This describes detection-time eligibility, not the consumer's decision or the journal's current sizing.
+    /// </summary>
+    public JournalGrowthTargetRefusalReason? GrowthTargetRefusalReason => this switch
+    {
+        { Cause: not JournalCheckpointLossCause.CheckpointTrimmed } => JournalGrowthTargetRefusalReason.CheckpointNotTrimmed,
+        { SizeThatWouldHaveRetained: null } => JournalGrowthTargetRefusalReason.RetentionSizeUnavailable,
+        { SizeThatWouldHaveRetained: <= 0 } => JournalGrowthTargetRefusalReason.NonPositiveRetentionSize,
+        { JournalSettings.AllocationDelta: <= 0 } => JournalGrowthTargetRefusalReason.NonPositiveAllocationDelta,
+        _ when SizeThatWouldHaveRetained <= JournalSettings.MaximumSize => JournalGrowthTargetRefusalReason.RetentionSizeNotGreaterThanMaximum,
+        _ => null
+    };
+
+    /// <summary>
     ///     Projects the recorded retention size and allocation delta into a journal growth target.
     ///     No sizing is recomputed, no volume is queried and no journal is changed.
+    ///     The library reports the size that would have retained the checkpoint; the consumer decides whether to grow.
     /// </summary>
     /// <param name="target">
     ///     The recorded retention size as the maximum size, with the recorded allocation delta;
@@ -166,7 +184,8 @@ public sealed record JournalCheckpointLoss
     /// </param>
     /// <returns>
     ///     True only for a trimmed checkpoint with a positive representable retention size greater
-    ///     than the recorded maximum, and a positive recorded allocation delta.
+    ///     than the recorded maximum, and a positive recorded allocation delta. On refusal,
+    ///     <see cref="GrowthTargetRefusalReason" /> explains why; it is null on success.
     /// </returns>
     /// <remarks>
     ///     Query fresh journal settings and compare the target maximum with the current maximum
@@ -175,11 +194,7 @@ public sealed record JournalCheckpointLoss
     public bool TryGetGrowthTarget(out UsnJournalSettings target)
     {
         target = default;
-        if (Cause != JournalCheckpointLossCause.CheckpointTrimmed ||
-            SizeThatWouldHaveRetained is not { } maximumSize ||
-            maximumSize <= JournalSettings.MaximumSize ||
-            maximumSize <= 0 ||
-            JournalSettings.AllocationDelta <= 0)
+        if (GrowthTargetRefusalReason is not null || SizeThatWouldHaveRetained is not { } maximumSize)
         {
             return false;
         }

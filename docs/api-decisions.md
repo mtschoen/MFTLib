@@ -33,6 +33,30 @@ one method on the existing type; [elevation](elevation.md#windows-defender-proce
 
 **Revisit only if:** one consumer needs elevation behavior the other cannot share.
 
+## Journal retention sizing is reported by the library; growth is a consumer decision
+
+**Decision (2026-10-13, API review finding F12,
+[MFTLib issue 488](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/488)):**
+`BrokerSession.GrowUsnJournalAsync(drive, target, cancellationToken)` takes a `UsnJournalSettings` target.
+The library reports the exact journal size that would have retained a lost checkpoint; the consumer owns the
+decision to grow. `JournalCheckpointLoss.TryGetGrowthTarget` projects that recorded size and allocation delta,
+and `GrowthTargetRefusalReason` is a nullable `JournalGrowthTargetRefusalReason`, non-null only when no target is
+available. The reason enum has no success member, following the state-plus-nullable-reason rule below.
+`ScriptedBrokerVolumes.GrowUsnJournal` also receives the target settings as one value.
+
+**Reason:** settings already group both sizes, so unpacking them to request growth adds no information.
+Consumers must explain refusals without repeating eligibility checks. The reason is derived from the report's
+current values, so synthetic reports and `with` copies stay consistent with the projection. Non-trimming losses,
+unavailable retention sizes (including overflow), and sizes at or below the recorded maximum can occur in
+production. Nonpositive retention sizes and allocation deltas are guards reachable through synthetic reports;
+the live checkpoint check rejects nonpositive allocation deltas before producing a report. Refusals prioritize
+the cause, absent size, nonpositive size, nonpositive allocation delta, then the recorded maximum. Arithmetic is
+unchanged: checkpoint-to-tip span rounded up to the allocation delta, plus one delta. Detection-time sizing
+does not decide whether growth is worth it, and a consumer reads fresh settings immediately before requesting it.
+
+**Revisit only if:** the consumers need a different retention calculation or a journal setting not carried by
+`UsnJournalSettings`. The proposed reason names are listed in the implementing pull request for owner review.
+
 ## The enumeration producer is a product feature, chosen per drive
 
 **Decision (2026-10-13, API review finding F6):** the directory-walk producer stays public. It is how an index
