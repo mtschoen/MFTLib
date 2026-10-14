@@ -94,7 +94,7 @@ public sealed record DriveWatchStatus
     ///     <para>
     ///         Three paths fill it in. Two read the live journal unelevated. At open, a cached
     ///         block whose checkpoint is gone is rejected and the drive is
-    ///         cold-scanned, unless <see cref="FileIndexOptions.InitialOpenCacheOnly" /> is set,
+    ///         cold-scanned, unless <see cref="CacheMode.ExistingOnly" /> is set,
     ///         in which case the open never scans and adopts the block anyway (it never watches,
     ///         and the block is still a correct snapshot as of its age), leaving this to explain
     ///         the checkpoint alone. Later, a drive's live watch that faults is asked the same

@@ -7,10 +7,13 @@ public static partial class MftIndexSources
     /// <summary>
     ///     A source that loads an MFT dump file (a saved copy of a volume's <c>$MFT</c>) as one
     ///     virtual drive. It needs no elevation and no broker, and it works on every platform.
-    ///     Open the index with exactly one drive, <c>new IndexedDrive(letter, "dump:/" + letter, 0)</c>, where
-    ///     <c>letter</c> is <paramref name="driveLetter" />'s normalized upper-case letter (the root must match the upper-case letter exactly),
-    ///     with <see cref="FileIndexOptions.NoCache" /> set and the drive's
-    ///     <see cref="IndexedDrive.ProducerPolicy" /> set to <see cref="ProducerPolicy.Mft" />.
+    ///     Open the index by setting <see cref="FileIndexOptions.MftSource" /> to the result and nothing
+    ///     else about drives or cache: the source supplies its one virtual drive (the normalized
+    ///     upper-case <paramref name="driveLetter" />, root <c>"dump:/" + letter</c>, serial zero, MFT producer),
+    ///     which <see cref="FileIndex.Drives" /> and <see cref="FileIndex.Root" /> then report. Setting
+    ///     <see cref="FileIndexOptions.Drives" />, <see cref="FileIndexOptions.CacheMode" /> (any value),
+    ///     <see cref="FileIndexOptions.CacheDirectory" /> or <see cref="FileIndexOptions.CacheTag" /> makes
+    ///     <see cref="FileIndex.OpenAsync" /> throw <see cref="ArgumentException" />.
     ///     The dump is scanned in full. A dump drive cannot be watched, has no journal settings, and its
     ///     entries cannot be opened: the letter is a key in the index and names no live volume.
     /// </summary>

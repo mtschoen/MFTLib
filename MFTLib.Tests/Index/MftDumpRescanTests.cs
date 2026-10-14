@@ -199,8 +199,6 @@ public class MftDumpRescanTests
 
     static Task<FileIndex> OpenAsync(MftIndexSource source) => FileIndex.OpenAsync(new FileIndexOptions
     {
-        Drives = [new IndexedDrive('D', "dump:/D", 0)],
-        NoCache = true,
         MftSource = source
     }, CancellationToken.None);
 

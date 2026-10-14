@@ -314,7 +314,7 @@ public partial class FileIndexWatchRescanTests
                     BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
                     JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
             }, source),
-            InitialOpenCacheOnly = true
+            CacheMode = CacheMode.ExistingOnly
         };
     }
 

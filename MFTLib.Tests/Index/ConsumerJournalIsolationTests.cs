@@ -45,7 +45,7 @@ public class ConsumerJournalIsolationTests
         Drives = [new IndexedDrive('T', _directory, 0xBADF00D)],
         CacheDirectory = Path.Combine(_directory, "cache"),
         MftSource = new MftIndexSource(Produce, source),
-        InitialOpenCacheOnly = cacheOnly
+        CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent
     };
 
     Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request,

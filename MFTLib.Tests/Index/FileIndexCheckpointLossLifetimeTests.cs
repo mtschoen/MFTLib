@@ -71,7 +71,7 @@ public class FileIndexCheckpointLossLifetimeTests
             Drives = drives.Length > 0 ? drives : [Drive('T', _firstTreeRoot)],
             CacheDirectory = _cacheDirectory,
             MftSource = new MftIndexSource(producer),
-            InitialOpenCacheOnly = cacheOnly
+            CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent
         };
     }
 

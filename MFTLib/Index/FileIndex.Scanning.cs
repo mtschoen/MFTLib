@@ -110,7 +110,7 @@ public sealed partial class FileIndex
             return;
         }
 
-        if (_options.InitialOpenCacheOnly)
+        if (_options.CacheMode == CacheMode.ExistingOnly)
         {
             var failureKind = warmStart.DiscardedBlock == BlockValidationResult.WrongCacheTag
                 ? DriveFailureKind.CacheTagMismatch
@@ -278,10 +278,10 @@ public sealed partial class FileIndex
     ///     rather than publishing stale rows or arming a watch from a lost position.
     ///     A watch-capable source checks retention and catches
     ///     up later; a scan-only source requires the journal's next USN to equal its stamped cursor.
-    ///     Dump sources require NoCache and never reach warm start. An enumeration block is also not
+    ///     Dump sources are never cached and never reach warm start. An enumeration block is also not
     ///     watched through the journal, so nothing about it can have fallen out of one.
     ///     <para>
-    ///         <see cref="FileIndexOptions.InitialOpenCacheOnly" /> forbids the scan that would
+    ///         <see cref="CacheMode.ExistingOnly" /> forbids the scan that would
     ///         otherwise follow a rejection, so the reasoning above does not apply to it: a
     ///         cache-only open never watches, and the block is still a correct snapshot as of
     ///         its age, so it is adopted anyway rather than failing the drive. The result says so,
@@ -313,7 +313,7 @@ public sealed partial class FileIndex
                 return warmStart;
             }
 
-            if (_options.InitialOpenCacheOnly)
+            if (_options.CacheMode == CacheMode.ExistingOnly)
             {
                 accepted = true;
                 return warmStart with { CheckpointLoss = loss, CacheOnlyUnresumable = true };

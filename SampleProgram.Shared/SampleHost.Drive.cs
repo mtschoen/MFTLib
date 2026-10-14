@@ -11,7 +11,7 @@ partial class SampleHost
 {
     internal Func<string, IndexedDrive> _resolveDrive = ResolveDriveNative;
 
-    // An optional sample cache-root override. Watch owns its default; Direct uses NoCache.
+    // An optional sample cache-root override. Watch owns its default; Direct opens with CacheMode.Disabled.
     internal string? _cacheDirectory;
 
     static IndexedDrive ResolveDriveNative(string letter)

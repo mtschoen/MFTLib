@@ -61,19 +61,27 @@ partial class SampleHost
 
     async Task<FileIndex> OpenIndexAsync(DirectArguments parsed, CancellationToken cancellationToken)
     {
-        var letter = char.ToUpperInvariant(parsed.Drive[0]);
         var options = new FileIndexOptions
         {
-            Drives = [parsed.Source is SourceKind.Dump ? new IndexedDrive(letter, "dump:/" + letter, 0) : _resolveDrive(parsed.Drive)],
-            NoCache = true,
-            CacheDirectory = _cacheDirectory,
             MftSource = _createSource(parsed),
             Progress = new PhaseReporter(_writeLine)
         };
+        if (parsed.Source is not SourceKind.Dump)
+        {
+            var drive = _resolveDrive(parsed.Drive);
+            _writeLine($"Indexing {drive.Drive}: root {drive.RootDirectory}, serial {drive.VolumeSerial}, producer {drive.ProducerPolicy}.");
+            options = options with
+            {
+                Drives = [drive],
+                CacheMode = CacheMode.Disabled,
+                CacheDirectory = _cacheDirectory
+            };
+        }
+
         var index = await FileIndex.OpenAsync(options, cancellationToken).ConfigureAwait(false);
         try
         {
-            RequireReadyBlock(index.Drives.Single(status => status.Drive == options.Drives[0].Drive));
+            RequireReadyBlock(index.Drives.Single());
             return index;
         }
         catch

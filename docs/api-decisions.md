@@ -77,6 +77,37 @@ caller's behalf. Enumeration runs only for a drive that asks for it.
 
 **Revisit only if:** both consumers decide against indexing anything but elevated NTFS volumes.
 
+## One cache mode, not two booleans
+
+**Decision (2026-10-13, API review finding F15, cache half):** `FileIndexOptions.CacheMode`, a nullable enum with
+`Persistent`, `ExistingOnly` and `Disabled`, replaces `NoCache` and `InitialOpenCacheOnly`. `Persistent` warm-starts
+from the cache directory, scans what is missing and writes blocks back. `ExistingOnly` opens only from existing
+blocks and never scans. `Disabled` reads and writes no cache directory; its blocks are private and deleted on
+close. `CacheDirectory` is required and nonblank for `Persistent` and `ExistingOnly` and ignored for `Disabled`.
+Unset resolves to `Disabled` for a dump source and `Persistent` otherwise.
+
+**Reason:** the two booleans described one choice and could contradict each other (no cache, and open only from
+cache), a combination with no meaning that a normal open accepted. Each consumer had rebuilt a single cache mode on
+top of the pair. One value cannot express the contradiction.
+
+**Revisit only if:** a fourth way to use the cache appears that is not one of the three.
+
+## A dump source describes its own drive and cache
+
+**Decision (2026-10-13, API review finding F10):** a dump source is fully self-describing, and there is exactly one
+way to write a dump open: set `FileIndexOptions.MftSource` and nothing else about drives or cache. The source
+supplies its one virtual drive (letter, root, serial zero, `ProducerPolicy.Mft`), which `FileIndex.OpenAsync` adds
+to the index. `Drives` must be empty, and `CacheMode` (every value, `Disabled` included), `CacheDirectory` and
+`CacheTag` must be unset; setting any of them throws `ArgumentException` naming it. The first half of F10 is ruled as
+no change: `MftIndexSources.FromLocalVolumes`, `MftIndexSources.FromMftDumpFile` and `MftScanOptions.IncludeFreed`
+stay public as sample-reached features, as owner decisions 17, 20, 22, 23 and 25 intended when they were added.
+
+**Reason:** the caller had to restate facts the source already knows (the letter, the dump root, serial zero, an
+uncached open), and the library threw when any part of the restatement was off. A setting that can only be right in
+one way is not a setting.
+
+**Revisit only if:** a dump gains a legitimate cached form, for example a persisted scan of an image.
+
 ## One key type for drives, one method per lifecycle verb
 
 **Decision (2026-10-13, API review findings F7 and F8, ruled together):** a `DriveKey` struct replaces the bare

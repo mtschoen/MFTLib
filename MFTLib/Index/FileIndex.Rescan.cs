@@ -133,7 +133,7 @@ public sealed partial class FileIndex
         // The rename-aside is licensed by the owner lock: an index that does not hold it (its
         // block came from a private scan while another index owned the slot) rescans privately
         // again and never touches the canonical file.
-        var ownsCanonicalSlot = !_options.NoCache && EnsureCanonicalOwnership(drive);
+        var ownsCanonicalSlot = _options.CacheMode != CacheMode.Disabled && EnsureCanonicalOwnership(drive);
         var target = ComputeScanTarget(drive, ownsCanonicalSlot);
         var retired = RenameAsideForRescan(target, superseded);
 

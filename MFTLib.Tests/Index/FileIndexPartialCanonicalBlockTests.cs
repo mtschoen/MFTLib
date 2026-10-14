@@ -45,7 +45,7 @@ public class FileIndexPartialCanonicalBlockTests
         Drives = [new IndexedDrive('T', _treeRoot, VolumeSerial)],
         CacheDirectory = _cacheDirectory,
         MftSource = new MftIndexSource(producer),
-        InitialOpenCacheOnly = cacheOnly,
+        CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
         Diagnostics = diagnostics.Add
     };
 

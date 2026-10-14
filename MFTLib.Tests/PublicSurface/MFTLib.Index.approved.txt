@@ -14,6 +14,10 @@ MFTLib.Index.CacheDirectory :: method public static DeleteCached(string cacheDir
 MFTLib.Index.CacheDirectory :: method public static EnsureCreated(string path) : System.IO.DirectoryInfo
 MFTLib.Index.CacheDirectory :: method public static InspectCached(string cacheDirectoryPath, System.Collections.Generic.IEnumerable<MFTLib.Index.DriveKey>? driveLetters = default, System.Action<MFTLib.Index.CachedBlockRejection>? rejectedFile = default) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.CachedBlockStatus>
 MFTLib.Index.CacheDirectory :: type public static class
+MFTLib.Index.CacheMode :: field public const Disabled : MFTLib.Index.CacheMode = 2
+MFTLib.Index.CacheMode :: field public const ExistingOnly : MFTLib.Index.CacheMode = 1
+MFTLib.Index.CacheMode :: field public const Persistent : MFTLib.Index.CacheMode = 0
+MFTLib.Index.CacheMode :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.Index.CacheSlotState :: field public const OwnedCanonical : MFTLib.Index.CacheSlotState = 0
 MFTLib.Index.CacheSlotState :: field public const PrivateFallback : MFTLib.Index.CacheSlotState = 1
 MFTLib.Index.CacheSlotState :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
@@ -234,12 +238,11 @@ MFTLib.Index.FileIndexOptions :: method public override ToString() : string
 MFTLib.Index.FileIndexOptions :: method public static op_Equality(MFTLib.Index.FileIndexOptions? left, MFTLib.Index.FileIndexOptions? right) : bool
 MFTLib.Index.FileIndexOptions :: method public static op_Inequality(MFTLib.Index.FileIndexOptions? left, MFTLib.Index.FileIndexOptions? right) : bool
 MFTLib.Index.FileIndexOptions :: property public CacheDirectory { get; init; } : string?
+MFTLib.Index.FileIndexOptions :: property public CacheMode { get; init; } : MFTLib.Index.CacheMode?
 MFTLib.Index.FileIndexOptions :: property public CacheTag { get; init; } : MFTLib.Index.CacheTag
 MFTLib.Index.FileIndexOptions :: property public Diagnostics { get; init; } : System.Action<string>?
 MFTLib.Index.FileIndexOptions :: property public Drives { get; init; } : System.Collections.Generic.IReadOnlyList<MFTLib.Index.IndexedDrive>
-MFTLib.Index.FileIndexOptions :: property public InitialOpenCacheOnly { get; init; } : bool
 MFTLib.Index.FileIndexOptions :: property public MftSource { get; init; } : MFTLib.Index.MftIndexSource?
-MFTLib.Index.FileIndexOptions :: property public NoCache { get; init; } : bool
 MFTLib.Index.FileIndexOptions :: property public OpenProgress { get; init; } : System.IProgress<MFTLib.Index.IndexDriveOpened>?
 MFTLib.Index.FileIndexOptions :: property public Progress { get; init; } : System.IProgress<MFTLib.Index.IndexScanProgress>?
 MFTLib.Index.FileIndexOptions :: type public sealed class : System.IEquatable<MFTLib.Index.FileIndexOptions>

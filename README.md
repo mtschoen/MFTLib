@@ -77,15 +77,22 @@ of the `MFTLib` package. It provides test hooks and scripted types: `BrokerDiagn
 
 ## Install
 
-Cached `FileIndex.OpenAsync` calls require a nonblank application-owned
-`FileIndexOptions.CacheDirectory`, including empty-drive opens. Missing configuration
-throws `ArgumentException`. `NoCache = true` needs no cache path and ignores any
-supplied path without creating it. Dump sources prohibit cache options. Tests own
-their temporary cache paths; no default-cache guard is needed.
+`FileIndex.OpenAsync` calls with `FileIndexOptions.CacheMode` `Persistent` or `ExistingOnly`
+(an unset mode is `Persistent`, except for a dump source) require a nonblank
+application-owned `FileIndexOptions.CacheDirectory`, including empty-drive opens. Missing
+configuration throws `ArgumentException`. `CacheMode.Disabled` needs no cache path and
+ignores any supplied path without creating it. A dump source supplies its own drive and is
+never cached, so it rejects `Drives`, every `CacheMode`, `CacheDirectory` and `CacheTag`.
+Tests own their temporary cache paths; no default-cache guard is needed.
+
+`CacheMode.Persistent` warm-starts from the cache directory, scans what is missing and writes
+blocks back. `CacheMode.ExistingOnly` opens only from existing cache blocks and never scans; a
+drive with no usable block is declined. `CacheMode.Disabled` reads and writes no cache
+directory: blocks are private and deleted on close.
 
 The Watch sample defaults to `<user profile>/.MFTLib.Sample.Watch/cache`, with
 policy subdirectories used by cached modes and cache inventory/deletion alike.
-If no profile is available, supply `--cache-directory`. Direct uses NoCache.
+If no profile is available, supply `--cache-directory`. Direct opens with `CacheMode.Disabled`.
 
 `CacheDirectory.EnsureCreated(cacheDirectoryPath)` creates the application-owned
 cache directory with its protection in place, or reapplies protection to an
@@ -118,8 +125,8 @@ the matching test extensions package:
 
 | Scenario | Recommended API |
 | --- | --- |
-| Already elevated; scan once | `MftIndexSources.FromLocalVolumes` with `NoCache`, no watch |
-| Saved image on any supported platform | `MftIndexSources.FromMftDumpFile` with `NoCache`, no watch, no elevation |
+| Already elevated; scan once | `MftIndexSources.FromLocalVolumes` with `CacheMode.Disabled`, no watch |
+| Saved image on any supported platform | `MftIndexSources.FromMftDumpFile` as the only option set, no watch, no elevation |
 | Non-elevated desktop/CLI app; one UAC prompt | `BrokerSession` with `CreateIndexSource()` |
 | Resume from a persisted journal cursor | Warm start from the cache block, whose header holds the cursor |
 | Continuously receive changes | `FileIndex.StartWatchingAsync` and `Changed` |
@@ -156,15 +163,16 @@ Watch stays unelevated and its broker elevates. Dump scans need no elevation.
 Set `MFTLIB_SAMPLE_UNATTENDED=1` to skip prompts and elevation requests in an
 unelevated unattended run. See [elevation](docs/elevation.md).
 
-The dump source loads one virtual drive in process on Windows or Linux x64:
+The dump source loads one virtual drive in process on Windows or Linux x64. The source
+supplies the drive (its letter, root `dump:/D` and serial zero) and the uncached open, so
+`index.Drives` and `index.Root(letter)` see it with nothing else set; setting `Drives`,
+`CacheMode` (even `Disabled`), `CacheDirectory` or `CacheTag` throws `ArgumentException`:
 
 ```csharp
 var letter = 'D';
 var options = new FileIndexOptions
 {
-    Drives = [new IndexedDrive(letter, "dump:/" + letter, 0)],
-    MftSource = MftIndexSources.FromMftDumpFile(filePath, letter),
-    NoCache = true
+    MftSource = MftIndexSources.FromMftDumpFile(filePath, letter)
 };
 await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 ```
@@ -304,7 +312,7 @@ trim can leave the journal below it. The value is not a live measurement, and
 there is no clock, rate or cap.
 
 The report is attached to the drive it describes, for as long as the block it
-explains is in place. A `FileIndexOptions.InitialOpenCacheOnly` open adopts a
+explains is in place. A `CacheMode.ExistingOnly` open adopts a
 usable cached block even when its checkpoint is gone: the drive is `Ready`, the
 report explains why its cursor cannot be resumed, and a watch start is refused
 until `RescanAsync` supplies a fresh cursor. A successful manual rescan clears
@@ -569,11 +577,11 @@ watch-capable source support watching; enumeration siblings report
 `Watch.Supported == false` and batched watch starts report `NotApplicable` for them.
 A cache block's producer must match the drive's policy: a mismatch is rejected
 under the owner lock and cold-scanned on a normal open, or reported as
-`CacheDeclined` when `InitialOpenCacheOnly` forbids a scan.
+`CacheDeclined` when `CacheMode.ExistingOnly` forbids a scan.
 
 Why a `DriveState.Failed` drive has
 no block is reported as `DriveStatus.Failure.Kind`: `CacheDeclined` when
-`FileIndexOptions.InitialOpenCacheOnly` found no cached block to adopt and forbade a scan,
+`CacheMode.ExistingOnly` found no cached block to adopt and forbade a scan,
 `CacheTagMismatch` when it found a block whose consumer cache tag differs from
 `FileIndexOptions.CacheTag`, `InUse` when another live `FileIndex` holds the cache block's
 owner lock, and `ProducerFailed` when the MFT producer failed or its source is missing. A failed drive of
@@ -583,7 +591,7 @@ unless the drive is `Ready`. A failed `RescanAsync`, or a failed catch-up retry 
 `OpenAsync`, can leave a drive `Ready` with its previous block and `Failure.Kind` `ProducerFailed`.
 A successful scan publication clears that failure.
 
-`FileIndexOptions.NoCache` blocks are created with `FileOptions.DeleteOnClose`, so the
+`CacheMode.Disabled` blocks are created with `FileOptions.DeleteOnClose`, so the
 operating system removes them when the last handle closes, including when the process
 is killed rather than shut down gracefully.
 
@@ -599,7 +607,7 @@ delete is reported through `FileIndexOptions.Diagnostics` with the path and the 
 `FileIndexOptions.OpenProgress` reports open-time progress per drive: `OpenAsync`
 fires one `IndexDriveOpened` for each drive that settles, synchronously on the
 thread that settled it: warm-started from cache, cold-scanned, declined by
-`InitialOpenCacheOnly`, offline, or failed. A cancelled or failed open may have
+`CacheMode.ExistingOnly`, offline, or failed. A cancelled or failed open may have
 reported only some of the drives. `OpenAsync` settles its
 drives concurrently and runs no lock around a handler, so reports can overlap and
 arrive out of order; `SettledDriveCount` gives the order. The report
@@ -713,7 +721,7 @@ consumer parsing block file names.
 a diagnostic string. Reads of mapped entry data throw as described above.
 `DriveStatus.Block` is null when no block is available. `DriveBlockStatus.Source` is
 `WarmStartedFromCache` for an adopted cache block, or `ProducedByScan` after a scan.
-`DriveBlockStatus.CacheSlot` is the block's cache-slot backing, or null when the block has none, as under `NoCache`.
+`DriveBlockStatus.CacheSlot` is the block's cache-slot backing, or null when the block has none, as under `CacheMode.Disabled`.
 `CacheDirectory.InspectCached` returns `CachedBlockStatus` records whose `File` is a `CachedBlockFile` containing the
 drive letter, volume serial, full cache-file path, size, and last-write time, plus
 whether the block is available, in use by another index, or invalid. `Validation` is null unless the block is invalid, then the rejection reason.

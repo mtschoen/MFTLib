@@ -11,7 +11,7 @@ public sealed partial class FileIndex
 
     CanonicalSlotOutcome ResolveCanonicalOwnership(IndexedDrive drive)
     {
-        if (_options.NoCache)
+        if (_options.CacheMode == CacheMode.Disabled)
         {
             return CanonicalSlotOutcome.NotOwned;
         }
@@ -24,7 +24,7 @@ public sealed partial class FileIndex
             return CanonicalSlotOutcome.Owned;
         }
 
-        return _options.InitialOpenCacheOnly ? CanonicalSlotOutcome.DeclinedInUse : CanonicalSlotOutcome.NotOwned;
+        return _options.CacheMode == CacheMode.ExistingOnly ? CanonicalSlotOutcome.DeclinedInUse : CanonicalSlotOutcome.NotOwned;
     }
 
     void RecordOfflineDrive(DriveKey driveLetter)
@@ -61,7 +61,7 @@ public sealed partial class FileIndex
         Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(drive.Drive, drive.VolumeSerial));
 
     CacheSlotState? DescribeCacheSlot(bool ownsCanonicalSlot) =>
-        _options.NoCache
+        _options.CacheMode == CacheMode.Disabled
             ? null
             : ownsCanonicalSlot
                 ? CacheSlotState.OwnedCanonical
@@ -78,7 +78,7 @@ public sealed partial class FileIndex
 
     ScanBlockTarget ComputeScanTarget(IndexedDrive drive, bool ownsCanonicalSlot)
     {
-        if (_options.NoCache)
+        if (_options.CacheMode == CacheMode.Disabled)
         {
             return new ScanBlockTarget(Path.Combine(Path.GetTempPath(),
                 $"mftlib-nocache-{Guid.NewGuid():N}-{CacheDirectory.BlockFileName(drive.Drive, drive.VolumeSerial)}"),

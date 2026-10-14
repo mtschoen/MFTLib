@@ -239,7 +239,7 @@ public class FileIndexCheckpointLossTests
             allocationDelta: 1L << 62);
         var options = Options() with
         {
-            InitialOpenCacheOnly = true,
+            CacheMode = CacheMode.ExistingOnly,
             MftSource = new MftIndexSource((_, _) => throw new AssertFailedException("Cache-only must not scan."))
         };
 

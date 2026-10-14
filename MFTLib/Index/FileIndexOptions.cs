@@ -1,48 +1,35 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     How to open an index. An empty drive set opens an index with no drives, which is a valid
-///     state, not an error.
+///     How to open an index. For ordinary sources, an empty drive set opens an index with no
+///     drives; a dump source supplies its own virtual drive and requires an empty drive set.
 /// </summary>
 public sealed record FileIndexOptions
 {
-    /// <summary>Drives to include in the index. An empty collection opens an index with no drives.</summary>
+    /// <summary>
+    ///     Drives to include in the index. For ordinary sources, an empty collection opens an
+    ///     index with no drives; a dump source supplies its own virtual drive and requires an
+    ///     empty collection.
+    /// </summary>
     public IReadOnlyList<IndexedDrive> Drives { get; init; } = [];
 
     /// <summary>
-    ///     An application-owned cache directory. Required and nonblank unless <see cref="NoCache" />
-    ///     is enabled, including empty-drive opens. Missing configuration causes
+    ///     How the open uses the block cache. Null (the default) lets the library pick what fits the
+    ///     source: <see cref="MFTLib.Index.CacheMode.Disabled" /> for a dump source and
+    ///     <see cref="MFTLib.Index.CacheMode.Persistent" /> otherwise. A dump source rejects every explicit
+    ///     value, <see cref="MFTLib.Index.CacheMode.Disabled" /> included.
+    /// </summary>
+    public CacheMode? CacheMode { get; init; }
+
+    /// <summary>
+    ///     An application-owned cache directory. Required and nonblank for
+    ///     <see cref="MFTLib.Index.CacheMode.Persistent" /> and <see cref="MFTLib.Index.CacheMode.ExistingOnly" />,
+    ///     including empty-drive opens. Missing configuration causes
     ///     <see cref="FileIndex.OpenAsync" /> to throw <see cref="ArgumentException" />.
-    ///     Ignored with NoCache; dump sources prohibit this option.
+    ///     Ignored, never resolved or created, with <see cref="MFTLib.Index.CacheMode.Disabled" />; dump sources
+    ///     prohibit this option.
     /// </summary>
     public string? CacheDirectory { get; init; }
-
-    /// <summary>
-    ///     Creates each block in the temp directory instead of the cache directory. The file is
-    ///     created with <see cref="FileOptions.DeleteOnClose" />, so the operating system removes
-    ///     the temp file when the last handle closes. This includes process exit by kill rather
-    ///     than graceful dispose, so no stale no-cache file is left behind.
-    ///     No cache directory is required, resolved or created, even if one is supplied.
-    /// </summary>
-    public bool NoCache { get; init; }
-
-    /// <summary>
-    ///     Opens each drive from its cache only. A drive with no usable cache (missing, corrupt,
-    ///     or incompatible) is reported as <see cref="DriveState.Failed" /> with
-    ///     <see cref="DriveFailureKind.CacheDeclined" />, <see cref="DriveFailureKind.CacheTagMismatch" />
-    ///     (or <see cref="DriveFailureKind.InUse" /> when the cache block's owner lock cannot be acquired)
-    ///     instead of falling back to a scan, and <see cref="FileIndex.RescanAsync" />
-    ///     remains available to scan it later.
-    ///     A cache block whose journal checkpoint the journal no longer holds is different: this
-    ///     open never watches, and the block is still a correct snapshot as of its age, so it is
-    ///     adopted instead of declined, with <see cref="DriveWatchStatus.CheckpointLoss" /> set to say
-    ///     why the checkpoint could not be resumed. A later
-    ///     <see cref="FileIndex.StartWatchingAsync" /> for such a drive returns a failed result carrying
-    ///     <see cref="InvalidOperationException" /> (see <see cref="DriveWatchStatus.FailureMessage" />) and retains
-    ///     the watch request (<see cref="DriveWatchStatus.Requested" />) until a stop withdraws it or a successful
-    ///     <see cref="FileIndex.RescanAsync" /> gives the drive a fresh cursor and starts the watch.
-    /// </summary>
-    public bool InitialOpenCacheOnly { get; init; }
 
     /// <summary>
     ///     Supplies MFT-derived blocks and each drive's live watch from one place. Null is a
@@ -76,7 +63,7 @@ public sealed record FileIndexOptions
     ///     Open-time per-drive progress: <see cref="FileIndex.OpenAsync" /> reports one
     ///     <see cref="IndexDriveOpened" /> for each drive that settles, synchronously on the thread
     ///     that settled it, whatever the outcome: warm-started, cold-scanned, declined by
-    ///     <see cref="InitialOpenCacheOnly" />, offline, or failed. A drive whose settle is
+    ///     <see cref="MFTLib.Index.CacheMode.ExistingOnly" />, offline, or failed. A drive whose settle is
     ///     cancelled does not settle and reports nothing, so a cancelled or failed open may have
     ///     reported only some of the configured drives. Drives settle concurrently and no lock is held while a handler runs,
     ///     so reports can overlap and can arrive out of order; a handler that blocks holds up no

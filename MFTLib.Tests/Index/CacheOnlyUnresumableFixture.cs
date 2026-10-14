@@ -52,7 +52,7 @@ internal sealed class CacheOnlyUnresumableFixture : IDisposable
             Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
             CacheDirectory = _cacheDirectory,
             MftSource = new MftIndexSource(ProduceMftShapedBlock, Source),
-            InitialOpenCacheOnly = cacheOnly
+            CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent
         };
     }
 

@@ -139,7 +139,7 @@ public class FileIndexPerDriveProducerPolicyTests
         await using var index = await FileIndex.OpenAsync(options with
         {
             Drives = [Drive('T', requested)],
-            InitialOpenCacheOnly = cacheOnly,
+            CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
             Diagnostics = diagnostics.Add
         }, CancellationToken.None);
 
@@ -159,20 +159,6 @@ public class FileIndexPerDriveProducerPolicyTests
         }
 
         Assert.IsTrue(diagnostics.Any(line => line.Contains("producer kind mismatch", StringComparison.Ordinal)));
-    }
-
-    [TestMethod]
-    public async Task DumpDrive_EnumerationPolicyIsRejectedBeforeProduction()
-    {
-        var source = MftIndexSources.FromMftDumpFile(Path.Combine(_directories.TreeRoot, "missing.dump"), 'D');
-        var drive = Drive('D', ProducerPolicy.Enumeration) with { RootDirectory = "dump:/D", VolumeSerial = 0 };
-        var failure = await Assert.ThrowsExceptionAsync<ArgumentException>(() => FileIndex.OpenAsync(new FileIndexOptions
-        {
-            Drives = [drive],
-            NoCache = true,
-            MftSource = source
-        }, CancellationToken.None));
-        StringAssert.StartsWith(failure.Message, "Dump sources require ProducerPolicy.Mft.");
     }
 
     [TestMethod]

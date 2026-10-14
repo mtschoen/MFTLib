@@ -35,7 +35,7 @@ public class FileIndexCacheTagTests
         Drives = [new IndexedDrive('T', Root, 123)],
         CacheDirectory = Cache,
         CacheTag = tag,
-        InitialOpenCacheOnly = cacheOnly,
+        CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
         MftSource = new MftIndexSource(Produce)
     };
 
@@ -95,7 +95,7 @@ public class FileIndexCacheTagTests
         var options = Options(OriginalTag) with
         {
             Drives = [new IndexedDrive('T', Root, 123, policy)],
-            NoCache = noCache
+            CacheMode = noCache ? CacheMode.Disabled : CacheMode.Persistent
         };
         await using (var index = await FileIndex.OpenAsync(options, CancellationToken.None))
         {

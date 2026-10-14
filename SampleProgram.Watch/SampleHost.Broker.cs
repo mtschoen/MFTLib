@@ -3,7 +3,7 @@ using MFTLib.Index;
 
 namespace SampleProgram.Watch;
 
-// Each drive opened as a FileIndex over the broker, the path every consumer ships. scan-drive opens NoCache and only
+// Each drive opened as a FileIndex over the broker, the path every consumer ships. scan-drive opens CacheMode.Disabled and only
 // reports; the other modes open the cached index and act on it. This process stays unelevated.
 partial class SampleHost
 {
@@ -76,7 +76,7 @@ partial class SampleHost
         var options = new FileIndexOptions
         {
             Drives = [_resolveDrive(letter)],
-            NoCache = !cached,
+            CacheMode = cached ? CacheMode.Persistent : CacheMode.Disabled,
             CacheDirectory = cached ? Path.Combine(ResolveCacheDirectory(parsed), parsed.PolicyDirectoryName) : null,
             CacheTag = cached ? WatchArguments.CacheTag : default,
             Diagnostics = cached ? _writeLine : null,

@@ -94,7 +94,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     }
 
     /// <summary>
-    ///     The explicitly configured cache directory, or empty for NoCache and dump opens.
+    ///     The explicitly configured cache directory, or empty for <see cref="CacheMode.Disabled" /> and dump opens.
     /// </summary>
     internal string CacheDirectoryPath { get; }
 
@@ -153,6 +153,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     /// </param>
     /// <returns>The opened index, which the caller disposes.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="options" /> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="options" /> specifies an undefined <see cref="FileIndexOptions.CacheMode" />.</exception>
     /// <exception cref="ArgumentException">Cache configuration is missing or dump options are invalid.</exception>
     /// <exception cref="OperationCanceledException">The token was cancelled before the open finished.</exception>
     public static async Task<FileIndex> OpenAsync(FileIndexOptions options,
@@ -160,28 +161,35 @@ public sealed partial class FileIndex : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        string cacheDirectoryPath;
+        string cacheDirectoryPath = string.Empty;
         if (options.MftSource?.DumpIdentity is { } dumpIdentity)
         {
             // A dump block is never cached, so validation runs first and no cache path is resolved
-            // or created.
-            dumpIdentity.ValidateOptions(options);
-            cacheDirectoryPath = string.Empty;
-        }
-        else if (options.NoCache)
-        {
-            cacheDirectoryPath = string.Empty;
+            // or created. The source supplies the one virtual drive.
+            MftDumpSourceIdentity.ValidateOptions(options);
+            options = options with { Drives = [dumpIdentity.VirtualDrive], CacheMode = CacheMode.Disabled };
         }
         else
         {
-            var suppliedCacheDirectory = options.CacheDirectory;
-            if (string.IsNullOrWhiteSpace(suppliedCacheDirectory))
+            if (options.CacheMode is { } explicitMode && !Enum.IsDefined(explicitMode))
             {
-                throw new ArgumentException("Set FileIndexOptions.CacheDirectory or enable NoCache.", nameof(options));
+                throw new ArgumentOutOfRangeException(nameof(options), "Unknown cache mode.");
             }
 
-            cacheDirectoryPath = suppliedCacheDirectory;
-            CacheDirectory.EnsureCreated(cacheDirectoryPath);
+            options = options with { CacheMode = options.CacheMode ?? CacheMode.Persistent };
+            if (options.CacheMode != CacheMode.Disabled)
+            {
+                var suppliedCacheDirectory = options.CacheDirectory;
+                if (string.IsNullOrWhiteSpace(suppliedCacheDirectory))
+                {
+                    throw new ArgumentException(
+                        "Set FileIndexOptions.CacheDirectory or set FileIndexOptions.CacheMode to Disabled.",
+                        nameof(options));
+                }
+
+                cacheDirectoryPath = suppliedCacheDirectory;
+                CacheDirectory.EnsureCreated(cacheDirectoryPath);
+            }
         }
 
         var index = new FileIndex(options, cacheDirectoryPath);

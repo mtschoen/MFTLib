@@ -9,7 +9,7 @@ namespace MFTLib.Index;
 public enum DriveFailureKind
 {
     /// <summary>
-    ///     <see cref="FileIndexOptions.InitialOpenCacheOnly" /> found no usable cache block
+    ///     <see cref="CacheMode.ExistingOnly" /> found no usable cache block
     ///     (missing, corrupt, or incompatible) and forbade the scan that would have built one.
     ///     <see cref="FileIndex.RescanAsync" /> scans such a drive and clears its failure.
     /// </summary>

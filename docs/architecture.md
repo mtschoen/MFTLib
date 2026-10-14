@@ -20,9 +20,10 @@
       carries `DriveBlock.IsMftDump`, and the index never probes the root, opens the entry (`FileEntry.Open` throws
       `InvalidOperationException`), answers journal settings (`QueryUsnJournalSettings` throws) or watches it:
        `DriveWatchStatus.Supported` is false, and start, stop and catch-up report
-      `NotApplicable` with no failure. Opening validates the options before any cache path is resolved or created: exactly one drive with the identity's
-      letter, root `dump:/{DRIVE}`, `VolumeSerial` zero, `NoCache`, no cache directory, tag or cache-only open, and
-      `ProducerPolicy.Mft` on that drive (the default policy); a dump block is never written to or adopted from a cache. `DriveWatchStatus.Supported` is false for
+      `NotApplicable` with no failure. Opening validates the options before any cache path is resolved or created: `Drives`, `CacheMode` (every value,
+      `Disabled` included), `CacheDirectory` and `CacheTag` must all be unset, each rejection an `ArgumentException` naming the setting. The index
+      then configures the identity's one virtual drive itself (the upper-case letter, root `dump:/{DRIVE}`, `VolumeSerial` zero,
+      `ProducerPolicy.Mft`) and opens it as `CacheMode.Disabled`, so `Drives`, `Root(drive)` and the settle see it; a dump block is never written to or adopted from a cache. `DriveWatchStatus.Supported` is false for
       a dump drive and for any drive whose source has no watch source, the same fact a watch start's refusal uses.
     - **MFT dump source**: `MftIndexSources.FromMftDumpFile(filePath, driveLetter)` is the only way to build a dump
        source. It checks its path (`A dump file path is required.`) and rejects the default drive key,
@@ -83,11 +84,12 @@
       owner-only `0700` on Unix. Applications call it explicitly before writing their
       own sidecars independently of an open; it returns the directory's `DirectoryInfo`.
       See [block ownership](block-ownership.md#preparing-the-cache-directory).
-      `NoCache` opens use temporary blocks and ignore supplied cache paths without
-      resolving or creating them. Dump validation runs first and prohibits cache options.
+      `CacheMode.Disabled` opens use temporary blocks and ignore supplied cache paths without
+      resolving or creating them. Dump validation runs first and prohibits every cache option. An unset `CacheMode` resolves to `Persistent`, or
+      to `Disabled` for a dump source; `ExistingOnly` and `Persistent` both require the directory.
       Watch defaults to `<user profile>/.MFTLib.Sample.Watch/cache`, retaining policy
       subdirectories for production and cache inventory/deletion. Without a profile,
-      it requires `--cache-directory`. Direct remains NoCache.
+      it requires `--cache-directory`. Direct opens `CacheMode.Disabled`.
     - **Consumer cache identity**: `FileIndexOptions.CacheTag` carries an opaque
       four-ASCII-character code plus a `uint` version; default is all zeros and
       compares exactly, not as a wildcard. Block format 3 stores the two values
@@ -126,9 +128,9 @@
       adopts only when the journal identifier matches and its next USN exactly equals the stamped cursor;
       recreation, trimming or movement causes a rescan, with `JournalAdvanced` reporting movement
       without retention-size hints. An unavailable or incoherent journal observation adopts without loss.
-      Cache-only opens keep the snapshot flagged unresumable with its loss report. NoCache scans skip
+      Cache-only opens keep the snapshot flagged unresumable with its loss report. `CacheMode.Disabled` scans skip
       the cursor query and stamp zero; cached scans fail as `ProducerFailed` without an active journal.
-      Dump blocks retain zero cursors and require NoCache, so they never reach a cache freshness check. The factory
+      Dump blocks retain zero cursors and are never cached, so they never reach a cache freshness check. The factory
       opens nothing until the first scan; a process that cannot open the volume fails the drive
       as `ProducerFailed`. A null `MftSource` is a configuration error for a drive with
       `IndexedDrive.ProducerPolicy == ProducerPolicy.Mft` when a scan or watch is needed:
@@ -153,8 +155,8 @@
     - **ElevationUtilities**: Names the one public route to elevation: `DefaultProvider`, the production `IElevationProvider`, and `DefaultElevatedTimeout` (60 seconds). `IsElevated()`, `CanSelfElevate()` and `TryRunElevated(IReadOnlyList<string> arguments, TimeSpan timeout)` are interface members; `TryRunElevated` relaunches the executable with the `runas` verb and quotes each argument through `ProcessStartInfo.ArgumentList`, which .NET honours with `UseShellExecute = true`. `TryAddDefenderProcessExclusions` is the one Windows Defender process-exclusion sequence built on those members ([Defender exclusions](elevation.md#windows-defender-process-exclusions)). The internal `DefaultElevationProvider` holds the logic and takes its process, platform and wait dependencies through an internal constructor, so tests build their own instance with fakes.
 
 - **SampleProgram.Direct** and **SampleProgram.Watch** (C# Console Apps) - the two samples, each a CLI that compiles against the public API with no access to MFTLib internals; together their IL is the caller set the public surface is measured against. The elevation flow, the heads-up dialog, the unattended check and the option reader live once in `SampleProgram.Shared` and compile into both as linked source. Each verb is small, so a public member that needs contortion to appear is an internalization candidate, not a reason to grow a sample.
-  - **Direct** opens a `NoCache` `FileIndex` in this process, with no broker and no watch. `--source local` (the default) is `MftIndexSources.FromLocalVolumes` and self-elevates; `--source dump --dump-file PATH` is `MftIndexSources.FromMftDumpFile`, needs no elevation and runs on every platform. Verbs: `search` (name, exact, case, under, directories or files, size and date bounds, `--stream`, `--limit`, `--include-freed`), `tree`, `open`, `largest`, `duplicate-names` and `scan`, plus `exclude-defender` (no drive; it calls `ElevationUtilities.TryAddDefenderProcessExclusions` for the sample's own executable). `--include-freed` sets `MftScanOptions.IncludeFreed` and `SearchQuery.IncludeDeleted` together, prints `FileEntry.IsDeleted` per row, and is refused on a dump, which never yields freed rows.
-  - **Watch** opens a `FileIndex` over `BrokerSession.CreateIndexSource()`, the path consumers ship, and also dispatches `--broker` through `ElevatedEntryPoint`. Verbs: `watch` (the default; state changes, faults and each `FileChangeKind`), `scan-drive` (one pass: a `NoCache` open that prints the `DriveStatus` rows, skipped records and checkpoint loss), `rescan`, `journal` (settings, or `BrokerSession.GrowUsnJournalAsync` with a target settings struct), `cache` (`CacheDirectory.InspectCached`, and `--clear` through `DeleteCached`) and `elevation-status`. The other verbs open the cached index, so they show `DriveBlockStatus.Source`, `CacheSlot` and checkpoint loss, including its growth-target refusal reason. No retention flag means full scanning; `--directories-only` keeps directories alone, and `--keep-name A,B` keeps directories plus those names. These two flags are mutually exclusive and an empty keep-name value is refused. `RetainedFileNames` supplies the nullable retention policy, with a full/directory marker and sorted names in the policy directory fingerprint; the sample tag is `SMPW` version 2. One session shared by the drives launches its broker on the first needed scan, so one UAC prompt serves the run.
+  - **Direct** opens a `CacheMode.Disabled` `FileIndex` in this process, with no broker and no watch. `--source local` (the default) is `MftIndexSources.FromLocalVolumes` and self-elevates; `--source dump --dump-file PATH` is `MftIndexSources.FromMftDumpFile`, needs no elevation and runs on every platform. Verbs: `search` (name, exact, case, under, directories or files, size and date bounds, `--stream`, `--limit`, `--include-freed`), `tree`, `open`, `largest`, `duplicate-names` and `scan`, plus `exclude-defender` (no drive; it calls `ElevationUtilities.TryAddDefenderProcessExclusions` for the sample's own executable). `--include-freed` sets `MftScanOptions.IncludeFreed` and `SearchQuery.IncludeDeleted` together, prints `FileEntry.IsDeleted` per row, and is refused on a dump, which never yields freed rows.
+  - **Watch** opens a `FileIndex` over `BrokerSession.CreateIndexSource()`, the path consumers ship, and also dispatches `--broker` through `ElevatedEntryPoint`. Verbs: `watch` (the default; state changes, faults and each `FileChangeKind`), `scan-drive` (one pass: a `CacheMode.Disabled` open that prints the `DriveStatus` rows, skipped records and checkpoint loss), `rescan`, `journal` (settings, or `BrokerSession.GrowUsnJournalAsync` with a target settings struct), `cache` (`CacheDirectory.InspectCached`, and `--clear` through `DeleteCached`) and `elevation-status`. The other verbs open the cached index, so they show `DriveBlockStatus.Source`, `CacheSlot` and checkpoint loss, including its growth-target refusal reason. No retention flag means full scanning; `--directories-only` keeps directories alone, and `--keep-name A,B` keeps directories plus those names. These two flags are mutually exclusive and an empty keep-name value is refused. `RetainedFileNames` supplies the nullable retention policy, with a full/directory marker and sorted names in the policy directory fingerprint; the sample tag is `SMPW` version 2. One session shared by the drives launches its broker on the first needed scan, so one UAC prompt serves the run.
   - **Direct row algorithms**: `largest` and `duplicate-names` are implemented in the sample over
     `EnumerateRows`. `LargestFiles` keeps a bounded heap of live, known-size files and prints paths and sizes
     followed by an entry count. `DuplicateNameSieve` and `SieveBitmap` make several hash passes, then group

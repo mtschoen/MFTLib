@@ -42,7 +42,7 @@ public class FileIndexOwnerLockTests
         {
             Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial, ProducerPolicy.Enumeration)],
             CacheDirectory = _cacheDirectory,
-            InitialOpenCacheOnly = cacheOnly,
+            CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
             Progress = progress,
             Diagnostics = diagnostics
         };
@@ -266,10 +266,10 @@ public class FileIndexOwnerLockTests
     }
 
     [TestMethod]
-    public async Task OpenAsync_NoCache_CacheSlotStaysNullAfterRescan()
+    public async Task OpenAsync_DisabledCacheMode_CacheSlotStaysNullAfterRescan()
     {
         await using var index = await FileIndex.OpenAsync(
-            Options() with { NoCache = true }, CancellationToken.None);
+            Options() with { CacheMode = CacheMode.Disabled }, CancellationToken.None);
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
         Assert.IsNull(index.Drives.Single().Block!.CacheSlot);
         Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().Block!.Source);

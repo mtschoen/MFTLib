@@ -25,8 +25,6 @@ internal static class MftDumpIndexes
 
     internal static FileIndexOptions Options(MftIndexSource? source = null) => new()
     {
-        Drives = [new IndexedDrive(DriveLetter, Root, 0)],
-        NoCache = true,
         MftSource = source ?? Source()
     };
 

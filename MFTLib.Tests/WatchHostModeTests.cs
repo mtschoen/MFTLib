@@ -57,7 +57,7 @@ public class WatchHostModeTests
         var lines = new List<string>();
         var scanner = ScannerOverBroker(broker, lines);
         scanner._cacheDirectory = Path.Combine(_directory, "unused-cache");
-        scanner._getUserProfileDirectory = () => throw new AssertFailedException("NoCache must not resolve a profile.");
+        scanner._getUserProfileDirectory = () => throw new AssertFailedException("CacheMode.Disabled must not resolve a profile.");
 
         var result = scanner.Run(["scan-drive", "c:"]);
 

@@ -151,13 +151,13 @@ public class FileIndexProducerSelectionTests
     }
 
     /// <summary>
-    ///     <see cref="FileIndexOptions.InitialOpenCacheOnly" />'s refusal contract: with no
+    ///     <see cref="CacheMode.ExistingOnly" />'s refusal contract: with no
     ///     usable cache present, the drive is failed with the cache-only refusal message and the
     ///     producer is never invoked. Asserting the invocation count, not just the end state, is
     ///     what distinguishes "refused before scanning" from "scanned and happened to fail".
     /// </summary>
     [TestMethod]
-    public async Task Mft_WithInitialOpenCacheOnlyAndNoUsableCache_FailsTheDriveWithoutInvokingTheProducer()
+    public async Task Mft_WithExistingOnlyCacheModeAndNoUsableCache_FailsTheDriveWithoutInvokingTheProducer()
     {
         var invocationCount = 0;
         Task<MftBlockProduceResult> CountingProducer(MftBlockProduceRequest request, CancellationToken _)
@@ -172,7 +172,7 @@ public class FileIndexProducerSelectionTests
             Drives = [new IndexedDrive('T', _treeRoot, 1)],
             CacheDirectory = _cacheDirectory,
             MftSource = new MftIndexSource(CountingProducer),
-            InitialOpenCacheOnly = true
+            CacheMode = CacheMode.ExistingOnly
         }, TestContext.CancellationTokenSource.Token);
 
         Assert.AreEqual(0, invocationCount, "a cache-only open must never attempt a scan");
@@ -469,7 +469,7 @@ public class FileIndexProducerSelectionTests
             Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
             CacheDirectory = _cacheDirectory,
             MftSource = new MftIndexSource(Producer),
-            InitialOpenCacheOnly = true
+            CacheMode = CacheMode.ExistingOnly
         }, TestContext.CancellationTokenSource.Token);
         Assert.AreEqual(0, invocationCount, "a cache-only open must never attempt a scan");
         Assert.AreEqual(DriveState.Failed, index.Drives.Single().State);
@@ -496,7 +496,7 @@ public class FileIndexProducerSelectionTests
             Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
             CacheDirectory = _cacheDirectory,
             MftSource = new MftIndexSource((_, _) => throw new UnauthorizedAccessException("elevation declined")),
-            InitialOpenCacheOnly = true
+            CacheMode = CacheMode.ExistingOnly
         }, TestContext.CancellationTokenSource.Token);
         Assert.AreEqual(DriveFailureKind.CacheDeclined, index.Drives.Single().Failure?.Kind);
 

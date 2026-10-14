@@ -153,10 +153,10 @@ var options = new FileIndexOptions
 await using var index = await FileIndex.OpenAsync(options, cancellationToken);
 ```
 
-Cached opens require a nonblank cache directory even with no drives. Missing
-configuration throws `ArgumentException`. `NoCache = true` requires no directory
+`Persistent` and `ExistingOnly` opens require a nonblank cache directory even with no drives. Missing
+configuration throws `ArgumentException`. `CacheMode.Disabled` requires no directory
 and ignores supplied paths without creating them. Dump sources validate first
-and prohibit cache options.
+and prohibit `Drives` and every cache option.
 
 `BrokerSession.CreateIndexSource()` returns the `MftIndexSource` that
 `FileIndexOptions.MftSource` takes. The source carries both halves of the

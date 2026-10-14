@@ -172,7 +172,7 @@ public class FileIndexRescanCleanupTests
         {
             Drives = [new IndexedDrive('T', _treeRoot, 1)],
             CacheDirectory = _cacheDirectory,
-            InitialOpenCacheOnly = true,
+            CacheMode = CacheMode.ExistingOnly,
             MftSource = new MftIndexSource(async (request, _cancellationToken) =>
             {
                 producerEntered.TrySetResult();

@@ -29,7 +29,7 @@ ownership; block operations still follow the locks described below.
       create-and-lock), so cache-pruning tooling must leave `*.mlix.lock` alone. `FileIndexOptions.Diagnostics`
       receives one line per block-file delete with the path and
       reason; null by default (the internal block creation options forward it). Consumers that deliberately shared one cache block between two live indexes
-      must open the second with `NoCache` or expect the in-use outcome. `CacheDirectory.DeleteCached(cacheDirectoryPath,
+      must open the second with `CacheMode.Disabled` or expect the in-use outcome. `CacheDirectory.DeleteCached(cacheDirectoryPath,
       driveLetters, diagnostics)` is the lock-safe way for a consumer to clear cache blocks: it takes each
       candidate block's owner lock non-blockingly and deletes only while holding it, the same rule `FileIndex`
       itself follows, so it never deletes, renames, or unlinks a block a live `FileIndex` still owns. A block
@@ -62,7 +62,7 @@ ownership; block operations still follow the locks described below.
       `DriveBlockStatus.CacheSlot` reports the current published block's backing:
       `CacheSlotState.OwnedCanonical` for the canonical slot held by this index,
       `PrivateFallback` for a private fallback block, and null for
-      a NoCache block (a blockless drive has no `Block` at all). It is independent of
+      a `CacheMode.Disabled` block (a blockless drive has no `Block` at all). It is independent of
       `BlockSource`: both canonical and private scans report `ProducedByScan`.
       The status is captured under the state lock; reread `FileIndex.Drives` after
       a rescan. Taking a lock for an in-flight rescan does not change the old

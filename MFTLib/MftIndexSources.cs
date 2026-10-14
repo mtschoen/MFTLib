@@ -15,7 +15,7 @@ public static partial class MftIndexSources
     ///     Cached scans arm the live journal cursor before reading records; reopening adopts only
     ///     an unmoved journal, or one that cannot answer coherently; otherwise the drive rescans,
     ///     and a cache-only open keeps the snapshot flagged unresumable. Cached scans
-    ///     require an active journal. NoCache skips the cursor query and stamps zero.
+    ///     require an active journal. A <see cref="MFTLib.Index.CacheMode.Disabled" /> open skips the cursor query and stamps zero.
     /// </summary>
     /// <param name="scanOptions">Retention and freed-record inclusion; null scans every in-use record.</param>
     /// <returns>The source to assign to <see cref="FileIndexOptions.MftSource" />.</returns>

@@ -65,7 +65,7 @@ public partial class SyntheticBlockTests
             enumeration ? ProducerPolicy.Enumeration : ProducerPolicy.Mft)],
         CacheDirectory = CacheDirectoryPath,
         MftSource = new MftIndexSource((_, _) => throw new InvalidOperationException("the cache must satisfy the open")),
-        InitialOpenCacheOnly = true
+        CacheMode = CacheMode.ExistingOnly
     };
 
     FileIndexOptions Scanning(SyntheticMftProducer producer, CacheTag cacheTag = default) => new()

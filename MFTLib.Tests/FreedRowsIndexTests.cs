@@ -199,7 +199,7 @@ public class FreedRowsIndexTests
         {
             Drives = [new IndexedDrive('T', _directories.TreeRoot, 0x0BADF00D)],
             CacheDirectory = _directories.CacheDirectory,
-            NoCache = true,
+            CacheMode = CacheMode.Disabled,
             MftSource = producer.CreateIndexSource()
         }, CancellationToken.None);
     }

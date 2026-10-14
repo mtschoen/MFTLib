@@ -122,7 +122,7 @@ public class FileIndexQueryTests
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
             Drives = blocklessFirst ? [blockless, ready] : [ready, blockless],
-            NoCache = true,
+            CacheMode = CacheMode.Disabled,
             MftSource = new MftIndexSource((request, cancellationToken) => request.VolumeSerial == blockless.VolumeSerial
                 ? Task.FromException<MftBlockProduceResult>(new InvalidOperationException("duplicate configuration failed"))
                 : producer.Producer(request, cancellationToken))
@@ -163,7 +163,7 @@ public class FileIndexQueryTests
         var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
             Drives = [new IndexedDrive('T', state == DriveState.Offline ? Path.Combine(_treeRoot, "absent") : _treeRoot, 1)],
-            NoCache = true,
+            CacheMode = CacheMode.Disabled,
             MftSource = SyntheticIndexSource.Create(producer)
         }, CancellationToken.None);
 

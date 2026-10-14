@@ -76,7 +76,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
             Drives = drives,
             CacheDirectory = _cacheDirectory,
             MftSource = new MftIndexSource(producer, watchSource),
-            InitialOpenCacheOnly = cacheOnly
+            CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent
         };
     }
 

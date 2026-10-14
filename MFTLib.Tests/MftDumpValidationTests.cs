@@ -443,8 +443,6 @@ public class MftDumpValidationTests
 
     static FileIndexOptions Options(string path, MftIndexSource? source = null, char driveLetter = 'D') => new()
     {
-        Drives = [new IndexedDrive(driveLetter, MftDumpPaths.CanonicalRoot(driveLetter), 0)],
-        NoCache = true,
         MftSource = source ?? MftIndexSources.FromMftDumpFile(path, driveLetter)
     };
 

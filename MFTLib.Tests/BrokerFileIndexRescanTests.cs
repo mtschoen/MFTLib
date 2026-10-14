@@ -203,7 +203,7 @@ public sealed class BrokerFileIndexRescanTests
             {
                 Drives = [new IndexedDrive('T', Path.GetTempPath(), 123), new IndexedDrive('U', Path.GetTempPath(), 456)],
                 CacheDirectory = _cacheDirectory,
-                NoCache = true,
+                CacheMode = CacheMode.Disabled,
                 MftSource = new MftIndexSource(producer, watchSource)
             }, token);
         }

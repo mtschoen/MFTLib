@@ -43,7 +43,7 @@ public class DirectLargestFilesTests
         {
             Drives = [new IndexedDrive(builder.Drive, builder.DirectoryPath, builder.VolumeSerial, ProducerPolicy.Enumeration)],
             CacheDirectory = builder.DirectoryPath,
-            InitialOpenCacheOnly = true,
+            CacheMode = CacheMode.ExistingOnly,
         }, CancellationToken.None);
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State, index.Drives.Single().Failure?.Message);
         return index;

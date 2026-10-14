@@ -52,7 +52,7 @@ public class FileIndexOpenProgressTests
         {
             Drives = drives.Select(drive => drive with { ProducerPolicy = producerPolicy }).ToArray(),
             CacheDirectory = _cacheDirectory,
-            InitialOpenCacheOnly = cacheOnly,
+            CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
             MftSource = mftProducer is null ? null : new MftIndexSource(mftProducer),
             OpenProgress = openProgress
         };

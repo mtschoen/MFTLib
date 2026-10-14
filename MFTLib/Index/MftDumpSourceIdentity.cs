@@ -23,39 +23,40 @@ internal sealed record MftDumpSourceIdentity
     /// <summary>The prefix of every path this dump renders, which no host path can start with.</summary>
     internal string Root => MftDumpPaths.CanonicalRoot(Drive);
 
+    /// <summary>The one virtual drive the index files this dump under: the dump root, serial zero, MFT producer.</summary>
+    internal IndexedDrive VirtualDrive => new(Drive, Root, 0);
+
     /// <summary>
-    ///     Checks the options a dump index opens with, before any file or cache write.
+    ///     Checks that the options leave every drive and cache fact to the dump source, before any
+    ///     file or cache write.
     /// </summary>
-    /// <exception cref="ArgumentException">An option is not one a dump source accepts.</exception>
-    internal void ValidateOptions(FileIndexOptions options)
+    /// <exception cref="ArgumentException">An option the dump source supplies itself is set.</exception>
+    internal static void ValidateOptions(FileIndexOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        if (options.Drives is not [{ } drive] || drive.Drive != Drive)
+        if (options.Drives.Count != 0)
         {
-            throw new ArgumentException("The dump source requires exactly its configured logical drive key.",
+            throw new ArgumentException("A dump source supplies its own drive, so FileIndexOptions.Drives must be empty.",
                 nameof(options));
         }
 
-        if (!MftDumpPaths.IsCanonicalRoot(drive.RootDirectory, Drive))
+        if (options.CacheMode is not null)
         {
-            throw new ArgumentException($"A dump root must be {Root}.", nameof(options));
-        }
-
-        if (!options.NoCache || options.InitialOpenCacheOnly || options.CacheTag != default ||
-            options.CacheDirectory is not null)
-        {
-            throw new ArgumentException("Dump sources require NoCache and do not accept cache options.",
+            throw new ArgumentException(
+                "A dump source is never cached, so FileIndexOptions.CacheMode must be unset, Disabled included.",
                 nameof(options));
         }
 
-        if (drive.ProducerPolicy != ProducerPolicy.Mft)
+        if (options.CacheDirectory is not null)
         {
-            throw new ArgumentException("Dump sources require ProducerPolicy.Mft.", nameof(options));
+            throw new ArgumentException("A dump source is never cached, so FileIndexOptions.CacheDirectory must be unset.",
+                nameof(options));
         }
 
-        if (drive.VolumeSerial != 0)
+        if (options.CacheTag != default)
         {
-            throw new ArgumentException("A dump source requires VolumeSerial to be zero.", nameof(options));
+            throw new ArgumentException("A dump source is never cached, so FileIndexOptions.CacheTag must be unset.",
+                nameof(options));
         }
     }
 }

@@ -44,7 +44,7 @@ public class LocalMftCacheFreshnessTests
             }
             using var journal = JournalCheckpointCheck.OverrideJournalForTest(
                 _ => new JournalWindow(journalIdentifier, firstUsn, nextUsn, 64, 32768));
-            options = options with { InitialOpenCacheOnly = cacheOnly };
+            options = options with { CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent };
             await using var reopened = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
             var status = reopened.Drives.Single();
             Assert.AreEqual(cacheOnly ? 1 : 2, scans);

@@ -76,7 +76,7 @@ public class LocalMftBlockProducerCursorTests
         {
             Drives = [new IndexedDrive('T', directories.TreeRoot, 123)],
             CacheDirectory = directories.CacheDirectory,
-            NoCache = noCache,
+            CacheMode = noCache ? CacheMode.Disabled : CacheMode.Persistent,
             MftSource = source
         }, TestContext.CancellationTokenSource.Token);
         var status = index.Drives.Single();

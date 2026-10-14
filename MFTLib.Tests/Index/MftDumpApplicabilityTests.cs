@@ -13,10 +13,6 @@ namespace MFTLib.Tests.Index;
 [DoNotParallelize]
 public class MftDumpApplicabilityTests
 {
-    const string RootMessage = "A dump root must be dump:/D.";
-    const string KeyMessage = "The dump source requires exactly its configured logical drive key.";
-    const string CacheMessage = "Dump sources require NoCache and do not accept cache options.";
-
     [TestMethod]
     public async Task Open_ADumpDriveSharingARealLetterIsNotProbedAsALiveRoot()
     {
@@ -53,45 +49,54 @@ public class MftDumpApplicabilityTests
     }
 
     [TestMethod]
-    public async Task Open_ValidationTable_RejectsEachOptionWithItsMessage()
+    public async Task Open_WithOnlyTheSourceSet_PublishesTheVirtualDrive()
     {
-        var table = new (string Description, FileIndexOptions Options, string Message)[]
-        {
-            ("another key", WithDrives(new IndexedDrive('E', "dump:/E", 0)), KeyMessage),
-            ("two drives",
-                WithDrives(new IndexedDrive('D', MftDumpIndexes.Root, 0), new IndexedDrive('E', "dump:/E", 0)),
-                KeyMessage),
-            ("no drives", WithDrives(), KeyMessage),
-            ("a host root", WithDrives(new IndexedDrive('D', Path.GetTempPath(), 0)), RootMessage),
-            ("a lower-case root", WithDrives(new IndexedDrive('D', "dump:/d", 0)), RootMessage),
-            ("a trailing separator", WithDrives(new IndexedDrive('D', "dump:/D/", 0)), RootMessage),
-            ("a volume serial", WithDrives(new IndexedDrive('D', MftDumpIndexes.Root, 1)),
-                "A dump source requires VolumeSerial to be zero."),
-            ("caching", MftDumpIndexes.Options() with { NoCache = false }, CacheMessage),
-            ("a cache directory", MftDumpIndexes.Options() with { CacheDirectory = "elsewhere" }, CacheMessage),
-            ("cache-only", MftDumpIndexes.Options() with { InitialOpenCacheOnly = true }, CacheMessage),
-            ("a cache tag", MftDumpIndexes.Options() with { CacheTag = new CacheTag("ABCD", 1) }, CacheMessage),
-            ("enumeration", WithDrives(new IndexedDrive('D', MftDumpIndexes.Root, 0, ProducerPolicy.Enumeration)),
-                "Dump sources require ProducerPolicy.Mft.")
-        };
+        await using var index = await MftDumpIndexes.OpenAsync();
 
-        foreach (var (description, options, message) in table)
-        {
-            var failure = await Assert.ThrowsExceptionAsync<ArgumentException>(
-                () => FileIndex.OpenAsync(options, CancellationToken.None), description);
-            Assert.AreEqual("options", failure.ParamName, description);
-            StringAssert.StartsWith(failure.Message, message, description);
-        }
+        var drive = index.Drives.Single();
+        Assert.IsTrue(drive.Drive == MftDumpIndexes.DriveLetter);
+        Assert.AreEqual(DriveState.Ready, drive.State);
+        Assert.IsNull(drive.Block!.CacheSlot, "a dump block is never backed by a cache slot");
+        Assert.IsTrue(index.Root(MftDumpIndexes.DriveLetter).IsDirectory);
     }
 
     [TestMethod]
-    public async Task Open_ALowerCaseDriveKeyOfTheConfiguredLetterIsAccepted()
+    public async Task Open_WithDrivesSet_IsRejectedNamingDrives()
     {
-        await using var index = await FileIndex.OpenAsync(
-            MftDumpIndexes.Options() with { Drives = [new IndexedDrive('d', MftDumpIndexes.Root, 0)] },
-            CancellationToken.None);
+        var options = MftDumpIndexes.Options() with { Drives = [new IndexedDrive('D', MftDumpIndexes.Root, 0)] };
 
-        Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
+        await AssertRejectedAsync(options, "FileIndexOptions.Drives");
+    }
+
+    [TestMethod]
+    [DataRow(CacheMode.Persistent)]
+    [DataRow(CacheMode.ExistingOnly)]
+    [DataRow(CacheMode.Disabled)]
+    public async Task Open_WithAnyCacheModeSet_IsRejectedNamingCacheMode(CacheMode mode)
+    {
+        await AssertRejectedAsync(MftDumpIndexes.Options() with { CacheMode = mode }, "FileIndexOptions.CacheMode");
+    }
+
+    [TestMethod]
+    public async Task Open_WithCacheDirectorySet_IsRejectedNamingCacheDirectory()
+    {
+        await AssertRejectedAsync(MftDumpIndexes.Options() with { CacheDirectory = "elsewhere" },
+            "FileIndexOptions.CacheDirectory");
+    }
+
+    [TestMethod]
+    public async Task Open_WithCacheTagSet_IsRejectedNamingCacheTag()
+    {
+        await AssertRejectedAsync(MftDumpIndexes.Options() with { CacheTag = new CacheTag("ABCD", 1) },
+            "FileIndexOptions.CacheTag");
+    }
+
+    static async Task AssertRejectedAsync(FileIndexOptions options, string settingName)
+    {
+        var failure = await Assert.ThrowsExceptionAsync<ArgumentException>(
+            () => FileIndex.OpenAsync(options, CancellationToken.None));
+        Assert.AreEqual("options", failure.ParamName);
+        StringAssert.Contains(failure.Message, settingName);
     }
 
     [TestMethod]
@@ -147,7 +152,7 @@ public class MftDumpApplicabilityTests
         var options = new FileIndexOptions
         {
             Drives = [new IndexedDrive('T', directories.TreeRoot, 0)],
-            NoCache = true,
+            CacheMode = CacheMode.Disabled,
             CacheDirectory = directories.CacheDirectory,
             MftSource = new MftIndexSource(MftDumpIndexes.Produce)
         };
@@ -229,7 +234,7 @@ public class MftDumpApplicabilityTests
                 await using var index = await FileIndex.OpenAsync(new FileIndexOptions
                 {
                     Drives = [new IndexedDrive('T', directories.TreeRoot, 0)],
-                    NoCache = true,
+                    CacheMode = CacheMode.Disabled,
                     CacheDirectory = directories.CacheDirectory,
                     MftSource = new MftIndexSource(MftDumpIndexes.Produce, watchSource)
                 }, CancellationToken.None);
@@ -251,9 +256,6 @@ public class MftDumpApplicabilityTests
         Assert.IsFalse(status.Watch.Requested);
         Assert.AreEqual(WatchState.NotStarted, status.Watch.State);
     }
-
-    static FileIndexOptions WithDrives(params IndexedDrive[] drives) =>
-        MftDumpIndexes.Options() with { Drives = drives };
 
     sealed class NullWatchSource : IIndexWatchSource
     {

@@ -18,7 +18,7 @@ public class DirectDuplicateNameSieveTests
             Drives = builders.Select(builder => new IndexedDrive(builder.Drive, builder.DirectoryPath,
                 builder.VolumeSerial, ProducerPolicy.Enumeration)).ToArray(),
             CacheDirectory = builders[0].DirectoryPath,
-            InitialOpenCacheOnly = true
+            CacheMode = CacheMode.ExistingOnly
         }, CancellationToken.None);
         foreach (var drive in index.Drives)
         {

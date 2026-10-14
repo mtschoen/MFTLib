@@ -23,7 +23,7 @@ public partial class FileIndexResilienceTests
         await File.WriteAllBytesAsync(blockPath, bytes);
 
         var cacheOnlyOptions = Options();
-        cacheOnlyOptions = cacheOnlyOptions with { InitialOpenCacheOnly = true };
+        cacheOnlyOptions = cacheOnlyOptions with { CacheMode = CacheMode.ExistingOnly };
         await using var index = await FileIndex.OpenAsync(cacheOnlyOptions, CancellationToken.None);
 
         var failed = index.Drives.Single();

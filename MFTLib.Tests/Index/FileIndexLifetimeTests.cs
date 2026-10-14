@@ -36,7 +36,7 @@ public class FileIndexLifetimeTests
         {
             Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial, policy)],
             CacheDirectory = _cacheDirectory,
-            NoCache = noCache,
+            CacheMode = noCache ? CacheMode.Disabled : CacheMode.Persistent,
         };
     }
 
@@ -68,7 +68,7 @@ public class FileIndexLifetimeTests
 
 
     [TestMethod]
-    public async Task OpenAsync_NoCacheMode_LeavesNothingInTheCacheDirectory()
+    public async Task OpenAsync_DisabledCacheMode_LeavesNothingInTheCacheDirectory()
     {
         await using (var index = await FileIndex.OpenAsync(Options(noCache: true), CancellationToken.None))
         {

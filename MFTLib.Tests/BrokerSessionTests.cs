@@ -665,7 +665,7 @@ public partial class BrokerSessionTests
             {
                 Drives = [new IndexedDrive('X', Path.GetTempPath(), 123)],
                 CacheDirectory = cacheDirectory,
-                NoCache = true,
+                CacheMode = CacheMode.Disabled,
                 MftSource = session.CreateIndexSource()
             }, CancellationToken.None).WaitAsync(HangGuard);
 

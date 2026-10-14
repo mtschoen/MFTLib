@@ -58,7 +58,7 @@ second `FileIndex` that cannot take the lock never validates, renames, or delete
 validating a block another index is mutating can observe a half-updated header or name
 descriptor, and deleting a mapped file's name succeeds on Windows. Cache-only opens report the
 drive `Failed` with `DriveFailureKind.InUse`; other opens scan into a private
-`mftlib-private-<guid>-<name>` temp file with delete-on-close, the same shape `NoCache` uses
+`mftlib-private-<guid>-<name>` temp file with delete-on-close, the same shape `CacheMode.Disabled` uses
 with its `mftlib-nocache-` prefix. The lock file itself is never deleted, because unlinking it
 races another opener's create-and-lock; a leftover lock file matches no block-file pattern and
 is re-locked in place.
@@ -71,7 +71,7 @@ Read `FileIndex.Drives` and inspect `DriveBlockStatus.CacheSlot`:
 | --- | --- |
 | `CacheSlotState.OwnedCanonical` | This drive's current block belongs to the canonical cache slot held by this index. |
 | `CacheSlotState.PrivateFallback` | This drive's current block was scanned privately because its canonical slot was unavailable when the scan target was selected. |
-| null | The block is not backed by a cache slot: NoCache is enabled. A failed or offline drive has no `DriveStatus.Block` to inspect. |
+| null | The block is not backed by a cache slot: `CacheMode.Disabled` is in effect. A failed or offline drive has no `DriveStatus.Block` to inspect. |
 
 Ready blocks retain their backing classification, including when compaction is needed. This is
 separate from `DriveBlockStatus.Source`: a canonical cold scan and a private
@@ -183,7 +183,7 @@ Freed-record inclusion also changes the retained rows. For example:
     CacheTag = new CacheTag("GITW", 1)
 
 Both fields are initialized before a block is marked complete, for initial
-scans, rescans and private/no-cache blocks. The internal
+scans, rescans and private and `Disabled` blocks. The internal
 `MftBlockProducer` delegate must copy `MftBlockProduceRequest.CacheTag` into the block it
 creates; returning a differently tagged block is a producer failure.
 `SyntheticMftProducer` in `MFTLibTestExtensions` does this for tests. The built-in
@@ -193,7 +193,7 @@ After structural validation, warm opening compares both fields to the
 requested tag before adopting the block or checking its journal cursor.
 A mismatch records `BlockValidationResult.WrongCacheTag`, disposes and
 best-effort deletes the rejected cache under its owner lock, then cold-scans.
-With `InitialOpenCacheOnly`, it instead reports `DriveState.Failed` and
+With `CacheMode.ExistingOnly`, it instead reports `DriveState.Failed` and
 `DriveFailureKind.CacheTagMismatch`. `RescanAsync` can recover that drive.
 Both paths emit a `Diagnostics` line identifying the stored and requested
 tags. ASCII control characters in tag diagnostics are escaped.

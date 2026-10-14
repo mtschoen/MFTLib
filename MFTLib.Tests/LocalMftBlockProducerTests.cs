@@ -63,7 +63,7 @@ public class LocalMftBlockProducerTests
     {
         Drives = [new IndexedDrive('T', _directories.TreeRoot, 0x0BADF00D)],
         CacheDirectory = _directories.CacheDirectory,
-        NoCache = true,
+        CacheMode = CacheMode.Disabled,
         MftSource = source,
         Progress = progress
     };
@@ -184,8 +184,7 @@ public class LocalMftBlockProducerTests
         {
             Drives = [new IndexedDrive('T', _directories.TreeRoot, 0x0BADF00D)],
             CacheDirectory = _directories.CacheDirectory,
-            NoCache = false,
-            InitialOpenCacheOnly = isCacheOnly,
+            CacheMode = isCacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
             MftSource = source
         };
 

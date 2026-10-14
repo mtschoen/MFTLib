@@ -24,8 +24,6 @@ try
     var dumpPath = MftDumpFixture.WriteFile(directory, MftDumpFixture.Standard());
     await using var index = await FileIndex.OpenAsync(new FileIndexOptions
     {
-        Drives = [new IndexedDrive('D', "dump:/D", 0)],
-        NoCache = true,
         MftSource = MftIndexSources.FromMftDumpFile(dumpPath, 'D')
     }, CancellationToken.None);
 

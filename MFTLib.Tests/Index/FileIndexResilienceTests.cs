@@ -43,7 +43,7 @@ public partial class FileIndexResilienceTests
         {
             Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial, ProducerPolicy.Enumeration)],
             CacheDirectory = _cacheDirectory,
-            NoCache = noCache,
+            CacheMode = noCache ? CacheMode.Disabled : CacheMode.Persistent,
             Progress = progress,
             Diagnostics = diagnostics
         };
@@ -214,7 +214,7 @@ public partial class FileIndexResilienceTests
     }
 
     [TestMethod]
-    public async Task OpenAsync_NoCacheMode_CancelledMidScan_DeletesTheTempBlockImmediately()
+    public async Task OpenAsync_DisabledCacheMode_CancelledMidScan_DeletesTheTempBlockImmediately()
     {
         using var cancellationTokenSource = new CancellationTokenSource();
         var options = Options(noCache: true, progress: new CancelOnFirstReport(cancellationTokenSource));
@@ -287,7 +287,7 @@ public partial class FileIndexResilienceTests
     ///     collection happens to run, which parallel test classes make frequent.
     /// </summary>
     [TestMethod]
-    public async Task DisposeAsync_NoCacheMode_DeletesEveryTempBlockIncludingAHeldSupersededOne()
+    public async Task DisposeAsync_DisabledCacheMode_DeletesEveryTempBlockIncludingAHeldSupersededOne()
     {
         var index = await FileIndex.OpenAsync(Options(noCache: true), CancellationToken.None);
         string firstPath;
@@ -317,7 +317,7 @@ public partial class FileIndexResilienceTests
     }
 
     [TestMethod]
-    public async Task RescanAsync_NoCacheMode_UnheldSupersededTempBlockIsDeletedByFinalization()
+    public async Task RescanAsync_DisabledCacheMode_UnheldSupersededTempBlockIsDeletedByFinalization()
     {
         var index = await FileIndex.OpenAsync(Options(noCache: true), CancellationToken.None);
         try
@@ -442,7 +442,7 @@ public partial class FileIndexResilienceTests
     }
 
     [TestMethod]
-    public async Task OpenAsync_NoCacheMode_AnotherTestInstanceDoesNotDeleteTheLiveTempBlock()
+    public async Task OpenAsync_DisabledCacheMode_AnotherTestInstanceDoesNotDeleteTheLiveTempBlock()
     {
         var firstFixture = new FileIndexResilienceTests();
         var secondFixture = new FileIndexResilienceTests();

@@ -112,7 +112,7 @@ public partial class BenchmarkRunner
             await using var index = await FileIndex.OpenAsync(new FileIndexOptions
             {
                 CacheDirectory = directory,
-                InitialOpenCacheOnly = true,
+                CacheMode = CacheMode.ExistingOnly,
                 CacheTag = cacheTag,
                 Drives = [new IndexedDrive(candidate.File.Drive, candidate.RootDirectory, candidate.File.VolumeSerial,
                     candidate.ProducerKind == ProducerKind.Enumeration ? ProducerPolicy.Enumeration : ProducerPolicy.Mft)]

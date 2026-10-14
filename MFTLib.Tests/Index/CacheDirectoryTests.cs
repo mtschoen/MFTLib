@@ -165,17 +165,17 @@ public class CacheDirectoryTests
         });
 
         Assert.AreEqual("options", exception.ParamName);
-        StringAssert.Contains(exception.Message, "Set FileIndexOptions.CacheDirectory or enable NoCache.");
+        StringAssert.Contains(exception.Message, "Set FileIndexOptions.CacheDirectory or set FileIndexOptions.CacheMode to Disabled.");
         Assert.IsFalse(Directory.Exists(_root));
     }
 
     [DataTestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public async Task OpenAsync_NoCache_DoesNotCreateAnUnusedCacheDirectory(bool supplyDirectory)
+    public async Task OpenAsync_DisabledCacheMode_DoesNotCreateAnUnusedCacheDirectory(bool supplyDirectory)
     {
         await using var index = await FileIndex.OpenAsync(
-            new FileIndexOptions { NoCache = true, CacheDirectory = supplyDirectory ? _root : null },
+            new FileIndexOptions { CacheMode = CacheMode.Disabled, CacheDirectory = supplyDirectory ? _root : null },
             CancellationToken.None);
 
         Assert.AreEqual(string.Empty, index.CacheDirectoryPath);
