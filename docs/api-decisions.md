@@ -8,6 +8,98 @@ with evidence that its stated reason no longer holds (for example, the consumers
 Record every new ruling here in the same change that implements or files it: the decision, the reason, and
 what would justify revisiting it.
 
+## Metadata reports observations and freshness without hidden reads
+
+**Decision (2026-10-14, implementation pending
+[MFTLib issue 503 (metadata freshness)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/503)):**
+the index reports the filesystem metadata it actually observed and its freshness, without implicit filesystem
+reads to refresh it. A journal event's timestamp is event time (`FileChange.Timestamp`), not a filesystem
+last-write observation. `RowFlags.LastWriteTimeUnknown = 32` tracks unknown last-write time alongside
+`RowFlags.SizeUnknown = 8`. Both `FileEntry` and `IndexRow` expose `IsLastWriteTimeKnown`, and `IndexRow`
+exposes `LastWriteTime` and `Attributes` for full row-column parity with `FileEntry`. Rows with
+`LastWriteTimeUnknown` read `LastWriteTime == DateTime.MinValue` and are excluded when `SearchQuery` specifies
+`LastWriteTimeMinimum` or `LastWriteTimeMaximum`, matching `SizeUnknown`.
+
+**Reason:** the owner wants fast read-only queries and explicitly chose honest freshness over hidden reads, plus
+full `IndexRow` column parity so row loops never need `ToEntry()` just to inspect `LastWriteTime`,
+`IsLastWriteTimeKnown`, or `Attributes`. The audit reproduced a rename replacing a scanned 2020 last-write value
+with the rename's 2026 event time, which then matched a recent-write query. Journal-created entries also lack
+metadata the journal does not carry, and journal modifications (`DataOverwrite`, `DataExtend`, `DataTruncation`,
+`BasicInfoChange`) invalidate previously scanned metadata until the next scan. Until implemented, the current
+journal mutation does not meet this ruling.
+
+**Revisit only if:** consumers explicitly request a separately identified metadata-refresh operation or need
+freshness information that the observation/invalidation model cannot express.
+
+## A subtree anchor belongs to the queried index's current drive block
+
+**Decision (2026-10-14, implementation pending
+[MFTLib issue 504 (subtree identity)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/504)):**
+all three query forms (`Search`, `Enumerate`, and `EnumerateRows`) eagerly validate a non-null `Subtree` anchor
+on call entry against the snapshot actually borrowed by the query. They throw `ObjectDisposedException` when the
+anchor's block has been released, and `ArgumentException` when the anchor is `default(FileEntry)`, belongs to
+another `FileIndex`, belongs to a replaced drive block, or has been superseded by row reuse. A retained handle
+remains readable against its original block until disposed, and rescanning another drive does not invalidate an
+anchor whose own drive block remains current.
+
+**Reason:** private drive ordinals and row numbers are coordinates, not ownership, and `default(FileEntry)` is
+not a valid subtree anchor. The audit reproduced a C-drive root selecting D-drive rows in another index,
+including after the first index was disposed, as well as an old directory handle selecting a different directory
+at the same row after rescan and `default(FileEntry)` silently returning an empty result. Comparing whole
+snapshot identity would overcorrect when another drive rescans while the anchor's drive block stays current.
+Until implemented, the current ordinal-only checks do not meet this ruling.
+
+**Revisit only if:** consumers need an explicitly specified rebinding operation that verifies directory identity
+across block replacement.
+
+## OpenAsync validates drive keys and producer policies before filesystem side effects
+
+**Decision (2026-10-14, implementation pending
+[MFTLib issue 505 (OpenAsync input validation)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/505)):**
+`FileIndex.OpenAsync` validates `FileIndexOptions.Drives` up front, before creating `CacheDirectory` or running
+any producer: duplicate normalized `DriveKey` entries throw `ArgumentException`, and an undefined
+`ProducerPolicy` value throws `ArgumentOutOfRangeException`.
+
+**Reason:** `OpenAsync` is a dictionary-keyed, per-drive API (`Drives`, `Root(DriveKey)`), so duplicate drive
+keys and undefined enum values are caller configuration bugs that must fail fast with no filesystem side effects.
+
+**Revisit only if:** never; configuration validation before side effects is a baseline contract.
+
+## Cold production failures settle per drive across both producer policies
+
+**Decision (2026-10-14, implementation pending
+[MFTLib issue 506 (per-drive enumeration settlement)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/506)):**
+a cold-production failure on a `ProducerPolicy.Enumeration` drive settles that drive as `DriveState.Failed` with
+`DriveFailureKind.ProducerFailed` while healthy sibling drives remain usable, matching `ProducerPolicy.Mft` and
+`RescanAsync`. Caller cancellation (`OperationCanceledException`) still aborts `OpenAsync`.
+
+**Reason:** `ProducerPolicy` is configured per drive so one index can mix MFT-scanned and directory-walked
+drives. Aborting the entire `OpenAsync` when one enumerated drive's root is missing or inaccessible breaks
+mixed-drive resilience and contradicts `RescanAsync`, which already catches enumeration failures per drive.
+
+**Revisit only if:** a consumer explicitly asks for an all-or-nothing open mode across all drives.
+
+## FileEntry handles are bound to the row's sequence number
+
+**Decision (2026-10-14, implementation pending
+[MFTLib issue 507 (FileEntry row-reuse identity)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/507)):**
+`FileEntry` captures the row's `ushort` sequence number in its existing 16-byte struct layout (`BlockFile?`,
+`uint RowIndex`, `byte DriveOrdinal`, `ushort SequenceNumber`). When USN journal creation reuses a deleted row
+slot with a new sequence number, or when `EnumerationProducer` reuses a deleted slot and increments its
+sequence number, previously retained `FileEntry` handles with the older sequence number do not silently
+alias the new file: `IsDeleted` reads `true`, `Open` throws `FileNotFoundException`, `Children` returns empty,
+`Subtree` queries reject the superseded anchor with `ArgumentException`, and reading overwritten row columns
+(`Name`, `Path`, `Parent`, `IsDirectory`, `Size`, `IsSizeKnown`, `LastWriteTime`, `IsLastWriteTimeKnown`,
+`Attributes`) throws `InvalidOperationException`.
+
+**Reason:** NTFS reuses MFT segment numbers when creating new files after deletions. Because `FileEntry` already
+has 2 bytes of tail padding in its 16-byte layout and `BlockFile.SequenceNumbers` already stores a `ushort` per
+row, binding `FileEntry` to the row's sequence number prevents silent data corruption (opening or querying the
+wrong file through a retained handle) at zero struct-size cost.
+
+**Revisit only if:** consumers require cached tombstone snapshots of overwritten columns on superseded handles
+beyond `IsDeleted`.
+
 ## Elevation helpers live in MFTLib
 
 **Decision (2026-10-13, API review finding F9):** `IElevationProvider` and `ElevationUtilities` stay public in
