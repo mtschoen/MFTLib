@@ -3,6 +3,7 @@
 #ifdef _WIN32
 
     #include <array>
+    #include <cstddef>
     #include <iterator>
 
     #include "../framework.h"
@@ -143,6 +144,21 @@ void ApplyUsnReadError(UsnJournalResult* result, DWORD error, const wchar_t* fai
     }
 }
 
+constexpr size_t kUsnRecordHeaderSize = offsetof(USN_RECORD_V2, FileName);
+
+bool TryReadUsnRecord(const uint8_t* recordPointer, const uint8_t* endPointer, const USN_RECORD_V2** outRecord) {
+    const auto remainingBytes = static_cast<size_t>(endPointer - recordPointer);
+    if (remainingBytes < kUsnRecordHeaderSize) {
+        return false;
+    }
+    const auto* usnRecord = reinterpret_cast<const USN_RECORD_V2*>(recordPointer);
+    if (usnRecord->RecordLength < kUsnRecordHeaderSize || usnRecord->RecordLength > remainingBytes) {
+        return false;
+    }
+    *outRecord = usnRecord;
+    return true;
+}
+
 // Copies the fixed fields and (clamped) filename of a USN_RECORD_V2 into entry.
 void CopyUsnRecordToEntry(UsnJournalEntry& entry, const USN_RECORD_V2* usnRecord) {
     constexpr uint64_t fileReferenceMask = 0x0000FFFFFFFFFFFF;
@@ -154,10 +170,17 @@ void CopyUsnRecordToEntry(UsnJournalEntry& entry, const USN_RECORD_V2* usnRecord
     entry.timestamp = usnRecord->TimeStamp.QuadPart;
     entry.reason = usnRecord->Reason;
     entry.fileAttributes = usnRecord->FileAttributes;
-    uint16_t nameLength = usnRecord->FileNameLength / sizeof(WCHAR);
-    entry.fileNameLength = (std::min)(nameLength, static_cast<uint16_t>(std::size(entry.fileName) - 1));
+    const auto recordLength = static_cast<size_t>(usnRecord->RecordLength);
+    const auto fileNameOffset = static_cast<size_t>(usnRecord->FileNameOffset);
+    if (fileNameOffset < kUsnRecordHeaderSize || fileNameOffset >= recordLength) {
+        return;
+    }
+    const size_t availableCharacterCount = (recordLength - fileNameOffset) / sizeof(WCHAR);
+    const size_t requestedCharacterCount = static_cast<size_t>(usnRecord->FileNameLength) / sizeof(WCHAR);
+    entry.fileNameLength = static_cast<uint16_t>(
+        (std::min)({requestedCharacterCount, availableCharacterCount, std::size(entry.fileName) - 1}));
     wmemcpy_s(entry.fileName, std::size(entry.fileName),
-              reinterpret_cast<const wchar_t*>(reinterpret_cast<const uint8_t*>(usnRecord) + usnRecord->FileNameOffset),
+              reinterpret_cast<const wchar_t*>(reinterpret_cast<const uint8_t*>(usnRecord) + fileNameOffset),
               entry.fileNameLength);
 }
 
@@ -182,11 +205,8 @@ uint64_t CountUsnRecords(const uint8_t* readBuffer, DWORD bytesReturned) {
     uint64_t count = 0;
     const uint8_t* scanPointer = readBuffer + sizeof(int64_t);
     const uint8_t* endPointer = readBuffer + bytesReturned;
-    while (scanPointer + sizeof(USN_RECORD_V2) <= endPointer) {
-        const auto* usnRecord = reinterpret_cast<const USN_RECORD_V2*>(scanPointer);
-        if (usnRecord->RecordLength == 0) {
-            break;
-        }
+    const USN_RECORD_V2* usnRecord = nullptr;
+    while (TryReadUsnRecord(scanPointer, endPointer, &usnRecord)) {
         count++;
         scanPointer += usnRecord->RecordLength;
     }
@@ -217,8 +237,8 @@ void PopulateWatchEntries(UsnJournalResult* result, const uint8_t* readBuffer, D
 
     const uint8_t* endPointer = readBuffer + bytesReturned;
     const uint8_t* recordPointer = readBuffer + sizeof(int64_t);
-    for (uint64_t i = 0; i < count && recordPointer + sizeof(USN_RECORD_V2) <= endPointer; i++) {
-        const auto* usnRecord = reinterpret_cast<const USN_RECORD_V2*>(recordPointer);
+    const USN_RECORD_V2* usnRecord = nullptr;
+    for (uint64_t i = 0; i < count && TryReadUsnRecord(recordPointer, endPointer, &usnRecord); i++) {
         auto& entry = result->entries[i];
         CopyUsnRecordToEntry(entry, usnRecord);
         result->entryCount++;
@@ -327,15 +347,11 @@ EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, u
 
                 nextUsn = bufferNextUsn;
 
-                uint8_t* recordPointer = readBuffer + sizeof(int64_t);
+                const uint8_t* recordPointer = readBuffer + sizeof(int64_t);
                 const uint8_t* endPointer = readBuffer + bytesReturned;
+                const USN_RECORD_V2* usnRecord = nullptr;
 
-                while (recordPointer + sizeof(USN_RECORD_V2) <= endPointer) {
-                    const auto* usnRecord = reinterpret_cast<const USN_RECORD_V2*>(recordPointer);
-                    if (usnRecord->RecordLength == 0) {
-                        break;
-                    }
-
+                while (TryReadUsnRecord(recordPointer, endPointer, &usnRecord)) {
                     if (result->entryCount >= capacity && !GrowUsnEntries(result, capacity)) {
                         result->nextUsn = nextUsn;
                         return result;
