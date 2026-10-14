@@ -12,8 +12,7 @@ MFTLib.Index.BlockValidationResult :: field public const WrongVolumeSerial : MFT
 MFTLib.Index.BlockValidationResult :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.Index.CacheDirectory :: method public static DeleteCached(string cacheDirectoryPath, System.Collections.Generic.IEnumerable<MFTLib.Index.DriveKey>? driveLetters = default, System.Action<string>? diagnostics = default) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.CachedBlockDeletionResult>
 MFTLib.Index.CacheDirectory :: method public static EnsureCreated(string path) : System.IO.DirectoryInfo
-MFTLib.Index.CacheDirectory :: method public static InspectCached(string cacheDirectoryPath, System.Collections.Generic.IEnumerable<MFTLib.Index.DriveKey>? driveLetters = default) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.CachedBlockStatus>
-MFTLib.Index.CacheDirectory :: method public static InspectCached(string cacheDirectoryPath, System.Collections.Generic.IEnumerable<MFTLib.Index.DriveKey>? driveLetters, System.Action<MFTLib.Index.CachedBlockRejection>? rejectedFile) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.CachedBlockStatus>
+MFTLib.Index.CacheDirectory :: method public static InspectCached(string cacheDirectoryPath, System.Collections.Generic.IEnumerable<MFTLib.Index.DriveKey>? driveLetters = default, System.Action<MFTLib.Index.CachedBlockRejection>? rejectedFile = default) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.CachedBlockStatus>
 MFTLib.Index.CacheDirectory :: type public static class
 MFTLib.Index.CacheSlotState :: field public const OwnedCanonical : MFTLib.Index.CacheSlotState = 0
 MFTLib.Index.CacheSlotState :: field public const PrivateFallback : MFTLib.Index.CacheSlotState = 1

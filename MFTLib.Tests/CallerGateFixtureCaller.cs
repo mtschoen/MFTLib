@@ -1,14 +1,16 @@
-// Calls exactly one overload of a library overload set and nothing else, so PublicMemberCallerTests can prove
-// the reference collector tells overloads apart and reports a member that no IL names. Nothing in production
-// references it and nothing should. The delegate is built but never invoked.
+// References one broker constructor so the caller gate can distinguish overloads.
+// The collector reads this method's IL; tests never invoke it.
+using System.Runtime.Versioning;
 using MFTLib.Index;
 
 namespace MFTLib.Tests;
 
 static class CallerGateFixtureCaller
 {
-    internal static Func<string, IEnumerable<DriveKey>?, Action<CachedBlockRejection>?, IReadOnlyList<CachedBlockStatus>>
-        ReferenceThreeParameterInspectCached() => CacheDirectory.InspectCached;
+    [SupportedOSPlatform("windows")]
+    internal static BrokerSession CreateBrokerSession(
+        Func<string, bool> launchBroker, TimeSpan? connectTimeout)
+        => new BrokerSession(launchBroker, connectTimeout);
 }
 
 // ToString called on a library struct that declares an override: C# emits `constrained. T` then callvirt Object.ToString.

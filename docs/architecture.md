@@ -78,6 +78,11 @@
       application-owned `FileIndexOptions.CacheDirectory`, even with no drives.
       Missing configuration throws `ArgumentException` before directory creation.
       The library has no default cache directory or default-cache guard.
+      Cached opens call `CacheDirectory.EnsureCreated(path)` to create or reprotect
+      the directory: current user and SYSTEM only with inheritance blocked on Windows,
+      owner-only `0700` on Unix. Applications call it explicitly before writing their
+      own sidecars independently of an open; it returns the directory's `DirectoryInfo`.
+      See [block ownership](block-ownership.md#preparing-the-cache-directory).
       `NoCache` opens use temporary blocks and ignore supplied cache paths without
       resolving or creating them. Dump validation runs first and prohibits cache options.
       Watch defaults to `<user profile>/.MFTLib.Sample.Watch/cache`, retaining policy
@@ -330,8 +335,9 @@ gained a sample use, fails the gate.
 The full gate runs on Windows, where `SampleProgram.Watch.dll` is built, and a missing assembly
 there fails the test. Elsewhere it reports Inconclusive. Controls run on every platform and assert
 member identity, never counts: the real sample references with one known member removed must
-report exactly that member; `MFTLib.Tests/CallerGateFixtureCaller.cs`, whose IL references one
-`InspectCached` overload, must be found by the type-scoped collector with its sibling absent;
+report exactly that member; `MFTLib.Tests/CallerGateFixtureCaller.cs`, whose compiled but uninvoked method
+references the launcher-and-timeout `BrokerSession` constructor, must be found by
+the type-scoped collector with the parameterless constructor absent;
 fixture types prove that records keep their authored `Deconstruct`, `ToString`, constructor overloads and
 copy constructor while the synthesized members are dropped, that the evidence-free shapes behave as described
 above, and that overloads differing only by arity or indexer parameter get distinct keys, that the namespace check fires, and that duplicate keys are

@@ -135,6 +135,26 @@ shape: `DriveStatus.Failure`, `WatchStateChange.Fault`, `DriveOperationResult.Fa
 **Revisit only if:** a consumer needs to distinguish "checked and valid" from "not checked" on a row it cannot
 already distinguish by the state enum.
 
+## One cache inspection method, documented directory preparation
+
+**Decision (2026-10-13, API review finding F20):** `CacheDirectory.InspectCached`
+is one public method with optional `IEnumerable<DriveKey>? driveLetters = null`
+and `Action<CachedBlockRejection>? rejectedFile = null` parameters.
+`CacheDirectory.EnsureCreated` stays public and unchanged, with its application
+usage documented. `DeleteCached` stays unchanged; its rejected-filename callback
+overload remains internal
+([MFTLib issue 486 (cache inspection and creation documentation)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/486)).
+
+**Reason:** inspection's two overloads differed only by optional rejection
+reporting; one method follows the existing one-method-per-verb rule and supports
+both callers directly. file-wizard's `FileWizard/ContentHashSidecar.cs` calls
+`EnsureCreated` before writing inside its cache directory, so directory preparation
+is a production API readers need to discover. Cached index opens already call it
+automatically. No consumer needs rejected filenames from public cache deletion.
+
+**Revisit only if:** a concrete consumer requirement changes these responsibilities,
+such as a production need for rejected-filename reporting during deletion.
+
 ## File entries expose their drive and keep distinct state questions
 
 **Decision (2026-10-13, API review finding F24):** add `FileEntry.Drive`, a

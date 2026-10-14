@@ -1,5 +1,23 @@
 # Block ownership
 
+## Preparing the cache directory
+
+The application chooses a nonblank, application-owned
+`FileIndexOptions.CacheDirectory`. `CacheDirectory.EnsureCreated(path)` returns
+a `DirectoryInfo`, creating the directory with protection already in place or
+reapplying that protection if it exists. On Windows the current user and SYSTEM
+receive full control and inherited access-control entries are blocked. On Unix
+the directory has owner read/write/execute permissions (`0700`). This protects
+the directory; it is not a recursive repair of every existing file's permissions.
+
+Cached `FileIndex.OpenAsync` calls `EnsureCreated` automatically before opening
+drives. An application preparing the directory or writing its own sidecar before
+an index open should call it explicitly first. For example, file-wizard's
+`FileWizard/ContentHashSidecar.cs` calls it before using `content-hashes` inside
+the index-cache directory. `NoCache` opens do not create a cache directory, and
+dump sources prohibit cache options. Directory preparation takes no block-slot
+ownership; block operations still follow the locks described below.
+
 - Index contracts:
     - **Block ownership**: a cache-mode `FileIndex` holds a sibling `<block>.lock` (opened with
       `FileShare.None`, an exclusive non-blocking `flock` on Unix) for as long as it owns a canonical
@@ -23,10 +41,13 @@
       non-null only for `Failed`); an already-absent file is reported `Deleted`, an idempotent success rather
       than a `Failed`. A successful delete logs through the optional `diagnostics` callback with the same
       "Deleted block file '...'" shape `FileIndexOptions.Diagnostics` uses elsewhere, invoked synchronously
-      while the block's lock is still held. `CacheDirectory.InspectCached` also has a callback overload (and
-      `DeleteCached` an internal one) that reports rejected filenames via
-      `Action<CachedBlockRejection>? rejectedFile`, carrying a full `Path` and human-readable `Reason`.
-      Existing overloads and canonical result lists retain their behavior. Reporting happens synchronously
+      while the block's lock is still held. `CacheDirectory.InspectCached(cacheDirectoryPath,
+      driveLetters = null, rejectedFile = null)` is one public method with optional drive selection
+      and an optional `Action<CachedBlockRejection>? rejectedFile` callback carrying a full `Path` and
+      human-readable `Reason`. Omitting the callback silently excludes rejected names. `DeleteCached`
+      retains its public success logger and its internal rejection-callback overload; rejected-name
+      reporting is not part of its public API. Canonical result lists contain only filenames the
+      library recognizes. Reporting happens synchronously
       during eager enumeration, before drive filtering and any inspection/deletion lock, including for empty
       selections; callback exceptions propagate before canonical work. Rejected files are never opened, locked,
       or deleted. The deletion success logger remains separate. Consumers can collect these reports to

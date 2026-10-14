@@ -54,7 +54,11 @@ public class CacheDirectoryRejectionTests
                 return CacheDirectory.EnumerateCached(_directory, rejectedFile)
                     .Select(file => file.Path).ToArray();
             case "inspect":
-                var statuses = CacheDirectory.InspectCached(_directory, drives?.Select(letter => new DriveKey(letter)), rejectedFile);
+            case "inspect-default-drives":
+                var statuses = operation == "inspect-default-drives"
+                    ? CacheDirectory.InspectCached(_directory, rejectedFile: rejectedFile)
+                    : CacheDirectory.InspectCached(_directory,
+                        drives?.Select(letter => new DriveKey(letter)), rejectedFile);
                 Assert.IsTrue(statuses.All(status =>
                     status.Availability == CachedBlockAvailability.Available));
                 return statuses.Select(status => status.File.Path).ToArray();
@@ -70,6 +74,7 @@ public class CacheDirectoryRejectionTests
     [DataTestMethod]
     [DataRow("enumerate")]
     [DataRow("inspect")]
+    [DataRow("inspect-default-drives", DisplayName = "F20: named callback with default drive selection")]
     [DataRow("delete")]
     public void Inventory_ReportsRejectedPathsAndPreservesForeignFiles(string operation)
     {
@@ -132,6 +137,7 @@ public class CacheDirectoryRejectionTests
     [DataTestMethod]
     [DataRow("enumerate")]
     [DataRow("inspect")]
+    [DataRow("inspect-default-drives", DisplayName = "F20: named callback with default drive selection")]
     [DataRow("delete")]
     public void RejectionCallbackFailure_PropagatesBeforeCanonicalOperations(string operation)
     {
@@ -152,6 +158,7 @@ public class CacheDirectoryRejectionTests
     [DataTestMethod]
     [DataRow("enumerate")]
     [DataRow("inspect")]
+    [DataRow("inspect-default-drives", DisplayName = "F20: named callback with default drive selection")]
     [DataRow("delete")]
     public void Reporting_IsOptionalAndEmptyDirectoriesDoNotNotify(string operation)
     {

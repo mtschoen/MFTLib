@@ -87,6 +87,15 @@ The Watch sample defaults to `<user profile>/.MFTLib.Sample.Watch/cache`, with
 policy subdirectories used by cached modes and cache inventory/deletion alike.
 If no profile is available, supply `--cache-directory`. Direct uses NoCache.
 
+`CacheDirectory.EnsureCreated(cacheDirectoryPath)` creates the application-owned
+cache directory with its protection in place, or reapplies protection to an
+existing directory, and returns its `DirectoryInfo`. Windows grants access to
+the current user and SYSTEM with inherited access rules blocked; Unix uses
+owner-only read/write/execute permissions (`0700`). Cached `FileIndex.OpenAsync`
+calls it automatically. Call it explicitly before your application writes its
+own files inside the cache directory independently of an index open, such as
+a content-hash sidecar. See [cache ownership](docs/block-ownership.md).
+
 ```bash
 dotnet add package MFTLib --version 0.3.0
 dotnet add package MFTLib.TestExtensions --version 0.3.0
@@ -708,6 +717,16 @@ a diagnostic string. Reads of mapped entry data throw as described above.
 `CacheDirectory.InspectCached` returns `CachedBlockStatus` records whose `File` is a `CachedBlockFile` containing the
 drive letter, volume serial, full cache-file path, size, and last-write time, plus
 whether the block is available, in use by another index, or invalid. `Validation` is null unless the block is invalid, then the rejection reason.
+
+`CacheDirectory.InspectCached(cacheDirectoryPath, driveLetters = null, rejectedFile = null)`
+is one method: null drive selection includes every canonical cache file, and
+omitting the callback silently excludes unparseable filenames. To observe those
+filenames without filtering drives, use a named callback:
+
+```csharp
+var rejected = new List<CachedBlockRejection>();
+var cached = CacheDirectory.InspectCached(cacheDirectory, rejectedFile: rejected.Add);
+```
 
 ## Errors and recovery
 

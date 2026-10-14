@@ -45,8 +45,6 @@ public class PublicMemberCallerTests
             "reached through IAsyncDisposable, so no IL names it; file-wizard file-wizard/BrokerSmoke.cs disposes the session with await using",
         ["method MFTLib.Index.CacheDirectory.EnsureCreated(System.String) : System.IO.DirectoryInfo"] =
             "file-wizard FileWizard/ContentHashSidecar.cs creates the cache directory before it writes beside it",
-        ["method MFTLib.Index.CacheDirectory.InspectCached(System.String, System.Collections.Generic.IEnumerable`1<MFTLib.Index.DriveKey>) : System.Collections.Generic.IReadOnlyList`1<MFTLib.Index.CachedBlockStatus>"] =
-            "git-wizard GitWizard/MftIndexCacheInspection.cs inspects every cached block of a directory",
         ["method MFTLib.Index.CacheTag.ToString() : System.String"] =
             "reached through string interpolation, which emits no member reference; file-wizard file-wizard/BlockCacheCatalog.cs:98 and git-wizard GitWizard/MftIndexCacheStatusFormatter.cs:50 print the stored and requested tags",
         ["method MFTLib.Index.FileEntry.Children(System.Threading.CancellationToken) : System.Collections.Generic.IReadOnlyList`1<MFTLib.Index.FileEntry>"] =
@@ -183,24 +181,21 @@ public class PublicMemberCallerTests
     }
 
     /// <summary>
-    ///     Negative control, part two. A fixture inside the test assembly calls one overload of a library overload
-    ///     set and nothing else. The collector, run over that fixture type's IL (the rest of the test assembly
-    ///     calls every overload somewhere), must find that overload and not its sibling, which proves overloads
-    ///     are told apart and that a reference absent from the IL is reported.
+    ///     Negative control, part two. A fixture inside the test assembly has a compiled, uninvoked constructor
+    ///     call for one library overload and nothing else. The collector, run over that fixture type's IL (the rest of the
+    ///     test assembly calls every overload somewhere), must find that overload and not its sibling, which proves
+    ///     overloads are told apart and that a reference absent from the IL is reported.
     /// </summary>
     [TestMethod]
     public void TheCollector_TellsOverloadsApart()
     {
-        // Built, not invoked: the method-group conversion is what leaves the member reference in the IL.
-        Assert.IsNotNull(CallerGateFixtureCaller.ReferenceThreeParameterInspectCached());
-
         var surface = ReadSurface(LibraryPath);
         var references = CollectReferencesFromType(typeof(PublicMemberCallerTests).Assembly.Location,
             "MFTLib.Tests.CallerGateFixtureCaller");
-        var overloads = surface.Members.Where(member => member.Display.StartsWith(
-            "method MFTLib.Index.CacheDirectory.InspectCached(", StringComparison.Ordinal)).ToList();
-        var called = overloads.Single(member => member.Display.Contains("Action`1<MFTLib.Index.CachedBlockRejection>"));
-        var sibling = overloads.Single(member => member != called);
+        var called = surface.Members.Single(member => member.Display ==
+            "method MFTLib.BrokerSession..ctor(System.Func`2<System.String,System.Boolean>, System.Nullable`1<System.TimeSpan>) : System.Void");
+        var sibling = surface.Members.Single(member => member.Display ==
+            "method MFTLib.BrokerSession..ctor() : System.Void");
 
         Assert.IsTrue(called.Keys.Any(references.Contains), "the overload the fixture calls must be found");
         Assert.IsFalse(sibling.Keys.Any(references.Contains), "the sibling overload no IL names must not be found");
@@ -322,7 +317,7 @@ public class PublicMemberCallerTests
 
     /// <summary>
     ///     The exempt key names one member: overloads that differ by generic arity, indexers that differ by
-    ///     parameter, and real cache inspection overloads each get their own text, so one entry never covers a sibling.
+    ///     parameter, and real broker constructor overloads each get their own text, so one entry never covers a sibling.
     /// </summary>
     [TestMethod]
     public void AnExemptEntry_CoversExactlyOneMember()
@@ -333,13 +328,14 @@ public class PublicMemberCallerTests
 
         var surface = ReadSurface(LibraryPath);
         var exempt = surface.Members.Single(member => member.Display ==
-            "method MFTLib.Index.CacheDirectory.InspectCached(System.String, System.Collections.Generic.IEnumerable`1<MFTLib.Index.DriveKey>) : System.Collections.Generic.IReadOnlyList`1<MFTLib.Index.CachedBlockStatus>");
+            "method MFTLib.BrokerSession..ctor(System.Func`2<System.String,System.Boolean>, System.Nullable`1<System.TimeSpan>) : System.Void");
+        var sibling = surface.Members.Single(member => member.Display ==
+            "method MFTLib.BrokerSession..ctor() : System.Void");
         var unreferenced = FindUnreferenced(surface, new HashSet<string>(),
             new Dictionary<string, string> { [exempt.Display] = "control" });
 
         Assert.IsFalse(unreferenced.Contains(exempt));
-        Assert.IsTrue(unreferenced.Any(member => member.Display.StartsWith(
-            "method MFTLib.Index.CacheDirectory.InspectCached(System.String, System.Collections.Generic.IEnumerable`1<MFTLib.Index.DriveKey>, System.Action", StringComparison.Ordinal)));
+        Assert.IsTrue(unreferenced.Contains(sibling));
     }
 
     [TestMethod]

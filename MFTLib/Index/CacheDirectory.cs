@@ -88,25 +88,7 @@ public static class CacheDirectory
     ///     Inspection creates a persistent .lock sibling when absent and never unlinks it.
     ///     The block is disposed before its lock is released, after the root name has been
     ///     copied into a managed string. Results describe inspection time, not a reservation.
-    ///     Rejected filenames are silently excluded; use the callback overload to observe them.
-    /// </summary>
-    /// <param name="cacheDirectoryPath">The cache directory to inspect.</param>
-    /// <param name="driveLetters">
-    ///     Drive keys to include, or null for all. The default key is rejected. Filtering happens before any
-    ///     lock attempt, so excluded blocks have no lock file opened or created.
-    /// </param>
-    public static IReadOnlyList<CachedBlockStatus> InspectCached(
-        string cacheDirectoryPath, IEnumerable<DriveKey>? driveLetters = null)
-        => InspectCached(cacheDirectoryPath, driveLetters, null);
-
-    /// <summary>
-    ///     Inspects selected cached blocks while holding each block's slot lock. A missing
-    ///     directory returns an empty list. A lock that is held or cannot be opened reports
-    ///     InUse without reading any block bytes; an unreadable or rejected block reports
-    ///     Invalid using the reason the block failed validation.
-    ///     Inspection creates a persistent .lock sibling when absent and never unlinks it.
-    ///     The block is disposed before its lock is released, after the root name has been
-    ///     copied into a managed string. Results describe inspection time, not a reservation.
+    ///     Rejected filenames are silently excluded unless <paramref name="rejectedFile" /> is supplied.
     /// </summary>
     /// <param name="cacheDirectoryPath">The cache directory to inspect.</param>
     /// <param name="driveLetters">
@@ -122,8 +104,8 @@ public static class CacheDirectory
     ///     and do not mutate the directory during enumeration.
     /// </param>
     public static IReadOnlyList<CachedBlockStatus> InspectCached(
-        string cacheDirectoryPath, IEnumerable<DriveKey>? driveLetters,
-        Action<CachedBlockRejection>? rejectedFile)
+        string cacheDirectoryPath, IEnumerable<DriveKey>? driveLetters = null,
+        Action<CachedBlockRejection>? rejectedFile = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(cacheDirectoryPath);
         var selected = ValidateSelection(driveLetters);

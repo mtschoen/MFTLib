@@ -7,7 +7,7 @@ namespace MFTLib.Tests;
 
 /// <summary>
 ///     The public block facade of MFTLibTestExtensions: every member is exercised here, through a real
-///     <see cref="FileIndex" /> open, <see cref="CacheDirectory.InspectCached(string, IEnumerable{DriveKey}?)" /> or a direct
+///     <see cref="FileIndex" /> open, <see cref="CacheDirectory.InspectCached" /> or a direct
 ///     <see cref="BlockFile" /> read, so the block it writes is judged by the production reader.
 /// </summary>
 [TestClass]

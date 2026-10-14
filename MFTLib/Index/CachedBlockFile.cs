@@ -3,7 +3,7 @@ namespace MFTLib.Index;
 /// <summary>
 ///     Directory-derived metadata for one block file found in a cache directory, recognised by its
 ///     name and directory entry alone. Nothing here was read from inside the block;
-///     <see cref="CacheDirectory.InspectCached(string, System.Collections.Generic.IEnumerable{DriveKey}?)" />
+///     <see cref="CacheDirectory.InspectCached" />
 ///     separately opens and validates available blocks under their slot locks. The drive's root
 ///     directory is not part of this record because it lives inside the block.
 /// </summary>
