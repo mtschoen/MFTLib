@@ -354,3 +354,116 @@ pins the third rule, with a negative control over an internal interface.
 
 **Revisit only if:** a consumer test needs to change a currently init-only double
 property while the double runs; that property then keeps `set` with a summary saying why.
+
+## The broker session ends only when the broker ends
+
+**Decision (2026-10-12, API review finding F1,
+[MFTLib pull request 462 (BrokerSession.Ended and disposal)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/462)):**
+`BrokerSession.Ended` is the one member that reports a broker end. It completes once, shortly after the launched
+process ends, with the end reason, and never at disposal. A session that never launched, or that is disposed while
+its process is alive, never completes it. `HasEnded` does not exist; a caller that wants a flag reads
+`Ended.IsCompleted`. A process end that completed before disposal began is still published. After `DisposeAsync`
+every use throws `ObjectDisposedException`; a use after the process ended throws `InvalidOperationException`
+naming the reason.
+
+**Reason:** both members also completed when the owner disposed the session, so each consumer wrote code to tell
+a broker death from its own disposal (file-wizard's `BrokerEndSubscription`, git-wizard's latch in
+`MftIndexSession`), and `HasEnded` differed from `Ended.IsCompleted` only by an observer lag. One member with one
+meaning removes both workarounds.
+
+**Revisit only if:** a consumer needs to await its own session's disposal through the same task.
+
+## One failure value and a nullable block on DriveStatus
+
+**Decision (2026-10-12, API review finding F2,
+[MFTLib pull request 463 (DriveStatus failure and block)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/463)):**
+`DriveStatus.Failure` is a `DriveFailure` (`Kind`, non-null `Message`), non-null exactly when the drive is
+`Failed`, or `Ready` retaining a block after a failed `RescanAsync` or a failed catch-up retry scan during
+`OpenAsync` (kind `ProducerFailed`, the producer's message). A successful scan publication clears it and an
+`Offline` drive has none. `DriveStatus.Block` is null unless `State` is `Ready`.
+`DriveStatus.FailureKind` and `FailureMessage` do not exist, and `DriveFailureKind` and `BlockSource` have no
+`None` member. A failure message is required where it is produced; there is no empty-string fallback.
+
+**Reason:** "did this drive fail, and why" took three fields whose combinations were not independent: a `Ready`
+drive could carry a rescan failure message with kind `None`. A blockless drive exposed a block of zeros that
+git-wizard detected by testing `ScanTimestamp == default`, and both consumers recombined the fields with their own
+fallback text. This is the first instance of the state-plus-nullable-reason rule above.
+
+**Revisit only if:** a consumer needs a failure that is not tied to one drive.
+
+## One watch snapshot type, named for what it holds
+
+**Decision (2026-10-12, API review finding F3,
+[MFTLib pull request 464 (watch state types)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/464)):**
+the enum is `WatchState` (formerly `WatchCatchUpState`; its members `NotStarted`, `Recovering` and `Faulted`
+describe the watch lifecycle) and `DriveWatchStatus.State` is its property. `FileIndex.WatchStateChanged` is an
+`Action<WatchStateChange>`; `WatchStateChange` carries `DriveKey Drive` (formerly `DriveLetter`), the same
+`DriveWatchStatus` snapshot that `DriveStatus.Watch` reports (`Watch`), and the optional `Fault`. One builder produces
+the snapshot for both `Drives` and the event, so they cannot diverge. `DriveWatchState` and
+`DriveStatus.ToWatchState()` do not exist.
+
+**Reason:** `DriveStatus.Watch` and the event payload carried the same state and version, and `ToWatchState`
+existed only to convert one shape into the other; both consumers called it to seed their history. The five names
+`DriveState`, `DriveStatus`, `DriveWatchState`, `DriveWatchStatus` and `WatchCatchUpState` could not be told
+apart as snapshot, event or enum.
+
+**Revisit only if:** an event needs data that the snapshot does not carry.
+
+## MftScanOptions configures every MFT scan
+
+**Decision (2026-10-12, API review finding F4,
+[MFTLib pull request 465 (scan options names)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/465)):**
+`MftScanOptions` (formerly `BrokerScanOptions`) configures every MFT scan: broker-backed through
+`BrokerSession.CreateIndexSource(scanOptions)` and in-process through `MftIndexSources.FromLocalVolumes(scanOptions)`.
+Its `RetainedFileNames` (formerly `DirectoryScanFileNames`) is null to retain every eligible record, empty to
+retain directories only, or nonempty to retain directories plus files whose names match ordinally, ignoring case.
+The test package's `InProcessBrokerScan.RetainedFileNames` follows. Semantics are unchanged.
+
+**Reason:** the type name implied a broker though the in-process path has none, and the member name implied a
+directory walk though it is the retained-file-name filter of an MFT scan (`ProducerPolicy.Enumeration` is the
+directory walk). Neither name said what it held. git-wizard is the production caller of the filter.
+
+**Revisit only if:** a scan setting applies to one transport only.
+
+## Search bounds are named for what they compare, and say what they exclude
+
+**Decision (2026-10-12, API review finding F5,
+[MFTLib pull request 466 (SearchQuery names)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/466)):**
+`SearchQuery.LastWriteTimeMinimum` and `LastWriteTimeMaximum` (formerly `ModifiedAfter` and `ModifiedBefore`) are
+inclusive bounds on `FileEntry.LastWriteTime`, which is UTC. The raw ticks of the supplied `DateTime` are compared
+with no `DateTime.Kind` conversion, so the caller supplies a UTC value. A size bound excludes a row whose size is
+unknown even when its stored size satisfies the comparison. `Subtree` (formerly `Under`) restricts the result to
+the subtree below an entry, the entry included, and `IsDirectory` (formerly `Directories`) is true for directories
+only, false for files only and null for no filter. The size bounds were later renamed by the one-name-per-concept
+rule above.
+
+**Reason:** "After" and "Before" read as exclusive but behave as inclusive. The size bounds silently changed which
+rows exist, and file-wizard relied on that with `MinimumSize: long.MinValue` to drop unknown sizes. `Directories`
+and `Under` did not say what they held. The review also proposed deleting the filters no consumer uses
+(`CaseSensitive`, the time bounds, `MaximumSize`, `IncludeDeleted`); that part was not adopted, and they remain
+for the Direct sample, which exercises them.
+
+**Revisit only if:** a consumer needs an exclusive bound or a size filter that keeps unknown sizes.
+
+## Public XML comments name public members, and Root says why it refused
+
+**Decision (2026-10-12, API review findings F17 and F18,
+[MFTLib pull request 461 (documentation sweep)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/461),
+[MFTLib pull request 469 (XML comments)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/469) and
+[MFTLib pull request 471 (Root message)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/471)):**
+a public XML comment refers only to public members and states the contract the code has. `MftIndexSource` names
+`BrokerSession.CreateIndexSource` and `MftIndexSources`, `JournalCheckpointLoss.SizeThatWouldHaveRetained` states that
+the library reports the size and the consumer owns the growth decision (the sweep's historical link to
+`BrokerSession.GrowUsnJournalAsync` was later replaced under the journal-growth decision above), and
+`BrokerDiagnostics` no longer links an internal `Log` or mentions a fallback from the broker to a direct scan,
+because none exists. `FileIndex.Root` documents its
+`ArgumentException`, `Find` documents that null means no entry, and `Search` and `Enumerate` document
+`ArgumentNullException` for a null query. `FileIndex.Root` throws `ArgumentException` with "Drive X has no block
+(state: Offline)." (the drive's current `DriveState`) for a configured drive without a block, and keeps
+"Drive X is not part of this index." for an unconfigured drive. Exception type and public surface are unchanged.
+
+**Reason:** a reader following public documentation landed on types they cannot see, and the "not part of this
+index" message was false for a drive configured in `FileIndexOptions.Drives` but `Offline` or `Failed`, hiding the
+state the caller needs. Both git-wizard `Root` call sites can meet such a drive.
+
+**Revisit only if:** `Root` gains a non-throwing form for a drive without a block.
