@@ -1,9 +1,5 @@
 # Backlog / Future Work
 
-## Review Follow-Ups
-
-- Optional: make benchmark environment failures explicit instead of silently printing `Unknown`. Address by logging the WMI/CIM exception message or HRESULT in the benchmark header when system info queries fail.
-
 ## Test Infrastructure
 
 - **Admin test runs hang on exit (historic; not reproduced in the last two attended runs)**: `run-coverage.ps1` (full mode) or `native-coverage.ps1` launched elevated via UAC has intermittently failed to exit cleanly after `dotnet test` reports all tests passed, with the parent shell sitting indefinitely on `Start-Process -Wait`. This is a different failure mode than the build-start hang (it happens after tests pass, not at build start). Not reproduced in the 2026-07-13 or 2026-08-22 attended runs - two clean runs, not proof the underlying issue is gone. If it recurs, prior investigation narrowed the suspects to:
