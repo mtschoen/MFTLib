@@ -80,12 +80,14 @@ jobs:
         if: steps.changed-files.outputs.skip_build != 'true'
         uses: microsoft/setup-msbuild@v2
 
-      - name: Install reportgenerator
+      - name: Select runner-provisioned reportgenerator
         if: steps.changed-files.outputs.skip_build != 'true'
         shell: pwsh
         run: |
-          dotnet tool update --global dotnet-reportgenerator-globaltool
-          echo "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
+          if (-not $env:SCHOEN_LAB_TOOL_STORE_ROOT) { throw "Runner tool store is not configured" }
+          $resolver = Join-Path $env:SCHOEN_LAB_TOOL_STORE_ROOT "resolver/use-tool.ps1"
+          & pwsh -NoProfile -File $resolver reportgenerator --add-to-path
+          if ($LASTEXITCODE -ne 0) { throw "ReportGenerator is not provisioned; run runner-converge" }
 
       - name: Test Windows build script
         if: steps.changed-files.outputs.skip_build != 'true'
