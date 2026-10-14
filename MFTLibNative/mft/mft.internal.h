@@ -57,8 +57,8 @@ AttributeStep NextAttribute(uint8_t* record, uint32_t recordSize, size_t* offset
 // The first attribute of the given type, or null when the record has none. malformed is set when the
 // walk met an attribute that does not fit the record before it reached the end marker or the type.
 struct AttributeSearch {
-    PATTRIBUTE_RECORD_HEADER attribute;
-    bool malformed;
+    PATTRIBUTE_RECORD_HEADER attribute = nullptr;
+    bool malformed = false;
 };
 AttributeSearch FindAttribute(uint8_t* record, uint32_t recordSize, ATTRIBUTE_TYPE_CODE type);
 
