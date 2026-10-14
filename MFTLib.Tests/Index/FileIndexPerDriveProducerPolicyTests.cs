@@ -6,7 +6,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 [TestClass]
-public class FileIndexPerDriveProducerPolicyTests
+public partial class FileIndexPerDriveProducerPolicyTests
 {
     readonly OwnedIndexDirectories _directories = new();
     static readonly DateTime Moment = new(2026, 10, 13, 0, 0, 0, DateTimeKind.Utc);
@@ -89,6 +89,7 @@ public class FileIndexPerDriveProducerPolicyTests
         Assert.AreEqual(2, index.Search(new SearchQuery("walked.txt")).Count);
     }
 
+    // A null MftSource is not an admission error: only the drive that needs an MFT scan settles Failed.
     [TestMethod]
     public async Task MixedOpen_NullMftSourceFailsOnlyTheDriveNeedingAScan()
     {

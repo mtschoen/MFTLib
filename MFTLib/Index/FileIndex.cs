@@ -19,7 +19,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     readonly List<DriveStatus> _blocklessDriveStatuses = [];
     readonly Dictionary<ushort, int> _accessDeniedSubtreeCountByOrdinal = [];
     readonly Dictionary<ushort, int> _skippedRecordCountByOrdinal = [];
-    readonly Dictionary<ushort, string> _mftProducerFailureMessagesByOrdinal = [];
+    readonly Dictionary<ushort, string> _producerFailureMessagesByOrdinal = [];
     readonly Dictionary<ushort, string> _watchFailureMessagesByOrdinal = [];
     readonly Dictionary<ushort, BlockSource> _blockSourcesByOrdinal = [];
     readonly Dictionary<ushort, CacheSlotState?> _cacheSlotsByOrdinal = [];
@@ -142,9 +142,12 @@ public sealed partial class FileIndex : IAsyncDisposable
     /// <summary>
     ///     Opens an index over the configured drives, adopting a valid cached block for each or
     ///     producing a fresh one. The returned task completes once every drive has settled. A
-    ///     missing drive settles as <see cref="DriveState.Offline" />, and an MFT-producer scan
+    ///     missing drive settles as <see cref="DriveState.Offline" />, and an operational scan
     ///     failure settles as <see cref="DriveState.Failed" /> in <see cref="Drives" /> without
-    ///     failing the open; an enumeration production failure throws.
+    ///     failing the open, for both MFT and enumeration producers; this includes an MFT drive that needs
+    ///     a scan when <see cref="FileIndexOptions.MftSource" /> is null. Argument validation performed
+    ///     before any drive is produced throws. Caller cancellation fails the whole open and releases
+    ///     every adopted block.
     /// </summary>
     /// <param name="options">The drives to index and the cache, progress and producer settings.</param>
     /// <param name="cancellationToken">
@@ -396,7 +399,7 @@ public sealed partial class FileIndex : IAsyncDisposable
             driveBlock.Drive,
             DriveState.Ready)
         {
-            Failure = _mftProducerFailureMessagesByOrdinal.TryGetValue(driveBlock.DriveOrdinal, out var producerMessage)
+            Failure = _producerFailureMessagesByOrdinal.TryGetValue(driveBlock.DriveOrdinal, out var producerMessage)
                 ? new DriveFailure(DriveFailureKind.ProducerFailed, producerMessage)
                 : null,
             Block = new DriveBlockStatus

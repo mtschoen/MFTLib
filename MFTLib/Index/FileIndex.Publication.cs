@@ -74,7 +74,7 @@ public sealed partial class FileIndex
         _cacheSlotsByOrdinal[driveOrdinal] = published.CacheSlot;
         _accessDeniedSubtreeCountByOrdinal[driveOrdinal] = published.AccessDeniedSubtreeCount;
         _skippedRecordCountByOrdinal[driveOrdinal] = published.SkippedRecordCount;
-        _mftProducerFailureMessagesByOrdinal.Remove(driveOrdinal);
+        _producerFailureMessagesByOrdinal.Remove(driveOrdinal);
         if (published.CatchUpLoss is { } catchUpLoss)
         {
             runtime.ConsecutiveLostCatchUps++;

@@ -110,7 +110,14 @@
       ProducerPolicy = ProducerPolicy.Mft)`. Each drive selects its own producer for initial scans
       and rescans, so one index can combine MFT-scanned drives with directory-walked drives.
       `FromWindowsVolume` selects Mft. Enumeration starts at that drive's `RootDirectory`;
-      an MFT producer failure leaves only that drive Failed and never selects enumeration.
+      an operational producer failure leaves only that drive `Failed` with
+      `DriveFailureKind.ProducerFailed`, for MFT and enumeration alike. Healthy siblings stay usable.
+      A failed rescan keeps the previous block and records `DriveStatus.Failure` as `ProducerFailed`;
+      a successful replacement clears it. Argument validation at admission (null options, undefined
+      `CacheMode`, missing cache directory, dump-source option conflicts) throws before any drive is
+      produced. A drive that cannot start production, including an MFT drive needing a scan with a null
+      `MftSource`, settles `Failed` / `ProducerFailed` while siblings stay usable. Caller cancellation aborts
+      the whole operation, and a cancelled open releases its adopted blocks. An MFT failure never selects enumeration.
       Warm adoption requires the header's producer kind to match the drive's policy before
       cache-tag, root and journal checks. A mismatch closes and best-effort deletes the rejected
       block under the owner lock, then cold-scans; cache-only opens report `CacheDeclined`.

@@ -217,7 +217,7 @@ public sealed partial class FileIndex
 
             if (TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal))
             {
-                _mftProducerFailureMessagesByOrdinal[driveOrdinal] = message;
+                _producerFailureMessagesByOrdinal[driveOrdinal] = message;
                 return;
             }
 

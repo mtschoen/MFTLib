@@ -178,30 +178,30 @@ public sealed partial class FileIndex
     /// <summary>
     ///     Picks the producer for one drive's scan and returns what it produced, keyed by nothing:
     ///     the finished block with its access-denied count and its lost catch-up, or no block and
-    ///     the MFT producer's failure. Enumeration walks the directory tree; an MFT failure is
-    ///     returned so the caller can mark only that drive failed. Cancellation always propagates.
+    ///     the selected producer's failure. Enumeration walks the directory tree; operational
+    ///     failures from either policy are returned so only that drive fails. Cancellation propagates.
     ///     The caller builds the <see cref="DriveBlock" /> when it publishes.
     /// </summary>
     async Task<PendingDriveResult> ProduceDriveBlockCoreAsync(IndexedDrive drive, string blockPath,
         bool deleteOnClose, CancellationToken cancellationToken)
     {
-        if (drive.ProducerPolicy == ProducerPolicy.Enumeration)
-        {
-            using var walkLease = await EnumerationWalkLimit.EnterAsync(cancellationToken).ConfigureAwait(false);
-            var (scannedBlock, walked) = await Task
-                .Run(() => CreateAndPopulateBlock(drive, blockPath, deleteOnClose, cancellationToken),
-                    cancellationToken)
-                .ConfigureAwait(false);
-            return new PendingDriveResult
-            {
-                Block = scannedBlock,
-                BlockSource = BlockSource.ProducedByScan,
-                AccessDeniedSubtreeCount = walked.AccessDeniedSubtreeCount
-            };
-        }
-
         try
         {
+            if (drive.ProducerPolicy == ProducerPolicy.Enumeration)
+            {
+                using var walkLease = await EnumerationWalkLimit.EnterAsync(cancellationToken).ConfigureAwait(false);
+                var (scannedBlock, walked) = await Task
+                    .Run(() => CreateAndPopulateBlock(drive, blockPath, deleteOnClose, cancellationToken),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                return new PendingDriveResult
+                {
+                    Block = scannedBlock,
+                    BlockSource = BlockSource.ProducedByScan,
+                    AccessDeniedSubtreeCount = walked.AccessDeniedSubtreeCount
+                };
+            }
+
             var producer = _options.MftSource?.Producer ?? throw new InvalidOperationException(
                 $"{nameof(ProducerPolicy)}.{nameof(ProducerPolicy.Mft)} requires " +
                 $"{nameof(FileIndexOptions)}.{nameof(FileIndexOptions.MftSource)} to be set.");

@@ -67,15 +67,22 @@ keys and undefined enum values are caller configuration bugs that must fail fast
 
 ## Cold production failures settle per drive across both producer policies
 
-**Decision (2026-10-14, implementation pending
+**Decision (2026-10-14,
 [MFTLib issue 506 (per-drive enumeration settlement)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/506)):**
 a cold-production failure on a `ProducerPolicy.Enumeration` drive settles that drive as `DriveState.Failed` with
 `DriveFailureKind.ProducerFailed` while healthy sibling drives remain usable, matching `ProducerPolicy.Mft` and
-`RescanAsync`. Caller cancellation (`OperationCanceledException`) still aborts `OpenAsync`.
+`RescanAsync`. A failed rescan preserves the previous block and reports `DriveStatus.Failure` with
+`DriveFailureKind.ProducerFailed`. Argument validation performed at admission (null options, an undefined
+`CacheMode`, a missing cache directory, dump-source option conflicts) throws before any drive is produced. A drive
+whose production cannot start or fails for an operational reason, including an MFT drive that needs a scan when
+`FileIndexOptions.MftSource` is null, settles as `DriveState.Failed` with `DriveFailureKind.ProducerFailed` while
+sibling drives remain usable. Caller cancellation (`OperationCanceledException`) aborts the whole operation, and a
+cancelled `OpenAsync` releases every adopted block.
 
 **Reason:** `ProducerPolicy` is configured per drive so one index can mix MFT-scanned and directory-walked
-drives. Aborting the entire `OpenAsync` when one enumerated drive's root is missing or inaccessible breaks
-mixed-drive resilience and contradicts `RescanAsync`, which already catches enumeration failures per drive.
+drives. An operational production failure must have the same per-drive isolation regardless of the selected
+producer, both during initial open and during rescan. Missing drives settle Offline, and enumeration skips
+missing or inaccessible subtrees; neither is an operational producer failure by itself.
 
 **Revisit only if:** a consumer explicitly asks for an all-or-nothing open mode across all drives.
 
