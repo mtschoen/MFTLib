@@ -133,6 +133,101 @@ starts and preserve request order, matching the list contract. Empty sequences s
 unless cancelled. These choices keep identity and admission in one owner without adding public validation
 members or a string conversion.
 
+## A boolean that reports state takes the Is prefix
+
+**Decision (2026-10-13, API review finding F15, naming half):** a public boolean property that reports state on a
+status or result type takes the `Is`, `Has` or `Can` prefix: `DriveWatchStatus.IsSupported`, `IsRequested` and
+`IsRecoveryStopped`, `JournalCatchUpLostException.IsRecoveryStopped`, `DriveBlockStatus.IsCompactionNeeded` and
+the test package's `PowerShellLaunch.IsElevated`. A boolean option that reads as an instruction takes no prefix
+(`CaseSensitive`, `IncludeDeleted`, `IncludeFreed`, `CatchUpOnStart`). `BooleanNamingTests` enforces the rule
+by reflection over the compiled MFTLib and MFTLibTestExtensions assemblies, with an explicit allowlist of the option types (`MftScanOptions`,
+`SearchQuery` and `ScriptedWatchSource`)
+([MFTLib issue 477](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/477)).
+
+**Reason:** thirteen state flags already took `Is` and six did not, so a reader could not tell a state flag from
+an option by its name, and one status record mixed both styles. The framework guideline leaves the prefix
+optional, so this is a house rule for consistency, not a correction of an error. The allowlist names types
+rather than matching a suffix because `SearchQuery` and `ScriptedWatchSource` do not end in `Options`.
+
+**Revisit only if:** a public type needs a boolean that is neither state nor an instruction.
+
+## One name per concept across the public surface
+
+**Decision (2026-10-13, API review finding F16):** a file's last write is `LastWriteTime`, a scan's completion
+is `ScanTimestamp`, a journal event's time is `Timestamp`, a byte size is `Size` with no unit suffix, a count
+ends in `Count`, and a bound is the property name followed by `Minimum` or `Maximum`. Applied in MFTLib and
+MFTLibTestExtensions: `SyntheticRow.LastWriteTime`, `ScanTimestamp` on `SyntheticBlockOptions`,
+`SyntheticDriveHeader` and `SyntheticMftProducer`, `CachedBlockFile.Size`, `IndexScanProgress.WrittenRowCount`
+and `ExpectedRowCount`, and `SearchQuery.SizeMinimum` and `SizeMaximum`. A parameter that takes a `DriveKey` is
+named `drive` (or `drives` for a sequence), never `driveLetter`
+([MFTLib issue 479](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/479)).
+
+**Reason:** the surface named the same concept several ways, so a reader had to learn each type's word for a
+last write time, a scan time, a size, a count and a query bound. The test package had dropped the `Utc` suffix
+without aligning to the production names, and no record shows the difference was chosen. Names that mirror an
+NTFS structure (`UsnJournalSettings` and the test package's `SyntheticJournalWindow.MaximumSize`) are outside
+the rule.
+
+**Revisit only if:** a new concept has no existing word, or an NTFS structure's own name conflicts with the rule.
+
+## Every way to obtain an index source is on MftIndexSources
+
+**Decision (2026-10-13, API review finding F19):** `MftIndexSources.Unavailable(reason)` replaces
+`MftIndexSource.Unavailable(reason)`, with the same contract. `MftIndexSource` keeps no public factory, so the
+flat `MFTLib` namespace holds every way to obtain a source: `BrokerSession.CreateIndexSource`,
+`MftIndexSources.FromLocalVolumes`, `MftIndexSources.FromMftDumpFile` and `MftIndexSources.Unavailable`
+([MFTLib issue 480](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/480)).
+
+**Reason:** the factory shipped on the type two days before the factory class existed, and no record gave a
+reason to leave it there. It stays a factory rather than becoming a null `FileIndexOptions.MftSource` because
+the factory exists to carry the application's user-facing reason into `DriveFailure.Message`: on every path a
+null source and an unavailable source have the same outcome (the drive fails with `ProducerFailed`, a batched
+watch start reports `NotApplicable`) and only the message differs, so one slot holds either a real source or
+the reason there is none.
+
+**Revisit only if:** the index reports a producer-less drive's reason some other way.
+
+## A method named Try returns quickly
+
+**Decision (2026-10-13, API review finding F23):** `ElevatedEntryPoint.RunBrokerIfRequested(arguments)`
+replaces `ElevatedEntryPoint.TryHandle(arguments)`, with the same parameter, return value and behavior
+([MFTLib issue 481](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/481)).
+
+**Reason:** the method runs the broker for its whole life when the process was started with the broker flag,
+exits the process with code 1 on rejected arguments, and otherwise returns false at once. A `Try` name in .NET
+promises a quick attempt that reports failure by returning false. The name came from file-wizard when the code
+was hoisted into MFTLib and was never revisited.
+
+**Revisit only if:** the method stops blocking for the broker's lifetime.
+
+## Names of the two index progress options, and what stays as it is
+
+**Decision (2026-10-13, API review finding F21):** `FileIndexOptions.ScanProgress` replaces `Progress` (scan
+progress samples, only while a scan runs) and `FileIndexOptions.DriveOpenProgress` replaces `OpenProgress` (one
+`IndexDriveOpened` per drive that settles during open, warm starts included)
+([MFTLib issue 485](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/485)). `BrokerSession.Connecting`
+stays an event. The mix of events, `IProgress` options and the `Diagnostics` callback stays, because each style
+follows what it reports.
+
+**Reason:** neither old name said which option reported what, so each summary defined itself against the other.
+`BrokerSession.Connecting` stays because git-wizard production
+(`GitWizard/Discovery/RepositoryDiscoveryCoordinator.Watch.cs`) and the Watch sample use it.
+
+**Revisit only if:** a consumer stops using `BrokerSession.Connecting`.
+
+## The elevation provider types and the three query methods stay
+
+**Decision (2026-10-13, API review findings F11 and F26, no change):** `IElevationProvider`, `ElevationResult`,
+`WindowsRunasElevationProvider` and both `BrokerSession` constructor parameters stay as they are (F11).
+`ProducerPolicy.Enumeration` and all three query methods `Search`, `Enumerate` and `EnumerateRows` stay (F26).
+
+**Reason:** F11 found no defect to correct in the elevation provider shape or the session constructors. For F26,
+`EnumerateRows` is a `ref struct` and cannot be used with LINQ or `await`, and `Search` is the only form that
+cannot hold a snapshot borrow open, so each of the three serves a caller the others cannot.
+
+**Revisit only if:** `EnumerateRows` stops being a `ref struct`, or a consumer needs elevation behavior the
+current provider types cannot express.
+
 ## Open progress counts settle order and total
 
 **Decision (2026-10-13, API review finding F13):** `IndexDriveOpened` keeps both `SettledDriveCount` and
@@ -169,7 +264,7 @@ already distinguish by the state enum.
 ## One cache inspection method, documented directory preparation
 
 **Decision (2026-10-13, API review finding F20):** `CacheDirectory.InspectCached`
-is one public method with optional `IEnumerable<DriveKey>? driveLetters = null`
+is one public method with optional `IEnumerable<DriveKey>? drives = null`
 and `Action<CachedBlockRejection>? rejectedFile = null` parameters.
 `CacheDirectory.EnsureCreated` stays public and unchanged, with its application
 usage documented. `DeleteCached` stays unchanged; its rejected-filename callback

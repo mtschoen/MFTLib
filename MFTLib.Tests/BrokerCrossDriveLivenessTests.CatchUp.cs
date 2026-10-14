@@ -21,7 +21,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
     /// <summary>
     ///     T's catch-up fails on every scan and the journal proves the armed cursor trimmed, so T's
     ///     scan operation scans three times, raises a <see cref="WatchFaultKind.CatchUpLost" /> fault for
-    ///     each and stops with <see cref="JournalCatchUpLostException.RecoveryStopped" /> on the third,
+    ///     each and stops with <see cref="JournalCatchUpLostException.IsRecoveryStopped" /> on the third,
     ///     keeping its third block unresumable. U rescans normally in the same run. Once the source is
     ///     fixed, a manual rescan of T succeeds, resets the count and accepts a start.
     /// </summary>
@@ -51,7 +51,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         var losses = faults.Select(fault => (JournalCatchUpLostException)fault.Exception).ToArray();
         var statusesAtLoss = scenario.CatchUpLossStatuses('T');
         CollectionAssert.AreEqual(new[] { 1, 2, 3 }, statusesAtLoss.Select(status => status.Watch.ConsecutiveLostCatchUps).ToArray());
-        CollectionAssert.AreEqual(new[] { false, false, true }, losses.Select(loss => loss.RecoveryStopped).ToArray());
+        CollectionAssert.AreEqual(new[] { false, false, true }, losses.Select(loss => loss.IsRecoveryStopped).ToArray());
         Assert.AreSame(losses[2], thrown, "the rescan throws the loss that stopped it");
 
         var drive = scenario.DriveOf('T');
@@ -109,7 +109,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         Assert.AreEqual(WatchFaultKind.CatchUpLost, fault.Kind);
         var loss = (JournalCatchUpLostException)fault.Exception;
         Assert.AreEqual(1, scenario.CatchUpLossStatuses('T').Single().Watch.ConsecutiveLostCatchUps);
-        Assert.IsFalse(loss.RecoveryStopped);
+        Assert.IsFalse(loss.IsRecoveryStopped);
         var drive = scenario.DriveOf('T');
         Assert.AreEqual(0, drive.Watch.ConsecutiveLostCatchUps);
         Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, drive.Watch.CheckpointLoss?.DetectedDuring,

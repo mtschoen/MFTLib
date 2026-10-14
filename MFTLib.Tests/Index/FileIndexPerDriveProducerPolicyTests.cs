@@ -27,7 +27,7 @@ public class FileIndexPerDriveProducerPolicyTests
         new SyntheticRow(6, "scanned.txt", 5)
     ])
     {
-        Completed = Moment,
+        ScanTimestamp = Moment,
         JournalCursor = new SyntheticJournalCursor(7, 4096)
     };
 
@@ -63,7 +63,7 @@ public class FileIndexPerDriveProducerPolicyTests
     {
         var options = Options(Drive('T', ProducerPolicy.Mft), Drive('U', ProducerPolicy.Enumeration)) with
         {
-            MftSource = MftIndexSource.Unavailable("scan refused")
+            MftSource = MftIndexSources.Unavailable("scan refused")
         };
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
@@ -118,7 +118,7 @@ public class FileIndexPerDriveProducerPolicyTests
         AssertDrive(index, 'T', ProducerKind.Mft, BlockSource.WarmStartedFromCache);
         await DriveResultAssertions.NotApplicableAsync(
             () => index.StartWatchingAsync(['T'], CancellationToken.None));
-        Assert.IsFalse(index.Drives.Single().Watch.Requested);
+        Assert.IsFalse(index.Drives.Single().Watch.IsRequested);
     }
 
     [TestMethod]
@@ -171,7 +171,7 @@ public class FileIndexPerDriveProducerPolicyTests
             MftSource = SyntheticIndexSource.Create(Producer(), watches)
         }, CancellationToken.None);
 
-        Assert.IsFalse(index.Drives.Single(drive => drive.Drive == 'U').Watch.Supported);
+        Assert.IsFalse(index.Drives.Single(drive => drive.Drive == 'U').Watch.IsSupported);
         await DriveResultAssertions.NotApplicableAsync(
             () => index.StartWatchingAsync(['U'], CancellationToken.None));
         var results = await index.StartWatchingAsync(index.Drives.Select(drive => drive.Drive), CancellationToken.None);
@@ -182,7 +182,7 @@ public class FileIndexPerDriveProducerPolicyTests
         Assert.AreEqual(new DriveKey('T'), watches.Starts.Single().Drive);
         await index.RescanAsync(['U'], CancellationToken.None);
         Assert.AreEqual(WatchState.CaughtUp, index.Drives.Single(drive => drive.Drive == 'T').Watch.State);
-        Assert.IsFalse(index.Drives.Single(drive => drive.Drive == 'U').Watch.Supported);
+        Assert.IsFalse(index.Drives.Single(drive => drive.Drive == 'U').Watch.IsSupported);
     }
 
     static void AssertDrive(FileIndex index, char letter, ProducerKind kind,

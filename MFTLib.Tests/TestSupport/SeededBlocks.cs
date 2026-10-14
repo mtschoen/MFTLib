@@ -40,7 +40,7 @@ internal static class SeededBlocks
             new SyntheticRow((uint)index, fileNameFactory((uint)index), 5)
             {
                 Size = index,
-                Modified = moment
+                LastWriteTime = moment
             }));
         return Create(request.BlockPath, request.VolumeSerial, request.DeleteOnClose, request.CacheTag, 7, 4096,
             moment, rows);
@@ -61,14 +61,14 @@ internal static class SeededBlocks
         return SyntheticBlock.Build(path, volumeSerial, deleteOnClose, new SyntheticBlockOptions
         {
             JournalCursor = new SyntheticJournalCursor(journalIdentifier, nextUsn),
-            Completed = moment,
+            ScanTimestamp = moment,
             CacheTag = cacheTag
         }, rows);
     }
 
     static IEnumerable<SyntheticRow> RootRows(DateTime moment)
     {
-        yield return new SyntheticRow(0, "$MFT", 0) { Modified = moment };
-        yield return new SyntheticRow(5, ".", 5) { IsDirectory = true, Modified = moment };
+        yield return new SyntheticRow(0, "$MFT", 0) { LastWriteTime = moment };
+        yield return new SyntheticRow(5, ".", 5) { IsDirectory = true, LastWriteTime = moment };
     }
 }

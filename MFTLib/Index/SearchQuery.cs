@@ -15,11 +15,11 @@ namespace MFTLib.Index;
 /// <param name="CaseSensitive">False folds case with invariant upper-casing, which is what NTFS does for the ASCII range.</param>
 /// <param name="Subtree">Restricts the result to the subtree below this entry, the entry itself included.</param>
 /// <param name="IsDirectory">True returns only directories, false returns only files, null applies no filter.</param>
-/// <param name="MinimumSize">
+/// <param name="SizeMinimum">
 ///     Inclusive lower bound on the size in bytes. A row whose size is unknown is excluded even when its stored
 ///     size satisfies the comparison.
 /// </param>
-/// <param name="MaximumSize">
+/// <param name="SizeMaximum">
 ///     Inclusive upper bound on the size in bytes. A row whose size is unknown is excluded even when its stored
 ///     size satisfies the comparison.
 /// </param>
@@ -45,8 +45,8 @@ public sealed record SearchQuery(
     bool CaseSensitive = false,
     FileEntry? Subtree = null,
     bool? IsDirectory = null,
-    long? MinimumSize = null,
-    long? MaximumSize = null,
+    long? SizeMinimum = null,
+    long? SizeMaximum = null,
     DateTime? LastWriteTimeMinimum = null,
     DateTime? LastWriteTimeMaximum = null,
     bool IncludeDeleted = false);

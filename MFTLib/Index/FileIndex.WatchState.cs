@@ -72,13 +72,13 @@ public sealed partial class FileIndex
     DriveWatchStatus DescribeWatchLocked(DriveRuntime runtime, DriveBlock driveBlock) =>
         new()
         {
-            Supported = driveBlock.ProducerKind == ProducerKind.Mft && WatchSourceOrNull is not null,
-            Requested = runtime.WatchRequested,
+            IsSupported = driveBlock.ProducerKind == ProducerKind.Mft && WatchSourceOrNull is not null,
+            IsRequested = runtime.WatchRequested,
             State = GetWatchStateLocked(driveBlock.Drive),
             StateVersion = runtime.WatchStateVersion,
             FailureMessage = _watchFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             ConsecutiveLostCatchUps = runtime.ConsecutiveLostCatchUps,
-            RecoveryStopped = runtime.RecoveryStopped,
+            IsRecoveryStopped = runtime.RecoveryStopped,
             CheckpointLoss = _checkpointLossesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal)
         };
 

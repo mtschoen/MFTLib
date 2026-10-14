@@ -30,7 +30,7 @@ ownership; block operations still follow the locks described below.
       receives one line per block-file delete with the path and
       reason; null by default (the internal block creation options forward it). Consumers that deliberately shared one cache block between two live indexes
       must open the second with `CacheMode.Disabled` or expect the in-use outcome. `CacheDirectory.DeleteCached(cacheDirectoryPath,
-      driveLetters, diagnostics)` is the lock-safe way for a consumer to clear cache blocks: it takes each
+      drives, diagnostics)` is the lock-safe way for a consumer to clear cache blocks: it takes each
       candidate block's owner lock non-blockingly and deletes only while holding it, the same rule `FileIndex`
       itself follows, so it never deletes, renames, or unlinks a block a live `FileIndex` still owns. A block
       whose lock is already held reports `CachedBlockDeletionOutcome.InUse` and is left untouched; a delete
@@ -42,7 +42,7 @@ ownership; block operations still follow the locks described below.
       than a `Failed`. A successful delete logs through the optional `diagnostics` callback with the same
       "Deleted block file '...'" shape `FileIndexOptions.Diagnostics` uses elsewhere, invoked synchronously
       while the block's lock is still held. `CacheDirectory.InspectCached(cacheDirectoryPath,
-      driveLetters = null, rejectedFile = null)` is one public method with optional drive selection
+      drives = null, rejectedFile = null)` is one public method with optional drive selection
       and an optional `Action<CachedBlockRejection>? rejectedFile` callback carrying a full `Path` and
       human-readable `Reason`. Omitting the callback silently excludes rejected names. `DeleteCached`
       retains its public success logger and its internal rejection-callback overload; rejected-name

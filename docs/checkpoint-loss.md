@@ -33,7 +33,7 @@
       `MftBlockProduceResult.CatchUpLoss`; the index publishes the complete block as unresumable,
       records a `ScanCatchUp` report (including `SizeThatWouldHaveRetained` when the journal was
       trimmed), and scans the drive again. After three consecutive losses the internal retry
-      policy stops automatic recovery and sets `DriveWatchStatus.RecoveryStopped` before the
+      policy stops automatic recovery and sets `DriveWatchStatus.IsRecoveryStopped` before the
       loss notification or open completion. A scan whose catch-up holds clears it; failed or
       cancelled production and stopping the watch preserve it. An exhausted open settles the drive `Ready` with its last block,
       refuses its watch, and requires a consumer `RescanAsync` to publish a resumable block
@@ -42,7 +42,7 @@
       `JournalCheckpointLoss` keeps the checkpoint, first and next USN positions internal: the broker
       protocol carries them, report equality covers them, and `BytesBehind` and
       `SizeThatWouldHaveRetained` derive from them. `JournalCatchUpLostException` carries only
-       `RecoveryStopped` and its message; the drive is the fault's `WatchFault.Drive`, and the
+       `IsRecoveryStopped` and its message; the drive is the fault's `WatchFault.Drive`, and the
       recovery-stopped flag and the report are the drive's `DriveStatus.Watch` values, which a
       `WatchFaulted` handler reads when the fault is raised.
       A stopped-loss message with a retained-size suggestion names the public

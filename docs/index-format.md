@@ -23,7 +23,7 @@ All MFT producers saturate this diagnostic at `int.MaxValue` when the scan's cou
 Profile-filtered records contribute to neither count. These diagnostics describe the
 current block's production: successful rescans replace the counts, failed or cancelled
 rescans retain them with the block, and warm starts report zero because these counts
-are not stored in the block header. `DriveBlockStatus.CompactionNeeded` reads the header's
+are not stored in the block header. `DriveBlockStatus.IsCompactionNeeded` reads the header's
 compaction flag independently of either count.
 
 ## File name
@@ -99,7 +99,7 @@ format or native ABI version changes are involved.
 
 ## Deleting cached blocks
 
-`CacheDirectory.DeleteCached(cacheDirectoryPath, driveLetters = null, diagnostics = null)` is the
+`CacheDirectory.DeleteCached(cacheDirectoryPath, drives = null, diagnostics = null)` is the
 lock-safe way to clear cache blocks: it enumerates the directory the same way `InspectCached`
 does, then for each candidate takes that block's owner lock non-blockingly and deletes the block
 file only while holding it, so it is bound by the same ownership rule as `FileIndex` itself and
@@ -276,7 +276,7 @@ rows, whichever is larger, so journal creates land in place at their record
 number. Name pool capacity uses the same 25 percent ratio with a floor of one
 mebibyte (1048576 bytes). Exhausting either sets the compaction-needed flag; the
 producer or mutator keeps applying what fits and the drive remains Ready and queryable.
-The caller reads `DriveBlockStatus.CompactionNeeded` to offer a rescan. The flag
+The caller reads `DriveBlockStatus.IsCompactionNeeded` to offer a rescan. The flag
 remains set until a successful rescan publishes a replacement block without it;
 failed or cancelled rescans retain the old block and its flag. Compaction is a rescan.
 

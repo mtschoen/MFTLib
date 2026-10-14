@@ -228,7 +228,7 @@ public partial class FileIndexWatchRescanTests
 
         Assert.AreEqual(0, harness.Source.Starts.Count);
         var drive = harness.DriveFor('T');
-        Assert.IsFalse(drive.Watch.Requested);
+        Assert.IsFalse(drive.Watch.IsRequested);
         Assert.AreEqual(WatchState.NotStarted, drive.Watch.State);
         Assert.AreEqual(13ul, harness.BlockFor('T').Header.UsnJournalIdentifier);
         Assert.AreEqual(9000L, harness.BlockFor('T').Header.UsnNextUsn);

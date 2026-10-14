@@ -21,8 +21,8 @@ partial class SampleHost
     {
         WriteStatus(status);
         var block = RequireReadyBlock(status);
-        _writeLine($"Cache {status.Drive}: block {block.Source}, slot {block.CacheSlot?.ToString() ?? "none"}, scanned {block.ScanTimestamp:u}, compaction needed {block.CompactionNeeded}");
-        _writeLine($"Watch: {status.Watch.State} v{status.Watch.StateVersion}, requested {status.Watch.Requested}; recovery stopped {status.Watch.RecoveryStopped}; denied subtrees {block.AccessDeniedSubtreeCount}{(status.Watch.FailureMessage is { } failure ? $"; {failure}" : string.Empty)}");
+        _writeLine($"Cache {status.Drive}: block {block.Source}, slot {block.CacheSlot?.ToString() ?? "none"}, scanned {block.ScanTimestamp:u}, compaction needed {block.IsCompactionNeeded}");
+        _writeLine($"Watch: {status.Watch.State} v{status.Watch.StateVersion}, requested {status.Watch.IsRequested}; recovery stopped {status.Watch.IsRecoveryStopped}; denied subtrees {block.AccessDeniedSubtreeCount}{(status.Watch.FailureMessage is { } failure ? $"; {failure}" : string.Empty)}");
         if (status.Watch.CheckpointLoss is { } loss)
         {
             _writeLine($"Checkpoint lost on {loss.Drive}: {loss.Cause} during {loss.DetectedDuring}; {loss.BytesBehind} bytes behind, journal {loss.JournalSettings.MaximumSize}/{loss.JournalSettings.AllocationDelta}, {loss.SizeThatWouldHaveRetained} would have kept it");
@@ -58,7 +58,7 @@ partial class SampleHost
             var origin = directory == root ? "root" : Path.GetFileName(directory);
             foreach (var block in CacheDirectory.InspectCached(directory, letters, rejection => _writeLine($"  rejected {rejection.Path}: {rejection.Reason}")))
             {
-                _writeLine($"{block.File.Drive}: {block.File.Path} (serial {block.File.VolumeSerial}, root {block.RootDirectory}), {block.Availability}{(block.Validation is { } reason ? $" ({reason})" : "")}, {block.File.SizeBytes} bytes, {block.ProducerKind}, tag {block.CacheTag}, written {block.File.LastWriteTime:u}, policy {origin}");
+                _writeLine($"{block.File.Drive}: {block.File.Path} (serial {block.File.VolumeSerial}, root {block.RootDirectory}), {block.Availability}{(block.Validation is { } reason ? $" ({reason})" : "")}, {block.File.Size} bytes, {block.ProducerKind}, tag {block.CacheTag}, written {block.File.LastWriteTime:u}, policy {origin}");
             }
 
             if (parsed.Clear)

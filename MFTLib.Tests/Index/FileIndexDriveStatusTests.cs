@@ -40,7 +40,7 @@ public class FileIndexDriveStatusTests
         {
             Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerPolicy.Enumeration)],
             CacheDirectory = _cacheDirectory,
-            Progress = progress
+            ScanProgress = progress
         };
     }
 
@@ -64,7 +64,7 @@ public class FileIndexDriveStatusTests
         Assert.AreEqual(DriveState.Offline, index.Drives[0].State);
         Assert.IsNull(index.Drives[0].Block);
         Assert.AreEqual(WatchState.NotStarted, index.Drives[0].Watch.State);
-        Assert.IsFalse(index.Drives[0].Watch.Supported);
+        Assert.IsFalse(index.Drives[0].Watch.IsSupported);
         Assert.IsNull(index.Drives[0].Failure);
         Assert.AreEqual('T', index.Drives[1].Drive);
         Assert.AreEqual(DriveState.Ready, index.Drives[1].State);
@@ -123,7 +123,7 @@ public class FileIndexDriveStatusTests
     {
         public void Report(IndexScanProgress value)
         {
-            // A rescan reuses the same FileIndexOptions.Progress instance as the original open,
+            // A rescan reuses the same FileIndexOptions.ScanProgress instance as the original open,
             // so this must be a no-op on any pass where the directory is not there yet to delete.
             if (value.CurrentDirectory == triggerDirectory && Directory.Exists(directoryToDelete))
             {

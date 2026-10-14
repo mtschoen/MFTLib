@@ -9,14 +9,14 @@ public sealed class PowerShellLaunch
     internal PowerShellLaunch(string script, bool elevated)
     {
         Script = script;
-        Elevated = elevated;
+        IsElevated = elevated;
     }
 
     /// <summary>The <c>Add-MpPreference</c> script text.</summary>
     public string Script { get; }
 
     /// <summary>true when the launch would have raised a UAC prompt; false when the process was already elevated.</summary>
-    public bool Elevated { get; }
+    public bool IsElevated { get; }
 }
 
 /// <summary>The scope returned by <see cref="DefenderExclusionIsolation.ScriptPowerShell" />: it records each PowerShell launch instead of making it.</summary>

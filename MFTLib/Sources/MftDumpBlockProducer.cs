@@ -111,7 +111,7 @@ internal sealed class MftDumpBlockProducer
             ? new DirectProgress<MftScanProgress>(sample => progress.Report(
                 new IndexScanProgress(request.Drive, IndexScanPhase.ParsingMft, ClampRows(sample.RecordsScanned))
                 {
-                    TotalRows = ClampRows(sample.TotalRecords)
+                    ExpectedRowCount = ClampRows(sample.TotalRecords)
                 }))
             : null;
     }

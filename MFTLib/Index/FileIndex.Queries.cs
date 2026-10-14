@@ -140,23 +140,23 @@ public sealed partial class FileIndex
     ///     The entry for the drive block's root row, which is the indexed root directory rather
     ///     than the volume root: a block indexed from a subdirectory roots there.
     /// </summary>
-    /// <param name="driveLetter">The drive letter, as configured in <see cref="FileIndexOptions.Drives" />.</param>
+    /// <param name="drive">The drive letter, as configured in <see cref="FileIndexOptions.Drives" />.</param>
     /// <param name="cancellationToken">Stops the lookup before it resolves the root row.</param>
     /// <exception cref="ArgumentException">
-    ///     No block exists for <paramref name="driveLetter" />, including an unconfigured drive or a configured
+    ///     No block exists for <paramref name="drive" />, including an unconfigured drive or a configured
     ///     drive that is offline or failed without a block.
     /// </exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
-    public FileEntry Root(DriveKey driveLetter, CancellationToken cancellationToken = default)
+    public FileEntry Root(DriveKey drive, CancellationToken cancellationToken = default)
     {
-        driveLetter = driveLetter.Validated();
+        drive = drive.Validated();
         QueryScope query;
         DriveState? blocklessDriveState;
         lock (_stateLock)
         {
-            blocklessDriveState = _blocklessDriveStatuses.FirstOrDefault(drive =>
-                drive.Drive == driveLetter)?.State;
+            blocklessDriveState = _blocklessDriveStatuses.FirstOrDefault(configured =>
+                configured.Drive == drive)?.State;
             query = AdmitQuery(cancellationToken);
         }
 
@@ -164,13 +164,13 @@ public sealed partial class FileIndex
         {
             query.Snapshot.ReleaseState._readerAdmittedForTest?.Invoke();
             query.CancellationToken.ThrowIfCancellationRequested();
-            if (query.Snapshot.FindDriveBlock(driveLetter) is null && blocklessDriveState is { } state)
+            if (query.Snapshot.FindDriveBlock(drive) is null && blocklessDriveState is { } state)
             {
-                throw new ArgumentException($"Drive {driveLetter} has no block (state: {state}).",
-                    nameof(driveLetter));
+                throw new ArgumentException($"Drive {drive} has no block (state: {state}).",
+                    nameof(drive));
             }
 
-            return LookupEngine.Root(query.Snapshot, driveLetter, query.CancellationToken);
+            return LookupEngine.Root(query.Snapshot, drive, query.CancellationToken);
         }
     }
 

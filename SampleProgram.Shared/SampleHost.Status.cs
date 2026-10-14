@@ -27,7 +27,7 @@ partial class SampleHost
         _writeLine($"Index holds {block.LiveRowCount} rows; {block.SkippedRecordCount} records skipped");
         _writeLine(status.Watch.CheckpointLoss is { } loss
             ? $"Catch-up lost: {loss.Cause}"
-            : $"Catch-up held; watch supported: {status.Watch.Supported}");
+            : $"Catch-up held; watch supported: {status.Watch.IsSupported}");
     }
 
     // Reports each scan phase when it starts and again each time another ProgressRowInterval rows were written within it,
@@ -42,14 +42,14 @@ partial class SampleHost
         public void Report(IndexScanProgress value)
         {
             var sameSpan = _lastPhase == value.Phase;
-            if (sameSpan && value.RowsWritten - _lastReportedRows < ProgressRowInterval)
+            if (sameSpan && value.WrittenRowCount - _lastReportedRows < ProgressRowInterval)
             {
                 return;
             }
 
             _lastPhase = value.Phase;
-            _lastReportedRows = value.RowsWritten;
-            writeLine($"  {value.Drive}: {value.Phase}: {value.RowsWritten} rows{(value.TotalRows is { } total ? $" of {total}" : string.Empty)}{(value.Outcome is { } outcome ? $" ({outcome})" : string.Empty)}{(value.CurrentDirectory is { } directory ? $" in {directory}" : string.Empty)}");
+            _lastReportedRows = value.WrittenRowCount;
+            writeLine($"  {value.Drive}: {value.Phase}: {value.WrittenRowCount} rows{(value.ExpectedRowCount is { } total ? $" of {total}" : string.Empty)}{(value.Outcome is { } outcome ? $" ({outcome})" : string.Empty)}{(value.CurrentDirectory is { } directory ? $" in {directory}" : string.Empty)}");
         }
     }
 

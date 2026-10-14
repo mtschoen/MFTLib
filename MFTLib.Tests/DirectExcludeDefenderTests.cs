@@ -72,7 +72,7 @@ public class DirectExcludeDefenderTests
         if (OperatingSystem.IsWindows())
         {
             var launch = scripted.Launches.Single();
-            Assert.IsFalse(launch.Elevated);
+            Assert.IsFalse(launch.IsElevated);
             Assert.IsTrue(launch.Script.Contains($"'{SampleHost.DefenderProcessName}'", StringComparison.Ordinal), launch.Script);
             Assert.IsTrue(lines.Contains($"Windows Defender process exclusion added: {SampleHost.DefenderProcessName}."));
         }
@@ -176,7 +176,7 @@ public class DirectExcludeDefenderTests
         Assert.IsTrue(lines.Contains("The Windows Defender process exclusion was not added."));
         if (OperatingSystem.IsWindows())
         {
-            Assert.IsTrue(scripted.Launches.Single().Elevated);
+            Assert.IsTrue(scripted.Launches.Single().IsElevated);
         }
     }
 

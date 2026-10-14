@@ -2,11 +2,11 @@ namespace MFTLib.Index;
 
 /// <summary>
 ///     One progress sample from whichever producer is building a drive's block.
-///     <see cref="TotalRows" /> is null while the producer does not yet know the total, which
+///     <see cref="ExpectedRowCount" /> is null while the producer does not yet know the total, which
 ///     an enumeration walk never does. <see cref="CurrentDirectory" /> is null for an MFT scan,
 ///     which has no notion of a current directory. The <see cref="IndexScanPhase.Finished" />
 ///     sample ends a drive's scan: <see cref="Outcome" /> is non-null only on it, and
-///     <see cref="RowsWritten" /> is then the finished block's row count on success and 0 otherwise.
+///     <see cref="WrittenRowCount" /> is then the finished block's row count on success and 0 otherwise.
 /// </summary>
 public sealed record IndexScanProgress
 {
@@ -22,7 +22,7 @@ public sealed record IndexScanProgress
     {
         Drive = driveLetter;
         Phase = phase;
-        RowsWritten = rowsWritten;
+        WrittenRowCount = rowsWritten;
     }
 
     /// <summary>Drive whose block is being produced.</summary>
@@ -36,13 +36,13 @@ public sealed record IndexScanProgress
     ///     The final broker transfer sample uses the known parsing total, otherwise the block row count, raised to at least the maximum parsing count.
     ///     A successful finished sample carries the final block row count; other finished samples carry zero.
     /// </summary>
-    public uint RowsWritten { get; init; }
+    public uint WrittenRowCount { get; init; }
 
     /// <summary>
     ///     Expected total scanned records during parsing or transferred rows during intermediate transfer samples, when known; otherwise, null.
     ///     The final broker transfer sample uses the known parsing total, otherwise the block row count, raised to at least the maximum parsing count.
     /// </summary>
-    public uint? TotalRows { get; init; }
+    public uint? ExpectedRowCount { get; init; }
 
     /// <summary>Current directory during enumeration, or null for producers without directories.</summary>
     public string? CurrentDirectory { get; init; }

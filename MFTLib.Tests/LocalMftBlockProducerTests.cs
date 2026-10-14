@@ -65,7 +65,7 @@ public class LocalMftBlockProducerTests
         CacheDirectory = _directories.CacheDirectory,
         CacheMode = CacheMode.Disabled,
         MftSource = source,
-        Progress = progress
+        ScanProgress = progress
     };
 
     [TestMethod]
@@ -397,8 +397,8 @@ public class LocalMftBlockProducerTests
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.AreEqual(BlockSource.ProducedByScan, status.Block!.Source);
-        Assert.IsFalse(status.Watch.Supported);
-        Assert.IsFalse(status.Watch.Requested);
+        Assert.IsFalse(status.Watch.IsSupported);
+        Assert.IsFalse(status.Watch.IsRequested);
         Assert.IsTrue(reports.Count > 0);
     }
 
@@ -410,8 +410,8 @@ public class LocalMftBlockProducerTests
         await DriveResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync(['t'], CancellationToken.None));
         await DriveResultAssertions.NotApplicableAsync(() => index.WaitForCatchUpAsync(['t'], CancellationToken.None));
 
-        Assert.IsFalse(index.Drives.Single().Watch.Supported);
-        Assert.IsFalse(index.Drives.Single().Watch.Requested);
+        Assert.IsFalse(index.Drives.Single().Watch.IsSupported);
+        Assert.IsFalse(index.Drives.Single().Watch.IsRequested);
     }
 
     [TestMethod]

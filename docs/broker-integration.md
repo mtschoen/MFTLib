@@ -46,7 +46,7 @@ the normal application. Put this at the beginning of `Program.cs`:
 ```csharp
 using MFTLib;
 
-if (ElevatedEntryPoint.TryHandle(Environment.GetCommandLineArgs()))
+if (ElevatedEntryPoint.RunBrokerIfRequested(Environment.GetCommandLineArgs()))
 {
     return;
 }
@@ -167,7 +167,7 @@ request, and returns the drive's running watch. The watch source, the drive
 watch handle and the block producer are internal to MFTLib; a consumer holds
 only the opaque `MftIndexSource`.
 
-A process that cannot scan assigns `MftIndexSource.Unavailable(reason)`
+A process that cannot scan assigns `MftIndexSources.Unavailable(reason)`
 instead. Every scan of an MFT-backed drive then fails with
 `Drive {letter}: {reason}.`, reported as `DriveFailureKind.ProducerFailed`,
 and starting a watch throws `InvalidOperationException` with the same
@@ -177,7 +177,7 @@ The optional `MftScanOptions.RetainedFileNames` selects retention: null keeps
 all eligible records, an empty collection keeps directories only, and a nonempty
 collection keeps directories plus files whose names match ordinally, ignoring case.
 `IncludeFreed` controls freed-record inclusion independently. Scan progress reaches the application as `IndexScanProgress`
-through `FileIndexOptions.Progress`. A block that fails validation is disposed
+through `FileIndexOptions.ScanProgress`. A block that fails validation is disposed
 and its scan fails; a block that passes transfers to the index.
 
 ### What a broker scan does
@@ -232,18 +232,18 @@ payload, truncated fields, invalid flags and trailing data are malformed request
 
 `FileIndex.OpenAsync` settles its drives concurrently. A drive whose scan loses
 catch-up rescans itself until automatic recovery is exhausted. When
-`DriveWatchStatus.RecoveryStopped` becomes true, open still returns that drive as `Ready` with the last complete block,
+`DriveWatchStatus.IsRecoveryStopped` becomes true, open still returns that drive as `Ready` with the last complete block,
 but the block is unresumable and watching it is refused until a successful
 `RescanAsync`.
 
-`FileIndexOptions.OpenProgress` reports once for each drive that settles, on the
+`FileIndexOptions.DriveOpenProgress` reports once for each drive that settles, on the
 thread that settled it and with no index lock held. Callbacks can overlap and can
 arrive out of order. `IndexDriveOpened.SettledDriveCount` records settle order, so a
 consumer tracking overall progress keeps the report with the largest count. A
 drive whose settle is cancelled reports nothing; a cancelled or failed open may
 therefore have reported only part of the configured drive set.
 
-`FileIndexOptions.Progress` samples a scan while a producer runs and ends each
+`FileIndexOptions.ScanProgress` samples a scan while a producer runs and ends each
 drive scan with one `IndexScanPhase.Finished` sample from `FileIndex`, after the
 producer's last sample, for MFT-backed and enumeration-backed drives, in open and
 in rescans. `IndexScanProgress.Outcome` is `Succeeded`, `Failed` or `Cancelled`
@@ -323,7 +323,7 @@ index.WatchFaulted += fault =>
 concurrently. The status has already been updated when the event runs.
 
 `fault.IsRecovering` is true for Drive and Apply faults and for a CatchUpLost
-notification carrying `JournalCatchUpLostException` with `RecoveryStopped` false.
+notification carrying `JournalCatchUpLostException` with `IsRecoveryStopped` false.
 Subscriber, Channel, Recovery and RescanRestart faults return false. This classifies
 the recovery associated with the notification, not subsequent watch health; a
 Subscriber fault still leaves the watch running.
@@ -333,7 +333,7 @@ Subscriber fault still leaves the watch running.
 | Completed `BrokerSession.Ended` task | The control connection and elevated process are gone. Stop using the session, close its indexes, and create a new session and new indexes. |
 | An `IOException` | A pipe reached EOF, failed, stalled, or carried an invalid frame. A watch reports this through `WatchFaultKind.Channel`. A channel fault never starts automatic recovery. Reconnect the process when needed, then rescan or reopen the affected state. |
 | Drive watch fault | The host reported an error on that drive's watch. `FileIndex` publishes `WatchFaultKind.Drive`, changes the drive to `Recovering`, and rescans it automatically. Observe the recovery rather than starting a competing lifecycle operation. |
-| `JournalCatchUpLostException` | A scan completed, but the journal proved that the cursor armed before it had become unreadable. `WatchFaultKind.CatchUpLost` reports every attempt. Automatic retries stop when `RecoveryStopped` is true. Grow the journal when appropriate, then rescan; a successful rescan starts the watch if it is requested. |
+| `JournalCatchUpLostException` | A scan completed, but the journal proved that the cursor armed before it had become unreadable. `WatchFaultKind.CatchUpLost` reports every attempt. Automatic retries stop when `IsRecoveryStopped` is true. Grow the journal when appropriate, then rescan; a successful rescan starts the watch if it is requested. |
 | `WatchFaultKind.RescanRestart` | A rescan replaced the block but could not start its watch. The scan returns success. The exception and `DriveWatchStatus.FailureMessage` identify the rescan; the inner exception is the start failure. No automatic recovery starts. A consumer start or rescan retries it, and stop rethrows the fault once. |
 | `WatchState.Recovering` | A drive or apply fault is being recovered, or a lost catch-up is being retried. Queries still use the current complete block, which may be behind the volume. |
 | `WatchState.Faulted` | Recovery did not restore the watch, a channel was lost, a start was refused, or the catch-up loss limit was reached. Inspect `DriveWatchStatus.FailureMessage` and the fault exception. Call `RescanAsync` or `StartWatchingAsync` after the triggering condition is fixed. An unresumable block must be rescanned first. |
@@ -412,7 +412,7 @@ becomes `JournalCatchUpLostException`; an unavailable journal query or a cursor
 that is still retained remains an ordinary scan failure.
 
 Every proven loss increments an internal per-drive count. A successful
-catch-up resets it and clears `DriveWatchStatus.RecoveryStopped`. A manual or recovery
+catch-up resets it and clears `DriveWatchStatus.IsRecoveryStopped`. A manual or recovery
 rescan retries until success or automatic recovery is exhausted; exhaustion sets the
 flag before notification, and the rescan throws the last
 `JournalCatchUpLostException`, keeps the complete block queryable, and refuses a
@@ -479,7 +479,7 @@ identifier.
 
 ## Diagnostics
 
-Configure diagnostics after the early `ElevatedEntryPoint.TryHandle` dispatch returns
+Configure diagnostics after the early `ElevatedEntryPoint.RunBrokerIfRequested` dispatch returns
 false. Create the application-owned directory, then enable diagnostics in one call:
 
 ```csharp
@@ -521,7 +521,7 @@ while debugging diagnostics themselves.
 - Reference the `MFTLib` NuGet package; its transitive build target copies
   `MFTLibNative.dll` to the output directory.
 - Publish an executable app host and launch that `.exe`.
-- Dispatch `ElevatedEntryPoint.TryHandle` before normal app startup.
+- Dispatch `ElevatedEntryPoint.RunBrokerIfRequested` before normal app startup.
 - Create one `BrokerSession` for the consumer session and retain ownership of it.
 - Assign `session.CreateIndexSource()` to every index of the session, so all drives share
   the one process.

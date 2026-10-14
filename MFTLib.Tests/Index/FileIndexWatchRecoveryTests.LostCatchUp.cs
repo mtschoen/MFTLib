@@ -32,7 +32,7 @@ public partial class FileIndexWatchRecoveryTests
         var losses = WatchDeduplicationTestSupport.CatchUpLosses(harness, 'T');
         CollectionAssert.AreEqual(new[] { 1, 2 },
             harness.CatchUpLossStatuses('T').Select(status => status.Watch.ConsecutiveLostCatchUps).ToArray());
-        Assert.IsFalse(losses.Any(loss => loss.RecoveryStopped));
+        Assert.IsFalse(losses.Any(loss => loss.IsRecoveryStopped));
         CollectionAssert.AreEqual(
             new[] { WatchFaultKind.Drive, WatchFaultKind.CatchUpLost, WatchFaultKind.CatchUpLost },
             FaultKinds(harness, 'T'));
@@ -64,14 +64,14 @@ public partial class FileIndexWatchRecoveryTests
             },
             FaultKinds(harness, 'T'));
         CollectionAssert.AreEqual(new[] { false, false, true },
-            WatchDeduplicationTestSupport.CatchUpLosses(harness, 'T').Select(loss => loss.RecoveryStopped).ToArray());
+            WatchDeduplicationTestSupport.CatchUpLosses(harness, 'T').Select(loss => loss.IsRecoveryStopped).ToArray());
         Assert.AreEqual(3, harness.ProductionCount('T') - producedBefore);
         var drive = harness.DriveFor('T');
         Assert.AreEqual(WatchState.Faulted, drive.Watch.State);
         Assert.AreEqual(3, drive.Watch.ConsecutiveLostCatchUps);
-        Assert.IsTrue(drive.Watch.RecoveryStopped);
+        Assert.IsTrue(drive.Watch.IsRecoveryStopped);
         CollectionAssert.AreEqual(new[] { false, false, true },
-            harness.CatchUpLossStatuses('T').Select(status => status.Watch.RecoveryStopped).ToArray());
+            harness.CatchUpLossStatuses('T').Select(status => status.Watch.IsRecoveryStopped).ToArray());
         Assert.AreEqual(1, harness.Source.TargetsFor('T').Count);
 
         _ = harness.Index.Drives;
@@ -122,7 +122,7 @@ public partial class FileIndexWatchRecoveryTests
         var driveT = harness.DriveFor('T');
         Assert.AreEqual(3, driveT.Watch.ConsecutiveLostCatchUps);
         Assert.AreEqual(WatchState.Faulted, driveT.Watch.State);
-        Assert.IsTrue(WatchDeduplicationTestSupport.CatchUpLosses(harness, 'T')[^1].RecoveryStopped);
+        Assert.IsTrue(WatchDeduplicationTestSupport.CatchUpLosses(harness, 'T')[^1].IsRecoveryStopped);
         var driveU = harness.DriveFor('U');
         Assert.AreEqual(0, driveU.Watch.ConsecutiveLostCatchUps);
         Assert.AreEqual(WatchState.CatchingUp, driveU.Watch.State);
@@ -146,7 +146,7 @@ public partial class FileIndexWatchRecoveryTests
         var drive = harness.DriveFor('T');
         Assert.AreEqual(0, drive.Watch.ConsecutiveLostCatchUps);
         Assert.IsNull(drive.Watch.FailureMessage);
-        Assert.IsFalse(drive.Watch.RecoveryStopped);
+        Assert.IsFalse(drive.Watch.IsRecoveryStopped);
         Assert.AreEqual(WatchState.CatchingUp, drive.Watch.State);
         Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
     }

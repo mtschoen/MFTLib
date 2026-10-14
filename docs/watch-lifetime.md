@@ -14,7 +14,7 @@
       `OperationCanceledException`; it cancels a catch-up wait as a whole.
     - **Fault recovery classification**: `WatchFault.IsRecovering` is true for `Drive` and
       `Apply`, and for `CatchUpLost` only when its exception is a
-      `JournalCatchUpLostException` with `RecoveryStopped` false. It is false for `Subscriber`,
+      `JournalCatchUpLostException` with `IsRecoveryStopped` false. It is false for `Subscriber`,
       `Channel`, `Recovery`, `RescanRestart`, and other catch-up exceptions. It describes recovery
       associated with that notification, not the drive's subsequent live-watch health.
     - **One snapshot shape**: `DriveStatus.Watch` and `WatchStateChange.Watch` are the same
@@ -22,7 +22,7 @@
       from `Drives[i].Watch` and applies events by the same `StateVersion` check. The version is
       exact, including zero. `WatchStateChange.Fault` exists only on events: a snapshot retains
       `Watch.FailureMessage`, never a fault.
-    - **Catch-up recovery exhaustion**: `DriveWatchStatus.RecoveryStopped` records exhausted
+    - **Catch-up recovery exhaustion**: `DriveWatchStatus.IsRecoveryStopped` records exhausted
       automatic recovery from consecutive scan catch-up losses, independently of watch requests
       and refused-start faults. It is set under the stop-decision state lock before loss
       notification or open completion. Successful catch-up publication clears it with the internal
@@ -32,7 +32,7 @@
       `StartWatch` is written.
     - **Watch source**: every drive's watch starts through `FileIndexOptions.MftSource`'s watch
       source, the same object that produced the drive's block. A source with no watch source
-      (or `MftIndexSource.Unavailable`) makes start `NotApplicable`, without a watch request.
+      (or `MftIndexSources.Unavailable`) makes start `NotApplicable`, without a watch request.
       A drive with no MFT-backed block has the same result. A watch-capable source's failed start
       or an unresumable cursor returns `Failed` with its exception.
     - **Watch and catch-up lifetime**: each MFT-backed drive has an independent
@@ -65,7 +65,7 @@
       replacement and the failed watch start. The drive stays `Faulted` without automatic
       recovery until a consumer starts or rescans it; stop returns that fault once as `Failed`.
       A failed automatic recovery, including its restart, reports `Recovery`.
-    - **Watch request**: `DriveWatchStatus.Requested` exposes `DriveRuntime.WatchRequested`. A
+    - **Watch request**: `DriveWatchStatus.IsRequested` exposes `DriveRuntime.WatchRequested`. A
       consumer start sets it before invoking the source, and it stays set when the source throws
       or when the start is refused because the block's journal cursor cannot be resumed; stop,
       disposal and a start its own caller cancelled clear it. A rescan restarts the watch only
@@ -140,7 +140,7 @@
       retains a faulted instance whose `RescanRestart` fault stop returns once as `Failed`. `DisposeAsync` cancels and drains all instances and recovery work without
       throwing a watch fault.
     - **Concurrent open**: `OpenAsync` settles every configured drive concurrently and waits for
-      them all before publishing the first snapshot or throwing. `FileIndexOptions.OpenProgress`
+      them all before publishing the first snapshot or throwing. `FileIndexOptions.DriveOpenProgress`
       reports once for each drive that settles, from that drive's settling thread with no lock
       held. Callbacks may overlap and arrive out of `IndexDriveOpened.SettledDriveCount` order, so a
       consumer keeps the report with the largest count. A cancelled settle claims no count and

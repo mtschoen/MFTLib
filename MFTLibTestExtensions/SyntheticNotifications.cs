@@ -12,15 +12,15 @@ namespace MFTLibTestExtensions;
 public static class SyntheticNotifications
 {
     /// <summary>Builds a cache inventory entry.</summary>
-    /// <param name="driveLetter">The uppercase ASCII drive letter from the file name.</param>
+    /// <param name="drive">The uppercase ASCII drive letter from the file name.</param>
     /// <param name="volumeSerial">The volume serial from the file name.</param>
     /// <param name="path">The full path to the cached file.</param>
-    /// <param name="sizeBytes">The file size in bytes.</param>
+    /// <param name="size">The file size in bytes.</param>
     /// <param name="lastWriteTime">The file last-write time in UTC.</param>
     /// <returns>The entry.</returns>
-    public static CachedBlockFile CreateCachedBlockFile(DriveKey driveLetter, uint volumeSerial, string path,
-        long sizeBytes, DateTime lastWriteTime) =>
-        new(driveLetter, volumeSerial, path, sizeBytes, lastWriteTime);
+    public static CachedBlockFile CreateCachedBlockFile(DriveKey drive, uint volumeSerial, string path,
+        long size, DateTime lastWriteTime) =>
+        new(drive, volumeSerial, path, size, lastWriteTime);
 
     /// <summary>Builds the result of deleting one cached block.</summary>
     /// <param name="file">The inventory entry captured before deletion.</param>
@@ -64,29 +64,29 @@ public static class SyntheticNotifications
 
     /// <summary>Builds a live watch fault.</summary>
     /// <param name="kind">Which boundary raised the fault.</param>
-    /// <param name="driveLetter">The drive the fault names.</param>
+    /// <param name="drive">The drive the fault names.</param>
     /// <param name="exception">The exception behind the fault.</param>
     /// <returns>The fault.</returns>
-    public static WatchFault CreateWatchFault(WatchFaultKind kind, DriveKey driveLetter, Exception exception) =>
-        new(kind, driveLetter, exception);
+    public static WatchFault CreateWatchFault(WatchFaultKind kind, DriveKey drive, Exception exception) =>
+        new(kind, drive, exception);
 
     /// <summary>Builds a watch state change for a consumer event handler.</summary>
-    /// <param name="driveLetter">The drive whose watch changed state.</param>
+    /// <param name="drive">The drive whose watch changed state.</param>
     /// <param name="watch">The drive's watch status after the change.</param>
     /// <param name="fault">The fault that caused the change, or null.</param>
     /// <returns>The state change.</returns>
-    public static WatchStateChange CreateWatchStateChange(DriveKey driveLetter, DriveWatchStatus watch,
+    public static WatchStateChange CreateWatchStateChange(DriveKey drive, DriveWatchStatus watch,
         WatchFault? fault) =>
-        new(driveLetter, watch, fault);
+        new(drive, watch, fault);
 
     /// <summary>Builds one drive's operation result for a consumer result handler.</summary>
-    /// <param name="driveLetter">The drive the result describes.</param>
+    /// <param name="drive">The drive the result describes.</param>
     /// <param name="outcome">What the operation did for the drive.</param>
     /// <param name="failure">The per-drive exception for a failure; otherwise null.</param>
     /// <returns>The operation result.</returns>
-    public static DriveOperationResult CreateDriveOperationResult(DriveKey driveLetter,
+    public static DriveOperationResult CreateDriveOperationResult(DriveKey drive,
         DriveOperationOutcome outcome, Exception? failure) =>
-        new(driveLetter, outcome, failure);
+        new(drive, outcome, failure);
 
     /// <summary>Builds the exception a scan carries when it loses its journal catch-up.</summary>
     /// <param name="recoveryStopped">Whether the scan operation stopped retrying at this loss.</param>
@@ -97,35 +97,35 @@ public static class SyntheticNotifications
         new(recoveryStopped, message);
 
     /// <summary>Builds the report that one drive settled while opening.</summary>
-    /// <param name="driveLetter">The settled drive.</param>
+    /// <param name="drive">The settled drive.</param>
     /// <param name="settledDriveCount">The settle order of this drive, counted from 1.</param>
     /// <param name="totalDriveCount">How many drives the open was configured with.</param>
     /// <returns>The report.</returns>
-    public static IndexDriveOpened CreateIndexDriveOpened(DriveKey driveLetter, int settledDriveCount,
+    public static IndexDriveOpened CreateIndexDriveOpened(DriveKey drive, int settledDriveCount,
         int totalDriveCount) =>
-        new(driveLetter, settledDriveCount, totalDriveCount);
+        new(drive, settledDriveCount, totalDriveCount);
 
     /// <summary>Builds one scan progress sample.</summary>
-    /// <param name="driveLetter">The drive whose block is being produced.</param>
+    /// <param name="drive">The drive whose block is being produced.</param>
     /// <param name="phase">The current stage of the scan.</param>
-    /// <param name="rowsWritten">
+    /// <param name="writtenRowCount">
     ///     Records scanned during parsing, rows transferred during intermediate transfer samples, or rows written during enumeration.
     ///     The final broker transfer sample uses the known parsing total, otherwise the block row count, raised to at least the maximum parsing count.
     ///     Finished samples carry the final block row count on success, otherwise zero.
     /// </param>
-    /// <param name="totalRows">
+    /// <param name="expectedRowCount">
     ///     Expected total scanned records during parsing or transferred rows during intermediate transfer samples, when known; otherwise null.
     ///     The final broker transfer sample uses the known parsing total, otherwise the block row count, raised to at least the maximum parsing count.
     /// </param>
     /// <param name="currentDirectory">The directory being enumerated, or null.</param>
     /// <param name="outcome">The terminal outcome on a finished sample; otherwise null.</param>
     /// <returns>The sample.</returns>
-    public static IndexScanProgress CreateIndexScanProgress(DriveKey driveLetter, IndexScanPhase phase,
-        uint rowsWritten, uint? totalRows = null, string? currentDirectory = null,
+    public static IndexScanProgress CreateIndexScanProgress(DriveKey drive, IndexScanPhase phase,
+        uint writtenRowCount, uint? expectedRowCount = null, string? currentDirectory = null,
         IndexScanOutcome? outcome = null) =>
-        new(driveLetter, phase, rowsWritten)
+        new(drive, phase, writtenRowCount)
         {
-            TotalRows = totalRows,
+            ExpectedRowCount = expectedRowCount,
             CurrentDirectory = currentDirectory,
             Outcome = outcome
         };
@@ -133,16 +133,16 @@ public static class SyntheticNotifications
     /// <summary>
     ///     Builds one drive status from its state, block and failure. A fixture sets the watch values with a
     ///     <c>with</c> expression on the result, nesting one for <see cref="DriveStatus.Watch" /> (for example
-    ///     <c>status with { Watch = status.Watch with { Supported = true } }</c>).
+    ///     <c>status with { Watch = status.Watch with { IsSupported = true } }</c>).
     /// </summary>
-    /// <param name="driveLetter">The drive.</param>
+    /// <param name="drive">The drive.</param>
     /// <param name="state">Whether the drive can answer queries, needs a rescan, or has no block.</param>
     /// <param name="block">The block behind a <see cref="DriveState.Ready" /> drive; null otherwise.</param>
     /// <param name="failure">Why the drive failed; null for a drive that did not.</param>
     /// <returns>The status.</returns>
-    public static DriveStatus CreateDriveStatus(DriveKey driveLetter, DriveState state, DriveBlockStatus? block,
+    public static DriveStatus CreateDriveStatus(DriveKey drive, DriveState state, DriveBlockStatus? block,
         DriveFailure? failure) =>
-        new(driveLetter, state)
+        new(drive, state)
         {
             Block = block,
             Failure = failure
@@ -163,7 +163,7 @@ public static class SyntheticNotifications
         {
             Source = blockSource,
             LiveRowCount = liveRowCount,
-            CompactionNeeded = compactionNeeded,
+            IsCompactionNeeded = compactionNeeded,
             ScanTimestamp = scanTimestamp
         };
 
@@ -179,13 +179,13 @@ public static class SyntheticNotifications
     ///     <see cref="JournalCheckpointLoss.SizeThatWouldHaveRetained" /> with a <c>with</c> expression on the
     ///     result, and the positions with <see cref="SyntheticCheckpointLoss.WithJournalPositions" />.
     /// </summary>
-    /// <param name="driveLetter">The drive, in upper case.</param>
+    /// <param name="drive">The drive, in upper case.</param>
     /// <param name="cause">Which situation the loss was.</param>
     /// <param name="detectedDuring">Which check found the loss.</param>
     /// <param name="journalSettings">The journal sizing when the loss was detected.</param>
     /// <returns>The report.</returns>
-    public static JournalCheckpointLoss CreateJournalCheckpointLoss(DriveKey driveLetter,
+    public static JournalCheckpointLoss CreateJournalCheckpointLoss(DriveKey drive,
         JournalCheckpointLossCause cause, JournalCheckpointLossDetection detectedDuring,
         UsnJournalSettings journalSettings) =>
-        new(driveLetter, detectedDuring, cause, journalSettings);
+        new(drive, detectedDuring, cause, journalSettings);
 }

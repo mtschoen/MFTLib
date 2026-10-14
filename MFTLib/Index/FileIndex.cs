@@ -405,7 +405,7 @@ public sealed partial class FileIndex : IAsyncDisposable
                 CacheSlot = _cacheSlotsByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
                 LiveRowCount = header.LiveRowCount,
                 ScanTimestamp = header.ScanTimestampUtc,
-                CompactionNeeded = header.IsCompactionNeeded,
+                IsCompactionNeeded = header.IsCompactionNeeded,
                 SkippedRecordCount = _skippedRecordCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
                 AccessDeniedSubtreeCount = _accessDeniedSubtreeCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal)
             },

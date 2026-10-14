@@ -25,7 +25,7 @@ public sealed class SyntheticMftProducer
     public SyntheticJournalCursor JournalCursor { get; set; }
 
     /// <summary>Becomes <see cref="DriveBlockStatus.ScanTimestamp" />, so a test about scan age sets it explicitly.</summary>
-    public DateTime Completed { get; set; }
+    public DateTime ScanTimestamp { get; set; }
 
     /// <summary>Becomes <see cref="DriveBlockStatus.SkippedRecordCount" />; zero means the scan placed every record.</summary>
     internal int SkippedRecordCount { get; set; }
@@ -71,7 +71,7 @@ public sealed class SyntheticMftProducer
             new SyntheticBlockOptions
             {
                 JournalCursor = cursor,
-                Completed = Completed,
+                ScanTimestamp = ScanTimestamp,
                 CacheTag = request.CacheTag
             }, _rowsForDrive(request.Drive)), cursor, request.Drive);
     }

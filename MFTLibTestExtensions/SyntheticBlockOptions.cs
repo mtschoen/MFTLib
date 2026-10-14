@@ -15,7 +15,7 @@ public sealed record SyntheticBlockOptions
     public SyntheticJournalCursor JournalCursor { get; init; }
 
     /// <summary>Becomes <see cref="DriveBlockStatus.ScanTimestamp" /> when an index adopts the block, so a test about scan age sets it explicitly.</summary>
-    public DateTime Completed { get; init; }
+    public DateTime ScanTimestamp { get; init; }
 
     /// <summary>A warm start adopts the block only when this equals the <see cref="FileIndexOptions.CacheTag" /> the index is opened with.</summary>
     public CacheTag CacheTag { get; init; }

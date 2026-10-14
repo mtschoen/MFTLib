@@ -120,7 +120,7 @@ public class CacheDirectoryInspectionTests
             Assert.AreEqual(CachedBlockAvailability.Available, status.Availability);
             Assert.IsNull(status.Validation);
             Assert.AreEqual(VolumeSerial, status.File.VolumeSerial);
-            Assert.AreEqual(new FileInfo(status.File.Path).Length, status.File.SizeBytes);
+            Assert.AreEqual(new FileInfo(status.File.Path).Length, status.File.Size);
             AssertReleased(status.File.Path);
         }
         File.Delete(enumeration);

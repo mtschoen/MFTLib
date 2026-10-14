@@ -325,7 +325,7 @@ merely stop, the journal moved past where it had reached. `Drive` and `Apply`
 faults recover by rescanning automatically; `Channel` faults do not. A scan-time
 loss records `JournalCheckpointLossDetection.ScanCatchUp`, publishes the complete
 but unresumable block, and retries the scan until automatic recovery is exhausted.
-`DriveWatchStatus.RecoveryStopped` records that decision. Subscribe to `FileIndex.WatchFaulted` to
+`DriveWatchStatus.IsRecoveryStopped` records that decision. Subscribe to `FileIndex.WatchFaulted` to
 observe live and scan-time losses. The report is recorded before the fault is
 announced, so a handler that reads `index.Drives` already has it.
 
@@ -337,7 +337,7 @@ index.WatchFaulted += fault => Console.Error.WriteLine(
 ```
 
 It is true for Drive and Apply, and for CatchUpLost carrying a
-`JournalCatchUpLostException` whose `RecoveryStopped` is false. Other faults return
+`JournalCatchUpLostException` whose `IsRecoveryStopped` is false. Other faults return
 false, including Subscriber faults whose watches continue running. The value describes
 that notification, not subsequent watch health.
 
@@ -441,7 +441,7 @@ slow, stopped, or failed drive does not end another drive's operation.
 At minimum, the application must dispatch broker mode before normal startup:
 
 ```csharp
-if (ElevatedEntryPoint.TryHandle(Environment.GetCommandLineArgs()))
+if (ElevatedEntryPoint.RunBrokerIfRequested(Environment.GetCommandLineArgs()))
 {
     return;
 }
@@ -574,7 +574,7 @@ to a directory walk. Enumeration runs only when that drive's policy selects it.
 source fails that drive's scan as `ProducerFailed` with the configuration error
 message. Enumeration drives accept a null source. Only MFT-backed drives with a
 watch-capable source support watching; enumeration siblings report
-`Watch.Supported == false` and batched watch starts report `NotApplicable` for them.
+`Watch.IsSupported == false` and batched watch starts report `NotApplicable` for them.
 A cache block's producer must match the drive's policy: a mismatch is rejected
 under the owner lock and cold-scanned on a normal open, or reported as
 `CacheDeclined` when `CacheMode.ExistingOnly` forbids a scan.
@@ -604,7 +604,7 @@ without replacing the canonical cache. The lock is released on disposal and by t
 system if the process dies, so a killed index never strands its cache slot. Every block-file
 delete is reported through `FileIndexOptions.Diagnostics` with the path and the reason.
 
-`FileIndexOptions.OpenProgress` reports open-time progress per drive: `OpenAsync`
+`FileIndexOptions.DriveOpenProgress` reports open-time progress per drive: `OpenAsync`
 fires one `IndexDriveOpened` for each drive that settles, synchronously on the
 thread that settled it: warm-started from cache, cold-scanned, declined by
 `CacheMode.ExistingOnly`, offline, or failed. A cancelled or failed open may have
@@ -618,16 +618,16 @@ the last callback to arrive. A declined or failed drive still counts toward the 
 still reports. Block ordinals follow first block adoption, which can precede final settling;
 `FileIndex.Drives` keeps the configured order. It defaults to null, which reports
 and allocates nothing, and it fires on warm starts too, unlike
-`FileIndexOptions.Progress`, which samples only while a producer runs.
+`FileIndexOptions.ScanProgress`, which samples only while a producer runs.
 `RescanAsync` stays silent: its caller already awaits the requested drives' results.
 Marshalling belongs to the `IProgress<T>` implementation, the same convention
-`FileIndexOptions.Progress` uses.
+`FileIndexOptions.ScanProgress` uses.
 
 A cold drive that loses its journal catch-up is scanned again by its own settle,
 until automatic recovery is exhausted, and settles `Ready`
 with its last block unresumable if every attempt lost it. `OpenAsync` raises no
 `WatchFaulted` event because the caller cannot subscribe before it returns; inspect
-`DriveWatchStatus.RecoveryStopped`, `CheckpointLoss`, `FailureMessage`, and
+`DriveWatchStatus.IsRecoveryStopped`, `CheckpointLoss`, `FailureMessage`, and
 `State` instead. The drive's watch is refused until a manual `RescanAsync`
 produces a resumable block. The refusal retains the watch request, so a successful
 rescan clears the refusal and starts the watch.
@@ -758,7 +758,7 @@ with the native error message. Common causes include:
 - `CatchUpLost`: a scan completed, but the journal no longer held the cursor armed before
   it. The exception is `JournalCatchUpLostException`; the drive records a
   `JournalCheckpointLossDetection.ScanCatchUp` report and rescans itself until
-  `DriveWatchStatus.RecoveryStopped` is true. A successful catch-up clears the flag;
+  `DriveWatchStatus.IsRecoveryStopped` is true. A successful catch-up clears the flag;
   failed or cancelled scans and stopping the watch preserve it.
 - `Channel`: the drive pipe was lost or ended without a stop. This fault does not recover
   automatically.
@@ -790,8 +790,8 @@ index.WatchFaulted += fault =>
         case WatchFaultKind.CatchUpLost
             when fault.Exception is JournalCatchUpLostException lost:
             Console.WriteLine(
-                $"Drive {fault.Drive}: recovery stopped {status.Watch.RecoveryStopped}, " +
-                $"stopped {lost.RecoveryStopped}, report {status.Watch.CheckpointLoss?.DetectedDuring}");
+                $"Drive {fault.Drive}: recovery stopped {status.Watch.IsRecoveryStopped}, " +
+                $"stopped {lost.IsRecoveryStopped}, report {status.Watch.CheckpointLoss?.DetectedDuring}");
             break;
 
         case WatchFaultKind.Channel:
@@ -820,7 +820,7 @@ whose `Watch` carries the drive's next `DriveWatchStatus.StateVersion`, before t
 caused it, so a recovery reads `Recovering`, then `CatchingUp`, then `CaughtUp` with no
 polling. One drive's events arrive in version order; a consumer that also reads `Drives`
 applies an event only when its `Watch.StateVersion` is newer than the last it applied for that drive. When a lost catch-up
-reaches the retry limit, `JournalCatchUpLostException.RecoveryStopped` is true, the drive
+reaches the retry limit, `JournalCatchUpLostException.IsRecoveryStopped` is true, the drive
 keeps its last queryable block, and its watch is refused until a manual rescan succeeds.
 
 `StopWatchingAsync` consumes each requested watch's outstanding fault once,

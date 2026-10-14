@@ -19,14 +19,14 @@ public sealed partial class FileIndex
     ///         <see cref="DriveWatchStatus.FailureMessage" />, and leaves its
     ///         <see cref="DriveWatchStatus.State" /> at <see cref="WatchState.Faulted" />.
     ///         That failure, and a refusal over an unresumable block, still record the watch as
-    ///         requested (<see cref="DriveWatchStatus.Requested" />), so the rescan that replaces
+    ///         requested (<see cref="DriveWatchStatus.IsRequested" />), so the rescan that replaces
     ///         the block starts it.
     ///     </para>
     /// </summary>
     /// <exception cref="ArgumentException"><paramref name="driveLetter" /> is not part of this index.</exception>
     /// <exception cref="InvalidOperationException">
     ///     The drive has no MFT-backed block, <see cref="FileIndexOptions.MftSource" /> is not set or
-    ///     cannot watch (<see cref="MftIndexSource.Unavailable" />),
+    ///     cannot watch (<see cref="MftIndexSources.Unavailable" />),
     ///     or the drive's block cursor cannot be resumed, because a cache-only open adopted it
     ///     despite a lost journal checkpoint or because the scan that produced it lost its journal
     ///     catch-up: <see cref="RescanAsync" /> the drive first.

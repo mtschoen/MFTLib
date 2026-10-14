@@ -202,7 +202,7 @@ public class FileIndexQueryTests
             var exception = (ArgumentException)outcome;
             StringAssert.Contains(exception.Message, $"Drive {new DriveKey(driveLetter)} has no block (state: {state}).");
             Assert.IsFalse(exception.Message.Contains("not part of this index", StringComparison.Ordinal));
-            Assert.AreEqual(nameof(driveLetter), exception.ParamName);
+            Assert.AreEqual("drive", exception.ParamName);
         }
         finally
         {

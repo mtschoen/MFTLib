@@ -77,7 +77,7 @@ public class MftDumpValidationTests
         Assert.AreEqual(DriveState.Failed, drive.State, description);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, drive.Failure?.Kind, description);
         Assert.AreEqual(message, drive.Failure?.Message, description);
-        Assert.IsFalse(drive.Watch.Supported, description);
+        Assert.IsFalse(drive.Watch.IsSupported, description);
     }
 
     [TestMethod]
@@ -105,8 +105,8 @@ public class MftDumpValidationTests
         Assert.AreEqual(BlockSource.ProducedByScan, drive.Block!.Source);
         Assert.AreEqual(0, drive.Block.SkippedRecordCount);
         Assert.AreEqual(7u, drive.Block.LiveRowCount);
-        Assert.IsFalse(drive.Block.CompactionNeeded);
-        Assert.IsFalse(drive.Watch.Supported);
+        Assert.IsFalse(drive.Block.IsCompactionNeeded);
+        Assert.IsFalse(drive.Watch.IsSupported);
         Assert.IsNull(drive.Failure);
 
         var notes = index.Find("dump:/D/documents/Notes.txt")!.Value;
@@ -188,10 +188,10 @@ public class MftDumpValidationTests
         var parsing = samples.Where(sample => sample.Phase == IndexScanPhase.ParsingMft).ToArray();
         var transferring = samples.Where(sample => sample.Phase == IndexScanPhase.Transferring).ToArray();
         Assert.IsTrue(parsing.Length > 0);
-        Assert.AreEqual(16u, parsing[^1].RowsWritten);
-        Assert.AreEqual(16u, parsing[^1].TotalRows);
-        Assert.AreEqual(7u, transferring[^1].RowsWritten);
-        Assert.IsNull(transferring[^1].TotalRows);
+        Assert.AreEqual(16u, parsing[^1].WrittenRowCount);
+        Assert.AreEqual(16u, parsing[^1].ExpectedRowCount);
+        Assert.AreEqual(7u, transferring[^1].WrittenRowCount);
+        Assert.IsNull(transferring[^1].ExpectedRowCount);
         Assert.IsTrue(samples.All(sample => sample.Drive == 'D' && sample.Outcome is null));
         Assert.IsTrue(samples.IndexOf(parsing[^1]) < samples.IndexOf(transferring[0]),
             "the parse total is reported before the first transfer sample");

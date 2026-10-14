@@ -49,7 +49,7 @@ public class PublicMemberCallerTests
             "reached through string interpolation, which emits no member reference; file-wizard file-wizard/BlockCacheCatalog.cs:98 and git-wizard GitWizard/MftIndexCacheStatusFormatter.cs:50 print the stored and requested tags",
         ["method MFTLib.Index.FileEntry.Children(System.Threading.CancellationToken) : System.Collections.Generic.IReadOnlyList`1<MFTLib.Index.FileEntry>"] =
             "git-wizard GitWizard/GitWizardApi.IndexDiscovery.cs lists the children of a directory entry",
-        ["method MFTLib.Index.MftIndexSource.Unavailable(System.String) : MFTLib.Index.MftIndexSource"] =
+        ["method MFTLib.MftIndexSources.Unavailable(System.String) : MFTLib.Index.MftIndexSource"] =
             "file-wizard FileWizard/FileIndexHost.cs supplies a source for a host that may not scan",
         ["method MFTLib.Index.JournalCheckpointLoss.TryGetGrowthTarget(MFTLib.UsnJournalSettings&) : System.Boolean"] =
             "file-wizard file-wizard/JournalCommand.cs and FileWizardMaui.Logic/JournalSettingsPresenter.cs, and git-wizard GitWizardUI/ViewModels/MainViewModel.Journals.cs use the recorded target for explicit journal growth"

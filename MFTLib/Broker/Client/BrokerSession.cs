@@ -114,7 +114,7 @@ public sealed class BrokerSession : IAsyncDisposable
     /// </summary>
     /// <param name="scanOptions">
     ///     Base options for every scan: retention and freed-record inclusion. Scan progress arrives through
-    ///     <see cref="MFTLib.Index.FileIndexOptions.Progress" />.
+    ///     <see cref="MFTLib.Index.FileIndexOptions.ScanProgress" />.
     /// </param>
     /// <returns>A source whose scans and watches run on this session's process.</returns>
     public MftIndexSource CreateIndexSource(MftScanOptions? scanOptions = null) =>

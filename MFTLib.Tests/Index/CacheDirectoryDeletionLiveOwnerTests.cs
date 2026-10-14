@@ -46,7 +46,7 @@ public class CacheDirectoryDeletionLiveOwnerTests
             Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial, ProducerPolicy.Enumeration)],
             CacheDirectory = _cacheDirectory,
             CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
-            Progress = progress
+            ScanProgress = progress
         };
     }
 

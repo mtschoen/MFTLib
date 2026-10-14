@@ -66,7 +66,7 @@ public sealed partial class FileIndex
 
                 var lost = RecordLostCatchUp(runtime, catchUpLoss, attempt.ConsecutiveLostCatchUps);
                 RaiseWatchFaulted(new WatchFault(WatchFaultKind.CatchUpLost, runtime.Drive, lost));
-                if (lost.RecoveryStopped)
+                if (lost.IsRecoveryStopped)
                 {
                     throw lost;
                 }
@@ -146,7 +146,7 @@ public sealed partial class FileIndex
             ReleaseSupersededOpenedBlock(adopted, retired);
             adopted = newlyAdopted;
             if (settled.CatchUpLoss is not { } catchUpLoss ||
-                RecordLostCatchUp(runtime, catchUpLoss, consecutiveLostCatchUps).RecoveryStopped)
+                RecordLostCatchUp(runtime, catchUpLoss, consecutiveLostCatchUps).IsRecoveryStopped)
             {
                 return;
             }

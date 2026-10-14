@@ -316,7 +316,7 @@ public partial class FileIndexWatchStateChangedTests
             ]);
         }
 
-        Assert.IsTrue(stopped.RecoveryStopped);
+        Assert.IsTrue(stopped.IsRecoveryStopped);
         await DriveResultAssertions.FailureAsync<InvalidOperationException>(
             () => harness.Index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard));
 

@@ -22,7 +22,7 @@ public sealed record CachedBlockFile
         Drive = driveLetter;
         VolumeSerial = volumeSerial;
         Path = path;
-        SizeBytes = sizeBytes;
+        Size = sizeBytes;
         LastWriteTime = lastWriteTimeUtc;
     }
 
@@ -36,7 +36,7 @@ public sealed record CachedBlockFile
     public string Path { get; init; }
 
     /// <summary>The on-disk length at enumeration time, which a concurrent writer may since have changed.</summary>
-    public long SizeBytes { get; init; }
+    public long Size { get; init; }
 
     /// <summary>The file's last-write time, always in UTC.</summary>
     public DateTime LastWriteTime { get; init; }

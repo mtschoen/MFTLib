@@ -29,7 +29,7 @@ public enum WatchFaultKind
     ///     before the scan could no longer be read when the scan finished. The exception is a
     ///     <see cref="JournalCatchUpLostException" />. The scan's block is published but cannot be
     ///     watched from its cursor. Raised by the scan operation, which rescans the drive at once
-    ///     unless <see cref="JournalCatchUpLostException.RecoveryStopped" /> says automatic recovery
+    ///     unless <see cref="JournalCatchUpLostException.IsRecoveryStopped" /> says automatic recovery
     ///     from consecutive scan catch-up losses has stopped.
     /// </summary>
     CatchUpLost,
@@ -87,11 +87,11 @@ public sealed record WatchFault
 
     /// <summary>
     ///     Whether automatic recovery accompanies this notification: a drive or apply fault, or
-    ///     a scan catch-up loss whose <see cref="JournalCatchUpLostException.RecoveryStopped" /> is false.
+    ///     a scan catch-up loss whose <see cref="JournalCatchUpLostException.IsRecoveryStopped" /> is false.
     ///     This classifies the reported fault, not the drive's subsequent live-watch health.
     /// </summary>
     public bool IsRecovering =>
         Kind is WatchFaultKind.Drive or WatchFaultKind.Apply ||
         Kind == WatchFaultKind.CatchUpLost &&
-        Exception is JournalCatchUpLostException { RecoveryStopped: false };
+        Exception is JournalCatchUpLostException { IsRecoveryStopped: false };
 }

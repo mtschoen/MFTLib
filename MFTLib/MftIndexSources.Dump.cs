@@ -9,7 +9,7 @@ public static partial class MftIndexSources
     ///     virtual drive. It needs no elevation and no broker, and it works on every platform.
     ///     Open the index by setting <see cref="FileIndexOptions.MftSource" /> to the result and nothing
     ///     else about drives or cache: the source supplies its one virtual drive (the normalized
-    ///     upper-case <paramref name="driveLetter" />, root <c>"dump:/" + letter</c>, serial zero, MFT producer),
+    ///     upper-case <paramref name="drive" />, root <c>"dump:/" + letter</c>, serial zero, MFT producer),
     ///     which <see cref="FileIndex.Drives" /> and <see cref="FileIndex.Root" /> then report. Setting
     ///     <see cref="FileIndexOptions.Drives" />, <see cref="FileIndexOptions.CacheMode" /> (any value),
     ///     <see cref="FileIndexOptions.CacheDirectory" /> or <see cref="FileIndexOptions.CacheTag" /> makes
@@ -24,18 +24,18 @@ public static partial class MftIndexSources
     ///     <see cref="DriveFailure.Message" />. Each scan and rescan opens the path
     ///     anew and reads only the file it opened, so the file must not be rewritten in place during a scan.
     /// </param>
-    /// <param name="driveLetter">The logical drive key the index files the dump under.</param>
+    /// <param name="drive">The logical drive key the index files the dump under.</param>
     /// <returns>The source to assign to <see cref="FileIndexOptions.MftSource" />.</returns>
     /// <exception cref="ArgumentException"><paramref name="filePath" /> is null, empty or white space.</exception>
-    /// <exception cref="ArgumentException"><paramref name="driveLetter" /> is the default key.</exception>
-    public static MftIndexSource FromMftDumpFile(string filePath, DriveKey driveLetter)
+    /// <exception cref="ArgumentException"><paramref name="drive" /> is the default key.</exception>
+    public static MftIndexSource FromMftDumpFile(string filePath, DriveKey drive)
     {
         if (string.IsNullOrWhiteSpace(filePath))
         {
             throw new ArgumentException("A dump file path is required.", nameof(filePath));
         }
 
-        var identity = new MftDumpSourceIdentity(filePath, driveLetter);
+        var identity = new MftDumpSourceIdentity(filePath, drive);
         var producer = new MftDumpBlockProducer(identity.DumpFilePath);
         return new MftIndexSource(producer.ProduceAsync, dumpIdentity: identity);
     }

@@ -4,7 +4,7 @@ public sealed partial class FileIndex
 {
     /// <summary>
     ///     Settles every configured drive and returns once each has settled: one task per drive,
-    ///     each reporting <see cref="FileIndexOptions.OpenProgress" /> from its own thread when it
+    ///     each reporting <see cref="FileIndexOptions.DriveOpenProgress" /> from its own thread when it
     ///     settles. The tasks are awaited all together, so a failure or a cancellation is thrown
     ///     only after every other drive's settle has finished, which is what lets the caller
     ///     release every block that was adopted. The configured drives are recorded before the
@@ -38,7 +38,7 @@ public sealed partial class FileIndex
 
     /// <summary>
     ///     Settles one drive, then reports its settled state to
-    ///     <see cref="FileIndexOptions.OpenProgress" /> synchronously on the calling thread with no
+    ///     <see cref="FileIndexOptions.DriveOpenProgress" /> synchronously on the calling thread with no
     ///     lock held. The drive's <see cref="IndexDriveOpened.SettledDriveCount" /> was claimed under
     ///     <see cref="_stateLock" /> when its final state was recorded, so a callback that is slow
     ///     or blocked holds up no other drive, and reports may overlap and arrive out of count order.
@@ -47,7 +47,7 @@ public sealed partial class FileIndex
     {
         cancellationToken.ThrowIfCancellationRequested();
         await AddDriveAsync(drive, cancellationToken).ConfigureAwait(false);
-        if (_options.OpenProgress is not { } openProgress)
+        if (_options.DriveOpenProgress is not { } openProgress)
         {
             return;
         }
@@ -227,7 +227,7 @@ public sealed partial class FileIndex
     ///     are already durable in the returned <see cref="MftBlockProduceResult.Block" />'s header by
     ///     the time it gets here (the producer stamps them before its own <c>Complete()</c> call, the
     ///     one flush-safe place to do it), so this method does not write them again.
-    ///     <see cref="DescribeOnlineDriveBlock" /> derives <see cref="DriveBlockStatus.CompactionNeeded" /> from the
+    ///     <see cref="DescribeOnlineDriveBlock" /> derives <see cref="DriveBlockStatus.IsCompactionNeeded" /> from the
     ///     header's own <see cref="BlockFlags.CompactionNeeded" /> flag, which the producer sets on
     ///     the block directly. The cursor is instead used for a consistency check: a producer that
     ///     reports one cursor but stamped a different one into the block it built violated its own
@@ -244,7 +244,7 @@ public sealed partial class FileIndex
             VolumeSerial = drive.VolumeSerial,
             BlockPath = blockPath,
             DeleteOnClose = deleteOnClose,
-            Progress = _options.Progress,
+            Progress = _options.ScanProgress,
             CacheTag = _options.CacheTag
         };
 
@@ -417,7 +417,7 @@ public sealed partial class FileIndex
                 Drive = drive.Drive
             });
 
-            var result = producer.Produce(writer, _options.Progress, cancellationToken);
+            var result = producer.Produce(writer, _options.ScanProgress, cancellationToken);
             writer.Complete(DateTime.UtcNow, null);
             var completed = new BlockScanResult(block, result);
             block = null;

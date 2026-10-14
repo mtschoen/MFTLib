@@ -57,7 +57,7 @@ public sealed record FileIndexOptions
     ///     transfer phase carry no such catch, so a throw from either fails the scan. Marshalling
     ///     belongs to the <see cref="IProgress{T}" /> implementation.
     /// </summary>
-    public IProgress<IndexScanProgress>? Progress { get; init; }
+    public IProgress<IndexScanProgress>? ScanProgress { get; init; }
 
     /// <summary>
     ///     Open-time per-drive progress: <see cref="FileIndex.OpenAsync" /> reports one
@@ -72,12 +72,12 @@ public sealed record FileIndexOptions
     ///     received. A declined or failed drive still counts toward the total and still reports.
     ///     Null (the default) reports and allocates nothing. Only the initial open reports;
     ///     <see cref="FileIndex.RescanAsync" /> stays silent, because its caller already awaits
-    ///     the requested drives' results. Unlike <see cref="Progress" />, which samples only while a
+    ///     the requested drives' results. Unlike <see cref="ScanProgress" />, which samples only while a
     ///     producer runs, this fires on warm starts too. Marshalling belongs to the
-    ///     <see cref="IProgress{T}" /> implementation, the same convention <see cref="Progress" />
+    ///     <see cref="IProgress{T}" /> implementation, the same convention <see cref="ScanProgress" />
     ///     uses.
     /// </summary>
-    public IProgress<IndexDriveOpened>? OpenProgress { get; init; }
+    public IProgress<IndexDriveOpened>? DriveOpenProgress { get; init; }
 
     /// <summary>
     ///     Receives human-readable block-file deletion lines and cache-tag mismatch lines.

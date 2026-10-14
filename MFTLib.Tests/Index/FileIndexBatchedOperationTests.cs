@@ -305,9 +305,9 @@ public class FileIndexBatchedOperationTests
 
         Assert.AreEqual(DriveOperationOutcome.Failed, results[0].Outcome);
         var lost = (JournalCatchUpLostException)results[0].Failure!;
-        Assert.IsTrue(lost.RecoveryStopped);
-        Assert.IsTrue(harness.DriveFor('T').Watch.RecoveryStopped);
-        Assert.IsFalse(harness.DriveFor('U').Watch.RecoveryStopped);
+        Assert.IsTrue(lost.IsRecoveryStopped);
+        Assert.IsTrue(harness.DriveFor('T').Watch.IsRecoveryStopped);
+        Assert.IsFalse(harness.DriveFor('U').Watch.IsRecoveryStopped);
         Assert.AreEqual(3, harness.DriveFor('T').Watch.ConsecutiveLostCatchUps);
         StringAssert.Contains(lost.Message, "12288", "the message carries the journal size to grow to");
         Assert.AreEqual(DriveOperationOutcome.Succeeded, results[1].Outcome);
@@ -323,7 +323,7 @@ public class FileIndexBatchedOperationTests
         var thrown = await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(
             () => harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard));
 
-        Assert.IsTrue(thrown.RecoveryStopped);
+        Assert.IsTrue(thrown.IsRecoveryStopped);
         Assert.AreEqual(3, harness.DriveFor('T').Watch.ConsecutiveLostCatchUps);
         StringAssert.Contains(thrown.Message, "12288");
     }

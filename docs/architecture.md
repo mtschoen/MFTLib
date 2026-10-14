@@ -19,13 +19,13 @@
       case-insensitive on every platform; `MftDumpPaths` owns those rules and touches no filesystem. The block
       carries `DriveBlock.IsMftDump`, and the index never probes the root, opens the entry (`FileEntry.Open` throws
       `InvalidOperationException`), answers journal settings (`QueryUsnJournalSettings` throws) or watches it:
-       `DriveWatchStatus.Supported` is false, and start, stop and catch-up report
+       `DriveWatchStatus.IsSupported` is false, and start, stop and catch-up report
       `NotApplicable` with no failure. Opening validates the options before any cache path is resolved or created: `Drives`, `CacheMode` (every value,
       `Disabled` included), `CacheDirectory` and `CacheTag` must all be unset, each rejection an `ArgumentException` naming the setting. The index
       then configures the identity's one virtual drive itself (the upper-case letter, root `dump:/{DRIVE}`, `VolumeSerial` zero,
-      `ProducerPolicy.Mft`) and opens it as `CacheMode.Disabled`, so `Drives`, `Root(drive)` and the settle see it; a dump block is never written to or adopted from a cache. `DriveWatchStatus.Supported` is false for
+      `ProducerPolicy.Mft`) and opens it as `CacheMode.Disabled`, so `Drives`, `Root(drive)` and the settle see it; a dump block is never written to or adopted from a cache. `DriveWatchStatus.IsSupported` is false for
       a dump drive and for any drive whose source has no watch source, the same fact a watch start's refusal uses.
-    - **MFT dump source**: `MftIndexSources.FromMftDumpFile(filePath, driveLetter)` is the only way to build a dump
+    - **MFT dump source**: `MftIndexSources.FromMftDumpFile(filePath, drive)` is the only way to build a dump
        source. It checks its path (`A dump file path is required.`) and rejects the default drive key,
        makes the path absolute once and never opens the file; every scan and rescan opens the path anew, so
       a missing or rejected dump is a `ProducerFailed` drive, or a failed rescan that keeps the last block, with the
@@ -118,12 +118,12 @@
     - **MFT source**: `FileIndexOptions.MftSource` is one `MftIndexSource` carrying the block
       producer and the watch source of every MFT-backed drive, so the two cannot come from
       different connections. `BrokerSession.CreateIndexSource()` builds the broker-backed
-      one; `MftIndexSource.Unavailable(reason)` fails every scan and watch start with
+      one; `MftIndexSources.Unavailable(reason)` fails every scan and watch start with
       `Drive {letter}: {reason}.`. `MftIndexSources.FromLocalVolumes(scanOptions)` builds the in-process one for a caller
       that is already elevated: `LocalMftBlockProducer` plans capacity from the volume geometry,
       creates the requested block and fills it through `MftBlockScan.WriteToBlock`, stamping the live
       journal cursor armed before a cached scan, with no broker process or pipe. It has no watch source, so watch start and
-       catch-up report `NotApplicable`, and `DriveWatchStatus.Supported` is false. Concurrent
+       catch-up report `NotApplicable`, and `DriveWatchStatus.IsSupported` is false. Concurrent
       direct live-volume and dump scans share the process's parse threads through `ParseThreadAllocator`. Cache reopening
       adopts only when the journal identifier matches and its next USN exactly equals the stamped cursor;
       recreation, trimming or movement causes a rescan, with `JournalAdvanced` reporting movement

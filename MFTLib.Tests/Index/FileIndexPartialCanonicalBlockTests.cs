@@ -78,7 +78,7 @@ public class FileIndexPartialCanonicalBlockTests
         {
             Drives = [new IndexedDrive('T', _treeRoot, VolumeSerial, ProducerPolicy.Enumeration)],
             CacheDirectory = _cacheDirectory,
-            Progress = new CancelingProgress(cancellation),
+            ScanProgress = new CancelingProgress(cancellation),
             Diagnostics = diagnostics.Add
         };
 

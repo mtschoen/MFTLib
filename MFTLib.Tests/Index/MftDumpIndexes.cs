@@ -49,7 +49,7 @@ internal static class MftDumpIndexes
             new SyntheticBlockOptions
             {
                 JournalCursor = new SyntheticJournalCursor(7, 4096),
-                Completed = Moment,
+                ScanTimestamp = Moment,
                 CacheTag = request.CacheTag
             }, Rows());
 
@@ -58,11 +58,11 @@ internal static class MftDumpIndexes
 
     static IEnumerable<SyntheticRow> Rows()
     {
-        yield return new SyntheticRow(0, "$MFT", 0) { Modified = Moment };
-        yield return new SyntheticRow(5, ".", 5) { IsDirectory = true, Modified = Moment };
-        yield return new SyntheticRow(6, "documents", 5) { IsDirectory = true, Modified = Moment };
-        yield return new SyntheticRow(7, "Notes.txt", 6) { Size = 11, Modified = Moment };
-        yield return new SyntheticRow(8, "Deep", 6) { IsDirectory = true, Modified = Moment };
-        yield return new SyntheticRow(9, "leaf.txt", 8) { Size = 22, Modified = Moment };
+        yield return new SyntheticRow(0, "$MFT", 0) { LastWriteTime = Moment };
+        yield return new SyntheticRow(5, ".", 5) { IsDirectory = true, LastWriteTime = Moment };
+        yield return new SyntheticRow(6, "documents", 5) { IsDirectory = true, LastWriteTime = Moment };
+        yield return new SyntheticRow(7, "Notes.txt", 6) { Size = 11, LastWriteTime = Moment };
+        yield return new SyntheticRow(8, "Deep", 6) { IsDirectory = true, LastWriteTime = Moment };
+        yield return new SyntheticRow(9, "leaf.txt", 8) { Size = 22, LastWriteTime = Moment };
     }
 }

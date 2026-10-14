@@ -50,7 +50,7 @@ public class FileIndexScanFinishedTests
             Drives = drives.Select(drive => drive with { ProducerPolicy = producerPolicy }).ToArray(),
             CacheDirectory = _cacheDirectory,
             MftSource = mftProducer is null ? null : new MftIndexSource(mftProducer),
-            Progress = new SynchronousProgress<IndexScanProgress>(samples.Enqueue)
+            ScanProgress = new SynchronousProgress<IndexScanProgress>(samples.Enqueue)
         };
     }
 
@@ -93,7 +93,7 @@ public class FileIndexScanFinishedTests
         {
             var finished = FinishedOf(samples, driveLetter);
             Assert.AreEqual(IndexScanOutcome.Succeeded, finished.Outcome);
-            Assert.IsTrue(finished.RowsWritten > 0);
+            Assert.IsTrue(finished.WrittenRowCount > 0);
             Assert.IsTrue(samples.Any(sample =>
                 sample.Drive == driveLetter && sample.Phase == IndexScanPhase.Enumerating));
         }
@@ -127,7 +127,7 @@ public class FileIndexScanFinishedTests
 
         var finished = FinishedOf(samples, 'T');
         Assert.AreEqual(IndexScanOutcome.Failed, finished.Outcome);
-        Assert.AreEqual(0u, finished.RowsWritten);
+        Assert.AreEqual(0u, finished.WrittenRowCount);
     }
 
     [TestMethod]
@@ -183,7 +183,7 @@ public class FileIndexScanFinishedTests
         var options = Options([new IndexedDrive('T', CreateDriveRoot("first"), 1)], new ConcurrentQueue<IndexScanProgress>(),
             ProducerPolicy.Mft, (request, _) => ProduceBlock(request)) with
         {
-            Progress = new ThrowingOnFinished(),
+            ScanProgress = new ThrowingOnFinished(),
             Diagnostics = diagnostics.Enqueue
         };
 
@@ -199,7 +199,7 @@ public class FileIndexScanFinishedTests
         var options = Options([new IndexedDrive('T', CreateDriveRoot("first"), 1)], new ConcurrentQueue<IndexScanProgress>(),
             ProducerPolicy.Mft, (_, _) => throw new OperationCanceledException()) with
         {
-            Progress = new ThrowingOnFinished()
+            ScanProgress = new ThrowingOnFinished()
         };
 
         await Assert.ThrowsExceptionAsync<OperationCanceledException>(async () =>
@@ -214,7 +214,7 @@ public class FileIndexScanFinishedTests
         var options = Options([new IndexedDrive('T', CreateDriveRoot("first"), 1)], new ConcurrentQueue<IndexScanProgress>(),
             ProducerPolicy.Mft, (request, _) => ProduceBlock(request)) with
         {
-            Progress = new ThrowingOnFinished(),
+            ScanProgress = new ThrowingOnFinished(),
             Diagnostics = _ => throw new InvalidOperationException("diagnostics boom")
         };
 
@@ -231,7 +231,7 @@ public class FileIndexScanFinishedTests
         var options = Options([new IndexedDrive('T', CreateDriveRoot("first"), 1)], new ConcurrentQueue<IndexScanProgress>(),
             ProducerPolicy.Mft, (_, _) => throw new OperationCanceledException()) with
         {
-            Progress = new ThrowingOnFinished(),
+            ScanProgress = new ThrowingOnFinished(),
             Diagnostics = _ => throw new InvalidOperationException("diagnostics boom")
         };
 

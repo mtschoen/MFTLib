@@ -11,7 +11,7 @@ MFTLib.BrokerSession :: method public DisposeAsync() : System.Threading.Tasks.Va
 MFTLib.BrokerSession :: method public GrowUsnJournalAsync(MFTLib.Index.DriveKey drive, MFTLib.UsnJournalSettings target, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.UsnJournalSettings>
 MFTLib.BrokerSession :: property public Ended { get; } : System.Threading.Tasks.Task<string>
 MFTLib.BrokerSession :: type public sealed class : System.IAsyncDisposable
-MFTLib.ElevatedEntryPoint :: method public static TryHandle(string[] arguments) : bool
+MFTLib.ElevatedEntryPoint :: method public static RunBrokerIfRequested(string[] arguments) : bool
 MFTLib.ElevatedEntryPoint :: type public static class
 MFTLib.ElevationUtilities :: field public static readonly DefaultElevatedTimeout : System.TimeSpan
 MFTLib.ElevationUtilities :: method public static TryAddDefenderProcessExclusions(System.Collections.Generic.IReadOnlyList<string> processNames, System.Collections.Generic.IReadOnlyList<string> relaunchArguments, MFTLib.IElevationProvider? elevation = default) : bool
@@ -22,7 +22,8 @@ MFTLib.IElevationProvider :: method public abstract IsElevated() : bool
 MFTLib.IElevationProvider :: method public abstract TryRunElevated(System.Collections.Generic.IReadOnlyList<string> arguments, System.TimeSpan timeout) : bool
 MFTLib.IElevationProvider :: type public interface
 MFTLib.MftIndexSources :: method public static FromLocalVolumes(MFTLib.MftScanOptions? scanOptions = default) : MFTLib.Index.MftIndexSource
-MFTLib.MftIndexSources :: method public static FromMftDumpFile(string filePath, MFTLib.Index.DriveKey driveLetter) : MFTLib.Index.MftIndexSource
+MFTLib.MftIndexSources :: method public static FromMftDumpFile(string filePath, MFTLib.Index.DriveKey drive) : MFTLib.Index.MftIndexSource
+MFTLib.MftIndexSources :: method public static Unavailable(string reason) : MFTLib.Index.MftIndexSource
 MFTLib.MftIndexSources :: type public static class
 MFTLib.MftScanOptions :: constructor public ()
 MFTLib.MftScanOptions :: method public <Clone>$() : MFTLib.MftScanOptions

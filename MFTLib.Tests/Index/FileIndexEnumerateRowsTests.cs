@@ -62,7 +62,7 @@ public class FileIndexEnumerateRowsTests
         AssertRowsMatchSearch(index, new SearchQuery("*.md", NameMatchMode.Glob));
         AssertRowsMatchSearch(index, new SearchQuery("readme"));
         AssertRowsMatchSearch(index, new SearchQuery("readme.md", NameMatchMode.Exact));
-        AssertRowsMatchSearch(index, new SearchQuery(null, MinimumSize: 100));
+        AssertRowsMatchSearch(index, new SearchQuery(null, SizeMinimum: 100));
         AssertRowsMatchSearch(index, new SearchQuery(null, IncludeDeleted: true));
 
         var documents = index.Find(Path.Combine(FirstRoot, "Documents"))!.Value;

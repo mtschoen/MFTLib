@@ -26,7 +26,7 @@ public class SyntheticNotificationsTests
         Assert.AreEqual('T', file.Drive);
         Assert.AreEqual(7u, file.VolumeSerial);
         Assert.AreEqual(@"C:\cache\T-7.mlix", file.Path);
-        Assert.AreEqual(4096L, file.SizeBytes);
+        Assert.AreEqual(4096L, file.Size);
         Assert.AreEqual(Moment, file.LastWriteTime);
     }
 
@@ -211,9 +211,9 @@ public class SyntheticNotificationsTests
     {
         var exception = SyntheticNotifications.CreateJournalCatchUpLostException(true, "scan catch-up lost");
 
-        Assert.IsTrue(exception.RecoveryStopped);
+        Assert.IsTrue(exception.IsRecoveryStopped);
         Assert.AreEqual("scan catch-up lost", exception.Message);
-        Assert.IsFalse(SyntheticNotifications.CreateJournalCatchUpLostException(false, "again").RecoveryStopped);
+        Assert.IsFalse(SyntheticNotifications.CreateJournalCatchUpLostException(false, "again").IsRecoveryStopped);
     }
 
     [TestMethod]
@@ -242,8 +242,8 @@ public class SyntheticNotificationsTests
 
         Assert.AreEqual('T', progress.Drive);
         Assert.AreEqual(IndexScanPhase.Finished, progress.Phase);
-        Assert.AreEqual(9u, progress.RowsWritten);
-        Assert.AreEqual(10u, progress.TotalRows);
+        Assert.AreEqual(9u, progress.WrittenRowCount);
+        Assert.AreEqual(10u, progress.ExpectedRowCount);
         Assert.AreEqual(@"T:\dir", progress.CurrentDirectory);
         Assert.AreEqual(IndexScanOutcome.Succeeded, progress.Outcome);
     }
@@ -254,7 +254,7 @@ public class SyntheticNotificationsTests
         var progress = SyntheticNotifications.CreateIndexScanProgress('T', IndexScanPhase.ParsingMft, 1);
 
         Assert.AreEqual(new IndexScanProgress('T', IndexScanPhase.ParsingMft, 1), progress);
-        Assert.IsNull(progress.TotalRows);
+        Assert.IsNull(progress.ExpectedRowCount);
         Assert.IsNull(progress.CurrentDirectory);
         Assert.IsNull(progress.Outcome);
     }
@@ -264,7 +264,7 @@ public class SyntheticNotificationsTests
     {
         var status = SyntheticNotifications.CreateDriveStatus('T', DriveState.Ready,
             SyntheticNotifications.CreateDriveBlockStatus(BlockSource.WarmStartedFromCache, 40, true, Moment), null);
-        status = status with { Watch = status.Watch with { Supported = true } };
+        status = status with { Watch = status.Watch with { IsSupported = true } };
 
         Assert.AreEqual(
             new DriveStatus('T', DriveState.Ready)
@@ -273,19 +273,19 @@ public class SyntheticNotificationsTests
                 {
                     Source = BlockSource.WarmStartedFromCache,
                     LiveRowCount = 40,
-                    CompactionNeeded = true,
+                    IsCompactionNeeded = true,
                     ScanTimestamp = Moment
                 },
-                Watch = new DriveWatchStatus { Supported = true }
+                Watch = new DriveWatchStatus { IsSupported = true }
             },
             status);
         Assert.AreEqual('T', status.Drive);
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.AreEqual(BlockSource.WarmStartedFromCache, status.Block!.Source);
         Assert.AreEqual(40u, status.Block.LiveRowCount);
-        Assert.IsTrue(status.Block.CompactionNeeded);
+        Assert.IsTrue(status.Block.IsCompactionNeeded);
         Assert.AreEqual(Moment, status.Block.ScanTimestamp);
-        Assert.IsTrue(status.Watch.Supported);
+        Assert.IsTrue(status.Watch.IsSupported);
         Assert.IsNull(status.Failure);
         Assert.IsNull(status.Watch.FailureMessage);
         Assert.IsNull(status.Watch.CheckpointLoss);

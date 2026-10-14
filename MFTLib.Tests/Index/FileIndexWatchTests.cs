@@ -65,7 +65,7 @@ public class FileIndexWatchTests
                 new SyntheticRow(6, "Documents", 5) { IsDirectory = true },
                 new SyntheticRow(7, "readme.md", 6)
             ])
-            { Completed = ChangeMoment })
+            { ScanTimestamp = ChangeMoment })
         }, CancellationToken.None);
     }
 
@@ -104,8 +104,8 @@ public class FileIndexWatchTests
     [TestMethod]
     public async Task StartWatchingAsync_OnAMixedIndexWithoutASource_ReportsNotApplicable()
     {
-        Assert.IsFalse(_index.Drives[1].Watch.Supported);
-        Assert.IsFalse(_index.Drives[0].Watch.Supported, "no source offers a watch source");
+        Assert.IsFalse(_index.Drives[1].Watch.IsSupported);
+        Assert.IsFalse(_index.Drives[0].Watch.IsSupported, "no source offers a watch source");
         await DriveResultAssertions.NotApplicableAsync(
             () => _index.StartWatchingAsync(['T'], CancellationToken.None));
     }
@@ -270,14 +270,14 @@ public class FileIndexWatchTests
             journalIdentifier: 5, nextUsn: 300);
 
         Assert.AreEqual(DriveState.Ready, _index.Drives[0].State);
-        Assert.IsTrue(_index.Drives[0].Block!.CompactionNeeded);
+        Assert.IsTrue(_index.Drives[0].Block!.IsCompactionNeeded);
         Assert.IsNotNull(_index.Find(Path.Combine(_treeRoot, "Documents", "readme.md")));
 
         await _index.RescanAsync(['T'], CancellationToken.None);
 
         var replaced = _index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Ready, replaced.State);
-        Assert.IsFalse(replaced.Block!.CompactionNeeded);
+        Assert.IsFalse(replaced.Block!.IsCompactionNeeded);
         Assert.IsNotNull(_index.Find(Path.Combine(_treeRoot, "Documents", "readme.md")));
     }
 

@@ -24,7 +24,7 @@ public enum CacheMode
     ///     why the checkpoint could not be resumed. A later
     ///     <see cref="FileIndex.StartWatchingAsync" /> for such a drive returns a failed result carrying
     ///     <see cref="InvalidOperationException" /> (see <see cref="DriveWatchStatus.FailureMessage" />) and retains
-    ///     the watch request (<see cref="DriveWatchStatus.Requested" />) until a stop withdraws it or a successful
+    ///     the watch request (<see cref="DriveWatchStatus.IsRequested" />) until a stop withdraws it or a successful
     ///     <see cref="FileIndex.RescanAsync" /> gives the drive a fresh cursor and starts the watch.
     ///     Requires <see cref="FileIndexOptions.CacheDirectory" />.
     /// </summary>

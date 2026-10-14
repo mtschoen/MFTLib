@@ -91,7 +91,7 @@ public static class CacheDirectory
     ///     Rejected filenames are silently excluded unless <paramref name="rejectedFile" /> is supplied.
     /// </summary>
     /// <param name="cacheDirectoryPath">The cache directory to inspect.</param>
-    /// <param name="driveLetters">
+    /// <param name="drives">
     ///     Drive keys to include, or null for all. The default key is rejected. Filtering happens before any
     ///     lock attempt, so excluded blocks have no lock file opened or created.
     /// </param>
@@ -104,11 +104,11 @@ public static class CacheDirectory
     ///     and do not mutate the directory during enumeration.
     /// </param>
     public static IReadOnlyList<CachedBlockStatus> InspectCached(
-        string cacheDirectoryPath, IEnumerable<DriveKey>? driveLetters = null,
+        string cacheDirectoryPath, IEnumerable<DriveKey>? drives = null,
         Action<CachedBlockRejection>? rejectedFile = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(cacheDirectoryPath);
-        var selected = ValidateSelection(driveLetters);
+        var selected = ValidateSelection(drives);
         var statuses = new List<CachedBlockStatus>();
         foreach (var file in EnumerateCached(cacheDirectoryPath, rejectedFile))
         {
@@ -161,7 +161,7 @@ public static class CacheDirectory
     ///     Filenames this class did not write are silently excluded.
     /// </summary>
     /// <param name="cacheDirectoryPath">The cache directory to clear.</param>
-    /// <param name="driveLetters">Drive keys to include, or null for all. The default key is rejected.</param>
+    /// <param name="drives">Drive keys to include, or null for all. The default key is rejected.</param>
     /// <param name="diagnostics">
     ///     Optional synchronous success logger, invoked while ownership is held. It should return
     ///     promptly and not throw. Callback exceptions propagate after deletion; ownership is released.
@@ -172,9 +172,9 @@ public static class CacheDirectory
     ///     unrelated names and subdirectories are not candidates.
     /// </remarks>
     public static IReadOnlyList<CachedBlockDeletionResult> DeleteCached(
-        string cacheDirectoryPath, IEnumerable<DriveKey>? driveLetters = null,
+        string cacheDirectoryPath, IEnumerable<DriveKey>? drives = null,
         Action<string>? diagnostics = null)
-        => DeleteCached(cacheDirectoryPath, driveLetters, diagnostics, null);
+        => DeleteCached(cacheDirectoryPath, drives, diagnostics, null);
 
     /// <summary>
     ///     Eagerly deletes selected canonical cached blocks under their non-blocking slot locks.
@@ -184,7 +184,7 @@ public static class CacheDirectory
     ///     Results describe each attempt, not a reservation against later cache creation.
     /// </summary>
     /// <param name="cacheDirectoryPath">The cache directory to clear.</param>
-    /// <param name="driveLetters">Drive keys to include, or null for all. The default key is rejected.</param>
+    /// <param name="drives">Drive keys to include, or null for all. The default key is rejected.</param>
     /// <param name="diagnostics">
     ///     Optional synchronous success logger, invoked while ownership is held. It should return
     ///     promptly and not throw. Callback exceptions propagate after deletion; ownership is released.
@@ -203,11 +203,11 @@ public static class CacheDirectory
     ///     unrelated names and subdirectories are not candidates.
     /// </remarks>
     internal static IReadOnlyList<CachedBlockDeletionResult> DeleteCached(
-        string cacheDirectoryPath, IEnumerable<DriveKey>? driveLetters,
+        string cacheDirectoryPath, IEnumerable<DriveKey>? drives,
         Action<string>? diagnostics, Action<CachedBlockRejection>? rejectedFile)
     {
         ArgumentException.ThrowIfNullOrEmpty(cacheDirectoryPath);
-        var selected = ValidateSelection(driveLetters);
+        var selected = ValidateSelection(drives);
         var results = new List<CachedBlockDeletionResult>();
         foreach (var file in EnumerateCached(cacheDirectoryPath, rejectedFile))
         {

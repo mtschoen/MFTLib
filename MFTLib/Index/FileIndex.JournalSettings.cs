@@ -9,11 +9,11 @@ public sealed partial class FileIndex
     ///     a lost checkpoint in JournalCheckpointLoss; the consumer owns the decision to grow.
     ///     Resizing is an explicit elevated broker operation.
     /// </summary>
-    /// <param name="driveLetter">A configured drive key. The default key is invalid.</param>
+    /// <param name="drive">A configured drive key. The default key is invalid.</param>
     [SupportedOSPlatform("windows")]
-    public UsnJournalSettings QueryUsnJournalSettings(DriveKey driveLetter)
+    public UsnJournalSettings QueryUsnJournalSettings(DriveKey drive)
     {
-        var letter = RequireConfiguredDrive(driveLetter);
+        var letter = RequireConfiguredDrive(drive);
         if (IsMftDumpDrive(letter))
         {
             throw new InvalidOperationException(

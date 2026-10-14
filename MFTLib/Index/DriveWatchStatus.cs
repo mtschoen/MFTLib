@@ -11,7 +11,7 @@ public sealed record DriveWatchStatus
     }
 
     /// <summary>True only for an MFT-backed drive with a block whose source offers a watch source; false for a dump or a source without one.</summary>
-    public bool Supported { get; init; }
+    public bool IsSupported { get; init; }
 
     /// <summary>
     ///     True while this drive's watch is requested: from a
@@ -23,7 +23,7 @@ public sealed record DriveWatchStatus
     ///     starts a drive whose watch was not requested. A drive a batched start answered
     ///     <see cref="DriveOperationOutcome.NotApplicable" /> is not requested.
     /// </summary>
-    public bool Requested { get; init; }
+    public bool IsRequested { get; init; }
 
     /// <summary>
     ///     Where this drive's live watch stands. <see cref="WatchState.NotStarted" /> while the
@@ -34,7 +34,7 @@ public sealed record DriveWatchStatus
     ///     <see cref="WatchState.Recovering" /> while the index rebuilds a watched drive's block.
     ///     <see cref="WatchState.Faulted" /> when the watch failed or was refused, with detail in
     ///     <see cref="FailureMessage" />, including a drive whose automatic recovery failed
-    ///     (<see cref="RecoveryStopped" />) or whose cache-only open adopted a block with a lost
+    ///     (<see cref="IsRecoveryStopped" />) or whose cache-only open adopted a block with a lost
     ///     journal checkpoint that a start then refused.
     /// </summary>
     public WatchState State { get; init; }
@@ -84,7 +84,7 @@ public sealed record DriveWatchStatus
     ///     and stopping the watch preserve it; publishing a successful catch-up clears it.
     ///     Call <see cref="FileIndex.RescanAsync" /> to restore a resumable block.
     /// </summary>
-    public bool RecoveryStopped { get; init; }
+    public bool IsRecoveryStopped { get; init; }
 
     /// <summary>
     ///     Set when this drive's journal position fell out of the journal, so catching the

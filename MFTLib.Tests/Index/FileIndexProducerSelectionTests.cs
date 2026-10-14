@@ -316,7 +316,7 @@ public class FileIndexProducerSelectionTests
 
         Assert.AreEqual(2, invocationCount);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
-        Assert.IsFalse(index.Drives[0].Watch.Supported, "the source offers no watch source");
+        Assert.IsFalse(index.Drives[0].Watch.IsSupported, "the source offers no watch source");
         Assert.AreEqual(8192L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
         Assert.AreEqual(4096L, previousRoot.DriveBlock.Block.Header.UsnNextUsn);
         Assert.AreEqual(_treeRoot, previousRoot.Path);
@@ -335,7 +335,7 @@ public class FileIndexProducerSelectionTests
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
-        Assert.IsFalse(index.Drives[0].Watch.Supported, "the source offers no watch source");
+        Assert.IsFalse(index.Drives[0].Watch.IsSupported, "the source offers no watch source");
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
     }
 
@@ -484,7 +484,7 @@ public class FileIndexProducerSelectionTests
         Assert.IsNull(status.Failure);
         Assert.AreEqual(BlockSource.ProducedByScan, status.Block!.Source);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
-        Assert.IsFalse(status.Watch.Supported, "the source offers no watch source");
+        Assert.IsFalse(status.Watch.IsSupported, "the source offers no watch source");
         Assert.AreEqual(4096L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
     }
 

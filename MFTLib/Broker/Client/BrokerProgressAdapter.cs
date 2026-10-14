@@ -41,7 +41,7 @@ internal sealed class BrokerProgressAdapter(MftBlockProduceRequest request,
                 : IndexScanPhase.Transferring,
             (uint)Math.Min(sample.RecordsProcessed, uint.MaxValue))
         {
-            TotalRows = sample.TotalRecords is { } total
+            ExpectedRowCount = sample.TotalRecords is { } total
                 ? (uint)Math.Min(total, uint.MaxValue)
                 : null
         });

@@ -163,7 +163,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
             Options(ProduceMftShapedBlock, source, cacheOnly: true, driveT, driveU), Token);
         await index.StartWatchingAsync(['U'], Token);
         await RefuseStartAsync(index, 'T', Token);
-        Assert.IsTrue(index.Drives.Single(drive => drive.Drive == 'T').Watch.Requested,
+        Assert.IsTrue(index.Drives.Single(drive => drive.Drive == 'T').Watch.IsRequested,
             "a refused start records the request, as a start whose source threw does");
 
         await index.RescanAsync(['T'], Token);
@@ -174,7 +174,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         Assert.AreEqual(BlockSource.ProducedByScan, recovered.Block!.Source);
         Assert.IsNull(recovered.Watch.CheckpointLoss, "the rescan replaced the block the report described");
         Assert.IsNull(recovered.Watch.FailureMessage);
-        Assert.IsTrue(recovered.Watch.Requested);
+        Assert.IsTrue(recovered.Watch.IsRequested);
         Assert.AreEqual(WatchState.CatchingUp,
             index.Drives.Single(drive => drive.Drive == 'T').Watch.State);
         await source.WatchFor('T').Publish(new JournalBatch(
@@ -275,7 +275,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
             StringAssert.Contains(failure.Message, "no MFT-backed block");
             var status = index.Drives.Single();
             Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
-            Assert.IsFalse(status.Watch.Requested);
+            Assert.IsFalse(status.Watch.IsRequested);
             Assert.AreEqual(WatchState.NotStarted, status.Watch.State);
             Assert.AreEqual(1, source.TargetsFor('T').Count);
         }
@@ -321,7 +321,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
 
         var status = index.Drives.Single();
         Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
-        Assert.IsFalse(status.Watch.Requested);
+        Assert.IsFalse(status.Watch.IsRequested);
         Assert.AreEqual(WatchState.NotStarted, status.Watch.State);
         Assert.IsNull(status.Watch.FailureMessage, "the superseded watch's channel failure no longer describes the drive");
         await DriveResultAssertions.NotApplicableAsync(() => index.WaitForCatchUpAsync(['T'], Token));
@@ -365,10 +365,10 @@ public class FileIndexCacheOnlyUnresumableWatchTests
 
         // The refusal records the request, so a stop withdraws it without rethrowing the refusal,
         // which the start already threw; after that there is nothing left to stop.
-        Assert.IsTrue(status.Watch.Requested);
+        Assert.IsTrue(status.Watch.IsRequested);
         await index.StopWatchingAsync(['T'], Token);
         var stopped = index.Drives.Single();
-        Assert.IsFalse(stopped.Watch.Requested);
+        Assert.IsFalse(stopped.Watch.IsRequested);
         Assert.AreEqual(WatchState.NotStarted, stopped.Watch.State);
         await DriveResultAssertions.NotApplicableAsync(() => index.StopWatchingAsync(['T'], Token));
     }

@@ -97,7 +97,7 @@ partial class SampleHost
     {
         var counter = new DriveChangeCounter();
         index.WatchStateChanged += state => _writeLine($"  watch {state.Drive}: {state.Watch.State} (version {state.Watch.StateVersion}){(state.Fault is { } fault ? $", fault {fault.Kind}" : string.Empty)}");
-        index.WatchFaulted += fault => _writeLine($"  watch fault {fault.Drive}: {fault.Kind}: {fault.Exception.Message}{(fault.Exception is JournalCatchUpLostException lost ? $" (recovery stopped: {lost.RecoveryStopped})" : string.Empty)}");
+        index.WatchFaulted += fault => _writeLine($"  watch fault {fault.Drive}: {fault.Kind}: {fault.Exception.Message}{(fault.Exception is JournalCatchUpLostException lost ? $" (recovery stopped: {lost.IsRecoveryStopped})" : string.Empty)}");
         index.Changed += change =>
         {
             counter.Add();

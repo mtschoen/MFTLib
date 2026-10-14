@@ -189,7 +189,7 @@ public class DirectArgumentsTests
 
         Assert.IsTrue(query.CaseSensitive);
         Assert.AreEqual(false, query.IsDirectory);
-        Assert.AreEqual((1L, 9L), (query.MinimumSize, query.MaximumSize));
+        Assert.AreEqual((1L, 9L), (query.SizeMinimum, query.SizeMaximum));
         Assert.AreEqual(new DateTime(2026, 1, 1), query.LastWriteTimeMinimum);
         Assert.AreEqual(new DateTime(2026, 2, 1), query.LastWriteTimeMaximum);
     }

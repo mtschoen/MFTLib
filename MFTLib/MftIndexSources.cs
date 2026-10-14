@@ -10,7 +10,7 @@ public static partial class MftIndexSources
     ///     elevated: no broker process is launched. Nothing is opened until the first scan. The source
     ///     offers no watch, so a watch start or a per-drive catch-up is refused with
     ///     <c>Drive {letter}: this source does not support watching.</c> and its drives report
-    ///     <see cref="DriveWatchStatus.Supported" /> false. A scan from a process that cannot open
+    ///     <see cref="DriveWatchStatus.IsSupported" /> false. A scan from a process that cannot open
     ///     the volume fails the drive as <see cref="DriveFailureKind.ProducerFailed" />.
     ///     Cached scans arm the live journal cursor before reading records; reopening adopts only
     ///     an unmoved journal, or one that cannot answer coherently; otherwise the drive rescans,
@@ -22,5 +22,21 @@ public static partial class MftIndexSources
     public static MftIndexSource FromLocalVolumes(MftScanOptions? scanOptions = null)
     {
         return new LocalMftBlockProducer(scanOptions).CreateIndexSource();
+    }
+
+    /// <summary>
+    ///     A source that scans nothing and watches nothing. Every scan of a drive fails with
+    ///     <see cref="InvalidOperationException" /> whose message is <c>"Drive {letter}: {reason}."</c>,
+    ///     which the index reports as <see cref="DriveFailureKind.ProducerFailed" /> with that message
+    ///     in <see cref="DriveFailure.Message" />. Starting a watch throws
+    ///     <see cref="InvalidOperationException" /> with the same message. Cached blocks still open.
+    /// </summary>
+    /// <param name="reason">Why this process cannot scan, written so that it ends a sentence.</param>
+    /// <returns>The source to assign to <see cref="FileIndexOptions.MftSource" />.</returns>
+    /// <exception cref="ArgumentException"><paramref name="reason" /> is null or white space.</exception>
+    public static MftIndexSource Unavailable(string reason)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        return MftIndexSource.CreateUnavailable(reason);
     }
 }

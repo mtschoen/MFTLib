@@ -9,7 +9,7 @@ namespace MFTLib.Tests.Index;
 ///     A set of MFT drives over one owned tree and cache directory whose producer parks on a
 ///     per-drive <see cref="TestGate" /> when the test holds one, throws the failure set for its
 ///     drive, and otherwise writes a real block at the requested path with the next queued catch-up
-///     loss attached. Every report <see cref="FileIndexOptions.OpenProgress" /> delivers is kept
+///     loss attached. Every report <see cref="FileIndexOptions.DriveOpenProgress" /> delivers is kept
 ///     and signalled, so a test orders itself against a drive settling without sleeping.
 /// </summary>
 internal sealed class OpenScenario : IDisposable
@@ -89,7 +89,7 @@ internal sealed class OpenScenario : IDisposable
     {
         if (!await _reportSignal.WaitAsync(ScriptedWatchSource.HangGuard))
         {
-            throw new TimeoutException("No further OpenProgress report arrived.");
+            throw new TimeoutException("No further DriveOpenProgress report arrived.");
         }
     }
 
@@ -111,7 +111,7 @@ internal sealed class OpenScenario : IDisposable
         CacheDirectory = CacheDirectory,
         MftSource = new MftIndexSource(ProduceAsync, Source),
         CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
-        OpenProgress = new SynchronousProgress<IndexDriveOpened>(report =>
+        DriveOpenProgress = new SynchronousProgress<IndexDriveOpened>(report =>
         {
             _reports.Enqueue(report);
             _reportSignal.Release();

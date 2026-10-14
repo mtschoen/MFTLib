@@ -217,7 +217,7 @@ writes and edits blocks through the production block writer, so a test never
 sees the block format. Rows are `SyntheticRow` values: row number, name, parent row,
 and optional `IsDirectory`, `IsTombstone` (a deleted record whose name is kept),
 `IsFree` (a slot holding no record, so scans, lookups and counts skip it),
-`Attributes`, `Size` (null writes the size-unknown flag), `Modified` and `SequenceNumber`. Capacity is planned from the
+`Attributes`, `Size` (null writes the size-unknown flag), `LastWriteTime` and `SequenceNumber`. Capacity is planned from the
 rows, with headroom for later edits.
 
 ```csharp
@@ -226,7 +226,7 @@ var path = SyntheticBlock.WriteCached(cacheDirectory, 'C', volumeSerial: 0x1234,
     new SyntheticBlockOptions
     {
         JournalCursor = new SyntheticJournalCursor(7, 4096),
-        Completed = completed,
+        ScanTimestamp = completed,
         CacheTag = new CacheTag("TEST", 1)
     },
     [
@@ -248,7 +248,7 @@ SyntheticBlock.Edit(path, 0x1234, editor =>
 - `Edit` opens an existing block and hands a `SyntheticBlockEditor` to the callback,
   then flushes and closes it. The editor sets attributes, marks sizes unknown
   (`MarkSizesUnknown` for every matching row, returning how many) or compaction needed,
-  and sets the scan timestamp through `Complete`. `SyntheticIndexInspection.ReadHeader(index, driveLetter)`
+  and sets the scan timestamp through `Complete`. `SyntheticIndexInspection.ReadHeader(index, drive)`
   reports the timestamp of an open index's block for a later edit after disposal.
   `SetProducerKind(ProducerKind.Mft)` turns a block
   written by an enumeration scan into one an index warm-starts without a producer and
@@ -272,7 +272,7 @@ callback returns for each drive through the same writer and reports a real
 produce result carrying the request's cache tag. Its settings model what a
 test needs from a scan:
 
-- `JournalCursor` and `Completed` are stamped into every block. The cursor's
+- `JournalCursor` and `ScanTimestamp` are stamped into every block. The cursor's
   `JournalIdentifier` identifies the journal instance and `NextUsn` is the next
   position a reader resumes from;
 - `BeforeProduceAsync` is awaited before each production, so a test holds a scan or

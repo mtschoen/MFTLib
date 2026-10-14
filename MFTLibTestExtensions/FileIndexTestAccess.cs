@@ -10,15 +10,15 @@ public static class FileIndexTestAccess
     ///     <see cref="FileIndex.Changed" /> before returning the applied changes.
     /// </summary>
     /// <param name="index">The index receiving the synthetic batch.</param>
-    /// <param name="driveLetter">The drive whose block receives the entries.</param>
+    /// <param name="drive">The drive whose block receives the entries.</param>
     /// <param name="entries">The synthetic journal records to apply.</param>
     /// <param name="cursor">The journal identifier and post-batch cursor stamped into the block.</param>
     /// <returns>The changes applied to the drive.</returns>
-    public static IReadOnlyList<FileChange> ApplyJournalEntries(FileIndex index, DriveKey driveLetter,
+    public static IReadOnlyList<FileChange> ApplyJournalEntries(FileIndex index, DriveKey drive,
         IReadOnlyList<SyntheticJournalRecord> entries, SyntheticJournalCursor cursor)
     {
         ArgumentNullException.ThrowIfNull(index);
-        return index.ApplyJournalEntries(driveLetter, entries.ToProduction(), cursor.JournalIdentifier,
+        return index.ApplyJournalEntries(drive, entries.ToProduction(), cursor.JournalIdentifier,
             cursor.NextUsn);
     }
 }

@@ -65,7 +65,7 @@ internal sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
         // yield to. What makes the blocking wait safe is the awaited chain, not the
         // shape of the entry point - a consumer's elevated child can enter here on a
         // thread that does carry a SynchronizationContext (file-wizard dispatches
-        // ElevatedEntryPoint.TryHandle from its WinUI App constructor, on the UI
+        // ElevatedEntryPoint.RunBrokerIfRequested from its WinUI App constructor, on the UI
         // thread's DispatcherQueueSynchronizationContext). Every await from
         // ServeAsync down to the native journal wait uses ConfigureAwait(false), so
         // the first incomplete await already leaves the caller's context and no

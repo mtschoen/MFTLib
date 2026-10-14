@@ -2,7 +2,7 @@ namespace MFTLib;
 
 /// <summary>
 ///     Shared dispatch for the elevated broker child-process mode. When the process was
-///     relaunched with <c>--broker</c>, <see cref="TryHandle(string[])" /> parses the arguments,
+///     relaunched with <c>--broker</c>, <see cref="RunBrokerIfRequested(string[])" /> parses the arguments,
 ///     runs the broker, and returns <c>true</c> so the caller short-circuits its normal
 ///     startup. A normal launch matches no mode flag and returns <c>false</c>.
 /// </summary>
@@ -23,13 +23,13 @@ public static class ElevatedEntryPoint
     /// </summary>
     /// <param name="arguments">The process arguments.</param>
     /// <returns><c>true</c> when broker mode was handled, including rejected diagnostics arguments.</returns>
-    public static bool TryHandle(string[] arguments)
+    public static bool RunBrokerIfRequested(string[] arguments)
     {
-        return TryHandle(arguments, new DefaultElevatedEntryRunner());
+        return RunBrokerIfRequested(arguments, new DefaultElevatedEntryRunner());
     }
 
     // The same dispatch with the runner chosen by the caller, so tests substitute it.
-    internal static bool TryHandle(string[] arguments, IElevatedEntryRunner runner)
+    internal static bool RunBrokerIfRequested(string[] arguments, IElevatedEntryRunner runner)
     {
         foreach (var arg in arguments)
         {

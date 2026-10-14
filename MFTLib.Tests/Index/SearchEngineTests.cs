@@ -102,7 +102,7 @@ public class SearchEngineTests
     public void Search_SizeBoundsAreInclusive()
     {
         var results = SearchEngine.Search(_snapshot,
-            new SearchQuery(null, IsDirectory: false, MinimumSize: 100, MaximumSize: 4096));
+            new SearchQuery(null, IsDirectory: false, SizeMinimum: 100, SizeMaximum: 4096));
         CollectionAssert.AreEqual(new[] { "Report.docx", "report.pdf" }, NamesOf(results));
     }
 
@@ -120,11 +120,11 @@ public class SearchEngineTests
         var snapshot = Snapshot.Create([new DriveBlock('S', 0, block)]);
         try
         {
-            var resultsMin = SearchEngine.Search(snapshot, new SearchQuery(null, MinimumSize: 0));
+            var resultsMin = SearchEngine.Search(snapshot, new SearchQuery(null, SizeMinimum: 0));
             Assert.IsTrue(resultsMin.Any(entry => entry.Name == "known-zero.txt"));
             Assert.IsFalse(resultsMin.Any(entry => entry.Name == "unknown-size.txt"));
 
-            var resultsMax = SearchEngine.Search(snapshot, new SearchQuery(null, MaximumSize: 100));
+            var resultsMax = SearchEngine.Search(snapshot, new SearchQuery(null, SizeMaximum: 100));
             Assert.IsTrue(resultsMax.Any(entry => entry.Name == "known-zero.txt"));
             Assert.IsFalse(resultsMax.Any(entry => entry.Name == "unknown-size.txt"));
         }

@@ -49,7 +49,7 @@ public class MftDumpRescanTests
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, drive.State);
         Assert.IsNull(drive.Failure);
-        Assert.IsFalse(drive.Watch.Supported);
+        Assert.IsFalse(drive.Watch.IsSupported);
     }
 
     [TestMethod]

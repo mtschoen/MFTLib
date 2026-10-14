@@ -188,9 +188,9 @@ public class EnumerationProducerTests
         Assert.AreEqual(IndexScanPhase.Enumerating, observed[0].Phase);
         Assert.AreEqual('T', observed[0].Drive);
         CollectionAssert.AllItemsAreUnique(observed.Select(report => report.CurrentDirectory!).ToArray());
-        Assert.IsTrue(observed[^1].RowsWritten > observed[0].RowsWritten,
+        Assert.IsTrue(observed[^1].WrittenRowCount > observed[0].WrittenRowCount,
             "later reports reflect more rows written as the walk progresses");
-        Assert.AreEqual(7u, observed[^1].RowsWritten);
+        Assert.AreEqual(7u, observed[^1].WrittenRowCount);
     }
 
     [TestMethod]

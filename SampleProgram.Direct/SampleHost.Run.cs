@@ -64,7 +64,7 @@ partial class SampleHost
         var options = new FileIndexOptions
         {
             MftSource = _createSource(parsed),
-            Progress = new PhaseReporter(_writeLine)
+            ScanProgress = new PhaseReporter(_writeLine)
         };
         if (parsed.Source is not SourceKind.Dump)
         {

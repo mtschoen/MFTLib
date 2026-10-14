@@ -161,11 +161,11 @@ public class SampleHostFirstRunTests
         var reporter = new DirectHost.PhaseReporter(lines.Add);
         const uint interval = DirectHost.PhaseReporter.ProgressRowInterval;
 
-        reporter.Report(new IndexScanProgress('D', IndexScanPhase.ParsingMft, 0) { TotalRows = 3 * interval });
-        reporter.Report(new IndexScanProgress('D', IndexScanPhase.ParsingMft, interval - 1) { TotalRows = 3 * interval });
-        reporter.Report(new IndexScanProgress('D', IndexScanPhase.ParsingMft, interval) { TotalRows = 3 * interval });
-        reporter.Report(new IndexScanProgress('D', IndexScanPhase.ParsingMft, interval + 5) { TotalRows = 3 * interval });
-        reporter.Report(new IndexScanProgress('D', IndexScanPhase.ParsingMft, 2 * interval) { TotalRows = 3 * interval });
+        reporter.Report(new IndexScanProgress('D', IndexScanPhase.ParsingMft, 0) { ExpectedRowCount = 3 * interval });
+        reporter.Report(new IndexScanProgress('D', IndexScanPhase.ParsingMft, interval - 1) { ExpectedRowCount = 3 * interval });
+        reporter.Report(new IndexScanProgress('D', IndexScanPhase.ParsingMft, interval) { ExpectedRowCount = 3 * interval });
+        reporter.Report(new IndexScanProgress('D', IndexScanPhase.ParsingMft, interval + 5) { ExpectedRowCount = 3 * interval });
+        reporter.Report(new IndexScanProgress('D', IndexScanPhase.ParsingMft, 2 * interval) { ExpectedRowCount = 3 * interval });
 
         CollectionAssert.AreEqual(
             new[]

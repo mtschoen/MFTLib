@@ -44,7 +44,7 @@ public partial class FileIndexResilienceTests
             Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial, ProducerPolicy.Enumeration)],
             CacheDirectory = _cacheDirectory,
             CacheMode = noCache ? CacheMode.Disabled : CacheMode.Persistent,
-            Progress = progress,
+            ScanProgress = progress,
             Diagnostics = diagnostics
         };
     }
@@ -53,7 +53,7 @@ public partial class FileIndexResilienceTests
     ///     Cancels the token the moment the first directory finishes, so cancellation lands
     ///     mid-scan rather than before anything was created. Starts disarmed so the same
     ///     instance can ride through an initial scan unharmed and only interrupt a later one
-    ///     (a rescan reuses <see cref="FileIndexOptions.Progress" /> from the original open).
+    ///     (a rescan reuses <see cref="FileIndexOptions.ScanProgress" /> from the original open).
     /// </summary>
     sealed class CancelOnFirstReport(CancellationTokenSource cancellationTokenSource) : IProgress<IndexScanProgress>
     {
@@ -135,8 +135,8 @@ public partial class FileIndexResilienceTests
         {
             Drives = [firstDrive with { ProducerPolicy = ProducerPolicy.Enumeration }, new IndexedDrive('U', secondTreeRoot, 0x0BADF00E, ProducerPolicy.Enumeration)],
             CacheDirectory = _cacheDirectory,
-            OpenProgress = firstSettled,
-            Progress = secondParked
+            DriveOpenProgress = firstSettled,
+            ScanProgress = secondParked
         };
 
         try

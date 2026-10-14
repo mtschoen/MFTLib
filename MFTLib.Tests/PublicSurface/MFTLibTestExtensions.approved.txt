@@ -7,7 +7,7 @@ MFTLibTestExtensions.BrokerTestHarness :: method public static StartInProcess(MF
 MFTLibTestExtensions.BrokerTestHarness :: type public static class
 MFTLibTestExtensions.DefenderExclusionIsolation :: method public static ScriptPowerShell(bool succeeds = true) : MFTLibTestExtensions.ScriptedPowerShell
 MFTLibTestExtensions.DefenderExclusionIsolation :: type public static class
-MFTLibTestExtensions.FileIndexTestAccess :: method public static ApplyJournalEntries(MFTLib.Index.FileIndex index, MFTLib.Index.DriveKey driveLetter, System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord> entries, MFTLibTestExtensions.SyntheticJournalCursor cursor) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileChange>
+MFTLibTestExtensions.FileIndexTestAccess :: method public static ApplyJournalEntries(MFTLib.Index.FileIndex index, MFTLib.Index.DriveKey drive, System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord> entries, MFTLibTestExtensions.SyntheticJournalCursor cursor) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileChange>
 MFTLibTestExtensions.FileIndexTestAccess :: type public static class
 MFTLibTestExtensions.InProcessBrokerHandle :: method public Crash() : void
 MFTLibTestExtensions.InProcessBrokerHandle :: method public DisposeAsync() : System.Threading.Tasks.ValueTask
@@ -29,7 +29,7 @@ MFTLibTestExtensions.InProcessBrokerScan :: type public sealed class : System.IE
 MFTLibTestExtensions.JournalIsolation :: method public static ForbidLiveJournalReads() : void
 MFTLibTestExtensions.JournalIsolation :: method public static OverrideJournalWindow(System.Func<MFTLib.Index.DriveKey, MFTLibTestExtensions.SyntheticJournalWindow?> journal) : System.IDisposable
 MFTLibTestExtensions.JournalIsolation :: type public static class
-MFTLibTestExtensions.PowerShellLaunch :: property public Elevated { get; } : bool
+MFTLibTestExtensions.PowerShellLaunch :: property public IsElevated { get; } : bool
 MFTLibTestExtensions.PowerShellLaunch :: property public Script { get; } : string
 MFTLibTestExtensions.PowerShellLaunch :: type public sealed class
 MFTLibTestExtensions.ScriptedBrokerVolumes :: constructor public ()
@@ -64,8 +64,8 @@ MFTLibTestExtensions.ScriptedScan :: property public CancellationToken { get; } 
 MFTLibTestExtensions.ScriptedScan :: property public Drive { get; } : MFTLib.Index.DriveKey
 MFTLibTestExtensions.ScriptedScan :: type public sealed class
 MFTLibTestExtensions.ScriptedWatchSource :: constructor public ()
-MFTLibTestExtensions.ScriptedWatchSource :: method public WaitForStartAsync(MFTLib.Index.DriveKey driveLetter, int startNumber, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLibTestExtensions.ScriptedDriveWatch>
-MFTLibTestExtensions.ScriptedWatchSource :: method public WatchFor(MFTLib.Index.DriveKey driveLetter) : MFTLibTestExtensions.ScriptedDriveWatch
+MFTLibTestExtensions.ScriptedWatchSource :: method public WaitForStartAsync(MFTLib.Index.DriveKey drive, int startNumber, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLibTestExtensions.ScriptedDriveWatch>
+MFTLibTestExtensions.ScriptedWatchSource :: method public WatchFor(MFTLib.Index.DriveKey drive) : MFTLibTestExtensions.ScriptedDriveWatch
 MFTLibTestExtensions.ScriptedWatchSource :: property public CatchUpOnStart { get; init; } : bool
 MFTLibTestExtensions.ScriptedWatchSource :: property public StartFailure { get; set; } : System.Func<MFTLib.Index.DriveKey, System.Exception?>?
 MFTLibTestExtensions.ScriptedWatchSource :: property public Starts { get; } : System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.ScriptedWatchStart>
@@ -82,9 +82,9 @@ MFTLibTestExtensions.ScriptedWatchStart :: method public static op_Inequality(MF
 MFTLibTestExtensions.ScriptedWatchStart :: property public Cursor { get; init; } : MFTLibTestExtensions.SyntheticJournalCursor
 MFTLibTestExtensions.ScriptedWatchStart :: property public Drive { get; init; } : MFTLib.Index.DriveKey
 MFTLibTestExtensions.ScriptedWatchStart :: type public readonly struct : System.IEquatable<MFTLibTestExtensions.ScriptedWatchStart>
-MFTLibTestExtensions.SyntheticBlock :: method public static CachedPath(string cacheDirectory, MFTLib.Index.DriveKey driveLetter, uint volumeSerial) : string
+MFTLibTestExtensions.SyntheticBlock :: method public static CachedPath(string cacheDirectory, MFTLib.Index.DriveKey drive, uint volumeSerial) : string
 MFTLibTestExtensions.SyntheticBlock :: method public static Edit(string blockPath, uint volumeSerial, System.Action<MFTLibTestExtensions.SyntheticBlockEditor> edit) : void
-MFTLibTestExtensions.SyntheticBlock :: method public static WriteCached(string cacheDirectory, MFTLib.Index.DriveKey driveLetter, uint volumeSerial, MFTLibTestExtensions.SyntheticBlockOptions options, System.Collections.Generic.IEnumerable<MFTLibTestExtensions.SyntheticRow> rows) : string
+MFTLibTestExtensions.SyntheticBlock :: method public static WriteCached(string cacheDirectory, MFTLib.Index.DriveKey drive, uint volumeSerial, MFTLibTestExtensions.SyntheticBlockOptions options, System.Collections.Generic.IEnumerable<MFTLibTestExtensions.SyntheticRow> rows) : string
 MFTLibTestExtensions.SyntheticBlock :: property public static MaximumPathDepth { get; } : int
 MFTLibTestExtensions.SyntheticBlock :: type public static class
 MFTLibTestExtensions.SyntheticBlockEditor :: method public Complete(System.DateTime completed) : void
@@ -104,19 +104,19 @@ MFTLibTestExtensions.SyntheticBlockOptions :: method public override ToString() 
 MFTLibTestExtensions.SyntheticBlockOptions :: method public static op_Equality(MFTLibTestExtensions.SyntheticBlockOptions? left, MFTLibTestExtensions.SyntheticBlockOptions? right) : bool
 MFTLibTestExtensions.SyntheticBlockOptions :: method public static op_Inequality(MFTLibTestExtensions.SyntheticBlockOptions? left, MFTLibTestExtensions.SyntheticBlockOptions? right) : bool
 MFTLibTestExtensions.SyntheticBlockOptions :: property public CacheTag { get; init; } : MFTLib.Index.CacheTag
-MFTLibTestExtensions.SyntheticBlockOptions :: property public Completed { get; init; } : System.DateTime
 MFTLibTestExtensions.SyntheticBlockOptions :: property public JournalCursor { get; init; } : MFTLibTestExtensions.SyntheticJournalCursor
 MFTLibTestExtensions.SyntheticBlockOptions :: property public ProducerKind { get; init; } : MFTLib.Index.ProducerKind
 MFTLibTestExtensions.SyntheticBlockOptions :: property public RootRow { get; init; } : uint
+MFTLibTestExtensions.SyntheticBlockOptions :: property public ScanTimestamp { get; init; } : System.DateTime
 MFTLibTestExtensions.SyntheticBlockOptions :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticBlockOptions>
 MFTLibTestExtensions.SyntheticCacheTag :: method public static GetFourCharacterCode(MFTLib.Index.CacheTag tag) : string
 MFTLibTestExtensions.SyntheticCacheTag :: method public static GetVersion(MFTLib.Index.CacheTag tag) : uint
 MFTLibTestExtensions.SyntheticCacheTag :: type public static class
 MFTLibTestExtensions.SyntheticCheckpointLoss :: method public static WithJournalPositions(MFTLib.Index.JournalCheckpointLoss report, long checkpointUsn, long firstUsn, long nextUsn) : MFTLib.Index.JournalCheckpointLoss
 MFTLibTestExtensions.SyntheticCheckpointLoss :: type public static class
-MFTLibTestExtensions.SyntheticDriveHeader :: constructor public (MFTLib.Index.ProducerKind ProducerKind, uint RowCount, MFTLib.Index.CacheTag CacheTag, System.DateTime Completed)
+MFTLibTestExtensions.SyntheticDriveHeader :: constructor public (MFTLib.Index.ProducerKind ProducerKind, uint RowCount, MFTLib.Index.CacheTag CacheTag, System.DateTime ScanTimestamp)
 MFTLibTestExtensions.SyntheticDriveHeader :: method public <Clone>$() : MFTLibTestExtensions.SyntheticDriveHeader
-MFTLibTestExtensions.SyntheticDriveHeader :: method public Deconstruct(out MFTLib.Index.ProducerKind ProducerKind, out uint RowCount, out MFTLib.Index.CacheTag CacheTag, out System.DateTime Completed) : void
+MFTLibTestExtensions.SyntheticDriveHeader :: method public Deconstruct(out MFTLib.Index.ProducerKind ProducerKind, out uint RowCount, out MFTLib.Index.CacheTag CacheTag, out System.DateTime ScanTimestamp) : void
 MFTLibTestExtensions.SyntheticDriveHeader :: method public Equals(MFTLibTestExtensions.SyntheticDriveHeader? other) : bool
 MFTLibTestExtensions.SyntheticDriveHeader :: method public override Equals(object? obj) : bool
 MFTLibTestExtensions.SyntheticDriveHeader :: method public override GetHashCode() : int
@@ -124,11 +124,11 @@ MFTLibTestExtensions.SyntheticDriveHeader :: method public override ToString() :
 MFTLibTestExtensions.SyntheticDriveHeader :: method public static op_Equality(MFTLibTestExtensions.SyntheticDriveHeader? left, MFTLibTestExtensions.SyntheticDriveHeader? right) : bool
 MFTLibTestExtensions.SyntheticDriveHeader :: method public static op_Inequality(MFTLibTestExtensions.SyntheticDriveHeader? left, MFTLibTestExtensions.SyntheticDriveHeader? right) : bool
 MFTLibTestExtensions.SyntheticDriveHeader :: property public CacheTag { get; init; } : MFTLib.Index.CacheTag
-MFTLibTestExtensions.SyntheticDriveHeader :: property public Completed { get; init; } : System.DateTime
 MFTLibTestExtensions.SyntheticDriveHeader :: property public ProducerKind { get; init; } : MFTLib.Index.ProducerKind
 MFTLibTestExtensions.SyntheticDriveHeader :: property public RowCount { get; init; } : uint
+MFTLibTestExtensions.SyntheticDriveHeader :: property public ScanTimestamp { get; init; } : System.DateTime
 MFTLibTestExtensions.SyntheticDriveHeader :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticDriveHeader>
-MFTLibTestExtensions.SyntheticIndexInspection :: method public static ReadHeader(MFTLib.Index.FileIndex index, MFTLib.Index.DriveKey driveLetter) : MFTLibTestExtensions.SyntheticDriveHeader?
+MFTLibTestExtensions.SyntheticIndexInspection :: method public static ReadHeader(MFTLib.Index.FileIndex index, MFTLib.Index.DriveKey drive) : MFTLibTestExtensions.SyntheticDriveHeader?
 MFTLibTestExtensions.SyntheticIndexInspection :: type public static class
 MFTLibTestExtensions.SyntheticIndexSource :: method public static Create(MFTLibTestExtensions.SyntheticMftProducer? producer = default, MFTLibTestExtensions.ScriptedWatchSource? watches = default) : MFTLib.Index.MftIndexSource
 MFTLibTestExtensions.SyntheticIndexSource :: type public static class
@@ -202,24 +202,24 @@ MFTLibTestExtensions.SyntheticJournalWindow :: type public readonly struct : Sys
 MFTLibTestExtensions.SyntheticMftProducer :: constructor public (System.Func<MFTLib.Index.DriveKey, System.Collections.Generic.IEnumerable<MFTLibTestExtensions.SyntheticRow>> rowsForDrive)
 MFTLibTestExtensions.SyntheticMftProducer :: property public BeforeProduceAsync { get; set; } : System.Func<MFTLib.Index.DriveKey, System.Threading.CancellationToken, System.Threading.Tasks.Task>?
 MFTLibTestExtensions.SyntheticMftProducer :: property public CatchUpLoss { get; set; } : System.Func<MFTLib.Index.DriveKey, MFTLib.Index.JournalCheckpointLoss?>?
-MFTLibTestExtensions.SyntheticMftProducer :: property public Completed { get; set; } : System.DateTime
 MFTLibTestExtensions.SyntheticMftProducer :: property public JournalCursor { get; set; } : MFTLibTestExtensions.SyntheticJournalCursor
+MFTLibTestExtensions.SyntheticMftProducer :: property public ScanTimestamp { get; set; } : System.DateTime
 MFTLibTestExtensions.SyntheticMftProducer :: type public sealed class
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockDeletionResult(MFTLib.Index.CachedBlockFile file, MFTLib.Index.CachedBlockDeletionOutcome outcome, string? failureReason) : MFTLib.Index.CachedBlockDeletionResult
-MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockFile(MFTLib.Index.DriveKey driveLetter, uint volumeSerial, string path, long sizeBytes, System.DateTime lastWriteTime) : MFTLib.Index.CachedBlockFile
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockFile(MFTLib.Index.DriveKey drive, uint volumeSerial, string path, long size, System.DateTime lastWriteTime) : MFTLib.Index.CachedBlockFile
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockRejection(string path, string reason) : MFTLib.Index.CachedBlockRejection
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockStatus(MFTLib.Index.CachedBlockFile file, MFTLib.Index.CachedBlockAvailability availability, MFTLib.Index.BlockValidationResult? validation, MFTLib.Index.ProducerKind? producerKind, string? rootDirectory, MFTLib.Index.CacheTag? cacheTag = default) : MFTLib.Index.CachedBlockStatus
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateDriveBlockStatus(MFTLib.Index.BlockSource blockSource, uint liveRowCount, bool compactionNeeded, System.DateTime scanTimestamp) : MFTLib.Index.DriveBlockStatus
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateDriveFailure(MFTLib.Index.DriveFailureKind kind, string message) : MFTLib.Index.DriveFailure
-MFTLibTestExtensions.SyntheticNotifications :: method public static CreateDriveOperationResult(MFTLib.Index.DriveKey driveLetter, MFTLib.Index.DriveOperationOutcome outcome, System.Exception? failure) : MFTLib.Index.DriveOperationResult
-MFTLibTestExtensions.SyntheticNotifications :: method public static CreateDriveStatus(MFTLib.Index.DriveKey driveLetter, MFTLib.Index.DriveState state, MFTLib.Index.DriveBlockStatus? block, MFTLib.Index.DriveFailure? failure) : MFTLib.Index.DriveStatus
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateDriveOperationResult(MFTLib.Index.DriveKey drive, MFTLib.Index.DriveOperationOutcome outcome, System.Exception? failure) : MFTLib.Index.DriveOperationResult
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateDriveStatus(MFTLib.Index.DriveKey drive, MFTLib.Index.DriveState state, MFTLib.Index.DriveBlockStatus? block, MFTLib.Index.DriveFailure? failure) : MFTLib.Index.DriveStatus
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateFileChange(MFTLib.Index.FileChangeKind kind, MFTLib.Index.FileEntry entry, string path, System.DateTime timestamp, string? previousPath = default) : MFTLib.Index.FileChange
-MFTLibTestExtensions.SyntheticNotifications :: method public static CreateIndexDriveOpened(MFTLib.Index.DriveKey driveLetter, int settledDriveCount, int totalDriveCount) : MFTLib.Index.IndexDriveOpened
-MFTLibTestExtensions.SyntheticNotifications :: method public static CreateIndexScanProgress(MFTLib.Index.DriveKey driveLetter, MFTLib.Index.IndexScanPhase phase, uint rowsWritten, uint? totalRows = default, string? currentDirectory = default, MFTLib.Index.IndexScanOutcome? outcome = default) : MFTLib.Index.IndexScanProgress
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateIndexDriveOpened(MFTLib.Index.DriveKey drive, int settledDriveCount, int totalDriveCount) : MFTLib.Index.IndexDriveOpened
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateIndexScanProgress(MFTLib.Index.DriveKey drive, MFTLib.Index.IndexScanPhase phase, uint writtenRowCount, uint? expectedRowCount = default, string? currentDirectory = default, MFTLib.Index.IndexScanOutcome? outcome = default) : MFTLib.Index.IndexScanProgress
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateJournalCatchUpLostException(bool recoveryStopped, string message) : MFTLib.Index.JournalCatchUpLostException
-MFTLibTestExtensions.SyntheticNotifications :: method public static CreateJournalCheckpointLoss(MFTLib.Index.DriveKey driveLetter, MFTLib.Index.JournalCheckpointLossCause cause, MFTLib.Index.JournalCheckpointLossDetection detectedDuring, MFTLib.UsnJournalSettings journalSettings) : MFTLib.Index.JournalCheckpointLoss
-MFTLibTestExtensions.SyntheticNotifications :: method public static CreateWatchFault(MFTLib.Index.WatchFaultKind kind, MFTLib.Index.DriveKey driveLetter, System.Exception exception) : MFTLib.Index.WatchFault
-MFTLibTestExtensions.SyntheticNotifications :: method public static CreateWatchStateChange(MFTLib.Index.DriveKey driveLetter, MFTLib.Index.DriveWatchStatus watch, MFTLib.Index.WatchFault? fault) : MFTLib.Index.WatchStateChange
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateJournalCheckpointLoss(MFTLib.Index.DriveKey drive, MFTLib.Index.JournalCheckpointLossCause cause, MFTLib.Index.JournalCheckpointLossDetection detectedDuring, MFTLib.UsnJournalSettings journalSettings) : MFTLib.Index.JournalCheckpointLoss
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateWatchFault(MFTLib.Index.WatchFaultKind kind, MFTLib.Index.DriveKey drive, System.Exception exception) : MFTLib.Index.WatchFault
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateWatchStateChange(MFTLib.Index.DriveKey drive, MFTLib.Index.DriveWatchStatus watch, MFTLib.Index.WatchFault? fault) : MFTLib.Index.WatchStateChange
 MFTLibTestExtensions.SyntheticNotifications :: type public static class
 MFTLibTestExtensions.SyntheticRow :: constructor public (uint Row, string Name, uint ParentRow)
 MFTLibTestExtensions.SyntheticRow :: method public <Clone>$() : MFTLibTestExtensions.SyntheticRow
@@ -234,7 +234,7 @@ MFTLibTestExtensions.SyntheticRow :: property public Attributes { get; init; } :
 MFTLibTestExtensions.SyntheticRow :: property public IsDirectory { get; init; } : bool
 MFTLibTestExtensions.SyntheticRow :: property public IsFree { get; init; } : bool
 MFTLibTestExtensions.SyntheticRow :: property public IsTombstone { get; init; } : bool
-MFTLibTestExtensions.SyntheticRow :: property public Modified { get; init; } : System.DateTime
+MFTLibTestExtensions.SyntheticRow :: property public LastWriteTime { get; init; } : System.DateTime
 MFTLibTestExtensions.SyntheticRow :: property public Name { get; init; } : string
 MFTLibTestExtensions.SyntheticRow :: property public ParentRow { get; init; } : uint
 MFTLibTestExtensions.SyntheticRow :: property public Row { get; init; } : uint

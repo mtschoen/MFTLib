@@ -41,7 +41,7 @@ public sealed partial class FileIndex
     ///         <see cref="WatchFaultKind.CatchUpLost" />, and scans the drive again at once while
     ///         this rescan still holds the lifecycle gate, until a scan's catch-up holds or the
     ///         drive's consecutive losses exhaust automatic recovery
-    ///         (<see cref="DriveWatchStatus.RecoveryStopped" />); then this throws the last
+    ///         (<see cref="DriveWatchStatus.IsRecoveryStopped" />); then this throws the last
     ///         <see cref="JournalCatchUpLostException" />, and the drive keeps its last block,
     ///         queryable but not watchable. With recovery already stopped it makes exactly one
     ///         attempt.

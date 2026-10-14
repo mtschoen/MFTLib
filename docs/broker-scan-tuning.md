@@ -57,7 +57,7 @@ failure as an ordinary scan error.
 
 `FileIndex` publishes the complete block from a proven loss, marks it
 unresumable, raises `WatchFaultKind.CatchUpLost` when handlers exist, and rescans
-the drive. A successful catch-up clears `DriveWatchStatus.RecoveryStopped`.
+the drive. A successful catch-up clears `DriveWatchStatus.IsRecoveryStopped`.
 When consecutive losses exhaust the internal retry policy, the flag is set before
 loss notification or open completion, automatic retries stop,
 and the block stays queryable but cannot be watched. A manual or recovery rescan

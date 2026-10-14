@@ -37,7 +37,7 @@ internal sealed record MftBlockProduceRequest
     public bool DeleteOnClose { get; init; }
 
     /// <summary>
-    ///     Where the producer reports scan progress, taken from <see cref="FileIndexOptions.Progress" />.
+    ///     Where the producer reports scan progress, taken from <see cref="FileIndexOptions.ScanProgress" />.
     ///     Null when the caller did not ask for progress.
     /// </summary>
     public IProgress<IndexScanProgress>? Progress { get; init; }

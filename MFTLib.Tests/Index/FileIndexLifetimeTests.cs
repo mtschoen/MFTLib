@@ -49,7 +49,7 @@ public class FileIndexLifetimeTests
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
         Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
         Assert.IsTrue(index.HeaderOf().RowCount >= 3);
-        Assert.IsFalse(index.Drives[0].Watch.Supported);
+        Assert.IsFalse(index.Drives[0].Watch.IsSupported);
         Assert.IsTrue(File.Exists(Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial))));
     }
 

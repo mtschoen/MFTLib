@@ -411,13 +411,13 @@ public class DefenderExclusionSequenceTests
             Assert.IsFalse(result);
             var launch = failing.Launches.Single();
             Assert.AreEqual("Add-MpPreference -ExclusionProcess 'app.exe' -ErrorAction Stop", launch.Script);
-            Assert.IsTrue(launch.Elevated);
+            Assert.IsTrue(launch.IsElevated);
         }
 
         using var succeeding = DefenderExclusionIsolation.ScriptPowerShell();
         Assert.IsTrue(DefenderExclusionSequence.RunnerOverride!("script", false));
         Assert.AreEqual("script", succeeding.Launches.Single().Script);
-        Assert.IsFalse(succeeding.Launches.Single().Elevated);
+        Assert.IsFalse(succeeding.Launches.Single().IsElevated);
     }
 
     [TestMethod]

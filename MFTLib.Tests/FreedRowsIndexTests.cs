@@ -107,7 +107,7 @@ public class FreedRowsIndexTests
     {
         await using var index = await OpenAsync(includeFreed: true);
 
-        var largeDeleted = index.Search(new SearchQuery(null, MinimumSize: 150, IncludeDeleted: true));
+        var largeDeleted = index.Search(new SearchQuery(null, SizeMinimum: 150, IncludeDeleted: true));
         var deletedDirectories = index.Search(new SearchQuery(null, IsDirectory: true, IncludeDeleted: true));
 
         CollectionAssert.AreEqual(new[] { "orphan.txt" }, largeDeleted.Select(entry => entry.Name).ToArray());

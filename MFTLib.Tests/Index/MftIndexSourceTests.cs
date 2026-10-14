@@ -90,19 +90,19 @@ public class MftIndexSourceTests
     [DataRow("   ")]
     public void Unavailable_WithBlankReason_Throws(string reason)
     {
-        Assert.ThrowsException<ArgumentException>(() => MftIndexSource.Unavailable(reason));
+        Assert.ThrowsException<ArgumentException>(() => MftIndexSources.Unavailable(reason));
     }
 
     [TestMethod]
     public void Unavailable_WithNullReason_Throws()
     {
-        Assert.ThrowsException<ArgumentNullException>(() => MftIndexSource.Unavailable(null!));
+        Assert.ThrowsException<ArgumentNullException>(() => MftIndexSources.Unavailable(null!));
     }
 
     [TestMethod]
     public async Task Unavailable_FailsEachScanWithTheDriveLetterAndTheReason()
     {
-        var source = MftIndexSource.Unavailable(Reason);
+        var source = MftIndexSources.Unavailable(Reason);
 
         var thrown = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
             () => source.Producer(new MftBlockProduceRequest { Drive = 'T', VolumeSerial = 1, BlockPath = "unused" },
@@ -115,7 +115,7 @@ public class MftIndexSourceTests
     [TestMethod]
     public async Task Unavailable_ReportsTheDriveAsProducerFailedWithTheMessage()
     {
-        await using var index = await FileIndex.OpenAsync(Options(MftIndexSource.Unavailable(Reason)), Token);
+        await using var index = await FileIndex.OpenAsync(Options(MftIndexSources.Unavailable(Reason)), Token);
 
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, status.State);
@@ -128,14 +128,14 @@ public class MftIndexSourceTests
     {
         await SeedCacheAsync();
         using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = HealthyWindow });
-        await using var index = await FileIndex.OpenAsync(Options(MftIndexSource.Unavailable(Reason)), Token);
+        await using var index = await FileIndex.OpenAsync(Options(MftIndexSources.Unavailable(Reason)), Token);
 
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
         await DriveResultAssertions.NotApplicableAsync(
             () => index.StartWatchingAsync(['T'], Token));
-        Assert.IsFalse(index.Drives.Single().Watch.Requested);
+        Assert.IsFalse(index.Drives.Single().Watch.IsRequested);
     }
 
     [TestMethod]
@@ -148,7 +148,7 @@ public class MftIndexSourceTests
         await DriveResultAssertions.NotApplicableAsync(
             () => index.StartWatchingAsync(['T'], Token));
 
-        Assert.IsFalse(index.Drives.Single().Watch.Requested);
+        Assert.IsFalse(index.Drives.Single().Watch.IsRequested);
     }
 
     [TestMethod]

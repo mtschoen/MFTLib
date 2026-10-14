@@ -5,7 +5,7 @@ public sealed partial class FileIndex
     /// <summary>
     ///     Produces one drive's block through <see cref="ProduceDriveBlockCoreAsync" /> and ends the
     ///     drive's scan with exactly one <see cref="IndexScanPhase.Finished" /> sample to
-    ///     <see cref="FileIndexOptions.Progress" />, after the producer's last sample, whether the
+    ///     <see cref="FileIndexOptions.ScanProgress" />, after the producer's last sample, whether the
     ///     scan produced a block, failed, or was cancelled. Every scan entry point (open, catch-up
     ///     retry, rescan) goes through here, so each scan reports its own.
     /// </summary>
@@ -46,7 +46,7 @@ public sealed partial class FileIndex
     {
         try
         {
-            _options.Progress?.Report(new IndexScanProgress(driveLetter, IndexScanPhase.Finished, rowsWritten)
+            _options.ScanProgress?.Report(new IndexScanProgress(driveLetter, IndexScanPhase.Finished, rowsWritten)
             {
                 Outcome = outcome
             });

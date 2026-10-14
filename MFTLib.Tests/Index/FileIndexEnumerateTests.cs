@@ -51,7 +51,7 @@ public class FileIndexEnumerateTests
         AssertStreamingMatchesSearch(index, new SearchQuery("readme"));
         AssertStreamingMatchesSearch(index, new SearchQuery("readme.md", NameMatchMode.Exact));
         AssertStreamingMatchesSearch(index, new SearchQuery("re*.p?f", NameMatchMode.Glob));
-        AssertStreamingMatchesSearch(index, new SearchQuery(null, MinimumSize: 100));
+        AssertStreamingMatchesSearch(index, new SearchQuery(null, SizeMinimum: 100));
 
         var documents = index.Find(Path.Combine(FirstRoot, "Documents"))!.Value;
         AssertStreamingMatchesSearch(index, new SearchQuery("readme", Subtree: documents));

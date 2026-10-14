@@ -15,13 +15,13 @@ public static class SyntheticBlock
 
     /// <summary>The file an index looks for when it warm-starts a drive, so a seeded block is adopted only at this path.</summary>
     /// <param name="cacheDirectory">The cache directory the index is opened over.</param>
-    /// <param name="driveLetter">The drive letter.</param>
+    /// <param name="drive">The drive letter.</param>
     /// <param name="volumeSerial">The volume serial number the index reports for the drive.</param>
     /// <returns>The full path of the drive's block file.</returns>
-    public static string CachedPath(string cacheDirectory, DriveKey driveLetter, uint volumeSerial)
+    public static string CachedPath(string cacheDirectory, DriveKey drive, uint volumeSerial)
     {
         ArgumentException.ThrowIfNullOrEmpty(cacheDirectory);
-        return Path.Combine(cacheDirectory, CacheDirectory.BlockFileName(driveLetter, volumeSerial));
+        return Path.Combine(cacheDirectory, CacheDirectory.BlockFileName(drive, volumeSerial));
     }
 
     /// <summary>
@@ -29,17 +29,17 @@ public static class SyntheticBlock
     ///     Capacity is planned from the rows, with headroom for later edits.
     /// </summary>
     /// <param name="cacheDirectory">The cache directory, created when missing.</param>
-    /// <param name="driveLetter">The drive letter.</param>
+    /// <param name="drive">The drive letter.</param>
     /// <param name="volumeSerial">The volume serial number stamped into the header.</param>
     /// <param name="options">The header values.</param>
     /// <param name="rows">The rows to write, including the root row named by <see cref="SyntheticBlockOptions.RootRow" />.</param>
     /// <returns>The full path of the block file.</returns>
-    public static string WriteCached(string cacheDirectory, DriveKey driveLetter, uint volumeSerial,
+    public static string WriteCached(string cacheDirectory, DriveKey drive, uint volumeSerial,
         SyntheticBlockOptions options, IEnumerable<SyntheticRow> rows)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(rows);
-        var path = CachedPath(cacheDirectory, driveLetter, volumeSerial);
+        var path = CachedPath(cacheDirectory, drive, volumeSerial);
         Directory.CreateDirectory(cacheDirectory);
         using var owner = AcquireSlot(path);
         using var block = Build(path, volumeSerial, deleteOnClose: false, options, rows);
@@ -136,7 +136,7 @@ public static class SyntheticBlock
             }
 
             writer.SetJournalCursor(options.JournalCursor.JournalIdentifier, options.JournalCursor.NextUsn);
-            writer.Complete(options.Completed, null);
+            writer.Complete(options.ScanTimestamp, null);
             return block;
         }
         catch
@@ -165,7 +165,7 @@ public static class SyntheticBlock
         }
 
         var columns = new RowColumns(row.ParentRow, flags, (uint)row.Attributes, row.Size ?? 0,
-            row.Modified.Ticks, row.SequenceNumber);
+            row.LastWriteTime.Ticks, row.SequenceNumber);
         if (!writer.TryWriteRow(row.Row, row.Name, columns))
         {
             throw new InvalidOperationException(
@@ -182,7 +182,7 @@ public static class SyntheticBlock
             IsTombstone = stored.IsDeleted,
             Attributes = (FileAttributes)stored.Attributes,
             Size = stored.SizeKnown ? stored.Size : null,
-            Modified = stored.ModifiedUtc,
+            LastWriteTime = stored.ModifiedUtc,
             SequenceNumber = block.SequenceNumbers[(int)row]
         };
     }

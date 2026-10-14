@@ -94,12 +94,12 @@ internal static class SearchEngine
             return false;
         }
 
-        if (query.MinimumSize is { } minimumSize && (!row.SizeKnown || row.Size < minimumSize))
+        if (query.SizeMinimum is { } minimumSize && (!row.SizeKnown || row.Size < minimumSize))
         {
             return false;
         }
 
-        if (query.MaximumSize is { } maximumSize && (!row.SizeKnown || row.Size > maximumSize))
+        if (query.SizeMaximum is { } maximumSize && (!row.SizeKnown || row.Size > maximumSize))
         {
             return false;
         }

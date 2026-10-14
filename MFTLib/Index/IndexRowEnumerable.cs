@@ -69,7 +69,7 @@ public ref struct IndexRowEnumerator
 
         // A query with no name, size, date or subtree predicate needs only the row flags, so its loop
         // skips the general predicate and reads no query field per row.
-        _flagsOnly = query.NamePattern is null && query.MinimumSize is null && query.MaximumSize is null &&
+        _flagsOnly = query.NamePattern is null && query.SizeMinimum is null && query.SizeMaximum is null &&
                      query.LastWriteTimeMinimum is null && query.LastWriteTimeMaximum is null && query.Subtree is null;
         _includeDeleted = query.IncludeDeleted;
         _filterDirectories = query.IsDirectory.HasValue;

@@ -64,13 +64,13 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
     }
 
     /// <summary>The most recent watch started for the drive, matched without regard to letter case.</summary>
-    /// <param name="driveLetter">The drive to look up.</param>
+    /// <param name="drive">The drive to look up.</param>
     /// <returns>The most recent watch for that drive.</returns>
     /// <exception cref="InvalidOperationException">No watch was handed out for the drive.</exception>
-    public ScriptedDriveWatch WatchFor(DriveKey driveLetter)
+    public ScriptedDriveWatch WatchFor(DriveKey drive)
     {
-        driveLetter.Validated();
-        return Watches.Last(watch => Same(watch.Drive, driveLetter));
+        drive.Validated();
+        return Watches.Last(watch => Same(watch.Drive, drive));
     }
 
     /// <summary>
@@ -80,26 +80,26 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
     ///     the index restarts gets a new watch each time: the first start is number one, the restart number
     ///     two. A start that failed or is still held has handed out no watch and is not counted.
     /// </summary>
-    /// <param name="driveLetter">The drive to wait for, matched without regard to letter case.</param>
+    /// <param name="drive">The drive to wait for, matched without regard to letter case.</param>
     /// <param name="startNumber">Which watch of the drive to wait for, one for the first.</param>
     /// <param name="cancellationToken">Ends the wait with <see cref="OperationCanceledException" />.</param>
     /// <returns>The watch the index received.</returns>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="startNumber" /> is less than one.</exception>
-    public Task<ScriptedDriveWatch> WaitForStartAsync(DriveKey driveLetter, int startNumber,
+    public Task<ScriptedDriveWatch> WaitForStartAsync(DriveKey drive, int startNumber,
         CancellationToken cancellationToken)
     {
-        driveLetter.Validated();
+        drive.Validated();
         ArgumentOutOfRangeException.ThrowIfLessThan(startNumber, 1);
         var waiter = new StartWaiter(startNumber);
         lock (_stateLock)
         {
-            var handedOut = _watches.Where(watch => Same(watch.Drive, driveLetter)).ToList();
+            var handedOut = _watches.Where(watch => Same(watch.Drive, drive)).ToList();
             if (handedOut.Count >= startNumber)
             {
                 return Task.FromResult(handedOut[startNumber - 1]);
             }
 
-            var key = driveLetter;
+            var key = drive;
             if (!_startWaiters.TryGetValue(key, out var waiters))
             {
                 waiters = [];

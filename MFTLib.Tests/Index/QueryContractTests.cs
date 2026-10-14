@@ -16,8 +16,8 @@ public class QueryContractTests
         Assert.IsFalse(query.CaseSensitive);
         Assert.IsNull(query.Subtree);
         Assert.IsNull(query.IsDirectory);
-        Assert.IsNull(query.MinimumSize);
-        Assert.IsNull(query.MaximumSize);
+        Assert.IsNull(query.SizeMinimum);
+        Assert.IsNull(query.SizeMaximum);
         Assert.IsNull(query.LastWriteTimeMinimum);
         Assert.IsNull(query.LastWriteTimeMaximum);
     }

@@ -335,7 +335,7 @@ public partial class BrokerProcessTests
         Assert.IsTrue(indexReports.Count > 0);
         Assert.IsTrue(indexReports.All(report => report.Drive == 'C'));
         Assert.AreEqual(IndexScanPhase.Transferring, indexReports[^1].Phase);
-        Assert.AreEqual((uint?)brokerReports[^1].TotalRecords, indexReports[^1].TotalRows);
+        Assert.AreEqual((uint?)brokerReports[^1].TotalRecords, indexReports[^1].ExpectedRowCount);
     }
 
     [TestMethod]

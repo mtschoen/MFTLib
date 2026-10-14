@@ -21,7 +21,7 @@ public class MftDumpApplicabilityTests
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, drive.State);
         Assert.AreEqual(BlockSource.ProducedByScan, drive.Block!.Source);
-        Assert.IsFalse(drive.Watch.Supported, "a dump drive does not support watching");
+        Assert.IsFalse(drive.Watch.IsSupported, "a dump drive does not support watching");
         Assert.AreEqual(string.Empty, index.CacheDirectoryPath, "a dump index resolves and creates no cache directory");
     }
 
@@ -34,7 +34,7 @@ public class MftDumpApplicabilityTests
         Assert.AreEqual(DriveState.Failed, drive.State);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, drive.Failure?.Kind);
         Assert.AreEqual("The dump file cannot be opened.", drive.Failure?.Message);
-        Assert.IsFalse(drive.Watch.Supported);
+        Assert.IsFalse(drive.Watch.IsSupported);
     }
 
     [TestMethod]
@@ -140,7 +140,7 @@ public class MftDumpApplicabilityTests
             await using var index = await MftDumpIndexes.OpenAsync(MftDumpIndexes.Source(producer));
 
             await DriveResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync(['D'], CancellationToken.None));
-            Assert.IsFalse(index.Drives.Single().Watch.Requested);
+            Assert.IsFalse(index.Drives.Single().Watch.IsRequested);
         }
     }
 
@@ -162,7 +162,7 @@ public class MftDumpApplicabilityTests
 
             await DriveResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync(['T'], CancellationToken.None));
             await DriveResultAssertions.NotApplicableAsync(() => index.WaitForCatchUpAsync(['T'], CancellationToken.None));
-            Assert.IsFalse(index.Drives.Single().Watch.Requested);
+            Assert.IsFalse(index.Drives.Single().Watch.IsRequested);
         }
         finally
         {
@@ -202,8 +202,8 @@ public class MftDumpApplicabilityTests
                 Assert.IsNull(only.Failure);
             }
 
-            Assert.IsFalse(index.Drives.Single().Watch.Supported);
-            Assert.IsFalse(index.Drives.Single().Watch.Requested);
+            Assert.IsFalse(index.Drives.Single().Watch.IsSupported);
+            Assert.IsFalse(index.Drives.Single().Watch.IsRequested);
         }
     }
 
@@ -239,9 +239,9 @@ public class MftDumpApplicabilityTests
                     MftSource = new MftIndexSource(MftDumpIndexes.Produce, watchSource)
                 }, CancellationToken.None);
 
-                Assert.AreEqual(expected, index.Drives.Single().Watch.Supported);
+                Assert.AreEqual(expected, index.Drives.Single().Watch.IsSupported);
                 await index.RescanAsync(['T'], CancellationToken.None);
-                Assert.AreEqual(expected, index.Drives.Single().Watch.Supported);
+                Assert.AreEqual(expected, index.Drives.Single().Watch.IsSupported);
             }
             finally
             {
@@ -252,8 +252,8 @@ public class MftDumpApplicabilityTests
 
     static void AssertNoWatchStatus(DriveStatus status)
     {
-        Assert.IsFalse(status.Watch.Supported);
-        Assert.IsFalse(status.Watch.Requested);
+        Assert.IsFalse(status.Watch.IsSupported);
+        Assert.IsFalse(status.Watch.IsRequested);
         Assert.AreEqual(WatchState.NotStarted, status.Watch.State);
     }
 

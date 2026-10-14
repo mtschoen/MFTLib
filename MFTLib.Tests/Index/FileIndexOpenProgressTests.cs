@@ -6,7 +6,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 /// <summary>
-///     <see cref="FileIndexOptions.OpenProgress" />'s contract: one report per configured drive
+///     <see cref="FileIndexOptions.DriveOpenProgress" />'s contract: one report per configured drive
 ///     from <see cref="FileIndex.OpenAsync" />, after that drive settles, whatever the outcome,
 ///     numbered by <see cref="IndexDriveOpened.SettledDriveCount" /> in settle order. Drives settle
 ///     concurrently, so these cases assert on each drive's report by letter and on the set of
@@ -54,7 +54,7 @@ public class FileIndexOpenProgressTests
             CacheDirectory = _cacheDirectory,
             CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
             MftSource = mftProducer is null ? null : new MftIndexSource(mftProducer),
-            OpenProgress = openProgress
+            DriveOpenProgress = openProgress
         };
     }
 
@@ -183,7 +183,7 @@ public class FileIndexOpenProgressTests
             new IndexedDrive('U', CreateDriveRoot("second"), 2)
         };
         var options = Options(drives);
-        Assert.IsNull(options.OpenProgress, "the member defaults to null so existing consumers compile unchanged");
+        Assert.IsNull(options.DriveOpenProgress, "the member defaults to null so existing consumers compile unchanged");
 
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
 
