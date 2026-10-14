@@ -1,5 +1,8 @@
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -8,6 +11,14 @@ namespace MFTLib.Tests.Index;
 [DoNotParallelize]
 public class IndexedDriveTests
 {
+    OwnedIndexDirectories _directories = null!;
+
+    [TestInitialize]
+    public void Initialize() => _directories = new OwnedIndexDirectories();
+
+    [TestCleanup]
+    public void Cleanup() => _directories.Dispose();
+
     [TestMethod]
     [SupportedOSPlatform("windows")]
     [DataRow('C')]
@@ -59,5 +70,296 @@ public class IndexedDriveTests
 
         Assert.AreNotEqual(0u, drive.VolumeSerial);
         Assert.AreEqual(systemRoot, drive.RootDirectory);
+    }
+
+    [TestMethod]
+    public void ConstructorAndWithInitializer_RejectNullRootDirectory()
+    {
+        var valid = new IndexedDrive('T', @"T:\", 1);
+        Assert.ThrowsException<ArgumentNullException>(() => new IndexedDrive('T', null!, 1));
+        Assert.ThrowsException<ArgumentNullException>(() => valid with { RootDirectory = null! });
+    }
+
+    [DataTestMethod]
+    [DataRow("")]
+    [DataRow(" ")]
+    [DataRow("\t\r\n")]
+    public void ConstructorAndWithInitializer_RejectEmptyOrWhiteSpaceRootDirectory(string blankRoot)
+    {
+        var valid = new IndexedDrive('T', @"T:\", 1);
+        Assert.ThrowsException<ArgumentException>(() => new IndexedDrive('T', blankRoot, 1));
+        Assert.ThrowsException<ArgumentException>(() => valid with { RootDirectory = blankRoot });
+    }
+
+    [DataTestMethod]
+    [DataRow((ProducerPolicy)(-1))]
+    [DataRow((ProducerPolicy)2)]
+    [DataRow((ProducerPolicy)999)]
+    public void ConstructorAndWithInitializer_RejectUndefinedProducerPolicy(ProducerPolicy invalidPolicy)
+    {
+        var valid = new IndexedDrive('T', @"T:\", 1);
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => new IndexedDrive('T', @"T:\", 1, invalidPolicy));
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => valid with { ProducerPolicy = invalidPolicy });
+    }
+
+    [TestMethod]
+    public void ConstructorAndWithInitializer_AcceptValidValues()
+    {
+        var drive = new IndexedDrive('t', @"T:\root", 42, ProducerPolicy.Enumeration);
+        Assert.AreEqual(new DriveKey('T'), drive.Drive);
+        Assert.AreEqual(@"T:\root", drive.RootDirectory);
+        Assert.AreEqual(42u, drive.VolumeSerial);
+        Assert.AreEqual(ProducerPolicy.Enumeration, drive.ProducerPolicy);
+
+        var updated = drive with
+        {
+            Drive = 'u',
+            RootDirectory = @"U:\other",
+            VolumeSerial = 99,
+            ProducerPolicy = ProducerPolicy.Mft
+        };
+        Assert.AreEqual(new DriveKey('U'), updated.Drive);
+        Assert.AreEqual(@"U:\other", updated.RootDirectory);
+        Assert.AreEqual(99u, updated.VolumeSerial);
+        Assert.AreEqual(ProducerPolicy.Mft, updated.ProducerPolicy);
+    }
+
+    [DataTestMethod]
+    [DataRow('T', 'T')]
+    [DataRow('T', 't')]
+    [DataRow('t', 'T')]
+    [DataRow('t', 't')]
+    public async Task OpenAsync_RejectsDuplicateDriveKeysBeforeSideEffects(char firstLetter, char secondLetter)
+    {
+        Directory.CreateDirectory(_directories.TreeRoot);
+        var absentRoot = Path.Combine(_directories.TreeRoot, "absent");
+        var first = new IndexedDrive(firstLetter, _directories.TreeRoot, 1, ProducerPolicy.Enumeration);
+        var second = new IndexedDrive(secondLetter, absentRoot, 2, ProducerPolicy.Enumeration);
+
+        var failure = await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
+            options => options with { Drives = [first, second] });
+
+        Assert.AreEqual("options", failure.ParamName);
+        StringAssert.Contains(failure.Message, "Drive T is listed more than once.");
+    }
+
+    [TestMethod]
+    public async Task OpenAsync_RejectsNullDriveListBeforeSideEffects()
+    {
+        var failure = await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
+            options => options with { Drives = null! });
+
+        Assert.AreEqual("options", failure.ParamName);
+        StringAssert.Contains(failure.Message, "FileIndexOptions.Drives");
+    }
+
+    [TestMethod]
+    public async Task OpenAsync_RejectsNullDriveElementBeforeSideEffects()
+    {
+        Directory.CreateDirectory(_directories.TreeRoot);
+        var valid = new IndexedDrive('T', _directories.TreeRoot, 1, ProducerPolicy.Enumeration);
+
+        var singleNull = await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
+            options => options with { Drives = [null!] });
+        Assert.AreEqual("options", singleNull.ParamName);
+
+        var secondNull = await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
+            options => options with { Drives = [valid, null!] });
+        Assert.AreEqual("options", secondNull.ParamName);
+    }
+
+    [DataTestMethod]
+    [DataRow("")]
+    [DataRow(" ")]
+    public async Task OpenAsync_RejectsBlankRootDirectoryBeforeSideEffects(string blankRoot)
+    {
+        await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
+            options => options with { Drives = [new IndexedDrive('T', blankRoot, 1, ProducerPolicy.Enumeration)] });
+
+        var bypassed = CreateBypassedDrive(new DriveKey('T'), blankRoot, ProducerPolicy.Enumeration);
+        await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
+            options => options with { Drives = [bypassed] });
+    }
+
+    [DataTestMethod]
+    [DataRow((ProducerPolicy)(-1))]
+    [DataRow((ProducerPolicy)999)]
+    public async Task OpenAsync_RejectsUndefinedProducerPolicyBeforeSideEffects(ProducerPolicy invalidPolicy)
+    {
+        Directory.CreateDirectory(_directories.TreeRoot);
+        await AssertInvalidOpenCreatesNothingAsync<ArgumentOutOfRangeException>(
+            options => options with { Drives = [new IndexedDrive('T', _directories.TreeRoot, 1, invalidPolicy)] });
+
+        var bypassed = CreateBypassedDrive(new DriveKey('T'), _directories.TreeRoot, invalidPolicy);
+        await AssertInvalidOpenCreatesNothingAsync<ArgumentOutOfRangeException>(
+            options => options with { Drives = [bypassed] });
+    }
+
+    [TestMethod]
+    public async Task OpenAsync_RejectsDefaultDriveKeyBeforeSideEffects()
+    {
+        Directory.CreateDirectory(_directories.TreeRoot);
+        var bypassed = CreateBypassedDrive(default, _directories.TreeRoot, ProducerPolicy.Enumeration);
+
+        await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
+            options => options with { Drives = [bypassed] });
+    }
+
+    [TestMethod]
+    public async Task OpenAsync_AcceptsDistinctValidKeysAndMaterializesOnce()
+    {
+        var rootT = Path.Combine(_directories.TreeRoot, "T");
+        var rootU = Path.Combine(_directories.TreeRoot, "U");
+        Directory.CreateDirectory(rootT);
+        Directory.CreateDirectory(rootU);
+        await File.WriteAllTextAsync(Path.Combine(rootT, "t.txt"), "t");
+        await File.WriteAllTextAsync(Path.Combine(rootU, "u.txt"), "u");
+
+        var sequence = new SinglePassDriveList(
+        [
+            new IndexedDrive('T', rootT, 1, ProducerPolicy.Enumeration),
+            new IndexedDrive('u', rootU, 2, ProducerPolicy.Enumeration)
+        ]);
+
+        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
+        {
+            Drives = sequence,
+            CacheMode = CacheMode.Disabled
+        }, CancellationToken.None);
+
+        Assert.AreEqual(1, sequence.EnumerationCount);
+        CollectionAssert.AreEqual(new DriveKey[] { 'T', 'U' },
+            index.Drives.Select(status => status.Drive).ToArray());
+        Assert.IsTrue(index.Drives.All(status => status.State == DriveState.Ready));
+
+        var rescanResults = await index.RescanAsync(
+            index.Drives.Select(status => status.Drive), CancellationToken.None);
+        CollectionAssert.AreEqual(new DriveKey[] { 'T', 'U' },
+            rescanResults.Select(result => result.Drive).ToArray());
+        Assert.IsTrue(rescanResults.All(result => result.Outcome == DriveOperationOutcome.Succeeded));
+    }
+
+    [TestMethod]
+    public async Task OpenAsync_InvalidConfigurationLeavesAnExistingOwnedCacheDirectoryUntouched()
+    {
+        Directory.CreateDirectory(_directories.CacheDirectory);
+        var existingFile = Path.Combine(_directories.CacheDirectory, "existing.txt");
+        await File.WriteAllTextAsync(existingFile, "keep");
+        var contentsBefore = SnapshotDirectory(_directories.CacheDirectory);
+        var protectionBefore = ReadProtection(_directories.CacheDirectory);
+        var producerCalls = 0;
+        var progressCalls = 0;
+        Directory.CreateDirectory(_directories.TreeRoot);
+        var first = new IndexedDrive('T', _directories.TreeRoot, 1, ProducerPolicy.Enumeration);
+        var duplicate = new IndexedDrive('t', _directories.TreeRoot, 2, ProducerPolicy.Enumeration);
+
+        await Assert.ThrowsExceptionAsync<ArgumentException>(() => FileIndex.OpenAsync(new FileIndexOptions
+        {
+            CacheMode = CacheMode.Persistent,
+            CacheDirectory = _directories.CacheDirectory,
+            Drives = [first, duplicate],
+            MftSource = new MftIndexSource((_, _) =>
+            {
+                Interlocked.Increment(ref producerCalls);
+                return Task.FromException<MftBlockProduceResult>(new InvalidOperationException("producer must not run"));
+            }),
+            ScanProgress = new SynchronousProgress<IndexScanProgress>(_ => Interlocked.Increment(ref progressCalls)),
+            DriveOpenProgress = new SynchronousProgress<IndexDriveOpened>(_ => Interlocked.Increment(ref progressCalls))
+        }, CancellationToken.None));
+
+        Assert.AreEqual(0, producerCalls);
+        Assert.AreEqual(0, progressCalls);
+        CollectionAssert.AreEqual(contentsBefore, SnapshotDirectory(_directories.CacheDirectory),
+            "no block slot, lock file or other entry may appear or vanish");
+        Assert.AreEqual("keep", await File.ReadAllTextAsync(existingFile));
+        Assert.AreEqual(protectionBefore, ReadProtection(_directories.CacheDirectory));
+    }
+
+    static string ReadProtection(string directory) =>
+        OperatingSystem.IsWindows()
+            ? new DirectoryInfo(directory).GetAccessControl()
+                .GetSecurityDescriptorSddlForm(System.Security.AccessControl.AccessControlSections.Access)
+            : File.GetUnixFileMode(directory).ToString();
+
+    static string[] SnapshotDirectory(string directory) =>
+        Directory.EnumerateFileSystemEntries(directory, "*", SearchOption.AllDirectories)
+            .Select(entry => $"{Path.GetRelativePath(directory, entry)}|{(File.Exists(entry) ? new FileInfo(entry).Length : -1)}")
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+    async Task<TException> AssertInvalidOpenCreatesNothingAsync<TException>(
+        Func<FileIndexOptions, FileIndexOptions> configure)
+        where TException : Exception
+    {
+        var producerCalls = 0;
+        var scanProgressCalls = 0;
+        var openProgressCalls = 0;
+        var baseOptions = new FileIndexOptions
+        {
+            CacheMode = CacheMode.Persistent,
+            CacheDirectory = _directories.CacheDirectory,
+            MftSource = new MftIndexSource((_, _) =>
+            {
+                Interlocked.Increment(ref producerCalls);
+                return Task.FromException<MftBlockProduceResult>(
+                    new InvalidOperationException("producer must not run"));
+            }),
+            ScanProgress = new SynchronousProgress<IndexScanProgress>(_ => Interlocked.Increment(ref scanProgressCalls)),
+            DriveOpenProgress = new SynchronousProgress<IndexDriveOpened>(_ => Interlocked.Increment(ref openProgressCalls))
+        };
+
+        var exception = await Assert.ThrowsExceptionAsync<TException>(
+            () => FileIndex.OpenAsync(configure(baseOptions), CancellationToken.None));
+
+        Assert.AreEqual(0, producerCalls);
+        Assert.AreEqual(0, scanProgressCalls);
+        Assert.AreEqual(0, openProgressCalls);
+        Assert.IsFalse(Directory.Exists(_directories.CacheDirectory));
+        return exception;
+    }
+
+    static IndexedDrive CreateBypassedDrive(DriveKey drive, string? rootDirectory, ProducerPolicy policy)
+    {
+        var instance = (IndexedDrive)RuntimeHelpers.GetUninitializedObject(typeof(IndexedDrive));
+        foreach (var field in typeof(IndexedDrive).GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
+        {
+            if (field.FieldType == typeof(DriveKey))
+            {
+                field.SetValue(instance, drive);
+            }
+            else if (field.FieldType == typeof(string))
+            {
+                field.SetValue(instance, rootDirectory);
+            }
+            else if (field.FieldType == typeof(ProducerPolicy))
+            {
+                field.SetValue(instance, policy);
+            }
+        }
+
+        return instance;
+    }
+
+    sealed class SynchronousProgress<T>(Action<T> handler) : IProgress<T>
+    {
+        public void Report(T value) => handler(value);
+    }
+
+    sealed class SinglePassDriveList(IReadOnlyList<IndexedDrive> items) : IReadOnlyList<IndexedDrive>
+    {
+        public int EnumerationCount { get; private set; }
+
+        public int Count => items.Count;
+
+        public IndexedDrive this[int index] => items[index];
+
+        public IEnumerator<IndexedDrive> GetEnumerator()
+        {
+            Assert.AreEqual(0, EnumerationCount, "FileIndexOptions.Drives must be materialized once.");
+            EnumerationCount++;
+            return items.GetEnumerator();
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }

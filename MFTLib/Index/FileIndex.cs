@@ -80,16 +80,14 @@ public sealed partial class FileIndex : IAsyncDisposable
 
     FileIndex(FileIndexOptions options, string cacheDirectoryPath)
     {
-        // A private copy: the index re-enumerates its drives on every status read, so a later
-        // change to the caller's list must never reach it.
-        _options = options with { Drives = [.. options.Drives] };
+        _options = options;
         CacheDirectoryPath = cacheDirectoryPath;
         _enumerateCacheFiles = options.EnumerateCacheFilesForTest ?? Directory.EnumerateFiles;
         _snapshot = Snapshot.Create([]);
         foreach (var drive in _options.Drives)
         {
             var driveLetter = drive.Drive.Validated();
-            _driveRuntimes.TryAdd(driveLetter, new DriveRuntime(driveLetter));
+            _driveRuntimes.Add(driveLetter, new DriveRuntime(driveLetter));
         }
     }
 
@@ -156,8 +154,14 @@ public sealed partial class FileIndex : IAsyncDisposable
     /// </param>
     /// <returns>The opened index, which the caller disposes.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="options" /> is null.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="options" /> specifies an undefined <see cref="FileIndexOptions.CacheMode" />.</exception>
-    /// <exception cref="ArgumentException">Cache configuration is missing or dump options are invalid.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    ///     <paramref name="options" /> specifies an undefined <see cref="FileIndexOptions.CacheMode" /> or a drive
+    ///     specifies an undefined <see cref="IndexedDrive.ProducerPolicy" />.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    ///     Cache configuration is missing, dump options are invalid, or <see cref="FileIndexOptions.Drives" /> is null,
+    ///     contains a null or invalid drive, or lists a drive more than once.
+    /// </exception>
     /// <exception cref="OperationCanceledException">The token was cancelled before the open finished.</exception>
     public static async Task<FileIndex> OpenAsync(FileIndexOptions options,
         CancellationToken cancellationToken)
@@ -174,12 +178,13 @@ public sealed partial class FileIndex : IAsyncDisposable
         }
         else
         {
+            var drives = FileIndexOptions.ValidateDrives(options);
             if (options.CacheMode is { } explicitMode && !Enum.IsDefined(explicitMode))
             {
                 throw new ArgumentOutOfRangeException(nameof(options), "Unknown cache mode.");
             }
 
-            options = options with { CacheMode = options.CacheMode ?? CacheMode.Persistent };
+            options = options with { Drives = drives, CacheMode = options.CacheMode ?? CacheMode.Persistent };
             if (options.CacheMode != CacheMode.Disabled)
             {
                 var suppliedCacheDirectory = options.CacheDirectory;

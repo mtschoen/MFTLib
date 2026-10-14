@@ -14,7 +14,7 @@ public sealed partial class FileIndex
     {
         foreach (var drive in _options.Drives)
         {
-            _driveConfigurations[drive.Drive] = drive;
+            _driveConfigurations.Add(drive.Drive, drive);
         }
 
         var total = _options.Drives.Count;

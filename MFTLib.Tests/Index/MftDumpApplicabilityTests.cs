@@ -91,6 +91,21 @@ public class MftDumpApplicabilityTests
             "FileIndexOptions.CacheTag");
     }
 
+    [TestMethod]
+    public async Task Open_WithNullDrives_IsRejectedNamingDrivesWithoutProducing()
+    {
+        var producerCalls = 0;
+        var source = MftDumpIndexes.Source((request, token) =>
+        {
+            Interlocked.Increment(ref producerCalls);
+            return MftDumpIndexes.Produce(request, token);
+        });
+
+        await AssertRejectedAsync(MftDumpIndexes.Options(source) with { Drives = null! }, "FileIndexOptions.Drives");
+
+        Assert.AreEqual(0, producerCalls);
+    }
+
     static async Task AssertRejectedAsync(FileIndexOptions options, string settingName)
     {
         var failure = await Assert.ThrowsExceptionAsync<ArgumentException>(

@@ -34,7 +34,7 @@ internal sealed record MftDumpSourceIdentity
     internal static void ValidateOptions(FileIndexOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        if (options.Drives.Count != 0)
+        if (options.Drives is not { Count: 0 })
         {
             throw new ArgumentException("A dump source supplies its own drive, so FileIndexOptions.Drives must be empty.",
                 nameof(options));

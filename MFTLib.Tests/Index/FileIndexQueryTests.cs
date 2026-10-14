@@ -95,48 +95,36 @@ public class FileIndexQueryTests
     }
 
     [DataTestMethod]
-    [DataRow(DriveState.Offline, 'T', false, 'T')]
-    [DataRow(DriveState.Offline, 'T', false, 't')]
-    [DataRow(DriveState.Offline, 'T', true, 'T')]
-    [DataRow(DriveState.Offline, 'T', true, 't')]
-    [DataRow(DriveState.Offline, 't', false, 'T')]
-    [DataRow(DriveState.Offline, 't', false, 't')]
-    [DataRow(DriveState.Offline, 't', true, 'T')]
-    [DataRow(DriveState.Offline, 't', true, 't')]
-    [DataRow(DriveState.Failed, 'T', false, 'T')]
-    [DataRow(DriveState.Failed, 'T', false, 't')]
-    [DataRow(DriveState.Failed, 'T', true, 'T')]
-    [DataRow(DriveState.Failed, 'T', true, 't')]
-    [DataRow(DriveState.Failed, 't', false, 'T')]
-    [DataRow(DriveState.Failed, 't', false, 't')]
-    [DataRow(DriveState.Failed, 't', true, 'T')]
-    [DataRow(DriveState.Failed, 't', true, 't')]
-    public async Task Root_ReturnsTheDriveRoot_WithBlocklessDuplicate(DriveState blocklessState,
-        char duplicateLetter, bool blocklessFirst, char driveLetter)
+    [DataRow(DriveState.Offline, 'T', false)]
+    [DataRow(DriveState.Offline, 'T', true)]
+    [DataRow(DriveState.Offline, 't', false)]
+    [DataRow(DriveState.Offline, 't', true)]
+    [DataRow(DriveState.Failed, 'T', false)]
+    [DataRow(DriveState.Failed, 'T', true)]
+    [DataRow(DriveState.Failed, 't', false)]
+    [DataRow(DriveState.Failed, 't', true)]
+    public async Task OpenAsync_RejectsBlocklessDuplicateDriveConfiguration(DriveState blocklessState,
+        char duplicateLetter, bool blocklessFirst)
     {
         var policy = blocklessState == DriveState.Offline ? ProducerPolicy.Enumeration : ProducerPolicy.Mft;
         var ready = new IndexedDrive('T', _treeRoot, 1, policy);
         var blockless = new IndexedDrive(duplicateLetter,
             blocklessState == DriveState.Offline ? Path.Combine(_treeRoot, "absent") : _treeRoot, 2, policy);
-        var producer = new SyntheticMftProducer(_ => [new SyntheticRow(5, "", 5) { IsDirectory = true }]);
-        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
+        var producerCalls = 0;
+        var exception = await Assert.ThrowsExceptionAsync<ArgumentException>(() => FileIndex.OpenAsync(new FileIndexOptions
         {
             Drives = blocklessFirst ? [blockless, ready] : [ready, blockless],
             CacheMode = CacheMode.Disabled,
-            MftSource = new MftIndexSource((request, cancellationToken) => request.VolumeSerial == blockless.VolumeSerial
-                ? Task.FromException<MftBlockProduceResult>(new InvalidOperationException("duplicate configuration failed"))
-                : producer.Producer(request, cancellationToken))
-        }, CancellationToken.None);
+            MftSource = new MftIndexSource((_, _) =>
+            {
+                Interlocked.Increment(ref producerCalls);
+                return Task.FromException<MftBlockProduceResult>(new InvalidOperationException("producer must not run"));
+            })
+        }, CancellationToken.None));
 
-        Assert.AreEqual(2, index.Drives.Count);
-        foreach (var status in index.Drives)
-        {
-            Assert.AreEqual(DriveState.Ready, status.State);
-            Assert.IsNotNull(status.Block);
-        }
-
-        Assert.AreEqual(_treeRoot, index.Find(_treeRoot)!.Value.Path);
-        Assert.AreEqual(_treeRoot, index.Root(driveLetter).Path);
+        Assert.AreEqual("options", exception.ParamName);
+        StringAssert.Contains(exception.Message, "Drive T is listed more than once.");
+        Assert.AreEqual(0, producerCalls);
     }
 
     [DataTestMethod]

@@ -54,14 +54,18 @@ across block replacement.
 
 ## OpenAsync validates drive keys and producer policies before filesystem side effects
 
-**Decision (2026-10-14, implementation pending
+**Decision (2026-10-14,
 [MFTLib issue 505 (OpenAsync input validation)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/505)):**
-`FileIndex.OpenAsync` validates `FileIndexOptions.Drives` up front, before creating `CacheDirectory` or running
-any producer: duplicate normalized `DriveKey` entries throw `ArgumentException`, and an undefined
-`ProducerPolicy` value throws `ArgumentOutOfRangeException`.
+`IndexedDrive` validates `Drive`, `RootDirectory` (`ArgumentException.ThrowIfNullOrWhiteSpace`), and `ProducerPolicy`
+(`Enum.IsDefined`, throwing `ArgumentOutOfRangeException`) on construction and in its `init` setters.
+`FileIndex.OpenAsync` materializes `FileIndexOptions.Drives` once and validates it up front, before creating
+`CacheDirectory` or running any producer: a null `Drives` collection, a null or invalid element, or duplicate
+normalized `DriveKey` entries throw `ArgumentException`, and an undefined `ProducerPolicy` value throws
+`ArgumentOutOfRangeException`.
 
 **Reason:** `OpenAsync` is a dictionary-keyed, per-drive API (`Drives`, `Root(DriveKey)`), so duplicate drive
-keys and undefined enum values are caller configuration bugs that must fail fast with no filesystem side effects.
+keys, blank roots, and undefined enum values are caller configuration bugs that must fail fast with no filesystem
+side effects.
 
 **Revisit only if:** never; configuration validation before side effects is a baseline contract.
 

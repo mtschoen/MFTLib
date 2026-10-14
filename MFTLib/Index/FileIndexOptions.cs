@@ -7,9 +7,11 @@ namespace MFTLib.Index;
 public sealed record FileIndexOptions
 {
     /// <summary>
-    ///     Drives to include in the index. For ordinary sources, an empty collection opens an
-    ///     index with no drives; a dump source supplies its own virtual drive and requires an
-    ///     empty collection.
+    ///     Drives to include in the index. <see cref="FileIndex.OpenAsync" /> materializes the
+    ///     collection once and rejects a null collection, a null or invalid element, or duplicate
+    ///     normalized <see cref="DriveKey" /> entries before creating a cache directory or starting
+    ///     a scan. For ordinary sources, an empty collection opens an index with no drives; a dump
+    ///     source supplies its own virtual drive and requires an empty collection.
     /// </summary>
     public IReadOnlyList<IndexedDrive> Drives { get; init; } = [];
 
@@ -107,4 +109,33 @@ public sealed record FileIndexOptions
     ///     to test code before it has settled.
     /// </summary>
     internal Func<string, string, IEnumerable<string>>? EnumerateCacheFilesForTest { get; init; }
+
+    internal static IndexedDrive[] ValidateDrives(FileIndexOptions options)
+    {
+        if (options.Drives is not { } configuredDrives)
+        {
+            throw new ArgumentException("FileIndexOptions.Drives must not be null.", nameof(options));
+        }
+
+        // Materialized once into a private copy so the index never re-evaluates or shares the
+        // caller's list, and validated before any cache directory or scan work begins.
+        var drives = configuredDrives.ToArray();
+        HashSet<DriveKey> seen = [];
+        foreach (var drive in drives)
+        {
+            if (drive is null)
+            {
+                throw new ArgumentException("FileIndexOptions.Drives must not contain null entries.",
+                    nameof(options));
+            }
+
+            var driveLetter = drive.Validated().Drive;
+            if (!seen.Add(driveLetter))
+            {
+                throw new ArgumentException($"Drive {driveLetter} is listed more than once.", nameof(options));
+            }
+        }
+
+        return drives;
+    }
 }
