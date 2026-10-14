@@ -169,6 +169,44 @@ public class SyntheticNotificationsTests
     }
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void CreateWatchStateChange_ForwardsEveryValue(bool includeFault)
+    {
+        var watch = SyntheticNotifications.CreateDriveStatus('T', DriveState.Offline, null, null).Watch
+            with
+        { State = WatchState.Faulted, StateVersion = 7, FailureMessage = "watch failed" };
+        WatchFault? fault = includeFault
+            ? SyntheticNotifications.CreateWatchFault(WatchFaultKind.Channel, 'T', new IOException("pipe closed"))
+            : null;
+
+        var change = SyntheticNotifications.CreateWatchStateChange('t', watch, fault);
+
+        Assert.AreEqual(new DriveKey('T'), change.Drive);
+        Assert.AreSame(watch, change.Watch);
+        Assert.AreSame(fault, change.Fault);
+        Assert.AreEqual(new WatchStateChange('T', watch, fault), change);
+    }
+
+    [TestMethod]
+    [DataRow(DriveOperationOutcome.Succeeded)]
+    [DataRow(DriveOperationOutcome.NotApplicable)]
+    [DataRow(DriveOperationOutcome.Failed)]
+    public void CreateDriveOperationResult_ForwardsEveryValue(DriveOperationOutcome outcome)
+    {
+        Exception? failure = outcome == DriveOperationOutcome.Failed
+            ? new IOException("scan failed")
+            : null;
+
+        var result = SyntheticNotifications.CreateDriveOperationResult('t', outcome, failure);
+
+        Assert.AreEqual(new DriveKey('T'), result.Drive);
+        Assert.AreEqual(outcome, result.Outcome);
+        Assert.AreSame(failure, result.Failure);
+        Assert.AreEqual(new DriveOperationResult('T', outcome, failure), result);
+    }
+
+    [TestMethod]
     public void CreateJournalCatchUpLostException_ForwardsBothValues()
     {
         var exception = SyntheticNotifications.CreateJournalCatchUpLostException(true, "scan catch-up lost");

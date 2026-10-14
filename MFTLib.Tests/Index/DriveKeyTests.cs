@@ -65,6 +65,10 @@ public class DriveKeyTests
         Assert.ThrowsException<ArgumentException>(() => new IndexRecordKey('C', 5, ProducerKind.Mft) with { Drive = default });
         Assert.ThrowsException<ArgumentException>(() => new DriveOperationResult('C', DriveOperationOutcome.Succeeded, null) with { Drive = default });
         Assert.ThrowsException<ArgumentException>(() => new WatchStateChange('C', new DriveWatchStatus(), null) with { Drive = default });
+        Assert.ThrowsException<ArgumentException>(() =>
+            SyntheticNotifications.CreateWatchStateChange(default, new DriveWatchStatus(), null));
+        Assert.ThrowsException<ArgumentException>(() =>
+            SyntheticNotifications.CreateDriveOperationResult(default, DriveOperationOutcome.Succeeded, null));
     }
 
     [TestMethod]

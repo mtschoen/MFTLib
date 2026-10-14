@@ -158,3 +158,29 @@ replacements belong to their pin-bump pull requests.
 
 **Revisit only if:** concrete consumer requirements change drive identity or the
 distinct meanings of these state questions.
+
+## Hand-out watch events and operation results are library-constructed
+
+**Decision (2026-10-13, API review finding F22):** `WatchStateChange` and
+`DriveOperationResult` follow the receive-only record rule: explicit internal
+constructors, public init-only properties, and no positional `Deconstruct`.
+Tests construct them through `SyntheticNotifications.CreateWatchStateChange`
+and `SyntheticNotifications.CreateDriveOperationResult` in `MFTLib.TestExtensions`
+([MFTLib issue 482 (restrict hand-out record construction)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/482)).
+
+**Reason:** the library produces these events and operation verdicts. The
+consumer review found no production need to construct them. file-wizard's
+snapshot seeding passes the drive, `DriveWatchStatus`, and nullable fault to
+its own merge/presentation method instead of wrapping a snapshot in an event.
+Its cache-only host reports its own refusal instead of fabricating a library
+result. Forwarding that refusal to `RescanAsync` was rejected because it would
+touch the cache file and rewrite the drive's failure kind.
+
+Consumer pin-bump pull requests migrate those production callers and replace
+synthetic events/results in consumer tests with the factories. The factories
+forward to the internal constructors, retaining the same drive-key validation.
+The public init-only properties and record copy/equality behavior remain.
+
+**Revisit only if:** a concrete consumer production requirement needs the
+library to accept an application-constructed event or operation result;
+snapshot presentation and application-owned refusals do not establish that need.

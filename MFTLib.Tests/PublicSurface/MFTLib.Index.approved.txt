@@ -126,9 +126,7 @@ MFTLib.Index.DriveOperationOutcome :: field public const Failed : MFTLib.Index.D
 MFTLib.Index.DriveOperationOutcome :: field public const NotApplicable : MFTLib.Index.DriveOperationOutcome = 2
 MFTLib.Index.DriveOperationOutcome :: field public const Succeeded : MFTLib.Index.DriveOperationOutcome = 0
 MFTLib.Index.DriveOperationOutcome :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
-MFTLib.Index.DriveOperationResult :: constructor public (MFTLib.Index.DriveKey Drive, MFTLib.Index.DriveOperationOutcome Outcome, System.Exception? Failure)
 MFTLib.Index.DriveOperationResult :: method public <Clone>$() : MFTLib.Index.DriveOperationResult
-MFTLib.Index.DriveOperationResult :: method public Deconstruct(out MFTLib.Index.DriveKey Drive, out MFTLib.Index.DriveOperationOutcome Outcome, out System.Exception? Failure) : void
 MFTLib.Index.DriveOperationResult :: method public Equals(MFTLib.Index.DriveOperationResult? other) : bool
 MFTLib.Index.DriveOperationResult :: method public override Equals(object? obj) : bool
 MFTLib.Index.DriveOperationResult :: method public override GetHashCode() : int
@@ -411,9 +409,7 @@ MFTLib.Index.WatchState :: field public const Faulted : MFTLib.Index.WatchState 
 MFTLib.Index.WatchState :: field public const NotStarted : MFTLib.Index.WatchState = 0
 MFTLib.Index.WatchState :: field public const Recovering : MFTLib.Index.WatchState = 3
 MFTLib.Index.WatchState :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
-MFTLib.Index.WatchStateChange :: constructor public (MFTLib.Index.DriveKey Drive, MFTLib.Index.DriveWatchStatus Watch, MFTLib.Index.WatchFault? Fault)
 MFTLib.Index.WatchStateChange :: method public <Clone>$() : MFTLib.Index.WatchStateChange
-MFTLib.Index.WatchStateChange :: method public Deconstruct(out MFTLib.Index.DriveKey Drive, out MFTLib.Index.DriveWatchStatus Watch, out MFTLib.Index.WatchFault? Fault) : void
 MFTLib.Index.WatchStateChange :: method public Equals(MFTLib.Index.WatchStateChange? other) : bool
 MFTLib.Index.WatchStateChange :: method public override Equals(object? obj) : bool
 MFTLib.Index.WatchStateChange :: method public override GetHashCode() : int

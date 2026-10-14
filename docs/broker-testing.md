@@ -6,6 +6,34 @@ records, synthetic cache blocks and their editor, and an opt-in guard against th
 checkpoint observations reading a real volume's USN journal. Tests supply application-owned
 temporary cache directories.
 
+## Synthetic events and operation results
+
+`WatchStateChange` and `DriveOperationResult` are library-constructed records.
+Consumer tests that feed event handlers or result presenters use
+`SyntheticNotifications` from the test package:
+
+```csharp
+using MFTLib.Index;
+using MFTLibTestExtensions;
+
+var watch = SyntheticNotifications.CreateDriveStatus('T', DriveState.Offline, null, null).Watch
+    with { State = WatchState.CatchingUp, StateVersion = 1 };
+var change = SyntheticNotifications.CreateWatchStateChange('T', watch, null);
+var failure = new System.IO.IOException("scan failed");
+var result = SyntheticNotifications.CreateDriveOperationResult('T', DriveOperationOutcome.Failed, failure);
+```
+
+The factories retain the supplied watch, fault, and exception references and
+forward to the library constructors, including their drive-key validation.
+Both nullable trailing arguments are explicit: pass null when there is no
+fault or failure. Read the records' properties instead of positional
+deconstruction.
+
+Production applications receive events from `FileIndex.WatchStateChanged` and
+results from index operations. Seed watch history directly from `DriveStatus.Watch`
+using the shared version check in [broker integration](broker-integration.md);
+an application-owned refusal stays in the application's own error path.
+
 ## BrokerTestHarness
 
 `BrokerTestHarness.StartInProcess(ScriptedBrokerVolumes)` runs the real broker host on a

@@ -70,6 +70,24 @@ public static class SyntheticNotifications
     public static WatchFault CreateWatchFault(WatchFaultKind kind, DriveKey driveLetter, Exception exception) =>
         new(kind, driveLetter, exception);
 
+    /// <summary>Builds a watch state change for a consumer event handler.</summary>
+    /// <param name="driveLetter">The drive whose watch changed state.</param>
+    /// <param name="watch">The drive's watch status after the change.</param>
+    /// <param name="fault">The fault that caused the change, or null.</param>
+    /// <returns>The state change.</returns>
+    public static WatchStateChange CreateWatchStateChange(DriveKey driveLetter, DriveWatchStatus watch,
+        WatchFault? fault) =>
+        new(driveLetter, watch, fault);
+
+    /// <summary>Builds one drive's operation result for a consumer result handler.</summary>
+    /// <param name="driveLetter">The drive the result describes.</param>
+    /// <param name="outcome">What the operation did for the drive.</param>
+    /// <param name="failure">The per-drive exception for a failure; otherwise null.</param>
+    /// <returns>The operation result.</returns>
+    public static DriveOperationResult CreateDriveOperationResult(DriveKey driveLetter,
+        DriveOperationOutcome outcome, Exception? failure) =>
+        new(driveLetter, outcome, failure);
+
     /// <summary>Builds the exception a scan carries when it loses its journal catch-up.</summary>
     /// <param name="recoveryStopped">Whether the scan operation stopped retrying at this loss.</param>
     /// <param name="message">What was lost and what happens next.</param>
