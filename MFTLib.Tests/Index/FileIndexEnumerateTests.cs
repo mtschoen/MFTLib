@@ -58,8 +58,6 @@ public class FileIndexEnumerateTests
 
         var pictures = index.Find(Path.Combine(SecondRoot, "Pictures"))!.Value;
         AssertStreamingMatchesSearch(index, new SearchQuery(null, Subtree: pictures));
-
-        AssertStreamingMatchesSearch(index, new SearchQuery(null, Subtree: default(FileEntry)));
     }
 
     [TestMethod]

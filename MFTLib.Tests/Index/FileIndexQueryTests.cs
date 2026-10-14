@@ -82,10 +82,10 @@ public class FileIndexQueryTests
     }
 
     [TestMethod]
-    public void Search_Under_InvalidAncestor_ReturnsNoResults()
+    public void Search_Under_DefaultAncestor_ThrowsArgumentException()
     {
-        var results = _index.Search(new SearchQuery("readme", Subtree: default(FileEntry)));
-        Assert.AreEqual(0, results.Count);
+        Assert.ThrowsException<ArgumentException>(
+            () => _index.Search(new SearchQuery("readme", Subtree: default(FileEntry))));
     }
 
     [TestMethod]

@@ -99,18 +99,24 @@ internal static class IndexNavigation
 
     /// <summary>
     ///     True when <paramref name="candidate" /> is the ancestor itself or lives beneath it.
-    ///     Entries on different drives are never under one another.
+    ///     Entries in different drive blocks are never under one another. The blocks are compared by identity,
+    ///     not by drive ordinal, because an ordinal is local to the snapshot that minted the handle and two
+    ///     indexes can both use ordinal zero.
     /// </summary>
     internal static bool IsUnder(FileEntry candidate, FileEntry ancestor)
     {
-        if (!candidate.IsValid || !ancestor.IsValid ||
-            candidate.DriveOrdinal != ancestor.DriveOrdinal)
+        if (!candidate.IsValid || !ancestor.IsValid)
         {
             return false;
         }
 
-        var block = candidate.DriveBlock.Block;
-        return IsUnder(block, candidate.RowIndex, ancestor.RowIndex);
+        var driveBlock = candidate.DriveBlock;
+        if (!ReferenceEquals(driveBlock, ancestor.DriveBlock))
+        {
+            return false;
+        }
+
+        return IsUnder(driveBlock.Block, candidate.RowIndex, ancestor.RowIndex);
     }
 
     /// <summary>

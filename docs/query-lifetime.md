@@ -51,6 +51,43 @@
       `GetEnumerator` checks cancellation and index disposal; `MoveNext` checks cancellation during
       scanning and can reject an unresolved parent chain while applying a subtree restriction.
 
+    - **Handle incarnation**: a `FileEntry` captures the sequence number its row held when it was minted
+      (`ushort`, in the struct's tail padding, so it stays 16 bytes; an enumeration block, which the journal never
+      mutates, captures zero). `BlockWriter.TryWriteRow` stores the supplied NTFS sequence number exactly, publishing it
+      before it overwrites the columns. A `FileEntry` is bound to the NTFS file reference (record number plus
+      sequence number) it was created from. Distinct file references never alias; a reference NTFS itself reuses
+      (a freed record's incremented sequence number handed to the next file, which a scan with freed records
+      imports as a tombstone that the next create then matches) is the same reference, and the library does not
+      pretend otherwise. The journal ignores a delete or other mutation whose record names a different sequence
+      number than the live row holds, because it belongs to an earlier incarnation a scan already superseded; a
+      stored sequence of zero means the producer recorded none. A create that rewrites a live row with the same
+      number is a refresh of one incarnation. Identity is validated per access: each
+      read checks the handle against the row, and the writer publishes the new sequence before it overwrites the
+      columns. A reader that pauses between its identity check and a column read can observe the replacement's
+      columns, and no lock is taken on the read path. A caller that needs identity and columns together
+      re-checks `IsDeleted` after reading, or reads the `FileChange` event fields. When a journal create reuses a deleted record's slot, every handle minted for the earlier file is
+      superseded: `IsDeleted` is true, `Open` throws `FileNotFoundException` before any open-by-id call, `Children`
+      returns an empty list, `Subtree` rejects it with `ArgumentException`, and every row column (`Name`, `Path`,
+      `Parent`, `Size`, `IsSizeKnown`, `LastWriteTime`, `Attributes`, `IsDirectory`) throws
+      `InvalidOperationException`, all through one shared check. `Drive` and `RecordKey` stay readable. Equality
+      compares the drive block, row index and sequence number, never the snapshot. A rename or move of the
+      same file keeps its sequence number, so its handles keep tracking it. A `Deleted` `FileChange` whose slot was
+      reused reports `Entry.IsDeleted`; `Path`, `PreviousPath` and `Timestamp` carry the event facts.
+
+    - **Subtree anchors**: `SearchQuery.Subtree` names a handle's row, and a handle's drive ordinal and row index are
+      coordinates local to the snapshot that minted it, not ownership. `Search`, `Enumerate` and `EnumerateRows`
+      reject `Subtree = default(FileEntry)` with `ArgumentException` on call entry, before any borrow. Each then
+      resolves the anchor once, through one shared helper, against the snapshot the query borrowed, so a
+      publication that lands after admission cannot turn validation into a check-then-use race. A released anchor
+      throws `ObjectDisposedException`. An anchor whose own `DriveBlock` is not the borrowed snapshot's block
+      for that drive (another index, even one with the same drive key or ordinal, or a block a rescan replaced),
+      or that a newer file has superseded by reusing its row slot, throws `ArgumentException`. For `Enumerate` and
+      `EnumerateRows` the borrow is taken at the first `MoveNext` and at `GetEnumerator`, so those rejections
+      surface there, and the borrow is returned when they do. The drive block is compared, never the whole
+      snapshot: rescanning a different drive publishes a new snapshot without invalidating the anchor. A
+      retained handle stays readable against its original block, and a caller reacquires an anchor from the
+      current index before each query that follows a rescan of the anchor's drive.
+
     - **Writer lifetime**: every internal `BlockWriter` operation holds a `BlockAccessScope` on its
       `BlockFile` for the operation's whole duration. `BlockFile.Dispose` refuses new scopes when
       it begins and waits for outstanding ones before unmapping, so a write racing disposal either

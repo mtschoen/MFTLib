@@ -41,21 +41,21 @@ freshness information that the observation/invalidation model cannot express.
 
 ## A subtree anchor belongs to the queried index's current drive block
 
-**Decision (2026-10-14, implementation pending
-[MFTLib issue 504 (subtree identity)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/504)):**
-all three query forms (`Search`, `Enumerate`, and `EnumerateRows`) eagerly validate a non-null `Subtree` anchor
-on call entry against the snapshot actually borrowed by the query. They throw `ObjectDisposedException` when the
-anchor's block has been released, and `ArgumentException` when the anchor is `default(FileEntry)`, belongs to
-another `FileIndex`, belongs to a replaced drive block, or has been superseded by row reuse. A retained handle
-remains readable against its original block until disposed, and rescanning another drive does not invalidate an
-anchor whose own drive block remains current.
+**Decision (2026-10-14, [MFTLib issue 504 (subtree identity)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/504)):**
+all three query forms (`Search`, `Enumerate`, and `EnumerateRows`) reject `Subtree = default(FileEntry)` with
+`ArgumentException` on call entry. They then validate a non-null `Subtree` anchor, through one shared helper,
+against the snapshot actually borrowed by the query. They throw `ObjectDisposedException` when the anchor's block
+has been released, and `ArgumentException` when the anchor belongs to another `FileIndex`, belongs to a replaced
+drive block, or has been superseded by row reuse. A retained handle remains readable against its original block
+until disposed, and rescanning another drive does not invalidate an anchor whose own drive block remains current;
+the drive block is compared, not the whole snapshot. Callers reacquire an anchor from the current index for a new
+query after the anchor's drive is rescanned.
 
 **Reason:** private drive ordinals and row numbers are coordinates, not ownership, and `default(FileEntry)` is
 not a valid subtree anchor. The audit reproduced a C-drive root selecting D-drive rows in another index,
 including after the first index was disposed, as well as an old directory handle selecting a different directory
 at the same row after rescan and `default(FileEntry)` silently returning an empty result. Comparing whole
 snapshot identity would overcorrect when another drive rescans while the anchor's drive block stays current.
-Until implemented, the current ordinal-only checks do not meet this ruling.
 
 **Revisit only if:** consumers need an explicitly specified rebinding operation that verifies directory identity
 across block replacement.
@@ -100,16 +100,24 @@ missing or inaccessible subtrees; neither is an operational producer failure by 
 
 ## FileEntry handles are bound to the row's sequence number
 
-**Decision (2026-10-14, implementation pending
-[MFTLib issue 507 (FileEntry row-reuse identity)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/507)):**
-`FileEntry` captures the row's `ushort` sequence number in its existing 16-byte struct layout (`BlockFile?`,
-`uint RowIndex`, `byte DriveOrdinal`, `ushort SequenceNumber`). When USN journal creation reuses a deleted row
-slot with a new sequence number, or when `EnumerationProducer` reuses a deleted slot and increments its
-sequence number, previously retained `FileEntry` handles with the older sequence number do not silently
-alias the new file: `IsDeleted` reads `true`, `Open` throws `FileNotFoundException`, `Children` returns empty,
-`Subtree` queries reject the superseded anchor with `ArgumentException`, and reading overwritten row columns
-(`Name`, `Path`, `Parent`, `IsDirectory`, `Size`, `IsSizeKnown`, `LastWriteTime`, `IsLastWriteTimeKnown`,
-`Attributes`) throws `InvalidOperationException`.
+**Decision (2026-10-14, [MFTLib issue 507 (FileEntry row-reuse identity)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/507)):**
+`FileEntry` captures the row's `ushort` sequence number at construction, in the tail padding of its 16-byte
+struct (`Snapshot?`, `uint` row index, `ushort` drive ordinal, `ushort` sequence number; `BlockFile` layout is
+unchanged, and an enumeration block, which the journal never mutates, captures zero). `BlockWriter.TryWriteRow`
+stores the supplied NTFS sequence number exactly, publishing it before it overwrites the columns. A handle is
+bound to the NTFS file reference (record number plus sequence number) it was created from. Distinct references
+never alias; a reference NTFS itself reuses (a freed record's incremented sequence handed to the next file) is the
+same reference, and the library does not pretend otherwise. The journal ignores a delete or other mutation whose
+record names a different sequence number than the live row holds, because it belongs to an earlier incarnation a
+scan already superseded. A create that rewrites a live row with the same number is a refresh. When a journal create reuses a deleted record's slot,
+previously retained handles do not silently alias the new file: `IsDeleted` reads `true`, `Open` throws
+`FileNotFoundException` without an open-by-id call, `Children` returns empty, `Subtree` queries reject the
+superseded anchor with `ArgumentException`, and reading overwritten row columns (`Name`, `Path`, `Parent`,
+`IsDirectory`, `Size`, `IsSizeKnown`, `LastWriteTime`, `IsLastWriteTimeKnown`, `Attributes`) throws `InvalidOperationException`.
+Equality (`Equals`, `GetHashCode`, `==`, `!=`) compares the underlying drive block, row index and sequence
+number. A rename or move of the same file keeps its sequence number, so its handles stay live. `FileChange.Entry`
+of a `Deleted` notification whose slot was later reused reports `IsDeleted`; callers read `FileChange.Path`,
+`PreviousPath` and `Timestamp` for the event facts.
 
 **Reason:** NTFS reuses MFT segment numbers when creating new files after deletions. Because `FileEntry` already
 has 2 bytes of tail padding in its 16-byte layout and `BlockFile.SequenceNumbers` already stores a `ushort` per
@@ -118,6 +126,38 @@ wrong file through a retained handle) at zero struct-size cost.
 
 **Revisit only if:** consumers require cached tombstone snapshots of overwritten columns on superseded handles
 beyond `IsDeleted`.
+
+## A sequence number is stored as NTFS supplied it
+
+**Decision (2026-10-14, [MFTLib issue 518 (synthetic sequence advancement)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/518)):**
+MFTLib never invents a sequence number. `BlockWriter` stores the NTFS sequence number exactly as supplied. A
+`FileEntry` is bound to the NTFS file reference (record number plus sequence number). Distinct references never
+alias, and a reference NTFS itself reuses is the same reference. The journal ignores a delete or mutation whose
+sequence number differs from the stored live row. Synthetic test data that reuses a slot supplies an incremented
+sequence number the way NTFS does.
+
+**Reason:** NTFS increments the sequence number when it frees a record, so any library-side advancement stores a
+number the volume disagrees with, and open-by-file-reference then misses. Three review rounds showed every
+advancement heuristic fabricating references under freed-record scans and catch-up replay.
+
+**Revisit only if:** a producer exists that cannot supply the volume's sequence number and a consumer needs
+identity from it.
+
+## FileEntry identity is validated per access without a lock
+
+**Decision (2026-10-14, [MFTLib issue 517 (identity and column read tear)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/517)):**
+Identity is validated per access, with no lock and no fence on the read path. Column reads are not serialized
+against the journal writer. The writer publishes the new sequence number before it overwrites the columns, so a
+read that straddles a slot reuse can return the replacement's column once, and the next access throws. A caller
+that needs identity and columns together re-checks `IsDeleted` after the read, or uses the `FileChange` event
+fields.
+
+**Reason:** The window is a handful of instructions per read and needs a retained handle to a deleted file whose
+record NTFS reused at that instant. The same tear already exists for same-file updates, where size is written
+before name, and a sequence re-read would not close it. Closing both would need a per-row generation counter with
+fences on the hottest read path, which the owner rejects.
+
+**Revisit only if:** a consumer shows a column read that must be exact without a caller-side `IsDeleted` re-check.
 
 ## Elevation helpers live in MFTLib
 

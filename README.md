@@ -770,6 +770,15 @@ holds, so the `.mlix` files are closed at a point the caller chooses; a `FileEnt
 held across that disposal reports `IsDisposed` and throws `ObjectDisposedException`
 on reads of mapped entry data.
 
+A `FileEntry` is bound to one file incarnation: it captures the row's NTFS sequence number
+when it is minted. When the journal reports a delete and a later create reuses the row slot
+(NTFS reuses record numbers), the retained handle does not silently become the new file. It
+reads `IsDeleted`, `Children()` returns nothing, `Open` throws `FileNotFoundException`, a
+`Subtree` query refuses it, and reading `Name`, `Path`, `Size` or any other row column throws
+`InvalidOperationException`. A rename or move of the same file keeps the handle live. Equality
+compares the drive block, row and sequence number. For the `Deleted` change itself, read
+`FileChange.Path`, `PreviousPath` and `Timestamp`, which are captured at the event.
+
 ### Streaming entries and row views
 
 Use `EnumerateRows` for whole-drive passes that read names, sizes or flags and keep few rows.

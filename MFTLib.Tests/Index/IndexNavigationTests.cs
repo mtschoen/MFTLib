@@ -112,7 +112,8 @@ public partial class IndexNavigationTests
         var secondRoot = secondBuilder.AddRoot();
         secondBuilder.Complete(Moment);
         var secondBlock = secondBuilder.OpenForReading(out _)!;
-        var secondSnapshot = Snapshot.Create([new DriveBlock('U', 1, secondBlock, rootDirectoryPath: TestDriveRoot.For('U'))]);
+        var secondSnapshot = Snapshot.Create([_snapshot.GetDriveBlock(0),
+            new DriveBlock('U', 1, secondBlock, rootDirectoryPath: TestDriveRoot.For('U'))]);
         try
         {
             var report = Entry(_reportRow);

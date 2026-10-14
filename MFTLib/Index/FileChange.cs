@@ -3,6 +3,10 @@ namespace MFTLib.Index;
 /// <summary>
 ///     One applied journal change. <see cref="Entry" /> is a live handle whose values are
 ///     current, not frozen, so its own <c>Path</c> reflects every later entry in the same batch.
+///     It is bound to the file incarnation the change happened to: when a later record in the
+///     same batch or a later batch creates a different file in the deleted file's row slot, the
+///     handle reads <see cref="FileEntry.IsDeleted" /> and refuses its row columns, so read
+///     <see cref="Path" />, <see cref="PreviousPath" /> and <see cref="Timestamp" /> for the facts of the event.
 ///     <see cref="Path" /> is the path this change happened at, captured at the mutation,
 ///     and <see cref="PreviousPath" /> is the full path a rename or move came from.
 ///     <see cref="Timestamp" /> is the UTC timestamp of the USN journal record that
@@ -35,7 +39,12 @@ public sealed record FileChange
     /// <summary>What happened to the entry.</summary>
     public FileChangeKind Kind { get; init; }
 
-    /// <summary>A live handle to the changed entry; its values are current, not frozen.</summary>
+    /// <summary>
+    ///     A live handle to the changed entry; its values are current, not frozen. After the entry is deleted
+    ///     and a newer file reuses its row slot, the handle is superseded: <see cref="FileEntry.IsDeleted" /> is
+    ///     true and its row columns throw, while <see cref="Path" />, <see cref="PreviousPath" /> and
+    ///     <see cref="Timestamp" /> still describe the event.
+    /// </summary>
     public FileEntry Entry { get; init; }
 
     /// <summary>The path this change happened at, captured at the mutation.</summary>

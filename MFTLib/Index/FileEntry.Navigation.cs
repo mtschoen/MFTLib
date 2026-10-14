@@ -17,16 +17,24 @@ public readonly partial record struct FileEntry
     ///     128 parent hops.
     /// </exception>
     /// <exception cref="ObjectDisposedException">The owning index has been disposed and this handle's snapshot released.</exception>
-    /// <exception cref="InvalidOperationException">The drive block has no configured root directory.</exception>
-    public string Path => IndexNavigation.BuildPath(Snapshot, DriveOrdinal, RowIndex);
+    /// <exception cref="InvalidOperationException">The drive block has no configured root directory, or a newer file has reused this entry's row slot.</exception>
+    public string Path
+    {
+        get
+        {
+            _ = CurrentBlock();
+            return IndexNavigation.BuildPath(Snapshot, DriveOrdinal, RowIndex);
+        }
+    }
 
     /// <summary>The parent directory, or null for the volume root, whose parent is itself.</summary>
     /// <exception cref="ObjectDisposedException">The owning index has been disposed and this handle's snapshot released.</exception>
+    /// <exception cref="InvalidOperationException">A newer file has reused this entry's row slot.</exception>
     public FileEntry? Parent
     {
         get
         {
-            if (!IndexNavigation.TryGetParentRow(DriveBlock.Block, RowIndex, out var parentRow))
+            if (!IndexNavigation.TryGetParentRow(CurrentBlock(), RowIndex, out var parentRow))
             {
                 return null;
             }
@@ -41,7 +49,8 @@ public readonly partial record struct FileEntry
     ///     the drive's row count. Being a whole-drive scan rather than a single-row read, this holds a borrow on the handle's
     ///     snapshot for its duration, the same claim a <see cref="FileIndex" /> query takes, so a
     ///     release cannot unmap the rows it is walking; a disposal that arrives mid-scan waits
-    ///     for it to finish.
+    ///     for it to finish. A superseded handle, whose row slot a newer file has reused, has no children:
+    ///     the list is empty rather than the replacement's children.
     /// </summary>
     /// <param name="cancellationToken">
     ///     Stops the scan. Observed before the first row and then at least every 4096 rows. A
@@ -55,6 +64,11 @@ public readonly partial record struct FileEntry
         cancellationToken.ThrowIfCancellationRequested();
         using var borrow = Snapshot.Borrow();
         borrow.Snapshot.ReleaseState._readerAdmittedForTest?.Invoke();
+        if (IsSupersededIn(borrow.Snapshot.GetDriveBlock(DriveOrdinal)))
+        {
+            return [];
+        }
+
         return IndexNavigation.GetChildren(borrow.Snapshot, DriveOrdinal, RowIndex, cancellationToken);
     }
 }

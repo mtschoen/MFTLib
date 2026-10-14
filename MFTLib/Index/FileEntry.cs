@@ -3,13 +3,32 @@ using System.Runtime.CompilerServices;
 namespace MFTLib.Index;
 
 /// <summary>
-///     A 16-byte value handle onto one row of one mapped block: an object reference to the
-///     snapshot that keeps the block mapped, plus a drive ordinal and a row index. Property
-///     reads are pointer offsets into the mapped row. Only <see cref="Name" /> and
-///     <c>Path</c> allocate. Values are live, not frozen: a journal batch that mutates the
-///     underlying row changes what this handle reports, and a deleted file reads as
-///     <see cref="IsDeleted" /> rather than dangling.
+///     A 16-byte value handle onto one file incarnation in one mapped block: an object reference to
+///     the snapshot that keeps the block mapped, plus a drive ordinal, a row index and the row's
+///     sequence number when the handle was minted. Property reads are pointer offsets into the mapped
+///     row. Only <see cref="Name" /> and <c>Path</c> allocate. Values are live, not frozen: a journal
+///     batch that mutates the underlying row changes what this handle reports, and a deleted file
+///     reads as <see cref="IsDeleted" /> rather than dangling.
 /// </summary>
+/// <remarks>
+///     NTFS reuses a deleted record's row slot for a later file and gives that file a different sequence
+///     number. A handle is bound to the NTFS file reference (record number plus sequence number) it was
+///     created from; distinct references never alias, while a reference NTFS itself reuses is the same
+///     reference. After a
+///     journal create reuses the slot the handle is superseded: it never reports the new file's
+///     values and never compares equal to a handle for it. A superseded handle reads
+///     <see cref="IsDeleted" />, throws <see cref="InvalidOperationException" /> from every row
+///     column, returns no <see cref="Children" />, refuses <see cref="Open" /> with
+///     <see cref="FileNotFoundException" /> and is rejected as a <see cref="SearchQuery.Subtree" />
+///     anchor. <see cref="Drive" /> and <see cref="RecordKey" /> stay readable. A rename or move of
+///     the same file keeps its sequence number, so the handle keeps tracking it.
+///     Identity is validated per access, with no lock on the read path, and the writer publishes the new
+///     sequence number before it overwrites the columns. A reader that pauses between its identity check and
+///     a column read can observe the replacement's columns; re-check <see cref="IsDeleted" /> after a read that
+///     must be exact, or read the <see cref="FileChange" /> event fields.
+///     Handles compare equal when they name the same drive block, row and sequence number, whichever
+///     snapshot minted them.
+/// </remarks>
 /// <remarks>
 ///     The snapshot reference keeps the block mapped for as long as the handle is held, so a
 ///     rescan that supersedes the block cannot pull the memory out from under it while the
@@ -22,12 +41,14 @@ public readonly partial record struct FileEntry
     readonly Snapshot? _snapshot;
     readonly uint _rowIndex;
     readonly ushort _driveOrdinal;
+    readonly ushort _sequenceNumber;
 
     FileEntry(Snapshot snapshot, ushort driveOrdinal, uint rowIndex)
     {
         _snapshot = snapshot;
         _driveOrdinal = driveOrdinal;
         _rowIndex = rowIndex;
+        _sequenceNumber = SequenceNumberOf(snapshot.GetDriveBlock(driveOrdinal), rowIndex);
     }
 
     /// <summary>Internal factory. Handles are only ever minted by the index and its query engines.</summary>
@@ -59,8 +80,78 @@ public readonly partial record struct FileEntry
 
     internal DriveBlock DriveBlock => Snapshot.GetDriveBlock(_driveOrdinal);
 
+    /// <summary>
+    ///     The row this handle was minted for, refused once a newer file has reused its slot.
+    /// </summary>
     internal ref readonly FileRow Row =>
-        ref Unsafe.AsRef(in DriveBlock.Block.Rows[(int)_rowIndex]);
+        ref Unsafe.AsRef(in CurrentBlock().Rows[(int)_rowIndex]);
+
+    /// <summary>
+    ///     The sequence number the drive block holds for a row: the incarnation of the file there. Only an
+    ///     MFT block stores one; an enumeration block is never mutated by the journal, so its rows keep
+    ///     one incarnation for the life of the block.
+    /// </summary>
+    static ushort SequenceNumberOf(DriveBlock driveBlock, uint rowIndex) =>
+        driveBlock.ProducerKind == ProducerKind.Mft ? driveBlock.Block.SequenceNumbers[(int)rowIndex] : (ushort)0;
+
+    /// <summary>
+    ///     True when a newer file incarnation has reused this handle's row slot, so the handle no longer
+    ///     describes what the slot holds.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">This is the default entry value.</exception>
+    /// <exception cref="ObjectDisposedException">The owning <see cref="FileIndex" /> has been disposed.</exception>
+    internal bool IsSuperseded => IsSupersededIn(DriveBlock);
+
+    bool IsSupersededIn(DriveBlock driveBlock) => _sequenceNumber != SequenceNumberOf(driveBlock, _rowIndex);
+
+    /// <summary>
+    ///     The one place a column read learns its slot was reused. Every row-backed getter reads through
+    ///     here, so none of them can return the replacement file's values for a superseded handle.
+    /// </summary>
+    BlockFile CurrentBlock()
+    {
+        var driveBlock = DriveBlock;
+        if (IsSupersededIn(driveBlock))
+        {
+            throw new InvalidOperationException(
+                "This FileEntry's row slot was reused after deletion by a newer file, so its columns no longer " +
+                "describe the entry. Read FileChange.Path, PreviousPath and Timestamp for the facts of a change.");
+        }
+
+        return driveBlock.Block;
+    }
+
+    /// <summary>
+    ///     The drive block this handle names, or null for the default value. Unlike <see cref="DriveBlock" /> it
+    ///     never throws, so equality holds for default and released handles.
+    /// </summary>
+    internal DriveBlock? NamedDriveBlock => _snapshot?.GetDriveBlock(_driveOrdinal);
+
+    /// <summary>The snapshot that minted this handle, or null for the default value; no released check.</summary>
+    internal Snapshot? OwnerSnapshot => _snapshot;
+
+    /// <summary>
+    ///     <see cref="IsSuperseded" /> without the released check, for a caller that already holds a borrow
+    ///     that keeps the block mapped, or has checked that the owner snapshot is not released.
+    /// </summary>
+    internal bool IsSupersededWhileMapped => NamedDriveBlock is { } driveBlock && IsSupersededIn(driveBlock);
+
+    /// <summary>
+    ///     Compares the drive block, row index and sequence number. A superseded handle never equals the
+    ///     handle of the file that reused its slot, and handles minted by different snapshots of one block
+    ///     are equal.
+    /// </summary>
+    /// <param name="other">The handle to compare with.</param>
+    /// <returns>true when both name the same file incarnation in the same drive block.</returns>
+    public readonly bool Equals(FileEntry other) =>
+        ReferenceEquals(NamedDriveBlock, other.NamedDriveBlock) && _rowIndex == other._rowIndex &&
+        _sequenceNumber == other._sequenceNumber;
+
+    /// <summary>Hashes the same drive block, row index and sequence number <see cref="Equals(FileEntry)" /> compares.</summary>
+    /// <returns>The hash code.</returns>
+    public override readonly int GetHashCode() =>
+        HashCode.Combine(NamedDriveBlock is { } driveBlock ? RuntimeHelpers.GetHashCode(driveBlock) : 0, _rowIndex,
+            _sequenceNumber);
 
     /// <summary>False for the default value, which references no snapshot.</summary>
     public bool IsValid => _snapshot is not null;
@@ -95,7 +186,7 @@ public readonly partial record struct FileEntry
     /// <summary>Gets the current file or directory name. This allocates a managed string.</summary>
     /// <exception cref="InvalidOperationException">This is the default entry value.</exception>
     /// <exception cref="ObjectDisposedException">The owning <see cref="FileIndex" /> has been disposed.</exception>
-    public string Name => new(NamePool.ReadRowName(DriveBlock.Block, _rowIndex));
+    public string Name => new(NamePool.ReadRowName(CurrentBlock(), _rowIndex));
 
     /// <summary>
     ///     Gets the file length in bytes, or zero for directories and unknown sizes. This is the length the
@@ -126,8 +217,18 @@ public readonly partial record struct FileEntry
     /// <summary>Determines whether the entry represents a directory.</summary>
     public bool IsDirectory => Row.IsDirectory;
 
-    /// <summary>Determines whether the entry is a retained deletion tombstone.</summary>
-    public bool IsDeleted => Row.IsDeleted;
+    /// <summary>
+    ///     Determines whether the entry is deleted: a retained deletion tombstone, or an entry whose row slot a
+    ///     newer file has since reused. Never throws for a superseded handle.
+    /// </summary>
+    public bool IsDeleted
+    {
+        get
+        {
+            var driveBlock = DriveBlock;
+            return IsSupersededIn(driveBlock) || driveBlock.Block.Rows[(int)_rowIndex].IsDeleted;
+        }
+    }
 
     /// <summary>Formats this entry for logs and debugger watches. It never throws, whatever state the handle is in.</summary>
     /// <returns>
@@ -144,6 +245,11 @@ public readonly partial record struct FileEntry
         try
         {
             var key = RecordKey;
+            if (IsSuperseded)
+            {
+                return $"<superseded FileEntry> ({key})";
+            }
+
             var name = Name;
             return $"{TryBuildPath() ?? name} ({key})";
         }

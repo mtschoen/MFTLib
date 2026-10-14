@@ -68,7 +68,6 @@ public class FileIndexEnumerateRowsTests
         var documents = index.Find(Path.Combine(FirstRoot, "Documents"))!.Value;
         AssertRowsMatchSearch(index, new SearchQuery("readme", Subtree: documents));
         AssertRowsMatchSearch(index, new SearchQuery(null, Subtree: documents));
-        AssertRowsMatchSearch(index, new SearchQuery(null, Subtree: default(FileEntry)));
     }
 
     [TestMethod]

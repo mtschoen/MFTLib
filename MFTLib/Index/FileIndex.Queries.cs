@@ -37,10 +37,18 @@ public sealed partial class FileIndex
     /// <exception cref="ArgumentNullException"><paramref name="query" /> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="query" /> has an undefined <see cref="SearchQuery.MatchMode" />.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
-    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
+    /// <exception cref="ArgumentException">
+    ///     <see cref="SearchQuery.Subtree" /> is the default <see cref="FileEntry" />, belongs to another
+    ///     <see cref="FileIndex" /> or to a drive block a rescan replaced, or has been superseded by a newer
+    ///     file reusing its row slot. The default value is rejected before the index is touched; the others are
+    ///     judged against the snapshot this query borrowed.
+    /// </exception>
+    /// <exception cref="ObjectDisposedException">The index has been disposed, or the subtree anchor's own index has.</exception>
     /// <seealso cref="Enumerate" />
     public IReadOnlyList<FileEntry> Search(SearchQuery query, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(query);
+        SubtreeAnchor.ThrowIfDefault(query);
         using var scope = BeginQuery(cancellationToken);
         return SearchEngine.Search(scope.Snapshot, query, scope.CancellationToken);
     }
@@ -71,13 +79,20 @@ public sealed partial class FileIndex
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="query" /> has an undefined <see cref="SearchQuery.MatchMode" />.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
-    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
+    /// <exception cref="ObjectDisposedException">The index has been disposed, or, from the first MoveNext, the subtree anchor's own index has.</exception>
     /// <exception cref="ArgumentNullException">At call time: <paramref name="query" /> is null.</exception>
+    /// <exception cref="ArgumentException">
+    ///     At call time: <see cref="SearchQuery.Subtree" /> is the default <see cref="FileEntry" />. From the
+    ///     first MoveNext, which takes the borrow the anchor is validated against: the anchor belongs to another
+    ///     <see cref="FileIndex" /> or to a drive block a rescan replaced, or has been superseded by a newer file
+    ///     reusing its row slot.
+    /// </exception>
     /// <seealso cref="Search" />
     public IEnumerable<FileEntry> Enumerate(SearchQuery query, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(query);
         NameMatching.ThrowIfUndefined(query);
+        SubtreeAnchor.ThrowIfDefault(query);
         ObjectDisposedException.ThrowIf(_disposed, this);
         return EnumerateCore(query, cancellationToken);
     }
@@ -105,13 +120,20 @@ public sealed partial class FileIndex
     /// <param name="cancellationToken">Observed before the first row and then at least every 4096 rows.</param>
     /// <exception cref="ArgumentNullException">At call time: <paramref name="query" /> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">At call time: <paramref name="query" /> has an undefined <see cref="SearchQuery.MatchMode" />.</exception>
-    /// <exception cref="ObjectDisposedException">At GetEnumerator: the index has been disposed. At Current or MoveNext: this enumeration's shared borrow has been returned.</exception>
+    /// <exception cref="ArgumentException">
+    ///     At call time: <see cref="SearchQuery.Subtree" /> is the default <see cref="FileEntry" />. At
+    ///     GetEnumerator, which takes the borrow the anchor is validated against: the anchor belongs to another
+    ///     <see cref="FileIndex" /> or to a drive block a rescan replaced, or has been superseded by a newer file
+    ///     reusing its row slot. The borrow is returned when GetEnumerator throws.
+    /// </exception>
+    /// <exception cref="ObjectDisposedException">At GetEnumerator: the index has been disposed, or the subtree anchor's own index has. At Current or MoveNext: this enumeration's shared borrow has been returned.</exception>
     /// <exception cref="OperationCanceledException">At GetEnumerator or MoveNext: caller cancellation or index disposal cancels the enumeration.</exception>
     /// <exception cref="InvalidDataException">At MoveNext: a candidate's parent chain does not resolve within 128 parent hops while applying <see cref="SearchQuery.Subtree" />.</exception>
     public IndexRowEnumerable EnumerateRows(SearchQuery query, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(query);
         NameMatching.ThrowIfUndefined(query);
+        SubtreeAnchor.ThrowIfDefault(query);
         return new IndexRowEnumerable(this, query, cancellationToken);
     }
 

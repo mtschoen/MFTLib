@@ -182,11 +182,11 @@ public class DirectLargestFilesTests
     }
 
     [TestMethod]
-    public void Largest_Under_InvalidAncestor_ReturnsEmpty()
+    public void Largest_Under_DefaultAncestor_ThrowsArgumentException()
     {
         var invalidAncestor = default(FileEntry);
-        var results = LargestFiles.Find(_index, 5, invalidAncestor, CancellationToken.None);
-        Assert.AreEqual(0, results.Count);
+        Assert.ThrowsException<ArgumentException>(
+            () => LargestFiles.Find(_index, 5, invalidAncestor, CancellationToken.None));
     }
 
     [TestMethod]

@@ -5,13 +5,20 @@ public readonly partial record struct FileEntry
     /// <summary>
     ///     Opens the underlying file. Enumeration entries open by path. For MFT entries,
     ///     the route is the NTFS file id opened against a handle on the target volume,
-    ///     which needs no elevation.
+    ///     which needs no elevation, with the sequence number this handle was minted with, so it can
+    ///     only ever open the file it names.
     /// </summary>
+    /// <exception cref="FileNotFoundException">A newer file has reused this entry's row slot; nothing is opened.</exception>
     /// <exception cref="ObjectDisposedException">The owning index has been disposed and this handle's snapshot released.</exception>
     /// <exception cref="InvalidOperationException">The entry belongs to an MFT dump, whose files exist only as index rows.</exception>
     public FileStream Open(FileAccess access)
     {
         var driveBlock = DriveBlock;
+        if (IsSupersededIn(driveBlock))
+        {
+            throw new FileNotFoundException("The entry has been deleted.");
+        }
+
         if (driveBlock.IsMftDump)
         {
             throw new InvalidOperationException("Files in an MFT dump cannot be opened through the index.");
@@ -28,7 +35,7 @@ public readonly partial record struct FileEntry
                 $"Drive block {driveBlock.Drive} has no configured root directory to open by file id.");
         }
 
-        return _openById(anyPathOnVolume, RowIndex, driveBlock.Block.SequenceNumbers[(int)RowIndex], access);
+        return _openById(anyPathOnVolume, RowIndex, _sequenceNumber, access);
     }
 
     static FileStream DefaultOpenById(string anyPathOnVolume, uint recordNumber, ushort sequenceNumber,

@@ -55,10 +55,10 @@ public class JournalMutatorFreedRowTests
     const uint NotesRow = 7;
 
     [DataTestMethod]
-    [DataRow(true, (ushort)15, "unrelated-dir", DisplayName = "directory replacement, new sequence")]
-    [DataRow(false, (ushort)14, "next-file.txt", DisplayName = "file replacement, equal sequence")]
+    [DataRow(true, (ushort)15, (ushort)15, "unrelated-dir", DisplayName = "directory replacement, new sequence")]
+    [DataRow(false, (ushort)15, (ushort)15, "next-file.txt", DisplayName = "file replacement, next sequence")]
     public async Task Create_ReusesAFreedRecordsSlotAsALiveRow(bool asDirectory, ushort replacementSequence,
-        string replacementName)
+        ushort storedSequence, string replacementName)
     {
         await using var fixture = new MutatorFixture();
         WriteFreedHierarchy(fixture);
@@ -72,7 +72,7 @@ public class JournalMutatorFreedRowTests
         Assert.IsFalse(fixture.Block.Rows[(int)FreedRow].IsDeleted);
         Assert.AreEqual(asDirectory, fixture.Block.Rows[(int)FreedRow].IsDirectory);
         Assert.AreEqual(replacementName, NamePool.ReadRowName(fixture.Block, FreedRow).ToString());
-        Assert.AreEqual(replacementSequence, fixture.Block.SequenceNumbers[(int)FreedRow]);
+        Assert.AreEqual(storedSequence, fixture.Block.SequenceNumbers[(int)FreedRow]);
         Assert.AreEqual(liveRowsBefore + 1, fixture.Block.Header.LiveRowCount);
 
         Assert.AreEqual(BlockLayout.DetachedParentRow, fixture.Block.Rows[(int)DirectChildRow].ParentRow);

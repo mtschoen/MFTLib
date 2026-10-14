@@ -103,11 +103,13 @@ internal sealed partial class BlockWriter
         var previousParentRow = row.ParentRow;
         var wasLive = (previousFlags & RowFlags.InUse) != 0 && (previousFlags & RowFlags.Tombstone) == 0;
         var isLive = (columns.Flags & RowFlags.InUse) != 0 && (columns.Flags & RowFlags.Tombstone) == 0;
+        // The supplied NTFS sequence is stored as given and published before any column changes, so a handle
+        // minted for a different file reference is refused from the first overwritten field on.
+        Block.SequenceNumbers[(int)rowIndex] = columns.SequenceNumber;
         row.ParentRow = columns.ParentRow;
         row.Attributes = columns.Attributes;
         row.Size = columns.Size;
         row.ModifiedTicks = columns.ModifiedTicks;
-        Block.SequenceNumbers[(int)rowIndex] = columns.SequenceNumber;
         FileRow.WriteDescriptorWord(ref row, nameOffsetBytes, (ushort)name.Length, columns.Flags);
 
         if (isLive && !wasLive)

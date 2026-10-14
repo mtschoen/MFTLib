@@ -101,7 +101,13 @@ internal sealed class JournalMutator
         }
 
         FileChange? change;
-        if ((classification & UsnReason.FileCreate) != 0)
+        if ((classification & UsnReason.FileCreate) == 0 && IsEarlierIncarnation(rowIndex, entry))
+        {
+            // The row already holds a newer file reference than this record names, as when a scan imported the
+            // later file while the replayed journal still carries the earlier one's delete.
+            change = null;
+        }
+        else if ((classification & UsnReason.FileCreate) != 0)
         {
             change = ApplyCreate(snapshot, driveOrdinal, entry, rowIndex);
         }
@@ -278,6 +284,18 @@ internal sealed class JournalMutator
     ///     A deleted row, whether the journal deleted it or a scan imported it freed, is never modified, renamed,
     ///     deleted again or hydrated live. Only a create reuses its slot, because NTFS reuses record numbers.
     /// </summary>
+    /// <summary>
+    ///     True when the row holds a file whose sequence number differs from the record's: the record belongs to
+    ///     another incarnation of the record number and must not mutate this one. A free or tombstoned row has no
+    ///     live file to protect, and a stored zero means the producer recorded no sequence (NTFS never uses zero).
+    /// </summary>
+    bool IsEarlierIncarnation(uint rowIndex, UsnJournalEntry entry)
+    {
+        ref readonly var row = ref Writer.Block.Rows[(int)rowIndex];
+        var stored = Writer.Block.SequenceNumbers[(int)rowIndex];
+        return row.IsInUse && !row.IsDeleted && stored != 0 && stored != entry.SequenceNumber;
+    }
+
     bool IsDeletedRow(uint rowIndex)
     {
         return (Writer.ReadRowFlags(rowIndex) & RowFlags.Tombstone) != 0;

@@ -85,11 +85,25 @@ partial class SampleHost
 
     sealed class DriveChangeCounter
     {
+        readonly Lock _gate = new();
+        FileEntry? _previousEntry;
         int _count;
 
         internal int Count => Volatile.Read(ref _count);
 
-        internal void Add() => Interlocked.Increment(ref _count);
+        // Counts the change and says whether it happened to the same file incarnation as the previous one. A handle
+        // never equals the file that reused its row slot, so a delete followed by a create of the same record number
+        // reads as a different file.
+        internal bool Add(FileEntry entry)
+        {
+            lock (_gate)
+            {
+                var isSameFile = _previousEntry is { } previous && previous.Equals(entry);
+                _previousEntry = entry;
+                Interlocked.Increment(ref _count);
+                return isSameFile;
+            }
+        }
     }
 
     // Prints the watch states, faults and each change as they happen, and counts the changes.
@@ -100,8 +114,10 @@ partial class SampleHost
         index.WatchFaulted += fault => _writeLine($"  watch fault {fault.Drive}: {fault.Kind}: {fault.Exception.Message}{(fault.Exception is JournalCatchUpLostException lost ? $" (recovery stopped: {lost.IsRecoveryStopped})" : string.Empty)}");
         index.Changed += change =>
         {
-            counter.Add();
-            _writeLine($"  {change.Kind}: {change.Path}{(change.PreviousPath is { } previous ? $" (was {previous})" : string.Empty)} at {change.Timestamp:u}, drive {change.Entry.Drive}, entry {change.Entry.Name}");
+            var isSameFile = counter.Add(change.Entry);
+            // The entry handle is live, so its columns are unreadable once a later change reuses its row slot;
+            // the change's own path is the fact of this event.
+            _writeLine($"  {change.Kind}: {change.Path}{(change.PreviousPath is { } previous ? $" (was {previous})" : string.Empty)} at {change.Timestamp:u}{(isSameFile ? ", same file as the previous change" : string.Empty)}, file id {change.Entry.GetHashCode():x8}, drive {change.Entry.Drive}, entry {Path.GetFileName(change.Path)}");
         };
         return counter;
     }

@@ -163,11 +163,11 @@ public class SearchEngineTests
     }
 
     [TestMethod]
-    public void Search_Under_InvalidAncestor_ReturnsNoResults()
+    public void Search_Under_DefaultAncestor_ThrowsArgumentException()
     {
         var invalidAncestor = default(FileEntry);
-        var results = SearchEngine.Search(_snapshot, new SearchQuery(null, Subtree: invalidAncestor));
-        Assert.AreEqual(0, results.Count);
+        Assert.ThrowsException<ArgumentException>(
+            () => SearchEngine.Search(_snapshot, new SearchQuery(null, Subtree: invalidAncestor)));
     }
 
     [TestMethod]

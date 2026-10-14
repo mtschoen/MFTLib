@@ -54,11 +54,15 @@ public ref struct IndexRowEnumerator
     readonly bool _includeDeleted;
     readonly bool _filterDirectories;
     readonly bool _wantDirectories;
-    readonly uint _underRow;
+    readonly ResolvedSubtree? _subtree;
     RowScanner _scanner;
     DriveBlock? _driveBlock;
     int _nextDrive;
 
+    /// <summary>
+    ///     Takes ownership of <paramref name="scope" />: it is returned if the query's subtree anchor is refused,
+    ///     so a failed <c>GetEnumerator</c> leaves no borrow behind.
+    /// </summary>
     internal IndexRowEnumerator(FileIndex.QueryScope scope, SearchQuery query)
     {
         _scope = scope;
@@ -74,10 +78,19 @@ public ref struct IndexRowEnumerator
         _includeDeleted = query.IncludeDeleted;
         _filterDirectories = query.IsDirectory.HasValue;
         _wantDirectories = query.IsDirectory.GetValueOrDefault();
-        _underRow = query.Subtree?.RowIndex ?? 0;
+        try
+        {
+            _subtree = SubtreeAnchor.Resolve(_snapshot, query);
+        }
+        catch
+        {
+            scope.Dispose();
+            throw;
+        }
+
         _scanner = default;
         _driveBlock = null;
-        _nextDrive = query.Subtree is { IsValid: false } ? int.MaxValue : 0;
+        _nextDrive = 0;
     }
 
     /// <summary>The current row, valid until the next <see cref="MoveNext" /> or <see cref="Dispose" />.</summary>
@@ -148,8 +161,8 @@ public ref struct IndexRowEnumerator
                 continue;
             }
 
-            if (_query.Subtree is not null &&
-                !IndexNavigation.IsUnder(driveBlock.Block, _scanner.CurrentRowIndex, _underRow))
+            if (_subtree is { } under &&
+                !IndexNavigation.IsUnder(driveBlock.Block, _scanner.CurrentRowIndex, under.RowIndex))
             {
                 continue;
             }
@@ -166,7 +179,7 @@ public ref struct IndexRowEnumerator
         {
             _cancellationToken.ThrowIfCancellationRequested();
             var driveBlock = _driveBlocks[_nextDrive++];
-            if (_query.Subtree is { } under && under.DriveOrdinal != driveBlock.DriveOrdinal)
+            if (_subtree is { } under && under.DriveOrdinal != driveBlock.DriveOrdinal)
             {
                 continue;
             }
