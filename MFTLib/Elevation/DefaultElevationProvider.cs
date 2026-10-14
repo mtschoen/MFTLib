@@ -109,7 +109,7 @@ sealed class DefaultElevationProvider : IElevationProvider
                 startInfo.ArgumentList.Add(argument);
             }
 
-            var process = _startProcess(startInfo);
+            using var process = _startProcess(startInfo);
             if (process == null)
             {
                 return false;

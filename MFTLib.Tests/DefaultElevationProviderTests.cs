@@ -12,6 +12,13 @@ namespace MFTLib.Tests;
 public class DefaultElevationProviderTests
 {
     const string NormalExecutable = @"C:\app\MyApp.exe";
+    Process? _process;
+
+    [TestCleanup]
+    public void Cleanup()
+    {
+        _process?.Dispose();
+    }
 
     [TestMethod]
     public void DefaultProvider_IsSingleton()
@@ -113,8 +120,11 @@ public class DefaultElevationProviderTests
     [DataRow(1, false)]
     public void TryRunElevated_ProcessExit_ReturnsTrueOnlyForZero(int exitCode, bool expected)
     {
-        var provider = CreateFakeProcessProvider(waitResult: true, exitCode, out var killed);
+        var process = new Process();
+        _process = process;
+        var provider = CreateFakeProcessProvider(waitResult: true, exitCode, out var killed, startProcess: _ => process);
         Assert.AreEqual(expected, provider.TryRunElevated(["--test"], ElevationUtilities.DefaultElevatedTimeout));
+        Assert.ThrowsException<ObjectDisposedException>(() => _ = process.StandardInput, "The process wrapper must be disposed before TryRunElevated returns.");
         Assert.AreEqual(0, killed.Count, "A process that exited is never killed.");
     }
 
@@ -150,6 +160,8 @@ public class DefaultElevationProviderTests
     [DataRow(-20000L /* -2 ms */, false, 0, DisplayName = "unsupported-negative-never-starts")]
     public void TryRunElevated_Timeout_KillsProcessAndReturnsFalse(long ticks, bool expectStarted, int expectedKills)
     {
+        var process = new Process();
+        _process = process;
         var timeout = new TimeSpan(ticks);
         var startedCount = 0;
         var waited = new List<TimeSpan>();
@@ -160,7 +172,7 @@ public class DefaultElevationProviderTests
             startProcess: _ =>
             {
                 startedCount++;
-                return new Process();
+                return process;
             },
             waitForExit: (_, timeoutPassed) =>
             {
@@ -173,6 +185,7 @@ public class DefaultElevationProviderTests
         Assert.IsFalse(result);
         if (expectStarted)
         {
+            Assert.ThrowsException<ObjectDisposedException>(() => _ = process.StandardInput, "The process wrapper must be disposed after the timeout kill, before returning.");
             Assert.AreEqual(1, startedCount, "Supported timeout starts the child process.");
             CollectionAssert.AreEqual(new[] { timeout }, waited);
             Assert.AreEqual(expectedKills, killed.Count, "The process that outlived its timeout is killed once.");
@@ -188,12 +201,36 @@ public class DefaultElevationProviderTests
     [TestMethod]
     public void TryRunElevated_TimeoutAndKillFails_ReturnsFalse()
     {
+        var process = new Process();
+        _process = process;
         var provider = CreateFakeProcessProvider(
             waitResult: false,
             exitCode: 0,
             out _,
+            startProcess: _ => process,
             killProcess: _ => throw new InvalidOperationException("already exited"));
         Assert.IsFalse(provider.TryRunElevated(["--test"], ElevationUtilities.DefaultElevatedTimeout));
+        Assert.ThrowsException<ObjectDisposedException>(() => _ = process.StandardInput, "The process wrapper must be disposed even when killing it fails.");
+    }
+
+    [DataTestMethod]
+    [DataRow(true, DisplayName = "wait-throws")]
+    [DataRow(false, DisplayName = "exit-code-throws")]
+    public void TryRunElevated_PostStartException_ReturnsFalseAndDisposesProcess(bool throwDuringWait)
+    {
+        var process = new Process();
+        _process = process;
+        var provider = new DefaultElevationProvider(new ElevationSeams
+        {
+            GetProcessPath = () => NormalExecutable,
+            IsUserInteractive = () => true,
+            StartProcess = _ => process,
+            WaitForExit = (_, _) => throwDuringWait ? throw new InvalidOperationException("wait failed") : true,
+            GetExitCode = _ => throw new InvalidOperationException("exit code unavailable")
+        });
+
+        Assert.IsFalse(provider.TryRunElevated(["--test"], ElevationUtilities.DefaultElevatedTimeout));
+        Assert.ThrowsException<ObjectDisposedException>(() => _ = process.StandardInput, "The process wrapper must be disposed when a post-start operation throws.");
     }
 
     [TestMethod]

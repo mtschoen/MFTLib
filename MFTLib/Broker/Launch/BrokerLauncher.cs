@@ -27,6 +27,7 @@ public static class BrokerLauncher
 
     /// <summary>
     ///     Start the broker with <paramref name="brokerArguments" /> (e.g. "--broker --pipe NAME").
+    ///     Disposes the process wrapper without waiting for or terminating the broker.
     /// </summary>
     /// <param name="brokerArguments">The broker mode and pipe name arguments.</param>
     /// <returns>True if the process started; false if the user declined the UAC prompt or no process could be started.</returns>
@@ -49,7 +50,7 @@ public static class BrokerLauncher
 
         try
         {
-            var process = _startProcess(startInfo);
+            using var process = _startProcess(startInfo);
             return process != null;
         }
         catch (Win32Exception)

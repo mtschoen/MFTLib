@@ -9,10 +9,13 @@ namespace MFTLib.Tests;
 [DoNotParallelize] // replaces the process-wide BrokerLauncher seams
 public class BrokerLauncherTests
 {
+    Process? _process;
+
     [TestCleanup]
     public void Cleanup()
     {
         BrokerLauncher.ResetToDefaults();
+        _process?.Dispose();
     }
 
     [TestMethod]
@@ -25,15 +28,15 @@ public class BrokerLauncherTests
 
     [TestMethod]
     [SupportedOSPlatform("windows")]
-    public void Launch_ProcessStarts_ReturnsTrue()
+    public void Launch_ProcessStarts_ReturnsTrueAndDisposesProcess()
     {
+        var process = new Process();
+        _process = process;
         BrokerLauncher._getProcessPathFunc = () => @"C:\app\MyApp.exe";
-        // GetCurrentProcess() is a live Process handle obtained without spawning a
-        // child - enough to exercise the "process != null" success path with no
-        // real UAC prompt or elevated launch.
-        BrokerLauncher._startProcess = _ => Process.GetCurrentProcess();
+        BrokerLauncher._startProcess = _ => process;
 
         Assert.IsTrue(BrokerLauncher.Launch("--broker --pipe p"));
+        Assert.ThrowsException<ObjectDisposedException>(() => _ = process.StandardInput, "The process wrapper must be disposed before Launch returns.");
     }
 
     [TestMethod]
