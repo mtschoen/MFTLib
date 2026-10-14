@@ -134,3 +134,27 @@ shape: `DriveStatus.Failure`, `WatchStateChange.Fault`, `DriveOperationResult.Fa
 
 **Revisit only if:** a consumer needs to distinguish "checked and valid" from "not checked" on a row it cannot
 already distinguish by the state enum.
+
+## File entries expose their drive and keep distinct state questions
+
+**Decision (2026-10-13, API review finding F24):** add `FileEntry.Drive`, a
+`DriveKey` equal to `RecordKey.Drive`, with the same default-value and disposal
+behavior as the entry's other data properties. `FileIndex.Drives` keeps its name.
+`FileEntry.IsValid` and `IsDisposed` stay separate
+([MFTLib issue 483 (add FileEntry.Drive)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/483)).
+
+**Reason:** `IndexRow` already exposes `Drive`, while both consumers repeatedly
+read `FileEntry.RecordKey.Drive`. Direct access removes that repeated two-hop
+read. The collection remains `Drives` under the owner's no-change ruling.
+The entry's state properties answer different questions: `IsValid` says whether
+the handle references a snapshot, `IsDisposed` says whether that snapshot has
+been released, and `IsDeleted` identifies a retained tombstone. A disposed handle
+can still be valid; a default handle is neither valid nor disposed.
+
+The Watch sample reads `change.Entry.Drive` when printing each change. The getter
+throws `InvalidOperationException` for a default entry and
+`ObjectDisposedException` after its snapshot is released. Consumer expression
+replacements belong to their pin-bump pull requests.
+
+**Revisit only if:** concrete consumer requirements change drive identity or the
+distinct meanings of these state questions.

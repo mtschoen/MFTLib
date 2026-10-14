@@ -70,6 +70,7 @@ public class FileEntryTests
     public void DirectoryEntry_ReadsAsDirectoryWithZeroSize()
     {
         var entry = FileEntry.Create(_snapshot, 0, _directoryRow);
+        Assert.AreEqual(entry.RecordKey.Drive, entry.Drive);
         Assert.IsTrue(entry.IsDirectory);
         Assert.AreEqual(0L, entry.Size);
         Assert.AreEqual("Documents", entry.Name);
@@ -79,6 +80,7 @@ public class FileEntryTests
     public void TombstonedEntry_ReadsAsDeletedAndKeepsItsName()
     {
         var entry = FileEntry.Create(_snapshot, 0, _deletedRow);
+        Assert.AreEqual(entry.RecordKey.Drive, entry.Drive);
         Assert.IsTrue(entry.IsDeleted);
         Assert.AreEqual("gone.tmp", entry.Name);
     }
@@ -89,6 +91,8 @@ public class FileEntryTests
         var entry = FileEntry.Create(_snapshot, 0, _fileRow);
         var id = entry.RecordKey;
 
+        Assert.AreEqual(new DriveKey('T'), entry.Drive);
+        Assert.AreEqual(id.Drive, entry.Drive);
         Assert.AreEqual('T', id.Drive);
         Assert.AreEqual(_fileRow, id.RecordNumber);
         Assert.AreEqual(ProducerKind.Enumeration, id.ProducerKind);
@@ -107,6 +111,8 @@ public class FileEntryTests
         try
         {
             var entry = FileEntry.Create(snapshot, 0, row);
+            Assert.AreEqual(new DriveKey('V'), entry.Drive);
+            Assert.AreEqual(entry.RecordKey.Drive, entry.Drive);
             Assert.IsFalse(entry.IsSizeKnown);
             Assert.AreEqual(0L, entry.Size);
         }
@@ -121,6 +127,9 @@ public class FileEntryTests
     {
         var entry = default(FileEntry);
         Assert.IsFalse(entry.IsValid);
+        Assert.IsFalse(entry.IsDisposed);
+        Assert.ThrowsException<InvalidOperationException>(() => _ = entry.RecordKey);
+        Assert.ThrowsException<InvalidOperationException>(() => _ = entry.Drive);
     }
 
     [TestMethod]

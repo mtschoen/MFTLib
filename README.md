@@ -493,8 +493,13 @@ or convert implicitly from `char`. `new DriveKey('c')`, `'c'` and `'C'` identify
 drive. `Letter` and `ToString()` expose its upper-case letter. There is no string conversion.
 The default key is invalid: index operations, cache selections, key-bearing record constructors
 and their `Drive` initializers reject it with `ArgumentException`. Reading or formatting its
-letter also throws. Members carrying a key are named `Drive`, including `IndexedDrive`,
-statuses, results, changes' `Entry.RecordKey`, faults, rows and the test package's scan records.
+letter also throws. Members carrying a key are named `Drive`, including `IndexedDrive`, statuses,
+results, file entries, faults, rows and the test package's scan records.
+`FileEntry.Drive` (also `change.Entry.Drive` in a change notification) equals
+`RecordKey.Drive` and exposes the configured logical drive, including a virtual
+dump drive. Like the entry's other data properties, it throws
+`InvalidOperationException` on a default entry and `ObjectDisposedException`
+after the owning index releases its snapshot.
 
 Each lifecycle verb takes `(IEnumerable<DriveKey> drives, CancellationToken cancellationToken)`
 and returns `Task<IReadOnlyList<DriveOperationResult>>`. A single-drive caller reads one result:

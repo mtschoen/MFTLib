@@ -198,6 +198,7 @@ MFTLib.Index.FileEntry :: method public override ToString() : string
 MFTLib.Index.FileEntry :: method public static op_Equality(MFTLib.Index.FileEntry left, MFTLib.Index.FileEntry right) : bool
 MFTLib.Index.FileEntry :: method public static op_Inequality(MFTLib.Index.FileEntry left, MFTLib.Index.FileEntry right) : bool
 MFTLib.Index.FileEntry :: property public Attributes { get; } : System.IO.FileAttributes
+MFTLib.Index.FileEntry :: property public Drive { get; } : MFTLib.Index.DriveKey
 MFTLib.Index.FileEntry :: property public IsDeleted { get; } : bool
 MFTLib.Index.FileEntry :: property public IsDirectory { get; } : bool
 MFTLib.Index.FileEntry :: property public IsDisposed { get; } : bool

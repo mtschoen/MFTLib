@@ -164,6 +164,7 @@ public class FileEntryDisposalTests
         Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.IsDirectory);
         Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.IsDeleted);
         Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.RecordKey);
+        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Drive);
         Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Path);
         Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Parent);
         Assert.ThrowsException<ObjectDisposedException>(() => entry.Children());

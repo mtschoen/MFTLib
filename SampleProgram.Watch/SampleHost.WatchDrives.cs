@@ -101,7 +101,7 @@ partial class SampleHost
         index.Changed += change =>
         {
             counter.Add();
-            _writeLine($"  {change.Kind}: {change.Path}{(change.PreviousPath is { } previous ? $" (was {previous})" : string.Empty)} at {change.Timestamp:u}, entry {change.Entry.Name}");
+            _writeLine($"  {change.Kind}: {change.Path}{(change.PreviousPath is { } previous ? $" (was {previous})" : string.Empty)} at {change.Timestamp:u}, drive {change.Entry.Drive}, entry {change.Entry.Name}");
         };
         return counter;
     }

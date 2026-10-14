@@ -72,7 +72,10 @@ public class WatchVerbTests
 
         Assert.AreEqual(0, result);
         Assert.IsTrue(lines.Any(line => line.StartsWith("  watch X: CaughtUp", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(lines.Any(line => line.StartsWith("  Created: ", StringComparison.Ordinal) && line.EndsWith("new.txt", StringComparison.Ordinal)));
+        Assert.IsTrue(lines.Any(line =>
+            line.StartsWith("  Created: ", StringComparison.Ordinal) &&
+            line.EndsWith(", drive X, entry new.txt", StringComparison.Ordinal)),
+            string.Join(Environment.NewLine, lines));
         Assert.IsTrue(lines.Any(line => line.StartsWith("Saw 1 changes in 30 seconds;", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
         Assert.IsTrue(lines.Contains("Broker: connected."));
         Assert.IsTrue(lines.Contains("  start X: Succeeded"), string.Join(Environment.NewLine, lines));

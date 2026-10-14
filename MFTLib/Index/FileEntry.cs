@@ -75,6 +75,11 @@ public readonly partial record struct FileEntry
     /// </summary>
     public bool IsDisposed => _snapshot is not null && _snapshot.IsReleased;
 
+    /// <summary>Gets the configured logical drive key, including for virtual dump drives. Equals <see cref="IndexRecordKey.Drive" /> on <see cref="RecordKey" />.</summary>
+    /// <exception cref="InvalidOperationException">This is the default entry value.</exception>
+    /// <exception cref="ObjectDisposedException">The owning <see cref="FileIndex" /> has been disposed.</exception>
+    public DriveKey Drive => DriveBlock.Drive;
+
     /// <summary>Gets the row key of this entry: its drive plus its row number in that drive's block. It is not an NTFS file identifier and is not sufficient for an open by id; NTFS reuses record numbers, so it does not identify a file over time. See <see cref="IndexRecordKey" />.</summary>
     /// <exception cref="InvalidOperationException">This is the default entry value.</exception>
     /// <exception cref="ObjectDisposedException">The owning <see cref="FileIndex" /> has been disposed.</exception>
