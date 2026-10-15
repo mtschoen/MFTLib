@@ -14,7 +14,7 @@ Cached `FileIndex.OpenAsync` calls `EnsureCreated` automatically before opening
 drives. An application preparing the directory or writing its own sidecar before
 an index open should call it explicitly first. For example, file-wizard's
 `FileWizard/ContentHashSidecar.cs` calls it before using `content-hashes` inside
-the index-cache directory. `NoCache` opens do not create a cache directory, and
+the index-cache directory. `CacheMode.Disabled` opens do not create a cache directory, and
 dump sources prohibit cache options. Directory preparation takes no block-slot
 ownership; block operations still follow the locks described below.
 
@@ -27,9 +27,14 @@ ownership; block operations still follow the locks described below.
       open instead scans into a private `mftlib-private-*` delete-on-close block and leaves the canonical
       cache untouched. `.lock` files are deliberately never unlinked (unlinking races a fresh
       create-and-lock), so cache-pruning tooling must leave `*.mlix.lock` alone. `FileIndexOptions.Diagnostics`
-      receives one line per block-file delete with the path and
-      reason; null by default (the internal block creation options forward it). Consumers that deliberately shared one cache block between two live indexes
-      must open the second with `CacheMode.Disabled` or expect the in-use outcome. `CacheDirectory.DeleteCached(cacheDirectoryPath,
+      receives one line with the path and reason for each block file the index deletes
+      explicitly; null by default (the internal block creation options forward it). Consumers that deliberately shared one cache block between two live indexes
+      must open the second with `CacheMode.Disabled` or expect the in-use outcome.
+      `CacheMode.Disabled` and private fallback blocks are created delete-on-close, so the
+      operating system removes them when the last handle closes, including when the process is
+      killed, and that removal produces no `Diagnostics` line. The operating system likewise
+      releases the owner lock when its process dies, so a killed index never strands its slot.
+      `CacheDirectory.DeleteCached(cacheDirectoryPath,
       drives, diagnostics)` is the lock-safe way for a consumer to clear cache blocks: it takes each
       candidate block's owner lock non-blockingly and deletes only while holding it, the same rule `FileIndex`
       itself follows, so it never deletes, renames, or unlinks a block a live `FileIndex` still owns. A block

@@ -49,6 +49,34 @@
       `BrokerSession.GrowUsnJournalAsync` remedy, followed by `FileIndex.RescanAsync`.
       A bounded catch-up read that returns entries without advancing its cursor fails the scan.
 
+## Reading a report
+
+`DriveWatchStatus.CheckpointLoss` is null when no proven loss is recorded: the watch never
+lost its position, the volume could not answer the journal query, or a loss was not proven.
+It is not null merely because the drive warm-started: `CacheMode.ExistingOnly` adopts an
+unresumable cached block with a `DriveOpening` report, and an ordinary open can retain one.
+When it is non-null, read two fields together:
+
+- `Cause` says whether a journal size would have helped. `CheckpointTrimmed` means the journal
+  trimmed past the checkpoint, and `SizeThatWouldHaveRetained` gives the size that would have
+  kept it, or null when that size does not fit in a `long`. `JournalRecreated` means the
+  journal was deleted and recreated, so no size would have helped. `JournalAdvanced` means a
+  scan-only cached source found the journal moved and cannot catch up; it carries no sizes.
+  Decide from `Cause`, not from whether a size is null.
+- `DetectedDuring` says which check found the report: `DriveOpening` (opening the cached
+  block, or why a cache-only drive cannot be watched), `LiveWatch` (a live watch faulted with
+  its position gone) or `ScanCatchUp` (the journal outran a scan). A report can predate the
+  fault a handler is processing, so treat the label as the report's origin, not as the cause
+  of that fault.
+
+`BytesBehind` is the journal's oldest retained USN minus the checkpoint. Both sizes are exact
+integer arithmetic on positions read from the volume, not live measurements. Windows creates a
+journal at 32 MB, which a busy system drive can wrap in minutes. A rescan is an acceptable
+outcome, so show the user the size and let them decide whether a larger journal is worth it.
+MFTLib never changes a journal on its own. Growth is persistent and shared with every other
+journal consumer on the volume, such as Windows Search and backup agents, so offer it as an
+explicit user action.
+
 ## Journal growth target
 
 `JournalCheckpointLoss.TryGetGrowthTarget(out UsnJournalSettings target)` projects

@@ -125,8 +125,8 @@
     - **MFT source**: `FileIndexOptions.MftSource` is one `MftIndexSource` carrying the block
       producer and the watch source of every MFT-backed drive, so the two cannot come from
       different connections. `BrokerSession.CreateIndexSource()` builds the broker-backed
-      one; `MftIndexSources.Unavailable(reason)` fails every scan and watch start with
-      `Drive {letter}: {reason}.`. `MftIndexSources.FromLocalVolumes(scanOptions)` builds the in-process one for a caller
+      one; `MftIndexSources.Unavailable(reason)` fails every scan with
+      `Drive {letter}: {reason}.`, and a watch start reports `NotApplicable`. `MftIndexSources.FromLocalVolumes(scanOptions)` builds the in-process one for a caller
       that is already elevated: `LocalMftBlockProducer` plans capacity from the volume geometry,
       creates the requested block and fills it through `MftBlockScan.WriteToBlock`, stamping the live
       journal cursor armed before a cached scan, with no broker process or pipe. It has no watch source, so watch start and
@@ -366,3 +366,16 @@ To update an approved file, set `MFTLIB_PUBLIC_SURFACE_REGENERATE_TO` to a scrat
 and run `PublicSurfaceTests`: the tests write the current surface there and fail on purpose.
 Review the diff and copy the files into `MFTLib.Tests/PublicSurface/` by hand. A normal run
 never writes an approved file.
+
+## Source layout
+
+The managed source is organized by responsibility:
+
+- `MFTLib/Index` - the substrate-neutral packed index: block format, `FileIndex`, snapshots, queries, mutation, and the enumeration producer. It depends on nothing else in the library beyond a few journal value types, a boundary an architecture test enforces.
+- `MFTLib/Mft` - scans, records, results and timings
+- `MFTLib/Journal` - USN cursor, entries and reasons
+- `MFTLib/Sources` - producers, row writer and scan
+- `MFTLib/Broker` - elevated host and client, protocol, block writing, and diagnostics
+- `MFTLib/Elevation` - elevation detection and the injectable provider
+- `MFTLib/Interop` - native result layouts
+- `MFTLib/Internal` - native bindings and internal volume utilities

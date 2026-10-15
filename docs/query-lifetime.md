@@ -88,6 +88,13 @@
       retained handle stays readable against its original block, and a caller reacquires an anchor from the
       current index before each query that follows a rescan of the anchor's drive.
 
+    - **Paths**: `FileEntry.Path` is the drive block's root directory joined with the entry's
+      name chain using the host separator. For a live entry of a real source it is an openable
+      filesystem path, and `FileIndex.Find` accepts it back, resolving a native path against the
+      longest matching indexed root directory. A dump entry renders a virtual `dump:/X` path that
+      `Open` refuses, a detached deleted row renders its bare name, and `Find` skips deleted
+      entries, so a deleted entry's path does not resolve.
+
     - **Writer lifetime**: every internal `BlockWriter` operation holds a `BlockAccessScope` on its
       `BlockFile` for the operation's whole duration. `BlockFile.Dispose` refuses new scopes when
       it begins and waits for outstanding ones before unmapping, so a write racing disposal either

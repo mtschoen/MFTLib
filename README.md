@@ -1,175 +1,55 @@
 # MFTLib
 
-MFTLib is a .NET library for building fast file indexes, search tools, backup
-catalogs, and filesystem monitors. On NTFS volumes it reads the Master File Table (MFT)
-directly for a high-throughput snapshot, then uses the USN change journal to keep that
-snapshot current without repeatedly walking the filesystem.
+MFTLib is a .NET library for building file indexes, search tools, backup catalogs and
+filesystem monitors. On a Windows NTFS volume it reads the Master File Table (MFT) directly
+for a fast snapshot, then follows the USN change journal to keep that snapshot current
+without walking the filesystem again. The same packed, memory-mapped index can also be
+built from a saved MFT dump, or by walking a directory tree on any filesystem, including on
+Linux. MFTLib reads file metadata, never file contents. The public API is managed C#;
+volume I/O and record parsing run in a native C++ core.
 
-The index in `MFTLib.Index` is not limited to NTFS or to Windows. A cached, memory-mapped
-block holds each drive's file metadata, and a producer fills it: the MFT scan on an NTFS
-volume, or the enumeration producer, which walks the directory tree and so runs over any
-filesystem, including on Linux. Queries and the cache work the same way whichever producer
-built the block; live USN watching requires an MFT-backed NTFS index, while
-enumeration-backed indexes are refreshed by rescanning. The name stays MFTLib because the
-MFT scan is the fast path the library was built around and the project's identity; the other
-producers feed the same index.
+## Platforms and requirements
 
-The public API is managed C#; performance-sensitive volume I/O and record parsing
-run in a native C++ core.
+- .NET 10 or later, in an x64 process.
+- Windows x64 for live NTFS volumes. An in-process scan with `MftIndexSources.FromLocalVolumes`
+  needs an elevated process. Live USN watching runs through `BrokerSession`, which keeps your
+  application unelevated and performs volume access in one elevated child process.
+- Windows or Linux x64, with no elevation, for saved MFT dumps (`MftIndexSources.FromMftDumpFile`)
+  and for directory-walk indexing (`ProducerKind.Enumeration`).
 
-## Why MFTLib?
+Windows-only members carry `[SupportedOSPlatform("windows")]`. Target `net10.0-windows`, or guard
+those calls with `OperatingSystem.IsWindows()` in a cross-platform project.
 
-Normal directory enumeration visits the filesystem tree one directory at a time. MFTLib
-instead reads NTFS's central record table, which is useful when an application needs to:
-
-- discover files or directories across an entire volume quickly;
-- build and maintain a searchable local file index;
-- find records by filename without Windows Search;
-- correlate full-scan records with later filesystem changes; or
-- keep its main process non-elevated while raw-volume work runs in one elevated child.
-
-MFTLib does not read file contents. The raw MFT and USN journal paths are specialized
-for NTFS metadata on Windows; the index runs elsewhere through the enumeration producer.
-
-## Highlights
-
-- File index (`MFTLib.Index`) over any filesystem, with the enumeration producer on Linux
-  and the MFT scan on NTFS
-- In-process scan of a live volume (`MftIndexSources.FromLocalVolumes`) or a saved MFT dump (`MftIndexSources.FromMftDumpFile`) into the same index
-- Runtime detection of the volume's MFT record size (a power of two from 512 through 65536
-  bytes on a live volume; a saved dump accepts 1024 or 4096) instead of an assumed fixed size
-- Native C++ I/O with parallel fixup and parsing
-- Double-buffered reads that overlap I/O and compute
-- Exact, substring, case-sensitive, size and last-write-time predicates with inclusive bounds, subtree and directory filters over the packed index (`SearchQuery`)
-- `FileIndex.Search` (list), `FileIndex.Enumerate` (streaming entries) and `FileIndex.EnumerateRows` (row views)
-- Live USN watch per drive through `FileIndex` and `BrokerSession`
-- Race-free scan/catch-up workflow through an elevated broker
-- One reusable UAC-elevated child per broker session
-- Per-drive error isolation and broker-death notification
-
-A synthetic 8-million-record benchmark has exceeded 2.6 million records/second on a
-Ryzen 9 7950X3D with a Samsung 990 PRO. Real-volume performance depends on storage,
-volume size and hardware.
-
-## Requirements
-
-- An elevated Windows process on an NTFS volume for `MftIndexSources.FromLocalVolumes`
-- `MftIndexSources.FromMftDumpFile` and enumeration indexing need no elevation and run on Windows and Linux x64
-- .NET 10.0 or later
-- x64 process architecture
-
-The NuGet package includes `MFTLibNative.dll` under `runtimes/win-x64/native` and a
-transitive build target that copies it to a Windows consumer's output directory. It also
-includes `libMFTLibNative.so` under `runtimes/linux-x64/native`, which the .NET host
-resolves on Linux x64 for the MFT dump source. The Linux
-library is built on Ubuntu 24.04 and requires glibc 2.33 and GLIBCXX_3.4.22 (measured on the
-released library by `scripts/check-linux-native.sh`).
-`MFTLib.TestExtensions` is a separate package for consumer test assemblies. It depends
-on the matching `MFTLib` version and contains `MFTLibTestExtensions.dll`; it is not part
-of the `MFTLib` package. It provides test hooks and scripted types: `BrokerDiagnosticsIsolation`,
-`BrokerTestHarness`, `FileIndexTestAccess`, `InProcessBrokerHandle`,
-`InProcessBrokerScan`, `JournalIsolation`, `ScriptedBrokerVolumes`, `ScriptedDriveWatch`,
-`ScriptedScan`, `ScriptedWatchSource`, `ScriptedWatchStart`, `SyntheticBlock`,
-`SyntheticBlockEditor`, `SyntheticBlockOptions`, `SyntheticCacheTag`, `SyntheticCheckpointLoss`,
-`SyntheticIndexSource`, `SyntheticJournalCursor`,
-`SyntheticJournalReason`, `SyntheticJournalRecord`, `SyntheticJournalWindow`, `SyntheticMftProducer`,
-`SyntheticNotifications`, `SyntheticRow`, and `SyntheticScanRecord`.
+The package carries `MFTLibNative.dll` for Windows, copied to your output directory by a
+transitive build target, and `libMFTLibNative.so` for Linux, which the .NET host resolves
+from `runtimes/linux-x64/native`. The Linux library is built on Ubuntu 24.04 and requires
+glibc 2.33 and GLIBCXX_3.4.22.
 
 ## Install
-
-`FileIndex.OpenAsync` calls with `FileIndexOptions.CacheMode` `Persistent` or `ExistingOnly`
-(an unset mode is `Persistent`, except for a dump source) require a nonblank
-application-owned `FileIndexOptions.CacheDirectory`, including empty-drive opens. Missing
-configuration throws `ArgumentException`. `CacheMode.Disabled` needs no cache path and
-ignores any supplied path without creating it. A dump source supplies its own drive and is
-never cached, so it rejects `Drives`, every `CacheMode`, `CacheDirectory` and `CacheTag`.
-Tests own their temporary cache paths; no default-cache guard is needed.
-
-`CacheMode.Persistent` warm-starts from the cache directory, scans what is missing and writes
-blocks back. `CacheMode.ExistingOnly` opens only from existing cache blocks and never scans; a
-drive with no usable block is declined. `CacheMode.Disabled` reads and writes no cache
-directory: blocks are private and deleted on close.
-
-The Watch sample defaults to `<user profile>/.MFTLib.Sample.Watch/cache`, with
-policy subdirectories used by cached modes and cache inventory/deletion alike.
-If no profile is available, supply `--cache-directory`. Direct opens with `CacheMode.Disabled`.
-
-`CacheDirectory.EnsureCreated(cacheDirectoryPath)` creates the application-owned
-cache directory with its protection in place, or reapplies protection to an
-existing directory, and returns its `DirectoryInfo`. Windows grants access to
-the current user and SYSTEM with inherited access rules blocked; Unix uses
-owner-only read/write/execute permissions (`0700`). Cached `FileIndex.OpenAsync`
-calls it automatically. Call it explicitly before your application writes its
-own files inside the cache directory independently of an index open, such as
-a content-hash sidecar. See [cache ownership](docs/block-ownership.md).
 
 ```bash
 dotnet add package MFTLib --version 0.3.0
 dotnet add package MFTLib.TestExtensions --version 0.3.0
 ```
 
-Or add a package reference:
-
-```xml
-<PackageReference Include="MFTLib" Version="0.3.0" />
-```
-
-For test isolation and synthetic journal helpers in a consumer test assembly, reference
-the matching test extensions package:
-
-```xml
-<PackageReference Include="MFTLib.TestExtensions" Version="0.3.0" />
-```
+`MFTLib.TestExtensions` is a separate package for your test projects only. It provides an
+in-process broker, scripted watches, synthetic cache blocks and synthetic journal records, so
+tests exercise the production code paths without elevation or a real volume.
 
 ## Choose an integration model
 
 | Scenario | Recommended API |
 | --- | --- |
-| Already elevated; scan once ([one-shot local query](#query-a-live-volume-once)) | `MftIndexSources.FromLocalVolumes` with `CacheMode.Disabled`, no watch |
-| Saved image on any supported platform ([dump query](#query-a-saved-mft-dump)) | `MftIndexSources.FromMftDumpFile` as the only option set, no watch, no elevation |
-| Non-elevated desktop/CLI app; one UAC prompt | `BrokerSession` with `CreateIndexSource()` |
-| Resume from a persisted journal cursor | Warm start from the cache block, whose header holds the cursor |
-| Continuously receive changes | `FileIndex.StartWatchingAsync` and `Changed` |
-| Explain a rescan the change journal forced, at open or mid-watch | `DriveWatchStatus.CheckpointLoss` |
+| Already elevated; scan once | `MftIndexSources.FromLocalVolumes` with `CacheMode.Disabled`, no watch |
+| Saved MFT image on Windows or Linux | `MftIndexSources.FromMftDumpFile` as the only option set |
+| Unelevated app, one UAC prompt, live changes | `BrokerSession.CreateIndexSource`, then `StartWatchingAsync` and `Changed` |
+| Any directory tree on any filesystem | `IndexedDrive` with `ProducerKind.Enumeration`; refresh by rescanning |
+| Warm start across runs | A persistent `CacheDirectory`; each cached block records its journal position |
 
-## Samples
+## Quick start: query a live volume once
 
-`SampleProgram.Direct` supports `search`, `tree`, `open`, `largest`, `duplicate-names`
-and `scan`. Select `--source local` for a live volume or `--source dump --dump-file <path>`
-for a saved MFT image; `--include-freed` applies to local scans.
-The `scan` verb prints status and a one-pass inventory per drive: live files, live directories
-(including the indexed root) and retained deleted rows. Deleted files and directories contribute
-only to the deleted count; free slots contribute to none. `--include-freed` retains freed records
-on local scans so the inventory can count them. A second line per drive reports the live files with
-unknown size, with unknown last-write time, with the hidden attribute, and the newest known last-write time.
-`SampleProgram.Watch` supports `scan-drive`, `watch`, `rescan`, `journal`, `cache`
-and `elevation-status`. Its `cache` verb uses policy-digest folders to keep different
-scan policies in distinct sample cache directories.
-Launched with no arguments, `SampleProgram.Watch` scans and then watches every ready NTFS
-fixed drive, names the drives it chose, prints a running row count while it scans and prints
-each change until a key press (`--seconds N` sets a length instead; an unattended run that is
-elevated watches for ten seconds, and one that is not elevated exits 1 without watching). `scan-drive` is a single pass per drive. The exit code is 1 when
-any drive failed. Naming drives, for example `watch C D`, replaces the default set.
-`SampleProgram.Direct` with no arguments prints its usage. Both samples hold their console
-window open for a key press at exit when the process owns that window, so a double-click
-leaves the output readable; `MFTLIB_SAMPLE_UNATTENDED=1` skips the wait.
-
-```powershell
-.\SampleProgram.Direct\bin\x64\Release\net10.0\SampleProgram.Direct.exe search C --name notes
-.\SampleProgram.Watch\bin\x64\Release\net10.0\SampleProgram.Watch.exe scan-drive C
-```
-
-Run the compiled executable for self-elevation. Direct local scans self-elevate;
-Watch stays unelevated and its broker elevates. Dump scans need no elevation.
-Set `MFTLIB_SAMPLE_UNATTENDED=1` to skip prompts and elevation requests in an
-unelevated unattended run. See [elevation](docs/elevation.md).
-
-### Query a live volume once
-
-For a process that is already running elevated on Windows and needs a read-only NTFS snapshot
-without a broker, a watch or an application cache directory, resolve the volume with
-`IndexedDrive.FromWindowsVolume`, select `MftIndexSources.FromLocalVolumes()` and open with
-`CacheMode.Disabled`:
+For a process already running elevated on Windows that needs a read-only snapshot, with no
+broker, no watch and no cache directory:
 
 ```csharp
 using MFTLib;
@@ -202,48 +82,19 @@ foreach (var entry in index.Enumerate(query, cancellationToken).Take(20))
 }
 ```
 
-`IndexedDrive.FromWindowsVolume('C')` resolves `C:\` and reads the volume serial from Windows,
-so no caller-supplied serial is needed. `CacheMode.Disabled` writes a private delete-on-close
-block and ignores `CacheDirectory`. Always check `DriveStatus.State` and `DriveStatus.Failure`
-before treating zero query results as an empty drive. `IndexedDrive.FromWindowsVolume` throws
-`IOException` when Windows cannot report the volume serial, before any index exists. A drive
-whose root directory is missing settles as `DriveState.Offline`. A scan that fails, such as an
-unelevated process denied raw volume access, settles as `DriveState.Failed` with
-`DriveFailureKind.ProducerFailed` rather than throwing.
+- `IndexedDrive.FromWindowsVolume('C')` reads the volume serial from Windows and throws
+  `IOException` when Windows cannot report it.
+- Check `DriveStatus.State` before treating zero results as an empty drive. An unelevated
+  process settles the drive `Failed` with `DriveFailureKind.ProducerFailed` rather than throwing.
+- One open is one scan. Run as many queries as you like against it, and finish every
+  enumeration inside the `await using` scope. Sizes and times are what the scan observed.
 
-One-shot means one MFT scan per open index followed by any number of in-memory queries
-(`Enumerate`, `Search`, `EnumerateRows`, `Find`, `Root`) against that snapshot; do not reopen or
-rescan the drive for each name you look up. Keep `foreach` and bounded LINQ chains such as
-`Take` inside the `await using` lifetime so the enumerator releases its snapshot borrow before
-`DisposeAsync` unmaps the block. `FileEntry.Size` (when `IsSizeKnown` is true) and
-`FileEntry.LastWriteTime` report the values observed during the scan, not a live guarantee of
-current filesystem contents.
+## Quick start: query a saved MFT dump
 
-`MftIndexSources.FromLocalVolumes()` requires an already-elevated Windows process; self-elevation
-belongs to the application. `SampleProgram.Direct` owns that self-elevation flow when run as the
-compiled `.exe` (see [elevation](docs/elevation.md)):
-
-```powershell
-.\SampleProgram.Direct\bin\x64\Release\net10.0\SampleProgram.Direct.exe search C --source local --name *.log --files --stream --limit 20
-```
-
-When launched unelevated in an attended session, `SampleProgram.Direct.exe` shows its heads-up
-dialog and relaunches itself elevated through UAC. Because the elevated child's console window
-closes when the run finishes, the child redirects its standard output to
-`SampleProgram.Direct\bin\x64\Release\net10.0\output.log` beside the executable, and the
-unelevated parent prints that path before launching it. When `MFTLIB_SAMPLE_UNATTENDED=1` is set
-in an unelevated process, the sample skips the dialog and UAC prompt, prints manual-elevation
-instructions, and exits with code 1 without scanning.
-
-### Query a saved MFT dump
-
-The dump source loads one saved `$MFT` file as a virtual drive in process on Windows or Linux x64,
-with no elevation, no broker and no watch. The caller chooses the logical drive letter (`'D'`
-below) as the key in `index.Drives` and `index.Root('D')`; it names no host volume, and entries
-render virtual paths under `dump:/D`. The source supplies its own virtual drive (letter, root
-`dump:/D`, serial zero, `ProducerKind.Mft`) and uncached open, so `FileIndexOptions.MftSource`
-is the only drive or cache option to set; setting `Drives`, `CacheMode` (even `Disabled`),
-`CacheDirectory` or `CacheTag` throws `ArgumentException`:
+The dump source loads one saved `$MFT` file as a virtual drive, in process, on Windows or
+Linux, with no elevation. You choose the drive letter; entries render paths under `dump:/D`.
+The source supplies its own drive and is never cached, so `MftSource` is the only option to
+set. Setting `Drives`, `CacheMode`, `CacheDirectory` or `CacheTag` throws `ArgumentException`.
 
 ```csharp
 using MFTLib;
@@ -272,80 +123,29 @@ foreach (var entry in index.Enumerate(query, cancellationToken))
 }
 ```
 
-A dump is untrusted, and `FromMftDumpFile` does not open the file when constructing the source.
-Always check `DriveStatus.State` and `DriveStatus.Failure` before treating zero matches as a
-valid empty result: a missing path, an empty file, a record size other than 1024 or 4096, a
-partial final record, an invalid fixup on an allocated record, a file unreadable to its opened
-length, a missing or invalid root, duplicate record numbers or a parent outside the index each
-settle the drive as `DriveState.Failed` (`DriveFailureKind.ProducerFailed`) with the reason in
-`DriveStatus.Failure.Message`. Because a dump contains MFT metadata records rather than volume
-file streams, `FileEntry.Open` cannot read file contents from a dump entry and throws
-`InvalidOperationException`.
+A dump is untrusted input. A missing, empty or malformed file settles the drive `Failed`
+with the reason in `DriveStatus.Failure.Message`. A dump holds metadata only, so
+`FileEntry.Open` throws `InvalidOperationException` for its entries.
 
-`SampleProgram.Direct` runs the same read-only dump query from the command line without elevation
-on Windows and Linux x64:
+## Quick start: watch a volume through the broker
 
-```powershell
-# Windows x64
-.\SampleProgram.Direct\bin\x64\Release\net10.0\SampleProgram.Direct.exe search D --source dump --dump-file <path> --name Notes.txt --exact --stream
-```
-
-```bash
-# Linux x64
-dotnet ./SampleProgram.Direct/bin/x64/Release/net10.0/SampleProgram.Direct.dll search D --source dump --dump-file <path> --name Notes.txt --exact --stream
-```
-
-Output depends on the supplied dump image; for the repository's standard 16-record test fixture,
-the command prints:
-
-```text
-  D: ParsingMft: 16 rows of 16
-  D: Transferring: 7 rows
-  D: Finished: 11 rows (Succeeded)
-dump:/D/documents/Notes.txt  11
-1 entries
-```
-
-## Freed MFT records
-
-Freed MFT records are opt-in. `MftScanOptions.IncludeFreed` (default false) makes a cold scan
-of a live volume, direct or through the broker, also import the records NTFS has freed; the
-dump source offers no such option. Each freed record becomes a row whose `FileEntry.IsDeleted`
-is true and which exists for that scan only: a later watch applies journal events to live rows
-and never edits, renames or resurrects it.
-
-A freed row keeps its parent and full path only when its parent chain verifies. Every parent
-through the root must be a directory whose stored sequence equals the sequence the child's name
-referenced, or is one higher when that parent was freed too (16-bit wraparound), within 128
-components and without a cycle. Any other freed row is detached: its path is its bare name, it
-has no parent, and it is no directory's child. A cached block carries the rows of the scan that
-produced it, so a consumer that changes `IncludeFreed` also changes its `CacheTag` version.
+An unelevated application dispatches broker mode first, then owns one `BrokerSession`. The
+session launches its elevated child on first use, so the UAC prompt appears when the first
+scan needs it.
 
 ```csharp
-var options = new FileIndexOptions
+using MFTLib;
+using MFTLib.Index;
+
+if (ElevatedEntryPoint.RunBrokerIfRequested(Environment.GetCommandLineArgs()))
 {
-    Drives = [new IndexedDrive('C', @"C:\", volumeSerial)],
-    MftSource = MftIndexSources.FromLocalVolumes(new MftScanOptions { IncludeFreed = true }),
-    CacheDirectory = cacheDirectory,
-    CacheTag = new CacheTag("APPX", 2)
-};
-await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
-var deleted = index.Search(new SearchQuery("report", IncludeDeleted: true))
-    .Where(entry => entry.IsDeleted);
-```
+    return;
+}
 
-`SearchQuery.IncludeDeleted` (default false) makes a search return deleted rows as well, whether
-the journal deleted them or a scan imported them freed. `FileIndex.Find`, `FileIndex.Root` and
-`FileEntry.Children` return live rows only.
+var cancellationToken = CancellationToken.None;
+var cacheDirectory = Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MyApp", "index-cache");
 
-## Keep an index current with the USN journal
-
-A cached block holds the journal instance and next position together in its header.
-Open a broker-backed `FileIndex` to warm-start from that checkpoint or scan and catch
-up when the cache cannot be resumed. Consumers query the index and receive applied
-changes instead of persisting a separate cursor.
-
-```csharp
 await using var session = new BrokerSession();
 var options = new FileIndexOptions
 {
@@ -353,673 +153,104 @@ var options = new FileIndexOptions
     CacheDirectory = cacheDirectory,
     MftSource = session.CreateIndexSource()
 };
+
 await using var index = await FileIndex.OpenAsync(options, cancellationToken);
-index.Changed += change =>
-    Console.WriteLine($"{change.Kind}: {change.Path}");
-var starts = await index.StartWatchingAsync(['C'], cancellationToken);
-var catchUps = await index.WaitForCatchUpAsync(['C'], cancellationToken);
-```
-
-`Changed` events carry `FileChangeKind`, the current path, the timestamp and the
-previous path for a rename. A start establishes the connection; the catch-up wait
-observes the watch reaching its live position. A journal event never reports a file's size or last-write time, only its own
-time in `FileChange.Timestamp`. A content change makes the entry's `Size` and `LastWriteTime` unknown
-(`IsSizeKnown` and `IsLastWriteTimeKnown` are false, `LastWriteTime` reads `DateTime.MinValue`), a
-basic-information change makes `LastWriteTime` unknown, and a journal-created entry is unknown for both until
-a rescan observes it; a rename, move or close keeps both scanned observations. Read the filesystem or rescan
-for current values, and require both flags before trusting a size and time signature. Journal checkpoint loss is recorded
-on `DriveWatchStatus.CheckpointLoss`; a successful `RescanAsync(['C'], cancellationToken)` supplies a fresh
-block and restarts a requested watch. `StopWatchingAsync(index.Drives.Select(drive => drive.Drive), cancellationToken)` stops
-every configured drive and returns its per-drive results.
-
-A watched volume whose change journal is too small wraps under load: records
-are overwritten before the watch reads them, the watch faults, and the drive
-needs a rescan. Windows sizes a new journal at 32 MB, which a busy system
-drive can wrap in minutes.
-
-On an open index, `index.QueryUsnJournalSettings(driveLetter)` reports a configured
-volume's sizing, `MaximumSize` and `AllocationDelta`, without elevation.
-
-### When a rescan happened because the journal moved on
-
-The only journal event that costs anything is a drive's journal position falling
-out of the journal, because the drive must then be scanned from scratch instead
-of caught up. It is detected when opening a cached block, when a live watch
-faults, or when the journal outruns a scan before that scan can catch up. Each
-case is recorded on that drive's status:
-
-```csharp
-await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
-
-foreach (var drive in index.Drives)
-{
-    if (drive.Watch.CheckpointLoss is not { } loss)
-    {
-        continue;
-    }
-
-    switch (loss.Cause)
-    {
-        case JournalCheckpointLossCause.CheckpointTrimmed when loss.SizeThatWouldHaveRetained is { } size:
-            Console.WriteLine(
-                $"Drive {loss.Drive}: the last checkpoint was {loss.BytesBehind} bytes " +
-                $"older than the journal still holds, so a full rescan was needed. A journal " +
-                $"of at least {size} bytes (it is {loss.JournalSettings.MaximumSize} now) would have kept the " +
-                "checkpoint.");
-            break;
-        case JournalCheckpointLossCause.CheckpointTrimmed:
-            Console.WriteLine(
-                $"Drive {loss.Drive}: the last checkpoint was {loss.BytesBehind} bytes " +
-                "older than the journal still holds, so a full rescan was needed. No size to " +
-                "offer: it does not fit in a long.");
-            break;
-        case JournalCheckpointLossCause.JournalRecreated:
-            Console.WriteLine(
-                $"Drive {loss.Drive}: the change journal was recreated, so the last " +
-                "checkpoint no longer refers to anything and a full rescan was needed.");
-            break;
-        default:
-            Console.WriteLine(
-                $"Drive {loss.Drive}: the journal moved past the retained cursor and the " +
-                "source cannot catch up, so a full rescan was needed.");
-            break;
-    }
-}
-```
-
-USNs are byte offsets into the journal, so every number there is exact integer
-arithmetic on values read off the volume: `BytesBehind` is the journal's oldest
-retained USN minus the checkpoint, and `SizeThatWouldHaveRetained` is the journal's
-next USN minus the checkpoint, rounded up to the journal's allocation delta, plus one
-more allocation delta. The three positions themselves are internal; the report
-carries the two derived sizes.
-That margin comes from NTFS's documented trimming behavior in
-`CREATE_USN_JOURNAL_DATA` and `USN_JOURNAL_DATA`: the maximum is a target and a
-trim can leave the journal below it. The value is not a live measurement, and
-there is no clock, rate or cap.
-
-The report is attached to the drive it describes, for as long as the block it
-explains is in place. A `CacheMode.ExistingOnly` open adopts a
-usable cached block even when its checkpoint is gone: the drive is `Ready`, the
-report explains why its cursor cannot be resumed, and a watch start is refused
-until `RescanAsync` supplies a fresh cursor. A successful manual rescan clears
-the report and the refusal. The refused start retains the watch request, so the
-successful rescan starts the watch from the fresh cursor.
-
-A loss found mid-session sits alongside `Watch.FailureMessage` and
-`Watch.State`. It answers the question those two cannot: the watch did not
-merely stop, the journal moved past where it had reached. `Drive` and `Apply`
-faults recover by rescanning automatically; `Channel` faults do not. A scan-time
-loss records `JournalCheckpointLossDetection.ScanCatchUp`, publishes the complete
-but unresumable block, and retries the scan until automatic recovery is exhausted.
-`DriveWatchStatus.IsRecoveryStopped` records that decision. Subscribe to `FileIndex.WatchFaulted` to
-observe live and scan-time losses. The report is recorded before the fault is
-announced, so a handler that reads `index.Drives` already has it.
-
-`WatchFault.IsRecovering` shares the automatic-recovery classification:
-
-```csharp
+index.Changed += change => Console.WriteLine($"{change.Kind}: {change.Path}");
 index.WatchFaulted += fault => Console.Error.WriteLine(
     $"Drive {fault.Drive}: {fault.Kind}, automatic recovery: {fault.IsRecovering}");
-```
 
-It is true for Drive and Apply, and for CatchUpLost carrying a
-`JournalCatchUpLostException` whose `IsRecoveryStopped` is false. Other faults return
-false, including Subscriber faults whose watches continue running. The value describes
-that notification, not subsequent watch health.
-
-`FileIndex.WatchStateChanged` delivers a `WatchStateChange` whose `Watch` is the same
-`DriveWatchStatus` that `DriveStatus.Watch` reports, so a late subscriber seeds its
-watch-state view straight from `index.Drives`:
-
-```csharp
-foreach (var drive in index.Drives)
+var drives = index.Drives.Select(status => status.Drive).ToArray();
+foreach (var result in await index.StartWatchingAsync(drives, cancellationToken))
 {
-    Console.WriteLine($"Drive {drive.Drive}: {drive.Watch.State}, version {drive.Watch.StateVersion}");
-}
-```
-
-Subscribe before reading `Drives` and merge snapshots and events through the same
-per-drive version check, as shown in the
-[broker integration guide](docs/broker-integration.md#5-handle-faults-and-recovery).
-
-**In a fault handler, treat `DetectedDuring` as the origin of the report, not
-as proof of the fault being handled.** A report lives until a rescan replaces the
-block it explains or a newer loss replaces it. A drive that cold-scanned at open
-still carries its `DriveOpening` report while it is being watched, and automatic
-recovery keeps a `LiveWatch` report after the rescan, so an unrelated fault later
-finds an older report beside it. `DetectedDuring` says which check found it. A
-`ScanCatchUp` report is recorded before the `CatchUpLost` fault it explains is
-announced; any other label may predate the fault:
-
-```csharp
-index.WatchFaulted += fault =>
-{
-    var drive = index.Drives.Single(d => d.Drive == fault.Drive);
-    Console.Error.WriteLine($"Drive {fault.Drive}: {fault.Kind}, {drive.Watch.FailureMessage}");
-    if (drive.Watch.CheckpointLoss is { } loss)
+    if (result.Outcome == DriveOperationOutcome.Failed)
     {
-        // The report may be older than this fault; the label says which moment found it.
-        Console.WriteLine($"  Retained journal loss, found during {loss.DetectedDuring}: {loss.Cause}");
-    }
-};
-```
-
-`JournalCheckpointLossDetection.DriveOpening` means the report explains why this
-session cold-scanned at open, or why a cache-only drive cannot be watched. It is
-not a diagnosis of a later fault. `LiveWatch` means the drive's live cursor was
-gone when its watch faulted. `ScanCatchUp` means the cursor armed before a scan
-was gone when that scan finished. A watch that fails for any other reason leaves
-the report exactly as it was, `DriveOpening` label included, or leaves it null,
-because the classification is the journal's answer about that drive's position
-rather than a reading of the exception that ended the watch. A newer loss
-replaces an earlier report; an unrelated fault neither rewrites nor deletes it.
-
-`Cause` separates the situations MFTLib can actually tell apart.
-`CheckpointTrimmed` means the journal is the one the checkpoint came from and has
-trimmed past it, so `SizeThatWouldHaveRetained` says the size a journal would
-need to be at least to have kept the checkpoint, when that size fits in a
-`long`; it is null when it does not. `JournalRecreated` means the journal
-was deleted and recreated and carries a different id, so the checkpoint refers to
-a journal that no longer exists: no size would have helped, and none is offered.
-`JournalAdvanced` means a scan-only cached source still has a retained cursor but
-the journal's next USN differs from it. With no catch-up source it rescans; no
-retention size would help, so `BytesBehind` and `SizeThatWouldHaveRetained` are null.
-A consumer decides what to say from `Cause`, not from whether the size is null,
-since all causes can leave it null. `Cause` and `DetectedDuring` answer
-different questions and are read together: `Cause` says whether a journal size
-would have helped, `DetectedDuring` says which check found the report, and so which
-moment it comes from. A drive that warm-started, whose watch has never lost its
-position, or whose volume could not answer the query at all, reports
-`Watch.CheckpointLoss` as null rather than guessing.
-
-Turning that into the user's choice is the consumer's job: show the size,
-say what the journal is now, and let the user decide whether a journal that large
-is worth it or whether an occasional rescan is cheaper. Scans are fast by design,
-so a rescan is an acceptable outcome, not a failure.
-
-MFTLib never changes the journal on its own:
-enlarging it is an explicit call, `BrokerSession.GrowUsnJournalAsync`,
-which the broker performs elevated and which only grows, refusing a requested
-maximum at or below the current one. Growing is persistent and shared with
-every other journal consumer on the volume (Windows Search, backup and
-replication agents), so surface it as a user action, not a startup default.
-
-Use `loss.TryGetGrowthTarget(out var target)` to obtain the recorded retention size
-and allocation delta for that action. It succeeds only for `CheckpointTrimmed`
-with a positive representable retention size greater than the recorded maximum
-and a positive allocation delta; on failure, `target` is default and
-`loss.GrowthTargetRefusalReason` explains the refusal. The nullable reason is null
-when a target is available. The library reports the size that would have retained
-the checkpoint; the consumer decides whether to grow. The method
-does not recompute sizing or query the volume. Immediately before growth, query
-fresh settings with `index.QueryUsnJournalSettings(driveLetter)` and require
-`target.MaximumSize` to exceed the current maximum. Pass `target` to
-`GrowUsnJournalAsync(drive, target, cancellationToken)`, then rescan the drive: growth
-does not restore records already lost.
-
-## Keep the application non-elevated
-
-For desktop applications and long-running tools, use the elevated broker instead of
-running the entire process as Administrator. One `BrokerSession` owns the elevated process and
-its control pipe for the consumer session. Each scan and each drive watch gets its own drive pipe, so a
-slow, stopped, or failed drive does not end another drive's operation.
-
-At minimum, the application must dispatch broker mode before normal startup:
-
-```csharp
-if (ElevatedEntryPoint.RunBrokerIfRequested(Environment.GetCommandLineArgs()))
-{
-    return;
-}
-```
-
-The non-elevated side creates one session. It launches the broker on first use, so the UAC
-prompt appears when the first scan or watch needs it, not when the session is created:
-
-```csharp
-await using var session = new BrokerSession();
-
-session.Connecting += () => Console.Error.WriteLine("Requesting elevation...");
-_ = session.Ended.ContinueWith(
-    ended => Console.Error.WriteLine($"Broker ended: {ended.Result}"),
-    TaskScheduler.Default);
-
-var drive = IndexedDrive.FromWindowsVolume('C');
-var options = new FileIndexOptions
-{
-    Drives = [drive],
-    CacheDirectory = cacheDirectory,
-    MftSource = session.CreateIndexSource()
-};
-
-await using var index = await FileIndex.OpenAsync(options, cancellationToken);
-```
-
-The session owns the broker process: a launch that fails (the UAC prompt declined, a connect
-timeout) is not remembered, so the next use asks again; a process that ends stays ended
-(`Ended` completes with the reason) and every later use throws `InvalidOperationException`; a use after
-disposal throws `ObjectDisposedException`. Dispose the
-indexes, then the session. Scans run only through the index source, and
-`BrokerSession.GrowUsnJournalAsync` is the one direct broker operation:
-
-```csharp
-UsnJournalSettings grown = await session.GrowUsnJournalAsync(
-    drive.Drive,
-    new UsnJournalSettings
-    {
-        MaximumSize = requestedMaximumSize,
-        AllocationDelta = requestedAllocationDelta
-    },
-    cancellationToken);
-```
-
-Journal growth is an explicit user action; the broker refuses a requested maximum at or
-below the current value. `Ended` completes with the reason when the control pipe is lost.
-
-Consumers obtain a broker-backed source only through `BrokerSession.CreateIndexSource`.
-The producer and the process launch and journal-growth methods are internal.
-
-See the [broker integration guide](https://github.com/mtschoen/MFTLib/blob/main/docs/broker-integration.md)
-for startup dispatch, index scans, watch channels, recovery, and diagnostics.
-
-## Build a live index with FileIndex
-
-`MFTLib.Index.FileIndex` builds a packed, substrate-neutral per-drive file index and
-keeps it current with one live USN watch handle per drive. A start arms the named drive
-from its own block's journal cursor, `Changed` raises one event per applied change, and
-every `WatchFaulted` notification names the affected drive. See [the block format](docs/index-format.md) for the
-on-disk layout and [the broker integration guide](docs/broker-integration.md) for how
-the live watch bridges to the elevated broker.
-
-`DriveKey` owns the drive's identity: construct it from an ASCII letter in either case,
-or convert implicitly from `char`. `new DriveKey('c')`, `'c'` and `'C'` identify the same
-drive. `Letter` and `ToString()` expose its upper-case letter. There is no string conversion.
-The default key is invalid: index operations, cache selections, key-bearing record constructors
-and their `Drive` initializers reject it with `ArgumentException`. Reading or formatting its
-letter also throws. Members carrying a key are named `Drive`, including `IndexedDrive`, statuses,
-results, file entries, faults, rows and the test package's scan records.
-`FileEntry.Drive` (also `change.Entry.Drive` in a change notification) equals
-`RecordKey.Drive` and exposes the configured logical drive, including a virtual
-dump drive. Like the entry's other data properties, it throws
-`InvalidOperationException` on a default entry and `ObjectDisposedException`
-after the owning index releases its snapshot.
-
-Each lifecycle verb takes `(IEnumerable<DriveKey> drives, CancellationToken cancellationToken)`
-and returns `Task<IReadOnlyList<DriveOperationResult>>`. A single-drive caller reads one result:
-
-```csharp
-var start = (await index.StartWatchingAsync(['c'], cancellationToken)).Single();
-Console.WriteLine($"{start.Drive}: {start.Outcome}, {start.Failure}");
-var catchUp = (await index.WaitForCatchUpAsync(['C'], cancellationToken)).Single();
-var rescan = (await index.RescanAsync(['C'], cancellationToken)).Single();
-var stop = (await index.StopWatchingAsync(['C'], cancellationToken)).Single();
-```
-
-The methods run drives concurrently and return one
-`DriveOperationResult` per drive in request order. One drive's `Failed` result does not
-discard the others. `NotApplicable` means the operation has nothing to do for that
-drive, such as starting an enumeration-backed drive or waiting on a drive with no watch.
-
-```csharp
-IEnumerable<DriveKey> drives = ['C', 'D'];
-
-IReadOnlyList<DriveOperationResult> starts =
-    await index.StartWatchingAsync(drives, cancellationToken);
-IReadOnlyList<DriveOperationResult> catchUps =
-    await index.WaitForCatchUpAsync(drives, cancellationToken);
-IReadOnlyList<DriveOperationResult> rescans =
-    await index.RescanAsync(drives, cancellationToken);
-IReadOnlyList<DriveOperationResult> stops =
-    await index.StopWatchingAsync(drives, cancellationToken);
-```
-
-For every drive, pass `index.Drives.Select(drive => drive.Drive)`. The sequence is materialized
-exactly once and validated before any drive starts. Null sequences, duplicate keys (including
-different cases), default keys and unconfigured keys are caller errors. An empty sequence returns
-an empty list unless cancelled. Disposal and caller cancellation fail the whole call;
-drive-specific operational failures stay in `DriveOperationResult.Failure`.
-
-`IndexedDrive.Producer` selects how this drive's block is built:
-`ProducerKind.Mft` (the default) reads the Master File Table through
-`FileIndexOptions.MftSource`, and `ProducerKind.Enumeration` walks the directory
-tree instead, starting at its `RootDirectory`. One index can mix MFT and enumeration
-drives. `IndexedDrive.FromWindowsVolume(...)` produces an MFT drive; the fourth
-constructor parameter selects a different producer for a caller-owned root:
-
-```csharp
-var drives = new[]
-{
-    IndexedDrive.FromWindowsVolume('C'),
-    new IndexedDrive('E', enumerationRoot, enumerationVolumeSerial, Producer: ProducerKind.Enumeration)
-};
-```
-
-A drive whose MFT scan fails is reported `DriveState.Failed` and never falls back
-to a directory walk. Enumeration runs only when that drive's `Producer` selects it.
-`MftSource` is required only for an MFT drive needing a scan or watch; a missing
-source fails that drive's scan as `ProducerFailed` with the configuration error
-message. Enumeration drives accept a null source. Only MFT-backed drives with a
-watch-capable source support watching; enumeration siblings report
-`Watch.IsSupported == false` and batched watch starts report `NotApplicable` for them.
-A cache block's `ProducerKind` must equal the drive's `Producer`: a mismatch is rejected
-under the owner lock and cold-scanned on a normal open, or reported as
-`CacheDeclined` when `CacheMode.ExistingOnly` forbids a scan.
-`ProducerKind` also identifies `IndexRecordKey.ProducerKind` and `CachedBlockStatus.ProducerKind`.
-The default enum value (zero) and every undefined value are rejected by `IndexedDrive`
-and at `FileIndex.OpenAsync` admission before filesystem side effects.
-
-Why a `DriveState.Failed` drive has
-no block is reported as `DriveStatus.Failure.Kind`: `CacheDeclined` when
-`CacheMode.ExistingOnly` found no cached block to adopt and forbade a scan,
-`CacheTagMismatch` when it found a block whose consumer cache tag differs from
-`FileIndexOptions.CacheTag`, `InUse` when another live `FileIndex` holds the cache block's
-owner lock, and `ProducerFailed` when the MFT producer failed or its source is missing. A failed drive of
-any kind accepts a per-drive
-`FileIndex.RescanAsync`, which scans it and clears `DriveStatus.Failure` on success. `DriveStatus.Block` is null
-unless the drive is `Ready`. A failed `RescanAsync`, or a failed catch-up retry scan during the initial
-`OpenAsync`, can leave a drive `Ready` with its previous block and `Failure.Kind` `ProducerFailed`.
-A successful scan publication clears that failure.
-
-`CacheMode.Disabled` blocks are created with `FileOptions.DeleteOnClose`, so the
-operating system removes them when the last handle closes, including when the process
-is killed rather than shut down gracefully.
-
-A cache-mode index takes a per-block owner lock - a sibling `<block>.lock` file held open with
-`FileShare.None` - for as long as it owns a canonical cache block, on Windows and on Linux.
-While another live index holds that lock, a second `FileIndex` never validates, renames, or
-deletes the block: a cache-only open reports the drive `Failed` with `DriveFailureKind.InUse`,
-and a non-cache-only open scans into a private delete-on-close block in the temp directory
-without replacing the canonical cache. The lock is released on disposal and by the operating
-system if the process dies, so a killed index never strands its cache slot. Every block-file
-delete is reported through `FileIndexOptions.Diagnostics` with the path and the reason.
-
-`FileIndexOptions.DriveOpenProgress` reports open-time progress per drive: `OpenAsync`
-fires one `IndexDriveOpened` for each drive that settles, synchronously on the
-thread that settled it: warm-started from cache, cold-scanned, declined by
-`CacheMode.ExistingOnly`, offline, or failed. A cancelled or failed open may have
-reported only some of the drives. `OpenAsync` settles its
-drives concurrently and runs no lock around a handler, so reports can overlap and
-arrive out of order; `SettledDriveCount` gives the order. The report
-carries the drive letter, `SettledDriveCount` (this drive was the n-th to settle,
-counted from 1), and the total configured drive count, so a consumer can render "3 of 9 drives settled" while the open
-is still in flight. Keep the report with the largest `SettledDriveCount`, not simply
-the last callback to arrive. A declined or failed drive still counts toward the total and
-still reports. Block ordinals follow first block adoption, which can precede final settling;
-`FileIndex.Drives` keeps the configured order. It defaults to null, which reports
-and allocates nothing, and it fires on warm starts too, unlike
-`FileIndexOptions.ScanProgress`, which samples only while a producer runs.
-`RescanAsync` stays silent: its caller already awaits the requested drives' results.
-Marshalling belongs to the `IProgress<T>` implementation, the same convention
-`FileIndexOptions.ScanProgress` uses.
-
-A cold drive that loses its journal catch-up is scanned again by its own settle,
-until automatic recovery is exhausted, and settles `Ready`
-with its last block unresumable if every attempt lost it. `OpenAsync` raises no
-`WatchFaulted` event because the caller cannot subscribe before it returns; inspect
-`DriveWatchStatus.IsRecoveryStopped`, `CheckpointLoss`, `FailureMessage`, and
-`State` instead. The drive's watch is refused until a manual `RescanAsync`
-produces a resumable block. The refusal retains the watch request, so a successful
-rescan clears the refusal and starts the watch.
-
-`FileEntry.Path` is the drive block's root directory joined with the entry's name
-chain using the host separator. For a live entry of a real source it is a
-filesystem path that can be opened, and `FileIndex.Find` accepts it back,
-resolving a native path against the longest matching indexed root. Three cases
-differ: a dump entry renders a virtual `dump:/X` path that `Open` refuses; a
-detached deleted row with no verified ancestor renders its bare name; and `Find`
-skips deleted entries, so the path of a deleted entry does not resolve. Disposing a `FileIndex` releases every block mapping it
-holds, so the `.mlix` files are closed at a point the caller chooses; a `FileEntry`
-held across that disposal reports `IsDisposed` and throws `ObjectDisposedException`
-on reads of mapped entry data.
-
-A `FileEntry` is bound to one file incarnation: it captures the row's NTFS sequence number
-when it is minted. When the journal reports a delete and a later create reuses the row slot
-(NTFS reuses record numbers), the retained handle does not silently become the new file. It
-reads `IsDeleted`, `Children()` returns nothing, `Open` throws `FileNotFoundException`, a
-`Subtree` query refuses it, and reading `Name`, `Path`, `Size` or any other row column throws
-`InvalidOperationException`. A rename or move of the same file keeps the handle live. Equality
-compares the drive block, row and sequence number. For the `Deleted` change itself, read
-`FileChange.Path`, `PreviousPath` and `Timestamp`, which are captured at the event.
-
-### Streaming entries and row views
-
-Use `EnumerateRows` for whole-drive passes that read names, sizes or flags and keep few rows.
-It yields non-allocating `IndexRow` views, with `Name` as a `ReadOnlySpan<char>` over the mapped
-name pool. Use `Enumerate` (streaming) or `Search` (a materialized list) when you want
-`FileEntry` values and LINQ.
-
-```csharp
-long total = 0;
-foreach (var row in index.EnumerateRows(new SearchQuery("*.log", NameMatchMode.Glob, IsDirectory: false)))
-{
-    if (row.IsSizeKnown)
-    {
-        total += row.Size;
+        Console.Error.WriteLine($"Drive {result.Drive} did not start: {result.Failure}");
     }
 }
+
+await index.WaitForCatchUpAsync(drives, cancellationToken);
+Console.WriteLine("Watching. Press Enter to stop.");
+Console.ReadLine();
 ```
 
-`SearchQuery.LastWriteTimeMinimum` and `LastWriteTimeMaximum` are inclusive bounds on
-`FileEntry.LastWriteTime`, which is UTC. Supply UTC `DateTime` values: their raw ticks are
-compared directly with no `DateTime.Kind` conversion. A Local-kind bound is compared as if
-its ticks were UTC. A row whose UTC last-write time equals the supplied UTC bound matches. A row whose
-last-write time is unknown never matches a bounded query.
-For the Direct sample's `--after` and `--before` arguments, use a UTC timestamp ending in `Z`,
-such as `2026-08-01T00:00:00Z`; offset-bearing inputs can parse as Local and are not normalized.
+- Run the compiled executable, not `dotnet MyApp.dll`: the session relaunches the current
+  executable elevated, and that process must reach the dispatch call first.
+- `CacheMode.Persistent`, the default, and `CacheMode.ExistingOnly` require a nonblank,
+  application-owned `CacheDirectory`; without one, `OpenAsync` throws `ArgumentException`.
+  `Persistent` warm-starts from cached blocks and scans what is missing, `ExistingOnly` opens
+  only from the cache and never scans, and `Disabled` uses private blocks deleted on close.
+  Change the version of `FileIndexOptions.CacheTag` whenever your scan options change the rows
+  you keep.
+- A journal event carries no size or last-write time, so an event can make a scanned
+  observation unknown until a rescan observes it again. Content changes (overwrite, extend,
+  truncate) invalidate both; a basic-information change invalidates only the last-write time;
+  rename, move and other reasons keep both. Check `IsSizeKnown` and `IsLastWriteTimeKnown`
+  independently.
+- When `BrokerSession.Ended` completes, the elevated process is gone. Dispose the indexes
+  built over that session, then the session, and create new ones.
 
-The borrow begins when `foreach` calls `GetEnumerator()` and ends on completion, `break`,
-an exception or cancellation. Each row and its name span are valid until the enumerator
-advances or is disposed; call `row.ToEntry()` to keep an entry handle. The result, enumerator
-and rows are ref structs, so they cannot cross an `await`, be captured in a lambda or be stored
-in a class or ordinary struct field. If you call `GetEnumerator()` directly, dispose the
-enumerator yourself, even after an exception or a false `MoveNext`. Enumerator copies share one
-borrow: dispose it once through any copy. `Current` and `MoveNext` on every copy then throw
-`ObjectDisposedException` naming `IndexRowEnumerator`; repeated `Dispose` is harmless. Previously
-obtained rows and spans must obey their lifetime themselves. A reachable undisposed enumerator
-can keep `DisposeAsync` waiting indefinitely. Its internal borrow object has a finalizer that can
-eventually return an unreachable borrow, but collection timing is not guaranteed. Dispose promptly.
+## Failure channels
 
-Each `GetEnumerator` takes its own snapshot borrow, even on copies of the enumerable. This keeps
-that set of mappings owned and mapped; it does not freeze row contents. A live watch writes rows
-in place. Name text is append-only and its offset and length are read together, so a captured name
-span keeps its text and cannot combine one name's offset with another's length. Other row properties
-read live fields; there is no atomic whole-row view or atomic filtering-plus-consumption. A scanner
-captures the row-count bound when entering each drive; separate passes can see different contents
-and different mappings. Index disposal cancels an active borrowed scan at its cancellation checkpoint.
+- **`DriveStatus.Failure`** reports why opening or scanning a drive failed: `CacheDeclined`,
+  `CacheTagMismatch`, `InUse` or `ProducerFailed`. A failed drive accepts `RescanAsync`.
+- **`DriveOperationResult.Failure`** carries per-drive failures of the four lifecycle verbs.
+  Each verb returns one result per requested drive, in request order, and one failure never
+  discards the others. `StopWatchingAsync` returns an outstanding watch fault once as a
+  `Failed` result.
+- **`FileIndex.WatchFaulted`** reports live watch faults. `WatchFault.IsRecovering` says
+  whether the drive is rescanning itself, and `FileIndex.WatchStateChanged` reports each
+  state change until it is `CaughtUp` again.
+- **Exceptions** are for caller errors: invalid options, unknown or duplicate drive keys,
+  a lifecycle call from inside an index event handler, cancellation and use after disposal.
 
-`EnumerateRows` rejects a null query or undefined match mode at call time. Cancellation and index
-disposal are checked on admission at `GetEnumerator`; cancellation and unresolved subtree parent
-chains can throw during `MoveNext`.
+## Samples
 
-Six entry points scan rows: `Find`, `Search`, `Enumerate`, `EnumerateRows`
-and `Root` on `FileIndex`, and `Children()` on a `FileEntry`. Each
-takes an optional `CancellationToken`, read before the first row and then at least
-every 4096 rows, and each holds the snapshot it reads for its whole duration.
-`DisposeAsync` waits for every one of those readers before it unmaps anything, so
-scanning on one thread while another disposes the index is safe. The five on
-`FileIndex` also observe the index's disposal, so disposing cancels them and each ends
-with `OperationCanceledException`, or `ObjectDisposedException` if it had not started;
-while actively scanning, the wait is bounded by how long they take to reach their
-next checkpoint. A suspended `Enumerate` enumerator holds its borrow between yields,
-so disposal waits until it advances or is disposed, or, if abandoned, until garbage
-collection and finalization return its borrow. Dispose enumerators promptly;
-collection timing is not guaranteed. `Children()`
-is the exception: a handle holds no reference to its index, so disposal waits that
-listing out instead, one pass over the drive's rows unless the caller passes a token.
-Every other `FileEntry` member reads in place rather than scanning and carries no
-borrow (`Path`, and `ToString`, which can build it, follow the parent chain for at most
-128 hops), so a read ordered after the disposal throws `ObjectDisposedException` from the
-per-access check instead.
+`SampleProgram.Direct` runs one-shot queries over a live volume or a saved dump: `search`,
+`tree`, `open`, `largest`, `duplicate-names` and `scan`. `SampleProgram.Watch` uses the broker:
+`scan-drive`, `watch`, `rescan`, `journal`, `cache` and `elevation-status`. With no arguments
+it watches every ready NTFS fixed drive until a key press.
 
-`DriveBlockStatus.Source` says whether a drive warm-started from cache or was scanned,
-so a rebuild loop can skip the drives an open already scanned, and
-`CacheDirectory.InspectCached` lists the drives a cache directory holds without a
-consumer parsing block file names.
-
-`IsValid` and `IsDisposed` remain readable after disposal, and `ToString()` returns
-a diagnostic string. Reads of mapped entry data throw as described above.
-`DriveStatus.Block` is null when no block is available. `DriveBlockStatus.Source` is
-`WarmStartedFromCache` for an adopted cache block, or `ProducedByScan` after a scan.
-`DriveBlockStatus.CacheSlot` is the block's cache-slot backing, or null when the block has none, as under `CacheMode.Disabled`.
-`CacheDirectory.InspectCached` returns `CachedBlockStatus` records whose `File` is a `CachedBlockFile` containing the
-drive letter, volume serial, full cache-file path, size, and last-write time, plus
-whether the block is available, in use by another index, or invalid. `Validation` is null unless the block is invalid, then the rejection reason.
-
-`CacheDirectory.InspectCached(cacheDirectoryPath, driveLetters = null, rejectedFile = null)`
-is one method: null drive selection includes every canonical cache file, and
-omitting the callback silently excludes unparseable filenames. To observe those
-filenames without filtering drives, use a named callback:
-
-```csharp
-var rejected = new List<CachedBlockRejection>();
-var cached = CacheDirectory.InspectCached(cacheDirectory, rejectedFile: rejected.Add);
+```powershell
+.\SampleProgram.Direct\bin\x64\Release\net10.0\SampleProgram.Direct.exe search C --name notes
+.\SampleProgram.Watch\bin\x64\Release\net10.0\SampleProgram.Watch.exe watch C
 ```
 
-## Errors and recovery
+Run the compiled executables so they can request elevation. Set `MFTLIB_SAMPLE_UNATTENDED=1`
+to skip every prompt.
 
-Most volume, native parsing, and journal failures surface as `InvalidOperationException`
-with the native error message. Common causes include:
+## Where to go next
 
-- the process is not elevated;
-- the target is not an NTFS volume;
-- the volume cannot be opened;
-- the USN journal is unavailable, recreated, or wrapped; or
-- native allocation capacity is exhausted.
-
-`WatchFaulted` reports a `WatchFault` containing `Kind`, `Drive`, and the original
-`Exception`:
-
-- `Subscriber`: a `Changed` handler threw. The drive keeps watching, and this is announced
-  once for that drive's current watch.
-- `Drive` or `Apply`: the watch or batch application failed. The drive publishes
-  `WatchState.Recovering` before the event, rescans itself, and starts a fresh watch
-  from the replacement block.
-- `CatchUpLost`: a scan completed, but the journal no longer held the cursor armed before
-  it. The exception is `JournalCatchUpLostException`; the drive records a
-  `JournalCheckpointLossDetection.ScanCatchUp` report and rescans itself until
-  `DriveWatchStatus.IsRecoveryStopped` is true. A successful catch-up clears the flag;
-  failed or cancelled scans and stopping the watch preserve it.
-- `Channel`: the drive pipe was lost or ended without a stop. This fault does not recover
-  automatically.
-- `RescanRestart`: a rescan replaced the block but its watch could not start. The scan
-  succeeds; the exception and `DriveWatchStatus.FailureMessage` identify the rescan and the exception's
-  inner exception is the start failure. The drive stays `Faulted` without automatic recovery
-  until a consumer starts or rescans it. Stop rethrows this fault once.
-- `Recovery`: an automatic recovery scan or restart failed, or its restarted watch failed before
-  reaching `WatchState.CaughtUp`. The drive stays `Faulted` until the consumer calls
-  `RescanAsync` or `StartWatchingAsync` for that drive.
-
-A bounded catch-up read that returns entries without advancing its cursor fails that
-catch-up immediately. Those entries are not delivered, so they cannot be applied twice.
-The live journal check then reports `CatchUpLost` when it proves the armed cursor was lost,
-or an `Error` when it cannot prove that loss.
-
-```csharp
-index.WatchFaulted += fault =>
-{
-    var status = index.Drives.Single(drive => drive.Drive == fault.Drive);
-    switch (fault.Kind)
-    {
-        case WatchFaultKind.Drive:
-        case WatchFaultKind.Apply:
-            Console.WriteLine(
-                $"Drive {fault.Drive}: {status.Watch.State == WatchState.Recovering}");
-            break;
-
-        case WatchFaultKind.CatchUpLost
-            when fault.Exception is JournalCatchUpLostException lost:
-            Console.WriteLine(
-                $"Drive {fault.Drive}: recovery stopped {status.Watch.IsRecoveryStopped}, " +
-                $"stopped {lost.IsRecoveryStopped}, report {status.Watch.CheckpointLoss?.DetectedDuring}");
-            break;
-
-        case WatchFaultKind.Channel:
-        case WatchFaultKind.Recovery:
-        case WatchFaultKind.RescanRestart:
-            Console.Error.WriteLine(fault.Exception.Message);
-            break;
-
-        case WatchFaultKind.Subscriber:
-            Console.Error.WriteLine($"Changed handler failed: {fault.Exception.Message}");
-            break;
-    }
-};
-```
-
-A rescan keeps its healthy watch running during production. Failed or cancelled production
-leaves that watch and its catch-up waits attached. A successful commit retires the old watch
-and cancels its pending waits, drains it, then starts from the replacement cursor when still
-requested. An old `Changed` event can arrive after the swap and can repeat during replacement
-catch-up. Queries can lag until the new watch reports `CaughtUp`.
-
-During automatic recovery, a catch-up wait faults immediately with the fault that started
-the recovery. To observe the replacement watch reaching `CaughtUp`, subscribe to
-`FileIndex.WatchStateChanged`: it reports every change of a drive's `DriveWatchStatus.State` as a `WatchStateChange`
-whose `Watch` carries the drive's next `DriveWatchStatus.StateVersion`, before the `WatchFaulted` of the fault that
-caused it, so a recovery reads `Recovering`, then `CatchingUp`, then `CaughtUp` with no
-polling. One drive's events arrive in version order; a consumer that also reads `Drives`
-applies an event only when its `Watch.StateVersion` is newer than the last it applied for that drive. When a lost catch-up
-reaches the retry limit, `JournalCatchUpLostException.IsRecoveryStopped` is true, the drive
-keeps its last queryable block, and its watch is refused until a manual rescan succeeds.
-
-`StopWatchingAsync` consumes each requested watch's outstanding fault once,
-returning that exception in the affected drive's `DriveOperationResult.Failure`.
-The following edge dispositions describe current behavior: a consumer source start failure leaves
-a refused-start fault that a later stop clears without rethrowing; a fresh start supersedes
-a faulted watch instance and discards its outstanding fault; and a stop that arrives while
-a recovery or rescan is restarting the watch wins, leaves the drive stopped, and rethrows
-the stopped instance's outstanding fault once. `DisposeAsync` does not rethrow watch or
-broker-host faults.
-
-Do not call a lifecycle method from inside that index's `Changed`, `WatchFaulted` or
-`WatchStateChanged` handler. Start, stop, rescan, an unsettled catch-up wait, disposal, and their batched forms
-fail immediately with `InvalidOperationException`. Queue the operation behind an explicit
-signal released after the handler returns; `Task.Run` alone does not guarantee that ordering. Queries, `Drives`, and already-settled
-catch-up waits are allowed.
-
-A broker `Error` frame fails only its pending operation with the host's message. Losing
-the control pipe completes the `BrokerSession.Ended` task with the reason and
-fails pending operations with an `IOException`. Losing a drive pipe faults
-only that drive. Idle control and watch pipes, queued scans, and processing operations
-that recently reported progress receive heartbeats. A processing operation with no
-progress past the processing limit receives `Stalled` and its channel is cancelled. A
-pipe with a write already in flight is skipped by the heartbeat sender; if it remains
-silent, the client's 30-second no-frame limit ends that pipe.
+- [Broker integration guide](https://github.com/mtschoen/MFTLib/blob/main/docs/broker-integration.md): session ownership, cached opens, watches, faults and journal growth.
+- [Testing your integration](https://github.com/mtschoen/MFTLib/blob/main/docs/broker-testing.md): the `MFTLib.TestExtensions` harness, scripted watches and synthetic blocks.
+- [Checkpoint loss](https://github.com/mtschoen/MFTLib/blob/main/docs/checkpoint-loss.md): why a drive rescanned instead of resuming, and what journal size would have helped.
+- [Watch lifetime](https://github.com/mtschoen/MFTLib/blob/main/docs/watch-lifetime.md): start, stop, rescan, recovery and event ordering.
+- [Query lifetime](https://github.com/mtschoen/MFTLib/blob/main/docs/query-lifetime.md): snapshot borrows, row views, entry handles and paths.
+- [Block format](https://github.com/mtschoen/MFTLib/blob/main/docs/index-format.md): cache files, cache identity, freed records and row columns.
+- [Block ownership](https://github.com/mtschoen/MFTLib/blob/main/docs/block-ownership.md): cache directory protection, owner locks and safe cache deletion.
+- [Broker lifetime](https://github.com/mtschoen/MFTLib/blob/main/docs/broker-lifetime.md): pipes, heartbeats, stall limits and diagnostics configuration.
+- [Elevation](https://github.com/mtschoen/MFTLib/blob/main/docs/elevation.md): attended and unattended sample runs.
+- [Linux package](https://github.com/mtschoen/MFTLib/blob/main/docs/linux-package.md): which native library ships and how it is checked.
+- [API decisions](https://github.com/mtschoen/MFTLib/blob/main/docs/api-decisions.md): the reasons behind the public surface.
 
 ## Building from source
 
-Visual Studio 2022 with the Desktop development with C++ workload and .NET 10 SDK is
-required. Use the shared Windows build script to restore packages, build the native
-DLL with amd64 MSBuild, and build all six managed projects: MFTLib,
-MFTLibTestExtensions, SampleProgram.Direct, SampleProgram.Watch, Benchmark and MFTLib.Tests:
+On Windows:
 
-```powershell
-.\scripts\build-windows.ps1
-```
+- Install Visual Studio 2022 with the Desktop development with C++ workload, and the .NET 10 SDK.
+- Run `.\init.ps1 -Build`, or `.\scripts\build-windows.ps1` to build without checkout
+  initialization. The default is Release|x64; pass `-Configuration Debug` for Debug|x64.
+- Run `.\scripts\run-coverage.ps1 -NonInteractive` for the tests with coverage. See
+  [coverage procedures](https://github.com/mtschoen/MFTLib/blob/main/docs/development-coverage.md).
 
-The default is Release|x64; pass `-Configuration Debug` for Debug|x64. For checkout
-initialization plus the same build, run `.\init.ps1 -Build`.
+On Linux:
 
-Run non-interactive managed coverage with:
+- Install the .NET 10 SDK, cmake, ninja and g++.
+- Run `./init.sh --build` to build the native library and the managed projects.
+- Run `bash scripts/coverage-linux.sh` for the tests with coverage.
 
-```powershell
-.\scripts\run-coverage.ps1 -NonInteractive
-```
-
-MFTLibTestExtensions is additionally required to have complete line, branch, and executable-method coverage. The publisher checks the assembly's raw Cobertura line hits, branch counts, and method records; partial coverage, absent evidence, and malformed evidence fail closed even when aggregate coverage would pass. The existing aggregate baseline rule remains in force for the whole report. Run `pwsh -NoProfile -File scripts/test-coverage-status.ps1` for the offline publisher regression checks.
-
-The source is organized by responsibility:
-
-- `MFTLib/Index` - the substrate-neutral packed index: block format, `FileIndex`, snapshots, queries, mutation, and the enumeration producer. It is not MFT-specific and depends on nothing else in the library beyond a few journal value types, a boundary an architecture test enforces.
-- `MFTLib/Mft` - scans, records, results and timings
-- `MFTLib/Journal` - USN cursor, entries and reasons
-- `MFTLib/Sources` - producers, row writer and scan
-- `MFTLib/Broker` - elevated host/client, protocol, block writing, and diagnostics
-- `MFTLib/Elevation` - elevation detection and the injectable provider
-- `MFTLib/Interop` - native result layouts
-- `MFTLib/Internal` - native bindings and internal volume utilities
+The [architecture contracts](https://github.com/mtschoen/MFTLib/blob/main/docs/architecture.md)
+describe the components and the source layout.
 
 ## License
 
-[MIT](LICENSE.txt)
+[MIT](https://github.com/mtschoen/MFTLib/blob/main/LICENSE.txt)

@@ -170,8 +170,8 @@ only the opaque `MftIndexSource`.
 A process that cannot scan assigns `MftIndexSources.Unavailable(reason)`
 instead. Every scan of an MFT-backed drive then fails with
 `Drive {letter}: {reason}.`, reported as `DriveFailureKind.ProducerFailed`,
-and starting a watch throws `InvalidOperationException` with the same
-message. Cached blocks still open.
+and a watch start reports `NotApplicable` without recording a watch
+request. Cached blocks still open.
 
 The optional `MftScanOptions.RetainedFileNames` selects retention: null keeps
 all eligible records, an empty collection keeps directories only, and a nonempty
@@ -179,6 +179,38 @@ collection keeps directories plus files whose names match ordinally, ignoring ca
 `IncludeFreed` controls freed-record inclusion independently. Scan progress reaches the application as `IndexScanProgress`
 through `FileIndexOptions.ScanProgress`. A block that fails validation is disposed
 and its scan fails; a block that passes transfers to the index.
+
+### Mixed producers and drive failures
+
+`IndexedDrive.Producer` chooses each drive's producer. `ProducerKind.Mft`, the
+default and what `IndexedDrive.FromWindowsVolume` produces, scans through `MftSource`.
+`ProducerKind.Enumeration` walks the directory tree from the drive's `RootDirectory`, so one
+index can mix both:
+
+```csharp
+var drives = new[]
+{
+    IndexedDrive.FromWindowsVolume('C'),
+    new IndexedDrive('E', enumerationRoot, enumerationVolumeSerial, ProducerKind.Enumeration)
+};
+```
+
+A failed MFT scan never falls back to a directory walk. Enumeration drives accept a null
+`MftSource` and report `Watch.IsSupported == false`; a watch start reports `NotApplicable` for
+them, and `RescanAsync` refreshes them.
+
+A drive that settles `DriveState.Failed` has no block, and `DriveStatus.Failure.Kind` says why:
+
+| Kind | Meaning |
+| --- | --- |
+| `CacheDeclined` | `CacheMode.ExistingOnly` found no usable cached block, or one from another producer, and forbade a scan. |
+| `CacheTagMismatch` | `CacheMode.ExistingOnly` found a block whose cache tag differs from `FileIndexOptions.CacheTag`. |
+| `InUse` | `CacheMode.ExistingOnly` found the block owned by another live `FileIndex`. |
+| `ProducerFailed` | The scan failed, or an MFT drive needed a scan and had no `MftSource`. |
+
+Every kind accepts a per-drive `RescanAsync`, which clears `Failure` on success. A failed
+rescan, or a failed catch-up retry scan during `OpenAsync`, can instead leave a drive `Ready`
+with its previous block and a `ProducerFailed` failure until a later scan succeeds.
 
 ### What a broker scan does
 
@@ -334,7 +366,7 @@ Subscriber fault still leaves the watch running.
 | An `IOException` | A pipe reached EOF, failed, stalled, or carried an invalid frame. A watch reports this through `WatchFaultKind.Channel`. A channel fault never starts automatic recovery. Reconnect the process when needed, then rescan or reopen the affected state. |
 | Drive watch fault | The host reported an error on that drive's watch. `FileIndex` publishes `WatchFaultKind.Drive`, changes the drive to `Recovering`, and rescans it automatically. Observe the recovery rather than starting a competing lifecycle operation. |
 | `JournalCatchUpLostException` | A scan completed, but the journal proved that the cursor armed before it had become unreadable. `WatchFaultKind.CatchUpLost` reports every attempt. Automatic retries stop when `IsRecoveryStopped` is true. Grow the journal when appropriate, then rescan; a successful rescan starts the watch if it is requested. |
-| `WatchFaultKind.RescanRestart` | A rescan replaced the block but could not start its watch. The scan returns success. The exception and `DriveWatchStatus.FailureMessage` identify the rescan; the inner exception is the start failure. No automatic recovery starts. A consumer start or rescan retries it, and stop rethrows the fault once. |
+| `WatchFaultKind.RescanRestart` | A rescan replaced the block but could not start its watch. The scan returns success. The exception and `DriveWatchStatus.FailureMessage` identify the rescan; the inner exception is the start failure. No automatic recovery starts. A consumer start or rescan retries it, and stop returns the fault once as a `Failed` result. |
 | `WatchState.Recovering` | A drive or apply fault is being recovered, or a lost catch-up is being retried. Queries still use the current complete block, which may be behind the volume. |
 | `WatchState.Faulted` | Recovery did not restore the watch, a channel was lost, a start was refused, or the catch-up loss limit was reached. Inspect `DriveWatchStatus.FailureMessage` and the fault exception. Call `RescanAsync` or `StartWatchingAsync` after the triggering condition is fixed. An unresumable block must be rescanned first. |
 
