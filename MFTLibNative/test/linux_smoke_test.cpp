@@ -79,8 +79,8 @@ bool test_round_trip() {
     }
     MftParseResult* parseResult = parse_dump(kFixturePath, kDefaultBufferRecords);
     bool testPassed = (parseResult != nullptr) && parseResult->usedRecords > 0 &&
-                      parseResult->errorMessage[0] == L'\0' && parseResult->abiVersion == MFT_NATIVE_ABI_VERSION &&
-                      parseResult->entryStride == 52 && parseResult->entries != nullptr &&
+                      parseResult->errorMessage[0] == L'\0' && parseResult->entryStride == 52 &&
+                      parseResult->entries != nullptr &&
                       parseResult->entryStrings != nullptr &&
                       parseResult->entryStringUnits < parseResult->usedRecords * 260;
     if (testPassed) {
@@ -104,9 +104,9 @@ bool test_round_trip() {
                     static_cast<unsigned long long>(parseResult->entryStringUnits), parseResult->ioTimeMs,
                     parseResult->parseTimeMs, parseResult->totalTimeMs);
     } else if (parseResult != nullptr) {
-        std::fprintf(stderr, "  FAIL: usedRecords=%llu abiVersion=%u entryStride=%u errorMessage[0]=%d\n",
-                     static_cast<unsigned long long>(parseResult->usedRecords), parseResult->abiVersion,
-                     parseResult->entryStride, static_cast<int>(parseResult->errorMessage[0]));
+        std::fprintf(stderr, "  FAIL: usedRecords=%llu entryStride=%u errorMessage[0]=%d\n",
+                     static_cast<unsigned long long>(parseResult->usedRecords), parseResult->entryStride,
+                     static_cast<int>(parseResult->errorMessage[0]));
     }
     if (parseResult != nullptr) {
         FreeMftResult(parseResult);
@@ -123,8 +123,7 @@ bool test_round_trip_4096() {
     }
     MftParseResult* parseResult = parse_dump(kFixture4096Path, kDefaultBufferRecords);
     bool testPassed = (parseResult != nullptr) && parseResult->usedRecords > 0 &&
-                      parseResult->errorMessage[0] == L'\0' && parseResult->abiVersion == MFT_NATIVE_ABI_VERSION &&
-                      parseResult->entryStride == 52;
+                      parseResult->errorMessage[0] == L'\0' && parseResult->entryStride == 52;
     if (testPassed) {
         std::printf("  4096: total=%llu used=%llu ioMs=%.2f parseMs=%.2f totalMs=%.2f\n",
                     static_cast<unsigned long long>(parseResult->totalRecords),

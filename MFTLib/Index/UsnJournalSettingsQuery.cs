@@ -41,16 +41,7 @@ static class UsnJournalSettingsQuery
 
         using var handle = UsnJournalVolumeInterop.OpenVolumeRoot(
             driveLetter, "query its USN journal settings");
-        return ToSettings(UsnJournalVolumeInterop.QueryJournalData(handle));
-    }
-
-    internal static UsnJournalSettings ToSettings(UsnJournalVolumeInterop.UsnJournalDataV0 data)
-    {
-        return new UsnJournalSettings
-        {
-            MaximumSize = checked((long)data.MaximumSize),
-            AllocationDelta = checked((long)data.AllocationDelta)
-        };
+        return UsnJournalVolumeInterop.QueryJournalData(handle).ToSettings();
     }
 
     internal static IDisposable OverrideQueryForTest(Func<DriveKey, UsnJournalSettings> query)

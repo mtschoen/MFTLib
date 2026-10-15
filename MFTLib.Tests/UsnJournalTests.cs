@@ -1,5 +1,7 @@
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using MFTLib.Interop;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Win32.SafeHandles;
 
@@ -15,6 +17,7 @@ public class UsnJournalTests
         MFTLibNative.ResetToDefaults();
         FileUtilities.ResetToDefaults();
         Kernel32.ResetToDefaults();
+        JournalQueryFake.Reset();
     }
 
     static SafeFileHandle FakeHandle()
@@ -47,23 +50,8 @@ public class UsnJournalTests
     [TestMethod]
     public void QueryUsnJournal_ReturnsValidCursor()
     {
-        var info = new UsnJournalInfoNative
-        {
-            JournalIdentifier = 0x123456789ABCDEF0,
-            FirstUsn = 0,
-            NextUsn = 42000,
-            LowestValidUsn = 100,
-            MaximumUsn = long.MaxValue,
-            MaximumSize = 32 * 1024 * 1024,
-            AllocationDelta = 4 * 1024 * 1024
-        };
-
-        var infoPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
-        Marshal.StructureToPtr(info, infoPtr, false);
-
         FileUtilities._getVolumeHandle = _ => FakeHandle();
-        MFTLibNative._queryUsnJournal = _ => infoPtr;
-        MFTLibNative._freeUsnJournalInfo = _ => Marshal.FreeHGlobal(infoPtr);
+        JournalQueryFake.Serve(journalIdentifier: 0x123456789ABCDEF0, nextUsn: 42000);
 
         using var volume = MftVolume.Open("C");
         var cursor = volume.QueryUsnJournalCursor();
@@ -75,37 +63,16 @@ public class UsnJournalTests
     [TestMethod]
     public void QueryUsnJournal_WithError_Throws()
     {
-        var info = new UsnJournalInfoNative
-        {
-            ErrorMessage = "FSCTL_QUERY_USN_JOURNAL failed: error 5"
-        };
-
-        var infoPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
-        Marshal.StructureToPtr(info, infoPtr, false);
-
+        const int accessDenied = 5;
         FileUtilities._getVolumeHandle = _ => FakeHandle();
-        MFTLibNative._queryUsnJournal = _ => infoPtr;
-        MFTLibNative._freeUsnJournalInfo = _ => Marshal.FreeHGlobal(infoPtr);
+        JournalQueryFake.Fail(accessDenied);
 
-        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        var exception = Assert.ThrowsException<Win32Exception>(() =>
         {
             using var volume = MftVolume.Open("C");
             volume.QueryUsnJournalCursor();
         });
-        Assert.IsTrue(exception.Message.Contains("error 5"));
-    }
-
-    [TestMethod]
-    public void QueryUsnJournal_NullPointer_Throws()
-    {
-        FileUtilities._getVolumeHandle = _ => FakeHandle();
-        MFTLibNative._queryUsnJournal = _ => IntPtr.Zero;
-
-        Assert.ThrowsException<InvalidOperationException>(() =>
-        {
-            using var volume = MftVolume.Open("C");
-            volume.QueryUsnJournalCursor();
-        });
+        Assert.AreEqual(accessDenied, exception.NativeErrorCode);
     }
 
     [TestMethod]

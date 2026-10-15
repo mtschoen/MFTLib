@@ -17,7 +17,7 @@ public partial class UsnJournalSyntheticTests
         try
         {
             FileUtilities._getVolumeHandle = pipe.BorrowHandle;
-            QueueSuccess(BuildQueryBuffer(journalIdentifier: 7, nextUsn: 200));
+            JournalQueryFake.Serve(journalIdentifier: 7, nextUsn: 200);
             var cancellationAttempted = new TaskCompletionSource<bool>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
             var nativeCancel = MFTLibNative._cancelUsnJournalWatch;

@@ -63,7 +63,6 @@ public partial class MftResultTests
         var result = new MftParseResult
         {
             ErrorMessage = "Parse cancelled",
-            AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
             EntryStride = MFTLibNative.NativeCompactEntrySize,
             Cancelled = 1
         };
@@ -86,32 +85,12 @@ public partial class MftResultTests
     }
 
     [TestMethod]
-    public void MftResult_AbiVersionMismatch_ThrowsInvalidOperation()
-    {
-        var result = new MftParseResult
-        {
-            TotalRecords = 1,
-            UsedRecords = 1,
-            AbiVersion = 999,
-            EntryStride = MFTLibNative.NativeCompactEntrySize
-        };
-        var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
-        Marshal.StructureToPtr(result, resultPtr, false);
-        MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
-
-        var ex = Assert.ThrowsException<InvalidOperationException>(() =>
-            new MftResult(resultPtr));
-        Assert.IsTrue(ex.Message.Contains("ABI mismatch"));
-    }
-
-    [TestMethod]
     public void MftResult_EntryStrideMismatch_ThrowsInvalidOperation()
     {
         var result = new MftParseResult
         {
             TotalRecords = 1,
             UsedRecords = 1,
-            AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
             EntryStride = 32
         };
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
@@ -145,7 +124,6 @@ public partial class MftResultTests
                 Entries = entryBuf,
                 EntryStrings = stringBuf,
                 EntryStringUnits = 10,
-                AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
                 EntryStride = MFTLibNative.NativeCompactEntrySize
             };
             var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
@@ -185,7 +163,6 @@ public partial class MftResultTests
                 Entries = entryBuf,
                 EntryStrings = stringBuf,
                 EntryStringUnits = 10,
-                AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
                 EntryStride = MFTLibNative.NativeCompactEntrySize
             };
             var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
@@ -225,7 +202,6 @@ public partial class MftResultTests
                 Entries = entryBuf,
                 EntryStrings = stringBuf,
                 EntryStringUnits = 10,
-                AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
                 EntryStride = MFTLibNative.NativeCompactEntrySize
             };
             var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());

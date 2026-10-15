@@ -11,7 +11,7 @@ static class MFTLibNative
     //   Linux   -> libMFTLibNative.so
     const string LibraryName = "MFTLibNative";
 
-    internal const uint ExpectedMftNativeAbiVersion = 7;
+    internal const uint ExpectedMftNativeAbiVersion = 8;
     internal const uint NativeCompactEntrySize = 52;
 
     // Swappable function pointers - default to the native P/Invoke implementations.
@@ -27,8 +27,6 @@ static class MFTLibNative
     internal static Action<IntPtr> _freeMftResult = NativeFreeMftResult;
     internal static Func<string, ulong, uint, uint, bool> _generateSyntheticMftSized = NativeGenerateSyntheticMFTSized;
     internal static Func<string, bool> _generateFixtureMft = NativeGenerateFixtureMFT;
-    internal static Func<SafeHandle, IntPtr> _queryUsnJournal = NativeQueryUsnJournal;
-    internal static Action<IntPtr> _freeUsnJournalInfo = NativeFreeUsnJournalInfo;
     internal static Func<SafeHandle, long, ulong, uint, IntPtr> _readUsnJournal = NativeReadUsnJournal;
     internal static Action<IntPtr> _freeUsnJournalResult = NativeFreeUsnJournalResult;
     internal static Func<SafeHandle, long, ulong, SafeHandle, IntPtr> _watchUsnJournalBatchCancelable =
@@ -94,12 +92,6 @@ static class MFTLibNative
     [DllImport(LibraryName, EntryPoint = "CloseMftDumpInput", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void CloseMftDumpInput(IntPtr input);
 
-    [DllImport(LibraryName, EntryPoint = "QueryUsnJournal", CallingConvention = CallingConvention.Cdecl)]
-    static extern IntPtr NativeQueryUsnJournal(SafeHandle volumeHandle);
-
-    [DllImport(LibraryName, EntryPoint = "FreeUsnJournalInfo", CallingConvention = CallingConvention.Cdecl)]
-    static extern void NativeFreeUsnJournalInfo(IntPtr info);
-
     [DllImport(LibraryName, EntryPoint = "ReadUsnJournal", CallingConvention = CallingConvention.Cdecl)]
     static extern IntPtr NativeReadUsnJournal(SafeHandle volumeHandle, long startUsn, ulong journalIdentifier,
         uint maximumBufferReads);
@@ -135,8 +127,6 @@ static class MFTLibNative
         _freeMftResult = NativeFreeMftResult;
         _generateSyntheticMftSized = NativeGenerateSyntheticMFTSized;
         _generateFixtureMft = NativeGenerateFixtureMFT;
-        _queryUsnJournal = NativeQueryUsnJournal;
-        _freeUsnJournalInfo = NativeFreeUsnJournalInfo;
         _readUsnJournal = NativeReadUsnJournal;
         _freeUsnJournalResult = NativeFreeUsnJournalResult;
         _watchUsnJournalBatchCancelable = NativeWatchUsnJournalBatchCancelable;

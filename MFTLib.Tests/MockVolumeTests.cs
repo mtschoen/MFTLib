@@ -71,7 +71,6 @@ public class MockVolumeTests
             Entries = entryBuf,
             EntryStrings = stringBuf,
             EntryStringUnits = (ulong)totalStringUnits,
-            AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
             EntryStride = MFTLibNative.NativeCompactEntrySize,
             ErrorMessage = errorMessage ?? string.Empty
         };
@@ -585,7 +584,6 @@ public class MockVolumeTests
                 Entries = entryBuf,
                 EntryStrings = stringBuf,
                 EntryStringUnits = 0,
-                AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
                 EntryStride = MFTLibNative.NativeCompactEntrySize
             };
 

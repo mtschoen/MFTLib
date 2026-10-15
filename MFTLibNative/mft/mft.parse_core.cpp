@@ -320,7 +320,6 @@ MftParseResult* CreateParseResult(const wchar_t* message) {
     if (result == nullptr) {
         return nullptr;
     }
-    result->abiVersion = MFT_NATIVE_ABI_VERSION;
     result->entryStride = sizeof(MftCompactEntry);
     if (message != nullptr) {
         SetErrorMessage(result->errorMessage, message);

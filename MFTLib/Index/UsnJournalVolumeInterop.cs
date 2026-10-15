@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
-using System.Runtime.Versioning;
 using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib.Index;
@@ -27,9 +26,11 @@ delegate bool VolumeIoControl(
 ///     <see cref="WindowsFileById" /> documents - backup semantics, attributes-only access -
 ///     which is also what <c>fsutil usn queryjournal</c> uses unelevated. Declared inside
 ///     the index (rather than reusing <c>MFTLib.Interop</c>) because the packed index is
-///     substrate-neutral and may not reference the interop layer.
+///     substrate-neutral and may not reference the interop layer. <c>MftVolume</c> issues the same
+///     query, so the class carries no platform attribute: tests drive both through
+///     <c>_ioControl</c> on every platform, and the real imports fail off Windows as
+///     <c>Kernel32</c>'s do.
 /// </summary>
-[SupportedOSPlatform("windows")]
 static class UsnJournalVolumeInterop
 {
     const uint FileReadAttributes = 0x80;
@@ -129,5 +130,15 @@ static class UsnJournalVolumeInterop
         public long MaxUsn;
         public ulong MaximumSize;
         public ulong AllocationDelta;
+
+        /// <summary>The sizing the journal reports, the one projection every settings query returns.</summary>
+        public readonly UsnJournalSettings ToSettings()
+        {
+            return new UsnJournalSettings
+            {
+                MaximumSize = checked((long)MaximumSize),
+                AllocationDelta = checked((long)AllocationDelta)
+            };
+        }
     }
 }

@@ -24,7 +24,6 @@ internal static unsafe class MftProgressParseFixture
             TotalRecords = 1,
             UsedRecords = 1,
             Entries = entryBuffer,
-            AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
             EntryStride = MFTLibNative.NativeCompactEntrySize
         };
         var parseResultPointer = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());

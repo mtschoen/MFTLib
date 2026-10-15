@@ -248,47 +248,6 @@ void PopulateWatchEntries(UsnJournalResult* result, const uint8_t* readBuffer, D
 }  // namespace
 
 extern "C" {
-EXPORT UsnJournalInfo* QueryUsnJournal(HANDLE volumeHandle) {
-    UsnJournalInfo* info = nullptr;
-    return NativeBoundary(
-        [&]() {
-            ThrowInjectedException(ExceptionTestPoint::UsnAllocation);
-            info = new UsnJournalInfo{};
-
-            USN_JOURNAL_DATA_V0 journalData{};
-            DWORD bytesReturned = 0;
-            if (UsnDeviceIoControl(volumeHandle, FSCTL_QUERY_USN_JOURNAL, IoBuffer{nullptr, 0},
-                                   IoBuffer{&journalData, static_cast<DWORD>(sizeof(journalData))}, &bytesReturned,
-                                   nullptr) == 0) {
-                DWORD error = GetLastError();
-                if (const wchar_t* message = DescribeJournalError(error)) {
-                    SetErrorMessage(info->errorMessage, message);
-                } else {
-                    SetErrorMessage(info->errorMessage, L"FSCTL_QUERY_USN_JOURNAL failed. Error: %lu", error);
-                }
-                return info;
-            }
-
-            info->journalIdentifier = journalData.UsnJournalID;
-            info->firstUsn = journalData.FirstUsn;
-            info->nextUsn = journalData.NextUsn;
-            info->lowestValidUsn = journalData.LowestValidUsn;
-            info->maximumUsn = journalData.MaxUsn;
-            info->maximumSize = journalData.MaximumSize;
-            info->allocationDelta = journalData.AllocationDelta;
-            return info;
-        },
-        [&](const wchar_t* message) {
-            if (info != nullptr) {
-                *info = UsnJournalInfo{};
-                SetErrorMessage(info->errorMessage, message);
-            }
-            return info;
-        });
-}
-
-EXPORT void FreeUsnJournalInfo(const UsnJournalInfo* info) { std::unique_ptr<const UsnJournalInfo> owned(info); }
-
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters): C-ABI export, fixed C# P/Invoke signature
 EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, uint64_t journalIdentifier,
                                         uint32_t maximumBufferReads) {

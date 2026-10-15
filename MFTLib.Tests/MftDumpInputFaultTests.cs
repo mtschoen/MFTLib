@@ -136,7 +136,6 @@ public class MftDumpInputFaultTests
             var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
             Assert.AreEqual("Dump input is invalid", result.ErrorMessage);
             Assert.AreEqual(0u, result.InvalidInput);
-            Assert.AreEqual(MFTLibNative.ExpectedMftNativeAbiVersion, result.AbiVersion);
             Assert.AreEqual(MFTLibNative.NativeCompactEntrySize, result.EntryStride);
         }
         finally

@@ -34,6 +34,7 @@ public class MftDumpValidationTests
     {
         FileUtilities.ResetToDefaults();
         MFTLibNative.ResetToDefaults();
+        JournalQueryFake.Reset();
         MftDumpFixture.DeleteOwnedDirectory(_directory);
     }
 
@@ -139,7 +140,7 @@ public class MftDumpValidationTests
     public async Task Open_NeverTouchesTheLiveVolumeThatSharesTheLetter()
     {
         FileUtilities._getVolumeHandle = path => throw new AssertFailedException($"A dump opened the volume {path}.");
-        MFTLibNative._queryUsnJournal = _ => throw new AssertFailedException("A dump queried a live journal.");
+        JournalQueryFake.Serve(() => throw new AssertFailedException("A dump queried a live journal."));
         MFTLibNative._readUsnJournal = (_, _, _, _) => throw new AssertFailedException("A dump read a live journal.");
         MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _) =>
             throw new AssertFailedException("A dump parsed a live volume.");

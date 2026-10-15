@@ -1,5 +1,7 @@
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using MFTLib.Index;
 using MFTLib.Interop;
 
 namespace MFTLib;
@@ -17,10 +19,12 @@ internal sealed partial class MftVolume
     ///     Capture this before a full MFT scan, then read from it after the scan, to
     ///     include changes that occurred while the scan was running.
     /// </summary>
+    /// <exception cref="ObjectDisposedException">This volume has been disposed.</exception>
+    /// <exception cref="Win32Exception">Windows rejects the journal query, for example because the journal is not active.</exception>
     public UsnJournalCursor QueryUsnJournalCursor()
     {
-        var info = QueryJournalInfo();
-        return new UsnJournalCursor(info.JournalIdentifier, info.NextUsn);
+        var data = QueryJournalData();
+        return new UsnJournalCursor(data.UsnJournalIdentifier, data.NextUsn);
     }
 
     /// <summary>
@@ -29,39 +33,19 @@ internal sealed partial class MftVolume
     ///     and allocation delta. The library reports the size that would have retained a lost
     ///     checkpoint; the consumer owns the decision to grow.
     /// </summary>
+    /// <exception cref="ObjectDisposedException">This volume has been disposed.</exception>
+    /// <exception cref="Win32Exception">Windows rejects the journal query, for example because the journal is not active.</exception>
     public UsnJournalSettings QueryUsnJournalSettings()
     {
-        var info = QueryJournalInfo();
-        return new UsnJournalSettings
-        {
-            MaximumSize = checked((long)info.MaximumSize),
-            AllocationDelta = checked((long)info.AllocationDelta)
-        };
+        return QueryJournalData().ToSettings();
     }
 
-    UsnJournalInfoNative QueryJournalInfo()
+    // The one journal query: the same FSCTL_QUERY_USN_JOURNAL call FileIndex.QueryUsnJournalSettings
+    // and the checkpoint check issue, against this volume's handle.
+    UsnJournalVolumeInterop.UsnJournalDataV0 QueryJournalData()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var infoPtr = MFTLibNative._queryUsnJournal(_volumeHandle);
-        if (infoPtr == IntPtr.Zero)
-        {
-            throw new InvalidOperationException("QueryUsnJournal returned null");
-        }
-
-        try
-        {
-            var info = Marshal.PtrToStructure<UsnJournalInfoNative>(infoPtr);
-            if (!string.IsNullOrEmpty(info.ErrorMessage))
-            {
-                throw new InvalidOperationException(info.ErrorMessage);
-            }
-
-            return info;
-        }
-        finally
-        {
-            MFTLibNative._freeUsnJournalInfo(infoPtr);
-        }
+        return UsnJournalVolumeInterop.QueryJournalData(_volumeHandle);
     }
 
     /// <summary>

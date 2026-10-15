@@ -27,6 +27,7 @@ public partial class JournalBrokerHostRealSeamsTests
         MFTLibNative.ResetToDefaults();
         FileUtilities.ResetToDefaults();
         Kernel32.ResetToDefaults();
+        JournalQueryFake.Reset();
     }
 
     static SafeFileHandle FakeHandle()
@@ -36,13 +37,7 @@ public partial class JournalBrokerHostRealSeamsTests
 
     static void MockWatchJournalTip()
     {
-        MFTLibNative._queryUsnJournal = _ =>
-        {
-            var pointer = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
-            Marshal.StructureToPtr(new UsnJournalInfoNative { JournalIdentifier = 7, NextUsn = 200 }, pointer, false);
-            return pointer;
-        };
-        MFTLibNative._freeUsnJournalInfo = Marshal.FreeHGlobal;
+        JournalQueryFake.Serve(journalIdentifier: 7, nextUsn: 200);
     }
 
     // A host scan sizes its chunks from FSCTL_GET_NTFS_VOLUME_DATA before it opens the parse.
@@ -126,7 +121,6 @@ public partial class JournalBrokerHostRealSeamsTests
             Entries = entryBuf,
             EntryStrings = stringBuf,
             EntryStringUnits = (ulong)totalUnits,
-            AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
             EntryStride = MFTLibNative.NativeCompactEntrySize
         };
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());

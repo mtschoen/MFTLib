@@ -41,14 +41,6 @@ internal sealed class MftResult : IDisposable, IEnumerable<MftRecord>
                 : new InvalidOperationException(_result.ErrorMessage);
         }
 
-        if (_result.AbiVersion != MFTLibNative.ExpectedMftNativeAbiVersion)
-        {
-            MFTLibNative._freeMftResult(resultPtr);
-            _resultPtr = IntPtr.Zero;
-            throw new InvalidOperationException(
-                $"MFTLib managed/native ABI mismatch: managed expects {MFTLibNative.ExpectedMftNativeAbiVersion}, native reports {_result.AbiVersion}.");
-        }
-
         if (_result.EntryStride != MFTLibNative.NativeCompactEntrySize)
         {
             MFTLibNative._freeMftResult(resultPtr);

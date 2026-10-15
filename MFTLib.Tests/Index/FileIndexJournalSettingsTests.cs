@@ -1,5 +1,6 @@
 using System.Runtime.Versioning;
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -29,6 +30,8 @@ public class FileIndexJournalSettingsTests
     [TestCleanup]
     public void Cleanup()
     {
+        JournalQueryFake.Reset();
+        FileUtilities.ResetToDefaults();
         foreach (var directory in new[] { _treeRoot, _cacheDirectory })
         {
             try
@@ -74,6 +77,38 @@ public class FileIndexJournalSettingsTests
 
         Assert.AreEqual(expected.MaximumSize, settings.MaximumSize);
         Assert.AreEqual(expected.AllocationDelta, settings.AllocationDelta);
+    }
+
+    /// <summary>
+    ///     Both public entry points read the journal through the one query path, so one scripted
+    ///     journal state yields identical settings from either. The index opens the real volume-root
+    ///     handle on C: and the volume gets a fake handle; only the control request is scripted.
+    /// </summary>
+    [TestMethod]
+    [SupportedOSPlatform("windows")]
+    public async Task QueryUsnJournalSettings_VolumeAndIndex_ReportTheSameSettingsForOneJournalState()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("The index query opens a Windows volume-root handle.");
+            return;
+        }
+
+        FileUtilities._getVolumeHandle = _ => new Microsoft.Win32.SafeHandles.SafeFileHandle(new IntPtr(1), false);
+        JournalQueryFake.Serve(journalIdentifier: 9, nextUsn: 77, maximumSize: 0x08000000, allocationDelta: 0x01000000);
+        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
+        {
+            Drives = [new IndexedDrive('C', _treeRoot, 0x0BADF00D, ProducerPolicy.Enumeration)],
+            CacheDirectory = _cacheDirectory,
+        }, CancellationToken.None);
+        using var volume = MftVolume.Open("C");
+
+        var fromVolume = volume.QueryUsnJournalSettings();
+        var fromIndex = index.QueryUsnJournalSettings('C');
+
+        Assert.AreEqual(fromVolume, fromIndex);
+        Assert.AreEqual(0x08000000L, fromVolume.MaximumSize);
+        Assert.AreEqual(0x01000000L, fromVolume.AllocationDelta);
     }
 
     [TestMethod]

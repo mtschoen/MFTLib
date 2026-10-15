@@ -136,7 +136,6 @@ public class ParseThreadAllowanceTests
             observe((MftParseControl*)control);
             var result = new MftParseResult
             {
-                AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
                 EntryStride = MFTLibNative.NativeCompactEntrySize
             };
             var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());

@@ -16,11 +16,7 @@ public partial class JournalBrokerHostRealSeamsTests
     [TestMethod]
     public async Task ServeAsync_ScanAndCatchUp_UseRealMftVolumeSeams()
     {
-        var queryInfo = new UsnJournalInfoNative { JournalIdentifier = 0xABCD, NextUsn = 5000 };
-        var queryPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
-        Marshal.StructureToPtr(queryInfo, queryPtr, false);
-        MFTLibNative._queryUsnJournal = _ => queryPtr;
-        MFTLibNative._freeUsnJournalInfo = _ => Marshal.FreeHGlobal(queryPtr);
+        JournalQueryFake.Serve(journalIdentifier: 0xABCD, nextUsn: 5000);
 
         var parsePtr = BuildThreeNameRecordsResult();
         MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _) => parsePtr;
@@ -44,11 +40,7 @@ public partial class JournalBrokerHostRealSeamsTests
     [TestMethod]
     public async Task ServeAsync_DefaultSource_AdaptsNativeProgressWithoutFreedRows()
     {
-        var queryInfo = new UsnJournalInfoNative { JournalIdentifier = 7UL, NextUsn = 100 };
-        var queryPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
-        Marshal.StructureToPtr(queryInfo, queryPtr, false);
-        MFTLibNative._queryUsnJournal = _ => queryPtr;
-        MFTLibNative._freeUsnJournalInfo = _ => Marshal.FreeHGlobal(queryPtr);
+        JournalQueryFake.Serve(journalIdentifier: 7UL, nextUsn: 100);
 
         var parsePtr = BuildThreeNameRecordsResult();
         var freedRequests = new List<bool>();
@@ -159,11 +151,7 @@ public partial class JournalBrokerHostRealSeamsTests
     [TestMethod]
     public async Task ServeAsync_DefaultSource_IncludesRootDirectoryRow()
     {
-        var queryInfo = new UsnJournalInfoNative { JournalIdentifier = 0x1234, NextUsn = 1000 };
-        var queryPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
-        Marshal.StructureToPtr(queryInfo, queryPtr, false);
-        MFTLibNative._queryUsnJournal = _ => queryPtr;
-        MFTLibNative._freeUsnJournalInfo = _ => Marshal.FreeHGlobal(queryPtr);
+        JournalQueryFake.Serve(journalIdentifier: 0x1234, nextUsn: 1000);
 
         var stride = (nuint)MFTLibNative.NativeCompactEntrySize;
         var entryBuf = Marshal.AllocHGlobal((int)stride * 2);
@@ -200,7 +188,6 @@ public partial class JournalBrokerHostRealSeamsTests
                 Entries = entryBuf,
                 EntryStrings = stringBuf,
                 EntryStringUnits = (ulong)childName.Length,
-                AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
                 EntryStride = MFTLibNative.NativeCompactEntrySize
             };
             var parsePtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
@@ -310,8 +297,8 @@ public partial class JournalBrokerHostRealSeamsTests
 
         // The pre-check reports the journal smaller than the request, so the grow is
         // issued; the post-change read returns the grown sizing.
-        var preChange = BuildJournalInfoPointer(maximumSize: 0x200000, allocationDelta: 0x100000);
-        var postChange = BuildJournalInfoPointer(maximumSize: 0x400000, allocationDelta: 0x200000);
+        var preChange = JournalQueryFake.Describe(7, 200, maximumSize: 0x200000, allocationDelta: 0x100000);
+        var postChange = JournalQueryFake.Describe(7, 200, maximumSize: 0x400000, allocationDelta: 0x200000);
         var queryCount = 0;
         uint? capturedIoctl = null;
         long capturedMaximum = 0;
@@ -327,31 +314,22 @@ public partial class JournalBrokerHostRealSeamsTests
             return true;
         }
 
-        try
-        {
-            MFTLibNative._queryUsnJournal = _ => ++queryCount == 1 ? preChange : postChange;
-            MFTLibNative._freeUsnJournalInfo = _ => { }; // the two buffers are freed by this test
-            Kernel32._deviceIoControl = FakeDeviceIoControl;
-            await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
+        JournalQueryFake.Serve(() => ++queryCount == 1 ? preChange : postChange);
+        Kernel32._deviceIoControl = FakeDeviceIoControl;
+        await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
 
-            await harness.SendControlAsync(writer =>
-                BrokerProtocol.WriteGrowUsnJournal(writer, 6, "C", 0x400000, 0x200000));
-            var frame = await harness.ReadControlAsync();
+        await harness.SendControlAsync(writer =>
+            BrokerProtocol.WriteGrowUsnJournal(writer, 6, "C", 0x400000, 0x200000));
+        var frame = await harness.ReadControlAsync();
 
-            Assert.AreEqual(BrokerFrameKind.UsnJournalSettings, frame.Kind);
-            Assert.AreEqual(6u, frame.RequestId);
-            Assert.AreEqual(0x400000L, frame.JournalMaximumSize);
-            Assert.AreEqual(0x200000L, frame.JournalAllocationDelta);
-            Assert.AreEqual(0x000900E7u, capturedIoctl, "FSCTL_CREATE_USN_JOURNAL");
-            Assert.AreEqual(0x400000L, capturedMaximum);
-            Assert.AreEqual(0x200000L, capturedDelta);
-            Assert.AreEqual(2, queryCount, "The grow reads the sizing before and after the change.");
-        }
-        finally
-        {
-            Marshal.FreeHGlobal(preChange);
-            Marshal.FreeHGlobal(postChange);
-        }
+        Assert.AreEqual(BrokerFrameKind.UsnJournalSettings, frame.Kind);
+        Assert.AreEqual(6u, frame.RequestId);
+        Assert.AreEqual(0x400000L, frame.JournalMaximumSize);
+        Assert.AreEqual(0x200000L, frame.JournalAllocationDelta);
+        Assert.AreEqual(0x000900E7u, capturedIoctl, "FSCTL_CREATE_USN_JOURNAL");
+        Assert.AreEqual(0x400000L, capturedMaximum);
+        Assert.AreEqual(0x200000L, capturedDelta);
+        Assert.AreEqual(2, queryCount, "The grow reads the sizing before and after the change.");
     }
 
     [TestMethod]
@@ -385,19 +363,6 @@ public partial class JournalBrokerHostRealSeamsTests
         Assert.AreEqual(3u, frame.RequestId);
         Assert.AreEqual(409_600L, frame.MftValidDataLength);
         Assert.AreEqual(1024u, frame.BytesPerFileRecordSegment);
-    }
-
-    static IntPtr BuildJournalInfoPointer(ulong maximumSize, ulong allocationDelta)
-    {
-        var pointer = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
-        Marshal.StructureToPtr(new UsnJournalInfoNative
-        {
-            JournalIdentifier = 7,
-            NextUsn = 200,
-            MaximumSize = maximumSize,
-            AllocationDelta = allocationDelta
-        }, pointer, false);
-        return pointer;
     }
 
     [TestMethod]

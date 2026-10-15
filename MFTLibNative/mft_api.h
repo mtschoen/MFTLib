@@ -10,7 +10,7 @@
     #endif
 #endif
 
-constexpr uint32_t MFT_NATIVE_ABI_VERSION = 7;
+constexpr uint32_t MFT_NATIVE_ABI_VERSION = 8;
 
 // One UTF-16 code unit of a native error message. wchar_t is 16 bits on Windows and 32 bits
 // elsewhere, so the result structs declare their message buffers in this type and keep one
@@ -82,7 +82,6 @@ struct MftParseResult {
     double totalTimeMs;
     uint16_t* entryStrings;
     uint64_t entryStringUnits;
-    uint32_t abiVersion;
     uint32_t entryStride;
     uint32_t cancelled;  // 1 when the parse stopped because MftParseControl::cancelRequested was set
     // 1 when the content of a file input was rejected and errorMessage says why: an empty file, an
@@ -104,18 +103,6 @@ struct MftDumpInputInfo {
     uint64_t lengthBytes;
     uint32_t recordSize;
     uint32_t invalidInput;
-    // NOLINTNEXTLINE(modernize-avoid-c-arrays)
-    MftMessageChar errorMessage[MFT_ERROR_MESSAGE_UNITS];
-};
-
-struct UsnJournalInfo {
-    uint64_t journalIdentifier;
-    int64_t firstUsn;
-    int64_t nextUsn;
-    int64_t lowestValidUsn;
-    int64_t maximumUsn;
-    uint64_t maximumSize;
-    uint64_t allocationDelta;
     // NOLINTNEXTLINE(modernize-avoid-c-arrays)
     MftMessageChar errorMessage[MFT_ERROR_MESSAGE_UNITS];
 };
@@ -142,15 +129,14 @@ struct UsnJournalResult {
     MftMessageChar errorMessage[MFT_ERROR_MESSAGE_UNITS];
 };
 
-static_assert(sizeof(MftParseResult) == 592 + (2 * sizeof(void*)),
-              "MftParseResult is the 592 bytes of counters and 256 UTF-16 message units around two pointers");
+static_assert(sizeof(MftParseResult) == 588 + (2 * sizeof(void*)),
+              "MftParseResult is the 588 bytes of counters and 256 UTF-16 message units around two pointers");
 static_assert(sizeof(MftDumpInputInfo) == 528,
               "MftDumpInputInfo is a 64-bit length, two 32-bit fields and 256 UTF-16 message units");
 #ifdef _WIN32
 static_assert(sizeof(UsnJournalEntry) == 564,
               "UsnJournalEntry is 42 bytes of fields, 260 UTF-16 units and a sequence number");
 #endif
-static_assert(sizeof(UsnJournalInfo) == 568, "UsnJournalInfo is seven 64-bit fields and 256 UTF-16 message units");
 static_assert(sizeof(UsnJournalResult) == 536 + sizeof(UsnJournalEntry*),
               "UsnJournalResult is three 64-bit fields, a pointer and 256 UTF-16 message units");
 

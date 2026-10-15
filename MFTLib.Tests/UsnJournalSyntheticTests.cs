@@ -37,6 +37,7 @@ public partial class UsnJournalSyntheticTests
         MFTLibNative.ResetToDefaults();
         FileUtilities.ResetToDefaults();
         Kernel32.ResetToDefaults();
+        JournalQueryFake.Reset();
         foreach (var b in _buffers)
         {
             Marshal.FreeHGlobal(b);
@@ -62,24 +63,6 @@ public partial class UsnJournalSyntheticTests
         Marshal.Copy(data, 0, ptr, data.Length);
         _buffers.Add(ptr);
         NativeTestHooks.NativeSetUsnIoSuccess((byte*)ptr, (uint)data.Length);
-    }
-
-    // A FSCTL_QUERY_USN_JOURNAL output buffer (USN_JOURNAL_DATA_V0: 8 fields × 8 bytes).
-    static byte[] BuildQueryBuffer(ulong journalIdentifier = 0xABCD, long firstUsn = 0,
-        long nextUsn = 5000, long lowestValid = 0, long maxUsn = 1_000_000,
-        ulong maxSize = 0x200000, ulong allocDelta = 0x100000)
-    {
-        using var ms = new MemoryStream();
-        using var w = new BinaryWriter(ms);
-        w.Write(journalIdentifier);
-        w.Write(firstUsn);
-        w.Write(nextUsn);
-        w.Write(lowestValid);
-        w.Write(maxUsn);
-        w.Write(maxSize);
-        w.Write(allocDelta);
-        w.Write(0UL); // V1 pad
-        return ms.ToArray();
     }
 
     // A FSCTL_READ_USN_JOURNAL output buffer: leading int64 nextUsn, then packed
@@ -130,67 +113,44 @@ public partial class UsnJournalSyntheticTests
         }
     }
 
-    // --- QueryUsnJournal ---
+    // --- QueryUsnJournal: the managed query path, scripted through UsnJournalVolumeInterop._ioControl ---
 
     [TestMethod]
     public void QueryUsnJournal_SyntheticSuccess_ReturnsCursor()
     {
         UseFakeHandle();
-        QueueSuccess(BuildQueryBuffer());
+        JournalQueryFake.Serve(journalIdentifier: 0xABCD, nextUsn: 5000);
         using var volume = MftVolume.Open("C");
         var cursor = volume.QueryUsnJournalCursor();
         Assert.AreEqual(0xABCDUL, cursor.JournalIdentifier);
         Assert.AreEqual(5000L, cursor.NextUsn);
     }
 
-    [TestMethod]
-    public void QueryUsnJournal_JournalNotActive_ReturnsError()
+    [DataTestMethod]
+    [DataRow((int)ERROR_JOURNAL_NOT_ACTIVE)]
+    [DataRow((int)ERROR_JOURNAL_DELETE_IN_PROGRESS)]
+    [DataRow(5)] // ERROR_ACCESS_DENIED
+    public void QueryUsnJournal_IoctlFails_ThrowsTheWin32Error(int win32Error)
     {
         UseFakeHandle();
-        NativeTestHooks.NativeSetUsnIoFailError(ERROR_JOURNAL_NOT_ACTIVE, 1);
-        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        JournalQueryFake.Fail(win32Error);
+        var exception = Assert.ThrowsException<Win32Exception>(() =>
         {
             using var volume = MftVolume.Open("C");
             volume.QueryUsnJournalCursor();
         });
-        Assert.IsTrue(exception.Message.Contains("not active"));
+        Assert.AreEqual(win32Error, exception.NativeErrorCode);
     }
 
     [TestMethod]
     public void QueryUsnJournalSettings_SyntheticSuccess_ReturnsSizing()
     {
         UseFakeHandle();
-        QueueSuccess(BuildQueryBuffer(maxSize: 0x08000000, allocDelta: 0x01000000));
+        JournalQueryFake.Serve(maximumSize: 0x08000000, allocationDelta: 0x01000000);
         using var volume = MftVolume.Open("C");
         var settings = volume.QueryUsnJournalSettings();
         Assert.AreEqual(0x08000000L, settings.MaximumSize);
         Assert.AreEqual(0x01000000L, settings.AllocationDelta);
-    }
-
-    [TestMethod]
-    public void QueryUsnJournal_DeleteInProgress_ReturnsError()
-    {
-        UseFakeHandle();
-        NativeTestHooks.NativeSetUsnIoFailError(ERROR_JOURNAL_DELETE_IN_PROGRESS, 1);
-        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
-        {
-            using var volume = MftVolume.Open("C");
-            volume.QueryUsnJournalCursor();
-        });
-        Assert.IsTrue(exception.Message.Contains("deletion"));
-    }
-
-    [TestMethod]
-    public void QueryUsnJournal_GenericError_ReturnsErrorCode()
-    {
-        UseFakeHandle();
-        NativeTestHooks.NativeSetUsnIoFailError(5, 1); // ERROR_ACCESS_DENIED
-        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
-        {
-            using var volume = MftVolume.Open("C");
-            volume.QueryUsnJournalCursor();
-        });
-        Assert.IsTrue(exception.Message.Contains("Error: 5"));
     }
 
     // --- ReadUsnJournal success + parse ---
@@ -459,17 +419,22 @@ public partial class UsnJournalSyntheticTests
     [TestMethod]
     public void QueryUsnJournal_NoInjection_FallsThroughToRealDeviceIoControl()
     {
-        // With neither a fail-hook nor a queued success buffer, UsnDeviceIoControl
-        // falls through to the real DeviceIoControl on the fake handle — which fails
-        // with ERROR_INVALID_HANDLE. Covers the real-syscall fall-through line and
-        // the generic-error branch without admin or a real device.
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("The real query is a kernel32 DeviceIoControl call.");
+            return;
+        }
+
+        // With no scripted reply the query reaches the real DeviceIoControl on the fake handle,
+        // which fails with ERROR_INVALID_HANDLE. Covers the real-syscall path without admin.
+        const int errorInvalidHandle = 6;
         UseFakeHandle();
-        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        var exception = Assert.ThrowsException<Win32Exception>(() =>
         {
             using var volume = MftVolume.Open("C");
             volume.QueryUsnJournalCursor();
         });
-        Assert.IsTrue(exception.Message.Contains("Error:"), $"got: {exception.Message}");
+        Assert.AreEqual(errorInvalidHandle, exception.NativeErrorCode);
     }
 
     [TestMethod]
@@ -640,7 +605,7 @@ public partial class UsnJournalSyntheticTests
     public void GrowUsnJournal_RequestedNotLargerThanCurrent_RefusesWithoutIoctl(uint requestedMaximumSize)
     {
         UseFakeHandle();
-        QueueSuccess(BuildQueryBuffer(maxSize: 0x200000, allocDelta: 0x100000));
+        JournalQueryFake.Serve(maximumSize: 0x200000, allocationDelta: 0x100000);
         var createCalled = false;
         bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
             uint inBufferSize, IntPtr outBuffer, uint outBufferSize, out uint bytesReturned, IntPtr overlapped)
@@ -669,8 +634,10 @@ public partial class UsnJournalSyntheticTests
     public void GrowUsnJournal_ValidRequest_IssuesCreateAndReturnsPostChangeSettings()
     {
         UseFakeHandle();
-        QueueSuccess(BuildQueryBuffer(maxSize: 0x200000, allocDelta: 0x100000)); // pre-check
-        QueueSuccess(BuildQueryBuffer(maxSize: 0x400000, allocDelta: 0x200000)); // post-change
+        var queryCount = 0;
+        JournalQueryFake.Serve(() => ++queryCount == 1
+            ? JournalQueryFake.Describe(7, 200, maximumSize: 0x200000, allocationDelta: 0x100000) // pre-check
+            : JournalQueryFake.Describe(7, 200, maximumSize: 0x400000, allocationDelta: 0x200000)); // post-change
         uint? capturedCode = null;
         long capturedMaximum = 0;
         long capturedDelta = 0;
@@ -698,7 +665,7 @@ public partial class UsnJournalSyntheticTests
     public void GrowUsnJournal_CreateFails_ThrowsWin32Exception()
     {
         UseFakeHandle();
-        QueueSuccess(BuildQueryBuffer(maxSize: 0x200000, allocDelta: 0x100000));
+        JournalQueryFake.Serve(maximumSize: 0x200000, allocationDelta: 0x100000);
         static bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
             uint inBufferSize, IntPtr outBuffer, uint outBufferSize, out uint bytesReturned, IntPtr overlapped)
         {

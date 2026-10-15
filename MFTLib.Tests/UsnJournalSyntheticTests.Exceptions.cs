@@ -36,20 +36,6 @@ public partial class UsnJournalSyntheticTests
     }
 
     [TestMethod]
-    public void Journal_InfoAllocationExceptionReturnsNull()
-    {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("USN exports are Windows-only.");
-        }
-
-        using var handle = FakeHandle();
-        NativeTestHooks.NativeSetAllocFailCountdown(-3);
-        Assert.AreEqual(IntPtr.Zero, MFTLibNative._queryUsnJournal(handle));
-        AssertOrdinaryParseSucceeds();
-    }
-
-    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public void Journal_ExceptionReleasesAllocatedBuffersAndReturnsEmptyFailure(bool watch)

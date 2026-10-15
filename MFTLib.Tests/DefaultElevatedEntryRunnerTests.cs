@@ -36,6 +36,7 @@ public class DefaultElevatedEntryRunnerTests
         BrokerDiagnostics.ResetToDefaults();
         MFTLibNative.ResetToDefaults();
         FileUtilities.ResetToDefaults();
+        JournalQueryFake.Reset();
     }
 
     [TestMethod]
@@ -89,13 +90,7 @@ public class DefaultElevatedEntryRunnerTests
         // as JournalBrokerHostRealSeamsTests).
         FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
         FileUtilities._getWatchVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
-        MFTLibNative._queryUsnJournal = _ =>
-        {
-            var pointer = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
-            Marshal.StructureToPtr(new UsnJournalInfoNative { JournalIdentifier = 7, NextUsn = 200 }, pointer, false);
-            return pointer;
-        };
-        MFTLibNative._freeUsnJournalInfo = Marshal.FreeHGlobal;
+        JournalQueryFake.Serve(journalIdentifier: 7, nextUsn: 200);
         MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
         MFTLibNative._cancelUsnJournalWatch = _ => true;
 
@@ -162,15 +157,12 @@ public class DefaultElevatedEntryRunnerTests
         FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
         var cursorQueried = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseCursorQuery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        MFTLibNative._queryUsnJournal = _ =>
+        JournalQueryFake.Serve(() =>
         {
             cursorQueried.TrySetResult();
             releaseCursorQuery.Task.GetAwaiter().GetResult();
-            var pointer = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
-            Marshal.StructureToPtr(new UsnJournalInfoNative { JournalIdentifier = 7, NextUsn = 200 }, pointer, false);
-            return pointer;
-        };
-        MFTLibNative._freeUsnJournalInfo = Marshal.FreeHGlobal;
+            return JournalQueryFake.Describe(journalIdentifier: 7, nextUsn: 200, maximumSize: 0, allocationDelta: 0);
+        });
         MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
 
         int? exitCode = null;
