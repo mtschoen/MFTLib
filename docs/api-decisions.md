@@ -417,8 +417,9 @@ follows what it reports.
 
 ## The elevation provider types and the three query methods stay
 
-**Decision (2026-10-13, API review findings F11 and F26, no change):** `IElevationProvider`, `ElevationResult`,
-`WindowsRunasElevationProvider` and both `BrokerSession` constructor parameters stay as they are (F11).
+**Decision (2026-10-13, API review findings F11 and F26, no change):** `IElevationProvider`,
+the production provider exposed through `ElevationUtilities.DefaultProvider`, and both
+`BrokerSession` constructor parameters stay as they are (F11).
 `ProducerKind.Enumeration` and all three query methods `Search`, `Enumerate` and `EnumerateRows` stay (F26).
 
 **Reason:** F11 found no defect to correct in the elevation provider shape or the session constructors. For F26,
@@ -648,19 +649,22 @@ directory walk). Neither name said what it held. git-wizard is the production ca
 
 **Decision (2026-10-12, API review finding F5,
 [MFTLib pull request 466 (SearchQuery names)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/466)):**
-`SearchQuery.LastWriteTimeMinimum` and `LastWriteTimeMaximum` (formerly `ModifiedAfter` and `ModifiedBefore`) are
-inclusive bounds on `FileEntry.LastWriteTime`, which is UTC. The raw ticks of the supplied `DateTime` are compared
-with no `DateTime.Kind` conversion, so the caller supplies a UTC value. A size bound excludes a row whose size is
-unknown even when its stored size satisfies the comparison. `Subtree` (formerly `Under`) restricts the result to
-the subtree below an entry, the entry included, and `IsDirectory` (formerly `Directories`) is true for directories
-only, false for files only and null for no filter. The size bounds were later renamed by the one-name-per-concept
-rule above.
+`SearchQuery.LastWriteTimeMinimum` and `SearchQuery.LastWriteTimeMaximum` are
+inclusive bounds on `FileEntry.LastWriteTime`, which is UTC. The raw ticks of the
+supplied `DateTime` are compared with no `DateTime.Kind` conversion, so the caller
+supplies a UTC value. A time bound excludes rows whose last-write time is unknown.
+`SearchQuery.SizeMinimum` and `SearchQuery.SizeMaximum` are inclusive size bounds;
+either excludes a row whose size is unknown even when its stored size satisfies
+the comparison. `SearchQuery.Subtree` restricts the result to the subtree below
+an entry, the entry included. `SearchQuery.IsDirectory` is true for directories
+only, false for files only, and null for no filter.
 
-**Reason:** "After" and "Before" read as exclusive but behave as inclusive. The size bounds silently changed which
-rows exist, and file-wizard relied on that with `MinimumSize: long.MinValue` to drop unknown sizes. `Directories`
-and `Under` did not say what they held. The review also proposed deleting the filters no consumer uses
-(`CaseSensitive`, the time bounds, `MaximumSize`, `IncludeDeleted`); that part was not adopted, and they remain
-for the Direct sample, which exercises them.
+**Reason:** bound names identify the compared property and make their inclusive
+meaning explicit. Size filtering also excludes unknown observations: a
+`SearchQuery.SizeMinimum` value of `long.MinValue` drops unknown sizes. The
+directory and subtree options identify their selection directly. The owner
+retained `SearchQuery.CaseSensitive`, the time bounds, `SearchQuery.SizeMaximum`,
+and `SearchQuery.IncludeDeleted`; the Direct sample exercises them.
 
 **Revisit only if:** a consumer needs an exclusive bound or a size filter that keeps unknown sizes.
 

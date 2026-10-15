@@ -92,7 +92,7 @@
       it requires `--cache-directory`. Direct opens `CacheMode.Disabled`.
     - **Consumer cache identity**: `FileIndexOptions.CacheTag` carries an opaque
       four-ASCII-character code plus a `uint` version; default is all zeros and
-      compares exactly, not as a wildcard. Block format 3 stores the two values
+      compares exactly, not as a wildcard. Block format 4 stores the two values
       at offsets 104 and 108 in a 112-byte declared header. Old-format blocks
       cold-scan once. Consumers bump their own version when their retention policy
       changes. Mismatches report `WrongCacheTag` and cold-scan; a

@@ -428,9 +428,11 @@ lands just after the read.
 ### Callback reentrancy
 
 Do not call an index lifecycle method synchronously from that index's `Changed`,
-`WatchFaulted` or `WatchStateChanged` handler. Start, stop, rescan, dispose, their batched forms, and
-an unsettled catch-up wait fail immediately with `InvalidOperationException`.
-Queue the work so it begins after the handler returns. Queries, `Drives`,
+`WatchFaulted` or `WatchStateChanged` handler. `StartWatchingAsync`,
+`StopWatchingAsync`, `RescanAsync`, `DisposeAsync`, and an unsettled
+`WaitForCatchUpAsync` return an already faulted task carrying
+`InvalidOperationException`. Queue the work so it begins after the handler returns.
+Queries, `Drives`,
 `QueryUsnJournalSettings`, and already settled catch-up waits are allowed.
 `BrokerSession.GrowUsnJournalAsync` is outside the index and is also allowed.
 
@@ -444,13 +446,16 @@ becomes `JournalCatchUpLostException`; an unavailable journal query or a cursor
 that is still retained remains an ordinary scan failure.
 
 Every proven loss increments an internal per-drive count. A successful
-catch-up resets it and clears `DriveWatchStatus.IsRecoveryStopped`. A manual or recovery
-rescan retries until success or automatic recovery is exhausted; exhaustion sets the
-flag before notification, and the rescan throws the last
-`JournalCatchUpLostException`, keeps the complete block queryable, and refuses a
-watch from that block. At open, the same retries happen before the drive settles;
-the open returns the unresumable block instead of throwing at the limit.
-Failed or cancelled production and stopping the watch preserve the flag.
+catch-up resets it and clears `DriveWatchStatus.IsRecoveryStopped`. A manual or
+recovery rescan retries until success or automatic recovery is exhausted;
+exhaustion sets the flag before notification. For a public `RescanAsync` call,
+the affected drive returns `DriveOperationOutcome.Failed` with the last
+`JournalCatchUpLostException` in `DriveOperationResult.Failure`. The complete
+block stays queryable, but a watch start from that block returns a failed result
+and retains its watch request until a successful rescan. At open, the same
+retries happen before the drive settles; the open returns the unresumable block
+at the limit. Failed or cancelled production and stopping the watch preserve
+the recovery-stopped flag.
 
 The drive's `DriveWatchStatus.CheckpointLoss` report has
 `DetectedDuring == JournalCheckpointLossDetection.ScanCatchUp`. When

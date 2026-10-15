@@ -39,8 +39,8 @@ A chunk already in progress finishes with the count
 it started with, so admission can make the total briefly exceed the processor
 count for at most one chunk. Callers do not choose a thread count:
 `MftScanOptions`, `MftBlockProduceRequest`, and the broker wire request carry
-none. The same allocator governs open scans, single-drive and batched rescans,
-and automatic recovery scans.
+none. The same allocator governs open scans, scans requested through `RescanAsync`
+for one or more drive keys, and automatic recovery scans.
 
 ## Lost scan catch-up
 

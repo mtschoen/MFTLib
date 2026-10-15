@@ -68,7 +68,7 @@
       re-checks `IsDeleted` after reading, or reads the `FileChange` event fields. When a journal create reuses a deleted record's slot, every handle minted for the earlier file is
       superseded: `IsDeleted` is true, `Open` throws `FileNotFoundException` before any open-by-id call, `Children`
       returns an empty list, `Subtree` rejects it with `ArgumentException`, and every row column (`Name`, `Path`,
-      `Parent`, `Size`, `IsSizeKnown`, `LastWriteTime`, `Attributes`, `IsDirectory`) throws
+      `Parent`, `Size`, `IsSizeKnown`, `LastWriteTime`, `IsLastWriteTimeKnown`, `Attributes`, `IsDirectory`) throws
       `InvalidOperationException`, all through one shared check. `Drive` and `RecordKey` stay readable. Equality
       compares the drive block, row index and sequence number, never the snapshot. A rename or move of the
       same file keeps its sequence number, so its handles keep tracking it. A `Deleted` `FileChange` whose slot was

@@ -11,8 +11,9 @@ public sealed class MftIndexSource
     /// <param name="producer">Fills the block that each MFT-backed drive scan requests.</param>
     /// <param name="watchSource">
     ///     Starts each drive's live watch. Null means the index cannot watch an MFT-backed drive:
-    ///     <see cref="FileIndex.StartWatchingAsync" /> throws
-    ///     <see cref="InvalidOperationException" />.
+    ///     <see cref="FileIndex.StartWatchingAsync" /> returns a per-drive
+    ///     <see cref="DriveOperationOutcome.NotApplicable" /> result with no failure and records no
+    ///     watch request.
     /// </param>
     /// <param name="dumpIdentity">
     ///     Set when the producer loads an MFT dump file. The index then treats the drive as a virtual
