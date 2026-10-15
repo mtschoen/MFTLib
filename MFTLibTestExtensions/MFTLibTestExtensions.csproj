@@ -14,7 +14,7 @@
     <IsPackable>true</IsPackable>
     <PackageId>MFTLib.TestExtensions</PackageId>
     <Authors>Matt Schoen</Authors>
-    <Description>Test isolation and synthetic journal helpers for MFTLib consumer test assemblies.</Description>
+    <Description>Consumer testing support for MFTLib on .NET 10: journal isolation, an in-process broker harness, scripted scans and watches, and synthetic index blocks, rows, notifications, and journal data. Targets MFTLib's platform capabilities: Windows x64 supports live NTFS volume scans, USN journal change tracking, an elevated broker, MFT dump parsing, and directory enumeration; Linux x64 supports MFT dump parsing and directory enumeration.</Description>
     <PackageProjectUrl>https://github.com/mtschoen/MFTLib</PackageProjectUrl>
     <RepositoryUrl>https://github.com/mtschoen/MFTLib</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
