@@ -248,8 +248,8 @@ SyntheticBlock.Edit(path, 0x1234, editor =>
 - `Edit` opens an existing block and hands a `SyntheticBlockEditor` to the callback,
   then flushes and closes it. The editor sets attributes, marks sizes unknown
   (`MarkSizesUnknown` for every matching row, returning how many) or compaction needed,
-  and sets the scan timestamp through `Complete`. `SyntheticIndexInspection.ReadHeader(index, drive)`
-  reports the timestamp of an open index's block for a later edit after disposal.
+  and sets the scan timestamp through `Complete`. Read `status.Block!.ScanTimestamp`
+  from `index.Drives` to preserve the timestamp for a later edit after disposal.
   `SetProducerKind(ProducerKind.Mft)` turns a block
   written by an enumeration scan into one an index warm-starts without a producer and
   whose rows accept `FileIndexTestAccess.ApplyJournalEntries`.

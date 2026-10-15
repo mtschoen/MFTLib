@@ -323,7 +323,7 @@ rather than matching a suffix because `SearchQuery` and `ScriptedWatchSource` do
 is `ScanTimestamp`, a journal event's time is `Timestamp`, a byte size is `Size` with no unit suffix, a count
 ends in `Count`, and a bound is the property name followed by `Minimum` or `Maximum`. Applied in MFTLib and
 MFTLibTestExtensions: `SyntheticRow.LastWriteTime`, `ScanTimestamp` on `SyntheticBlockOptions`,
-`SyntheticDriveHeader` and `SyntheticMftProducer`, `CachedBlockFile.Size`, `IndexScanProgress.WrittenRowCount`
+`SyntheticMftProducer`, `CachedBlockFile.Size`, `IndexScanProgress.WrittenRowCount`
 and `ExpectedRowCount`, and `SearchQuery.SizeMinimum` and `SizeMaximum`. A parameter that takes a `DriveKey` is
 named `drive` (or `drives` for a sequence), never `driveLetter`
 ([MFTLib issue 479](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/479)).
@@ -335,6 +335,19 @@ NTFS structure (`UsnJournalSettings` and the test package's `SyntheticJournalWin
 the rule.
 
 **Revisit only if:** a new concept has no existing word, or an NTFS structure's own name conflicts with the rule.
+
+## Raw block-header inspection is internal test support
+
+**Decision (2026-10-14):** `SyntheticIndexInspection` and `SyntheticDriveHeader` are internal to
+`MFTLibTestExtensions`, available to `MFTLib.Tests` through its existing friend-assembly access.
+Consumer tests read `index.Root(drive).RecordKey.ProducerKind` for the producer and
+`status.Block!.LiveRowCount` for live inventory. `DriveBlockStatus.ScanTimestamp` supplies the stored scan time.
+
+**Reason:** the only consumer uses are two git-wizard assertions already answered by the index.
+Raw header row counts include unused slots, whereas live row counts express the inventory assertion.
+file-wizard has no consumer uses outside its MFTLib submodule.
+
+**Revisit only if:** a consumer test needs a block-header observation the public index cannot answer.
 
 ## Every way to obtain an index source is on MftIndexSources
 

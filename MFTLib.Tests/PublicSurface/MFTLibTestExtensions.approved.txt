@@ -114,22 +114,6 @@ MFTLibTestExtensions.SyntheticCacheTag :: method public static GetVersion(MFTLib
 MFTLibTestExtensions.SyntheticCacheTag :: type public static class
 MFTLibTestExtensions.SyntheticCheckpointLoss :: method public static WithJournalPositions(MFTLib.Index.JournalCheckpointLoss report, long checkpointUsn, long firstUsn, long nextUsn) : MFTLib.Index.JournalCheckpointLoss
 MFTLibTestExtensions.SyntheticCheckpointLoss :: type public static class
-MFTLibTestExtensions.SyntheticDriveHeader :: constructor public (MFTLib.Index.ProducerKind ProducerKind, uint RowCount, MFTLib.Index.CacheTag CacheTag, System.DateTime ScanTimestamp)
-MFTLibTestExtensions.SyntheticDriveHeader :: method public <Clone>$() : MFTLibTestExtensions.SyntheticDriveHeader
-MFTLibTestExtensions.SyntheticDriveHeader :: method public Deconstruct(out MFTLib.Index.ProducerKind ProducerKind, out uint RowCount, out MFTLib.Index.CacheTag CacheTag, out System.DateTime ScanTimestamp) : void
-MFTLibTestExtensions.SyntheticDriveHeader :: method public Equals(MFTLibTestExtensions.SyntheticDriveHeader? other) : bool
-MFTLibTestExtensions.SyntheticDriveHeader :: method public override Equals(object? obj) : bool
-MFTLibTestExtensions.SyntheticDriveHeader :: method public override GetHashCode() : int
-MFTLibTestExtensions.SyntheticDriveHeader :: method public override ToString() : string
-MFTLibTestExtensions.SyntheticDriveHeader :: method public static op_Equality(MFTLibTestExtensions.SyntheticDriveHeader? left, MFTLibTestExtensions.SyntheticDriveHeader? right) : bool
-MFTLibTestExtensions.SyntheticDriveHeader :: method public static op_Inequality(MFTLibTestExtensions.SyntheticDriveHeader? left, MFTLibTestExtensions.SyntheticDriveHeader? right) : bool
-MFTLibTestExtensions.SyntheticDriveHeader :: property public CacheTag { get; init; } : MFTLib.Index.CacheTag
-MFTLibTestExtensions.SyntheticDriveHeader :: property public ProducerKind { get; init; } : MFTLib.Index.ProducerKind
-MFTLibTestExtensions.SyntheticDriveHeader :: property public RowCount { get; init; } : uint
-MFTLibTestExtensions.SyntheticDriveHeader :: property public ScanTimestamp { get; init; } : System.DateTime
-MFTLibTestExtensions.SyntheticDriveHeader :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticDriveHeader>
-MFTLibTestExtensions.SyntheticIndexInspection :: method public static ReadHeader(MFTLib.Index.FileIndex index, MFTLib.Index.DriveKey drive) : MFTLibTestExtensions.SyntheticDriveHeader?
-MFTLibTestExtensions.SyntheticIndexInspection :: type public static class
 MFTLibTestExtensions.SyntheticIndexSource :: method public static Create(MFTLibTestExtensions.SyntheticMftProducer? producer = default, MFTLibTestExtensions.ScriptedWatchSource? watches = default) : MFTLib.Index.MftIndexSource
 MFTLibTestExtensions.SyntheticIndexSource :: type public static class
 MFTLibTestExtensions.SyntheticJournalCursor :: constructor public (ulong JournalIdentifier, long NextUsn)

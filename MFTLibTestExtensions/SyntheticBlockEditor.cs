@@ -111,7 +111,7 @@ public sealed class SyntheticBlockEditor
     }
 
     /// <summary>Replaces the scan timestamp and flushes the block.</summary>
-    /// <param name="completed">The new scan timestamp; <see cref="SyntheticDriveHeader.ScanTimestamp" /> from <see cref="SyntheticIndexInspection.ReadHeader" /> writes the stored one back.</param>
+    /// <param name="completed">The new UTC scan timestamp; use <see cref="DriveBlockStatus.ScanTimestamp" /> to preserve the timestamp reported by an open index.</param>
     public void Complete(DateTime completed)
     {
         EnsureOpen();

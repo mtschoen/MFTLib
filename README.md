@@ -71,7 +71,7 @@ of the `MFTLib` package. It provides test hooks and scripted types: `BrokerDiagn
 `InProcessBrokerScan`, `JournalIsolation`, `ScriptedBrokerVolumes`, `ScriptedDriveWatch`,
 `ScriptedScan`, `ScriptedWatchSource`, `ScriptedWatchStart`, `SyntheticBlock`,
 `SyntheticBlockEditor`, `SyntheticBlockOptions`, `SyntheticCacheTag`, `SyntheticCheckpointLoss`,
-`SyntheticDriveHeader`, `SyntheticIndexInspection`, `SyntheticIndexSource`, `SyntheticJournalCursor`,
+`SyntheticIndexSource`, `SyntheticJournalCursor`,
 `SyntheticJournalReason`, `SyntheticJournalRecord`, `SyntheticJournalWindow`, `SyntheticMftProducer`,
 `SyntheticNotifications`, `SyntheticRow`, and `SyntheticScanRecord`.
 
