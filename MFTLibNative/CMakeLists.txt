@@ -36,7 +36,6 @@ add_library(MFTLibNative SHARED ${SOURCES})
 
 target_include_directories(MFTLibNative PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/core
 )
 
 if(UNIX)

@@ -44,7 +44,7 @@ public partial class NativeCoverageTests
             using var input = MFTLibNative.OpenMftDumpInput(MFTLibNative.NullTerminatedUtf8(path), out var info);
             Assert.IsFalse(input.IsInvalid, info.ErrorMessage);
             NativeTestHooks.NativeSetAllocFailCountdown(mode);
-            var pointer = MFTLibNative.ParseMftDumpInput(input, 256, IntPtr.Zero, null, IntPtr.Zero);
+            var pointer = MFTLibNative.ParseMftDumpInput(input, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, pointer);
             try
             {
@@ -61,7 +61,7 @@ public partial class NativeCoverageTests
 
             NativeTestHooks.NativeResetTestState();
             NativeTestHooks.NativeSetMaxThreads(2);
-            pointer = MFTLibNative.ParseMftDumpInput(input, 256, IntPtr.Zero, null, IntPtr.Zero);
+            pointer = MFTLibNative.ParseMftDumpInput(input, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, pointer);
             try
             {
@@ -93,13 +93,13 @@ public partial class NativeCoverageTests
             using var input = MFTLibNative.OpenMftDumpInput(MFTLibNative.NullTerminatedUtf8(path), out var info);
             Assert.IsFalse(input.IsInvalid, info.ErrorMessage);
             var pointer = MFTLibNative.ParseMftDumpInput(input, 256, IntPtr.Zero,
-                (records, _, _, _) =>
+                (records, _, _) =>
                 {
                     if (records == 256)
                     {
                         NativeTestHooks.NativeSetAllocFailCountdown(-1);
                     }
-                }, IntPtr.Zero);
+                });
             Assert.AreNotEqual(IntPtr.Zero, pointer);
             try
             {

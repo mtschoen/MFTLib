@@ -19,8 +19,7 @@ static class MFTLibNative
     internal static Func<uint> _getMftNativeAbiVersion = NativeGetMftNativeAbiVersion;
 
     // The bool asks for freed base records too. The IntPtr after bufferSizeRecords is the caller's
-    // MftParseControl block, or zero for none. The callback carries its own state, so the native
-    // context argument is always zero.
+    // MftParseControl block, or zero for none. The callback retains its managed closure state.
     internal static Func<SafeHandle, bool, uint, IntPtr, NativeMftProgressCallback?, IntPtr>
         _parseMftRecordsWithProgress = NativeParseMFTRecordsWithProgressDefault;
 
@@ -38,7 +37,7 @@ static class MFTLibNative
         NativeMftProgressCallback? callback)
     {
         return NativeParseMFTRecordsWithProgress(volumeHandle, includeFreed ? 1u : 0u, bufferSizeRecords, control,
-            callback, IntPtr.Zero);
+            callback);
     }
 
     static bool NativeGenerateSyntheticMFTSized(string filePath, ulong recordCount, uint bufferSizeRecords,
@@ -65,7 +64,7 @@ static class MFTLibNative
 
     [DllImport(LibraryName, EntryPoint = "ParseMFTRecordsWithProgress", CallingConvention = CallingConvention.Cdecl)]
     static extern IntPtr NativeParseMFTRecordsWithProgress(SafeHandle volumeHandle, uint includeFreed,
-        uint bufferSizeRecords, IntPtr control, NativeMftProgressCallback? callback, IntPtr context);
+        uint bufferSizeRecords, IntPtr control, NativeMftProgressCallback? callback);
 
     [DllImport(LibraryName, EntryPoint = "FreeMftResult", CallingConvention = CallingConvention.Cdecl)]
     static extern void NativeFreeMftResult(IntPtr result);
@@ -87,7 +86,7 @@ static class MFTLibNative
 
     [DllImport(LibraryName, EntryPoint = "ParseMftDumpInput", CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr ParseMftDumpInput(MftDumpInputHandle input, uint bufferSizeRecords, IntPtr control,
-        NativeMftProgressCallback? callback, IntPtr context);
+        NativeMftProgressCallback? callback);
 
     [DllImport(LibraryName, EntryPoint = "CloseMftDumpInput", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void CloseMftDumpInput(IntPtr input);
@@ -134,6 +133,5 @@ static class MFTLibNative
     }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate void NativeMftProgressCallback(ulong recordsScanned, ulong totalRecords, double elapsedMs,
-        IntPtr context);
+    internal delegate void NativeMftProgressCallback(ulong recordsScanned, ulong totalRecords, double elapsedMs);
 }

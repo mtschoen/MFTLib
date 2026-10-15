@@ -88,8 +88,6 @@ inline auto RetryInterruptedSystemCall(Invocation invocation) {
 }
 #endif
 
-struct MftParseControl;
-
 // The parse thread count for one chunk: every processor when control
 // is null or its allowance is 0, otherwise the allowance clamped to [1, processors]. The
 // SetMaxThreads test hook caps the result. Defined in core/test_hooks.cpp.
@@ -120,6 +118,12 @@ class ParseThreadRecording {
 };
 
 // Test hook declarations (defined in core/test_hooks.cpp)
+extern "C" {
+EXPORT void SetAllocFailCountdown(int countdown);
+EXPORT void SetReadFailCountdown(int countdown);
+EXPORT void SetMaxThreads(unsigned maximumThreads);
+EXPORT void ResetTestState();
+}
 bool ShouldFailAllocation();
 // Negative SetAllocFailCountdown modes inject exceptions without adding ABI exports.
 enum class ExceptionTestPoint : int8_t {

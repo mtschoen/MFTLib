@@ -181,7 +181,7 @@ public partial class DumpParseNativeTests
             NativeTestHooks.NativeSetAllocFailCountdown(allocationToFail);
         }
 
-        return MFTLibNative.ParseMftDumpInput(input, bufferSizeRecords, IntPtr.Zero, null, IntPtr.Zero);
+        return MFTLibNative.ParseMftDumpInput(input, bufferSizeRecords, IntPtr.Zero, null);
     }
 
     static MftParseResult ParseHeader(string path, uint bufferSizeRecords, int allocationToFail = 0)

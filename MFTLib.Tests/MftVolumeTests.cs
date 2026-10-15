@@ -27,7 +27,7 @@ public partial class MftVolumeTests
         // progress.Report), while the parse itself still succeeds normally.
         MftProgressParseFixture.ConfigureSingleRecordParse(callback =>
         {
-            callback?.Invoke(1, 10, double.NaN, IntPtr.Zero);
+            callback?.Invoke(1, 10, double.NaN);
         });
 
         var reported = new List<MftScanProgress>();
@@ -55,9 +55,9 @@ public partial class MftVolumeTests
 
         MftProgressParseFixture.ConfigureSingleRecordParse(callback =>
         {
-            callback?.Invoke(1, 3, 10, IntPtr.Zero);
-            callback?.Invoke(2, 3, 20, IntPtr.Zero);
-            callback?.Invoke(3, 3, 30, IntPtr.Zero);
+            callback?.Invoke(1, 3, 10);
+            callback?.Invoke(2, 3, 20);
+            callback?.Invoke(3, 3, 30);
             receivedCountAtReturn = receivedCount;
         });
 
@@ -80,8 +80,8 @@ public partial class MftVolumeTests
         // must still complete, and later samples must still reach the consumer.
         MftProgressParseFixture.ConfigureSingleRecordParse(callback =>
         {
-            callback?.Invoke(1, 2, 10, IntPtr.Zero);
-            callback?.Invoke(2, 2, 20, IntPtr.Zero);
+            callback?.Invoke(1, 2, 10);
+            callback?.Invoke(2, 2, 20);
         });
 
         var reported = new List<MftScanProgress>();

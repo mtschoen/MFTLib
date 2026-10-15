@@ -387,9 +387,6 @@ extern "C" {
 // Path is UTF-8 on every platform.
 EXPORT bool GenerateSyntheticMFTSizedUtf8(const char* filePath, uint64_t recordCount, uint32_t bufferSizeRecords,
                                           uint32_t recordSize) {
-    if (!IsSupportedRecordSize(recordSize)) {
-        return false;
-    }
     return NativeBoundary(
         [&]() { return GenerateSyntheticMFTImpl(filePath, RecordCount{recordCount}, bufferSizeRecords, recordSize); },
         [](const wchar_t*) { return false; });

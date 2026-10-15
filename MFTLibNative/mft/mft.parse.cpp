@@ -258,8 +258,7 @@ const wchar_t* MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEA
 
 // Parses every allocated base record of a volume; includeFreed nonzero also emits freed base records.
 MftParseResult* ParseVolume(HANDLE volumeHandle, uint32_t includeFreed, uint32_t bufferSizeRecords,
-                            const MftParseControl* control, MftProgressCallback callback, void* context,
-                            MftParseResult*& result) {
+                            const MftParseControl* control, MftProgressCallback callback, MftParseResult*& result) {
     if (volumeHandle == INVALID_HANDLE_VALUE) {
         SetErrorMessage(result->errorMessage, L"Volume handle is invalid");
         return result;
@@ -361,8 +360,7 @@ MftParseResult* ParseVolume(HANDLE volumeHandle, uint32_t includeFreed, uint32_t
                              VolumeReadIncomplete,
                              false,
                              kIncompleteVolumeReadMessage};
-    return ParseMFTImpl(source,
-                        ParseRequest{includeFreed != 0, readContext.bufferSizeRecords, control, callback, context});
+    return ParseMFTImpl(source, ParseRequest{includeFreed != 0, readContext.bufferSizeRecords, control, callback});
 }
 
 }  // namespace
@@ -380,15 +378,13 @@ EXPORT void FreeMftResult(MftParseResult* result) {
 
 EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, uint32_t includeFreed,
                                                    uint32_t bufferSizeRecords, const MftParseControl* control,
-                                                   MftProgressCallback callback, void* context) {
+                                                   MftProgressCallback callback) {
     auto* result = CreateParseResult();
     if (result == nullptr) {
         return nullptr;
     }
     return NativeBoundary(
-        [&]() {
-            return ParseVolume(volumeHandle, includeFreed, bufferSizeRecords, control, callback, context, result);
-        },
+        [&]() { return ParseVolume(volumeHandle, includeFreed, bufferSizeRecords, control, callback, result); },
         [&](const wchar_t* message) {
             if (result != nullptr) {
                 SetErrorMessage(result->errorMessage, message);

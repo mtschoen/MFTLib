@@ -181,9 +181,10 @@ struct ProgressReport {
     double elapsedMs;
 };
 
-void CollectProgress(uint64_t recordsScanned, uint64_t totalRecords, double elapsedMs, void* context) {
-    auto* reports = static_cast<std::vector<ProgressReport>*>(context);
-    reports->push_back({recordsScanned, totalRecords, elapsedMs});
+thread_local std::vector<ProgressReport> progressReports;
+
+void CollectProgress(uint64_t recordsScanned, uint64_t totalRecords, double elapsedMs) {
+    progressReports.push_back({recordsScanned, totalRecords, elapsedMs});
 }
 
 // True when every report advances the scanned count and never passes the total, and the last
@@ -213,8 +214,9 @@ bool test_progress_callback() {
     if (!generate_fixture()) {
         return false;
     }
-    std::vector<ProgressReport> reports;
-    MftParseResult* result = parse_dump(kFixturePath, 1, nullptr, CollectProgress, &reports);
+    auto& reports = progressReports;
+    reports.clear();
+    MftParseResult* result = parse_dump(kFixturePath, 1, nullptr, CollectProgress);
     bool ok = result != nullptr && result->usedRecords > 0 && !reports.empty() &&
               CheckMonotonicProgress(reports, result->totalRecords);
     if (ok && reports.size() != result->totalRecords) {
@@ -268,8 +270,9 @@ bool test_parallel_progress_monotonicity() {
         return false;
     }
     SetMaxThreads(8);
-    std::vector<ProgressReport> reports;
-    MftParseResult* result = parse_dump(kFixtureParallel, kChunkRecords, nullptr, CollectProgress, &reports);
+    auto& reports = progressReports;
+    reports.clear();
+    MftParseResult* result = parse_dump(kFixtureParallel, kChunkRecords, nullptr, CollectProgress);
     SetMaxThreads(0);
     ResetTestState();
 

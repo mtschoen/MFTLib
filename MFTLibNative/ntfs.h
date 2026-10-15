@@ -38,7 +38,6 @@ using UPDATE_SEQUENCE_NUMBER = USHORT;
 // NOLINTNEXTLINE(modernize-avoid-c-arrays): on-disk NTFS update-sequence-array layout type
 using UPDATE_SEQUENCE_ARRAY = UPDATE_SEQUENCE_NUMBER[1];
 
-constexpr uint32_t DEFAULT_FILE_RECORD_SIZE = 1024;
 constexpr uint32_t MINIMUM_FILE_RECORD_SIZE = 512;
 constexpr uint32_t MAXIMUM_FILE_RECORD_SIZE = 65536;
 constexpr uint32_t kFileRecordMagic = 0x454C4946;
@@ -58,19 +57,7 @@ enum ATTRIBUTE_TYPE_CODE : uint32_t {
     StandardInformation = 0x10,
     AttributeList = 0x20,
     FileName = 0x30,
-    ObjectId = 0x40,
-    SecurityDescriptor = 0x50,
-    VolumeName = 0x60,
-    VolumeInformation = 0x70,
     Data = 0x80,
-    IndexRoot = 0x90,
-    IndexAllocation = 0xA0,
-    Bitmap = 0xB0,
-    ReparsePoint = 0xC0,
-    EAInformation = 0xD0,
-    EA = 0xE0,
-    PropertySet = 0xF0,
-    LoggedUtilityStream = 0x100,
     EndMarker = 0xFFFFFFFF
 };
 

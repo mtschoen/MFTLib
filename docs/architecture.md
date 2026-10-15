@@ -106,6 +106,8 @@
 
     - **ABI versioning**: `MFTLibNative.EnsureCompatibleNativeAbi()` checks the native ABI version once, before any parse, and `MftResult`'s constructor checks the entry stride of each result; both throw `InvalidOperationException` immediately on a managed/native mismatch instead of decoding mismatched memory. `MftDumpInput.Open` makes the same check before it opens a file.
 
+    - **Native export header**: `MFTLibNative/mft_api.h` declares every production C-linkage export, with the USN read/watch exports guarded by `_WIN32`. The volume and dump parse exports take a `MftProgressCallback` that receives `recordsScanned`, `totalRecords` and `elapsedMs`. Progress runs synchronously on the calling parse thread after each merged chunk; the managed delegate retains its closure state for the full parse. Native and managed binaries are built and deployed together from the same revision under ABI version 8.
+
     - **Per-drive producer**: `IndexedDrive` carries `(Drive, RootDirectory, VolumeSerial,
       Producer = ProducerKind.Mft)`. Each drive selects its own producer for initial scans
       and rescans, so one index can combine MFT-scanned drives with directory-walked drives.

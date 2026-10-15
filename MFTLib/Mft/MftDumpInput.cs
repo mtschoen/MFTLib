@@ -104,8 +104,7 @@ internal sealed class MftDumpInput : IDisposable
             ? options.BufferSizeRecords
             : LiveVolumeSources.HostScanChunkRecords(RecordSize);
         return MftVolume.ParseToResult(
-            (control, callback) => MFTLibNative.ParseMftDumpInput(_handle, bufferSizeRecords, control, callback,
-                IntPtr.Zero),
+            (control, callback) => MFTLibNative.ParseMftDumpInput(_handle, bufferSizeRecords, control, callback),
             "ParseMftDumpInput", options.Progress, options.ParseThreads, options.CancellationToken);
     }
 

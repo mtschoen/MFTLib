@@ -206,7 +206,6 @@ bool ParseChunkParallel(uint8_t* buffer, ChunkSpan chunk, unsigned threadCount, 
 
 struct ProgressHook {
     MftProgressCallback callback = nullptr;
-    void* context = nullptr;
     SteadyClock::time_point wallStart;
 };
 
@@ -266,7 +265,7 @@ ParseOutcome ParseAllChunks(ChunkReader& reader, const ScanContext& scan, ParseS
 
         if (progress.callback != nullptr) {
             double elapsedMs = ElapsedMs(progress.wallStart, SteadyClock::now());
-            progress.callback(recordIndex, scan.totalRecords, elapsedMs, progress.context);
+            progress.callback(recordIndex, scan.totalRecords, elapsedMs);
             lastReportedRecords = recordIndex;
         }
 
@@ -284,7 +283,7 @@ ParseOutcome ParseAllChunks(ChunkReader& reader, const ScanContext& scan, ParseS
 
     if (progress.callback != nullptr && lastReportedRecords < scan.totalRecords) {
         double elapsedMs = ElapsedMs(progress.wallStart, SteadyClock::now());
-        progress.callback(scan.totalRecords, scan.totalRecords, elapsedMs, progress.context);
+        progress.callback(scan.totalRecords, scan.totalRecords, elapsedMs);
     }
 
     return ParseOutcome::Completed;
@@ -362,7 +361,7 @@ MftParseResult* ParseMFTImpl(const ParseSource& source, const ParseRequest& requ
 
             const ScanContext scan{request.includeFreed, totalRecords, geometry, control, source.rejectInvalidFixup};
             ChunkReader reader{&source, &chunkBuffers};
-            ProgressHook progress{request.callback, request.progressContext, wallStart};
+            ProgressHook progress{request.callback, wallStart};
             const ParseOutcome outcome = ParseAllChunks(reader, scan, state, result, progress);
 
             if (outcome == ParseOutcome::Cancelled) {

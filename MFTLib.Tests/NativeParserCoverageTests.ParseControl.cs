@@ -236,7 +236,7 @@ public partial class NativeParserCoverageTests
     static MftParseResult ParseImage(string path, ParseControlBlock control,
         ControlProgressObserver? onProgress = null, uint bufferSizeRecords = 64)
     {
-        MFTLibNative.NativeMftProgressCallback callback = (scanned, total, _, _) =>
+        MFTLibNative.NativeMftProgressCallback callback = (scanned, total, _) =>
             onProgress?.Invoke(control, scanned, total);
         var result = ParseVolumeExport(path, control.Pointer, callback, bufferSizeRecords);
         GC.KeepAlive(callback);

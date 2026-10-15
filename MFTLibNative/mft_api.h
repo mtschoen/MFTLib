@@ -31,7 +31,7 @@ constexpr size_t MFT_ERROR_MESSAGE_UNITS = 256;
 // because the size is unknown rather than because the file is empty.
 constexpr uint16_t MFT_ENTRY_FLAG_SIZE_UNKNOWN = 0x8000;
 
-using MftProgressCallback = void (*)(uint64_t recordsScanned, uint64_t totalRecords, double elapsedMs, void* context);
+using MftProgressCallback = void (*)(uint64_t recordsScanned, uint64_t totalRecords, double elapsedMs);
 
 // Caller-owned, kept in place for the whole parse call. The caller may write either field while
 // the parse runs; the parser only reads them, atomically. cancelRequested nonzero asks the parse
@@ -144,4 +144,24 @@ static_assert(sizeof(UsnJournalResult) == 536 + sizeof(UsnJournalEntry*),
 
 extern "C" {
 EXPORT uint32_t GetMftNativeAbiVersion();
+EXPORT MftParseResult* ParseMFTRecordsWithProgress(void* volumeHandle, uint32_t includeFreed,
+                                                   uint32_t bufferSizeRecords, const MftParseControl* control,
+                                                   MftProgressCallback callback);
+EXPORT void FreeMftResult(MftParseResult* result);
+EXPORT MftDumpInput* OpenMftDumpInput(const char* filePathUtf8, MftDumpInputInfo* info);
+EXPORT MftParseResult* ParseMftDumpInput(const MftDumpInput* input, uint32_t bufferSizeRecords,
+                                         const MftParseControl* control, MftProgressCallback callback);
+EXPORT void CloseMftDumpInput(MftDumpInput* input);
+EXPORT bool GenerateSyntheticMFTSizedUtf8(const char* filePath, uint64_t recordCount, uint32_t bufferSizeRecords,
+                                          uint32_t recordSize);
+EXPORT bool GenerateFixtureMFTUtf8(const char* filePath);
+
+#ifdef _WIN32
+EXPORT UsnJournalResult* ReadUsnJournal(void* volumeHandle, int64_t startUsn, uint64_t journalIdentifier,
+                                        uint32_t maximumBufferReads);
+EXPORT void FreeUsnJournalResult(const UsnJournalResult* result);
+EXPORT UsnJournalResult* WatchUsnJournalBatchCancelable(void* volumeHandle, int64_t startUsn,
+                                                        uint64_t journalIdentifier, void* cancellationEvent);
+EXPORT int CancelUsnJournalWatch(void* volumeHandle);
+#endif
 }

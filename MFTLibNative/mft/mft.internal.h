@@ -214,10 +214,9 @@ struct ParseRequest {
     uint32_t bufferSizeRecords = 0;
     const MftParseControl* control = nullptr;
     MftProgressCallback callback = nullptr;
-    void* progressContext = nullptr;
 };
 
-// A zeroed result carrying the ABI version and entry stride, and message when one is given.
+// A zeroed result carrying the entry stride, and message when one is given.
 // Null when the allocation fails.
 MftParseResult* CreateParseResult(const wchar_t* message = nullptr);
 

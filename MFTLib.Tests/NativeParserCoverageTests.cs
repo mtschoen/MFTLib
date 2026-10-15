@@ -132,7 +132,7 @@ public partial class NativeParserCoverageTests
             File.WriteAllBytes(path, data);
 
             var invocations = new List<(ulong Scanned, ulong Total)>();
-            MFTLibNative.NativeMftProgressCallback callback = (scanned, total, _, _) =>
+            MFTLibNative.NativeMftProgressCallback callback = (scanned, total, _) =>
                 invocations.Add((scanned, total));
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -184,7 +184,7 @@ public partial class NativeParserCoverageTests
             File.WriteAllBytes(path, data);
 
             var invocations = new List<(ulong Scanned, ulong Total)>();
-            MFTLibNative.NativeMftProgressCallback callback = (scanned, total, _, _) =>
+            MFTLibNative.NativeMftProgressCallback callback = (scanned, total, _) =>
                 invocations.Add((scanned, total));
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);

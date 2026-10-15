@@ -45,7 +45,7 @@ bool test_dump_input_round_trip() {
     if (testPassed) {
         // The path is removed after the open: the parse still reads the opened file.
         std::remove(kDumpInputPath);
-        MftParseResult* parseResult = ParseMftDumpInput(input, 4, nullptr, nullptr, nullptr);
+        MftParseResult* parseResult = ParseMftDumpInput(input, 4, nullptr, nullptr);
         testPassed = parseResult != nullptr && parseResult->errorMessage[0] == 0 && parseResult->invalidInput == 0 &&
                      parseResult->totalRecords == kDumpInputRecords && parseResult->usedRecords > 0 &&
                      parseResult->entryStride == 52;
@@ -135,7 +135,7 @@ bool dump_input_changed_length_is_incomplete(off_t newLength) {
     MftDumpInput* input = OpenMftDumpInput(kDumpInputPath, &info);
     bool testPassed = input != nullptr && truncate(kDumpInputPath, newLength) == 0;
     if (testPassed) {
-        MftParseResult* parseResult = ParseMftDumpInput(input, 4, nullptr, nullptr, nullptr);
+        MftParseResult* parseResult = ParseMftDumpInput(input, 4, nullptr, nullptr);
         testPassed = parseResult != nullptr && parseResult->invalidInput == 1 && parseResult->entries == nullptr &&
                      message_is(parseResult->errorMessage, "The dump file could not be read completely.");
         if (parseResult != nullptr) {
@@ -155,7 +155,7 @@ bool test_dump_input_changed_length() {
 }
 
 bool test_dump_input_null_arguments() {
-    MftParseResult* parseResult = ParseMftDumpInput(nullptr, 4, nullptr, nullptr, nullptr);
+    MftParseResult* parseResult = ParseMftDumpInput(nullptr, 4, nullptr, nullptr);
     const bool testPassed = OpenMftDumpInput(kDumpInputPath, nullptr) == nullptr && parseResult != nullptr &&
                             parseResult->invalidInput == 0 &&
                             message_is(parseResult->errorMessage, "Dump input is invalid");

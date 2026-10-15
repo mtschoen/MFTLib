@@ -192,7 +192,7 @@ internal sealed partial class MftVolume : IDisposable
     static MFTLibNative.NativeMftProgressCallback? CreateNativeProgressCallback(IProgress<MftScanProgress>? progress)
     {
         return progress != null
-            ? (recordsScanned, totalRecords, elapsedMs, _) =>
+            ? (recordsScanned, totalRecords, elapsedMs) =>
             {
                 try
                 {

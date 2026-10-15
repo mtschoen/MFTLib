@@ -37,6 +37,7 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 - The MFT record size is detected at runtime instead of assumed to be 1024 bytes. A live volume accepts power-of-two sizes from 512 through 65536 bytes, and a saved dump accepts 1024 or 4096.
 - Elevation runs through `IElevationProvider`, reached by `ElevationUtilities.DefaultProvider`. `TryRunElevated` takes an argument list and a `TimeSpan`, and passes each argument separately.
 - Self-elevation returns false without attempting UAC when no interactive desktop is available, such as in CI or a service.
+- Native ABI 8 uses a three-value progress callback (`recordsScanned`, `totalRecords`, `elapsedMs`) for volume and dump parses. `mft_api.h` is the shared declaration source for all production native exports. Consumer submodule updates rebuild and deploy the native library and managed assembly from the same revision.
 
 ### Removed
 

@@ -12,20 +12,6 @@
 #include "mft_api.h"
 #include "ntfs.h"
 
-extern "C" bool GenerateSyntheticMFTSizedUtf8(const char* filePath, uint64_t recordCount, uint32_t bufferSizeRecords,
-                                              uint32_t recordSize);
-extern "C" bool GenerateFixtureMFTUtf8(const char* filePath);
-extern "C" void FreeMftResult(MftParseResult* result);
-extern "C" MftDumpInput* OpenMftDumpInput(const char* filePathUtf8, MftDumpInputInfo* info);
-extern "C" MftParseResult* ParseMftDumpInput(const MftDumpInput* input, uint32_t bufferSizeRecords,
-                                             const MftParseControl* control, MftProgressCallback callback,
-                                             void* context);
-extern "C" void CloseMftDumpInput(MftDumpInput* input);
-extern "C" void SetAllocFailCountdown(int countdown);
-extern "C" void SetReadFailCountdown(int countdown);
-extern "C" void SetMaxThreads(unsigned maximumThreads);
-extern "C" void ResetTestState();
-
 namespace {
 
 constexpr uint64_t kDefaultRecordCount = 1024;
@@ -49,13 +35,13 @@ bool message_is(const MftMessageChar* message, const char* expected) {
 
 // Opens, parses and closes one dump. Null when the open or the result allocation fails.
 MftParseResult* parse_dump(const char* path, uint32_t bufferRecords, const MftParseControl* control = nullptr,
-                           MftProgressCallback callback = nullptr, void* context = nullptr) {
+                           MftProgressCallback callback = nullptr) {
     MftDumpInputInfo info{};
     MftDumpInput* input = OpenMftDumpInput(path, &info);
     if (input == nullptr) {
         return nullptr;
     }
-    MftParseResult* parseResult = ParseMftDumpInput(input, bufferRecords, control, callback, context);
+    MftParseResult* parseResult = ParseMftDumpInput(input, bufferRecords, control, callback);
     CloseMftDumpInput(input);
     return parseResult;
 }
@@ -294,7 +280,7 @@ bool test_allocation_failure_path() {
         remove_fixture();
         return false;
     }
-    MftParseResult* parseResult = ParseMftDumpInput(input, kDefaultBufferRecords, nullptr, nullptr, nullptr);
+    MftParseResult* parseResult = ParseMftDumpInput(input, kDefaultBufferRecords, nullptr, nullptr);
     const bool testPassed = parseResult == nullptr;
     if (!testPassed) {
         std::fprintf(stderr, "  FAIL: result allocation failure still returned a result (used=%llu)\n",
@@ -315,7 +301,7 @@ bool test_string_pool_allocation_failure() {
         remove_fixture();
         return false;
     }
-    MftParseResult* parseResult = ParseMftDumpInput(input, kDefaultBufferRecords, nullptr, nullptr, nullptr);
+    MftParseResult* parseResult = ParseMftDumpInput(input, kDefaultBufferRecords, nullptr, nullptr);
     const bool testPassed = parseResult != nullptr && parseResult->usedRecords == 0 &&
                             message_is(parseResult->errorMessage, "Failed to allocate string pool");
     if (parseResult != nullptr) {

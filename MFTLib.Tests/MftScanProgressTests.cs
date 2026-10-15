@@ -38,7 +38,7 @@ public class MftScanProgressTests
     {
         MftProgressParseFixture.ConfigureSingleRecordParse(callback =>
         {
-            callback?.Invoke(1, 10, 15.0, IntPtr.Zero);
+            callback?.Invoke(1, 10, 15.0);
         });
 
         var reported = new List<MftScanProgress>();
@@ -61,8 +61,8 @@ public class MftScanProgressTests
 
         MftProgressParseFixture.ConfigureSingleRecordParse(callback =>
         {
-            callback?.Invoke(1, 10, 15.0, IntPtr.Zero);
-            callback?.Invoke(5, 10, 30.0, IntPtr.Zero);
+            callback?.Invoke(1, 10, 15.0);
+            callback?.Invoke(5, 10, 30.0);
             reportedDuringParse = reported.Count;
         });
 
@@ -82,7 +82,7 @@ public class MftScanProgressTests
     {
         MftProgressParseFixture.ConfigureSingleRecordParse(callback =>
         {
-            callback?.Invoke(1, 10, 15.0, IntPtr.Zero);
+            callback?.Invoke(1, 10, 15.0);
         });
 
         var throwingProgress = new SynchronousProgress<MftScanProgress>(
