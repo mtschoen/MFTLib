@@ -35,46 +35,8 @@ jobs:
           EVENT_BEFORE: ${{ github.event.before }}
           EVENT_AFTER: ${{ github.event.after }}
         run: |
-          $skipBuild = $false
-          try {
-            if ($env:GITHUB_EVENT_NAME -eq "pull_request" -and $env:GITHUB_BASE_REF) {
-              git fetch --depth=1 origin $env:GITHUB_BASE_REF 2>$null
-              if ($LASTEXITCODE -eq 0) {
-                $changed = @(git diff --no-renames --name-only FETCH_HEAD HEAD 2>$null | Where-Object { $_ -and $_.Trim() -ne "" })
-                Write-Host "Changed files vs $($env:GITHUB_BASE_REF):"
-                $changed | ForEach-Object { Write-Host $_ }
-                if ($changed.Count -gt 0) {
-                  $nonMatching = $changed | Where-Object {
-                    $norm = $_.Trim().Replace('\', '/')
-                    $norm -notmatch '^(\.aislop/fork-commit|docs/.*|[^/]+\.md)$'
-                  }
-                  if ($nonMatching.Count -eq 0) {
-                    $skipBuild = $true
-                  }
-                }
-              }
-            } elseif ($env:GITHUB_EVENT_NAME -eq "push" -and $env:EVENT_BEFORE -and $env:EVENT_BEFORE -ne "0000000000000000000000000000000000000000") {
-              git fetch --depth=1 origin $env:EVENT_BEFORE 2>$null
-              if ($LASTEXITCODE -eq 0) {
-                $changed = @(git diff --no-renames --name-only $env:EVENT_BEFORE $env:EVENT_AFTER 2>$null | Where-Object { $_ -and $_.Trim() -ne "" })
-                Write-Host "Changed files ($($env:EVENT_BEFORE)..$($env:EVENT_AFTER)):"
-                $changed | ForEach-Object { Write-Host $_ }
-                if ($changed.Count -gt 0) {
-                  $nonMatching = $changed | Where-Object {
-                    $norm = $_.Trim().Replace('\', '/')
-                    $norm -notmatch '^(\.aislop/fork-commit|docs/.*|[^/]+\.md)$'
-                  }
-                  if ($nonMatching.Count -eq 0) {
-                    $skipBuild = $true
-                  }
-                }
-              }
-            }
-          } catch {
-            Write-Host "Changed-file detection failed, running the job in full: $_"
-            $skipBuild = $false
-          }
-          "skip_build=$($skipBuild.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          bash scripts/ci-changed-files.sh
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Setup MSBuild
         if: steps.changed-files.outputs.skip_build != 'true'
@@ -88,6 +50,11 @@ jobs:
           $resolver = Join-Path $env:SCHOEN_LAB_TOOL_STORE_ROOT "resolver/use-tool.ps1"
           & pwsh -NoProfile -File $resolver reportgenerator --add-to-path
           if ($LASTEXITCODE -ne 0) { throw "ReportGenerator is not provisioned; run runner-converge" }
+
+      - name: Test the CI preflight dispatcher
+        if: steps.changed-files.outputs.skip_build != 'true'
+        shell: bash
+        run: bash scripts/ci-preflight.tests.sh
 
       - name: Test Windows build script
         if: steps.changed-files.outputs.skip_build != 'true'
@@ -328,44 +295,7 @@ jobs:
         env:
           EVENT_BEFORE: ${{ github.event.before }}
           EVENT_AFTER: ${{ github.event.after }}
-        run: |
-          SKIP_BUILD=false
-          check_files() {
-            local changed="$1"
-            local count=0
-            local all_matched=true
-            if [ -n "$changed" ]; then
-              while IFS= read -r file; do
-                file="${file%$'\r'}"
-                [ -z "$file" ] && continue
-                count=$((count + 1))
-                if [[ ! "$file" =~ ^(\.aislop/fork-commit|docs/.*|[^/]+\.md)$ ]]; then
-                  all_matched=false
-                  break
-                fi
-              done <<< "$changed"
-              if [ "$count" -gt 0 ] && [ "$all_matched" = true ]; then
-                SKIP_BUILD=true
-              fi
-            fi
-          }
-
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] && [ -n "$GITHUB_BASE_REF" ]; then
-            if git fetch --depth=1 origin "$GITHUB_BASE_REF" 2>/dev/null; then
-              CHANGED=$(git diff --no-renames --name-only FETCH_HEAD HEAD 2>/dev/null || true)
-              echo "Changed files vs $GITHUB_BASE_REF:"
-              echo "$CHANGED"
-              check_files "$CHANGED"
-            fi
-          elif [ "$GITHUB_EVENT_NAME" = "push" ] && [ -n "$EVENT_BEFORE" ] && [ "$EVENT_BEFORE" != "0000000000000000000000000000000000000000" ]; then
-            if git fetch --depth=1 origin "$EVENT_BEFORE" 2>/dev/null; then
-              CHANGED=$(git diff --no-renames --name-only "$EVENT_BEFORE" "$EVENT_AFTER" 2>/dev/null || true)
-              echo "Changed files ($EVENT_BEFORE..$EVENT_AFTER):"
-              echo "$CHANGED"
-              check_files "$CHANGED"
-            fi
-          fi
-          echo "skip_build=$SKIP_BUILD" >> "$GITHUB_OUTPUT"
+        run: bash scripts/ci-changed-files.sh
 
       # Needs only bash, git and jq, all present on ubuntu-latest, so it runs
       # ahead of the toolchain setup and gives a fast signal on the fan-out
@@ -465,44 +395,7 @@ jobs:
         env:
           EVENT_BEFORE: ${{ github.event.before }}
           EVENT_AFTER: ${{ github.event.after }}
-        run: |
-          SKIP_BUILD=false
-          check_files() {
-            local changed="$1"
-            local count=0
-            local all_matched=true
-            if [ -n "$changed" ]; then
-              while IFS= read -r file; do
-                file="${file%$'\r'}"
-                [ -z "$file" ] && continue
-                count=$((count + 1))
-                if [[ ! "$file" =~ ^(\.aislop/fork-commit|docs/.*|[^/]+\.md)$ ]]; then
-                  all_matched=false
-                  break
-                fi
-              done <<< "$changed"
-              if [ "$count" -gt 0 ] && [ "$all_matched" = true ]; then
-                SKIP_BUILD=true
-              fi
-            fi
-          }
-
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] && [ -n "$GITHUB_BASE_REF" ]; then
-            if git fetch --depth=1 origin "$GITHUB_BASE_REF" 2>/dev/null; then
-              CHANGED=$(git diff --no-renames --name-only FETCH_HEAD HEAD 2>/dev/null || true)
-              echo "Changed files vs $GITHUB_BASE_REF:"
-              echo "$CHANGED"
-              check_files "$CHANGED"
-            fi
-          elif [ "$GITHUB_EVENT_NAME" = "push" ] && [ -n "$EVENT_BEFORE" ] && [ "$EVENT_BEFORE" != "0000000000000000000000000000000000000000" ]; then
-            if git fetch --depth=1 origin "$EVENT_BEFORE" 2>/dev/null; then
-              CHANGED=$(git diff --no-renames --name-only "$EVENT_BEFORE" "$EVENT_AFTER" 2>/dev/null || true)
-              echo "Changed files ($EVENT_BEFORE..$EVENT_AFTER):"
-              echo "$CHANGED"
-              check_files "$CHANGED"
-            fi
-          fi
-          echo "skip_build=$SKIP_BUILD" >> "$GITHUB_OUTPUT"
+        run: bash scripts/ci-changed-files.sh
 
       - name: Build the Release library and run its smoke test
         if: steps.changed-files.outputs.skip_build != 'true'

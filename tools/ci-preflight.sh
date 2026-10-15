@@ -63,7 +63,7 @@ preflight_gate() {
 }
 
 preflight_main() {
-    local mode='' base='' platform skip_build=false changed file
+    local mode='' base='' platform skip_build=false changed classification classifier_script
     local passed=0 failed=0 unavailable=0
     local -a scopes=()
     while [[ $# -gt 0 ]]; do
@@ -91,17 +91,14 @@ preflight_main() {
     platform="$(preflight_platform)"
     printf 'Preflight; host %s; selection %s\n' "$platform" "$mode"
     if [[ "$mode" == changed ]]; then
+        classifier_script="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/changed-files.sh"
         if changed="$(preflight_changed_paths "$base")"; then
-            if [[ -n "$changed" ]]; then
-                skip_build=true
-                while IFS= read -r file; do
-                    file="${file%$'\r'}"
-                    [[ -z "$file" ]] && continue
-                    if [[ ! "$file" =~ ^(\.aislop/fork-commit|docs/.*|[^/]+\.md)$ ]]; then
-                        skip_build=false
-                        break
-                    fi
-                done <<< "$changed"
+            if classification="$(printf '%s' "$changed" | bash "$classifier_script")"; then
+                if [[ "$classification" == true ]]; then
+                    skip_build=true
+                fi
+            else
+                printf 'changed-file classification failed; running all gates\n'
             fi
         else
             printf 'changed-file inspection failed; running all gates\n'

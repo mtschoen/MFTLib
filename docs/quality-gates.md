@@ -4,7 +4,36 @@
 
 Gitea Actions workflow at `.gitea/workflows/test.yml` defines four jobs on every PR and on push to `main` or to a `pr-crew/merge-train/**` branch (the merge train validates a batch there before landing it): `windows`, `linux`, `docs`, and `linux-package`. The coverage jobs (`windows` and `linux`) run their respective coverage scripts (`scripts/run-coverage.ps1 -NonInteractive` and `scripts/coverage-linux.sh`). Branch protection on `main` requires the `test / windows`, `test / linux`, `test / linux-package` and `aislop / quality-gate` `(pull_request)` checks to pass before merge; the `test / docs (pull_request)` check runs on every pull request but is not a required check.
 
-The `windows`, `linux`, and `linux-package` jobs each begin with a changed-files detection step (`skip_build`). When every changed path is `.aislop/fork-commit`, under `docs/`, or a top-level markdown file (`*.md` at the repository root, including `AGENTS.md`), these three jobs skip their compilation, test, and packaging steps and finish green. Any detection error or unhandled diff fails open and runs the jobs in full. Workflow-level `paths` or `paths-ignore` filters are avoided because they leave required status checks pending permanently on Gitea (issue 36895).
+The `windows`, `linux`, and `linux-package` jobs begin with `id: changed-files`.
+All three call `bash scripts/ci-changed-files.sh`; Windows launches it from
+PowerShell using runner-provisioned Git Bash. The adapter writes
+`skip_build=true|false` to `GITHUB_OUTPUT`. For a pull request it fetches the
+base branch tip and compares `FETCH_HEAD` directly with `HEAD`, not their
+merge base. For a push it fetches the nonzero `before` commit and compares
+the event's `before` and `after` commits.
+
+`scripts/changed-files.sh` is the single executable classifier used by CI
+and local preflight. It accepts newline-delimited repository-relative paths,
+removes one terminal CR per record for CRLF input, and ignores empty records.
+Matching is case-sensitive: only `.aislop/fork-commit`, nonempty paths under
+`docs/`, and root filenames with a nonempty stem ending in `.md` qualify.
+Literal spaces are
+preserved. Backslashes, absolute paths, dot/dot-dot components, empty path
+components, trailing separators, and control characters are rejected rather
+than normalized into allowed paths. `README.md` and `docs/UPPER.MD` qualify;
+`README.MD`, `Docs/page.md`, `nested/README.md`, and `docs\page.md` do not.
+Whitespace-only records do not qualify. Git-quoted unusual names can
+conservatively cause full execution.
+
+Skipping requires a successfully inspected, nonempty, entirely allowed path
+set. Empty input, unknown events, missing references, missing/zero push
+endpoints, and failed fetch/diff commands run the jobs in full. Output from
+a failed inspection is never classified, even if it contains allowed paths.
+An unwritable Actions output file fails the detector step. With a valid
+skip decision, compilation, test, and package steps are skipped and the
+three jobs finish green with their status checks present. Workflow-level
+`paths` and `paths-ignore` filters are avoided because they leave required
+status checks pending permanently on Gitea (issue 36895).
 
 The `docs` job always runs without an early exit. Running on the Linux fleet runner image, it restores `MFTLib.Tests.csproj`, performs a managed-only build (`dotnet build MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-restore`), and executes `AgentInstructionsTests` to verify character budgets and document link integrity. Because `AgentInstructionsTests` requires no native code and `Directory.Build.targets` copies `MFTLibNative` only when present, the job remains fast and cheap while ensuring docs changes are validated.
 
@@ -52,18 +81,22 @@ Any gate failure exits 1; successful host-reproducible gates exit 0. `SKIP`
 never means that the unavailable gate passed. The final verdict explicitly
 covers only the selected host gates, not the complete remote CI verdict.
 
-`--changed-from` uses the workflows' direct-base-tip diff and exact path rule:
-a nonempty diff containing only `.aislop/fork-commit`, `docs/`, or root `*.md`
-skips the build, coverage and package jobs. It includes working-tree changes
-and untracked unignored files because preflight tests the working tree.
-Empty diffs and inspection failures run all gates. No network fetch is made;
-refresh the reference before running if its local tip is stale. Docs and
-aislop always run, as in CI.
+`--changed-from` keeps its local input adapter,
+`preflight_changed_paths` in `tools/ci-preflight.sh`: it compares the supplied
+base tip directly with the working tree, including staged and unstaged
+changes, then enumerates untracked, unignored files. It makes no fetch;
+refresh a stale local reference before running. Only after both Git commands
+succeed does `preflight_main` call `bash scripts/changed-files.sh` with their
+combined output. The shared rule above decides whether build, coverage, and
+package gates may be skipped. Empty input, inspection failure (including a
+failed untracked-file enumeration with partial output), and classifier
+failure run all selected gates. Docs, the preflight regression suite, and
+aislop remain unfiltered, subject to their existing host availability.
 
 | Scope/gate | Windows | Linux | Shared CI implementation |
 | --- | --- | --- | --- |
 | `docs` | Run | Run | `scripts/test-agent-instructions.sh`: restore, managed build, AgentInstructionsTests |
-| `preflight-tests` | Run | Run | `scripts/ci-preflight.tests.sh`, also run in the Linux CI job |
+| `preflight-tests` | Run | Run | `scripts/ci-preflight.tests.sh`: dispatcher, shared classifier, CI adapter, and workflow delegation; also run by both Windows and Linux CI jobs |
 | `build-script` / `build-script` | Run | Skip | `scripts/build-windows.tests.ps1` |
 | `build-script` / `aislop-tests` | Run | Skip | `scripts/ci-aislop.tests.ps1`, independent scanner regression gate |
 | `build-script` / `coverage-child` | Run | Skip | `scripts/test-native-coverage-elevated.ps1`, shared child protocol and both coverage callers |
