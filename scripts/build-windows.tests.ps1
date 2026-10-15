@@ -164,4 +164,48 @@ if (-not $workflow.Contains('run: pwsh -NoProfile -File scripts/build-windows.te
     throw 'Windows CI must run the build regression script'
 }
 
+$projectPaths = @(& git -C $sourceRoot ls-files -- '*.csproj' '*.vcxproj')
+if ($LASTEXITCODE -ne 0 -or $projectPaths.Count -eq 0) {
+    throw 'Cannot enumerate tracked project files for the platform contract'
+}
+foreach ($relativePath in @('MFTLib.sln') + $projectPaths) {
+    $text = Get-Content -LiteralPath (Join-Path $sourceRoot $relativePath) -Raw
+    if ($text -match '\b(?:x86|Win32)\b') {
+        throw "$relativePath declares an unsupported x86/Win32 configuration"
+    }
+    if ($relativePath.EndsWith('.csproj')) {
+        [xml] $project = $text
+        $platforms = @($project.SelectNodes('/Project/PropertyGroup/Platforms'))
+        Assert-Equal $platforms.Count 1 "$relativePath platform declaration count"
+        Assert-Equal $platforms[0].InnerText 'x64' "$relativePath supported platforms"
+    }
+}
+$solutionText = Get-Content -LiteralPath (Join-Path $sourceRoot 'MFTLib.sln') -Raw
+$solutionSection = [regex]::Match(
+    $solutionText,
+    '(?s)GlobalSection\(SolutionConfigurationPlatforms\) = preSolution(.*?)EndGlobalSection'
+)
+Assert-Equal $solutionSection.Success $true 'solution configuration section exists'
+$solutionConfigurations = @(
+    $solutionSection.Groups[1].Value -split '\r?\n' |
+        ForEach-Object { $_.Trim() } | Where-Object { $_ }
+)
+Assert-Equal ($solutionConfigurations -join ';') `
+    'Debug|x64 = Debug|x64;Release|x64 = Release|x64' 'solution platforms'
+[xml] $nativeProject = Get-Content -LiteralPath (
+    Join-Path $sourceRoot 'MFTLibNative/MFTLibNative.vcxproj'
+) -Raw
+$nativeConfigurations = @(
+    $nativeProject.SelectNodes("//*[local-name()='ProjectConfiguration']") |
+        ForEach-Object { $_.GetAttribute('Include') }
+)
+Assert-Equal ($nativeConfigurations -join ';') `
+    'Debug|x64;Release|x64' 'native platforms'
+
+$linuxInit = Get-Content -LiteralPath (Join-Path $sourceRoot 'init.sh') -Raw
+$managedBuild = 'dotnet build "$ROOT/MFTLib.Tests/MFTLib.Tests.csproj" -c Release -p:Platform=x64'
+if (-not $linuxInit.Contains($managedBuild)) {
+    throw 'init.sh --build must select Release/x64 for the managed build'
+}
+
 Write-Host 'Windows build regression tests passed.'

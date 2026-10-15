@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Platforms>x64;x86</Platforms>
+    <Platforms>x64</Platforms>
     <DefineConstants>$(DefineConstants);SAMPLE_WATCH</DefineConstants>
   </PropertyGroup>
 

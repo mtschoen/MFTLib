@@ -47,6 +47,13 @@ git clean -ffxd && ./init.sh           # restore only
 git clean -ffxd && ./init.sh --build   # also build native (cmake/ninja) + managed
 ```
 
+The solution and project configuration lists contain only x64. Linux
+`./init.sh --build` builds the native Release library with CMake/Ninja and the
+managed projects with `-c Release -p:Platform=x64`. Managed outputs are under
+each project's `bin/x64/Release/net10.0` directory. After initialization, run
+`bash scripts/test-agent-instructions.sh` from the repository root to build
+and run the instruction checks with the same configuration and platform.
+
 Both are idempotent, so they are safe to run at any time, not only after a clean.
 
 They also make one optional call: if a settings-provisioning tool is on PATH, they ask it to re-apply the project-scope settings it owns, since a clean removes `.claude/settings.local.json`. The call names a single feature rather than running the tool's whole pipeline, and the step is skipped entirely when the tool is absent, so nothing here depends on it.
@@ -54,5 +61,10 @@ They also make one optional call: if a settings-provisioning tool is on PATH, th
 Windows `init.ps1 -Build` calls `scripts/build-windows.ps1 -Configuration Release -NoRestore` after its NuGet restore. The shared script also serves managed coverage and the aislop workflow: it resolves amd64 MSBuild through `vswhere`, builds the native x64 DLL with v143 and an absolute trailing-backslash `SolutionDir`, then builds the six managed projects. Run `.\scripts\build-windows.ps1` for a standalone Release build, or pass `-Configuration Debug`; standalone builds restore by default. Use `-NoRestore` only after a successful restore. Linux continues to use cmake/Ninja through `scripts/build-linux.sh` and restores managed projects individually because dotnet cannot load the native `.vcxproj`.
 
 CI verification: the `windows` job in `.gitea/workflows/test.yml` runs the clean, both init entry points, the idempotency rerun and `init.ps1 -Build` with a clean-tree assertion after each, but only on the push to `main` (see [quality gates](quality-gates.md)). A pull request does not run it, so run `git clean -ffxd && .\init.ps1` locally when a change touches init, build or ignore files.
+
+The Linux CI job also runs `./init.sh --build` before coverage. It starts
+without the Release/x64 test assembly, verifies init creates that assembly,
+and runs `AgentInstructionsTests` with `--no-build` before invoking the
+shared agent-instructions script.
 
 Prerequisites checked but not installed - Windows: .NET SDK, Visual Studio with the MSVC C++ workload, aislop, reportgenerator (managed coverage summaries and HTML reports). Linux: .NET SDK, cmake, ninja, g++, aislop, gcovr (native coverage only).

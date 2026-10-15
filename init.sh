@@ -137,7 +137,7 @@ if [ "$BUILD" -eq 1 ]; then
 
     echo
     echo "Building managed projects..."
-    dotnet build "$ROOT/MFTLib.Tests/MFTLib.Tests.csproj" -c Release
+    dotnet build "$ROOT/MFTLib.Tests/MFTLib.Tests.csproj" -c Release -p:Platform=x64
     completed+=("Native and managed output built")
 fi
 

@@ -386,6 +386,17 @@ jobs:
           restore-keys: |
             linux-nuget-
 
+      - name: Verify Linux init Release x64 output
+        if: steps.changed-files.outputs.skip_build != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e MFTLib.Tests/bin/x64/Release/net10.0/MFTLib.Tests.dll
+          ./init.sh --build
+          test -f MFTLib.Tests/bin/x64/Release/net10.0/MFTLib.Tests.dll
+          dotnet test MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-build --filter 'FullyQualifiedName~AgentInstructionsTests'
+          bash scripts/test-agent-instructions.sh
+
       - name: Run coverage
         if: steps.changed-files.outputs.skip_build != 'true'
         run: bash scripts/coverage-linux.sh

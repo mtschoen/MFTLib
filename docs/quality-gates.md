@@ -8,6 +8,13 @@ The `windows`, `linux`, and `linux-package` jobs each begin with a changed-files
 
 The `docs` job always runs without an early exit. Running on the Linux fleet runner image, it restores `MFTLib.Tests.csproj`, performs a managed-only build (`dotnet build MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-restore`), and executes `AgentInstructionsTests` to verify character budgets and document link integrity. Because `AgentInstructionsTests` requires no native code and `Directory.Build.targets` copies `MFTLibNative` only when present, the job remains fast and cheap while ensuring docs changes are validated.
 
+The `linux` job verifies the initialization output before coverage whenever
+`skip_build` is false. It runs `./init.sh --build`, checks for
+`MFTLib.Tests/bin/x64/Release/net10.0/MFTLib.Tests.dll`, runs
+`AgentInstructionsTests` with Release/x64 and `--no-build`, then runs
+`bash scripts/test-agent-instructions.sh`. Checking before the script's own
+build ensures initialization produced the expected output.
+
 The `windows` job also runs the post-clean init verification (`git clean -ffxd`, `init.ps1` twice, `init.bat`, `init.ps1 -Build`, and a clean-tree check after each) described in [checkout maintenance](checkout-maintenance.md). It runs only on the push to `main`: each of those steps is guarded by `github.event_name == 'push' && github.ref == 'refs/heads/main'` (plus the skip-build check), never by workflow-level `paths`, which leaves a required check pending on Gitea (issue 36895). The steps stay in the same job and checkout, after the build and tests, because the first `git clean -ffxd` plus `git status --porcelain` assertion detects a build or test that modified a tracked file. A pull request therefore never proves the clean-tree invariant; the merge to `main` does.
 
 The Windows job runs `scripts/test-release-package-validation.ps1` and
@@ -88,6 +95,19 @@ init verification is main-push-only and destructively cleans its CI checkout;
 local PR preflight reports it skipped. `RequiresAdmin` tests remain excluded
 by the same noninteractive coverage script CI uses. Linux-only gates require
 a Linux run; Windows coverage and aislop require a Windows run.
+
+The Linux initialization check is separate from the preflight `linux`
+scope, which runs coverage. Reproduce it on Linux from a checkout without
+build artifacts using:
+
+```bash
+set -euo pipefail
+test ! -e MFTLib.Tests/bin/x64/Release/net10.0/MFTLib.Tests.dll
+./init.sh --build
+test -f MFTLib.Tests/bin/x64/Release/net10.0/MFTLib.Tests.dll
+dotnet test MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-build --filter 'FullyQualifiedName~AgentInstructionsTests'
+bash scripts/test-agent-instructions.sh
+```
 
 The command is not a pr-crew preflight-protocol opt-in, and the crew does not invoke it.
 
