@@ -47,7 +47,7 @@ function Get-ReleaseRepositoryUrl {
     param([string] $RepositoryUrl)
 
     if ([string]::IsNullOrWhiteSpace($RepositoryUrl) -or
-        $RepositoryUrl -notmatch '^(https://[^/\s]+/|ssh://[^/\s]+/|[^@\s/:]+@[^:\s/]+:)[^\s]+$') {
+        $RepositoryUrl -notmatch '^(https://[^/\s]+/|ssh://[^/\s]+/|[^@\s/:]+@[^:\s/]+:)[^\s]+\z') {
         throw 'Set MFTLIB_GITEA_REPOSITORY_URL to the canonical repository HTTPS or SSH URL, not a remote name.'
     }
     return $RepositoryUrl

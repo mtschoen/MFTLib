@@ -22,7 +22,10 @@ foreach ($destination in @(
 )) {
     Assert-Equal (Get-ReleaseRepositoryUrl $destination) $destination 'Explicit URL is preserved'
 }
-foreach ($destination in @($null, '', ' ', 'origin', 'gitea', 'file:///fixture/repo')) {
+foreach ($destination in @($null, '', ' ', 'origin', 'gitea', 'file:///fixture/repo',
+    "https://forge.example.invalid/team/MFTLib.git`n",
+    "https://forge.example.invalid/team/MFTLib.git`r`n",
+    "git@forge.example.invalid:team/MFTLib.git`n")) {
     $destinationFailure = $null
     try { Get-ReleaseRepositoryUrl $destination | Out-Null }
     catch { $destinationFailure = $_.Exception.Message }
