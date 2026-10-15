@@ -42,11 +42,18 @@ failing_gate=build-script
 run_case --all
 assert_equal 1 "$status"
 assert_contains "$output" 'FAIL build-script'
+assert_contains "$output" 'PASS coverage-child'
 assert_contains "$output" 'PASS windows'
 assert_contains "$output" 'PASS windows-package-smoke'
 assert_contains "$output" 'PASS aislop'
 assert_contains "$output" 'SKIP linux: requires linux (host windows)'
 assert_contains "$output" 'PREFLIGHT FAIL'
+failing_gate=''
+
+failing_gate=coverage-child
+run_case --only build-script
+assert_equal 1 "$status"
+assert_contains "$output" 'FAIL coverage-child'
 failing_gate=''
 
 run_case --only windows
@@ -98,6 +105,7 @@ run_case --all
 assert_equal 0 "$status"
 assert_contains "$output" 'SKIP windows: requires windows (host linux)'
 assert_contains "$output" 'SKIP windows-package-smoke: requires windows (host linux)'
+assert_contains "$output" 'SKIP coverage-child: requires windows (host linux)'
 assert_contains "$output" 'SKIP aislop: requires windows (host linux)'
 assert_contains "$output" 'PASS linux-package-build'
 assert_contains "$output" 'PASS linux-package-check'
@@ -125,6 +133,7 @@ for selection in only all; do
     assert_contains "$output" 'INVOKED -NoProfile -File scripts/build-windows.tests.ps1'
     assert_contains "$output" 'FAIL build-script: exit 23'
     assert_contains "$output" 'INVOKED -NoProfile -File scripts/ci-aislop.tests.ps1'
+    assert_contains "$output" 'INVOKED -NoProfile -File scripts/test-native-coverage-elevated.ps1'
     if [[ "$selection" == all ]]; then
         assert_contains "$output" 'INVOKED -NoProfile -File scripts/smoke-package-windows.ps1'
     fi

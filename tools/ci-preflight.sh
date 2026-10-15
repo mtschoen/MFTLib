@@ -21,6 +21,7 @@ preflight_execute() {
         docs) bash scripts/test-agent-instructions.sh ;;
         preflight-tests) bash scripts/ci-preflight.tests.sh ;;
         build-script) pwsh -NoProfile -File scripts/build-windows.tests.ps1 ;;
+        coverage-child) pwsh -NoProfile -File scripts/test-native-coverage-elevated.ps1 ;;
         aislop-tests) pwsh -NoProfile -File scripts/ci-aislop.tests.ps1 ;;
         coverage-status) pwsh -NoProfile -File scripts/test-coverage-status.ps1 ;;
         windows) pwsh -NoProfile -File scripts/run-coverage.ps1 -NonInteractive ;;
@@ -110,6 +111,7 @@ preflight_main() {
     preflight_gate docs docs any no
     preflight_gate build-script build-script windows yes
     preflight_gate build-script aislop-tests windows yes
+    preflight_gate build-script coverage-child windows yes
     preflight_gate coverage-status coverage-status any yes
     preflight_gate windows windows windows yes
     preflight_gate windows windows-package-smoke windows yes

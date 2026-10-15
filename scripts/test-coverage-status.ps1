@@ -218,7 +218,7 @@ try {
     # vstest kills a testhost that has not exited 100 ms after the run ends, which cuts coverlet's
     # exit-time hit-file flush short and drops modules from the report (Benchmark 33.45 percent,
     # SampleProgram.Watch 0 percent). Every coverage entry point must extend that grace period before it
-    # starts the test host.
+    # starts the test host, and child requests must carry it explicitly.
     function Assert-ShutdownTimeout([string]$Text, [string]$Assignment, [int]$Assignments, [string]$Invocation, [string]$Label) {
         $found = [regex]::Matches($Text, $Assignment, 'Multiline')
         $valid = @($found | Where-Object { [long]$_.Groups[1].Value -ge 1000 })
@@ -235,12 +235,16 @@ try {
     $shellAssignment = '^\s*export VSTEST_TESTHOST_SHUTDOWN_TIMEOUT=(\d+)\s*$'
     $runCoverage = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'run-coverage.ps1') -Raw
     $linuxCoverage = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'coverage-linux.sh') -Raw
-    Assert-ShutdownTimeout $runCoverage $powerShellAssignment 2 $dotnetTestInvocation 'run-coverage.ps1'
+    Assert-ShutdownTimeout $runCoverage $powerShellAssignment 1 $dotnetTestInvocation 'run-coverage.ps1'
     Assert-ShutdownTimeout $linuxCoverage $shellAssignment 1 $dotnetTestInvocation 'coverage-linux.sh'
-    Assert-Throws { Assert-ShutdownTimeout ($runCoverage -replace '(?m)^(\s*)\$env:VSTEST', '$1# $env:VSTEST') $powerShellAssignment 2 $dotnetTestInvocation 'mutant' } 'does not extend'
-    Assert-Throws { Assert-ShutdownTimeout ($runCoverage -replace '"120000"', '"100"') $powerShellAssignment 2 $dotnetTestInvocation 'mutant' } 'does not extend'
-    Assert-Throws { Assert-ShutdownTimeout ($runCoverage -replace '(?m)^\$env:VSTEST.*$', '') $powerShellAssignment 2 $dotnetTestInvocation 'mutant' } 'does not extend'
+    Assert-Throws { Assert-ShutdownTimeout ($runCoverage -replace '(?m)^(\s*)\$env:VSTEST', '$1# $env:VSTEST') $powerShellAssignment 1 $dotnetTestInvocation 'mutant' } 'does not extend'
+    Assert-Throws { Assert-ShutdownTimeout ($runCoverage -replace '"120000"', '"100"') $powerShellAssignment 1 $dotnetTestInvocation 'mutant' } 'does not extend'
+    Assert-Throws { Assert-ShutdownTimeout ($runCoverage -replace '(?m)^\$env:VSTEST.*$', '') $powerShellAssignment 1 $dotnetTestInvocation 'mutant' } 'does not extend'
     Assert-Throws { Assert-ShutdownTimeout ($linuxCoverage -replace '=120000', '=1') $shellAssignment 1 $dotnetTestInvocation 'mutant' } 'does not extend'
     Assert-Throws { Assert-ShutdownTimeout ('dotnet test "x"' + [Environment]::NewLine + '$env:VSTEST_TESTHOST_SHUTDOWN_TIMEOUT = "120000"') $powerShellAssignment 1 $dotnetTestInvocation 'mutant' } 'after starting'
+    $childTimeoutAssignment = "VSTEST_TESTHOST_SHUTDOWN_TIMEOUT\s*=\s*'120000'"
+    if ($runCoverage -notmatch $childTimeoutAssignment) {
+        throw 'Managed coverage child request must carry the coverlet shutdown timeout'
+    }
     Write-Host 'Coverage status regression tests passed.'
 } finally { Remove-Item $directory -Recurse -Force }

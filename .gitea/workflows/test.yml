@@ -104,6 +104,11 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File scripts/test-coverage-status.ps1
 
+      - name: Test shared coverage child runner
+        if: steps.changed-files.outputs.skip_build != 'true'
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/test-native-coverage-elevated.ps1
+
       - name: Test release package validation
         if: steps.changed-files.outputs.skip_build != 'true'
         shell: pwsh
