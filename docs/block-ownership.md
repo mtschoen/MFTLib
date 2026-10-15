@@ -35,7 +35,7 @@ ownership; block operations still follow the locks described below.
       killed, and that removal produces no `Diagnostics` line. The operating system likewise
       releases the owner lock when its process dies, so a killed index never strands its slot.
       `CacheDirectory.DeleteCached(cacheDirectoryPath,
-      drives, diagnostics)` is the lock-safe way for a consumer to clear cache blocks: it takes each
+      drives = null)` is the lock-safe way for a consumer to clear cache blocks: it takes each
       candidate block's owner lock non-blockingly and deletes only while holding it, the same rule `FileIndex`
       itself follows, so it never deletes, renames, or unlinks a block a live `FileIndex` still owns. A block
       whose lock is already held reports `CachedBlockDeletionOutcome.InUse` and is left untouched; a delete
@@ -44,18 +44,16 @@ ownership; block operations still follow the locks described below.
       same create-and-lock race reason as above. Each attempt returns a `CachedBlockDeletionResult` (the
       `CachedBlockFile` inventory entry, the `CachedBlockDeletionOutcome`, and a `FailureReason` that is
       non-null only for `Failed`); an already-absent file is reported `Deleted`, an idempotent success rather
-      than a `Failed`. A successful delete logs through the optional `diagnostics` callback with the same
-      "Deleted block file '...'" shape `FileIndexOptions.Diagnostics` uses elsewhere, invoked synchronously
-      while the block's lock is still held. `CacheDirectory.InspectCached(cacheDirectoryPath,
+      than a `Failed`. Consumers render or log the returned results after the call returns. `CacheDirectory.InspectCached(cacheDirectoryPath,
       drives = null, rejectedFile = null)` is one public method with optional drive selection
       and an optional `Action<CachedBlockRejection>? rejectedFile` callback carrying a full `Path` and
       human-readable `Reason`. Omitting the callback silently excludes rejected names. `DeleteCached`
-      retains its public success logger and its internal rejection-callback overload; rejected-name
-      reporting is not part of its public API. Canonical result lists contain only filenames the
+      keeps an internal overload accepting `Action<CachedBlockRejection>? rejectedFile`;
+      rejected-name reporting is not part of its public API. Canonical result lists contain only filenames the
       library recognizes. Reporting happens synchronously
       during eager enumeration, before drive filtering and any inspection/deletion lock, including for empty
       selections; callback exceptions propagate before canonical work. Rejected files are never opened, locked,
-      or deleted. The deletion success logger remains separate. Consumers can collect these reports to
+      or deleted. Consumers can collect these reports to
       preserve their own corruption diagnostics without globbing the cache directory themselves.
       A scan into the canonical slot that fails or is cancelled without producing a block deletes its
       partial file itself, while this index still holds the owner lock, and logs the delete (or the

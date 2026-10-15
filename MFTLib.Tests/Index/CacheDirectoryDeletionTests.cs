@@ -4,6 +4,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 [TestClass]
+[DoNotParallelize]
 public class CacheDirectoryDeletionTests
 {
     string _directory = null!;
@@ -37,9 +38,9 @@ public class CacheDirectoryDeletionTests
         {
             File.WriteAllText(path, "keep");
         }
-        var messages = new List<string>();
 
-        var results = CacheDirectory.DeleteCached(_directory, new HashSet<char> { 'T' }.Select(letter => new DriveKey(letter)), messages.Add);
+        var results = CacheDirectory.DeleteCached(_directory,
+            new HashSet<char> { 'T' }.Select(letter => new DriveKey(letter)));
 
         CollectionAssert.AreEquivalent(selected, results.Select(result => result.File.Path).ToArray());
         foreach (var result in results)
@@ -51,8 +52,6 @@ public class CacheDirectoryDeletionTests
             using var owner = BlockOwnerLock.TryAcquire(result.File.Path);
             Assert.IsNotNull(owner);
         }
-        CollectionAssert.AreEquivalent(selected.Select(path =>
-            $"Deleted block file '{path}': clearing a cached block.").ToArray(), messages);
         foreach (var path in new[] { excluded, unrelated, retired, orphanLock })
         {
             Assert.IsTrue(File.Exists(path));
@@ -70,9 +69,8 @@ public class CacheDirectoryDeletionTests
         var unavailable = CreateBlock('T');
         Directory.CreateDirectory(BlockOwnerLock.LockPathFor(unavailable));
         var available = CreateBlock('U');
-        var messages = new List<string>();
 
-        var results = CacheDirectory.DeleteCached(_directory, diagnostics: messages.Add);
+        var results = CacheDirectory.DeleteCached(_directory);
 
         Assert.AreEqual(2, results.Count);
         var busy = results.Single(result => result.File.Path == unavailable);
@@ -82,7 +80,6 @@ public class CacheDirectoryDeletionTests
         Assert.IsTrue(Directory.Exists(BlockOwnerLock.LockPathFor(unavailable)));
         Assert.AreEqual(CachedBlockDeletionOutcome.Deleted,
             results.Single(result => result.File.Path == available).Outcome);
-        Assert.AreEqual(1, messages.Count);
     }
 
     [TestMethod]
@@ -90,26 +87,25 @@ public class CacheDirectoryDeletionTests
     {
         var paths = new[] { CreateBlock('T'), CreateBlock('U'), CreateBlock('V') };
         string? replaced = null;
-        var messages = new List<string>();
-
-        var results = CacheDirectory.DeleteCached(_directory, diagnostics: message =>
+        using var deletionScope = CacheDirectory.ParkBeforeDeleteForTest(path =>
         {
-            messages.Add(message);
             if (replaced is not null)
             {
                 return;
             }
-            replaced = paths.First(File.Exists);
-            File.Delete(replaced);
-            Directory.CreateDirectory(replaced);
+
+            replaced = path;
+            File.Delete(path);
+            Directory.CreateDirectory(path);
         });
+
+        var results = CacheDirectory.DeleteCached(_directory);
 
         Assert.AreEqual(3, results.Count);
         var failure = results.Single(result => result.Outcome == CachedBlockDeletionOutcome.Failed);
         Assert.AreEqual(replaced, failure.File.Path);
         Assert.IsFalse(string.IsNullOrWhiteSpace(failure.FailureReason));
         Assert.AreEqual(2, results.Count(result => result.Outcome == CachedBlockDeletionOutcome.Deleted));
-        Assert.AreEqual(2, messages.Count);
         Assert.IsTrue(Directory.Exists(replaced));
         foreach (var path in paths)
         {
@@ -123,31 +119,20 @@ public class CacheDirectoryDeletionTests
     public void DeleteCached_AlreadyAbsentInventoryEntryIsAnIdempotentSuccess()
     {
         var paths = new[] { CreateBlock('T'), CreateBlock('U') };
-        var messages = new List<string>();
-        var results = CacheDirectory.DeleteCached(_directory, diagnostics: message =>
-        {
-            messages.Add(message);
-            foreach (var path in paths.Where(File.Exists))
-            {
-                File.Delete(path);
-            }
-        });
-        Assert.AreEqual(2, results.Count);
-        Assert.IsTrue(results.All(result => result.Outcome == CachedBlockDeletionOutcome.Deleted));
-        Assert.AreEqual(2, messages.Count);
-    }
+        using var deletionScope = CacheDirectory.ParkBeforeDeleteForTest(File.Delete);
 
-    [TestMethod]
-    public void DeleteCached_CallbackFailurePropagatesAndReleasesOwnership()
-    {
-        var path = CreateBlock('T');
-        var exception = Assert.ThrowsException<IOException>(() =>
-            CacheDirectory.DeleteCached(_directory, diagnostics: _ => throw new IOException("observer failed")));
-        Assert.AreEqual("observer failed", exception.Message);
-        Assert.IsFalse(File.Exists(path));
-        Assert.IsTrue(File.Exists(BlockOwnerLock.LockPathFor(path)));
-        using var owner = BlockOwnerLock.TryAcquire(path);
-        Assert.IsNotNull(owner);
+        var results = CacheDirectory.DeleteCached(_directory);
+
+        CollectionAssert.AreEquivalent(paths, results.Select(result => result.File.Path).ToArray());
+        foreach (var result in results)
+        {
+            Assert.AreEqual(CachedBlockDeletionOutcome.Deleted, result.Outcome);
+            Assert.IsNull(result.FailureReason);
+            Assert.IsFalse(File.Exists(result.File.Path));
+            Assert.IsTrue(File.Exists(BlockOwnerLock.LockPathFor(result.File.Path)));
+            using var owner = BlockOwnerLock.TryAcquire(result.File.Path);
+            Assert.IsNotNull(owner);
+        }
     }
 
     [TestMethod]

@@ -63,7 +63,8 @@ public class CacheDirectoryRejectionTests
                     status.Availability == CachedBlockAvailability.Available));
                 return statuses.Select(status => status.File.Path).ToArray();
             case "delete":
-                var results = CacheDirectory.DeleteCached(_directory, drives?.Select(letter => new DriveKey(letter)), null, rejectedFile);
+                var results = CacheDirectory.DeleteCached(_directory,
+                    drives?.Select(letter => new DriveKey(letter)), rejectedFile);
                 Assert.IsTrue(results.All(result => result.Outcome == CachedBlockDeletionOutcome.Deleted));
                 return results.Select(result => result.File.Path).ToArray();
             default:
@@ -170,26 +171,6 @@ public class CacheDirectoryRejectionTests
         Directory.CreateDirectory(_directory);
         var foreign = WriteFile("t-invalid.mlix");
         Assert.AreEqual(0, ReadPaths(operation, null, null).Length);
-        Assert.AreEqual("foreign content", File.ReadAllText(foreign));
-    }
-
-    [TestMethod]
-    public void DeleteCached_KeepsSuccessDiagnosticsSeparateFromRejections()
-    {
-        var canonical = CreateBlock();
-        var foreign = WriteFile("t-invalid.mlix");
-        var messages = new List<string>();
-        var rejected = new List<CachedBlockRejection>();
-
-        var results = CacheDirectory.DeleteCached(_directory, null, messages.Add, rejected.Add);
-
-        Assert.AreEqual(CachedBlockDeletionOutcome.Deleted, results.Single().Outcome);
-        Assert.AreEqual(canonical, results.Single().File.Path);
-        Assert.AreEqual(foreign, rejected.Single().Path);
-        CollectionAssert.AreEqual(new[]
-        {
-            $"Deleted block file '{canonical}': clearing a cached block."
-        }, messages);
         Assert.AreEqual("foreign content", File.ReadAllText(foreign));
     }
 }

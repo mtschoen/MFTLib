@@ -5,13 +5,13 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 /// <summary>
-///     <see cref="CacheDirectory.DeleteCached(string, System.Collections.Generic.IEnumerable{DriveKey}, System.Action{string})" /> exercised against a real, live
+///     <see cref="CacheDirectory.DeleteCached(string, System.Collections.Generic.IEnumerable{DriveKey})" /> exercised against a real, live
 ///     <see cref="FileIndex" /> owner rather than hand-written block files: MFTLib issue 234
 ///     requires that a clear never deletes, tears, or unlinks a block another index actually
 ///     owns, whether that ownership is settled before the clear runs, still in flight, or racing
 ///     a concurrent open. This class also installs <see cref="CacheDirectory._beforeDeleteForTest" />,
 ///     a process-wide test seam with no synchronization of its own, so it must not run
-///     concurrently with any other test that calls <see cref="CacheDirectory.DeleteCached(string, System.Collections.Generic.IEnumerable{DriveKey}, System.Action{string})" />.
+///     concurrently with any other test that calls <see cref="CacheDirectory.DeleteCached(string, System.Collections.Generic.IEnumerable{DriveKey})" />.
 /// </summary>
 [TestClass]
 [DoNotParallelize]
@@ -68,9 +68,8 @@ public class CacheDirectoryDeletionLiveOwnerTests
 
         var unownedFirst = CreateDecoyBlock(_cacheDirectory, 'U');
         var unownedSecond = CreateDecoyBlock(_cacheDirectory, 'V');
-        var messages = new List<string>();
 
-        var results = CacheDirectory.DeleteCached(_cacheDirectory, diagnostics: messages.Add);
+        var results = CacheDirectory.DeleteCached(_cacheDirectory);
 
         Assert.AreEqual(3, results.Count);
         var ownedResult = results.Single(result => result.File.Path == CanonicalPath);
@@ -90,9 +89,6 @@ public class CacheDirectoryDeletionLiveOwnerTests
             "a lock file created while deleting an unowned block must be preserved");
         Assert.IsTrue(File.Exists(BlockOwnerLock.LockPathFor(unownedSecond)),
             "a lock file created while deleting an unowned block must be preserved");
-        Assert.IsFalse(messages.Contains($"Deleted block file '{CanonicalPath}': clearing a cached block."),
-            "the owned block was never deleted, so it must never be logged as deleted");
-        Assert.AreEqual(2, messages.Count);
 
         Assert.AreEqual(DriveState.Ready, owner.Drives.Single().State);
         Assert.IsNotNull(owner.Find(Path.Combine(_treeRoot, "Documents", "readme.md")),
@@ -138,7 +134,7 @@ public class CacheDirectoryDeletionLiveOwnerTests
 
     /// <summary>
     ///     Parks the first call to <see cref="CacheDirectory._beforeDeleteForTest" /> until the
-    ///     test releases it, so <see cref="CacheDirectory.DeleteCached(string, System.Collections.Generic.IEnumerable{DriveKey}, System.Action{string})" /> can be driven from a
+    ///     test releases it, so <see cref="CacheDirectory.DeleteCached(string, System.Collections.Generic.IEnumerable{DriveKey})" /> can be driven from a
     ///     background task while it still holds the candidate block's owner lock and the file has
     ///     not been deleted yet, at a deterministic point a concurrent <see cref="FileIndex.OpenAsync" />
     ///     can race against.

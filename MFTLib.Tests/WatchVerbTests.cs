@@ -129,7 +129,10 @@ public class WatchVerbTests
 
         Assert.AreEqual(1, listing.Count(line => line.StartsWith("X: ", StringComparison.Ordinal)), string.Join(Environment.NewLine, listing));
         Assert.IsTrue(listing.Any(line => line.StartsWith("X: ", StringComparison.Ordinal) && line.Contains(", policy policy-", StringComparison.Ordinal)), "The block lives in its policy folder and the listing names it.");
-        Assert.IsTrue(clearing.Any(line => line.Trim() == "X: Deleted"), string.Join(Environment.NewLine, clearing));
+        Assert.AreEqual(1, clearing.Count(line => line.Trim() == "X: Deleted"),
+            string.Join(Environment.NewLine, clearing));
+        Assert.IsFalse(clearing.Any(line => line.StartsWith("Deleted block file '", StringComparison.Ordinal)),
+            "Cache clearing reports deletion through results only: " + string.Join(Environment.NewLine, clearing));
         Assert.AreEqual(0, afterwards.Count(line => line.StartsWith("X: ", StringComparison.Ordinal)));
     }
 

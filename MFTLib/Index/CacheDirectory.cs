@@ -159,22 +159,18 @@ public static class CacheDirectory
     ///     Lock files are created when needed and never deleted. Block contents are not validated.
     ///     Results describe each attempt, not a reservation against later cache creation.
     ///     Filenames this class did not write are silently excluded.
+    ///     Each returned result carries the deletion outcome and a failure reason when applicable.
     /// </summary>
     /// <param name="cacheDirectoryPath">The cache directory to clear.</param>
     /// <param name="drives">Drive keys to include, or null for all. The default key is rejected.</param>
-    /// <param name="diagnostics">
-    ///     Optional synchronous success logger, invoked while ownership is held. It should return
-    ///     promptly and not throw. Callback exceptions propagate after deletion; ownership is released.
-    /// </param>
     /// <remarks>
     ///     Deleted includes an inventory entry already removed before this attempt. Directory-level
     ///     enumeration lists only files whose name this class wrote. Filtering precedes lock acquisition. Retired siblings,
     ///     unrelated names and subdirectories are not candidates.
     /// </remarks>
     public static IReadOnlyList<CachedBlockDeletionResult> DeleteCached(
-        string cacheDirectoryPath, IEnumerable<DriveKey>? drives = null,
-        Action<string>? diagnostics = null)
-        => DeleteCached(cacheDirectoryPath, drives, diagnostics, null);
+        string cacheDirectoryPath, IEnumerable<DriveKey>? drives = null)
+        => DeleteCached(cacheDirectoryPath, drives, null);
 
     /// <summary>
     ///     Eagerly deletes selected canonical cached blocks under their non-blocking slot locks.
@@ -182,13 +178,10 @@ public static class CacheDirectory
     ///     I/O and access failures report Failed with a reason, without stopping other attempts.
     ///     Lock files are created when needed and never deleted. Block contents are not validated.
     ///     Results describe each attempt, not a reservation against later cache creation.
+    ///     Each returned result carries the deletion outcome and a failure reason when applicable.
     /// </summary>
     /// <param name="cacheDirectoryPath">The cache directory to clear.</param>
     /// <param name="drives">Drive keys to include, or null for all. The default key is rejected.</param>
-    /// <param name="diagnostics">
-    ///     Optional synchronous success logger, invoked while ownership is held. It should return
-    ///     promptly and not throw. Callback exceptions propagate after deletion; ownership is released.
-    /// </param>
     /// <param name="rejectedFile">
     ///     Optional synchronous callback for each non-canonical filename encountered by the
     ///     top-level block-file enumeration. Reports the full path and a human-readable reason;
@@ -204,7 +197,7 @@ public static class CacheDirectory
     /// </remarks>
     internal static IReadOnlyList<CachedBlockDeletionResult> DeleteCached(
         string cacheDirectoryPath, IEnumerable<DriveKey>? drives,
-        Action<string>? diagnostics, Action<CachedBlockRejection>? rejectedFile)
+        Action<CachedBlockRejection>? rejectedFile)
     {
         ArgumentException.ThrowIfNullOrEmpty(cacheDirectoryPath);
         var selected = ValidateSelection(drives);
@@ -216,7 +209,7 @@ public static class CacheDirectory
                 continue;
             }
 
-            results.Add(DeleteCachedFile(file, diagnostics));
+            results.Add(DeleteCachedFile(file));
         }
 
         return results;
@@ -246,7 +239,7 @@ public static class CacheDirectory
         }
     }
 
-    static CachedBlockDeletionResult DeleteCachedFile(CachedBlockFile file, Action<string>? diagnostics)
+    static CachedBlockDeletionResult DeleteCachedFile(CachedBlockFile file)
     {
         using var owner = BlockOwnerLock.TryAcquire(file.Path);
         if (owner is null)
@@ -265,7 +258,6 @@ public static class CacheDirectory
             return new CachedBlockDeletionResult(file, CachedBlockDeletionOutcome.Failed, exception.Message);
         }
 
-        diagnostics?.Invoke($"Deleted block file '{file.Path}': clearing a cached block.");
         return new CachedBlockDeletionResult(file, CachedBlockDeletionOutcome.Deleted, null);
     }
 

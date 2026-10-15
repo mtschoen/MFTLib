@@ -103,7 +103,7 @@ format or native ABI version changes are involved.
 
 ## Deleting cached blocks
 
-`CacheDirectory.DeleteCached(cacheDirectoryPath, drives = null, diagnostics = null)` is the
+`CacheDirectory.DeleteCached(cacheDirectoryPath, drives = null)` is the
 lock-safe way to clear cache blocks: it enumerates the directory the same way `InspectCached`
 does, then for each candidate takes that block's owner lock non-blockingly and deletes the block
 file only while holding it, so it is bound by the same ownership rule as `FileIndex` itself and
@@ -117,12 +117,15 @@ is reported `Deleted`, an idempotent success rather than a failure.
 Each attempt is a `CachedBlockDeletionResult`: the `CachedBlockFile` inventory entry that
 identifies it, the `CachedBlockDeletionOutcome`, and a `FailureReason` string that is non-null
 only for `Failed`. Lock files are never deleted by this path, for the same create-and-lock race
-reason as above, so a `*.mlix.lock` file survives every outcome. A successful delete invokes the
-optional `diagnostics` callback synchronously, while the block's lock is still held, with the
-same "Deleted block file '...'" shape `FileIndexOptions.Diagnostics` uses elsewhere in the
-library.
+reason as above, so a `*.mlix.lock` file survives every outcome. Consumers render or log `CachedBlockDeletionResult` values after the call returns.
 
-`DeleteCached` has an internal overload that takes the same filename-rejection callback after the success logger, which stays the third argument and is invoked under the canonical block's owner lock. Rejected entries never become deletion results and are always left untouched. Supplying a null rejection callback disables reporting. The public three-argument overload passes null.
+`DeleteCached` has an internal overload taking
+`Action<CachedBlockRejection>? rejectedFile` after the drive selection.
+Rejected entries never become deletion results and are always left untouched.
+Supplying a null rejection callback disables reporting. The public two-parameter
+method supplies null. Rejection callbacks run during eager enumeration, before
+drive filtering and canonical deletion; a callback exception aborts the call
+before any canonical block is locked or deleted.
 
 ## Layout
 

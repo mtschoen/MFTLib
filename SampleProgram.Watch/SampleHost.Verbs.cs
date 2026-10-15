@@ -63,7 +63,7 @@ partial class SampleHost
 
             if (parsed.Clear)
             {
-                foreach (var result in CacheDirectory.DeleteCached(directory, letters, _writeLine))
+                foreach (var result in CacheDirectory.DeleteCached(directory, letters))
                 {
                     _writeLine($"  {result.File.Drive}: {result.Outcome}{(result.FailureReason is { } reason ? $" ({reason})" : string.Empty)}");
                 }

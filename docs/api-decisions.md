@@ -467,8 +467,7 @@ already distinguish by the state enum.
 is one public method with optional `IEnumerable<DriveKey>? drives = null`
 and `Action<CachedBlockRejection>? rejectedFile = null` parameters.
 `CacheDirectory.EnsureCreated` stays public and unchanged, with its application
-usage documented. `DeleteCached` stays unchanged; its rejected-filename callback
-overload remains internal
+usage documented. `DeleteCached` keeps its rejected-filename callback overload internal
 ([MFTLib issue 486 (cache inspection and creation documentation)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/486)).
 
 **Reason:** inspection's two overloads differed only by optional rejection
@@ -480,6 +479,26 @@ automatically. No consumer needs rejected filenames from public cache deletion.
 
 **Revisit only if:** a concrete consumer requirement changes these responsibilities,
 such as a production need for rejected-filename reporting during deletion.
+
+## Cache deletion reports per-file outcomes through results
+
+**Decision (2026-10-14,
+[MFTLib issue 529 (cache deletion reporting)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/529)):**
+`CacheDirectory.DeleteCached(string cacheDirectoryPath, IEnumerable<DriveKey>? drives = null)`
+returns each attempted file's outcome and optional failure reason in
+`CachedBlockDeletionResult`. The Watch sample prints those results once.
+The internal overload additionally accepts `Action<CachedBlockRejection>? rejectedFile`
+for non-canonical filenames excluded from the result list.
+
+**Reason:** the success logger duplicates information already in the results.
+The Watch sample passed its output writer and then printed the same deletions
+from the result list. git-wizard's `GitWizard/MftIndexCacheMaintenance.cs`
+and file-wizard's `file-wizard/CliServices.cs` already call deletion without
+a logger and consume its returned results. Their call expressions stay as
+written when their MFTLib pins are updated and rebuilt.
+
+**Revisit only if:** a concrete consumer needs information that per-file
+deletion results cannot express.
 
 ## File entries expose their drive and keep distinct state questions
 
