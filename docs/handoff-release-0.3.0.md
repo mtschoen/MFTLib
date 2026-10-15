@@ -57,6 +57,14 @@ MFTLib contains `lib/net10.0/MFTLib.dll`, `lib/net10.0/MFTLib.xml`,
 MFTLib.TestExtensions contains its managed assembly, license and the same README,
 and depends on exactly MFTLib 0.3.0. Both symbol packages must exist.
 
+The Windows x64 native DLL links the Visual C++ runtime statically: Release uses
+`MultiThreaded` and Debug uses `MultiThreadedDebug`. `Assert-ReleasePackages`
+extracts `runtimes/win-x64/native/MFTLibNative.dll` from the package and runs
+`dumpbin /dependents`, rejecting every `MSVCP*` or `VCRUNTIME*` import. Windows
+system imports, including Universal CRT API sets, are allowed. Validation requires
+the MSVC C++ tools: it resolves dumpbin from PATH or the Visual Studio installer.
+A missing tool, failed command or output without dependency filenames fails validation.
+
 The default WSL prerequisite is `wsl -d Ubuntu-24.04`; direct invocation of
 `scripts/build-linux-native.ps1 -Distribution <name>` selects another distribution.
 `scripts/check-linux-native.sh` requires x86-64 ELF, no `__gcov` symbols, no RPATH

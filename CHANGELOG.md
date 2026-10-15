@@ -29,6 +29,7 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 - `ElevationUtilities.TryAddDefenderProcessExclusions` adds Windows Defender process exclusions, elevating when needed.
 - `MFTLib.TestExtensions`: an in-process broker harness, scripted watches, synthetic cache blocks, synthetic journal records and journal isolation for consumer tests.
 - The package carries a Linux x64 native library, requiring glibc 2.33 and GLIBCXX_3.4.22, and XML documentation for the whole public surface.
+- The Windows x64 native DLL statically links the Visual C++ runtime, so a consumer needs no redistributable. Release package validation inspects the packaged DLL with `dumpbin /dependents` and rejects `MSVCP*` and `VCRUNTIME*` imports.
 
 ### Changed
 

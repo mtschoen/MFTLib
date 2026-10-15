@@ -1,6 +1,7 @@
 # Shared release-package validation, dot-sourced by release.ps1 and test-release-packaging.ps1.
 # Assert-ReleasePackages checks package identity, version, the exact [version] MFTLib
-# dependency of MFTLib.TestExtensions, required package assets, and assembly separation.
+# dependency of MFTLib.TestExtensions, required assets, assembly separation, and the
+# packed Windows DLL's imports using dumpbin. MSVCP* and VCRUNTIME* imports are rejected.
 # Assert-ReleaseSymbolPackages checks the symbol files. Validation throws on the first failure.
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -62,6 +63,77 @@ function Get-SinglePackage {
     return $packages[0]
 }
 
+function Get-WindowsDumpbin {
+    $command = Get-Command dumpbin.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($command) { return $command.Source }
+
+    if (-not ${env:ProgramFiles(x86)}) {
+        throw 'dumpbin.exe was not found; run package validation on Windows with the MSVC C++ tools installed.'
+    }
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+    if (-not (Test-Path -LiteralPath $vswhere -PathType Leaf)) {
+        throw 'dumpbin.exe was not found; install Visual Studio with the MSVC C++ tools.'
+    }
+
+    $PSNativeCommandUseErrorActionPreference = $false
+    $candidates = @(& $vswhere -latest -products '*' `
+        -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+        -find 'VC/Tools/MSVC/**/bin/Hostx64/x64/dumpbin.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "vswhere failed while locating dumpbin.exe with exit code $LASTEXITCODE."
+    }
+    $dumpbin = $candidates | Where-Object {
+        -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path -LiteralPath $_ -PathType Leaf)
+    } | Select-Object -First 1
+    if (-not $dumpbin) {
+        throw 'dumpbin.exe was not found; install Visual Studio with the MSVC C++ tools.'
+    }
+    return $dumpbin
+}
+
+function Get-WindowsNativeDependencies {
+    param([Parameter(Mandatory)] [string] $LibraryPath)
+
+    $dumpbin = Get-WindowsDumpbin
+    $PSNativeCommandUseErrorActionPreference = $false
+    $output = @(& $dumpbin /nologo /dependents $LibraryPath)
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) {
+        throw "dumpbin /dependents failed with exit code $exitCode for '$LibraryPath'."
+    }
+    $dependencies = @(
+        foreach ($line in $output) {
+            if ($line -match '(?i)^\s*([^\s\\/]+\.dll)\s*$') {
+                $Matches[1]
+            }
+        }
+    )
+    if ($dependencies.Count -eq 0) {
+        throw "dumpbin reported no dependency filenames for '$LibraryPath'."
+    }
+    return $dependencies
+}
+
+function Assert-PackagedWindowsRuntime {
+    param([Parameter(Mandatory)] [IO.Compression.ZipArchive] $Archive)
+
+    $entryName = 'runtimes/win-x64/native/MFTLibNative.dll'
+    $entry = $Archive.GetEntry($entryName)
+    Assert-True ($null -ne $entry) "MFTLib package is missing $entryName."
+    $directory = Join-Path ([IO.Path]::GetTempPath()) ('MFTLib native inspection-' + [guid]::NewGuid().ToString('N'))
+    [IO.Directory]::CreateDirectory($directory) | Out-Null
+    try {
+        $libraryPath = Join-Path $directory 'MFTLibNative.dll'
+        [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $libraryPath)
+        $dependencies = @(Get-WindowsNativeDependencies $libraryPath)
+        $forbidden = @($dependencies | Where-Object { $_ -match '^(MSVCP|VCRUNTIME)' })
+        Assert-True ($forbidden.Count -eq 0) "$entryName imports the Visual C++ redistributable: $($forbidden -join ', '). Build Release|x64 with MultiThreaded."
+    }
+    finally {
+        Remove-Item -LiteralPath $directory -Recurse -Force -ErrorAction Stop
+    }
+}
+
 function Assert-ReleasePackages {
     param(
         [Parameter(Mandatory)] [string] $MftLibPackagePath,
@@ -103,6 +175,7 @@ function Assert-ReleasePackages {
         )) {
             Assert-True ($null -ne $mftLibArchive.GetEntry($requiredEntry)) "MFTLib package is missing $requiredEntry."
         }
+        Assert-PackagedWindowsRuntime $mftLibArchive
     }
     finally {
         $mftLibArchive.Dispose()
