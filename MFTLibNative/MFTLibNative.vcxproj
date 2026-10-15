@@ -132,7 +132,6 @@ xcopy /Y "$(TargetDir)MFTLibNative.pdb" "$(SolutionDir)Benchmark\bin\$(Platform)
     <ClInclude Include="mft\mft_fixture.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="core\test_hooks.cpp" />
     <ClCompile Include="core\platform_win32.cpp" />
     <ClCompile Include="mft\mft.parse.cpp">

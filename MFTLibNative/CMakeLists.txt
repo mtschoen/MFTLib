@@ -23,7 +23,6 @@ set(SOURCES
 
 if(WIN32)
     list(APPEND SOURCES
-        dllmain.cpp
         usn/usn_journal.cpp
         core/platform_win32.cpp
     )
@@ -50,9 +49,4 @@ endif()
 # Smoke test (Linux only for MVP)
 if(UNIX AND BUILD_TESTING)
     add_subdirectory(test)
-endif()
-
-# CLI tool (Linux only for MVP)
-if(UNIX)
-    add_subdirectory(tools)
 endif()
