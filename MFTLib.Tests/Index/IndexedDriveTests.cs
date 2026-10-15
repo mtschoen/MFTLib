@@ -92,36 +92,36 @@ public class IndexedDriveTests
     }
 
     [DataTestMethod]
-    [DataRow((ProducerPolicy)(-1))]
-    [DataRow((ProducerPolicy)2)]
-    [DataRow((ProducerPolicy)999)]
-    public void ConstructorAndWithInitializer_RejectUndefinedProducerPolicy(ProducerPolicy invalidPolicy)
+    [DataRow((ProducerKind)uint.MaxValue)]
+    [DataRow(default(ProducerKind))]
+    [DataRow((ProducerKind)999)]
+    public void ConstructorAndWithInitializer_RejectUndefinedProducerKind(ProducerKind invalidPolicy)
     {
         var valid = new IndexedDrive('T', @"T:\", 1);
         Assert.ThrowsException<ArgumentOutOfRangeException>(() => new IndexedDrive('T', @"T:\", 1, invalidPolicy));
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => valid with { ProducerPolicy = invalidPolicy });
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => valid with { Producer = invalidPolicy });
     }
 
     [TestMethod]
     public void ConstructorAndWithInitializer_AcceptValidValues()
     {
-        var drive = new IndexedDrive('t', @"T:\root", 42, ProducerPolicy.Enumeration);
+        var drive = new IndexedDrive('t', @"T:\root", 42, ProducerKind.Enumeration);
         Assert.AreEqual(new DriveKey('T'), drive.Drive);
         Assert.AreEqual(@"T:\root", drive.RootDirectory);
         Assert.AreEqual(42u, drive.VolumeSerial);
-        Assert.AreEqual(ProducerPolicy.Enumeration, drive.ProducerPolicy);
+        Assert.AreEqual(ProducerKind.Enumeration, drive.Producer);
 
         var updated = drive with
         {
             Drive = 'u',
             RootDirectory = @"U:\other",
             VolumeSerial = 99,
-            ProducerPolicy = ProducerPolicy.Mft
+            Producer = ProducerKind.Mft
         };
         Assert.AreEqual(new DriveKey('U'), updated.Drive);
         Assert.AreEqual(@"U:\other", updated.RootDirectory);
         Assert.AreEqual(99u, updated.VolumeSerial);
-        Assert.AreEqual(ProducerPolicy.Mft, updated.ProducerPolicy);
+        Assert.AreEqual(ProducerKind.Mft, updated.Producer);
     }
 
     [DataTestMethod]
@@ -133,8 +133,8 @@ public class IndexedDriveTests
     {
         Directory.CreateDirectory(_directories.TreeRoot);
         var absentRoot = Path.Combine(_directories.TreeRoot, "absent");
-        var first = new IndexedDrive(firstLetter, _directories.TreeRoot, 1, ProducerPolicy.Enumeration);
-        var second = new IndexedDrive(secondLetter, absentRoot, 2, ProducerPolicy.Enumeration);
+        var first = new IndexedDrive(firstLetter, _directories.TreeRoot, 1, ProducerKind.Enumeration);
+        var second = new IndexedDrive(secondLetter, absentRoot, 2, ProducerKind.Enumeration);
 
         var failure = await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
             options => options with { Drives = [first, second] });
@@ -157,7 +157,7 @@ public class IndexedDriveTests
     public async Task OpenAsync_RejectsNullDriveElementBeforeSideEffects()
     {
         Directory.CreateDirectory(_directories.TreeRoot);
-        var valid = new IndexedDrive('T', _directories.TreeRoot, 1, ProducerPolicy.Enumeration);
+        var valid = new IndexedDrive('T', _directories.TreeRoot, 1, ProducerKind.Enumeration);
 
         var singleNull = await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
             options => options with { Drives = [null!] });
@@ -174,17 +174,18 @@ public class IndexedDriveTests
     public async Task OpenAsync_RejectsBlankRootDirectoryBeforeSideEffects(string blankRoot)
     {
         await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
-            options => options with { Drives = [new IndexedDrive('T', blankRoot, 1, ProducerPolicy.Enumeration)] });
+            options => options with { Drives = [new IndexedDrive('T', blankRoot, 1, ProducerKind.Enumeration)] });
 
-        var bypassed = CreateBypassedDrive(new DriveKey('T'), blankRoot, ProducerPolicy.Enumeration);
+        var bypassed = CreateBypassedDrive(new DriveKey('T'), blankRoot, ProducerKind.Enumeration);
         await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
             options => options with { Drives = [bypassed] });
     }
 
     [DataTestMethod]
-    [DataRow((ProducerPolicy)(-1))]
-    [DataRow((ProducerPolicy)999)]
-    public async Task OpenAsync_RejectsUndefinedProducerPolicyBeforeSideEffects(ProducerPolicy invalidPolicy)
+    [DataRow((ProducerKind)uint.MaxValue)]
+    [DataRow(default(ProducerKind))]
+    [DataRow((ProducerKind)999)]
+    public async Task OpenAsync_RejectsUndefinedProducerKindBeforeSideEffects(ProducerKind invalidPolicy)
     {
         Directory.CreateDirectory(_directories.TreeRoot);
         await AssertInvalidOpenCreatesNothingAsync<ArgumentOutOfRangeException>(
@@ -199,7 +200,7 @@ public class IndexedDriveTests
     public async Task OpenAsync_RejectsDefaultDriveKeyBeforeSideEffects()
     {
         Directory.CreateDirectory(_directories.TreeRoot);
-        var bypassed = CreateBypassedDrive(default, _directories.TreeRoot, ProducerPolicy.Enumeration);
+        var bypassed = CreateBypassedDrive(default, _directories.TreeRoot, ProducerKind.Enumeration);
 
         await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
             options => options with { Drives = [bypassed] });
@@ -217,8 +218,8 @@ public class IndexedDriveTests
 
         var sequence = new SinglePassDriveList(
         [
-            new IndexedDrive('T', rootT, 1, ProducerPolicy.Enumeration),
-            new IndexedDrive('u', rootU, 2, ProducerPolicy.Enumeration)
+            new IndexedDrive('T', rootT, 1, ProducerKind.Enumeration),
+            new IndexedDrive('u', rootU, 2, ProducerKind.Enumeration)
         ]);
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
@@ -250,8 +251,8 @@ public class IndexedDriveTests
         var producerCalls = 0;
         var progressCalls = 0;
         Directory.CreateDirectory(_directories.TreeRoot);
-        var first = new IndexedDrive('T', _directories.TreeRoot, 1, ProducerPolicy.Enumeration);
-        var duplicate = new IndexedDrive('t', _directories.TreeRoot, 2, ProducerPolicy.Enumeration);
+        var first = new IndexedDrive('T', _directories.TreeRoot, 1, ProducerKind.Enumeration);
+        var duplicate = new IndexedDrive('t', _directories.TreeRoot, 2, ProducerKind.Enumeration);
 
         await Assert.ThrowsExceptionAsync<ArgumentException>(() => FileIndex.OpenAsync(new FileIndexOptions
         {
@@ -318,7 +319,7 @@ public class IndexedDriveTests
         return exception;
     }
 
-    static IndexedDrive CreateBypassedDrive(DriveKey drive, string? rootDirectory, ProducerPolicy policy)
+    static IndexedDrive CreateBypassedDrive(DriveKey drive, string? rootDirectory, ProducerKind policy)
     {
         var instance = (IndexedDrive)RuntimeHelpers.GetUninitializedObject(typeof(IndexedDrive));
         foreach (var field in typeof(IndexedDrive).GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
@@ -331,7 +332,7 @@ public class IndexedDriveTests
             {
                 field.SetValue(instance, rootDirectory);
             }
-            else if (field.FieldType == typeof(ProducerPolicy))
+            else if (field.FieldType == typeof(ProducerKind))
             {
                 field.SetValue(instance, policy);
             }

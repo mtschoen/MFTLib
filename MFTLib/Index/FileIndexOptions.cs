@@ -35,8 +35,8 @@ public sealed record FileIndexOptions
 
     /// <summary>
     ///     Supplies MFT-derived blocks and each drive's live watch from one place. Null is not an
-    ///     admission error: for a drive whose <see cref="IndexedDrive.ProducerPolicy" /> is
-    ///     <see cref="ProducerPolicy.Mft" /> that needs a scan or watch, a missing source fails
+    ///     admission error: for a drive whose <see cref="IndexedDrive.Producer" /> is
+    ///     <see cref="ProducerKind.Mft" /> that needs a scan or watch, a missing source fails
     ///     that drive's scan with <see cref="DriveFailureKind.ProducerFailed" />; enumeration drives
     ///     ignore it, and warm MFT drives need none until a scan or watch is requested. A rescan of a watched drive
     ///     stops that drive's watch when the replacement block commits and starts a fresh one from the new

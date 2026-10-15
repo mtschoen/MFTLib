@@ -85,7 +85,7 @@ public partial class FileIndexResilienceTests
             var deletions = new List<string>();
             var options = new FileIndexOptions
             {
-                Drives = [new IndexedDrive('T', secondRoot, _volumeSerial, ProducerPolicy.Enumeration)],
+                Drives = [new IndexedDrive('T', secondRoot, _volumeSerial, ProducerKind.Enumeration)],
                 CacheDirectory = _cacheDirectory,
                 Diagnostics = deletions.Add
             };

@@ -46,11 +46,11 @@ public class FileIndexOpenProgressTests
 
     FileIndexOptions Options(IReadOnlyList<IndexedDrive> drives,
         IProgress<IndexDriveOpened>? openProgress = null, bool cacheOnly = false,
-        ProducerPolicy producerPolicy = ProducerPolicy.Enumeration, MftBlockProducer? mftProducer = null)
+        ProducerKind producer = ProducerKind.Enumeration, MftBlockProducer? mftProducer = null)
     {
         return new FileIndexOptions
         {
-            Drives = drives.Select(drive => drive with { ProducerPolicy = producerPolicy }).ToArray(),
+            Drives = drives.Select(drive => drive with { Producer = producer }).ToArray(),
             CacheDirectory = _cacheDirectory,
             CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
             MftSource = mftProducer is null ? null : new MftIndexSource(mftProducer),
@@ -148,7 +148,7 @@ public class FileIndexOpenProgressTests
 
         var drives = new[] { new IndexedDrive('T', CreateDriveRoot("first"), 1) };
         var options = Options(drives, new SynchronousProgress<IndexDriveOpened>(reports.Enqueue),
-            producerPolicy: ProducerPolicy.Mft, mftProducer: FakeProducer);
+            producer: ProducerKind.Mft, mftProducer: FakeProducer);
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
 
         Assert.AreEqual(0, reportCountAtProduceTime, "the drive's report must follow its producer's completion");
@@ -256,7 +256,7 @@ public class FileIndexOpenProgressTests
 
         var drives = new[] { new IndexedDrive('T', CreateDriveRoot("failing"), 1) };
         var options = Options(drives, new SynchronousProgress<IndexDriveOpened>(reports.Enqueue),
-            producerPolicy: ProducerPolicy.Mft, mftProducer: FailingProducer);
+            producer: ProducerKind.Mft, mftProducer: FailingProducer);
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
 
         Assert.AreEqual(1, reports.Count);

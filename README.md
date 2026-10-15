@@ -241,7 +241,7 @@ The dump source loads one saved `$MFT` file as a virtual drive in process on Win
 with no elevation, no broker and no watch. The caller chooses the logical drive letter (`'D'`
 below) as the key in `index.Drives` and `index.Root('D')`; it names no host volume, and entries
 render virtual paths under `dump:/D`. The source supplies its own virtual drive (letter, root
-`dump:/D`, serial zero, `ProducerPolicy.Mft`) and uncached open, so `FileIndexOptions.MftSource`
+`dump:/D`, serial zero, `ProducerKind.Mft`) and uncached open, so `FileIndexOptions.MftSource`
 is the only drive or cache option to set; setting `Drives`, `CacheMode` (even `Disabled`),
 `CacheDirectory` or `CacheTag` throws `ArgumentException`:
 
@@ -680,9 +680,9 @@ different cases), default keys and unconfigured keys are caller errors. An empty
 an empty list unless cancelled. Disposal and caller cancellation fail the whole call;
 drive-specific operational failures stay in `DriveOperationResult.Failure`.
 
-`IndexedDrive.ProducerPolicy` selects how this drive's block is built:
-`ProducerPolicy.Mft` (the default) reads the Master File Table through
-`FileIndexOptions.MftSource`, and `ProducerPolicy.Enumeration` walks the directory
+`IndexedDrive.Producer` selects how this drive's block is built:
+`ProducerKind.Mft` (the default) reads the Master File Table through
+`FileIndexOptions.MftSource`, and `ProducerKind.Enumeration` walks the directory
 tree instead, starting at its `RootDirectory`. One index can mix MFT and enumeration
 drives. `IndexedDrive.FromWindowsVolume(...)` produces an MFT drive; the fourth
 constructor parameter selects a different producer for a caller-owned root:
@@ -691,20 +691,23 @@ constructor parameter selects a different producer for a caller-owned root:
 var drives = new[]
 {
     IndexedDrive.FromWindowsVolume('C'),
-    new IndexedDrive('E', enumerationRoot, enumerationVolumeSerial, ProducerPolicy.Enumeration)
+    new IndexedDrive('E', enumerationRoot, enumerationVolumeSerial, Producer: ProducerKind.Enumeration)
 };
 ```
 
 A drive whose MFT scan fails is reported `DriveState.Failed` and never falls back
-to a directory walk. Enumeration runs only when that drive's policy selects it.
+to a directory walk. Enumeration runs only when that drive's `Producer` selects it.
 `MftSource` is required only for an MFT drive needing a scan or watch; a missing
 source fails that drive's scan as `ProducerFailed` with the configuration error
 message. Enumeration drives accept a null source. Only MFT-backed drives with a
 watch-capable source support watching; enumeration siblings report
 `Watch.IsSupported == false` and batched watch starts report `NotApplicable` for them.
-A cache block's producer must match the drive's policy: a mismatch is rejected
+A cache block's `ProducerKind` must equal the drive's `Producer`: a mismatch is rejected
 under the owner lock and cold-scanned on a normal open, or reported as
 `CacheDeclined` when `CacheMode.ExistingOnly` forbids a scan.
+`ProducerKind` also identifies `IndexRecordKey.ProducerKind` and `CachedBlockStatus.ProducerKind`.
+The default enum value (zero) and every undefined value are rejected by `IndexedDrive`
+and at `FileIndex.OpenAsync` admission before filesystem side effects.
 
 Why a `DriveState.Failed` drive has
 no block is reported as `DriveStatus.Failure.Kind`: `CacheDeclined` when

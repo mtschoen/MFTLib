@@ -156,7 +156,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     /// <exception cref="ArgumentNullException"><paramref name="options" /> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">
     ///     <paramref name="options" /> specifies an undefined <see cref="FileIndexOptions.CacheMode" /> or a drive
-    ///     specifies an undefined <see cref="IndexedDrive.ProducerPolicy" />.
+    ///     specifies an undefined <see cref="IndexedDrive.Producer" />.
     /// </exception>
     /// <exception cref="ArgumentException">
     ///     Cache configuration is missing, dump options are invalid, or <see cref="FileIndexOptions.Drives" /> is null,

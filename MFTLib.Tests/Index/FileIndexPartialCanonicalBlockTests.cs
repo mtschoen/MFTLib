@@ -76,7 +76,7 @@ public class FileIndexPartialCanonicalBlockTests
         var diagnostics = new List<string>();
         var options = new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, VolumeSerial, ProducerPolicy.Enumeration)],
+            Drives = [new IndexedDrive('T', _treeRoot, VolumeSerial, ProducerKind.Enumeration)],
             CacheDirectory = _cacheDirectory,
             ScanProgress = new CancelingProgress(cancellation),
             Diagnostics = diagnostics.Add

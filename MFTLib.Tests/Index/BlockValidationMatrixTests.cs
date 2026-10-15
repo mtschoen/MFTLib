@@ -31,7 +31,7 @@ public class BlockValidationMatrixTests
     {
         return new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, volumeSerial, ProducerPolicy.Enumeration)],
+            Drives = [new IndexedDrive('T', _treeRoot, volumeSerial, ProducerKind.Enumeration)],
             CacheDirectory = _cacheDirectory,
         };
     }
@@ -169,7 +169,7 @@ public class BlockValidationMatrixTests
         {
             var options = new FileIndexOptions
             {
-                Drives = [new IndexedDrive('T', differentTreeRoot, 0x0BADF00D, ProducerPolicy.Enumeration)],
+                Drives = [new IndexedDrive('T', differentTreeRoot, 0x0BADF00D, ProducerKind.Enumeration)],
                 CacheDirectory = _cacheDirectory,
             };
 

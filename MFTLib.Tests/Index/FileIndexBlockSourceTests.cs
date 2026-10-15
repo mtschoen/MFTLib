@@ -30,11 +30,11 @@ public class FileIndexBlockSourceTests
         _directories.Dispose();
     }
 
-    FileIndexOptions Options(ProducerPolicy producerPolicy = ProducerPolicy.Enumeration, MftBlockProducer? mftProducer = null)
+    FileIndexOptions Options(ProducerKind producer = ProducerKind.Enumeration, MftBlockProducer? mftProducer = null)
     {
         return new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, producerPolicy)],
+            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, producer)],
             CacheDirectory = _cacheDirectory,
             MftSource = mftProducer is null ? null : new MftIndexSource(mftProducer)
         };
@@ -80,7 +80,7 @@ public class FileIndexBlockSourceTests
     {
         var options = new FileIndexOptions
         {
-            Drives = [new IndexedDrive('Z', Path.Combine(_treeRoot, "absent"), 1, ProducerPolicy.Enumeration)],
+            Drives = [new IndexedDrive('Z', Path.Combine(_treeRoot, "absent"), 1, ProducerKind.Enumeration)],
             CacheDirectory = _cacheDirectory,
         };
 
@@ -115,7 +115,7 @@ public class FileIndexBlockSourceTests
             }
         }
 
-        await using (var firstOpen = await FileIndex.OpenAsync(Options(ProducerPolicy.Mft, CountingProducer),
+        await using (var firstOpen = await FileIndex.OpenAsync(Options(ProducerKind.Mft, CountingProducer),
                          CancellationToken.None))
         {
             Assert.AreEqual(BlockSource.ProducedByScan, firstOpen.Drives.Single().Block!.Source);
@@ -123,7 +123,7 @@ public class FileIndexBlockSourceTests
             Assert.AreEqual(1, invocationCount, "the open already scanned this drive, so the loop must skip it");
         }
 
-        await using var secondOpen = await FileIndex.OpenAsync(Options(ProducerPolicy.Mft, CountingProducer),
+        await using var secondOpen = await FileIndex.OpenAsync(Options(ProducerKind.Mft, CountingProducer),
             CancellationToken.None);
         Assert.AreEqual(BlockSource.WarmStartedFromCache, secondOpen.Drives.Single().Block!.Source);
 

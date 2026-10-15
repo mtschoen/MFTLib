@@ -266,7 +266,7 @@ public class FileIndexEnumerateTests
 
         return await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', FirstRoot, 1, ProducerPolicy.Enumeration), new IndexedDrive('U', SecondRoot, 2, ProducerPolicy.Enumeration)],
+            Drives = [new IndexedDrive('T', FirstRoot, 1, ProducerKind.Enumeration), new IndexedDrive('U', SecondRoot, 2, ProducerKind.Enumeration)],
             CacheDirectory = _cacheDirectory,
         }, CancellationToken.None);
     }

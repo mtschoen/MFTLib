@@ -60,15 +60,30 @@ snapshot identity would overcorrect when another drive rescans while the anchor'
 **Revisit only if:** consumers need an explicitly specified rebinding operation that verifies directory identity
 across block replacement.
 
-## OpenAsync validates drive keys and producer policies before filesystem side effects
+## One producer enum, selection and observation
+
+**Decision (2026-10-14):** `IndexedDrive.Producer` selects a `ProducerKind` per drive for initial scans and
+rescans, defaulting to `ProducerKind.Mft`. The same enum identifies the producer in `IndexRecordKey.ProducerKind`,
+`CachedBlockStatus.ProducerKind` and the block header. Its underlying type is `uint`, with `Mft = 1` and
+`Enumeration = 2`. Construction, init setters and `FileIndex.OpenAsync` admission reject the default and every
+undefined value before filesystem side effects. Warm adoption compares the selected value directly with the
+stored value; a mismatch cold-scans, or reports `CacheDeclined` for `CacheMode.ExistingOnly`.
+
+**Reason:** selection and observation describe the same producer. One enum gives consumers one vocabulary and
+lets a cache inspection value select a drive's producer directly, while preserving block bytes and per-drive
+choice. An MFT failure never selects a directory walk; enumeration ignores `MftSource` and runs only by request.
+
+**Revisit only if:** producer selection needs a choice that cannot identify a block's actual producer.
+
+## OpenAsync validates drive keys and producer choices before filesystem side effects
 
 **Decision (2026-10-14,
 [MFTLib issue 505 (OpenAsync input validation)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/505)):**
-`IndexedDrive` validates `Drive`, `RootDirectory` (`ArgumentException.ThrowIfNullOrWhiteSpace`), and `ProducerPolicy`
+`IndexedDrive` validates `Drive`, `RootDirectory` (`ArgumentException.ThrowIfNullOrWhiteSpace`), and `Producer`
 (`Enum.IsDefined`, throwing `ArgumentOutOfRangeException`) on construction and in its `init` setters.
 `FileIndex.OpenAsync` materializes `FileIndexOptions.Drives` once and validates it up front, before creating
 `CacheDirectory` or running any producer: a null `Drives` collection, a null or invalid element, or duplicate
-normalized `DriveKey` entries throw `ArgumentException`, and an undefined `ProducerPolicy` value throws
+normalized `DriveKey` entries throw `ArgumentException`, and an undefined `ProducerKind` value throws
 `ArgumentOutOfRangeException`.
 
 **Reason:** `OpenAsync` is a dictionary-keyed, per-drive API (`Drives`, `Root(DriveKey)`), so duplicate drive
@@ -77,12 +92,12 @@ side effects.
 
 **Revisit only if:** never; configuration validation before side effects is a baseline contract.
 
-## Cold production failures settle per drive across both producer policies
+## Cold production failures settle per drive across both producers
 
 **Decision (2026-10-14,
 [MFTLib issue 506 (per-drive enumeration settlement)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/506)):**
-a cold-production failure on a `ProducerPolicy.Enumeration` drive settles that drive as `DriveState.Failed` with
-`DriveFailureKind.ProducerFailed` while healthy sibling drives remain usable, matching `ProducerPolicy.Mft` and
+a cold-production failure on a `ProducerKind.Enumeration` drive settles that drive as `DriveState.Failed` with
+`DriveFailureKind.ProducerFailed` while healthy sibling drives remain usable, matching `ProducerKind.Mft` and
 `RescanAsync`. A failed rescan preserves the previous block and reports `DriveStatus.Failure` with
 `DriveFailureKind.ProducerFailed`. Argument validation performed at admission (null options, an undefined
 `CacheMode`, a missing cache directory, dump-source option conflicts) throws before any drive is produced. A drive
@@ -91,7 +106,7 @@ whose production cannot start or fails for an operational reason, including an M
 sibling drives remain usable. Caller cancellation (`OperationCanceledException`) aborts the whole operation, and a
 cancelled `OpenAsync` releases every adopted block.
 
-**Reason:** `ProducerPolicy` is configured per drive so one index can mix MFT-scanned and directory-walked
+**Reason:** `IndexedDrive.Producer` is configured per drive so one index can mix MFT-scanned and directory-walked
 drives. An operational production failure must have the same per-drive isolation regardless of the selected
 producer, both during initial open and during rescan. Missing drives settle Offline, and enumeration skips
 missing or inaccessible subtrees; neither is an operational producer failure by itself.
@@ -247,7 +262,7 @@ top of the pair. One value cannot express the contradiction.
 
 **Decision (2026-10-13, API review finding F10):** a dump source is fully self-describing, and there is exactly one
 way to write a dump open: set `FileIndexOptions.MftSource` and nothing else about drives or cache. The source
-supplies its one virtual drive (letter, root, serial zero, `ProducerPolicy.Mft`), which `FileIndex.OpenAsync` adds
+supplies its one virtual drive (letter, root, serial zero, `ProducerKind.Mft`), which `FileIndex.OpenAsync` adds
 to the index. `Drives` must be empty, and `CacheMode` (every value, `Disabled` included), `CacheDirectory` and
 `CacheTag` must be unset; setting any of them throws `ArgumentException` naming it. The first half of F10 is ruled as
 no change: `MftIndexSources.FromLocalVolumes`, `MftIndexSources.FromMftDumpFile` and `MftScanOptions.IncludeFreed`
@@ -370,7 +385,7 @@ follows what it reports.
 
 **Decision (2026-10-13, API review findings F11 and F26, no change):** `IElevationProvider`, `ElevationResult`,
 `WindowsRunasElevationProvider` and both `BrokerSession` constructor parameters stay as they are (F11).
-`ProducerPolicy.Enumeration` and all three query methods `Search`, `Enumerate` and `EnumerateRows` stay (F26).
+`ProducerKind.Enumeration` and all three query methods `Search`, `Enumerate` and `EnumerateRows` stay (F26).
 
 **Reason:** F11 found no defect to correct in the elevation provider shape or the session constructors. For F26,
 `EnumerateRows` is a `ref struct` and cannot be used with LINQ or `await`, and `Search` is the only form that
@@ -571,7 +586,7 @@ retain directories only, or nonempty to retain directories plus files whose name
 The test package's `InProcessBrokerScan.RetainedFileNames` follows. Semantics are unchanged.
 
 **Reason:** the type name implied a broker though the in-process path has none, and the member name implied a
-directory walk though it is the retained-file-name filter of an MFT scan (`ProducerPolicy.Enumeration` is the
+directory walk though it is the retained-file-name filter of an MFT scan (`ProducerKind.Enumeration` is the
 directory walk). Neither name said what it held. git-wizard is the production caller of the filter.
 
 **Revisit only if:** a scan setting applies to one transport only.

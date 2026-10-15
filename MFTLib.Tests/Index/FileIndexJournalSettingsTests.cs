@@ -52,7 +52,7 @@ public class FileIndexJournalSettingsTests
     {
         return FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerPolicy.Enumeration)],
+            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerKind.Enumeration)],
             CacheDirectory = _cacheDirectory,
         }, CancellationToken.None);
     }
@@ -98,7 +98,7 @@ public class FileIndexJournalSettingsTests
         JournalQueryFake.Serve(journalIdentifier: 9, nextUsn: 77, maximumSize: 0x08000000, allocationDelta: 0x01000000);
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('C', _treeRoot, 0x0BADF00D, ProducerPolicy.Enumeration)],
+            Drives = [new IndexedDrive('C', _treeRoot, 0x0BADF00D, ProducerKind.Enumeration)],
             CacheDirectory = _cacheDirectory,
         }, CancellationToken.None);
         using var volume = MftVolume.Open("C");

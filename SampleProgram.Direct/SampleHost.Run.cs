@@ -69,7 +69,7 @@ partial class SampleHost
         if (parsed.Source is not SourceKind.Dump)
         {
             var drive = _resolveDrive(parsed.Drive);
-            _writeLine($"Indexing {drive.Drive}: root {drive.RootDirectory}, serial {drive.VolumeSerial}, producer {drive.ProducerPolicy}.");
+            _writeLine($"Indexing {drive.Drive}: root {drive.RootDirectory}, serial {drive.VolumeSerial}, producer {drive.Producer}.");
             options = options with
             {
                 Drives = [drive],

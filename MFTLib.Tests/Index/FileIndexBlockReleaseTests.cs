@@ -44,7 +44,7 @@ public class FileIndexBlockReleaseTests
     {
         return new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial, ProducerPolicy.Enumeration)],
+            Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial, ProducerKind.Enumeration)],
             CacheDirectory = _cacheDirectory,
         };
     }
@@ -54,8 +54,8 @@ public class FileIndexBlockReleaseTests
         return new FileIndexOptions
         {
             Drives = [
-                new IndexedDrive('T', _treeRoot, _volumeSerial, ProducerPolicy.Enumeration),
-                new IndexedDrive('U', secondTreeRoot, secondVolumeSerial, ProducerPolicy.Enumeration)
+                new IndexedDrive('T', _treeRoot, _volumeSerial, ProducerKind.Enumeration),
+                new IndexedDrive('U', secondTreeRoot, secondVolumeSerial, ProducerKind.Enumeration)
             ],
             CacheDirectory = _cacheDirectory,
         };

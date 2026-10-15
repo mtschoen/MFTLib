@@ -180,7 +180,7 @@ public class MftIndexSourceTests
     public async Task NoMftSource_IsIgnoredByTheEnumerationPolicy()
     {
         await using var index = await FileIndex.OpenAsync(
-            Options(null) with { Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerPolicy.Enumeration)] }, Token);
+            Options(null) with { Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerKind.Enumeration)] }, Token);
 
         Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
     }

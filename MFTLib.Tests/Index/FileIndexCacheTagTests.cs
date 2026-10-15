@@ -86,11 +86,11 @@ public class FileIndexCacheTagTests
     }
 
     [TestMethod]
-    [DataRow(ProducerPolicy.Enumeration, false)]
-    [DataRow(ProducerPolicy.Mft, false)]
-    [DataRow(ProducerPolicy.Enumeration, true)]
-    [DataRow(ProducerPolicy.Mft, true)]
-    public async Task CreationAndRescanKeepTheRequestedTag(ProducerPolicy policy, bool noCache)
+    [DataRow(ProducerKind.Enumeration, false)]
+    [DataRow(ProducerKind.Mft, false)]
+    [DataRow(ProducerKind.Enumeration, true)]
+    [DataRow(ProducerKind.Mft, true)]
+    public async Task CreationAndRescanKeepTheRequestedTag(ProducerKind policy, bool noCache)
     {
         var options = Options(OriginalTag) with
         {

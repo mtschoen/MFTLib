@@ -39,7 +39,7 @@ public class FileIndexDisposalRaceTests
     {
         return new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerPolicy.Enumeration)],
+            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerKind.Enumeration)],
             CacheDirectory = _cacheDirectory,
             ScanProgress = progress
         };

@@ -187,7 +187,7 @@ public sealed partial class FileIndex
     {
         try
         {
-            if (drive.ProducerPolicy == ProducerPolicy.Enumeration)
+            if (drive.Producer == ProducerKind.Enumeration)
             {
                 using var walkLease = await EnumerationWalkLimit.EnterAsync(cancellationToken).ConfigureAwait(false);
                 var (scannedBlock, walked) = await Task
@@ -203,7 +203,7 @@ public sealed partial class FileIndex
             }
 
             var producer = _options.MftSource?.Producer ?? throw new InvalidOperationException(
-                $"{nameof(ProducerPolicy)}.{nameof(ProducerPolicy.Mft)} requires " +
+                $"{nameof(ProducerKind)}.{nameof(ProducerKind.Mft)} requires " +
                 $"{nameof(FileIndexOptions)}.{nameof(FileIndexOptions.MftSource)} to be set.");
             var produced = await RunMftProducerAsync(drive, blockPath, deleteOnClose, producer, cancellationToken)
                 .ConfigureAwait(false);
@@ -341,15 +341,12 @@ public sealed partial class FileIndex
         // summary), not through IDisposable.
         if (BlockFile.Open(path, drive.VolumeSerial, out var validation) is { } block)
         {
-            var expectedProducerKind = drive.ProducerPolicy == ProducerPolicy.Enumeration
-                ? ProducerKind.Enumeration
-                : ProducerKind.Mft;
-            if (block.Header.ProducerKind != expectedProducerKind)
+            if (block.Header.ProducerKind != drive.Producer)
             {
                 var storedProducerKind = block.Header.ProducerKind;
                 block.Dispose();
                 TryDeleteBestEffort(path,
-                    $"cache producer kind mismatch: stored {storedProducerKind}; requested {expectedProducerKind}");
+                    $"cache producer kind mismatch: stored {storedProducerKind}; requested {drive.Producer}");
                 return new WarmStartResult(null, null);
             }
 

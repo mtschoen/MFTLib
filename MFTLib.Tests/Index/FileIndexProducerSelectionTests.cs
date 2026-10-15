@@ -39,11 +39,11 @@ public class FileIndexProducerSelectionTests
         _directories.Dispose();
     }
 
-    FileIndexOptions Options(ProducerPolicy producerPolicy, MftBlockProducer? mftProducer)
+    FileIndexOptions Options(ProducerKind producer, MftBlockProducer? mftProducer)
     {
         return new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, producerPolicy)],
+            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, producer)],
             CacheDirectory = _cacheDirectory,
             MftSource = mftProducer is null ? null : new MftIndexSource(mftProducer)
         };
@@ -57,7 +57,7 @@ public class FileIndexProducerSelectionTests
             Task.FromResult(new MftBlockProduceResult(
                 SeededBlocks.Build(request, 7, 4096, FixedMoment), 7, 4096, skippedRecordCount[0]));
 
-        var options = Options(ProducerPolicy.Mft, Produce);
+        var options = Options(ProducerKind.Mft, Produce);
         await using (var index = await FileIndex.OpenAsync(options, CancellationToken.None))
         {
             Assert.AreEqual(3, index.Drives.Single().Block!.SkippedRecordCount);
@@ -196,7 +196,7 @@ public class FileIndexProducerSelectionTests
         var failed = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, failed.State);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, failed.Failure?.Kind);
-        Assert.AreEqual("ProducerPolicy.Mft requires FileIndexOptions.MftSource to be set.", failed.Failure?.Message);
+        Assert.AreEqual("ProducerKind.Mft requires FileIndexOptions.MftSource to be set.", failed.Failure?.Message);
     }
 
     [TestMethod]
@@ -207,7 +207,7 @@ public class FileIndexProducerSelectionTests
             TestContext.CancellationTokenSource.Token);
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 1, ProducerPolicy.Enumeration)],
+            Drives = [new IndexedDrive('T', _treeRoot, 1, ProducerKind.Enumeration)],
             CacheDirectory = _cacheDirectory,
             MftSource = new MftIndexSource((_, _) => { invocationCount++; throw new InvalidOperationException("the MFT producer must not be called"); })
         }, TestContext.CancellationTokenSource.Token);
@@ -246,7 +246,7 @@ public class FileIndexProducerSelectionTests
                 7, 4096, 2));
         }
 
-        var options = Options(ProducerPolicy.Mft, Produce);
+        var options = Options(ProducerKind.Mft, Produce);
         await using (var index = await FileIndex.OpenAsync(options, CancellationToken.None))
         {
             await DriveResultAssertions.FailureAsync<InvalidOperationException>(
@@ -285,7 +285,7 @@ public class FileIndexProducerSelectionTests
                 7, nextUsn, 0));
         }
 
-        await using var index = await FileIndex.OpenAsync(Options(ProducerPolicy.Mft, Produce),
+        await using var index = await FileIndex.OpenAsync(Options(ProducerKind.Mft, Produce),
             CancellationToken.None);
         await DriveResultAssertions.FailureAsync<InvalidOperationException>(
             () => index.RescanAsync(['T'], CancellationToken.None));
@@ -308,7 +308,7 @@ public class FileIndexProducerSelectionTests
                 7, nextUsn, 0));
         }
 
-        await using var index = await FileIndex.OpenAsync(Options(ProducerPolicy.Mft, Produce),
+        await using var index = await FileIndex.OpenAsync(Options(ProducerKind.Mft, Produce),
             CancellationToken.None);
         var previousRoot = index.Root('T');
 
@@ -331,7 +331,7 @@ public class FileIndexProducerSelectionTests
                 JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
         }
 
-        var options = Options(ProducerPolicy.Mft, FakeProducer);
+        var options = Options(ProducerKind.Mft, FakeProducer);
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
@@ -348,7 +348,7 @@ public class FileIndexProducerSelectionTests
                 JournalIdentifier: 99, NextUsn: 12345, SkippedRecordCount: 0));
         }
 
-        var options = Options(ProducerPolicy.Mft, MismatchedProducer);
+        var options = Options(ProducerKind.Mft, MismatchedProducer);
 
         await using (var failedIndex = await FileIndex.OpenAsync(options, CancellationToken.None))
         {
@@ -368,7 +368,7 @@ public class FileIndexProducerSelectionTests
                 JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
         }
 
-        var recoveryOptions = Options(ProducerPolicy.Mft, CountingProducer);
+        var recoveryOptions = Options(ProducerKind.Mft, CountingProducer);
         await using var index = await FileIndex.OpenAsync(recoveryOptions, CancellationToken.None);
 
         Assert.AreEqual(1, invocationCount,
@@ -393,7 +393,7 @@ public class FileIndexProducerSelectionTests
                 7, nextUsn, 0));
         }
 
-        await using var index = await FileIndex.OpenAsync(Options(ProducerPolicy.Mft, Produce),
+        await using var index = await FileIndex.OpenAsync(Options(ProducerKind.Mft, Produce),
             TestContext.CancellationTokenSource.Token);
         var created = UsnJournalEntry.Create(new UsnJournalEntryOptions
         {
@@ -553,7 +553,7 @@ public class FileIndexProducerSelectionTests
         }
 
         var deletions = new List<string>();
-        var options = Options(ProducerPolicy.Mft, MismatchedProducer) with { Diagnostics = deletions.Add };
+        var options = Options(ProducerKind.Mft, MismatchedProducer) with { Diagnostics = deletions.Add };
         await using var failedIndex = await FileIndex.OpenAsync(options,
             TestContext.CancellationTokenSource.Token);
 

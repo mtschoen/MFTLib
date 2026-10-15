@@ -310,9 +310,9 @@ MFTLib.Index.IndexScanProgress :: property public Outcome { get; init; } : MFTLi
 MFTLib.Index.IndexScanProgress :: property public Phase { get; init; } : MFTLib.Index.IndexScanPhase
 MFTLib.Index.IndexScanProgress :: property public WrittenRowCount { get; init; } : uint
 MFTLib.Index.IndexScanProgress :: type public sealed class : System.IEquatable<MFTLib.Index.IndexScanProgress>
-MFTLib.Index.IndexedDrive :: constructor public (MFTLib.Index.DriveKey Drive, string RootDirectory, uint VolumeSerial, MFTLib.Index.ProducerPolicy ProducerPolicy = 0)
+MFTLib.Index.IndexedDrive :: constructor public (MFTLib.Index.DriveKey Drive, string RootDirectory, uint VolumeSerial, MFTLib.Index.ProducerKind Producer = 1)
 MFTLib.Index.IndexedDrive :: method public <Clone>$() : MFTLib.Index.IndexedDrive
-MFTLib.Index.IndexedDrive :: method public Deconstruct(out MFTLib.Index.DriveKey Drive, out string RootDirectory, out uint VolumeSerial, out MFTLib.Index.ProducerPolicy ProducerPolicy) : void
+MFTLib.Index.IndexedDrive :: method public Deconstruct(out MFTLib.Index.DriveKey Drive, out string RootDirectory, out uint VolumeSerial, out MFTLib.Index.ProducerKind Producer) : void
 MFTLib.Index.IndexedDrive :: method public Equals(MFTLib.Index.IndexedDrive? other) : bool
 MFTLib.Index.IndexedDrive :: method public override Equals(object? obj) : bool
 MFTLib.Index.IndexedDrive :: method public override GetHashCode() : int
@@ -321,7 +321,7 @@ MFTLib.Index.IndexedDrive :: method public static FromWindowsVolume(MFTLib.Index
 MFTLib.Index.IndexedDrive :: method public static op_Equality(MFTLib.Index.IndexedDrive? left, MFTLib.Index.IndexedDrive? right) : bool
 MFTLib.Index.IndexedDrive :: method public static op_Inequality(MFTLib.Index.IndexedDrive? left, MFTLib.Index.IndexedDrive? right) : bool
 MFTLib.Index.IndexedDrive :: property public Drive { get; init; } : MFTLib.Index.DriveKey
-MFTLib.Index.IndexedDrive :: property public ProducerPolicy { get; init; } : MFTLib.Index.ProducerPolicy
+MFTLib.Index.IndexedDrive :: property public Producer { get; init; } : MFTLib.Index.ProducerKind
 MFTLib.Index.IndexedDrive :: property public RootDirectory { get; init; } : string
 MFTLib.Index.IndexedDrive :: property public VolumeSerial { get; init; } : uint
 MFTLib.Index.IndexedDrive :: type public sealed class : System.IEquatable<MFTLib.Index.IndexedDrive>
@@ -365,9 +365,6 @@ MFTLib.Index.NameMatchMode :: type public enum : int, System.IComparable, System
 MFTLib.Index.ProducerKind :: field public const Enumeration : MFTLib.Index.ProducerKind = 2
 MFTLib.Index.ProducerKind :: field public const Mft : MFTLib.Index.ProducerKind = 1
 MFTLib.Index.ProducerKind :: type public enum : uint, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
-MFTLib.Index.ProducerPolicy :: field public const Enumeration : MFTLib.Index.ProducerPolicy = 1
-MFTLib.Index.ProducerPolicy :: field public const Mft : MFTLib.Index.ProducerPolicy = 0
-MFTLib.Index.ProducerPolicy :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.Index.SearchQuery :: constructor public (string? NamePattern, MFTLib.Index.NameMatchMode MatchMode = 1, bool CaseSensitive = false, MFTLib.Index.FileEntry? Subtree = default, bool? IsDirectory = default, long? SizeMinimum = default, long? SizeMaximum = default, System.DateTime? LastWriteTimeMinimum = default, System.DateTime? LastWriteTimeMaximum = default, bool IncludeDeleted = false)
 MFTLib.Index.SearchQuery :: method public <Clone>$() : MFTLib.Index.SearchQuery
 MFTLib.Index.SearchQuery :: method public Deconstruct(out string? NamePattern, out MFTLib.Index.NameMatchMode MatchMode, out bool CaseSensitive, out MFTLib.Index.FileEntry? Subtree, out bool? IsDirectory, out long? SizeMinimum, out long? SizeMaximum, out System.DateTime? LastWriteTimeMinimum, out System.DateTime? LastWriteTimeMaximum, out bool IncludeDeleted) : void

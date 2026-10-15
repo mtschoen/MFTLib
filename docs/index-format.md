@@ -8,7 +8,7 @@ that read and write it (`BlockFile`, `BlockWriter`, `BlockHeader`, `BlockLayout`
 write blocks through `MFTLibTestExtensions`. A block is rebuildable from the filesystem, so there is no migration
 code: incompatible format, identity, serial, or completeness means reject the
 cache and rescan on a normal open. The stored producer kind must also match
-`IndexedDrive.ProducerPolicy`: warm adoption rejects a mismatch before cache-tag,
+`IndexedDrive.Producer`: warm adoption rejects a mismatch before cache-tag,
 root and journal checks, closes the mapping and best-effort deletes the file under
 the owner lock. A normal open scans with the requested producer; a cache-only open
 reports `DriveState.Failed` with `DriveFailureKind.CacheDeclined`.

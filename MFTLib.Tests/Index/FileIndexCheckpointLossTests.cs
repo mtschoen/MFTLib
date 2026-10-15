@@ -163,7 +163,7 @@ public class FileIndexCheckpointLossTests
     {
         var enumerationOptions = new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerPolicy.Enumeration)],
+            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerKind.Enumeration)],
             CacheDirectory = _cacheDirectory
         };
         await using (await FileIndex.OpenAsync(enumerationOptions, CancellationToken.None))

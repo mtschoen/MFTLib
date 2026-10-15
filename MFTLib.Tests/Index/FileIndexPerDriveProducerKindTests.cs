@@ -6,7 +6,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 [TestClass]
-public partial class FileIndexPerDriveProducerPolicyTests
+public partial class FileIndexPerDriveProducerKindTests
 {
     readonly OwnedIndexDirectories _directories = new();
     static readonly DateTime Moment = new(2026, 10, 13, 0, 0, 0, DateTimeKind.Utc);
@@ -31,7 +31,7 @@ public partial class FileIndexPerDriveProducerPolicyTests
         JournalCursor = new SyntheticJournalCursor(7, 4096)
     };
 
-    IndexedDrive Drive(char letter, ProducerPolicy policy) => new(letter, _directories.TreeRoot, 123, policy);
+    IndexedDrive Drive(char letter, ProducerKind policy) => new(letter, _directories.TreeRoot, 123, policy);
 
     FileIndexOptions Options(params IndexedDrive[] drives) => new()
     {
@@ -44,7 +44,7 @@ public partial class FileIndexPerDriveProducerPolicyTests
     public async Task MixedOpen_EachDriveUsesItsProducerAndQueriesCombineTheirRows()
     {
         await using var index = await FileIndex.OpenAsync(Options(
-            Drive('T', ProducerPolicy.Mft), Drive('U', ProducerPolicy.Enumeration)), CancellationToken.None);
+            Drive('T', ProducerKind.Mft), Drive('U', ProducerKind.Enumeration)), CancellationToken.None);
 
         AssertDrive(index, 'T', ProducerKind.Mft);
         AssertDrive(index, 'U', ProducerKind.Enumeration);
@@ -61,7 +61,7 @@ public partial class FileIndexPerDriveProducerPolicyTests
     [TestMethod]
     public async Task MixedOpen_MftFailureNeverWalksItsTreeAndEnumerationSiblingIsReady()
     {
-        var options = Options(Drive('T', ProducerPolicy.Mft), Drive('U', ProducerPolicy.Enumeration)) with
+        var options = Options(Drive('T', ProducerKind.Mft), Drive('U', ProducerKind.Enumeration)) with
         {
             MftSource = MftIndexSources.Unavailable("scan refused")
         };
@@ -79,7 +79,7 @@ public partial class FileIndexPerDriveProducerPolicyTests
     public async Task EnumerationOnly_NullMftSourceScansEveryDrive()
     {
         await using var index = await FileIndex.OpenAsync(Options(
-            Drive('T', ProducerPolicy.Enumeration), Drive('U', ProducerPolicy.Enumeration)) with
+            Drive('T', ProducerKind.Enumeration), Drive('U', ProducerKind.Enumeration)) with
         {
             MftSource = null
         }, CancellationToken.None);
@@ -94,7 +94,7 @@ public partial class FileIndexPerDriveProducerPolicyTests
     public async Task MixedOpen_NullMftSourceFailsOnlyTheDriveNeedingAScan()
     {
         await using var index = await FileIndex.OpenAsync(Options(
-            Drive('T', ProducerPolicy.Mft), Drive('U', ProducerPolicy.Enumeration)) with
+            Drive('T', ProducerKind.Mft), Drive('U', ProducerKind.Enumeration)) with
         {
             MftSource = null
         }, CancellationToken.None);
@@ -102,14 +102,14 @@ public partial class FileIndexPerDriveProducerPolicyTests
         var failed = index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Failed, failed.State);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, failed.Failure?.Kind);
-        Assert.AreEqual("ProducerPolicy.Mft requires FileIndexOptions.MftSource to be set.", failed.Failure?.Message);
+        Assert.AreEqual("ProducerKind.Mft requires FileIndexOptions.MftSource to be set.", failed.Failure?.Message);
         AssertDrive(index, 'U', ProducerKind.Enumeration);
     }
 
     [TestMethod]
     public async Task WarmMftDrive_NullSourceNeedsNeitherScanNorWatchUntilStartIsRequested()
     {
-        var options = Options(Drive('T', ProducerPolicy.Mft));
+        var options = Options(Drive('T', ProducerKind.Mft));
         await using (var seeded = await FileIndex.OpenAsync(options, CancellationToken.None))
         {
             AssertDrive(seeded, 'T', ProducerKind.Mft);
@@ -123,24 +123,25 @@ public partial class FileIndexPerDriveProducerPolicyTests
     }
 
     [TestMethod]
-    [DataRow(ProducerPolicy.Mft, false)]
-    [DataRow(ProducerPolicy.Enumeration, false)]
-    [DataRow(ProducerPolicy.Mft, true)]
-    [DataRow(ProducerPolicy.Enumeration, true)]
-    public async Task CacheProducerMismatch_ColdScansOrDeclinesCacheOnly(ProducerPolicy requested, bool cacheOnly)
+    [DataRow(ProducerKind.Mft, false)]
+    [DataRow(ProducerKind.Enumeration, false)]
+    [DataRow(ProducerKind.Mft, true)]
+    [DataRow(ProducerKind.Enumeration, true)]
+    public async Task CacheProducerMismatch_ColdScansOrDeclinesCacheOnly(ProducerKind requested, bool cacheOnly)
     {
-        var stored = requested == ProducerPolicy.Mft ? ProducerPolicy.Enumeration : ProducerPolicy.Mft;
+        var stored = requested == ProducerKind.Mft ? ProducerKind.Enumeration : ProducerKind.Mft;
         var options = Options(Drive('T', stored));
         await using (var seeded = await FileIndex.OpenAsync(options, CancellationToken.None))
         {
-            AssertDrive(seeded, 'T', stored == ProducerPolicy.Mft ? ProducerKind.Mft : ProducerKind.Enumeration);
+            AssertDrive(seeded, 'T', stored);
         }
 
         var diagnostics = new List<string>();
         await using var index = await FileIndex.OpenAsync(options with
         {
-            Drives = [Drive('T', requested)],
+            Drives = [new IndexedDrive('T', _directories.TreeRoot, 123, Producer: requested)],
             CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
+            MftSource = requested == ProducerKind.Enumeration ? null : options.MftSource,
             Diagnostics = diagnostics.Add
         }, CancellationToken.None);
 
@@ -154,9 +155,15 @@ public partial class FileIndexPerDriveProducerPolicyTests
         }
         else
         {
-            AssertDrive(index, 'T', requested == ProducerPolicy.Mft ? ProducerKind.Mft : ProducerKind.Enumeration);
-            var expectedName = requested == ProducerPolicy.Mft ? "scanned.txt" : "walked.txt";
-            Assert.AreEqual(expectedName, index.Search(new SearchQuery(".txt")).Single().Name);
+            AssertDrive(index, 'T', requested);
+            var expectedName = requested == ProducerKind.Mft ? "scanned.txt" : "walked.txt";
+            var rejectedName = requested == ProducerKind.Mft ? "walked.txt" : "scanned.txt";
+            var entry = index.Search(new SearchQuery(".txt")).Single();
+            Assert.AreEqual(expectedName, entry.Name);
+            Assert.AreEqual(requested, entry.RecordKey.ProducerKind);
+            Assert.AreEqual(requested,
+                index.Search(new SearchQuery(expectedName)).Single().RecordKey.ProducerKind);
+            Assert.AreEqual(0, index.Search(new SearchQuery(rejectedName)).Count);
         }
 
         Assert.IsTrue(diagnostics.Any(line => line.Contains("producer kind mismatch", StringComparison.Ordinal)));
@@ -167,7 +174,7 @@ public partial class FileIndexPerDriveProducerPolicyTests
     {
         var watches = new ScriptedWatchSource { CatchUpOnStart = true };
         await using var index = await FileIndex.OpenAsync(Options(
-            Drive('T', ProducerPolicy.Mft), Drive('U', ProducerPolicy.Enumeration)) with
+            Drive('T', ProducerKind.Mft), Drive('U', ProducerKind.Enumeration)) with
         {
             MftSource = SyntheticIndexSource.Create(Producer(), watches)
         }, CancellationToken.None);

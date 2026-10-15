@@ -238,7 +238,7 @@ public class LookupEngineRootMatchingTests
             {
                 await using var index = await FileIndex.OpenAsync(new FileIndexOptions
                 {
-                    Drives = [new IndexedDrive('E', indexedRoot, TestVolumeSerial.GetNext(), ProducerPolicy.Enumeration)],
+                    Drives = [new IndexedDrive('E', indexedRoot, TestVolumeSerial.GetNext(), ProducerKind.Enumeration)],
                     CacheDirectory = cacheDirectory,
                 }, CancellationToken.None);
 

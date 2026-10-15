@@ -6,7 +6,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
 
-public partial class FileIndexPerDriveProducerPolicyTests
+public partial class FileIndexPerDriveProducerKindTests
 {
     [TestMethod]
     [DataRow(CacheMode.Persistent)]
@@ -15,7 +15,7 @@ public partial class FileIndexPerDriveProducerPolicyTests
     {
         var samples = new ConcurrentQueue<IndexScanProgress>();
         var failure = new IOException("enumeration progress failed");
-        var options = Options(Drive('T', ProducerPolicy.Mft), Drive('U', ProducerPolicy.Enumeration)) with
+        var options = Options(Drive('T', ProducerKind.Mft), Drive('U', ProducerKind.Enumeration)) with
         {
             CacheMode = cacheMode,
             ScanProgress = new SynchronousProgress<IndexScanProgress>(sample =>
@@ -49,7 +49,7 @@ public partial class FileIndexPerDriveProducerPolicyTests
     {
         var failure = new IOException("enumeration rescan failed");
         var progress = new FailingScanProgress();
-        var options = Options(Drive('T', ProducerPolicy.Enumeration)) with
+        var options = Options(Drive('T', ProducerKind.Enumeration)) with
         {
             CacheMode = cacheMode,
             ScanProgress = progress
@@ -95,7 +95,7 @@ public partial class FileIndexPerDriveProducerPolicyTests
         BlockFile? siblingBlock = null;
         string? siblingPath = null;
         var producer = Producer();
-        var options = Options(Drive('T', ProducerPolicy.Mft), Drive('U', ProducerPolicy.Enumeration)) with
+        var options = Options(Drive('T', ProducerKind.Mft), Drive('U', ProducerKind.Enumeration)) with
         {
             CacheMode = cacheMode,
             MftSource = new MftIndexSource(async (request, producerToken) =>

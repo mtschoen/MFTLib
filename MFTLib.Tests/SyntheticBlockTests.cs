@@ -62,7 +62,7 @@ public partial class SyntheticBlockTests
     FileIndexOptions CacheOnly(bool enumeration = false) => new()
     {
         Drives = [new IndexedDrive('T', _directories.TreeRoot, Serial,
-            enumeration ? ProducerPolicy.Enumeration : ProducerPolicy.Mft)],
+            enumeration ? ProducerKind.Enumeration : ProducerKind.Mft)],
         CacheDirectory = CacheDirectoryPath,
         MftSource = new MftIndexSource((_, _) => throw new InvalidOperationException("the cache must satisfy the open")),
         CacheMode = CacheMode.ExistingOnly

@@ -25,7 +25,7 @@ public class FileIndexQueryTests
 
         _index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerPolicy.Enumeration)],
+            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerKind.Enumeration)],
             CacheDirectory = _cacheDirectory,
         }, CancellationToken.None);
     }
@@ -106,7 +106,7 @@ public class FileIndexQueryTests
     public async Task OpenAsync_RejectsBlocklessDuplicateDriveConfiguration(DriveState blocklessState,
         char duplicateLetter, bool blocklessFirst)
     {
-        var policy = blocklessState == DriveState.Offline ? ProducerPolicy.Enumeration : ProducerPolicy.Mft;
+        var policy = blocklessState == DriveState.Offline ? ProducerKind.Enumeration : ProducerKind.Mft;
         var ready = new IndexedDrive('T', _treeRoot, 1, policy);
         var blockless = new IndexedDrive(duplicateLetter,
             blocklessState == DriveState.Offline ? Path.Combine(_treeRoot, "absent") : _treeRoot, 2, policy);

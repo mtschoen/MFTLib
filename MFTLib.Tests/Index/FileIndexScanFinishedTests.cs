@@ -43,11 +43,11 @@ public class FileIndexScanFinishedTests
     }
 
     FileIndexOptions Options(IReadOnlyList<IndexedDrive> drives, ConcurrentQueue<IndexScanProgress> samples,
-        ProducerPolicy producerPolicy = ProducerPolicy.Enumeration, MftBlockProducer? mftProducer = null)
+        ProducerKind producer = ProducerKind.Enumeration, MftBlockProducer? mftProducer = null)
     {
         return new FileIndexOptions
         {
-            Drives = drives.Select(drive => drive with { ProducerPolicy = producerPolicy }).ToArray(),
+            Drives = drives.Select(drive => drive with { Producer = producer }).ToArray(),
             CacheDirectory = _cacheDirectory,
             MftSource = mftProducer is null ? null : new MftIndexSource(mftProducer),
             ScanProgress = new SynchronousProgress<IndexScanProgress>(samples.Enqueue)
@@ -106,7 +106,7 @@ public class FileIndexScanFinishedTests
         var drives = new[] { new IndexedDrive('T', CreateDriveRoot("first"), 1) };
 
         await using var index = await FileIndex.OpenAsync(
-            Options(drives, samples, ProducerPolicy.Mft, (request, _) => ProduceBlock(request)),
+            Options(drives, samples, ProducerKind.Mft, (request, _) => ProduceBlock(request)),
             TestContext.CancellationTokenSource.Token);
 
         var finished = FinishedOf(samples, 'T');
@@ -121,7 +121,7 @@ public class FileIndexScanFinishedTests
         var drives = new[] { new IndexedDrive('T', CreateDriveRoot("first"), 1) };
 
         await using var index = await FileIndex.OpenAsync(
-            Options(drives, samples, ProducerPolicy.Mft,
+            Options(drives, samples, ProducerKind.Mft,
                 (_, _) => throw new InvalidOperationException("producer failed")),
             TestContext.CancellationTokenSource.Token);
 
@@ -135,7 +135,7 @@ public class FileIndexScanFinishedTests
     {
         var samples = new ConcurrentQueue<IndexScanProgress>();
         var drives = new[] { new IndexedDrive('T', CreateDriveRoot("first"), 1) };
-        var options = Options(drives, samples, ProducerPolicy.Mft,
+        var options = Options(drives, samples, ProducerKind.Mft,
             (_, _) => throw new OperationCanceledException());
         await Assert.ThrowsExceptionAsync<OperationCanceledException>(async () =>
         {
@@ -181,7 +181,7 @@ public class FileIndexScanFinishedTests
     {
         var diagnostics = new ConcurrentQueue<string>();
         var options = Options([new IndexedDrive('T', CreateDriveRoot("first"), 1)], new ConcurrentQueue<IndexScanProgress>(),
-            ProducerPolicy.Mft, (request, _) => ProduceBlock(request)) with
+            ProducerKind.Mft, (request, _) => ProduceBlock(request)) with
         {
             ScanProgress = new ThrowingOnFinished(),
             Diagnostics = diagnostics.Enqueue
@@ -197,7 +197,7 @@ public class FileIndexScanFinishedTests
     public async Task OpenAsync_FinishedHandlerThrowsAfterCancellation_OriginalCancellationWins()
     {
         var options = Options([new IndexedDrive('T', CreateDriveRoot("first"), 1)], new ConcurrentQueue<IndexScanProgress>(),
-            ProducerPolicy.Mft, (_, _) => throw new OperationCanceledException()) with
+            ProducerKind.Mft, (_, _) => throw new OperationCanceledException()) with
         {
             ScanProgress = new ThrowingOnFinished()
         };
@@ -212,7 +212,7 @@ public class FileIndexScanFinishedTests
     public async Task OpenAsync_FinishedHandlerAndDiagnosticsBothThrowAfterSuccess_DriveReadyWithBlockAdopted()
     {
         var options = Options([new IndexedDrive('T', CreateDriveRoot("first"), 1)], new ConcurrentQueue<IndexScanProgress>(),
-            ProducerPolicy.Mft, (request, _) => ProduceBlock(request)) with
+            ProducerKind.Mft, (request, _) => ProduceBlock(request)) with
         {
             ScanProgress = new ThrowingOnFinished(),
             Diagnostics = _ => throw new InvalidOperationException("diagnostics boom")
@@ -229,7 +229,7 @@ public class FileIndexScanFinishedTests
     public async Task OpenAsync_FinishedHandlerAndDiagnosticsBothThrowAfterCancellation_CancellationPreserved()
     {
         var options = Options([new IndexedDrive('T', CreateDriveRoot("first"), 1)], new ConcurrentQueue<IndexScanProgress>(),
-            ProducerPolicy.Mft, (_, _) => throw new OperationCanceledException()) with
+            ProducerKind.Mft, (_, _) => throw new OperationCanceledException()) with
         {
             ScanProgress = new ThrowingOnFinished(),
             Diagnostics = _ => throw new InvalidOperationException("diagnostics boom")

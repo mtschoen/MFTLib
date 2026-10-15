@@ -30,7 +30,7 @@ public class FileIndexLifetimeTests
         _directories.Dispose();
     }
 
-    FileIndexOptions Options(bool noCache = false, ProducerPolicy policy = ProducerPolicy.Enumeration)
+    FileIndexOptions Options(bool noCache = false, ProducerKind policy = ProducerKind.Enumeration)
     {
         return new FileIndexOptions
         {

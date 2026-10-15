@@ -102,7 +102,7 @@ public partial class BenchmarkRunner
         foreach (var candidate in cached.OrderBy(candidate => candidate.File.Drive.Letter))
         {
             if (candidate.Availability != CachedBlockAvailability.Available || candidate.RootDirectory is null ||
-                candidate.CacheTag is not { } cacheTag)
+                candidate.CacheTag is not { } cacheTag || candidate.ProducerKind is not { } producer)
             {
                 _writeLineToConsole($"Error: {candidate.File.Path}: {candidate.Availability}{(candidate.Validation is { } reason ? $" ({reason})" : "")}.");
                 exitCode = 1;
@@ -115,7 +115,7 @@ public partial class BenchmarkRunner
                 CacheMode = CacheMode.ExistingOnly,
                 CacheTag = cacheTag,
                 Drives = [new IndexedDrive(candidate.File.Drive, candidate.RootDirectory, candidate.File.VolumeSerial,
-                    candidate.ProducerKind == ProducerKind.Enumeration ? ProducerPolicy.Enumeration : ProducerPolicy.Mft)]
+                    producer)]
             }, CancellationToken.None);
             using var borrow = index.BorrowCurrentSnapshot();
             var drive = borrow.Snapshot.FindDriveBlock(candidate.File.Drive);

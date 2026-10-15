@@ -40,7 +40,7 @@ public class FileIndexOwnerLockTests
     {
         return new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial, ProducerPolicy.Enumeration)],
+            Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial, ProducerKind.Enumeration)],
             CacheDirectory = _cacheDirectory,
             CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
             ScanProgress = progress,
