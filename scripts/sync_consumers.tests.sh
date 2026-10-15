@@ -252,6 +252,17 @@ run_sync() {
 }
 
 # --- unit tests: pure helpers ----------------------------------------------
+start_test "missing server fails before transport"
+(
+    unset GITEA_URL
+    source "$SCRIPT_PATH"
+    resolve_owner_uid() { printf 'UNEXPECTED_TRANSPORT' >&2; return 1; }
+    main "$NEW_SHA"
+) >"$RUN_STDOUT" 2>"$RUN_STDERR"
+RUN_STATUS=$?
+assert_equals 1 "$RUN_STATUS" "missing server exits nonzero"
+assert_contains "$(cat "$RUN_STDERR")" 'GITEA_URL env var is required' "actionable input error"
+assert_not_contains "$(cat "$RUN_STDERR")" 'UNEXPECTED_TRANSPORT' "no transport before validation"
 
 start_test "normalize_repo_url drops scheme, userinfo, .git and case"
 assert_equals "gitea.example.invalid/schoen/mftlib" \
@@ -492,6 +503,9 @@ assert_equals "0" "$RUN_STATUS" "exits successfully"
 assert_equals "$NEW_SHA" "$(gitlink_of consumer-a "$BRANCH")" "bump branch records the new sha"
 assert_equals "$OLD_SHA" "$(gitlink_of consumer-a main)" "the default branch is untouched"
 assert_equals "chore: bump MFTLib pin to ${NEW_SHA:0:12}" "$(subject_of consumer-a "$BRANCH")" "commit subject names the short sha"
+assert_equals 'claude-code@users.noreply.localhost' \
+    "$(git --git-dir="$FIXTURE_GITEA/schoen/consumer-a.git" log -1 --format=%ae "$BRANCH")" \
+    "portable bot commit identity"
 assert_contains "$(cat "$PR_LOG")" "consumer-a|main|$BRANCH|external/MFTLib" "a pull request was opened against main"
 assert_contains "$(cat "$RUN_STDOUT")" "matched 1 consumers" "the summary counts the match"
 assert_contains "$(cat "$RUN_STDOUT")" "consumer-a" "the summary names the repo"

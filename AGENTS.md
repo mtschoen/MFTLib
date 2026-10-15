@@ -78,7 +78,9 @@ cat .\SampleProgram.Direct\bin\x64\Release\net10.0\output.log
 
 ## CI and quality gates
 
-[CI rules](docs/quality-gates.md): `.gitea/workflows/test.yml` runs Windows and Linux coverage plus a Linux package check on PRs and main pushes, via `scripts/run-coverage.ps1 -NonInteractive` and `scripts/coverage-linux.sh`. The `test / windows`, `test / linux`, `test / linux-package` and `aislop / quality-gate` pull-request checks must pass before merge. Read `~/schoen-lab/packages/local_ci/docs/project-ci-setup.md` before workflow edits. Fix runner PATH/pwsh and `DOTNET_INSTALL_DIR` at the service, never with workflow bootstrap steps.
+[CI rules](docs/quality-gates.md): `.gitea/workflows/test.yml` runs Windows and Linux coverage plus a Linux package check on PRs and main pushes, via `scripts/run-coverage.ps1 -NonInteractive` and `scripts/coverage-linux.sh`. The `test / windows`, `test / linux`, `test / linux-package` and `aislop / quality-gate` pull-request checks must pass before merge. Read [CI and quality gates](docs/quality-gates.md) before workflow edits. Fix runner PATH/pwsh and `DOTNET_INSTALL_DIR` at the service, never with workflow bootstrap steps.
+
+`AgentInstructionsTests` guards tracked-content portability. Stage additions/removals first; `.maintenance.json` is ignored, `.plan` tracked.
 
 [Aislop rules](docs/quality-gates.md): invoke installed `aislop`, never `npx aislop`. Before completion run `aislop scan .` and address findings; before committing run `aislop scan --staged`. `aislop ci .` enforces `.aislop/config.yml`'s `failBelow: 100`; failure is a failing gate.
 

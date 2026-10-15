@@ -8,6 +8,39 @@ $parseErrors = $null
 $releaseScript = [Management.Automation.Language.Parser]::ParseFile(
     (Join-Path $PSScriptRoot 'release.ps1'), [ref]$tokens, [ref]$parseErrors)
 Assert-Equal $parseErrors.Count 0 'Release script parse errors'
+$destinationFunction = $releaseScript.Find({
+    param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Get-ReleaseRepositoryUrl'
+}, $false)
+Assert-True ($null -ne $destinationFunction) 'Release defines destination validation.'
+. ([scriptblock]::Create($destinationFunction.Extent.Text))
+foreach ($destination in @(
+    'git@forge.example.invalid:team/MFTLib.git',
+    'ssh://git@forge.example.invalid:2222/team/MFTLib.git',
+    'https://forge.example.invalid/team/MFTLib.git'
+)) {
+    Assert-Equal (Get-ReleaseRepositoryUrl $destination) $destination 'Explicit URL is preserved'
+}
+foreach ($destination in @($null, '', ' ', 'origin', 'gitea', 'file:///fixture/repo')) {
+    $destinationFailure = $null
+    try { Get-ReleaseRepositoryUrl $destination | Out-Null }
+    catch { $destinationFailure = $_.Exception.Message }
+    Assert-True ($null -ne $destinationFailure) 'Missing or non-network destination fails.'
+    Assert-True ($destinationFailure.Contains('MFTLIB_GITEA_REPOSITORY_URL')) 'Error names the configuration input.'
+}
+$destinationAssignments = @($releaseScript.FindAll({
+    param($node)
+    $node -is [Management.Automation.Language.AssignmentStatementAst] -and
+        $node.Left.Extent.Text -ceq '$giteaRepositoryUrl'
+}, $false))
+Assert-Equal $destinationAssignments.Count 1 'Single canonical release destination'
+Assert-Equal $destinationAssignments[0].Right.Extent.Text `
+    'Get-ReleaseRepositoryUrl $env:MFTLIB_GITEA_REPOSITORY_URL' 'Release consumes configured URL'
+Assert-True ($destinationAssignments[0].Extent.StartOffset -lt
+    $releaseScript.Extent.Text.IndexOf('. "$PSScriptRoot\Test-ReleasePackages.ps1"')) `
+    'Destination is validated before release pipeline setup.'
+
 $function = $releaseScript.Find({
     param($node)
     $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-ReleaseNotes'

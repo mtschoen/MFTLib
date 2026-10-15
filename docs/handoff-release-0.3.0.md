@@ -3,18 +3,18 @@
 The [CHANGELOG](../CHANGELOG.md) describes the release contract: one `FileIndex`
 for broker-backed live volumes, in-process local scans, saved MFT dumps and
 enumeration, with a separate `MFTLib.TestExtensions` package and two samples.
-Run these steps at `<release commit>`; pins and measurements belong in the checklist issues.
+Run these steps at `<release commit>`; pins and measurements belong in the release checklist.
 
 ## Ordered release steps
 
 1. Confirm Gitea `main` and GitHub `main` both contain `<release commit>`.
    Gitea is canonical; GitHub supplies the public SourceLink history.
-2. Complete attended library and consumer smokes at that commit. Record the pins,
-   test counts and coverage in [MFTLib issue 72 (attended release checklist)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/72),
-   [file-wizard issue 299 (attended consumer checklist)](https://gitea.fleet.sticktoitive.net/schoen/file-wizard/issues/299)
-   and [git-wizard issue 143 (attended consumer checklist)](https://gitea.fleet.sticktoitive.net/schoen/git-wizard/issues/143).
+2. Complete attended library and consumer smokes at that commit. Record the exact
+   library and consumer pins, test counts, coverage and results in the maintainer's release checklist.
    Verify the required checks in [quality gates](quality-gates.md).
-3. Run the dry run on chonkers:
+3. Run the dry run on a Windows release host with the documented toolchains and WSL distribution.
+   For both modes, set `MFTLIB_GITEA_REPOSITORY_URL` to the canonical repository's
+   literal HTTPS or SSH URL. Missing input and remote aliases fail before the pipeline starts.
 
    ```powershell
    .\scripts\release.ps1
@@ -41,10 +41,9 @@ Run these steps at `<release commit>`; pins and measurements belong in the check
    attaches both packages and symbol packages, using only the extracted `## 0.3.0`
    CHANGELOG section as its notes. A missing version heading fails before publishing;
    the temporary notes file is deleted after release creation.
-6. **Owner only:** retire consumer bridges under
-   [file-wizard issue 288 (NuGet bridge retirement)](https://gitea.fleet.sticktoitive.net/schoen/file-wizard/issues/288)
-   and [git-wizard issue 134 (NuGet bridge retirement)](https://gitea.fleet.sticktoitive.net/schoen/git-wizard/issues/134).
-   Their submodule recipe is in [consumer submodule](consumer-submodule.md).
+6. **Owner only:** retire the file-wizard and git-wizard source bridges after their
+   NuGet integrations are verified. Follow the current [consumer submodule recipe](consumer-submodule.md)
+   until that retirement is complete.
    Retire MFTLib's `.gitea/workflows/sync-consumers.yml`, `scripts/sync_consumers.sh`,
    `scripts/sync_consumers.tests.sh` and the consumer-sync test step in the Linux job.
 
@@ -91,4 +90,4 @@ See [Linux package](linux-package.md) for the build and package acceptance contr
 The operator regenerates `TEST-REPORT.md` at `<release commit>` from the summaries
 of `scripts/run-coverage.ps1 -Configuration Release` and `scripts/coverage-linux.sh`.
 The coverage scripts supply evidence; the operator writes the snapshot. Record the
-attended consumer pins and results in the three checklist issues above.
+attended consumer pins and results in the release checklist.

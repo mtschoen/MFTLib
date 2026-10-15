@@ -275,7 +275,7 @@ jobs:
   linux:
     runs-on: ubuntu-latest
     container:
-      image: gitea.fleet.sticktoitive.net/schoen/runner-images:latest
+      image: ${{ vars.MFTLIB_CI_IMAGE }}
       options: --ulimit nofile=65536:65536
     timeout-minutes: 30
     steps:
@@ -310,8 +310,7 @@ jobs:
         run: bash scripts/ci-preflight.tests.sh
 
       # The hash is computed in the shell: hashFiles() can evaluate to an empty
-      # string on act_runner, which freezes the cache at its first snapshot
-      # (project-ci-setup.md, "hashFiles silently evaluates empty").
+      # string on act_runner, which freezes the cache at its first snapshot.
       - name: Compute NuGet cache key
         id: nuget-hash
         if: steps.changed-files.outputs.skip_build != 'true'
@@ -354,7 +353,7 @@ jobs:
   docs:
     runs-on: ubuntu-latest
     container:
-      image: gitea.fleet.sticktoitive.net/schoen/runner-images:latest
+      image: ${{ vars.MFTLIB_CI_IMAGE }}
       options: --ulimit nofile=65536:65536
     timeout-minutes: 10
     steps:
@@ -383,7 +382,7 @@ jobs:
   linux-package:
     runs-on: ubuntu-latest
     container:
-      image: gitea.fleet.sticktoitive.net/schoen/runner-images:latest
+      image: ${{ vars.MFTLIB_CI_IMAGE }}
       options: --ulimit nofile=65536:65536
     timeout-minutes: 30
     steps:

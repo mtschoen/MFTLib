@@ -21,10 +21,10 @@ sentence when the check prints different values.
 
 ## How a release gets the library
 
-Gitea lists no artifact over REST for an `actions/upload-artifact@v3` upload
-(`GET /actions/runs/{id}/artifacts` returns `total_count: 0`, recorded in
-`~/schoen-lab/packages/local_ci/docs/project-ci-setup.md`), and the official v4 action refuses to
-run against Gitea. A Windows release therefore cannot download the CI library. Instead:
+This Gitea deployment's `GET /actions/runs/{id}/artifacts` returns `total_count: 0`
+for `actions/upload-artifact@v3` uploads; the official v4 upload action refuses to
+run against Gitea. A Windows release therefore builds the library in WSL rather
+than downloading the CI artifact:
 
 - `scripts/build-linux-native.ps1` builds the Release library in WSL (`wsl -d Ubuntu-24.04`, the
   same Ubuntu 24.04 floor) through `scripts/build-linux.sh`, runs `scripts/check-linux-native.sh`
@@ -44,6 +44,13 @@ alongside the test-extension assembly in MFTLib.TestExtensions. Validation also
 checks package identities, matching versions, the exact MFTLib dependency,
 native libraries, README, license, and symbol-package files.
 
+For both dry-run and publish mode, set `MFTLIB_GITEA_REPOSITORY_URL` in the
+release environment to the canonical repository's literal HTTPS or SSH URL.
+Missing input and remote aliases are rejected before the pipeline starts.
+Both the canonical ancestry check and its tag push use that same value;
+local remote names and push URLs are not consulted. GitHub remains the public
+SourceLink mirror.
+
 In publish mode, the script publishes the NuGet packages, then pushes the tag
 to Gitea and GitHub in that order. Either tag-push failure exits with status 1.
 GitHub release creation runs only after both pushes succeed. A failure at this
@@ -54,7 +61,7 @@ Run the offline regressions with:
     pwsh -NoProfile -File scripts/test-release-package-validation.ps1
     pwsh -NoProfile -File scripts/test-release-notes.ps1
 
-The first builds synthetic ZIP packages. The second tests release-note handling
+The first builds synthetic ZIP packages. The second tests canonical-destination validation and release-note handling
 and runs the production GitHub-push tail in isolated PowerShell processes with
 fake Git and GitHub CLI commands.
 

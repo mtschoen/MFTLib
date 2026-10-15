@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Fan out an MFTLib pin bump to every consumer repository on the
-# fleet Gitea instance. Invoked by .gitea/workflows/sync-consumers.yml after
-# a push to main.
+# configured Gitea instance. Invoked manually by .gitea/workflows/sync-consumers.yml.
 #
 # Required one-time setup (not performed by this script): create an Actions
 # secret named MFTLIB_SYNC_TOKEN on this repository holding a Gitea personal
@@ -22,9 +21,8 @@
 # which is how both consumers fell four MFTLib pull requests behind (#194).
 #
 # Usage: sync_consumers.sh <new-sha>
-# Required env: GITEA_TOKEN
-# Optional env: GITEA_URL (default https://gitea.fleet.sticktoitive.net),
-#               GITEA_OWNER (default schoen), SELF_REPO (default MFTLib)
+# Required env: GITEA_TOKEN, GITEA_URL
+# Optional env: GITEA_OWNER (default schoen), SELF_REPO (default MFTLib)
 #
 # Tests: bash scripts/sync_consumers.tests.sh
 
@@ -35,7 +33,7 @@ SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./mftlib_submodules.sh
 source "$SCRIPT_DIRECTORY/mftlib_submodules.sh"
 
-GITEA_URL="${GITEA_URL:-https://gitea.fleet.sticktoitive.net}"
+GITEA_URL="${GITEA_URL:-}"
 GITEA_OWNER="${GITEA_OWNER:-schoen}"
 SELF_REPO="${SELF_REPO:-MFTLib}"
 
@@ -142,7 +140,7 @@ bump_gitlink() {
 	(
 		cd "$repo_dir" || exit 1
 		git config user.name claude-code
-		git config user.email claude-code@noreply.sticktoitive.net
+		git config user.email claude-code@users.noreply.localhost
 		git checkout --quiet -b "$branch"
 		while IFS= read -r path; do
 			[ -n "$path" ] || continue
@@ -390,6 +388,10 @@ main() {
 		exit 1
 	fi
 	SHORT_SHA="${NEW_SHA:0:12}"
+	if [ -z "$GITEA_URL" ]; then
+		echo 'sync_consumers.sh: GITEA_URL env var is required' >&2
+		exit 1
+	fi
 	SELF_REPO_URL="$GITEA_URL/$GITEA_OWNER/$SELF_REPO"
 	: "${GITEA_TOKEN:?GITEA_TOKEN env var is required}"
 

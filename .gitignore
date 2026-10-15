@@ -392,11 +392,8 @@ native-coverage-html/
 coverage*.xml
 native-coverage.cobertura.xml
 
-# .maintenance.json is tracked here: it records which maintenance findings were
-# actioned and which were deliberately rejected, and nothing regenerates that.
-# The negation is needed because the machine-wide excludes file ignores it, and
-# a repository .gitignore takes precedence over that.
-!.maintenance.json
+# Local maintenance breadcrumbs are disposable checkout state.
+/.maintenance.json
 
 # SDD scratch (subagent-driven-development ledger/briefs)
 .superpowers/

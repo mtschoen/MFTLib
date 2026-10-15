@@ -21,7 +21,6 @@ internal sealed class EnumerationProducer
     ///     Bytes the OS fills per directory fetch, sized up so a network share pays one round
     ///     trip per buffer. Never worse than the framework default on local NTFS or a network
     ///     share and 44% faster on local NTFS; 1 MB regresses badly on directory-heavy trees.
-    ///     Measurement: https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/29
     ///     Docs: https://learn.microsoft.com/en-us/dotnet/api/system.io.enumerationoptions.buffersize
     /// </summary>
     internal const int EnumerationBufferSizeBytes = 64 * 1024;

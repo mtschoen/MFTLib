@@ -35,7 +35,7 @@ three jobs finish green with their status checks present. Workflow-level
 `paths` and `paths-ignore` filters are avoided because they leave required
 status checks pending permanently on Gitea (issue 36895).
 
-The `docs` job always runs without an early exit. Running on the Linux fleet runner image, it restores `MFTLib.Tests.csproj`, performs a managed-only build (`dotnet build MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-restore`), and executes `AgentInstructionsTests` to verify character budgets and document link integrity. Because `AgentInstructionsTests` requires no native code and `Directory.Build.targets` copies `MFTLibNative` only when present, the job remains fast and cheap while ensuring docs changes are validated.
+The `docs` job always runs without an early exit. Running on the configured Linux runner image, it restores `MFTLib.Tests.csproj`, performs a managed-only build (`dotnet build MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-restore`), and executes `AgentInstructionsTests` to verify character budgets, document link integrity, CI input wiring and tracked-content portability. Because `AgentInstructionsTests` requires no native code and `Directory.Build.targets` copies `MFTLibNative` only when present, the job remains fast and cheap while ensuring docs changes are validated.
 
 The `linux` job verifies the initialization output before coverage whenever
 `skip_build` is false. It runs `./init.sh --build`, checks for
@@ -59,9 +59,9 @@ and an empty package cache. The step follows the existing `skip_build` condition
 
 The `linux-package` job builds the Release linux-x64 library, runs `scripts/check-linux-native.sh` on it and smoke-tests the packed library through `scripts/smoke-package-linux.sh`; the release rebuilds the library in WSL, since Gitea lists no CI artifact over REST ([Linux package](linux-package.md)).
 
-Windows jobs run on the host-mode `windows-latest` runner, where toolchains are provisioned on the host: no `actions/setup-*` step belongs in a job that runs on it (`microsoft/setup-msbuild` only locates MSBuild and is allowed). The Linux jobs run in the fleet runner image `gitea.fleet.sticktoitive.net/schoen/runner-images:latest`, which bakes cmake, ninja, gcovr and the .NET SDK 10.0 and inherits g++, gcov and make from its base: they install no tools and use no `actions/setup-dotnet` step.
+Windows jobs run on the host-mode `windows-latest` runner, where toolchains are provisioned on the host: no `actions/setup-*` step belongs in a job that runs on it (`microsoft/setup-msbuild` only locates MSBuild and is allowed). The `linux`, `docs` and `linux-package` jobs read their container image from the repository Actions variable `MFTLIB_CI_IMAGE`. The repository operator provisions the image reference before enabling these jobs. The image supplies CMake, Ninja, gcovr, .NET SDK 10, g++, gcov and make; workflows do not install those tools. Each container retains `--ulimit nofile=65536:65536`.
 
-For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .NET version mismatch, PS7 + dotnet test comma-splitting, etc.), read `~/schoen-lab/packages/local_ci/docs/project-ci-setup.md` before modifying the workflow. Runner-account environment needs (pwsh on PATH, `DOTNET_INSTALL_DIR`) are fixed at the runner service level - do not add per-workflow bootstrap steps for them.
+Keep `pwsh` on the runner account's PATH and configure `DOTNET_INSTALL_DIR` at the runner service, never through workflow bootstrap steps. Use amd64 MSBuild and the shared Windows build script. Keep coverlet's comma-separated include filter in the project file rather than passing it through PowerShell. Compute file hashes in the shell because `hashFiles()` can evaluate empty on this runner. Preserve the existing artifact-action versions: v3 uploads are downloadable from the run page but are not listed through this Gitea deployment's artifact REST API.
 
 ## Local CI preflight
 
@@ -95,7 +95,7 @@ aislop remain unfiltered, subject to their existing host availability.
 
 | Scope/gate | Windows | Linux | Shared CI implementation |
 | --- | --- | --- | --- |
-| `docs` | Run | Run | `scripts/test-agent-instructions.sh`: restore, managed build, AgentInstructionsTests |
+| `docs` | Run | Run | `scripts/test-agent-instructions.sh`: restore, managed build, AgentInstructionsTests (budgets, links, CI inputs and portability) |
 | `preflight-tests` | Run | Run | `scripts/ci-preflight.tests.sh`: dispatcher, shared classifier, CI adapter, and workflow delegation; also run by both Windows and Linux CI jobs |
 | `build-script` / `build-script` | Run | Skip | `scripts/build-windows.tests.ps1` |
 | `build-script` / `aislop-tests` | Run | Skip | `scripts/ci-aislop.tests.ps1`, independent scanner regression gate |
@@ -156,7 +156,7 @@ This project uses **aislop** as a deterministic quality gate for AI-written code
 (narrative comments, swallowed exceptions, `as any`, dead stubs, oversized
 functions, etc.) across TS/JS, Python, Go, Rust, Ruby, PHP, Java, and C#.
 
-`aislop` is installed globally on this machine, pinned to a **specific commit** of
+Local development uses an installed C#-capable `aislop`, pinned to a **specific commit** of
 the fork `mtschoen/aislop` (which adds the C# engine: roslynator + jb
 inspectcode; upstream npm `aislop` is Python-only). Note that the local global
 installation pin and the CI commit pin (`.aislop/fork-commit`) are separate
@@ -180,12 +180,11 @@ MSBuild + MSVC, and both jb inspectcode and roslynator load the full solution.
 `lint.csharp.jbProjects` in `.aislop/config.yml` scopes the C# jb inspection to the six
 C# projects, and `lint.cpp.jbProjects` scopes the native ReSharper C++ inspection to
 `MFTLibNative`, which the same gate also scores with clang-tidy, cppcheck and clang-format. The
-workflow installs `aislop` by cloning the `schoen/aislop` fork from Gitea at the
+workflow installs `aislop` by cloning the `schoen/aislop` fork on `github.server_url` at the
 commit pinned in `.aislop/fork-commit` (built with `pnpm`) and runs it via `node`.
 It deliberately does NOT use `actions/setup-node`
 (its 7zr extraction dies with exit code 2 on the host-mode act_runner). The
-build step calls `scripts/build-windows.ps1`, the same Windows recipe used by coverage and `init.ps1 -Build`. The shared script requires amd64 MSBuild; a 32-bit binary cannot resolve legacy SYSTEM-profile checkout paths. See the traps in
-`~/schoen-lab/packages/local_ci/docs/project-ci-setup.md`. `aislop / quality-gate
+build step calls `scripts/build-windows.ps1`, the same Windows recipe used by coverage and `init.ps1 -Build`. The shared script requires amd64 MSBuild; a 32-bit binary cannot resolve legacy SYSTEM-profile checkout paths. `aislop / quality-gate
 (pull_request)` is one of the four required status checks in the branch protection
 rule on `main`, alongside `test / windows (pull_request)`, `test / linux (pull_request)` and `test / linux-package (pull_request)`, so a failing gate
 blocks the merge. The `test / docs (pull_request)` check runs on every pull request but is not a required check.
@@ -209,6 +208,20 @@ To move the global binary to a different commit or tag of the fork:
 `MFTLib.Tests/PublicSurfaceTests.cs` compares the public surface with the approved files in `MFTLib.Tests/PublicSurface/` and runs in both the Windows and Linux test jobs; see `docs/architecture.md`.
 
 ## Agent instruction budgets
+
+### Tracked-content portability
+
+`AgentInstructionsTests.TrackedFiles_ContainNoPrivateDeploymentReferences` enumerates
+`git ls-files -z` and reads each tracked working-tree file, including hidden configuration.
+It rejects user-directory literals, private deployment hosts and workstation names,
+and private checkout pointers. Git failures, missing metadata and unreadable files fail
+the gate. There are no file exemptions; the detector scans its own source and has
+negative controls. Stage intended additions and removals before local verification.
+The same class pins all three Linux container images to `MFTLIB_CI_IMAGE` and
+checks the scanner and consumer-sync server context. `.plan` remains tracked;
+`.maintenance.json` is ignored local state.
+
+### Character budgets
 
 `MFTLib.Tests/AgentInstructionsTests.cs` checks that the root `AGENTS.md` stays
 strictly below 15000 Unicode characters and that every blank-line-delimited

@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -47,6 +48,112 @@ public class AgentInstructionsTests
         {
             var path = Path.Combine(AppContext.BaseDirectory, "repository-docs", link);
             Assert.IsTrue(File.Exists(path), $"AGENTS.md links {link}, which does not exist.");
+        }
+    }
+
+    [TestMethod]
+    public void LinuxJobs_UseConfiguredImageAndRetainFileLimit()
+    {
+        var workflow = RepositoryFiles.Read(".gitea/workflows/test.yml");
+        foreach (var name in new[] { "linux", "docs", "linux-package" })
+        {
+            var job = Regex.Match(workflow,
+                @"(?ms)^  " + Regex.Escape(name) + @":\r?\n(?<body>.*?)(?=^  [\w-]+:\r?$|\z)");
+            Assert.IsTrue(job.Success, $"Missing job {name}.");
+            var container = Regex.Match(job.Groups["body"].Value,
+                @"(?ms)^    container:\r?\n(?<body>(?:^      [^\r\n]*\r?\n)+)");
+            Assert.IsTrue(container.Success, $"Missing container for {name}.");
+            var body = container.Groups["body"].Value;
+            Assert.IsTrue(Regex.IsMatch(body,
+                @"(?m)^      image: \$\{\{ vars\.MFTLIB_CI_IMAGE \}\}\r?$"),
+                $"{name} must consume the provisioned image variable.");
+            Assert.IsTrue(Regex.IsMatch(body,
+                @"(?m)^      options: --ulimit nofile=65536:65536\r?$"),
+                $"{name} must retain the open-file limit.");
+        }
+    }
+
+    [TestMethod]
+    public void ScannerAndConsumerWorkflows_UseServerContext()
+    {
+        var scanner = RepositoryFiles.Read(".gitea/workflows/aislop.yml");
+        Assert.IsTrue(scanner.Contains(
+            "AISLOP_REPOSITORY_URL: ${{ format('{0}/schoen/aislop.git', github.server_url) }}",
+            StringComparison.Ordinal));
+        Assert.IsTrue(scanner.Contains("git clone \"$env:AISLOP_REPOSITORY_URL\" $aislopDir",
+            StringComparison.Ordinal));
+        Assert.IsTrue(scanner.Contains("git -C $aislopDir checkout \"$env:AISLOP_FORK_COMMIT\"",
+            StringComparison.Ordinal));
+        Assert.IsFalse(scanner.Contains("NODE_EXTRA_CA_CERTS:", StringComparison.Ordinal));
+        var consumer = RepositoryFiles.Read(".gitea/workflows/sync-consumers.yml");
+        Assert.IsTrue(consumer.Contains("GITEA_URL: ${{ github.server_url }}", StringComparison.Ordinal));
+        Assert.IsTrue(consumer.Contains("GITEA_TOKEN: ${{ secrets.MFTLIB_SYNC_TOKEN }}", StringComparison.Ordinal));
+    }
+
+    // Assemble detector signatures so the guard can scan its own source without exemptions.
+    static string[] PrivateContentPatterns() =>
+    [
+        @"(?i)[a-z]:[\\/]+" + @"Users(?:[\\/]|\b)",
+        @"(?i)/mnt/[a-z]/" + @"Users(?:/|\b)",
+        @"(?i)" + Regex.Escape(string.Join('.', "fleet", "sticktoitive", "net")),
+        @"(?i)\b" + "chon" + @"kers\b",
+        @"(?i)\b" + "llama" + @"box\b",
+        Regex.Escape("~/" + "schoen-lab/")
+    ];
+
+    [TestMethod]
+    public void TrackedFiles_ContainNoPrivateDeploymentReferences()
+    {
+        var paths = RepositoryFiles.Git("ls-files", "-z")
+            .Split('\0', StringSplitOptions.RemoveEmptyEntries);
+        Assert.IsTrue(paths.Length > 0, "Git returned no tracked files.");
+        CollectionAssert.Contains(paths, ".plan", "The backlog must remain tracked.");
+        var patterns = PrivateContentPatterns();
+        var failures = new List<string>();
+        foreach (var path in paths)
+        {
+            var text = RepositoryFiles.Read(path);
+            for (var index = 0; index < patterns.Length; index++)
+            {
+                if (Regex.IsMatch(text, patterns[index]))
+                {
+                    failures.Add($"{path}: private-content rule {index + 1}");
+                }
+            }
+        }
+
+        Assert.AreEqual(0, failures.Count, string.Join(Environment.NewLine, failures));
+        CollectionAssert.DoesNotContain(paths, ".maintenance.json", "Maintenance state must be local.");
+        Assert.AreEqual(".maintenance.json",
+            RepositoryFiles.Git("check-ignore", "--no-index", ".maintenance.json").Trim());
+    }
+
+    [TestMethod]
+    public void PrivateContentPatterns_RejectFixturesAndAcceptPortableInputs()
+    {
+        var rejected = new[]
+        {
+            "C:" + @"\Users\fixture\source", "c:" + "/users/fixture/source",
+            "C:" + @"\\Users\\fixture\\source", "/mnt/c/" + "Users/fixture/source",
+            "https://" + string.Join('.', "gitea", "fleet", "sticktoitive", "net") + "/team/repo",
+            "CHON" + "KERS", "llama" + "box", "~/" + "schoen-lab/packages/guide.md"
+        };
+        var patterns = PrivateContentPatterns();
+        foreach (var text in rejected)
+        {
+            Assert.IsTrue(patterns.Any(pattern => Regex.IsMatch(text, pattern)),
+                "A private-content negative control was not detected.");
+        }
+
+        foreach (var text in new[]
+        {
+            "docs/quality-gates.md", "${{ vars.MFTLIB_CI_IMAGE }}",
+            "$env:MFTLIB_GITEA_REPOSITORY_URL", "https://forge.example.invalid/team/repo",
+            @"C:\Data\test\file.txt", "https://github.com/mtschoen/MFTLib"
+        })
+        {
+            Assert.IsFalse(patterns.Any(pattern => Regex.IsMatch(text, pattern)),
+                $"Portable content was rejected: {text}");
         }
     }
 

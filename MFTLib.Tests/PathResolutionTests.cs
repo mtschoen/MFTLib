@@ -10,17 +10,17 @@ public class PathResolutionTests
     public void ResolvePath_SimpleHierarchy_ReturnsCorrectPath()
     {
         // Record 5 is the NTFS root directory (.)
-        // Build: C:\Users\test\file.txt
+        // Build: C:\Data\test\file.txt
         var records = new MftRecord[]
         {
             new(5, 5, new MftRecordFields(0x0003), "."), // root
-            new(100, 5, new MftRecordFields(0x0003), "Users"), // Users under root
-            new(200, 100, new MftRecordFields(0x0003), "test"), // test under Users
+            new(100, 5, new MftRecordFields(0x0003), "Data"), // Data under root
+            new(200, 100, new MftRecordFields(0x0003), "test"), // test under Data
             new(300, 200, new MftRecordFields(0x0001), "file.txt") // file.txt under test
         };
 
         var path = ResolveTestPath(records, 300, "C");
-        Assert.AreEqual(@"C:\Users\test\file.txt", path);
+        Assert.AreEqual(@"C:\Data\test\file.txt", path);
     }
 
     [TestMethod]

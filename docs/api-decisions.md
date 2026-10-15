@@ -10,8 +10,7 @@ what would justify revisiting it.
 
 ## Metadata reports observations and freshness without hidden reads
 
-**Decision (2026-10-14,
-[MFTLib issue 503 (metadata freshness)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/503)):**
+**Decision (2026-10-14):**
 the index reports the filesystem metadata it actually observed and its freshness, without implicit filesystem
 reads to refresh it. A journal event's timestamp is event time (`FileChange.Timestamp`), not a filesystem
 last-write observation. `RowFlags.LastWriteTimeUnknown = 32` tracks unknown last-write time alongside
@@ -41,7 +40,7 @@ freshness information that the observation/invalidation model cannot express.
 
 ## A subtree anchor belongs to the queried index's current drive block
 
-**Decision (2026-10-14, [MFTLib issue 504 (subtree identity)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/504)):**
+**Decision (2026-10-14):**
 all three query forms (`Search`, `Enumerate`, and `EnumerateRows`) reject `Subtree = default(FileEntry)` with
 `ArgumentException` on call entry. They then validate a non-null `Subtree` anchor, through one shared helper,
 against the snapshot actually borrowed by the query. They throw `ObjectDisposedException` when the anchor's block
@@ -77,8 +76,7 @@ choice. An MFT failure never selects a directory walk; enumeration ignores `MftS
 
 ## OpenAsync validates drive keys and producer choices before filesystem side effects
 
-**Decision (2026-10-14,
-[MFTLib issue 505 (OpenAsync input validation)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/505)):**
+**Decision (2026-10-14):**
 `IndexedDrive` validates `Drive`, `RootDirectory` (`ArgumentException.ThrowIfNullOrWhiteSpace`), and `Producer`
 (`Enum.IsDefined`, throwing `ArgumentOutOfRangeException`) on construction and in its `init` setters.
 `FileIndex.OpenAsync` materializes `FileIndexOptions.Drives` once and validates it up front, before creating
@@ -94,8 +92,7 @@ side effects.
 
 ## Cold production failures settle per drive across both producers
 
-**Decision (2026-10-14,
-[MFTLib issue 506 (per-drive enumeration settlement)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/506)):**
+**Decision (2026-10-14):**
 a cold-production failure on a `ProducerKind.Enumeration` drive settles that drive as `DriveState.Failed` with
 `DriveFailureKind.ProducerFailed` while healthy sibling drives remain usable, matching `ProducerKind.Mft` and
 `RescanAsync`. A failed rescan preserves the previous block and reports `DriveStatus.Failure` with
@@ -115,7 +112,7 @@ missing or inaccessible subtrees; neither is an operational producer failure by 
 
 ## FileEntry handles are bound to the row's sequence number
 
-**Decision (2026-10-14, [MFTLib issue 507 (FileEntry row-reuse identity)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/507)):**
+**Decision (2026-10-14):**
 `FileEntry` captures the row's `ushort` sequence number at construction, in the tail padding of its 16-byte
 struct (`Snapshot?`, `uint` row index, `ushort` drive ordinal, `ushort` sequence number; `BlockFile` layout is
 unchanged, and an enumeration block, which the journal never mutates, captures zero). `BlockWriter.TryWriteRow`
@@ -144,7 +141,7 @@ beyond `IsDeleted`.
 
 ## A sequence number is stored as NTFS supplied it
 
-**Decision (2026-10-14, [MFTLib issue 518 (synthetic sequence advancement)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/518)):**
+**Decision (2026-10-14):**
 MFTLib never invents a sequence number. `BlockWriter` stores the NTFS sequence number exactly as supplied. A
 `FileEntry` is bound to the NTFS file reference (record number plus sequence number). Distinct references never
 alias, and a reference NTFS itself reuses is the same reference. The journal ignores a delete or mutation whose
@@ -160,7 +157,7 @@ identity from it.
 
 ## FileEntry identity is validated per access without a lock
 
-**Decision (2026-10-14, [MFTLib issue 517 (identity and column read tear)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/517)):**
+**Decision (2026-10-14):**
 Identity is validated per access, with no lock and no fence on the read path. Column reads are not serialized
 against the journal writer. The writer publishes the new sequence number before it overwrites the columns, so a
 read that straddles a slot reuse can return the replacement's column once, and the next access throws. A caller
@@ -193,7 +190,7 @@ the duplication:
 The broker launcher does not use `TryRunElevated`, on purpose: that call waits for the elevated child to exit,
 and the broker has to keep running on its pipe. That is not evidence the helper is unused.
 
-**Implementation (2026-10-13, [MFTLib issue 472](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/472)):**
+**Implementation (2026-10-13):**
 the Defender sequence is `ElevationUtilities.TryAddDefenderProcessExclusions(processNames, relaunchArguments, elevation = null)`,
 one method on the existing type; [elevation](elevation.md#windows-defender-process-exclusions) holds its contract.
 The public elevation helper and provider remain the shared consumer API. The timeout field's
@@ -203,8 +200,7 @@ visibility is governed by the sample-caller audit decision below.
 
 ## Sample-caller audit: helper policy and harness-owned observations
 
-**Decision (2026-10-14,
-[MFTLib issue 534 (sample-caller audit)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/534)):**
+**Decision (2026-10-14):**
 `ElevationUtilities.DefaultElevatedTimeout` is internal. `InProcessBrokerScan` is a receive-only
 record with an explicit internal constructor, public init-only `Drive` and `RetainedFileNames`
 properties, and no positional deconstruction. Drive validation applies on construction and init.
@@ -222,8 +218,7 @@ public value, or a consumer test needs to supply a scan observation as input to 
 
 ## Journal retention sizing is reported by the library; growth is a consumer decision
 
-**Decision (2026-10-13, API review finding F12,
-[MFTLib issue 488](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/488)):**
+**Decision (2026-10-13, API review finding F12):**
 `BrokerSession.GrowUsnJournalAsync(drive, target, cancellationToken)` takes a `UsnJournalSettings` target.
 The library reports the exact journal size that would have retained a lost checkpoint; the consumer owns the
 decision to grow. `JournalCheckpointLoss.TryGetGrowthTarget` projects that recorded size and allocation delta,
@@ -249,14 +244,12 @@ does not decide whether growth is worth it, and a consumer reads fresh settings 
 **Decision (2026-10-13, API review finding F6):** the directory-walk producer stays public. It is how an index
 is built where the MFT is not available: Linux, non-NTFS volumes, and a run without elevation. The producer
 choice belongs to each drive, not to the whole open, so one index can hold an MFT-scanned drive beside a
-directory-walked one ([MFTLib issue 468](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/468)).
+directory-walked one.
 
 **Reason:** the review found no shipping caller and recommended moving the producer into the test package. The
 absence of a caller was a gap in the consumers, not the intent: file-wizard documents the producer but exposes
-no way to select it
-([file-wizard issue 561](https://gitea.fleet.sticktoitive.net/schoen/file-wizard/issues/561)), and git-wizard
-carries a separate hand-rolled walk
-([git-wizard issue 311](https://gitea.fleet.sticktoitive.net/schoen/git-wizard/issues/311)). The whole-open
+no way to select it, and git-wizard
+carries a separate hand-rolled walk. The whole-open
 policy predated the per-drive refactor.
 
 **Unchanged rule:** a drive whose MFT scan fails is `Failed`; it is never rebuilt by a directory walk on the
@@ -301,8 +294,7 @@ one way is not a setting.
 `char` drive letter (and the test package's `string` letters) across the public surface. It normalizes case
 once, converts implicitly from `char` and never from `string`. Each lifecycle verb of `FileIndex` (start
 watching, stop watching, wait for catch-up, rescan) is one method taking `IEnumerable<DriveKey>` and returning
-one `DriveOperationResult` per requested drive, with no overloads
-([MFTLib issue 470](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/470)).
+one `DriveOperationResult` per requested drive, with no overloads.
 
 **Reason:** the letter was the key of the whole API with no owner: case rules, parameter types and collection
 types differed from member to member, both consumers up-cased what the library returned, and the four verbs had
@@ -328,8 +320,7 @@ status or result type takes the `Is`, `Has` or `Can` prefix: `DriveWatchStatus.I
 the test package's `PowerShellLaunch.IsElevated`. A boolean option that reads as an instruction takes no prefix
 (`CaseSensitive`, `IncludeDeleted`, `IncludeFreed`, `CatchUpOnStart`). `BooleanNamingTests` enforces the rule
 by reflection over the compiled MFTLib and MFTLibTestExtensions assemblies, with an explicit allowlist of the option types (`MftScanOptions`,
-`SearchQuery` and `ScriptedWatchSource`)
-([MFTLib issue 477](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/477)).
+`SearchQuery` and `ScriptedWatchSource`).
 
 **Reason:** thirteen state flags already took `Is` and six did not, so a reader could not tell a state flag from
 an option by its name, and one status record mixed both styles. The framework guideline leaves the prefix
@@ -346,8 +337,7 @@ ends in `Count`, and a bound is the property name followed by `Minimum` or `Maxi
 MFTLibTestExtensions: `SyntheticRow.LastWriteTime`, `ScanTimestamp` on `SyntheticBlockOptions`,
 `SyntheticMftProducer`, `CachedBlockFile.Size`, `IndexScanProgress.WrittenRowCount`
 and `ExpectedRowCount`, and `SearchQuery.SizeMinimum` and `SizeMaximum`. A parameter that takes a `DriveKey` is
-named `drive` (or `drives` for a sequence), never `driveLetter`
-([MFTLib issue 479](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/479)).
+named `drive` (or `drives` for a sequence), never `driveLetter`.
 
 **Reason:** the surface named the same concept several ways, so a reader had to learn each type's word for a
 last write time, a scan time, a size, a count and a query bound. The test package had dropped the `Utc` suffix
@@ -375,8 +365,7 @@ file-wizard has no consumer uses outside its MFTLib submodule.
 **Decision (2026-10-13, API review finding F19):** `MftIndexSources.Unavailable(reason)` replaces
 `MftIndexSource.Unavailable(reason)`, with the same contract. `MftIndexSource` keeps no public factory, so the
 flat `MFTLib` namespace holds every way to obtain a source: `BrokerSession.CreateIndexSource`,
-`MftIndexSources.FromLocalVolumes`, `MftIndexSources.FromMftDumpFile` and `MftIndexSources.Unavailable`
-([MFTLib issue 480](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/480)).
+`MftIndexSources.FromLocalVolumes`, `MftIndexSources.FromMftDumpFile` and `MftIndexSources.Unavailable`.
 
 **Reason:** the factory shipped on the type two days before the factory class existed, and no record gave a
 reason to leave it there. It stays a factory rather than becoming a null `FileIndexOptions.MftSource` because
@@ -390,8 +379,7 @@ the reason there is none.
 ## A method named Try returns quickly
 
 **Decision (2026-10-13, API review finding F23):** `ElevatedEntryPoint.RunBrokerIfRequested(arguments)`
-replaces `ElevatedEntryPoint.TryHandle(arguments)`, with the same parameter, return value and behavior
-([MFTLib issue 481](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/481)).
+replaces `ElevatedEntryPoint.TryHandle(arguments)`, with the same parameter, return value and behavior.
 
 **Reason:** the method runs the broker for its whole life when the process was started with the broker flag,
 exits the process with code 1 on rejected arguments, and otherwise returns false at once. A `Try` name in .NET
@@ -404,8 +392,7 @@ was hoisted into MFTLib and was never revisited.
 
 **Decision (2026-10-13, API review finding F21):** `FileIndexOptions.ScanProgress` replaces `Progress` (scan
 progress samples, only while a scan runs) and `FileIndexOptions.DriveOpenProgress` replaces `OpenProgress` (one
-`IndexDriveOpened` per drive that settles during open, warm starts included)
-([MFTLib issue 485](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/485)). `BrokerSession.Connecting`
+`IndexDriveOpened` per drive that settles during open, warm starts included). `BrokerSession.Connecting`
 stays an event. The mix of events, `IProgress` options and the `Diagnostics` callback stays, because each style
 follows what it reports.
 
@@ -435,8 +422,7 @@ current provider types cannot express.
 `TotalDriveCount`. The Watch sample now prints one line per settled drive, so the notification has a sample
 caller.
 
-**Reason:** the notification was built to order for file-wizard's "drive k of N" display during warm starts
-([file-wizard issue 382](https://gitea.fleet.sticktoitive.net/schoen/file-wizard/issues/382)). Drives settle
+**Reason:** the notification was built to order for file-wizard's "drive k of N" display during warm starts. Drives settle
 concurrently, so the settle counter is what lets a handler order overlapping reports, and the total keeps each
 report self-describing. A single consumer is the design, not drift. The gap the review found was that no sample
 showed it.
@@ -450,8 +436,7 @@ on; the reason or error that accompanies it is a nullable property, non-null onl
 report; a reason enum has no "nothing wrong" member. `CachedBlockStatus.Validation` is null unless
 `Availability` is `Invalid`, and `BlockValidationResult` has no `Valid`. `DriveBlockStatus.CacheSlot` is a
 nullable `CacheSlotState`, null when the block is not backed by a cache slot, and `CacheSlotState` has no
-`NotApplicable`
-([MFTLib issue 476](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/476)).
+`NotApplicable`.
 
 **Reason:** two fields stating one fact can contradict each other, and both consumers branch on the state enum
 and only print the reason. Six of the eight state-plus-reason pairs on the public surface already had this
@@ -468,8 +453,7 @@ already distinguish by the state enum.
 is one public method with optional `IEnumerable<DriveKey>? drives = null`
 and `Action<CachedBlockRejection>? rejectedFile = null` parameters.
 `CacheDirectory.EnsureCreated` stays public and unchanged, with its application
-usage documented. `DeleteCached` keeps its rejected-filename callback overload internal
-([MFTLib issue 486 (cache inspection and creation documentation)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/486)).
+usage documented. `DeleteCached` keeps its rejected-filename callback overload internal.
 
 **Reason:** inspection's two overloads differed only by optional rejection
 reporting; one method follows the existing one-method-per-verb rule and supports
@@ -483,8 +467,7 @@ such as a production need for rejected-filename reporting during deletion.
 
 ## Cache deletion reports per-file outcomes through results
 
-**Decision (2026-10-14,
-[MFTLib issue 529 (cache deletion reporting)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/529)):**
+**Decision (2026-10-14):**
 `CacheDirectory.DeleteCached(string cacheDirectoryPath, IEnumerable<DriveKey>? drives = null)`
 returns each attempted file's outcome and optional failure reason in
 `CachedBlockDeletionResult`. The Watch sample prints those results once.
@@ -506,8 +489,7 @@ deletion results cannot express.
 **Decision (2026-10-13, API review finding F24):** add `FileEntry.Drive`, a
 `DriveKey` equal to `RecordKey.Drive`, with the same default-value and disposal
 behavior as the entry's other data properties. `FileIndex.Drives` keeps its name.
-`FileEntry.IsValid` and `IsDisposed` stay separate
-([MFTLib issue 483 (add FileEntry.Drive)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/483)).
+`FileEntry.IsValid` and `IsDisposed` stay separate.
 
 **Reason:** `IndexRow` already exposes `Drive`, while both consumers repeatedly
 read `FileEntry.RecordKey.Drive`. Direct access removes that repeated two-hop
@@ -531,8 +513,7 @@ distinct meanings of these state questions.
 `DriveOperationResult` follow the receive-only record rule: explicit internal
 constructors, public init-only properties, and no positional `Deconstruct`.
 Tests construct them through `SyntheticNotifications.CreateWatchStateChange`
-and `SyntheticNotifications.CreateDriveOperationResult` in `MFTLib.TestExtensions`
-([MFTLib issue 482 (restrict hand-out record construction)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/482)).
+and `SyntheticNotifications.CreateDriveOperationResult` in `MFTLib.TestExtensions`.
 
 **Reason:** the library produces these events and operation verdicts. The
 consumer review found no production need to construct them. file-wizard's
@@ -554,8 +535,7 @@ snapshot presentation and application-owned refusals do not establish that need.
 ## The test package keeps the shapes of the consumer doubles it was hoisted from
 
 **Decision (2026-10-13, API review finding F25):** the doubles in `MFTLib.TestExtensions`
-follow three shape rules
-([MFTLib issue 484 (test package shapes)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/484)).
+follow three shape rules.
 Configuration properties are init-only, except a property a test changes while the
 double is running, which keeps `set` and says so in its XML summary
 (`ScriptedWatchSource.StartFailure` is the only one). Batches of
@@ -577,8 +557,7 @@ property while the double runs; that property then keeps `set` with a summary sa
 
 ## The broker session ends only when the broker ends
 
-**Decision (2026-10-12, API review finding F1,
-[MFTLib pull request 462 (BrokerSession.Ended and disposal)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/462)):**
+**Decision (2026-10-12, API review finding F1):**
 `BrokerSession.Ended` is the one member that reports a broker end. It completes once, shortly after the launched
 process ends, with the end reason, and never at disposal. A session that never launched, or that is disposed while
 its process is alive, never completes it. `HasEnded` does not exist; a caller that wants a flag reads
@@ -595,8 +574,7 @@ meaning removes both workarounds.
 
 ## One failure value and a nullable block on DriveStatus
 
-**Decision (2026-10-12, API review finding F2,
-[MFTLib pull request 463 (DriveStatus failure and block)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/463)):**
+**Decision (2026-10-12, API review finding F2):**
 `DriveStatus.Failure` is a `DriveFailure` (`Kind`, non-null `Message`), non-null exactly when the drive is
 `Failed`, or `Ready` retaining a block after a failed `RescanAsync` or a failed catch-up retry scan during
 `OpenAsync` (kind `ProducerFailed`, the producer's message). A successful scan publication clears it and an
@@ -613,8 +591,7 @@ fallback text. This is the first instance of the state-plus-nullable-reason rule
 
 ## One watch snapshot type, named for what it holds
 
-**Decision (2026-10-12, API review finding F3,
-[MFTLib pull request 464 (watch state types)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/464)):**
+**Decision (2026-10-12, API review finding F3):**
 the enum is `WatchState` (formerly `WatchCatchUpState`; its members `NotStarted`, `Recovering` and `Faulted`
 describe the watch lifecycle) and `DriveWatchStatus.State` is its property. `FileIndex.WatchStateChanged` is an
 `Action<WatchStateChange>`; `WatchStateChange` carries `DriveKey Drive` (formerly `DriveLetter`), the same
@@ -631,8 +608,7 @@ apart as snapshot, event or enum.
 
 ## MftScanOptions configures every MFT scan
 
-**Decision (2026-10-12, API review finding F4,
-[MFTLib pull request 465 (scan options names)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/465)):**
+**Decision (2026-10-12, API review finding F4):**
 `MftScanOptions` (formerly `BrokerScanOptions`) configures every MFT scan: broker-backed through
 `BrokerSession.CreateIndexSource(scanOptions)` and in-process through `MftIndexSources.FromLocalVolumes(scanOptions)`.
 Its `RetainedFileNames` (formerly `DirectoryScanFileNames`) is null to retain every eligible record, empty to
@@ -647,8 +623,7 @@ directory walk). Neither name said what it held. git-wizard is the production ca
 
 ## Search bounds are named for what they compare, and say what they exclude
 
-**Decision (2026-10-12, API review finding F5,
-[MFTLib pull request 466 (SearchQuery names)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/466)):**
+**Decision (2026-10-12, API review finding F5):**
 `SearchQuery.LastWriteTimeMinimum` and `SearchQuery.LastWriteTimeMaximum` are
 inclusive bounds on `FileEntry.LastWriteTime`, which is UTC. The raw ticks of the
 supplied `DateTime` are compared with no `DateTime.Kind` conversion, so the caller
@@ -670,10 +645,7 @@ and `SearchQuery.IncludeDeleted`; the Direct sample exercises them.
 
 ## Public XML comments name public members, and Root says why it refused
 
-**Decision (2026-10-12, API review findings F17 and F18,
-[MFTLib pull request 461 (documentation sweep)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/461),
-[MFTLib pull request 469 (XML comments)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/469) and
-[MFTLib pull request 471 (Root message)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/471)):**
+**Decision (2026-10-12, API review findings F17 and F18):**
 a public XML comment refers only to public members and states the contract the code has. `MftIndexSource` names
 `BrokerSession.CreateIndexSource` and `MftIndexSources`, `JournalCheckpointLoss.SizeThatWouldHaveRetained` states that
 the library reports the size and the consumer owns the growth decision (the sweep's historical link to

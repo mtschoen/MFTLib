@@ -4,6 +4,7 @@
 # Usage:
 #   .\scripts\release.ps1          # dry run (build + test + pack only)
 #   .\scripts\release.ps1 -Publish # full release (publish + tag + push)
+# Set MFTLIB_GITEA_REPOSITORY_URL to the canonical repository URL for both modes.
 
 param(
     [switch]$Publish
@@ -42,6 +43,17 @@ function Write-ReleaseNotesFile {
     [IO.File]::WriteAllText($Path, $Text, [Text.UTF8Encoding]::new($false))
 }
 
+function Get-ReleaseRepositoryUrl {
+    param([string] $RepositoryUrl)
+
+    if ([string]::IsNullOrWhiteSpace($RepositoryUrl) -or
+        $RepositoryUrl -notmatch '^(https://[^/\s]+/|ssh://[^/\s]+/|[^@\s/:]+@[^:\s/]+:)[^\s]+$') {
+        throw 'Set MFTLIB_GITEA_REPOSITORY_URL to the canonical repository HTTPS or SSH URL, not a remote name.'
+    }
+    return $RepositoryUrl
+}
+
+$giteaRepositoryUrl = Get-ReleaseRepositoryUrl $env:MFTLIB_GITEA_REPOSITORY_URL
 . "$PSScriptRoot\Test-ReleasePackages.ps1"
 $repoRoot = Resolve-Path "$PSScriptRoot\.."
 Set-Location $repoRoot
@@ -76,12 +88,8 @@ if (git tag -l $tag) {
 }
 
 # --- Push destinations ---
-# The tag is pushed to these URLs directly instead of through local remote
-# names: remote names differ per checkout (chonkers: origin=GitHub, gitea=Gitea;
-# llamabox: origin=Gitea, github=GitHub), and a remote name's destination can
-# be silently redirected by a configured pushurl. A literal URL cannot be
-# renamed or redirected out from under this script.
-$giteaRepositoryUrl = "gitea@gitea.fleet.sticktoitive.net:schoen/MFTLib.git"
+# The canonical destination is resolved once from the release environment.
+# Push to literal URLs: remote aliases and pushurl settings vary by checkout.
 $githubRepositoryUrl = "git@github.com:mtschoen/MFTLib.git"
 
 Write-Host "The release tag will be pushed to Gitea at $giteaRepositoryUrl." -ForegroundColor Cyan

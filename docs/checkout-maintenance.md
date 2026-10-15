@@ -8,6 +8,8 @@ That safety comes from an invariant, not from a wrapper: **nothing unrecoverable
 
 Anything that fails that test belongs somewhere else. If a file is worth keeping, track it and push it; if it is only worth keeping on one machine, keep it outside the working tree. Do not add a file to this repository that is neither.
 
+`.maintenance.json` is ignored local maintenance state and may be discarded by `git clean -ffxd`. Record durable project decisions in tracked documentation. The backlog in `.plan` remains tracked.
+
 Git offers no way to protect a file from `git clean`. Aliases cannot shadow built-in commands, there is no `pre-clean` hook, and `-x` overrides `.git/info/exclude`. Only tracked files and files outside the tree are safe, which is why the invariant above is the whole mechanism.
 
 What a clean removes and how each comes back:
@@ -40,7 +42,7 @@ git clean -ffxd && .\init.bat
 git clean -ffxd && .\init.bat -Build
 ```
 
-Keep the `.\` prefix. This machine sets `NoDefaultCurrentDirectoryInExePath=1`, so `cmd.exe` does not search the working directory for executables and a bare `init.bat` fails with "not recognized as an internal or external command".
+Keep the `.\` prefix. On systems with `NoDefaultCurrentDirectoryInExePath=1`, `cmd.exe` does not search the working directory for executables and a bare `init.bat` fails with "not recognized as an internal or external command".
 
 ```bash
 git clean -ffxd && ./init.sh           # restore only
