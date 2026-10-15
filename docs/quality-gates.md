@@ -46,6 +46,8 @@ build ensures initialization produced the expected output.
 
 The `windows` job also runs the post-clean init verification (`git clean -ffxd`, `init.ps1` twice, `init.bat`, `init.ps1 -Build`, and a clean-tree check after each) described in [checkout maintenance](checkout-maintenance.md). It runs only on the push to `main`: each of those steps is guarded by `github.event_name == 'push' && github.ref == 'refs/heads/main'` (plus the skip-build check), never by workflow-level `paths`, which leaves a required check pending on Gitea (issue 36895). The steps stay in the same job and checkout, after the build and tests, because the first `git clean -ffxd` plus `git status --porcelain` assertion detects a build or test that modified a tracked file. A pull request therefore never proves the clean-tree invariant; the merge to `main` does.
 
+Both platform test jobs also run the package-free init/provisioning regression harness before coverage, guarded by the existing skip-build condition. These offline checks exercise the actual entry points with command doubles, including absent and failed optional provisioning, and run on pull requests. They are separate from the Windows main-push-only post-clean verification and the Linux real-build initialization check.
+
 The Windows job runs `scripts/test-release-package-validation.ps1` and
 `scripts/test-release-notes.ps1` before coverage when `skip_build` is false.
 These offline checks reject incomplete release packages and verify that a
@@ -74,7 +76,7 @@ bash tools/ci-preflight.sh --only coverage-status
 ```
 
 Scopes: `docs`, `preflight-tests`, `build-script`, `coverage-status`, `windows`,
-`linux`, `linux-package`, `sync`, and `aislop`. Repeat `--only` to select several.
+`linux`, `linux-package`, `sync`, `aislop`, and `init`. Repeat `--only` to select several.
 Unknown arguments, unknown scopes, missing values and mixed modes exit 2.
 Every selected gate runs in the foreground, even after another gate fails.
 Any gate failure exits 1; successful host-reproducible gates exit 0. `SKIP`
@@ -101,6 +103,7 @@ aislop remain unfiltered, subject to their existing host availability.
 | `build-script` / `aislop-tests` | Run | Skip | `scripts/ci-aislop.tests.ps1`, independent scanner regression gate |
 | `build-script` / `coverage-child` | Run | Skip | `scripts/test-native-coverage-elevated.ps1`, shared child protocol and both coverage callers |
 | `coverage-status` | Run (pwsh) | Run (requires pwsh) | `scripts/test-coverage-status.ps1`, offline publisher regression tests |
+| `init` / `init-windows`, `init-linux` | Windows adapter matrix | Linux adapter matrix | `scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj --adapters`; also selected by the matching platform scope |
 | `windows` | Run | Skip | `scripts/run-coverage.ps1 -NonInteractive`, including native and managed build, followed by `scripts/smoke-package-windows.ps1` |
 | `linux` | Skip | Run | `scripts/coverage-linux.sh`, native and managed coverage |
 | `linux-package` | Skip | Run | `build-linux.sh`, `check-linux-native.sh`, `smoke-package-linux.sh` under `scripts/` |

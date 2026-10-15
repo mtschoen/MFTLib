@@ -58,7 +58,9 @@ and run the instruction checks with the same configuration and platform.
 
 Both are idempotent, so they are safe to run at any time, not only after a clean.
 
-They also make one optional call: if a settings-provisioning tool is on PATH, they ask it to re-apply the project-scope settings it owns, since a clean removes `.claude/settings.local.json`. The call names a single feature rather than running the tool's whole pipeline, and the step is skipped entirely when the tool is absent, so nothing here depends on it.
+Both init entry points delegate optional provisioning to `scripts/optional-provisioning/OptionalProvisioning.csproj`, a package-free utility built with the already-required .NET SDK 10. It selects `schoen-lab-onboard` before `schoen-lab` on PATH and invokes exactly `apply auto-memory`. Absence is a silent skip; a failed invocation is reported and initialization continues. Only an exit-zero invocation adds the completed-step message. The unqualified `onboard` executable is never considered.
+
+The external provisioner owns settings, registry discovery, and memory writes. Its selected feature can affect global settings and registered checkouts; MFTLib does not recreate that logic or limit the feature to the current checkout. The utility's local build configuration has no package sources or package dependencies and does not import the library's native-copy targets. This step needs neither PowerShell on Linux nor Python or Bash on Windows.
 
 Windows `init.ps1 -Build` calls `scripts/build-windows.ps1 -Configuration Release -NoRestore` after its successful NuGet restore. The shared build serves managed coverage, native coverage and the aislop workflow: it builds the native x64 DLL with v143 and an absolute trailing-backslash `SolutionDir`, then builds the six managed projects. `scripts/windows-tools.ps1` owns checked Visual Studio discovery for build, init, native coverage and release, selecting amd64 MSBuild through `vswhere` with BuildTools included. Init collects discovery errors in its missing-prerequisite summary and continues checking the remaining prerequisites. Run `./scripts/build-windows.ps1` for a standalone Release restore/build, or pass `-Configuration Debug`. Use `-NoRestore` only after a successful restore. Release checks Clean before coverage; coverage's shared build owns its restore. Linux continues to use cmake/Ninja through `scripts/build-linux.sh` and restores managed projects individually because dotnet cannot load the native `.vcxproj`.
 
@@ -74,11 +76,36 @@ Referencing managed projects receive that item through the SDK. With neither
 source present, managed-only builds remain available. Package runtime assets
 follow the separate [Linux package contract](linux-package.md).
 
-CI verification: the `windows` job in `.gitea/workflows/test.yml` runs the clean, both init entry points, the idempotency rerun and `init.ps1 -Build` with a clean-tree assertion after each, but only on the push to `main` (see [quality gates](quality-gates.md)). A pull request does not run it, so run `git clean -ffxd && .\init.ps1` locally when a change touches init, build or ignore files.
+CI verification: the `windows` job in `.gitea/workflows/test.yml` runs the clean, both init entry points, the idempotency rerun and `init.ps1 -Build` with a clean-tree assertion after each, but only on the push to `main` (see [quality gates](quality-gates.md)). A pull request does not run it, so run the disposable acceptance check below when a change touches init, build or ignore files.
 
 The Linux CI job also runs `./init.sh --build` before coverage. It starts
 without the Release/x64 test assembly, verifies init creates that assembly,
 and runs `AgentInstructionsTests` with `--no-build` before invoking the
 shared agent-instructions script.
+
+### Init regression and acceptance checks
+
+The Windows and Linux CI jobs run offline init/provisioning regressions on pull
+requests and pushes when the build job is selected. The harness uses an owned
+temporary checkout layout and executable command doubles; it never invokes the
+installed provisioner. Run the same host gate with:
+
+    dotnet run --project scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj -c Release -p:Platform=x64 -- --adapters .
+
+Local CI preflight includes this gate under `--only init` and under the matching
+`windows` or `linux` scope. The other platform is reported as unavailable.
+
+For real-build acceptance, commit the implementation locally, provision the
+documented dependencies beforehand, and run:
+
+    dotnet run --project scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj -c Release -p:Platform=x64 -- --acceptance .
+
+This creates and cleans its own disposable local clone, shadows both provisioner
+names, and runs each platform entry point twice for restore and build, once with
+a successful optional command and once with a failed one. Windows covers
+`init.ps1`, `init.bat`, and their `-Build` forwarding; Linux covers `init.sh` and
+`--build`. It checks clean tracked state and native/managed build outputs.
+The existing Windows main-push-only post-clean verification remains a separate
+check of the original CI checkout and is not replaced by these regressions.
 
 Prerequisites checked but not installed - Windows: .NET SDK, Visual Studio with the MSVC C++ workload, aislop, reportgenerator (managed coverage summaries and HTML reports). Linux: .NET SDK, cmake, ninja, g++, aislop, gcovr (native coverage only).

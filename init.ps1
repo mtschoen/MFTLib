@@ -133,30 +133,23 @@ else {
     Write-Host 'Once installed, run: aislop hook install claude --project'
 }
 
-# Optional. A clean removes .claude/settings.local.json, which can hold project-scope
-# settings written by external provisioning tooling rather than by hand. If that
-# tooling is on PATH, let it re-apply its own settings; otherwise this is skipped and
-# nothing here depends on it. The feature argument is required, not incidental: a bare
-# `onboard apply` runs the full host pipeline, which is far outside a repository's remit.
-# The same tool ships under several console-script names; use whichever is exposed.
-# The bare name `onboard` is deliberately not among them: it is also the GNOME
-# on-screen keyboard binary at /usr/bin/onboard on Debian and Ubuntu, so probing it
-# would run a GUI keyboard with our arguments on any Linux host that has the package
-# and not this tool. The namespaced names cost nothing - they are entry points of the
-# same installation.
-$provisioner = @('schoen-lab-onboard', 'schoen-lab') |
-    Where-Object { Test-CommandAvailable $_ } |
-    Select-Object -First 1
-
-if ($provisioner) {
-    Write-Host ''
-    Write-Host 'Re-applying provisioned project settings...' -ForegroundColor Cyan
-    & $provisioner apply auto-memory
-    if ($LASTEXITCODE -eq 0) {
-        $completedSteps.Add('Project-scope provisioned settings re-applied')
+# Optional provisioning policy and diagnostics belong to scripts/optional-provisioning.
+# It uses the already-required SDK; settings writes remain owned by the external tool.
+# Only a successful helper result contributes a completed-step message.
+& {
+    $PSNativeCommandUseErrorActionPreference = $false
+    $provisioningMessage = @(& dotnet run --project `
+        (Join-Path $repositoryRoot 'scripts/optional-provisioning/OptionalProvisioning.csproj') `
+        -c Release -p:Platform=x64 --no-launch-profile --verbosity quiet)
+    $provisioningStatus = $LASTEXITCODE
+    if ($provisioningStatus -eq 0) {
+        foreach ($line in $provisioningMessage) {
+            if ($line) { $completedSteps.Add([string]$line) }
+        }
     }
-    else {
-        Write-Host "$provisioner apply auto-memory exited with $LASTEXITCODE; continuing." -ForegroundColor Yellow
+    elseif ($provisioningStatus -notin @(10, 20)) {
+        foreach ($line in $provisioningMessage) { Write-Host $line }
+        Write-Warning "Optional provisioning launcher exited with $provisioningStatus; continuing."
     }
 }
 
@@ -186,9 +179,5 @@ if (-not $Build) {
     Write-Host '      or .\scripts\run-coverage.ps1 for the full test run.'
 }
 
-# The provisioner step above is allowed to fail without failing the script, and
-# nothing resets $LASTEXITCODE afterward, so reaching this point with no earlier
-# `exit 1` still leaves the process exit code carrying that native failure.
-# Without this explicit success exit, `.\init.ps1 && next-command` silently skips
-# `next-command` after a fully successful run.
+# Optional helper exit codes do not determine successful initialization's exit code.
 exit 0

@@ -60,10 +60,16 @@ run_case --only windows
 assert_equal 0 "$status"
 assert_contains "$output" 'PASS windows'
 assert_contains "$output" 'PASS windows-package-smoke'
-failing_gate=windows-package-smoke
+assert_contains "$output" 'PASS init-windows'
+run_case --only init
+assert_equal 0 "$status"
+assert_contains "$output" 'PASS init-windows'
+assert_contains "$output" 'SKIP init-linux: requires linux (host windows)'
+failing_gate=init-windows
 run_case --only windows
 assert_equal 1 "$status"
-assert_contains "$output" 'FAIL windows-package-smoke'
+assert_contains "$output" 'FAIL init-windows'
+assert_contains "$output" 'PASS windows-package-smoke'
 failing_gate=''
 
 run_case --only docs --only coverage-status
@@ -86,6 +92,7 @@ check_path_case() {
     assert_equal 0 "$status"
     if [[ "$expected" == true ]]; then
         assert_contains "$output" 'SKIP windows: workflow docs-only/pin-only filter'
+        assert_contains "$output" 'SKIP init-windows: workflow docs-only/pin-only filter'
     else
         assert_contains "$output" 'PASS windows'
     fi
@@ -142,6 +149,13 @@ assert_contains "$output" 'SKIP aislop: requires windows (host linux)'
 assert_contains "$output" 'PASS linux-package-build'
 assert_contains "$output" 'PASS linux-package-check'
 assert_contains "$output" 'PASS linux-package-smoke'
+run_case --only init
+assert_equal 0 "$status"
+assert_contains "$output" 'PASS init-linux'
+assert_contains "$output" 'SKIP init-windows: requires windows (host linux)'
+run_case --only linux
+assert_contains "$output" 'PASS init-linux'
+assert_contains "$output" 'PASS linux'
 
 for selection in only all; do
     output="$(
@@ -170,6 +184,17 @@ for selection in only all; do
         assert_contains "$output" 'INVOKED -NoProfile -File scripts/smoke-package-windows.ps1'
     fi
 done
+
+output="$(
+    source "$root/tools/ci-preflight.sh"
+    preflight_platform() { printf 'linux'; }
+    dotnet() { printf 'INVOKED %s\n' "$*"; return 23; }
+    preflight_main --only init
+)"
+status=$?
+assert_equal 1 "$status"
+assert_contains "$output" 'INVOKED run --project scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj'
+assert_contains "$output" 'FAIL init-linux: exit 23'
 
 scratch="$(mktemp -d)" || exit 1
 trap 'rm -rf -- "$scratch"' EXIT
@@ -324,6 +349,7 @@ done
 
 workflow_job() {
     awk -v requested="$1" '
+        { sub(/\r$/, "") }
         /^  [a-z][a-z-]*:$/ { selected = ($0 == "  " requested ":") }
         selected { print }
     ' "$root/.gitea/workflows/test.yml"
@@ -338,8 +364,8 @@ for job in windows linux linux-package; do
         assert_equal 0 "$(printf '%s\n' "$block" | grep -F -c -- "$obsolete")"
     done
     case "$job" in
-        windows) expected_guards=20 ;;
-        linux) expected_guards=7 ;;
+        windows) expected_guards=21 ;;
+        linux) expected_guards=8 ;;
         linux-package) expected_guards=4 ;;
     esac
     assert_equal "$expected_guards" "$(printf '%s\n' "$block" | grep -c "^        if: .*steps.changed-files.outputs.skip_build != 'true'")"

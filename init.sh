@@ -99,29 +99,18 @@ else
     echo "Once installed, run: aislop hook install claude --project"
 fi
 
-# Optional. A clean removes .claude/settings.local.json, which can hold project-scope
-# settings written by external provisioning tooling rather than by hand. If that tooling
-# is on PATH, let it re-apply its own settings; otherwise this is skipped and nothing
-# here depends on it. The feature argument is required, not incidental: a bare
-# `onboard apply` runs the full host pipeline, which is far outside a repository's remit.
-# The same tool ships under several console-script names; use whichever is exposed.
-# The bare name `onboard` is deliberately not among them: it is also the GNOME
-# on-screen keyboard binary at /usr/bin/onboard on Debian and Ubuntu, so probing it
-# would run a GUI keyboard with our arguments on any Linux host that has the package
-# and not this tool. The namespaced names cost nothing - they are entry points of the
-# same installation.
-provisioner=""
-for candidate in schoen-lab-onboard schoen-lab; do
-    if have "$candidate"; then provisioner="$candidate"; break; fi
-done
-
-if [ -n "$provisioner" ]; then
-    echo
-    echo "Re-applying provisioned project settings..."
-    if "$provisioner" apply auto-memory; then
-        completed+=("Project-scope provisioned settings re-applied")
-    else
-        echo "$provisioner apply auto-memory failed; continuing." >&2
+# Optional provisioning policy and diagnostics belong to scripts/optional-provisioning.
+# It uses the already-required SDK; settings writes remain owned by the external tool.
+# Only a successful helper result contributes a completed-step message.
+if provisioning_message="$(dotnet run --project \
+    "$ROOT/scripts/optional-provisioning/OptionalProvisioning.csproj" \
+    -c Release -p:Platform=x64 --no-launch-profile --verbosity quiet)"; then
+    if [ -n "$provisioning_message" ]; then completed+=("$provisioning_message"); fi
+else
+    provisioning_status=$?
+    if [ "$provisioning_status" -ne 10 ] && [ "$provisioning_status" -ne 20 ]; then
+        if [ -n "$provisioning_message" ]; then printf '%s\n' "$provisioning_message" >&2; fi
+        printf 'Optional provisioning launcher exited with %s; continuing.\n' "$provisioning_status" >&2
     fi
 fi
 

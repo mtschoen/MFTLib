@@ -36,6 +36,10 @@ preflight_execute() {
             pwsh -NoProfile -File scripts/build-windows.ps1 &&
                 pwsh -NoProfile -File scripts/ci-aislop.ps1
             ;;
+        init-windows|init-linux)
+            dotnet run --project scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj \
+                -c Release -p:Platform=x64 -- --adapters .
+            ;;
         *) printf 'Unknown gate: %s\n' "$1" >&2; return 2 ;;
     esac
 }
@@ -77,7 +81,7 @@ preflight_main() {
             --only)
                 [[ ( -z "$mode" || "$mode" == only ) && $# -ge 2 ]] || return 2
                 case "$2" in
-                    docs|preflight-tests|build-script|coverage-status|windows|linux|sync|linux-package|aislop) ;;
+                    docs|preflight-tests|build-script|coverage-status|windows|linux|sync|linux-package|aislop|init) ;;
                     *) printf 'Unknown scope: %s\n' "$2" >&2; return 2 ;;
                 esac
                 mode=only; scopes+=("$2"); shift 2 ;;
@@ -110,6 +114,16 @@ preflight_main() {
     preflight_gate build-script aislop-tests windows yes
     preflight_gate build-script coverage-child windows yes
     preflight_gate coverage-status coverage-status any yes
+    if [[ "$mode" == only && " ${scopes[*]} " == *" windows "* && " ${scopes[*]} " != *" init "* ]]; then
+        preflight_gate windows init-windows windows yes
+    else
+        preflight_gate init init-windows windows yes
+    fi
+    if [[ "$mode" == only && " ${scopes[*]} " == *" linux "* && " ${scopes[*]} " != *" init "* ]]; then
+        preflight_gate linux init-linux linux yes
+    else
+        preflight_gate init init-linux linux yes
+    fi
     preflight_gate windows windows windows yes
     preflight_gate windows windows-package-smoke windows yes
     preflight_gate sync sync any yes
