@@ -96,10 +96,8 @@ scan stays only while it still opens as a complete, valid block; a rescan's prev
 file is restored.
 
 The value contains no PID, process name, or user, and PrivateFallback does
-not assert that another owner is still alive. It adds observability only:
-normal opens still scan privately on contention, cache-only opens still
-fail with InUse, and private blocks still use delete-on-close. No block
-format or native ABI version changes are involved.
+not assert that another owner is still alive. It describes backing only;
+the ownership rules above govern contention and private-block lifetime.
 
 ## Deleting cached blocks
 
@@ -163,10 +161,9 @@ Little-endian throughout. Every region boundary is 4096-byte aligned.
 | 104 | consumer FourCC | u32 | Four ASCII bytes in source order; zero means unspecified when version is also zero |
 | 108 | consumer version | u32 | Opaque consumer-owned version; compared exactly |
 
-The format version is 4. The declared header ends at byte 112; the header
-region remains one 4096-byte page and every existing field retains its offset.
-Blocks of an earlier version, which cannot say whether a last-write time is an observation, fail the existing format check and are rebuilt on the next
-normal open. Cache-only opens cannot rebuild them and decline the drive.
+The format version is 4. The declared header ends at byte 112 within a
+4096-byte header page. A version mismatch rejects the block: normal opens
+rebuild it, and cache-only opens decline the drive.
 
 The complete flag is written last. A producer that dies mid-write leaves a block
 without it, which a reader rejects.

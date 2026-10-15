@@ -12,11 +12,22 @@
       admission fail the whole call; operational failures are per-drive results. Disposal after
       admission cancels an admitted start or rescan as that drive's `Failed` result carrying
       `OperationCanceledException`; it cancels a catch-up wait as a whole.
+      Requests wait for every drive they started to settle; a per-drive failure never
+      hides successful siblings. For one drive, pass `[drive]` and read the single result.
     - **Fault recovery classification**: `WatchFault.IsRecovering` is true for `Drive` and
       `Apply`, and for `CatchUpLost` only when its exception is a
       `JournalCatchUpLostException` with `IsRecoveryStopped` false. It is false for `Subscriber`,
       `Channel`, `Recovery`, `RescanRestart`, and other catch-up exceptions. It describes recovery
       associated with that notification, not the drive's subsequent live-watch health.
+      A `Subscriber` fault leaves the watch running. `WatchFaulted` always names a drive;
+      different drives may notify concurrently, after their status has been updated.
+      During `Recovering`, queries use the current complete block, which may lag the volume.
+      `Faulted` covers failed recovery, channel loss, refused start and exhausted catch-up;
+      inspect `FailureMessage` and the fault exception before starting or rescanning again.
+      Observe automatic recovery rather than starting a competing lifecycle operation.
+      Pipe EOF, failure, stall or invalid frames report `WatchFaultKind.Channel` with an
+      `IOException` and no automatic recovery; reconnect the process when needed, then
+      rescan or reopen the affected state. A host-reported drive error is `WatchFaultKind.Drive`.
     - **One snapshot shape**: `DriveStatus.Watch` and `WatchStateChange.Watch` are the same
       `DriveWatchStatus`, built by one helper under `_stateLock`, so a consumer seeds its history
       from `Drives[i].Watch` and applies events by the same `StateVersion` check. The version is
@@ -29,7 +40,8 @@
       count reset; failed or cancelled production, no-block scans, and stopping the watch preserve
       it. Each drive has its own flag. An unresumable refusal alone does not set it.
     - **Watch start readiness**: `StartWatchingAsync([X], token)` returns once X's channel is connected and
-      `StartWatch` is written.
+      `StartWatch` is written, the handle is published and its pump is scheduled. It does
+      not wait for the backlog; `WaitForCatchUpAsync` follows the drive's caught-up marker.
     - **Watch source**: every drive's watch starts through `FileIndexOptions.MftSource`'s watch
       source, the same object that produced the drive's block. A source with no watch source
       (or `MftIndexSources.Unavailable`) makes start `NotApplicable`, without a watch request.
@@ -145,6 +157,15 @@
       held. Callbacks may overlap and arrive out of `IndexDriveOpened.SettledDriveCount` order, so a
       consumer keeps the report with the largest count. A cancelled settle claims no count and
       reports nothing; a cancelled or failed open may therefore have reported only some drives.
+      Open-time catch-up retries and the exhausted drive's `Ready` unresumable block follow
+      [checkpoint loss](checkpoint-loss.md).
+      `FileIndexOptions.ScanProgress` samples a scan while its producer runs, then `FileIndex`
+      emits one `IndexScanPhase.Finished` sample after the producer's last sample for each
+      drive scan, for MFT and enumeration producers, in opens and rescans.
+      `IndexScanProgress.Outcome` is non-null only on that terminal sample: `Succeeded`,
+      `Failed` or `Cancelled`. A rescan or lost-catch-up retry emits its own `Finished`, so
+      consumers track finished drives as a set. A throwing `Finished` handler is contained
+      and logged to `FileIndexOptions.Diagnostics`, never replacing the scan's result or exception.
     - **Lock order**: for drive X the order is X's lifecycle gate, X's write gate, then
       `_stateLock`. No gate is acquired while `_stateLock` is held, and no operation except
       disposal holds gates for two drives; disposal takes every lifecycle gate and then every
@@ -159,3 +180,4 @@
       holding X's lifecycle gate, after draining the old pump, and starts, rescans and recoveries
       raise `WatchStateChanged` for X while holding X's lifecycle gate.
     - **Callback reentrancy**: a `Changed`, `WatchFaulted` or `WatchStateChanged` handler runs on a drive's pump (or, for `WatchFaultKind.CatchUpLost` and `WatchFaultKind.RescanRestart`, on the scan operation that holds the drive's lifecycle gate, and for a state change on whichever start, stop, rescan or recovery made it), so a lifecycle call that waits for a pump can deadlock across drives (X's handler stops Y while Y's handler stops X). `FileIndex.Reentrancy.cs` sets an `AsyncLocal` delivery marker around every handler invocation (`Deliver`, used by `RaiseChanged`, `RaiseWatchFaulted` and `RaiseWatchStateChanged`); `StartWatchingAsync`, `StopWatchingAsync`, `RescanAsync`, `DisposeAsync` and an unsettled `WaitForCatchUpAsync` check it synchronously at entry and return an already faulted task carrying `InvalidOperationException`, whichever drives they name. The marker flows into awaits and work the handler starts; its `Active` flag is cleared when the invocation returns, so work queued from a handler that runs afterwards is allowed. Queries, `Drives`, `QueryUsnJournalSettings` and a settled catch-up wait are never rejected. The recovery's restart and a rescan's restart use internal helpers that carry no check. Every waiter a handler can settle or cancel completes its continuations asynchronously (`RunContinuationsAsynchronously`, `AwaitQueuedAsync` for token cancellation), so a continuation never runs on the handler's stack.
+      `BrokerSession.GrowUsnJournalAsync` is outside the index and is allowed from its callbacks.

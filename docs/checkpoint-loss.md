@@ -38,6 +38,11 @@
       cancelled production and stopping the watch preserve it. An exhausted open settles the drive `Ready` with its last block,
       refuses its watch, and requires a consumer `RescanAsync` to publish a resumable block
       and start the watch if it is requested.
+      A manual or recovery rescan retries until catch-up succeeds or this limit is reached.
+      At exhaustion, public `RescanAsync` returns `DriveOperationOutcome.Failed` for that drive
+      with the last `JournalCatchUpLostException` in `DriveOperationResult.Failure`. Its
+      complete block stays queryable, but a watch start fails and retains the watch request
+      until a successful rescan. Each proven attempt raises `WatchFaultKind.CatchUpLost`.
       A catch-up failure the journal cannot prove is an ordinary failed scan and carries no report.
       `JournalCheckpointLoss` keeps the checkpoint, first and next USN positions internal: the broker
       protocol carries them, report equality covers them, and `BytesBehind` and

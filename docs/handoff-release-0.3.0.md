@@ -42,10 +42,75 @@ Run these steps at `<release commit>`; pins and measurements belong in the relea
    CHANGELOG section as its notes. A missing version heading fails before publishing;
    the temporary notes file is deleted after release creation.
 6. **Owner only:** retire the file-wizard and git-wizard source bridges after their
-   NuGet integrations are verified. Follow the current [consumer submodule recipe](consumer-submodule.md)
-   until that retirement is complete.
-   Retire MFTLib's `.gitea/workflows/sync-consumers.yml`, `scripts/sync_consumers.sh`,
-   `scripts/sync_consumers.tests.sh` and the consumer-sync test step in the Linux job.
+   NuGet integrations are verified. Use the [consumer bridge retirement checklist](#consumer-bridge-retirement)
+   for the complete MFTLib cleanup and the source-build recipe needed until then.
+
+## Consumer bridge retirement
+
+After both consumers use the published packages, the owner retires these parts together:
+
+- `.gitea/workflows/sync-consumers.yml`, the manual pin-publication workflow.
+- `scripts/sync_consumers.sh`, `scripts/sync_consumers.tests.sh` and their shared
+  submodule matcher `scripts/mftlib_submodules.sh`.
+- The `Test the consumer sync script` step in `.gitea/workflows/test.yml`'s Linux job.
+- The `sync` dispatcher, accepted scope and gate, and `sync-publication` skip notice
+  in `tools/ci-preflight.sh`.
+- The all-scopes dispatcher expectations in `scripts/ci-preflight.tests.sh` that
+  exercise `sync` through `preflight_main --all`; retain the other preflight tests.
+- The `sync` scope listing, gate-table row and consumer pin-publication skip entry
+  in [quality gates](quality-gates.md#local-ci-preflight).
+- The [active source-build recipe](#active-source-build-recipe) below, which holds
+  the consumer-submodule instructions until the bridges are retired.
+
+This checklist describes an owner release action. The scripts and CI scope remain
+active until that action; the quality-gate documentation describes what runs now.
+
+### Active source-build recipe
+
+Consumers `file-wizard` and `git-wizard` build MFTLib from a git submodule until
+their package migration is complete:
+
+1. Declare a submodule URL resolving to the canonical MFTLib repository on the consumer's forge.
+   Both consumers use `external/MFTLib` with the relative URL `../MFTLib.git`, keeping
+   the same Gitea instance and owner. The gitlink is the only stored MFTLib revision.
+2. Move the pin in each consumer's own pull request so its code is migrated with
+   breaking library changes. The `workflow_dispatch`-only `sync-consumers.yml`
+   runs `scripts/sync_consumers.sh` by hand, enumerates `schoen/*` repositories and
+   opens `chore/mftlib-pin-bump` pull requests as `claude-code`, using the
+   `MFTLIB_SYNC_TOKEN` Actions secret. It updates each matching gitlink; `.gitmodules`
+   supplies the submodule path. Repositories without an MFTLib submodule are skipped.
+3. A fan-out matching zero consumers, or failing to bump any one consumer, exits
+   nonzero. Updating nothing must not report success. The workflow supplies `GITEA_URL`
+   from its server context; direct script invocations must provide `GITEA_URL` and
+   `GITEA_TOKEN`, while optional `GITEA_OWNER` and `SELF_REPO` retain their documented defaults.
+4. Populate source with `git submodule update --init --recursive`, including after
+   `git clean -ffxd` removes the checked-out submodule content and other untracked files.
+
+Consumer CI checks out the gitlink rather than cloning a separate MFTLib revision:
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    submodules: recursive
+```
+
+MFTLib source sits at `external/MFTLib`. On Linux, its build script drives CMake
+and Ninja into the gitignored `build/linux` directory, including the native smoke test:
+
+```bash
+bash external/MFTLib/scripts/build-linux.sh
+dotnet build external/MFTLib/MFTLib/MFTLib.csproj -c Release -p:Platform=x64
+dotnet build external/MFTLib/MFTLibTestExtensions/MFTLibTestExtensions.csproj -c Release -p:Platform=x64
+```
+
+On Windows, the shared script restores, locates amd64 Visual Studio MSBuild to
+build the native `.vcxproj` without WOW64 redirection in host-mode CI, passes an
+absolute trailing-backslash `SolutionDir` so native output lands in the submodule's
+root `x64/Release` where managed builds find it, then builds the managed projects:
+
+```powershell
+.\external\MFTLib\scripts\build-windows.ps1
+```
 
 ## Package contents and Linux prerequisite
 

@@ -223,6 +223,7 @@ to skip every prompt.
 ## Where to go next
 
 - [Broker integration guide](https://github.com/mtschoen/MFTLib/blob/main/docs/broker-integration.md): session ownership, cached opens, watches, faults and journal growth.
+- [Broker scan sizing](https://github.com/mtschoen/MFTLib/blob/main/docs/broker-scan-tuning.md): block capacity, concurrent parse threads and catch-up tuning.
 - [Testing your integration](https://github.com/mtschoen/MFTLib/blob/main/docs/broker-testing.md): the `MFTLib.TestExtensions` harness, scripted watches and synthetic blocks.
 - [Checkpoint loss](https://github.com/mtschoen/MFTLib/blob/main/docs/checkpoint-loss.md): why a drive rescanned instead of resuming, and what journal size would have helped.
 - [Watch lifetime](https://github.com/mtschoen/MFTLib/blob/main/docs/watch-lifetime.md): start, stop, rescan, recovery and event ordering.
@@ -252,6 +253,8 @@ On Linux:
 
 The [architecture contracts](https://github.com/mtschoen/MFTLib/blob/main/docs/architecture.md)
 describe the components and the source layout.
+Maintainers follow the [0.3.0 release runbook](https://github.com/mtschoen/MFTLib/blob/main/docs/handoff-release-0.3.0.md)
+for release validation, publication and consumer bridge retirement.
 
 ## License
 

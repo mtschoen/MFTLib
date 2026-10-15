@@ -11,10 +11,8 @@
       the `BrokerProcess.Ended` task completes with the reason, and pending work fails with
       `BrokerChannelLostException`. The host admits concurrent scans under one processor-sized
       parse-thread budget and rebalances each `ParseThreadAllowance` when scans enter or leave;
-      native parsing reads the allowance at each chunk. A scan writes
-      `ScanReady` before bounded catch-up; a catch-up that held ends it with `ScanCompleted`
-      carrying the advanced cursor, a journal-proven loss ends it with `CatchUpLost`, while
-      any unproven failure ends it with `Error`.
+      native parsing reads the allowance at each chunk. See [scan protocol](#scan-protocol)
+      for block production and catch-up frames.
       One dedicated background thread visits every pipe every five seconds. An idle control pipe,
       a watch waiting on its volume, a queued scan, and a processing operation that has reported
       progress less than 30 seconds ago receive `Heartbeat`. This includes a `Processing` step
@@ -24,17 +22,107 @@
       channel is cancelled. A pipe that wrote an operation frame since the previous visit skips
       that visit. A pipe with a frame write in flight is also skipped, so it cannot delay other
       pipes; the client's 30-second no-frame limit then closes that pipe. Any frame resets the
-      client limit. `BrokerSession` owns the one `BrokerProcess` of a consumer session: its launch
-      is lazy and shared, runs on the thread pool and never on the caller's synchronization
-      context, only disposal cancels it, a launch that loses to disposal (checked before and
-      after `Connecting`) never runs the launcher, a failed launch is not cached, a process that
-      ended stays ended, `Ended` continuations run outside the session's gate, and disposal
-      reclaims a process that arrives after it began.
+      client limit. EOF, write/read failure, silence, `Stalled`, and invalid frames surface as
+      `IOException`, not drive-reported errors. A slow scan or watch reader holds back only
+      its own channel. See [session ownership](#session-ownership) for the public lifetime.
       `BrokerMftBlockProducer` validates
       completed blocks and transfers them to the index, while `BrokerIndexWatchSource` opens one
       channel per drive watch. `ElevatedEntryPoint` and `BrokerLauncher` dispatch `--broker` mode.
       `BrokerDiagnostics` writes through a bounded background queue and filters the two diagnostic
       logs from journal batches unless `MFTLIB_BROKER_DIAG_INCLUDE_SELF=1` opts in.
+
+## Session ownership
+
+`BrokerSession` owns one `BrokerProcess` for a consumer session. Construction launches
+nothing. The first scan, watch or `GrowUsnJournalAsync` launches the broker; concurrent
+first uses share that launch. A caller's cancellation ends only its wait, never the
+launch or another caller's wait. Only disposal cancels the launch.
+
+A declined UAC prompt throws `InvalidOperationException`, and a connection timeout
+throws `TimeoutException`, for callers waiting on that attempt. Failed launches are
+not cached: the next use launches again and raises `Connecting` again, including a
+rescan after a declined prompt.
+
+The launch runs on the thread pool, never the caller's thread or synchronization
+context, so the blocking UAC prompt does not block a UI caller. Disposal is checked
+before and after `Connecting`: if it overtakes the launch before the launcher runs,
+including when a `Connecting` subscriber disposes the session, the launcher never
+runs and its callers receive `OperationCanceledException`.
+
+`Connecting` and `Connected` run on the launching thread-pool thread outside every
+session gate; subscribers may call any member. A throwing subscriber does not prevent
+the others from running, and its exception reaches callers waiting on that attempt.
+A throwing `Connecting` subscriber fails the attempt before anything launches. A
+throwing `Connected` subscriber fails the attempt after the process exists: the
+session retains and owns that process, and the next use returns it.
+
+`Ended` is a `Task<string>` that completes once, shortly after the launched process
+ends, with the reason (control pipe lost or broker exited). It never faults or
+completes at disposal: a session that never launched, or is disposed while its
+process is alive, never completes it. A process end completed before disposal is
+still published. Read `Ended.IsCompleted` for a flag. Continuations run asynchronously,
+outside session gates, and may call any member, including `DisposeAsync`.
+
+A session whose process ended stays ended: later uses throw `InvalidOperationException`
+naming the reason. It never relaunches behind indexes referencing the dead process.
+Close those indexes, dispose the session, then create a new session and new indexes.
+`DisposeAsync` is idempotent. It cancels and awaits an in-flight launch, reclaims and
+disposes a process arriving after disposal began, then disposes the owned process.
+Any use after disposal throws `ObjectDisposedException`.
+
+## Scan protocol
+
+The producer queries MFT sizing, creates the client-owned block section and opens
+a scan channel. The host captures the journal cursor, scans MFT records into the
+shared block, completes and flushes it, then reads the journal from the armed cursor
+to the tip in bounded chunks, retaining none of those entries. It returns either
+the advanced cursor or a proven catch-up loss. [Checkpoint loss](checkpoint-loss.md)
+defines proof and recovery; [scan sizing](broker-scan-tuning.md#sizing-the-block)
+defines the volume query and capacity planning.
+
+The internal scan result carries the block, armed cursor and advanced cursor.
+`DriveStatus` exposes neither cursor, only the block's row and skipped counts and,
+after proven loss, `DriveWatchStatus.CheckpointLoss`. A successful result contains
+both cursors; proven loss still returns the completed block with `CatchUpLoss` set
+and `AdvancedCursor` null. `BlockScanOutcome` carries the block and skipped record
+count; row count and name-pool size are in the header.
+
+Catch-up entries do not cross the pipe. The `FileIndex` adapter keeps the armed
+cursor, discards the advanced cursor and propagates proven `CatchUpLoss`. It watches
+from the cursor armed before scanning so the watch replays the scan window and
+anything after it, provided those entries are still retained when watching starts.
+A loss after scanning is reported by the watch.
+
+Frames are `Cursor`, zero or more `ScanProgress`, `ScanReady` (skipped record count),
+then one terminal frame: `ScanCompleted` with the advanced cursor or `CatchUpLost`
+with the journal facts of proven loss. `Error` replaces any of them, including an
+unproven catch-up failure. `BrokerMftBlockProducer` disposes a block that fails
+validation and fails its scan; a validated block transfers to the index.
+
+The frame length limit is 16 MiB, checked before sending and before allocating a
+received frame. A native-source watch `JournalBatch` is one 64 KiB journal read;
+`Error` and `Stalled` text is truncated to 32,768 UTF-16 units. A
+`MftScanOptions.RetainedFileNames` list making `ArmAndScan` exceed the limit
+(32,640 maximum-length names with the default section name) throws `ArgumentException`
+before sending. An oversized journal batch fails that watch with `Error`, like any
+source failure.
+
+`ArmAndScan` encodes the section name, a 32-bit include-freed flag (0 or 1), then
+a signed 32-bit name count: -1 for full retention, 0 for directories only, or the
+number of following UTF-16 names. Counts below -1 or beyond the remaining payload,
+truncated fields, invalid flags and trailing data are malformed requests.
+
+## Control requests
+
+`BrokerSession.GrowUsnJournalAsync` is a control request, like the internal volume
+query. It grows a journal in place, never shrinks it, refuses a maximum at or below
+the current size and returns settings read back from the volume.
+
+Cancellation before a request starts writing sends nothing. Once writing begins,
+the process completes the frame to avoid corrupting the control stream with a
+partial request. A cancelled caller stops waiting and the eventual reply is
+discarded. A control write failure ends the process. A reply timeout throws
+`TimeoutException` without reusing the request identifier.
 
 ## Diagnostics configuration
 
@@ -57,3 +145,11 @@ and reserved device directory names in the ordinary Windows namespace are handle
 code 1 without serving a session or falling through to application startup. Without `--diag`, dispatch ignores
 the diagnostics arguments and does not configure diagnostics. Extended-length Windows paths
 allow literal reserved device directory names while retaining the component checks.
+
+Diagnostics are best effort and disabled by default. Queued disk writes do not
+block channels, and each line carries its control or drive-channel tag. Applications
+with an opt-in switch honor either it or `MFTLIB_BROKER_DIAG=1` by enabling diagnostics
+after child dispatch. The broker relies on the forwarded command line, not inherited
+environment or application configuration before dispatch. Set
+`MFTLIB_BROKER_DIAG_INCLUDE_SELF=1` before launch to retain the diagnostic logs' own
+journal entries while debugging diagnostics.

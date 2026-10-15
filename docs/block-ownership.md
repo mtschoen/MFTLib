@@ -2,6 +2,15 @@
 
 ## Preparing the cache directory
 
+`CacheMode.Persistent` (the default for a non-dump source) and `ExistingOnly`
+require a nonblank `FileIndexOptions.CacheDirectory`, even with no drives.
+Missing configuration throws `ArgumentException` before directory creation;
+there is no library default cache directory or default-cache guard.
+`CacheMode.Disabled` needs no directory and ignores a supplied path without
+resolving or creating it. Dump sources validate first and supply their own drive:
+`Drives`, `CacheMode` (every value), `CacheDirectory` and `CacheTag` must be unset.
+A conflicting setting throws `ArgumentException` naming it; a dump is never cached.
+
 The application chooses a nonblank, application-owned
 `FileIndexOptions.CacheDirectory`. `CacheDirectory.EnsureCreated(path)` returns
 a `DirectoryInfo`, creating the directory with protection already in place or

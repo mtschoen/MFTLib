@@ -234,17 +234,9 @@ Why they stay:
   them. `MFTLibTestExtensions` does not use them.
 - They are not a privilege boundary. Only code already loaded in the same process can call the
   exports, and such code can already do worse.
-- The cost was measured and is not significant. On 2026-10-02, at commit `d8439ab`, the Release
-  DLL was built twice with the same settings: as shipped, and with every parse-path hook
-  compiled to a constant (allocation, read and platform I/O failure, forced cancel, the
-  capacity and record-size overrides, and the per-chunk thread-count recording with its mutex).
-  `Benchmark.exe 1000000 5` ran eight times against each DLL, alternating. Median throughput
-  in records per second, with hooks and without: compat 3,243,295 and 3,312,850; bounded
-  3,374,366 and 3,451,267; broker-stream 2,408,314 and 2,410,359. The same DLL varied by 10 to
-  25 percent between runs on a machine that was also running builds, so the gap of about 2
-  percent is inside the noise; the best runs were equal (bounded 3,583,085 and 3,584,190).
-  The benchmark is bound by I/O and memory throughput, not by parser overhead. The hook-free
-  DLL was 2,048 bytes smaller (75,776 against 77,824).
+- The measured throughput difference is within run-to-run noise (about 2 percent
+  against a 10 to 25 percent spread); the hook-free DLL saves only 2,048 bytes.
+  I/O and memory throughput dominate the benchmark, not parser overhead.
 
 Revisit this only with a measurement that shows a cost: a quiet-machine benchmark where the
 hook-free build wins by more than the run-to-run spread. Do not propose removing the hooks

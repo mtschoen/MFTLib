@@ -31,7 +31,7 @@ deconstruction.
 
 Production applications receive events from `FileIndex.WatchStateChanged` and
 results from index operations. Seed watch history directly from `DriveStatus.Watch`
-using the shared version check in [broker integration](broker-integration.md);
+using the shared version check in [broker integration](broker-integration.md#5-handle-faults-and-recovery);
 an application-owned refusal stays in the application's own error path.
 
 ## BrokerTestHarness
