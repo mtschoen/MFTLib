@@ -60,6 +60,18 @@ They also make one optional call: if a settings-provisioning tool is on PATH, th
 
 Windows `init.ps1 -Build` calls `scripts/build-windows.ps1 -Configuration Release -NoRestore` after its NuGet restore. The shared script also serves managed coverage and the aislop workflow: it resolves amd64 MSBuild through `vswhere`, builds the native x64 DLL with v143 and an absolute trailing-backslash `SolutionDir`, then builds the six managed projects. Run `.\scripts\build-windows.ps1` for a standalone Release build, or pass `-Configuration Debug`; standalone builds restore by default. Use `-NoRestore` only after a successful restore. Linux continues to use cmake/Ninja through `scripts/build-linux.sh` and restores managed projects individually because dotnet cannot load the native `.vcxproj`.
 
+Native output distribution belongs to the managed build. On Windows,
+`Directory.Build.targets` copies `MFTLibNative.dll` and its available PDB from
+root `x64/<Configuration>` to each managed project's output after its build;
+build native before managed when using dotnet. Visual Studio MSBuild orders
+native builds through the managed projects' `ProjectReference` entries. On
+non-Windows hosts, `MFTLibNative.Linux.props`, explicitly imported by MFTLib and
+MFTLib.Tests, selects `build/linux-coverage/libMFTLibNative.so` when present,
+otherwise `build/linux/libMFTLibNative.so`, and copies it with `PreserveNewest`.
+Referencing managed projects receive that item through the SDK. With neither
+source present, managed-only builds remain available. Package runtime assets
+follow the separate [Linux package contract](linux-package.md).
+
 CI verification: the `windows` job in `.gitea/workflows/test.yml` runs the clean, both init entry points, the idempotency rerun and `init.ps1 -Build` with a clean-tree assertion after each, but only on the push to `main` (see [quality gates](quality-gates.md)). A pull request does not run it, so run `git clean -ffxd && .\init.ps1` locally when a change touches init, build or ignore files.
 
 The Linux CI job also runs `./init.sh --build` before coverage. It starts

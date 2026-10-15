@@ -164,6 +164,75 @@ if (-not $workflow.Contains('run: pwsh -NoProfile -File scripts/build-windows.te
     throw 'Windows CI must run the build regression script'
 }
 
+[xml]$nativeProject = Get-Content -LiteralPath (Join-Path $sourceRoot 'MFTLibNative/MFTLibNative.vcxproj') -Raw
+Assert-Equal $nativeProject.SelectNodes("//*[local-name()='PostBuildEvent']").Count 0 'native project must not distribute managed outputs'
+$solution = Get-Content -LiteralPath (Join-Path $sourceRoot 'MFTLib.sln') -Raw
+Assert-Equal ([regex]::Matches($solution, 'ProjectSection\(ProjectDependencies\)').Count) 0 'project references own build ordering'
+foreach ($relativeProject in @(
+    'MFTLib/MFTLib.csproj',
+    'MFTLib.Tests/MFTLib.Tests.csproj',
+    'SampleProgram.Direct/SampleProgram.Direct.csproj',
+    'SampleProgram.Watch/SampleProgram.Watch.csproj',
+    'Benchmark/Benchmark.csproj'
+)) {
+    [xml]$project = Get-Content -LiteralPath (Join-Path $sourceRoot $relativeProject) -Raw
+    $references = @($project.Project.ItemGroup.ProjectReference | Where-Object {
+        $_.Include -eq '..\MFTLibNative\MFTLibNative.vcxproj'
+    })
+    Assert-Equal $references.Count 1 "$relativeProject retains native build ordering"
+}
+
+$sharedPropsName = 'MFTLibNative.Linux.props'
+$sharedPropsPath = Join-Path $sourceRoot $sharedPropsName
+Assert-Equal (Test-Path -LiteralPath $sharedPropsPath -PathType Leaf) $true 'shared Linux copy definition exists'
+$fixtureRoot = Join-Path ([IO.Path]::GetTempPath()) ('MFTLib native items ' + [guid]::NewGuid().ToString('N'))
+try {
+    New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
+    Copy-Item -LiteralPath $sharedPropsPath -Destination $fixtureRoot
+    $projects = @('MFTLib/MFTLib.csproj', 'MFTLib.Tests/MFTLib.Tests.csproj')
+    foreach ($relativeProject in $projects) {
+        $destination = Join-Path $fixtureRoot $relativeProject
+        New-Item -ItemType Directory -Path (Split-Path $destination) -Force | Out-Null
+        Copy-Item -LiteralPath (Join-Path $sourceRoot $relativeProject) -Destination $destination
+    }
+    $cases = @(
+        @{ Name = 'absent'; OperatingSystem = 'Unix'; Sources = @(); Expected = '' },
+        @{ Name = 'ordinary'; OperatingSystem = 'Unix'; Sources = @('linux'); Expected = 'linux' },
+        @{ Name = 'coverage'; OperatingSystem = 'Unix'; Sources = @('linux-coverage'); Expected = 'linux-coverage' },
+        @{ Name = 'coverage-wins'; OperatingSystem = 'Unix'; Sources = @('linux', 'linux-coverage'); Expected = 'linux-coverage' },
+        @{ Name = 'windows'; OperatingSystem = 'Windows_NT'; Sources = @('linux', 'linux-coverage'); Expected = '' }
+    )
+    foreach ($case in $cases) {
+        $buildDirectory = Join-Path $fixtureRoot 'build'
+        if (Test-Path -LiteralPath $buildDirectory) { Remove-Item -LiteralPath $buildDirectory -Recurse -Force }
+        foreach ($sourceDirectory in $case.Sources) {
+            $directory = Join-Path $buildDirectory $sourceDirectory
+            New-Item -ItemType Directory -Path $directory -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $directory 'libMFTLibNative.so') -Value $case.Name
+        }
+        foreach ($relativeProject in $projects) {
+            $projectPath = Join-Path $fixtureRoot $relativeProject
+            $output = & dotnet msbuild $projectPath -nologo -verbosity:quiet -getItem:None `
+                "-p:OS=$($case.OperatingSystem)" -p:ImportDirectoryBuildProps=false -p:ImportDirectoryBuildTargets=false
+            if ($LASTEXITCODE -ne 0) { throw "MSBuild evaluation failed: $relativeProject / $($case.Name)" }
+            $evaluation = ($output -join [Environment]::NewLine) | ConvertFrom-Json
+            $items = @($evaluation.Items.None | Where-Object { $_.Link -eq 'libMFTLibNative.so' })
+            $label = "$relativeProject / $($case.Name)"
+            $expectedCount = if ($case.Expected) { 1 } else { 0 }
+            Assert-Equal $items.Count $expectedCount "$label selected library count"
+            if ($expectedCount -eq 1) {
+                $expectedPath = [IO.Path]::GetFullPath((Join-Path $fixtureRoot "build/$($case.Expected)/libMFTLibNative.so"))
+                Assert-Equal $items[0].FullPath $expectedPath "$label selected source"
+                Assert-Equal $items[0].CopyToOutputDirectory 'PreserveNewest' "$label output policy"
+                Assert-Equal $items[0].DefiningProjectFullPath (Join-Path $fixtureRoot $sharedPropsName) "$label shared owner"
+            }
+        }
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $fixtureRoot) { Remove-Item -LiteralPath $fixtureRoot -Recurse -Force }
+}
+
 $projectPaths = @(& git -C $sourceRoot ls-files -- '*.csproj' '*.vcxproj')
 if ($LASTEXITCODE -ne 0 -or $projectPaths.Count -eq 0) {
     throw 'Cannot enumerate tracked project files for the platform contract'

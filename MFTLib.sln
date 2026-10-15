@@ -6,23 +6,14 @@ MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MFTLib", "MFTLib\MFTLib.csproj", "{152D64D3-268A-4971-971D-448AFC245DB1}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SampleProgram.Watch", "SampleProgram.Watch\SampleProgram.Watch.csproj", "{44BAFF17-4F02-49D5-A351-8291927CECBA}"
-	ProjectSection(ProjectDependencies) = postProject
-		{6A21E35F-5A90-4B80-83FE-B33E8B1114B1} = {6A21E35F-5A90-4B80-83FE-B33E8B1114B1}
-	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SampleProgram.Direct", "SampleProgram.Direct\SampleProgram.Direct.csproj", "{44BAFF17-4F02-49D5-A351-8291927CECBB}"
-	ProjectSection(ProjectDependencies) = postProject
-		{6A21E35F-5A90-4B80-83FE-B33E8B1114B1} = {6A21E35F-5A90-4B80-83FE-B33E8B1114B1}
-	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MFTLibNative", "MFTLibNative\MFTLibNative.vcxproj", "{6A21E35F-5A90-4B80-83FE-B33E8B1114B1}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MFTLib.Tests", "MFTLib.Tests\MFTLib.Tests.csproj", "{B1A2C3D4-E5F6-7890-ABCD-EF1234567890}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Benchmark", "Benchmark\Benchmark.csproj", "{A1B2C3D4-E5F6-7890-ABCD-EF1234567891}"
-	ProjectSection(ProjectDependencies) = postProject
-		{6A21E35F-5A90-4B80-83FE-B33E8B1114B1} = {6A21E35F-5A90-4B80-83FE-B33E8B1114B1}
-	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MFTLibTestExtensions", "MFTLibTestExtensions\MFTLibTestExtensions.csproj", "{C1D2E3F4-A5B6-7890-ABCD-EF1234567892}"
 EndProject

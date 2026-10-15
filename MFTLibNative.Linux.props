@@ -1,0 +1,15 @@
+<Project>
+  <!-- Source builds prefer the instrumented CMake library when it exists. -->
+  <ItemGroup Condition="'$(OS)' != 'Windows_NT'">
+    <None Include="$(MSBuildThisFileDirectory)build/linux-coverage/libMFTLibNative.so"
+          Condition="Exists('$(MSBuildThisFileDirectory)build/linux-coverage/libMFTLibNative.so')">
+      <Link>libMFTLibNative.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)build/linux/libMFTLibNative.so"
+          Condition="!Exists('$(MSBuildThisFileDirectory)build/linux-coverage/libMFTLibNative.so') And Exists('$(MSBuildThisFileDirectory)build/linux/libMFTLibNative.so')">
+      <Link>libMFTLibNative.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>

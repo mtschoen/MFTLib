@@ -48,7 +48,7 @@
           CopyToOutputDirectory="Always" />
   </ItemGroup>
 
-  <!-- Windows: build the native vcxproj. Linux copies the CMake-built library below. -->
+  <!-- Windows: build the native vcxproj. -->
   <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
     <ProjectReference Include="..\MFTLibNative\MFTLibNative.vcxproj" />
   </ItemGroup>
@@ -68,17 +68,7 @@
     <Include>[MFTLib]*,[SampleProgram.Direct]*,[SampleProgram.Watch]*,[Benchmark]*,[MFTLibTestExtensions]*</Include>
   </PropertyGroup>
 
-  <!-- Linux: copy CMake-built libMFTLibNative.so into the test bin directory. -->
-  <ItemGroup Condition="'$(OS)' != 'Windows_NT'">
-    <None Include="..\build\linux-coverage\libMFTLibNative.so" Condition="Exists('..\build\linux-coverage\libMFTLibNative.so')">
-      <Link>libMFTLibNative.so</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="..\build\linux\libMFTLibNative.so" Condition="!Exists('..\build\linux-coverage\libMFTLibNative.so') And Exists('..\build\linux\libMFTLibNative.so')">
-      <Link>libMFTLibNative.so</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
+  <Import Project="..\MFTLibNative.Linux.props" />
 
   <!-- Linux leaves out only tests whose subject is a Windows-only API that cannot be faked. -->
   <ItemGroup Condition="'$(OS)' != 'Windows_NT'">
