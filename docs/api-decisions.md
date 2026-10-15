@@ -196,8 +196,29 @@ and the broker has to keep running on its pipe. That is not evidence the helper 
 **Implementation (2026-10-13, [MFTLib issue 472](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/472)):**
 the Defender sequence is `ElevationUtilities.TryAddDefenderProcessExclusions(processNames, relaunchArguments, elevation = null)`,
 one method on the existing type; [elevation](elevation.md#windows-defender-process-exclusions) holds its contract.
+The public elevation helper and provider remain the shared consumer API. The timeout field's
+visibility is governed by the sample-caller audit decision below.
 
 **Revisit only if:** one consumer needs elevation behavior the other cannot share.
+
+## Sample-caller audit: helper policy and harness-owned observations
+
+**Decision (2026-10-14,
+[MFTLib issue 534 (sample-caller audit)](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/534)):**
+`ElevationUtilities.DefaultElevatedTimeout` is internal. `InProcessBrokerScan` is a receive-only
+record with an explicit internal constructor, public init-only `Drive` and `RetainedFileNames`
+properties, and no positional deconstruction. Drive validation applies on construction and init.
+The Direct `open` sample branches on `FileEntry.IsLastWriteTimeKnown` and prints `<unknown>` for
+unknown metadata, preserving the metadata-freshness ruling.
+
+**Reason:** both production consumers call `TryAddDefenderProcessExclusions`, which owns its
+60-second elevated-child policy. Their remaining timeout references are test expectations.
+The broker harness produces scan observations and consumers inspect them; construction belongs
+to the harness and MFTLib's friend tests. Printing an unknown timestamp as a date obscures the
+freshness decision the public property exists to support.
+
+**Revisit only if:** a concrete consumer production requirement needs the timeout as a shared
+public value, or a consumer test needs to supply a scan observation as input to a supported API.
 
 ## Journal retention sizing is reported by the library; growth is a consumer decision
 

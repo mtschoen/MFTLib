@@ -164,7 +164,10 @@ partial class SampleHost
     void OpenFile(FileEntry entry)
     {
         var key = entry.RecordKey;
-        _writeLine($"{entry.Path}: record {key.RecordNumber} on {key.Drive} ({key.ProducerKind}), {entry.Attributes}, modified {entry.LastWriteTime:u} (known {entry.IsLastWriteTimeKnown}), parent {entry.Parent?.Path}, valid {entry.IsValid}, disposed {entry.IsDisposed}");
+        var lastWriteTime = entry.IsLastWriteTimeKnown
+            ? entry.LastWriteTime.ToString("u", CultureInfo.InvariantCulture)
+            : "<unknown>";
+        _writeLine($"{entry.Path}: record {key.RecordNumber} on {key.Drive} ({key.ProducerKind}), {entry.Attributes}, modified {lastWriteTime}, parent {entry.Parent?.Path}, valid {entry.IsValid}, disposed {entry.IsDisposed}");
         using var stream = OpenOrDescribe(entry);
         var buffer = new byte[16];
         var read = stream.Read(buffer, 0, buffer.Length);

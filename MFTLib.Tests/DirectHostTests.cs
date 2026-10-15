@@ -173,6 +173,37 @@ public class DirectHostTests
     }
 
     [TestMethod]
+    [DataRow(false, "2020-01-02 03:04:05Z", DisplayName = "534 known last-write timestamp")]
+    [DataRow(true, "<unknown>", DisplayName = "534 unknown last-write timestamp")]
+    public void Run_OpenOfAScriptedEntry_FormatsLastWriteFreshness(
+        bool isLastWriteTimeUnknown, string expectedLastWriteTime)
+    {
+        var path = Path.Combine(_directory, "a.txt");
+        File.WriteAllBytes(path, [1, 2, 3]);
+        var lines = new List<string>();
+        var host = ElevatedHost(lines, _ => SyntheticIndexSource.Create(new SyntheticMftProducer(_ =>
+        [
+            new SyntheticRow(5, ".", 5) { IsDirectory = true },
+            new SyntheticRow(7, "a.txt", 5)
+            {
+                Size = 3,
+                LastWriteTime = new DateTime(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc),
+                IsLastWriteTimeUnknown = isLastWriteTimeUnknown
+            }
+        ])));
+        using var restore = FileEntry.OverrideOpenByIdForTest((_, _, _, access) =>
+            new FileStream(path, FileMode.Open, access, FileShare.Read));
+
+        var result = host.Run(["open", "C", "--path", path]);
+
+        var report = string.Join(Environment.NewLine, lines);
+        Assert.AreEqual(0, result, report);
+        var description = lines.Single(line => line.StartsWith($"{path}: record ", StringComparison.Ordinal));
+        StringAssert.Contains(description, $"modified {expectedLastWriteTime}, parent ");
+        Assert.IsTrue(lines.Contains("3 bytes, first 3: 010203"), report);
+    }
+
+    [TestMethod]
     public void Run_PathThatIsNotIndexed_ReportsNoEntry()
     {
         var lines = new List<string>();

@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Reflection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -43,6 +44,11 @@ public class DefaultElevationProviderTests
     public void DefaultElevatedTimeout_IsSixtySeconds()
     {
         Assert.AreEqual(TimeSpan.FromSeconds(60), ElevationUtilities.DefaultElevatedTimeout);
+        var timeout = typeof(ElevationUtilities).GetField(
+            nameof(ElevationUtilities.DefaultElevatedTimeout),
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert.IsNotNull(timeout);
+        Assert.IsTrue(timeout.IsAssembly, "The shared timeout is internal.");
     }
 
     // --- IsElevated ---

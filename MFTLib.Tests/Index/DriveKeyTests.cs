@@ -87,7 +87,17 @@ public class DriveKeyTests
     [TestMethod]
     public void TestPackageRecords_NormalizeAndRejectDefaultConstructionAndInitialization()
     {
-        var scan = new InProcessBrokerScan('c', null);
+        var constructor = typeof(InProcessBrokerScan).GetConstructors(
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            .Single(candidate => candidate.GetParameters().Length == 2);
+        Assert.IsTrue(constructor.IsAssembly, "Scan observations are constructed inside the harness.");
+        IReadOnlyCollection<string> retainedFileNames = [".git", "HEAD"];
+        var scan = new InProcessBrokerScan('c', retainedFileNames);
+        Assert.AreSame(retainedFileNames, scan.RetainedFileNames);
+        Assert.IsNull(new InProcessBrokerScan('c', null).RetainedFileNames);
+        Assert.AreEqual(0, new InProcessBrokerScan('c', Array.Empty<string>()).RetainedFileNames!.Count);
+        CollectionAssert.AreEqual(new[] { "marker" },
+            (scan with { RetainedFileNames = new[] { "marker" } }).RetainedFileNames!.ToArray());
         var start = new ScriptedWatchStart('c', default);
         Assert.AreEqual('C', scan.Drive);
         Assert.AreEqual('C', start.Drive);

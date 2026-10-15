@@ -27,8 +27,6 @@ public class PublicMemberCallerTests
     /// </summary>
     static readonly Dictionary<string, string> ExemptMembers = new(StringComparer.Ordinal)
     {
-        ["field MFTLib.ElevationUtilities.DefaultElevatedTimeout"] =
-            "git-wizard GitWizard/WindowsDefender.cs passes the timeout to TryRunElevated",
         ["property MFTLib.Index.WatchFault.IsRecovering : System.Boolean"] =
             "file-wizard FileWizard/JournalWatcher.cs and git-wizard GitWizard/Watch/IndexVolumeChangeSource.cs classify automatic fault recovery",
         ["type MFTLib.BrokerDiagnostics"] =

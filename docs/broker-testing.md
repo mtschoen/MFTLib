@@ -90,6 +90,8 @@ collection means directories only, and names mean directories plus matching file
 The observation preserves null versus empty. The harness does not offer the section
 lifetime or the write path: those are MFTLib's own, and `MFTLib.Tests` covers them. A consumer
 asserts the outcome it owns, such as the block file under its cache directory.
+The harness constructs each `InProcessBrokerScan`. Consumers read its public `Drive` and
+`RetainedFileNames` properties; record copies retain the validated init-only property contract.
 
 The handle owns the harness session from the client side. Disposing the handle
 disposes the process: it closes the control pipe, ends the host, closes the drive pipes, waits for

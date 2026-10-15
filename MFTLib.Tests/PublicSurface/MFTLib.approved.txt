@@ -13,7 +13,6 @@ MFTLib.BrokerSession :: property public Ended { get; } : System.Threading.Tasks.
 MFTLib.BrokerSession :: type public sealed class : System.IAsyncDisposable
 MFTLib.ElevatedEntryPoint :: method public static RunBrokerIfRequested(string[] arguments) : bool
 MFTLib.ElevatedEntryPoint :: type public static class
-MFTLib.ElevationUtilities :: field public static readonly DefaultElevatedTimeout : System.TimeSpan
 MFTLib.ElevationUtilities :: method public static TryAddDefenderProcessExclusions(System.Collections.Generic.IReadOnlyList<string> processNames, System.Collections.Generic.IReadOnlyList<string> relaunchArguments, MFTLib.IElevationProvider? elevation = default) : bool
 MFTLib.ElevationUtilities :: property public static DefaultProvider { get; } : MFTLib.IElevationProvider
 MFTLib.ElevationUtilities :: type public static class

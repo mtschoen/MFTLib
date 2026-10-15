@@ -41,7 +41,7 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 ### Removed
 
 - The public `MftVolume`, `MftResult`, `MftRecord`, `MftParseTimings`, `MatchFlags` and `MftPathUtilities` types; scans run through index sources and are queried through `FileIndex`.
-- `ElevationUtilities.IsElevated`, `CanSelfElevate`, `TryRunElevated` and `GetProcessPath`.
+- `ElevationUtilities.IsElevated`, `CanSelfElevate`, `TryRunElevated`, `GetProcessPath` and `DefaultElevatedTimeout`.
 - Name filtering and path resolution in the native parser; queries filter names and `FileEntry.Path` renders paths.
 
 ### Fixed

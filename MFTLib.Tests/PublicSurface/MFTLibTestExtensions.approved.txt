@@ -14,9 +14,7 @@ MFTLibTestExtensions.InProcessBrokerHandle :: method public DisposeAsync() : Sys
 MFTLibTestExtensions.InProcessBrokerHandle :: property public Ended { get; } : System.Threading.Tasks.Task<string>
 MFTLibTestExtensions.InProcessBrokerHandle :: property public Scans { get; } : System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.InProcessBrokerScan>
 MFTLibTestExtensions.InProcessBrokerHandle :: type public sealed class : System.IAsyncDisposable
-MFTLibTestExtensions.InProcessBrokerScan :: constructor public (MFTLib.Index.DriveKey Drive, System.Collections.Generic.IReadOnlyCollection<string>? RetainedFileNames)
 MFTLibTestExtensions.InProcessBrokerScan :: method public <Clone>$() : MFTLibTestExtensions.InProcessBrokerScan
-MFTLibTestExtensions.InProcessBrokerScan :: method public Deconstruct(out MFTLib.Index.DriveKey Drive, out System.Collections.Generic.IReadOnlyCollection<string>? RetainedFileNames) : void
 MFTLibTestExtensions.InProcessBrokerScan :: method public Equals(MFTLibTestExtensions.InProcessBrokerScan? other) : bool
 MFTLibTestExtensions.InProcessBrokerScan :: method public override Equals(object? obj) : bool
 MFTLibTestExtensions.InProcessBrokerScan :: method public override GetHashCode() : int
