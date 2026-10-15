@@ -49,25 +49,42 @@ try {
         'LICENSE.txt',
         'README.md'
     )
-    $testExtensionsEntries = @('lib/net10.0/MFTLibTestExtensions.dll', 'LICENSE.txt', 'README.md')
+    $testExtensionsEntries = @(
+        'lib/net10.0/MFTLibTestExtensions.dll',
+        'lib/net10.0/MFTLibTestExtensions.xml',
+        'LICENSE.txt',
+        'README.md'
+    )
     New-TestPackage $mftLibPackage 'MFTLib' $mftLibEntries
     New-TestPackage $testExtensionsPackage 'MFTLib.TestExtensions' $testExtensionsEntries
     Assert-ReleasePackages $mftLibPackage $testExtensionsPackage '0.3.0'
     $passed = 1
 
+    $validationFailures = [Collections.Generic.List[string]]::new()
     foreach ($package in @(
         @{ Identity = 'MFTLib'; Path = $mftLibPackage; Entries = $mftLibEntries },
         @{ Identity = 'MFTLib.TestExtensions'; Path = $testExtensionsPackage; Entries = $testExtensionsEntries }
     )) {
-        foreach ($missingEntry in $package.Entries | Where-Object { $_ -notlike 'lib/*' -or $_ -like '*.xml' }) {
+        foreach ($missingEntry in $package.Entries) {
             $incompletePackage = Join-Path $temporaryDirectory ("incomplete-$passed.nupkg")
             New-TestPackage $incompletePackage $package.Identity @($package.Entries | Where-Object { $_ -cne $missingEntry })
             $libraryPath = if ($package.Identity -eq 'MFTLib') { $incompletePackage } else { $mftLibPackage }
             $extensionsPath = if ($package.Identity -eq 'MFTLib.TestExtensions') { $incompletePackage } else { $testExtensionsPackage }
-            Assert-Rejected { Assert-ReleasePackages $libraryPath $extensionsPath '0.3.0' } $missingEntry
+            $expectedMessage = if ($missingEntry -ceq 'lib/net10.0/MFTLibTestExtensions.dll') {
+                'MFTLibTestExtensions.dll'
+            } else {
+                $missingEntry
+            }
+            try {
+                Assert-Rejected { Assert-ReleasePackages $libraryPath $extensionsPath '0.3.0' } $expectedMessage
+            }
+            catch {
+                $validationFailures.Add("$($package.Identity): $($_.Exception.Message)")
+            }
             $passed++
         }
     }
+    Assert-Equal $validationFailures.Count 0 ("Missing-entry regressions: " + ($validationFailures -join "`n"))
 
     $mftLibSymbols = Join-Path $temporaryDirectory 'MFTLib.snupkg'
     $testExtensionsSymbols = Join-Path $temporaryDirectory 'MFTLib.TestExtensions.snupkg'

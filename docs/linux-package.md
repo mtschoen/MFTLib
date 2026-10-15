@@ -34,6 +34,29 @@ run against Gitea. A Windows release therefore cannot download the CI library. I
   that `scripts/Test-ReleasePackages.ps1` rejects, because it requires that entry.
 - `release.ps1` requires a clean tree at the release commit, so the library is built from `HEAD`.
 
+## Release validation and publication
+
+Before either a dry run returns successfully or publication starts,
+`scripts/Test-ReleasePackages.ps1` requires `lib/net10.0/MFTLib.dll` and
+`lib/net10.0/MFTLib.xml` in MFTLib, and `lib/net10.0/MFTLibTestExtensions.xml`
+alongside the test-extension assembly in MFTLib.TestExtensions. Validation also
+checks package identities, matching versions, the exact MFTLib dependency,
+native libraries, build targets, README, license, and symbol-package files.
+
+In publish mode, the script publishes the NuGet packages, then pushes the tag
+to Gitea and GitHub in that order. Either tag-push failure exits with status 1.
+GitHub release creation runs only after both pushes succeed. A failure at this
+stage does not undo already published NuGet packages or a successful Gitea push.
+
+Run the offline regressions with:
+
+    pwsh -NoProfile -File scripts/test-release-package-validation.ps1
+    pwsh -NoProfile -File scripts/test-release-notes.ps1
+
+The first builds synthetic ZIP packages. The second tests release-note handling
+and runs the production GitHub-push tail in isolated PowerShell processes with
+fake Git and GitHub CLI commands.
+
 ## CI
 
 The `linux-package` job of `.gitea/workflows/test.yml` runs on every pull request and main push;

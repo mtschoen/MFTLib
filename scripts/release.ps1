@@ -283,12 +283,10 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Published MFTLib.TestExtensions $version to NuGet." -ForegroundColor Green
 
 # --- Tag and push ---
-# Gitea is the canonical forge, so the tag goes there first and a failed push
-# there is fatal: a tag missing from Gitea is the release-blocking hazard this
-# script guards against. Gitea's push mirror to GitHub can also prune refs
-# that Gitea lacks, so a tag pushed to GitHub only can later disappear there.
-# Both pushes target the URLs above directly: a remote name is a per-checkout
-# label, and its pushurl could point somewhere other than what the name implies.
+# Gitea is the canonical forge, so the tag goes there first. Both tag pushes
+# must succeed before creating the GitHub release. Gitea's push mirror to
+# GitHub can prune refs that Gitea lacks, so a GitHub-only tag can disappear.
+# Both pushes target literal URLs rather than checkout-specific remote names.
 Write-Host ""
 Write-Host "Tagging $tag..." -ForegroundColor Cyan
 git tag $tag
@@ -304,6 +302,7 @@ Write-Host "Pushing tag $tag to GitHub ($githubRepositoryUrl)..." -ForegroundCol
 git push $githubRepositoryUrl "refs/tags/$tag"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Failed to push tag $tag to GitHub ($githubRepositoryUrl)." -ForegroundColor Red
+    exit 1
 }
 
 # --- Create GitHub release ---

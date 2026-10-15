@@ -104,6 +104,16 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File scripts/test-coverage-status.ps1
 
+      - name: Test release package validation
+        if: steps.changed-files.outputs.skip_build != 'true'
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/test-release-package-validation.ps1
+
+      - name: Test release notes and publication failure handling
+        if: steps.changed-files.outputs.skip_build != 'true'
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/test-release-notes.ps1
+
       - name: Run coverage
         id: coverage
         if: steps.changed-files.outputs.skip_build != 'true'

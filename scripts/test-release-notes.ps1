@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 . "$PSScriptRoot\Test-ReleasePackages.ps1"
 
-# Load only the production extraction function, without running release operations.
+# Parse production code without running the release preflight or publication pipeline.
 $tokens = $null
 $parseErrors = $null
 $releaseScript = [Management.Automation.Language.Parser]::ParseFile(
@@ -43,6 +43,100 @@ try {
 }
 finally {
     Remove-Item -LiteralPath $notesFile -Force
+}
+
+function Invoke-GitHubReleaseTail {
+    param(
+        [int] $PushExitCode,
+        [string] $Tail,
+        [string] $NotesWriterDefinition
+    )
+
+    $setup = @'
+$ErrorActionPreference = 'Stop'
+$tag = 'v0.3.0-test'
+$githubRepositoryUrl = 'git@example.invalid:fixture/MFTLib.git'
+$releaseNotes = 'Release fixture'
+$mftLibNupkg = 'MFTLib.nupkg'
+$mftLibSnupkg = 'MFTLib.snupkg'
+$testExtensionsNupkg = 'MFTLib.TestExtensions.nupkg'
+$testExtensionsSnupkg = 'MFTLib.TestExtensions.snupkg'
+function git {
+    if (($args -join '|') -cne "push|$githubRepositoryUrl|refs/tags/$tag") {
+        throw "Unexpected git invocation: $args"
+    }
+    Write-Output 'TEST_GITHUB_PUSH'
+    $global:LASTEXITCODE = $script:pushExitCode
+}
+function gh {
+    $expected = @(
+        'release', 'create', $tag,
+        $mftLibNupkg, $mftLibSnupkg,
+        $testExtensionsNupkg, $testExtensionsSnupkg,
+        '--title', $tag, '--notes-file', $releaseNotesPath
+    )
+    if (($args -join '|') -cne ($expected -join '|')) {
+        throw "Unexpected gh invocation: $args"
+    }
+    if ([IO.File]::ReadAllText($releaseNotesPath) -cne $releaseNotes) {
+        throw 'Release notes were not written before release creation.'
+    }
+    Write-Output 'TEST_RELEASE_CREATED'
+    $global:LASTEXITCODE = 0
+}
+'@
+    $source = $setup + "`n`$script:pushExitCode = $PushExitCode`n" +
+        $NotesWriterDefinition + "`n" + $Tail + "`nexit 0`n"
+    $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($source))
+    $start = [Diagnostics.ProcessStartInfo]::new()
+    $start.FileName = @(Get-Command pwsh -CommandType Application)[0].Source
+    $start.UseShellExecute = $false
+    $start.RedirectStandardOutput = $true
+    $start.RedirectStandardError = $true
+    foreach ($argument in @('-NoProfile', '-NonInteractive', '-OutputFormat', 'Text', '-EncodedCommand', $encodedCommand)) {
+        $start.ArgumentList.Add($argument)
+    }
+    $process = [Diagnostics.Process]::Start($start)
+    try {
+        $outputTask = $process.StandardOutput.ReadToEndAsync()
+        $errorTask = $process.StandardError.ReadToEndAsync()
+        $process.WaitForExit()
+        return [pscustomobject]@{
+            ExitCode = $process.ExitCode
+            Output = $outputTask.GetAwaiter().GetResult()
+            ErrorOutput = $errorTask.GetAwaiter().GetResult()
+        }
+    }
+    finally {
+        $process.Dispose()
+    }
+}
+
+$githubPushCommands = @($releaseScript.FindAll({
+    param($node)
+    $node -is [Management.Automation.Language.CommandAst] -and
+        $node.GetCommandName() -ceq 'git' -and
+        $node.CommandElements.Count -eq 4 -and
+        $node.CommandElements[1].Extent.Text -ceq 'push' -and
+        $node.CommandElements[2].Extent.Text -ceq '$githubRepositoryUrl'
+}, $false))
+Assert-Equal $githubPushCommands.Count 1 'GitHub tag-push command count'
+$githubTail = $releaseScript.Extent.Text.Substring($githubPushCommands[0].Extent.StartOffset)
+Assert-True ($githubTail.Contains('gh release create')) 'The tested tail includes release creation.'
+
+foreach ($case in @(
+    @{ Name = 'github-push-success'; PushExitCode = 0; ExpectedExitCode = 0; CreatesRelease = $true },
+    @{ Name = 'issue-527-github-push-failure'; PushExitCode = 23; ExpectedExitCode = 1; CreatesRelease = $false }
+)) {
+    $result = Invoke-GitHubReleaseTail $case.PushExitCode $githubTail $writeFunction.Extent.Text
+    Assert-Equal $result.ErrorOutput '' "$($case.Name): unexpected child error"
+    Assert-True ($result.Output.Contains('TEST_GITHUB_PUSH')) "$($case.Name): push was exercised"
+    Assert-Equal $result.ExitCode $case.ExpectedExitCode "$($case.Name): process exit"
+    Assert-Equal ($result.Output.Contains('TEST_RELEASE_CREATED')) $case.CreatesRelease "$($case.Name): release creation"
+    Assert-Equal ($result.Output.Contains('Release v0.3.0-test complete.')) $case.CreatesRelease "$($case.Name): completion"
+    if (-not $case.CreatesRelease) {
+        Assert-True ($result.Output.Contains('Failed to push tag v0.3.0-test to GitHub')) 'Push failure is diagnosed.'
+    }
 }
 
 Write-Host 'Release notes regressions passed.'

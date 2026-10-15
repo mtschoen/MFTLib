@@ -10,6 +10,12 @@ The `docs` job always runs without an early exit. Running on the Linux fleet run
 
 The `windows` job also runs the post-clean init verification (`git clean -ffxd`, `init.ps1` twice, `init.bat`, `init.ps1 -Build`, and a clean-tree check after each) described in [checkout maintenance](checkout-maintenance.md). It runs only on the push to `main`: each of those steps is guarded by `github.event_name == 'push' && github.ref == 'refs/heads/main'` (plus the skip-build check), never by workflow-level `paths`, which leaves a required check pending on Gitea (issue 36895). The steps stay in the same job and checkout, after the build and tests, because the first `git clean -ffxd` plus `git status --porcelain` assertion detects a build or test that modified a tracked file. A pull request therefore never proves the clean-tree invariant; the merge to `main` does.
 
+The Windows job runs `scripts/test-release-package-validation.ps1` and
+`scripts/test-release-notes.ps1` before coverage when `skip_build` is false.
+These offline checks reject incomplete release packages and verify that a
+failed GitHub tag push stops before GitHub release creation; they also retain
+the release-note extraction and UTF-8 encoding checks.
+
 The `linux-package` job builds the Release linux-x64 library, runs `scripts/check-linux-native.sh` on it and smoke-tests the packed library through `scripts/smoke-package-linux.sh`; the release rebuilds the library in WSL, since Gitea lists no CI artifact over REST ([Linux package](linux-package.md)).
 
 Windows jobs run on the host-mode `windows-latest` runner, where toolchains are provisioned on the host: no `actions/setup-*` step belongs in a job that runs on it (`microsoft/setup-msbuild` only locates MSBuild and is allowed). The Linux jobs run in the fleet runner image `gitea.fleet.sticktoitive.net/schoen/runner-images:latest`, which bakes cmake, ninja, gcovr and the .NET SDK 10.0 and inherits g++, gcov and make from its base: they install no tools and use no `actions/setup-dotnet` step.

@@ -92,6 +92,7 @@ function Assert-ReleasePackages {
     try {
         Assert-True (-not @($mftLibArchive.Entries | Where-Object { $_.FullName -like '*MFTLibTestExtensions.dll' }).Count) 'MFTLib package contains MFTLibTestExtensions.dll.'
         foreach ($requiredEntry in @(
+            'lib/net10.0/MFTLib.dll',
             'lib/net10.0/MFTLib.xml',
             'runtimes/win-x64/native/MFTLibNative.dll',
             'runtimes/linux-x64/native/libMFTLibNative.so',
@@ -110,7 +111,7 @@ function Assert-ReleasePackages {
     $testExtensionsArchive = [IO.Compression.ZipFile]::OpenRead($TestExtensionsPackagePath)
     try {
         Assert-True (@($testExtensionsArchive.Entries | Where-Object { $_.FullName -like 'lib/*/MFTLibTestExtensions.dll' }).Count -eq 1) 'MFTLib.TestExtensions package does not contain MFTLibTestExtensions.dll.'
-        foreach ($requiredEntry in @('LICENSE.txt', 'README.md')) {
+        foreach ($requiredEntry in @('lib/net10.0/MFTLibTestExtensions.xml', 'LICENSE.txt', 'README.md')) {
             Assert-True ($null -ne $testExtensionsArchive.GetEntry($requiredEntry)) "MFTLib.TestExtensions package is missing $requiredEntry."
         }
     }
