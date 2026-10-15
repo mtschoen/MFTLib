@@ -30,7 +30,7 @@ dotnet build MFTLib/MFTLib.csproj -c Release -p:Platform=x64
 dotnet build SampleProgram.Watch\SampleProgram.Watch.csproj -c Release -p:Platform=x64
 ```
 
-`dotnet build` cannot build `.vcxproj`. `scripts/build-windows.ps1` owns the Windows recipe used by init, coverage and CI: amd64 MSBuild, an absolute trailing-backslash `SolutionDir`, then managed builds. Native output lands in root `x64\Release` for managed copying.
+`dotnet build` cannot build `.vcxproj`. `scripts/windows-tools.ps1` owns checked Visual Studio discovery (including BuildTools) for build, init, native coverage and release. `scripts/build-windows.ps1` owns restore and the Windows build recipe: amd64 MSBuild, an absolute trailing-backslash `SolutionDir`, then managed builds. Native output lands in root `x64/<Configuration>` for managed copying. Init passes `-NoRestore` after its successful restore; release checks Clean, then restores through coverage's shared build.
 
 ### NuGet packaging
 
@@ -50,10 +50,7 @@ Direct local-volume runs need admin rights (raw volume access) and **self-elevat
 **Run the compiled .exe directly** for UAC:
 
 ```bash
-# Launch directly (UAC prompt if not elevated)
 .\SampleProgram.Direct\bin\x64\Release\net10.0\SampleProgram.Direct.exe scan C:
-
-# A self-elevated run writes output.log beside the .exe
 cat .\SampleProgram.Direct\bin\x64\Release\net10.0\output.log
 ```
 
@@ -61,7 +58,7 @@ cat .\SampleProgram.Direct\bin\x64\Release\net10.0\output.log
 
 ### Test coverage
 
-[Coverage procedures](docs/development-coverage.md): run `.\scripts\run-coverage.ps1` (admin/UAC) or `.\scripts\run-coverage.ps1 -NonInteractive` (headless). Native coverage: `.\scripts\native-coverage.ps1` or `.\scripts\native-coverage.ps1 -HtmlReport`; instrument Debug|x64 with `/PROFILE`, using `native-coverage.runsettings`. USN tests need admin; `scripts/native-coverage-elevated.ps1` self-elevates and streams `native-coverage-elevated.log`.
+[Coverage procedures](docs/development-coverage.md): run `.\scripts\run-coverage.ps1` (admin/UAC) or `.\scripts\run-coverage.ps1 -NonInteractive` (headless). Native coverage: `./scripts/native-coverage.ps1` or `./scripts/native-coverage.ps1 -HtmlReport`; it resolves the optional coverage executable through shared discovery, delegates to the shared Debug|x64 `/PROFILE` build, then instruments the test-output DLL using `native-coverage.runsettings`. USN tests need admin; `scripts/native-coverage-elevated.ps1` self-elevates and streams `native-coverage-elevated.log`.
 
 [Coverage status gate](docs/development-coverage.md): a drop of more than 10 percentage points from the nearest successful main-line measurement, or zero covered executable lines in a tested namespace, fails with a nonnumeric error status. Failed collection, missing/malformed reports and unavailable baseline lookup fail closed. Check MFTLib, MFTLib.Index, both samples, Benchmark and MFTLibTestExtensions; extend the namespace list and regression fixtures for new tested executable namespaces. Run `pwsh -NoProfile -File scripts/test-coverage-status.ps1`.
 
@@ -75,9 +72,9 @@ cat .\SampleProgram.Direct\bin\x64\Release\net10.0\output.log
 
 ## Cleaning the working tree
 
-[Clean-tree invariant](docs/checkout-maintenance.md): `git clean -ffxd` must be safe before new work. Nothing unrecoverable lives here: files are tracked and pushed or reproducible; machine-only valuable files belong outside the tree. Never add files that satisfy neither rule. No exclude list protects against `-x`; do not substitute wrappers for this invariant. Regenerate agent files after cleaning or an aislop upgrade with `aislop hook install claude --project`; generated `.claude/AISLOP.md` and `.claude/CLAUDE.md` do not restore themselves. Aislop history is disposable; the gate is absolute `failBelow: 100`.
+[Clean-tree invariant](docs/checkout-maintenance.md): `git clean -ffxd` must be safe before new work. Nothing unrecoverable lives here: files are tracked and pushed or reproducible; machine-only valuable files belong outside the tree. Never add files that satisfy neither rule. Regenerate agent files after cleaning or an aislop upgrade with `aislop hook install claude --project`. Aislop history is disposable; the gate is absolute `failBelow: 100`.
 
-[Restore after cleaning](docs/checkout-maintenance.md): Windows uses `git clean -ffxd && .\init.ps1` or `git clean -ffxd && .\init.ps1 -Build`; cmd uses `git clean -ffxd && .\init.bat` or `git clean -ffxd && .\init.bat -Build`. Keep the `.\` prefix (`NoDefaultCurrentDirectoryInExePath=1`). Linux uses `git clean -ffxd && ./init.sh` or `git clean -ffxd && ./init.sh --build`. Restore is idempotent; build adds native plus managed Release|x64 on Windows. Windows prerequisites: .NET SDK, VS/MSVC, aislop, reportgenerator for managed coverage summaries and HTML. Linux: .NET SDK, cmake, ninja, g++, aislop, gcovr for native coverage. Init checks, never installs, prerequisites.
+[Restore after cleaning](docs/checkout-maintenance.md): Windows uses `git clean -ffxd && .\init.ps1` or `git clean -ffxd && .\init.ps1 -Build` (keep `.\` prefix; cmd uses `init.bat`). Linux uses `git clean -ffxd && ./init.sh` or `git clean -ffxd && ./init.sh --build`. Restore is idempotent; build adds native plus managed Release|x64 on Windows. Windows prerequisites: .NET SDK, VS/MSVC, aislop, reportgenerator for managed coverage summaries and HTML. Linux: .NET SDK, cmake, ninja, g++, aislop, gcovr for native coverage. Init checks, never installs, prerequisites.
 
 ## CI and quality gates
 

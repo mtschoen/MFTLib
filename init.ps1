@@ -30,6 +30,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+. "$PSScriptRoot/scripts/windows-tools.ps1"
+
 $repositoryRoot = $PSScriptRoot
 $missingPrerequisites = [System.Collections.Generic.List[string]]::new()
 $completedSteps = [System.Collections.Generic.List[string]]::new()
@@ -50,20 +52,12 @@ else {
     Write-Host '  dotnet SDK          MISSING' -ForegroundColor Red
 }
 
-$vswhere = if (${env:ProgramFiles(x86)}) {
-    Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+try {
+    $msbuildPath = Get-WindowsMSBuild
+    Write-Host "  MSBuild (MSVC)      $msbuildPath"
 }
-else { $null }
-$visualStudioPath = if ($vswhere -and (Test-Path $vswhere)) {
-    & $vswhere -products '*' -requires Microsoft.Component.MSBuild -property installationPath -latest 2>$null
-}
-else { $null }
-
-if ($visualStudioPath) {
-    Write-Host "  MSBuild (MSVC)      $visualStudioPath"
-}
-else {
-    $missingPrerequisites.Add('Visual Studio with the MSVC C++ workload - required to build MFTLibNative.vcxproj')
+catch {
+    $missingPrerequisites.Add("Visual Studio with the MSVC C++ workload - required to build MFTLibNative.vcxproj. $($_.Exception.Message)")
     Write-Host '  MSBuild (MSVC)      MISSING' -ForegroundColor Red
 }
 

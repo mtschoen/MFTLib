@@ -13,6 +13,8 @@ $nuGetKeyFile = if ($env:NUGET_KEY_FILE) { $env:NUGET_KEY_FILE } else { Join-Pat
 
 $ErrorActionPreference = "Stop"
 
+. "$PSScriptRoot/windows-tools.ps1"
+
 function Get-ReleaseNotes {
     param([string] $ChangelogPath, [string] $Version)
 
@@ -160,26 +162,15 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Release commit $releaseCommit is present on Gitea main." -ForegroundColor Green
 Write-Host ""
 
-# --- Clean and restore ---
-# Resolve MSBuild via vswhere: a fresh shell has no MSBuild on PATH (same fix
-# as run-coverage.ps1 / native-coverage.ps1).
-$vsInstallPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
-    -products '*' -requires Microsoft.Component.MSBuild -property installationPath -latest 2>$null
-$msbuild = if ($vsInstallPath) {
-    Join-Path $vsInstallPath "MSBuild\Current\Bin\amd64\MSBuild.exe"
-} else { "MSBuild.exe" }
-
+# --- Clean ---
+$msbuild = Get-WindowsMSBuild
 Write-Host "Cleaning solution..." -ForegroundColor Cyan
-& $msbuild "$repoRoot\MFTLib.sln" -t:Clean -p:Configuration=Release -p:Platform=x64 -v:q -nologo
+Invoke-WindowsBuildCommand $msbuild @(
+    "$repoRoot\MFTLib.sln", '-t:Clean', '-p:Configuration=Release',
+    '-p:Platform=x64', '-v:q', '-nologo'
+)
 
-Write-Host "Restoring NuGet packages..." -ForegroundColor Cyan
-dotnet restore "$repoRoot\MFTLib.sln"
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Restore failed." -ForegroundColor Red
-    exit 1
-}
-
-# --- Run coverage (builds the solution internally) ---
+# --- Run coverage (restores and builds through the shared Windows build) ---
 Write-Host "Running coverage..." -ForegroundColor Cyan
 & "$PSScriptRoot\run-coverage.ps1" -Configuration Release
 if ($LASTEXITCODE -ne 0) {

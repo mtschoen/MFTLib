@@ -11,29 +11,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$coverageTool = "C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\Extensions\Microsoft\CodeCoverage.Console\Microsoft.CodeCoverage.Console.exe"
+. "$PSScriptRoot/windows-tools.ps1"
+$coverageTool = Get-WindowsCodeCoverage
 $solutionRoot = Split-Path -Parent $PSScriptRoot
 $nativeDll = Join-Path $solutionRoot "MFTLib.Tests\bin\x64\Debug\net10.0\MFTLibNative.dll"
 $testProject = Join-Path $solutionRoot "MFTLib.Tests\MFTLib.Tests.csproj"
 $coberturaOutput = Join-Path $solutionRoot "native-coverage.cobertura.xml"
 $settings = Join-Path $solutionRoot "native-coverage.runsettings"
 
-if (-not (Test-Path $coverageTool)) {
-    Write-Error "Microsoft.CodeCoverage.Console not found at: $coverageTool"
-    exit 1
-}
-
 Write-Host "=== Building Debug|x64 ===" -ForegroundColor Cyan
-# Resolve MSBuild via vswhere: a fresh (e.g. elevated) shell has no MSBuild on PATH.
-$vsInstallPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
-    -products '*' -requires Microsoft.Component.MSBuild -property installationPath -latest 2>$null
-$msbuild = if ($vsInstallPath) {
-    Join-Path $vsInstallPath "MSBuild\Current\Bin\amd64\MSBuild.exe"
-} else { "MSBuild.exe" }
-Push-Location $solutionRoot
-& $msbuild MFTLib.sln -p:Configuration=Debug -p:Platform=x64 -v:quiet
-if ($LASTEXITCODE -ne 0) { Write-Error "Build failed"; exit 1 }
-Pop-Location
+& "$PSScriptRoot/build-windows.ps1" -Configuration Debug
+if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
 
 Write-Host "`n=== Instrumenting MFTLibNative.dll ===" -ForegroundColor Cyan
 & $coverageTool instrument $nativeDll
