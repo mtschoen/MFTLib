@@ -52,8 +52,7 @@ Run these steps at `<release commit>`; pins and measurements belong in the check
 
 MFTLib contains `lib/net10.0/MFTLib.dll`, `lib/net10.0/MFTLib.xml`,
 `runtimes/win-x64/native/MFTLibNative.dll`,
-`runtimes/linux-x64/native/libMFTLibNative.so`, `build/MFTLib.targets`,
-`buildTransitive/MFTLib.targets`, `LICENSE.txt` and `README.md`.
+`runtimes/linux-x64/native/libMFTLibNative.so`, `LICENSE.txt` and `README.md`.
 MFTLib.TestExtensions contains its managed assembly, license and the same README,
 and depends on exactly MFTLib 0.3.0. Both symbol packages must exist.
 
@@ -83,7 +82,7 @@ See [Linux package](linux-package.md) for the build and package acceptance contr
   a fresh session and new indexes supply the next connection. Check recoverable
   `Drive` and `Apply` faults separately through their recovery state events.
 - The `linux-package` job validates a Release library and package on every pull request and main push that changes more than docs or the scanner pin ([Linux package](linux-package.md)).
-- `scripts/package-smoke` loads a saved dump from a locally packed NuGet package ([Linux package](linux-package.md)).
+- `scripts/package-smoke` loads a saved dump from a locally packed NuGet package on Linux and Windows. The Windows smoke runs both ordinary build and RID-less publish outputs, checks the loaded DLL path, and rejects flat copies ([package smokes](linux-package.md)).
 - When the job builds, its artifact `linux-native-<sha>` contains the library and acceptance output for attended inspection ([Linux package](linux-package.md)).
 - The glibc floor policy states the actual imported symbol versions printed by the acceptance check ([Linux package](linux-package.md)).
 

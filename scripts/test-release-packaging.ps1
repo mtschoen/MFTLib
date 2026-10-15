@@ -30,6 +30,8 @@ try {
     Assert-ReleasePackages -MftLibPackagePath $mftLibPackages[0].FullName -TestExtensionsPackagePath $testExtensionsPackage.FullName -ExpectedVersion $expectedVersion
     Assert-ReleaseSymbolPackages (Join-Path $packageOutputDirectory "MFTLib.$expectedVersion.snupkg") (Join-Path $packageOutputDirectory "MFTLib.TestExtensions.$expectedVersion.snupkg")
 
+    & "$PSScriptRoot\smoke-package-windows.ps1" -PackagePath $mftLibPackages[0].FullName
+
     Write-Host "Release packaging check passed: MFTLib and MFTLib.TestExtensions $expectedVersion."
 }
 finally {

@@ -1,9 +1,10 @@
 # Linux native library in the package
 
 The `MFTLib` package carries `runtimes/linux-x64/native/libMFTLibNative.so` next to the Windows
-`runtimes/win-x64/native/MFTLibNative.dll`. The .NET host resolves the library from `runtimes/`, so
-a Linux consumer needs no copy step. `build/MFTLib.targets` copies the Windows library only on a
-Windows host.
+`runtimes/win-x64/native/MFTLibNative.dll`. SDK-style .NET consumers resolve both libraries
+through the package's runtime assets. Ordinary builds and RID-less publishes retain the
+runtime directories; RID-specific publishes place the selected native library beside the
+application.
 
 ## Which library ships
 
@@ -41,7 +42,7 @@ Before either a dry run returns successfully or publication starts,
 `lib/net10.0/MFTLib.xml` in MFTLib, and `lib/net10.0/MFTLibTestExtensions.xml`
 alongside the test-extension assembly in MFTLib.TestExtensions. Validation also
 checks package identities, matching versions, the exact MFTLib dependency,
-native libraries, build targets, README, license, and symbol-package files.
+native libraries, README, license, and symbol-package files.
 
 In publish mode, the script publishes the NuGet packages, then pushes the tag
 to Gitea and GitHub in that order. Either tag-push failure exits with status 1.
@@ -71,3 +72,22 @@ test dump builder `MFTLib.Tests/TestSupport/MftDumpFixture.cs`, loads a dump thr
 and asserts the library came from `runtimes/linux-x64/native` of the output and was not copied flat.
 Unless `skip_build` skipped it, the job also uploads the library and the check output as an artifact named
 `linux-native-<commit SHA>` for a person to download from the run page.
+
+## Windows package smoke
+
+Run `pwsh -NoProfile -File scripts/build-windows.ps1`, then
+`pwsh -NoProfile -File scripts/smoke-package-windows.ps1`. The smoke packs the existing
+Release/x64 build into a private feed under version `0.0.0-package-smoke`, restores a
+plain .NET 10 PackageReference consumer into an empty package cache, and runs both its
+build output and its RID-less publish output. The consumer sources and linked dump
+fixture are staged outside the checkout, with ancestor Directory.Build imports disabled,
+so repository source-build copy targets cannot supply its native DLL.
+
+Both runs require `runtimes/win-x64/native/MFTLibNative.dll`, reject a flat native DLL,
+index the synthetic 11-byte Notes.txt entry, and check the loaded Windows module path.
+The package must contain neither custom MFTLib build-target entry. RID-specific publish
+is not subject to the no-flat assertion because the SDK flattens its selected native asset.
+
+`scripts/test-release-packaging.ps1` also invokes the smoke with `-PackagePath` to test the
+exact full release package it creates. The Windows CI job runs the standalone smoke after
+coverage has built Release/x64; the local `windows` preflight scope runs it at the same point.

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- A consumer of the MFTLib package. scripts/smoke-package-linux.sh packs MFTLib into a local feed and restores
-       it here, so the native library must come from the package's runtimes folder: nothing here copies it. -->
+  <!-- Package consumer used by smoke-package-linux.sh and smoke-package-windows.ps1.
+       The native library must resolve through NuGet runtime assets; this project copies no native files. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>

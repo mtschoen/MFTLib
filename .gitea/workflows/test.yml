@@ -145,6 +145,11 @@ jobs:
           }
           exit $process.ExitCode
 
+      - name: Smoke Windows NuGet native resolution
+        if: steps.changed-files.outputs.skip_build != 'true'
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/smoke-package-windows.ps1
+
       - name: Upload coverage artifact
         if: always() && steps.changed-files.outputs.skip_build != 'true'
         uses: actions/upload-artifact@v3

@@ -23,6 +23,11 @@ These offline checks reject incomplete release packages and verify that a
 failed GitHub tag push stops before GitHub release creation; they also retain
 the release-note extraction and UTF-8 encoding checks.
 
+After coverage has built Release/x64, the Windows job runs
+`scripts/smoke-package-windows.ps1`. It verifies Windows package-native resolution in
+ordinary build and RID-less publish outputs using an isolated PackageReference consumer
+and an empty package cache. The step follows the existing `skip_build` condition.
+
 The `linux-package` job builds the Release linux-x64 library, runs `scripts/check-linux-native.sh` on it and smoke-tests the packed library through `scripts/smoke-package-linux.sh`; the release rebuilds the library in WSL, since Gitea lists no CI artifact over REST ([Linux package](linux-package.md)).
 
 Windows jobs run on the host-mode `windows-latest` runner, where toolchains are provisioned on the host: no `actions/setup-*` step belongs in a job that runs on it (`microsoft/setup-msbuild` only locates MSBuild and is allowed). The Linux jobs run in the fleet runner image `gitea.fleet.sticktoitive.net/schoen/runner-images:latest`, which bakes cmake, ninja, gcovr and the .NET SDK 10.0 and inherits g++, gcov and make from its base: they install no tools and use no `actions/setup-dotnet` step.
@@ -62,7 +67,7 @@ aislop always run, as in CI.
 | `build-script` / `build-script` | Run | Skip | `scripts/build-windows.tests.ps1` |
 | `build-script` / `aislop-tests` | Run | Skip | `scripts/ci-aislop.tests.ps1`, independent scanner regression gate |
 | `coverage-status` | Run (pwsh) | Run (requires pwsh) | `scripts/test-coverage-status.ps1`, offline publisher regression tests |
-| `windows` | Run | Skip | `scripts/run-coverage.ps1 -NonInteractive`, including native and managed build |
+| `windows` | Run | Skip | `scripts/run-coverage.ps1 -NonInteractive`, including native and managed build, followed by `scripts/smoke-package-windows.ps1` |
 | `linux` | Skip | Run | `scripts/coverage-linux.sh`, native and managed coverage |
 | `linux-package` | Skip | Run | `build-linux.sh`, `check-linux-native.sh`, `smoke-package-linux.sh` under `scripts/` |
 | `sync` | Run | Run | `scripts/sync_consumers.tests.sh`, offline transport fixtures |

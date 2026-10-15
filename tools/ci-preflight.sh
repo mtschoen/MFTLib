@@ -24,6 +24,7 @@ preflight_execute() {
         aislop-tests) pwsh -NoProfile -File scripts/ci-aislop.tests.ps1 ;;
         coverage-status) pwsh -NoProfile -File scripts/test-coverage-status.ps1 ;;
         windows) pwsh -NoProfile -File scripts/run-coverage.ps1 -NonInteractive ;;
+        windows-package-smoke) pwsh -NoProfile -File scripts/smoke-package-windows.ps1 ;;
         linux) bash scripts/coverage-linux.sh ;;
         sync) bash scripts/sync_consumers.tests.sh ;;
         linux-package-build) bash scripts/build-linux.sh ;;
@@ -111,6 +112,7 @@ preflight_main() {
     preflight_gate build-script aislop-tests windows yes
     preflight_gate coverage-status coverage-status any yes
     preflight_gate windows windows windows yes
+    preflight_gate windows windows-package-smoke windows yes
     preflight_gate sync sync any yes
     preflight_gate linux linux linux yes
     preflight_gate linux-package linux-package-build linux yes

@@ -20,10 +20,12 @@ volume I/O and record parsing run in a native C++ core.
 Windows-only members carry `[SupportedOSPlatform("windows")]`. Target `net10.0-windows`, or guard
 those calls with `OperatingSystem.IsWindows()` in a cross-platform project.
 
-The package carries `MFTLibNative.dll` for Windows, copied to your output directory by a
-transitive build target, and `libMFTLibNative.so` for Linux, which the .NET host resolves
-from `runtimes/linux-x64/native`. The Linux library is built on Ubuntu 24.04 and requires
-glibc 2.33 and GLIBCXX_3.4.22.
+The package carries `runtimes/win-x64/native/MFTLibNative.dll` for Windows and
+`runtimes/linux-x64/native/libMFTLibNative.so` for Linux. SDK-style .NET consumers
+resolve the native library through the package's runtime assets. Builds and RID-less
+publishes retain the runtime directories; RID-specific publishes place the selected
+native library beside the application. The Linux library is built on Ubuntu 24.04
+and requires glibc 2.33 and GLIBCXX_3.4.22.
 
 ## Install
 

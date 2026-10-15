@@ -555,8 +555,8 @@ while debugging diagnostics themselves.
 ## Deployment checklist
 
 - Target .NET 10 and Windows x64.
-- Reference the `MFTLib` NuGet package; its transitive build target copies
-  `MFTLibNative.dll` to the output directory.
+- Reference the `MFTLib` NuGet package; SDK-style consumers resolve
+  `MFTLibNative.dll` through the package's runtime assets.
 - Publish an executable app host and launch that `.exe`.
 - Dispatch `ElevatedEntryPoint.RunBrokerIfRequested` before normal app startup.
 - Create one `BrokerSession` for the consumer session and retain ownership of it.

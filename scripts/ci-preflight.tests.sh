@@ -43,9 +43,20 @@ run_case --all
 assert_equal 1 "$status"
 assert_contains "$output" 'FAIL build-script'
 assert_contains "$output" 'PASS windows'
+assert_contains "$output" 'PASS windows-package-smoke'
 assert_contains "$output" 'PASS aislop'
 assert_contains "$output" 'SKIP linux: requires linux (host windows)'
 assert_contains "$output" 'PREFLIGHT FAIL'
+failing_gate=''
+
+run_case --only windows
+assert_equal 0 "$status"
+assert_contains "$output" 'PASS windows'
+assert_contains "$output" 'PASS windows-package-smoke'
+failing_gate=windows-package-smoke
+run_case --only windows
+assert_equal 1 "$status"
+assert_contains "$output" 'FAIL windows-package-smoke'
 failing_gate=''
 
 run_case --only docs --only coverage-status
@@ -61,6 +72,7 @@ for changed_paths in 'docs/quality-gates.md' '.aislop/fork-commit' 'AGENTS.md' $
     run_case --changed-from main
     assert_equal 0 "$status"
     assert_contains "$output" 'SKIP windows: workflow docs-only/pin-only filter'
+    assert_contains "$output" 'SKIP windows-package-smoke: workflow docs-only/pin-only filter'
     assert_contains "$output" 'PASS docs'
     assert_contains "$output" 'PASS aislop'
 done
@@ -85,6 +97,7 @@ failing_gate=''
 run_case --all
 assert_equal 0 "$status"
 assert_contains "$output" 'SKIP windows: requires windows (host linux)'
+assert_contains "$output" 'SKIP windows-package-smoke: requires windows (host linux)'
 assert_contains "$output" 'SKIP aislop: requires windows (host linux)'
 assert_contains "$output" 'PASS linux-package-build'
 assert_contains "$output" 'PASS linux-package-check'
@@ -112,6 +125,9 @@ for selection in only all; do
     assert_contains "$output" 'INVOKED -NoProfile -File scripts/build-windows.tests.ps1'
     assert_contains "$output" 'FAIL build-script: exit 23'
     assert_contains "$output" 'INVOKED -NoProfile -File scripts/ci-aislop.tests.ps1'
+    if [[ "$selection" == all ]]; then
+        assert_contains "$output" 'INVOKED -NoProfile -File scripts/smoke-package-windows.ps1'
+    fi
 done
 
 printf 'ci-preflight.tests.sh: %s checks, %s failures\n' "$checks" "$failures"

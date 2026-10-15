@@ -1,18 +1,28 @@
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using MFTLib;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 
 // Loads a synthetic MFT dump through the packaged library and checks the native library came from the package.
 const string NotesPath = "dump:/D/documents/Notes.txt";
-const string NativeLibraryName = "libMFTLibNative.so";
 
-var nativeDirectory = Path.Combine(AppContext.BaseDirectory, "runtimes", "linux-x64", "native");
-if (!File.Exists(Path.Combine(nativeDirectory, NativeLibraryName)))
+if ((!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux()) ||
+    RuntimeInformation.ProcessArchitecture != Architecture.X64)
+{
+    return Fail("The package smoke requires a Windows or Linux x64 process.");
+}
+
+var nativeLibraryName = OperatingSystem.IsWindows() ? "MFTLibNative.dll" : "libMFTLibNative.so";
+var runtimeIdentifier = OperatingSystem.IsWindows() ? "win-x64" : "linux-x64";
+var nativeDirectory = Path.Combine(AppContext.BaseDirectory, "runtimes", runtimeIdentifier, "native");
+var expectedNativePath = Path.GetFullPath(Path.Combine(nativeDirectory, nativeLibraryName));
+if (!File.Exists(expectedNativePath))
 {
     return Fail($"The package native library is not in the output at {nativeDirectory}.");
 }
 
-if (File.Exists(Path.Combine(AppContext.BaseDirectory, NativeLibraryName)))
+if (File.Exists(Path.Combine(AppContext.BaseDirectory, nativeLibraryName)))
 {
     return Fail("The native library was copied flat next to the application, so the smoke test would not prove package resolution.");
 }
@@ -31,6 +41,18 @@ try
     if (notes is null || notes.Value.Size != 11)
     {
         return Fail($"{NotesPath} was not indexed with its 11 bytes.");
+    }
+
+    if (OperatingSystem.IsWindows())
+    {
+        using var process = Process.GetCurrentProcess();
+        var nativeModule = process.Modules.Cast<ProcessModule>().SingleOrDefault(module =>
+            string.Equals(module.ModuleName, nativeLibraryName, StringComparison.OrdinalIgnoreCase));
+        if (nativeModule is null || !string.Equals(
+                Path.GetFullPath(nativeModule.FileName), expectedNativePath, StringComparison.OrdinalIgnoreCase))
+        {
+            return Fail($"Native module resolved to '{nativeModule?.FileName ?? "<not loaded>"}', expected '{expectedNativePath}'.");
+        }
     }
 
     Console.WriteLine($"Package smoke passed: {NotesPath} indexed from the package native library in {nativeDirectory}.");
