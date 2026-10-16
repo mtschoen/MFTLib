@@ -47,20 +47,56 @@ Run these steps at `<release commit>`; pins and measurements belong in the relea
 
 ## Consumer bridge retirement
 
-After both consumers use the published packages, the owner retires these parts together:
+After both consumers use the published packages and their NuGet integrations are
+verified, the owner retires these parts together. Line references and counts below
+describe the current source snapshot; locate the named code and recount at retirement.
 
-- `.gitea/workflows/sync-consumers.yml`, the manual pin-publication workflow.
-- `scripts/sync_consumers.sh`, `scripts/sync_consumers.tests.sh` and their shared
-  submodule matcher `scripts/mftlib_submodules.sh`.
-- The `Test the consumer sync script` step in `.gitea/workflows/test.yml`'s Linux job.
-- The `sync` dispatcher, accepted scope and gate, and `sync-publication` skip notice
-  in `tools/ci-preflight.sh`.
-- The all-scopes dispatcher expectations in `scripts/ci-preflight.tests.sh` that
-  exercise `sync` through `preflight_main --all`; retain the other preflight tests.
-- The `sync` scope listing, gate-table row and consumer pin-publication skip entry
-  in [quality gates](quality-gates.md#local-ci-preflight).
-- The [active source-build recipe](#active-source-build-recipe) below, which holds
-  the consumer-submodule instructions until the bridges are retired.
+Delete these four whole files:
+
+| File | Size | Responsibility |
+| --- | --- | --- |
+| `.gitea/workflows/sync-consumers.yml` | 52 lines | Manual consumer pin-publication workflow |
+| `scripts/sync_consumers.sh` | 462 lines | Consumer pin-bump publication |
+| `scripts/sync_consumers.tests.sh` | 589 lines | Offline consumer-sync fixtures |
+| `scripts/mftlib_submodules.sh` | 118 lines | Shared submodule matcher |
+
+The four files total **1,221 lines**. Also make these dependent edits:
+
+- Delete `.gitea/workflows/test.yml:306-312`: the four-line comment and the
+  three-line `Test the consumer sync script` step in the Linux job (seven lines).
+- Update `tools/ci-preflight.sh:30,84,129,138`: delete the `sync` arm in
+  `preflight_execute` (30), remove `sync` from the accepted scopes in
+  `preflight_main` (84), delete `preflight_gate sync sync any yes` (129), and
+  delete the `sync-publication` skip notice (138). These are three standalone
+  line deletions and one accepted-scope edit.
+- Update `scripts/ci-preflight.tests.sh:405`: change the Linux guard-count
+  expectation from `expected_guards=8` to `expected_guards=7` after removing
+  the guarded consumer-sync step. Recount if other workflow edits have landed;
+  retain the other preflight tests.
+- Delete only the consumer half at `MFTLib.Tests/AgentInstructionsTests.cs:88-90`
+  in `ScannerAndConsumerWorkflows_UseServerContext`: the read of the deleted
+  workflow and its `GITEA_URL` and `GITEA_TOKEN` assertions. Preserve the scanner
+  assertions at lines 79-87 and rename the method to
+  `ScannerWorkflow_UseServerContext` so its name describes the remaining check.
+- Update `docs/quality-gates.md`: remove the `sync` scope listing (78-79),
+  gate-table row (110), and consumer pin-publication skip entry (146-149).
+  Update the test description at 256-257 to describe scanner server context.
+- Remove the [active source-build recipe](#active-source-build-recipe) below
+  and update its links in this runbook when the bridges are retired.
+
+The four whole files plus the seven workflow lines and three standalone
+dispatcher lines total **1,231 deletable lines** before the managed-test removal,
+in-place edits, and documentation cleanup. This is the workflow/script subtotal,
+not the entire retirement diff.
+
+Keep the scanner fork's separately named consumer-sync workflow untouched.
+Preserve MFTLib's `.gitea/workflows/aislop.yml` and its scanner assertions.
+
+Before retirement, check that every repository path above exists. In the retirement
+pull request, run `bash scripts/ci-preflight.tests.sh` and
+`dotnet test MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --filter FullyQualifiedName~AgentInstructionsTests`;
+both must pass with the consumer workflow removed. Build before any `--no-build`
+test run so copied documents are current.
 
 This checklist describes an owner release action. The scripts and CI scope remain
 active until that action; the quality-gate documentation describes what runs now.
