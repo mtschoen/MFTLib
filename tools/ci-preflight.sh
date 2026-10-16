@@ -24,6 +24,7 @@ preflight_execute() {
         coverage-child) pwsh -NoProfile -File scripts/test-native-coverage-elevated.ps1 ;;
         aislop-tests) pwsh -NoProfile -File scripts/ci-aislop.tests.ps1 ;;
         coverage-status) pwsh -NoProfile -File scripts/test-coverage-status.ps1 ;;
+        release-offline) bash scripts/test-release-offline.sh ;;
         windows) pwsh -NoProfile -File scripts/run-coverage.ps1 -NonInteractive ;;
         windows-package-smoke) pwsh -NoProfile -File scripts/smoke-package-windows.ps1 ;;
         linux) bash scripts/coverage-linux.sh ;;
@@ -81,7 +82,7 @@ preflight_main() {
             --only)
                 [[ ( -z "$mode" || "$mode" == only ) && $# -ge 2 ]] || return 2
                 case "$2" in
-                    docs|preflight-tests|build-script|coverage-status|windows|linux|sync|linux-package|aislop|init) ;;
+                    docs|preflight-tests|build-script|coverage-status|release-offline|windows|linux|sync|linux-package|aislop|init) ;;
                     *) printf 'Unknown scope: %s\n' "$2" >&2; return 2 ;;
                 esac
                 mode=only; scopes+=("$2"); shift 2 ;;
@@ -114,6 +115,7 @@ preflight_main() {
     preflight_gate build-script aislop-tests windows yes
     preflight_gate build-script coverage-child windows yes
     preflight_gate coverage-status coverage-status any yes
+    preflight_gate release-offline release-offline any yes
     if [[ "$mode" == only && " ${scopes[*]} " == *" windows "* && " ${scopes[*]} " != *" init "* ]]; then
         preflight_gate windows init-windows windows yes
     else

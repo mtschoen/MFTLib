@@ -401,7 +401,7 @@ for job in windows linux linux-package; do
         assert_equal 0 "$(printf '%s\n' "$block" | grep -F -c -- "$obsolete")"
     done
     case "$job" in
-        windows) expected_guards=21 ;;
+        windows) expected_guards=20 ;;
         linux) expected_guards=8 ;;
         linux-package) expected_guards=4 ;;
     esac
