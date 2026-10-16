@@ -57,11 +57,21 @@ public partial class NativeParserCoverageTests
         }
     }
 
-    // --- mft.parse.cpp line 162: MergeExtensionDataRuns' resident
-    // AttributeList bounds guard (ValueOffset + ValueLength > RecordLength). ---
+    // --- mft.parse.cpp: MergeExtensionDataRuns' resident AttributeList bounds guard and
+    // CollectExtensionRecordNumbers' entry walk. A malformed list fails the parse; a list of
+    // empty entries (terminal padding) is legal and parses. ---
 
     [TestMethod]
-    public void ParseMFTRecords_ResidentAttributeListValueOverflow_SkipsExtensionMerge()
+    [DataRow(32, 28, 28, -1, false, DisplayName = "ValueLength overflows the attribute")]
+    [DataRow(56, 32, 8, -1, false, DisplayName = "entry shorter than the entry header")]
+    [DataRow(56, 32, 64, -1, false, DisplayName = "entry extends past the list")]
+    [DataRow(56, 32, 0, -1, true, DisplayName = "zero-length entry is terminal padding")]
+    [DataRow(32, 8, 0, -1, true, DisplayName = "short zero tail is terminal padding")]
+    [DataRow(32, 8, 0, 0, false, DisplayName = "short tail with a nonzero byte")]
+    [DataRow(56, 32, 0, 0, false, DisplayName = "zero-length header with nonzero fields")]
+    [DataRow(88, 64, 0, 32, false, DisplayName = "zero padding followed by a data entry")]
+    public void ParseMFTRecords_ResidentAttributeList_FailsOnlyWhenMalformed(
+        int attributeRecordLength, int valueLength, int entryRecordLength, int nonzeroByteOffset, bool parses)
     {
         var path = Path.GetTempFileName();
         try
@@ -72,18 +82,20 @@ public partial class NativeParserCoverageTests
             var a1 = 4096 + 0x38;
             var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
 
-            // Resident AttributeList whose declared ValueLength overflows its own
-            // (deliberately too small) RecordLength: ValueOffset(24) + ValueLength(28) = 52 > 32.
             var a2 = a1 + a1Len;
             data[a2] = 0x20; // TypeCode = AttributeList
-            data[a2 + 4] = 32; // RecordLength = 32 (too small for the declared value)
-            data[a2 + 5] = 0;
+            data[a2 + 4] = (byte)attributeRecordLength;
             data[a2 + 8] = 0x00; // FormCode = resident
-            data[a2 + 0x10] = 28; // ValueLength = 28 (one 28-byte entry)
-            data[a2 + 0x11] = 0;
+            data[a2 + 0x10] = (byte)valueLength;
             data[a2 + 0x14] = 0x18; // ValueOffset = 24
+            data[a2 + 0x18 + 4] = (byte)entryRecordLength; // first entry's RecordLength
 
-            WriteEndMarker(data, a2 + 32);
+            if (nonzeroByteOffset >= 0)
+            {
+                data[a2 + 0x18 + nonzeroByteOffset] = 0x80;
+            }
+
+            WriteEndMarker(data, a2 + attributeRecordLength);
 
             File.WriteAllBytes(path, data);
 
@@ -94,9 +106,17 @@ public partial class NativeParserCoverageTests
             try
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                // Parse still succeeds; the malformed AttributeList is simply skipped
-                // rather than merged, so total records reflect only the primary run.
-                Assert.IsTrue(result.TotalRecords > 0);
+                if (parses)
+                {
+                    Assert.IsTrue(string.IsNullOrEmpty(result.ErrorMessage), result.ErrorMessage);
+                    Assert.IsTrue(result.TotalRecords > 0);
+                }
+                else
+                {
+                    Assert.IsTrue(
+                        result.ErrorMessage.Contains("malformed attribute list", StringComparison.Ordinal),
+                        $"Expected a malformed attribute list failure, got: {result.ErrorMessage}");
+                }
             }
             finally
             {

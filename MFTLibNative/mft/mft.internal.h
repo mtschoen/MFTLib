@@ -48,6 +48,9 @@ bool TryMeasureRuns(const std::vector<DataRun>& runs, uint32_t bytesPerCluster, 
 // of the attribute: a run list is complete or not used.
 std::vector<DataRun> ParseDataRuns(const ATTRIBUTE_RECORD_HEADER* attribute);
 
+constexpr size_t kMinimumFirstAttributeOffset = 42;
+constexpr size_t kResidentAttributeHeaderSize = 0x18;
+
 // Steps through a record's attributes without leaving the record. *offset starts at the record's
 // FirstAttributeOffset and advances past each attribute returned. Malformed when an attribute header
 // or its declared length does not fit inside the record.

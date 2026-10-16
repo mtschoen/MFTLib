@@ -14,6 +14,8 @@
 #include "../internal.h"
 #include "mft.internal.h"
 
+using namespace mftlib::ntfs::detail;
+
 namespace {
 
 struct StandardInformationValues {
@@ -30,9 +32,8 @@ struct RecordAttributes {
 };
 
 bool TryExtractStandardInformation(const ATTRIBUTE_RECORD_HEADER* attribute, StandardInformationValues* values) {
-    constexpr size_t kResidentHeaderSize = 0x18;
     constexpr size_t kMinimumStandardInformationSize = 36;
-    if (attribute->Form.Resident.ValueOffset < kResidentHeaderSize ||
+    if (attribute->Form.Resident.ValueOffset < kResidentAttributeHeaderSize ||
         static_cast<size_t>(attribute->Form.Resident.ValueOffset) + kMinimumStandardInformationSize >
             attribute->RecordLength) {
         return false;
@@ -48,9 +49,8 @@ bool TryExtractStandardInformation(const ATTRIBUTE_RECORD_HEADER* attribute, Sta
 }
 
 bool TryExtractFileName(const ATTRIBUTE_RECORD_HEADER* attribute, PFILE_NAME* outNameAttribute) {
-    constexpr size_t kResidentHeaderSize = 0x18;
     constexpr size_t kMinimumFileNameHeaderSize = 66;
-    if (attribute->Form.Resident.ValueOffset < kResidentHeaderSize ||
+    if (attribute->Form.Resident.ValueOffset < kResidentAttributeHeaderSize ||
         static_cast<size_t>(attribute->Form.Resident.ValueOffset) + kMinimumFileNameHeaderSize >
             attribute->RecordLength) {
         return false;
@@ -99,23 +99,12 @@ bool ScanRecordAttributes(PFILE_RECORD_SEGMENT_HEADER record, ParseGeometry geom
                           RecordAttributes* recordAttributes) {
     *recordAttributes = {};
     auto* recordPointer = reinterpret_cast<uint8_t*>(record);
-    if (record->FirstAttributeOffset < 42 || record->FirstAttributeOffset + sizeof(uint32_t) > geometry.recordSize) {
-        return false;
-    }
-    auto* attribute = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(recordPointer + record->FirstAttributeOffset);
-    constexpr size_t kResidentHeaderSize = 0x18;
-    while (true) {
+    size_t nextOffset = record->FirstAttributeOffset;
+    PATTRIBUTE_RECORD_HEADER attribute = nullptr;
+    AttributeStep step;
+    while ((step = NextAttribute(recordPointer, geometry.recordSize, &nextOffset, &attribute)) ==
+           AttributeStep::Attribute) {
         const auto offset = static_cast<size_t>(reinterpret_cast<uint8_t*>(attribute) - recordPointer);
-        if (offset + sizeof(uint32_t) > geometry.recordSize) {
-            return false;
-        }
-        if (attribute->TypeCode == EndMarker) {
-            break;
-        }
-        if (offset + kResidentHeaderSize > geometry.recordSize || attribute->RecordLength < kResidentHeaderSize ||
-            offset + attribute->RecordLength > geometry.recordSize) {
-            return false;
-        }
         if (attribute->TypeCode == StandardInformation && attribute->FormCode == 0) {
             if (!TryExtractStandardInformation(attribute, &recordAttributes->standardInformation)) {
                 return false;
@@ -136,10 +125,8 @@ bool ScanRecordAttributes(PFILE_RECORD_SEGMENT_HEADER record, ParseGeometry geom
             }
             recordAttributes->dataPresent = dataSizeResult == DataSizeExtractionResult::Present;
         }
-        attribute =
-            reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(reinterpret_cast<uint8_t*>(attribute) + attribute->RecordLength);
     }
-    return true;
+    return step == AttributeStep::End;
 }
 
 // Scan one eligible base record. If it has a validated non-DOS FileName, fill *outEntry

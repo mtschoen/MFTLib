@@ -10,7 +10,6 @@ namespace MFTLib;
 ///     sequence when it frees a record, and 16-bit arithmetic wraps). The walk is at most
 ///     <see cref="BlockLayout.MaximumPathDepth" /> components, never revisits a record and rebuilds to a path of at
 ///     most <see cref="MaximumPathUnits" /> UTF-16 units. A freed row that fails the rule is detached.
-///     The native freed resolver implements the same rule; the fixture parity test keeps the two equal.
 /// </summary>
 internal sealed class FreedRowTrust
 {

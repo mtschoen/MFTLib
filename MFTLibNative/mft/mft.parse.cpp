@@ -78,6 +78,7 @@ std::optional<ParseGeometry> QueryVolumeRecordSize(HANDLE volumeHandle) {
 constexpr wchar_t kMalformedRecordZeroMessage[] = L"MFT record 0 has a malformed attribute";
 constexpr wchar_t kRunsOutsideVolumeMessage[] = L"The MFT data runs lie outside the volume";
 constexpr wchar_t kMalformedExtensionMessage[] = L"MFT extension record has a malformed attribute";
+constexpr wchar_t kMalformedAttributeListMessage[] = L"MFT record 0 has a malformed attribute list";
 
 // A chunk is at least one record, no more records than the MFT holds, and small enough that its
 // byte count fits the DWORD a read takes.
@@ -140,22 +141,33 @@ bool VolumeReadIncomplete(const void* context) { return static_cast<const Volume
 
 // Collect only unnamed $DATA references, ordered by lowest VCN before de-duplicating
 // extension record numbers. Other attributes cannot contribute to the $MFT run list.
-std::vector<uint64_t> CollectExtensionRecordNumbers(uint8_t* attributeListData, uint64_t attributeListSize) {
+// False when an entry is shorter than the entry header or runs past the end of the list, or when
+// the remainder after the last entry (a zero RecordLength or a tail too short for a header) holds
+// any nonzero byte: only zero padding may end the list.
+bool CollectExtensionRecordNumbers(uint8_t* attributeListData, uint64_t attributeListSize,
+                                   std::vector<uint64_t>& extensionRecords) {
+    constexpr size_t kEntryHeaderSize = offsetof(ATTRIBUTE_LIST_ENTRY, AttributeName);
     std::vector<PATTRIBUTE_LIST_ENTRY> dataEntries;
     uint64_t offset = 0;
-    while (offset + sizeof(ATTRIBUTE_LIST_ENTRY) <= attributeListSize) {
+    while (offset + kEntryHeaderSize <= attributeListSize) {
         auto* entry = reinterpret_cast<PATTRIBUTE_LIST_ENTRY>(attributeListData + offset);
         if (entry->RecordLength == 0) {
             break;
+        }
+        if (entry->RecordLength < kEntryHeaderSize || entry->RecordLength > attributeListSize - offset) {
+            return false;
         }
         if (entry->AttributeTypeCode == Data && entry->AttributeNameLength == 0) {
             dataEntries.push_back(entry);
         }
         offset += entry->RecordLength;
     }
+    if (!std::all_of(attributeListData + offset, attributeListData + attributeListSize,
+                     [](uint8_t value) { return value == 0; })) {
+        return false;
+    }
     std::sort(dataEntries.begin(), dataEntries.end(),
               [](const auto* left, const auto* right) { return left->LowestVcn.QuadPart < right->LowestVcn.QuadPart; });
-    std::vector<uint64_t> extensionRecords;
     for (const auto* entry : dataEntries) {
         uint64_t recordNumber = static_cast<uint64_t>(entry->SegmentReference.SegmentNumberLowPart) |
                                 (static_cast<uint64_t>(entry->SegmentReference.SegmentNumberHighPart) << 32);
@@ -164,7 +176,7 @@ std::vector<uint64_t> CollectExtensionRecordNumbers(uint8_t* attributeListData, 
             extensionRecords.push_back(recordNumber);
         }
     }
-    return extensionRecords;
+    return true;
 }
 
 // Append the unnamed $DATA runs of one validated extension record to mftRuns. Null on success, otherwise
@@ -216,12 +228,11 @@ const wchar_t* MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEA
         attributeListData =
             ReadNonResidentData(volumeHandle, attributeListAttribute, bytesPerCluster, &attributeListSize);
     } else {
-        constexpr size_t kResidentHeaderSize = 0x18;
-        if (attributeListAttribute->Form.Resident.ValueOffset < kResidentHeaderSize ||
+        if (attributeListAttribute->Form.Resident.ValueOffset < kResidentAttributeHeaderSize ||
             static_cast<size_t>(attributeListAttribute->Form.Resident.ValueOffset) +
                     attributeListAttribute->Form.Resident.ValueLength >
                 attributeListAttribute->RecordLength) {
-            return nullptr;
+            return kMalformedAttributeListMessage;
         }
         attributeListSize = attributeListAttribute->Form.Resident.ValueLength;
         if (attributeListSize == 0) {
@@ -240,7 +251,10 @@ const wchar_t* MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEA
     }
     const NativeScopeExit attributeData([&]() { free(attributeListData); });
 
-    std::vector<uint64_t> extensionRecords = CollectExtensionRecordNumbers(attributeListData, attributeListSize);
+    std::vector<uint64_t> extensionRecords;
+    if (!CollectExtensionRecordNumbers(attributeListData, attributeListSize, extensionRecords)) {
+        return kMalformedAttributeListMessage;
+    }
     std::vector<uint8_t> extensionRecord(geometry.recordSize);
     const wchar_t* failure = nullptr;
     for (auto recordNumber : extensionRecords) {

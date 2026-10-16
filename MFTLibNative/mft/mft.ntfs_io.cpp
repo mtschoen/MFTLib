@@ -92,8 +92,6 @@ bool ApplyFixup(uint8_t* record, uint32_t recordSize) {
 
 namespace {
 constexpr uint64_t kMaximumVolumeOffset = static_cast<uint64_t>((std::numeric_limits<int64_t>::max)());
-constexpr size_t kMinimumFirstAttributeOffset = 42;
-constexpr size_t kResidentAttributeHeaderSize = 0x18;
 constexpr size_t kNonresidentAttributeHeaderSize = 0x40;
 constexpr size_t kMaximumRunFieldBytes = sizeof(uint64_t);
 
