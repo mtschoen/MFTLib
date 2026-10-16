@@ -19,5 +19,4 @@
 
 (Preserved 2026-06-19 from the reaped Gitea-CI plan/spec docs. CI is live; these are known residual items.)
 
-- **Coverage artifact REST API gap**: coverage jobs use `actions/upload-artifact@v3`, whose uploads are not listed by Gitea's `/api/v1/.../artifacts` endpoint. Branch protection gates on job status, not coverage artifacts. Reviewer evidence uses the pinned Gitea-native upload action documented in `docs/quality-gates.md`.
 - **Tag-triggered release / benchmark workflow**: not yet designed; revisit when 0.4 ships.

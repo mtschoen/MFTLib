@@ -21,10 +21,8 @@ sentence when the check prints different values.
 
 ## How a release gets the library
 
-This Gitea deployment's `GET /actions/runs/{id}/artifacts` returns `total_count: 0`
-for `actions/upload-artifact@v3` uploads; the official v4 upload action refuses to
-run against Gitea. A Windows release therefore builds the library in WSL rather
-than downloading the CI artifact:
+A Windows release builds the linux-x64 library in WSL. CI's `linux-native-<sha>` artifact is listed by the
+Gitea artifacts API (`GET /actions/runs/{id}/artifacts`), but the release does not download it:
 
 - `scripts/build-linux-native.ps1` builds the Release library in WSL (`wsl -d Ubuntu-24.04`, the
   same Ubuntu 24.04 floor) through `scripts/build-linux.sh`, runs `scripts/check-linux-native.sh`

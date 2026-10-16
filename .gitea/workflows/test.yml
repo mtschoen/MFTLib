@@ -129,7 +129,8 @@ jobs:
 
       - name: Upload coverage artifact
         if: always() && steps.changed-files.outputs.skip_build != 'true'
-        uses: actions/upload-artifact@v3
+        # Gitea-native fork: uploads from actions/upload-artifact@v3 never appear in the artifacts REST API that pr-crew reads.
+        uses: ChristopherHX/gitea-upload-artifact@81f940d004763f986ba3582c007fd842dd5cb0d7
         with:
           name: windows-coverage
           path: |
@@ -352,7 +353,7 @@ jobs:
 
       - name: Upload coverage artifact
         if: always() && steps.changed-files.outputs.skip_build != 'true'
-        uses: actions/upload-artifact@v3
+        uses: ChristopherHX/gitea-upload-artifact@81f940d004763f986ba3582c007fd842dd5cb0d7
         with:
           name: linux-coverage
           path: coverage-report/
@@ -422,10 +423,9 @@ jobs:
         if: steps.changed-files.outputs.skip_build != 'true'
         run: bash scripts/smoke-package-linux.sh build/linux/libMFTLibNative.so
 
-      # For a person to download from the run page; the REST artifacts endpoint does not list v3 uploads.
       - name: Upload library artifact
         if: always() && steps.changed-files.outputs.skip_build != 'true'
-        uses: actions/upload-artifact@v3
+        uses: ChristopherHX/gitea-upload-artifact@81f940d004763f986ba3582c007fd842dd5cb0d7
         with:
           name: linux-native-${{ github.sha }}
           path: |
