@@ -208,7 +208,7 @@ public class WatchHostTests
 
     // --- Helpers ---
 
-    static IReadOnlyList<SampleHost.DriveFacts> TwoDrives() =>
+    static IReadOnlyList<(string RootDirectory, bool IsIndexable, string? Reason)> TwoDrives() =>
         [WatchFirstRunTests.Facts(@"C:\"), WatchFirstRunTests.Facts(@"D:\")];
 
     // An elevated run that needs elevation itself, over a drive resolver that records each drive and then fails, so

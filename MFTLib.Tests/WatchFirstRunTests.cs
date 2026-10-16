@@ -36,34 +36,9 @@ public class WatchFirstRunTests
         }
     }
 
-    internal static SampleHost.DriveFacts Facts(string name, DriveType type = DriveType.Fixed, bool ready = true, string? format = "NTFS") =>
-        new(name, type, ready, ready ? format : null);
-
-    [TestMethod]
-    public void ReadyNtfsFixedDrives_KeepsOnlyReadyNtfsFixedLettersInOrder()
-    {
-        var chosen = SampleHost.ReadyNtfsFixedDrives(
-        [
-            Facts(@"G:\"),
-            Facts(@"C:\"),
-            Facts(@"D:\", DriveType.Removable),
-            Facts(@"E:\", ready: false),
-            Facts(@"F:\", format: "exFAT"),
-            Facts(@"h:\", format: "ntfs"),
-            Facts("/"),
-            Facts(string.Empty)
-        ]);
-
-        CollectionAssert.AreEqual(new[] { "C", "G", "H" }, chosen.ToArray());
-    }
-
-    [TestMethod]
-    public void ListDrivesNative_ReadsTheMachineWithoutFailing()
-    {
-        var chosen = SampleHost.ReadyNtfsFixedDrives(new SampleHost()._listDrives());
-
-        Assert.IsTrue(chosen.All(letter => letter.Length == 1 && char.IsAsciiLetterUpper(letter[0])));
-    }
+    internal static (string RootDirectory, bool IsIndexable, string? Reason)
+        Facts(string rootDirectory, string? reason = null) =>
+        (rootDirectory, reason is null, reason);
 
     [TestMethod]
     public void Run_NoArguments_CoversEveryChosenDriveAndSaysWhich()
@@ -71,7 +46,10 @@ public class WatchFirstRunTests
         var lines = new List<string>();
         var host = new SampleHost
         {
-            _listDrives = () => [Facts(@"C:\"), Facts(@"D:\")],
+            _listDrives = () =>
+            [
+                Facts(@"G:\"), Facts(@"C:\"), Facts(@"h:\"), Facts(@"F:\", "not NTFS (exFAT)")
+            ],
             _elevationNeed = _ => ElevationNeed.None,
             _createBrokerSession = () => throw new InvalidOperationException("stop here"),
             _writeLine = lines.Add
@@ -80,7 +58,8 @@ public class WatchFirstRunTests
         var result = host.Run([]);
 
         Assert.AreEqual(1, result);
-        Assert.IsTrue(lines.Contains("No drive was named, so this run covers every ready NTFS fixed drive: C, D. Name drives to choose others."), string.Join(Environment.NewLine, lines));
+        CollectionAssert.Contains(lines, @"Skipping drive F:\ (not NTFS (exFAT))");
+        Assert.IsTrue(lines.Contains("No drive was named, so this run covers every ready NTFS fixed drive: C, G, H. Name drives to choose others."), string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -105,7 +84,7 @@ public class WatchFirstRunTests
         var lines = new List<string>();
         var host = new SampleHost
         {
-            _listDrives = () => [Facts(@"D:\", DriveType.CDRom, ready: false)],
+            _listDrives = () => [Facts(@"D:\", "optical")],
             _isElevated = () => throw new AssertFailedException("Nothing to scan must not reach elevation."),
             _writeLine = lines.Add
         };

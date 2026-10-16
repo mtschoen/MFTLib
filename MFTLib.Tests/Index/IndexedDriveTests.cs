@@ -72,6 +72,40 @@ public class IndexedDriveTests
         Assert.AreEqual(systemRoot, drive.RootDirectory);
     }
 
+    [DataTestMethod]
+    [DataRow(DriveType.Fixed, true, "NTFS", null)]
+    [DataRow(DriveType.Fixed, true, "ntfs", null)]
+    [DataRow(DriveType.Fixed, true, "exFAT", "not NTFS (exFAT)")]
+    [DataRow(DriveType.Fixed, false, "NTFS", "not ready")]
+    [DataRow(DriveType.Network, true, "NTFS", "network")]
+    [DataRow(DriveType.Removable, false, "NTFS", "removable")]
+    [DataRow(DriveType.CDRom, false, "CDFS", "optical")]
+    [DataRow(DriveType.NoRootDirectory, false, "", "not ready")]
+    [DataRow(DriveType.Ram, true, "NTFS", "other drive type")]
+    public void ReadVolumeVerdicts_ClassifiesByTypeThenReadinessThenFormat(
+        DriveType type, bool ready, string format, string? reason)
+    {
+        var result = IndexedDrive.ReadVolumeVerdicts(new[] { 0 }, _ => @"X:\", _ => type,
+            _ => type == DriveType.Fixed ? ready
+                : throw new AssertFailedException("Non-fixed readiness was read."),
+            _ => type == DriveType.Fixed && ready ? format
+                : throw new AssertFailedException("Format was read without a ready fixed drive."));
+
+        Assert.AreEqual((@"X:\", reason is null, reason), result.Single());
+    }
+
+    [TestMethod]
+    public void ReadVolumeVerdicts_ReportsVanishedDriveNotReadyAndContinues()
+    {
+        var result = IndexedDrive.ReadVolumeVerdicts(new[] { 0, 1 },
+            drive => drive == 0 ? @"Q:\" : @"C:\", _ => DriveType.Fixed,
+            drive => drive == 0 ? throw new IOException("device vanished") : true, _ => "NTFS");
+
+        Assert.AreEqual(2, result.Count);
+        Assert.AreEqual((@"Q:\", false, "not ready"), result[0]);
+        Assert.AreEqual((@"C:\", true, (string?)null), result[1]);
+    }
+
     [TestMethod]
     public void ConstructorAndWithInitializer_RejectNullRootDirectory()
     {

@@ -680,3 +680,18 @@ state the caller needs. Both git-wizard `Root` call sites can meet such a drive.
 exception informed nobody.
 
 **Revisit only if:** one watch stream can represent several independently owned drive runtimes.
+
+## Windows volume discovery reports every drive with an MFT verdict
+
+**Decision (owner, 2026-10-16):** `IndexedDrive.EnumerateWindowsVolumes()` returns every root from
+`DriveInfo.GetDrives()` as `(RootDirectory, IsIndexable, Reason)`. Only ready fixed NTFS drives are
+indexable; NTFS compares with `StringComparison.OrdinalIgnoreCase`. Reasons: `not ready`, `network`,
+`removable`, `optical`, `other drive type`, `not NTFS (<format>)`. Non-fixed drives are classified by
+type alone, readiness is read only for fixed drives and format only for ready fixed drives, and a
+per-drive `IOException`, `UnauthorizedAccessException` or `SecurityException` means `not ready`.
+Free-space and size stay consumer-side.
+
+**Reason:** Watch and file-wizard each carried a diverging copy of "ready, fixed, NTFS"; the library
+owns the policy once. file-wizard migrates in its pin-bump pull request.
+
+**Revisit only if:** a consumer needs a different selectable discovery policy or structured rejection data.
