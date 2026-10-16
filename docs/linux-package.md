@@ -38,9 +38,12 @@ Gitea artifacts API (`GET /actions/runs/{id}/artifacts`), but the release does n
 Before either a dry run returns successfully or publication starts,
 `scripts/Test-ReleasePackages.ps1` requires `lib/net10.0/MFTLib.dll` and
 `lib/net10.0/MFTLib.xml` in MFTLib, and `lib/net10.0/MFTLibTestExtensions.xml`
-alongside the test-extension assembly in MFTLib.TestExtensions. Validation also
-checks package identities, matching versions, the exact MFTLib dependency,
-native libraries, README, license, and symbol-package files.
+alongside the test-extension assembly in MFTLib.TestExtensions. Validation also checks package identities, matching versions, the exact MFTLib dependency,
+native libraries, README, and license. Each symbol package must be a readable
+ZIP containing its expected entry: `lib/net10.0/MFTLib.pdb` in MFTLib and
+`lib/net10.0/MFTLibTestExtensions.pdb` in MFTLib.TestExtensions. Missing files,
+directories, empty files, non-ZIP files, and ZIPs without the expected PDB
+entry fail validation before a dry run succeeds or publication begins.
 
 For both dry-run and publish mode, set `MFTLIB_GITEA_REPOSITORY_URL` in the
 release environment to the canonical repository's literal HTTPS or SSH URL.
@@ -59,7 +62,7 @@ Run the offline regressions with:
     pwsh -NoProfile -File scripts/test-release-package-validation.ps1
     pwsh -NoProfile -File scripts/test-release-notes.ps1
 
-The first builds synthetic ZIP packages. The second tests canonical-destination validation and release-note handling
+The first builds synthetic ZIP packages and checks missing, malformed, and PDB-less symbol archives for both packages. The second tests canonical-destination validation and release-note handling
 and runs the production GitHub-push tail in isolated PowerShell processes with
 fake Git and GitHub CLI commands.
 

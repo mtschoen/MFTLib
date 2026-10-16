@@ -3,7 +3,8 @@
 # dependency of MFTLib.TestExtensions, required assets, assembly separation, and the
 # packed Windows DLL's imports and plain-x64 instruction baseline using dumpbin, with matching
 # native build symbols required for attribution. MSVCP* and VCRUNTIME* imports are rejected.
-# Assert-ReleaseSymbolPackages checks the symbol files. Validation throws on the first failure.
+# Assert-ReleaseSymbolPackages opens each symbol ZIP and requires its managed PDB entry.
+# Validation throws on the first failure.
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 . "$PSScriptRoot/windows-tools.ps1"
@@ -173,7 +174,22 @@ function Assert-ReleaseSymbolPackages {
         [Parameter(Mandatory)] [string] $TestExtensionsSymbolPackagePath
     )
 
-    foreach ($symbolPackagePath in @($LibrarySymbolPackagePath, $TestExtensionsSymbolPackagePath)) {
+    $symbolPackages = @(
+        @{ Path = $LibrarySymbolPackagePath; Entry = 'lib/net10.0/MFTLib.pdb' },
+        @{ Path = $TestExtensionsSymbolPackagePath; Entry = 'lib/net10.0/MFTLibTestExtensions.pdb' }
+    )
+    foreach ($package in $symbolPackages) {
+        $symbolPackagePath = $package.Path
         Assert-True (Test-Path -LiteralPath $symbolPackagePath -PathType Leaf) "Expected symbol package not found: $symbolPackagePath"
+        try {
+            $archive = [IO.Compression.ZipFile]::OpenRead($symbolPackagePath)
+        }
+        catch {
+            throw "Cannot read symbol package '$symbolPackagePath' as a ZIP archive: $($_.Exception.Message)"
+        }
+        try {
+            Assert-True ($null -ne $archive.GetEntry($package.Entry)) "Symbol package '$symbolPackagePath' is missing $($package.Entry)."
+        }
+        finally { $archive.Dispose() }
     }
 }

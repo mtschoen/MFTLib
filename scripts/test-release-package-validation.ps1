@@ -43,6 +43,20 @@ function New-TestPackage {
     finally { $archive.Dispose() }
 }
 
+function New-TestSymbolPackage {
+    param([string] $PackagePath, [string[]] $Entries)
+
+    $archive = [IO.Compression.ZipFile]::Open($PackagePath, [IO.Compression.ZipArchiveMode]::Create)
+    try {
+        foreach ($entryName in $Entries) {
+            $writer = [IO.StreamWriter]::new($archive.CreateEntry($entryName).Open())
+            try { $writer.Write('symbol-entry-fixture') }
+            finally { $writer.Dispose() }
+        }
+    }
+    finally { $archive.Dispose() }
+}
+
 function Assert-Rejected {
     param([scriptblock] $Action, [string] $ExpectedMessage)
 
@@ -282,19 +296,61 @@ try {
 
     $mftLibSymbols = Join-Path $temporaryDirectory 'MFTLib.snupkg'
     $testExtensionsSymbols = Join-Path $temporaryDirectory 'MFTLib.TestExtensions.snupkg'
-    [IO.File]::WriteAllBytes($mftLibSymbols, [byte[]]@())
-    [IO.File]::WriteAllBytes($testExtensionsSymbols, [byte[]]@())
+    $symbolPackages = @(
+        @{ Path = $mftLibSymbols; Entry = 'lib/net10.0/MFTLib.pdb'; OtherEntry = 'lib/net10.0/MFTLibTestExtensions.pdb' },
+        @{ Path = $testExtensionsSymbols; Entry = 'lib/net10.0/MFTLibTestExtensions.pdb'; OtherEntry = 'lib/net10.0/MFTLib.pdb' }
+    )
+    foreach ($package in $symbolPackages) {
+        New-TestSymbolPackage $package.Path @($package.Entry)
+    }
     Assert-ReleaseSymbolPackages $mftLibSymbols $testExtensionsSymbols
     $passed++
-    foreach ($missingSymbols in @($mftLibSymbols, $testExtensionsSymbols)) {
-        Remove-Item -LiteralPath $missingSymbols
-        Assert-Rejected { Assert-ReleaseSymbolPackages $mftLibSymbols $testExtensionsSymbols } $missingSymbols
-        New-Item -ItemType Directory -Path $missingSymbols | Out-Null
-        Assert-Rejected { Assert-ReleaseSymbolPackages $mftLibSymbols $testExtensionsSymbols } $missingSymbols
-        Remove-Item -LiteralPath $missingSymbols
-        [IO.File]::WriteAllBytes($missingSymbols, [byte[]]@())
-        $passed += 2
+
+    $symbolFailures = [Collections.Generic.List[string]]::new()
+    foreach ($package in $symbolPackages) {
+        foreach ($case in @(
+            @{ Name = 'missing-file'; Message = "Expected symbol package not found: $($package.Path)" },
+            @{ Name = 'directory'; Message = "Expected symbol package not found: $($package.Path)" },
+            @{ Name = 'empty-file'; Message = "Cannot read symbol package '$($package.Path)' as a ZIP archive" },
+            @{ Name = 'non-zip'; Message = "Cannot read symbol package '$($package.Path)' as a ZIP archive" },
+            @{ Name = 'pdb-less-zip'; Message = "Symbol package '$($package.Path)' is missing $($package.Entry)." },
+            @{ Name = 'other-package-pdb'; Message = "Symbol package '$($package.Path)' is missing $($package.Entry)." },
+            @{ Name = 'wrong-directory'; Message = "Symbol package '$($package.Path)' is missing $($package.Entry)." },
+            @{ Name = 'wrong-case'; Message = "Symbol package '$($package.Path)' is missing $($package.Entry)." }
+        )) {
+            Remove-Item -LiteralPath $package.Path -Force
+            try {
+                switch ($case.Name) {
+                    'missing-file' { }
+                    'directory' { [IO.Directory]::CreateDirectory($package.Path) | Out-Null }
+                    'empty-file' { [IO.File]::WriteAllBytes($package.Path, [byte[]]@()) }
+                    'non-zip' { [IO.File]::WriteAllText($package.Path, 'not a ZIP archive') }
+                    'pdb-less-zip' { New-TestSymbolPackage $package.Path @('README.md') }
+                    'other-package-pdb' { New-TestSymbolPackage $package.Path @($package.OtherEntry) }
+                    'wrong-directory' { New-TestSymbolPackage $package.Path @([IO.Path]::GetFileName($package.Entry)) }
+                    'wrong-case' { New-TestSymbolPackage $package.Path @($package.Entry.ToUpperInvariant()) }
+                }
+                try {
+                    Assert-Rejected {
+                        Assert-ReleaseSymbolPackages $mftLibSymbols $testExtensionsSymbols
+                    } $case.Message
+                    $passed++
+                }
+                catch {
+                    $symbolFailures.Add("$($case.Name) / $($package.Path): $($_.Exception.Message)")
+                }
+            }
+            finally {
+                if (Test-Path -LiteralPath $package.Path) {
+                    Remove-Item -LiteralPath $package.Path -Recurse -Force
+                }
+                New-TestSymbolPackage $package.Path @($package.Entry)
+            }
+        }
     }
+    Assert-Equal $symbolFailures.Count 0 ("Symbol-package regressions: " + ($symbolFailures -join "`n"))
+    Assert-ReleaseSymbolPackages $mftLibSymbols $testExtensionsSymbols
+    $passed++
 
     Assert-True ($script:inspectedNativePaths.Count -gt 0) 'The packaged DLL was never inspected.'
     foreach ($nativePath in $script:inspectedNativePaths) {
