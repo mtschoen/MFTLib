@@ -31,6 +31,9 @@ Gitea artifacts API (`GET /actions/runs/{id}/artifacts`), but the release does n
   pack as `-p:MFTLibLinuxNativeLibrary=<path>`. `MFTLib.csproj` packs the property's file at the
   `runtimes/linux-x64/native` entry. A plain `dotnet pack` without the property makes a package
   that `scripts/Test-ReleasePackages.ps1` rejects, because it requires that entry.
+- `scripts/build-linux.sh` points managed Smoke restore and build paths at a temporary
+  `MFTLibSmokeArtifactsDirectory` (see `Directory.Build.props`), so the WSL stage leaves the
+  Windows checkout's `obj` and `bin` alone.
 - `release.ps1` requires a clean tree at the release commit, so the library is built from `HEAD`.
 
 ## Release validation and publication

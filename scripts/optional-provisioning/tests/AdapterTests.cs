@@ -57,7 +57,8 @@ internal static class AdapterTests
         var expected = new[]
         {
             "dotnet", "test", Path.Combine(fixture.Repository, "MFTLib.Tests", "MFTLib.Tests.csproj"),
-            "-c", "Release", "-p:MFTLibNativeLinuxFlavor=Release", "--filter", "TestCategory=Smoke"
+            "-c", "Release", "-p:MFTLibNativeLinuxFlavor=Release",
+            smoke.Single().Single(argument => argument.StartsWith("-p:MFTLibSmokeArtifactsDirectory=", StringComparison.Ordinal)), "--filter", "TestCategory=Smoke"
         };
         TestProgram.Equal(JsonSerializer.Serialize(expected), JsonSerializer.Serialize(smoke.Single()), "managed Smoke argv");
         var nativeBuild = Array.FindIndex(calls, call => call[0] == "cmake" && call.ElementAtOrDefault(1) == "--build");

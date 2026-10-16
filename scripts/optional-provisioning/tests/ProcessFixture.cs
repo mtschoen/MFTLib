@@ -188,7 +188,7 @@ internal sealed class ProcessFixture : IDisposable
         }
         else
         {
-            foreach (var name in new[] { "bash", "dirname", "mkdir" })
+            foreach (var name in new[] { "bash", "dirname", "mkdir", "mktemp", "rm" })
                 File.CreateSymbolicLink(Path.Combine(Commands, name), FindHost(name));
         }
     }

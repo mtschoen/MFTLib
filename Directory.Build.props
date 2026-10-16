@@ -18,4 +18,14 @@
     <PackageReference Include="Roslynator.Analyzers" Version="4.15.0" PrivateAssets="all" />
   </ItemGroup>
 
+  <!-- Smoke builds have a separate restore/build tree for every referenced project. -->
+  <PropertyGroup Condition="'$(MSBuildProjectExtension)' == '.csproj' And '$(MFTLibSmokeArtifactsDirectory)' != ''">
+    <MSBuildProjectExtensionsPath>$(MFTLibSmokeArtifactsDirectory)/$(MSBuildProjectName)/obj/</MSBuildProjectExtensionsPath>
+    <IntermediateOutputPath>$(MFTLibSmokeArtifactsDirectory)/$(MSBuildProjectName)/int/$(Configuration)/</IntermediateOutputPath>
+    <BaseOutputPath>$(MFTLibSmokeArtifactsDirectory)/$(MSBuildProjectName)/bin/</BaseOutputPath>
+    <NuspecOutputPath>$(MFTLibSmokeArtifactsDirectory)/$(MSBuildProjectName)/nuspec/</NuspecOutputPath>
+    <!-- Keep checkout outputs excluded when BaseOutputPath points outside the project. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**</DefaultItemExcludes>
+  </PropertyGroup>
+
 </Project>

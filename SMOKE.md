@@ -8,7 +8,7 @@ native library. It is the floor before pushing a change. It is not the bar.
 dotnet test MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --filter TestCategory=Smoke
 ```
 
-On Linux, `scripts/build-linux.sh` builds the Release library and then runs this filter with `-p:MFTLibNativeLinuxFlavor=Release`, so a leftover `build/linux-coverage` library is never the one tested. Omit
+On Linux, `scripts/build-linux.sh` builds the Release library and then runs this filter with `-p:MFTLibNativeLinuxFlavor=Release`, so a leftover `build/linux-coverage` library is never the one tested. Its managed restore and build state goes to a temporary directory, so a Windows checkout's `obj` and `bin` stay untouched. Omit
 `-p:Platform=x64` there. On Windows run `.\scripts\build-windows.ps1` first so the native DLL is current.
 
 ## What it covers

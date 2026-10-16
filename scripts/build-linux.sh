@@ -9,6 +9,9 @@ mkdir -p "$BUILD_DIR"
 cmake -S "$ROOT/MFTLibNative" -B "$BUILD_DIR" -G Ninja -DCMAKE_BUILD_TYPE=Release "$@"
 cmake --build "$BUILD_DIR"
 
+SMOKE_WORK="$(mktemp -d)"
+trap 'rm -rf "$SMOKE_WORK"' EXIT
+
 echo
 echo "Running the managed Smoke tier against build/linux (MFTLibNativeLinuxFlavor=Release)..."
-dotnet test "$ROOT/MFTLib.Tests/MFTLib.Tests.csproj" -c Release -p:MFTLibNativeLinuxFlavor=Release --filter TestCategory=Smoke
+dotnet test "$ROOT/MFTLib.Tests/MFTLib.Tests.csproj" -c Release -p:MFTLibNativeLinuxFlavor=Release "-p:MFTLibSmokeArtifactsDirectory=$SMOKE_WORK" --filter TestCategory=Smoke
