@@ -103,7 +103,7 @@ public partial class JournalBrokerHostLivenessTests
 
     const int MaximumIntervalsBeforeStalled = 20;
 
-    static readonly Regex FrameWrite = new(@":C#1\]  frame write kind=(?<kind>\d+)", RegexOptions.CultureInvariant);
+    static readonly Regex FrameWrite = new(@":harness-C-1\]  frame write kind=(?<kind>\d+)", RegexOptions.CultureInvariant);
 
     // Lets every write through except one whose frame is Stalled: that write reports it started and
     // then waits until Finish, the way a write to a pipe whose reader is slow does.

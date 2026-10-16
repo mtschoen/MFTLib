@@ -127,14 +127,14 @@ public class BrokerDiagnosticsTests
     public async Task LogFrame_WhenEnabled_AppendsFrameTraceLine()
     {
         BrokerDiagnostics.Enable("client", _temporaryRoot);
-        BrokerDiagnostics.LogFrame(BrokerDiagnostics.DriveChannel('C', 3), "read", 6, 42);
+        BrokerDiagnostics.LogFrame("test-C-3", "read", 6, 42);
         await BrokerDiagnostics.FlushAsync(CancellationToken.None);
 
         var path = Path.Combine(_temporaryRoot, "broker-diagnostics.client.log");
         Assert.IsTrue(File.Exists(path));
         var line = await File.ReadAllTextAsync(path);
         StringAssert.Contains(line, "frame read kind=6 len=42 t=");
-        StringAssert.Contains(line, ":C#3]");
+        StringAssert.Contains(line, ":test-C-3]");
     }
 
     static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(30);
@@ -233,15 +233,29 @@ public class BrokerDiagnosticsTests
     public async Task Log_CarriesChannelTag()
     {
         BrokerDiagnostics.Enable("broker", _temporaryRoot);
-        var lines = new List<string>();
-        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(lines.Add, () => "broker"));
-
-        BrokerDiagnostics.Log(BrokerDiagnostics.DriveChannel('D', 12), "hello");
-        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(TestTimeout);
-
-        Assert.AreEqual(1, lines.Count);
-        StringAssert.Matches(lines[0], new System.Text.RegularExpressions.Regex(
-            @"^\d{4}-\d\d-\d\dT[\d:.]+Z  \[broker:\d+:D#12\]  hello$"));
+        var lines = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(lines.Enqueue, () => "broker"));
+        var host = new JournalBrokerHost(new JournalBrokerHost.VolumeSources(_ => default));
+        await using var broker = new InProcessBroker(host);
+        var seenTags = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var drive in new[] { 'C', 'D', 'C' })
+        {
+            await using var channel = await broker.Process.OpenChannelAsync(drive,
+                writer => BrokerProtocol.WriteStartWatch(writer, default), CancellationToken.None).WaitAsync(TestTimeout);
+            Assert.AreEqual(BrokerFrameKind.Error,
+                (await channel.ReadAsync(CancellationToken.None).AsTask().WaitAsync(TestTimeout))?.Kind);
+            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(TestTimeout);
+            var traces = lines.Where(line => line.Contains($" kind={(byte)BrokerFrameKind.StartWatch} ", StringComparison.Ordinal))
+                .Select(line => System.Text.RegularExpressions.Regex.Match(line,
+                    @"^\d{4}-\d\d-\d\dT[\d:.]+Z  \[broker:\d+:(?<tag>[^\]]+)\]  frame (?<direction>read|write) kind=\d+ len=17 t=\d+$"))
+                .ToArray();
+            CollectionAssert.AreEquivalent(new[] { "read", "write" },
+                traces.Select(trace => trace.Groups["direction"].Value).ToArray());
+            var tag = traces[0].Groups["tag"].Value;
+            Assert.AreEqual(tag, traces[1].Groups["tag"].Value, $"Client and host tags differ for drive {drive}.");
+            Assert.IsTrue(seenTags.Add(tag), "Each channel must have its own identity, including repeated drives.");
+            lines.Clear();
+        }
     }
 
     [TestMethod]
@@ -255,7 +269,7 @@ public class BrokerDiagnosticsTests
         var writers = Enumerable.Range(0, 8).Select(channelIndex => Task.Run(async () =>
         {
             await start.WaitForReleaseAsync(CancellationToken.None);
-            var channel = BrokerDiagnostics.DriveChannel((char)('C' + channelIndex), channelIndex);
+            var channel = $"test-{(char)('C' + channelIndex)}-{channelIndex}";
             for (var lineIndex = 0; lineIndex < 200; lineIndex++)
             {
                 BrokerDiagnostics.Log(channel, "line " + lineIndex);
@@ -268,7 +282,7 @@ public class BrokerDiagnosticsTests
         Assert.AreEqual(1600, lines.Count);
         for (var channelIndex = 0; channelIndex < 8; channelIndex++)
         {
-            var tag = $":{(char)('C' + channelIndex)}#{channelIndex}]";
+            var tag = $":test-{(char)('C' + channelIndex)}-{channelIndex}]";
             Assert.AreEqual(200, lines.Count(line => line.Contains(tag, StringComparison.Ordinal)), tag);
         }
     }
@@ -286,9 +300,9 @@ public class BrokerDiagnosticsTests
             lines.Add(line);
         }));
 
-        BrokerDiagnostics.Log(BrokerDiagnostics.DriveChannel('C', 1), "parks the sink");
+        BrokerDiagnostics.Log("test-C-1", "parks the sink");
         await gate.Entered.WaitAsync(TestTimeout);
-        var otherChannel = BrokerDiagnostics.DriveChannel('D', 1);
+        var otherChannel = "test-D-1";
         var callerTask = Task.Run(() =>
         {
             for (var index = 0; index < 100; index++)

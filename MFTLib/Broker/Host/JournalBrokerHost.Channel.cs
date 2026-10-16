@@ -53,8 +53,7 @@ internal sealed partial class JournalBrokerHost
             throw;
         }
 
-        var tag = BrokerDiagnostics.DriveChannel(drive[0], session.NextChannelSequence(drive[0]));
-        session.Tasks.Track(Task.Run(() => ServeChannelAsync(session, stream, drive, tag), CancellationToken.None));
+        session.Tasks.Track(Task.Run(() => ServeChannelAsync(session, stream, drive, pipeName), CancellationToken.None));
     }
 
     // Returns the connected stream, or null once the Error reply has been written.

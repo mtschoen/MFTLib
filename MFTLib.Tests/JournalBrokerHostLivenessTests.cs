@@ -27,7 +27,7 @@ public partial class JournalBrokerHostLivenessTests
         var liveness = new Liveness();
         await using var harness = new HostChannelHarness(liveness.Host(watchDrive: NeverYields));
         var pipe = await harness.OpenWatchChannelAsync('C', BehindTip);
-        await liveness.WhenPublished(DriveTag('C', 1), ChannelOperationKind.WaitingOnVolume);
+        await liveness.WhenPublished("harness-C-1", ChannelOperationKind.WaitingOnVolume);
 
         for (var interval = 0; interval < 24; interval++)
         {
@@ -131,7 +131,7 @@ public partial class JournalBrokerHostLivenessTests
         await harness.OpenScanChannelAsync('C');
         await admitted.Entered.WaitAsync(HostChannelHarness.HangGuard);
         var queued = await harness.OpenScanChannelAsync('D');
-        await liveness.WhenPublished(DriveTag('D', 1), ChannelOperationKind.Queued);
+        await liveness.WhenPublished("harness-D-2", ChannelOperationKind.Queued);
 
         for (var interval = 0; interval < 12; interval++)
         {
@@ -168,8 +168,6 @@ public partial class JournalBrokerHostLivenessTests
         Assert.IsFalse(liveness.SenderIsThreadPoolThread, "The sender must not run on the thread pool.");
         Assert.IsTrue(liveness.SenderIsBackground, "The sender thread must not keep the process alive.");
     }
-
-    static string DriveTag(char drive, int sequence) => BrokerDiagnostics.DriveChannel(drive, sequence);
 
     static async Task<BrokerFrameKind?> ReadIncludingHeartbeatsAsync(Stream pipe)
     {

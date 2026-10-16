@@ -147,12 +147,6 @@ public static class BrokerDiagnostics
     /// <summary>The channel tag of the control pipe's lines.</summary>
     internal const string ControlChannel = "control";
 
-    /// <summary>The channel tag of one drive's pipe, for example <c>C#3</c> for drive C's third pipe.</summary>
-    internal static string DriveChannel(char driveLetter, int sequence)
-    {
-        return FormattableString.Invariant($"{driveLetter}#{sequence}");
-    }
-
     // Held only for writer handoff and queue admission, never for sink I/O.
     static readonly Lock WriterLock = new();
 

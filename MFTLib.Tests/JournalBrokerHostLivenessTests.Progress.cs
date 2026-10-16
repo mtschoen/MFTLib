@@ -17,8 +17,8 @@ public partial class JournalBrokerHostLivenessTests
         await using var harness = HarnessHoldingWritesTo('X', liveness.Host(watchDrive: NeverYields), held);
         var blocked = await harness.OpenWatchChannelAsync('X', BehindTip);
         var healthy = await harness.OpenWatchChannelAsync('Y', BehindTip);
-        await liveness.WhenPublished(DriveTag('X', 1), ChannelOperationKind.WaitingOnVolume);
-        await liveness.WhenPublished(DriveTag('Y', 1), ChannelOperationKind.WaitingOnVolume);
+        await liveness.WhenPublished("harness-X-1", ChannelOperationKind.WaitingOnVolume);
+        await liveness.WhenPublished("harness-Y-2", ChannelOperationKind.WaitingOnVolume);
 
         // Well past the client's 30-second stall limit.
         for (var interval = 0; interval < 10; interval++)
@@ -71,7 +71,7 @@ public partial class JournalBrokerHostLivenessTests
         }, readCursors.ToArray());
         CollectionAssert.AreEqual(Enumerable.Repeat(BrokerLiveness.CatchUpBufferReadsPerCall, 4).ToArray(),
             reads.ToArray(), "Each call is bounded; the fourth returns at the tip and ends catch-up.");
-        Assert.AreEqual(3, liveness.Republishes(DriveTag('C', 1), "journal catch-up"),
+        Assert.AreEqual(3, liveness.Republishes("harness-C-1", "journal catch-up"),
             "The progress clock restarts once per call that returned a chunk.");
     }
 
@@ -102,7 +102,7 @@ public partial class JournalBrokerHostLivenessTests
         Assert.IsNull(frames[^1].Message, "The failure text stays on the host.");
         Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.ScanCompleted));
         Assert.AreEqual(2, calls, "A failed bounded read is not retried.");
-        Assert.AreEqual(1, liveness.Republishes(DriveTag('C', 1), "journal catch-up"),
+        Assert.AreEqual(1, liveness.Republishes("harness-C-1", "journal catch-up"),
             "Only the call that returned a chunk restarted the progress clock.");
         Assert.AreEqual(startTime, liveness.Clock.GetUtcNow(), "The host never waited on its clock.");
     }
@@ -142,7 +142,7 @@ public partial class JournalBrokerHostLivenessTests
 
             Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
             Assert.AreEqual(ranges, liveness.Published.Count(entry =>
-                entry.Tag == DriveTag('C', 1) && entry.State is
+                entry.Tag == "harness-C-1" && entry.State is
                 { Kind: ChannelOperationKind.Processing, Step: MftBlockScan.FlushStep }),
                 "Each flushed range republishes the scan pipe's state.");
         }

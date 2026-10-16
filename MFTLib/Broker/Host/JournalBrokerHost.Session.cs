@@ -160,7 +160,6 @@ internal sealed partial class JournalBrokerHost
     sealed class ControlSession : IDisposable
     {
         readonly CancellationTokenSource _cancellation;
-        readonly Dictionary<char, int> _channelSequences = [];
 
         public ControlSession(Stream control, BrokerChannelConnector connectChannel,
             IBlockSectionWriter? blockSectionWriter, TimeProvider timeProvider, Action? heartbeatVisited,
@@ -184,17 +183,6 @@ internal sealed partial class JournalBrokerHost
 
         /// <summary>Cancelled when the session ends; every request and channel is linked to it.</summary>
         public CancellationToken Token { get; }
-
-        // The drive's next channel number, for the diagnostics tag of its pipe.
-        public int NextChannelSequence(char driveLetter)
-        {
-            lock (_channelSequences)
-            {
-                var sequence = _channelSequences.GetValueOrDefault(driveLetter) + 1;
-                _channelSequences[driveLetter] = sequence;
-                return sequence;
-            }
-        }
 
         public Task EndAsync()
         {

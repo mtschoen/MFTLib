@@ -24,7 +24,7 @@ internal sealed partial class BrokerProcess
         {
             await RequestChannelAsync(letter, drive, pipe.PipeName, cancellationToken).ConfigureAwait(false);
             var stream = await AwaitConnectionAsync(letter, connection, cancellationToken).ConfigureAwait(false);
-            var channel = new BrokerDriveChannel(letter, pipe, stream, BrokerDiagnostics.DriveChannel(letter, sequence),
+            var channel = new BrokerDriveChannel(letter, pipe, stream, pipe.PipeName,
                 ForgetChannel, _timeProvider);
             try
             {

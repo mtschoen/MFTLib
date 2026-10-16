@@ -147,7 +147,8 @@ the diagnostics arguments and does not configure diagnostics. Extended-length Wi
 allow literal reserved device directory names while retaining the component checks.
 
 Diagnostics are best effort and disabled by default. Queued disk writes do not
-block channels, and each line carries its control or drive-channel tag. Applications
+block channels. Each line carries `control` or the complete client-created drive pipe name,
+shared by both endpoints. Applications
 with an opt-in switch honor either it or `MFTLIB_BROKER_DIAG=1` by enabling diagnostics
 after child dispatch. The broker relies on the forwarded command line, not inherited
 environment or application configuration before dispatch. Set
