@@ -63,6 +63,24 @@ The first builds synthetic ZIP packages. The second tests canonical-destination 
 and runs the production GitHub-push tail in isolated PowerShell processes with
 fake Git and GitHub CLI commands.
 
+Windows validation inspects the DLL extracted from the package with dumpbin for
+redistributable imports and VEX/EVEX instructions. Instruction attribution requires
+the matching native build PDB to remain discoverable by dumpbin. Missing symbols,
+failed disassembly, empty output, and unknown advanced-instruction owners fail
+validation. Only the checker's exact reviewed CPU-dispatched runtime symbols are
+permitted. These symbols are validation inputs; applications need no PDB to run.
+The symbol-assisted check is backed by a real AVX2 negative rebuild rather than
+treated as a complete reachability proof. A compiler/runtime update can require
+review of an exact runtime symbol against that toolset's dispatch implementation.
+
+After building Release/x64, run the real native regression with:
+
+    pwsh -NoProfile -File scripts/test-release-package-validation.ps1 -NativeIntegration
+
+It packages the default DLL, then builds an AVX2 variant into owned temporary
+output/intermediate directories and requires its package to fail specifically
+for an instruction violation. It does not execute that negative DLL.
+
 ## CI
 
 The `linux-package` job of `.gitea/workflows/test.yml` runs on every pull request and main push;
@@ -96,3 +114,5 @@ is not subject to the no-flat assertion because the SDK flattens its selected na
 `scripts/test-release-packaging.ps1` also invokes the smoke with `-PackagePath` to test the
 exact full release package it creates. The Windows CI job runs the standalone smoke after
 coverage has built Release/x64; the local `windows` preflight scope runs it at the same point.
+The smoke also validates the selected package's Windows imports and plain-x64
+instruction baseline, then runs the real AVX2 negative-control regression.

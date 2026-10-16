@@ -12,7 +12,7 @@
     <!-- NuGet package metadata -->
     <PackageId>MFTLib</PackageId>
     <Authors>Matt Schoen</Authors>
-    <Description>Fast file indexing and querying for .NET 10. Windows x64 supports live NTFS volume scans, USN journal change tracking, an elevated broker, MFT dump parsing, and directory enumeration. Linux x64 supports MFT dump parsing and directory enumeration. A native C++ core parses MFT records; the managed index provides file queries.</Description>
+    <Description>Fast file indexing and querying for .NET 10. Windows x64 supports live NTFS volume scans, USN journal change tracking, an elevated broker, MFT dump parsing, and directory enumeration. Linux x64 supports MFT dump parsing and directory enumeration. A native C++ core parses MFT records; the managed index provides file queries. The Windows native library requires plain x64 (SSE2 baseline); AVX and AVX2 are not required.</Description>
     <PackageProjectUrl>https://github.com/mtschoen/MFTLib</PackageProjectUrl>
     <RepositoryUrl>https://github.com/mtschoen/MFTLib</RepositoryUrl>
     <RepositoryType>git</RepositoryType>

@@ -47,8 +47,7 @@ try {
 
     $archive = [IO.Compression.ZipFile]::OpenRead($PackagePath)
     try {
-        Assert-True ($null -ne $archive.GetEntry('runtimes/win-x64/native/MFTLibNative.dll')) `
-            'The smoke package lacks runtimes/win-x64/native/MFTLibNative.dll.'
+        Assert-PackagedWindowsRuntime $archive
     }
     finally { $archive.Dispose() }
 
@@ -87,6 +86,7 @@ try {
         }
     }
     finally { $archive.Dispose() }
+    & "$PSScriptRoot/test-release-package-validation.ps1" -NativeIntegration
     Write-Host "Windows package smoke passed for MFTLib $version (build and RID-less publish)."
 }
 finally {

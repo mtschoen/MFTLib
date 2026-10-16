@@ -16,6 +16,7 @@ volume I/O and record parsing run in a native C++ core.
   application unelevated and performs volume access in one elevated child process.
 - Windows or Linux x64, with no elevation, for saved MFT dumps (`MftIndexSources.FromMftDumpFile`)
   and for directory-walk indexing (`ProducerKind.Enumeration`).
+- The Windows native library requires plain x64 (SSE2 baseline); AVX and AVX2 are not required.
 
 Windows-only members carry `[SupportedOSPlatform("windows")]`. Target `net10.0-windows`, or guard
 those calls with `OperatingSystem.IsWindows()` in a cross-platform project.

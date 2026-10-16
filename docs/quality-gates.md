@@ -58,6 +58,8 @@ After coverage has built Release/x64, the Windows job runs
 `scripts/smoke-package-windows.ps1`. It verifies Windows package-native resolution in
 ordinary build and RID-less publish outputs using an isolated PackageReference consumer
 and an empty package cache. The step follows the existing `skip_build` condition.
+The smoke also validates the selected package's Windows imports and plain-x64
+instruction baseline, then runs the real AVX2 negative-control regression.
 
 The `linux-package` job builds the Release linux-x64 library, runs `scripts/check-linux-native.sh` on it and smoke-tests the packed library through `scripts/smoke-package-linux.sh`; the release rebuilds the library in WSL, since Gitea lists no CI artifact over REST ([Linux package](linux-package.md)).
 

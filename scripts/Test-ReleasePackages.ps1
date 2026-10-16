@@ -1,11 +1,13 @@
 # Shared release-package validation, dot-sourced by release.ps1 and test-release-packaging.ps1.
 # Assert-ReleasePackages checks package identity, version, the exact [version] MFTLib
 # dependency of MFTLib.TestExtensions, required assets, assembly separation, and the
-# packed Windows DLL's imports using dumpbin. MSVCP* and VCRUNTIME* imports are rejected.
+# packed Windows DLL's imports and plain-x64 instruction baseline using dumpbin, with matching
+# native build symbols required for attribution. MSVCP* and VCRUNTIME* imports are rejected.
 # Assert-ReleaseSymbolPackages checks the symbol files. Validation throws on the first failure.
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 . "$PSScriptRoot/windows-tools.ps1"
+. "$PSScriptRoot/WindowsNativeInstructions.ps1"
 
 function Assert-Equal {
     param(
@@ -101,6 +103,7 @@ function Assert-PackagedWindowsRuntime {
         $dependencies = @(Get-WindowsNativeDependencies $libraryPath)
         $forbidden = @($dependencies | Where-Object { $_ -match '^(MSVCP|VCRUNTIME)' })
         Assert-True ($forbidden.Count -eq 0) "$entryName imports the Visual C++ redistributable: $($forbidden -join ', '). Build Release|x64 with MultiThreaded."
+        Assert-WindowsNativeInstructions -LibraryPath $libraryPath
     }
     finally {
         Remove-Item -LiteralPath $directory -Recurse -Force -ErrorAction Stop

@@ -122,10 +122,12 @@ bool IsWellFormedNonresident(const ATTRIBUTE_RECORD_HEADER* attribute) {
 // Reads a little-endian run field of fieldBytes (at most eight) bytes; a signed field is sign-extended.
 uint64_t ReadRunField(const uint8_t* field, size_t fieldBytes, bool isSigned) {
     uint64_t value = 0;
+#pragma loop(no_vector)
     for (size_t i = 0; i < fieldBytes; i++) {
         value |= static_cast<uint64_t>(field[i]) << (i * 8);
     }
     if (isSigned && fieldBytes > 0 && (field[fieldBytes - 1] & 0x80) != 0) {
+#pragma loop(no_vector)
         for (size_t i = fieldBytes; i < kMaximumRunFieldBytes; i++) {
             value |= 0xFFULL << (i * 8);
         }

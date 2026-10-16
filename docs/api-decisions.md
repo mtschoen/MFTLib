@@ -8,6 +8,26 @@ with evidence that its stated reason no longer holds (for example, the consumers
 Record every new ruling here in the same change that implements or files it: the decision, the reason, and
 what would justify revisiting it.
 
+## Windows native releases target plain x64
+
+**Decision (2026-10-16):** the Windows Release native library targets plain x64
+(SSE2 baseline). AVX and AVX2 are not required. The Release compiler uses its
+default x64 instruction set. Release validation inspects the DLL extracted from
+the package, permits reviewed CPU-dispatched static-runtime routines, and rejects
+advanced instructions elsewhere. A separately rebuilt AVX2 package is a required
+negative control for that inspection.
+
+**Reason:** six alternating runs per variant on one 8M-record synthetic dump
+showed AVX2 1.3 percent faster for bounded parsing and 3.0 percent slower for
+broker streaming. Both differences were within the reported run-to-run spread;
+the measurements included managed materialization rather than isolating native
+parse time. An unconditional AVX2 build can fault on AVX-less x64 CPUs, including
+Intel Jasper Lake. That CPU restriction has no demonstrated benefit here.
+
+**Revisit only if:** new representative measurements justify an explicitly
+approved baseline change, or separately dispatched optimized paths retain the
+plain-x64 baseline and demonstrate a repeatable improvement.
+
 ## Metadata reports observations and freshness without hidden reads
 
 **Decision:**
