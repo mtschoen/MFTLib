@@ -5,6 +5,7 @@
 # Assert-ReleaseSymbolPackages checks the symbol files. Validation throws on the first failure.
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
+. "$PSScriptRoot/windows-tools.ps1"
 
 function Assert-Equal {
     param(
@@ -61,34 +62,6 @@ function Get-SinglePackage {
     $packages = @(Get-ChildItem -LiteralPath $PackageOutputDirectory -Filter $Filter -File)
     Assert-Equal $packages.Count 1 $Label
     return $packages[0]
-}
-
-function Get-WindowsDumpbin {
-    $command = Get-Command dumpbin.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($command) { return $command.Source }
-
-    if (-not ${env:ProgramFiles(x86)}) {
-        throw 'dumpbin.exe was not found; run package validation on Windows with the MSVC C++ tools installed.'
-    }
-    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
-    if (-not (Test-Path -LiteralPath $vswhere -PathType Leaf)) {
-        throw 'dumpbin.exe was not found; install Visual Studio with the MSVC C++ tools.'
-    }
-
-    $PSNativeCommandUseErrorActionPreference = $false
-    $candidates = @(& $vswhere -latest -products '*' `
-        -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
-        -find 'VC/Tools/MSVC/**/bin/Hostx64/x64/dumpbin.exe')
-    if ($LASTEXITCODE -ne 0) {
-        throw "vswhere failed while locating dumpbin.exe with exit code $LASTEXITCODE."
-    }
-    $dumpbin = $candidates | Where-Object {
-        -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path -LiteralPath $_ -PathType Leaf)
-    } | Select-Object -First 1
-    if (-not $dumpbin) {
-        throw 'dumpbin.exe was not found; install Visual Studio with the MSVC C++ tools.'
-    }
-    return $dumpbin
 }
 
 function Get-WindowsNativeDependencies {

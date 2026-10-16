@@ -9,6 +9,8 @@ function Invoke-WindowsBuildCommand {
 }
 
 function Get-WindowsVisualStudioInstallation {
+    param([string] $RequiresComponent = 'Microsoft.Component.MSBuild')
+
     if (-not ${env:ProgramFiles(x86)}) {
         throw 'ProgramFiles(x86) is not set; run this build on Windows.'
     }
@@ -17,11 +19,12 @@ function Get-WindowsVisualStudioInstallation {
         throw "vswhere was not found at $vswhere; install Visual Studio with the MSVC C++ workload."
     }
     $installation = Invoke-WindowsBuildCommand $vswhere @(
-        '-products', '*', '-requires', 'Microsoft.Component.MSBuild',
+        '-products', '*', '-requires', $RequiresComponent,
         '-property', 'installationPath', '-latest'
     )
     if ([string]::IsNullOrWhiteSpace($installation)) {
-        throw 'Visual Studio with MSBuild was not found; install the MSVC C++ workload.'
+        $tools = if ($RequiresComponent -eq 'Microsoft.Component.MSBuild') { 'MSBuild' } else { 'MSVC C++ tools' }
+        throw "Visual Studio with $tools was not found; install the MSVC C++ workload."
     }
     return $installation.Trim()
 }
@@ -33,6 +36,34 @@ function Get-WindowsMSBuild {
         throw "64-bit MSBuild was not found at $msbuild."
     }
     return $msbuild
+}
+
+function Get-WindowsDumpbin {
+    $command = Get-Command dumpbin.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($command) { return $command.Source }
+
+    $installation = Get-WindowsVisualStudioInstallation -RequiresComponent 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64'
+    $toolsets = [Collections.Generic.List[IO.DirectoryInfo]]::new()
+    Get-ChildItem -LiteralPath (Join-Path $installation 'VC/Tools/MSVC') -Directory -ErrorAction SilentlyContinue |
+        ForEach-Object { $toolsets.Add($_) }
+    $toolsets.Sort([Comparison[IO.DirectoryInfo]] {
+        param($left, $right)
+        $leftVersion = $null
+        $rightVersion = $null
+        $leftParsed = [version]::TryParse($left.Name, [ref]$leftVersion)
+        $rightParsed = [version]::TryParse($right.Name, [ref]$rightVersion)
+        if ($leftParsed -ne $rightParsed) { return $rightParsed.CompareTo($leftParsed) }
+        if ($leftParsed) {
+            $comparison = $rightVersion.CompareTo($leftVersion)
+            if ($comparison -ne 0) { return $comparison }
+        }
+        return [StringComparer]::Ordinal.Compare($right.Name, $left.Name)
+    })
+    foreach ($toolset in $toolsets) {
+        $dumpbin = Join-Path $toolset.FullName 'bin/Hostx64/x64/dumpbin.exe'
+        if (Test-Path -LiteralPath $dumpbin -PathType Leaf) { return $dumpbin }
+    }
+    throw "dumpbin.exe was not found in $installation; install Visual Studio with the MSVC C++ tools."
 }
 
 function Get-WindowsCodeCoverage {

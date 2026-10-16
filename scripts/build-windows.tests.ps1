@@ -133,6 +133,70 @@ try {
     Assert-Equal ($discoveryArguments -join '|') '-products|*|-requires|Microsoft.Component.MSBuild|-property|installationPath|-latest' 'coverage uses canonical discovery'
     $discoveryResult = $visualStudio
 
+    & {
+        $pathDumpbin = Join-Path $temporaryDirectory 'PATH tools/dumpbin.exe'
+        $selectedDumpbin = Join-Path $visualStudio 'VC/Tools/MSVC/14.44/bin/Hostx64/x64/dumpbin.exe'
+        New-Item -ItemType Directory -Path (Split-Path $selectedDumpbin) -Force | Out-Null
+        New-Item -ItemType File -Path $selectedDumpbin | Out-Null
+        function Get-Command {
+            param($Name, $CommandType, $ErrorAction)
+            if ($Name -cne 'dumpbin.exe' -or $CommandType -cne 'Application') {
+                throw "Unexpected command lookup: $Name / $CommandType"
+            }
+            if ($pathHit) { [pscustomobject]@{ Source = $pathDumpbin } }
+        }
+        $pathHit = $true
+        $script:discoveryFailure = $true
+        Assert-Equal (Get-WindowsDumpbin) $pathDumpbin 'dumpbin prefers PATH without Visual Studio discovery'
+        $pathHit = $false
+        Assert-Throws { Get-WindowsDumpbin } 'vswhere exited with code 23'
+        $script:discoveryFailure = $false
+        Assert-Equal (Get-WindowsDumpbin) $selectedDumpbin 'dumpbin from selected VC installation'
+        Assert-Equal ($discoveryArguments -join '|') '-products|*|-requires|Microsoft.VisualStudio.Component.VC.Tools.x86.x64|-property|installationPath|-latest' 'dumpbin requests VC tools including BuildTools'
+        $dumpbinFailures = [Collections.Generic.List[string]]::new()
+        foreach ($case in @(
+            @{ Name = 'bracket installation'; Installation = 'Visual Studio [review]'; Versions = @('14.44'); Sibling = $false },
+            @{ Name = 'unmatched bracket installation'; Installation = 'Visual Studio [unterminated'; Versions = @('14.44'); Sibling = $false },
+            @{ Name = 'sibling installation'; Installation = 'Visual Studio [review]'; Versions = @('14.44'); Sibling = $true },
+            @{ Name = 'highest toolset'; Installation = 'Visual Studio versions'; Versions = @('14.10', '14.44'); Sibling = $false },
+            @{ Name = 'numeric toolset order'; Installation = 'Visual Studio numeric versions'; Versions = @('14.9', '14.44'); Sibling = $false }
+        )) {
+            $caseRoot = Join-Path $temporaryDirectory $case.Name
+            $script:discoveryResult = Join-Path $caseRoot $case.Installation
+            foreach ($version in $case.Versions) {
+                $candidate = Join-Path $script:discoveryResult "VC/Tools/MSVC/$version/bin/Hostx64/x64/dumpbin.exe"
+                [IO.Directory]::CreateDirectory((Split-Path $candidate)) | Out-Null
+                Set-Content -LiteralPath $candidate -Value 'selected installation'
+            }
+            if ($case.Sibling) {
+                $siblingDumpbin = Join-Path $caseRoot 'Visual Studio r/VC/Tools/MSVC/14.44/bin/Hostx64/x64/dumpbin.exe'
+                [IO.Directory]::CreateDirectory((Split-Path $siblingDumpbin)) | Out-Null
+                Set-Content -LiteralPath $siblingDumpbin -Value 'wrong installation'
+            }
+            $expectedDumpbin = Join-Path $script:discoveryResult 'VC/Tools/MSVC/14.44/bin/Hostx64/x64/dumpbin.exe'
+            try {
+                Assert-Equal (Get-WindowsDumpbin) $expectedDumpbin $case.Name
+            } catch {
+                $dumpbinFailures.Add("$($case.Name): $($_.Exception.Message)")
+            }
+        }
+        $script:discoveryResult = $visualStudio
+        if ($dumpbinFailures.Count) { throw ($dumpbinFailures -join "`n") }
+        Remove-Item -LiteralPath $selectedDumpbin
+        New-Item -ItemType Directory -Path $selectedDumpbin | Out-Null
+        Assert-Throws { Get-WindowsDumpbin } 'dumpbin.exe was not found'
+        $script:discoveryResult = " `r`n "
+        Assert-Throws { Get-WindowsDumpbin } 'MSVC C++ tools'
+        $script:discoveryResult = $visualStudio
+        Remove-Item -LiteralPath $vswhere
+        Assert-Throws { Get-WindowsDumpbin } 'vswhere was not found'
+        New-Item -ItemType File -Path $vswhere | Out-Null
+        ${env:ProgramFiles(x86)} = $null
+        Assert-Throws { Get-WindowsDumpbin } 'ProgramFiles(x86) is not set'
+        ${env:ProgramFiles(x86)} = $programFiles
+        Write-Host 'Dumpbin discovery: 13 regression cases passed.'
+    }
+
     $expected = @(Get-ExpectedBuildCommands 'Release' $false)
     for ($index = 0; $index -lt $expected.Count; $index++) {
         $commands.Clear()
@@ -329,7 +393,8 @@ $discoveryCallers = @(
     @{ Path = 'scripts/build-windows.ps1'; Import = '. "$PSScriptRoot/windows-tools.ps1"' },
     @{ Path = 'init.ps1'; Import = '. "$PSScriptRoot/scripts/windows-tools.ps1"' },
     @{ Path = 'scripts/native-coverage.ps1'; Import = '. "$PSScriptRoot/windows-tools.ps1"' },
-    @{ Path = 'scripts/release.ps1'; Import = '. "$PSScriptRoot/windows-tools.ps1"' }
+    @{ Path = 'scripts/release.ps1'; Import = '. "$PSScriptRoot/windows-tools.ps1"' },
+    @{ Path = 'scripts/Test-ReleasePackages.ps1'; Import = '. "$PSScriptRoot/windows-tools.ps1"' }
 )
 foreach ($caller in $discoveryCallers) {
     $text = Get-Content -LiteralPath (Join-Path $sourceRoot $caller.Path) -Raw
