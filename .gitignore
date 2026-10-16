@@ -404,3 +404,6 @@ native-coverage.cobertura.xml
 **/.aislop/*
 !**/.aislop/config.yml
 !**/.aislop/fork-commit
+
+# Built aislop fork restored by the aislop workflow (job-private cache)
+.aislop-fork/

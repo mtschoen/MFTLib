@@ -63,7 +63,7 @@ The `linux-package` job builds the Release linux-x64 library, runs `scripts/chec
 
 Windows jobs run on the host-mode `windows-latest` runner, where toolchains are provisioned on the host: no `actions/setup-*` step belongs in a job that runs on it (`microsoft/setup-msbuild` only locates MSBuild and is allowed). The `linux`, `docs` and `linux-package` jobs read their container image from the repository Actions variable `MFTLIB_CI_IMAGE`. The repository operator provisions the image reference before enabling these jobs. The image supplies CMake, Ninja, gcovr, .NET SDK 10, g++, gcov and make; workflows do not install those tools. Each container retains `--ulimit nofile=65536:65536`.
 
-Keep `pwsh` on the runner account's PATH and configure `DOTNET_INSTALL_DIR` at the runner service, never through workflow bootstrap steps. Use amd64 MSBuild and the shared Windows build script. Keep coverlet's comma-separated include filter in the project file rather than passing it through PowerShell. Compute file hashes in the shell because `hashFiles()` can evaluate empty on this runner. Preserve the existing artifact-action versions: v3 uploads are downloadable from the run page but are not listed through this Gitea deployment's artifact REST API.
+Keep `pwsh` on the runner account's PATH and configure `DOTNET_INSTALL_DIR` at the runner service, never through workflow bootstrap steps. Use amd64 MSBuild and the shared Windows build script. Keep coverlet's comma-separated include filter in the project file rather than passing it through PowerShell. Compute file hashes in the shell because `hashFiles()` can evaluate empty on this runner. Coverage v3 uploads are downloadable from the run page but are not listed through this Gitea deployment's artifact REST API; reviewer evidence uses the pinned Gitea-native upload action below.
 
 ## Local CI preflight
 
@@ -108,7 +108,7 @@ aislop remain unfiltered, subject to their existing host availability.
 | `linux` | Skip | Run | `scripts/coverage-linux.sh`, native and managed coverage |
 | `linux-package` | Skip | Run | `build-linux.sh` (builds, then runs the managed `TestCategory=Smoke` tier), `check-linux-native.sh`, `smoke-package-linux.sh` under `scripts/` |
 | `sync` | Run | Run | `scripts/sync_consumers.tests.sh`, offline transport fixtures |
-| `aislop` | Run | Skip | Windows build plus exact pinned scanner and CI file-count sanity check |
+| `aislop` | Run | Skip | Windows build plus `scripts/ci-aislop.ps1`, shared with the quality workflow |
 
 Install the same prerequisites as the selected CI jobs beforehand: .NET 10,
 Windows MSVC/amd64 MSBuild, reportgenerator, pwsh, Git/Bash, and the C# scanner
@@ -118,16 +118,30 @@ global aislop launcher required.
 Missing tools on a supported platform fail their gate rather than silently skip.
 NuGet restore may need a populated offline cache. Preflight does not install tools.
 
-The aislop gate uses the already-built fork checkout at `AISLOP_HOME` or
-`~/aislop`. It verifies its clean tracked source and exact HEAD against
-`.aislop/fork-commit`, the same pin read by `.gitea/workflows/aislop.yml`, then
-runs `node <checkout>/dist/cli.js --version` followed by
-`node <checkout>/dist/cli.js ci . --json`. It prints that checkout's version,
-checkout commit and required CI commit. A different or unidentifiable commit
-is refused, not merely warned: CI uses the pinned scanner, and a semantic
-version alone cannot prove identity. Provision/build
-that exact fork commit before running. The local JSON report is at
-`.aislop/preflight/report.json`. Like CI, fewer than ten scanned files fails.
+Local preflight and the Windows quality workflow both execute
+`scripts/ci-aislop.ps1`. It consumes an already-built fork checkout at
+`AISLOP_HOME`, defaulting locally to `~/aislop`. It validates the lowercase
+40-character pin in `.aislop/fork-commit`, the checkout's exact HEAD, clean
+tracked source, and the presence of `dist/cli.js`. It runs that CLI's
+`--version` command and prints its version, checkout commit, and required pin
+before executing `ci . --json`. Provision and build the pinned checkout
+before running locally; the shared gate does not acquire or install tools.
+
+The default report is `.aislop/preflight/report.json` under the repository.
+Use `-ReportPath` for another destination; relative paths are repository-relative.
+Scanner stdout is preserved there even when JSON validation or the gate fails.
+Empty, malformed, or null JSON and fewer than ten scanned files fail the gate.
+A nonzero scanner exit remains a failure. While waiting, the gate observes the
+process every five seconds and emits a heartbeat every sixty seconds so a
+quiet scan does not lose its CI log lease. It waits for redirected output to
+finish before reading the report. On scanner failure it groups score-affecting
+findings, reports the omitted report-only count, and explicitly says when no
+score-affecting findings were reported. Full diagnostics remain in the JSON.
+
+Run the gate regression checks with
+`pwsh -NoProfile -File scripts/ci-aislop.tests.ps1` and the preflight caller
+checks with `bash scripts/ci-preflight.tests.sh`. The gate tests include real
+Git/Node fixtures and deterministic heartbeat observations.
 
 The runtime also lists checks that cannot be reproduced offline on either host:
 coverage status publication (Gitea token and historical main-line statuses),
@@ -182,9 +196,28 @@ includes the native `MFTLibNative.vcxproj`, which only loads/builds under
 MSBuild + MSVC, and both jb inspectcode and roslynator load the full solution.
 `lint.csharp.jbProjects` in `.aislop/config.yml` scopes the C# jb inspection to the six
 C# projects, and `lint.cpp.jbProjects` scopes the native ReSharper C++ inspection to
-`MFTLibNative`, which the same gate also scores with clang-tidy, cppcheck and clang-format. The
-workflow installs `aislop` by cloning the `schoen/aislop` fork on `github.server_url` at the
-commit pinned in `.aislop/fork-commit` (built with `pnpm`) and runs it via `node`.
+`MFTLibNative`, which the same gate also scores with clang-tidy, cppcheck and clang-format.
+
+The workflow prepares the `schoen/aislop` fork at the commit in
+`.aislop/fork-commit`, using a pin-keyed cache at the workspace-relative path `.aislop-fork`
+(the cache version hash covers the raw path string, so it must be the same in
+every job; actions/cache rejects `..` segments; and the act workspace is per-job,
+so no job shares a checkout with another job, which matters because concurrency
+is grouped per ref only). The directory is gitignored, which aislop honors, so
+the scan never reads the fork's source. The workflow repairs restored
+dependency links on cache hits and clones/builds with pnpm on misses.
+After preparation it resolves that checkout into `AISLOP_HOME` and
+invokes `scripts/ci-aislop.ps1 -ReportPath` with
+`$env:RUNNER_TEMP/aislop-report.json`. The shared script owns scanner execution,
+heartbeats, report validation, diagnostic display, and the gate result.
+Every run, including a failed one, uploads the `aislop-gate-evidence` artifact
+(`if: always()`, `ChristopherHX/gitea-upload-artifact@81f940d004763f986ba3582c007fd842dd5cb0d7`) because pr-crew
+reviews only uploaded, head-bound artifacts listed by the Gitea artifacts API.
+`scripts/ci-aislop-evidence.ps1` writes its
+`summary.txt` (cache-hit, link repair step outcome and counts, cold build step outcome,
+the checkout version/commit/CI pin provenance line, gate step outcome, score, file count)
+next to a copy of the JSON report; `scripts/ci-aislop.tests.ps1` covers each field.
+Workflow preparation and host provisioning remain separate responsibilities.
 It deliberately does NOT use `actions/setup-node`
 (its 7zr extraction dies with exit code 2 on the host-mode act_runner). The
 build step calls `scripts/build-windows.ps1`, the same Windows recipe used by coverage and `init.ps1 -Build`. The shared script requires amd64 MSBuild; a 32-bit binary cannot resolve legacy SYSTEM-profile checkout paths. `aislop / quality-gate

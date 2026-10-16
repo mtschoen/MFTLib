@@ -185,6 +185,43 @@ for selection in only all; do
     fi
 done
 
+for scenario in success build-failure scan-failure; do
+    output="$(
+        source "$root/tools/ci-preflight.sh"
+        preflight_platform() { printf 'windows'; }
+        pwsh() {
+            printf 'INVOKED %s\n' "$*"
+            case "$scenario:$*" in
+                'build-failure:'*'scripts/build-windows.ps1'*) return 23 ;;
+                'scan-failure:'*'scripts/ci-aislop.ps1'*) return 17 ;;
+            esac
+            return 0
+        }
+        preflight_main --only aislop
+    )"
+    status=$?
+    assert_contains "$output" 'INVOKED -NoProfile -File scripts/build-windows.ps1'
+    if [[ "$scenario" == build-failure ]]; then
+        assert_equal 1 "$status"
+        assert_contains "$output" 'FAIL aislop: exit 23'
+        if [[ "$output" == *'INVOKED -NoProfile -File scripts/ci-aislop.ps1'* ]]; then
+            printf 'FAIL: scanner ran after build failure\n' >&2
+            failures=$((failures + 1))
+        fi
+    else
+        assert_contains "$output" 'INVOKED -NoProfile -File scripts/ci-aislop.ps1'
+        calls="$(printf '%s\n' "$output" | grep '^INVOKED ')"
+        assert_equal $'INVOKED -NoProfile -File scripts/build-windows.ps1\nINVOKED -NoProfile -File scripts/ci-aislop.ps1' "$calls"
+        if [[ "$scenario" == scan-failure ]]; then
+            assert_equal 1 "$status"
+            assert_contains "$output" 'FAIL aislop: exit 17'
+        else
+            assert_equal 0 "$status"
+            assert_contains "$output" 'PASS aislop'
+        fi
+    fi
+done
+
 output="$(
     source "$root/tools/ci-preflight.sh"
     preflight_platform() { printf 'linux'; }
