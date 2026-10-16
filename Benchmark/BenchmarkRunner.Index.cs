@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
+using System.Text;
 using MFTLib.Index;
 
 namespace Benchmark;
@@ -10,23 +12,62 @@ public partial class BenchmarkRunner
 
     async Task<int> RunIndexAsync(string[] arguments)
     {
-        if (!TryParseIndexArguments(arguments, out var rows, out var cacheDirectory, out var iterations))
+        var outputIndex = Array.FindIndex(arguments, argument => argument.Equals("--out", StringComparison.OrdinalIgnoreCase));
+        string? outputPath = null;
+        if (outputIndex >= 0 && outputIndex + 1 < arguments.Length)
         {
-            _writeLineToConsole("Usage: Benchmark.exe index <--synthetic N|--cache-directory path> [--iterations K]");
+            outputPath = arguments[outputIndex + 1];
+            arguments = [.. arguments[..outputIndex], .. arguments[(outputIndex + 2)..]];
+        }
+
+        if (outputIndex >= 0 && outputPath is null ||
+            !TryParseIndexArguments(arguments, out var rows, out var cacheDirectory, out var iterations))
+        {
+            _writeLineToConsole(
+                "Usage: Benchmark.exe index <--synthetic N|--cache-directory path> [--iterations K] [--out report.txt]");
             return 1;
+        }
+
+        // Everything the run prints, so --out saves exactly what the console showed.
+        var report = new StringBuilder();
+        void Log(string line)
+        {
+            _writeLineToConsole(line);
+            report.AppendLine(line);
         }
 
         try
         {
-            return cacheDirectory is null
-                ? await RunSyntheticIndexAsync(rows, iterations)
-                : await RunCachedIndexAsync(cacheDirectory, iterations);
+            LogSystemInfo(Log);
+            var exitCode = cacheDirectory is null
+                ? await RunSyntheticIndexAsync(rows, iterations, Log)
+                : await RunCachedIndexAsync(cacheDirectory, iterations, Log);
+            if (exitCode == 0 && outputPath is not null)
+            {
+                var resolvedOutputPath = Path.GetFullPath(outputPath);
+                _writeAllText(resolvedOutputPath, report.ToString());
+                _writeLineToConsole($"Report saved to {resolvedOutputPath}");
+            }
+
+            return exitCode;
         }
         catch (Exception exception)
         {
             _writeLineToConsole($"Error: {exception.Message}");
             return 1;
         }
+    }
+
+    void LogSystemInfo(Action<string> log)
+    {
+        log("System Info");
+        log($"  Build:   {_systemInfo._getBuildConfiguration()}");
+        log($"  OS:      {_systemInfo._getWmiValue("Win32_OperatingSystem", "Caption")} ({Environment.OSVersion.Version})");
+        log($"  CPU:     {_systemInfo._getWmiValue("Win32_Processor", "Name")}");
+        log($"  Threads: {Environment.ProcessorCount}");
+        log($"  RAM:     {_systemInfo._getInstalledMemoryGb()} GB");
+        log($"  Disk:    {_systemInfo._getDiskModel(AppContext.BaseDirectory)}");
+        log($"  .NET:    {RuntimeInformation.FrameworkDescription}");
     }
 
     static bool TryParseIndexArguments(string[] arguments, out uint rows, out string? cacheDirectory,
@@ -57,7 +98,7 @@ public partial class BenchmarkRunner
                rows <= 100_000_000;
     }
 
-    async Task<int> RunSyntheticIndexAsync(uint rows, int iterations)
+    async Task<int> RunSyntheticIndexAsync(uint rows, int iterations, Action<string> log)
     {
         var directory = Path.Combine(Path.GetTempPath(), $"mftlib-index-benchmark-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
@@ -81,7 +122,7 @@ public partial class BenchmarkRunner
                 }
                 writer.Complete(DateTime.UtcNow, null);
             }
-            return await RunCachedIndexAsync(directory, iterations);
+            return await RunCachedIndexAsync(directory, iterations, log);
         }
         finally
         {
@@ -89,12 +130,12 @@ public partial class BenchmarkRunner
         }
     }
 
-    async Task<int> RunCachedIndexAsync(string directory, int iterations)
+    async Task<int> RunCachedIndexAsync(string directory, int iterations, Action<string> log)
     {
         var cached = CacheDirectory.InspectCached(directory);
         if (cached.Count == 0)
         {
-            _writeLineToConsole("Error: No cache blocks found.");
+            log("Error: No cache blocks found.");
             return 1;
         }
 
@@ -104,7 +145,7 @@ public partial class BenchmarkRunner
             if (candidate.Availability != CachedBlockAvailability.Available || candidate.RootDirectory is null ||
                 candidate.CacheTag is not { } cacheTag || candidate.ProducerKind is not { } producer)
             {
-                _writeLineToConsole($"Error: {candidate.File.Path}: {candidate.Availability}{(candidate.Validation is { } reason ? $" ({reason})" : "")}.");
+                log($"Error: {candidate.File.Path}: {candidate.Availability}{(candidate.Validation is { } reason ? $" ({reason})" : "")}.");
                 exitCode = 1;
                 continue;
             }
@@ -121,38 +162,38 @@ public partial class BenchmarkRunner
             var drive = borrow.Snapshot.FindDriveBlock(candidate.File.Drive);
             if (drive is null)
             {
-                _writeLineToConsole($"Error: Drive {candidate.File.Drive}: {index.Drives[0].State}.");
+                log($"Error: Drive {candidate.File.Drive}: {index.Drives[0].State}.");
                 exitCode = 1;
                 continue;
             }
 
-            PrintIndexMetrics(index, drive, iterations);
+            PrintIndexMetrics(index, drive, iterations, log);
         }
         return exitCode;
     }
 
-    void PrintIndexMetrics(FileIndex index, DriveBlock drive, int iterations)
+    void PrintIndexMetrics(FileIndex index, DriveBlock drive, int iterations, Action<string> log)
     {
         var header = drive.Block.Header;
         var bytes = drive.Block.Length;
-        _writeLineToConsole($"Drive: {drive.Drive}");
-        _writeLineToConsole($"  Rows: {header.RowCount}");
-        _writeLineToConsole($"  Slot capacity: {header.SlotCapacity}");
-        _writeLineToConsole($"  File bytes: {bytes}");
-        _writeLineToConsole(string.Create(CultureInfo.InvariantCulture,
+        log($"Drive: {drive.Drive}");
+        log($"  Rows: {header.RowCount}");
+        log($"  Slot capacity: {header.SlotCapacity}");
+        log($"  File bytes: {bytes}");
+        log(string.Create(CultureInfo.InvariantCulture,
             $"  Name-pool bytes: {header.NamePoolUsed} ({100.0 * header.NamePoolUsed / bytes:F2}% of file)"));
-        _writeLineToConsole($"  Name-pool capacity bytes: {header.NamePoolCapacity}");
-        _writeLineToConsole($"  Query: {IndexQueryName} (exact and substring searches; median of {iterations} runs)");
+        log($"  Name-pool capacity bytes: {header.NamePoolCapacity}");
+        log($"  Query: {IndexQueryName} (median of {iterations} runs)");
         // Touch the mapped pages and initialize both query paths before collecting warm samples.
         var exactQuery = new SearchQuery(IndexQueryName, NameMatchMode.Exact);
         var substringQuery = new SearchQuery(IndexQueryName);
         index.Search(exactQuery);
         index.Search(substringQuery);
-        PrintIndexMedian("Exact", () => index.Search(exactQuery), iterations);
-        PrintIndexMedian("Substring", () => index.Search(substringQuery), iterations);
+        PrintIndexMedian("exact-search", () => index.Search(exactQuery), iterations, log);
+        PrintIndexMedian("substring-search", () => index.Search(substringQuery), iterations, log);
     }
 
-    void PrintIndexMedian(string label, Func<IReadOnlyList<FileEntry>> query, int iterations)
+    void PrintIndexMedian(string label, Func<IReadOnlyList<FileEntry>> query, int iterations, Action<string> log)
     {
         var samples = new double[iterations];
         var matches = 0;
@@ -166,6 +207,7 @@ public partial class BenchmarkRunner
         Array.Sort(samples);
         var middle = iterations / 2;
         var median = iterations % 2 == 0 ? (samples[middle - 1] + samples[middle]) / 2 : samples[middle];
-        _writeLineToConsole(string.Create(CultureInfo.InvariantCulture, $"  {label} median: {median:F3} ms; Matches: {matches}"));
+        log($"--- {label} ---");
+        log(string.Create(CultureInfo.InvariantCulture, $"  Median: {median:F3} ms; Matches: {matches}"));
     }
 }

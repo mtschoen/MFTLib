@@ -1,0 +1,19 @@
+System Info
+  Build:   Release
+  OS:      Microsoft Windows 11 Pro (10.0.26300.0)
+  CPU:     AMD Ryzen 9 7950X3D 16-Core Processor
+  Threads: 32
+  RAM:     64 GB
+  Disk:    Samsung SSD 990 PRO 4TB
+  .NET:    .NET 10.0.12
+Drive: T
+  Rows: 1000000
+  Slot capacity: 1250000
+  File bytes: 80011264
+  Name-pool bytes: 30000148 (37.49% of file)
+  Name-pool capacity bytes: 37500222
+  Query: file-0000000001 (median of 5 runs)
+--- exact-search ---
+  Median: 60.707 ms; Matches: 1
+--- substring-search ---
+  Median: 44.930 ms; Matches: 1
