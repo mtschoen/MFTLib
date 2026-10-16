@@ -130,6 +130,8 @@ public class FileEntryTests
         Assert.IsFalse(entry.IsDisposed);
         Assert.ThrowsException<InvalidOperationException>(() => _ = entry.RecordKey);
         Assert.ThrowsException<InvalidOperationException>(() => _ = entry.Drive);
+        var failure = Assert.ThrowsException<InvalidOperationException>(() => entry.Open(FileAccess.Read));
+        StringAssert.Contains(failure.Message, entry.ToString());
     }
 
     [TestMethod]
@@ -158,7 +160,8 @@ public class FileEntryTests
         try
         {
             var entry = FileEntry.Create(snapshot, 0, fileRow);
-            Assert.ThrowsException<InvalidOperationException>(() => entry.Open(FileAccess.Read));
+            var failure = Assert.ThrowsException<InvalidOperationException>(() => entry.Open(FileAccess.Read));
+            StringAssert.Contains(failure.Message, entry.ToString());
         }
         finally
         {

@@ -168,8 +168,10 @@ public class DirectHostTests
         var result = HostOver(lines).Run([.. Dump("open"), "--path", $"{DumpRoot}/documents/Notes.txt"]);
 
         Assert.AreEqual(1, result);
-        Assert.IsTrue(lines.Any(line => line.StartsWith($"{DumpRoot}/documents/Notes.txt: record 7 on D (Mft), ", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Error: ", StringComparison.Ordinal) && line.Contains($"{DumpRoot}/documents/Notes.txt (") && line.Contains(" cannot be opened.")), string.Join(Environment.NewLine, lines));
+        var description = $"{DumpRoot}/documents/Notes.txt ({new IndexRecordKey('D', 7, ProducerKind.Mft)})";
+        Assert.IsTrue(lines.Any(line => line.StartsWith($"{description}: record 7 on D (Mft), ", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
+        Assert.AreEqual($"Error: InvalidOperationException: {description}: Files in an MFT dump cannot be opened through the index.", lines.Single(line => line.StartsWith("Error: ", StringComparison.Ordinal)));
+        Assert.IsFalse(lines.Any(line => line.StartsWith("  caused by ", StringComparison.Ordinal)));
     }
 
     [TestMethod]
@@ -198,7 +200,7 @@ public class DirectHostTests
 
         var report = string.Join(Environment.NewLine, lines);
         Assert.AreEqual(0, result, report);
-        var description = lines.Single(line => line.StartsWith($"{path}: record ", StringComparison.Ordinal));
+        var description = lines.Single(line => line.StartsWith($"{path} ({new IndexRecordKey('C', 7, ProducerKind.Mft)}): record ", StringComparison.Ordinal));
         StringAssert.Contains(description, $"modified {expectedLastWriteTime}, parent ");
         Assert.IsTrue(lines.Contains("3 bytes, first 3: 010203"), report);
     }

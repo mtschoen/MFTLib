@@ -8,20 +8,20 @@ public readonly partial record struct FileEntry
     ///     which needs no elevation, with the sequence number this handle was minted with, so it can
     ///     only ever open the file it names.
     /// </summary>
-    /// <exception cref="FileNotFoundException">A newer file has reused this entry's row slot; nothing is opened.</exception>
-    /// <exception cref="ObjectDisposedException">The owning index has been disposed and this handle's snapshot released.</exception>
-    /// <exception cref="InvalidOperationException">The entry belongs to an MFT dump, whose files exist only as index rows.</exception>
+    /// <exception cref="FileNotFoundException">A newer file has reused this entry's row slot; nothing is opened. The refusal message includes this entry's <see cref="ToString" /> text.</exception>
+    /// <exception cref="ObjectDisposedException">The owning index has released this handle's snapshot. The message includes this entry's <see cref="ToString" /> text.</exception>
+    /// <exception cref="InvalidOperationException">The entry is default, belongs to an MFT dump, or its MFT drive has no configured root directory. The refusal message includes this entry's <see cref="ToString" /> text.</exception>
     public FileStream Open(FileAccess access)
     {
         var driveBlock = DriveBlock;
         if (IsSupersededIn(driveBlock))
         {
-            throw new FileNotFoundException("The entry has been deleted.");
+            throw new FileNotFoundException($"{this}: The entry has been deleted.");
         }
 
         if (driveBlock.IsMftDump)
         {
-            throw new InvalidOperationException("Files in an MFT dump cannot be opened through the index.");
+            throw new InvalidOperationException($"{this}: Files in an MFT dump cannot be opened through the index.");
         }
 
         if (driveBlock.ProducerKind == ProducerKind.Enumeration)
@@ -32,7 +32,7 @@ public readonly partial record struct FileEntry
         if (driveBlock.RootDirectoryPath is not { } anyPathOnVolume)
         {
             throw new InvalidOperationException(
-                $"Drive block {driveBlock.Drive} has no configured root directory to open by file id.");
+                $"{this}: Drive block {driveBlock.Drive} has no configured root directory to open by file id.");
         }
 
         return _openById(anyPathOnVolume, RowIndex, _sequenceNumber, access);

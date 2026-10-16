@@ -68,8 +68,11 @@ public readonly partial record struct FileEntry
         get
         {
             var snapshot = _snapshot ?? throw new InvalidOperationException(
-                "This FileEntry is the default value and does not reference a snapshot.");
-            ObjectDisposedException.ThrowIf(snapshot.IsReleased, typeof(FileEntry));
+                "<invalid FileEntry> does not reference a snapshot.");
+            if (snapshot.IsReleased)
+            {
+                throw new ObjectDisposedException(typeof(FileEntry).FullName, "<disposed FileEntry> has a released snapshot.");
+            }
             return snapshot;
         }
     }

@@ -168,6 +168,7 @@ public class FileEntryDisposalTests
         Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Path);
         Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Parent);
         Assert.ThrowsException<ObjectDisposedException>(() => entry.Children());
-        Assert.ThrowsException<ObjectDisposedException>(() => entry.Open(FileAccess.Read));
+        var failure = Assert.ThrowsException<ObjectDisposedException>(() => entry.Open(FileAccess.Read));
+        StringAssert.Contains(failure.Message, entry.ToString());
     }
 }

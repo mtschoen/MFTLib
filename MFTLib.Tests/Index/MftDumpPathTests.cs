@@ -100,7 +100,7 @@ public class MftDumpPathTests
         {
             var failure = MftDumpIndexes.Throws<InvalidOperationException>(
                 index, i => i.Find(path)!.Value.Open(FileAccess.Read));
-            Assert.AreEqual("Files in an MFT dump cannot be opened through the index.", failure.Message, path);
+            Assert.AreEqual($"{index.Find(path)!.Value}: Files in an MFT dump cannot be opened through the index.", failure.Message, path);
         }
     }
 

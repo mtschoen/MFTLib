@@ -165,7 +165,7 @@ public class FileEntryIncarnationTests
         calls.Clear();
 
         var exception = Assert.ThrowsException<FileNotFoundException>(() => retained.Open(FileAccess.Read));
-        Assert.AreEqual("The entry has been deleted.", exception.Message);
+        Assert.AreEqual($"{retained}: The entry has been deleted.", exception.Message);
         Assert.AreEqual(0, calls.Count);
 
         var replacement = FileEntry.Create(fixture.Snapshot, 0, DirectoryRow);
