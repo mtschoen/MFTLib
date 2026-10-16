@@ -25,8 +25,9 @@ function Assert-WindowsDisassembly {
             continue
         }
         if ($line -notmatch '^\s+[0-9A-Fa-f]{16}:') { continue }
-        # dumpbin also emits raw undecoded bytes for inline jump-table data.
-        if ($line -match '^\s+[0-9A-Fa-f]{16}:\s+(?:[0-9A-Fa-f]{2}(?:\s+|$))+$') { continue }
+        # dumpbin also emits raw undecoded bytes for inline jump-table data and lone padding
+        # bytes; a padding row trails the byte's own glyph (0xCC) in place of a mnemonic.
+        if ($line -match '^\s+[0-9A-Fa-f]{16}:\s+(?:[0-9A-Fa-f]{2}(?:\s+|$))+[^\x00-\x7F]?$') { continue }
         if ($line -notmatch '^\s+(?<Address>[0-9A-Fa-f]{16}):\s+(?<Bytes>(?:[0-9A-Fa-f]{2}\s+)+)(?<Assembly>[A-Za-z][^\r\n]*)$') {
             throw "Unrecognized instruction row in '$LibraryPath': $line"
         }

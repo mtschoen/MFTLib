@@ -119,7 +119,9 @@ $script:baselineDisassembly = @(
     'GetMftNativeAbiVersion:',
     '  0000000180001010: B8 08 00 00 00     mov         eax,8',
     '  0000000180001015: C3                 ret',
-    '  0000000180001016: C5'
+    '  0000000180001016: C5',
+    # dumpbin renders a lone padding byte before the next symbol as a glyph, not as int 3.
+    ('  0000000180001017: CC' + (' ' * 47) + [char] 0x00CC)
 )
 $script:disassemblyOutput = $script:baselineDisassembly
 $script:disassemblyExitCode = 0
