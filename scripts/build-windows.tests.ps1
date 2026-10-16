@@ -271,6 +271,7 @@ foreach ($caller in $callers) {
     }
 }
 
+. "$PSScriptRoot/coverage-child.ps1"
 $nativeBody = Get-ScriptSection (Join-Path $PSScriptRoot 'native-coverage.ps1') '$coverageTool ='
 $callerRoot = Join-Path ([IO.Path]::GetTempPath()) ('MFTLib coverage caller ' + [guid]::NewGuid().ToString('N'))
 $savedEvents = Get-Variable WindowsCallerEvents -Scope Global -ErrorAction SilentlyContinue | Select-Object Name, Value
@@ -293,67 +294,67 @@ if ($global:WindowsCallerBuildExit -eq 0) {
 exit $global:WindowsCallerBuildExit
 '@ | Set-Content -LiteralPath (Join-Path $callerRoot 'scripts/build-windows.ps1')
 
-    foreach ($case in @(
-        @{ Name = 'native-success'; BuildExit = 0; Html = $false },
-        @{ Name = 'native-html'; BuildExit = 0; Html = $true },
-        @{ Name = 'issue-541-build-failure'; BuildExit = 23; Html = $false }
-    )) {
+    $fixtureScripts = Join-Path $callerRoot 'scripts'
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'native-coverage.ps1') -Destination $fixtureScripts
+    Set-Content -LiteralPath (Join-Path $fixtureScripts 'windows-tools.ps1') -Value @'
+function Get-WindowsCodeCoverage { return 'Invoke-FakeNativeCoverageTool' }
+'@
+
+    $validXml = '<coverage><packages><package name="MFTLibNative" line-rate="1" branch-rate="1"><classes /></package></packages></coverage>'
+    $cases = @(
+        @{ Name = 'native-success'; Xml = $validXml },
+        @{ Name = 'native-html'; Xml = $validXml; Html = $true },
+        @{ Name = 'issue-541-build-failure'; BuildExit = 23; Exit = 1; Error = 'Build failed' },
+        @{ Name = 'issue-592-stale-evidence'; Stale = $true; Exit = 1; Error = 'Coverage output not found' }
+    )
+    foreach ($case in $cases) {
         $global:WindowsCallerEvents = [Collections.Generic.List[object]]::new()
-        $global:WindowsCallerBuildExit = $case.BuildExit
+        $global:WindowsCallerBuildExit = [int]$case.BuildExit
         & {
-            $fixtureScripts = Join-Path $callerRoot 'scripts'
-            $HtmlReport = $case.Html
-            $nativeInvocation = [scriptblock]::Create('$PSScriptRoot = $fixtureScripts' + "`n" + $nativeBody)
-            function Get-WindowsCodeCoverage { return 'Invoke-FakeNativeCoverageTool' }
+            $reportPath = Join-Path $callerRoot 'native-coverage.cobertura.xml'
+            $htmlPath = Join-Path $callerRoot 'native-coverage-html'
+            foreach ($path in @($reportPath, $htmlPath)) {
+                if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
+            }
+            if ($case.Stale) { Set-Content -LiteralPath $reportPath -Value $validXml }
             function Invoke-FakeNativeCoverageTool {
                 $arguments = @($args)
                 $global:WindowsCallerEvents.Add([pscustomobject]@{ Tool = 'coverage'; Arguments = $arguments })
-                if ($arguments[0] -eq 'instrument') {
+                if ($arguments[0] -ceq 'instrument') {
                     Assert-Equal (Test-Path -LiteralPath $arguments[1] -PathType Leaf) $true 'build produced copied DLL before instrument'
-                    Assert-Equal (Test-Path -LiteralPath ([IO.Path]::ChangeExtension($arguments[1], 'pdb')) -PathType Leaf) $true 'build produced copied PDB'
-                } elseif ($arguments[0] -eq 'collect') {
-                    $outputPath = $arguments[[Array]::IndexOf($arguments, '--output') + 1]
-                    '<coverage><packages><package name="MFTLibNative" line-rate="1" branch-rate="1"><classes /></package></packages></coverage>' |
-                        Set-Content -LiteralPath $outputPath
+                } elseif ($arguments[0] -ceq 'collect') {
+                    Assert-Equal (Test-Path -LiteralPath $reportPath) $false "$($case.Name) removed previous evidence"
+                    if ($null -ne $case.Xml) { Set-Content -LiteralPath $reportPath -Value $case.Xml }
                 } else { throw "Unexpected coverage command: $arguments" }
                 $global:LASTEXITCODE = 0
             }
-            function dotnet {
-                $global:WindowsCallerEvents.Add([pscustomobject]@{ Tool = 'dotnet'; Arguments = @($args) })
+            function dotnet { throw "Unexpected dotnet argument vector: $($args -join '|')" }
+            function reportgenerator {
+                $arguments = @($args)
+                Assert-Equal ($arguments -join '|') (@("-reports:$reportPath", "-targetdir:$htmlPath", '-reporttypes:Html') -join '|') 'global reporter arguments'
+                $global:WindowsCallerEvents.Add([pscustomobject]@{ Tool = 'reportgenerator'; Arguments = $arguments })
+                New-Item -ItemType Directory -Path $htmlPath -Force | Out-Null
+                Set-Content -LiteralPath (Join-Path $htmlPath 'index.html') -Value 'fresh HTML'
                 $global:LASTEXITCODE = 0
             }
-            if ($case.BuildExit) {
-                Assert-Throws { & $nativeInvocation } 'Build failed'
-            } else {
-                & $nativeInvocation
+            $request = @{
+                Target = (Join-Path $fixtureScripts 'native-coverage.ps1')
+                Arguments = $(if ($case.Html) { @('-HtmlReport') } else { @() })
+                WorkingDirectory = $callerRoot
+                LogPath = (Join-Path $callerRoot 'native-fixture.log')
+                DonePath = (Join-Path $callerRoot 'native-fixture.done')
+                Environment = @{}
             }
+            $actualExit = Invoke-CoverageTarget $request
+            $text = Get-Content -LiteralPath $request.LogPath -Raw
+            Assert-Equal $actualExit ([int]$case.Exit) "$($case.Name) status"
+            if ($case.Error) { Assert-Equal $text.Contains($case.Error) $true "$($case.Name) diagnostic" }
+            Assert-Equal $text.Contains('=== Native Coverage Results ===') (-not $case.Exit) "$($case.Name) results gate"
+            $expectedTools = @('build')
+            if (-not $case.BuildExit) { $expectedTools += 'coverage', 'coverage' }
+            if ($case.Html) { $expectedTools += 'reportgenerator' }
+            Assert-Equal (($global:WindowsCallerEvents | ForEach-Object Tool) -join '|') ($expectedTools -join '|') "$($case.Name) tool sequence"
         }
-        $expected = @([pscustomobject]@{ Tool = 'build'; Arguments = @('Debug', $false) })
-        if (-not $case.BuildExit) {
-            $expected += [pscustomobject]@{
-                Tool = 'coverage'; Arguments = @('instrument', (Join-Path $callerRoot 'MFTLib.Tests\bin\x64\Debug\net10.0\MFTLibNative.dll'))
-            }
-            $expected += [pscustomobject]@{
-                Tool = 'coverage'; Arguments = @(
-                    'collect', '--settings', (Join-Path $callerRoot 'native-coverage.runsettings'),
-                    '--output', (Join-Path $callerRoot 'native-coverage.cobertura.xml'),
-                    '--output-format', 'cobertura', '--include-files', 'MFTLibNative.dll',
-                    'dotnet', 'test', (Join-Path $callerRoot 'MFTLib.Tests\MFTLib.Tests.csproj'),
-                    '-p:', 'Platform=x64', '--no-build', '-c', 'Debug'
-                )
-            }
-            if ($case.Html) {
-                $expected += [pscustomobject]@{
-                    Tool = 'dotnet'; Arguments = @(
-                        'tool', 'run', 'reportgenerator',
-                        "-reports:$(Join-Path $callerRoot 'native-coverage.cobertura.xml')",
-                        "-targetdir:$(Join-Path $callerRoot 'native-coverage-html')", '-reporttypes:Html'
-                    )
-                }
-            }
-        }
-        Assert-Equal ($global:WindowsCallerEvents.ToArray() | ConvertTo-Json -Depth 5 -Compress) `
-            ($expected | ConvertTo-Json -Depth 5 -Compress) $case.Name
     }
 }
 finally {
@@ -383,11 +384,11 @@ Assert-Equal $collectCommands[0].Extent.Text.Contains('-p:Platform=x64 --no-buil
 $htmlCommands = @($nativeSyntax.FindAll({
     param($node)
     $node -is [Management.Automation.Language.CommandAst] -and
-        $node.GetCommandName() -ceq 'dotnet'
+        $node.GetCommandName() -ceq 'reportgenerator'
 }, $true))
 Assert-Equal $htmlCommands.Count 1 'one HTML tool command'
 Assert-Equal (($htmlCommands[0].CommandElements | ForEach-Object { $_.Extent.Text }) -join '|') `
-    'dotnet|tool|run|reportgenerator|--|"-reports:$coberturaOutput"|"-targetdir:$htmlOutput"|"-reporttypes:Html"' 'HTML executable tokens'
+    'reportgenerator|"-reports:$coberturaOutput"|"-targetdir:$htmlOutput"|"-reporttypes:Html"' 'HTML executable tokens'
 
 $discoveryCallers = @(
     @{ Path = 'scripts/build-windows.ps1'; Import = '. "$PSScriptRoot/windows-tools.ps1"' },
