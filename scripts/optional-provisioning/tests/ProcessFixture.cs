@@ -144,7 +144,9 @@ internal sealed class ProcessFixture : IDisposable
         EnvironmentValues["MFTLIB_INIT_REAL_SHELL"] = Host;
         EnvironmentValues["DOTNET_ROOT"] = Path.GetDirectoryName(RealDotnet)!;
         EnvironmentValues["DOTNET_NOLOGO"] = "1";
-        EnvironmentValues["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1";
+        // The fixture HOME is a throwaway directory, so the SDK first-run step would append
+        // <fixture home>/.dotnet/tools to the persistent Windows user PATH on every run.
+        EnvironmentValues["DOTNET_ADD_GLOBAL_TOOLS_TO_PATH"] = "false";
         // Reusable MSBuild nodes and build servers outlive the build, keep the fixture profile busy and would
         // make disposal race with a still-running child.
         EnvironmentValues["MSBUILDDISABLENODEREUSE"] = "1";

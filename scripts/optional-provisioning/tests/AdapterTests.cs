@@ -72,9 +72,20 @@ internal static class AdapterTests
         Console.WriteLine("Restrictive attribute disposal passed.");
     }
 
+    private static void CheckDotnetUserPathIsolation(string root)
+    {
+        foreach (var realDependencies in new[] { false, true })
+        {
+            using var fixture = new ProcessFixture(root, 0, 0, realDependencies);
+            TestProgram.Equal("false", fixture.EnvironmentValues.GetValueOrDefault("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH"),
+                $"fixture dotnet stays off the user PATH (real dependencies: {realDependencies})");
+        }
+    }
+
     internal static int Run(string root)
     {
         TestProgram.Policy();
+        CheckDotnetUserPathIsolation(root);
         CheckRestrictiveDisposal(root);
 
         var entries = OperatingSystem.IsWindows() ? new[] { "init.ps1", "init.bat" } : new[] { "init.sh" };
