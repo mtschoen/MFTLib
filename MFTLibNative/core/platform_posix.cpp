@@ -70,8 +70,13 @@ int64_t pread_at(const File* file, void* buffer, size_t count, FileOffset offset
     auto* bytePointer = static_cast<char*>(buffer);
     int64_t currentOffset = offset.value;
     while (count > 0) {
-        ssize_t bytesRead = RetryInterruptedSystemCall(
-            [&]() { return ::pread(file->fileDescriptor, bytePointer, count, currentOffset); });
+        ssize_t bytesRead = RetryInterruptedSystemCall([&]() -> ssize_t {
+            int64_t injected = 0;
+            if (TryInjectInterruptedIo(injected)) {
+                return static_cast<ssize_t>(injected);
+            }
+            return ::pread(file->fileDescriptor, bytePointer, count, currentOffset);
+        });
         if (bytesRead < 0) {
             return -1;
         }
@@ -97,8 +102,13 @@ int64_t pwrite_at(const File* file, const void* buffer, size_t count, FileOffset
     const auto* bytePointer = static_cast<const char*>(buffer);
     int64_t currentOffset = offset.value;
     while (count > 0) {
-        ssize_t bytesWritten = RetryInterruptedSystemCall(
-            [&]() { return ::pwrite(file->fileDescriptor, bytePointer, count, currentOffset); });
+        ssize_t bytesWritten = RetryInterruptedSystemCall([&]() -> ssize_t {
+            int64_t injected = 0;
+            if (TryInjectInterruptedIo(injected)) {
+                return static_cast<ssize_t>(injected);
+            }
+            return ::pwrite(file->fileDescriptor, bytePointer, count, currentOffset);
+        });
         if (bytesWritten < 0) {
             return -1;
         }

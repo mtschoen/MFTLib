@@ -32,6 +32,23 @@ internal static class NativeTestHooks
     [DllImport(LibraryName, EntryPoint = "SetFailPlatformWrite", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeSetFailPlatformWrite(int fail);
 
+    // POSIX only: what the platform positioned read and write system calls return (InterruptedIoMode in
+    // MFTLibNative/internal.h). interruptionCount is the EINTR failures before the real call runs.
+    internal enum InterruptedIoMode
+    {
+        Off = 0,
+        InterruptBeforeRealResult = 1,
+        ZeroWithStaleInterrupt = 2,
+        GenuineError = 3
+    }
+
+    [DllImport(LibraryName, EntryPoint = "SetInterruptedIo", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void NativeSetInterruptedIo(InterruptedIoMode mode, int interruptionCount);
+
+    // How many positioned reads and writes consulted the hook since NativeSetInterruptedIo.
+    [DllImport(LibraryName, EntryPoint = "GetInterruptedIoCalls", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int NativeGetInterruptedIoCalls();
+
     [DllImport(LibraryName, EntryPoint = "SetVolumeRecordSizeOverride", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeSetVolumeRecordSizeOverride(uint recordSize);
 

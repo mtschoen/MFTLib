@@ -51,6 +51,20 @@ internal static class AdapterTests
             result.Output.Split('\n').Count(line => line.Trim() == Completion), "completed summary");
     }
 
+    private static void CheckManagedSmokeInvocation(ProcessFixture fixture, string[][] calls)
+    {
+        var smoke = calls.Where(call => call[0] == "dotnet" && call.ElementAtOrDefault(1) == "test").ToArray();
+        var expected = new[]
+        {
+            "dotnet", "test", Path.Combine(fixture.Repository, "MFTLib.Tests", "MFTLib.Tests.csproj"),
+            "-c", "Release", "-p:MFTLibNativeLinuxFlavor=Release", "--filter", "TestCategory=Smoke"
+        };
+        TestProgram.Equal(JsonSerializer.Serialize(expected), JsonSerializer.Serialize(smoke.Single()), "managed Smoke argv");
+        var nativeBuild = Array.FindIndex(calls, call => call[0] == "cmake" && call.ElementAtOrDefault(1) == "--build");
+        TestProgram.Equal(true, nativeBuild >= 0 && nativeBuild < Array.IndexOf(calls, smoke.Single()),
+            "managed Smoke tier runs after the native build");
+    }
+
     private static void CheckRestrictiveDisposal(string root)
     {
         var fixture = new ProcessFixture(root, 3, 0);
@@ -103,6 +117,7 @@ internal static class AdapterTests
             var calls = fixture.Calls();
             TestProgram.Equal(true, calls.Any(call => call[0] == "dotnet" && call.ElementAtOrDefault(1) == "build"), "build forwarding");
             TestProgram.Equal(true, calls.Any(call => call[0] == (OperatingSystem.IsWindows() ? "MSBuild" : "cmake")), "native build forwarding");
+            if (!OperatingSystem.IsWindows()) CheckManagedSmokeInvocation(fixture, calls);
         }
         foreach (var entry in entries)
         {
@@ -128,6 +143,8 @@ internal static class AdapterTests
             var result = fixture.Invoke(entry, true);
             TestProgram.Equal(true, result.ExitCode != 0, "required build still fails init");
             TestProgram.Equal(true, fixture.Calls().Any(call => call[0] == "schoen-lab-onboard"), "optional failure preceded required build failure");
+            TestProgram.Equal(false, fixture.Calls().Any(call => call[0] == "dotnet" && call.ElementAtOrDefault(1) == "test"),
+                "managed Smoke tier does not run after a failed native build");
         }
         if (OperatingSystem.IsWindows())
         {

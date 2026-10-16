@@ -214,7 +214,7 @@ Native exports write failure reasons into fixed-size `MftMessageChar errorMessag
 
 `MFTLibNative/core/test_hooks.cpp` exports failure-injection and observation hooks
 (`SetAllocFailCountdown`, `SetReadFailCountdown`, `SetUsnIoFailError`, `SetUsnWatchPipe`,
-`GetChunkThreadCounts`, `ResetTestState` and the rest). They are compiled into the Release
+`GetChunkThreadCounts`, `ResetTestState` and the rest). On POSIX, `SetInterruptedIo` and `GetInterruptedIoCalls` replace the result of the positioned read and write system calls (EINTR failures before the real result, a zero result with a stale EINTR, or a genuine EIO), so the retry loop in `core/platform_posix.cpp` is covered by managed tests (`NativeInterruptedIoTests`). They are compiled into the Release
 `MFTLibNative.dll` that the NuGet package ships, deliberately. The exports are test-only and
 unsupported: they are not part of the managed public API, and they may change or disappear in
 any release. Their managed `DllImport` declarations live in `MFTLib.Tests`

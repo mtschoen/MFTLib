@@ -70,8 +70,11 @@ root `x64/<Configuration>` to each managed project's output after its build;
 build native before managed when using dotnet. Visual Studio MSBuild orders
 native builds through the managed projects' `ProjectReference` entries. On
 non-Windows hosts, `MFTLibNative.Linux.props`, explicitly imported by MFTLib and
-MFTLib.Tests, selects `build/linux-coverage/libMFTLibNative.so` when present,
-otherwise `build/linux/libMFTLibNative.so`, and copies it with `PreserveNewest`.
+MFTLib.Tests, copies one library with `PreserveNewest`, chosen by `MFTLibNativeLinuxFlavor`: `Release` is
+`build/linux/libMFTLibNative.so` (`scripts/build-linux.sh` passes it) and `Coverage` is
+`build/linux-coverage/libMFTLibNative.so` (`scripts/coverage-linux.sh` passes it). The unselected library is
+never included. An unset flavor, as in a plain `dotnet build`, means Coverage when that library exists,
+otherwise Release.
 Referencing managed projects receive that item through the SDK. With neither
 source present, managed-only builds remain available. Package runtime assets
 follow the separate [Linux package contract](linux-package.md).

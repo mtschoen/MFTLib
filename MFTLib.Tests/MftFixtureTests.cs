@@ -63,14 +63,6 @@ public class MftFixtureTests
     }
 
     [TestMethod]
-    public void Fixture_ResidentData_SizeIsTheValueLength()
-    {
-        var records = DirectParse.ParseFile(_fixturePath, out _).ToDictionary(r => r.RecordNumber);
-        Assert.AreEqual(37L, records[6].Size);
-        Assert.IsTrue(records[6].SizeKnown);
-    }
-
-    [TestMethod]
     public void Fixture_NonResidentData_SizeComesFromTheLowestVcnZeroRun()
     {
         var records = DirectParse.ParseFile(_fixturePath, out _).ToDictionary(r => r.RecordNumber);
@@ -94,12 +86,20 @@ public class MftFixtureTests
     }
 
     [TestMethod]
-    public void Fixture_DirectoriesAndMissingData_ReportZeroWithTheRightKnownFlag()
+    public void Fixture_EveryRecord_ReportsItsAuthoredSizeAndKnownFlag()
     {
         var records = DirectParse.ParseFile(_fixturePath, out _).ToDictionary(r => r.RecordNumber);
-        Assert.AreEqual(0L, records[8].Size);
-        Assert.IsTrue(records[8].SizeKnown, "a directory has a known size of zero");
-        Assert.AreEqual(0L, records[9].Size);
-        Assert.IsFalse(records[9].SizeKnown, "the data attribute lives in an extension record");
+        (ulong RecordNumber, long Size, bool SizeKnown)[] expected =
+        [
+            (0, 65536, true), (5, 0, true), (6, 37, true), (7, 1234567, true),
+            (8, 0, true), (9, 0, false), (10, 4096, true), (11, 0, false)
+        ];
+
+        Assert.AreEqual(expected.Length, records.Count);
+        foreach (var (recordNumber, size, sizeKnown) in expected)
+        {
+            Assert.AreEqual(size, records[recordNumber].Size, $"size of record {recordNumber}");
+            Assert.AreEqual(sizeKnown, records[recordNumber].SizeKnown, $"SizeKnown of record {recordNumber}");
+        }
     }
 }

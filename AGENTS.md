@@ -58,7 +58,9 @@ cat .\SampleProgram.Direct\bin\x64\Release\net10.0\output.log
 
 ### Test coverage
 
-[Coverage procedures](docs/development-coverage.md): run `.\scripts\run-coverage.ps1` (admin/UAC) or `.\scripts\run-coverage.ps1 -NonInteractive` (headless). Native coverage: `./scripts/native-coverage.ps1` or `./scripts/native-coverage.ps1 -HtmlReport`; it resolves the optional coverage executable through shared discovery, delegates to the shared Debug|x64 `/PROFILE` build, then instruments the test-output DLL using `native-coverage.runsettings`. USN tests need admin; `scripts/native-coverage-elevated.ps1` self-elevates and streams `native-coverage-elevated.log`.
+[Fast check](SMOKE.md): `--filter TestCategory=Smoke` is the agent floor; the full suite is the bar.
+
+[Coverage procedures](docs/development-coverage.md): run `.\scripts\run-coverage.ps1` (admin/UAC) or `.\scripts\run-coverage.ps1 -NonInteractive` (headless). Native coverage: `./scripts/native-coverage.ps1` or `./scripts/native-coverage.ps1 -HtmlReport`; discovery, the shared Debug|x64 `/PROFILE` build and collection are in the linked page. USN tests need admin; `scripts/native-coverage-elevated.ps1` self-elevates and streams `native-coverage-elevated.log`.
 
 [Coverage status gate](docs/development-coverage.md): a drop of more than 10 percentage points from the nearest successful main-line measurement, or zero covered executable lines in a tested namespace, fails with a nonnumeric error status. Failed collection, missing/malformed reports and unavailable baseline lookup fail closed. Check MFTLib, MFTLib.Index, both samples, Benchmark and MFTLibTestExtensions; extend the namespace list and regression fixtures for new tested executable namespaces. Run `pwsh -NoProfile -File scripts/test-coverage-status.ps1`.
 

@@ -106,7 +106,7 @@ aislop remain unfiltered, subject to their existing host availability.
 | `init` / `init-windows`, `init-linux` | Windows adapter matrix | Linux adapter matrix | `scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj --adapters`; also selected by the matching platform scope |
 | `windows` | Run | Skip | `scripts/run-coverage.ps1 -NonInteractive`, including native and managed build, followed by `scripts/smoke-package-windows.ps1` |
 | `linux` | Skip | Run | `scripts/coverage-linux.sh`, native and managed coverage |
-| `linux-package` | Skip | Run | `build-linux.sh`, `check-linux-native.sh`, `smoke-package-linux.sh` under `scripts/` |
+| `linux-package` | Skip | Run | `build-linux.sh` (builds, then runs the managed `TestCategory=Smoke` tier), `check-linux-native.sh`, `smoke-package-linux.sh` under `scripts/` |
 | `sync` | Run | Run | `scripts/sync_consumers.tests.sh`, offline transport fixtures |
 | `aislop` | Run | Skip | Windows build plus exact pinned scanner and CI file-count sanity check |
 

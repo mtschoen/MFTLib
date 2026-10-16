@@ -39,6 +39,7 @@ public partial class DumpParseNativeTests
         var result = ParseHeader(path, 256, 5);
 
         Assert.AreEqual("Failed to allocate string pool", result.ErrorMessage);
+        Assert.AreEqual(0UL, result.UsedRecords);
     }
 
     // 4000 in-use records outgrow the initial 1024 entries while their names stay inside the initial

@@ -1,15 +1,23 @@
 <Project>
-  <!-- Source builds prefer the instrumented CMake library when it exists. -->
-  <ItemGroup Condition="'$(OS)' != 'Windows_NT'">
-    <None Include="$(MSBuildThisFileDirectory)build/linux-coverage/libMFTLibNative.so"
-          Condition="Exists('$(MSBuildThisFileDirectory)build/linux-coverage/libMFTLibNative.so')">
+  <!-- MFTLibNativeLinuxFlavor selects the native library copied beside the managed output on non-Windows
+       hosts: Release is build/linux (scripts/build-linux.sh), Coverage is build/linux-coverage
+       (scripts/coverage-linux.sh). Both scripts pass it explicitly, so neither can run against the other's
+       library. The default, used by a plain dotnet build, is Coverage when that library exists, otherwise
+       Release. The unselected library is never included, and Always copies the selected one regardless of timestamps (PreserveNewest skips it when the output holds a newer copy of the other flavor). -->
+  <PropertyGroup Condition="'$(OS)' != 'Windows_NT'">
+    <MFTLibNativeLinuxFlavor Condition="'$(MFTLibNativeLinuxFlavor)' == '' And Exists('$(MSBuildThisFileDirectory)build/linux-coverage/libMFTLibNative.so')">Coverage</MFTLibNativeLinuxFlavor>
+    <MFTLibNativeLinuxFlavor Condition="'$(MFTLibNativeLinuxFlavor)' == ''">Release</MFTLibNativeLinuxFlavor>
+    <MFTLibNativeLinuxLibrary Condition="'$(MFTLibNativeLinuxFlavor)' == 'Coverage'">$(MSBuildThisFileDirectory)build/linux-coverage/libMFTLibNative.so</MFTLibNativeLinuxLibrary>
+    <MFTLibNativeLinuxLibrary Condition="'$(MFTLibNativeLinuxFlavor)' == 'Release'">$(MSBuildThisFileDirectory)build/linux/libMFTLibNative.so</MFTLibNativeLinuxLibrary>
+  </PropertyGroup>
+  <Target Name="ValidateMFTLibNativeLinuxFlavor" BeforeTargets="BeforeBuild;BeforeResolveReferences"
+          Condition="'$(OS)' != 'Windows_NT' And '$(MFTLibNativeLinuxFlavor)' != 'Release' And '$(MFTLibNativeLinuxFlavor)' != 'Coverage'">
+    <Error Text="MFTLibNativeLinuxFlavor must be Release or Coverage, not '$(MFTLibNativeLinuxFlavor)'." />
+  </Target>
+  <ItemGroup Condition="'$(OS)' != 'Windows_NT' And '$(MFTLibNativeLinuxLibrary)' != '' And Exists('$(MFTLibNativeLinuxLibrary)')">
+    <None Include="$(MFTLibNativeLinuxLibrary)">
       <Link>libMFTLibNative.so</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="$(MSBuildThisFileDirectory)build/linux/libMFTLibNative.so"
-          Condition="!Exists('$(MSBuildThisFileDirectory)build/linux-coverage/libMFTLibNative.so') And Exists('$(MSBuildThisFileDirectory)build/linux/libMFTLibNative.so')">
-      <Link>libMFTLibNative.so</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>
 </Project>

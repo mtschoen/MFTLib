@@ -70,7 +70,7 @@ fake Git and GitHub CLI commands.
 The `linux-package` job of `.gitea/workflows/test.yml` runs on every pull request and main push;
 when every changed path is docs-only or the scanner pin, its `skip_build` detection skips the
 steps below and the upload, and the job finishes green ([CI and quality gates](quality-gates.md)).
-Otherwise it builds the Release library with `scripts/build-linux.sh`, runs `scripts/check-linux-native.sh`,
+Otherwise it builds the Release library with `scripts/build-linux.sh` (which runs the managed Smoke tier of [SMOKE.md](../SMOKE.md) against it), runs `scripts/check-linux-native.sh`,
 and runs `scripts/smoke-package-linux.sh`. That script packs MFTLib on Linux with the library under
 the version `0.0.0-package-smoke` (never published), restores it from a local feed with an empty
 package cache into `scripts/package-smoke`, and runs that console project. The project links the

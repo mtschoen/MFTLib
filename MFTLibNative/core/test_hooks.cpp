@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cerrno>
 #include <mutex>
 #include <thread>
 #include <new>
@@ -25,6 +26,13 @@ int g_readFailCountdown = 0;
 int g_failFileSize = 0;
 int g_failPlatformReadCountdown = 0;
 int g_failPlatformWrite = 0;
+#ifndef _WIN32
+// Interrupted positioned I/O: the mode (see InterruptedIoMode in internal.h), the interruptions still to
+// inject, and how many times pread_at/pwrite_at consulted the hook while a mode was armed.
+std::atomic<int> g_interruptedIoMode{0};
+std::atomic<int> g_interruptedIoRemaining{0};
+std::atomic<int> g_interruptedIoCalls{0};
+#endif
 uint32_t g_volumeRecordSizeOverride = 0;
 // Process-global observation of the most recently finished parse, published by
 // ParseThreadRecording's destructor. Publication, reset and the getter lock the mutex.
@@ -137,6 +145,36 @@ bool ShouldFailPlatformRead() {
 bool ShouldFailPlatformWrite() { return g_failPlatformWrite != 0; }
 uint32_t VolumeRecordSizeOverride() { return g_volumeRecordSizeOverride; }
 
+#ifndef _WIN32
+bool TryInjectInterruptedIo(int64_t& result) {
+    const auto mode = static_cast<InterruptedIoMode>(g_interruptedIoMode.load());
+    if (mode == InterruptedIoMode::Off) {
+        return false;
+    }
+    g_interruptedIoCalls++;
+    switch (mode) {
+        case InterruptedIoMode::InterruptBeforeRealResult:
+            if (g_interruptedIoRemaining.fetch_sub(1) <= 0) {
+                return false;
+            }
+            errno = EINTR;
+            result = -1;
+            return true;
+        case InterruptedIoMode::ZeroWithStaleInterrupt:
+            errno = EINTR;
+            result = 0;
+            return true;
+        case InterruptedIoMode::GenuineError:
+            errno = EIO;
+            result = -1;
+            return true;
+        case InterruptedIoMode::Off:
+            break;
+    }
+    return false;
+}
+#endif
+
 #ifdef _WIN32
 // Cross-component test seam used by USN code and exported test hooks; keep external.
 // ReSharper disable once CppClangTidyMiscUseInternalLinkage
@@ -212,6 +250,17 @@ EXPORT void SetReadFailCountdown(int countdown) { g_readFailCountdown = countdow
 EXPORT void SetFailFileSize(int fail) { g_failFileSize = fail; }
 EXPORT void SetFailPlatformRead(int countdown) { g_failPlatformReadCountdown = countdown; }
 EXPORT void SetFailPlatformWrite(int fail) { g_failPlatformWrite = fail; }
+#ifndef _WIN32
+// Arms the interrupted positioned I/O hook. mode is an InterruptedIoMode value; interruptionCount is how many
+// EINTR failures InterruptBeforeRealResult returns before the real call runs. Resets the call count.
+EXPORT void SetInterruptedIo(int mode, int interruptionCount) {
+    g_interruptedIoCalls = 0;
+    g_interruptedIoRemaining = interruptionCount;
+    g_interruptedIoMode = mode;
+}
+// How many positioned reads and writes consulted the hook since SetInterruptedIo.
+EXPORT int GetInterruptedIoCalls() { return g_interruptedIoCalls.load(); }
+#endif
 EXPORT void SetVolumeRecordSizeOverride(uint32_t recordSize) { g_volumeRecordSizeOverride = recordSize; }
 EXPORT void SetCancelCheckCountdown(int countdown) {
     g_cancelCheckCountdown = countdown;
@@ -296,6 +345,9 @@ EXPORT void ResetTestState() {
     g_failFileSize = 0;
     g_failPlatformReadCountdown = 0;
     g_failPlatformWrite = 0;
+    g_interruptedIoMode = 0;
+    g_interruptedIoRemaining = 0;
+    g_interruptedIoCalls = 0;
     g_volumeRecordSizeOverride = 0;
     ClearRecordedParseThreadCounts();
     g_cancelCheckCountdownArmed = false;

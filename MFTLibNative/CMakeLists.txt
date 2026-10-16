@@ -44,8 +44,3 @@ if(UNIX)
     )
     target_link_libraries(MFTLibNative PRIVATE pthread)
 endif()
-
-# Smoke test (Linux only for MVP)
-if(UNIX AND BUILD_TESTING)
-    add_subdirectory(test)
-endif()

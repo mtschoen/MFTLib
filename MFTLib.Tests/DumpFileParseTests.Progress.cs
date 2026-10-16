@@ -9,6 +9,7 @@ namespace MFTLib.Tests;
 public partial class DumpFileParseTests
 {
     [TestMethod]
+    [TestCategory("Smoke")]
     public void Parse_Progress_ReportsEveryChunkAndEndsAtTheTotal()
     {
         var reports = new List<MftScanProgress>();
@@ -20,6 +21,29 @@ public partial class DumpFileParseTests
         Assert.AreEqual(1000L, reports[^1].RecordsScanned);
         CollectionAssert.AreEqual(reports.Select(report => report.RecordsScanned).OrderBy(scanned => scanned).ToArray(),
             reports.Select(report => report.RecordsScanned).ToArray(), "Records scanned never goes backwards.");
+    }
+
+    [TestMethod]
+    public void Parse_OneRecordChunks_ReportsStrictlyIncreasingProgressNeverPastTheTotal()
+    {
+        var reports = new List<MftScanProgress>();
+        using var input = MftDumpInput.Open(_syntheticPath);
+
+        using var result = input.Parse(new MftFileScanOptions(new SynchronousProgress<MftScanProgress>(reports.Add),
+            BufferSizeRecords: 1));
+
+        Assert.AreEqual(1000UL, result.TotalRecords);
+        Assert.AreEqual(1000, reports.Count, "Every one-record chunk reports once.");
+        long previous = 0;
+        foreach (var report in reports)
+        {
+            Assert.IsTrue(report.RecordsScanned > previous, $"{report.RecordsScanned} does not pass {previous}");
+            Assert.IsTrue(report.RecordsScanned <= report.TotalRecords);
+            Assert.AreEqual(1000L, report.TotalRecords);
+            previous = report.RecordsScanned;
+        }
+
+        Assert.AreEqual(1000L, previous);
     }
 
 

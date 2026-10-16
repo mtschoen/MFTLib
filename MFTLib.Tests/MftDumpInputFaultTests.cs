@@ -37,6 +37,7 @@ public class MftDumpInputFaultTests
     [DataRow(1)]
     [DataRow(3)]
     [DataRow(4)]
+    [TestCategory("Smoke")]
     public void Parse_AChunkReadFails_FailsAsIncompleteInsteadOfEndingEarly(int failingRead)
     {
         using var input = MftDumpInput.Open(_path);

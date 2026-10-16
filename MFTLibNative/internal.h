@@ -144,6 +144,21 @@ bool ShouldFailFileSize();
 // pread_at/pwrite_at error handling is coverable without a real I/O failure.
 bool ShouldFailPlatformRead();
 bool ShouldFailPlatformWrite();
+#ifndef _WIN32
+// What SetInterruptedIo makes pread_at/pwrite_at's system call return, so RetryInterruptedSystemCall's
+// EINTR handling is coverable without signalling a real call.
+enum class InterruptedIoMode : int {
+    Off = 0,
+    // Fail with EINTR as many times as the interruption count, then run the real call.
+    InterruptBeforeRealResult = 1,
+    // Return 0 with errno left at EINTR: the stale errno must not be taken for an interruption.
+    ZeroWithStaleInterrupt = 2,
+    // Fail with EIO on every call: a genuine error is returned, never retried.
+    GenuineError = 3
+};
+// Replaces the next system call's result when armed and returns true; sets errno as the real call would.
+bool TryInjectInterruptedIo(int64_t& result);
+#endif
 uint32_t VolumeRecordSizeOverride();
 
 #ifdef _WIN32

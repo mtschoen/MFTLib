@@ -406,7 +406,7 @@ jobs:
           EVENT_AFTER: ${{ github.event.after }}
         run: bash scripts/ci-changed-files.sh
 
-      - name: Build the Release library and run its smoke test
+      - name: Build the Release library and run the managed Smoke tier
         if: steps.changed-files.outputs.skip_build != 'true'
         run: bash scripts/build-linux.sh
 

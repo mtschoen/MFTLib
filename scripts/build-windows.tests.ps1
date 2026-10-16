@@ -442,6 +442,7 @@ $fixtureRoot = Join-Path ([IO.Path]::GetTempPath()) ('MFTLib native items ' + [g
 try {
     New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
     Copy-Item -LiteralPath $sharedPropsPath -Destination $fixtureRoot
+    Set-Content -LiteralPath (Join-Path $fixtureRoot 'AGENTS.md') -Value 'fixture document for the test project copy item'
     $projects = @('MFTLib/MFTLib.csproj', 'MFTLib.Tests/MFTLib.Tests.csproj')
     foreach ($relativeProject in $projects) {
         $destination = Join-Path $fixtureRoot $relativeProject
@@ -453,6 +454,9 @@ try {
         @{ Name = 'ordinary'; OperatingSystem = 'Unix'; Sources = @('linux'); Expected = 'linux' },
         @{ Name = 'coverage'; OperatingSystem = 'Unix'; Sources = @('linux-coverage'); Expected = 'linux-coverage' },
         @{ Name = 'coverage-wins'; OperatingSystem = 'Unix'; Sources = @('linux', 'linux-coverage'); Expected = 'linux-coverage' },
+        @{ Name = 'release-flavor'; OperatingSystem = 'Unix'; Flavor = 'Release'; Sources = @('linux', 'linux-coverage'); Expected = 'linux' },
+        @{ Name = 'release-flavor-no-release'; OperatingSystem = 'Unix'; Flavor = 'Release'; Sources = @('linux-coverage'); Expected = '' },
+        @{ Name = 'coverage-flavor'; OperatingSystem = 'Unix'; Flavor = 'Coverage'; Sources = @('linux', 'linux-coverage'); Expected = 'linux-coverage' },
         @{ Name = 'windows'; OperatingSystem = 'Windows_NT'; Sources = @('linux', 'linux-coverage'); Expected = '' }
     )
     foreach ($case in $cases) {
@@ -465,8 +469,10 @@ try {
         }
         foreach ($relativeProject in $projects) {
             $projectPath = Join-Path $fixtureRoot $relativeProject
-            $output = & dotnet msbuild $projectPath -nologo -verbosity:quiet -getItem:None `
-                "-p:OS=$($case.OperatingSystem)" -p:ImportDirectoryBuildProps=false -p:ImportDirectoryBuildTargets=false
+            $msbuildArguments = @($projectPath, '-nologo', '-verbosity:quiet', '-getItem:None', "-p:OS=$($case.OperatingSystem)",
+                '-p:ImportDirectoryBuildProps=false', '-p:ImportDirectoryBuildTargets=false')
+            if ($case.Flavor) { $msbuildArguments += "-p:MFTLibNativeLinuxFlavor=$($case.Flavor)" }
+            $output = & dotnet msbuild @msbuildArguments
             if ($LASTEXITCODE -ne 0) { throw "MSBuild evaluation failed: $relativeProject / $($case.Name)" }
             $evaluation = ($output -join [Environment]::NewLine) | ConvertFrom-Json
             $items = @($evaluation.Items.None | Where-Object { $_.Link -eq 'libMFTLibNative.so' })
@@ -476,9 +482,41 @@ try {
             if ($expectedCount -eq 1) {
                 $expectedPath = [IO.Path]::GetFullPath((Join-Path $fixtureRoot "build/$($case.Expected)/libMFTLibNative.so"))
                 Assert-Equal $items[0].FullPath $expectedPath "$label selected source"
-                Assert-Equal $items[0].CopyToOutputDirectory 'PreserveNewest' "$label output policy"
+                Assert-Equal $items[0].CopyToOutputDirectory 'Always' "$label output policy"
                 Assert-Equal $items[0].DefiningProjectFullPath (Join-Path $fixtureRoot $sharedPropsName) "$label shared owner"
             }
+        }
+    }
+
+    # Copy content: a selected library that is OLDER than the library already in the output must still replace it
+    # (Coverage-to-Release leaves the coverage build in bin, Release-to-Coverage leaves the release build).
+    $switches = @(
+        @{ Name = 'coverage-to-release'; Flavor = 'Release'; Selected = 'linux'; Previous = 'linux-coverage' },
+        @{ Name = 'release-to-coverage'; Flavor = 'Coverage'; Selected = 'linux-coverage'; Previous = 'linux' }
+    )
+    foreach ($switch in $switches) {
+        foreach ($relativeProject in $projects) {
+            $buildDirectory = Join-Path $fixtureRoot 'build'
+            if (Test-Path -LiteralPath $buildDirectory) { Remove-Item -LiteralPath $buildDirectory -Recurse -Force }
+            foreach ($sourceDirectory in @('linux', 'linux-coverage')) {
+                $directory = Join-Path $buildDirectory $sourceDirectory
+                New-Item -ItemType Directory -Path $directory -Force | Out-Null
+                $source = Join-Path $directory 'libMFTLibNative.so'
+                Set-Content -LiteralPath $source -Value "source-$sourceDirectory" -NoNewline
+                (Get-Item -LiteralPath $source).LastWriteTimeUtc = [DateTime]::UtcNow.AddHours(-2)
+            }
+            $outputDirectory = Join-Path $fixtureRoot "output/$($switch.Name)/"
+            New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
+            $existing = Join-Path $outputDirectory 'libMFTLibNative.so'
+            Set-Content -LiteralPath $existing -Value "source-$($switch.Previous)" -NoNewline
+            (Get-Item -LiteralPath $existing).LastWriteTimeUtc = [DateTime]::UtcNow.AddHours(1)
+            $projectPath = Join-Path $fixtureRoot $relativeProject
+            $copyOutput = & dotnet msbuild $projectPath -nologo -verbosity:quiet -restore '-p:OS=Unix' "-p:MFTLibNativeLinuxFlavor=$($switch.Flavor)" `
+                "-p:OutDir=$outputDirectory" '-p:ImportDirectoryBuildProps=false' '-p:ImportDirectoryBuildTargets=false' `
+                '-t:GetCopyToOutputDirectoryItems;_CopyOutOfDateSourceItemsToOutputDirectoryAlways;_CopyOutOfDateSourceItemsToOutputDirectory' |
+                Out-String
+            if ($LASTEXITCODE -ne 0) { throw "MSBuild copy failed: $relativeProject / $($switch.Name)`n$copyOutput" }
+            Assert-Equal (Get-Content -LiteralPath $existing -Raw) "source-$($switch.Selected)" "$relativeProject / $($switch.Name) copied content"
         }
     }
 }

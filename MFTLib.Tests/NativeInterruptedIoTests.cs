@@ -1,0 +1,126 @@
+using MFTLib.Tests.TestSupport;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+namespace MFTLib.Tests;
+
+/// <summary>
+///     The POSIX positioned read and write retry an interrupted system call (EINTR) and return anything
+///     else as it is: an interruption is retried until the real result, a zero result is the end of the
+///     file whatever errno was left behind, and a genuine error is returned on the first call. The native
+///     hook replaces the system call's result, so no real signal is needed.
+/// </summary>
+[TestClass]
+[DoNotParallelize]
+public class NativeInterruptedIoTests
+{
+    string _directory = null!;
+    string _path = null!;
+
+    [TestInitialize]
+    public void Initialize()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            Assert.Inconclusive("The interrupted system call hook exists only in the POSIX native library.");
+        }
+
+        _directory = MftDumpFixture.NewOwnedDirectory();
+        _path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+    }
+
+    [TestCleanup]
+    public void Cleanup()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        NativeTestHooks.NativeResetTestState();
+        MftDumpFixture.DeleteOwnedDirectory(_directory);
+    }
+
+    [TestMethod]
+    [Timeout(30_000)]
+    [TestCategory("Smoke")]
+    public void Open_HeaderReadInterruptedRepeatedly_RetriesUntilTheRealResult()
+    {
+        NativeTestHooks.NativeSetInterruptedIo(NativeTestHooks.InterruptedIoMode.InterruptBeforeRealResult, 3);
+
+        using var input = MftDumpInput.Open(_path);
+
+        Assert.AreEqual(1024u, input.RecordSize);
+        Assert.AreEqual(4, NativeTestHooks.NativeGetInterruptedIoCalls(), "three interruptions, then the real read");
+    }
+
+    [TestMethod]
+    [Timeout(30_000)]
+    [TestCategory("Smoke")]
+    public void Parse_ChunkReadInterruptedRepeatedly_RetriesAndReadsEveryRecord()
+    {
+        using var input = MftDumpInput.Open(_path);
+        NativeTestHooks.NativeSetInterruptedIo(NativeTestHooks.InterruptedIoMode.InterruptBeforeRealResult, 3);
+
+        using var result = input.Parse(new MftFileScanOptions(BufferSizeRecords: 4));
+
+        Assert.AreEqual(16UL, result.TotalRecords);
+        Assert.AreEqual(7UL, result.UsedRecords);
+        Assert.AreEqual(3 + 4, NativeTestHooks.NativeGetInterruptedIoCalls(),
+            "three interruptions, then one read for each of the four chunks");
+    }
+
+    [TestMethod]
+    [Timeout(30_000)]
+    [TestCategory("Smoke")]
+    public void Generate_WriteInterruptedRepeatedly_RetriesAndWritesTheSameBytes()
+    {
+        var expectedPath = Path.Combine(_directory, "expected.mft");
+        var interruptedPath = Path.Combine(_directory, "interrupted.mft");
+        MftVolume.GenerateSyntheticMFT(expectedPath, 100, 256);
+        NativeTestHooks.NativeSetInterruptedIo(NativeTestHooks.InterruptedIoMode.InterruptBeforeRealResult, 3);
+
+        MftVolume.GenerateSyntheticMFT(interruptedPath, 100, 256);
+
+        Assert.IsTrue(NativeTestHooks.NativeGetInterruptedIoCalls() >= 4);
+        CollectionAssert.AreEqual(File.ReadAllBytes(expectedPath), File.ReadAllBytes(interruptedPath));
+    }
+
+    [TestMethod]
+    [Timeout(30_000)]
+    [TestCategory("Smoke")]
+    public void Open_ZeroResultWithAStaleInterrupt_IsTheEndOfTheFileNotARetry()
+    {
+        NativeTestHooks.NativeSetInterruptedIo(NativeTestHooks.InterruptedIoMode.ZeroWithStaleInterrupt, 0);
+
+        var failure = Assert.ThrowsException<InvalidDataException>(() => MftDumpInput.Open(_path));
+
+        Assert.AreEqual(MftDumpInputTests.IncompleteMessage, failure.Message);
+        Assert.AreEqual(1, NativeTestHooks.NativeGetInterruptedIoCalls(), "a zero result is never retried");
+    }
+
+    [TestMethod]
+    [Timeout(30_000)]
+    [TestCategory("Smoke")]
+    public void Open_GenuineReadError_IsReturnedOnTheFirstCall()
+    {
+        NativeTestHooks.NativeSetInterruptedIo(NativeTestHooks.InterruptedIoMode.GenuineError, 0);
+
+        var failure = Assert.ThrowsException<InvalidDataException>(() => MftDumpInput.Open(_path));
+
+        Assert.AreEqual(MftDumpInputTests.IncompleteMessage, failure.Message);
+        Assert.AreEqual(1, NativeTestHooks.NativeGetInterruptedIoCalls(), "a genuine error is never retried");
+    }
+
+    [TestMethod]
+    [Timeout(30_000)]
+    [TestCategory("Smoke")]
+    public void Generate_GenuineWriteError_FailsOnTheFirstCall()
+    {
+        var path = Path.Combine(_directory, "failed.mft");
+        NativeTestHooks.NativeSetInterruptedIo(NativeTestHooks.InterruptedIoMode.GenuineError, 0);
+
+        Assert.IsFalse(MFTLibNative._generateSyntheticMftSized(path, 100, 256, 1024));
+
+        Assert.AreEqual(1, NativeTestHooks.NativeGetInterruptedIoCalls(), "a genuine error is never retried");
+    }
+}

@@ -51,6 +51,7 @@ public class NativeParserFixupTests
 
     [TestMethod]
     [DynamicData(nameof(HostileArrays1024))]
+    [TestCategory("Smoke")]
     public void Parse_AllocatedRecordWithAHostileArray_IsRejected(string description, ushort arrayOffset,
         ushort arraySize)
     {

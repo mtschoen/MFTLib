@@ -47,6 +47,7 @@ public class MftDumpInputTests
     [TestMethod]
     [DataRow(1024)]
     [DataRow(4096)]
+    [TestCategory("Smoke")]
     public void Parse_ValidDump_ReturnsEveryAllocatedRecordWithItsColumns(int recordSize)
     {
         var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard(recordSize));
@@ -94,6 +95,7 @@ public class MftDumpInputTests
 
     [TestMethod]
     [DynamicData(nameof(RejectedContent))]
+    [TestCategory("Smoke")]
     public void Open_RejectedContent_ThrowsInvalidDataWithTheChecksMessage(string description, byte[] content,
         string message)
     {
@@ -166,6 +168,33 @@ public class MftDumpInputTests
         using var reopened = MftDumpInput.Open(path);
         CollectionAssert.Contains(Names(reopened), "Replaced.txt");
         Assert.AreEqual(4096u, reopened.RecordSize);
+    }
+
+    [TestMethod]
+    public void Parse_PathDeletedAfterTheOpen_StillReadsTheOpenedFile()
+    {
+        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        using var input = MftDumpInput.Open(path);
+
+        File.Delete(path);
+
+        Assert.IsFalse(File.Exists(path));
+        using var result = input.Parse();
+        Assert.AreEqual(16UL, result.TotalRecords);
+        Assert.AreEqual(7UL, result.UsedRecords);
+    }
+
+    [TestMethod]
+    public void NativeOpen_MissingFile_ReportsAnOpenErrorWithNoGeometry()
+    {
+        using var input = MFTLibNative.OpenMftDumpInput(
+            MFTLibNative.NullTerminatedUtf8(Path.Combine(_directory, "absent.mft")), out var info);
+
+        Assert.IsTrue(input.IsInvalid);
+        Assert.AreNotEqual(string.Empty, info.ErrorMessage);
+        Assert.AreEqual(0u, info.InvalidInput, "A file that cannot be opened is not rejected content.");
+        Assert.AreEqual(0UL, info.LengthBytes);
+        Assert.AreEqual(0u, info.RecordSize);
     }
 
     [TestMethod]

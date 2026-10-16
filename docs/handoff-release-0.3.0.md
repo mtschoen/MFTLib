@@ -95,7 +95,7 @@ Consumer CI checks out the gitlink rather than cloning a separate MFTLib revisio
 ```
 
 MFTLib source sits at `external/MFTLib`. On Linux, its build script drives CMake
-and Ninja into the gitignored `build/linux` directory, including the native smoke test:
+and Ninja into the gitignored `build/linux` directory, then runs the managed Smoke tier (`TestCategory=Smoke`, see [SMOKE.md](../SMOKE.md)) against it:
 
 ```bash
 bash external/MFTLib/scripts/build-linux.sh

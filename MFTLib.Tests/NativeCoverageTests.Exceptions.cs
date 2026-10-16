@@ -30,10 +30,11 @@ public partial class NativeCoverageTests
     }
 
     [TestMethod]
-    [DataRow(-1, "Out of memory")]
-    [DataRow(-2, "Native exception")]
-    [DataRow(-4, "Native exception")]
-    [DataRow(-5, "Native exception")]
+    [DataRow(-1, "Out of memory in native operation")]
+    [DataRow(-2, "Native exception in operation")]
+    [DataRow(-4, "Native exception in operation")]
+    [DataRow(-5, "Native exception in operation")]
+    [TestCategory("Smoke")]
     public void ParseDump_ExceptionReturnsEmptyFailureAndNextParseSucceeds(int mode, string message)
     {
         var path = Path.GetTempFileName();
@@ -49,7 +50,7 @@ public partial class NativeCoverageTests
             try
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(pointer);
-                StringAssert.Contains(result.ErrorMessage, message);
+                Assert.AreEqual(message, result.ErrorMessage);
                 Assert.AreEqual(0UL, result.UsedRecords);
                 Assert.AreEqual(IntPtr.Zero, result.Entries);
                 Assert.AreEqual(IntPtr.Zero, result.EntryStrings);

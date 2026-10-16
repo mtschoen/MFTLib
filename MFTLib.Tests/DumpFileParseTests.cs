@@ -150,6 +150,7 @@ public partial class DumpFileParseTests
     [DataTestMethod]
     [DataRow(1024u)]
     [DataRow(4096u)]
+    [TestCategory("Smoke")]
     public void Parse_RecordSizes_RoundTrip(uint recordSize)
     {
         var tempPath = Path.GetTempFileName();

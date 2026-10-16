@@ -95,6 +95,7 @@ internal sealed class ProcessFixture : IDisposable
                 return Forward(Environment.GetEnvironmentVariable("MFTLIB_INIT_REAL_DOTNET")!, arguments);
             case "dotnet" when arguments.SequenceEqual(new[] { "--version" }):
                 Console.WriteLine("10.0.100"); return 0;
+            case "dotnet" when arguments.FirstOrDefault() == "test": return 0;
             case "dotnet" when arguments.FirstOrDefault() is "restore" or "build":
                 return Environment.GetEnvironmentVariable("MFTLIB_INIT_REQUIRED_FAILURE") == "1" ||
                     (arguments[0] == "build" && Environment.GetEnvironmentVariable("MFTLIB_INIT_BUILD_FAILURE") == "1") ? 17 : 0;
@@ -112,7 +113,6 @@ internal sealed class ProcessFixture : IDisposable
             case "g++" when arguments.SequenceEqual(new[] { "-dumpversion" }): Console.WriteLine("14"); return 0;
             case "cmake":
             case "MSBuild": return Environment.GetEnvironmentVariable("MFTLIB_INIT_BUILD_FAILURE") == "1" ? 17 : 0;
-            case "linux_smoke_test": return 0;
             default: throw new InvalidOperationException("Unexpected fake command: " + command);
         }
     }
@@ -190,7 +190,6 @@ internal sealed class ProcessFixture : IDisposable
         {
             foreach (var name in new[] { "bash", "dirname", "mkdir" })
                 File.CreateSymbolicLink(Path.Combine(Commands, name), FindHost(name));
-            InstallDouble(Path.Combine(Repository, "build/linux/test/linux_smoke_test"));
         }
     }
 

@@ -6,8 +6,7 @@
 #   coverage-report/summary.txt             -  native text summary
 #   coverage-report/managed/coverage.cobertura.xml   -  managed (coverlet) cobertura
 #
-# Flags:
-#   --no-managed   skip the dotnet test pass (native-only run)
+# The native line coverage comes from the managed suite: there is no native test program.
 #
 # Requires: cmake, ninja, g++ (with gcov), gcovr, dotnet 10 SDK.
 set -eu
@@ -18,13 +17,10 @@ BUILD_DIR="$ROOT/build/linux-coverage"
 REPORT_DIR="$ROOT/coverage-report"
 MANAGED_REPORT_DIR="$REPORT_DIR/managed"
 
-RUN_MANAGED=1
-for arg in "$@"; do
-    case "$arg" in
-        --no-managed) RUN_MANAGED=0 ;;
-        *) echo "unknown flag: $arg" >&2; exit 2 ;;
-    esac
-done
+if [ "$#" -gt 0 ]; then
+    echo "unknown flag: $1" >&2
+    exit 2
+fi
 
 GCOVR="${GCOVR:-gcovr}"
 if ! command -v "$GCOVR" >/dev/null 2>&1; then
@@ -36,12 +32,11 @@ if ! command -v "$GCOVR" >/dev/null 2>&1; then
     fi
 fi
 
-# --- Native build + smoke tests -----------------------------------------------
+# --- Native build ---------------------------------------------------------------
 
 echo "==> [native] configuring (Debug + coverage)"
 cmake -S "$ROOT/MFTLibNative" -B "$BUILD_DIR" -G Ninja \
     -DCMAKE_BUILD_TYPE=Debug \
-    -DBUILD_TESTING=ON \
     -DMFTLIB_ENABLE_COVERAGE=ON \
     >/dev/null
 
@@ -51,34 +46,30 @@ cmake --build "$BUILD_DIR"
 echo "==> [native] clearing previous gcda data"
 find "$BUILD_DIR" -name '*.gcda' -delete
 
-echo "==> [native] running smoke tests"
-LD_LIBRARY_PATH="$BUILD_DIR" "$BUILD_DIR/test/linux_smoke_test"
-
 mkdir -p "$REPORT_DIR"
 
 # --- Managed tests + coverlet -------------------------------------------------
 
-if [ "$RUN_MANAGED" -eq 1 ]; then
-    mkdir -p "$MANAGED_REPORT_DIR"
+mkdir -p "$MANAGED_REPORT_DIR"
 
-    # UsnJournalSyntheticTests is the only class left out on Linux: its subject is usn_journal.cpp, the
-    # Win32 DeviceIoControl, OVERLAPPED, event and CancelIoEx plumbing that is compiled only on Windows,
-    # so libMFTLibNative.so has neither the USN exports nor the USN test hooks it P/Invokes.
-    # Coverlet only writes output when the run is green, so failing tests must be filtered.
-    FILTER='FullyQualifiedName!~UsnJournalSyntheticTests'
+# UsnJournalSyntheticTests is the only class left out on Linux: its subject is usn_journal.cpp, the
+# Win32 DeviceIoControl, OVERLAPPED, event and CancelIoEx plumbing that is compiled only on Windows,
+# so libMFTLibNative.so has neither the USN exports nor the USN test hooks it P/Invokes.
+# Coverlet only writes output when the run is green, so failing tests must be filtered.
+FILTER='FullyQualifiedName!~UsnJournalSyntheticTests'
 
-    echo
-    echo "==> [managed] dotnet test with coverlet"
-    # vstest kills a testhost 100 ms after the run ends, which can cut coverlet's exit-time hit-file
-    # flush short and drop modules from the report; extend the grace period.
-    export VSTEST_TESTHOST_SHUTDOWN_TIMEOUT=120000
-    dotnet test "$ROOT/MFTLib.Tests/MFTLib.Tests.csproj" \
-        --filter "$FILTER" \
-        --logger "console;verbosity=minimal" \
-        /p:CollectCoverage=true \
-        /p:CoverletOutput="$MANAGED_REPORT_DIR/coverage.cobertura.xml" \
-        /p:CoverletOutputFormat=cobertura
-fi
+echo
+echo "==> [managed] dotnet test with coverlet"
+# vstest kills a testhost 100 ms after the run ends, which can cut coverlet's exit-time hit-file
+# flush short and drop modules from the report; extend the grace period.
+export VSTEST_TESTHOST_SHUTDOWN_TIMEOUT=120000
+dotnet test "$ROOT/MFTLib.Tests/MFTLib.Tests.csproj" \
+    -p:MFTLibNativeLinuxFlavor=Coverage \
+    --filter "$FILTER" \
+    --logger "console;verbosity=minimal" \
+    /p:CollectCoverage=true \
+    /p:CoverletOutput="$MANAGED_REPORT_DIR/coverage.cobertura.xml" \
+    /p:CoverletOutputFormat=cobertura
 
 # --- Native coverage report ---------------------------------------------------
 
@@ -88,8 +79,6 @@ GCOVR_ARGS=(
     -r "$ROOT/MFTLibNative"
     --object-directory "$BUILD_DIR"
     --filter "MFTLibNative/"
-    # linux_smoke_test is the standalone harness that drives the library, not library code.
-    --exclude '.*/test/linux_smoke_test(\.[^/]*)?\.cpp'
     --gcov-ignore-parse-errors=negative_hits.warn_once_per_file
 )
 
@@ -105,7 +94,7 @@ echo "==> [native] generating HTML report"
 
 # --- Managed coverage summary (parse cobertura XML) ---------------------------
 
-if [ "$RUN_MANAGED" -eq 1 ] && [ -f "$MANAGED_REPORT_DIR/coverage.cobertura.xml" ]; then
+if [ -f "$MANAGED_REPORT_DIR/coverage.cobertura.xml" ]; then
     echo
     echo "==> [managed] coverage summary"
     python3 - <<EOF
@@ -125,7 +114,5 @@ echo "==================================================================="
 echo "Reports:"
 echo "  Native HTML:       $REPORT_DIR/index.html"
 echo "  Native summary:    $REPORT_DIR/summary.txt"
-if [ "$RUN_MANAGED" -eq 1 ]; then
-    echo "  Managed cobertura: $MANAGED_REPORT_DIR/coverage.cobertura.xml"
-fi
+echo "  Managed cobertura: $MANAGED_REPORT_DIR/coverage.cobertura.xml"
 echo "==================================================================="

@@ -10,6 +10,7 @@ namespace MFTLib.Tests;
 public partial class DumpParseNativeTests
 {
     [TestMethod]
+    [TestCategory("Smoke")]
     public void Parse_FixtureRowsAndStrings_AreByteIdentical()
     {
         var path = Path.Combine(_directory, "fixture.mft");
@@ -35,6 +36,7 @@ public partial class DumpParseNativeTests
     }
 
     [TestMethod]
+    [TestCategory("Smoke")]
     public void GenerateSyntheticMFT_Output_IsByteIdentical()
     {
         var path = Path.Combine(_directory, "synthetic.mft");
