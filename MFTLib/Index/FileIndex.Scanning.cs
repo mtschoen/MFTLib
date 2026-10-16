@@ -380,6 +380,29 @@ public sealed partial class FileIndex
     }
 
     /// <summary>
+    ///     The slot and name-pool capacities for a scan: the estimated plan, grown to twice the
+    ///     drive's current block's capacities, each independently, when that block ran out. A
+    ///     rescan of a tree larger than the estimate therefore plans a larger block instead of
+    ///     repeating the exhausted one.
+    /// </summary>
+    (uint SlotCapacity, uint NamePoolCapacity) PlanCapacities(DriveKey driveLetter, uint estimatedRows)
+    {
+        var slotCapacity = BlockLayout.ComputeSlotCapacity(estimatedRows);
+        var namePoolCapacity = BlockLayout.ComputeNamePoolCapacity(EnumerationProducer.EstimateNamePoolBytes(estimatedRows));
+        lock (_stateLock)
+        {
+            if (TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal) &&
+                _driveBlocks[driveOrdinal].Block.Header is { IsCompactionNeeded: true } exhausted)
+            {
+                slotCapacity = Math.Max(slotCapacity, BlockLayout.DoubleCapacity(exhausted.SlotCapacity));
+                namePoolCapacity = Math.Max(namePoolCapacity, BlockLayout.DoubleCapacity(exhausted.NamePoolCapacity));
+            }
+        }
+
+        return (slotCapacity, namePoolCapacity);
+    }
+
+    /// <summary>
     ///     Creates a fresh block at <paramref name="blockPath" /> and runs the enumeration
     ///     producer to completion. If the producer throws for any reason, including
     ///     cancellation, the partially written block is disposed (deleting its file when
@@ -391,16 +414,16 @@ public sealed partial class FileIndex
     BlockScanResult CreateAndPopulateBlock(IndexedDrive drive, string blockPath, bool deleteOnClose,
         CancellationToken cancellationToken)
     {
-        var estimatedRows = EnumerationProducer.EstimateRowCount(drive.RootDirectory);
+        var (slotCapacity, namePoolCapacity) = PlanCapacities(drive.Drive,
+            EnumerationProducer.EstimateRowCount(drive.RootDirectory));
 
         BlockFile? block = BlockFile.Create(new BlockFileCreateOptions
         {
             Path = blockPath,
             VolumeSerial = drive.VolumeSerial,
             ProducerKind = ProducerKind.Enumeration,
-            SlotCapacity = BlockLayout.ComputeSlotCapacity(estimatedRows),
-            NamePoolCapacity =
-                BlockLayout.ComputeNamePoolCapacity(EnumerationProducer.EstimateNamePoolBytes(estimatedRows)),
+            SlotCapacity = slotCapacity,
+            NamePoolCapacity = namePoolCapacity,
             DeleteOnClose = deleteOnClose,
             Diagnostics = _options.Diagnostics,
             CacheTag = _options.CacheTag

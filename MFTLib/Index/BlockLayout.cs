@@ -73,6 +73,14 @@ internal static class BlockLayout
         return checked(estimatedRowCount + headroom);
     }
 
+    /// <summary>Doubles a capacity, clamped to half of <see cref="UInt32.MaxValue" /> so later headroom arithmetic cannot overflow.</summary>
+    /// <param name="capacity">The capacity to double.</param>
+    /// <returns>Twice <paramref name="capacity" />, or the clamp when that is larger.</returns>
+    internal static uint DoubleCapacity(uint capacity)
+    {
+        return (uint)Math.Min(capacity * 2UL, uint.MaxValue / 2);
+    }
+
     /// <summary>Computes name-pool capacity by adding the required headroom to an estimated byte count.</summary>
     /// <param name="estimatedNameBytes">Estimated UTF-16 name-pool size in bytes.</param>
     /// <returns>The estimate plus headroom of 25 percent of the estimate or <see cref="MinimumNamePoolHeadroomBytes" /> bytes, whichever is larger.</returns>

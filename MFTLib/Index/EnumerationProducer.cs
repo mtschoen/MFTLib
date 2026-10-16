@@ -38,9 +38,9 @@ internal sealed class EnumerationProducer
     EnumerationProducerOptions Options { get; }
 
     /// <summary>
-    ///     Samples the first two levels and extrapolates rather than paying for a full
-    ///     pre-count walk. Under-estimating is absorbed by the block's headroom, and true
-    ///     exhaustion sets the compaction-needed flag.
+    ///     Samples only the root's entries and counts one more root-sized level per root
+    ///     directory rather than paying for a full pre-count walk. Under-estimating is absorbed by
+    ///     the block's headroom; true exhaustion sets the compaction-needed flag.
     /// </summary>
     public static uint EstimateRowCount(string rootDirectory)
     {

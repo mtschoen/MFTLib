@@ -17,6 +17,13 @@ public class BlockLayoutTests
     }
 
     [TestMethod]
+    public void DoubleCapacity_DoublesAndClampsBelowTheOverflowOfLaterHeadroomArithmetic()
+    {
+        Assert.AreEqual(8192u, BlockLayout.DoubleCapacity(4096));
+        Assert.AreEqual(uint.MaxValue / 2, BlockLayout.DoubleCapacity(uint.MaxValue - 1));
+    }
+
+    [TestMethod]
     public void AlignUp_RoundsToNextPage()
     {
         Assert.AreEqual(0L, BlockLayout.AlignUp(0, BlockLayout.PageSize));

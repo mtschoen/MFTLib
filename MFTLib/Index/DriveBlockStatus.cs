@@ -40,7 +40,8 @@ public sealed record DriveBlockStatus
 
     /// <summary>
     ///     The block header's compaction flag: a mutation or a producer write could not fit, so
-    ///     the block is incomplete or stale and only a rescan repairs it.
+    ///     the block is incomplete or stale. The next rescan plans doubled capacities from this
+    ///     block, so repeated rescans converge.
     /// </summary>
     public bool IsCompactionNeeded { get; init; }
 

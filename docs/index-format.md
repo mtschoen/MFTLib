@@ -304,7 +304,8 @@ rows, whichever is larger, so journal creates land in place at their record
 number. Name pool capacity uses the same 25 percent ratio with a floor of one
 mebibyte (1048576 bytes). Exhausting either sets the compaction-needed flag; the
 producer or mutator keeps applying what fits and the drive remains Ready and queryable.
-The caller reads `DriveBlockStatus.IsCompactionNeeded` to offer a rescan. The flag
+A rescan of an exhausted enumeration block plans twice that block's capacity,
+so repeated rescans converge on a complete block. The caller reads `DriveBlockStatus.IsCompactionNeeded` to offer a rescan. The flag
 remains set until a successful rescan publishes a replacement block without it;
 failed or cancelled rescans retain the old block and its flag. Compaction is a rescan.
 
