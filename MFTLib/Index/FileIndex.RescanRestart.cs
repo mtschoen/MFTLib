@@ -159,7 +159,7 @@ public sealed partial class FileIndex
         }
 
         RestartRequestedForTest?.Invoke(runtime.Drive);
-        return StartWatchingCoreAsync(runtime, gateHeld: true, recovery, CancellationToken.None);
+        return StartWatchingWithGateHeldAsync(runtime, restart: true, recovery, CancellationToken.None);
     }
 
     /// <summary>

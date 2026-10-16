@@ -39,33 +39,24 @@ public sealed partial class FileIndex
         }
 
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return StartWatchingCoreAsync(GetDriveRuntime(driveLetter), gateHeld: false, recovery: null, cancellationToken);
+        return StartConsumerWatchingAsync(GetDriveRuntime(driveLetter), cancellationToken);
     }
 
     /// <summary>
-    ///     The start behind <see cref="StartWatchingAsync" />, and the restart a rescan or a
-    ///     recovery (<paramref name="recovery" />) runs while it already holds the drive's lifecycle
-    ///     gate (<paramref name="gateHeld" />), which this then never reacquires.
+    ///     The start behind <see cref="StartWatchingAsync" />: a fresh consumer request, run under the
+    ///     drive's lifecycle gate.
     /// </summary>
-    async Task StartWatchingCoreAsync(DriveRuntime runtime, bool gateHeld, RecoveryTicket? recovery,
-        CancellationToken cancellationToken)
+    async Task StartConsumerWatchingAsync(DriveRuntime runtime, CancellationToken cancellationToken)
     {
-        if (!gateHeld)
-        {
-            await runtime.LifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        }
-
+        await runtime.LifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await StartWatchingWithGateHeldAsync(runtime, restart: gateHeld, recovery, cancellationToken)
+            await StartWatchingWithGateHeldAsync(runtime, restart: false, recovery: null, cancellationToken)
                 .ConfigureAwait(false);
         }
         finally
         {
-            if (!gateHeld)
-            {
-                runtime.LifecycleGate.Release();
-            }
+            runtime.LifecycleGate.Release();
         }
     }
 

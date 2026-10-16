@@ -110,7 +110,10 @@
       its recovery is queued, to `Recovering`; both carry the fault. A finished recovery is
       `CatchingUp` when the restarted watch registers and `CaughtUp` when it catches up, so no
       consumer polls for it. Delivery uses `Deliver`, so the reentrancy rules below apply, and a
-      throwing handler is discarded without starving the others. A handler must not block waiting
+      throwing handler is discarded without starving the others. `WatchFaulted` delivery takes the
+      drive's separate `FaultDeliveryLock` with no other lock held, so one drive's fault callbacks
+      never overlap even after a recovery releases the lifecycle gate; a blocked fault handler
+      delays only that drive's next fault. A handler must not block waiting
       for another change of its drive. A start, rescan or recovery delivers while holding the
       drive's lifecycle gate. A consumer that also reads `Drives`, where state and version are
       read together, applies an event only when its version is newer than the last it applied

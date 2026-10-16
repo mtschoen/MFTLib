@@ -165,6 +165,12 @@ public sealed partial class FileIndex
         ///     the state lock, never under it or under a write gate.
         /// </summary>
         public Lock DeliveryLock { get; } = new();
+
+        /// <summary>
+        ///     Serializes delivery of this drive's <see cref="FileIndex.WatchFaulted" />, whichever thread
+        ///     raises it. Taken with no other lock held.
+        /// </summary>
+        public Lock FaultDeliveryLock { get; } = new();
     }
 
     /// <summary>

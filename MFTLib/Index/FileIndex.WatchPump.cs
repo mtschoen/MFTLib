@@ -258,12 +258,16 @@ public sealed partial class FileIndex
 
     void RaiseWatchFaulted(WatchFault fault)
     {
-        RaiseWatchStateChanged(GetDriveRuntime(fault.Drive));
+        var runtime = GetDriveRuntime(fault.Drive);
+        RaiseWatchStateChanged(runtime);
         try
         {
             if (WatchFaulted is { } subscribers)
             {
-                DeliverToEach(subscribers, fault);
+                lock (runtime.FaultDeliveryLock)
+                {
+                    DeliverToEach(subscribers, fault);
+                }
             }
         }
         catch (Exception exception)
