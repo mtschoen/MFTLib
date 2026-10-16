@@ -205,7 +205,7 @@ public partial class FileIndexPerDriveWatchTests
         await harness.Source.WatchFor('U').Publish(WatchHarness.Batch(10, "u.txt"));
 
         Assert.AreEqual(1, harness.Faults.Count);
-        Assert.AreEqual('T', ((DriveWatchFaultException)fault.Exception).Drive);
+        Assert.AreEqual('T', fault.Drive);
         Assert.AreEqual(WatchState.Recovering, harness.DriveFor('T').Watch.State);
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('U').Watch.State);
         Assert.IsNull(harness.DriveFor('U').Watch.FailureMessage);

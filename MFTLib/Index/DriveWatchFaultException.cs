@@ -3,26 +3,15 @@ using System.Diagnostics.CodeAnalysis;
 namespace MFTLib.Index;
 
 /// <summary>
-///     Thrown by <see cref="IIndexDriveWatch.ReadAsync" /> when the drive's own watch failed, as
-///     opposed to the channel carrying it being lost. <see cref="FileIndex" /> reports it as a
-///     <see cref="WatchFaultKind.Drive" /> fault on <see cref="Drive" />.
+///     Thrown by <see cref="IIndexDriveWatch.ReadAsync" /> when the drive's own watch failed,
+///     rather than its channel. <see cref="FileIndex" /> reports a
+///     <see cref="WatchFaultKind.Drive" /> fault for the runtime that owns the pump.
 /// </summary>
+/// <param name="message">Description of the failure.</param>
+/// <param name="innerException">Underlying failure, if one is available.</param>
 [SuppressMessage("Roslynator", "RCS1194",
-    Justification = "Every instance names the drive whose watch failed, which is how FileIndex attributes " +
-                    "the fault; the parameterless and message-only overloads the standard set would add " +
-                    "construct one that names no drive.")]
-internal sealed class DriveWatchFaultException : Exception
-{
-    /// <summary>Initializes a drive-specific watch fault.</summary>
-    /// <param name="driveLetter">Drive whose watch failed.</param>
-    /// <param name="message">Description of the failure.</param>
-    /// <param name="innerException">Underlying failure, if one is available.</param>
-    public DriveWatchFaultException(DriveKey driveLetter, string message, Exception? innerException = null)
-        : base(message, innerException)
-    {
-        Drive = driveLetter.Validated();
-    }
-
-    /// <summary>Gets the drive whose watch failed; the index attributes the fault to this drive.</summary>
-    public DriveKey Drive { get; }
-}
+    Justification = "This internal classification marker requires the source's failure message. " +
+                    "Its two creation sites use the message and optional inner exception; " +
+                    "additional standard constructors have no distinct caller.")]
+internal sealed class DriveWatchFaultException(string message, Exception? innerException = null)
+    : Exception(message, innerException);

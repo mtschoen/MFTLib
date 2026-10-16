@@ -33,7 +33,7 @@ public class BrokerIndexWatchSourceFaultTests
         runD.Fail(new IOException("journal wrapped"));
 
         var fault = await WatchReads.ThrowsNextAsync<DriveWatchFaultException>(readerD);
-        Assert.AreEqual('D', fault.Drive);
+        Assert.IsNull(fault.InnerException);
         Assert.AreEqual("journal wrapped", fault.Message);
         runC.Push(1, "c.txt", 110);
         var batch = await WatchReads.NextBatchAsync(readerC);
@@ -62,8 +62,8 @@ public class BrokerIndexWatchSourceFaultTests
         var faultC = await WatchReads.ThrowsNextAsync<DriveWatchFaultException>(readerC);
         var faultD = await WatchReads.ThrowsNextAsync<DriveWatchFaultException>(readerD);
 
-        Assert.AreEqual(('C', "C wrapped"), (faultC.Drive, faultC.Message));
-        Assert.AreEqual(('D', "D wrapped"), (faultD.Drive, faultD.Message));
+        Assert.AreEqual("C wrapped", faultC.Message);
+        Assert.AreEqual("D wrapped", faultD.Message);
     }
 
     [TestMethod]
@@ -125,7 +125,7 @@ public class BrokerIndexWatchSourceFaultTests
 
         var fault = await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
         Assert.IsInstanceOfType<DriveWatchFaultException>(fault.Exception);
-        Assert.AreEqual('T', ((DriveWatchFaultException)fault.Exception).Drive);
+        Assert.AreEqual('T', fault.Drive);
         Assert.AreEqual("journal wrapped", fault.Exception.Message);
         var appliedOnU = ChangeSignal.WhenApplied(index, "u.txt");
         runU.Push(10, "u.txt", 300);

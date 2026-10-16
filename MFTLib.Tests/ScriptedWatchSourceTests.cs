@@ -39,7 +39,6 @@ public class ScriptedWatchSourceTests
         Assert.AreSame(watch, source.WatchFor('T'));
         Assert.AreEqual(new UsnJournalCursor(9, 250), watch.StartCursor);
         Assert.AreEqual('t', watch.Drive);
-        Assert.AreEqual('t', watch.IndexWatch.Drive);
         Assert.IsFalse(watch.ReadStarted);
     }
 
@@ -586,7 +585,7 @@ public class ScriptedWatchSourceTests
     }
 
     [TestMethod]
-    public async Task FailDrive_MakesTheReadThrowADriveWatchFaultNamingTheDrive()
+    public async Task FailDrive_MakesTheReadThrowADriveWatchFaultPreservingTheCause()
     {
         var source = new ScriptedWatchSource();
         var watch = await StartAsync(source, Target('T'));
@@ -596,7 +595,7 @@ public class ScriptedWatchSourceTests
         watch.FailDrive(inner);
 
         var fault = await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(async () => await enumerator.MoveNextAsync());
-        Assert.AreEqual('T', fault.Drive);
+        Assert.AreEqual(inner.Message, fault.Message);
         Assert.AreSame(inner, fault.InnerException);
         Assert.IsFalse(await watch.ReadEnded.WaitAsync(HangGuard, Token));
     }

@@ -62,8 +62,8 @@ public class FileIndexWatchFaultTests
         await harness.Source.WatchFor('U').Publish(WatchHarness.Batch(10, "u.txt", nextUsn: 9000));
 
         Assert.AreEqual(1, harness.Faults.Count);
+        Assert.AreEqual('T', fault.Drive);
         var driveFault = (DriveWatchFaultException)fault.Exception;
-        Assert.AreEqual('T', driveFault.Drive);
         Assert.AreSame(wrapped, driveFault.InnerException);
         Assert.AreEqual("journal wrapped", harness.DriveFor('T').Watch.FailureMessage);
         Assert.AreEqual(DriveState.Ready, harness.DriveFor('T').State);

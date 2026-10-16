@@ -15,8 +15,6 @@ internal sealed class ScriptedWatchSourceAdapter(ScriptedWatchSource source) : I
 /// <summary>Presents a <see cref="ScriptedDriveWatch" /> to the index as an <see cref="IIndexDriveWatch" />.</summary>
 internal sealed class ScriptedDriveWatchAdapter(ScriptedDriveWatch watch) : IIndexDriveWatch
 {
-    public DriveKey Drive => watch.Drive;
-
     public IAsyncEnumerable<WatchStreamItem> ReadAsync(CancellationToken cancellationToken) =>
         watch.ReadAsync(cancellationToken);
 

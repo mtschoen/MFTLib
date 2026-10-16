@@ -41,7 +41,7 @@ internal sealed class BrokerWatchChannel(BrokerDriveChannel channel) : IIndexDri
                     break;
 
                 case BrokerFrameKind.Error:
-                    throw new DriveWatchFaultException(Drive, frame.RequireMessage());
+                    throw new DriveWatchFaultException(frame.RequireMessage());
 
                 default:
                     throw new BrokerChannelLostException(Drive.Letter,

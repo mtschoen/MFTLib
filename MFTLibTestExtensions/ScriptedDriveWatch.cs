@@ -31,7 +31,7 @@ public sealed class ScriptedDriveWatch
         Target = target;
     }
 
-    /// <summary>Identifies the watch the index requested, shared by its recorded start and generated faults.</summary>
+    /// <summary>Identifies the watch the index requested, used by recorded starts and diagnostic messages.</summary>
     public DriveKey Drive => Target.Drive;
 
     /// <summary>The journal position the index resumed this watch from: the cursor of the block it started on.</summary>
@@ -93,7 +93,7 @@ public sealed class ScriptedDriveWatch
     public void FailDrive(Exception exception)
     {
         ArgumentNullException.ThrowIfNull(exception);
-        var fault = new DriveWatchFaultException(Drive, exception.Message, exception);
+        var fault = new DriveWatchFaultException(exception.Message, exception);
         _completionFault = fault;
         _items.Writer.TryComplete(fault);
     }

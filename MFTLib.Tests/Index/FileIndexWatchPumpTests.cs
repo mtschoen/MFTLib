@@ -303,8 +303,6 @@ public class FileIndexWatchPumpTests
 
     sealed class ThrowingDisposalHandle(IIndexDriveWatch inner, Action disposing) : IIndexDriveWatch
     {
-        public DriveKey Drive => inner.Drive;
-
         public IAsyncEnumerable<WatchStreamItem> ReadAsync(CancellationToken cancellationToken) =>
             inner.ReadAsync(cancellationToken);
 

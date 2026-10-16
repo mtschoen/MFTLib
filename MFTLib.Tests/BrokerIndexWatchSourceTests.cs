@@ -29,8 +29,6 @@ public class BrokerIndexWatchSourceTests
         var runD = await harness.Watch('D').RunAsync(1);
         Assert.AreEqual(new UsnJournalCursor(7, 100), runC.Since);
         Assert.AreEqual(new UsnJournalCursor(7, 200), runD.Since);
-        Assert.AreEqual('C', handleC.Drive);
-        Assert.AreEqual('D', handleD.Drive);
         Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerC));
         Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerD));
         runC.Push(1, "c.txt", 110);
@@ -251,8 +249,6 @@ public class BrokerIndexWatchSourceTests
 
     sealed class HeldDisposalWatch(IIndexDriveWatch inner, TestGate teardown) : IIndexDriveWatch
     {
-        public DriveKey Drive => inner.Drive;
-
         public IAsyncEnumerable<WatchStreamItem> ReadAsync(CancellationToken cancellationToken) =>
             inner.ReadAsync(cancellationToken);
 

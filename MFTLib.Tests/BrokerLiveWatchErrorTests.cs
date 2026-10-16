@@ -31,7 +31,7 @@ public class BrokerLiveWatchErrorTests
 
         var fault = await WatchReads.ThrowsNextAsync<DriveWatchFaultException>(reader);
         Assert.AreEqual("journal wrapped", fault.Message);
-        Assert.AreEqual('C', fault.Drive);
+        Assert.IsNull(fault.InnerException);
     }
 
     [TestMethod]

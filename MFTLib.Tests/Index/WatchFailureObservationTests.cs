@@ -129,7 +129,7 @@ public class WatchFailureObservationTests
 
         var failure = await WatchDeduplicationTestSupport.ThrowsAsync<DriveWatchFaultException>(
             () => first.WaitAsync(HostChannelHarness.HangGuard));
-        Assert.AreEqual('T', failure.Drive);
+        Assert.IsNull(failure.InnerException);
         Assert.AreEqual(marker, failure.Message);
         return [new WeakReference(source)];
     }

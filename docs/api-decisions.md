@@ -668,3 +668,15 @@ index" message was false for a drive configured in `FileIndexOptions.Drives` but
 state the caller needs. Both git-wizard `Root` call sites can meet such a drive.
 
 **Revisit only if:** `Root` gains a non-throwing form for a drive without a block.
+
+## A drive watch's pump owns fault attribution
+
+**Decision:** `IIndexDriveWatch` supplies a read stream and asynchronous disposal; it carries no
+`Drive`. `FileIndex` attributes batches and faults to the `DriveRuntime` that started the pump, and
+`DriveWatchFaultException` carries only a message and optional inner exception to classify a
+`WatchFaultKind.Drive` fault. Consumers read `WatchFault.Drive`.
+
+**Reason:** the pump already owns the authoritative drive; repeating it on the handle and the marker
+exception informed nobody.
+
+**Revisit only if:** one watch stream can represent several independently owned drive runtimes.
