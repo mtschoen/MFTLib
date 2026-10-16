@@ -34,7 +34,9 @@ public partial class JournalBrokerHostRealSeamsTests
         Assert.AreEqual("file0.txt", NamePool.ReadRowName(writer.Block, 100).ToString());
         var catchUp = frames.Single(frame => frame.Kind == BrokerFrameKind.ScanCompleted);
         Assert.AreEqual(0, catchUp.Entries.Length);
-        Assert.AreEqual(5100L, catchUp.Cursor.NextUsn);
+        Assert.AreEqual(default(UsnJournalCursor), catchUp.Cursor);
+        Assert.AreEqual(cursor.JournalIdentifier, writer.Block.Header.UsnJournalIdentifier);
+        Assert.AreEqual(cursor.NextUsn, writer.Block.Header.UsnNextUsn);
     }
 
     [TestMethod]

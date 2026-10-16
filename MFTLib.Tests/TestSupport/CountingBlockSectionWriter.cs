@@ -17,6 +17,6 @@ internal sealed class CountingBlockSectionWriter : IBlockSectionWriter
             rows += batch.Count;
         }
 
-        return new BlockWriteResult(rows, 0, 0, false);
+        return new BlockWriteResult(rows, 0, 0);
     }
 }

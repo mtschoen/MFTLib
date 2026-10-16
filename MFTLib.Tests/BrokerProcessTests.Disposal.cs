@@ -140,7 +140,7 @@ public partial class BrokerProcessTests
         var frames = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteCursor(frames, Armed);
         BrokerProtocol.WriteScanReady(frames, 0);
-        BrokerProtocol.WriteScanCompleted(frames, new UsnJournalCursor(7, 1500));
+        BrokerProtocol.WriteScanCompleted(frames);
         await hostEnd.WriteAsync(frames.WrittenMemory).AsTask().WaitAsync(HangGuard);
         await hostEnd.FlushAsync().WaitAsync(HangGuard);
         await clientReads.WhenRead(frames.WrittenCount).WaitAsync(HangGuard);
@@ -149,7 +149,7 @@ public partial class BrokerProcessTests
 
         var result = await scan.WaitAsync(HangGuard);
         using var block = result.Block.Block;
-        Assert.AreEqual(new UsnJournalCursor(7, 1500), result.AdvancedCursor);
+        Assert.IsNull(result.CatchUpLoss);
         Assert.AreEqual(Armed, result.ArmedCursor);
     }
 
@@ -169,7 +169,7 @@ public partial class BrokerProcessTests
         var frames = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteCursor(frames, Armed);
         BrokerProtocol.WriteScanReady(frames, 0);
-        BrokerProtocol.WriteScanCompleted(frames, new UsnJournalCursor(7, 1500));
+        BrokerProtocol.WriteScanCompleted(frames);
         byte[] partialLengthPrefix = [10, 0];
         frames.Write(partialLengthPrefix);
         await hostEnd.WriteAsync(frames.WrittenMemory).AsTask().WaitAsync(HangGuard);

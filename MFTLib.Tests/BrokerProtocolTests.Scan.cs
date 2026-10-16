@@ -235,13 +235,12 @@ public partial class BrokerProtocolTests
     }
 
     [TestMethod]
-    public void ScanCompletedFrame_RoundTrips_AdvancedCursorAndCarriesNoEntries()
+    public void ScanCompletedFrame_RoundTrips_NoPayload()
     {
-        var cursor = new UsnJournalCursor(7UL, 1500L);
-        var frame = RoundTrip(writer => BrokerProtocol.WriteScanCompleted(writer, cursor));
+        var frame = RoundTrip(BrokerProtocol.WriteScanCompleted);
 
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frame.Kind);
-        Assert.AreEqual(cursor, frame.Cursor);
+        Assert.AreEqual(default(UsnJournalCursor), frame.Cursor);
         Assert.AreEqual(0, frame.Entries.Length);
     }
 
@@ -391,12 +390,10 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void WireBytes_Golden_ScanCompletedFrame()
     {
-        AssertWireBytes(w => BrokerProtocol.WriteScanCompleted(w, new UsnJournalCursor(1UL, 2L)),
+        AssertWireBytes(BrokerProtocol.WriteScanCompleted,
         [
-            0x11, 0x00, 0x00, 0x00, // totalLength = 17
-            0x12, // kind = ScanCompleted
-            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // journalIdentifier = 1
-            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // nextUsn = 2
+            0x01, 0x00, 0x00, 0x00, // totalLength = 1
+            0x12 // kind = ScanCompleted
         ]);
     }
 

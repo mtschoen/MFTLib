@@ -4,9 +4,8 @@ namespace MFTLib;
 /// <param name="RowCount">Sparse row extent, including unused slots below the highest written row.</param>
 /// <param name="NamePoolUsedBytes">Bytes occupied by names in the block.</param>
 /// <param name="SkippedRecordCount">Records without a usable name or a writable row.</param>
-/// <param name="CompactionNeeded">Whether the block header requests compaction.</param>
 internal readonly record struct BlockWriteResult(
-    long RowCount, long NamePoolUsedBytes, long SkippedRecordCount, bool CompactionNeeded);
+    long RowCount, long NamePoolUsedBytes, long SkippedRecordCount);
 
 /// <summary>Where one block write reports what it is doing.</summary>
 /// <param name="Progress">Receives per-batch transfer progress for the scan's progress frames; null reports none.</param>

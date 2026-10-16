@@ -42,8 +42,10 @@ public partial class JournalBrokerHostLivenessTests
     {
         var liveness = new Liveness();
         var reads = new List<int>();
+        var readCursors = new System.Collections.Concurrent.ConcurrentQueue<UsnJournalCursor>();
         var host = liveness.Host(readJournal: (_, since, maximumBufferReads) =>
         {
+            readCursors.Enqueue(since);
             reads.Add(maximumBufferReads);
             // Three chunks of one entry each, 100 USNs apart, then the tip.
             return since.NextUsn < Tip.NextUsn + 300
@@ -59,7 +61,14 @@ public partial class JournalBrokerHostLivenessTests
         var terminal = frames[^1];
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, terminal.Kind);
         Assert.AreEqual(0, terminal.Entries.Length, "The chunks the catch-up read stay on the host.");
-        Assert.AreEqual(Tip with { NextUsn = 1300 }, terminal.Cursor, "The terminal frame carries the cursor after every chunk.");
+        Assert.AreEqual(default(UsnJournalCursor), terminal.Cursor);
+        CollectionAssert.AreEqual(new[]
+        {
+            Tip,
+            Tip with { NextUsn = Tip.NextUsn + 100 },
+            Tip with { NextUsn = Tip.NextUsn + 200 },
+            Tip with { NextUsn = Tip.NextUsn + 300 }
+        }, readCursors.ToArray());
         CollectionAssert.AreEqual(Enumerable.Repeat(BrokerLiveness.CatchUpBufferReadsPerCall, 4).ToArray(),
             reads.ToArray(), "Each call is bounded; the fourth returns at the tip and ends catch-up.");
         Assert.AreEqual(3, liveness.Republishes(DriveTag('C', 1), "journal catch-up"),

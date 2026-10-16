@@ -143,7 +143,7 @@ public class BrokerProcessLivenessTests
         await using var session = new LivenessSession(clock);
         var scan = await session.StartScanAsync('C');
         await scan.SendAsync(writer => BrokerProtocol.WriteScanReady(writer, 0));
-        await scan.SendAsync(writer => BrokerProtocol.WriteScanCompleted(writer, new UsnJournalCursor(7, 1500)));
+        await scan.SendAsync(BrokerProtocol.WriteScanCompleted);
         await scan.SettledAsync();
         await session.ControlSettledAsync();
 
@@ -418,7 +418,7 @@ public class BrokerProcessLivenessTests
         public async Task FinishAsync()
         {
             await SendAsync(writer => BrokerProtocol.WriteScanReady(writer, 0));
-            await SendAsync(writer => BrokerProtocol.WriteScanCompleted(writer, new UsnJournalCursor(7, 1500)));
+            await SendAsync(BrokerProtocol.WriteScanCompleted);
             await hostPipe.DisposeAsync().AsTask().WaitAsync(HangGuard);
         }
     }

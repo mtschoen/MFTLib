@@ -75,29 +75,29 @@ Any use after disposal throws `ObjectDisposedException`.
 The producer queries MFT sizing, creates the client-owned block section and opens
 a scan channel. The host captures the journal cursor, scans MFT records into the
 shared block, completes and flushes it, then reads the journal from the armed cursor
-to the tip in bounded chunks, retaining none of those entries. It returns either
-the advanced cursor or a proven catch-up loss. [Checkpoint loss](checkpoint-loss.md)
+to the tip in bounded chunks, retaining none of those entries. It reports successful
+catch-up or a proven catch-up loss. [Checkpoint loss](checkpoint-loss.md)
 defines proof and recovery; [scan sizing](broker-scan-tuning.md#sizing-the-block)
 defines the volume query and capacity planning.
 
-The internal scan result carries the block, armed cursor and advanced cursor.
-`DriveStatus` exposes neither cursor, only the block's row and skipped counts and,
-after proven loss, `DriveWatchStatus.CheckpointLoss`. A successful result contains
-both cursors; proven loss still returns the completed block with `CatchUpLoss` set
-and `AdvancedCursor` null. `BlockScanOutcome` carries the block and skipped record
-count; row count and name-pool size are in the header.
+The internal scan result carries the block, armed cursor and optional `CatchUpLoss`.
+`DriveStatus` exposes the block's row and skipped counts and, after proven loss,
+`DriveWatchStatus.CheckpointLoss`. Proven loss still returns the completed block.
+`BlockScanOutcome` carries the block and skipped record count; row count and
+name-pool size are in the header. The section writer returns row count, name-pool
+usage and skipped record count; compaction state is read from the block header.
 
-Catch-up entries do not cross the pipe. The `FileIndex` adapter keeps the armed
-cursor, discards the advanced cursor and propagates proven `CatchUpLoss`. It watches
-from the cursor armed before scanning so the watch replays the scan window and
-anything after it, provided those entries are still retained when watching starts.
-A loss after scanning is reported by the watch.
+The `FileIndex` adapter keeps the armed cursor and propagates proven `CatchUpLoss`.
+It watches from the cursor armed before scanning so the watch replays the scan
+window and anything after it, provided those entries are still retained when
+watching starts. A loss after scanning is reported by the watch.
 
 Frames are `Cursor`, zero or more `ScanProgress`, `ScanReady` (skipped record count),
-then one terminal frame: `ScanCompleted` with the advanced cursor or `CatchUpLost`
-with the journal facts of proven loss. `Error` replaces any of them, including an
-unproven catch-up failure. `BrokerMftBlockProducer` disposes a block that fails
-validation and fails its scan; a validated block transfers to the index.
+then one terminal frame: payload-free `ScanCompleted` for successful catch-up or
+`CatchUpLost` with the journal facts of proven loss. Catch-up entries stay on the
+host. `Error` replaces any of these frames, including an unproven catch-up failure.
+`BrokerMftBlockProducer` disposes a block that fails validation and fails its scan;
+a validated block transfers to the index.
 
 The frame length limit is 16 MiB, checked before sending and before allocating a
 received frame. A native-source watch `JournalBatch` is one 64 KiB journal read;

@@ -168,9 +168,9 @@ internal static partial class BrokerProtocol
         new PayloadWriter().WriteTo(writer, BrokerFrameKind.CaughtUp);
     }
 
-    // payload: [journalIdentifier u64][nextUsn i64]
-    public static void WriteScanCompleted(IBufferWriter<byte> writer, UsnJournalCursor advanced)
+    // No payload: successful completion of scan catch-up.
+    public static void WriteScanCompleted(IBufferWriter<byte> writer)
     {
-        new PayloadWriter().Cursor(advanced).WriteTo(writer, BrokerFrameKind.ScanCompleted);
+        new PayloadWriter().WriteTo(writer, BrokerFrameKind.ScanCompleted);
     }
 }

@@ -132,7 +132,7 @@ public partial class JournalBrokerHostTests
     }
 
     [TestMethod]
-    public async Task ArmAndScan_WithDiagnostics_CompletesWithTheAdvancedCursorAndShipsNoEntries()
+    public async Task ArmAndScan_WithDiagnostics_CompletesWithoutPayload()
     {
         EnableDiagFilterSeams();
         try
@@ -149,7 +149,7 @@ public partial class JournalBrokerHostTests
 
             Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.JournalBatch));
             var completed = frames.Single(frame => frame.Kind == BrokerFrameKind.ScanCompleted);
-            Assert.AreEqual(new UsnJournalCursor(7UL, 2L), completed.Cursor);
+            Assert.AreEqual(default(UsnJournalCursor), completed.Cursor);
             Assert.AreEqual(0, completed.Entries.Length);
         }
         finally

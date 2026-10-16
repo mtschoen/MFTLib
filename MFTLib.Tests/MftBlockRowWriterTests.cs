@@ -41,7 +41,7 @@ public class MftBlockRowWriterTests
         Assert.AreEqual(block.Header.RowCount, result.RowCount);
         Assert.AreEqual(block.Header.NamePoolUsed, result.NamePoolUsedBytes);
         Assert.AreEqual(0L, result.SkippedRecordCount);
-        Assert.IsFalse(result.CompactionNeeded);
+        Assert.IsFalse(block.Header.IsCompactionNeeded);
         Assert.IsFalse(block.Header.IsComplete);
     }
 
@@ -67,7 +67,6 @@ public class MftBlockRowWriterTests
         Assert.AreEqual(1L, result.SkippedRecordCount);
         Assert.AreEqual(32L, result.RowCount);
         Assert.AreEqual(8L, result.NamePoolUsedBytes);
-        Assert.IsTrue(result.CompactionNeeded);
         Assert.IsTrue(block.Header.IsCompactionNeeded);
     }
 
@@ -84,7 +83,7 @@ public class MftBlockRowWriterTests
         Assert.AreEqual(8L, result.NamePoolUsedBytes);
         Assert.AreEqual(RowFlags.None, block.Rows[0].Flags);
         Assert.AreEqual(RowFlags.None, block.Rows[6].Flags);
-        Assert.IsFalse(result.CompactionNeeded);
+        Assert.IsFalse(block.Header.IsCompactionNeeded);
     }
 
     [TestMethod]
@@ -115,7 +114,7 @@ public class MftBlockRowWriterTests
         Assert.AreEqual(8L, result.NamePoolUsedBytes);
         Assert.AreEqual(RowFlags.None, block.Rows[6].Flags);
         Assert.AreEqual("z", NamePool.ReadRowName(block, 7).ToString());
-        Assert.IsTrue(result.CompactionNeeded);
+        Assert.IsTrue(block.Header.IsCompactionNeeded);
     }
 
     [TestMethod]
@@ -188,7 +187,8 @@ public class MftBlockRowWriterTests
 
         var result = MftBlockRowWriter.WriteBatches(writer, [], MftBlockRowFilter.Full, null, CancellationToken.None);
 
-        Assert.AreEqual(new BlockWriteResult(6, 2, 0, true), result);
+        Assert.AreEqual(new BlockWriteResult(6, 2, 0), result);
+        Assert.IsTrue(block.Header.IsCompactionNeeded);
     }
 
     [TestMethod]

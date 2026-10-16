@@ -85,8 +85,8 @@ internal sealed partial class BrokerProcess
         var terminal = await collector.ReadTerminalAsync(cancellationToken).ConfigureAwait(false);
         var outcome = new BlockScanOutcome(block, ready.SkippedRecordCount);
         return terminal.Kind == BrokerFrameKind.ScanCompleted
-            ? new BrokerDriveScanResult(letter, armed, terminal.Cursor, null, outcome)
-            : new BrokerDriveScanResult(letter, armed, null, terminal.RequireCatchUpLoss(letter), outcome);
+            ? new BrokerDriveScanResult(letter, armed, null, outcome)
+            : new BrokerDriveScanResult(letter, armed, terminal.RequireCatchUpLoss(letter), outcome);
     }
 
     // The flag is set before Dispose runs, so a lifetime whose Dispose throws is not disposed a second time.

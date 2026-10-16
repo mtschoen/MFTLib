@@ -116,8 +116,7 @@ public class BrokerMftBlockProducerProtocolTests : BrokerBlockTestBase
 
             if (fault == "MissingReady")
             {
-                await HostChannelHarness.WriteFrameAsync(pipe,
-                    writer => BrokerProtocol.WriteScanCompleted(writer, ArmedCursor));
+                await HostChannelHarness.WriteFrameAsync(pipe, BrokerProtocol.WriteScanCompleted);
             }
             else
             {
@@ -163,6 +162,6 @@ public class BrokerMftBlockProducerProtocolTests : BrokerBlockTestBase
         broker.WriteSection(sectionName, ArmedCursor);
         await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, ArmedCursor));
         await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, skippedRecordCount));
-        await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanCompleted(writer, ArmedCursor));
+        await HostChannelHarness.WriteFrameAsync(pipe, BrokerProtocol.WriteScanCompleted);
     }
 }

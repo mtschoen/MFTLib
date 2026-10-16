@@ -26,7 +26,7 @@ public partial class JournalBrokerHostTests
         Assert.AreEqual(1, frames.Count(f => f.Kind == BrokerFrameKind.ScanReady));
         var completed = frames.Single(f => f.Kind == BrokerFrameKind.ScanCompleted);
         Assert.AreEqual(101u, blockWriter.Block.Header.RowCount);
-        Assert.AreEqual(ScanArmedCursor.NextUsn + 1, completed.Cursor.NextUsn);
+        Assert.AreEqual(default(UsnJournalCursor), completed.Cursor);
         Assert.AreEqual(0, completed.Entries.Length, "Catch-up entries stay on the host.");
         Assert.AreEqual(1, InUseRowCount(blockWriter));
         Assert.AreEqual("mftlib-scan-C", blockWriter.LastSectionName);

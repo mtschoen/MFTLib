@@ -14,7 +14,7 @@ public partial class BrokerProcessTests
     static readonly JournalWindow RetainedWindow = new(7, 500, 9000, 4096, 32768);
 
     [TestMethod]
-    public async Task ScanDrive_ReturnsArmedAndAdvancedCursorsAndBlock()
+    public async Task ScanDrive_ReturnsArmedCursorAndBlockAfterCatchUp()
     {
         var advanced = new UsnJournalCursor(7, 1500);
         await using var broker = new InProcessBroker(CreateHost(
@@ -28,7 +28,8 @@ public partial class BrokerProcessTests
         var (_, sectionBlock, lifetime) = broker.Sections.Single();
         Assert.AreEqual('C', result.DriveLetter);
         Assert.AreEqual(Armed, result.ArmedCursor);
-        Assert.AreEqual(advanced, result.AdvancedCursor);
+        Assert.AreEqual(Armed.NextUsn, block.Header.UsnNextUsn);
+        Assert.AreNotEqual(advanced.NextUsn, block.Header.UsnNextUsn);
         Assert.IsNull(result.CatchUpLoss);
         Assert.AreSame(sectionBlock, block);
         Assert.IsTrue(block.Header.RowCount > 0);
@@ -107,7 +108,6 @@ public partial class BrokerProcessTests
         using var block = result.Block.Block;
 
         Assert.AreEqual(Armed, result.ArmedCursor);
-        Assert.IsNull(result.AdvancedCursor);
         var loss = result.CatchUpLoss;
         Assert.IsNotNull(loss);
         Assert.AreEqual('C', loss.Drive);
@@ -155,8 +155,7 @@ public partial class BrokerProcessTests
             pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, 0)),
             pipe => HostChannelHarness.WriteFrameAsync(pipe,
                 writer => BrokerProtocol.WriteCatchUpLost(writer, TrimmedLoss())),
-            pipe => HostChannelHarness.WriteFrameAsync(pipe,
-                writer => BrokerProtocol.WriteScanCompleted(writer, Armed)));
+            pipe => HostChannelHarness.WriteFrameAsync(pipe, BrokerProtocol.WriteScanCompleted));
 
         Assert.AreEqual('C', lost.Drive);
         StringAssert.Contains(lost.Message, "ScanCompleted");
@@ -184,8 +183,7 @@ public partial class BrokerProcessTests
         var lost = await ScanScriptedAsync(
             pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, Armed)),
             pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, 0)),
-            pipe => HostChannelHarness.WriteFrameAsync(pipe,
-                writer => BrokerProtocol.WriteScanCompleted(writer, Armed)),
+            pipe => HostChannelHarness.WriteFrameAsync(pipe, BrokerProtocol.WriteScanCompleted),
             pipe => WriteRawAsync(pipe, [10, 0, 0, 0, (byte)BrokerFrameKind.Heartbeat]));
 
         Assert.AreEqual('C', lost.Drive);
@@ -198,8 +196,7 @@ public partial class BrokerProcessTests
         var lost = await ScanScriptedAsync(
             pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, Armed)),
             pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, 0)),
-            pipe => HostChannelHarness.WriteFrameAsync(pipe,
-                writer => BrokerProtocol.WriteScanCompleted(writer, Armed)),
+            pipe => HostChannelHarness.WriteFrameAsync(pipe, BrokerProtocol.WriteScanCompleted),
             pipe => WriteRawAsync(pipe, [0, 0, 0, 0]));
 
         Assert.AreEqual('C', lost.Drive);

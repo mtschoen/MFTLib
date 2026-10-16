@@ -109,7 +109,7 @@ internal static partial class BrokerProtocol
             BrokerFrameKind.JournalBatch => ReadJournalBatchFrame(ref payload),
             BrokerFrameKind.StartWatch => BrokerFrame.StartWatch(ReadCursor(ref payload)),
             BrokerFrameKind.CaughtUp => BrokerFrame.CaughtUp(),
-            BrokerFrameKind.ScanCompleted => BrokerFrame.ScanCompleted(ReadCursor(ref payload)),
+            BrokerFrameKind.ScanCompleted => BrokerFrame.ScanCompleted(),
             _ => throw new InvalidDataException($"Unknown frame kind: {kind}")
         };
     }

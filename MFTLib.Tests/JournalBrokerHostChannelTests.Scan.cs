@@ -42,7 +42,7 @@ public partial class JournalBrokerHostChannelTests
         Assert.AreEqual(sectionWriter.Block.Header.NamePoolUsed, finalProgress.BytesProcessed);
         Assert.AreEqual(0L, frames[^2].SkippedRecordCount);
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
-        Assert.AreEqual(1500L, frames[^1].Cursor.NextUsn);
+        Assert.AreEqual(default(UsnJournalCursor), frames[^1].Cursor);
         Assert.AreEqual(0, frames[^1].Entries.Length, "Catch-up entries stay on the host.");
         Assert.AreEqual(Armed, caughtUpFrom);
         Assert.AreEqual("section-C", sectionWriter.LastSectionName);

@@ -11,7 +11,7 @@ internal sealed partial class JournalBrokerHost
     const string CatchUpStep = "journal catch-up";
 
     // Frames, in order: Cursor, ScanProgress*, ScanReady, then one terminal frame - ScanCompleted
-    // with the advanced cursor when catch-up held, or CatchUpLost when it failed and the live
+    // with no payload when catch-up held, or CatchUpLost when it failed and the live
     // journal proves the armed cursor lost - or Error at any point. A cancelled scan (its pipe closed, or the session
     // ended) writes nothing more. The pipe publishes Queued while admission waits, WaitingOnVolume
     // around the cursor's volume open, and Processing per record batch, per flushed block range
@@ -217,10 +217,9 @@ internal sealed partial class JournalBrokerHost
             writer => BrokerProtocol.WriteScanReady(writer, output.WriteResult.SkippedRecordCount),
             cancellationToken).ConfigureAwait(false);
 
-        UsnJournalCursor advanced;
         try
         {
-            advanced = CatchUp(channel, output.Cursor, readJournal, cancellationToken);
+            CatchUp(channel, output.Cursor, readJournal, cancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -230,18 +229,15 @@ internal sealed partial class JournalBrokerHost
         }
 
         await channel.Pipe.WriteFrameAsync(
-            writer => BrokerProtocol.WriteScanCompleted(writer, advanced),
+            BrokerProtocol.WriteScanCompleted,
             cancellationToken).ConfigureAwait(false);
     }
 
-    // Reads the journal from the armed cursor in calls of at most CatchUpBufferReadsPerCall
-    // buffers, republishing the catch-up step after each call that advanced the cursor, until a
-    // call returns without advancing it and without entries. The entries are not kept: the live
-    // watch from the armed cursor delivers them, and the returned cursor is where this read
-    // finished. A call that throws, or
-    // that returns entries without advancing, ends catch-up: it is not retried, and the caller's
-    // journal check decides between CatchUpLost and Error.
-    static UsnJournalCursor CatchUp(DriveChannel channel, UsnJournalCursor armed,
+    // Reads from the armed cursor in calls of at most CatchUpBufferReadsPerCall buffers,
+    // republishing progress after each advancing call, until an empty read at the tip.
+    // The live watch replays these entries from the armed cursor. A throwing read or
+    // entries without advancement ends catch-up; the caller classifies the journal loss.
+    static void CatchUp(DriveChannel channel, UsnJournalCursor armed,
         UsnJournalCatchUpSource readJournal, CancellationToken cancellationToken)
     {
         channel.Pipe.Processing(CatchUpStep);
@@ -252,11 +248,13 @@ internal sealed partial class JournalBrokerHost
             var (chunk, updated) = readJournal(channel.Drive, cursor, BrokerLiveness.CatchUpBufferReadsPerCall);
             if (updated == cursor)
             {
-                // A read at the tip returns nothing; entries here would repeat ones already read.
-                return chunk.Length == 0
-                    ? cursor
-                    : throw new InvalidOperationException(FormattableString.Invariant(
+                if (chunk.Length != 0)
+                {
+                    throw new InvalidOperationException(FormattableString.Invariant(
                         $"Drive {channel.Drive} catch-up read returned {chunk.Length} entries without advancing its cursor {cursor.JournalIdentifier}:{cursor.NextUsn}."));
+                }
+
+                return;
             }
 
             cursor = updated;

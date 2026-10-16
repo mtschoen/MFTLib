@@ -53,7 +53,7 @@ public class JournalBrokerHostBlockScanTests
         Assert.AreEqual(ArmedCursor.NextUsn, blockWriter.Block.Header.UsnNextUsn);
         Assert.AreEqual("file.txt", NamePool.ReadRowName(blockWriter.Block, 20).ToString());
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
-        Assert.AreEqual(12500L, frames[^1].Cursor.NextUsn);
+        Assert.AreEqual(default(UsnJournalCursor), frames[^1].Cursor);
         Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Error));
     }
 

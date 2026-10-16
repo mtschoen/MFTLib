@@ -290,7 +290,7 @@ public partial class BrokerProcessTests
 
         Assert.AreEqual('C', result.DriveLetter);
         Assert.AreEqual(Armed, result.ArmedCursor);
-        Assert.AreEqual(Armed, result.AdvancedCursor, "A null ReadJournal answers nothing new from every cursor.");
+        Assert.IsNull(result.CatchUpLoss);
         Assert.IsTrue(result.Block.Block.Header.RowCount > 0);
         var scan = singleHandle.Scans.Single();
         Assert.AreEqual('C', scan.Drive);
@@ -390,10 +390,15 @@ public partial class BrokerProcessTests
     [TestMethod]
     public async Task ScriptedVolumes_ReadJournalAndGrowAreServed()
     {
+        var readCursors = new System.Collections.Concurrent.ConcurrentQueue<SyntheticJournalCursor>();
         var advanced = new SyntheticJournalCursor(7, 1500);
         var volumes = ScriptedVolumes(_ => [[SyntheticRecord(5, ".", 3)]]) with
         {
-            ReadJournal = (_, since, _) => since == advanced ? ([], since) : ([], advanced),
+            ReadJournal = (_, since, _) =>
+            {
+                readCursors.Enqueue(since);
+                return since == advanced ? ([], since) : ([], advanced);
+            },
             GrowUsnJournal = (_, target) => target
         };
         await using var handle = BrokerTestHarness.StartInProcess(volumes);
@@ -403,7 +408,9 @@ public partial class BrokerProcessTests
         var settings = await handle.Process.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None)
             .WaitAsync(HangGuard);
 
-        Assert.AreEqual(advanced.ToProduction(), scan.AdvancedCursor);
+        CollectionAssert.AreEqual(new[] { ArmedSynthetic, advanced }, readCursors.ToArray());
+        Assert.AreEqual(Armed, scan.ArmedCursor);
+        Assert.IsNull(scan.CatchUpLoss);
         Assert.AreEqual(0x08000000L, settings.MaximumSize);
         Assert.AreEqual(0x01000000L, settings.AllocationDelta);
     }

@@ -11,9 +11,7 @@ public partial class BrokerProcessTests
     public async Task ScanDriveAsync_ScanReady_ReleasesThatDrivesSectionWhileAnUnreadDriveStaysLive()
     {
         var armedC = new UsnJournalCursor(7, 100);
-        var advancedC = new UsnJournalCursor(7, 110);
         var armedD = new UsnJournalCursor(8, 200);
-        var advancedD = new UsnJournalCursor(8, 210);
         await using var broker = new ScriptedBroker();
 
         var scanC = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(), CancellationToken.None);
@@ -35,7 +33,7 @@ public partial class BrokerProcessTests
         Assert.AreEqual(0, sectionD.Lifetime.DisposeCount, "Drive D's section must stay live while its scan is unread");
         Assert.IsFalse(scanC.IsCompleted);
 
-        await HostChannelHarness.WriteFrameAsync(channelC, writer => BrokerProtocol.WriteScanCompleted(writer, advancedC));
+        await HostChannelHarness.WriteFrameAsync(channelC, BrokerProtocol.WriteScanCompleted);
         await channelC.DisposeAsync();
         var resultC = await scanC.WaitAsync(HangGuard);
         Assert.AreEqual(0, sectionD.Lifetime.DisposeCount, "Drive C completing must not release drive D's section");
@@ -43,7 +41,7 @@ public partial class BrokerProcessTests
         broker.WriteSection(sectionD.SectionName, armedD);
         await HostChannelHarness.WriteFrameAsync(channelD, writer => BrokerProtocol.WriteCursor(writer, armedD));
         await HostChannelHarness.WriteFrameAsync(channelD, writer => BrokerProtocol.WriteScanReady(writer, 0));
-        await HostChannelHarness.WriteFrameAsync(channelD, writer => BrokerProtocol.WriteScanCompleted(writer, advancedD));
+        await HostChannelHarness.WriteFrameAsync(channelD, BrokerProtocol.WriteScanCompleted);
         await channelD.DisposeAsync();
         var resultD = await scanD.WaitAsync(HangGuard);
         using var blockC = resultC.Block.Block;
@@ -52,9 +50,9 @@ public partial class BrokerProcessTests
         Assert.AreEqual(1, sectionC.Lifetime.DisposeCount);
         Assert.AreEqual(1, sectionD.Lifetime.DisposeCount);
         Assert.AreEqual(armedC, resultC.ArmedCursor);
-        Assert.AreEqual(advancedC, resultC.AdvancedCursor);
+        Assert.IsNull(resultC.CatchUpLoss);
         Assert.AreEqual(armedD, resultD.ArmedCursor);
-        Assert.AreEqual(advancedD, resultD.AdvancedCursor);
+        Assert.IsNull(resultD.CatchUpLoss);
         Assert.AreSame(sectionC.Block, blockC);
         Assert.AreSame(sectionD.Block, blockD);
     }
@@ -111,7 +109,7 @@ public partial class BrokerProcessTests
                 Elapsed = TimeSpan.FromMilliseconds(100)
             }));
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanReady(writer, 0));
-        await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanCompleted(writer, Armed));
+        await HostChannelHarness.WriteFrameAsync(channel, BrokerProtocol.WriteScanCompleted);
         await channel.DisposeAsync();
         var result = await scan.WaitAsync(HangGuard);
         result.Block.Block.Dispose();
@@ -161,10 +159,9 @@ public partial class BrokerProcessTests
         Assert.IsFalse(scan.IsCompleted, "a ScanProgress frame must not complete the drive");
         Assert.AreEqual(0, section.Lifetime.DisposeCount, "the section is released by ScanReady, not by progress");
 
-        var advanced = new UsnJournalCursor(7, 1200);
         broker.WriteSection(section.SectionName, Armed);
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanReady(writer, 0));
-        await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanCompleted(writer, advanced));
+        await HostChannelHarness.WriteFrameAsync(channel, BrokerProtocol.WriteScanCompleted);
         await channel.DisposeAsync();
         var result = await scan.WaitAsync(HangGuard);
         result.Block.Block.Dispose();
@@ -172,7 +169,7 @@ public partial class BrokerProcessTests
         Assert.AreEqual(1, reports.Count);
         Assert.AreEqual(10, reports[0].RecordsProcessed);
         Assert.AreEqual(Armed, result.ArmedCursor);
-        Assert.AreEqual(advanced, result.AdvancedCursor);
+        Assert.IsNull(result.CatchUpLoss);
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
     }
 

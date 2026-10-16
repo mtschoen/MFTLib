@@ -225,10 +225,10 @@ internal readonly record struct BrokerFrame
         return Empty(BrokerFrameKind.CaughtUp, 0);
     }
 
-    // The cursor a scan's catch-up advanced to from the armed one; the entries it read stay on the host.
-    public static BrokerFrame ScanCompleted(UsnJournalCursor advanced)
+    // The scan's bounded journal catch-up completed successfully.
+    public static BrokerFrame ScanCompleted()
     {
-        return Empty(BrokerFrameKind.ScanCompleted, 0) with { Cursor = advanced };
+        return Empty(BrokerFrameKind.ScanCompleted, 0);
     }
 
     static BrokerFrame Empty(BrokerFrameKind kind, uint requestId)
