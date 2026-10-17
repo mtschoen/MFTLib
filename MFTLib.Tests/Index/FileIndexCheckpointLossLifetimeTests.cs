@@ -64,7 +64,7 @@ public sealed class FileIndexCheckpointLossLifetimeTests : IDisposable
         Assert.AreEqual('T', failed.Watch.CheckpointLoss.Drive);
 
         var settled = index.Drives.Single(drive => drive.Drive == 'U');
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, settled.Block!.Source);
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, settled.Block!.Origin);
         Assert.IsNull(settled.Watch.CheckpointLoss,
             "a drive that reused the failed drive's ordinal must not inherit its report");
     }
@@ -89,7 +89,7 @@ public sealed class FileIndexCheckpointLossLifetimeTests : IDisposable
 
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, status.Block!.Source);
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, status.Block!.Origin);
         Assert.IsNull(status.Failure);
 
         var loss = status.Watch.CheckpointLoss;
@@ -133,7 +133,7 @@ public sealed class FileIndexCheckpointLossLifetimeTests : IDisposable
             _fixture.Options(cacheMode: CacheMode.ExistingOnly, drives: [drive]), CancellationToken.None);
 
         var status = index.Drives.Single();
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, status.Block!.Source);
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, status.Block!.Origin);
         Assert.IsNull(status.Failure);
         Assert.IsNull(status.Watch.CheckpointLoss);
     }

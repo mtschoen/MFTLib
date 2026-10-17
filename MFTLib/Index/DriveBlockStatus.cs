@@ -11,20 +11,20 @@ public sealed record DriveBlockStatus
     }
 
     /// <summary>
-    ///     Where the block behind this status came from. Reads <see cref="BlockSource.ProducedByScan" /> after a successful
+    ///     Where the block behind this status came from. Reads <see cref="BlockOrigin.ProducedByScan" /> after a successful
     ///     rescan, because that rescan is what produced the current block.
     /// </summary>
-    public BlockSource Source { get; init; }
+    public BlockOrigin Origin { get; init; }
 
     /// <summary>
-    ///     The current block's cache-slot backing, captured with this status. Read
+    ///     The current block's cache location, captured with this status. Read
     ///     <see cref="FileIndex.Drives" /> again after a rescan for an updated value.
-    ///     Null when the block is not backed by a cache slot, as under <see cref="CacheMode.Disabled" />.
-    ///     This does not identify another owner or promise that a private block's slot
-    ///     is still held elsewhere. <see cref="Source" /> independently describes
+    ///     Null when the block is not backed by a cache location, as under <see cref="CacheMode.Disabled" />.
+    ///     This does not identify another owner or promise that a private block's location
+    ///     is still held elsewhere. <see cref="Origin" /> independently describes
     ///     how the current block was obtained.
     /// </summary>
-    public CacheSlotState? CacheSlot { get; init; }
+    public CacheLocation? CacheLocation { get; init; }
 
     /// <summary>
     ///     Rows that are in use and not tombstoned: the rows a query can return.

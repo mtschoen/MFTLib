@@ -92,7 +92,7 @@ public partial class FileIndexResilienceTests
             await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
             var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
-            Assert.AreEqual(BlockSource.ProducedByScan, index.Drives[0].Block!.Source);
+            Assert.AreEqual(BlockOrigin.ProducedByScan, index.Drives[0].Block!.Origin);
             var line = deletions.SingleOrDefault(entry => entry.Contains(blockPath));
             Assert.IsNotNull(line, "the wrong-root discard must be logged with its path");
             StringAssert.Contains(line, nameof(BlockValidationResult.WrongRootDirectory));

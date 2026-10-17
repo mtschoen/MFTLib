@@ -192,7 +192,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
             Assert.AreEqual(1, scanCalls);
             var initialDrive = initialIndex.Drives.Single();
             Assert.AreEqual(DriveState.Ready, initialDrive.State);
-            Assert.AreEqual(BlockSource.ProducedByScan, initialDrive.Block!.Source);
+            Assert.AreEqual(BlockOrigin.ProducedByScan, initialDrive.Block!.Origin);
             Assert.IsNull(initialDrive.Watch.CheckpointLoss);
         }
 
@@ -206,7 +206,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
             Assert.AreEqual(1, scanCalls, "A cached block must not scan again on reopening.");
             var reopenedDrive = reopenedIndex.Drives.Single();
             Assert.AreEqual(DriveState.Ready, reopenedDrive.State);
-            Assert.AreEqual(BlockSource.WarmStartedFromCache, reopenedDrive.Block!.Source);
+            Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopenedDrive.Block!.Origin);
             Assert.IsNull(reopenedDrive.Watch.CheckpointLoss);
         }
     }
@@ -397,7 +397,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
         CollectionAssert.AreEqual(new[] { "file.txt" }, names);
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
-        Assert.AreEqual(BlockSource.ProducedByScan, status.Block!.Source);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, status.Block!.Origin);
         Assert.IsFalse(status.Watch.IsSupported);
         Assert.IsFalse(status.Watch.IsRequested);
         Assert.IsTrue(reports.Count > 0);

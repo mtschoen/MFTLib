@@ -1,6 +1,6 @@
-MFTLib.Index.BlockSource :: field public const ProducedByScan : MFTLib.Index.BlockSource = 1
-MFTLib.Index.BlockSource :: field public const WarmStartedFromCache : MFTLib.Index.BlockSource = 0
-MFTLib.Index.BlockSource :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+MFTLib.Index.BlockOrigin :: field public const ProducedByScan : MFTLib.Index.BlockOrigin = 1
+MFTLib.Index.BlockOrigin :: field public const WarmStartedFromCache : MFTLib.Index.BlockOrigin = 0
+MFTLib.Index.BlockOrigin :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.Index.BlockValidationResult :: field public const Incomplete : MFTLib.Index.BlockValidationResult = 2
 MFTLib.Index.BlockValidationResult :: field public const InconsistentRegions : MFTLib.Index.BlockValidationResult = 4
 MFTLib.Index.BlockValidationResult :: field public const InvalidNameDescriptor : MFTLib.Index.BlockValidationResult = 6
@@ -14,13 +14,13 @@ MFTLib.Index.CacheDirectory :: method public static DeleteCached(string cacheDir
 MFTLib.Index.CacheDirectory :: method public static EnsureCreated(string path) : System.IO.DirectoryInfo
 MFTLib.Index.CacheDirectory :: method public static InspectCached(string cacheDirectoryPath, System.Collections.Generic.IEnumerable<MFTLib.Index.DriveKey>? drives = default, System.Action<MFTLib.Index.CachedBlockRejection>? rejectedFile = default) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.CachedBlockStatus>
 MFTLib.Index.CacheDirectory :: type public static class
+MFTLib.Index.CacheLocation :: field public const OwnedCanonical : MFTLib.Index.CacheLocation = 0
+MFTLib.Index.CacheLocation :: field public const PrivateFallback : MFTLib.Index.CacheLocation = 1
+MFTLib.Index.CacheLocation :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.Index.CacheMode :: field public const Disabled : MFTLib.Index.CacheMode = 2
 MFTLib.Index.CacheMode :: field public const ExistingOnly : MFTLib.Index.CacheMode = 1
 MFTLib.Index.CacheMode :: field public const Persistent : MFTLib.Index.CacheMode = 0
 MFTLib.Index.CacheMode :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
-MFTLib.Index.CacheSlotState :: field public const OwnedCanonical : MFTLib.Index.CacheSlotState = 0
-MFTLib.Index.CacheSlotState :: field public const PrivateFallback : MFTLib.Index.CacheSlotState = 1
-MFTLib.Index.CacheSlotState :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.Index.CacheTag :: constructor public (string fourCharacterCode, uint version)
 MFTLib.Index.CacheTag :: method public Equals(MFTLib.Index.CacheTag other) : bool
 MFTLib.Index.CacheTag :: method public override Equals(object obj) : bool
@@ -93,12 +93,12 @@ MFTLib.Index.DriveBlockStatus :: method public override ToString() : string
 MFTLib.Index.DriveBlockStatus :: method public static op_Equality(MFTLib.Index.DriveBlockStatus? left, MFTLib.Index.DriveBlockStatus? right) : bool
 MFTLib.Index.DriveBlockStatus :: method public static op_Inequality(MFTLib.Index.DriveBlockStatus? left, MFTLib.Index.DriveBlockStatus? right) : bool
 MFTLib.Index.DriveBlockStatus :: property public AccessDeniedSubtreeCount { get; init; } : int
-MFTLib.Index.DriveBlockStatus :: property public CacheSlot { get; init; } : MFTLib.Index.CacheSlotState?
+MFTLib.Index.DriveBlockStatus :: property public CacheLocation { get; init; } : MFTLib.Index.CacheLocation?
 MFTLib.Index.DriveBlockStatus :: property public IsCapacityExhausted { get; init; } : bool
 MFTLib.Index.DriveBlockStatus :: property public LiveRowCount { get; init; } : uint
+MFTLib.Index.DriveBlockStatus :: property public Origin { get; init; } : MFTLib.Index.BlockOrigin
 MFTLib.Index.DriveBlockStatus :: property public ScanTimestamp { get; init; } : System.DateTime
 MFTLib.Index.DriveBlockStatus :: property public SkippedRecordCount { get; init; } : int
-MFTLib.Index.DriveBlockStatus :: property public Source { get; init; } : MFTLib.Index.BlockSource
 MFTLib.Index.DriveBlockStatus :: type public sealed class : System.IEquatable<MFTLib.Index.DriveBlockStatus>
 MFTLib.Index.DriveFailure :: method public <Clone>$() : MFTLib.Index.DriveFailure
 MFTLib.Index.DriveFailure :: method public Equals(MFTLib.Index.DriveFailure? other) : bool

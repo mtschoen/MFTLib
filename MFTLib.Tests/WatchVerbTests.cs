@@ -32,7 +32,7 @@ public sealed class WatchVerbTests : IDisposable
         {
             RecordNumber = 20,
             ParentRecordNumber = 5,
-            UpdateSequenceNumber = 1200,
+            Usn = 1200,
             FileName = "new.txt",
             Reason = SyntheticJournalReason.FileCreate | SyntheticJournalReason.Close
         };

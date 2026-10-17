@@ -60,12 +60,12 @@ public sealed partial class FileIndex
     string CanonicalBlockPath(IndexedDrive drive) =>
         Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(drive.Drive, drive.VolumeSerial));
 
-    CacheSlotState? DescribeCacheSlot(bool ownsCanonicalSlot) =>
+    CacheLocation? DescribeCacheLocation(bool ownsCanonicalSlot) =>
         _options.CacheMode == CacheMode.Disabled
             ? null
             : ownsCanonicalSlot
-                ? CacheSlotState.OwnedCanonical
-                : CacheSlotState.PrivateFallback;
+                ? CacheLocation.OwnedCanonical
+                : CacheLocation.PrivateFallback;
 
     /// <summary>
     ///     Where one drive's scan writes. <see cref="ScanBlockTarget.OwnsCanonicalSlot" /> is

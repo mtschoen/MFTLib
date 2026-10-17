@@ -97,7 +97,7 @@ public sealed partial class FileIndex
         var opened = new PendingDriveResult
         {
             CheckpointLoss = warmStart.CheckpointLoss,
-            CacheSlot = DescribeCacheSlot(ownsCanonicalSlot)
+            CacheLocation = DescribeCacheLocation(ownsCanonicalSlot)
         };
 
         if (warmStart.Block is { } warmStartedBlock)
@@ -105,7 +105,7 @@ public sealed partial class FileIndex
             AdoptOpenedDrive(drive, warmStartedBlock, opened with
             {
                 Block = warmStartedBlock,
-                BlockSource = BlockSource.WarmStartedFromCache,
+                Origin = BlockOrigin.WarmStartedFromCache,
                 CacheOnlyUnresumable = warmStart.CacheOnlyUnresumable
             });
             return;
@@ -198,7 +198,7 @@ public sealed partial class FileIndex
                 return new PendingDriveResult
                 {
                     Block = scannedBlock,
-                    BlockSource = BlockSource.ProducedByScan,
+                    Origin = BlockOrigin.ProducedByScan,
                     AccessDeniedSubtreeCount = walked.AccessDeniedSubtreeCount
                 };
             }
@@ -211,7 +211,7 @@ public sealed partial class FileIndex
             return new PendingDriveResult
             {
                 Block = produced.Block,
-                BlockSource = BlockSource.ProducedByScan,
+                Origin = BlockOrigin.ProducedByScan,
                 SkippedRecordCount = produced.SkippedRecordCount,
                 CatchUpLoss = produced.CatchUpLoss
             };

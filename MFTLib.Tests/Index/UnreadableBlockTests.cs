@@ -60,7 +60,7 @@ public sealed class UnreadableBlockTests : IDisposable
 
             await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
 
-            Assert.AreEqual(BlockSource.ProducedByScan, reopened.Drives[0].Block!.Source);
+            Assert.AreEqual(BlockOrigin.ProducedByScan, reopened.Drives[0].Block!.Origin);
             Assert.AreEqual(DriveState.Ready, reopened.Drives[0].State);
             Assert.IsTrue(reopened.HeaderOf().RowCount >= 3,
                 "the drive must be cold-scanned rather than left empty");

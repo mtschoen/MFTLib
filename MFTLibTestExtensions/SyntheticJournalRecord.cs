@@ -10,7 +10,7 @@ public sealed record SyntheticJournalRecord
     public required ulong ParentRecordNumber { get; init; }
 
     /// <summary>The journal position of this record; later changes carry larger values.</summary>
-    public required long UpdateSequenceNumber { get; init; }
+    public required long Usn { get; init; }
 
     /// <summary>The changed item's own name, never a path.</summary>
     public required string FileName { get; init; }

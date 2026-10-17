@@ -179,7 +179,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
         {
             var status = fallbackOpen.Drives.Single();
             Assert.AreEqual(DriveState.Ready, status.State);
-            Assert.AreEqual(BlockSource.ProducedByScan, status.Block!.Source);
+            Assert.AreEqual(BlockOrigin.ProducedByScan, status.Block!.Origin);
             Assert.IsTrue(fallbackOpen.TryGetDriveOrdinal('T', out var ordinal));
             privateBlockPath = fallbackOpen.CurrentSnapshot[ordinal].Block.Path;
             StringAssert.Contains(privateBlockPath, "mftlib-private-");
@@ -202,7 +202,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
         await using var freshOpen = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         var freshStatus = freshOpen.Drives.Single();
         Assert.AreEqual(DriveState.Ready, freshStatus.State);
-        Assert.AreEqual(BlockSource.ProducedByScan, freshStatus.Block!.Source);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, freshStatus.Block!.Origin);
         Assert.IsTrue(freshOpen.TryGetDriveOrdinal('T', out var freshOrdinal));
         Assert.AreEqual(CanonicalPath, freshOpen.CurrentSnapshot[freshOrdinal].Block.Path,
             "once the clear has released the lock, a fresh open takes the slot normally");

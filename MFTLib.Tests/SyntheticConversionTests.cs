@@ -20,7 +20,7 @@ public class SyntheticConversionTests
         {
             RecordNumber = 42,
             ParentRecordNumber = 17,
-            UpdateSequenceNumber = 900,
+            Usn = 900,
             FileName = "x.txt",
             Reason = SyntheticJournalReason.FileCreate | SyntheticJournalReason.Close,
             FileAttributes = FileAttributes.Hidden,
@@ -45,7 +45,7 @@ public class SyntheticConversionTests
         {
             RecordNumber = 1,
             ParentRecordNumber = 5,
-            UpdateSequenceNumber = 2,
+            Usn = 2,
             FileName = "d.txt"
         }.ToProduction();
 

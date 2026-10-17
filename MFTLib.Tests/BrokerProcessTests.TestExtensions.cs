@@ -453,7 +453,7 @@ public partial class BrokerProcessTests
         {
             RecordNumber = 20,
             ParentRecordNumber = 5,
-            UpdateSequenceNumber = 1200,
+            Usn = 1200,
             FileName = "file.txt"
         };
         var cursor = new SyntheticJournalCursor(7, 1500);
@@ -486,7 +486,7 @@ public partial class BrokerProcessTests
         {
             RecordNumber = 20,
             ParentRecordNumber = 5,
-            UpdateSequenceNumber = 1200,
+            Usn = 1200,
             FileName = "file.txt"
         };
         var cursor = new SyntheticJournalCursor(7, 1500);

@@ -61,7 +61,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
 
             Assert.IsNull(status.Failure);
             Assert.IsFalse(status.Watch.IsSupported);
-            Assert.IsNull(status.Block!.CacheSlot);
+            Assert.IsNull(status.Block!.CacheLocation);
 
             var query = new SearchQuery("Notes.txt", NameMatchMode.Exact);
             foreach (var entry in index.Enumerate(query, cancellationToken))
@@ -171,7 +171,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
             }
 
             Assert.IsNull(status.Failure);
-            Assert.IsNull(status.Block!.CacheSlot);
+            Assert.IsNull(status.Block!.CacheLocation);
             Assert.IsFalse(Directory.Exists(ignoredCachePath));
 
             var query = new SearchQuery("*.log", NameMatchMode.Glob, IsDirectory: false);

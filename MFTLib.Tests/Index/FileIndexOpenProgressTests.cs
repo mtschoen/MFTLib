@@ -51,10 +51,10 @@ public sealed class FileIndexOpenProgressTests : IDisposable
     }
 
     /// <summary>The drive's settled outcome, which the open report no longer repeats.</summary>
-    static void AssertSettled(FileIndex index, char driveLetter, BlockSource? blockSource, DriveState state)
+    static void AssertSettled(FileIndex index, char driveLetter, BlockOrigin? blockOrigin, DriveState state)
     {
         var status = index.Drives.Single(drive => drive.Drive == driveLetter);
-        Assert.AreEqual(blockSource, status.Block?.Source);
+        Assert.AreEqual(blockOrigin, status.Block?.Origin);
         Assert.AreEqual(state, status.State);
     }
 
@@ -91,7 +91,7 @@ public sealed class FileIndexOpenProgressTests : IDisposable
         foreach (var driveLetter in "TUV")
         {
             AssertReport(ReportOf(reports, driveLetter), driveLetter, 3);
-            AssertSettled(index, driveLetter, BlockSource.WarmStartedFromCache, DriveState.Ready);
+            AssertSettled(index, driveLetter, BlockOrigin.WarmStartedFromCache, DriveState.Ready);
         }
     }
 
@@ -112,7 +112,7 @@ public sealed class FileIndexOpenProgressTests : IDisposable
 
         Assert.AreEqual(2, reports.Count);
         AssertReport(ReportOf(reports, 'T'), 'T', 2);
-        AssertSettled(index, 'T', BlockSource.WarmStartedFromCache, DriveState.Ready);
+        AssertSettled(index, 'T', BlockOrigin.WarmStartedFromCache, DriveState.Ready);
         AssertReport(ReportOf(reports, 'U'), 'U', 2);
         AssertSettled(index, 'U', null, DriveState.Failed);
         Assert.AreEqual(DriveState.Failed, index.Drives.Single(drive => drive.Drive == 'U').State);
@@ -140,7 +140,7 @@ public sealed class FileIndexOpenProgressTests : IDisposable
         Assert.AreEqual(0, reportCountAtProduceTime, "the drive's report must follow its producer's completion");
         Assert.AreEqual(1, reports.Count);
         AssertReport(reports.Single(), 'T', 1);
-        AssertSettled(index, 'T', BlockSource.ProducedByScan, DriveState.Ready);
+        AssertSettled(index, 'T', BlockOrigin.ProducedByScan, DriveState.Ready);
         Assert.AreEqual(1, reports.Single().SettledDriveCount);
     }
 
@@ -175,7 +175,7 @@ public sealed class FileIndexOpenProgressTests : IDisposable
 
         Assert.AreEqual(2, index.Drives.Count);
         Assert.IsTrue(index.Drives.All(drive => drive.State == DriveState.Ready));
-        Assert.IsTrue(index.Drives.All(drive => drive.Block!.Source == BlockSource.ProducedByScan));
+        Assert.IsTrue(index.Drives.All(drive => drive.Block!.Origin == BlockOrigin.ProducedByScan));
     }
 
     [TestMethod]
@@ -213,16 +213,16 @@ public sealed class FileIndexOpenProgressTests : IDisposable
 
         Assert.AreEqual(3, reports.Count);
         AssertReport(ReportOf(reports, 'T'), 'T', 3);
-        AssertSettled(index, 'T', BlockSource.WarmStartedFromCache, DriveState.Ready);
+        AssertSettled(index, 'T', BlockOrigin.WarmStartedFromCache, DriveState.Ready);
         AssertReport(ReportOf(reports, 'U'), 'U', 3);
-        AssertSettled(index, 'U', BlockSource.ProducedByScan, DriveState.Ready);
+        AssertSettled(index, 'U', BlockOrigin.ProducedByScan, DriveState.Ready);
         AssertReport(ReportOf(reports, 'V'), 'V', 3);
         AssertSettled(index, 'V', null, DriveState.Offline);
 
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, index.Drives[0].Block!.Source);
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, index.Drives[0].Block!.Origin);
         Assert.AreEqual(DriveState.Ready, index.Drives[1].State);
-        Assert.AreEqual(BlockSource.ProducedByScan, index.Drives[1].Block!.Source);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, index.Drives[1].Block!.Origin);
         Assert.AreEqual(DriveState.Offline, index.Drives[2].State);
         Assert.IsNull(index.Drives[2].Block!);
     }

@@ -38,7 +38,7 @@ static class JournalEntries
         {
             RecordNumber = recordNumber,
             ParentRecordNumber = RootRecordNumber,
-            UpdateSequenceNumber = usn,
+            Usn = usn,
             FileName = fileName,
             Reason = reason,
             FileAttributes = fileAttributes

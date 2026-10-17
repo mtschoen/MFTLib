@@ -127,7 +127,7 @@ public sealed partial class FileIndex
             var settled = produced with
             {
                 CheckpointLoss = opened.CheckpointLoss,
-                CacheSlot = opened.CacheSlot
+                CacheLocation = opened.CacheLocation
             };
             if (settled.Block is not { } block)
             {

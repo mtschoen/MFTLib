@@ -81,7 +81,7 @@ public class ConsumerJournalIsolationTests
     async Task SeedAsync()
     {
         await using var index = await FileIndex.OpenAsync(Options(false), Token);
-        Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().Block!.Source);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, index.Drives.Single().Block!.Origin);
         Assert.AreEqual(1, _productions);
     }
 
@@ -103,8 +103,8 @@ public class ConsumerJournalIsolationTests
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.AreEqual(cacheOnly ? 1 : 2, _productions);
-        Assert.AreEqual(cacheOnly ? BlockSource.WarmStartedFromCache : BlockSource.ProducedByScan,
-            status.Block!.Source);
+        Assert.AreEqual(cacheOnly ? BlockOrigin.WarmStartedFromCache : BlockOrigin.ProducedByScan,
+            status.Block!.Origin);
         Assert.IsNotNull(status.Watch.CheckpointLoss);
         Assert.AreEqual(recreated ? JournalCheckpointLossCause.JournalRecreated
             : JournalCheckpointLossCause.CheckpointTrimmed, status.Watch.CheckpointLoss.Cause);
@@ -136,7 +136,7 @@ public class ConsumerJournalIsolationTests
         var source = new ScriptedWatchSource();
         await using var index = await FileIndex.OpenAsync(Options(true, source.IndexSource), Token);
         Assert.AreEqual(1, _productions);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, index.Drives.Single().Block!.Source);
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, index.Drives.Single().Block!.Origin);
         Assert.IsNull(index.Drives.Single().Watch.CheckpointLoss);
         await index.StartWatchingAsync(['T'], Token);
         Assert.AreEqual('T', source.Starts.Single().Drive);
@@ -207,7 +207,7 @@ public class ConsumerJournalIsolationTests
             throw new IOException("synthetic test body failure");
         });
         await using var restored = await FileIndex.OpenAsync(Options(true), Token);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, restored.Drives.Single().Block!.Source);
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, restored.Drives.Single().Block!.Origin);
         Assert.AreEqual(1, _productions);
         Assert.IsNull(restored.Drives.Single().Watch.CheckpointLoss);
     }

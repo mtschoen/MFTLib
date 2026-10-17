@@ -468,8 +468,8 @@ showed it.
 **Decision (API review finding F14):** a state enum is the field callers branch
 on; the reason or error that accompanies it is a nullable property, non-null only when there is something to
 report; a reason enum has no "nothing wrong" member. `CachedBlockStatus.Validation` is null unless
-`Availability` is `Invalid`, and `BlockValidationResult` has no `Valid`. `DriveBlockStatus.CacheSlot` is a
-nullable `CacheSlotState`, null when the block is not backed by a cache slot, and `CacheSlotState` has no
+`Availability` is `Invalid`, and `BlockValidationResult` has no `Valid`. `DriveBlockStatus.CacheLocation` is a
+nullable `CacheLocation`, null when the block is not backed by a cache location, and `CacheLocation` has no
 `NotApplicable`.
 
 **Reason:** two fields stating one fact can contradict each other, and both consumers branch on the state enum
@@ -610,7 +610,7 @@ with one meaning supplies both notification and a completion flag without observ
 `Failed`, or `Ready` retaining a block after a failed `RescanAsync` or a failed catch-up retry scan during
 `OpenAsync` (kind `ProducerFailed`, the producer's message). A successful scan publication clears it and an
 `Offline` drive has none. `DriveStatus.Block` is null unless `State` is `Ready`.
-`DriveFailureKind` contains failure reasons and `BlockSource` identifies an actual source;
+`DriveFailureKind` contains failure reasons and `BlockOrigin` identifies an actual origin;
 absence is represented by the nullable containing value. A failure message is required
 where it is produced; there is no empty-string fallback.
 
@@ -729,3 +729,9 @@ owns the policy once. file-wizard migrates in its pin-bump pull request.
 ## Block completion uses an internal TimeProvider
 
 **Decision (2026-10-16):** producers and section writers take an internal `TimeProvider`; enumeration uses internal `FileIndexOptions.TimeProvider`, defaulting to `TimeProvider.System`. Tests reach the option through internal `MFTLibTestExtensions` forwarding. Completion stores `GetUtcNow().UtcDateTime` after production. **Reason:** one clock abstraction makes completion deterministic without public configuration. **Revisit only if:** a consumer production requirement needs clock configuration.
+
+## Origin, cache location and journal position have distinct names
+
+**Decision:** `DriveBlockStatus.Origin` uses `BlockOrigin`; `CacheLocation` uses nullable `CacheLocation`. Synthetic journal records use `Usn`, with `FirstUsn` and `NextUsn` for bounds. Retention uses `RetainedFileNames` and `retainedFileNames`.
+**Reason:** provenance, cache backing, journal position and retained names each need one vocabulary; data-supplier types keep Source/Sources and row positions keep slot terminology.
+**Revisit only if:** a concrete consumer needs a distinct concept these names cannot express.

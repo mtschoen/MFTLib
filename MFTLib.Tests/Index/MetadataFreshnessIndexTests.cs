@@ -62,7 +62,7 @@ public sealed class MetadataFreshnessIndexTests : IDisposable
         {
             RecordNumber = recordNumber,
             ParentRecordNumber = parent,
-            UpdateSequenceNumber = 100 + (long)recordNumber,
+            Usn = 100 + (long)recordNumber,
             FileName = name,
             Reason = reason,
             FileAttributes = attributes,

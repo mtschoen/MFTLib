@@ -42,7 +42,7 @@ internal static class SyntheticConversions
             RecordNumber = record.RecordNumber,
             ParentRecordNumber = record.ParentRecordNumber,
             SequenceNumber = record.SequenceNumber,
-            Usn = record.UpdateSequenceNumber,
+            Usn = record.Usn,
             TimestampUtc = record.Timestamp ?? DateTime.UnixEpoch,
             Reason = (UsnReason)(uint)record.Reason,
             FileAttributes = record.FileAttributes,

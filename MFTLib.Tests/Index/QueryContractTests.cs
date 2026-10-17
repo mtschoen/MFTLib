@@ -26,7 +26,7 @@ public class QueryContractTests
     public void DriveStatus_DefaultsMatchThePublishedContract()
     {
         var status = SyntheticNotifications.CreateDriveStatus('T', DriveState.Ready,
-            SyntheticNotifications.CreateDriveBlockStatus(BlockSource.ProducedByScan, 40, false,
+            SyntheticNotifications.CreateDriveBlockStatus(BlockOrigin.ProducedByScan, 40, false,
                 new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc)), null);
 
         Assert.AreEqual(0, status.Block!.AccessDeniedSubtreeCount);

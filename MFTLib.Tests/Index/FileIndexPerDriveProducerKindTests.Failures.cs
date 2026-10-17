@@ -137,8 +137,8 @@ public partial class FileIndexPerDriveProducerKindTests
             DriveOpenProgress = null
         }, CancellationToken.None);
         AssertDrive(reopened, 'U', ProducerKind.Enumeration);
-        Assert.AreEqual(cacheMode == CacheMode.Persistent ? CacheSlotState.OwnedCanonical : null,
-            reopened.Drives.Single(drive => drive.Drive == 'U').Block?.CacheSlot);
+        Assert.AreEqual(cacheMode == CacheMode.Persistent ? CacheLocation.OwnedCanonical : null,
+            reopened.Drives.Single(drive => drive.Drive == 'U').Block?.CacheLocation);
     }
 
     static byte[] ReadSharedBlock(string path)

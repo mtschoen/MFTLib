@@ -149,19 +149,19 @@ public static class SyntheticNotifications
         };
 
     /// <summary>
-    ///     Builds the block part of a drive status. A fixture sets the optional cache-slot and skipped-record
+    ///     Builds the block part of a drive status. A fixture sets the optional cache-location and skipped-record
     ///     values with a <c>with</c> expression on the result.
     /// </summary>
-    /// <param name="blockSource">Where the block came from.</param>
+    /// <param name="blockOrigin">Where the block came from.</param>
     /// <param name="liveRowCount">The rows a query can return.</param>
     /// <param name="capacityExhausted">The block header capacity-exhausted flag.</param>
     /// <param name="scanTimestamp">When the current block production completed.</param>
     /// <returns>The block status.</returns>
-    public static DriveBlockStatus CreateDriveBlockStatus(BlockSource blockSource, uint liveRowCount,
+    public static DriveBlockStatus CreateDriveBlockStatus(BlockOrigin blockOrigin, uint liveRowCount,
         bool capacityExhausted, DateTime scanTimestamp) =>
         new()
         {
-            Source = blockSource,
+            Origin = blockOrigin,
             LiveRowCount = liveRowCount,
             IsCapacityExhausted = capacityExhausted,
             ScanTimestamp = scanTimestamp

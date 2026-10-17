@@ -104,7 +104,7 @@ public sealed class MftDumpValidationTests : IDisposable
 
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(BlockSource.ProducedByScan, drive.Block!.Source);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, drive.Block!.Origin);
         Assert.AreEqual(0, drive.Block.SkippedRecordCount);
         Assert.AreEqual(7u, drive.Block.LiveRowCount);
         Assert.IsFalse(drive.Block.IsCapacityExhausted);

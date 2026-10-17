@@ -66,7 +66,7 @@ internal sealed class CheckpointLossFixture : IDisposable
         await using var index = await FileIndex.OpenAsync(options with { Drives = drives }, cancellationToken);
         foreach (var drive in index.Drives)
         {
-            Assert.AreEqual(BlockSource.ProducedByScan, drive.Block!.Source);
+            Assert.AreEqual(BlockOrigin.ProducedByScan, drive.Block!.Origin);
             Assert.IsNull(drive.Watch.CheckpointLoss);
         }
     }

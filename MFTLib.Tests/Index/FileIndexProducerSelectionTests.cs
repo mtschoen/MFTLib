@@ -238,7 +238,7 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
             Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
             Assert.AreEqual(DriveFailureKind.ProducerFailed, index.Drives.Single().Failure?.Kind);
             Assert.AreEqual("elevation declined during rescan", index.Drives.Single().Failure?.Message);
-            Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().Block!.Source);
+            Assert.AreEqual(BlockOrigin.ProducedByScan, index.Drives.Single().Block!.Origin);
             Assert.AreEqual(2, index.Drives.Single().Block!.SkippedRecordCount);
             Assert.AreEqual(0, index.Drives.Single().Block!.AccessDeniedSubtreeCount);
         }
@@ -475,7 +475,7 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.IsNull(status.Failure);
         Assert.IsNull(status.Failure);
-        Assert.AreEqual(BlockSource.ProducedByScan, status.Block!.Source);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, status.Block!.Origin);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
         Assert.IsFalse(status.Watch.IsSupported, "the source offers no watch source");
         Assert.AreEqual(4096L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
@@ -532,7 +532,7 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.IsNull(status.Failure);
         Assert.IsNull(status.Failure);
-        Assert.AreEqual(BlockSource.ProducedByScan, status.Block!.Source);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, status.Block!.Origin);
     }
 
     [TestMethod]

@@ -21,8 +21,8 @@ public sealed partial class FileIndex : IAsyncDisposable
     readonly Dictionary<ushort, int> _skippedRecordCountByOrdinal = [];
     readonly Dictionary<ushort, string> _producerFailureMessagesByOrdinal = [];
     readonly Dictionary<ushort, string> _watchFailureMessagesByOrdinal = [];
-    readonly Dictionary<ushort, BlockSource> _blockSourcesByOrdinal = [];
-    readonly Dictionary<ushort, CacheSlotState?> _cacheSlotsByOrdinal = [];
+    readonly Dictionary<ushort, BlockOrigin> _blockOriginsByOrdinal = [];
+    readonly Dictionary<ushort, CacheLocation?> _cacheLocationsByOrdinal = [];
 
     /// <summary>
     ///     One entry per drive whose cached block was rejected because its journal checkpoint
@@ -397,8 +397,8 @@ public sealed partial class FileIndex : IAsyncDisposable
                 : null,
             Block = new DriveBlockStatus
             {
-                Source = _blockSourcesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-                CacheSlot = _cacheSlotsByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
+                Origin = _blockOriginsByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
+                CacheLocation = _cacheLocationsByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
                 LiveRowCount = header.LiveRowCount,
                 ScanTimestamp = header.ScanTimestampUtc,
                 IsCapacityExhausted = header.IsCapacityExhausted,

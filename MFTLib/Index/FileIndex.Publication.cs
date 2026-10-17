@@ -18,7 +18,7 @@ public sealed partial class FileIndex
         /// </summary>
         public BlockFile? Block { get; init; }
 
-        public BlockSource BlockSource { get; init; }
+        public BlockOrigin Origin { get; init; }
 
         public int AccessDeniedSubtreeCount { get; init; }
 
@@ -41,7 +41,7 @@ public sealed partial class FileIndex
         /// <summary>The loss that made the open reject or distrust the drive's cached block.</summary>
         public JournalCheckpointLoss? CheckpointLoss { get; init; }
 
-        public CacheSlotState? CacheSlot { get; init; }
+        public CacheLocation? CacheLocation { get; init; }
 
         /// <summary>A cache-only open adopted the block despite <see cref="CheckpointLoss" />.</summary>
         public bool CacheOnlyUnresumable { get; init; }
@@ -70,8 +70,8 @@ public sealed partial class FileIndex
     void RecordPendingResultLocked(DriveRuntime runtime, ushort driveOrdinal, PendingDriveResult published,
         bool clearsCheckpointLoss)
     {
-        _blockSourcesByOrdinal[driveOrdinal] = published.BlockSource;
-        _cacheSlotsByOrdinal[driveOrdinal] = published.CacheSlot;
+        _blockOriginsByOrdinal[driveOrdinal] = published.Origin;
+        _cacheLocationsByOrdinal[driveOrdinal] = published.CacheLocation;
         _accessDeniedSubtreeCountByOrdinal[driveOrdinal] = published.AccessDeniedSubtreeCount;
         _skippedRecordCountByOrdinal[driveOrdinal] = published.SkippedRecordCount;
         _producerFailureMessagesByOrdinal.Remove(driveOrdinal);

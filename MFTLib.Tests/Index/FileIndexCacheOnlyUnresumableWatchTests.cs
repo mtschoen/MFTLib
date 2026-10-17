@@ -113,7 +113,7 @@ public sealed class FileIndexCacheOnlyUnresumableWatchTests : IDisposable
         Assert.AreEqual(new IndexWatchTarget('T', CachedJournalIdentifier, CachedNextUsn), source.TargetsFor('T').Single(),
             "the rescan starts the requested watch from the fresh cursor");
         var recovered = index.Drives.Single(drive => drive.Drive == 'T');
-        Assert.AreEqual(BlockSource.ProducedByScan, recovered.Block!.Source);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, recovered.Block!.Origin);
         Assert.IsNull(recovered.Watch.CheckpointLoss, "the rescan replaced the block the report described");
         Assert.IsNull(recovered.Watch.FailureMessage);
         Assert.IsTrue(recovered.Watch.IsRequested);

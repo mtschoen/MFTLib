@@ -25,7 +25,7 @@ public partial class FileIndexCatchUpLossTests
         Assert.AreEqual(2, cache.Productions);
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(BlockSource.ProducedByScan, drive.Block!.Source);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, drive.Block!.Origin);
         Assert.AreEqual(0, drive.Watch.ConsecutiveLostCatchUps);
         Assert.IsFalse(drive.Watch.IsRecoveryStopped);
         Assert.AreEqual(StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss, "the retry keeps the report the loss produced");

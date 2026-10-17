@@ -147,7 +147,7 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
             {
                 RecordNumber = 20,
                 ParentRecordNumber = 0,
-                UpdateSequenceNumber = 1,
+                Usn = 1,
                 Timestamp = ChangeMoment,
                 Reason = SyntheticJournalReason.FileCreate | SyntheticJournalReason.Close,
                 FileAttributes = FileAttributes.Archive,

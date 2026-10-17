@@ -161,7 +161,7 @@ public sealed partial class FileIndex
         try
         {
             publication = await PublishRescannedBlockAsync(runtime, block,
-                produced with { CacheSlot = DescribeCacheSlot(target.OwnsCanonicalSlot) }, clearsCheckpointLoss,
+                produced with { CacheLocation = DescribeCacheLocation(target.OwnsCanonicalSlot) }, clearsCheckpointLoss,
                 recovery, cancellationToken).ConfigureAwait(false);
         }
         catch

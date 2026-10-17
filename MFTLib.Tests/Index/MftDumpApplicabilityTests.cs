@@ -24,7 +24,7 @@ public class MftDumpApplicabilityTests
 
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(BlockSource.ProducedByScan, drive.Block!.Source);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, drive.Block!.Origin);
         Assert.IsFalse(drive.Watch.IsSupported, "a dump drive does not support watching");
         Assert.AreEqual(string.Empty, index.CacheDirectoryPath, "a dump index resolves and creates no cache directory");
     }
@@ -74,7 +74,7 @@ public class MftDumpApplicabilityTests
         var drive = index.Drives.Single();
         Assert.IsTrue(drive.Drive == MftDumpIndexes.DriveLetter);
         Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.IsNull(drive.Block!.CacheSlot, "a dump block is never backed by a cache slot");
+        Assert.IsNull(drive.Block!.CacheLocation, "a dump block is never backed by a cache location");
         Assert.AreEqual(string.Empty, index.CacheDirectoryPath);
         Assert.IsTrue(index.Root(MftDumpIndexes.DriveLetter).IsDirectory);
     }

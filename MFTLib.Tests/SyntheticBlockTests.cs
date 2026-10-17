@@ -115,7 +115,7 @@ public sealed partial class SyntheticBlockTests : IDisposable
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
         var drive = index.Drives.Single();
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, drive.Block!.Source);
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, drive.Block!.Origin);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
         Assert.AreEqual(Moment, drive.Block.ScanTimestamp);
         Assert.AreEqual(10u, index.HeaderOf().RowCount);
@@ -246,7 +246,7 @@ public sealed partial class SyntheticBlockTests : IDisposable
         var producer = SampleProducer();
         await using var index = await FileIndex.OpenAsync(Scanning(producer), Token);
         var drive = index.Drives.Single();
-        Assert.AreEqual(BlockSource.ProducedByScan, drive.Block!.Source);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, drive.Block!.Origin);
     }
 
     [TestMethod]
@@ -347,7 +347,7 @@ public sealed partial class SyntheticBlockTests : IDisposable
         await using (var index = await FileIndex.OpenAsync(Scanning(producer, tag), Token))
         {
             var drive = index.Drives.Single();
-            Assert.AreEqual(BlockSource.ProducedByScan, drive.Block!.Source);
+            Assert.AreEqual(BlockOrigin.ProducedByScan, drive.Block!.Origin);
             Assert.AreEqual(3, drive.Block.SkippedRecordCount);
             Assert.AreEqual(Moment, drive.Block.ScanTimestamp);
             Assert.AreEqual(1234, index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)).Single().Size);

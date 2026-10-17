@@ -158,7 +158,7 @@ public class FileIndexCacheTagTests
         };
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, index.Drives.Single().Block!.Source);
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, index.Drives.Single().Block!.Origin);
         Assert.IsNull(index.Drives.Single().Watch.CheckpointLoss);
     }
 
@@ -199,12 +199,12 @@ public class FileIndexCacheTagTests
             else
             {
                 Assert.AreEqual(DriveState.Ready, status.State);
-                Assert.AreEqual(BlockSource.ProducedByScan, status.Block!.Source);
+                Assert.AreEqual(BlockOrigin.ProducedByScan, status.Block!.Origin);
             }
         }
         Assert.AreEqual(requested, CacheDirectory.InspectCached(Cache).Single().CacheTag);
         await using var reopened = await FileIndex.OpenAsync(Options(requested, true), CancellationToken.None);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, reopened.Drives.Single().Block!.Source);
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopened.Drives.Single().Block!.Origin);
     }
 
     [TestMethod]
@@ -223,10 +223,10 @@ public class FileIndexCacheTagTests
         {
             Assert.IsTrue(diagnostics.Any(line => line.Contains("cache validation failed: WrongFormatVersion")),
                 "the rejected block's deletion names the reason");
-            Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().Block!.Source);
+            Assert.AreEqual(BlockOrigin.ProducedByScan, index.Drives.Single().Block!.Origin);
         }
         await using var reopened = await FileIndex.OpenAsync(Options(OriginalTag), CancellationToken.None);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, reopened.Drives.Single().Block!.Source);
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopened.Drives.Single().Block!.Origin);
     }
 
     [TestMethod]
@@ -245,7 +245,7 @@ public class FileIndexCacheTagTests
         await using (var privateIndex = await FileIndex.OpenAsync(
             Options(requested) with { Diagnostics = diagnostics.Add }, CancellationToken.None))
         {
-            Assert.AreEqual(BlockSource.ProducedByScan, privateIndex.Drives.Single().Block!.Source);
+            Assert.AreEqual(BlockOrigin.ProducedByScan, privateIndex.Drives.Single().Block!.Origin);
             Assert.AreEqual(requested, privateIndex.CurrentSnapshot.Single().Block.Header.CacheTag);
         }
         Assert.IsFalse(diagnostics.Any(line => line.Contains("Cache tag mismatch")));

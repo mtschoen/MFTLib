@@ -69,16 +69,16 @@ is re-locked in place.
 
 ### Observing a drive's backing
 
-Read `FileIndex.Drives` and inspect `DriveBlockStatus.CacheSlot`:
+Read `FileIndex.Drives` and inspect `DriveBlockStatus.CacheLocation`:
 
 | Value | Meaning |
 | --- | --- |
-| `CacheSlotState.OwnedCanonical` | This drive's current block belongs to the canonical cache slot held by this index. |
-| `CacheSlotState.PrivateFallback` | This drive's current block was scanned privately because its canonical slot was unavailable when the scan target was selected. |
+| `CacheLocation.OwnedCanonical` | This drive's current block belongs to the canonical cache slot held by this index. |
+| `CacheLocation.PrivateFallback` | This drive's current block was scanned privately because its canonical slot was unavailable when the scan target was selected. |
 | null | The block is not backed by a cache slot: `CacheMode.Disabled` is in effect. A failed or offline drive has no `DriveStatus.Block` to inspect. |
 
 Ready blocks retain their backing classification, including when capacity is exhausted. This is
-separate from `DriveBlockStatus.Source`: a canonical cold scan and a private
+separate from `DriveBlockStatus.Origin`: a canonical cold scan and a private
 fallback scan both read `ProducedByScan`; a canonical warm start reads
 `WarmStartedFromCache`.
 

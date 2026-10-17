@@ -58,7 +58,7 @@ public partial class SyntheticBlockTests
             {
                 RecordNumber = zebra.RecordKey.RecordNumber,
                 ParentRecordNumber = 0,
-                UpdateSequenceNumber = 1,
+                Usn = 1,
                 FileName = "zebra.txt",
                 Reason = SyntheticJournalReason.FileDelete | SyntheticJournalReason.Close
             }], new SyntheticJournalCursor(0, 0));

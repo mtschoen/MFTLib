@@ -212,7 +212,7 @@ public sealed class FileIndexScanFinishedTests : IDisposable
 
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
-        Assert.AreEqual(BlockSource.ProducedByScan, status.Block!.Source);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, status.Block!.Origin);
     }
 
     [TestMethod]

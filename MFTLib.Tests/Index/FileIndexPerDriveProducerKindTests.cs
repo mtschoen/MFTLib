@@ -116,7 +116,7 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
         }
 
         await using var index = await FileIndex.OpenAsync(options with { MftSource = null }, CancellationToken.None);
-        AssertDrive(index, 'T', ProducerKind.Mft, BlockSource.WarmStartedFromCache);
+        AssertDrive(index, 'T', ProducerKind.Mft, BlockOrigin.WarmStartedFromCache);
         await DriveResultAssertions.NotApplicableAsync(
             () => index.StartWatchingAsync(['T'], CancellationToken.None));
         Assert.IsFalse(index.Drives.Single().Watch.IsRequested);
@@ -194,12 +194,12 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
     }
 
     static void AssertDrive(FileIndex index, char letter, ProducerKind kind,
-        BlockSource source = BlockSource.ProducedByScan)
+        BlockOrigin origin = BlockOrigin.ProducedByScan)
     {
         var status = index.Drives.Single(drive => drive.Drive == letter);
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.IsNotNull(status.Block);
-        Assert.AreEqual(source, status.Block.Source);
+        Assert.AreEqual(origin, status.Block.Origin);
         Assert.AreEqual(kind, SyntheticIndexInspection.ReadHeader(index, letter)!.ProducerKind);
     }
 }

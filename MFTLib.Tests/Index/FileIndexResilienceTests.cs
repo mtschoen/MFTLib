@@ -257,7 +257,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
         Assert.AreEqual(DriveState.Ready, reopened.Drives[0].State);
         Assert.AreEqual(rowsBefore, reopened.HeaderOf().RowCount);
         Assert.AreEqual(timestampBefore, reopened.Drives[0].Block!.ScanTimestamp);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, reopened.Drives[0].Block!.Source);
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopened.Drives[0].Block!.Origin);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -404,7 +404,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
         }
 
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, reopened.Drives[0].Block!.Source);
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopened.Drives[0].Block!.Origin);
     }
 
     [TestMethod]

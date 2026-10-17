@@ -263,7 +263,7 @@ public class SyntheticNotificationsTests
     public void CreateDriveStatus_ForwardsEveryValueAndLeavesTheOptionalOnesDefault()
     {
         var status = SyntheticNotifications.CreateDriveStatus('T', DriveState.Ready,
-            SyntheticNotifications.CreateDriveBlockStatus(BlockSource.WarmStartedFromCache, 40, true, Moment), null);
+            SyntheticNotifications.CreateDriveBlockStatus(BlockOrigin.WarmStartedFromCache, 40, true, Moment), null);
         status = status with { Watch = status.Watch with { IsSupported = true } };
 
         Assert.AreEqual(
@@ -271,7 +271,7 @@ public class SyntheticNotificationsTests
             {
                 Block = new DriveBlockStatus
                 {
-                    Source = BlockSource.WarmStartedFromCache,
+                    Origin = BlockOrigin.WarmStartedFromCache,
                     LiveRowCount = 40,
                     IsCapacityExhausted = true,
                     ScanTimestamp = Moment
@@ -281,7 +281,7 @@ public class SyntheticNotificationsTests
             status);
         Assert.AreEqual('T', status.Drive);
         Assert.AreEqual(DriveState.Ready, status.State);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, status.Block!.Source);
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, status.Block!.Origin);
         Assert.AreEqual(40u, status.Block.LiveRowCount);
         Assert.IsTrue(status.Block.IsCapacityExhausted);
         Assert.AreEqual(Moment, status.Block.ScanTimestamp);
@@ -295,7 +295,7 @@ public class SyntheticNotificationsTests
     public void CreateDriveStatus_AcceptsAWithExpressionForTheOptionalValues()
     {
         var status = SyntheticNotifications.CreateDriveStatus('T', DriveState.Ready,
-            SyntheticNotifications.CreateDriveBlockStatus(BlockSource.ProducedByScan, 0, false, DateTime.MinValue),
+            SyntheticNotifications.CreateDriveBlockStatus(BlockOrigin.ProducedByScan, 0, false, DateTime.MinValue),
             null);
         status = status with { Watch = status.Watch with { FailureMessage = "watch failed" } };
 
