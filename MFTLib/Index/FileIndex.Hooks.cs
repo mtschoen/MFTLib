@@ -96,7 +96,7 @@ public sealed partial class FileIndex
         internal Action<DriveKey>? ApplyJournalEntriesInsideWriteGate { get; set; }
 
         /// <summary>
-        ///     Wraps the Settle action in <see cref="RecordPumpFault" />; pump holds no gate or state lock at entry.
+        ///     Wraps the Settle action in <see cref="DriveRuntime.RecordPumpFault" />; pump holds no gate or state lock at entry.
         ///     Cannot wait for pump drainage or full stop completion.
         /// </summary>
         internal Action<Action>? PumpFaultSettlementWrapper { get; set; }

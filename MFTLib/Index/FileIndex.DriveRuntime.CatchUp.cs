@@ -19,7 +19,7 @@ public sealed partial class FileIndex
         ///     stop has cleared the request. Throws the last <see cref="JournalCatchUpLostException" />
         ///     when the count reaches the limit. Returns the final attempt.
         /// </summary>
-        public async Task<ScanAttempt> RunScanOperationAsync(
+        async Task<ScanAttempt> RunScanOperationAsync(
             RecoveryTicket? recovery, CancellationToken cancellationToken)
         {
             try
@@ -144,7 +144,7 @@ public sealed partial class FileIndex
             {
                 RetryingLostCatchUp = !recoveryStopped && WatchRequested;
                 RetriedLostCatchUp = RetryingLostCatchUp ? lost : null;
-                FaultRestartPendingWaiterLocked(this, lost);
+                FaultRestartPendingWaiterLocked(lost);
                 if (recoveryStopped)
                 {
                     RecoveryStopped = true;

@@ -24,7 +24,7 @@ public sealed partial class FileIndex
         }
 
         return RunBatchAsync(drives, HasWatchableBlock,
-            key => StartDriveWatchingAsync(key, cancellationToken), cancellationToken);
+            key => GetDriveRuntime(key).StartDriveWatchingAsync(cancellationToken), cancellationToken);
     }
 
     /// <summary>
@@ -42,7 +42,7 @@ public sealed partial class FileIndex
         }
 
         return RunBatchAsync(drives, IsWatching,
-            key => StopDriveWatchingAsync(key, cancellationToken), cancellationToken);
+            key => GetDriveRuntime(key).StopDriveWatchingAsync(cancellationToken), cancellationToken);
     }
 
     /// <summary>
@@ -80,7 +80,7 @@ public sealed partial class FileIndex
             Task?[] waits;
             lock (_stateLock)
             {
-                waits = [.. keys.Select(key => GetCatchUpWaitLocked(GetDriveRuntime(key)))];
+                waits = [.. keys.Select(key => GetDriveRuntime(key).GetCatchUpWaitLocked())];
             }
 
             if (!cancellationToken.IsCancellationRequested && waits.Any(wait => wait is { IsCompleted: false }) &&

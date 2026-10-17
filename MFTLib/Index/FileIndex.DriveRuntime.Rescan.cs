@@ -5,15 +5,9 @@ public sealed partial class FileIndex
     sealed partial class DriveRuntime
     {
         /// <summary>
-        ///     Rebuilds one drive's block into a new file and swaps it into the current snapshot.
-        ///     For a cache-mode drive, the file at the canonical path is renamed aside first (safe
-        ///     even while it is still mapped, since the block's memory-mapped file opens with
-        ///     <see cref="FileShare.Delete" />) so the new block can take the canonical name while a
-        ///     handle from the retired snapshot keeps reading the renamed file until that snapshot is
-        ///     released. The rename only happens while this index holds the canonical path's owner
-        ///     lock; a block another index owns is never renamed. If the scan fails or is cancelled,
-        ///     the previous in-memory block is left in place and the renamed-aside file is moved
-        ///     straight back to restore the on-disk cache.
+        /// Runs one admitted rescan under this drive's lifecycle gate. Production keeps the current
+        /// watch; publication commits its replacement and hands off teardown before an eligible restart.
+        /// See docs/watch-lifetime.md for publication, stop-wins and cancellation ordering.
         /// </summary>
         public async Task RescanDriveAsync(CancellationToken cancellationToken)
         {
@@ -29,7 +23,7 @@ public sealed partial class FileIndex
             try
             {
                 _index.ThrowIfCancelledByDisposal(rescanCancellation.Token);
-                await _index.RescanWithGateHeldAsync(this, Configuration, recovery: null, rescanCancellation.Token)
+                await RescanWithGateHeldAsync(recovery: null, rescanCancellation.Token)
                     .ConfigureAwait(false);
             }
             finally
@@ -44,7 +38,7 @@ public sealed partial class FileIndex
         /// <param name="ProducerFailureMessage">What the drive's status reports for that failure.</param>
         /// <param name="CatchUpLoss">Set when the published block's catch-up was lost.</param>
         /// <param name="ConsecutiveLostCatchUps">The drive's count after a publish.</param>
-        public readonly record struct ScanAttempt(
+        readonly record struct ScanAttempt(
             bool Published,
             Exception? ProducerFailure = null,
             string? ProducerFailureMessage = null,

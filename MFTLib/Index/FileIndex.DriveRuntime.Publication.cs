@@ -74,15 +74,15 @@ public sealed partial class FileIndex
                     var driveOrdinal = replaced?.DriveOrdinal ?? _index.AllocateDriveOrdinalLocked();
 
                     var driveBlock = BuildDriveBlock(driveOrdinal, block);
-                    var handoff = RetireWatchAtCommitLocked(this);
+                    var handoff = RetireWatchAtCommitLocked();
                     if (recovery is null)
                     {
-                        ClearRecoveryLocked(this);
+                        ClearRecoveryLocked();
                     }
 
                     if (replaced is not null)
                     {
-                        _index.RetireBlockLocked(replaced);
+                        RetireBlockLocked(replaced);
                     }
 
                     Block = driveBlock;
