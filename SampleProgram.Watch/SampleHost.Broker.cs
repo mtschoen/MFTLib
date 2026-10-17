@@ -114,17 +114,17 @@ partial class SampleHost
         try
         {
             await using var index = await OpenDriveAsync(source, parsed, resolveDrive(letter), cancellationToken).ConfigureAwait(false);
-            var driveLetter = letter[0];
+            var drive = new DriveKey(letter[0]);
             switch (parsed.Verb)
             {
                 case WatchVerb.Rescan:
-                    var results = await index.RescanAsync([driveLetter], cancellationToken).ConfigureAwait(false);
+                    var results = await index.RescanAsync([drive], cancellationToken).ConfigureAwait(false);
                     WriteResults("rescan", results);
                     succeeded = results.All(result => result.Outcome == DriveOperationOutcome.Succeeded);
                     WriteDriveDetail(index.Drives.Single());
                     break;
                 case WatchVerb.Journal:
-                    await WriteJournalAsync(session, index, driveLetter, parsed, cancellationToken).ConfigureAwait(false);
+                    await WriteJournalAsync(session, index, drive, parsed, cancellationToken).ConfigureAwait(false);
                     break;
             }
 

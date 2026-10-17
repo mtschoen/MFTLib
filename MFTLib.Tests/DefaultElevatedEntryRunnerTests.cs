@@ -277,7 +277,7 @@ public class DefaultElevatedEntryRunnerTests
     {
         await control.WaitForConnectionAsync(cancellationToken);
         await HostChannelHarness.WriteFrameAsync(control,
-            writer => BrokerProtocol.WriteOpenChannel(writer, 1, "C", _drivePipeName));
+            writer => BrokerProtocol.WriteOpenChannel(writer, 1, 'C', _drivePipeName));
         await drive.WaitForConnectionAsync(cancellationToken);
         var opened = await HostChannelHarness.ReadFrameAsync(control);
         Assert.AreEqual(BrokerFrameKind.ChannelOpened, opened?.Kind);

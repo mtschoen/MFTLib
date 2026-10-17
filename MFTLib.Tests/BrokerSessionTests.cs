@@ -601,6 +601,21 @@ public partial class BrokerSessionTests
     }
 
     [TestMethod]
+    public async Task GrowUsnJournalAsync_DefaultDrive_DoesNotLaunch()
+    {
+        var launches = 0;
+        await using var session = CreateSession(_ =>
+        {
+            Interlocked.Increment(ref launches);
+            return new TaskCompletionSource<BrokerProcess>().Task;
+        });
+
+        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+            session.GrowUsnJournalAsync(default, new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None));
+        Assert.AreEqual(0, launches);
+    }
+
+    [TestMethod]
     public async Task GrowUsnJournalAsync_AfterTheProcessEndedThrowsInvalidOperation()
     {
         await using var handle = StartBroker();

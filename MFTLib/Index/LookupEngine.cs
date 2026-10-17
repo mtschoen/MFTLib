@@ -6,14 +6,14 @@ namespace MFTLib.Index;
 /// </summary>
 internal static class LookupEngine
 {
-    internal static FileEntry Root(IReadOnlyList<DriveBlock> snapshot, DriveKey driveLetter,
+    internal static FileEntry Root(IReadOnlyList<DriveBlock> snapshot, DriveKey drive,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         cancellationToken.ThrowIfCancellationRequested();
-        if (FindDriveBlock(snapshot, driveLetter) is not { } driveBlock)
+        if (FindDriveBlock(snapshot, drive) is not { } driveBlock)
         {
-            throw new ArgumentException($"Drive {driveLetter} is not part of this index.", nameof(driveLetter));
+            throw new ArgumentException($"Drive {drive} is not part of this index.", nameof(drive));
         }
 
         return FileEntry.Create(driveBlock, driveBlock.Block.Header.RootRow);
@@ -25,8 +25,8 @@ internal static class LookupEngine
     ///     the inner one, and the remaining segments are walked down from that block's root row.
     /// </summary>
     /// <summary>The snapshot's block for this drive, or null when it has none.</summary>
-    internal static DriveBlock? FindDriveBlock(IReadOnlyList<DriveBlock> snapshot, DriveKey driveLetter) =>
-        snapshot.FirstOrDefault(candidate => candidate.Drive == driveLetter.Validated());
+    internal static DriveBlock? FindDriveBlock(IReadOnlyList<DriveBlock> snapshot, DriveKey drive) =>
+        snapshot.FirstOrDefault(candidate => candidate.Drive == drive.Validated());
 
     internal static FileEntry? Find(IReadOnlyList<DriveBlock> snapshot, string nativePath,
         CancellationToken cancellationToken = default)

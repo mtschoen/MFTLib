@@ -77,13 +77,13 @@ public sealed class SyntheticMftProducer
     }
 
     /// <summary>Wraps the built block, closing it when the catch-up loss callback throws so no handle leaks.</summary>
-    MftBlockProduceResult Describe(BlockFile block, DriveKey driveLetter)
+    MftBlockProduceResult Describe(BlockFile block, DriveKey drive)
     {
         try
         {
             return new MftBlockProduceResult(block, SkippedRecordCount)
             {
-                CatchUpLoss = CatchUpLoss?.Invoke(driveLetter)
+                CatchUpLoss = CatchUpLoss?.Invoke(drive)
             };
         }
         catch

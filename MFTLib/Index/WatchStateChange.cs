@@ -18,12 +18,12 @@ namespace MFTLib.Index;
 public sealed record WatchStateChange
 {
     /// <summary>Creates a report of one drive's watch state change.</summary>
-    /// <param name="driveLetter">The drive whose watch changed state.</param>
+    /// <param name="drive">The drive whose watch changed state.</param>
     /// <param name="watch">The drive's watch status after the change.</param>
     /// <param name="fault">The fault that caused the change, or null.</param>
-    internal WatchStateChange(DriveKey driveLetter, DriveWatchStatus watch, WatchFault? fault)
+    internal WatchStateChange(DriveKey drive, DriveWatchStatus watch, WatchFault? fault)
     {
-        Drive = driveLetter;
+        Drive = drive;
         Watch = watch;
         Fault = fault;
     }

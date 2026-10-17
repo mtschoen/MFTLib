@@ -69,24 +69,23 @@ public static class BrokerTestHarness
         var grow = volumes.GrowUsnJournal;
         return new JournalBrokerHost(new ScriptedVolumeAccess
         {
-            CursorQuery = drive => queryCursor(new DriveKey(drive[0])).ToProduction(),
+            CursorQuery = drive => queryCursor(drive).ToProduction(),
             RecordBatches = scan is null ? ScriptedVolumeAccess.UnsupportedScan :
                 (drive, parseThreads, reporting, _, _, cancellationToken) =>
-                    ConvertScan(scan(new ScriptedScan(new DriveKey(drive[0]), parseThreads,
-                        reporting, cancellationToken))),
+                    ConvertScan(scan(new ScriptedScan(drive, parseThreads, reporting, cancellationToken))),
             JournalRead = (drive, since, maximumBufferReads) =>
-                ConvertJournal(readJournal(new DriveKey(drive[0]), since.ToSynthetic(), maximumBufferReads)),
+                ConvertJournal(readJournal(drive, since.ToSynthetic(), maximumBufferReads)),
             JournalWatch = watch is null ? ScriptedVolumeAccess.UnsupportedWatch :
                 (drive, since, _, cancellationToken) => ConvertWatch(
-                    watch(new DriveKey(drive[0]), since.ToSynthetic(), cancellationToken), cancellationToken),
-            VolumeInformation = drive => queryVolume(new DriveKey(drive[0])),
+                    watch(drive, since.ToSynthetic(), cancellationToken), cancellationToken),
+            VolumeInformation = drive => queryVolume(drive),
             JournalGrow = grow is null ? ScriptedVolumeAccess.UnsupportedGrow :
-                (drive, maximumSize, allocationDelta) => grow(new DriveKey(drive[0]),
+                (drive, maximumSize, allocationDelta) => grow(drive,
                     new UsnJournalSettings { MaximumSize = maximumSize, AllocationDelta = allocationDelta })
         });
     }
 
-    static (IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Updated) NothingNew(DriveKey driveLetter,
+    static (IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Updated) NothingNew(DriveKey drive,
         SyntheticJournalCursor since, int maximumBufferReads) => ([], since);
 
     static IEnumerable<IReadOnlyList<MftRecord>> ConvertScan(
@@ -112,7 +111,7 @@ public static class BrokerTestHarness
         }
     }
 
-    static NtfsVolumeInformation SmallVolume(DriveKey driveLetter) => new(256 * 1024, 1024);
+    static NtfsVolumeInformation SmallVolume(DriveKey drive) => new(256 * 1024, 1024);
 
     // The start MFTLib's own tests use: any host, section writer and client section factory, plus the
     // client's clock, per-pipe connection failures and held host writes, a wrapper around each client end

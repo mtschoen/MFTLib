@@ -71,7 +71,7 @@ public partial class UsnJournalSyntheticTests
         try
         {
             FileUtilities.Hooks.GetVolumeHandle = pipe.BorrowHandle;
-            using var volume = MftVolume.Open("C");
+            using var volume = MftVolume.Open('C');
             using var cancellation = new CancellationTokenSource();
             var watch = ConsumeIdleWatchAsync(volume, cancellation.Token);
             try

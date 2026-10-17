@@ -34,7 +34,7 @@ public partial class MftVolumeTests
         var reported = new List<MftScanProgress>();
         var directProgress = new SynchronousProgress<MftScanProgress>(reported.Add);
 
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
         var batches = volume.ReadRecordBatches(4096, directProgress, null, CancellationToken.None).ToList();
 
         Assert.AreEqual(1, batches.Count, "The parse itself must still succeed despite the malformed progress sample");
@@ -64,7 +64,7 @@ public partial class MftVolumeTests
 
         var directProgress = new SynchronousProgress<MftScanProgress>(_ => receivedCount++);
 
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
         var batches = volume.ReadRecordBatches(4096, directProgress, null, CancellationToken.None).ToList();
 
         Assert.AreEqual(1, batches.Count);
@@ -98,7 +98,7 @@ public partial class MftVolumeTests
             reported.Add(sample);
         });
 
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
         var batches = volume.ReadRecordBatches(4096, directProgress, null, CancellationToken.None).ToList();
 
         Assert.AreEqual(1, batches.Count, "The parse itself must still succeed despite the throwing consumer");

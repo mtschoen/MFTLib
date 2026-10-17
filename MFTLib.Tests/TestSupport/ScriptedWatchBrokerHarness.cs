@@ -38,10 +38,10 @@ internal sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
         var host = new JournalBrokerHost(
             new ScriptedVolumeAccess
             {
-                CursorQuery = drive => _tips.GetValueOrDefault(drive[0], journalTip),
+                CursorQuery = drive => _tips.GetValueOrDefault(drive.Letter, journalTip),
                 RecordBatches = scanDrive ?? ((_, _, _, _, _, _) => throw new InvalidOperationException("A scan is not expected.")),
                 JournalRead = seams.ReadJournal ?? ((_, since, _) => ([], since)),
-                JournalWatch = (drive, since, operation, token) => Watch(drive[0]).RunAsync(since, operation, token),
+                JournalWatch = (drive, since, operation, token) => Watch(drive.Letter).RunAsync(since, operation, token),
                 VolumeInformation = _ => new NtfsVolumeInformation(1024 * 100, 1024)
             },
             processorCount: 4,
@@ -135,7 +135,7 @@ internal sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
 internal sealed record ScriptedBrokerSeams
 {
     /// <summary>The host's journal catch-up source; the default reads nothing and stays at the cursor it is given.</summary>
-    public Func<string, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? ReadJournal { get; init; }
+    public Func<DriveKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? ReadJournal { get; init; }
 
     /// <summary>The host's clock; null reads the system clock.</summary>
     public TimeProvider? HostClock { get; init; }

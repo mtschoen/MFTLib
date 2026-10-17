@@ -15,17 +15,17 @@ public partial class JournalBrokerHostTests
         var queryCallCount = 0;
         (UsnJournalEntry[], UsnJournalCursor)[] batchD = [([WatchEntry()], new UsnJournalCursor(2UL, 210L))];
 
-        UsnJournalCursor QueryCursor(string drive)
+        UsnJournalCursor QueryCursor(DriveKey drive)
         {
             Interlocked.Increment(ref queryCallCount);
-            return drive == "C" ? new UsnJournalCursor(1UL, 999L) : new UsnJournalCursor(2UL, 500L);
+            return drive.Letter == 'C' ? new UsnJournalCursor(1UL, 999L) : new UsnJournalCursor(2UL, 500L);
         }
 
         IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> WatchDrive(
-            string drive, UsnJournalCursor since, ISourceOperationReporter operation,
+            DriveKey drive, UsnJournalCursor since, ISourceOperationReporter operation,
             CancellationToken cancellationToken)
         {
-            if (drive == "C" && since.JournalIdentifier == 7UL)
+            if (drive.Letter == 'C' && since.JournalIdentifier == 7UL)
             {
                 throw new InvalidOperationException("USN journal entries have been deleted; full rescan needed");
             }

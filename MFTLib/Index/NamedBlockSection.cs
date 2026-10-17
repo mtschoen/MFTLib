@@ -110,8 +110,8 @@ internal static class NamedBlockSection
     }
 
     [SupportedOSPlatform("windows")]
-    public static string BuildSectionName(DriveKey driveLetter)
+    public static string BuildSectionName(DriveKey drive)
     {
-        return "mftlib-block-" + driveLetter + "-" + Guid.NewGuid().ToString("N");
+        return "mftlib-block-" + drive + "-" + Guid.NewGuid().ToString("N");
     }
 }

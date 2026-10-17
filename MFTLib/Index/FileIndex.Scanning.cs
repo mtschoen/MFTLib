@@ -52,14 +52,14 @@ public sealed partial class FileIndex
             return;
         }
 
-        var driveLetter = drive.Drive;
+        var driveKey = drive.Drive;
         int settledCount;
         lock (_stateLock)
         {
-            settledCount = _settledCountsByLetter[driveLetter];
+            settledCount = _settledCountsByDrive[driveKey];
         }
 
-        openProgress.Report(new IndexDriveOpened(driveLetter, settledCount, total));
+        openProgress.Report(new IndexDriveOpened(driveKey, settledCount, total));
     }
 
     /// <summary>
@@ -70,21 +70,21 @@ public sealed partial class FileIndex
     /// </summary>
     async Task AddDriveAsync(IndexedDrive drive, CancellationToken cancellationToken)
     {
-        var driveLetter = drive.Drive;
+        var driveKey = drive.Drive;
         if (DriveKind.For(drive.Producer, _options.MftSource).RequiresExistingRoot &&
             !Directory.Exists(drive.RootDirectory))
         {
-            RecordOfflineDrive(driveLetter);
+            RecordOfflineDrive(driveKey);
             return;
         }
 
         var slotOutcome = ResolveCanonicalOwnership(drive);
         if (slotOutcome == CanonicalSlotOutcome.DeclinedInUse)
         {
-            RecordFailedDrive(driveLetter, DriveFailureKind.InUse, new PendingDriveResult
+            RecordFailedDrive(driveKey, DriveFailureKind.InUse, new PendingDriveResult
             {
                 ProducerFailureMessage =
-                    $"Drive {driveLetter}: cache block is in use by another FileIndex and --cache-only forbids a scan."
+                    $"Drive {driveKey}: cache block is in use by another FileIndex and --cache-only forbids a scan."
             });
             return;
         }
@@ -93,7 +93,7 @@ public sealed partial class FileIndex
         var warmStart = ownsCanonicalSlot
             ? TryOpenExistingBlock(drive)
             : new WarmStartResult(null, null);
-        warmStart = RejectUnresumableCheckpoint(driveLetter, warmStart);
+        warmStart = RejectUnresumableCheckpoint(driveKey, warmStart);
         var opened = new PendingDriveResult
         {
             CheckpointLoss = warmStart.CheckpointLoss,
@@ -116,10 +116,10 @@ public sealed partial class FileIndex
             var failureKind = warmStart.DiscardedBlock == BlockValidationResult.WrongCacheTag
                 ? DriveFailureKind.CacheTagMismatch
                 : DriveFailureKind.CacheDeclined;
-            RecordFailedDrive(driveLetter, failureKind, opened with
+            RecordFailedDrive(driveKey, failureKind, opened with
             {
                 ProducerFailureMessage =
-                    $"Drive {driveLetter}: no usable cache (missing, corrupt, or incompatible) and --cache-only forbids a scan."
+                    $"Drive {driveKey}: no usable cache (missing, corrupt, or incompatible) and --cache-only forbids a scan."
             });
             return;
         }
@@ -267,7 +267,7 @@ public sealed partial class FileIndex
     ///         journal no longer holds.
     ///     </para>
     /// </summary>
-    WarmStartResult RejectUnresumableCheckpoint(DriveKey driveLetter, WarmStartResult warmStart)
+    WarmStartResult RejectUnresumableCheckpoint(DriveKey drive, WarmStartResult warmStart)
     {
         if (warmStart.Block is not { } candidate || candidate.Header.ProducerKind != ProducerKind.Mft)
         {
@@ -279,9 +279,9 @@ public sealed partial class FileIndex
         {
             ref readonly var header = ref candidate.Header;
             var checkpointLoss = WatchSourceOrNull is null
-                ? JournalCheckpointCheck.CheckUnmoved(driveLetter, header.UsnJournalIdentifier, header.UsnNextUsn,
+                ? JournalCheckpointCheck.CheckUnmoved(drive, header.UsnJournalIdentifier, header.UsnNextUsn,
                     JournalCheckpointLossDetection.DriveOpening)
-                : JournalCheckpointCheck.Check(driveLetter, header.UsnJournalIdentifier, header.UsnNextUsn,
+                : JournalCheckpointCheck.Check(drive, header.UsnJournalIdentifier, header.UsnNextUsn,
                     JournalCheckpointLossDetection.DriveOpening);
             if (checkpointLoss is not { } loss)
             {
@@ -361,13 +361,13 @@ public sealed partial class FileIndex
     ///     rescan of a tree larger than the estimate therefore plans a larger block instead of
     ///     repeating the exhausted one.
     /// </summary>
-    (uint SlotCapacity, uint NamePoolCapacity) PlanCapacities(DriveKey driveLetter, uint estimatedRows)
+    (uint SlotCapacity, uint NamePoolCapacity) PlanCapacities(DriveKey drive, uint estimatedRows)
     {
         var slotCapacity = BlockLayout.ComputeSlotCapacity(estimatedRows);
         var namePoolCapacity = BlockLayout.ComputeNamePoolCapacity(EnumerationProducer.EstimateNamePoolBytes(estimatedRows));
         lock (_stateLock)
         {
-            if (TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal) &&
+            if (TryGetDriveOrdinalLocked(drive, out var driveOrdinal) &&
                 _driveBlocks[driveOrdinal].Block.Header is { IsCapacityExhausted: true } exhausted)
             {
                 slotCapacity = Math.Max(slotCapacity, BlockLayout.DoubleCapacity(exhausted.SlotCapacity));

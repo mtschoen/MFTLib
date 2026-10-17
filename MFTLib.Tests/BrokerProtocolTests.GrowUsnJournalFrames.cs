@@ -1,3 +1,4 @@
+using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -12,11 +13,11 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void GrowUsnJournalFrame_RoundTrips_RequestIdDriveAndSizes()
     {
-        var frame = RoundTrip(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 12, "C", 0x08000000, 0x01000000));
+        var frame = RoundTrip(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 12, 'c', 0x08000000, 0x01000000));
 
         Assert.AreEqual(BrokerFrameKind.GrowUsnJournal, frame.Kind);
         Assert.AreEqual(12u, frame.RequestId);
-        Assert.AreEqual("C", frame.Drive);
+        Assert.AreEqual(new DriveKey('C'), frame.RequireDrive());
         Assert.AreEqual(0x08000000L, frame.JournalMaximumSize);
         Assert.AreEqual(0x01000000L, frame.JournalAllocationDelta);
         Assert.AreEqual(0, frame.Entries.Length);
@@ -40,15 +41,19 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void WireBytes_Golden_GrowUsnJournalFrame()
     {
-        AssertWireBytes(w => BrokerProtocol.WriteGrowUsnJournal(w, 5, "C", 0x08000000, 0x01000000),
+        AssertWireBytes(w => BrokerProtocol.WriteGrowUsnJournal(w, 5, 'c', 0x08000000, 0x01000000),
         [
-            0x1B, 0x00, 0x00, 0x00, // totalLength = 27
+            0x17, 0x00, 0x00, 0x00, // totalLength = 23
             0x05, // kind = GrowUsnJournal
             0x05, 0x00, 0x00, 0x00, // requestId = 5
-            0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // drive "C"
+            0x43, 0x00, // drive 'C'
             0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, // maximumSize = 0x08000000
             0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00 // allocationDelta = 0x01000000
         ]);
+
+        var buffer = new System.Buffers.ArrayBufferWriter<byte>();
+        Assert.ThrowsException<ArgumentException>(() => BrokerProtocol.WriteGrowUsnJournal(buffer, 5, default, 0x08000000, 0x01000000));
+        Assert.AreEqual(0, buffer.WrittenCount);
     }
 
     [TestMethod]

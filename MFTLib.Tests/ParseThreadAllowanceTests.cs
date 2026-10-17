@@ -53,7 +53,7 @@ public class ParseThreadAllowanceTests
             observed.Add(control->ParseThreadAllowance);
         });
 
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
         _ = volume.ReadRecordBatches(4096, null, allowance, CancellationToken.None).ToList();
         CollectionAssert.AreEqual(new[] { 2, 3, 5 }, observed);
 
@@ -70,7 +70,7 @@ public class ParseThreadAllowanceTests
         var observed = -1;
         FakeParse(control => observed = control->ParseThreadAllowance);
 
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
         _ = volume.ReadRecordBatches(4096, null, null, CancellationToken.None).ToList();
         Assert.AreEqual(0, observed);
     }
@@ -89,7 +89,7 @@ public class ParseThreadAllowanceTests
             observed.Add(control->CancelRequested);
         });
 
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
         _ = volume.ReadRecordBatches(4096, null, null, cancellation.Token).ToList();
         CollectionAssert.AreEqual(new[] { 0, 1 }, observed);
     }

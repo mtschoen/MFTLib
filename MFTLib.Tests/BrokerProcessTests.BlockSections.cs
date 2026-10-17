@@ -87,7 +87,6 @@ public partial class BrokerProcessTests
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanProgress(writer,
             new BrokerScanProgress
             {
-                Drive = "C",
                 Phase = BrokerScanPhase.Parsing,
                 RecordsProcessed = 50,
                 BytesProcessed = 1000,
@@ -97,7 +96,6 @@ public partial class BrokerProcessTests
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanProgress(writer,
             new BrokerScanProgress
             {
-                Drive = "C",
                 Phase = BrokerScanPhase.Parsing,
                 RecordsProcessed = 100,
                 BytesProcessed = 2000,
@@ -139,7 +137,6 @@ public partial class BrokerProcessTests
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanProgress(writer,
             new BrokerScanProgress
             {
-                Drive = "C",
                 Phase = BrokerScanPhase.Parsing,
                 RecordsProcessed = 10,
                 BytesProcessed = 200,
@@ -188,10 +185,10 @@ public partial class BrokerProcessTests
 
         public ThrowingLifetime Lifetime { get; } = new();
 
-        public (string SectionName, BlockFile Block, IDisposable Lifetime) Create(char driveLetter,
+        public (string SectionName, BlockFile Block, IDisposable Lifetime) Create(DriveKey drive,
             BlockFileCreateOptions options)
         {
-            var (sectionName, block, _) = Inner.Create(driveLetter, options);
+            var (sectionName, block, _) = Inner.Create(drive, options);
             return (sectionName, block, Lifetime);
         }
     }

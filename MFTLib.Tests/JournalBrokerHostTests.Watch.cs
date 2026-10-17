@@ -103,7 +103,7 @@ public partial class JournalBrokerHostTests
             queryCursor: _ => armed,
             watchDrive: (drive, _, _, cancellationToken) => GatedWatch(
                 ([WatchEntry()], new UsnJournalCursor(7UL, 110L)),
-                drive == "C" ? secondBatchGate.Task : siblingGate.Task,
+                drive == 'C' ? secondBatchGate.Task : siblingGate.Task,
                 ([WatchEntry()], new UsnJournalCursor(7UL, 120L)),
                 cancellationToken));
         var drivePipe = new BreakableDrivePipe('C');
@@ -137,7 +137,7 @@ public partial class JournalBrokerHostTests
         var armed = new UsnJournalCursor(7UL, 100L);
         var host = CreateWatchHost(
             queryCursor: _ => armed,
-            watchDrive: (drive, _, _, cancellationToken) => drive == "C"
+            watchDrive: (drive, _, _, cancellationToken) => drive == 'C'
                 ? FaultingAfterGate(([WatchEntry()], new UsnJournalCursor(7UL, 110L)), faultGate.Task,
                     cancellationToken)
                 : GatedWatch(([WatchEntry()], new UsnJournalCursor(7UL, 110L)), siblingGate.Task,
@@ -170,7 +170,7 @@ public partial class JournalBrokerHostTests
         var armed = new UsnJournalCursor(7UL, 100L);
         var host = CreateWatchHost(
             queryCursor: _ => armed,
-            watchDrive: (drive, _, _, cancellationToken) => drive == "C"
+            watchDrive: (drive, _, _, cancellationToken) => drive == 'C'
                 ? LiveWatch([([WatchEntry()], new UsnJournalCursor(7UL, 110L))], cancellationToken)
                 : GatedWatch(([WatchEntry()], new UsnJournalCursor(7UL, 110L)), siblingGate.Task,
                     ([WatchEntry()], new UsnJournalCursor(7UL, 120L)), cancellationToken));

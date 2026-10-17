@@ -10,17 +10,17 @@ namespace MFTLib.Tests;
 public partial class JournalBrokerHostChannelTests
 {
     [TestMethod]
-    public async Task OpenChannel_InvalidDriveLetter_RepliesErrorWithRequestId()
+    public async Task OpenChannel_InvalidDrive_EndsMalformedControlSessionBeforeConnecting()
     {
+        await using var pair = new InMemoryPipePair();
         var host = CreateHost();
-        await using var harness = new HostChannelHarness(host);
-
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 31, "12", "unused"));
-        var reply = await harness.ReadControlAsync();
-
-        Assert.AreEqual(BrokerFrameKind.Error, reply.Kind);
-        Assert.AreEqual(31u, reply.RequestId);
-        StringAssert.Contains(reply.Message, "'12' is not a valid drive letter");
+        var serve = host.ServeAsync(pair.Host,
+            (_, _) => throw new AssertFailedException("Invalid drive reached the connector."),
+            null, CancellationToken.None);
+        // length 13, OpenChannel, request 31, invalid UTF-16 character '1', pipe name 'p'.
+        byte[] frame = [13, 0, 0, 0, 1, 31, 0, 0, 0, (byte)'1', 0, 2, 0, 0, 0, (byte)'p', 0];
+        await pair.Client.WriteAsync(frame);
+        await Assert.ThrowsExceptionAsync<InvalidDataException>(() => serve.WaitAsync(HangGuard));
     }
 
     [TestMethod]
@@ -34,7 +34,7 @@ public partial class JournalBrokerHostChannelTests
 
         Assert.AreEqual(BrokerFrameKind.Error, reply.Kind);
         StringAssert.Contains(reply.Message, "CaughtUp is not a control request");
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 4, "C"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 4, 'C'));
         Assert.AreEqual(4u, (await harness.ReadControlAsync()).RequestId, "The session keeps serving.");
     }
 
@@ -44,7 +44,7 @@ public partial class JournalBrokerHostChannelTests
         var host = CreateHost(queryVolumeInfo: _ => throw new OperationCanceledException("the source gave up"));
         await using var harness = new HostChannelHarness(host);
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 6, "C"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 6, 'C'));
         var reply = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.Error, reply.Kind);
@@ -65,7 +65,7 @@ public partial class JournalBrokerHostChannelTests
         // frame to land on the dead control pipe, after the host connected the drive pipe.
         harness.BreakableControl!.BreakPipe();
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 8, "C", "pipe"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 8, 'C', "pipe"));
 
         await connected.Disposed.WaitAsync(HangGuard);
         await harness.Serve.WaitAsync(HangGuard);
@@ -85,7 +85,7 @@ public partial class JournalBrokerHostChannelTests
         await using var late = new InMemoryPipePair();
         await using var lateStream = new DisposalRecordingStream(late.Host);
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 9, "C", "slow"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 9, 'C', "slow"));
         await connecting.Entered.WaitAsync(HangGuard);
         await harness.CloseControlAsync();
         await harness.Serve.WaitAsync(HangGuard);
@@ -151,7 +151,7 @@ public partial class JournalBrokerHostChannelTests
             CancellationToken.None);
 
         // The ChannelOpened reply passed the session's end check and is held mid-write.
-        await HostChannelHarness.WriteFrameAsync(client, writer => BrokerProtocol.WriteOpenChannel(writer, 3, "C", "late"));
+        await HostChannelHarness.WriteFrameAsync(client, writer => BrokerProtocol.WriteOpenChannel(writer, 3, 'C', "late"));
         await heldReply.Started.WaitAsync(HangGuard);
 
         // The client goes away: the session ends and its drain starts (the drain's grace timer is

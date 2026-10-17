@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -17,7 +18,7 @@ public partial class BrokerProcessTests
     {
         await using var broker = new InProcessBroker(CreateHost(queryVolumeInfo: drive =>
         {
-            Assert.AreEqual("D", drive);
+            Assert.AreEqual(new DriveKey('D'), drive);
             return Volume;
         }));
 
@@ -33,7 +34,7 @@ public partial class BrokerProcessTests
     {
         await using var broker = new InProcessBroker(CreateHost(growUsnJournal: (drive, maximumSize, allocationDelta) =>
         {
-            Assert.AreEqual("E", drive);
+            Assert.AreEqual(new DriveKey('E'), drive);
             return new UsnJournalSettings { MaximumSize = maximumSize * 2, AllocationDelta = allocationDelta };
         }));
 
@@ -62,7 +63,7 @@ public partial class BrokerProcessTests
         var gate = new TestGate();
         await using var broker = new InProcessBroker(CreateHost(queryVolumeInfo: drive =>
         {
-            if (drive != "C")
+            if (drive != 'C')
             {
                 return Volume with { MftValidDataLength = 2048 * 1000 };
             }
@@ -304,12 +305,12 @@ public partial class BrokerProcessTests
     }
 
     static JournalBrokerHost CreateHost(
-        Func<string, UsnJournalCursor>? queryCursor = null,
+        Func<DriveKey, UsnJournalCursor>? queryCursor = null,
         MftRecordBatchSource? scanDrive = null,
-        Func<string, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
-        Func<string, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchDrive = null,
-        Func<string, NtfsVolumeInformation>? queryVolumeInfo = null,
-        Func<string, long, long, UsnJournalSettings>? growUsnJournal = null,
+        Func<DriveKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
+        Func<DriveKey, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchDrive = null,
+        Func<DriveKey, NtfsVolumeInformation>? queryVolumeInfo = null,
+        Func<DriveKey, long, long, UsnJournalSettings>? growUsnJournal = null,
         TimeProvider? timeProvider = null)
     {
         return new JournalBrokerHost(

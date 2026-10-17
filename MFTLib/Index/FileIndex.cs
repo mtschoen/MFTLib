@@ -31,7 +31,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     /// </summary>
     readonly Dictionary<ushort, JournalCheckpointLoss> _checkpointLossesByOrdinal = [];
 
-    readonly Dictionary<DriveKey, BlockOwnerLock> _canonicalLocksByLetter = [];
+    readonly Dictionary<DriveKey, BlockOwnerLock> _canonicalLocksByDrive = [];
     readonly List<DriveBlockRelease> _retiredBlocks = [];
     readonly FileIndexOptions _options;
 
@@ -68,28 +68,28 @@ public sealed partial class FileIndex : IAsyncDisposable
     bool _disposed;
 
     /// <summary>
-    ///     The open's settle counts by drive letter, claimed under <see cref="_stateLock" /> in the
+    ///     The open's settle counts by drive, claimed under <see cref="_stateLock" /> in the
     ///     same section that records the drive's final state, so count order is settle order and,
     ///     for drives with a block, ordinal order.
     /// </summary>
-    readonly Dictionary<DriveKey, int> _settledCountsByLetter = [];
+    readonly Dictionary<DriveKey, int> _settledCountsByDrive = [];
 
     /// <summary>
     ///     Claims the next settle count for a drive whose final open state is being recorded. The
     ///     caller holds <see cref="_stateLock" />.
     /// </summary>
-    void ClaimSettledCountLocked(DriveKey driveLetter) =>
-        _settledCountsByLetter[driveLetter] = _settledCountsByLetter.Count + 1;
+    void ClaimSettledCountLocked(DriveKey drive) =>
+        _settledCountsByDrive[drive] = _settledCountsByDrive.Count + 1;
 
     FileIndex(FileIndexOptions options, string cacheDirectoryPath)
     {
         _options = options;
         CacheDirectoryPath = cacheDirectoryPath;
         _enumerateCacheFiles = options.EnumerateCacheFilesForTest ?? Directory.EnumerateFiles;
-        foreach (var drive in _options.Drives)
+        foreach (var configuredDrive in _options.Drives)
         {
-            var driveLetter = drive.Drive.Validated();
-            _driveRuntimes.Add(driveLetter, new DriveRuntime(driveLetter));
+            var drive = configuredDrive.Drive.Validated();
+            _driveRuntimes.Add(drive, new DriveRuntime(drive));
         }
     }
 
@@ -115,8 +115,8 @@ public sealed partial class FileIndex : IAsyncDisposable
                 var statuses = new List<DriveStatus>(_options.Drives.Count);
                 foreach (var configured in _options.Drives)
                 {
-                    var driveLetter = configured.Drive;
-                    statuses.Add(DescribeOnlineDrive(driveLetter) ?? DescribeBlocklessDrive(driveLetter));
+                    var drive = configured.Drive;
+                    statuses.Add(DescribeOnlineDrive(drive) ?? DescribeBlocklessDrive(drive));
                 }
 
                 return statuses;
@@ -214,12 +214,12 @@ public sealed partial class FileIndex : IAsyncDisposable
         return index;
     }
 
-    internal bool TryGetDriveOrdinal(DriveKey driveLetter, out ushort driveOrdinal)
+    internal bool TryGetDriveOrdinal(DriveKey drive, out ushort driveOrdinal)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         lock (_stateLock)
         {
-            return TryGetDriveOrdinalLocked(driveLetter, out driveOrdinal);
+            return TryGetDriveOrdinalLocked(drive, out driveOrdinal);
         }
     }
 
@@ -229,11 +229,11 @@ public sealed partial class FileIndex : IAsyncDisposable
     ///     away has nothing to do, not a different exception to raise over the one already in
     ///     flight. The caller holds <see cref="_stateLock" />.
     /// </summary>
-    bool TryGetDriveOrdinalLocked(DriveKey driveLetter, out ushort driveOrdinal)
+    bool TryGetDriveOrdinalLocked(DriveKey drive, out ushort driveOrdinal)
     {
         foreach (var driveBlock in _driveBlocks)
         {
-            if (driveBlock.Drive == driveLetter.Validated())
+            if (driveBlock.Drive == drive.Validated())
             {
                 driveOrdinal = driveBlock.DriveOrdinal;
                 return true;
@@ -334,12 +334,12 @@ public sealed partial class FileIndex : IAsyncDisposable
         {
             lock (_stateLock)
             {
-                foreach (var ownerLock in _canonicalLocksByLetter.Values)
+                foreach (var ownerLock in _canonicalLocksByDrive.Values)
                 {
                     ownerLock.Dispose();
                 }
 
-                _canonicalLocksByLetter.Clear();
+                _canonicalLocksByDrive.Clear();
             }
         }
 
@@ -364,20 +364,20 @@ public sealed partial class FileIndex : IAsyncDisposable
             }
 
             _driveBlocks.Clear();
-            foreach (var ownerLock in _canonicalLocksByLetter.Values)
+            foreach (var ownerLock in _canonicalLocksByDrive.Values)
             {
                 ownerLock.Dispose();
             }
 
-            _canonicalLocksByLetter.Clear();
+            _canonicalLocksByDrive.Clear();
         }
     }
 
-    DriveStatus? DescribeOnlineDrive(DriveKey driveLetter)
+    DriveStatus? DescribeOnlineDrive(DriveKey drive)
     {
         foreach (var driveBlock in _driveBlocks)
         {
-            if (driveBlock.Drive == driveLetter)
+            if (driveBlock.Drive == drive)
             {
                 return DescribeOnlineDriveBlock(driveBlock);
             }
@@ -411,9 +411,9 @@ public sealed partial class FileIndex : IAsyncDisposable
         };
     }
 
-    DriveStatus DescribeBlocklessDrive(DriveKey driveLetter)
+    DriveStatus DescribeBlocklessDrive(DriveKey drive)
     {
         // Every configured drive of an undisposed index is online or blockless once it settles.
-        return _blocklessDriveStatuses.First(status => status.Drive == driveLetter);
+        return _blocklessDriveStatuses.First(status => status.Drive == drive);
     }
 }

@@ -7,7 +7,7 @@
       default key, as do index operations, cache selections and key-bearing record initializers.
       Public key members are `Drive`. Each lifecycle verb has one enumerable-key method returning
       ordered per-drive results; callers supply `Drives.Select(status => status.Drive)` for all drives.
-      Cache filenames and broker frames convert at their boundaries and retain their formats.
+      Drive identity remains `DriveKey` through local-volume sources and broker clients, hosts, and channels. Cache filenames format the key at the cache boundary. Drive-bearing broker control requests encode one uppercase ASCII character as two UTF-16LE bytes. `MFTUtilities.GetVolumePath(DriveKey)` is the single raw device-path formatter used by volume opens and NTFS sizing queries.
     - **Public queries**: `FileIndex.Search` materializes `FileEntry` values, `Enumerate` streams them for LINQ,
       and `EnumerateRows` provides ref-struct `IndexRow` views with span names, sizes and flags for whole-drive
       passes that retain few rows. `IndexRow.ToEntry()` creates a handle for a retained row; `IndexRow` exposes

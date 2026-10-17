@@ -12,7 +12,7 @@ internal sealed partial class JournalBrokerHost
         UsnJournalSettings settings;
         try
         {
-            settings = _volumeAccess.GrowUsnJournal(BrokerDriveLetter.Normalize(request.RequireDrive()),
+            settings = _volumeAccess.GrowUsnJournal(request.RequireDrive(),
                 request.JournalMaximumSize, request.JournalAllocationDelta);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)

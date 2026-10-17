@@ -1,4 +1,5 @@
 using System.Buffers;
+using MFTLib.Index;
 
 namespace MFTLib;
 
@@ -10,21 +11,20 @@ internal sealed partial class BrokerProcess
     // operation's one request frame. Every failed branch releases the pipe server and anything
     // connected to it, so the host reads EOF on whatever end it holds and its own bounded waits
     // end the rest.
-    internal async Task<BrokerDriveChannel> OpenChannelAsync(char driveLetter,
+    internal async Task<BrokerDriveChannel> OpenChannelAsync(DriveKey drive,
         Action<ArrayBufferWriter<byte>> writeFirstRequest, CancellationToken cancellationToken)
     {
-        var drive = NormalizeDrive(driveLetter);
-        var letter = drive[0];
+        drive = drive.Validated();
         var sequence = Interlocked.Increment(ref _channelSequence);
-        var pipe = _pipes.Listen($"{_controlPipeName}-{letter}-{sequence}");
+        var pipe = _pipes.Listen($"{_controlPipeName}-{drive}-{sequence}");
         using var connectCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken,
             _lifetime.Token);
         var connection = pipe.WaitForConnectionAsync(connectCancellation.Token);
         try
         {
-            await RequestChannelAsync(letter, drive, pipe.PipeName, cancellationToken).ConfigureAwait(false);
-            var stream = await AwaitConnectionAsync(letter, connection, cancellationToken).ConfigureAwait(false);
-            var channel = new BrokerDriveChannel(letter, pipe, stream, pipe.PipeName,
+            await RequestChannelAsync(drive, pipe.PipeName, cancellationToken).ConfigureAwait(false);
+            var stream = await AwaitConnectionAsync(drive, connection, cancellationToken).ConfigureAwait(false);
+            var channel = new BrokerDriveChannel(drive, pipe, stream, pipe.PipeName,
                 ForgetChannel, _timeProvider);
             try
             {
@@ -49,7 +49,7 @@ internal sealed partial class BrokerProcess
         }
     }
 
-    async Task RequestChannelAsync(char letter, string drive, string pipeName, CancellationToken cancellationToken)
+    async Task RequestChannelAsync(DriveKey drive, string pipeName, CancellationToken cancellationToken)
     {
         try
         {
@@ -58,14 +58,14 @@ internal sealed partial class BrokerProcess
         }
         catch (BrokerChannelLostException exception) when (exception.Drive is null)
         {
-            throw new BrokerChannelLostException(letter,
-                $"Drive {letter} channel could not be opened: {exception.Message}", exception);
+            throw new BrokerChannelLostException(drive,
+                $"Drive {drive} channel could not be opened: {exception.Message}", exception);
         }
     }
 
     // The host connects before it acknowledges, so after ChannelOpened the connection is due at
     // once; a host that acknowledged and never connected is given ControlReplyTimeout.
-    async Task<Stream> AwaitConnectionAsync(char letter, Task<Stream> connection, CancellationToken cancellationToken)
+    async Task<Stream> AwaitConnectionAsync(DriveKey drive, Task<Stream> connection, CancellationToken cancellationToken)
     {
         try
         {
@@ -74,15 +74,15 @@ internal sealed partial class BrokerProcess
         }
         catch (TimeoutException exception)
         {
-            throw new BrokerChannelLostException(letter,
-                $"Drive {letter} channel was opened but did not connect within {Seconds(ControlReplyTimeout)} seconds.",
+            throw new BrokerChannelLostException(drive,
+                $"Drive {drive} channel was opened but did not connect within {Seconds(ControlReplyTimeout)} seconds.",
                 exception);
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested &&
                                                  !cancellationToken.IsCancellationRequested)
         {
-            throw new BrokerChannelLostException(letter,
-                $"Drive {letter} channel could not be opened: the broker process ended.");
+            throw new BrokerChannelLostException(drive,
+                $"Drive {drive} channel could not be opened: the broker process ended.");
         }
     }
 

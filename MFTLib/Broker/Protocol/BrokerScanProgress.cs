@@ -5,9 +5,6 @@ namespace MFTLib;
 /// </summary>
 internal readonly record struct BrokerScanProgress
 {
-    /// <summary>The drive this sample describes, as the drive letter the scan was requested with.</summary>
-    public required string Drive { get; init; }
-
     /// <summary>Whether the broker is still parsing records off the volume or already transferring them into the shared block.</summary>
     public BrokerScanPhase Phase { get; init; }
 

@@ -208,7 +208,7 @@ public class WatchHostModeTests
     }
 
     static JournalBrokerHost CreateHost(
-        Func<string, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
+        Func<DriveKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
         MftRecordBatchSource? scanDrive = null)
     {
         return new JournalBrokerHost(

@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -13,9 +14,9 @@ public partial class JournalBrokerHostTests
     static readonly NtfsVolumeInformation WatchVolume = new(1024 * 1000, 1024);
 
     static JournalBrokerHost CreateWatchHost(
-        Func<string, UsnJournalCursor>? queryCursor = null,
-        Func<string, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchDrive = null,
-        Func<string, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
+        Func<DriveKey, UsnJournalCursor>? queryCursor = null,
+        Func<DriveKey, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchDrive = null,
+        Func<DriveKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
         MftRecordBatchSource? scanDrive = null)
     {
         return new JournalBrokerHost(
@@ -102,7 +103,7 @@ public partial class JournalBrokerHostTests
     static async Task AssertControlStillServesAsync(HostChannelHarness harness)
     {
         var requestId = harness.NextRequestId();
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, requestId, "C"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, requestId, 'C'));
         var reply = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.VolumeInfo, reply.Kind);

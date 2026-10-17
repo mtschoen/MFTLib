@@ -57,7 +57,7 @@ public class LiveVolumeSourcesIncludeFreedTests
             return parse(handle, freed, bufferSize, control, callback);
         };
 
-        var records = LiveVolumeSources.ScanDriveRecordBatches("C", new ParseThreadAllowance(2),
+        var records = LiveVolumeSources.ScanDriveRecordBatches('C', new ParseThreadAllowance(2),
                 new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions { IncludeFreed = includeFreed }, _ => { }, CancellationToken.None)
             .SelectMany(batch => batch).ToArray();
 
@@ -92,7 +92,7 @@ public class LiveVolumeSourcesIncludeFreedTests
             DeleteOnClose = true
         });
 
-        var batches = LiveVolumeSources.ScanDriveRecordBatches("C", new ParseThreadAllowance(2),
+        var batches = LiveVolumeSources.ScanDriveRecordBatches('C', new ParseThreadAllowance(2),
             new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions { IncludeFreed = true }, _ => { }, CancellationToken.None);
         MftBlockScan.WriteToBlock(block, new BlockStamp(default, TimeProvider.System), batches,
             new MftScanOptions { IncludeFreed = true }, new BlockWriteReporting(null, null),

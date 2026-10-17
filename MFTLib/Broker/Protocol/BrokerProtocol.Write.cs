@@ -9,10 +9,10 @@ internal static partial class BrokerProtocol
 {
     // Control pipe
 
-    // payload: [requestId u32][drive string][pipeName string]
-    public static void WriteOpenChannel(IBufferWriter<byte> writer, uint requestId, string drive, string pipeName)
+    // payload: [requestId u32][drive UTF-16 character][pipeName string]
+    public static void WriteOpenChannel(IBufferWriter<byte> writer, uint requestId, DriveKey drive, string pipeName)
     {
-        new PayloadWriter().UInt32(requestId).String(drive).String(pipeName)
+        new PayloadWriter().UInt32(requestId).Drive(drive).String(pipeName)
             .WriteTo(writer, BrokerFrameKind.OpenChannel);
     }
 
@@ -22,10 +22,10 @@ internal static partial class BrokerProtocol
         new PayloadWriter().UInt32(requestId).WriteTo(writer, BrokerFrameKind.ChannelOpened);
     }
 
-    // payload: [requestId u32][drive string]
-    public static void WriteQueryVolume(IBufferWriter<byte> writer, uint requestId, string drive)
+    // payload: [requestId u32][drive UTF-16 character]
+    public static void WriteQueryVolume(IBufferWriter<byte> writer, uint requestId, DriveKey drive)
     {
-        new PayloadWriter().UInt32(requestId).String(drive).WriteTo(writer, BrokerFrameKind.QueryVolume);
+        new PayloadWriter().UInt32(requestId).Drive(drive).WriteTo(writer, BrokerFrameKind.QueryVolume);
     }
 
     // payload: [requestId u32][bytesPerFileRecordSegment u32][mftValidDataLength i64]
@@ -36,11 +36,11 @@ internal static partial class BrokerProtocol
             .Int64(mftValidDataLength).WriteTo(writer, BrokerFrameKind.VolumeInfo);
     }
 
-    // payload: [requestId u32][drive string][maximumSize i64][allocationDelta i64]
-    public static void WriteGrowUsnJournal(IBufferWriter<byte> writer, uint requestId, string drive,
+    // payload: [requestId u32][drive UTF-16 character][maximumSize i64][allocationDelta i64]
+    public static void WriteGrowUsnJournal(IBufferWriter<byte> writer, uint requestId, DriveKey drive,
         long maximumSize, long allocationDelta)
     {
-        new PayloadWriter().UInt32(requestId).String(drive).Int64(maximumSize).Int64(allocationDelta)
+        new PayloadWriter().UInt32(requestId).Drive(drive).Int64(maximumSize).Int64(allocationDelta)
             .WriteTo(writer, BrokerFrameKind.GrowUsnJournal);
     }
 

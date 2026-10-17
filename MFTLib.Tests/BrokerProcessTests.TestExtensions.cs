@@ -236,7 +236,7 @@ public partial class BrokerProcessTests
             await firstCallbackEntered.Entered.WaitAsync(HangGuard);
 
             var resultD = await handle.Process.ScanDriveAsync('d', TestBlockSections.Target(), options, null, CancellationToken.None).WaitAsync(HangGuard);
-            Assert.AreEqual('D', resultD.DriveLetter);
+            Assert.AreEqual(new DriveKey('D'), resultD.Drive);
 
             Assert.AreEqual(2, handle.Scans.Count);
             Assert.AreEqual('C', handle.Scans[0].Drive);
@@ -244,7 +244,7 @@ public partial class BrokerProcessTests
 
             firstCallbackRelease.Release();
             var resultC = await scanC.WaitAsync(HangGuard);
-            Assert.AreEqual('C', resultC.DriveLetter);
+            Assert.AreEqual(new DriveKey('C'), resultC.Drive);
             Assert.AreEqual(2, handle.Scans.Count);
             Assert.AreEqual('C', handle.Scans[0].Drive);
             Assert.AreEqual('D', handle.Scans[1].Drive);
@@ -288,7 +288,7 @@ public partial class BrokerProcessTests
         var result = await singleHandle.Process.ScanDriveAsync('c', TestBlockSections.Target(), options,
             null, CancellationToken.None).WaitAsync(HangGuard);
 
-        Assert.AreEqual('C', result.DriveLetter);
+        Assert.AreEqual(new DriveKey('C'), result.Drive);
         Assert.AreEqual(Armed, result.ArmedCursor);
         Assert.IsNull(result.CatchUpLoss);
         Assert.IsTrue(result.Block.Block.Header.RowCount > 0);

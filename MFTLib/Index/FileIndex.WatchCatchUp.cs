@@ -12,9 +12,9 @@ public sealed partial class FileIndex
     ///     replacement has not registered yet, and <see cref="WatchState.NotStarted" />
     ///     otherwise. The caller holds <see cref="_stateLock" />.
     /// </summary>
-    WatchState GetWatchStateLocked(DriveKey driveLetter)
+    WatchState GetWatchStateLocked(DriveKey drive)
     {
-        var runtime = GetDriveRuntime(driveLetter);
+        var runtime = GetDriveRuntime(drive);
         if (runtime.RetryingLostCatchUp || runtime.RecoveryState == RecoveryState.Recovering)
         {
             return WatchState.Recovering;

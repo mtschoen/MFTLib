@@ -147,7 +147,7 @@ public partial class UsnJournalSyntheticTests
         UseFakeHandle();
         FileUtilities.Hooks.GetWatchVolumeHandle = _ => FakeVolumeHandle.Create();
         QueueSuccess(buffer);
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
         if (!watch)
         {
             QueueSuccess(UsnReadBuffers.Build(2000));

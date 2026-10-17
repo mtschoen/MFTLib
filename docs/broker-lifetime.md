@@ -103,6 +103,8 @@ truncated fields, invalid flags and trailing data are malformed requests.
 
 ## Control requests
 
+`OpenChannel`, `QueryVolume`, and `GrowUsnJournal` carry the request id followed by one uppercase ASCII drive character in two little-endian UTF-16 bytes, without a string-length prefix. `OpenChannel` then carries the length-prefixed pipe name; `GrowUsnJournal` then carries the two signed 64-bit sizes. Invalid or noncanonical characters, truncated fields, and trailing request payload bytes are malformed control frames and end the session before a volume source or channel connector runs. Application character inputs normalize through `DriveKey` before encoding. Progress frames inherit identity from their channel.
+
 `BrokerSession.GrowUsnJournalAsync` is a control request, like the internal volume
 query. It grows a journal in place, never shrinks it, refuses a maximum at or below
 the current size and returns settings read back from the volume.

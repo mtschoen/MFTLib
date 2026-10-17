@@ -27,33 +27,33 @@ public sealed partial class FileIndex
         return _options.CacheMode == CacheMode.ExistingOnly ? CanonicalSlotOutcome.DeclinedInUse : CanonicalSlotOutcome.NotOwned;
     }
 
-    void RecordOfflineDrive(DriveKey driveLetter)
+    void RecordOfflineDrive(DriveKey drive)
     {
         lock (_stateLock)
         {
-            ClaimSettledCountLocked(driveLetter);
-            _blocklessDriveStatuses.Add(new DriveStatus(driveLetter, DriveState.Offline));
+            ClaimSettledCountLocked(drive);
+            _blocklessDriveStatuses.Add(new DriveStatus(drive, DriveState.Offline));
         }
     }
 
     /// <summary>
     ///     Records a drive that opening left with no block, from its settled result and keyed by
-    ///     letter, since a drive that never adds a block never takes an ordinal.
+    ///     drive, since a drive that never adds a block never takes an ordinal.
     /// </summary>
-    void RecordFailedDrive(DriveKey driveLetter, DriveFailureKind failureKind, PendingDriveResult settled)
+    void RecordFailedDrive(DriveKey drive, DriveFailureKind failureKind, PendingDriveResult settled)
     {
         lock (_stateLock)
         {
-            ClaimSettledCountLocked(driveLetter);
-            _blocklessDriveStatuses.Add(new DriveStatus(driveLetter, DriveState.Failed)
+            ClaimSettledCountLocked(drive);
+            _blocklessDriveStatuses.Add(new DriveStatus(drive, DriveState.Failed)
             {
-                Failure = new DriveFailure(failureKind, settled.RequireFailureMessage(driveLetter)),
+                Failure = new DriveFailure(failureKind, settled.RequireFailureMessage(drive)),
                 // A cache-only open declines the drive precisely because the checkpoint was
                 // lost, so this is where that reason has to reach the consumer: the drive ends
                 // up with no block, and so never travels through DescribeDrive.
                 Watch = new DriveWatchStatus { CheckpointLoss = settled.CheckpointLoss }
             });
-            ReleaseCanonicalOwnershipLocked(driveLetter);
+            ReleaseCanonicalOwnershipLocked(drive);
         }
     }
 
@@ -103,10 +103,10 @@ public sealed partial class FileIndex
     /// </summary>
     bool EnsureCanonicalOwnership(IndexedDrive drive)
     {
-        var driveLetter = drive.Drive;
+        var driveKey = drive.Drive;
         lock (_stateLock)
         {
-            if (_canonicalLocksByLetter.ContainsKey(driveLetter))
+            if (_canonicalLocksByDrive.ContainsKey(driveKey))
             {
                 return true;
             }
@@ -120,16 +120,16 @@ public sealed partial class FileIndex
 
         lock (_stateLock)
         {
-            _canonicalLocksByLetter[driveLetter] = ownerLock;
+            _canonicalLocksByDrive[driveKey] = ownerLock;
         }
 
         return true;
     }
 
     /// <summary>The caller holds <see cref="_stateLock" />.</summary>
-    void ReleaseCanonicalOwnershipLocked(DriveKey driveLetter)
+    void ReleaseCanonicalOwnershipLocked(DriveKey drive)
     {
-        if (_canonicalLocksByLetter.Remove(driveLetter, out var ownerLock))
+        if (_canonicalLocksByDrive.Remove(drive, out var ownerLock))
         {
             ownerLock.Dispose();
         }
@@ -141,9 +141,9 @@ public sealed partial class FileIndex
     /// </summary>
     readonly Func<string, string, IEnumerable<string>> _enumerateCacheFiles;
 
-    void CleanupRetiredSiblings(DriveKey driveLetter, uint volumeSerial)
+    void CleanupRetiredSiblings(DriveKey drive, uint volumeSerial)
     {
-        var pattern = CacheDirectory.BlockFileName(driveLetter, volumeSerial) + ".retired-*";
+        var pattern = CacheDirectory.BlockFileName(drive, volumeSerial) + ".retired-*";
         try
         {
             foreach (var path in _enumerateCacheFiles(CacheDirectoryPath, pattern))

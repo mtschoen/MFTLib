@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Globalization;
+using MFTLib.Index;
 
 namespace MFTLib;
 
@@ -41,7 +42,7 @@ internal sealed partial class BrokerProcess
     ///     planned from (<see cref="NtfsVolumeInformation.MftValidDataLength" /> and
     ///     <see cref="NtfsVolumeInformation.BytesPerFileRecordSegment" />).
     /// </summary>
-    /// <param name="driveLetter">The drive to query.</param>
+    /// <param name="drive">The drive to query.</param>
     /// <param name="cancellationToken">
     ///     Stops waiting. Before the request starts writing nothing is sent; after, the reply is
     ///     dropped when it arrives.
@@ -49,9 +50,9 @@ internal sealed partial class BrokerProcess
     /// <exception cref="InvalidOperationException">The broker could not query the drive.</exception>
     /// <exception cref="BrokerChannelLostException">The process ended first.</exception>
     /// <exception cref="TimeoutException">The broker did not answer within the reply timeout.</exception>
-    internal async Task<NtfsVolumeInformation> QueryVolumeAsync(char driveLetter, CancellationToken cancellationToken)
+    internal async Task<NtfsVolumeInformation> QueryVolumeAsync(DriveKey drive, CancellationToken cancellationToken)
     {
-        var drive = NormalizeDrive(driveLetter);
+        drive = drive.Validated();
         var reply = await RequestAsync((writer, requestId) => BrokerProtocol.WriteQueryVolume(writer, requestId, drive),
             BrokerFrameKind.VolumeInfo, cancellationToken).ConfigureAwait(false);
         return new NtfsVolumeInformation(reply.MftValidDataLength, reply.BytesPerFileRecordSegment);
@@ -61,16 +62,16 @@ internal sealed partial class BrokerProcess
     ///     Grows the drive's USN journal (never shrinks it) and returns the sizing the volume
     ///     reports afterwards.
     /// </summary>
-    /// <param name="driveLetter">The drive whose journal grows.</param>
+    /// <param name="drive">The drive whose journal grows.</param>
     /// <param name="target">The requested maximum size and allocation delta in bytes; the broker refuses a maximum at or below the current.</param>
     /// <param name="cancellationToken">Stops waiting, as for <see cref="QueryVolumeAsync" />.</param>
     /// <exception cref="InvalidOperationException">The broker refused or failed the change.</exception>
     /// <exception cref="BrokerChannelLostException">The process ended first.</exception>
     /// <exception cref="TimeoutException">The broker did not answer within the reply timeout.</exception>
-    internal async Task<UsnJournalSettings> GrowUsnJournalAsync(char driveLetter, UsnJournalSettings target,
+    internal async Task<UsnJournalSettings> GrowUsnJournalAsync(DriveKey drive, UsnJournalSettings target,
         CancellationToken cancellationToken)
     {
-        var drive = NormalizeDrive(driveLetter);
+        drive = drive.Validated();
         var reply = await RequestAsync((writer, requestId) =>
                 BrokerProtocol.WriteGrowUsnJournal(writer, requestId, drive, target.MaximumSize, target.AllocationDelta),
             BrokerFrameKind.UsnJournalSettings, cancellationToken).ConfigureAwait(false);

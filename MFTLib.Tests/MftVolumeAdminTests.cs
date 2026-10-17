@@ -21,26 +21,10 @@ public class MftVolumeAdminTests
     }
 
     [TestMethod]
-    public void Open_ValidDriveLetter_Succeeds()
+    public void Open_ValidDrive_Succeeds()
     {
         RequireElevation();
-        using var volume = MftVolume.Open("C");
-        Assert.IsNotNull(volume);
-    }
-
-    [TestMethod]
-    public void Open_WithColon_Succeeds()
-    {
-        RequireElevation();
-        using var volume = MftVolume.Open("C:");
-        Assert.IsNotNull(volume);
-    }
-
-    [TestMethod]
-    public void Open_WithBackslash_Succeeds()
-    {
-        RequireElevation();
-        using var volume = MftVolume.Open(@"C:\");
+        using var volume = MftVolume.Open('C');
         Assert.IsNotNull(volume);
     }
 
@@ -48,7 +32,7 @@ public class MftVolumeAdminTests
     public void Open_WithCustomBufferSize_Succeeds()
     {
         RequireElevation();
-        using var volume = MftVolume.Open("C", 65536);
+        using var volume = MftVolume.Open('C', 65536);
         var records = volume.ReadAll();
         Assert.IsTrue(records.Length > 0);
     }
@@ -57,7 +41,7 @@ public class MftVolumeAdminTests
     public void ReadAll_ReturnsNonEmpty()
     {
         RequireElevation();
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
         var records = volume.ReadAll();
 
         Assert.IsTrue(records.Length > 0, "Expected records on C:");
@@ -67,7 +51,7 @@ public class MftVolumeAdminTests
     public void ReadAll_MaterializesRecordsWithStableStrings()
     {
         RequireElevation();
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
         var records = volume.ReadAll();
 
         Assert.IsTrue(records.Length > 0);
@@ -81,7 +65,7 @@ public class MftVolumeAdminTests
     public void Open_InvalidVolume_Throws()
     {
         RequireElevation();
-        Assert.ThrowsException<IOException>(() => MftVolume.Open("Q"));
+        Assert.ThrowsException<IOException>(() => MftVolume.Open('Q'));
     }
 
     [TestMethod]
@@ -104,7 +88,7 @@ public class MftVolumeAdminTests
     public void ReadRecordBatches_RealVolume_TakesTwoBatches_DisposesEarly()
     {
         RequireElevation();
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
         var batches = new List<MftRecord[]>();
         foreach (var batch in volume.ReadRecordBatches(100, null, null, CancellationToken.None))
         {

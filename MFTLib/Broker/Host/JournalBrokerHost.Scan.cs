@@ -92,7 +92,7 @@ internal sealed partial class JournalBrokerHost
         {
             var progressState = new ScanProgressState();
             var progressReporter = new DirectProgress<BlockWriteProgress>(value =>
-                progressState.Report(channel.Drive, value, progressWriter));
+                progressState.Report(value, progressWriter));
 
             // Armed before the scan starts, so every change the scan misses is replayed by catch-up.
             ScanStartingForTest?.Invoke(channel.Drive, request.RetainedFileNames);
@@ -200,7 +200,6 @@ internal sealed partial class JournalBrokerHost
 
         var finalProgress = new BrokerScanProgress
         {
-            Drive = channel.Drive,
             Phase = BrokerScanPhase.Transferring,
             RecordsProcessed = finalRecords,
             BytesProcessed = output.WriteResult.NamePoolUsedBytes,
@@ -267,7 +266,7 @@ internal sealed partial class JournalBrokerHost
     static async Task ReportFailedCatchUpAsync(DriveChannel channel, UsnJournalCursor armed, Exception exception,
         CancellationToken cancellationToken)
     {
-        var loss = JournalCheckpointCheck.Check(channel.Drive[0], armed.JournalIdentifier, armed.NextUsn,
+        var loss = JournalCheckpointCheck.Check(channel.Drive, armed.JournalIdentifier, armed.NextUsn,
             JournalCheckpointLossDetection.ScanCatchUp);
         if (loss is null)
         {

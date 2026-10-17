@@ -177,7 +177,7 @@ public sealed class BrokerFileIndexRescanTests
     sealed class BrokerScenario : IDisposable
     {
         readonly string _cacheDirectory = Path.Combine(Path.GetTempPath(), $"broker-rescan-{Guid.NewGuid():N}");
-        readonly ConcurrentDictionary<string, int> _scans = new(StringComparer.Ordinal);
+        readonly ConcurrentDictionary<DriveKey, int> _scans = new();
         TestGate? _heldScanOfT;
 
         public void Dispose()
@@ -206,12 +206,12 @@ public sealed class BrokerFileIndexRescanTests
             }, token);
         }
 
-        IEnumerable<IReadOnlyList<MftRecord>> Scan(string drive, ParseThreadAllowance parseThreads,
+        IEnumerable<IReadOnlyList<MftRecord>> Scan(DriveKey drive, ParseThreadAllowance parseThreads,
             BlockWriteReporting reporting,
             MftScanOptions scanOptions, Action<long> recordsOmitted, CancellationToken cancellationToken)
         {
             var scanNumber = _scans.AddOrUpdate(drive, 1, (_, count) => count + 1);
-            if (drive == "T" && scanNumber == 2 && _heldScanOfT is { } held)
+            if (drive == 'T' && scanNumber == 2 && _heldScanOfT is { } held)
             {
                 held.MarkEntered();
                 held.WaitForRelease();

@@ -1,3 +1,4 @@
+using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -38,14 +39,14 @@ public partial class JournalBrokerHostChannelTests
         var host = CreateHost(processorCount: 4, scanDrive: scans.Source);
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipeC = await harness.OpenScanChannelAsync('C');
-        await scans["C"].Gate.Entered.WaitAsync(HangGuard);
-        Assert.AreEqual(4, scans["C"].Allowance!.Count);
+        await scans['C'].Gate.Entered.WaitAsync(HangGuard);
+        Assert.AreEqual(4, scans['C'].Allowance!.Count);
 
         var pipeD = await harness.OpenScanChannelAsync('D');
-        await scans["D"].Gate.Entered.WaitAsync(HangGuard);
+        await scans['D'].Gate.Entered.WaitAsync(HangGuard);
 
-        Assert.AreEqual(2, scans["C"].Allowance!.Count, "The running scan's share shrinks while it does nothing.");
-        Assert.AreEqual(2, scans["D"].Allowance!.Count);
+        Assert.AreEqual(2, scans['C'].Allowance!.Count, "The running scan's share shrinks while it does nothing.");
+        Assert.AreEqual(2, scans['D'].Allowance!.Count);
         scans.ReleaseAll();
         await HostChannelHarness.ReadToEndAsync(pipeC);
         await HostChannelHarness.ReadToEndAsync(pipeD);
@@ -62,28 +63,28 @@ public partial class JournalBrokerHostChannelTests
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipeC = await harness.OpenScanChannelAsync('C');
         var pipeD = await harness.OpenScanChannelAsync('D');
-        await Task.WhenAll(scans["C"].Gate.Entered, scans["D"].Gate.Entered).WaitAsync(HangGuard);
-        Assert.AreEqual(2, scans["D"].Allowance!.Count);
+        await Task.WhenAll(scans['C'].Gate.Entered, scans['D'].Gate.Entered).WaitAsync(HangGuard);
+        Assert.AreEqual(2, scans['D'].Allowance!.Count);
 
         switch (ending)
         {
             case ScanEnding.Completes:
-                scans["C"].Gate.Release();
+                scans['C'].Gate.Release();
                 Assert.AreEqual(BrokerFrameKind.ScanCompleted, (await HostChannelHarness.ReadToEndAsync(pipeC))[^1].Kind);
                 break;
             case ScanEnding.Cancelled:
                 await pipeC.DisposeAsync();
-                await scans["C"].Returned.WaitAsync(HangGuard);
+                await scans['C'].Returned.WaitAsync(HangGuard);
                 break;
             case ScanEnding.SourceThrows:
-                scans["C"].Fail = true;
-                scans["C"].Gate.Release();
+                scans['C'].Fail = true;
+                scans['C'].Gate.Release();
                 Assert.AreEqual(BrokerFrameKind.Error, (await HostChannelHarness.ReadToEndAsync(pipeC))[^1].Kind);
                 break;
         }
 
-        await WaitUntilAsync(() => scans["D"].Allowance!.Count == 4);
-        scans["D"].Gate.Release();
+        await WaitUntilAsync(() => scans['D'].Allowance!.Count == 4);
+        scans['D'].Gate.Release();
         await HostChannelHarness.ReadToEndAsync(pipeD);
     }
 
@@ -148,46 +149,46 @@ public partial class JournalBrokerHostChannelTests
         var host = CreateHost(processorCount: 1, scanDrive: scans.Source);
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipeC = await harness.OpenScanChannelAsync('C');
-        await scans["C"].Gate.Entered.WaitAsync(HangGuard);
+        await scans['C'].Gate.Entered.WaitAsync(HangGuard);
 
         var pipeD = await harness.OpenScanChannelAsync('D');
         await WaitUntilAsync(() => host.ParseThreads.QueuedScanCount == 1);
         await pipeD.DisposeAsync();
         await WaitUntilAsync(() => host.ParseThreads.QueuedScanCount == 0);
 
-        scans["C"].Gate.Release();
+        scans['C'].Gate.Release();
         await HostChannelHarness.ReadToEndAsync(pipeC);
-        scans["E"].Gate.Release();
+        scans['E'].Gate.Release();
         var frames = await HostChannelHarness.ReadToEndAsync(await harness.OpenScanChannelAsync('E'));
 
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
-        Assert.AreEqual(0, scans.InvocationCount("D"), "A scan that left the queue never reaches its source.");
+        Assert.AreEqual(0, scans.InvocationCount('D'), "A scan that left the queue never reaches its source.");
     }
 
     [TestMethod]
     public async Task ScanChannel_PipeClosed_ShareReturnsOnlyAfterSourceReturns()
     {
         var scans = new HeldScans();
-        scans["C"].HonorCancellation = false;
+        scans['C'].HonorCancellation = false;
         var host = CreateHost(processorCount: 2, scanDrive: scans.Source);
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipeC = await harness.OpenScanChannelAsync('C');
         var pipeD = await harness.OpenScanChannelAsync('D');
-        await Task.WhenAll(scans["C"].Gate.Entered, scans["D"].Gate.Entered).WaitAsync(HangGuard);
+        await Task.WhenAll(scans['C'].Gate.Entered, scans['D'].Gate.Entered).WaitAsync(HangGuard);
         var pipeE = await harness.OpenScanChannelAsync('E');
         await WaitUntilAsync(() => host.ParseThreads.QueuedScanCount == 1);
 
         await pipeC.DisposeAsync();
-        await WaitUntilAsync(() => scans["C"].Token.IsCancellationRequested);
+        await WaitUntilAsync(() => scans['C'].Token.IsCancellationRequested);
 
-        Assert.AreEqual(1, scans["D"].Allowance!.Count, "The closed scan's share is still in use by its source.");
+        Assert.AreEqual(1, scans['D'].Allowance!.Count, "The closed scan's share is still in use by its source.");
         Assert.AreEqual(1, host.ParseThreads.QueuedScanCount);
-        Assert.IsFalse(scans["E"].Gate.Entered.IsCompleted);
+        Assert.IsFalse(scans['E'].Gate.Entered.IsCompleted);
 
-        scans["C"].Gate.Release();
-        await scans["E"].Gate.Entered.WaitAsync(HangGuard);
-        Assert.AreEqual(1, scans["E"].Allowance!.Count);
-        Assert.AreEqual(1, scans["D"].Allowance!.Count);
+        scans['C'].Gate.Release();
+        await scans['E'].Gate.Entered.WaitAsync(HangGuard);
+        Assert.AreEqual(1, scans['E'].Allowance!.Count);
+        Assert.AreEqual(1, scans['D'].Allowance!.Count);
         scans.ReleaseAll();
         await HostChannelHarness.ReadToEndAsync(pipeD);
         await HostChannelHarness.ReadToEndAsync(pipeE);
@@ -201,14 +202,14 @@ public partial class JournalBrokerHostChannelTests
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipeC = await harness.OpenScanChannelAsync('C');
         var pipeD = await harness.OpenScanChannelAsync('D');
-        await Task.WhenAll(scans["C"].Gate.Entered, scans["D"].Gate.Entered).WaitAsync(HangGuard);
+        await Task.WhenAll(scans['C'].Gate.Entered, scans['D'].Gate.Entered).WaitAsync(HangGuard);
 
         await pipeC.DisposeAsync();
-        await scans["C"].Returned.WaitAsync(HangGuard);
-        scans["D"].Gate.Release();
+        await scans['C'].Returned.WaitAsync(HangGuard);
+        scans['D'].Gate.Release();
         var frames = await HostChannelHarness.ReadToEndAsync(pipeD);
 
-        Assert.IsFalse(scans["D"].Token.IsCancellationRequested);
+        Assert.IsFalse(scans['D'].Token.IsCancellationRequested);
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
     }
 
@@ -255,10 +256,10 @@ public partial class JournalBrokerHostChannelTests
     // not keeps the native-work stand-in running until released.
     sealed class HeldScans
     {
-        readonly Dictionary<string, HeldScan> _scans = [];
-        readonly Dictionary<string, int> _invocations = [];
+        readonly Dictionary<DriveKey, HeldScan> _scans = [];
+        readonly Dictionary<DriveKey, int> _invocations = [];
 
-        public HeldScan this[string drive]
+        public HeldScan this[DriveKey drive]
         {
             get
             {
@@ -269,7 +270,7 @@ public partial class JournalBrokerHostChannelTests
             }
         }
 
-        public int InvocationCount(string drive)
+        public int InvocationCount(DriveKey drive)
         {
             lock (_scans)
             {
@@ -288,7 +289,7 @@ public partial class JournalBrokerHostChannelTests
             }
         }
 
-        public IEnumerable<IReadOnlyList<MftRecord>> Source(string drive, ParseThreadAllowance parseThreads,
+        public IEnumerable<IReadOnlyList<MftRecord>> Source(DriveKey drive, ParseThreadAllowance parseThreads,
             BlockWriteReporting reporting,
             MftScanOptions scanOptions, Action<long> recordsOmitted, CancellationToken cancellationToken)
         {

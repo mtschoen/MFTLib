@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Text;
+using MFTLib.Index;
 
 namespace MFTLib;
 
@@ -54,6 +55,13 @@ internal static partial class BrokerProtocol
             var bytes = Encoding.Unicode.GetBytes(value);
             Int32(bytes.Length);
             _payload.Write(bytes);
+            return this;
+        }
+
+        public PayloadWriter Drive(DriveKey drive)
+        {
+            BinaryPrimitives.WriteUInt16LittleEndian(_payload.GetSpan(2), drive.Letter);
+            _payload.Advance(2);
             return this;
         }
 
@@ -127,6 +135,25 @@ internal static partial class BrokerProtocol
             return Encoding.Unicode.GetString(Take(Length()));
         }
 
+        public DriveKey Drive()
+        {
+            var character = (char)BinaryPrimitives.ReadUInt16LittleEndian(Take(2));
+            DriveKey drive;
+            try
+            {
+                drive = new DriveKey(character);
+            }
+            catch (ArgumentException exception)
+            {
+                throw new InvalidDataException("Broker frame has an invalid drive character.", exception);
+            }
+            if (drive.Letter != character)
+            {
+                throw new InvalidDataException("Broker frame drive character is not normalized.");
+            }
+            return drive;
+        }
+
         // A count of items that each take at least minimumItemBytes; a count the remaining bytes
         // cannot hold is malformed, so a garbled count never sizes an allocation.
         public int Count(int minimumItemBytes)
@@ -157,7 +184,7 @@ internal static partial class BrokerProtocol
         {
             if (Remaining != 0)
             {
-                throw new InvalidDataException($"Broker scan frame has {Remaining} trailing bytes");
+                throw new InvalidDataException($"Broker frame has {Remaining} trailing bytes");
             }
         }
 

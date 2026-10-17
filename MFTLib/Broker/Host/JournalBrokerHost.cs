@@ -53,7 +53,7 @@ internal sealed partial class JournalBrokerHost
     internal Action? HeartbeatVisitedForTest { get; set; }
 
     /// <summary>Test hook, set before serving: receives each accepted scan request before cursor query or source execution.</summary>
-    internal Action<string, IReadOnlyCollection<string>?>? ScanStartingForTest { get; set; }
+    internal Action<DriveKey, IReadOnlyCollection<string>?>? ScanStartingForTest { get; set; }
 
     // One watch channel: stream this drive's journal from the requested cursor until the
     // channel is cancelled (its pipe closed or the session ended) or the watch fails. The loop
@@ -147,11 +147,10 @@ internal sealed partial class JournalBrokerHost
     // A failed cached-cursor startup gets rescan wording only when the journal now proves that
     // position is lost. Unknown journal state preserves the original error, as do sentinel starts
     // and failures after batches have flowed.
-    static string DescribeWatchFailure(string drive, UsnJournalCursor since, bool yieldedAny, Exception exception)
+    static string DescribeWatchFailure(DriveKey drive, UsnJournalCursor since, bool yieldedAny, Exception exception)
     {
         if (yieldedAny || since.JournalIdentifier == 0 ||
-            !BrokerDriveLetter.TryNormalize(drive, out var normalizedDrive) ||
-            JournalCheckpointCheck.Check(normalizedDrive[0], since.JournalIdentifier, since.NextUsn,
+            JournalCheckpointCheck.Check(drive, since.JournalIdentifier, since.NextUsn,
                 JournalCheckpointLossDetection.LiveWatch) is null)
         {
             return exception.Message;

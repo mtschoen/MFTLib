@@ -9,7 +9,7 @@ public sealed partial class FileIndex
     internal const int LostCatchUpRecoveryLimit = 3;
 
     /// <summary>
-    ///     A test seam: invoked with the drive letter while a commit holds the drive's write gate,
+    ///     A test seam: invoked with the drive while a commit holds the drive's write gate,
     ///     before it takes the state lock to publish.
     /// </summary>
     internal Action<DriveKey>? PublishInsideWriteGateForTest { get; set; }
@@ -156,15 +156,15 @@ public sealed partial class FileIndex
         }
     }
 
-    void RecordOpenProducerFailure(DriveKey driveLetter, PendingDriveResult failed, bool lostBlockInPlace)
+    void RecordOpenProducerFailure(DriveKey drive, PendingDriveResult failed, bool lostBlockInPlace)
     {
         if (lostBlockInPlace)
         {
-            RecordRescanProducerFailure(driveLetter, failed.RequireFailureMessage(driveLetter), endsOpenSettle: true);
+            RecordRescanProducerFailure(drive, failed.RequireFailureMessage(drive), endsOpenSettle: true);
         }
         else
         {
-            RecordFailedDrive(driveLetter, DriveFailureKind.ProducerFailed, failed);
+            RecordFailedDrive(drive, DriveFailureKind.ProducerFailed, failed);
         }
     }
 
@@ -177,10 +177,10 @@ public sealed partial class FileIndex
     JournalCatchUpLostException RecordLostCatchUp(DriveRuntime runtime, JournalCheckpointLoss catchUpLoss,
         int consecutiveLostCatchUps)
     {
-        var driveLetter = runtime.Drive;
+        var drive = runtime.Drive;
         var recoveryStopped = consecutiveLostCatchUps >= LostCatchUpRecoveryLimit;
         var lost = new JournalCatchUpLostException(recoveryStopped,
-            DescribeLostCatchUp(driveLetter, consecutiveLostCatchUps, recoveryStopped, catchUpLoss));
+            DescribeLostCatchUp(drive, consecutiveLostCatchUps, recoveryStopped, catchUpLoss));
         lock (_stateLock)
         {
             runtime.RetryingLostCatchUp = !recoveryStopped && runtime.WatchRequested;
@@ -198,25 +198,25 @@ public sealed partial class FileIndex
                 }
 
                 runtime.RefusedStartFault = lost;
-                if (TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal))
+                if (TryGetDriveOrdinalLocked(drive, out var driveOrdinal))
                 {
                     _watchFailureMessagesByOrdinal[driveOrdinal] = lost.Message;
                 }
             }
 
-            NoteWatchStateLocked(runtime, new WatchFault(WatchFaultKind.CatchUpLost, driveLetter, lost));
+            NoteWatchStateLocked(runtime, new WatchFault(WatchFaultKind.CatchUpLost, drive, lost));
         }
 
         RaiseWatchStateChanged(runtime);
         return lost;
     }
 
-    static string DescribeLostCatchUp(DriveKey driveLetter, int consecutiveLostCatchUps, bool recoveryStopped,
+    static string DescribeLostCatchUp(DriveKey drive, int consecutiveLostCatchUps, bool recoveryStopped,
         JournalCheckpointLoss catchUpLoss)
     {
         if (!recoveryStopped)
         {
-            return $"Drive {driveLetter}: the journal no longer held the cursor armed before the scan when the " +
+            return $"Drive {drive}: the journal no longer held the cursor armed before the scan when the " +
                    $"scan finished, so its catch-up was lost ({consecutiveLostCatchUps} in a row). The drive is " +
                    "being scanned again.";
         }
@@ -225,7 +225,7 @@ public sealed partial class FileIndex
             ? $"Grow the drive's USN journal to at least {size} bytes (BrokerSession.GrowUsnJournalAsync), " +
               "then call FileIndex.RescanAsync for this drive."
             : "Call FileIndex.RescanAsync for this drive.";
-        return $"Drive {driveLetter}: {consecutiveLostCatchUps} scans in a row lost their journal catch-up, so " +
+        return $"Drive {drive}: {consecutiveLostCatchUps} scans in a row lost their journal catch-up, so " +
                $"the drive keeps its last block, which cannot be watched. {remedy}";
     }
 }

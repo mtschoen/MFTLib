@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -18,12 +19,12 @@ public partial class JournalBrokerHostChannelTests
     {
         var host = CreateHost(queryVolumeInfo: drive =>
         {
-            Assert.AreEqual("C", drive);
+            Assert.AreEqual(new DriveKey('C'), drive);
             return Volume;
         });
         await using var harness = new HostChannelHarness(host);
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 41, @"c:\"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 41, 'c'));
         var reply = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.VolumeInfo, reply.Kind);
@@ -38,12 +39,12 @@ public partial class JournalBrokerHostChannelTests
     {
         var host = CreateHost(growUsnJournal: (drive, maximumSize, allocationDelta) =>
         {
-            Assert.AreEqual("D", drive);
+            Assert.AreEqual(new DriveKey('D'), drive);
             return new UsnJournalSettings { MaximumSize = maximumSize, AllocationDelta = allocationDelta };
         });
         await using var harness = new HostChannelHarness(host);
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 9, "D", 65536, 4096));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 9, 'D', 65536, 4096));
         var reply = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.UsnJournalSettings, reply.Kind);
@@ -58,7 +59,7 @@ public partial class JournalBrokerHostChannelTests
         var host = CreateHost(queryVolumeInfo: _ => throw new UnauthorizedAccessException("access denied"));
         await using var harness = new HostChannelHarness(host);
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 3, "C"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 3, 'C'));
         var reply = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.Error, reply.Kind);
@@ -72,7 +73,7 @@ public partial class JournalBrokerHostChannelTests
         var gate = new TestGate();
         var host = CreateHost(queryVolumeInfo: drive =>
         {
-            if (drive == "C")
+            if (drive.Letter == 'C')
             {
                 gate.MarkEntered();
                 gate.WaitForReleaseAsync(CancellationToken.None).Wait(HangGuard);
@@ -82,9 +83,9 @@ public partial class JournalBrokerHostChannelTests
         });
         await using var harness = new HostChannelHarness(host);
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 1, "C"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 1, 'C'));
         await gate.Entered.WaitAsync(HangGuard);
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 2, "D"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 2, 'D'));
 
         var first = await harness.ReadControlAsync();
         gate.Release();
@@ -104,7 +105,7 @@ public partial class JournalBrokerHostChannelTests
         await using var harness = new HostChannelHarness(host,
             connectChannel: DefaultElevatedEntryRunner.ConnectDrivePipeAsync);
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 5, "C", pipeName));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 5, 'C', pipeName));
         await server.WaitForConnectionAsync().WaitAsync(HangGuard);
         var reply = await harness.ReadControlAsync();
 
@@ -130,7 +131,7 @@ public partial class JournalBrokerHostChannelTests
             return connection.Task;
         });
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 12, "C", "never"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 12, 'C', "never"));
         var reply = harness.ReadControlAsync();
         await AdvanceWhenTimerExistsAsync(clock, JournalBrokerHost.ChannelConnectTimeout, 1, reply);
 
@@ -170,7 +171,7 @@ public partial class JournalBrokerHostChannelTests
         await using var harness = new HostChannelHarness(host,
             connectChannel: (_, _) => throw new IOException("pipe not found"));
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 77, "C", "missing"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 77, 'C', "missing"));
         var reply = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.Error, reply.Kind);
@@ -228,7 +229,7 @@ public partial class JournalBrokerHostChannelTests
         Assert.AreEqual(1, frames.Count);
         Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
         StringAssert.Contains(frames[0].Message, "malformed");
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 8, "C"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 8, 'C'));
         Assert.AreEqual(BrokerFrameKind.VolumeInfo, (await harness.ReadControlAsync()).Kind,
             "The session keeps serving after one channel's malformed request.");
     }
@@ -240,9 +241,9 @@ public partial class JournalBrokerHostChannelTests
         await using var harness = new HostChannelHarness(host,
             connectChannel: (_, _) => Task.FromCanceled<Stream>(new CancellationToken(true)));
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 21, "C", "cancelled"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 21, 'C', "cancelled"));
         var reply = await harness.ReadControlAsync();
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 22, "C"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 22, 'C'));
         var next = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.Error, reply.Kind);
@@ -251,12 +252,12 @@ public partial class JournalBrokerHostChannelTests
     }
 
     static JournalBrokerHost CreateHost(
-        Func<string, UsnJournalCursor>? queryCursor = null,
+        Func<DriveKey, UsnJournalCursor>? queryCursor = null,
         MftRecordBatchSource? scanDrive = null,
-        Func<string, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
-        Func<string, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchDrive = null,
-        Func<string, NtfsVolumeInformation>? queryVolumeInfo = null,
-        Func<string, long, long, UsnJournalSettings>? growUsnJournal = null,
+        Func<DriveKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
+        Func<DriveKey, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchDrive = null,
+        Func<DriveKey, NtfsVolumeInformation>? queryVolumeInfo = null,
+        Func<DriveKey, long, long, UsnJournalSettings>? growUsnJournal = null,
         int processorCount = 4,
         TimeProvider? timeProvider = null)
     {
@@ -275,7 +276,7 @@ public partial class JournalBrokerHostChannelTests
     }
 
     static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> IdleWatch(
-        string drive, UsnJournalCursor since, ISourceOperationReporter operation,
+        DriveKey drive, UsnJournalCursor since, ISourceOperationReporter operation,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
         operation.WaitingOnVolume();
@@ -298,7 +299,7 @@ public partial class JournalBrokerHostChannelTests
     // connection is still pending when it starts waiting, so the harness holds the connection
     // until that timer exists.
     static async Task<Stream> OpenChannelAfterConnectBoundAsync(HostChannelHarness harness, TimerSignalingClock clock,
-        TaskCompletionSource connectionsReleased, char drive)
+        TaskCompletionSource connectionsReleased, DriveKey drive)
     {
         var open = harness.OpenChannelAsync(drive);
         await clock.TimerCreated(JournalBrokerHost.ChannelConnectTimeout).WaitAsync(HangGuard);

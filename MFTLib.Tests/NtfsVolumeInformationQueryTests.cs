@@ -49,14 +49,23 @@ public class NtfsVolumeInformationQueryTests
             return true;
         }
 
-        FileUtilities.Hooks.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), ownsHandle: false);
+        string? openedPath = null;
+        FileUtilities.Hooks.GetVolumeHandle = path =>
+        {
+            openedPath = path;
+            return new SafeFileHandle(new IntPtr(1), ownsHandle: false);
+        };
         Kernel32.Hooks.DeviceIoControl = FakeDeviceIoControl;
 
-        var info = NtfsVolumeInformation.Query("C");
+        var info = NtfsVolumeInformation.Query('c');
 
+        Assert.AreEqual(@"\\.\C:", openedPath);
         Assert.AreEqual(8_192_000_000L, info.MftValidDataLength);
         Assert.AreEqual(1024u, info.BytesPerFileRecordSegment);
         Assert.AreEqual(8_000_000L, info.MftRecordCount);
+
+        FileUtilities.Hooks.GetVolumeHandle = _ => throw new AssertFailedException("Default drive reached volume I/O.");
+        Assert.ThrowsException<ArgumentException>(() => NtfsVolumeInformation.Query(default, isWindows: true));
     }
 
     [TestMethod]
@@ -79,6 +88,6 @@ public class NtfsVolumeInformationQueryTests
         FileUtilities.Hooks.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), ownsHandle: false);
         Kernel32.Hooks.DeviceIoControl = FakeDeviceIoControl;
 
-        Assert.ThrowsException<Win32Exception>(() => NtfsVolumeInformation.Query("C"));
+        Assert.ThrowsException<Win32Exception>(() => NtfsVolumeInformation.Query('C'));
     }
 }

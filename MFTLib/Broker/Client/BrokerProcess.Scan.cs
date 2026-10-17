@@ -11,7 +11,7 @@ internal sealed partial class BrokerProcess
     ///     caller. A catch-up the journal proved lost still returns the complete block, with
     ///     <see cref="BrokerDriveScanResult.CatchUpLoss" /> set.
     /// </summary>
-    /// <param name="driveLetter">The drive to scan.</param>
+    /// <param name="drive">The drive to scan.</param>
     /// <param name="target">Where the block file is created, and the identity it carries.</param>
     /// <param name="options">Row filtering for the scan.</param>
     /// <param name="progress">Destination for transfer and parse progress notifications; null reports none.</param>
@@ -22,31 +22,31 @@ internal sealed partial class BrokerProcess
     /// <exception cref="InvalidOperationException">The broker reported the scan failed.</exception>
     /// <exception cref="BrokerChannelLostException">The channel or the process was lost first.</exception>
     /// <exception cref="TimeoutException">The broker did not answer the volume query or the channel open within the reply timeout.</exception>
-    internal async Task<BrokerDriveScanResult> ScanDriveAsync(char driveLetter, BlockScanTarget target,
+    internal async Task<BrokerDriveScanResult> ScanDriveAsync(DriveKey drive, BlockScanTarget target,
         MftScanOptions options, IProgress<BlockWriteProgress>? progress, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(options);
-        var letter = NormalizeDrive(driveLetter)[0];
+        drive = drive.Validated();
         NtfsVolumeInformation volume;
         try
         {
-            volume = await QueryVolumeAsync(letter, cancellationToken).ConfigureAwait(false);
+            volume = await QueryVolumeAsync(drive, cancellationToken).ConfigureAwait(false);
         }
         catch (BrokerChannelLostException exception) when (exception.Drive is null)
         {
-            throw new BrokerChannelLostException(letter,
-                $"Drive {letter} scan could not start: {exception.Message}", exception);
+            throw new BrokerChannelLostException(drive,
+                $"Drive {drive} scan could not start: {exception.Message}", exception);
         }
 
-        var (sectionName, block, lifetime) = _createBlockSection(letter,
+        var (sectionName, block, lifetime) = _createBlockSection(drive,
             MftBlockCapacity.CreateOptions(volume, target.Path, target.VolumeSerial, target.DeleteOnClose,
                 target.CacheTag));
         var sectionLifetime = new ReleaseOnce(lifetime);
         var section = new DriveBlockSection(sectionName, block, sectionLifetime);
         try
         {
-            return await ScanOnChannelAsync(letter, section, options, progress, cancellationToken)
+            return await ScanOnChannelAsync(drive, section, options, progress, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch
@@ -64,7 +64,7 @@ internal sealed partial class BrokerProcess
         }
     }
 
-    async Task<BrokerDriveScanResult> ScanOnChannelAsync(char letter, DriveBlockSection section,
+    async Task<BrokerDriveScanResult> ScanOnChannelAsync(DriveKey drive, DriveBlockSection section,
         MftScanOptions options, IProgress<BlockWriteProgress>? progress, CancellationToken cancellationToken)
     {
         var frameLength = BrokerProtocol.ArmAndScanFrameLength(section.SectionName, options.RetainedFileNames);
@@ -75,7 +75,7 @@ internal sealed partial class BrokerProcess
                 nameof(options));
         }
 
-        var channel = await OpenChannelAsync(letter, writer => BrokerProtocol.WriteArmAndScan(writer, section.SectionName,
+        var channel = await OpenChannelAsync(drive, writer => BrokerProtocol.WriteArmAndScan(writer, section.SectionName,
             options.RetainedFileNames, options.IncludeFreed), cancellationToken).ConfigureAwait(false);
         await using var ownedChannel = channel.ConfigureAwait(false);
         var collector = new ScanFrames(channel, progress);
@@ -87,8 +87,8 @@ internal sealed partial class BrokerProcess
         var terminal = await collector.ReadTerminalAsync(cancellationToken).ConfigureAwait(false);
         var outcome = new BlockScanOutcome(section.Block, ready.SkippedRecordCount);
         return terminal.Kind == BrokerFrameKind.ScanCompleted
-            ? new BrokerDriveScanResult(letter, armed, null, outcome)
-            : new BrokerDriveScanResult(letter, armed, terminal.RequireCatchUpLoss(letter), outcome);
+            ? new BrokerDriveScanResult(drive, armed, null, outcome)
+            : new BrokerDriveScanResult(drive, armed, terminal.RequireCatchUpLoss(drive), outcome);
     }
 
     readonly record struct DriveBlockSection(string SectionName, BlockFile Block, ReleaseOnce Lifetime);
@@ -118,13 +118,13 @@ internal sealed partial class BrokerProcess
     {
         readonly BrokerDriveChannel _channel;
         readonly IProgress<BlockWriteProgress>? _progress;
-        readonly char _letter;
+        readonly DriveKey _drive;
 
         public ScanFrames(BrokerDriveChannel channel, IProgress<BlockWriteProgress>? progress)
         {
             _channel = channel;
             _progress = progress;
-            _letter = channel.Drive;
+            _drive = channel.Drive;
         }
 
         public async Task<UsnJournalCursor> ReadArmedCursorAsync(CancellationToken cancellationToken)
@@ -187,8 +187,8 @@ internal sealed partial class BrokerProcess
         async Task<BrokerFrame> ReadAsync(string expected, CancellationToken cancellationToken)
         {
             var frame = await ReadSkippingHeartbeatsAsync(cancellationToken).ConfigureAwait(false)
-                        ?? throw new BrokerChannelLostException(_letter,
-                            $"Drive {_letter} scan channel closed where {expected} was expected.");
+                        ?? throw new BrokerChannelLostException(_drive,
+                            $"Drive {_drive} scan channel closed where {expected} was expected.");
             return frame.Kind == BrokerFrameKind.Error
                 ? throw new InvalidOperationException(frame.RequireMessage())
                 : frame;
@@ -208,8 +208,8 @@ internal sealed partial class BrokerProcess
 
         BrokerChannelLostException OutOfOrder(BrokerFrame frame, string expected)
         {
-            return new BrokerChannelLostException(_letter,
-                $"Drive {_letter} scan channel sent {frame.Kind} where {expected} was expected.");
+            return new BrokerChannelLostException(_drive,
+                $"Drive {_drive} scan channel sent {frame.Kind} where {expected} was expected.");
         }
     }
 }

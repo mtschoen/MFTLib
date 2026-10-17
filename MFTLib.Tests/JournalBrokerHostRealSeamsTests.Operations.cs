@@ -225,7 +225,7 @@ public partial class JournalBrokerHostRealSeamsTests
         await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
 
         await harness.SendControlAsync(writer =>
-            BrokerProtocol.WriteGrowUsnJournal(writer, 6, "C", 0x400000, 0x200000));
+            BrokerProtocol.WriteGrowUsnJournal(writer, 6, 'C', 0x400000, 0x200000));
         var frame = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.UsnJournalSettings, frame.Kind);
@@ -262,7 +262,7 @@ public partial class JournalBrokerHostRealSeamsTests
         };
         await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 3, "C"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 3, 'C'));
         var frame = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.VolumeInfo, frame.Kind);

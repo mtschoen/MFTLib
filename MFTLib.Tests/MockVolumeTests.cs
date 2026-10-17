@@ -124,10 +124,18 @@ public class MockVolumeTests
     [TestMethod]
     public void Open_ValidVolume_ReturnsOpenVolume()
     {
-        FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
-
-        using var volume = MftVolume.Open("C");
+        string? openedPath = null;
+        FileUtilities.Hooks.GetVolumeHandle = path =>
+        {
+            openedPath = path;
+            return FakeVolumeHandle.Create();
+        };
+        using var volume = MftVolume.Open('c');
         Assert.IsNotNull(volume);
+        Assert.AreEqual(@"\\.\C:", openedPath);
+
+        FileUtilities.Hooks.GetVolumeHandle = _ => throw new AssertFailedException("Default drive reached volume I/O.");
+        Assert.ThrowsException<ArgumentException>(() => MftVolume.Open(default));
     }
 
     [TestMethod]
@@ -136,7 +144,7 @@ public class MockVolumeTests
         FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
 
         SafeFileHandle handle;
-        using (var volume = MftVolume.Open("C"))
+        using (var volume = MftVolume.Open('C'))
         {
             handle = volume.GetVolumeHandleForTest();
         }
@@ -149,7 +157,7 @@ public class MockVolumeTests
     {
         FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
 
-        var volume = MftVolume.Open("C");
+        var volume = MftVolume.Open('C');
         volume.Dispose();
         volume.Dispose(); // Should not throw
     }
@@ -159,7 +167,7 @@ public class MockVolumeTests
     {
         FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
 
-        var volume = MftVolume.Open("C");
+        var volume = MftVolume.Open('C');
         volume.Dispose();
 
         Assert.ThrowsException<ObjectDisposedException>(() => volume.ReadAll());
@@ -172,7 +180,7 @@ public class MockVolumeTests
     {
         SetupMocks();
 
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
         var records = volume.ReadAll();
 
         Assert.AreEqual(3, records.Length);
@@ -195,7 +203,7 @@ public class MockVolumeTests
             return BuildResult(1);
         };
         MFTLibNative.Hooks.FreeMftResult = FreeBuiltResult;
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
 
         _ = volume.ReadRecordBatches(4096, null, null, CancellationToken.None,
             new MftScanOptions { IncludeFreed = includeFreed }).ToList();
@@ -247,7 +255,7 @@ public class MockVolumeTests
         try
         {
             FileUtilities.Hooks.GetVolumeHandle = _ => handle = FakeVolumeHandle.Create();
-            using var volume = MftVolume.Open("C");
+            using var volume = MftVolume.Open('C');
             Assert.AreSame(handle, volume.GetVolumeHandleForTest());
         }
         finally
@@ -344,7 +352,7 @@ public class MockVolumeTests
     {
         SetupMocks(5);
 
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
         var records = volume.ReadAll();
 
         Assert.AreEqual(5, records.Length);
@@ -418,7 +426,7 @@ public class MockVolumeTests
     public void MftVolume_ReadRecordBatches_Disposed_ThrowsObjectDisposedException()
     {
         SetupMocks(5);
-        var volume = MftVolume.Open("C");
+        var volume = MftVolume.Open('C');
         volume.Dispose();
 
         Assert.ThrowsException<ObjectDisposedException>(() =>
@@ -433,7 +441,7 @@ public class MockVolumeTests
         SetupMocks(5);
         Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
         {
-            using var volume = MftVolume.Open("C");
+            using var volume = MftVolume.Open('C');
             _ = volume.ReadRecordBatches(batchSize, null, null, CancellationToken.None).ToList();
         });
     }
@@ -442,7 +450,7 @@ public class MockVolumeTests
     public void MftVolume_ReadRecordBatches_PreservesRecordOrderAcrossBatches()
     {
         SetupMocks(7);
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
         var batches = volume.ReadRecordBatches(3, null, null, CancellationToken.None).ToList();
 
         Assert.AreEqual(3, batches.Count);
@@ -482,7 +490,7 @@ public class MockVolumeTests
             freed = true;
         };
 
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
         MftRecord[]? firstBatch = null;
         foreach (var batch in volume.ReadRecordBatches(3, null, null, CancellationToken.None))
         {

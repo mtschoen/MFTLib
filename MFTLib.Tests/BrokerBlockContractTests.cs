@@ -1,4 +1,5 @@
 using System.Buffers;
+using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -25,7 +26,7 @@ public class BrokerBlockContractTests : BrokerBlockTestBase
     [TestMethod]
     public async Task Scan_NormalizesTheDriveLetter()
     {
-        var drives = new List<string>();
+        var drives = new List<DriveKey>();
         await using var broker = new InProcessBroker(CreateHost(queryVolumeInfo: drive =>
         {
             drives.Add(drive);
@@ -36,8 +37,8 @@ public class BrokerBlockContractTests : BrokerBlockTestBase
             .WaitAsync(HangGuard);
         result.Block.Block.Dispose();
 
-        Assert.AreEqual('C', result.DriveLetter);
-        CollectionAssert.AreEqual(new[] { "C" }, drives);
+        Assert.AreEqual(new DriveKey('C'), result.Drive);
+        CollectionAssert.AreEqual(new[] { new DriveKey('C') }, drives);
         StringAssert.StartsWith(broker.Sections.Single().SectionName, "section-C-");
     }
 

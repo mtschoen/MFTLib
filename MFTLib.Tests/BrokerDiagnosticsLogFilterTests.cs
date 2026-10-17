@@ -1,3 +1,4 @@
+using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -31,8 +32,10 @@ public class BrokerDiagnosticsLogFilterTests
     static UsnJournalEntry Entry(ulong recordNumber, string fileName) =>
         JournalEntries.Create(recordNumber, 110, fileName);
 
-    [TestMethod]
-    public void Filter_DropsBothLogEntries_KeepsUnrelated()
+    [DataTestMethod]
+    [DataRow('C')]
+    [DataRow('c')]
+    public void Filter_DropsBothLogEntries_KeepsUnrelated(char driveChar)
     {
         var filter = new BrokerDiagnosticsLogFilter(OwnLogPath, ClientLogPath);
         var entries = new[]
@@ -42,7 +45,7 @@ public class BrokerDiagnosticsLogFilterTests
             Entry(4242, "unrelated.txt")
         };
 
-        var kept = filter.Filter("C", entries);
+        var kept = filter.Filter(driveChar, entries);
 
         Assert.AreEqual(1, kept.Length);
         Assert.AreEqual("unrelated.txt", kept[0].FileName);
@@ -58,10 +61,10 @@ public class BrokerDiagnosticsLogFilterTests
         var filter = new BrokerDiagnosticsLogFilter(OwnLogPath, null);
         var entries = new[] { Entry(OwnLogReference, "broker-diagnostics.broker.log") };
 
-        Assert.AreEqual(1, filter.Filter("C", entries).Length);
+        Assert.AreEqual(1, filter.Filter('C', entries).Length);
 
         resolvable.Value = true;
-        Assert.AreEqual(0, filter.Filter("C", entries).Length);
+        Assert.AreEqual(0, filter.Filter('C', entries).Length);
     }
 
     [TestMethod]
@@ -76,9 +79,9 @@ public class BrokerDiagnosticsLogFilterTests
         var entries = new[] { Entry(ClientLogReference, "broker-diagnostics.ui.log") };
 
         // The D-rooted path never resolves for a C batch, so the entry is kept there...
-        Assert.AreEqual(1, filter.Filter("C", entries).Length);
+        Assert.AreEqual(1, filter.Filter('C', entries).Length);
         // ...and resolves for a D batch, where it is dropped.
-        Assert.AreEqual(0, filter.Filter("D", entries).Length);
+        Assert.AreEqual(0, filter.Filter('D', entries).Length);
     }
 
     [TestMethod]
@@ -87,7 +90,7 @@ public class BrokerDiagnosticsLogFilterTests
         var filter = new BrokerDiagnosticsLogFilter(OwnLogPath, null);
         var entries = new[] { Entry(4242, "unrelated.txt") };
 
-        Assert.AreSame(entries, filter.Filter("C", entries));
+        Assert.AreSame(entries, filter.Filter('C', entries));
     }
 
     [DataTestMethod]
@@ -109,7 +112,7 @@ public class BrokerDiagnosticsLogFilterTests
             Entry(4242, "unrelated.txt")
         };
 
-        var kept = filter.Filter("C", entries);
+        var kept = filter.Filter('C', entries);
 
         Assert.AreEqual(prefixedPath, resolvedPath);
         Assert.AreEqual(1, kept.Length);
@@ -143,7 +146,7 @@ public class BrokerDiagnosticsLogFilterTests
             Entry(initialReference, "broker-diagnostics.broker.log"),
             Entry(4242, "unrelated1.txt")
         };
-        var kept1 = filter.Filter("C", batch1);
+        var kept1 = filter.Filter('C', batch1);
         Assert.AreEqual(1, resolveCount);
         Assert.AreEqual(1, kept1.Length);
         Assert.AreEqual("unrelated1.txt", kept1[0].FileName);
@@ -158,7 +161,7 @@ public class BrokerDiagnosticsLogFilterTests
             Entry(replacementReference, "broker-diagnostics.broker.log"),
             Entry(4243, "unrelated2.txt")
         };
-        var kept2 = filter.Filter("C", batch2);
+        var kept2 = filter.Filter('C', batch2);
         Assert.AreEqual(2, resolveCount);
         Assert.AreEqual(1, kept2.Length);
         Assert.AreEqual("unrelated2.txt", kept2[0].FileName);
@@ -169,7 +172,7 @@ public class BrokerDiagnosticsLogFilterTests
             Entry(replacementReference, "broker-diagnostics.broker.log"),
             Entry(4244, "unrelated3.txt")
         };
-        var kept3 = filter.Filter("C", batch3);
+        var kept3 = filter.Filter('C', batch3);
         Assert.AreEqual(3, resolveCount);
         Assert.AreEqual(1, kept3.Length);
         Assert.AreEqual("unrelated3.txt", kept3[0].FileName);
@@ -192,36 +195,36 @@ public class BrokerDiagnosticsLogFilterTests
     }
 
     [TestMethod]
-    public void TryGetDriveLetter_ValidDriveFormats_ReturnsTrueAndUppercaseLetter()
+    public void TryGetDrive_ValidDriveFormats_ReturnsTrueAndDriveKey()
     {
-        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDriveLetter(@"C:\logs\diag.log", out var drive1));
-        Assert.AreEqual("C", drive1);
+        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDrive(@"C:\logs\diag.log", out var drive1));
+        Assert.AreEqual(new DriveKey('C'), drive1);
 
-        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDriveLetter(@"c:\logs\diag.log", out var drive2));
-        Assert.AreEqual("C", drive2);
+        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDrive(@"c:\logs\diag.log", out var drive2));
+        Assert.AreEqual(new DriveKey('C'), drive2);
 
-        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDriveLetter(@"D:/logs/diag.log", out var drive3));
-        Assert.AreEqual("D", drive3);
+        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDrive(@"D:/logs/diag.log", out var drive3));
+        Assert.AreEqual(new DriveKey('D'), drive3);
 
-        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDriveLetter(@"\\?\E:\logs\diag.log", out var drive4));
-        Assert.AreEqual("E", drive4);
+        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDrive(@"\\?\E:\logs\diag.log", out var drive4));
+        Assert.AreEqual(new DriveKey('E'), drive4);
 
-        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDriveLetter(@"\\.\F:\logs\diag.log", out var drive5));
-        Assert.AreEqual("F", drive5);
+        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDrive(@"\\.\F:\logs\diag.log", out var drive5));
+        Assert.AreEqual(new DriveKey('F'), drive5);
 
-        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDriveLetter(@"\??\G:\logs\diag.log", out var drive6));
-        Assert.AreEqual("G", drive6);
+        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDrive(@"\??\G:\logs\diag.log", out var drive6));
+        Assert.AreEqual(new DriveKey('G'), drive6);
     }
 
     [TestMethod]
-    public void TryGetDriveLetter_InvalidFormats_ReturnsFalse()
+    public void TryGetDrive_InvalidFormats_ReturnsFalse()
     {
-        Assert.IsFalse(BrokerDiagnosticsLogFilter.TryGetDriveLetter(null!, out _));
-        Assert.IsFalse(BrokerDiagnosticsLogFilter.TryGetDriveLetter("", out _));
-        Assert.IsFalse(BrokerDiagnosticsLogFilter.TryGetDriveLetter("   ", out _));
-        Assert.IsFalse(BrokerDiagnosticsLogFilter.TryGetDriveLetter(@"\\?\UNC\server\share\file.log", out _));
-        Assert.IsFalse(BrokerDiagnosticsLogFilter.TryGetDriveLetter(@"\\server\share\file.log", out _));
-        Assert.IsFalse(BrokerDiagnosticsLogFilter.TryGetDriveLetter(@"1:\logs\diag.log", out _));
+        Assert.IsFalse(BrokerDiagnosticsLogFilter.TryGetDrive(null!, out _));
+        Assert.IsFalse(BrokerDiagnosticsLogFilter.TryGetDrive("", out _));
+        Assert.IsFalse(BrokerDiagnosticsLogFilter.TryGetDrive("   ", out _));
+        Assert.IsFalse(BrokerDiagnosticsLogFilter.TryGetDrive(@"\\?\UNC\server\share\file.log", out _));
+        Assert.IsFalse(BrokerDiagnosticsLogFilter.TryGetDrive(@"\\server\share\file.log", out _));
+        Assert.IsFalse(BrokerDiagnosticsLogFilter.TryGetDrive(@"1:\logs\diag.log", out _));
     }
 
     [TestMethod]
@@ -249,7 +252,7 @@ public class BrokerDiagnosticsLogFilterTests
                 Entry(ClientLogReference, "broker-diagnostics.ui.log"),
                 Entry(4242, "unrelated.txt")
             };
-            var kept = filter.Filter("C", entries);
+            var kept = filter.Filter('C', entries);
             Assert.AreEqual(1, kept.Length);
             Assert.AreEqual("unrelated.txt", kept[0].FileName);
         }
@@ -309,7 +312,7 @@ public class BrokerDiagnosticsLogFilterTests
                 FileName = "broker-diagnostics.broker.log"
             });
             var unrelated = Entry(4242, "unrelated.txt");
-            var drive = Path.GetPathRoot(logPath)![0].ToString();
+            var drive = Path.GetPathRoot(logPath)![0];
 
             var kept = filter.Filter(drive, new[] { matching, unrelated });
 
@@ -336,28 +339,28 @@ public class BrokerDiagnosticsLogFilterTests
 
     [TestMethod]
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-    public void TryGetDriveLetter_ForARelativePath_ResolvesAgainstTheCurrentDrive()
+    public void TryGetDrive_ForARelativePath_ResolvesAgainstTheCurrentDrive()
     {
         if (!OperatingSystem.IsWindows())
         {
             Assert.Inconclusive("The relative-path fallback runs only on Windows.");
         }
 
-        var resolved = BrokerDiagnosticsLogFilter.TryGetDriveLetter("relative-name.log", out var driveLetter);
+        var resolved = BrokerDiagnosticsLogFilter.TryGetDrive("relative-name.log", out var drive);
 
         Assert.IsTrue(resolved);
         var currentRoot = Path.GetPathRoot(Environment.CurrentDirectory);
         Assert.IsNotNull(currentRoot);
-        Assert.AreEqual(char.ToUpperInvariant(currentRoot[0]).ToString(), driveLetter);
+        Assert.AreEqual(new DriveKey(currentRoot[0]), drive);
     }
 
     [TestMethod]
-    public void TryGetDriveLetter_ForAPathGetFullPathRejects_ReturnsFalse()
+    public void TryGetDrive_ForAPathGetFullPathRejects_ReturnsFalse()
     {
         // An embedded NUL makes Path.GetFullPath throw ArgumentException on Windows;
         // the filter treats the path as unmatchable rather than letting it escape.
-        Assert.IsFalse(BrokerDiagnosticsLogFilter.TryGetDriveLetter("bad\0path.log", out var driveLetter));
-        Assert.AreEqual(string.Empty, driveLetter);
+        Assert.IsFalse(BrokerDiagnosticsLogFilter.TryGetDrive("bad\0path.log", out var drive));
+        Assert.AreEqual(default(DriveKey), drive);
     }
 
     [DataTestMethod]
@@ -371,7 +374,7 @@ public class BrokerDiagnosticsLogFilterTests
         var filter = new BrokerDiagnosticsLogFilter(ownLogPath, null);
         var entries = new[] { Entry(4242, "unrelated.txt") };
 
-        var kept = filter.Filter("C", entries);
+        var kept = filter.Filter('C', entries);
 
         Assert.AreEqual(1, kept.Length);
         Assert.AreEqual("unrelated.txt", kept[0].FileName);

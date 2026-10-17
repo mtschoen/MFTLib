@@ -85,7 +85,7 @@ public class BrokerFrameLengthTests
         Assert.AreEqual(1, frames.Count);
         Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
         StringAssert.Contains(frames[0].Message, "malformed");
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 8, "C"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 8, 'C'));
         Assert.AreEqual(BrokerFrameKind.VolumeInfo, (await harness.ReadControlAsync()).Kind,
             "Only the channel that received the malformed frame ends.");
     }

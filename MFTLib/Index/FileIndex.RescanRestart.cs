@@ -11,7 +11,7 @@ public sealed partial class FileIndex
     async Task RescanWithGateHeldAsync(DriveRuntime runtime, IndexedDrive drive, RecoveryTicket? recovery,
         CancellationToken cancellationToken)
     {
-        var driveLetter = runtime.Drive;
+        var driveKey = runtime.Drive;
         if (recovery is null)
         {
             lock (_stateLock)
@@ -43,7 +43,7 @@ public sealed partial class FileIndex
 
         _ = RefuseWatchOverUnresumableBlock(runtime);
         throw new InvalidOperationException(
-            $"Drive {driveLetter} was not rescanned: {outcome.ProducerFailureMessage}", outcome.ProducerFailure);
+            $"Drive {driveKey} was not rescanned: {outcome.ProducerFailureMessage}", outcome.ProducerFailure);
     }
 
     /// <summary>
@@ -163,13 +163,13 @@ public sealed partial class FileIndex
     }
 
     /// <summary>
-    ///     A test seam: invoked with the drive letter once a rescan's or a recovery's restart has
+    ///     A test seam: invoked with the drive once a rescan's or a recovery's restart has
     ///     read that the watch is still requested, before the start re-reads it.
     /// </summary>
     internal Action<DriveKey>? RestartRequestedForTest { get; set; }
 
     /// <summary>
-    ///     A test seam: invoked with the drive letter once a rescan or a recovery has finished its
+    ///     A test seam: invoked with the drive once a rescan or a recovery has finished its
     ///     scans, before its restart reads whether the index is being disposed and whether the
     ///     watch is still requested.
     /// </summary>

@@ -7,11 +7,11 @@ namespace MFTLib.Index;
 /// </summary>
 internal sealed record MftDumpSourceIdentity
 {
-    internal MftDumpSourceIdentity(string dumpFilePath, DriveKey driveLetter)
+    internal MftDumpSourceIdentity(string dumpFilePath, DriveKey drive)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dumpFilePath);
         DumpFilePath = Path.GetFullPath(dumpFilePath);
-        Drive = driveLetter.Validated();
+        Drive = drive.Validated();
     }
 
     /// <summary>The full path of the dump file the source loads, resolved against the current directory once.</summary>

@@ -136,7 +136,6 @@ public partial class JournalBrokerHostTests
             long previousTransferringRecords = 0;
             foreach (var progress in progressFrames.Select(f => f.Progress!.Value))
             {
-                Assert.AreEqual(string.Empty, progress.Drive, "The drive belongs to the channel, not the frame.");
                 if (progress.Phase == BrokerScanPhase.Parsing)
                 {
                     Assert.IsTrue(progress.RecordsProcessed >= previousParsingRecords,
@@ -263,7 +262,6 @@ public partial class JournalBrokerHostTests
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[scanReadyIndex + 1].Kind);
         var progress = frames[finalProgressIndex].Progress;
         Assert.IsNotNull(progress);
-        Assert.AreEqual(string.Empty, progress.Value.Drive, "The drive belongs to the channel, not the frame.");
         Assert.AreEqual(3L, progress.Value.RecordsProcessed);
         Assert.AreEqual(3L, progress.Value.TotalRecords);
         Assert.IsTrue(progress.Value.BytesProcessed > 0);

@@ -85,4 +85,46 @@ public partial class BrokerProtocolTests
 
         StringAssert.Contains(exception.Message, expectedMessage);
     }
+
+    [TestMethod]
+    [DataRow((int)BrokerFrameKind.OpenChannel)]
+    [DataRow((int)BrokerFrameKind.QueryVolume)]
+    [DataRow((int)BrokerFrameKind.GrowUsnJournal)]
+    public void ReadFrame_ControlDriveRejectsMalformedPayload(int kindValue)
+    {
+        var kind = (BrokerFrameKind)kindValue;
+        byte[] suffix = kind switch
+        {
+            BrokerFrameKind.OpenChannel => [2, 0, 0, 0, (byte)'p', 0],
+            BrokerFrameKind.GrowUsnJournal => new byte[16],
+            _ => []
+        };
+        foreach (var character in (ReadOnlySpan<char>)['\0', '1', ':', '\u00e9', 'c'])
+        {
+            byte[] payload = [1, 0, 0, 0, (byte)character, (byte)(character >> 8), .. suffix];
+            var frame = FrameWithPayload(kind, payload);
+            Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(frame, out _));
+        }
+        byte[][] invalidCharacterBytes = [[], [(byte)'C']];
+        foreach (var characterBytes in invalidCharacterBytes)
+        {
+            var frame = FrameWithPayload(kind, [1, 0, 0, 0, .. characterBytes]);
+            Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(frame, out _));
+        }
+        // A valid C character followed by path-shaped trailing bytes is not a drive request.
+        var trailing = FrameWithPayload(kind, [1, 0, 0, 0, (byte)'C', 0, .. suffix, (byte)':', 0, (byte)'\\', 0]);
+        Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(trailing, out _));
+        // Old length-prefixed string payloads must not survive as an alternate grammar.
+        foreach (var text in new[] { "C", @"C:\", @"\\.\C:" })
+        {
+            var bytes = System.Text.Encoding.Unicode.GetBytes(text);
+            var payload = new byte[4 + 4 + bytes.Length + suffix.Length];
+            BinaryPrimitives.WriteUInt32LittleEndian(payload, 1);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(4), bytes.Length);
+            bytes.CopyTo(payload, 8);
+            suffix.CopyTo(payload, 8 + bytes.Length);
+            var frame = FrameWithPayload(kind, payload);
+            Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(frame, out _));
+        }
+    }
 }

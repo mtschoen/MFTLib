@@ -130,10 +130,10 @@ public sealed record FileIndexOptions
                     nameof(options));
             }
 
-            var driveLetter = drive.Validated().Drive;
-            if (!seen.Add(driveLetter))
+            var driveKey = drive.Validated().Drive;
+            if (!seen.Add(driveKey))
             {
-                throw new ArgumentException($"Drive {driveLetter} is listed more than once.", nameof(options));
+                throw new ArgumentException($"Drive {driveKey} is listed more than once.", nameof(options));
             }
         }
 

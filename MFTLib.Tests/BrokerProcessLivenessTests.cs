@@ -1,6 +1,7 @@
 // Over 500 lines because the scripted-session helpers and timer fakes serve every liveness test in one place.
 using System.Buffers;
 using System.Collections.Concurrent;
+using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.Extensions.Time.Testing;
@@ -98,7 +99,7 @@ public class BrokerProcessLivenessTests
         await healthy.FinishAsync();
         var result = await healthy.Scan.WaitAsync(HangGuard);
         result.Block.Block.Dispose();
-        Assert.AreEqual('D', result.DriveLetter);
+        Assert.AreEqual(new DriveKey('D'), result.Drive);
     }
 
     [TestMethod]
@@ -115,7 +116,6 @@ public class BrokerProcessLivenessTests
             clock.Advance(SendInterval);
             var sample = new BrokerScanProgress
             {
-                Drive = "C",
                 Phase = BrokerScanPhase.Parsing,
                 RecordsProcessed = report,
                 BytesProcessed = report,

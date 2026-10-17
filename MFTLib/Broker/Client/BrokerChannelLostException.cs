@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using MFTLib.Index;
 
 namespace MFTLib;
 
@@ -15,15 +16,15 @@ namespace MFTLib;
 internal sealed class BrokerChannelLostException : IOException
 {
     /// <summary>Records which pipe was lost.</summary>
-    /// <param name="driveLetter">The drive whose channel was lost, or null for the control pipe.</param>
+    /// <param name="drive">The drive whose channel was lost, or null for the control pipe.</param>
     /// <param name="message">What was lost and why.</param>
     /// <param name="innerException">The read, write or protocol failure behind the loss, if any.</param>
-    internal BrokerChannelLostException(char? driveLetter, string message, Exception? innerException = null)
+    internal BrokerChannelLostException(DriveKey? drive, string message, Exception? innerException = null)
         : base(message, innerException)
     {
-        Drive = driveLetter;
+        Drive = drive?.Validated();
     }
 
     /// <summary>The drive whose channel was lost, or null when the control pipe was.</summary>
-    internal char? Drive { get; }
+    internal DriveKey? Drive { get; }
 }

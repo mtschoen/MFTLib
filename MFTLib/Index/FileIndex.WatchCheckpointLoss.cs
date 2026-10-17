@@ -34,7 +34,7 @@ public sealed partial class FileIndex
     /// </remarks>
     void RecordCheckpointLossForFaultedDrive(DriveRuntime runtime, WatchInstance instance)
     {
-        var driveLetter = runtime.Drive;
+        var drive = runtime.Drive;
         var driveBlock = instance.ArmedBlock;
         ulong journalIdentifier;
         long watchPositionUsn;
@@ -50,7 +50,7 @@ public sealed partial class FileIndex
             watchPositionUsn = header.UsnNextUsn;
         }
 
-        if (JournalCheckpointCheck.Check(driveLetter, journalIdentifier, watchPositionUsn,
+        if (JournalCheckpointCheck.Check(drive, journalIdentifier, watchPositionUsn,
                 JournalCheckpointLossDetection.LiveWatch) is not { } loss)
         {
             // The position is still in the journal, so this fault was not the journal's doing.
@@ -86,12 +86,11 @@ public sealed partial class FileIndex
     ///     <see cref="_stateLock" /> and compares the instance, not the ordinal, so a block a
     ///     rescan replaced is recognizable as a different one.
     /// </summary>
-    DriveBlock? FindWatchableDriveBlockLocked(DriveKey driveLetter)
+    DriveBlock? FindWatchableDriveBlockLocked(DriveKey drive)
     {
-        var upperLetter = driveLetter;
         foreach (var driveBlock in _driveBlocks)
         {
-            if (driveBlock.Drive == upperLetter && driveBlock.Kind.CanWatch)
+            if (driveBlock.Drive == drive && driveBlock.Kind.CanWatch)
             {
                 return driveBlock;
             }

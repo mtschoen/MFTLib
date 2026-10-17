@@ -120,9 +120,9 @@ internal sealed partial class BrokerProcess
     // name; the Block's own view keeps the mapping alive.
     [SupportedOSPlatform("windows")]
     static (string SectionName, BlockFile Block, IDisposable Lifetime) CreateRealDriveBlockSection(
-        char driveLetter, BlockFileCreateOptions options)
+        DriveKey drive, BlockFileCreateOptions options)
     {
-        var sectionName = NamedBlockSection.BuildSectionName(driveLetter);
+        var sectionName = NamedBlockSection.BuildSectionName(drive);
         var (block, lifetime) = NamedBlockSection.Create(options, sectionName);
         return (sectionName, block, lifetime);
     }

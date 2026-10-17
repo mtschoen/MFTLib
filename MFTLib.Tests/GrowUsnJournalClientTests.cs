@@ -1,3 +1,4 @@
+using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -10,7 +11,7 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
     [TestMethod]
     public async Task GrowUsnJournalAsync_Success_SendsRequestAndReturnsSettings()
     {
-        var received = new List<(string Drive, long MaximumSize, long AllocationDelta)>();
+        var received = new List<(DriveKey Drive, long MaximumSize, long AllocationDelta)>();
         await using var broker = new InProcessBroker(CreateHost(growUsnJournal: (drive, maximumSize, allocationDelta) =>
         {
             received.Add((drive, maximumSize, allocationDelta));
@@ -23,9 +24,17 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
         Assert.AreEqual(0x08000000L, settings.MaximumSize);
         Assert.AreEqual(0x01000000L, settings.AllocationDelta);
         Assert.AreEqual(1, received.Count);
-        Assert.AreEqual("C", received[0].Drive);
+        Assert.AreEqual(new DriveKey('C'), received[0].Drive);
         Assert.AreEqual(0x08000000L, received[0].MaximumSize);
         Assert.AreEqual(0x01000000L, received[0].AllocationDelta);
+    }
+
+    [TestMethod]
+    public async Task GrowUsnJournalAsync_DefaultDrive_ThrowsArgumentException()
+    {
+        await using var broker = new ScriptedBroker();
+        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+            broker.Process.GrowUsnJournalAsync(default, new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None));
     }
 
     [TestMethod]
@@ -33,7 +42,7 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
     {
         await using var broker = new InProcessBroker(CreateHost(growUsnJournal: (_, _, _) =>
             throw new InvalidOperationException("Refusing to resize the USN journal to 32 bytes: the current maximum " +
-                                                "is 64 bytes, and only growth is permitted.")));
+                                                 "is 64 bytes, and only growth is permitted.")));
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
             broker.Process.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 32, AllocationDelta = 16 }, CancellationToken.None).WaitAsync(HangGuard));
@@ -52,7 +61,7 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
         var exception = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => request.WaitAsync(HangGuard));
 
         Assert.AreEqual(BrokerFrameKind.GrowUsnJournal, sent.Kind);
-        Assert.AreEqual("C", sent.Drive);
+        Assert.AreEqual(new DriveKey('C'), sent.RequireDrive());
         Assert.AreEqual(0x08000000L, sent.JournalMaximumSize);
         Assert.AreEqual(0x01000000L, sent.JournalAllocationDelta);
         Assert.IsNull(exception.Drive);

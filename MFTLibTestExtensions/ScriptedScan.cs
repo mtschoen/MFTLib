@@ -8,10 +8,10 @@ public sealed class ScriptedScan
 {
     readonly BlockWriteReporting _reporting;
 
-    internal ScriptedScan(DriveKey driveLetter, ParseThreadAllowance parseThreads, BlockWriteReporting reporting,
+    internal ScriptedScan(DriveKey drive, ParseThreadAllowance parseThreads, BlockWriteReporting reporting,
         CancellationToken cancellationToken)
     {
-        Drive = driveLetter.Validated();
+        Drive = drive.Validated();
         ParseThreads = parseThreads;
         CancellationToken = cancellationToken;
         _reporting = reporting;

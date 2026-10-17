@@ -32,10 +32,10 @@ public class JournalBrokerHostBlockScanTests
                     ? (Array.Empty<UsnJournalEntry>(), new UsnJournalCursor(cursor.JournalIdentifier, 12500))
                     : (Array.Empty<UsnJournalEntry>(), cursor);
             },
-            RecordBatches = (driveLetter, _, _, _, _, _) =>
+            RecordBatches = (drive, _, _, _, _, _) =>
             {
                 Assert.IsTrue(cursorArmed);
-                Assert.AreEqual("C", driveLetter);
+                Assert.AreEqual(new DriveKey('C'), drive);
                 return [[Record(5, ".", 3)], [Record(20, "file.txt")]];
             }
         });

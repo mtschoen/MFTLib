@@ -10,16 +10,16 @@ namespace MFTLib.Index;
 public sealed record CachedBlockFile
 {
     /// <summary>Creates an inventory entry.</summary>
-    /// <param name="driveLetter">The uppercase ASCII drive letter from the file name.</param>
+    /// <param name="drive">The drive from the file name.</param>
     /// <param name="volumeSerial">The volume serial from the file name.</param>
     /// <param name="path">The full path to the cached file.</param>
     /// <param name="sizeBytes">The file size in bytes.</param>
     /// <param name="lastWriteTimeUtc">The file's last-write time in UTC.</param>
-    internal CachedBlockFile(DriveKey driveLetter, uint volumeSerial, string path, long sizeBytes,
+    internal CachedBlockFile(DriveKey drive, uint volumeSerial, string path, long sizeBytes,
         DateTime lastWriteTimeUtc)
     {
         ArgumentNullException.ThrowIfNull(path);
-        Drive = driveLetter;
+        Drive = drive;
         VolumeSerial = volumeSerial;
         Path = path;
         Size = sizeBytes;

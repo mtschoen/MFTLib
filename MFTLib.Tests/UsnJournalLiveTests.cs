@@ -20,7 +20,7 @@ public class UsnJournalLiveTests
             return;
         }
 
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
         var cursor = volume.Journal.QueryUsnJournalCursor();
 
         Assert.IsTrue(cursor.JournalIdentifier > 0, "JournalIdentifier should be nonzero");
@@ -37,7 +37,7 @@ public class UsnJournalLiveTests
             return;
         }
 
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
 
         // Get current cursor
         var cursor = volume.Journal.QueryUsnJournalCursor();
@@ -75,7 +75,7 @@ public class UsnJournalLiveTests
             return;
         }
 
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
         var cursor = volume.Journal.QueryUsnJournalCursor();
 
         // Reading from current position should return very few entries
@@ -95,7 +95,7 @@ public class UsnJournalLiveTests
             return;
         }
 
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
         var cursor = volume.Journal.QueryUsnJournalCursor();
 
         var tempPath = Path.Combine(Path.GetTempPath(), $"mftlib-watch-test-{Guid.NewGuid()}.tmp");
@@ -147,7 +147,7 @@ public class UsnJournalLiveTests
             return;
         }
 
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
         var before = volume.Journal.QueryUsnJournalSettings();
         if (before.MaximumSize >= 1024L * 1024 * 1024)
         {

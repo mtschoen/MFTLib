@@ -42,11 +42,11 @@ public sealed partial class FileIndex
     ///     <see cref="FileIndexOptions.Diagnostics" />: the scan's result is already decided, so the
     ///     handler must neither replace the original exception nor strand a produced block.
     /// </summary>
-    void ReportFinished(DriveKey driveLetter, IndexScanOutcome outcome, uint rowsWritten)
+    void ReportFinished(DriveKey drive, IndexScanOutcome outcome, uint rowsWritten)
     {
         try
         {
-            _options.ScanProgress?.Report(new IndexScanProgress(driveLetter, IndexScanPhase.Finished, rowsWritten)
+            _options.ScanProgress?.Report(new IndexScanProgress(drive, IndexScanPhase.Finished, rowsWritten)
             {
                 Outcome = outcome
             });
@@ -56,7 +56,7 @@ public sealed partial class FileIndex
             try
             {
                 _options.Diagnostics?.Invoke(
-                    $"Drive {driveLetter}: the progress handler threw on the Finished sample: {exception.Message}");
+                    $"Drive {drive}: the progress handler threw on the Finished sample: {exception.Message}");
             }
             catch (Exception diagnosticsException) when (diagnosticsException is not OutOfMemoryException)
             {

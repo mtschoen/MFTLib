@@ -1,4 +1,5 @@
 using System.Globalization;
+using MFTLib.Index;
 
 namespace MFTLib;
 
@@ -20,7 +21,7 @@ namespace MFTLib;
 internal sealed class BrokerFrameReader : IAsyncDisposable
 {
     readonly Stream _stream;
-    readonly char? _driveLetter;
+    readonly DriveKey? _drive;
     readonly string _channelTag;
     readonly TimeProvider _timeProvider;
     readonly Action _markFrameStarted;
@@ -32,10 +33,10 @@ internal sealed class BrokerFrameReader : IAsyncDisposable
     long _readStarted;
     bool _disposed;
 
-    public BrokerFrameReader(Stream stream, char? driveLetter, string channelTag, TimeProvider timeProvider)
+    public BrokerFrameReader(Stream stream, DriveKey? drive, string channelTag, TimeProvider timeProvider)
     {
         _stream = stream;
-        _driveLetter = driveLetter;
+        _drive = drive?.Validated();
         _channelTag = channelTag;
         _timeProvider = timeProvider;
         _markFrameStarted = () => FrameStarted = true;
@@ -69,8 +70,8 @@ internal sealed class BrokerFrameReader : IAsyncDisposable
         catch (Exception exception) when (exception is IOException or InvalidDataException
                                               or ObjectDisposedException)
         {
-            var pipe = _driveLetter is { } letter ? $"Drive {letter} broker channel" : "The broker control pipe";
-            throw new BrokerChannelLostException(_driveLetter, $"{pipe} failed: {exception.Message}", exception);
+            var pipe = _drive is { } drive ? $"Drive {drive} broker channel" : "The broker control pipe";
+            throw new BrokerChannelLostException(_drive, $"{pipe} failed: {exception.Message}", exception);
         }
         finally
         {
@@ -151,7 +152,7 @@ internal sealed class BrokerFrameReader : IAsyncDisposable
     async Task<BrokerChannelLostException> CloseStalledAsync()
     {
         await _stream.DisposeAsync().ConfigureAwait(false);
-        return new BrokerChannelLostException(_driveLetter,
+        return new BrokerChannelLostException(_drive,
             $"No frame from the broker for {BrokerLiveness.StallLimit.TotalSeconds.ToString(CultureInfo.InvariantCulture)} seconds",
             new TimeoutException("The stall limit passed."));
     }

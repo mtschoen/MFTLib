@@ -23,12 +23,12 @@ public enum DriveOperationOutcome
 public sealed record DriveOperationResult
 {
     /// <summary>Creates the result of one drive's operation.</summary>
-    /// <param name="driveLetter">The normalized drive key.</param>
+    /// <param name="drive">The normalized drive key.</param>
     /// <param name="outcome">What the operation did for the drive.</param>
     /// <param name="failure">The per-drive exception for a failure; otherwise null.</param>
-    internal DriveOperationResult(DriveKey driveLetter, DriveOperationOutcome outcome, Exception? failure)
+    internal DriveOperationResult(DriveKey drive, DriveOperationOutcome outcome, Exception? failure)
     {
-        Drive = driveLetter;
+        Drive = drive;
         Outcome = outcome;
         Failure = failure;
     }

@@ -23,7 +23,7 @@ public sealed partial class FileIndex
     ///         the block starts it.
     ///     </para>
     /// </summary>
-    /// <exception cref="ArgumentException"><paramref name="driveLetter" /> is not part of this index.</exception>
+    /// <exception cref="ArgumentException"><paramref name="drive" /> is not part of this index.</exception>
     /// <exception cref="InvalidOperationException">
     ///     The drive has no MFT-backed block, <see cref="FileIndexOptions.MftSource" /> is not set or
     ///     cannot watch (<see cref="MftIndexSources.Unavailable" />),
@@ -31,7 +31,7 @@ public sealed partial class FileIndex
     ///     despite a lost journal checkpoint or because the scan that produced it lost its journal
     ///     catch-up: <see cref="RescanAsync" /> the drive first.
     /// </exception>
-    Task StartDriveWatchingAsync(DriveKey driveLetter, CancellationToken cancellationToken)
+    Task StartDriveWatchingAsync(DriveKey drive, CancellationToken cancellationToken)
     {
         if (RejectedTask(nameof(StartWatchingAsync)) is { } rejected)
         {
@@ -39,7 +39,7 @@ public sealed partial class FileIndex
         }
 
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return StartConsumerWatchingAsync(GetDriveRuntime(driveLetter), cancellationToken);
+        return StartConsumerWatchingAsync(GetDriveRuntime(drive), cancellationToken);
     }
 
     /// <summary>
@@ -67,7 +67,7 @@ public sealed partial class FileIndex
     IIndexWatchSource? WatchSourceOrNull => _options.MftSource?.WatchSource;
 
     /// <summary>
-    ///     A test seam: awaited with the drive letter by a rescan's or a recovery's restart just
+    ///     A test seam: awaited with the drive by a rescan's or a recovery's restart just
     ///     before it registers the drive's new instance.
     /// </summary>
     internal Func<DriveKey, Task>? RestartBeforeRegistrationForTest { get; set; }
@@ -80,9 +80,9 @@ public sealed partial class FileIndex
         CancellationToken cancellationToken)
     {
         ThrowIfCancelledByDisposal(cancellationToken);
-        var driveLetter = runtime.Drive;
+        var drive = runtime.Drive;
         var source = WatchSourceOrNull ?? throw new InvalidOperationException(
-            MftIndexSource.FormatUnavailable(driveLetter,
+            MftIndexSource.FormatUnavailable(drive,
                 _options.MftSource?.UnavailableReason ?? MftIndexSource.NoWatchReason));
 
         (DriveBlock ArmedBlock, Task? PreviousDrain)? preparation;
@@ -110,7 +110,7 @@ public sealed partial class FileIndex
 
         if (restart && RestartBeforeRegistrationForTest is { } beforeRegistration)
         {
-            await beforeRegistration(driveLetter).ConfigureAwait(false);
+            await beforeRegistration(drive).ConfigureAwait(false);
         }
 
         var registration = RegisterStartingInstance(runtime, armedBlock, restart, recovery);
@@ -135,7 +135,7 @@ public sealed partial class FileIndex
     (DriveBlock ArmedBlock, Task? PreviousDrain)? PrepareStart(DriveRuntime runtime, bool restart,
         RecoveryTicket? recovery)
     {
-        var driveLetter = runtime.Drive;
+        var drive = runtime.Drive;
         lock (_stateLock)
         {
             try
@@ -150,7 +150,7 @@ public sealed partial class FileIndex
                     ClearRecoveryLocked(runtime);
                 }
 
-                if (FindWatchableDriveBlockLocked(driveLetter) is not { } armedBlock)
+                if (FindWatchableDriveBlockLocked(drive) is not { } armedBlock)
                 {
                     throw RefuseStartWithoutWatchableBlockLocked(runtime, restart);
                 }
@@ -189,7 +189,7 @@ public sealed partial class FileIndex
         bool restart, RecoveryTicket? recovery, CancellationToken cancellationToken)
     {
         var instance = registration.Instance;
-        var driveLetter = runtime.Drive;
+        var drive = runtime.Drive;
         IIndexDriveWatch handle;
         try
         {
@@ -197,7 +197,7 @@ public sealed partial class FileIndex
                 instance.StartCancellation.Token, cancellationToken);
             handle = await source.StartAsync(registration.Target, linked.Token).ConfigureAwait(false) ??
                      throw new InvalidOperationException(
-                         $"The watch source returned no handle for drive {driveLetter}.");
+                         $"The watch source returned no handle for drive {drive}.");
         }
         catch (Exception exception)
         {

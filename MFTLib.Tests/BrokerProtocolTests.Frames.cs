@@ -1,4 +1,5 @@
 using System.Buffers;
+using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -40,11 +41,11 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void OpenChannelFrame_RoundTrips_RequestIdDriveAndPipeName()
     {
-        var frame = RoundTrip(writer => BrokerProtocol.WriteOpenChannel(writer, 0xDEADBEEF, "C", @"mftlib-drive-C-1"));
+        var frame = RoundTrip(writer => BrokerProtocol.WriteOpenChannel(writer, 0xDEADBEEF, 'C', @"mftlib-drive-C-1"));
 
         Assert.AreEqual(BrokerFrameKind.OpenChannel, frame.Kind);
         Assert.AreEqual(0xDEADBEEF, frame.RequestId);
-        Assert.AreEqual("C", frame.Drive);
+        Assert.AreEqual(new DriveKey('C'), frame.RequireDrive());
         Assert.AreEqual("mftlib-drive-C-1", frame.PipeName);
         Assert.AreEqual(0, frame.Entries.Length);
         Assert.IsNull(frame.RetainedFileNames);
@@ -62,11 +63,11 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void QueryVolumeFrame_RoundTrips_RequestIdAndDrive()
     {
-        var frame = RoundTrip(writer => BrokerProtocol.WriteQueryVolume(writer, 4, "D"));
+        var frame = RoundTrip(writer => BrokerProtocol.WriteQueryVolume(writer, 4, 'D'));
 
         Assert.AreEqual(BrokerFrameKind.QueryVolume, frame.Kind);
         Assert.AreEqual(4u, frame.RequestId);
-        Assert.AreEqual("D", frame.Drive);
+        Assert.AreEqual(new DriveKey('D'), frame.RequireDrive());
     }
 
     [TestMethod]
@@ -132,14 +133,18 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void WireBytes_Golden_OpenChannelFrame()
     {
-        AssertWireBytes(w => BrokerProtocol.WriteOpenChannel(w, 1, "C", "p"),
+        AssertWireBytes(w => BrokerProtocol.WriteOpenChannel(w, 1, 'c', "p"),
         [
-            0x11, 0x00, 0x00, 0x00, // totalLength = 17
+            0x0D, 0x00, 0x00, 0x00, // totalLength = 13
             0x01, // kind = OpenChannel
             0x01, 0x00, 0x00, 0x00, // requestId = 1
-            0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // drive "C"
+            0x43, 0x00, // drive 'C'
             0x02, 0x00, 0x00, 0x00, 0x70, 0x00 // pipeName "p"
         ]);
+
+        var buffer = new ArrayBufferWriter<byte>();
+        Assert.ThrowsException<ArgumentException>(() => BrokerProtocol.WriteOpenChannel(buffer, 1, default, "p"));
+        Assert.AreEqual(0, buffer.WrittenCount);
     }
 
     [TestMethod]
@@ -152,13 +157,17 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void WireBytes_Golden_QueryVolumeFrame()
     {
-        AssertWireBytes(w => BrokerProtocol.WriteQueryVolume(w, 2, "C"),
+        AssertWireBytes(w => BrokerProtocol.WriteQueryVolume(w, 2, 'c'),
         [
-            0x0B, 0x00, 0x00, 0x00, // totalLength = 11
+            0x07, 0x00, 0x00, 0x00, // totalLength = 7
             0x03, // kind = QueryVolume
             0x02, 0x00, 0x00, 0x00, // requestId = 2
-            0x02, 0x00, 0x00, 0x00, 0x43, 0x00 // drive "C"
+            0x43, 0x00 // drive 'C'
         ]);
+
+        var buffer = new ArrayBufferWriter<byte>();
+        Assert.ThrowsException<ArgumentException>(() => BrokerProtocol.WriteQueryVolume(buffer, 2, default));
+        Assert.AreEqual(0, buffer.WrittenCount);
     }
 
     [TestMethod]

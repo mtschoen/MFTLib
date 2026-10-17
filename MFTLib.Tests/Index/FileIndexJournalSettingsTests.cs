@@ -102,7 +102,7 @@ public class FileIndexJournalSettingsTests
             Drives = [new IndexedDrive('C', _treeRoot, 0x0BADF00D, ProducerKind.Enumeration)],
             CacheDirectory = _cacheDirectory,
         }, CancellationToken.None);
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
 
         var fromVolume = volume.Journal.QueryUsnJournalSettings();
         var fromIndex = index.QueryUsnJournalSettings('C');

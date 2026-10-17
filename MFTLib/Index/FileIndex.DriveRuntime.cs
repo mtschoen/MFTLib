@@ -66,9 +66,9 @@ public sealed partial class FileIndex
     /// </remarks>
     sealed class DriveRuntime
     {
-        public DriveRuntime(DriveKey driveLetter)
+        public DriveRuntime(DriveKey drive)
         {
-            Drive = driveLetter;
+            Drive = drive;
         }
 
         public DriveKey Drive { get; }
@@ -184,10 +184,10 @@ public sealed partial class FileIndex
         readonly TaskCompletionSource _drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
         readonly CancellationTokenRegistration _disposalLink;
 
-        public WatchInstance(DriveKey driveLetter, long generation, DriveBlock armedBlock,
+        public WatchInstance(DriveKey drive, long generation, DriveBlock armedBlock,
             TaskCompletionSource? catchUpWaiter, CancellationToken disposalToken)
         {
-            Drive = driveLetter;
+            Drive = drive;
             Generation = generation;
             ArmedBlock = armedBlock;
             CatchUp = new WatchCatchUpSlot(catchUpWaiter);
@@ -247,18 +247,18 @@ public sealed partial class FileIndex
     }
 
     /// <summary>A test seam: takes the drive's write gate, as a batch or a commit would.</summary>
-    internal Task WaitForDriveWriteGateForTest(char driveLetter) => GetDriveRuntime(driveLetter).WriteGate.WaitAsync();
+    internal Task WaitForDriveWriteGateForTest(DriveKey drive) => GetDriveRuntime(drive).WriteGate.WaitAsync();
 
     /// <summary>A test seam: releases the write gate <see cref="WaitForDriveWriteGateForTest" /> took.</summary>
-    internal void ReleaseDriveWriteGateForTest(char driveLetter) => GetDriveRuntime(driveLetter).WriteGate.Release();
+    internal void ReleaseDriveWriteGateForTest(DriveKey drive) => GetDriveRuntime(drive).WriteGate.Release();
 
     /// <summary>
     ///     A test seam: true when neither the drive's lifecycle gate nor its write gate is held.
     ///     Takes each without waiting and releases it again.
     /// </summary>
-    internal bool AreDriveGatesFreeForTest(char driveLetter)
+    internal bool AreDriveGatesFreeForTest(DriveKey drive)
     {
-        var runtime = GetDriveRuntime(driveLetter);
+        var runtime = GetDriveRuntime(drive);
         var free = true;
         foreach (var gate in new[] { runtime.LifecycleGate, runtime.WriteGate })
         {
@@ -275,12 +275,12 @@ public sealed partial class FileIndex
         return free;
     }
 
-    /// <summary>The drive's runtime, or <see cref="ArgumentException" /> for a letter not in this index.</summary>
-    DriveRuntime GetDriveRuntime(DriveKey driveLetter)
+    /// <summary>The drive's runtime, or <see cref="ArgumentException" /> for a drive not in this index.</summary>
+    DriveRuntime GetDriveRuntime(DriveKey drive)
     {
-        return _driveRuntimes.TryGetValue(driveLetter.Validated(), out var runtime)
+        return _driveRuntimes.TryGetValue(drive.Validated(), out var runtime)
             ? runtime
-            : throw new ArgumentException($"Drive {driveLetter} is not part of this index.", nameof(driveLetter));
+            : throw new ArgumentException($"Drive {drive} is not part of this index.", nameof(drive));
     }
 
     /// <summary>

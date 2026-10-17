@@ -218,9 +218,8 @@ public class FileIndexQueryTests
 
         Assert.IsInstanceOfType<ArgumentException>(outcome);
         var exception = (ArgumentException)outcome;
-        Assert.AreEqual(new ArgumentException($"Drive {new DriveKey(driveLetter)} is not part of this index.", nameof(driveLetter)).Message,
-            exception.Message);
-        Assert.AreEqual(nameof(driveLetter), exception.ParamName);
+        StringAssert.Contains(exception.Message, $"Drive {new DriveKey(driveLetter)} is not part of this index.");
+        Assert.AreEqual("drive", exception.ParamName);
     }
 
     static Exception RootFailure(FileIndex index, char driveLetter, CancellationToken cancellationToken = default)

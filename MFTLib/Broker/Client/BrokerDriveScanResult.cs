@@ -10,7 +10,7 @@ namespace MFTLib;
 ///     catch-up after the scan failed; the returned block is still complete.
 /// </summary>
 internal sealed record BrokerDriveScanResult(
-    char DriveLetter,
+    DriveKey Drive,
     UsnJournalCursor ArmedCursor,
     JournalCheckpointLoss? CatchUpLoss,
     BlockScanOutcome Block);

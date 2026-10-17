@@ -97,7 +97,7 @@ public partial class MftVolumeTests
             SyntheticNtfsImage.Write(path, 1024);
             NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
             FileUtilities.Hooks.GetVolumeHandle = _ => File.OpenHandle(path);
-            using (var volume = MftVolume.Open("C", 64))
+            using (var volume = MftVolume.Open('C', 64))
             {
                 test(volume);
             }

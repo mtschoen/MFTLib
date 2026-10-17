@@ -134,9 +134,9 @@ public sealed class BrokerSession : IAsyncDisposable
     public async Task<UsnJournalSettings> GrowUsnJournalAsync(DriveKey drive, UsnJournalSettings target,
         CancellationToken cancellationToken)
     {
-        var letter = drive.Letter;
+        drive = drive.Validated();
         var process = await ConnectAsync(cancellationToken).ConfigureAwait(false);
-        return await process.GrowUsnJournalAsync(letter, target, cancellationToken)
+        return await process.GrowUsnJournalAsync(drive, target, cancellationToken)
             .ConfigureAwait(false);
     }
 

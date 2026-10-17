@@ -33,11 +33,11 @@ static class JournalCheckpointCheck
 
     /// <summary>
     ///     Returns the loss when <paramref name="checkpointUsn" /> can no longer be resumed on
-    ///     <paramref name="driveLetter" />, and null when it can or when the volume cannot say.
+    ///     <paramref name="drive" />, and null when it can or when the volume cannot say.
     ///     A volume with no journal, a non-NTFS volume, or any other refusal of the query
     ///     yields null: MFTLib reports causes it can detect and invents none.
     /// </summary>
-    /// <param name="driveLetter">The drive to read the journal of.</param>
+    /// <param name="drive">The drive to read the journal of.</param>
     /// <param name="checkpointJournalIdentifier">The journal identifier the block's cursor was written against.</param>
     /// <param name="checkpointUsn">The USN the drive would resume from.</param>
     /// <param name="detectedDuring">
@@ -46,23 +46,23 @@ static class JournalCheckpointCheck
     ///     which one produced it rather than leaving a reader to infer it from context that is
     ///     gone by the time the report is read.
     /// </param>
-    public static JournalCheckpointLoss? Check(DriveKey driveLetter, ulong checkpointJournalIdentifier, long checkpointUsn,
+    public static JournalCheckpointLoss? Check(DriveKey drive, ulong checkpointJournalIdentifier, long checkpointUsn,
         JournalCheckpointLossDetection detectedDuring)
-        => CheckObservation(driveLetter, checkpointJournalIdentifier, checkpointUsn, detectedDuring, requireUnmoved: false);
+        => CheckObservation(drive, checkpointJournalIdentifier, checkpointUsn, detectedDuring, requireUnmoved: false);
 
     /// <summary>
     ///     Checks a scan-only cache against one journal observation: recreation and trimming take
     ///     precedence, then any unequal next USN requires a rescan. An unavailable or incoherent
     ///     observation reports nothing, just as the resumability check does.
     /// </summary>
-    internal static JournalCheckpointLoss? CheckUnmoved(DriveKey driveLetter, ulong checkpointJournalIdentifier,
+    internal static JournalCheckpointLoss? CheckUnmoved(DriveKey drive, ulong checkpointJournalIdentifier,
         long checkpointUsn, JournalCheckpointLossDetection detectedDuring)
-        => CheckObservation(driveLetter, checkpointJournalIdentifier, checkpointUsn, detectedDuring, requireUnmoved: true);
+        => CheckObservation(drive, checkpointJournalIdentifier, checkpointUsn, detectedDuring, requireUnmoved: true);
 
-    static JournalCheckpointLoss? CheckObservation(DriveKey driveLetter, ulong checkpointJournalIdentifier, long checkpointUsn,
+    static JournalCheckpointLoss? CheckObservation(DriveKey drive, ulong checkpointJournalIdentifier, long checkpointUsn,
         JournalCheckpointLossDetection detectedDuring, bool requireUnmoved)
     {
-        if (ProcessJournal.Read(driveLetter) is not { } journal)
+        if (ProcessJournal.Read(drive) is not { } journal)
         {
             return null;
         }
@@ -80,7 +80,7 @@ static class JournalCheckpointCheck
 
         if (journal.JournalIdentifier != checkpointJournalIdentifier)
         {
-            return new JournalCheckpointLoss(driveLetter, detectedDuring, JournalCheckpointLossCause.JournalRecreated,
+            return new JournalCheckpointLoss(drive, detectedDuring, JournalCheckpointLossCause.JournalRecreated,
                 journalSettings)
             {
                 CheckpointUsn = checkpointUsn,
@@ -93,7 +93,7 @@ static class JournalCheckpointCheck
         {
             if (requireUnmoved && nextUsn != checkpointUsn)
             {
-                return new JournalCheckpointLoss(driveLetter, detectedDuring,
+                return new JournalCheckpointLoss(drive, detectedDuring,
                     JournalCheckpointLossCause.JournalAdvanced, journalSettings)
                 {
                     CheckpointUsn = checkpointUsn,
@@ -105,7 +105,7 @@ static class JournalCheckpointCheck
             return null;
         }
 
-        return new JournalCheckpointLoss(driveLetter, detectedDuring, JournalCheckpointLossCause.CheckpointTrimmed,
+        return new JournalCheckpointLoss(drive, detectedDuring, JournalCheckpointLossCause.CheckpointTrimmed,
             journalSettings)
         {
             CheckpointUsn = checkpointUsn,
@@ -147,11 +147,11 @@ static class JournalCheckpointCheck
         ///     The override when one is installed, otherwise nothing while live reads are
         ///     forbidden, otherwise the live journal.
         /// </summary>
-        public JournalWindow? Read(DriveKey driveLetter)
+        public JournalWindow? Read(DriveKey drive)
         {
             if (_journalOverride is { } journalOverride)
             {
-                return journalOverride(driveLetter);
+                return journalOverride(drive);
             }
 
             if (liveReadsForbidden())
@@ -163,7 +163,7 @@ static class JournalCheckpointCheck
                 return null;
             }
 
-            return readLive(driveLetter);
+            return readLive(drive);
         }
     }
 
@@ -171,14 +171,14 @@ static class JournalCheckpointCheck
     ///     The real unelevated read, reachable from a test that deliberately wants a real
     ///     volume even while <see cref="ForbidLiveJournalReads" /> is active.
     /// </summary>
-    internal static JournalWindow? ReadLiveJournal(DriveKey driveLetter) =>
-        ReadLiveJournal(driveLetter, OperatingSystem.IsWindows());
+    internal static JournalWindow? ReadLiveJournal(DriveKey drive) =>
+        ReadLiveJournal(drive, OperatingSystem.IsWindows());
 
     /// <summary>
     ///     The read behind <see cref="ReadLiveJournal(DriveKey)" />, given whether the host is Windows,
     ///     so the answer off Windows is tested on every platform.
     /// </summary>
-    internal static JournalWindow? ReadLiveJournal(DriveKey driveLetter, bool isWindows)
+    internal static JournalWindow? ReadLiveJournal(DriveKey drive, bool isWindows)
     {
         if (!isWindows || !OperatingSystem.IsWindows())
         {
@@ -188,7 +188,7 @@ static class JournalCheckpointCheck
         try
         {
             using var handle = UsnJournalVolumeInterop.OpenVolumeRoot(
-                driveLetter, "check whether its USN journal still holds the cached checkpoint");
+                drive, "check whether its USN journal still holds the cached checkpoint");
             var data = UsnJournalVolumeInterop.QueryJournalData(handle);
             return new JournalWindow(data.UsnJournalIdentifier, data.FirstUsn, data.NextUsn,
                 checked((long)data.AllocationDelta), checked((long)data.MaximumSize));
@@ -207,7 +207,7 @@ static class JournalCheckpointCheck
 
     /// <summary>
     ///     Stops this process's automatic checkpoint observations reading any real volume's journal for the rest of its life, so a
-    ///     warm start in a test decides the same way whatever drive letters the host happens
+    ///     warm start in a test decides the same way whatever drives the host happens
     ///     to have. One way and idempotent, like the cache-directory guard; a test that wants
     ///     a real volume installs an override over <see cref="ReadLiveJournal(DriveKey)" />.
     /// </summary>

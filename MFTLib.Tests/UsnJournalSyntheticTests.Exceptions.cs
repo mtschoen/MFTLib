@@ -29,7 +29,7 @@ public partial class UsnJournalSyntheticTests
         NativeTestHooks.NativeSetAllocFailCountdown(-3);
         var failure = Assert.ThrowsException<InvalidOperationException>(() =>
         {
-            using var volume = MftVolume.Open("C:");
+            using var volume = MftVolume.Open('C');
             volume.Journal.ReadUsnJournalBounded(Cursor, 0);
         });
         StringAssert.Contains(failure.Message, "ReadUsnJournal returned null");

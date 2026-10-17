@@ -53,7 +53,7 @@ public class PlatformBranchTests
     public void NtfsVolumeInformationQuery_NonWindowsHost_ThrowsPlatformNotSupported()
     {
         var thrown = Assert.ThrowsException<PlatformNotSupportedException>(() =>
-            NtfsVolumeInformation.Query("C", isWindows: false));
+            NtfsVolumeInformation.Query('C', isWindows: false));
 
         StringAssert.Contains(thrown.Message, "FSCTL_GET_NTFS_VOLUME_DATA");
     }

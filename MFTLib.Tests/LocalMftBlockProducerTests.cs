@@ -40,8 +40,8 @@ public class LocalMftBlockProducerTests
         [[Record(5, ".", 3)], [Record(20, "file.txt"), Record(21, "other.md")]];
 
     static ScriptedVolumeAccess Scripted(
-        Func<string, NtfsVolumeInformation>? query = null, MftRecordBatchSource? scan = null,
-        Func<string, UsnJournalCursor>? queryCursor = null) => new()
+        Func<DriveKey, NtfsVolumeInformation>? query = null, MftRecordBatchSource? scan = null,
+        Func<DriveKey, UsnJournalCursor>? queryCursor = null) => new()
         {
             VolumeInformation = query ?? (_ => Volume),
             RecordBatches = scan ?? ((_, _, _, _, _, _) => Batches()),
@@ -49,12 +49,12 @@ public class LocalMftBlockProducerTests
         };
 
     MftBlockProduceRequest Request(bool deleteOnClose = true, IProgress<IndexScanProgress>? progress = null,
-        char driveLetter = 'T') => new()
+        char drive = 'T') => new()
         {
-            Drive = driveLetter,
+            Drive = drive,
             VolumeSerial = 123,
             BlockPath = Path.Combine(_directories.CacheDirectory,
-            deleteOnClose ? $"{driveLetter}-temporary.mlix" : $"{driveLetter}-canonical.mlix"),
+            deleteOnClose ? $"{drive}-temporary.mlix" : $"{drive}-canonical.mlix"),
             DeleteOnClose = deleteOnClose,
             Progress = progress,
             CacheTag = RequestedTag
@@ -120,7 +120,7 @@ public class LocalMftBlockProducerTests
         }
 
         var request = Request();
-        var queried = new List<string>();
+        var queried = new List<DriveKey>();
         var producer = new LocalMftBlockProducer(timeProvider, null, Scripted(drive =>
         {
             queried.Add(drive);
@@ -130,7 +130,7 @@ public class LocalMftBlockProducerTests
         var result = await ProducerOf(producer)(request, TestContext.CancellationTokenSource.Token);
         var block = result.Block;
 
-        CollectionAssert.AreEqual(new[] { "T" }, queried);
+        CollectionAssert.AreEqual(new[] { new DriveKey('T') }, queried);
         Assert.AreEqual(request.BlockPath, block.Path);
         Assert.AreEqual(RequestedTag, block.Header.CacheTag);
         Assert.AreEqual(123u, block.Header.VolumeSerial);
@@ -241,7 +241,7 @@ public class LocalMftBlockProducerTests
 
         var producer = new LocalMftBlockProducer(TimeProvider.System, null, Scripted(scan: (drive, allowance, _, _, _, token) =>
         {
-            if (drive == "T")
+            if (drive.Letter == 'T')
             {
                 allowanceT = allowance;
                 gateT.MarkEntered();
@@ -265,11 +265,11 @@ public class LocalMftBlockProducerTests
         }), allocator);
 
         using var cancellationT = new CancellationTokenSource();
-        var taskT = ProducerOf(producer)(Request(driveLetter: 'T'), cancellationT.Token);
+        var taskT = ProducerOf(producer)(Request(drive: 'T'), cancellationT.Token);
         await gateT.Entered.WaitAsync(TestContext.CancellationTokenSource.Token);
         Assert.AreEqual(4, allowanceT!.Count, "A single running scan takes the full thread budget.");
 
-        var taskU = ProducerOf(producer)(Request(driveLetter: 'U'), TestContext.CancellationTokenSource.Token);
+        var taskU = ProducerOf(producer)(Request(drive: 'U'), TestContext.CancellationTokenSource.Token);
         await gateU.Entered.WaitAsync(TestContext.CancellationTokenSource.Token);
         Assert.AreEqual(2, allowanceT.Count, "Admission of a second scan halves the running scan's allowance.");
         Assert.AreEqual(2, allowanceU!.Count, "The second scan receives half the allowance.");
@@ -448,6 +448,6 @@ public class LocalMftBlockProducerTests
         }
 
         Assert.ThrowsException<PlatformNotSupportedException>(
-            () => LiveVolumeAccess.Instance.QueryVolumeInformation("T"));
+            () => LiveVolumeAccess.Instance.QueryVolumeInformation('T'));
     }
 }

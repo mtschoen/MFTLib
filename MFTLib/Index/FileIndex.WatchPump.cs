@@ -55,7 +55,7 @@ public sealed partial class FileIndex
     /// </summary>
     async Task<WatchFault?> ReadWatchAsync(DriveRuntime runtime, WatchInstance instance, IIndexDriveWatch handle)
     {
-        var driveLetter = runtime.Drive;
+        var drive = runtime.Drive;
         var stopToken = instance.PumpStop.Token;
         try
         {
@@ -65,7 +65,7 @@ public sealed partial class FileIndex
                 {
                     if (ApplyWatchBatch(runtime, instance, batch) is { } applyFailure)
                     {
-                        return new WatchFault(WatchFaultKind.Apply, driveLetter, applyFailure);
+                        return new WatchFault(WatchFaultKind.Apply, drive, applyFailure);
                     }
                 }
                 else if (item is DriveCaughtUp)
@@ -80,17 +80,17 @@ public sealed partial class FileIndex
         }
         catch (DriveWatchFaultException exception)
         {
-            return new WatchFault(WatchFaultKind.Drive, driveLetter, exception);
+            return new WatchFault(WatchFaultKind.Drive, drive, exception);
         }
         catch (Exception exception)
         {
-            return new WatchFault(WatchFaultKind.Channel, driveLetter, exception);
+            return new WatchFault(WatchFaultKind.Channel, drive, exception);
         }
 
         return stopToken.IsCancellationRequested
             ? null
-            : new WatchFault(WatchFaultKind.Channel, driveLetter,
-                new InvalidOperationException($"The watch for drive {driveLetter} ended without being stopped."));
+            : new WatchFault(WatchFaultKind.Channel, drive,
+                new InvalidOperationException($"The watch for drive {drive} ended without being stopped."));
     }
 
     /// <summary>

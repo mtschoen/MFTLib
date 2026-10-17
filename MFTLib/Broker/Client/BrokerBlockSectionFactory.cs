@@ -9,7 +9,7 @@ namespace MFTLib;
 ///     <c>Block</c>, so a lifetime whose disposal also invalidated the block's view would break
 ///     every scan.
 /// </summary>
-/// <param name="driveLetter">The bare upper-case drive letter being scanned.</param>
+/// <param name="drive">The drive being scanned.</param>
 /// <param name="options">The block's layout, sized from the drive's volume information.</param>
 internal delegate (string SectionName, BlockFile Block, IDisposable Lifetime) BrokerBlockSectionFactory(
-    char driveLetter, BlockFileCreateOptions options);
+    DriveKey drive, BlockFileCreateOptions options);

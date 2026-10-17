@@ -163,10 +163,10 @@ public sealed partial class BrokerCrossDriveLivenessTests
 
         public void Fix() => Volatile.Write(ref _failuresLeft, 0);
 
-        public (UsnJournalEntry[] Entries, UsnJournalCursor Cursor) ReadJournal(string driveLetter,
+        public (UsnJournalEntry[] Entries, UsnJournalCursor Cursor) ReadJournal(DriveKey drive,
             UsnJournalCursor since, int maximumBufferReads)
         {
-            if (driveLetter == "T" && Interlocked.Decrement(ref _failuresLeft) >= 0)
+            if (drive == 'T' && Interlocked.Decrement(ref _failuresLeft) >= 0)
             {
                 throw new IOException(FailureMessage);
             }

@@ -12,12 +12,12 @@ namespace MFTLib.Index;
 public sealed record IndexDriveOpened
 {
     /// <summary>Creates a report that one drive has settled.</summary>
-    /// <param name="driveLetter">The settled drive, in upper case.</param>
+    /// <param name="drive">The settled drive, in upper case.</param>
     /// <param name="settledDriveCount">The settle order of this drive, counted from 1.</param>
     /// <param name="totalDriveCount">How many drives the open was configured with.</param>
-    internal IndexDriveOpened(DriveKey driveLetter, int settledDriveCount, int totalDriveCount)
+    internal IndexDriveOpened(DriveKey drive, int settledDriveCount, int totalDriveCount)
     {
-        Drive = driveLetter;
+        Drive = drive;
         SettledDriveCount = settledDriveCount;
         TotalDriveCount = totalDriveCount;
     }

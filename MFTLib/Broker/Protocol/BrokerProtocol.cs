@@ -86,16 +86,16 @@ internal static partial class BrokerProtocol
         var kind = (BrokerFrameKind)span[4];
         var payload = new PayloadReader(span.Slice(5, totalLength - 1)); // skip 4-byte prefix + 1 kind byte
 
-        return kind switch
+        var frame = kind switch
         {
             BrokerFrameKind.OpenChannel => BrokerFrame.OpenChannel(
-                payload.UInt32(), payload.String(), payload.String()),
+                payload.UInt32(), payload.Drive(), payload.String()),
             BrokerFrameKind.ChannelOpened => BrokerFrame.ChannelOpened(payload.UInt32()),
-            BrokerFrameKind.QueryVolume => BrokerFrame.QueryVolume(payload.UInt32(), payload.String()),
+            BrokerFrameKind.QueryVolume => BrokerFrame.QueryVolume(payload.UInt32(), payload.Drive()),
             BrokerFrameKind.VolumeInfo => BrokerFrame.VolumeInfo(
                 payload.UInt32(), payload.UInt32(), payload.Int64()),
             BrokerFrameKind.GrowUsnJournal => BrokerFrame.GrowUsnJournal(
-                payload.UInt32(), payload.String(), payload.Int64(), payload.Int64()),
+                payload.UInt32(), payload.Drive(), payload.Int64(), payload.Int64()),
             BrokerFrameKind.UsnJournalSettings => BrokerFrame.UsnJournalSettings(
                 payload.UInt32(), payload.Int64(), payload.Int64()),
             BrokerFrameKind.Error => BrokerFrame.Error(payload.UInt32(), payload.String()),
@@ -112,6 +112,13 @@ internal static partial class BrokerProtocol
             BrokerFrameKind.ScanCompleted => BrokerFrame.ScanCompleted(),
             _ => throw new InvalidDataException($"Unknown frame kind: {kind}")
         };
+
+        if (kind is BrokerFrameKind.OpenChannel or BrokerFrameKind.QueryVolume or BrokerFrameKind.GrowUsnJournal)
+        {
+            payload.RequireComplete();
+        }
+
+        return frame;
     }
 
     // Private read helpers
@@ -185,7 +192,6 @@ internal static partial class BrokerProtocol
 
         return new BrokerScanProgress
         {
-            Drive = string.Empty,
             Phase = phase,
             RecordsProcessed = recordsProcessed,
             BytesProcessed = bytesProcessed,

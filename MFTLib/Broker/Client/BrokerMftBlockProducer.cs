@@ -44,7 +44,7 @@ internal sealed class BrokerMftBlockProducer
             CacheTag = request.CacheTag
         };
         var process = await _connectAsync(cancellationToken).ConfigureAwait(false);
-        var result = await process.ScanDriveAsync(request.Drive.Letter, target, options, progress, cancellationToken)
+        var result = await process.ScanDriveAsync(request.Drive, target, options, progress, cancellationToken)
             .ConfigureAwait(false);
         return MftBlockValidation.Finish(request, result.Block.Block, result.ArmedCursor,
             MftBlockScan.SaturateSkippedRecordCount(result.Block.SkippedRecordCount), result.CatchUpLoss);

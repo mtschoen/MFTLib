@@ -49,14 +49,14 @@ public sealed partial class FileIndex
     public event Action<WatchFault>? WatchFaulted;
 
     /// <summary>
-    ///     A test seam: invoked with the drive letter on entry to a watch pump's apply, before the
+    ///     A test seam: invoked with the drive on entry to a watch pump's apply, before the
     ///     drive's write gate is taken, so a test can hold a pump in the middle of applying a batch
     ///     it has already read.
     /// </summary>
     internal Action<DriveKey>? ApplyJournalEntriesEnteredForTest { get; set; }
 
     /// <summary>
-    ///     A test seam: invoked with the drive letter while an apply holds its drive's write gate,
+    ///     A test seam: invoked with the drive while an apply holds its drive's write gate,
     ///     after the batch passed its instance check and read the current snapshot, and before the
     ///     block is mutated.
     /// </summary>
@@ -83,10 +83,10 @@ public sealed partial class FileIndex
     ///     <see cref="Changed" /> is raised, so a subscriber's handler never runs while a commit
     ///     is blocked waiting on this call.
     /// </remarks>
-    internal IReadOnlyList<FileChange> ApplyJournalEntries(DriveKey driveLetter,
+    internal IReadOnlyList<FileChange> ApplyJournalEntries(DriveKey drive,
         IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn)
     {
-        var changes = ApplyJournalEntriesCore(driveLetter, instance: null, entries, journalIdentifier, nextUsn);
+        var changes = ApplyJournalEntriesCore(drive, instance: null, entries, journalIdentifier, nextUsn);
         RaiseChanged(changes);
         return changes;
     }
@@ -99,21 +99,21 @@ public sealed partial class FileIndex
     ///     from is still published, and is otherwise dropped, returning no changes. A retiring pump's
     ///     last batch therefore never reaches a successor's block.
     /// </summary>
-    IReadOnlyList<FileChange> ApplyJournalEntriesCore(DriveKey driveLetter, WatchInstance? instance,
+    IReadOnlyList<FileChange> ApplyJournalEntriesCore(DriveKey drive, WatchInstance? instance,
         IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(entries);
-        var validatedDrive = driveLetter.Validated();
+        var validatedDrive = drive.Validated();
         if (!_driveConfigurations.ContainsKey(validatedDrive))
         {
-            throw new ArgumentException($"Drive {driveLetter} is not part of this index.", nameof(driveLetter));
+            throw new ArgumentException($"Drive {drive} is not part of this index.", nameof(drive));
         }
 
-        if (!TryGetDriveOrdinal(driveLetter, out var driveOrdinal))
+        if (!TryGetDriveOrdinal(drive, out var driveOrdinal))
         {
             throw new InvalidOperationException(
-                $"Drive {driveLetter} is offline and has no block to apply journal entries to.");
+                $"Drive {drive} is offline and has no block to apply journal entries to.");
         }
 
         if (instance is not null)
@@ -143,7 +143,7 @@ public sealed partial class FileIndex
             if (driveBlock.ProducerKind != ProducerKind.Mft)
             {
                 throw new InvalidOperationException(
-                    $"Drive {driveLetter} was indexed by an enumeration producer and does not support journal mutation.");
+                    $"Drive {drive} was indexed by an enumeration producer and does not support journal mutation.");
             }
 
             ApplyJournalEntriesInsideWriteGateForTest?.Invoke(validatedDrive);
@@ -157,12 +157,12 @@ public sealed partial class FileIndex
         }
     }
 
-    bool IsRunningWatchOverItsBlock(DriveKey driveLetter, WatchInstance instance)
+    bool IsRunningWatchOverItsBlock(DriveKey drive, WatchInstance instance)
     {
         lock (_stateLock)
         {
             return instance.State == WatchInstanceState.Running &&
-                   IsCurrentWatchOverItsBlockLocked(_driveRuntimes[driveLetter], instance);
+                   IsCurrentWatchOverItsBlockLocked(_driveRuntimes[drive], instance);
         }
     }
 

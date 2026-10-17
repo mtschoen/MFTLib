@@ -37,7 +37,7 @@ internal sealed class CrossDriveScenario : IAsyncDisposable
 
     FileIndex? _index;
 
-    CrossDriveScenario(Func<string, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal)
+    CrossDriveScenario(Func<DriveKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal)
     {
         Broker = new ScriptedWatchBrokerHarness(scanDrive: Scan, seams: new ScriptedBrokerSeams
         {
@@ -77,7 +77,7 @@ internal sealed class CrossDriveScenario : IAsyncDisposable
     /// </summary>
     /// <param name="readJournal">The host's catch-up source; null reads nothing and holds at the armed cursor.</param>
     public static async Task<CrossDriveScenario> OpenAsync(
-        Func<string, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null)
+        Func<DriveKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null)
     {
         var scenario = new CrossDriveScenario(readJournal);
         try
@@ -145,12 +145,12 @@ internal sealed class CrossDriveScenario : IAsyncDisposable
         Track(ControlPipeName);
         foreach (var driveLetter in driveLetters)
         {
-            Track(DriveKey(driveLetter));
+            Track(TrackKey(driveLetter));
         }
     }
 
     /// <summary>Stops expecting heartbeats on <paramref name="driveLetter" />'s pipe, whose channel has ended.</summary>
-    public void StopMeasuring(char driveLetter) => _tracked.Remove(DriveKey(driveLetter));
+    public void StopMeasuring(char driveLetter) => _tracked.Remove(TrackKey(driveLetter));
 
     /// <summary>
     ///     Moves the host's clock one heartbeat interval, waits for the heartbeat sender's visit, waits
@@ -233,13 +233,13 @@ internal sealed class CrossDriveScenario : IAsyncDisposable
         _index.WatchFaulted += RecordFault;
     }
 
-    IEnumerable<IReadOnlyList<MftRecord>> Scan(string drive, ParseThreadAllowance parseThreads,
+    IEnumerable<IReadOnlyList<MftRecord>> Scan(DriveKey drive, ParseThreadAllowance parseThreads,
         BlockWriteReporting reporting,
         MftScanOptions scanOptions, Action<long> recordsOmitted, CancellationToken cancellationToken)
     {
-        var scanNumber = _scans.AddOrUpdate(drive[0], 1, (_, count) => count + 1);
+        var scanNumber = _scans.AddOrUpdate(drive.Letter, 1, (_, count) => count + 1);
         yield return [new MftRecord(5, 5, new MftRecordFields(3), "."),
-            new MftRecord(20, 5, new MftRecordFields(1), $"scan-{drive}-{scanNumber}.txt")];
+            new MftRecord(20, 5, new MftRecordFields(1), $"scan-{drive.Letter}-{scanNumber}.txt")];
     }
 
     Task HoldWrites(string pipeName) =>
@@ -293,7 +293,7 @@ internal sealed class CrossDriveScenario : IAsyncDisposable
     // A drive pipe is named "control-{drive}-{sequence}".
     static char DriveOfPipe(string pipeName) => pipeName.Split('-')[^2][0];
 
-    static string DriveKey(char driveLetter) => driveLetter.ToString();
+    static string TrackKey(char driveLetter) => driveLetter.ToString();
 
     static int MeasureHeartbeat()
     {

@@ -143,9 +143,4 @@ internal sealed partial class BrokerProcess : IAsyncDisposable
 
         _lifetime.Cancel();
     }
-
-    static string NormalizeDrive(char driveLetter)
-    {
-        return BrokerDriveLetter.Normalize(driveLetter.ToString());
-    }
 }

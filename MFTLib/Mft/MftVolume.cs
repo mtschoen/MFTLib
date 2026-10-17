@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using MFTLib.Index;
 using MFTLib.NativeInterop;
 using Microsoft.Win32.SafeHandles;
 
@@ -59,23 +60,19 @@ internal sealed class MftVolume : IDisposable
     }
 
     /// <summary>Opens a volume for reading.</summary>
-    /// <param name="volumePath">
-    ///     A drive letter (<c>C</c>, <c>C:</c> or <c>C:\</c>), a raw device path (<c>\\.\C:</c>) or a
-    ///     volume GUID path (<c>\\?\Volume{guid}</c>, with or without a trailing backslash).
-    /// </param>
+    /// <param name="drive">The drive to open.</param>
     /// <param name="bufferSizeRecords">Records the native parser reads per chunk; also the unit at which cancellation is observed.</param>
     /// <returns>The open volume, which the caller disposes.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="volumePath" /> is null or empty.</exception>
-    /// <exception cref="ArgumentException"><paramref name="volumePath" /> is in none of the recognized formats.</exception>
+    /// <exception cref="ArgumentException"><paramref name="drive" /> is invalid.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="bufferSizeRecords" /> is zero.</exception>
     /// <exception cref="IOException">The volume could not be opened, for example without elevation.</exception>
-    internal static MftVolume Open(string volumePath, uint bufferSizeRecords = DefaultBufferSizeRecords)
+    internal static MftVolume Open(DriveKey drive, uint bufferSizeRecords = DefaultBufferSizeRecords)
     {
         ArgumentOutOfRangeException.ThrowIfZero(bufferSizeRecords);
-        var normalizedPath = MFTUtilities.GetVolumePath(volumePath);
-        var handle = FileUtilities.Hooks.GetVolumeHandle(normalizedPath);
+        var volumePath = MFTUtilities.GetVolumePath(drive);
+        var handle = FileUtilities.Hooks.GetVolumeHandle(volumePath);
 
-        return new MftVolume(handle, normalizedPath, bufferSizeRecords);
+        return new MftVolume(handle, volumePath, bufferSizeRecords);
     }
 
     /// <summary>

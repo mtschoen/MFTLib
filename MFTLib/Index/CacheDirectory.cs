@@ -17,12 +17,12 @@ public static class CacheDirectory
     ///     Produces the canonical cache filename for a volume, using an uppercase drive letter and
     ///     eight hexadecimal serial-number digits.
     /// </summary>
-    /// <param name="driveLetter">Drive letter for the cached volume.</param>
+    /// <param name="drive">Drive for the cached volume.</param>
     /// <param name="volumeSerial">NTFS volume serial number encoded in the filename.</param>
     /// <returns>The filename without a directory component.</returns>
-    internal static string BlockFileName(DriveKey driveLetter, uint volumeSerial)
+    internal static string BlockFileName(DriveKey drive, uint volumeSerial)
     {
-        return $"{driveLetter}-{volumeSerial:X8}{BlockFileExtension}";
+        return $"{drive}-{volumeSerial:X8}{BlockFileExtension}";
     }
 
     /// <summary>
@@ -67,13 +67,13 @@ public static class CacheDirectory
         var cached = new List<CachedBlockFile>();
         foreach (var file in directory.EnumerateFiles("*" + BlockFileExtension))
         {
-            if (!TryParseBlockFileName(file.Name, out var driveLetter, out var volumeSerial))
+            if (!TryParseBlockFileName(file.Name, out var drive, out var volumeSerial))
             {
                 rejectedFile?.Invoke(new CachedBlockRejection(file.FullName, "Invalid block filename."));
                 continue;
             }
 
-            cached.Add(new CachedBlockFile(driveLetter, volumeSerial, file.FullName, file.Length,
+            cached.Add(new CachedBlockFile(drive, volumeSerial, file.FullName, file.Length,
                 file.LastWriteTimeUtc));
         }
 
@@ -272,9 +272,9 @@ public static class CacheDirectory
     ///     <see cref="BlockFileName" /> is what keeps the two from ever drifting apart, so a name
     ///     is only accepted when the formatter would have produced exactly it.
     /// </summary>
-    static bool TryParseBlockFileName(string fileName, out char driveLetter, out uint volumeSerial)
+    static bool TryParseBlockFileName(string fileName, out DriveKey drive, out uint volumeSerial)
     {
-        driveLetter = '\0';
+        drive = default;
         volumeSerial = 0;
 
         const int serialDigits = 8;
@@ -290,13 +290,13 @@ public static class CacheDirectory
             return false;
         }
 
-        var candidateLetter = fileName[0];
-        if (!string.Equals(BlockFileName(candidateLetter, parsedSerial), fileName, StringComparison.Ordinal))
+        var candidate = new DriveKey(fileName[0]);
+        if (!string.Equals(BlockFileName(candidate, parsedSerial), fileName, StringComparison.Ordinal))
         {
             return false;
         }
 
-        driveLetter = candidateLetter;
+        drive = candidate;
         volumeSerial = parsedSerial;
         return true;
     }

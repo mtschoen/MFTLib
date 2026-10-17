@@ -63,7 +63,7 @@ public static class BrokerDiagnostics
         // On non-Windows platforms (e.g. Linux unit tests / probes), preserve Windows
         // drive or extended roots (e.g. "C:\..." or "\\?\C:\...") without prepending
         // the Unix working directory. If relative, resolve against the current directory.
-        if (BrokerDiagnosticsLogFilter.TryGetDriveLetter(combined, isWindows, out _))
+        if (BrokerDiagnosticsLogFilter.TryGetDrive(combined, isWindows, out _))
         {
             return combined;
         }

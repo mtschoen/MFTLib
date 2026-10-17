@@ -13,7 +13,7 @@ public sealed partial class FileIndex
     /// </summary>
     sealed class BatchedCatchUpWait
     {
-        readonly DriveKey[] _driveLetters;
+        readonly DriveKey[] _drives;
         readonly DriveOperationResult[] _results;
         readonly int[] _settled;
         readonly CancellationToken _callerToken;
@@ -23,19 +23,19 @@ public sealed partial class FileIndex
         int _pending;
 
         /// <summary>Follows <paramref name="waits" /> and completes once every drive has settled.</summary>
-        /// <param name="driveLetters">The drives to wait for, in the order results are returned.</param>
+        /// <param name="drives">The drives to wait for, in the order results are returned.</param>
         /// <param name="waits">Each drive's catch-up task, or null for a drive with nothing to wait for.</param>
         /// <param name="callerToken">Cancels the wait; the wait then throws once every drive has settled.</param>
         /// <param name="disposalToken">The index's disposal, which cancels the wait the same way.</param>
-        public BatchedCatchUpWait(DriveKey[] driveLetters, Task?[] waits, CancellationToken callerToken,
+        public BatchedCatchUpWait(DriveKey[] drives, Task?[] waits, CancellationToken callerToken,
             CancellationToken disposalToken)
         {
-            _driveLetters = driveLetters;
-            _results = new DriveOperationResult[driveLetters.Length];
-            _settled = new int[driveLetters.Length];
+            _drives = drives;
+            _results = new DriveOperationResult[drives.Length];
+            _settled = new int[drives.Length];
             _callerToken = callerToken;
             _disposalToken = disposalToken;
-            _pending = driveLetters.Length;
+            _pending = drives.Length;
             if (_pending == 0)
             {
                 Complete();
@@ -98,7 +98,7 @@ public sealed partial class FileIndex
                 return;
             }
 
-            _results[index] = new DriveOperationResult(_driveLetters[index], outcome, failure);
+            _results[index] = new DriveOperationResult(_drives[index], outcome, failure);
             if (Interlocked.Decrement(ref _pending) == 0)
             {
                 Complete();

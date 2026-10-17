@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -13,7 +14,7 @@ public partial class JournalBrokerHostChannelTests
     public async Task WatchChannel_StreamsBatchesAndCaughtUp_NoDriveFields()
     {
         var since = new UsnJournalCursor(7, 100);
-        string? watchedDrive = null;
+        DriveKey? watchedDrive = null;
         UsnJournalCursor? watchedSince = null;
         var host = CreateHost(queryCursor: _ => Tip, watchDrive: Watch);
         await using var harness = new HostChannelHarness(host);
@@ -21,7 +22,7 @@ public partial class JournalBrokerHostChannelTests
         var pipe = await harness.OpenWatchChannelAsync('C', since);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.AreEqual("C", watchedDrive);
+        Assert.AreEqual(new DriveKey('C'), watchedDrive);
         Assert.AreEqual(since, watchedSince);
         CollectionAssert.AreEqual(
             new[] { BrokerFrameKind.JournalBatch, BrokerFrameKind.JournalBatch, BrokerFrameKind.CaughtUp },
@@ -32,7 +33,7 @@ public partial class JournalBrokerHostChannelTests
         Assert.IsTrue(frames.All(frame => frame.Drive == null && frame.RequestId == 0));
         return;
 
-        async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> Watch(string drive,
+        async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> Watch(DriveKey drive,
             UsnJournalCursor from, ISourceOperationReporter operation,
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
@@ -60,7 +61,7 @@ public partial class JournalBrokerHostChannelTests
         return;
 
         static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> FailingWatch(
-            string drive, UsnJournalCursor since, ISourceOperationReporter operation,
+            DriveKey drive, UsnJournalCursor since, ISourceOperationReporter operation,
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             await Task.Yield();
@@ -76,10 +77,10 @@ public partial class JournalBrokerHostChannelTests
     [TestMethod]
     public async Task WatchChannel_ClientClosesPipe_EndsQuietly_OtherChannelUnaffected()
     {
-        var sources = new Dictionary<string, ScriptedWatch>
+        var sources = new Dictionary<DriveKey, ScriptedWatch>
         {
-            ["C"] = new(),
-            ["D"] = new()
+            ['C'] = new(),
+            ['D'] = new()
         };
         var host = CreateHost(queryCursor: _ => Tip, watchDrive: (drive, _, _, token) => sources[drive].RunAsync(token));
         await using var harness = new HostChannelHarness(host);
@@ -87,16 +88,16 @@ public partial class JournalBrokerHostChannelTests
         var pipeD = await harness.OpenWatchChannelAsync('D', Tip);
         Assert.AreEqual(BrokerFrameKind.CaughtUp, (await HostChannelHarness.ReadFrameAsync(pipeC))?.Kind);
         Assert.AreEqual(BrokerFrameKind.CaughtUp, (await HostChannelHarness.ReadFrameAsync(pipeD))?.Kind);
-        await sources["C"].Entered.WaitAsync(HangGuard);
+        await sources['C'].Entered.WaitAsync(HangGuard);
 
         await pipeC.DisposeAsync();
-        await sources["C"].Cancelled.WaitAsync(HangGuard);
-        sources["D"].Push(new UsnJournalCursor(7, 400));
+        await sources['C'].Cancelled.WaitAsync(HangGuard);
+        sources['D'].Push(new UsnJournalCursor(7, 400));
 
         var batch = await HostChannelHarness.ReadFrameAsync(pipeD);
         Assert.AreEqual(BrokerFrameKind.JournalBatch, batch?.Kind);
         Assert.AreEqual(400L, batch?.Cursor.NextUsn);
-        Assert.IsFalse(sources["D"].Cancelled.IsCompleted);
+        Assert.IsFalse(sources['D'].Cancelled.IsCompleted);
         await pipeD.DisposeAsync();
     }
 
@@ -107,7 +108,7 @@ public partial class JournalBrokerHostChannelTests
         var stubborn = new ScriptedWatch(ignoreCancellation: true);
         var cooperative = new ScriptedWatch();
         var host = CreateHost(queryCursor: _ => Tip, timeProvider: clock,
-            watchDrive: (drive, _, _, token) => (drive == "C" ? stubborn : cooperative).RunAsync(token));
+            watchDrive: (drive, _, _, token) => (drive.Letter == 'C' ? stubborn : cooperative).RunAsync(token));
         var harness = new HostChannelHarness(host);
         try
         {
@@ -139,7 +140,7 @@ public partial class JournalBrokerHostChannelTests
         var stubborn = new ScriptedWatch(ignoreCancellation: true);
         var cooperative = new ScriptedWatch();
         var host = CreateHost(queryCursor: _ => Tip, timeProvider: clock, queryVolumeInfo: _ => Volume,
-            watchDrive: (drive, _, _, token) => (drive == "C" ? stubborn : cooperative).RunAsync(token));
+            watchDrive: (drive, _, _, token) => (drive.Letter == 'C' ? stubborn : cooperative).RunAsync(token));
         var harness = new HostChannelHarness(host, breakableControl: true);
         var hostControl = harness.BreakableControl!;
         try
@@ -149,7 +150,7 @@ public partial class JournalBrokerHostChannelTests
             await Task.WhenAll(stubborn.Entered, cooperative.Entered).WaitAsync(HangGuard);
 
             hostControl.BreakPipe();
-            await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 1, "C"));
+            await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 1, 'C'));
             await hostControl.WriteFailureObserved.WaitAsync(HangGuard);
             await Task.WhenAll(stubborn.Cancelled, cooperative.Cancelled).WaitAsync(HangGuard);
 

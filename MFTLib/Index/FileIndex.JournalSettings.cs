@@ -13,26 +13,26 @@ public sealed partial class FileIndex
     [SupportedOSPlatform("windows")]
     public UsnJournalSettings QueryUsnJournalSettings(DriveKey drive)
     {
-        var letter = RequireConfiguredDrive(drive);
-        var configured = _driveConfigurations[letter];
+        var validatedDrive = RequireConfiguredDrive(drive);
+        var configured = _driveConfigurations[validatedDrive];
         if (!DriveKind.For(configured.Producer, _options.MftSource).HasJournalSettings)
         {
             throw new InvalidOperationException(
-                MftIndexSource.FormatUnavailable(letter, MftIndexSource.NoJournalSettingsReason));
+                MftIndexSource.FormatUnavailable(validatedDrive, MftIndexSource.NoJournalSettingsReason));
         }
 
-        return UsnJournalSettingsQuery.Query(letter);
+        return UsnJournalSettingsQuery.Query(validatedDrive);
     }
 
-    DriveKey RequireConfiguredDrive(DriveKey driveLetter)
+    DriveKey RequireConfiguredDrive(DriveKey drive)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var letter = driveLetter.Validated();
-        if (_options.Drives.All(drive => drive.Drive != letter))
+        var validatedDrive = drive.Validated();
+        if (_options.Drives.All(configuredDrive => configuredDrive.Drive != validatedDrive))
         {
-            throw new ArgumentException($"Drive {letter} is not part of this index.", nameof(driveLetter));
+            throw new ArgumentException($"Drive {validatedDrive} is not part of this index.", nameof(drive));
         }
 
-        return letter;
+        return validatedDrive;
     }
 }

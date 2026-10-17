@@ -21,9 +21,9 @@ public sealed partial class FileIndex
     ///     <paramref name="cancellationToken" /> bounds only the wait for the teardown: cancelling
     ///     it throws while the teardown continues, and a later start waits for that teardown.
     /// </summary>
-    /// <exception cref="ArgumentException"><paramref name="driveLetter" /> is not part of this index.</exception>
+    /// <exception cref="ArgumentException"><paramref name="drive" /> is not part of this index.</exception>
     /// <exception cref="InvalidOperationException">The drive is not watching.</exception>
-    async Task StopDriveWatchingAsync(DriveKey driveLetter, CancellationToken cancellationToken)
+    async Task StopDriveWatchingAsync(DriveKey drive, CancellationToken cancellationToken)
     {
         if (RejectInsideHandler(nameof(StopWatchingAsync)) is { } rejection)
         {
@@ -31,7 +31,7 @@ public sealed partial class FileIndex
         }
 
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var runtime = GetDriveRuntime(driveLetter);
+        var runtime = GetDriveRuntime(drive);
         WatchInstance? retired;
         Task? previousDrain;
         Exception? outstandingFault;

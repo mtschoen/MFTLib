@@ -54,7 +54,7 @@ internal readonly record struct BrokerFrame
     /// <summary>Nonzero on every control request and reply; zero on an Error written to a drive pipe.</summary>
     public uint RequestId { get; private init; }
 
-    public string? Drive { get; private init; }
+    public DriveKey? Drive { get; private init; }
     public string? PipeName { get; private init; }
     public string? SectionName { get; private init; }
     public bool IncludeFreed { get; private init; }
@@ -65,8 +65,7 @@ internal readonly record struct BrokerFrame
     public IReadOnlyCollection<string>? RetainedFileNames { get; private init; }
 
     /// <summary>
-    ///     A scan's progress. The drive belongs to the channel, so a frame read off the wire carries
-    ///     an empty <see cref="BrokerScanProgress.Drive" />.
+    ///     A scan's progress. The drive belongs to the channel, so the progress sample carries no drive identity.
     /// </summary>
     public BrokerScanProgress? Progress { get; private init; }
 
@@ -79,10 +78,8 @@ internal readonly record struct BrokerFrame
 
     internal BrokerCatchUpLoss? CatchUpLoss { get; private init; }
 
-    public string RequireDrive()
-    {
-        return Drive ?? throw new InvalidDataException($"{Kind} frame is missing its drive field");
-    }
+    public DriveKey RequireDrive() =>
+        Drive ?? throw new InvalidDataException($"{Kind} frame is missing its drive field");
 
     public string RequirePipeName()
     {
@@ -100,10 +97,10 @@ internal readonly record struct BrokerFrame
     }
 
     /// <summary>The proven loss of a <see cref="BrokerFrameKind.CatchUpLost" /> frame, for the channel's drive.</summary>
-    internal JournalCheckpointLoss RequireCatchUpLoss(char driveLetter)
+    internal JournalCheckpointLoss RequireCatchUpLoss(DriveKey drive)
     {
         var loss = CatchUpLoss ?? throw new InvalidDataException($"{Kind} frame is missing its loss field");
-        return new JournalCheckpointLoss(driveLetter, JournalCheckpointLossDetection.ScanCatchUp, loss.Cause,
+        return new JournalCheckpointLoss(drive, JournalCheckpointLossDetection.ScanCatchUp, loss.Cause,
             new UsnJournalSettings { AllocationDelta = loss.AllocationDelta, MaximumSize = loss.MaximumSize })
         {
             CheckpointUsn = loss.CheckpointUsn,
@@ -116,9 +113,9 @@ internal readonly record struct BrokerFrame
 
     // Per-kind factories initialize Entries. Retention stays null on full scans and non-scan frames.
 
-    public static BrokerFrame OpenChannel(uint requestId, string drive, string pipeName)
+    public static BrokerFrame OpenChannel(uint requestId, DriveKey drive, string pipeName)
     {
-        return Empty(BrokerFrameKind.OpenChannel, requestId) with { Drive = drive, PipeName = pipeName };
+        return Empty(BrokerFrameKind.OpenChannel, requestId) with { Drive = drive.Validated(), PipeName = pipeName };
     }
 
     public static BrokerFrame ChannelOpened(uint requestId)
@@ -126,9 +123,9 @@ internal readonly record struct BrokerFrame
         return Empty(BrokerFrameKind.ChannelOpened, requestId);
     }
 
-    public static BrokerFrame QueryVolume(uint requestId, string drive)
+    public static BrokerFrame QueryVolume(uint requestId, DriveKey drive)
     {
-        return Empty(BrokerFrameKind.QueryVolume, requestId) with { Drive = drive };
+        return Empty(BrokerFrameKind.QueryVolume, requestId) with { Drive = drive.Validated() };
     }
 
     public static BrokerFrame VolumeInfo(uint requestId, uint bytesPerFileRecordSegment, long mftValidDataLength)
@@ -141,11 +138,11 @@ internal readonly record struct BrokerFrame
     }
 
     // The host refuses any requested maximum at or below the current one (grow only).
-    public static BrokerFrame GrowUsnJournal(uint requestId, string drive, long maximumSize, long allocationDelta)
+    public static BrokerFrame GrowUsnJournal(uint requestId, DriveKey drive, long maximumSize, long allocationDelta)
     {
         return Empty(BrokerFrameKind.GrowUsnJournal, requestId) with
         {
-            Drive = drive,
+            Drive = drive.Validated(),
             JournalMaximumSize = maximumSize,
             JournalAllocationDelta = allocationDelta
         };

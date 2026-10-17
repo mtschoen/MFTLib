@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
+using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.TestSupport;
@@ -81,18 +82,18 @@ internal sealed class HostChannelHarness : IAsyncDisposable
     }
 
     /// <summary>Opens a drive channel and returns the client end of its pipe once ChannelOpened arrives.</summary>
-    public async Task<Stream> OpenChannelAsync(char drive)
+    public async Task<Stream> OpenChannelAsync(DriveKey drive)
     {
         var requestId = NextRequestId();
-        var pipeName = NextPipeName(drive);
-        await SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, requestId, drive.ToString(), pipeName));
+        var pipeName = NextPipeName(drive.Letter);
+        await SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, requestId, drive, pipeName));
         var reply = await ReadControlAsync();
         Assert.AreEqual(BrokerFrameKind.ChannelOpened, reply.Kind, reply.Message);
         Assert.AreEqual(requestId, reply.RequestId);
         return DrivePipe(pipeName);
     }
 
-    public async Task<Stream> OpenScanChannelAsync(char drive, string sectionName = "section",
+    public async Task<Stream> OpenScanChannelAsync(DriveKey drive, string sectionName = "section",
         IReadOnlyCollection<string>? retainedFileNames = null)
     {
         var pipe = await OpenChannelAsync(drive);
@@ -101,7 +102,7 @@ internal sealed class HostChannelHarness : IAsyncDisposable
         return pipe;
     }
 
-    public async Task<Stream> OpenWatchChannelAsync(char drive, UsnJournalCursor since)
+    public async Task<Stream> OpenWatchChannelAsync(DriveKey drive, UsnJournalCursor since)
     {
         var pipe = await OpenChannelAsync(drive);
         await WriteFrameAsync(pipe, writer => BrokerProtocol.WriteStartWatch(writer, since));

@@ -26,7 +26,7 @@ public partial class BrokerProcessTests
         using var block = result.Block.Block;
 
         var (_, sectionBlock, lifetime) = broker.Sections.Single();
-        Assert.AreEqual('C', result.DriveLetter);
+        Assert.AreEqual(new DriveKey('C'), result.Drive);
         Assert.AreEqual(Armed, result.ArmedCursor);
         Assert.AreEqual(Armed.NextUsn, block.Header.UsnNextUsn);
         Assert.AreNotEqual(advanced.NextUsn, block.Header.UsnNextUsn);
@@ -251,7 +251,7 @@ public partial class BrokerProcessTests
         var scanning = new TestGate();
         var sourceCancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var broker = new InProcessBroker(CreateHost(scanDrive: (drive, _, _, _, _, cancellationToken) =>
-            drive == "C"
+            drive == 'C'
                 ? WaitForCancellation(scanning, sourceCancelled, cancellationToken)
                 : [[Record(5, ".", 3)], [Record(20, "file.txt")]]));
         using var cancellation = new CancellationTokenSource();
@@ -266,7 +266,7 @@ public partial class BrokerProcessTests
             null, CancellationToken.None).WaitAsync(HangGuard);
         using var block = other.Block.Block;
 
-        Assert.AreEqual('D', other.DriveLetter);
+        Assert.AreEqual(new DriveKey('D'), other.Drive);
         Assert.IsTrue(block.Header.RowCount > 0);
         Assert.IsFalse(broker.Process.Ended.IsCompleted);
     }
@@ -274,21 +274,21 @@ public partial class BrokerProcessTests
     [TestMethod]
     public async Task ScanDrive_TwoDrivesConcurrently_BothComplete()
     {
-        var gates = new Dictionary<string, TestGate> { ["C"] = new(), ["D"] = new() };
+        var gates = new Dictionary<DriveKey, TestGate> { ['C'] = new(), ['D'] = new() };
         await using var broker = new InProcessBroker(CreateHost(scanDrive: (drive, _, _, _, _, _) =>
         {
             gates[drive].MarkEntered();
             gates[drive].WaitForRelease();
-            return [[Record(5, ".", 3)], [Record(20, drive + ".txt")]];
+            return [[Record(5, ".", 3)], [Record(20, drive.Letter + ".txt")]];
         }));
 
         var scanC = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
             null, CancellationToken.None);
         var scanD = broker.Process.ScanDriveAsync('D', TestBlockSections.Target(), new MftScanOptions(),
             null, CancellationToken.None);
-        await Task.WhenAll(gates["C"].Entered, gates["D"].Entered).WaitAsync(HangGuard);
-        gates["C"].Release();
-        gates["D"].Release();
+        await Task.WhenAll(gates['C'].Entered, gates['D'].Entered).WaitAsync(HangGuard);
+        gates['C'].Release();
+        gates['D'].Release();
         var results = await Task.WhenAll(scanC, scanD).WaitAsync(HangGuard);
 
         foreach (var result in results)
@@ -297,7 +297,7 @@ public partial class BrokerProcessTests
             Assert.IsTrue(block.Header.RowCount > 0);
         }
 
-        CollectionAssert.AreEqual(new[] { 'C', 'D' }, results.Select(result => result.DriveLetter).ToArray());
+        CollectionAssert.AreEqual(new DriveKey[] { 'C', 'D' }, results.Select(result => result.Drive).ToArray());
     }
 
     [TestMethod]

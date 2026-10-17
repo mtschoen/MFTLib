@@ -25,9 +25,9 @@ public sealed partial class FileIndex
     internal Action<Action>? RecoveryCompletionWrapperForTest { get; set; }
 
     /// <summary>A test seam: the completion of the drive's current recovery ticket, when it has one.</summary>
-    internal bool TryGetRecoveryCompletionForTest(char driveLetter, [NotNullWhen(true)] out Task? completion)
+    internal bool TryGetRecoveryCompletionForTest(DriveKey drive, [NotNullWhen(true)] out Task? completion)
     {
-        var runtime = GetDriveRuntime(driveLetter);
+        var runtime = GetDriveRuntime(drive);
         lock (_stateLock)
         {
             completion = runtime.Recovery?.Completion;

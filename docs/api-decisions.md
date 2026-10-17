@@ -346,6 +346,8 @@ starts and preserve request order, matching the list contract. Empty sequences s
 unless cancelled. These choices keep identity and admission in one owner without adding public validation
 members or a string conversion.
 
+**Implementation completion:** drive keys continue through internal volume operations, broker channels and source delegates, and test adapters. Variables carrying identity are named `drive`. The native boundary formats `\\.\C:` from the key. The compiler, existing public-surface pins and behavioral protocol tests enforce the change. **Reason:** repeated character/string normalization obscured an identity that already has one owner; deleting those conversions reduces the implementation. **Revisit only if:** a concrete producer needs a key that the existing ASCII drive-key contract cannot represent.
+
 ## A boolean that reports state takes the Is prefix
 
 **Decision (API review finding F15, naming half):** a public boolean property that reports state on a

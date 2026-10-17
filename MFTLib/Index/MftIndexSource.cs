@@ -58,5 +58,5 @@ public sealed class MftIndexSource
 
     internal static MftIndexSource CreateUnavailable(string reason) => new(reason);
 
-    internal static string FormatUnavailable(DriveKey driveLetter, string reason) => $"Drive {driveLetter}: {reason}.";
+    internal static string FormatUnavailable(DriveKey drive, string reason) => $"Drive {drive}: {reason}.";
 }

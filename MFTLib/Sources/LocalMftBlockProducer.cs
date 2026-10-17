@@ -14,6 +14,7 @@ internal sealed class LocalMftBlockProducer(TimeProvider timeProvider, MftScanOp
     readonly IVolumeAccess _volumeAccess = volumeAccess ?? LiveVolumeAccess.Instance;
     readonly ParseThreadAllocator _allocator = allocator ?? MftBlockProducerPipeline.SharedAllocator;
 
+
     /// <summary>The index source over this producer: scans fill the requested block directly, and no watch is offered.</summary>
     internal MftIndexSource CreateIndexSource() => new(ProduceAsync);
 
@@ -25,7 +26,7 @@ internal sealed class LocalMftBlockProducer(TimeProvider timeProvider, MftScanOp
         CancellationToken cancellationToken)
     {
         var options = scanOptions ?? new MftScanOptions();
-        var drive = request.Drive.ToString();
+        var drive = request.Drive;
         var volume = _volumeAccess.QueryVolumeInformation(drive);
         var cursor = request.DeleteOnClose ? default : _volumeAccess.QueryCursor(drive);
         var progress = MftBlockProgressAdapter.Create(request);

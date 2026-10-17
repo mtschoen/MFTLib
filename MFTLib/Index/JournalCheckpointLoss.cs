@@ -85,14 +85,14 @@ public enum JournalCheckpointLossCause
 public sealed record JournalCheckpointLoss
 {
     /// <summary>Creates a report with its identifying values and no journal positions.</summary>
-    /// <param name="driveLetter">The drive, in upper case.</param>
+    /// <param name="drive">The drive, in upper case.</param>
     /// <param name="detectedDuring">Which check found the loss.</param>
     /// <param name="cause">Which situation the loss was.</param>
     /// <param name="journalSettings">The journal's sizing when the loss was detected.</param>
-    internal JournalCheckpointLoss(DriveKey driveLetter, JournalCheckpointLossDetection detectedDuring,
+    internal JournalCheckpointLoss(DriveKey drive, JournalCheckpointLossDetection detectedDuring,
         JournalCheckpointLossCause cause, UsnJournalSettings journalSettings)
     {
-        Drive = driveLetter;
+        Drive = drive;
         DetectedDuring = detectedDuring;
         Cause = cause;
         JournalSettings = journalSettings;

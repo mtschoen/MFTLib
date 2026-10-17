@@ -24,12 +24,12 @@ public partial class JournalBrokerHostTests
     ];
 
     static JournalBrokerHost ScanHost(
-        Func<string, UsnJournalCursor>? queryCursor = null,
+        Func<DriveKey, UsnJournalCursor>? queryCursor = null,
         MftRecordBatchSource? scanDrive = null,
-        Func<string, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
-        Func<string, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchDrive = null,
-        Func<string, NtfsVolumeInformation>? queryVolumeInfo = null,
-        Func<string, long, long, UsnJournalSettings>? growUsnJournal = null,
+        Func<DriveKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
+        Func<DriveKey, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchDrive = null,
+        Func<DriveKey, NtfsVolumeInformation>? queryVolumeInfo = null,
+        Func<DriveKey, long, long, UsnJournalSettings>? growUsnJournal = null,
         int processorCount = 4,
         TimeProvider? timeProvider = null)
     {

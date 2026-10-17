@@ -43,7 +43,7 @@ internal sealed partial record WatchArguments
 
     static string? NotADrive(IEnumerable<string> tokens)
     {
-        var stray = tokens.FirstOrDefault(token => !ArgumentReader.IsDriveLetter(token));
+        var stray = tokens.FirstOrDefault(token => !ArgumentReader.IsDrive(token));
         return stray is null ? null : $"'{stray}' is not a drive letter.";
     }
 

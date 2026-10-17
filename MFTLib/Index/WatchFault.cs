@@ -66,13 +66,13 @@ public sealed record WatchFault
 {
     /// <summary>Creates a fault report.</summary>
     /// <param name="kind">Which boundary raised the fault.</param>
-    /// <param name="driveLetter">The drive the fault names.</param>
+    /// <param name="drive">The drive the fault names.</param>
     /// <param name="exception">The exception that ended or disturbed the watch.</param>
-    internal WatchFault(WatchFaultKind kind, DriveKey driveLetter, Exception exception)
+    internal WatchFault(WatchFaultKind kind, DriveKey drive, Exception exception)
     {
         ArgumentNullException.ThrowIfNull(exception);
         Kind = kind;
-        Drive = driveLetter;
+        Drive = drive;
         Exception = exception;
     }
 

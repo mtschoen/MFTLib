@@ -11,11 +11,11 @@ public abstract class BrokerBlockTestBase
     internal static readonly NtfsVolumeInformation VolumeInformation = new(1024L * 100000, 1024);
 
     internal static JournalBrokerHost CreateHost(
-        Func<string, UsnJournalCursor>? queryCursor = null,
+        Func<DriveKey, UsnJournalCursor>? queryCursor = null,
         MftRecordBatchSource? scanDrive = null,
-        Func<string, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
-        Func<string, NtfsVolumeInformation>? queryVolumeInfo = null,
-        Func<string, long, long, UsnJournalSettings>? growUsnJournal = null)
+        Func<DriveKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
+        Func<DriveKey, NtfsVolumeInformation>? queryVolumeInfo = null,
+        Func<DriveKey, long, long, UsnJournalSettings>? growUsnJournal = null)
     {
         return new JournalBrokerHost(
             new ScriptedVolumeAccess
@@ -56,7 +56,7 @@ public abstract class BrokerBlockTestBase
     ///     written it and sent ScanReady, before the client validates it.
     /// </summary>
     internal static InProcessBroker CreateBrokerChangingBlock(Action<BlockFile> change,
-        MftRecordBatchSource? scanDrive = null, Func<string, NtfsVolumeInformation>? queryVolumeInfo = null)
+        MftRecordBatchSource? scanDrive = null, Func<DriveKey, NtfsVolumeInformation>? queryVolumeInfo = null)
     {
         var created = new StrongBox<InProcessBroker?>();
         created.Value = new InProcessBroker(CreateHost(scanDrive: scanDrive, queryVolumeInfo: queryVolumeInfo,

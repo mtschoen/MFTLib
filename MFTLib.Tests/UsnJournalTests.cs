@@ -68,7 +68,7 @@ public class UsnJournalTests
     public void QueryUsnJournal_Disposed_Throws()
     {
         FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
-        var volume = MftVolume.Open("C");
+        var volume = MftVolume.Open('C');
         var journal = volume.Journal;
         volume.Dispose();
         Assert.ThrowsException<ObjectDisposedException>(() => journal.QueryUsnJournalCursor());
@@ -80,7 +80,7 @@ public class UsnJournalTests
     public void ReadUsnJournal_Disposed_Throws()
     {
         FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
-        var volume = MftVolume.Open("C");
+        var volume = MftVolume.Open('C');
         var journal = volume.Journal;
         volume.Dispose();
         Assert.ThrowsException<ObjectDisposedException>(() => journal.ReadUsnJournalBounded(new UsnJournalCursor(1, 0), 0));
@@ -90,7 +90,7 @@ public class UsnJournalTests
     public async Task WatchUsnJournal_Disposed_Throws()
     {
         FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
-        var volume = MftVolume.Open("C");
+        var volume = MftVolume.Open('C');
         var journal = volume.Journal;
         volume.Dispose();
         await Assert.ThrowsExceptionAsync<ObjectDisposedException>(async () =>

@@ -16,14 +16,13 @@ internal sealed partial class JournalBrokerHost
         long _maximumTransferringRecordsProcessed;
         long? _totalRecordsKnown;
 
-        public void Report(string driveLetter, BlockWriteProgress progress, ChannelWriter<BrokerScanProgress> writer)
+        public void Report(BlockWriteProgress progress, ChannelWriter<BrokerScanProgress> writer)
         {
             lock (_progressLock)
             {
                 var (recordsProcessed, totalRecords) = UpdateCounts(progress);
                 writer.TryWrite(new BrokerScanProgress
                 {
-                    Drive = driveLetter,
                     Phase = progress.Phase == BlockScanPhase.Parsing ? BrokerScanPhase.Parsing : BrokerScanPhase.Transferring,
                     RecordsProcessed = recordsProcessed,
                     BytesProcessed = progress.BytesProcessed,

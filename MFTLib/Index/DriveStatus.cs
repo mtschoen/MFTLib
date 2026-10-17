@@ -13,11 +13,11 @@ namespace MFTLib.Index;
 public sealed record DriveStatus
 {
     /// <summary>Creates a status with the values every drive has, whether or not it has a block or a watch.</summary>
-    /// <param name="driveLetter">The drive.</param>
+    /// <param name="drive">The drive.</param>
     /// <param name="state">Whether the drive has a queryable block, is offline, or failed without a block.</param>
-    internal DriveStatus(DriveKey driveLetter, DriveState state)
+    internal DriveStatus(DriveKey drive, DriveState state)
     {
-        Drive = driveLetter;
+        Drive = drive;
         State = state;
     }
 

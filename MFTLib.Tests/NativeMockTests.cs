@@ -58,7 +58,7 @@ public class NativeMockTests
         FileUtilities.Hooks.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
         MFTLibNative.Hooks.ParseMftRecordsWithProgress = (_, _, _, _, _) => IntPtr.Zero;
 
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
         // ReSharper disable once AccessToDisposedClosure
         Assert.ThrowsException<InvalidOperationException>(() => volume.ReadRecordBatches(4096, null, null, CancellationToken.None).ToList());
     }

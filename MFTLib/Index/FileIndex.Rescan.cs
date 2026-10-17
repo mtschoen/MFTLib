@@ -80,7 +80,7 @@ public sealed partial class FileIndex
     ///         after publication the replacement is owned by the index and its handoff finishes.
     ///     </para>
     /// </remarks>
-    async Task RescanDriveAsync(DriveKey driveLetter, CancellationToken cancellationToken)
+    async Task RescanDriveAsync(DriveKey drive, CancellationToken cancellationToken)
     {
         if (RejectInsideHandler(nameof(RescanAsync)) is { } rejection)
         {
@@ -88,15 +88,15 @@ public sealed partial class FileIndex
         }
 
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var runtime = GetDriveRuntime(driveLetter);
-        var drive = _driveConfigurations[runtime.Drive];
+        var runtime = GetDriveRuntime(drive);
+        var configured = _driveConfigurations[runtime.Drive];
         using var rescanCancellation =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, DisposalToken);
         await runtime.LifecycleGate.WaitAsync(rescanCancellation.Token).ConfigureAwait(false);
         try
         {
             ThrowIfCancelledByDisposal(rescanCancellation.Token);
-            await RescanWithGateHeldAsync(runtime, drive, recovery: null, rescanCancellation.Token)
+            await RescanWithGateHeldAsync(runtime, configured, recovery: null, rescanCancellation.Token)
                 .ConfigureAwait(false);
         }
         finally
@@ -182,19 +182,19 @@ public sealed partial class FileIndex
     ///     The drive's published block, or null for a drive that has none because a cache-only
     ///     open declined it or its producer failed. An offline drive cannot be rescanned.
     /// </summary>
-    DriveBlock? FindBlockForRescan(DriveKey driveLetter)
+    DriveBlock? FindBlockForRescan(DriveKey drive)
     {
         lock (_stateLock)
         {
-            if (TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal))
+            if (TryGetDriveOrdinalLocked(drive, out var driveOrdinal))
             {
                 return _driveBlocks[driveOrdinal];
             }
 
-            var index = FindBlocklessStatusIndexLocked(driveLetter);
+            var index = FindBlocklessStatusIndexLocked(drive);
             if (index < 0 || _blocklessDriveStatuses[index].State != DriveState.Failed)
             {
-                throw new ArgumentException($"Drive {driveLetter} has no block.", nameof(driveLetter));
+                throw new ArgumentException($"Drive {drive} has no block.", nameof(drive));
             }
 
             return null;
@@ -203,25 +203,25 @@ public sealed partial class FileIndex
 
     /// <summary>
     ///     Records a rescan's producer failure: against the published block's ordinal when the
-    ///     drive has one, and otherwise on the drive's blockless status, keyed by letter, which
+    ///     drive has one, and otherwise on the drive's blockless status, keyed by drive, which
     ///     then reads <see cref="DriveFailureKind.ProducerFailed" />.
     /// </summary>
-    void RecordRescanProducerFailure(DriveKey driveLetter, string message, bool endsOpenSettle = false)
+    void RecordRescanProducerFailure(DriveKey drive, string message, bool endsOpenSettle = false)
     {
         lock (_stateLock)
         {
             if (endsOpenSettle)
             {
-                ClaimSettledCountLocked(driveLetter);
+                ClaimSettledCountLocked(drive);
             }
 
-            if (TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal))
+            if (TryGetDriveOrdinalLocked(drive, out var driveOrdinal))
             {
                 _producerFailureMessagesByOrdinal[driveOrdinal] = message;
                 return;
             }
 
-            var index = FindBlocklessStatusIndexLocked(driveLetter);
+            var index = FindBlocklessStatusIndexLocked(drive);
             if (index >= 0)
             {
                 _blocklessDriveStatuses[index] = _blocklessDriveStatuses[index] with
@@ -230,11 +230,11 @@ public sealed partial class FileIndex
                 };
             }
 
-            ReleaseCanonicalOwnershipLocked(driveLetter);
+            ReleaseCanonicalOwnershipLocked(drive);
         }
     }
 
-    int FindBlocklessStatusIndexLocked(DriveKey driveLetter) =>
+    int FindBlocklessStatusIndexLocked(DriveKey drive) =>
         _blocklessDriveStatuses.FindIndex(status =>
-            status.Drive == driveLetter);
+            status.Drive == drive);
 }

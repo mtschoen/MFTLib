@@ -11,16 +11,16 @@ namespace MFTLib.Index;
 public sealed record IndexScanProgress
 {
     /// <summary>Creates one progress sample.</summary>
-    /// <param name="driveLetter">The drive whose block is being produced.</param>
+    /// <param name="drive">The drive whose block is being produced.</param>
     /// <param name="phase">The current stage of the scan.</param>
     /// <param name="rowsWritten">
     ///     Records scanned during parsing, rows transferred during intermediate transfer samples, or rows written during enumeration.
     ///     The final broker transfer sample uses the known parsing total, otherwise the block row count, raised to at least the maximum parsing count.
     ///     Finished samples carry the final block row count on success, otherwise zero.
     /// </param>
-    internal IndexScanProgress(DriveKey driveLetter, IndexScanPhase phase, uint rowsWritten)
+    internal IndexScanProgress(DriveKey drive, IndexScanPhase phase, uint rowsWritten)
     {
-        Drive = driveLetter;
+        Drive = drive;
         Phase = phase;
         WrittenRowCount = rowsWritten;
     }

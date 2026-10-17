@@ -8,7 +8,7 @@ public sealed partial class FileIndex
     ///     drive's ordinal (the next free one for a drive with no block, its existing one otherwise),
     ///     builds the <see cref="DriveBlock" /> over <see cref="Block" />, and writes every field
     ///     against that ordinal in one step under <see cref="_stateLock" />. A result with no block
-    ///     is recorded by drive letter instead.
+    ///     is recorded by drive instead.
     /// </summary>
     internal sealed record PendingDriveResult
     {
@@ -31,12 +31,12 @@ public sealed partial class FileIndex
         public string? ProducerFailureMessage { get; init; }
 
         /// <summary>Rejects a blockless result without failure detail instead of publishing a contradictory drive status.</summary>
-        /// <param name="driveLetter">The drive, named in the exception when the message is missing.</param>
+        /// <param name="drive">The drive, named in the exception when the message is missing.</param>
         /// <returns>The message every blockless result carries.</returns>
         /// <exception cref="InvalidOperationException">The result has no failure message.</exception>
-        public string RequireFailureMessage(DriveKey driveLetter) =>
+        public string RequireFailureMessage(DriveKey drive) =>
             ProducerFailureMessage ?? throw new InvalidOperationException(
-                $"Drive {driveLetter} failed without a failure message.");
+                $"Drive {drive} failed without a failure message.");
 
         /// <summary>The loss that made the open reject or distrust the drive's cached block.</summary>
         public JournalCheckpointLoss? CheckpointLoss { get; init; }

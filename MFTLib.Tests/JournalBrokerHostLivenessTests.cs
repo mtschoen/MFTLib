@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.Extensions.Time.Testing;
@@ -115,7 +116,7 @@ public partial class JournalBrokerHostLivenessTests
         var admitted = new TestGate();
         var host = liveness.Host(processorCount: 1, scanDrive: (drive, _, reporting, _, _, token) =>
         {
-            if (drive == "C")
+            if (drive == 'C')
             {
                 // Holds the only parse thread, waiting on its volume, which never stalls.
                 reporting.Operation!.WaitingOnVolume();
@@ -176,7 +177,7 @@ public partial class JournalBrokerHostLivenessTests
 
     // A watch source that never yields: the drive's journal stays quiet until the pipe closes.
     static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> NeverYields(
-        string drive, UsnJournalCursor since, ISourceOperationReporter operation,
+        DriveKey drive, UsnJournalCursor since, ISourceOperationReporter operation,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         await Task.Delay(Timeout.Infinite, cancellationToken);
@@ -211,8 +212,8 @@ public partial class JournalBrokerHostLivenessTests
         }
 
         public JournalBrokerHost Host(
-            Func<string, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
-            Func<string, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchDrive = null,
+            Func<DriveKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
+            Func<DriveKey, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchDrive = null,
             MftRecordBatchSource? scanDrive = null, int processorCount = 4)
         {
             return new JournalBrokerHost(

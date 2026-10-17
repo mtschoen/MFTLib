@@ -104,11 +104,10 @@ public partial class BrokerProtocolTests
     }
 
     [TestMethod]
-    public void ScanProgressFrame_RoundTrips_AllFieldsWithEmptyDrive()
+    public void ScanProgressFrame_RoundTrips_AllFields()
     {
         var progress = new BrokerScanProgress
         {
-            Drive = "C",
             Phase = BrokerScanPhase.Parsing,
             RecordsProcessed = 1000,
             BytesProcessed = 20480,
@@ -119,8 +118,7 @@ public partial class BrokerProtocolTests
 
         Assert.AreEqual(BrokerFrameKind.ScanProgress, frame.Kind);
         Assert.IsNotNull(frame.Progress);
-        Assert.AreEqual(progress with { Drive = string.Empty }, frame.Progress.Value,
-            "The wire carries no drive: the client fills it in from the channel.");
+        Assert.AreEqual(progress, frame.Progress.Value);
         Assert.AreEqual(BrokerScanPhase.Parsing, frame.Progress.Value.Phase);
     }
 
@@ -129,7 +127,6 @@ public partial class BrokerProtocolTests
     {
         var progress = new BrokerScanProgress
         {
-            Drive = "D",
             Phase = BrokerScanPhase.Transferring,
             RecordsProcessed = 500,
             BytesProcessed = 10240,
@@ -326,7 +323,6 @@ public partial class BrokerProtocolTests
     {
         var progress = new BrokerScanProgress
         {
-            Drive = "C",
             Phase = BrokerScanPhase.Parsing,
             RecordsProcessed = 100,
             BytesProcessed = 200,
@@ -350,7 +346,6 @@ public partial class BrokerProtocolTests
     {
         var progress = new BrokerScanProgress
         {
-            Drive = "C",
             Phase = BrokerScanPhase.Parsing,
             RecordsProcessed = 1,
             BytesProcessed = 2,
@@ -469,7 +464,6 @@ public partial class BrokerProtocolTests
     {
         var progress = new BrokerScanProgress
         {
-            Drive = "E",
             Phase = BrokerScanPhase.Parsing,
             RecordsProcessed = 10,
             BytesProcessed = 20,

@@ -1,3 +1,4 @@
+using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -15,13 +16,13 @@ public class VolumeQueryHostTests
     [TestMethod]
     public async Task QueryVolume_TwoRequests_OneSeamThrows_EmitsVolumeInfoAndError()
     {
-        var host = CreateHost(queryVolumeInfo: drive => drive == "C"
+        var host = CreateHost(queryVolumeInfo: drive => drive == 'C'
             ? new NtfsVolumeInformation(8_192_000_000L, 1024)
             : throw new InvalidOperationException("access denied"));
         await using var harness = new HostChannelHarness(host);
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 1, "C"));
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 2, "G"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 1, 'C'));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 2, 'G'));
         var replies = new[] { await harness.ReadControlAsync(), await harness.ReadControlAsync() };
 
         var volumeInfo = replies.Single(f => f.Kind == BrokerFrameKind.VolumeInfo);
@@ -39,7 +40,7 @@ public class VolumeQueryHostTests
     {
         await using var harness = new HostChannelHarness(CreateHost()); // queryVolumeInfo omitted -> unsupported throws
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 14, "C"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 14, 'C'));
         var frame = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
@@ -54,7 +55,7 @@ public class VolumeQueryHostTests
         using var blockWriter = new RecordingBlockSectionWriter();
         await using var harness = new HostChannelHarness(host, blockWriter);
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 5, "C"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 5, 'C'));
         var volumeInfo = await harness.ReadControlAsync();
         var scanFrames = await HostChannelHarness.ReadToEndAsync(await harness.OpenScanChannelAsync('C'));
 
@@ -65,7 +66,7 @@ public class VolumeQueryHostTests
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, scanFrames[^1].Kind);
     }
 
-    static JournalBrokerHost CreateHost(Func<string, NtfsVolumeInformation>? queryVolumeInfo = null)
+    static JournalBrokerHost CreateHost(Func<DriveKey, NtfsVolumeInformation>? queryVolumeInfo = null)
     {
         return new JournalBrokerHost(new ScriptedVolumeAccess
         {

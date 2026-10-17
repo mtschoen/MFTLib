@@ -1,3 +1,4 @@
+using MFTLib.Index;
 using MFTLib.NativeInterop;
 
 namespace MFTLib;
@@ -30,8 +31,8 @@ sealed class BrokerDiagnosticsLogFilter
     // starts filtering from the next batch on while preserving rename handling for prior files.
     readonly List<string> _logPaths = [];
 
-    // Watched drive letter (bare uppercase, as watch specs carry it) -> references to drop.
-    readonly Dictionary<string, HashSet<ulong>> _referencesByDrive = new(StringComparer.OrdinalIgnoreCase);
+    // Watched drive -> references to drop.
+    readonly Dictionary<DriveKey, HashSet<ulong>> _referencesByDrive = [];
 
     internal BrokerDiagnosticsLogFilter(string ownLogPath, string? clientLogPath)
     {
@@ -47,11 +48,11 @@ sealed class BrokerDiagnosticsLogFilter
         }
     }
 
-    internal UsnJournalEntry[] Filter(string driveLetter, UsnJournalEntry[] entries)
+    internal UsnJournalEntry[] Filter(DriveKey drive, UsnJournalEntry[] entries)
     {
-        ResolvePathsFor(driveLetter);
+        ResolvePathsFor(drive);
         if (entries.Length == 0 ||
-            !_referencesByDrive.TryGetValue(driveLetter, out var references) ||
+            !_referencesByDrive.TryGetValue(drive, out var references) ||
             references.Count == 0)
         {
             return entries;
@@ -86,12 +87,11 @@ sealed class BrokerDiagnosticsLogFilter
         return kept;
     }
 
-    void ResolvePathsFor(string driveLetter)
+    void ResolvePathsFor(DriveKey drive)
     {
         foreach (var path in _logPaths)
         {
-            if (!TryGetDriveLetter(path, out var pathDrive) ||
-                !string.Equals(pathDrive, driveLetter, StringComparison.OrdinalIgnoreCase))
+            if (!TryGetDrive(path, out var pathDrive) || pathDrive != drive)
             {
                 continue; // rooted on another drive; that drive's watch resolves it
             }
@@ -101,10 +101,10 @@ sealed class BrokerDiagnosticsLogFilter
                 continue; // not created yet or unresolvable; retried on the next batch
             }
 
-            if (!_referencesByDrive.TryGetValue(driveLetter, out var set))
+            if (!_referencesByDrive.TryGetValue(drive, out var set))
             {
                 set = [];
-                _referencesByDrive[driveLetter] = set;
+                _referencesByDrive[drive] = set;
             }
 
             set.Add(reference);
@@ -139,14 +139,14 @@ sealed class BrokerDiagnosticsLogFilter
     static ulong FileReferenceOf(UsnJournalEntry entry) =>
         ((ulong)entry.SequenceNumber << 48) | entry.RecordNumber;
 
-    // Extract the bare drive letter from a rooted path ("C:\...", "C:...", or extended "\\?\C:\...");
+    // Extract the bare drive from a rooted path ("C:\...", "C:...", or extended "\\?\C:\...");
     // anything else (UNC, non-Windows root) never matches a watched drive and stays pending.
-    internal static bool TryGetDriveLetter(string path, out string driveLetter) =>
-        TryGetDriveLetter(path, OperatingSystem.IsWindows(), out driveLetter);
+    internal static bool TryGetDrive(string path, out DriveKey drive) =>
+        TryGetDrive(path, OperatingSystem.IsWindows(), out drive);
 
-    internal static bool TryGetDriveLetter(string path, bool isWindows, out string driveLetter)
+    internal static bool TryGetDrive(string path, bool isWindows, out DriveKey drive)
     {
-        driveLetter = string.Empty;
+        drive = default;
         if (string.IsNullOrWhiteSpace(path))
         {
             return false;
@@ -155,7 +155,7 @@ sealed class BrokerDiagnosticsLogFilter
         // Standard Windows drive-letter path: "C:\...", "C:/...", "C:file"
         if (path.Length >= 2 && path[1] == ':' && char.IsAsciiLetter(path[0]))
         {
-            driveLetter = new Index.DriveKey(path[0]).ToString();
+            drive = new DriveKey(path[0]);
             return true;
         }
 
@@ -169,7 +169,7 @@ sealed class BrokerDiagnosticsLogFilter
             path[5] == ':' &&
             char.IsAsciiLetter(path[4]))
         {
-            driveLetter = new Index.DriveKey(path[4]).ToString();
+            drive = new DriveKey(path[4]);
             return true;
         }
 
@@ -180,7 +180,7 @@ sealed class BrokerDiagnosticsLogFilter
                 var fullPath = Path.GetFullPath(path);
                 if (fullPath.Length >= 2 && fullPath[1] == ':' && char.IsAsciiLetter(fullPath[0]))
                 {
-                    driveLetter = new Index.DriveKey(fullPath[0]).ToString();
+                    drive = new DriveKey(fullPath[0]);
                     return true;
                 }
             }

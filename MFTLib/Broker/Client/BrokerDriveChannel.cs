@@ -1,4 +1,5 @@
 using System.Buffers;
+using MFTLib.Index;
 
 namespace MFTLib;
 
@@ -21,18 +22,18 @@ internal sealed class BrokerDriveChannel : IAsyncDisposable
     readonly CancellationTokenSource _closing = new();
     int _disposed;
 
-    internal BrokerDriveChannel(char driveLetter, BrokerPipeListener pipe, Stream stream, string tag,
+    internal BrokerDriveChannel(DriveKey drive, BrokerPipeListener pipe, Stream stream, string tag,
         Action<BrokerDriveChannel> closed, TimeProvider timeProvider)
     {
-        Drive = driveLetter;
+        Drive = drive.Validated();
         _pipe = pipe;
         _stream = stream;
         _tag = tag;
-        _reader = new BrokerFrameReader(stream, driveLetter, tag, timeProvider);
+        _reader = new BrokerFrameReader(stream, Drive, tag, timeProvider);
         _closed = closed;
     }
 
-    public char Drive { get; }
+    public DriveKey Drive { get; }
 
     /// <summary>Writes one frame; a pipe that cannot take it is a lost channel.</summary>
     public async Task WriteAsync(Action<ArrayBufferWriter<byte>> write, CancellationToken cancellationToken)

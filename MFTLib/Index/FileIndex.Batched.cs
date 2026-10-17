@@ -102,19 +102,19 @@ public sealed partial class FileIndex
     /// <summary>A test seam invoked before catch-up wait admission.</summary>
     internal Action? BeforeNoListWaitResolvesDrivesForTest { get; set; }
 
-    bool HasWatchableBlock(DriveKey driveLetter)
+    bool HasWatchableBlock(DriveKey drive)
     {
         lock (_stateLock)
         {
-            return WatchSourceOrNull is not null && FindWatchableDriveBlockLocked(driveLetter) is not null;
+            return WatchSourceOrNull is not null && FindWatchableDriveBlockLocked(drive) is not null;
         }
     }
 
-    bool IsWatching(DriveKey driveLetter)
+    bool IsWatching(DriveKey drive)
     {
         lock (_stateLock)
         {
-            return IsWatchingLocked(GetDriveRuntime(driveLetter));
+            return IsWatchingLocked(GetDriveRuntime(drive));
         }
     }
 

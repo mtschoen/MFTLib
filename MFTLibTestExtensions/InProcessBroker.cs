@@ -51,10 +51,10 @@ internal sealed class TestBlockSections : IDisposable
 
     int _next;
 
-    public (string SectionName, BlockFile Block, IDisposable Lifetime) Create(char driveLetter,
+    public (string SectionName, BlockFile Block, IDisposable Lifetime) Create(DriveKey drive,
         BlockFileCreateOptions options)
     {
-        var sectionName = $"section-{driveLetter}-{Interlocked.Increment(ref _next)}";
+        var sectionName = $"section-{drive}-{Interlocked.Increment(ref _next)}";
         var block = BlockFile.Create(options);
         var lifetime = new RecordingLifetime();
         _sections[sectionName] = (block, lifetime);
@@ -73,10 +73,10 @@ internal sealed class TestBlockSections : IDisposable
 
     public IReadOnlyList<(BlockFile Block, RecordingLifetime Lifetime)> All() => _sections.Values.ToList();
 
-    /// <summary>The one section created so far for <paramref name="driveLetter" />.</summary>
-    public (string SectionName, BlockFile Block, RecordingLifetime Lifetime) ForDrive(char driveLetter)
+    /// <summary>The one section created so far for <paramref name="drive" />.</summary>
+    public (string SectionName, BlockFile Block, RecordingLifetime Lifetime) ForDrive(DriveKey drive)
     {
-        var (sectionName, section) = _sections.Single(pair => pair.Key.StartsWith($"section-{driveLetter}-", StringComparison.Ordinal));
+        var (sectionName, section) = _sections.Single(pair => pair.Key.StartsWith($"section-{drive}-", StringComparison.Ordinal));
         return (sectionName, section.Block, section.Lifetime);
     }
 

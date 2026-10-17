@@ -125,19 +125,19 @@ public sealed class ScriptedWatchSource
     }
 
     /// <summary>Makes the next start of one drive throw <paramref name="failure" />, whichever call order the starts arrive in.</summary>
-    /// <param name="driveLetter">The drive whose next start fails.</param>
+    /// <param name="drive">The drive whose next start fails.</param>
     /// <param name="failure">The exception the start throws.</param>
-    internal void FailNextStartFor(DriveKey driveLetter, Exception failure)
+    internal void FailNextStartFor(DriveKey drive, Exception failure)
     {
         lock (_stateLock)
         {
-            _failuresByDrive[driveLetter] = failure;
+            _failuresByDrive[drive] = failure;
         }
     }
 
     /// <summary>The targets requested for one drive, in order.</summary>
-    internal IReadOnlyList<IndexWatchTarget> TargetsFor(DriveKey driveLetter) =>
-        Targets.Where(target => Same(target.Drive, driveLetter)).ToArray();
+    internal IReadOnlyList<IndexWatchTarget> TargetsFor(DriveKey drive) =>
+        Targets.Where(target => Same(target.Drive, drive)).ToArray();
 
     /// <summary>
     ///     Parks the next start on <paramref name="gate" /> until it is released. With
@@ -154,11 +154,11 @@ public sealed class ScriptedWatchSource
     }
 
     /// <summary>Parks the next start of one drive on <paramref name="gate" />, whichever call order the starts arrive in.</summary>
-    internal void HoldStartFor(DriveKey driveLetter, TestGate gate, bool observeToken = true)
+    internal void HoldStartFor(DriveKey drive, TestGate gate, bool observeToken = true)
     {
         lock (_stateLock)
         {
-            _holdsByDrive[driveLetter] = new HeldStart(gate, observeToken);
+            _holdsByDrive[drive] = new HeldStart(gate, observeToken);
         }
     }
 
@@ -170,14 +170,14 @@ public sealed class ScriptedWatchSource
         lock (_stateLock)
         {
             _targets.Add(target);
-            var driveLetter = target.Drive;
-            if (!_holdsByDrive.Remove(driveLetter, out hold))
+            var drive = target.Drive;
+            if (!_holdsByDrive.Remove(drive, out hold))
             {
                 hold = _nextHold;
                 _nextHold = null;
             }
 
-            if (!_failuresByDrive.Remove(driveLetter, out failure))
+            if (!_failuresByDrive.Remove(drive, out failure))
             {
                 failure = _nextFailure;
                 _nextFailure = null;

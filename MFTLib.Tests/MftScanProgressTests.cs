@@ -45,7 +45,7 @@ public class MftScanProgressTests
         var reported = new List<MftScanProgress>();
         var directProgress = new SynchronousProgress<MftScanProgress>(reported.Add);
 
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
         var batches = volume.ReadRecordBatches(4096, directProgress, null, CancellationToken.None).ToList();
 
         Assert.AreEqual(1, batches.Count);
@@ -69,7 +69,7 @@ public class MftScanProgressTests
 
         var directProgress = new SynchronousProgress<MftScanProgress>(reported.Add);
 
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
         _ = volume.ReadRecordBatches(4096, directProgress, null, CancellationToken.None).ToList();
 
         Assert.AreEqual(2, reportedDuringParse, "Both progress samples must have arrived before parse returned");
@@ -89,7 +89,7 @@ public class MftScanProgressTests
         var throwingProgress = new SynchronousProgress<MftScanProgress>(
             _ => throw new InvalidOperationException("Simulated UI progress failure"));
 
-        using var volume = MftVolume.Open("C");
+        using var volume = MftVolume.Open('C');
         var batches = volume.ReadRecordBatches(4096, throwingProgress, null, CancellationToken.None).ToList();
 
         Assert.AreEqual(1, batches.Sum(batch => batch.Length), "Parse must complete normally despite exception in progress handler");

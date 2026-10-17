@@ -1,3 +1,4 @@
+using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -22,7 +23,7 @@ public class GrowUsnJournalHostTests
                 AllocationDelta = allocationDelta
             }));
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 31, "C", 0x08000000, 0x01000000));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 31, 'C', 0x08000000, 0x01000000));
         var frame = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.UsnJournalSettings, frame.Kind);
@@ -37,7 +38,7 @@ public class GrowUsnJournalHostTests
         await using var harness = new HostChannelHarness(CreateHost(growUsnJournal: (_, _, _) =>
             throw new InvalidOperationException("Refusing to resize: only growth is permitted.")));
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 32, "C", 0x08000000, 0x01000000));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 32, 'C', 0x08000000, 0x01000000));
         var frame = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
@@ -50,7 +51,7 @@ public class GrowUsnJournalHostTests
     {
         await using var harness = new HostChannelHarness(CreateHost()); // growUsnJournal omitted -> unsupported throws
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 33, "C", 0x08000000, 0x01000000));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 33, 'C', 0x08000000, 0x01000000));
         var frame = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
@@ -58,7 +59,7 @@ public class GrowUsnJournalHostTests
         Assert.AreEqual("Broker has no journal grow source", frame.Message);
     }
 
-    static JournalBrokerHost CreateHost(Func<string, long, long, UsnJournalSettings>? growUsnJournal = null)
+    static JournalBrokerHost CreateHost(Func<DriveKey, long, long, UsnJournalSettings>? growUsnJournal = null)
     {
         return new JournalBrokerHost(new ScriptedVolumeAccess
         {

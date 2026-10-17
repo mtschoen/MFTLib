@@ -122,8 +122,8 @@ public partial class JournalBrokerHostTests
     {
         using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => null);
         var host = ScanHost(
-            queryCursor: drive => drive == "C" ? new UsnJournalCursor(1UL, 100L) : new UsnJournalCursor(2UL, 200L),
-            readJournal: (drive, since, _) => drive == "C"
+            queryCursor: drive => drive == 'C' ? new UsnJournalCursor(1UL, 100L) : new UsnJournalCursor(2UL, 200L),
+            readJournal: (drive, since, _) => drive == 'C'
                 ? throw new InvalidOperationException("journal wrapped")
                 : (Array.Empty<UsnJournalEntry>(), since));
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
@@ -202,7 +202,7 @@ public partial class JournalBrokerHostTests
     static async Task AssertControlStillAnswersAsync(HostChannelHarness harness)
     {
         var requestId = harness.NextRequestId();
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, requestId, "C"));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, requestId, 'C'));
         var reply = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.VolumeInfo, reply.Kind);
