@@ -20,57 +20,46 @@ public class LocalMftCacheFreshnessTests
     public async Task Reopen_ChangedJournalRescansOrFlagsCacheOnlySnapshot(
         ulong journalIdentifier, long firstUsn, long nextUsn, bool cacheOnly, JournalCheckpointLossCause cause)
     {
-        var directories = new OwnedIndexDirectories();
-        try
+        using var fixture = new IndexTreeFixture(seedDocuments: false);
+        var scans = 0;
+        var access = new ScriptedVolumeAccess
         {
-            Directory.CreateDirectory(directories.TreeRoot);
-            Directory.CreateDirectory(directories.CacheDirectory);
-            var scans = 0;
-            var access = new ScriptedVolumeAccess
+            VolumeInformation = _ => new NtfsVolumeInformation(1024 * 1000, 1024),
+            RecordBatches = (_, _, _, _, _, _) =>
             {
-                VolumeInformation = _ => new NtfsVolumeInformation(1024 * 1000, 1024),
-                RecordBatches = (_, _, _, _, _, _) =>
-                {
-                    Interlocked.Increment(ref scans);
-                    return [[new MftRecord(5, 5, new MftRecordFields(3), ".")]];
-                },
-                CursorQuery = _ => new UsnJournalCursor(99, 2000)
-            };
-            var source = new LocalMftBlockProducer(
-                new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 0, 0, 0, TimeSpan.Zero)), null, access)
-                .CreateIndexSource();
-            var options = new FileIndexOptions
-            {
-                Drives = [new IndexedDrive('T', directories.TreeRoot, 123)],
-                CacheDirectory = directories.CacheDirectory,
-                MftSource = source
-            };
-            await using (var initial = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token))
-            {
-                Assert.AreEqual(DriveState.Ready, initial.Drives.Single().State);
-            }
-            using var journal = JournalIsolation.OverrideJournalWindow(
-                _ => new SyntheticJournalWindow(journalIdentifier, firstUsn, nextUsn, 64, 32768));
-            options = options with { CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent };
-            await using var reopened = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
-            var status = reopened.Drives.Single();
-            Assert.AreEqual(cacheOnly ? 1 : 2, scans);
-            Assert.AreEqual(DriveState.Ready, status.State);
-            Assert.AreEqual(cacheOnly ? BlockSource.WarmStartedFromCache : BlockSource.ProducedByScan, status.Block!.Source);
-            Assert.AreEqual(cause, status.Watch.CheckpointLoss?.Cause);
-            Assert.IsFalse(status.Watch.IsSupported);
-            Assert.IsFalse(status.Watch.IsRequested);
-            if (cacheOnly)
-            {
-                var field = typeof(FileIndex).GetField("_unresumableCheckpointsByOrdinal",
-                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
-                var unresumable = (System.Collections.IDictionary)field.GetValue(reopened)!;
-                Assert.AreEqual(1, unresumable.Count);
-            }
+                Interlocked.Increment(ref scans);
+                return [[new MftRecord(5, 5, new MftRecordFields(3), ".")]];
+            },
+            CursorQuery = _ => new UsnJournalCursor(99, 2000)
+        };
+        var source = new LocalMftBlockProducer(
+            new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 0, 0, 0, TimeSpan.Zero)), null, access)
+            .CreateIndexSource();
+        var options = fixture.Options(drive: 'T', volumeSerial: 123, producer: ProducerKind.Mft) with
+        {
+            MftSource = source
+        };
+        await using (var initial = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token))
+        {
+            Assert.AreEqual(DriveState.Ready, initial.Drives.Single().State);
         }
-        finally
+        using var journal = JournalIsolation.OverrideJournalWindow(
+            _ => new SyntheticJournalWindow(journalIdentifier, firstUsn, nextUsn, 64, 32768));
+        options = options with { CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent };
+        await using var reopened = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
+        var status = reopened.Drives.Single();
+        Assert.AreEqual(cacheOnly ? 1 : 2, scans);
+        Assert.AreEqual(DriveState.Ready, status.State);
+        Assert.AreEqual(cacheOnly ? BlockSource.WarmStartedFromCache : BlockSource.ProducedByScan, status.Block!.Source);
+        Assert.AreEqual(cause, status.Watch.CheckpointLoss?.Cause);
+        Assert.IsFalse(status.Watch.IsSupported);
+        Assert.IsFalse(status.Watch.IsRequested);
+        if (cacheOnly)
         {
-            directories.Dispose();
+            var field = typeof(FileIndex).GetField("_unresumableCheckpointsByOrdinal",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            var unresumable = (System.Collections.IDictionary)field.GetValue(reopened)!;
+            Assert.AreEqual(1, unresumable.Count);
         }
     }
 }

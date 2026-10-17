@@ -12,42 +12,29 @@ namespace MFTLib.Tests.Index;
 ///     cache-mode rescan leftovers) must be cleaned up deterministically.
 /// </summary>
 [TestClass]
-public partial class FileIndexResilienceTests
+public sealed partial class FileIndexResilienceTests : IDisposable
 {
-    OwnedIndexDirectories _directories = null!;
-    string _treeRoot = null!;
-    string _cacheDirectory = null!;
+    IndexTreeFixture _fixture = null!;
+    string _treeRoot => _fixture.TreeRoot;
+    string _cacheDirectory => _fixture.CacheDirectory;
     uint _volumeSerial;
 
     [TestInitialize]
     public void Initialize()
     {
         _volumeSerial = TestVolumeSerial.GetNext();
-        _directories = new OwnedIndexDirectories();
-        _treeRoot = _directories.TreeRoot;
-        _cacheDirectory = _directories.CacheDirectory;
-        Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
-        File.WriteAllText(Path.Combine(_treeRoot, "Documents", "readme.md"), "hello");
+        _fixture = new IndexTreeFixture();
     }
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        _directories.Dispose();
-    }
+    public void Dispose() => _fixture.Dispose();
 
     FileIndexOptions Options(bool cacheDisabled = false, IProgress<IndexScanProgress>? progress = null,
-        Action<string>? diagnostics = null)
-    {
-        return new FileIndexOptions
+        Action<string>? diagnostics = null) =>
+        _fixture.Options(volumeSerial: _volumeSerial, cacheMode: cacheDisabled ? CacheMode.Disabled : CacheMode.Persistent) with
         {
-            Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial, ProducerKind.Enumeration)],
-            CacheDirectory = _cacheDirectory,
-            CacheMode = cacheDisabled ? CacheMode.Disabled : CacheMode.Persistent,
             ScanProgress = progress,
             Diagnostics = diagnostics
         };
-    }
 
     /// <summary>
     ///     Cancels the token the moment the first directory finishes, so cancellation lands
@@ -68,14 +55,11 @@ public partial class FileIndexResilienceTests
         }
     }
 
-    // Real index work on a loaded runner outlasts the shared guard.
-    static readonly TimeSpan SlowHangGuard = HangGuard * 3;
-
     static async Task AssertThrowsCancellation(Func<Task> action)
     {
         try
         {
-            await action().WaitAsync(SlowHangGuard);
+            await action().WaitAsync(HangGuard * 3);
         }
         catch (OperationCanceledException)
         {
@@ -113,7 +97,7 @@ public partial class FileIndexResilienceTests
     {
         var secondTreeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree2-{Guid.NewGuid():N}");
         Directory.CreateDirectory(Path.Combine(secondTreeRoot, "Documents"));
-        await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "Documents", "readme2.md"), "hello2").WaitAsync(SlowHangGuard);
+        await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "Documents", "readme2.md"), "hello2").WaitAsync(HangGuard * 3);
 
         // Drives settle concurrently, so nothing but the first drive's own settle can say it has
         // been adopted. It warm-starts from a cache a first open leaves behind. The open is
@@ -126,8 +110,8 @@ public partial class FileIndexResilienceTests
             {
                 Drives = [firstDrive with { Producer = ProducerKind.Enumeration }],
                 CacheDirectory = _cacheDirectory,
-            }, CancellationToken.None).WaitAsync(SlowHangGuard);
-        await warmingOpen.DisposeAsync().AsTask().WaitAsync(SlowHangGuard);
+            }, CancellationToken.None).WaitAsync(HangGuard * 3);
+        await warmingOpen.DisposeAsync().AsTask().WaitAsync(HangGuard * 3);
 
         using var cancellationTokenSource = new CancellationTokenSource();
         var firstSettled = new DriveSettledSignal('T');
@@ -145,10 +129,10 @@ public partial class FileIndexResilienceTests
             await AssertThrowsCancellation(async () =>
             {
                 var opening = FileIndex.OpenAsync(options, cancellationTokenSource.Token);
-                await Task.WhenAll(firstSettled.Reported, secondParked.Parked).WaitAsync(SlowHangGuard);
+                await Task.WhenAll(firstSettled.Reported, secondParked.Parked).WaitAsync(HangGuard * 3);
                 Assert.IsFalse(opening.IsCompleted, "the second drive is still mid-scan when the open is cancelled");
-                await cancellationTokenSource.CancelAsync().WaitAsync(SlowHangGuard);
-                await opening.WaitAsync(SlowHangGuard);
+                await cancellationTokenSource.CancelAsync().WaitAsync(HangGuard * 3);
+                await opening.WaitAsync(HangGuard * 3);
             });
 
             var firstBlockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
@@ -207,7 +191,7 @@ public partial class FileIndexResilienceTests
             }
 
             _parked.TrySetResult();
-            if (!cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(30)))
+            if (!cancellationToken.WaitHandle.WaitOne(HangGuard * 3))
             {
                 throw new TimeoutException("The open was never cancelled.");
             }
@@ -466,8 +450,8 @@ public partial class FileIndexResilienceTests
         }
         finally
         {
-            firstFixture.Cleanup();
-            secondFixture.Cleanup();
+            firstFixture.Dispose();
+            secondFixture.Dispose();
         }
     }
 }

@@ -22,18 +22,6 @@ public class FileIndexBatchedOperationTests
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
-    static JournalCheckpointLoss Loss(char driveLetter) => new JournalCheckpointLoss(driveLetter, JournalCheckpointLossDetection.ScanCatchUp, JournalCheckpointLossCause.CheckpointTrimmed,
-        new UsnJournalSettings { AllocationDelta = 4096, MaximumSize = 32768 })
-    {
-        CheckpointUsn = 1000,
-        FirstUsn = 5000,
-        NextUsn = 9000,
-        BytesBehind = 4000,
-        SizeThatWouldHaveRetained = 12288
-    };
-
-    static WatchHarnessScan Lost(char driveLetter) => new(Loss(driveLetter));
-
     static char[] Letters(IReadOnlyList<DriveOperationResult> results) =>
         [.. results.Select(result => result.Drive.Letter)];
 

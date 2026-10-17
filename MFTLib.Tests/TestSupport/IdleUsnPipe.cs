@@ -49,7 +49,7 @@ internal sealed class IdleUsnPipe : IDisposable
             {
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             }
-            await connected.WaitAsync(TimeSpan.FromSeconds(10));
+            await connected.WaitAsync(HangGuard);
             NativeTestHooks.NativeSetUsnWatchPipe(pipe.Handle, pipe.BeforeIssue.SafeWaitHandle,
                 pipe.ContinueIssue.SafeWaitHandle, pipe.Issued.SafeWaitHandle, pipe.CancelAttempted.SafeWaitHandle,
                 gateReadNumber);
@@ -78,7 +78,7 @@ internal sealed class IdleUsnPipe : IDisposable
 
     internal static async Task AwaitSignalAsync(EventWaitHandle signal)
     {
-        Assert.IsTrue(await Task.Run(() => signal.WaitOne(TimeSpan.FromSeconds(10))),
+        Assert.IsTrue(await Task.Run(() => signal.WaitOne(HangGuard)),
             "Native watch did not reach the expected synchronization gate.");
     }
 

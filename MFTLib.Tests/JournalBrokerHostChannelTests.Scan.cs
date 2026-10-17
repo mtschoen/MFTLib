@@ -12,19 +12,22 @@ public partial class JournalBrokerHostChannelTests
     {
         using var sectionWriter = new RecordingBlockSectionWriter();
         UsnJournalCursor? caughtUpFrom = null;
-        var host = CreateHost(
-            scanDrive: (_, _, reporting, _, _, _) =>
+        var host = BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, reporting, _, _, _) =>
             {
                 reporting.Operation!.Processing("MFT parse");
                 reporting.Progress?.Report(new BlockWriteProgress(2, 0, 2, null, BlockScanPhase.Parsing));
-                return [[Record(5, ".", 3)], [Record(20, "file.txt")]];
+                return [[BrokerHostFactory.Record(5, ".", 3)], [BrokerHostFactory.Record(20, "file.txt")]];
             },
-            readJournal: (_, since, _) =>
+            ReadJournal = (_, since, _) =>
             {
                 caughtUpFrom ??= since;
                 var tip = new UsnJournalCursor(7, 1500);
                 return since == tip ? ([], since) : ([JournalEntries.Create(20, 1200, "file.txt")], tip);
-            });
+            },
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
+        });
         await using var harness = new HostChannelHarness(host, sectionWriter);
 
         var pipe = await harness.OpenScanChannelAsync('C', "section-C");
@@ -120,10 +123,15 @@ public partial class JournalBrokerHostChannelTests
     public async Task ScanChannel_AllowanceReachesSource()
     {
         int? allowance = null;
-        var host = CreateHost(processorCount: 8, scanDrive: (_, parseThreads, _, _, _, _) =>
+        var host = BrokerHostFactory.Create(new()
         {
-            allowance = parseThreads.Count;
-            return [[Record(5, ".", 3)]];
+            ProcessorCount = 8,
+            ScanDrive = (_, parseThreads, _, _, _, _) =>
+            {
+                allowance = parseThreads.Count;
+                return [[BrokerHostFactory.Record(5, ".", 3)]];
+            },
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
         });
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
 
@@ -138,7 +146,12 @@ public partial class JournalBrokerHostChannelTests
     {
         using var journal = JournalIsolation.OverrideJournalWindow(_ => null);
         var tip = new UsnJournalCursor(7, 1500);
-        var host = CreateHost(readJournal: (_, _, _) => ([JournalEntries.Create(20, 1200, "file.txt")], tip));
+        var host = BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ReadJournal = (_, _, _) => ([JournalEntries.Create(20, 1200, "file.txt")], tip),
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
+        });
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
 
         var frames = await HostChannelHarness.ReadToEndAsync(await harness.OpenScanChannelAsync('C'));
@@ -151,13 +164,17 @@ public partial class JournalBrokerHostChannelTests
 
     static async Task<List<BrokerFrame>> ScanWithFailedCatchUpAsync(Exception failure, Action? onCursorQuery = null)
     {
-        var host = CreateHost(
-            queryCursor: _ =>
+        var host = BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryCursor = _ =>
             {
                 onCursorQuery?.Invoke();
                 return Armed;
             },
-            readJournal: (_, _, _) => throw failure);
+            ReadJournal = (_, _, _) => throw failure,
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
+        });
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         return await HostChannelHarness.ReadToEndAsync(await harness.OpenScanChannelAsync('C'));
     }

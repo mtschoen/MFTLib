@@ -59,7 +59,7 @@ public class BrokerFrameLengthTests
     [DataRow(BrokerFrameStream.MaximumFrameLength + 1)]
     public async Task Host_ControlFrameLengthBeyondMaximum_EndsSessionWithInvalidData(int length)
     {
-        var harness = new HostChannelHarness(CreateHost());
+        var harness = new HostChannelHarness(BrokerHostFactory.Create(new() { ScanDrive = (_, _, _, _, _, _) => [], ProcessorCount = null }));
         try
         {
             await harness.SendControlAsync(writer => WriteLengthPrefix(writer, length));
@@ -76,7 +76,7 @@ public class BrokerFrameLengthTests
     [TestMethod]
     public async Task Host_DriveFirstRequestLengthBeyondMaximum_WritesErrorAndOtherRequestsContinue()
     {
-        await using var harness = new HostChannelHarness(CreateHost());
+        await using var harness = new HostChannelHarness(BrokerHostFactory.Create(new() { ScanDrive = (_, _, _, _, _, _) => [], ProcessorCount = null }));
         var pipe = await harness.OpenChannelAsync('C');
 
         await HostChannelHarness.WriteFrameAsync(pipe, writer => WriteLengthPrefix(writer, int.MaxValue));
@@ -126,16 +126,5 @@ public class BrokerFrameLengthTests
     {
         BinaryPrimitives.WriteInt32LittleEndian(writer.GetSpan(4), length);
         writer.Advance(4);
-    }
-
-    static JournalBrokerHost CreateHost()
-    {
-        return new JournalBrokerHost(new ScriptedVolumeAccess
-        {
-            CursorQuery = _ => new UsnJournalCursor(7, 1000),
-            RecordBatches = (_, _, _, _, _, _) => [],
-            JournalRead = (_, since, _) => (Array.Empty<UsnJournalEntry>(), since),
-            VolumeInformation = _ => new NtfsVolumeInformation(1024 * 1000, 1024)
-        });
     }
 }

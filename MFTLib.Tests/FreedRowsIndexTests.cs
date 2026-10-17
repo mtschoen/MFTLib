@@ -12,23 +12,18 @@ namespace MFTLib.Tests;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public class FreedRowsIndexTests
+public sealed class FreedRowsIndexTests : IDisposable
 {
     static readonly NtfsVolumeInformation Volume = new(1024 * 1000, 1024);
     static readonly DateTime FixedMoment = new(2026, 10, 6, 12, 0, 0, DateTimeKind.Utc);
 
-    OwnedIndexDirectories _directories = null!;
+    IndexTreeFixture _fixture = null!;
+    string _treeRoot => _fixture.TreeRoot;
 
     [TestInitialize]
-    public void Initialize()
-    {
-        _directories = new OwnedIndexDirectories();
-        Directory.CreateDirectory(_directories.TreeRoot);
-        Directory.CreateDirectory(_directories.CacheDirectory);
-    }
+    public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
 
-    [TestCleanup]
-    public void Cleanup() => _directories.Dispose();
+    public void Dispose() => _fixture.Dispose();
 
     [TestMethod]
     public async Task VerifiedFreedRow_KeepsItsPlaceInTheTree()
@@ -38,7 +33,7 @@ public class FreedRowsIndexTests
         var entry = index.Search(new SearchQuery("trusted.txt", IncludeDeleted: true)).Single();
 
         Assert.IsTrue(entry.IsDeleted);
-        Assert.AreEqual(Path.Combine(_directories.TreeRoot, "docs", "trusted.txt"), entry.Path);
+        Assert.AreEqual(Path.Combine(_treeRoot, "docs", "trusted.txt"), entry.Path);
         Assert.AreEqual("docs", entry.Parent!.Value.Name);
         Assert.AreEqual(100L, entry.Size);
     }
@@ -59,21 +54,21 @@ public class FreedRowsIndexTests
     public async Task UnverifiedFreedRow_IsNobodysChildAndLookupNeverFindsIt()
     {
         await using var index = await OpenAsync(includeFreed: true);
-        var docs = index.Find(Path.Combine(_directories.TreeRoot, "docs"))!.Value;
+        var docs = index.Find(Path.Combine(_treeRoot, "docs"))!.Value;
         var root = index.Root('T');
 
         CollectionAssert.AreEqual(new[] { "keep.txt" }, docs.Children().Select(child => child.Name).ToArray());
         CollectionAssert.DoesNotContain(root.Children().Select(child => child.Name).ToArray(), "orphan.txt");
-        Assert.IsNull(index.Find(Path.Combine(_directories.TreeRoot, "docs", "orphan.txt")));
-        Assert.IsNull(index.Find(Path.Combine(_directories.TreeRoot, "orphan.txt")));
-        Assert.IsNull(index.Find(Path.Combine(_directories.TreeRoot, "docs", "trusted.txt")));
+        Assert.IsNull(index.Find(Path.Combine(_treeRoot, "docs", "orphan.txt")));
+        Assert.IsNull(index.Find(Path.Combine(_treeRoot, "orphan.txt")));
+        Assert.IsNull(index.Find(Path.Combine(_treeRoot, "docs", "trusted.txt")));
     }
 
     [TestMethod]
     public async Task UnverifiedFreedRow_IsUnderNoDirectoryButAVerifiedOneIsUnderItsAncestors()
     {
         await using var index = await OpenAsync(includeFreed: true);
-        var docs = index.Find(Path.Combine(_directories.TreeRoot, "docs"))!.Value;
+        var docs = index.Find(Path.Combine(_treeRoot, "docs"))!.Value;
         var root = index.Root('T');
 
         string[] Names(FileEntry? under) => index
@@ -202,11 +197,8 @@ public class FreedRowsIndexTests
         };
         var producer = new LocalMftBlockProducer(new FakeTimeProvider(new DateTimeOffset(FixedMoment)),
             new MftScanOptions { IncludeFreed = includeFreed }, access);
-        return FileIndex.OpenAsync(new FileIndexOptions
+        return FileIndex.OpenAsync(_fixture.Options(producer: ProducerKind.Mft, cacheMode: CacheMode.Disabled) with
         {
-            Drives = [new IndexedDrive('T', _directories.TreeRoot, 0x0BADF00D)],
-            CacheDirectory = _directories.CacheDirectory,
-            CacheMode = CacheMode.Disabled,
             MftSource = producer.CreateIndexSource()
         }, CancellationToken.None);
     }

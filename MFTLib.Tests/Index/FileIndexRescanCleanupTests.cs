@@ -11,42 +11,24 @@ namespace MFTLib.Tests.Index;
 ///     leaves it blockless.
 /// </summary>
 [TestClass]
-public class FileIndexRescanCleanupTests
+public sealed class FileIndexRescanCleanupTests : IDisposable
 {
     public TestContext TestContext { get; set; } = null!;
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
-    string _treeRoot = null!;
-    string _cacheDirectory = null!;
+    IndexTreeFixture _fixture = null!;
+    string _treeRoot => _fixture.TreeRoot;
+    string _cacheDirectory => _fixture.CacheDirectory;
 
     [TestInitialize]
     public void Initialize()
     {
-        _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_treeRoot);
+        _fixture = new IndexTreeFixture(seedDocuments: false);
         Directory.CreateDirectory(_cacheDirectory);
     }
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        foreach (var directory in new[] { _treeRoot, _cacheDirectory })
-        {
-            try
-            {
-                if (Directory.Exists(directory))
-                {
-                    Directory.Delete(directory, recursive: true);
-                }
-            }
-            catch (IOException)
-            {
-                // A just-unmapped block file can stay locked briefly on Windows.
-            }
-        }
-    }
+    public void Dispose() => _fixture.Dispose();
 
     [TestMethod]
     public async Task RescanAsync_CancelledAtTheWriteGate_RestoresTheRenamedAsideCacheFile()

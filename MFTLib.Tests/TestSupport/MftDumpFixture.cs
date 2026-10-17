@@ -71,25 +71,6 @@ internal static class MftDumpFixture
         return path;
     }
 
-    /// <summary>A new directory under the temporary path that the calling test owns and deletes.</summary>
-    internal static string NewOwnedDirectory() =>
-        Path.Combine(Path.GetTempPath(), $"mftlib-dump-{Guid.NewGuid():N}");
-
-    internal static void DeleteOwnedDirectory(string directory)
-    {
-        try
-        {
-            if (Directory.Exists(directory))
-            {
-                Directory.Delete(directory, recursive: true);
-            }
-        }
-        catch (IOException)
-        {
-            // A just-unmapped block file can stay locked briefly on Windows.
-        }
-    }
-
     /// <summary>
     ///     Fills one record: header, <c>$STANDARD_INFORMATION</c>, <c>$FILE_NAME</c>, a resident
     ///     <c>$DATA</c> for a file with a size, the end marker, then the update sequence array.

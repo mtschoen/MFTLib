@@ -87,13 +87,8 @@ public partial class FileIndexCatchUpLossTests
     {
         const uint VolumeSerial = 0x5EED;
 
-        readonly string _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        readonly string _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
-
-        public LossScriptedCache()
-        {
-            Directory.CreateDirectory(_treeRoot);
-        }
+        readonly IndexTreeFixture _fixture = new(seedDocuments: false);
+        string _cacheDirectory => _fixture.CacheDirectory;
 
         public Queue<JournalCheckpointLoss> Losses { get; } = new();
 
@@ -106,32 +101,18 @@ public partial class FileIndexCatchUpLossTests
 
         public static string CanonicalBlockName => CacheDirectory.BlockFileName('T', VolumeSerial);
 
-        public FileIndexOptions Options() => new()
-        {
-            Drives = [new IndexedDrive('T', _treeRoot, VolumeSerial)],
-            CacheDirectory = _cacheDirectory,
-            MftSource = new MftIndexSource(Produce, Source.IndexSource)
-        };
+        public FileIndexOptions Options() =>
+            _fixture.Options(volumeSerial: VolumeSerial, producer: ProducerKind.Mft) with
+            {
+                MftSource = new MftIndexSource(Produce, Source.IndexSource)
+            };
 
         /// <summary>The cache directory's block files, without their owner-lock siblings.</summary>
         public string?[] BlockFileNames() => Directory.GetFiles(_cacheDirectory)
             .Where(path => !path.EndsWith(".lock", StringComparison.Ordinal))
             .Select(Path.GetFileName).ToArray();
 
-        public void Dispose()
-        {
-            foreach (var directory in new[] { _treeRoot, _cacheDirectory })
-            {
-                try
-                {
-                    Directory.Delete(directory, recursive: true);
-                }
-                catch (IOException)
-                {
-                    // A just-unmapped block file can stay locked briefly on Windows.
-                }
-            }
-        }
+        public void Dispose() => _fixture.Dispose();
 
         Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request, CancellationToken cancellationToken)
         {

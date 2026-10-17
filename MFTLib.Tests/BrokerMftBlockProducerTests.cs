@@ -11,8 +11,12 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
     [TestMethod]
     public async Task Produce_AdoptsClientBlockAndReleasesOnlySectionLifetime()
     {
-        await using var broker = new InProcessBroker(CreateHost(
-            readJournal: CatchUpSources.ToTip(AdvancedCursor, JournalEntries.Create(20, 12400, "file.txt"))));
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            QueryVolumeInformation = _ => VolumeInformation,
+            ReadJournal = CatchUpSources.ToTip(AdvancedCursor, JournalEntries.Create(20, 12400, "file.txt"))
+        }));
         var request = Request(Target());
 
         var result = await ProduceAsync(broker.Process, request).WaitAsync(HangGuard);
@@ -105,8 +109,13 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
     [TestMethod]
     public async Task Produce_BrokerErrorIsReportedAndPendingBlockDisposed()
     {
-        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, _, _) =>
-            throw new IOException("batch failed")));
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            QueryVolumeInformation = _ => VolumeInformation,
+            ScanDrive = (_, _, _, _, _, _) =>
+                throw new IOException("batch failed")
+        }));
         var request = Request(Target());
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
@@ -122,7 +131,11 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
     [TestMethod]
     public async Task ProduceAsync_ForwardsBrokerProgressOntoTheIndexProgressChannel()
     {
-        await using var broker = new InProcessBroker(CreateHost());
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            QueryVolumeInformation = _ => VolumeInformation
+        }));
         var samples = new List<IndexScanProgress>();
         var request = Request(Target()) with { Progress = new SynchronousProgress<IndexScanProgress>(samples.Add) };
 
@@ -139,7 +152,11 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
     [TestMethod]
     public async Task ProduceAsync_WithoutRequestProgressChannel_CompletesUsableBlock()
     {
-        await using var broker = new InProcessBroker(CreateHost());
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            QueryVolumeInformation = _ => VolumeInformation
+        }));
 
         var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard);
         using var block = result.Block;
@@ -151,8 +168,13 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
     [TestMethod]
     public async Task Produce_ReportsRecordsTheRowWriterCouldNotPlace()
     {
-        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, _, _) =>
-            [[Record(5, ".", 3), Record(20, "file.txt"), Record(21, ""), Record((ulong)uint.MaxValue + 1, "overflow")]]));
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            QueryVolumeInformation = _ => VolumeInformation,
+            ScanDrive = (_, _, _, _, _, _) =>
+                [[BrokerHostFactory.Record(5, ".", 3), BrokerHostFactory.Record(20, "file.txt"), BrokerHostFactory.Record(21, ""), BrokerHostFactory.Record((ulong)uint.MaxValue + 1, "overflow")]]
+        }));
 
         var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard);
         using var block = result.Block;
@@ -176,7 +198,11 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
     [TestMethod]
     public async Task Produce_PreservesRequestedCacheTagThroughHostCompletion()
     {
-        await using var broker = new InProcessBroker(CreateHost());
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            QueryVolumeInformation = _ => VolumeInformation
+        }));
         var tag = new CacheTag("GITW", 7);
 
         var result = await ProduceAsync(broker.Process, Request(Target()) with { CacheTag = tag }).WaitAsync(HangGuard);
@@ -197,10 +223,13 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
     [TestMethod]
     public async Task CreateIndexSource_CarriesTheProducerAndTheWatchSourceOfTheSameConnection()
     {
-        await using var broker = new InProcessBroker(CreateHost());
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            QueryVolumeInformation = _ => VolumeInformation
+        }));
 
         var source = new BrokerMftBlockProducer(Connect(broker.Process)).CreateIndexSource();
-
         Assert.IsNotNull(source.WatchSource);
         var result = await source.Producer(Request(Target()), CancellationToken.None).WaitAsync(HangGuard);
         using var block = result.Block;

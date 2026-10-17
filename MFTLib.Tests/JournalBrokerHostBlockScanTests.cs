@@ -36,7 +36,7 @@ public class JournalBrokerHostBlockScanTests
             {
                 Assert.IsTrue(cursorArmed);
                 Assert.AreEqual(new DriveKey('C'), drive);
-                return [[Record(5, ".", 3)], [Record(20, "file.txt")]];
+                return [[BrokerHostFactory.Record(5, ".", 3)], [BrokerHostFactory.Record(20, "file.txt")]];
             }
         });
 
@@ -63,7 +63,13 @@ public class JournalBrokerHostBlockScanTests
     public async Task ScanChannel_BlockFormat_ForwardsRetainedFileNamesToSectionWriter()
     {
         using var blockWriter = new RecordingBlockSectionWriter();
-        var host = CreateHost((_, _, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]);
+        var host = BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)], [BrokerHostFactory.Record(20, "file.txt")]],
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
+            ProcessorCount = null
+        });
 
         var frames = await ScanAsync(host, blockWriter, [".git"]);
 
@@ -80,10 +86,16 @@ public class JournalBrokerHostBlockScanTests
     public async Task ScanChannel_RecordsTheSourceOmitted_AreAddedToTheSkippedRecordCount()
     {
         using var blockWriter = new RecordingBlockSectionWriter();
-        var host = CreateHost((_, _, _, _, recordsOmitted, _) =>
+        var host = BrokerHostFactory.Create(new()
         {
-            recordsOmitted(3);
-            return [[Record(5, ".", 3)], [Record(20, "file.txt"), Record(uint.MaxValue + 1UL, "wide")]];
+            QueryCursor = _ => ArmedCursor,
+            ScanDrive = (_, _, _, _, recordsOmitted, _) =>
+            {
+                recordsOmitted(3);
+                return [[BrokerHostFactory.Record(5, ".", 3)], [BrokerHostFactory.Record(20, "file.txt"), BrokerHostFactory.Record(uint.MaxValue + 1UL, "wide")]];
+            },
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
+            ProcessorCount = null
         });
 
         var frames = await ScanAsync(host, blockWriter);
@@ -95,7 +107,13 @@ public class JournalBrokerHostBlockScanTests
     [TestMethod]
     public async Task ScanChannel_BlockFormatWithoutSectionWriterReportsNamedError()
     {
-        var host = CreateHost((_, _, _, _, _, _) => [[Record(5, ".", 3)]]);
+        var host = BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
+            ProcessorCount = null
+        });
 
         var frames = await ScanAsync(host, null);
 
@@ -111,11 +129,17 @@ public class JournalBrokerHostBlockScanTests
 
         static IEnumerable<IReadOnlyList<MftRecord>> Batches()
         {
-            yield return [Record(5, ".", 3)];
+            yield return [BrokerHostFactory.Record(5, ".", 3)];
             throw new IOException("record batch failed");
         }
 
-        var frames = await ScanAsync(CreateHost((_, _, _, _, _, _) => Batches()), blockWriter);
+        var frames = await ScanAsync(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            ScanDrive = (_, _, _, _, _, _) => Batches(),
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
+            ProcessorCount = null
+        }), blockWriter);
 
         Assert.AreEqual(6u, blockWriter.Block.Header.RowCount);
         Assert.IsFalse(blockWriter.Block.Header.IsComplete);
@@ -129,12 +153,18 @@ public class JournalBrokerHostBlockScanTests
     {
         using var blockWriter = new RecordingBlockSectionWriter();
         var parsingReported = new TestGate();
-        var host = CreateHost((_, _, reporting, _, _, _) =>
+        var host = BrokerHostFactory.Create(new()
         {
-            reporting.Progress!.Report(new BlockWriteProgress(500, 0, 1000, null, BlockScanPhase.Parsing));
-            parsingReported.MarkEntered();
-            parsingReported.WaitForRelease();
-            return [[Record(5, ".", 3)], [Record(20, "file.txt")]];
+            QueryCursor = _ => ArmedCursor,
+            ScanDrive = (_, _, reporting, _, _, _) =>
+            {
+                reporting.Progress!.Report(new BlockWriteProgress(500, 0, 1000, null, BlockScanPhase.Parsing));
+                parsingReported.MarkEntered();
+                parsingReported.WaitForRelease();
+                return [[BrokerHostFactory.Record(5, ".", 3)], [BrokerHostFactory.Record(20, "file.txt")]];
+            },
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
+            ProcessorCount = null
         });
         await using var harness = new HostChannelHarness(host, blockWriter);
         var pipe = await harness.OpenScanChannelAsync('C', "section-C");
@@ -165,13 +195,19 @@ public class JournalBrokerHostBlockScanTests
         // cancelled token before it can write it.
         IEnumerable<IReadOnlyList<MftRecord>> Batches(CancellationToken cancellationToken)
         {
-            yield return [Record(5, ".", 3)];
+            yield return [BrokerHostFactory.Record(5, ".", 3)];
             scanParked.MarkEntered();
             cancellationToken.WaitHandle.WaitOne(HangGuard);
-            yield return [Record(20, "file.txt")];
+            yield return [BrokerHostFactory.Record(20, "file.txt")];
         }
 
-        var host = CreateHost((_, _, _, _, _, cancellationToken) => Batches(cancellationToken));
+        var host = BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            ScanDrive = (_, _, _, _, _, cancellationToken) => Batches(cancellationToken),
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
+            ProcessorCount = null
+        });
         await using var harness = new HostChannelHarness(host, blockWriter);
         var pipe = await harness.OpenScanChannelAsync('C', "section-C");
         await scanParked.Entered.WaitAsync(HangGuard);
@@ -185,28 +221,24 @@ public class JournalBrokerHostBlockScanTests
         Assert.IsFalse(frames.Any(frame => frame.Kind is BrokerFrameKind.ScanReady or BrokerFrameKind.Error));
     }
 
-    static JournalBrokerHost CreateHost(MftRecordBatchSource source)
-    {
-        return new JournalBrokerHost(new ScriptedVolumeAccess
-        {
-            CursorQuery = _ => ArmedCursor,
-            RecordBatches = source,
-            JournalRead = (_, cursor, _) => ([], cursor)
-        });
-    }
-
     [TestMethod]
     public async Task ScanChannel_ForwardsSharedScanArgumentsAndProducesExpectedRows()
     {
         MftRecord[][] batches =
         [
-            [Record(5, ".", 3), Record(10, "folder", 3),
-                new MftRecord(20, 10, new MftRecordFields(1), "file.txt"), Record(21, "")],
-            [Record(30, "other.txt"), new MftRecord(1UL << 33, 5, new MftRecordFields(1), "huge")]
+            [BrokerHostFactory.Record(5, ".", 3), BrokerHostFactory.Record(10, "folder", 3),
+                new MftRecord(20, 10, new MftRecordFields(1), "file.txt"), BrokerHostFactory.Record(21, "")],
+            [BrokerHostFactory.Record(30, "other.txt"), new MftRecord(1UL << 33, 5, new MftRecordFields(1), "huge")]
         ];
         var timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 9, 3, 0, 0, 0, TimeSpan.Zero));
         using var hostWriter = new RecordingBlockSectionWriter(timeProvider: timeProvider);
-        var hostFrames = await ScanAsync(CreateHost((_, _, _, _, _, _) => batches), hostWriter);
+        var hostFrames = await ScanAsync(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            ScanDrive = (_, _, _, _, _, _) => batches,
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
+            ProcessorCount = null
+        }), hostWriter);
         var skippedByHost = hostFrames.Single(frame => frame.Kind == BrokerFrameKind.ScanReady).SkippedRecordCount;
 
         using var directBlock = BlockFile.Create(new BlockFileCreateOptions
@@ -282,10 +314,5 @@ public class JournalBrokerHostBlockScanTests
         await using var harness = new HostChannelHarness(host, blockWriter);
         var pipe = await harness.OpenScanChannelAsync('C', "section-C", retainedFileNames);
         return await HostChannelHarness.ReadToEndAsync(pipe);
-    }
-
-    static MftRecord Record(ulong recordNumber, string name, ushort flags = 1)
-    {
-        return new MftRecord(recordNumber, 5, new MftRecordFields(flags), name);
     }
 }

@@ -13,24 +13,24 @@ namespace MFTLib.Tests;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public class MftDumpInputFaultTests
+public sealed class MftDumpInputFaultTests : IDisposable
 {
-    string _directory = null!;
+    TempDirectory _tempDirectory = null!;
+    string _directory => _tempDirectory.Path;
     string _path = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _directory = MftDumpFixture.NewOwnedDirectory();
+        _tempDirectory = new TempDirectory("mftlib-dump", create: false);
         _path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
     }
 
-    [TestCleanup]
-    public void Cleanup()
+    public void Dispose()
     {
         NativeTestHooks.NativeResetTestState();
         MFTLibNative.Hooks.ResetToDefaults();
-        MftDumpFixture.DeleteOwnedDirectory(_directory);
+        _tempDirectory.Dispose();
     }
 
     [TestMethod]

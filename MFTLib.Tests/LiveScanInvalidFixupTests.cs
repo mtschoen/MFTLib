@@ -13,28 +13,27 @@ namespace MFTLib.Tests;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public class LiveScanInvalidFixupTests
+public sealed class LiveScanInvalidFixupTests : IDisposable
 {
     const int ClusterSize = 4096;
     const int RecordSize = 1024;
 
-    string _directory = null!;
+    TempDirectory _tempDirectory = null!;
+    string _directory => _tempDirectory.Path;
 
     [TestInitialize]
     public void Initialize()
     {
-        _directory = MftDumpFixture.NewOwnedDirectory();
-        Directory.CreateDirectory(_directory);
+        _tempDirectory = new TempDirectory("mftlib-dump");
     }
 
-    [TestCleanup]
-    public void Cleanup()
+    public void Dispose()
     {
         NativeTestHooks.NativeResetTestState();
         MFTLibNative.Hooks.ResetToDefaults();
         FileUtilities.Hooks.ResetToDefaults();
         Kernel32.Hooks.ResetToDefaults();
-        MftDumpFixture.DeleteOwnedDirectory(_directory);
+        _tempDirectory.Dispose();
     }
 
     [TestMethod]

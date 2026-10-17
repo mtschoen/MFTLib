@@ -1,10 +1,11 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
 
 [TestClass]
-public partial class BlockWriterTests
+public sealed partial class BlockWriterTests : IDisposable
 {
     static readonly DateTime Moment = new(2026, 9, 2, 8, 0, 0, DateTimeKind.Utc);
 
@@ -16,29 +17,17 @@ public partial class BlockWriterTests
         ModifiedTicks: Moment.Ticks,
         SequenceNumber: 0);
 
-    string _directory = null!;
+    TempDirectory _directory = null!;
     string _blockPath = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _directory = Path.Combine(Path.GetTempPath(), $"mftlib-writer-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_directory);
-        _blockPath = Path.Combine(_directory, "T-0BADF00D.mlix");
+        _directory = new TempDirectory("mftlib-writer");
+        _blockPath = Path.Combine(_directory.Path, "T-0BADF00D.mlix");
     }
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        try
-        {
-            Directory.Delete(_directory, recursive: true);
-        }
-        catch (IOException)
-        {
-            // Windows can hold a just-unmapped file briefly; a leftover temp directory is harmless.
-        }
-    }
+    public void Dispose() => _directory.Dispose();
 
     static RowColumns FileColumns(ushort sequenceNumber, long size = 0, uint attributes = 0,
         uint parentRow = 0)

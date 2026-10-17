@@ -15,40 +15,28 @@ namespace MFTLib.Tests.Index;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public class CacheDirectoryDeletionLiveOwnerTests
+public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
 {
-    OwnedIndexDirectories _directories = null!;
-    string _treeRoot = null!;
-    string _cacheDirectory = null!;
+    IndexTreeFixture _fixture = null!;
+    string _treeRoot => _fixture.TreeRoot;
+    string _cacheDirectory => _fixture.CacheDirectory;
     uint _volumeSerial;
 
     [TestInitialize]
     public void Initialize()
     {
         _volumeSerial = TestVolumeSerial.GetNext();
-        _directories = new OwnedIndexDirectories();
-        _treeRoot = _directories.TreeRoot;
-        _cacheDirectory = _directories.CacheDirectory;
-        Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
-        File.WriteAllText(Path.Combine(_treeRoot, "Documents", "readme.md"), "hello");
+        _fixture = new IndexTreeFixture();
     }
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        _directories.Dispose();
-    }
+    public void Dispose() => _fixture.Dispose();
 
-    FileIndexOptions Options(bool cacheOnly = false, IProgress<IndexScanProgress>? progress = null)
-    {
-        return new FileIndexOptions
+    FileIndexOptions Options(bool cacheOnly = false, IProgress<IndexScanProgress>? progress = null) =>
+        _fixture.Options(volumeSerial: _volumeSerial,
+            cacheMode: cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent) with
         {
-            Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial, ProducerKind.Enumeration)],
-            CacheDirectory = _cacheDirectory,
-            CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
             ScanProgress = progress
         };
-    }
 
     string CanonicalPath => Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
 

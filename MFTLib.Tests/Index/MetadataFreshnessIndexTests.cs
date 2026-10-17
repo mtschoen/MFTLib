@@ -13,7 +13,7 @@ namespace MFTLib.Tests.Index;
 ///     The index has no watch and no live journal: batches are applied through the test extensions.
 /// </summary>
 [TestClass]
-public class MetadataFreshnessIndexTests
+public sealed class MetadataFreshnessIndexTests : IDisposable
 {
     const uint Serial = 0x2468;
     static readonly DateTime ScannedMoment = new(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -21,24 +21,16 @@ public class MetadataFreshnessIndexTests
     static readonly DateTime EventMoment = new(2026, 10, 14, 0, 0, 0, DateTimeKind.Utc);
     static readonly SyntheticJournalCursor Cursor = new(7, 4096);
 
-    OwnedIndexDirectories _directories = null!;
+    IndexTreeFixture _fixture = null!;
 
     public TestContext TestContext { get; set; } = null!;
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
     [TestInitialize]
-    public void Initialize()
-    {
-        _directories = new OwnedIndexDirectories();
-        Directory.CreateDirectory(_directories.TreeRoot);
-    }
+    public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        _directories.Dispose();
-    }
+    public void Dispose() => _fixture.Dispose();
 
     static SyntheticRow[] Rows() =>
     [
@@ -54,19 +46,15 @@ public class MetadataFreshnessIndexTests
         new SyntheticRow(9, "other.txt", 6) { Size = 77, LastWriteTime = OtherScannedMoment }
     ];
 
-    FileIndexOptions CacheOnly() => new()
-    {
-        Drives = [new IndexedDrive('T', _directories.TreeRoot, Serial)],
-        CacheDirectory = _directories.CacheDirectory,
-        MftSource = new MftIndexSource((_, _) => throw new InvalidOperationException("the cache must satisfy the open")),
-        CacheMode = CacheMode.ExistingOnly
-    };
+    FileIndexOptions CacheOnly() =>
+        _fixture.Options(volumeSerial: Serial, producer: ProducerKind.Mft, cacheMode: CacheMode.ExistingOnly) with
+        {
+            MftSource = new MftIndexSource((_, _) => throw new InvalidOperationException("the cache must satisfy the open"))
+        };
 
-    string Seed()
-    {
-        return SyntheticBlock.WriteCached(_directories.CacheDirectory, 'T', Serial,
+    string Seed() =>
+        SyntheticBlock.WriteCached(_fixture.CacheDirectory, 'T', Serial,
             new SyntheticBlockOptions { JournalCursor = Cursor, ScanTimestamp = ScannedMoment }, Rows());
-    }
 
     static SyntheticJournalRecord Record(ulong recordNumber, ulong parent, string name, SyntheticJournalReason reason,
         FileAttributes attributes = FileAttributes.Archive) =>
@@ -244,12 +232,11 @@ public class MetadataFreshnessIndexTests
             JournalCursor = Cursor,
             ScanTimestamp = ScannedMoment
         };
-        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
-        {
-            Drives = [new IndexedDrive('T', _directories.TreeRoot, Serial)],
-            CacheDirectory = _directories.CacheDirectory,
-            MftSource = new MftIndexSource(producer.Producer)
-        }, Token);
+        await using var index = await FileIndex.OpenAsync(
+            _fixture.Options(volumeSerial: Serial, producer: ProducerKind.Mft) with
+            {
+                MftSource = new MftIndexSource(producer.Producer)
+            }, Token);
         FileIndexTestAccess.ApplyJournalEntries(index, 'T',
         [
             Record(7, 6, "report.txt", SyntheticJournalReason.DataExtend),

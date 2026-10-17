@@ -1,37 +1,26 @@
 using System.Runtime.Versioning;
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
 
 [TestClass]
-public class NamedBlockSectionTests
+public sealed class NamedBlockSectionTests : IDisposable
 {
     static readonly DateTime Moment = new(2026, 9, 2, 8, 0, 0, DateTimeKind.Utc);
 
-    string _directory = null!;
+    TempDirectory _directory = null!;
     string _blockPath = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _directory = Path.Combine(Path.GetTempPath(), $"mftlib-named-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_directory);
-        _blockPath = Path.Combine(_directory, "T-0BADF00D.mlix");
+        _directory = new TempDirectory("mftlib-named");
+        _blockPath = Path.Combine(_directory.Path, "T-0BADF00D.mlix");
     }
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        try
-        {
-            Directory.Delete(_directory, recursive: true);
-        }
-        catch (IOException)
-        {
-            // Windows can hold a just-unmapped file briefly; a leftover temp directory is harmless.
-        }
-    }
+    public void Dispose() => _directory.Dispose();
 
     [TestMethod]
     [SupportedOSPlatform("windows")]
@@ -96,7 +85,7 @@ public class NamedBlockSectionTests
             // A second create under the same already-published section name makes
             // MemoryMappedFile.CreateFromFile itself throw, before ownership transfers,
             // exercising the branch that deletes the second file and disposes its stream.
-            var secondPath = Path.Combine(_directory, "second.mlix");
+            var secondPath = Path.Combine(_directory.Path, "second.mlix");
             var secondOptions = new BlockFileCreateOptions
             {
                 Path = secondPath,

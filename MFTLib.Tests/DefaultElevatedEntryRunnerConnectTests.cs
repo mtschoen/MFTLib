@@ -15,7 +15,7 @@ public class DefaultElevatedEntryRunnerConnectTests
         try
         {
             await DefaultElevatedEntryRunner.ConnectDrivePipeAsync(pipeName, cancellation.Token)
-                .WaitAsync(TimeSpan.FromSeconds(10));
+                .WaitAsync(HangGuard);
         }
         catch (OperationCanceledException)
         {

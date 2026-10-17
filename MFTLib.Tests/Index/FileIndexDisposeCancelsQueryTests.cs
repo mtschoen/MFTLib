@@ -18,37 +18,22 @@ namespace MFTLib.Tests.Index;
 ///     </para>
 /// </summary>
 [TestClass]
-public class FileIndexDisposeCancelsQueryTests
+public sealed class FileIndexDisposeCancelsQueryTests : IDisposable
 {
     static readonly DateTime FixedMoment = new(2026, 9, 14, 0, 0, 0, DateTimeKind.Utc);
-
-    /// <summary>A bound on a handshake that failed, never a duration any assertion measures.</summary>
-    static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(30);
 
     const uint RowCount = 64;
 
     /// <summary>Fewer names than rows, so the duplicate-name scan has groups to find.</summary>
     const uint DistinctNameCount = 8;
 
-    OwnedIndexDirectories _directories = null!;
-    string _cacheDirectory = null!;
-    string _treeRoot = null!;
+    IndexTreeFixture _fixture = null!;
+    string _cacheDirectory => _fixture.CacheDirectory;
 
     [TestInitialize]
-    public void Initialize()
-    {
-        _directories = new OwnedIndexDirectories();
-        _treeRoot = _directories.TreeRoot;
-        _cacheDirectory = _directories.CacheDirectory;
-        Directory.CreateDirectory(_treeRoot);
-        Directory.CreateDirectory(_cacheDirectory);
-    }
+    public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        _directories.Dispose();
-    }
+    public void Dispose() => _fixture.Dispose();
 
     /// <summary>The same through the parallel search path, with a pattern that matches every row.</summary>
     [TestMethod]
@@ -196,10 +181,10 @@ public class FileIndexDisposeCancelsQueryTests
             index.Hooks.LifecycleGatesTakenForDisposal = () => cancellationDelivered.TrySetResult();
 
             var reader = Task.Run(() => read(index, root));
-            await admitted.Task.WaitAsync(HandshakeTimeout);
+            await admitted.Task.WaitAsync(HangGuard * 3);
 
             disposal = index.DisposeAsync().AsTask();
-            await cancellationDelivered.Task.WaitAsync(HandshakeTimeout);
+            await cancellationDelivered.Task.WaitAsync(HangGuard * 3);
             Assert.IsFalse(disposal.IsCompleted,
                 "DisposeAsync returned while the reader still held its borrow on the snapshot");
 
@@ -220,16 +205,12 @@ public class FileIndexDisposeCancelsQueryTests
         }
     }
 
-    FileIndexOptions SyntheticDriveOptions()
-    {
-        return new FileIndexOptions
+    FileIndexOptions SyntheticDriveOptions() =>
+        _fixture.Options(producer: ProducerKind.Mft) with
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
-            CacheDirectory = _cacheDirectory,
             MftSource = new MftIndexSource((request, _) => Task.FromResult(
                 new MftBlockProduceResult(SeededBlocks.Build(request, RowCount, i => $"file{i % DistinctNameCount}.dat", FixedMoment),
                     SkippedRecordCount: 0)))
         };
-    }
 
 }

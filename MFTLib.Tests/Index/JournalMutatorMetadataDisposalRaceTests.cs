@@ -12,8 +12,6 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public class JournalMutatorMetadataDisposalRaceTests
 {
-    static readonly TimeSpan HandoffTimeout = TimeSpan.FromSeconds(30);
-
     [TestMethod]
     public void RowMetadataUpdate_RacingDispose_CompletesBeforeTheViewIsUnmapped()
     {
@@ -43,10 +41,10 @@ public class JournalMutatorMetadataDisposalRaceTests
             [CreateEntry(7, 6, "notes.txt", UsnReason.DataExtend, timestamp)], 7, 2000));
         try
         {
-            Assert.IsTrue(rowCaptured.Entered.Wait(HandoffTimeout),
+            Assert.IsTrue(rowCaptured.Entered.Wait(HangGuard * 3),
                 "the metadata write never ran inside the writer's access scope, so the race was never set up");
             var disposeTask = Task.Run(block.Dispose);
-            Assert.IsTrue(disposeStarted.Entered.Wait(HandoffTimeout), "dispose never began");
+            Assert.IsTrue(disposeStarted.Entered.Wait(HangGuard * 3), "dispose never began");
             Assert.IsTrue(disposeWillWait, "dispose did not see the metadata write's access scope, so it would unmap under it");
             releaseWriter.Release();
 
@@ -54,19 +52,19 @@ public class JournalMutatorMetadataDisposalRaceTests
             // the write that was already inside the block is what must have completed first.
             try
             {
-                Assert.IsTrue(applyTask.Wait(HandoffTimeout), "the in-flight apply never finished");
+                Assert.IsTrue(applyTask.Wait(HangGuard * 3), "the in-flight apply never finished");
             }
             catch (AggregateException exception) when (exception.InnerException is ObjectDisposedException)
             {
                 // Expected for a step admitted after disposal began.
             }
 
-            Assert.IsTrue(disposeTask.Wait(HandoffTimeout), "dispose never finished");
+            Assert.IsTrue(disposeTask.Wait(HangGuard * 3), "dispose never finished");
         }
         finally
         {
             releaseWriter.Release();
-            snapshot.ReleaseNowAsync().Wait(HandoffTimeout);
+            snapshot.ReleaseNowAsync().Wait(HangGuard * 3);
         }
     }
 }

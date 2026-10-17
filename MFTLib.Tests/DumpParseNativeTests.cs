@@ -15,20 +15,19 @@ namespace MFTLib.Tests;
 [DoNotParallelize]
 public partial class DumpParseNativeTests
 {
-    string _directory = null!;
+    TempDirectory _tempDirectory = null!;
+    string _directory => _tempDirectory.Path;
 
     [TestInitialize]
     public void Initialize()
     {
-        _directory = MftDumpFixture.NewOwnedDirectory();
-        Directory.CreateDirectory(_directory);
+        _tempDirectory = new TempDirectory("mftlib-dump");
     }
 
-    [TestCleanup]
-    public void Cleanup()
+    public void Dispose()
     {
         NativeTestHooks.NativeResetTestState();
-        MftDumpFixture.DeleteOwnedDirectory(_directory);
+        _tempDirectory.Dispose();
     }
 
     [TestMethod]

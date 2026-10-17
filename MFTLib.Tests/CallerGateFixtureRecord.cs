@@ -47,6 +47,7 @@ public record CallerGateInheritableRecord(int Value)
     public int Echo => Value;
 }
 
+// aislop-ignore-next-line jb/EmptyConstructor
 public sealed record CallerGateEmptyRecord();
 
 public sealed record CallerGateAuthoredDeconstructRecord(int Left, int Right)

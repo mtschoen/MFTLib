@@ -12,10 +12,15 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
     public async Task GrowUsnJournalAsync_Success_SendsRequestAndReturnsSettings()
     {
         var received = new List<(DriveKey Drive, long MaximumSize, long AllocationDelta)>();
-        await using var broker = new InProcessBroker(CreateHost(growUsnJournal: (drive, maximumSize, allocationDelta) =>
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
-            received.Add((drive, maximumSize, allocationDelta));
-            return new UsnJournalSettings { MaximumSize = maximumSize, AllocationDelta = allocationDelta };
+            QueryCursor = _ => ArmedCursor,
+            QueryVolumeInformation = _ => VolumeInformation,
+            GrowUsnJournal = (drive, maximumSize, allocationDelta) =>
+            {
+                received.Add((drive, maximumSize, allocationDelta));
+                return new UsnJournalSettings { MaximumSize = maximumSize, AllocationDelta = allocationDelta };
+            }
         }));
 
         var settings = await broker.Process.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None)
@@ -40,9 +45,14 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
     [TestMethod]
     public async Task GrowUsnJournalAsync_ErrorFrame_ThrowsWithTheRefusalMessage()
     {
-        await using var broker = new InProcessBroker(CreateHost(growUsnJournal: (_, _, _) =>
-            throw new InvalidOperationException("Refusing to resize the USN journal to 32 bytes: the current maximum " +
-                                                 "is 64 bytes, and only growth is permitted.")));
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            QueryVolumeInformation = _ => VolumeInformation,
+            GrowUsnJournal = (_, _, _) =>
+                throw new InvalidOperationException("Refusing to resize the USN journal to 32 bytes: the current maximum " +
+                                                    "is 64 bytes, and only growth is permitted.")
+        }));
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
             broker.Process.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 32, AllocationDelta = 16 }, CancellationToken.None).WaitAsync(HangGuard));
@@ -74,10 +84,15 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
         // The client does not validate sizes (BrokerProcess.Control.cs, GrowUsnJournalAsync): the
         // volume behind the host does, and its refusal returns as an Error frame.
         var received = new List<(long MaximumSize, long AllocationDelta)>();
-        await using var broker = new InProcessBroker(CreateHost(growUsnJournal: (_, maximumSize, allocationDelta) =>
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
-            received.Add((maximumSize, allocationDelta));
-            throw new ArgumentException("positive sizes are required");
+            QueryCursor = _ => ArmedCursor,
+            QueryVolumeInformation = _ => VolumeInformation,
+            GrowUsnJournal = (_, maximumSize, allocationDelta) =>
+            {
+                received.Add((maximumSize, allocationDelta));
+                throw new ArgumentException("positive sizes are required");
+            }
         }));
 
         var zero = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>

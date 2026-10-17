@@ -12,9 +12,10 @@ namespace MFTLib.Tests;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public class NativeInterruptedIoTests
+public sealed class NativeInterruptedIoTests : IDisposable
 {
-    string _directory = null!;
+    TempDirectory? _tempDirectory;
+    string _directory => _tempDirectory!.Path;
     string _path = null!;
 
     [TestInitialize]
@@ -25,12 +26,11 @@ public class NativeInterruptedIoTests
             Assert.Inconclusive("The interrupted system call hook exists only in the POSIX native library.");
         }
 
-        _directory = MftDumpFixture.NewOwnedDirectory();
+        _tempDirectory = new TempDirectory("mftlib-dump", create: false);
         _path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
     }
 
-    [TestCleanup]
-    public void Cleanup()
+    public void Dispose()
     {
         if (!OperatingSystem.IsLinux())
         {
@@ -38,7 +38,7 @@ public class NativeInterruptedIoTests
         }
 
         NativeTestHooks.NativeResetTestState();
-        MftDumpFixture.DeleteOwnedDirectory(_directory);
+        _tempDirectory?.Dispose();
     }
 
     [TestMethod]

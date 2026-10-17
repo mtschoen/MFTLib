@@ -7,29 +7,22 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 [TestClass]
-public class FileIndexWatchTests
+public sealed class FileIndexWatchTests : IAsyncDisposable
 {
     static readonly DateTime ChangeMoment = new(2026, 9, 2, 6, 0, 0, DateTimeKind.Utc);
 
-    string _treeRoot = null!;
-
-    /// <summary>
-    ///     The enumeration drive's own tree. Drives settle concurrently and ordinals follow settle
-    ///     order, so a path both drives could resolve would land on whichever settled first.
-    /// </summary>
-    string _enumerationRoot = null!;
-    string _cacheDirectory = null!;
+    IndexTreeFixture _fixture = null!;
+    TempDirectory _enumerationDir = null!;
+    string _treeRoot => _fixture.TreeRoot;
+    string _enumerationRoot => _enumerationDir.Path;
+    string _cacheDirectory => _fixture.CacheDirectory;
     FileIndex _index = null!;
 
     [TestInitialize]
     public async Task Initialize()
     {
-        _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
-        _enumerationRoot = Path.Combine(Path.GetTempPath(), $"mftlib-enumeration-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_enumerationRoot);
-        Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "readme.md"), "hello");
+        _fixture = new IndexTreeFixture();
+        _enumerationDir = new TempDirectory("mftlib-enumeration");
 
         // Seed a warm-start MFT block for drive 'T' so journal mutations are supported on it.
         Directory.CreateDirectory(_cacheDirectory);
@@ -69,19 +62,21 @@ public class FileIndexWatchTests
         }, CancellationToken.None);
     }
 
-    [TestCleanup]
-    public async Task Cleanup()
+    public async ValueTask DisposeAsync()
     {
-        await _index.DisposeAsync();
-        foreach (var directory in new[] { _treeRoot, _enumerationRoot, _cacheDirectory })
+        try
+        {
+            await _index.DisposeAsync();
+        }
+        finally
         {
             try
             {
-                Directory.Delete(directory, recursive: true);
+                _enumerationDir.Dispose();
             }
-            catch (IOException)
+            finally
             {
-                // A just-unmapped block file can stay locked briefly on Windows.
+                _fixture.Dispose();
             }
         }
     }

@@ -1,6 +1,4 @@
-using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
-using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -16,12 +14,19 @@ public class GrowUsnJournalHostTests
     [TestMethod]
     public async Task GrowUsnJournal_SeamReturnsSettings_EmitsUsnJournalSettings()
     {
-        await using var harness = new HostChannelHarness(CreateHost(growUsnJournal: (_, maximumSize, allocationDelta) =>
-            new UsnJournalSettings
-            {
-                MaximumSize = maximumSize,
-                AllocationDelta = allocationDelta
-            }));
+        await using var harness = new HostChannelHarness(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => default,
+            ScanDrive = (_, _, _, _, _, _) => [],
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
+            ProcessorCount = null,
+            GrowUsnJournal = (_, maximumSize, allocationDelta) =>
+                new UsnJournalSettings
+                {
+                    MaximumSize = maximumSize,
+                    AllocationDelta = allocationDelta
+                }
+        }));
 
         await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 31, 'C', 0x08000000, 0x01000000));
         var frame = await harness.ReadControlAsync();
@@ -35,8 +40,15 @@ public class GrowUsnJournalHostTests
     [TestMethod]
     public async Task GrowUsnJournal_SeamThrows_EmitsErrorWithMessage()
     {
-        await using var harness = new HostChannelHarness(CreateHost(growUsnJournal: (_, _, _) =>
-            throw new InvalidOperationException("Refusing to resize: only growth is permitted.")));
+        await using var harness = new HostChannelHarness(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => default,
+            ScanDrive = (_, _, _, _, _, _) => [],
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
+            ProcessorCount = null,
+            GrowUsnJournal = (_, _, _) =>
+                throw new InvalidOperationException("Refusing to resize: only growth is permitted.")
+        }));
 
         await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 32, 'C', 0x08000000, 0x01000000));
         var frame = await harness.ReadControlAsync();
@@ -49,7 +61,13 @@ public class GrowUsnJournalHostTests
     [TestMethod]
     public async Task GrowUsnJournal_UnsupportedOperation_EmitsError()
     {
-        await using var harness = new HostChannelHarness(CreateHost()); // growUsnJournal omitted -> unsupported throws
+        await using var harness = new HostChannelHarness(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => default,
+            ScanDrive = (_, _, _, _, _, _) => [],
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
+            ProcessorCount = null
+        }));
 
         await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 33, 'C', 0x08000000, 0x01000000));
         var frame = await harness.ReadControlAsync();
@@ -57,16 +75,5 @@ public class GrowUsnJournalHostTests
         Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
         Assert.AreEqual(33u, frame.RequestId);
         Assert.AreEqual("Broker has no journal grow source", frame.Message);
-    }
-
-    static JournalBrokerHost CreateHost(Func<DriveKey, long, long, UsnJournalSettings>? growUsnJournal = null)
-    {
-        return new JournalBrokerHost(new ScriptedVolumeAccess
-        {
-            CursorQuery = _ => default,
-            RecordBatches = (_, _, _, _, _, _) => [],
-            JournalRead = (_, cursor, _) => (Array.Empty<UsnJournalEntry>(), cursor),
-            JournalGrow = growUsnJournal ?? ScriptedVolumeAccess.UnsupportedGrow
-        });
     }
 }

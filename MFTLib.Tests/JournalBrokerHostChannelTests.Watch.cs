@@ -16,7 +16,13 @@ public partial class JournalBrokerHostChannelTests
         var since = new UsnJournalCursor(7, 100);
         DriveKey? watchedDrive = null;
         UsnJournalCursor? watchedSince = null;
-        var host = CreateHost(queryCursor: _ => Tip, watchDrive: Watch);
+        var host = BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryCursor = _ => Tip,
+            WatchDrive = Watch,
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
+        });
         await using var harness = new HostChannelHarness(host);
 
         var pipe = await harness.OpenWatchChannelAsync('C', since);
@@ -49,7 +55,13 @@ public partial class JournalBrokerHostChannelTests
     [TestMethod]
     public async Task WatchChannel_SourceThrows_WritesErrorAndCloses()
     {
-        var host = CreateHost(queryCursor: _ => Tip, watchDrive: FailingWatch);
+        var host = BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryCursor = _ => Tip,
+            WatchDrive = FailingWatch,
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
+        });
         await using var harness = new HostChannelHarness(host);
 
         var pipe = await harness.OpenWatchChannelAsync('C', default);
@@ -82,7 +94,13 @@ public partial class JournalBrokerHostChannelTests
             ['C'] = new(),
             ['D'] = new()
         };
-        var host = CreateHost(queryCursor: _ => Tip, watchDrive: (drive, _, _, token) => sources[drive].RunAsync(token));
+        var host = BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryCursor = _ => Tip,
+            WatchDrive = (drive, _, _, token) => sources[drive].RunAsync(token),
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
+        });
         await using var harness = new HostChannelHarness(host);
         var pipeC = await harness.OpenWatchChannelAsync('C', Tip);
         var pipeD = await harness.OpenWatchChannelAsync('D', Tip);
@@ -107,8 +125,14 @@ public partial class JournalBrokerHostChannelTests
         var clock = new TimerSignalingClock();
         var stubborn = new ScriptedWatch(ignoreCancellation: true);
         var cooperative = new ScriptedWatch();
-        var host = CreateHost(queryCursor: _ => Tip, timeProvider: clock,
-            watchDrive: (drive, _, _, token) => (drive.Letter == 'C' ? stubborn : cooperative).RunAsync(token));
+        var host = BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryCursor = _ => Tip,
+            TimeProvider = clock,
+            WatchDrive = (drive, _, _, token) => (drive.Letter == 'C' ? stubborn : cooperative).RunAsync(token),
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
+        });
         var harness = new HostChannelHarness(host);
         try
         {
@@ -139,8 +163,14 @@ public partial class JournalBrokerHostChannelTests
         var clock = new TimerSignalingClock();
         var stubborn = new ScriptedWatch(ignoreCancellation: true);
         var cooperative = new ScriptedWatch();
-        var host = CreateHost(queryCursor: _ => Tip, timeProvider: clock, queryVolumeInfo: _ => Volume,
-            watchDrive: (drive, _, _, token) => (drive.Letter == 'C' ? stubborn : cooperative).RunAsync(token));
+        var host = BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryCursor = _ => Tip,
+            TimeProvider = clock,
+            QueryVolumeInformation = _ => Volume,
+            WatchDrive = (drive, _, _, token) => (drive.Letter == 'C' ? stubborn : cooperative).RunAsync(token)
+        });
         var harness = new HostChannelHarness(host, breakableControl: true);
         var hostControl = harness.BreakableControl!;
         try

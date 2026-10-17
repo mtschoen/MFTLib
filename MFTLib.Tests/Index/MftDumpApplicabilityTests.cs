@@ -177,27 +177,16 @@ public class MftDumpApplicabilityTests
     [TestMethod]
     public async Task StartWatching_ASourceWithNoWatchSourceIsNotApplicable()
     {
-        var directories = new OwnedIndexDirectories();
-        Directory.CreateDirectory(directories.TreeRoot);
-        var options = new FileIndexOptions
+        using var fixture = new IndexTreeFixture(seedDocuments: false);
+        var options = fixture.Options(volumeSerial: 0, producer: ProducerKind.Mft, cacheMode: CacheMode.Disabled) with
         {
-            Drives = [new IndexedDrive('T', directories.TreeRoot, 0)],
-            CacheMode = CacheMode.Disabled,
-            CacheDirectory = directories.CacheDirectory,
             MftSource = new MftIndexSource(MftDumpIndexes.Produce)
         };
-        try
-        {
-            await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
+        await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
-            await DriveResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync(['T'], CancellationToken.None));
-            await DriveResultAssertions.NotApplicableAsync(() => index.WaitForCatchUpAsync(['T'], CancellationToken.None));
-            Assert.IsFalse(index.Drives.Single().Watch.IsRequested);
-        }
-        finally
-        {
-            directories.Dispose();
-        }
+        await DriveResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync(['T'], CancellationToken.None));
+        await DriveResultAssertions.NotApplicableAsync(() => index.WaitForCatchUpAsync(['T'], CancellationToken.None));
+        Assert.IsFalse(index.Drives.Single().Watch.IsRequested);
     }
 
     [TestMethod]
@@ -257,26 +246,16 @@ public class MftDumpApplicabilityTests
                      (null, false), (new NullWatchSource(), true)
                  })
         {
-            var directories = new OwnedIndexDirectories();
-            Directory.CreateDirectory(directories.TreeRoot);
-            try
-            {
-                await using var index = await FileIndex.OpenAsync(new FileIndexOptions
+            using var fixture = new IndexTreeFixture(seedDocuments: false);
+            await using var index = await FileIndex.OpenAsync(
+                fixture.Options(volumeSerial: 0, producer: ProducerKind.Mft, cacheMode: CacheMode.Disabled) with
                 {
-                    Drives = [new IndexedDrive('T', directories.TreeRoot, 0)],
-                    CacheMode = CacheMode.Disabled,
-                    CacheDirectory = directories.CacheDirectory,
                     MftSource = new MftIndexSource(MftDumpIndexes.Produce, watchSource)
                 }, CancellationToken.None);
 
-                Assert.AreEqual(expected, index.Drives.Single().Watch.IsSupported);
-                await index.RescanAsync(['T'], CancellationToken.None);
-                Assert.AreEqual(expected, index.Drives.Single().Watch.IsSupported);
-            }
-            finally
-            {
-                directories.Dispose();
-            }
+            Assert.AreEqual(expected, index.Drives.Single().Watch.IsSupported);
+            await index.RescanAsync(['T'], CancellationToken.None);
+            Assert.AreEqual(expected, index.Drives.Single().Watch.IsSupported);
         }
     }
 

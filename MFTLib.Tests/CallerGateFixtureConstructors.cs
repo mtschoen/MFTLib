@@ -32,6 +32,7 @@ public record CallerGateOverloadRecord(int Seed)
 // The positional and the replaced property are stored from arguments; the constant one is not.
 public record CallerGateInitializedRecord(int First, int Second)
 {
+    // aislop-ignore-next-line jb/RedundantExplicitPositionalPropertyDeclaration
     public int First { get; init; } = First;
 
     public int Constant { get; init; } = 42;

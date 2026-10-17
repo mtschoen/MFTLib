@@ -300,8 +300,9 @@ public partial class FileIndexPerDriveWatchTests
     [TestMethod]
     public async Task CacheOnlyUnresumable_StartReportsFailedResultWithRescanMessage()
     {
-        using var fixture = new CacheOnlyUnresumableFixture();
-        await using var index = await fixture.OpenAdoptingAnUnresumableBlockAsync(Token);
+        using var fixture = new CheckpointLossFixture(seedDocuments: false);
+        var source = new ScriptedWatchSource();
+        await using var index = await fixture.OpenAdoptingAnUnresumableBlockAsync(source, Token);
 
         var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.StartWatchingAsync(['T'], Token));
 
@@ -309,6 +310,6 @@ public partial class FileIndexPerDriveWatchTests
         var drive = index.Drives.Single();
         Assert.AreEqual(failure.Message, drive.Watch.FailureMessage);
         Assert.AreEqual(WatchState.Faulted, drive.Watch.State);
-        Assert.AreEqual(0, fixture.Source.Starts.Count, "the source is never asked to start the drive");
+        Assert.AreEqual(0, source.Starts.Count, "the source is never asked to start the drive");
     }
 }

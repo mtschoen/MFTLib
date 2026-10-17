@@ -18,10 +18,15 @@ public class BrokerIncludeFreedTests : BrokerBlockTestBase
     public async Task Produce_IncludeFreedReachesTheHostScanAndFilter(bool includeFreed)
     {
         var seen = new List<bool>();
-        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, options, _, _) =>
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
-            seen.Add(options.IncludeFreed);
-            return Batches(options);
+            QueryCursor = _ => ArmedCursor,
+            QueryVolumeInformation = _ => VolumeInformation,
+            ScanDrive = (_, _, _, options, _, _) =>
+            {
+                seen.Add(options.IncludeFreed);
+                return Batches(options);
+            }
         }));
 
         var result = await ProduceAsync(broker.Process, Request(Target()),
@@ -39,10 +44,15 @@ public class BrokerIncludeFreedTests : BrokerBlockTestBase
     public async Task Produce_ADefaultScanAsksForNoFreedRecords()
     {
         var seen = new List<bool>();
-        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, options, _, _) =>
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
-            seen.Add(options.IncludeFreed);
-            return Batches(options);
+            QueryCursor = _ => ArmedCursor,
+            QueryVolumeInformation = _ => VolumeInformation,
+            ScanDrive = (_, _, _, options, _, _) =>
+            {
+                seen.Add(options.IncludeFreed);
+                return Batches(options);
+            }
         }));
 
         var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard);
@@ -55,8 +65,13 @@ public class BrokerIncludeFreedTests : BrokerBlockTestBase
     [TestMethod]
     public async Task Produce_AScriptedSourceThatIgnoresTheOptionStillGetsNoFreedRowsWithoutIt()
     {
-        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, _, _) =>
-            Batches(new MftScanOptions { IncludeFreed = true })));
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            QueryVolumeInformation = _ => VolumeInformation,
+            ScanDrive = (_, _, _, _, _, _) =>
+                Batches(new MftScanOptions { IncludeFreed = true })
+        }));
 
         var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard);
 

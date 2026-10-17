@@ -5,29 +5,17 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 [TestClass]
-public class FileIndexEnumerateRowsTests
+public sealed class FileIndexEnumerateRowsTests : IDisposable
 {
     static readonly DateTime FixedMoment = new(2026, 9, 16, 0, 0, 0, DateTimeKind.Utc);
 
-    OwnedIndexDirectories _directories = null!;
-    string _treeRoot = null!;
-    string _cacheDirectory = null!;
+    IndexTreeFixture _fixture = null!;
+    string _treeRoot => _fixture.TreeRoot;
 
     [TestInitialize]
-    public void Initialize()
-    {
-        _directories = new OwnedIndexDirectories();
-        _treeRoot = _directories.TreeRoot;
-        _cacheDirectory = _directories.CacheDirectory;
-        Directory.CreateDirectory(_treeRoot);
-        Directory.CreateDirectory(_cacheDirectory);
-    }
+    public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        _directories.Dispose();
-    }
+    public void Dispose() => _fixture.Dispose();
 
     string FirstRoot => Path.Combine(_treeRoot, "first");
 
@@ -315,22 +303,17 @@ public class FileIndexEnumerateRowsTests
         await File.WriteAllTextAsync(Path.Combine(SecondRoot, "notes.md"), new string('z', 300));
         await File.WriteAllTextAsync(Path.Combine(SecondRoot, "Pictures", "readme.md"), "world");
 
-        return await FileIndex.OpenAsync(new FileIndexOptions
+        return await FileIndex.OpenAsync(_fixture.Options() with
         {
             Drives = [new IndexedDrive('T', FirstRoot, 1, ProducerKind.Enumeration), new IndexedDrive('U', SecondRoot, 2, ProducerKind.Enumeration)],
-            CacheDirectory = _cacheDirectory,
         }, CancellationToken.None);
     }
 
-    Task<FileIndex> OpenSyntheticIndexAsync(uint rowCount)
-    {
-        return FileIndex.OpenAsync(new FileIndexOptions
+    Task<FileIndex> OpenSyntheticIndexAsync(uint rowCount) =>
+        FileIndex.OpenAsync(_fixture.Options(volumeSerial: TestVolumeSerial.GetNext(), producer: ProducerKind.Mft) with
         {
-            Drives = [new IndexedDrive('T', _treeRoot, TestVolumeSerial.GetNext())],
-            CacheDirectory = _cacheDirectory,
             MftSource = new MftIndexSource((request, _) => Task.FromResult(
                 new MftBlockProduceResult(SeededBlocks.Build(request, rowCount, i => $"file{i}.dat", FixedMoment),
                     SkippedRecordCount: 0)))
         }, CancellationToken.None);
-    }
 }

@@ -15,51 +15,27 @@ namespace MFTLib.Tests.Index;
 ///     later open of that drive throw permanently.
 /// </summary>
 [TestClass]
-public class UnreadableBlockTests
+public sealed class UnreadableBlockTests : IDisposable
 {
-    string _treeRoot = null!;
-    string _cacheDirectory = null!;
+    IndexTreeFixture _fixture = null!;
+    string _cacheDirectory => _fixture.CacheDirectory;
 
     [TestInitialize]
-    public void Initialize()
-    {
-        _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
-        File.WriteAllText(Path.Combine(_treeRoot, "Documents", "readme.md"), "hello");
-    }
+    public void Initialize() => _fixture = new IndexTreeFixture();
 
-    [TestCleanup]
-    public void Cleanup()
+    public void Dispose()
     {
-        foreach (var directory in new[] { _treeRoot, _cacheDirectory })
+        try
         {
-            try
-            {
-                if (Directory.Exists(directory))
-                {
-                    Directory.Delete(directory, recursive: true);
-                }
-            }
-            catch (IOException)
-            {
-                // A just-unmapped block file can stay locked briefly on Windows.
-            }
-            catch (UnauthorizedAccessException)
-            {
-                // A block left read-protected by a test that could not restore it.
-            }
+            _fixture.Dispose();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // A block left read-protected by a test that could not restore it.
         }
     }
 
-    FileIndexOptions Options()
-    {
-        return new FileIndexOptions
-        {
-            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerKind.Enumeration)],
-            CacheDirectory = _cacheDirectory,
-        };
-    }
+    FileIndexOptions Options() => _fixture.Options();
 
     [TestMethod]
     public async Task OpenAsync_UnreadableBlockFile_IsDiscardedAndTheDriveIsColdScanned()

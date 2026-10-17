@@ -14,8 +14,6 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public class BlockWriterDisposalRaceTests
 {
-    static readonly TimeSpan HandoffTimeout = TimeSpan.FromSeconds(30);
-
     static readonly DateTime Moment = new(2026, 9, 14, 8, 0, 0, DateTimeKind.Utc);
 
     static RowColumns FileColumns()
@@ -44,21 +42,21 @@ public class BlockWriterDisposalRaceTests
         var writeTask = Task.Run(() => writer.TryWriteRow(1, "report.pdf", FileColumns()));
         try
         {
-            Assert.IsTrue(rowCaptured.Entered.Wait(HandoffTimeout),
+            Assert.IsTrue(rowCaptured.Entered.Wait(HangGuard * 3),
                 "the writer never reached the row capture, so the race was never set up");
 
             var disposeTask = Task.Run(() => block.Dispose());
-            Assert.IsTrue(disposeStarted.Entered.Wait(HandoffTimeout),
+            Assert.IsTrue(disposeStarted.Entered.Wait(HangGuard * 3),
                 "dispose never began, so the race was never set up");
             Assert.IsFalse(disposeTask.IsCompleted,
                 "dispose returned while a writer was still inside the block");
 
             releaseWriter.Release();
 
-            Assert.IsTrue(writeTask.Wait(HandoffTimeout), "the in-flight write never finished");
+            Assert.IsTrue(writeTask.Wait(HangGuard * 3), "the in-flight write never finished");
             Assert.IsTrue(writeTask.Result,
                 "a write admitted before disposal began must complete against the still-mapped block");
-            Assert.IsTrue(disposeTask.Wait(HandoffTimeout),
+            Assert.IsTrue(disposeTask.Wait(HangGuard * 3),
                 "dispose never finished after the writer left the block");
 
             Assert.ThrowsException<ObjectDisposedException>(

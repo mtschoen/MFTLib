@@ -15,48 +15,22 @@ namespace MFTLib.Tests.Index;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public class FileIndexJournalSettingsTests
+public sealed class FileIndexJournalSettingsTests : IDisposable
 {
-    string _treeRoot = null!;
-    string _cacheDirectory = null!;
+    IndexTreeFixture _fixture = null!;
 
     [TestInitialize]
-    public void Initialize()
-    {
-        _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_treeRoot);
-    }
+    public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
 
-    [TestCleanup]
-    public void Cleanup()
+    public void Dispose()
     {
         JournalQueryFake.Reset();
         FileUtilities.Hooks.ResetToDefaults();
-        foreach (var directory in new[] { _treeRoot, _cacheDirectory })
-        {
-            try
-            {
-                if (Directory.Exists(directory))
-                {
-                    Directory.Delete(directory, recursive: true);
-                }
-            }
-            catch (IOException)
-            {
-                // A just-unmapped block file can stay locked briefly on Windows.
-            }
-        }
+        _fixture.Dispose();
     }
 
-    Task<FileIndex> OpenIndexAsync()
-    {
-        return FileIndex.OpenAsync(new FileIndexOptions
-        {
-            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerKind.Enumeration)],
-            CacheDirectory = _cacheDirectory,
-        }, CancellationToken.None);
-    }
+    Task<FileIndex> OpenIndexAsync() =>
+        FileIndex.OpenAsync(_fixture.Options(), CancellationToken.None);
 
     [TestMethod]
     [SupportedOSPlatform("windows")]
@@ -97,11 +71,7 @@ public class FileIndexJournalSettingsTests
 
         FileUtilities.Hooks.GetVolumeHandle = _ => new Microsoft.Win32.SafeHandles.SafeFileHandle(new IntPtr(1), false);
         JournalQueryFake.Serve(journalIdentifier: 9, nextUsn: 77, maximumSize: 0x08000000, allocationDelta: 0x01000000);
-        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
-        {
-            Drives = [new IndexedDrive('C', _treeRoot, 0x0BADF00D, ProducerKind.Enumeration)],
-            CacheDirectory = _cacheDirectory,
-        }, CancellationToken.None);
+        await using var index = await FileIndex.OpenAsync(_fixture.Options('C'), CancellationToken.None);
         using var volume = MftVolume.Open('C');
 
         var fromVolume = volume.Journal.QueryUsnJournalSettings();

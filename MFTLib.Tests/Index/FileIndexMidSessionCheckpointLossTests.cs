@@ -3,6 +3,7 @@ using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using static MFTLib.Tests.TestSupport.JournalWindows;
 
 namespace MFTLib.Tests.Index;
 
@@ -29,20 +30,13 @@ public class FileIndexMidSessionCheckpointLossTests
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
-    static IDisposable Journal(ulong journalIdentifier, long firstUsn, long nextUsn)
-    {
-        return JournalIsolation.OverrideJournalWindow(
-            _ => new SyntheticJournalWindow(journalIdentifier, firstUsn, nextUsn, AllocationDelta, MaximumSize));
-    }
-
     /// <summary>T has lost its position by 500 bytes; every other drive's is still inside the journal.</summary>
     static IDisposable TrimmedForTOnly()
     {
-        return JournalIsolation.OverrideJournalWindow(driveLetter =>
-            char.ToUpperInvariant((driveLetter).Letter) == 'T'
-                ? new SyntheticJournalWindow(WatchedJournalIdentifier, ArmedUsn + 500, ArmedUsn + 4_000,
-                    AllocationDelta, MaximumSize)
-                : new SyntheticJournalWindow(WatchedJournalIdentifier, 0, ArmedUsn + 4_000, AllocationDelta, MaximumSize));
+        return Override(driveLetter =>
+            char.ToUpperInvariant(driveLetter.Letter) == 'T'
+                ? Window(WatchedJournalIdentifier, ArmedUsn + 500, ArmedUsn + 4_000)
+                : Window(WatchedJournalIdentifier, 0, ArmedUsn + 4_000));
     }
 
     async Task<WatchHarness> StartedHarnessAsync(params char[] driveLetters)

@@ -11,32 +11,23 @@ namespace MFTLib.Tests;
 ///     <see cref="BlockFile" /> read, so the block it writes is judged by the production reader.
 /// </summary>
 [TestClass]
-public partial class SyntheticBlockTests
+public sealed partial class SyntheticBlockTests : IDisposable
 {
     const uint Serial = 0x1234;
     static readonly DateTime Moment = new(2026, 10, 4, 0, 0, 0, DateTimeKind.Utc);
     static readonly SyntheticJournalCursor Cursor = new(7, 4096);
 
-    OwnedIndexDirectories _directories = null!;
+    IndexTreeFixture _fixture = null!;
+    string CacheDirectoryPath => _fixture.CacheDirectory;
 
     public TestContext TestContext { get; set; } = null!;
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
-    string CacheDirectoryPath => _directories.CacheDirectory;
-
     [TestInitialize]
-    public void Initialize()
-    {
-        _directories = new OwnedIndexDirectories();
-        Directory.CreateDirectory(_directories.TreeRoot);
-    }
+    public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        _directories.Dispose();
-    }
+    public void Dispose() => _fixture.Dispose();
 
     static SyntheticBlockOptions Options() => new() { JournalCursor = Cursor, ScanTimestamp = Moment };
 
@@ -59,22 +50,20 @@ public partial class SyntheticBlockTests
     string Seed(IEnumerable<SyntheticRow>? rows = null, SyntheticBlockOptions? options = null) =>
         SyntheticBlock.WriteCached(CacheDirectoryPath, 'T', Serial, options ?? Options(), rows ?? SampleRows());
 
-    FileIndexOptions CacheOnly(bool enumeration = false) => new()
-    {
-        Drives = [new IndexedDrive('T', _directories.TreeRoot, Serial,
-            enumeration ? ProducerKind.Enumeration : ProducerKind.Mft)],
-        CacheDirectory = CacheDirectoryPath,
-        MftSource = new MftIndexSource((_, _) => throw new InvalidOperationException("the cache must satisfy the open")),
-        CacheMode = CacheMode.ExistingOnly
-    };
+    FileIndexOptions CacheOnly(bool enumeration = false) =>
+        _fixture.Options(volumeSerial: Serial,
+            producer: enumeration ? ProducerKind.Enumeration : ProducerKind.Mft,
+            cacheMode: CacheMode.ExistingOnly) with
+        {
+            MftSource = new MftIndexSource((_, _) => throw new InvalidOperationException("the cache must satisfy the open"))
+        };
 
-    FileIndexOptions Scanning(SyntheticMftProducer producer, CacheTag cacheTag = default) => new()
-    {
-        Drives = [new IndexedDrive('T', _directories.TreeRoot, Serial)],
-        CacheDirectory = CacheDirectoryPath,
-        MftSource = new MftIndexSource(producer.Producer),
-        CacheTag = cacheTag
-    };
+    FileIndexOptions Scanning(SyntheticMftProducer producer, CacheTag cacheTag = default) =>
+        _fixture.Options(volumeSerial: Serial, producer: ProducerKind.Mft) with
+        {
+            MftSource = new MftIndexSource(producer.Producer),
+            CacheTag = cacheTag
+        };
 
     static SyntheticMftProducer SampleProducer() => new(_ => SampleRows()) { JournalCursor = Cursor, ScanTimestamp = Moment };
 

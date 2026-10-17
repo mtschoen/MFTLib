@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Buffers.Binary;
+using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -89,7 +90,11 @@ public class BrokerFrameWriteLimitTests
     [TestMethod]
     public async Task ScanDriveAsync_KeepListOverTheLimit_ThrowsArgumentExceptionAndTheProcessStaysUsable()
     {
-        await using var broker = new InProcessBroker(CreateHost());
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ProcessorCount = 2
+        }));
         var options = new MftScanOptions
         {
             RetainedFileNames = KeepList(32_700)
@@ -104,16 +109,5 @@ public class BrokerFrameWriteLimitTests
         var volume = await broker.Process.QueryVolumeAsync('C', CancellationToken.None)
             .WaitAsync(HangGuard);
         Assert.AreEqual(Volume.BytesPerFileRecordSegment, volume.BytesPerFileRecordSegment);
-    }
-
-    static JournalBrokerHost CreateHost()
-    {
-        return new JournalBrokerHost(new ScriptedVolumeAccess
-        {
-            CursorQuery = _ => Armed,
-            RecordBatches = (_, _, _, _, _, _) => [[new MftRecord(5, 5, new MftRecordFields(3), ".")]],
-            JournalRead = (_, since, _) => (Array.Empty<UsnJournalEntry>(), since),
-            VolumeInformation = _ => Volume
-        }, processorCount: 2);
     }
 }

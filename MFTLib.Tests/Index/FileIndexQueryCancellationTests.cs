@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -9,42 +10,30 @@ namespace MFTLib.Tests.Index;
 ///     called stops that query before it touches a row.
 /// </summary>
 [TestClass]
-public class FileIndexQueryCancellationTests
+public sealed class FileIndexQueryCancellationTests : IAsyncDisposable
 {
-    string _treeRoot = null!;
-    string _cacheDirectory = null!;
+    IndexTreeFixture _fixture = null!;
+    string _treeRoot => _fixture.TreeRoot;
     FileIndex _index = null!;
 
     [TestInitialize]
     public async Task Initialize()
     {
-        _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "readme.md"), "hello");
+        _fixture = new IndexTreeFixture();
         await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "report.pdf"), new string('x', 100));
 
-        _index = await FileIndex.OpenAsync(new FileIndexOptions
-        {
-            Drives = [new IndexedDrive('T', _treeRoot, TestVolumeSerial.GetNext(), ProducerKind.Enumeration)],
-            CacheDirectory = _cacheDirectory,
-        }, CancellationToken.None);
+        _index = await FileIndex.OpenAsync(_fixture.Options(volumeSerial: TestVolumeSerial.GetNext()), CancellationToken.None);
     }
 
-    [TestCleanup]
-    public async Task Cleanup()
+    public async ValueTask DisposeAsync()
     {
-        await _index.DisposeAsync();
-        foreach (var directory in new[] { _treeRoot, _cacheDirectory })
+        try
         {
-            try
-            {
-                Directory.Delete(directory, recursive: true);
-            }
-            catch (IOException)
-            {
-                // A just-unmapped block file can stay locked briefly on Windows.
-            }
+            await _index.DisposeAsync();
+        }
+        finally
+        {
+            _fixture.Dispose();
         }
     }
 

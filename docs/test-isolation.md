@@ -109,6 +109,31 @@ The returned IDisposable owns a process-global override. Nested and overlapping 
 
 MFTLib.Tests calls `JournalIsolation.OverrideJournalWindow` directly for every journal override, sharing the public scope's single-active ownership. The three explicit live-reader cases in `UsnJournalVolumeInteropTests` pass a private `ReadLive`, which converts `JournalCheckpointCheck.ReadLiveJournal` observations into `SyntheticJournalWindow` values. A null observation remains unknown. The one-way guard is never reset.
 
+## Shared scenario fixtures
+
+TestSupport owns temporary resources. `TempDirectory` gives each owned root a GUID,
+supports a deferred path for missing-directory scenarios, and retries recursive
+deletion five times before tolerating a Windows IOException from a still-locked
+file. Other deletion failures propagate. Dispose indexes, watches, enumerators,
+writers and mapped blocks before disposing their directory owners.
+
+`IndexTreeFixture` owns a tree and a deferred cache path. Its default tree contains
+`Documents/readme.md` with `hello`; custom-tree scenarios opt out of that seed and
+write their own data. Its `Drive` and `Options` methods retain explicit producer,
+serial and cache-mode choices. `CheckpointLossFixture` adds MFT cache seeding and
+named drives; scenario code still owns watch and fault choreography.
+
+`BrokerHostFactory` constructs scripted hosts, `ScriptedJournalStreams` owns the
+cancellable one-batch stream, and `JournalWindows` owns internal journal windows
+and overrides. Journal overrides still require class-level isolation and the
+scope/lifetime rules above. Consumer-facing journal isolation tests exercise the
+public scopes directly.
+
+The single ten-second `TestTimeouts.HangGuard` lives in the test package's
+`TestSupport` directory and is imported by the test assembly's TestSupport global
+using. Longer watchdogs are explicit multiples. Protocol timeout assertions and
+fake-clock inputs remain independent scenario data.
+
 ## FileIndex component injection
 
 Each FileIndex owns one internal Hooks object of type FileIndex.IndexHooks.

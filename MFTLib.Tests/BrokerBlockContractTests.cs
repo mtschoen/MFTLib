@@ -27,10 +27,14 @@ public class BrokerBlockContractTests : BrokerBlockTestBase
     public async Task Scan_NormalizesTheDriveLetter()
     {
         var drives = new List<DriveKey>();
-        await using var broker = new InProcessBroker(CreateHost(queryVolumeInfo: drive =>
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
-            drives.Add(drive);
-            return VolumeInformation;
+            QueryCursor = _ => ArmedCursor,
+            QueryVolumeInformation = drive =>
+            {
+                drives.Add(drive);
+                return VolumeInformation;
+            }
         }));
 
         var result = await broker.Process.ScanDriveAsync('c', Target(), new MftScanOptions(), null, CancellationToken.None)
@@ -65,10 +69,15 @@ public class BrokerBlockContractTests : BrokerBlockTestBase
     [TestMethod]
     public async Task Produce_ReportsSkippedRecordsFromTheBlockWriter()
     {
-        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, _, _) =>
-        [
-            [Record(5, ".", 3), Record(20, string.Empty)]
-        ]));
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            QueryVolumeInformation = _ => VolumeInformation,
+            ScanDrive = (_, _, _, _, _, _) =>
+            [
+                [BrokerHostFactory.Record(5, ".", 3), BrokerHostFactory.Record(20, string.Empty)]
+            ]
+        }));
 
         var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard);
         using var block = result.Block;

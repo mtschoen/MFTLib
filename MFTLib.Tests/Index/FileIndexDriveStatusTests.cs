@@ -10,39 +10,24 @@ namespace MFTLib.Tests.Index;
 ///     <see cref="DriveBlockStatus.AccessDeniedSubtreeCount" /> reflecting the most recent scan.
 /// </summary>
 [TestClass]
-public class FileIndexDriveStatusTests
+public sealed class FileIndexDriveStatusTests : IDisposable
 {
-    OwnedIndexDirectories _directories = null!;
-    string _treeRoot = null!;
-    string _cacheDirectory = null!;
+    IndexTreeFixture _fixture = null!;
+    string _treeRoot => _fixture.TreeRoot;
+    string _cacheDirectory => _fixture.CacheDirectory;
 
     public TestContext TestContext { get; set; } = null!;
 
     [TestInitialize]
-    public void Initialize()
-    {
-        _directories = new OwnedIndexDirectories();
-        _treeRoot = _directories.TreeRoot;
-        _cacheDirectory = _directories.CacheDirectory;
-        Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
-        File.WriteAllText(Path.Combine(_treeRoot, "Documents", "readme.md"), "hello");
-    }
+    public void Initialize() => _fixture = new IndexTreeFixture();
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        _directories.Dispose();
-    }
+    public void Dispose() => _fixture.Dispose();
 
-    FileIndexOptions Options(IProgress<IndexScanProgress>? progress = null)
-    {
-        return new FileIndexOptions
+    FileIndexOptions Options(IProgress<IndexScanProgress>? progress = null) =>
+        _fixture.Options() with
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerKind.Enumeration)],
-            CacheDirectory = _cacheDirectory,
             ScanProgress = progress
         };
-    }
 
     [TestMethod]
     public async Task Drives_FollowsTheConfiguredOrderRegardlessOfOnlineOrOffline()
@@ -187,7 +172,7 @@ public class FileIndexDriveStatusTests
         }
         finally
         {
-            await index.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+            await index.DisposeAsync().AsTask().WaitAsync(HangGuard);
         }
     }
 
@@ -231,7 +216,7 @@ public class FileIndexDriveStatusTests
         };
 
         var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token)
-            .WaitAsync(TimeSpan.FromSeconds(30));
+            .WaitAsync(HangGuard * 3);
         try
         {
             var statuses = index.Drives;
@@ -244,7 +229,7 @@ public class FileIndexDriveStatusTests
         }
         finally
         {
-            await index.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+            await index.DisposeAsync().AsTask().WaitAsync(HangGuard);
         }
     }
 
@@ -257,13 +242,13 @@ public class FileIndexDriveStatusTests
     public async Task Drives_DisposalCompletesBeforeTheReadTakesTheStateLock_ThrowsObjectDisposed()
     {
         var index = await FileIndex.OpenAsync(Options(), TestContext.CancellationTokenSource.Token)
-            .WaitAsync(TimeSpan.FromSeconds(30));
+            .WaitAsync(HangGuard * 3);
         var disposals = 0;
         index.Hooks.DrivesReadBeforeLock = () =>
         {
             if (Interlocked.Increment(ref disposals) == 1)
             {
-                index.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
+                index.DisposeAsync().AsTask().WaitAsync(HangGuard).GetAwaiter().GetResult();
             }
         };
 

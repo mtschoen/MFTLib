@@ -60,8 +60,11 @@ public partial class BrokerProcessTests
     [TestMethod]
     public async Task ScanDriveAsync_ErrorFrame_DisposesSectionLifetimeImmediately()
     {
-        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, _, _) =>
-            throw new IOException("drive failed")));
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, _, _, _, _) =>
+                throw new IOException("drive failed")
+        }));
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => broker.Process.ScanDriveAsync('C',
             TestBlockSections.Target(), new MftScanOptions(), null, CancellationToken.None).WaitAsync(HangGuard));
@@ -169,7 +172,7 @@ public partial class BrokerProcessTests
         var writer = new RecordingBlockSectionWriter(sections.Inner.Resolve);
         // aislop-ignore-next-line dotnet/IDISP001 -- ownership moves to InProcessBrokerHandle on Start
         var resources = new ScriptedBrokerResources(sections.Inner, writer, sections.Create);
-        await using var handle = BrokerTestHarness.Start(CreateHost(), resources,
+        await using var handle = BrokerTestHarness.Start(BrokerHostFactory.Create(), resources,
             new BrokerTestHarnessOptions(), null, null);
 
         var exception = await Assert.ThrowsExceptionAsync<IOException>(() => handle.Process.ScanDriveAsync('C',

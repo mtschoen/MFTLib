@@ -1,4 +1,3 @@
-using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -16,9 +15,15 @@ public class VolumeQueryHostTests
     [TestMethod]
     public async Task QueryVolume_TwoRequests_OneSeamThrows_EmitsVolumeInfoAndError()
     {
-        var host = CreateHost(queryVolumeInfo: drive => drive == 'C'
-            ? new NtfsVolumeInformation(8_192_000_000L, 1024)
-            : throw new InvalidOperationException("access denied"));
+        var host = BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => new UsnJournalCursor(7, 0),
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryVolumeInformation = drive => drive == 'C'
+                ? new NtfsVolumeInformation(8_192_000_000L, 1024)
+                : throw new InvalidOperationException("access denied"),
+            ProcessorCount = null
+        });
         await using var harness = new HostChannelHarness(host);
 
         await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 1, 'C'));
@@ -38,7 +43,13 @@ public class VolumeQueryHostTests
     [TestMethod]
     public async Task QueryVolume_UnsupportedOperation_EmitsError()
     {
-        await using var harness = new HostChannelHarness(CreateHost()); // queryVolumeInfo omitted -> unsupported throws
+        await using var harness = new HostChannelHarness(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => new UsnJournalCursor(7, 0),
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
+            ProcessorCount = null
+        }));
 
         await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 14, 'C'));
         var frame = await harness.ReadControlAsync();
@@ -51,7 +62,13 @@ public class VolumeQueryHostTests
     [TestMethod]
     public async Task QueryVolume_DoesNotEndSession_SubsequentArmAndScanStillWorks()
     {
-        var host = CreateHost(queryVolumeInfo: _ => new NtfsVolumeInformation(1024, 1024));
+        var host = BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => new UsnJournalCursor(7, 0),
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryVolumeInformation = _ => new NtfsVolumeInformation(1024, 1024),
+            ProcessorCount = null
+        });
         using var blockWriter = new RecordingBlockSectionWriter();
         await using var harness = new HostChannelHarness(host, blockWriter);
 
@@ -64,16 +81,5 @@ public class VolumeQueryHostTests
         Assert.IsTrue(scanFrames.Any(f => f.Kind == BrokerFrameKind.ScanReady),
             "Expected the scan that followed to still complete");
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, scanFrames[^1].Kind);
-    }
-
-    static JournalBrokerHost CreateHost(Func<DriveKey, NtfsVolumeInformation>? queryVolumeInfo = null)
-    {
-        return new JournalBrokerHost(new ScriptedVolumeAccess
-        {
-            CursorQuery = _ => new UsnJournalCursor(7UL, 0L),
-            RecordBatches = (_, _, _, _, _, _) => [[new MftRecord(5, 5, new MftRecordFields(3), ".")]],
-            JournalRead = (_, cursor, _) => (Array.Empty<UsnJournalEntry>(), cursor),
-            VolumeInformation = queryVolumeInfo ?? (_ => throw new NotSupportedException("Broker has no volume information source"))
-        });
     }
 }

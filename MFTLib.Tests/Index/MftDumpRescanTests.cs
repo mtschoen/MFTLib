@@ -12,24 +12,24 @@ namespace MFTLib.Tests.Index;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public class MftDumpRescanTests
+public sealed class MftDumpRescanTests : IDisposable
 {
     const string NotesPath = "dump:/D/documents/Notes.txt";
     const string RenamedPath = "dump:/D/documents/Renamed.txt";
     const string InvalidFixupMessage = "The dump contains an invalid MFT record fixup.";
 
-    string _directory = null!;
+    TempDirectory _tempDirectory = null!;
+    string _directory => _tempDirectory.Path;
 
     [TestInitialize]
     public void Initialize()
     {
-        _directory = MftDumpFixture.NewOwnedDirectory();
+        _tempDirectory = new TempDirectory("mftlib-dump", create: false);
     }
 
-    [TestCleanup]
-    public void Cleanup()
+    public void Dispose()
     {
-        MftDumpFixture.DeleteOwnedDirectory(_directory);
+        _tempDirectory.Dispose();
     }
 
     [TestMethod]

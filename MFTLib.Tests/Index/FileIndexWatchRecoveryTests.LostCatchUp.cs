@@ -2,6 +2,7 @@ using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -11,9 +12,6 @@ namespace MFTLib.Tests.Index;
 /// </summary>
 public partial class FileIndexWatchRecoveryTests
 {
-    static WatchHarnessScan Lost(char driveLetter, TestGate? hold = null) =>
-        new(WatchDeduplicationTestSupport.StandardCatchUpLoss(driveLetter), Hold: hold);
-
     static WatchHarnessScan Held(TestGate? hold = null) => new(Hold: hold);
 
     [TestMethod]

@@ -11,9 +11,13 @@ public class VolumeQueryClientTests : BrokerBlockTestBase
     public async Task QueryVolumeAsync_OneDriveSucceedsAndOneErrors_ReturnsTheVolumeAndThrowsTheHostMessage()
     {
         var reply = new NtfsVolumeInformation(8_192_000_000, 1024);
-        await using var broker = new InProcessBroker(CreateHost(queryVolumeInfo: drive => drive == 'C'
-            ? reply
-            : throw new UnauthorizedAccessException("access denied")));
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            QueryVolumeInformation = drive => drive == 'C'
+                ? reply
+                : throw new UnauthorizedAccessException("access denied")
+        }));
 
         var volume = await broker.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard);
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>

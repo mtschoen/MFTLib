@@ -13,28 +13,17 @@ namespace MFTLib.Tests.Index;
 ///     counts, never on which drive settled first. <see cref="FileIndex.RescanAsync" /> stays silent.
 /// </summary>
 [TestClass]
-public class FileIndexOpenProgressTests
+public sealed class FileIndexOpenProgressTests : IDisposable
 {
-    OwnedIndexDirectories _directories = null!;
-    string _treeRoot = null!;
-    string _cacheDirectory = null!;
+    IndexTreeFixture _fixture = null!;
+    string _treeRoot => _fixture.TreeRoot;
 
     public TestContext TestContext { get; set; } = null!;
 
     [TestInitialize]
-    public void Initialize()
-    {
-        _directories = new OwnedIndexDirectories();
-        _treeRoot = _directories.TreeRoot;
-        _cacheDirectory = _directories.CacheDirectory;
-        Directory.CreateDirectory(_treeRoot);
-    }
+    public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        _directories.Dispose();
-    }
+    public void Dispose() => _fixture.Dispose();
 
     string CreateDriveRoot(string name)
     {
@@ -46,17 +35,14 @@ public class FileIndexOpenProgressTests
 
     FileIndexOptions Options(IReadOnlyList<IndexedDrive> drives,
         IProgress<IndexDriveOpened>? openProgress = null, bool cacheOnly = false,
-        ProducerKind producer = ProducerKind.Enumeration, MftBlockProducer? mftProducer = null)
-    {
-        return new FileIndexOptions
+        ProducerKind producer = ProducerKind.Enumeration, MftBlockProducer? mftProducer = null) =>
+        _fixture.Options(producer: producer,
+            cacheMode: cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent) with
         {
             Drives = drives.Select(drive => drive with { Producer = producer }).ToArray(),
-            CacheDirectory = _cacheDirectory,
-            CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
             MftSource = mftProducer is null ? null : new MftIndexSource(mftProducer),
             DriveOpenProgress = openProgress
         };
-    }
 
     static void AssertReport(IndexDriveOpened report, char driveLetter, int total)
     {

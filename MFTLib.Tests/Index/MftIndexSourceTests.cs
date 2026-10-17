@@ -2,7 +2,8 @@ using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.TestSupport.CheckpointCacheTestSupport;
+using static MFTLib.Tests.TestSupport.CheckpointLossFixture;
+using static MFTLib.Tests.TestSupport.JournalWindows;
 
 namespace MFTLib.Tests.Index;
 
@@ -13,60 +14,20 @@ namespace MFTLib.Tests.Index;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public class MftIndexSourceTests
+public sealed class MftIndexSourceTests : IDisposable
 {
     const string Reason = "the broker is not running";
 
     public TestContext TestContext { get; set; } = null!;
 
-    string _treeRoot = null!;
-    string _cacheDirectory = null!;
+    CheckpointLossFixture _fixture = null!;
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
     [TestInitialize]
-    public void Initialize()
-    {
-        _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_treeRoot);
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
-    }
+    public void Initialize() => _fixture = new CheckpointLossFixture(false, 'T');
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        foreach (var directory in new[] { _treeRoot, _cacheDirectory })
-        {
-            try
-            {
-                if (Directory.Exists(directory))
-                {
-                    Directory.Delete(directory, recursive: true);
-                }
-            }
-            catch (IOException)
-            {
-                // A just-unmapped block file can stay locked briefly on Windows.
-            }
-        }
-    }
-
-    static IndexedDrive Drive(string root) => new('T', root, 0x0BADF00Du);
-
-    FileIndexOptions Options(MftIndexSource? source) => new()
-    {
-        Drives = [Drive(_treeRoot)],
-        CacheDirectory = _cacheDirectory,
-        MftSource = source
-    };
-
-    /// <summary>Writes the drive's cache block while the journal still holds its checkpoint.</summary>
-    async Task SeedCacheAsync()
-    {
-        using var journals = OverrideJournals(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
-        await using var index = await FileIndex.OpenAsync(Options(new MftIndexSource(ProduceMftShapedBlock)), Token);
-        Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().Block!.Source);
-    }
+    public void Dispose() => _fixture.Dispose();
 
     [TestMethod]
     public void Constructor_WithoutProducer_Throws()
@@ -115,7 +76,7 @@ public class MftIndexSourceTests
     [TestMethod]
     public async Task Unavailable_ReportsTheDriveAsProducerFailedWithTheMessage()
     {
-        await using var index = await FileIndex.OpenAsync(Options(MftIndexSources.Unavailable(Reason)), Token);
+        await using var index = await FileIndex.OpenAsync(_fixture.Options() with { MftSource = MftIndexSources.Unavailable(Reason) }, Token);
 
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, status.State);
@@ -126,9 +87,9 @@ public class MftIndexSourceTests
     [TestMethod]
     public async Task Unavailable_StillOpensTheCachedBlockAndReportsWatchingNotApplicable()
     {
-        await SeedCacheAsync();
-        using var journals = OverrideJournals(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
-        await using var index = await FileIndex.OpenAsync(Options(MftIndexSources.Unavailable(Reason)), Token);
+        await _fixture.Seed();
+        using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
+        await using var index = await FileIndex.OpenAsync(_fixture.Options() with { MftSource = MftIndexSources.Unavailable(Reason) }, Token);
 
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
@@ -141,9 +102,9 @@ public class MftIndexSourceTests
     [TestMethod]
     public async Task SourceWithoutWatchSource_ReportsWatchingNotApplicable()
     {
-        await SeedCacheAsync();
-        using var journals = OverrideJournals(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
-        await using var index = await FileIndex.OpenAsync(Options(new MftIndexSource(ProduceMftShapedBlock)), Token);
+        await _fixture.Seed();
+        using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
+        await using var index = await FileIndex.OpenAsync(_fixture.Options() with { MftSource = new MftIndexSource(ProduceMftShapedBlock) }, Token);
 
         await DriveResultAssertions.NotApplicableAsync(
             () => index.StartWatchingAsync(['T'], Token));
@@ -154,11 +115,11 @@ public class MftIndexSourceTests
     [TestMethod]
     public async Task SourceWithWatchSource_StartsTheWatchOnThatSource()
     {
-        await SeedCacheAsync();
+        await _fixture.Seed();
         var watchSource = new ScriptedWatchSource();
-        using var journals = OverrideJournals(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
+        using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
-            Options(new MftIndexSource(ProduceMftShapedBlock, watchSource.IndexSource)), Token);
+            _fixture.Options() with { MftSource = new MftIndexSource(ProduceMftShapedBlock, watchSource.IndexSource) }, Token);
 
         await index.StartWatchingAsync(['T'], Token);
 
@@ -169,7 +130,7 @@ public class MftIndexSourceTests
     [TestMethod]
     public async Task NoMftSource_IsAConfigurationErrorWhenAMftDriveNeedsAScan()
     {
-        await using var index = await FileIndex.OpenAsync(Options(null), Token);
+        await using var index = await FileIndex.OpenAsync(_fixture.Options() with { MftSource = null }, Token);
         var failed = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, failed.State);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, failed.Failure?.Kind);
@@ -180,7 +141,7 @@ public class MftIndexSourceTests
     public async Task NoMftSource_IsIgnoredByTheEnumerationPolicy()
     {
         await using var index = await FileIndex.OpenAsync(
-            Options(null) with { Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerKind.Enumeration)] }, Token);
+            _fixture.Options() with { MftSource = null, Drives = [new IndexedDrive('T', _fixture.Drive().RootDirectory, 0x0BADF00D, ProducerKind.Enumeration)] }, Token);
 
         Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
     }

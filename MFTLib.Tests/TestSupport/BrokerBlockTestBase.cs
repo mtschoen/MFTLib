@@ -10,28 +10,6 @@ public abstract class BrokerBlockTestBase
     internal static readonly UsnJournalCursor AdvancedCursor = new(71, 12500);
     internal static readonly NtfsVolumeInformation VolumeInformation = new(1024L * 100000, 1024);
 
-    internal static JournalBrokerHost CreateHost(
-        Func<DriveKey, UsnJournalCursor>? queryCursor = null,
-        MftRecordBatchSource? scanDrive = null,
-        Func<DriveKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
-        Func<DriveKey, NtfsVolumeInformation>? queryVolumeInfo = null,
-        Func<DriveKey, long, long, UsnJournalSettings>? growUsnJournal = null)
-    {
-        return new JournalBrokerHost(
-            new ScriptedVolumeAccess
-            {
-                CursorQuery = queryCursor ?? (_ => ArmedCursor),
-                RecordBatches = scanDrive ?? ((_, _, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
-                JournalRead = readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
-                VolumeInformation = queryVolumeInfo ?? (_ => VolumeInformation),
-                JournalGrow = growUsnJournal ?? ScriptedVolumeAccess.UnsupportedGrow
-            },
-            processorCount: 4);
-    }
-
-    internal static MftRecord Record(ulong recordNumber, string name, ushort flags = 1) =>
-        new(recordNumber, 5, new MftRecordFields(flags), name);
-
     internal static BlockScanTarget Target(uint volumeSerial = 123) => TestBlockSections.Target(volumeSerial);
 
     /// <summary>The connect callback of a producer that always runs on <paramref name="process" />.</summary>
@@ -59,12 +37,17 @@ public abstract class BrokerBlockTestBase
         MftRecordBatchSource? scanDrive = null, Func<DriveKey, NtfsVolumeInformation>? queryVolumeInfo = null)
     {
         var created = new StrongBox<InProcessBroker?>();
-        created.Value = new InProcessBroker(CreateHost(scanDrive: scanDrive, queryVolumeInfo: queryVolumeInfo,
-            readJournal: (_, since, _) =>
+        created.Value = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            ScanDrive = scanDrive,
+            QueryVolumeInformation = queryVolumeInfo ?? (_ => VolumeInformation),
+            ReadJournal = (_, since, _) =>
             {
                 change(created.Value!.Sections.Single().Block);
                 return (Array.Empty<UsnJournalEntry>(), since);
-            }));
+            }
+        }));
         return created.Value;
     }
 }

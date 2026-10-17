@@ -12,43 +12,37 @@ namespace MFTLib.Tests.Index;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public class FileIndexPartialCanonicalBlockTests
+public sealed class FileIndexPartialCanonicalBlockTests : IDisposable
 {
     public TestContext TestContext { get; set; } = null!;
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
     const uint VolumeSerial = 0x2970;
-    OwnedIndexDirectories _directories = null!;
-    string _treeRoot = null!;
-    string _cacheDirectory = null!;
+    IndexTreeFixture _fixture = null!;
+    string _treeRoot => _fixture.TreeRoot;
+    string _cacheDirectory => _fixture.CacheDirectory;
     string _canonicalPath = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _directories = new OwnedIndexDirectories();
-        _treeRoot = _directories.TreeRoot;
-        _cacheDirectory = _directories.CacheDirectory;
-        Directory.CreateDirectory(_treeRoot);
+        _fixture = new IndexTreeFixture();
         Directory.CreateDirectory(_cacheDirectory);
         _canonicalPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', VolumeSerial));
     }
 
-    [TestCleanup]
-    public void Cleanup()
+    public void Dispose()
     {
-        _directories.Dispose();
+        _fixture.Dispose();
     }
 
-    FileIndexOptions Options(MftBlockProducer producer, List<string> diagnostics, bool cacheOnly = false) => new()
-    {
-        Drives = [new IndexedDrive('T', _treeRoot, VolumeSerial)],
-        CacheDirectory = _cacheDirectory,
-        MftSource = new MftIndexSource(producer),
-        CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
-        Diagnostics = diagnostics.Add
-    };
+    FileIndexOptions Options(MftBlockProducer producer, List<string> diagnostics, bool cacheOnly = false) =>
+        _fixture.Options(volumeSerial: VolumeSerial, producer: ProducerKind.Mft, cacheMode: cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent) with
+        {
+            MftSource = new MftIndexSource(producer),
+            Diagnostics = diagnostics.Add
+        };
 
     /// <summary>Leaves a half-written canonical file behind, as a producer killed mid-scan would.</summary>
     static void WritePartialFile(MftBlockProduceRequest request) =>

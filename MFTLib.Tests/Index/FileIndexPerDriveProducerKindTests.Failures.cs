@@ -39,7 +39,7 @@ public partial class FileIndexPerDriveProducerKindTests
         Assert.IsNull(failed.Block);
         Assert.AreEqual(IndexScanOutcome.Failed,
             samples.Single(sample => sample.Drive == 'U' && sample.Phase == IndexScanPhase.Finished).Outcome);
-        Assert.IsFalse(File.Exists(Path.Combine(_directories.CacheDirectory, CacheDirectory.BlockFileName('U', 123))));
+        Assert.IsFalse(File.Exists(Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('U', 123))));
     }
 
     [TestMethod]
@@ -57,7 +57,7 @@ public partial class FileIndexPerDriveProducerKindTests
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         var previousBlock = index.CurrentSnapshot.Single().Block;
         var previousStatus = index.Drives.Single().Block;
-        var canonicalPath = Path.Combine(_directories.CacheDirectory, CacheDirectory.BlockFileName('T', 123));
+        var canonicalPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 123));
         var previousBytes = cacheMode == CacheMode.Persistent ? ReadSharedBlock(canonicalPath) : null;
 
         progress.Failure = failure;
@@ -75,7 +75,7 @@ public partial class FileIndexPerDriveProducerKindTests
         if (previousBytes is not null)
         {
             CollectionAssert.AreEqual(previousBytes, ReadSharedBlock(canonicalPath));
-            Assert.AreEqual(0, Directory.GetFiles(_directories.CacheDirectory, "*.retired-*").Length);
+            Assert.AreEqual(0, Directory.GetFiles(_cacheDirectory, "*.retired-*").Length);
         }
 
         progress.Failure = null;
@@ -130,7 +130,7 @@ public partial class FileIndexPerDriveProducerKindTests
             Assert.IsFalse(File.Exists(siblingPath));
         }
 
-        Assert.IsFalse(File.Exists(Path.Combine(_directories.CacheDirectory, CacheDirectory.BlockFileName('U', 123))));
+        Assert.IsFalse(File.Exists(Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('U', 123))));
         await using var reopened = await FileIndex.OpenAsync(options with
         {
             ScanProgress = null,

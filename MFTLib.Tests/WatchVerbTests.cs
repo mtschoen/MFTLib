@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
@@ -13,31 +12,17 @@ namespace MFTLib.Tests;
 // plus the elevation report that touches no volume.
 [TestClass]
 [DoNotParallelize]
-public class WatchVerbTests
+public sealed class WatchVerbTests : IDisposable
 {
     static readonly SyntheticJournalCursor Armed = new(7, 1000);
 
-    string _directory = null!;
+    TempDirectory _tempDirectory = null!;
+    string _directory => _tempDirectory.Path;
 
     [TestInitialize]
-    public void Initialize()
-    {
-        _directory = Path.Combine(Path.GetTempPath(), $"watchVerbs-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_directory);
-    }
+    public void Initialize() => _tempDirectory = new TempDirectory("watchVerbs");
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        try
-        {
-            Directory.Delete(_directory, recursive: true);
-        }
-        catch (IOException)
-        {
-            // A just-unmapped block file can stay locked briefly on Windows.
-        }
-    }
+    public void Dispose() => _tempDirectory.Dispose();
 
     [TestMethod]
     [Timeout(60000)]
@@ -53,7 +38,7 @@ public class WatchVerbTests
         };
         await using var handle = BrokerTestHarness.StartInProcess(Volumes() with
         {
-            WatchDrive = (_, _, cancellationToken) => OneBatchThenQuiet([created], new SyntheticJournalCursor(7, 1500), cancellationToken)
+            WatchDrive = (_, _, cancellationToken) => ScriptedJournalStreams.OneBatchThenQuiet([created], new SyntheticJournalCursor(7, 1500), cancellationToken)
         });
         var lines = new List<string>();
         var seen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -272,12 +257,5 @@ public class WatchVerbTests
                 ]
             ]
         };
-    }
-
-    static async IAsyncEnumerable<(IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Cursor)> OneBatchThenQuiet(
-        SyntheticJournalRecord[] entries, SyntheticJournalCursor cursor, [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        yield return (entries, cursor);
-        await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false);
     }
 }

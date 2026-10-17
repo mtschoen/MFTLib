@@ -11,9 +11,6 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public class SubtreeAnchorTests
 {
-    // Real index work on a loaded runner outlasts the shared guard.
-    static readonly TimeSpan SlowHangGuard = HangGuard * 3;
-
     public enum QueryForm
     {
         Search,
@@ -188,7 +185,7 @@ public class SubtreeAnchorTests
         using var harness = new WatchHarness('T');
         var anchor = Documents(harness.Index);
 
-        await harness.Index.RescanAsync(['T'], Token).WaitAsync(SlowHangGuard);
+        await harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard * 3);
 
         Rejected<ArgumentException>(harness.Index, form, Under(anchor));
         Assert.AreEqual(0, harness.Index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
@@ -206,7 +203,7 @@ public class SubtreeAnchorTests
         var anchor = harness.Index.Search(new SearchQuery("documents", NameMatchMode.Exact))
             .Single(entry => entry.Drive == 'T');
 
-        await harness.Index.RescanAsync(['U'], Token).WaitAsync(SlowHangGuard);
+        await harness.Index.RescanAsync(['U'], Token).WaitAsync(HangGuard * 3);
 
         CollectionAssert.AreEqual(DocumentsSubtree, Run(harness.Index, form, Under(anchor)));
     }
@@ -251,13 +248,13 @@ public class SubtreeAnchorTests
         try
         {
             var query = RunOnThreadPool(harness.Index, form, Under(anchor), Token);
-            await admitted.Task.WaitAsync(SlowHangGuard);
+            await admitted.Task.WaitAsync(HangGuard * 3);
             Assert.AreEqual(1, snapshot[0].ReleaseState.OutstandingBorrowCount);
 
-            await harness.Index.RescanAsync(['T'], Token).WaitAsync(SlowHangGuard);
+            await harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard * 3);
             Assert.AreNotSame(snapshot, harness.Index.CurrentSnapshot, "The rescan published a new snapshot.");
             proceed.TrySetResult();
-            names = await query.WaitAsync(SlowHangGuard);
+            names = await query.WaitAsync(HangGuard * 3);
         }
         finally
         {

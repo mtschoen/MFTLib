@@ -8,28 +8,24 @@ namespace MFTLib.Tests;
 
 [TestClass]
 [DoNotParallelize]
-public class LocalMftBlockProducerTests
+public sealed class LocalMftBlockProducerTests : IDisposable
 {
     static readonly NtfsVolumeInformation Volume = new(1024 * 1000, 1024);
     static readonly CacheTag RequestedTag = new("LOCL", 3);
 
-    OwnedIndexDirectories _directories = null!;
+    IndexTreeFixture _fixture = null!;
+    string _cacheDirectory => _fixture.CacheDirectory;
 
     public TestContext TestContext { get; set; } = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _directories = new OwnedIndexDirectories();
-        Directory.CreateDirectory(_directories.TreeRoot);
-        Directory.CreateDirectory(_directories.CacheDirectory);
+        _fixture = new IndexTreeFixture();
+        Directory.CreateDirectory(_cacheDirectory);
     }
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        _directories.Dispose();
-    }
+    public void Dispose() => _fixture.Dispose();
 
     static MftRecord Record(ulong recordNumber, string name, ushort flags = 1)
     {
@@ -53,7 +49,7 @@ public class LocalMftBlockProducerTests
         {
             Drive = drive,
             VolumeSerial = 123,
-            BlockPath = Path.Combine(_directories.CacheDirectory,
+            BlockPath = Path.Combine(_cacheDirectory,
             deleteOnClose ? $"{drive}-temporary.mlix" : $"{drive}-canonical.mlix"),
             DeleteOnClose = deleteOnClose,
             Progress = progress,
@@ -62,14 +58,12 @@ public class LocalMftBlockProducerTests
 
     static MftBlockProducer ProducerOf(LocalMftBlockProducer producer) => producer.CreateIndexSource().Producer;
 
-    FileIndexOptions Options(MftIndexSource source, IProgress<IndexScanProgress>? progress = null) => new()
-    {
-        Drives = [new IndexedDrive('T', _directories.TreeRoot, 0x0BADF00D)],
-        CacheDirectory = _directories.CacheDirectory,
-        CacheMode = CacheMode.Disabled,
-        MftSource = source,
-        ScanProgress = progress
-    };
+    FileIndexOptions Options(MftIndexSource source, IProgress<IndexScanProgress>? progress = null) =>
+        _fixture.Options(producer: ProducerKind.Mft, cacheMode: CacheMode.Disabled) with
+        {
+            MftSource = source,
+            ScanProgress = progress
+        };
 
     [TestMethod]
     public void Factory_BuildsASourceWithNoWatchDumpOrUnavailableReason()
@@ -147,11 +141,9 @@ public class LocalMftBlockProducerTests
         Assert.IsFalse(File.Exists(path), "a delete-on-close block is removed when the index releases it");
 
         await using var enumeration = await FileIndex.OpenAsync(
-            FileIndexTestAccess.WithTimeProvider(new FileIndexOptions
-            {
-                Drives = [new IndexedDrive('T', _directories.TreeRoot, 123, ProducerKind.Enumeration)],
-                CacheMode = CacheMode.Disabled
-            }, timeProvider), TestContext.CancellationTokenSource.Token);
+            FileIndexTestAccess.WithTimeProvider(
+                _fixture.Options(volumeSerial: 123, cacheMode: CacheMode.Disabled),
+                timeProvider), TestContext.CancellationTokenSource.Token);
         Assert.AreEqual(timeProvider.GetUtcNow().UtcDateTime, enumeration.Drives.Single().Block!.ScanTimestamp);
     }
 
@@ -187,13 +179,12 @@ public class LocalMftBlockProducerTests
         }));
         var source = producer.CreateIndexSource();
 
-        FileIndexOptions CachingOptions(bool isCacheOnly) => new()
-        {
-            Drives = [new IndexedDrive('T', _directories.TreeRoot, 0x0BADF00D)],
-            CacheDirectory = _directories.CacheDirectory,
-            CacheMode = isCacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
-            MftSource = source
-        };
+        FileIndexOptions CachingOptions(bool isCacheOnly) =>
+            _fixture.Options(producer: ProducerKind.Mft,
+                cacheMode: isCacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent) with
+            {
+                MftSource = source
+            };
 
         await using (var initialIndex = await FileIndex.OpenAsync(CachingOptions(isCacheOnly: false),
             TestContext.CancellationTokenSource.Token))
@@ -205,7 +196,7 @@ public class LocalMftBlockProducerTests
             Assert.IsNull(initialDrive.Watch.CheckpointLoss);
         }
 
-        var canonicalPath = Path.Combine(_directories.CacheDirectory,
+        var canonicalPath = Path.Combine(_cacheDirectory,
             CacheDirectory.BlockFileName('T', 0x0BADF00D));
         Assert.IsTrue(File.Exists(canonicalPath));
 

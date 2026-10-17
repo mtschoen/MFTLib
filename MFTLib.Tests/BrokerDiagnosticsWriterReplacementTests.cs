@@ -26,7 +26,7 @@ public class BrokerDiagnosticsWriterReplacementTests
         BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(lines.Add, () => "broker"));
         BrokerDiagnostics.Enable("broker", Path.GetTempPath());
         BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "hello");
-        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
 
         Assert.AreEqual(1, lines.Count);
         StringAssert.Contains(lines[0], ":control]  hello");
@@ -43,7 +43,7 @@ public class BrokerDiagnosticsWriterReplacementTests
 
         BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(second.Add, () => "broker"));
         BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "after");
-        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
 
         Assert.AreEqual(1, second.Count);
         StringAssert.Contains(second[0], ":control]  after");

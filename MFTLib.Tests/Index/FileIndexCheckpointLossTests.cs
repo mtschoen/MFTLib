@@ -1,7 +1,9 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.TestSupport.CheckpointCacheTestSupport;
+using static MFTLib.Tests.TestSupport.CheckpointLossFixture;
+using static MFTLib.Tests.TestSupport.JournalWindows;
 
 namespace MFTLib.Tests.Index;
 
@@ -14,79 +16,26 @@ namespace MFTLib.Tests.Index;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public class FileIndexCheckpointLossTests
+public sealed class FileIndexCheckpointLossTests : IDisposable
 {
-    string _treeRoot = null!;
-    string _cacheDirectory = null!;
+    CheckpointLossFixture _fixture = null!;
 
     [TestInitialize]
-    public void Initialize()
-    {
-        _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
-        File.WriteAllText(Path.Combine(_treeRoot, "Documents", "readme.md"), "hello");
-    }
+    public void Initialize() => _fixture = new CheckpointLossFixture();
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        foreach (var directory in new[] { _treeRoot, _cacheDirectory })
-        {
-            try
-            {
-                if (Directory.Exists(directory))
-                {
-                    Directory.Delete(directory, recursive: true);
-                }
-            }
-            catch (IOException)
-            {
-                // A just-unmapped block file can stay locked briefly on Windows.
-            }
-        }
-    }
-
-    FileIndexOptions Options()
-    {
-        return new FileIndexOptions
-        {
-            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
-            CacheDirectory = _cacheDirectory,
-            MftSource = new MftIndexSource(ProduceMftShapedBlock)
-        };
-    }
-
-    static IDisposable Journal(ulong journalIdentifier, long firstUsn, long nextUsn, long allocationDelta = 64)
-    {
-        return JournalIsolation.OverrideJournalWindow(
-            _ => new SyntheticJournalWindow(journalIdentifier, firstUsn, nextUsn, allocationDelta, 128L * 1024 * 1024));
-    }
-
-    /// <summary>Writes the cache block a later open will try to warm-start from.</summary>
-    async Task SeedCacheAsync()
-    {
-        // The journal still holds the checkpoint while the cache is being written, so this
-        // open is an ordinary cold scan and leaves a resumable block behind.
-        using var journal = Journal(CachedJournalIdentifier, firstUsn: 0, nextUsn: CachedNextUsn);
-        await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().Block!.Source);
-        Assert.IsNull(index.Drives.Single().Watch.CheckpointLoss);
-    }
+    public void Dispose() => _fixture.Dispose();
 
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task ValidCheckpoint_WarmStartsAndReportsNoLoss(bool watchCapable)
     {
-        await SeedCacheAsync();
-        using var journal = Journal(CachedJournalIdentifier, firstUsn: CachedNextUsn - 500,
+        await _fixture.Seed();
+        using var journal = Journal(firstUsn: CachedNextUsn - 500,
             nextUsn: watchCapable ? CachedNextUsn + 4_000 : CachedNextUsn);
 
-        var options = Options() with
-        {
-            MftSource = new MftIndexSource(ProduceMftShapedBlock, watchCapable ? new ScriptedWatchSource().IndexSource : null)
-        };
+        var options = _fixture.Options(watchSource:
+            watchCapable ? new ScriptedWatchSource().IndexSource : null);
         await using var reopened = await FileIndex.OpenAsync(options, CancellationToken.None);
 
         var drive = reopened.Drives.Single();
@@ -97,13 +46,13 @@ public class FileIndexCheckpointLossTests
     [TestMethod]
     public async Task CheckpointTrimmedAway_RescansAndReportsRoundedSpanPlusMargin()
     {
-        await SeedCacheAsync();
+        await _fixture.Seed();
         // The journal has moved on past the cached checkpoint by 500 bytes, and its tip is
         // 4000 bytes past it.
-        using var journal = Journal(CachedJournalIdentifier,
-            firstUsn: CachedNextUsn + 500, nextUsn: CachedNextUsn + 4_000, allocationDelta: 64);
+        using var journal = Journal(
+            firstUsn: CachedNextUsn + 500, nextUsn: CachedNextUsn + 4_000);
 
-        await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
+        await using var reopened = await FileIndex.OpenAsync(_fixture.Options(), CancellationToken.None);
 
         var drive = reopened.Drives.Single();
         Assert.AreEqual(BlockSource.ProducedByScan, drive.Block!.Source,
@@ -125,10 +74,10 @@ public class FileIndexCheckpointLossTests
     [TestMethod]
     public async Task JournalRecreated_RescansAndSuggestsNoSize()
     {
-        await SeedCacheAsync();
+        await _fixture.Seed();
         using var journal = Journal(journalIdentifier: 0xFEED, firstUsn: 0, nextUsn: 200);
 
-        await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
+        await using var reopened = await FileIndex.OpenAsync(_fixture.Options(), CancellationToken.None);
 
         var drive = reopened.Drives.Single();
         Assert.AreEqual(BlockSource.ProducedByScan, drive.Block!.Source);
@@ -143,10 +92,10 @@ public class FileIndexCheckpointLossTests
     [TestMethod]
     public async Task VolumeThatCannotAnswer_WarmStartsAsBefore()
     {
-        await SeedCacheAsync();
+        await _fixture.Seed();
         using var journal = JournalIsolation.OverrideJournalWindow(_ => null);
 
-        await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
+        await using var reopened = await FileIndex.OpenAsync(_fixture.Options(), CancellationToken.None);
 
         var drive = reopened.Drives.Single();
         Assert.AreEqual(BlockSource.WarmStartedFromCache, drive.Block!.Source,
@@ -163,8 +112,8 @@ public class FileIndexCheckpointLossTests
     {
         var enumerationOptions = new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerKind.Enumeration)],
-            CacheDirectory = _cacheDirectory
+            Drives = [new IndexedDrive('T', _fixture.Drive().RootDirectory, 0x0BADF00D, ProducerKind.Enumeration)],
+            CacheDirectory = _fixture.CacheDirectory
         };
         await using (await FileIndex.OpenAsync(enumerationOptions, CancellationToken.None))
         {
@@ -187,12 +136,12 @@ public class FileIndexCheckpointLossTests
     [TestMethod]
     public async Task UnrepresentableRetentionSize_RescansWithNullHintAndClosesCandidate()
     {
-        await SeedCacheAsync();
-        using var journal = Journal(CachedJournalIdentifier,
+        await _fixture.Seed();
+        using var journal = Journal(
             firstUsn: CachedNextUsn + 500, nextUsn: long.MaxValue,
             allocationDelta: 1L << 62);
         var scanCount = 0;
-        var options = Options() with
+        var options = _fixture.Options() with
         {
             MftSource = new MftIndexSource((request, cancellationToken) =>
             {
@@ -233,15 +182,13 @@ public class FileIndexCheckpointLossTests
     [TestMethod]
     public async Task UnrepresentableRetentionSize_CacheOnlyAdoptsTheBlockAndReportsTheLoss()
     {
-        await SeedCacheAsync();
-        using var journal = Journal(CachedJournalIdentifier,
+        await _fixture.Seed();
+        using var journal = Journal(
             firstUsn: CachedNextUsn + 500, nextUsn: long.MaxValue,
             allocationDelta: 1L << 62);
-        var options = Options() with
-        {
-            CacheMode = CacheMode.ExistingOnly,
-            MftSource = new MftIndexSource((_, _) => throw new AssertFailedException("Cache-only must not scan."))
-        };
+        var options = _fixture.Options(
+            producer: (_, _) => throw new AssertFailedException("Cache-only must not scan."),
+            cacheMode: CacheMode.ExistingOnly);
 
         await using var reopened = await FileIndex.OpenAsync(options, CancellationToken.None);
 
@@ -258,17 +205,17 @@ public class FileIndexCheckpointLossTests
     [TestMethod]
     public async Task CheckpointQueryThrows_PropagatesAndClosesUnpublishedCandidate()
     {
-        await SeedCacheAsync();
+        await _fixture.Seed();
         var failure = new InvalidOperationException("Injected journal query failure.");
         using var journal = JournalIsolation.OverrideJournalWindow(_ => throw failure);
 
         var observed = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
         {
-            await using var unexpected = await FileIndex.OpenAsync(Options(), CancellationToken.None);
+            await using var unexpected = await FileIndex.OpenAsync(_fixture.Options(), CancellationToken.None);
         });
 
         Assert.AreSame(failure, observed);
-        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+        var blockPath = Path.Combine(_fixture.CacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
         using var exclusive = new FileStream(blockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         Assert.IsTrue(exclusive.Length > 0);
     }

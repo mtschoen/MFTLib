@@ -2,7 +2,8 @@ using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.TestSupport.CheckpointCacheTestSupport;
+using static MFTLib.Tests.TestSupport.CheckpointLossFixture;
+using static MFTLib.Tests.TestSupport.JournalWindows;
 
 namespace MFTLib.Tests.Index;
 
@@ -20,77 +21,18 @@ namespace MFTLib.Tests.Index;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public class FileIndexCacheOnlyUnresumableWatchTests
+public sealed class FileIndexCacheOnlyUnresumableWatchTests : IDisposable
 {
     public TestContext TestContext { get; set; } = null!;
 
-    string _firstTreeRoot = null!;
-    string _secondTreeRoot = null!;
-    string _cacheDirectory = null!;
+    CheckpointLossFixture _fixture = null!;
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
     [TestInitialize]
-    public void Initialize()
-    {
-        _firstTreeRoot = NewDirectory();
-        _secondTreeRoot = NewDirectory();
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
-    }
+    public void Initialize() => _fixture = new CheckpointLossFixture('T', 'U');
 
-    static string NewDirectory()
-    {
-        var path = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(Path.Combine(path, "Documents"));
-        File.WriteAllText(Path.Combine(path, "Documents", "readme.md"), "hello");
-        return path;
-    }
-
-    [TestCleanup]
-    public void Cleanup()
-    {
-        foreach (var directory in new[] { _firstTreeRoot, _secondTreeRoot, _cacheDirectory })
-        {
-            try
-            {
-                if (Directory.Exists(directory))
-                {
-                    Directory.Delete(directory, recursive: true);
-                }
-            }
-            catch (IOException)
-            {
-                // A just-unmapped block file can stay locked briefly on Windows.
-            }
-        }
-    }
-
-    static IndexedDrive Drive(char letter, string root) =>
-        new(letter, root, letter == 'T' ? 0x0BADF00Du : 0x0BADBEEFu);
-
-    FileIndexOptions Options(MftBlockProducer producer, IIndexWatchSource? watchSource, bool cacheOnly,
-        params IndexedDrive[] drives)
-    {
-        return new FileIndexOptions
-        {
-            Drives = drives,
-            CacheDirectory = _cacheDirectory,
-            MftSource = new MftIndexSource(producer, watchSource),
-            CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent
-        };
-    }
-
-    /// <summary>Writes the drives' cache blocks while the journal still holds every checkpoint.</summary>
-    async Task SeedCacheAsync(params IndexedDrive[] drives)
-    {
-        using var journals = OverrideJournals(drives.ToDictionary(drive => drive.Drive, _ => HealthyWindow));
-        await using var index = await FileIndex.OpenAsync(
-            Options(ProduceMftShapedBlock, watchSource: null, cacheOnly: false, drives), Token);
-        foreach (var drive in index.Drives)
-        {
-            Assert.AreEqual(BlockSource.ProducedByScan, drive.Block!.Source);
-        }
-    }
+    public void Dispose() => _fixture.Dispose();
 
     /// <summary>
     ///     Starts a drive whose block is unresumable and returns the refusal the consumer sees.
@@ -108,14 +50,14 @@ public class FileIndexCacheOnlyUnresumableWatchTests
     [TestMethod]
     public async Task StartWatchingAsync_RefusesTheUnresumableDriveAndWatchesTheHealthyOne()
     {
-        var driveT = Drive('T', _firstTreeRoot);
-        var driveU = Drive('U', _secondTreeRoot);
-        await SeedCacheAsync(driveT, driveU);
+        var driveT = _fixture.Drive();
+        var driveU = _fixture.Drive('U');
+        await _fixture.Seed(_fixture.Options(drives: [driveT, driveU]));
 
         var source = new ScriptedWatchSource();
-        using var journals = OverrideJournals(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
+        using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
-            Options(ProduceMftShapedBlock, source.IndexSource, cacheOnly: true, driveT, driveU), Token);
+            _fixture.Options(watchSource: source.IndexSource, cacheMode: CacheMode.ExistingOnly, drives: [driveT, driveU]), Token);
 
         // Both drives are adopted (cache-only never fails a drive for a lost checkpoint alone).
         Assert.AreEqual(DriveState.Ready, index.Drives.Single(drive => drive.Drive == 'T').State);
@@ -153,14 +95,14 @@ public class FileIndexCacheOnlyUnresumableWatchTests
     [TestMethod]
     public async Task RescanAsync_OnTheUnresumableDrive_ClearsTheRefusalAndStartsTheRequestedWatch()
     {
-        var driveT = Drive('T', _firstTreeRoot);
-        var driveU = Drive('U', _secondTreeRoot);
-        await SeedCacheAsync(driveT, driveU);
+        var driveT = _fixture.Drive();
+        var driveU = _fixture.Drive('U');
+        await _fixture.Seed(_fixture.Options(drives: [driveT, driveU]));
 
         var source = new ScriptedWatchSource();
-        using var journals = OverrideJournals(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
+        using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
-            Options(ProduceMftShapedBlock, source.IndexSource, cacheOnly: true, driveT, driveU), Token);
+            _fixture.Options(watchSource: source.IndexSource, cacheMode: CacheMode.ExistingOnly, drives: [driveT, driveU]), Token);
         await index.StartWatchingAsync(['U'], Token);
         await RefuseStartAsync(index, 'T', Token);
         Assert.IsTrue(index.Drives.Single(drive => drive.Drive == 'T').Watch.IsRequested,
@@ -194,9 +136,9 @@ public class FileIndexCacheOnlyUnresumableWatchTests
     [TestMethod]
     public async Task RescanAsync_OnTheUnresumableDrive_WhenTheProducerReturnsNoBlock_ReportsFailureAndLeavesTheRefusalIntact()
     {
-        var driveT = Drive('T', _firstTreeRoot);
-        var driveU = Drive('U', _secondTreeRoot);
-        await SeedCacheAsync(driveT, driveU);
+        var driveT = _fixture.Drive();
+        var driveU = _fixture.Drive('U');
+        await _fixture.Seed(_fixture.Options(drives: [driveT, driveU]));
 
         var scanFailure = new IOException("synthetic scan failure for T");
         Task<MftBlockProduceResult> Producer(MftBlockProduceRequest request, CancellationToken token)
@@ -208,9 +150,9 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         }
 
         var source = new ScriptedWatchSource();
-        using var journals = OverrideJournals(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
+        using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
-            Options(Producer, source.IndexSource, cacheOnly: true, driveT, driveU), Token);
+            _fixture.Options(Producer, source.IndexSource, CacheMode.ExistingOnly, [driveT, driveU]), Token);
         await index.StartWatchingAsync(['U'], Token);
         await RefuseStartAsync(index, 'T', Token);
 
@@ -250,22 +192,17 @@ public class FileIndexCacheOnlyUnresumableWatchTests
     [TestMethod]
     public async Task RescanAsync_ThatReplacesAWatchedBlockWithAnUnwatchableOne_WithdrawsTheRequestAndFaultsTheWait()
     {
-        var driveT = Drive('T', _firstTreeRoot);
-        await SeedCacheAsync(driveT);
+        var driveT = _fixture.Drive();
+        await _fixture.Seed(_fixture.Options(drives: [driveT]));
         var source = new ScriptedWatchSource();
-        using var journals = OverrideJournals(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
+        using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
         BlockFile? producedBlock = null;
-        var index = await FileIndex.OpenAsync(new FileIndexOptions
+        var index = await FileIndex.OpenAsync(_fixture.Options(async (request, cancellationToken) =>
         {
-            Drives = [driveT],
-            CacheDirectory = _cacheDirectory,
-            MftSource = new MftIndexSource(async (request, cancellationToken) =>
-            {
-                var result = await ProduceMftShapedBlock(request, cancellationToken);
-                producedBlock = result.Block;
-                return result;
-            }, source.IndexSource)
-        }, Token);
+            var result = await ProduceMftShapedBlock(request, cancellationToken);
+            producedBlock = result.Block;
+            return result;
+        }, source.IndexSource, drives: [driveT]), Token);
         index.Hooks.PublishInsideWriteGate = _ =>
         {
             if (producedBlock is not null)
@@ -307,22 +244,17 @@ public class FileIndexCacheOnlyUnresumableWatchTests
     [TestMethod]
     public async Task RescanAsync_ThatReplacesAChannelFaultedWatchsBlockWithAnUnwatchableOne_ReadsNotStarted()
     {
-        var driveT = Drive('T', _firstTreeRoot);
-        await SeedCacheAsync(driveT);
+        var driveT = _fixture.Drive();
+        await _fixture.Seed(_fixture.Options(drives: [driveT]));
         var source = new ScriptedWatchSource();
-        using var journals = OverrideJournals(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
+        using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
         BlockFile? producedBlock = null;
-        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
+        await using var index = await FileIndex.OpenAsync(_fixture.Options(async (request, cancellationToken) =>
         {
-            Drives = [driveT],
-            CacheDirectory = _cacheDirectory,
-            MftSource = new MftIndexSource(async (request, cancellationToken) =>
-            {
-                var result = await ProduceMftShapedBlock(request, cancellationToken);
-                producedBlock = result.Block;
-                return result;
-            }, source.IndexSource)
-        }, Token);
+            var result = await ProduceMftShapedBlock(request, cancellationToken);
+            producedBlock = result.Block;
+            return result;
+        }, source.IndexSource, drives: [driveT]), Token);
         index.Hooks.PublishInsideWriteGate = _ =>
         {
             if (producedBlock is not null)
@@ -358,13 +290,13 @@ public class FileIndexCacheOnlyUnresumableWatchTests
     [TestMethod]
     public async Task StartWatchingAsync_WhenTheOnlyMftDriveIsUnresumable_RefusesItAndReportsIt()
     {
-        var driveT = Drive('T', _firstTreeRoot);
-        await SeedCacheAsync(driveT);
+        var driveT = _fixture.Drive();
+        await _fixture.Seed(_fixture.Options(drives: [driveT]));
 
         var source = new ScriptedWatchSource();
-        using var journals = OverrideJournals(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = TrimmedWindow });
+        using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = TrimmedWindow });
         await using var index = await FileIndex.OpenAsync(
-            Options(ProduceMftShapedBlock, source.IndexSource, cacheOnly: true, driveT), Token);
+            _fixture.Options(watchSource: source.IndexSource, cacheMode: CacheMode.ExistingOnly, drives: [driveT]), Token);
 
         var refusal = await RefuseStartAsync(index, 'T', Token);
 

@@ -10,24 +10,24 @@ namespace MFTLib.Tests;
 ///     parse, and no hostile value reads or writes outside the record.
 /// </summary>
 [TestClass]
-public class NativeParserFixupTests
+public sealed class NativeParserFixupTests : IDisposable
 {
     const string InvalidFixupMessage = "The dump contains an invalid MFT record fixup.";
 
     const int HostileRecord = 7;
 
-    string _directory = null!;
+    TempDirectory _tempDirectory = null!;
+    string _directory => _tempDirectory.Path;
 
     [TestInitialize]
     public void Initialize()
     {
-        _directory = MftDumpFixture.NewOwnedDirectory();
+        _tempDirectory = new TempDirectory("mftlib-dump", create: false);
     }
 
-    [TestCleanup]
-    public void Cleanup()
+    public void Dispose()
     {
-        MftDumpFixture.DeleteOwnedDirectory(_directory);
+        _tempDirectory.Dispose();
     }
 
     // The offset and size written into record 7's header, for a 1024-byte record whose valid

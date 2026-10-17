@@ -1,41 +1,27 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
 
 [TestClass]
-public class CapacityExhaustionTests
+public sealed class CapacityExhaustionTests : IDisposable
 {
     static readonly DateTime Moment = new(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
 
-    string _directory = null!;
+    TempDirectory _directory = null!;
 
     [TestInitialize]
-    public void Initialize()
-    {
-        _directory = Path.Combine(Path.GetTempPath(), $"mftlib-exhaust-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_directory);
-    }
+    public void Initialize() => _directory = new TempDirectory("mftlib-exhaust");
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        try
-        {
-            Directory.Delete(_directory, recursive: true);
-        }
-        catch (IOException)
-        {
-            // A just-unmapped block file can stay locked briefly on Windows.
-        }
-    }
+    public void Dispose() => _directory.Dispose();
 
     (BlockFile Block, BlockWriter Writer, DriveBlock[] Snapshot) BuildTinyDrive(
         uint slotCapacity, uint namePoolCapacity)
     {
         var block = BlockFile.Create(new BlockFileCreateOptions
         {
-            Path = Path.Combine(_directory, "T-00000001.mlix"),
+            Path = Path.Combine(_directory.Path, "T-00000001.mlix"),
             VolumeSerial = 1,
             ProducerKind = ProducerKind.Mft,
             SlotCapacity = slotCapacity,

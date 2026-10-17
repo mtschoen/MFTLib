@@ -16,10 +16,13 @@ public partial class BrokerProcessTests
     [TestMethod]
     public async Task QueryVolume_ReturnsVolumeInformation()
     {
-        await using var broker = new InProcessBroker(CreateHost(queryVolumeInfo: drive =>
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
-            Assert.AreEqual(new DriveKey('D'), drive);
-            return Volume;
+            QueryVolumeInformation = drive =>
+            {
+                Assert.AreEqual(new DriveKey('D'), drive);
+                return Volume;
+            }
         }));
 
         var volume = await broker.Process.QueryVolumeAsync('d', CancellationToken.None).WaitAsync(HangGuard);
@@ -32,10 +35,13 @@ public partial class BrokerProcessTests
     [TestMethod]
     public async Task GrowUsnJournal_ReturnsSettings()
     {
-        await using var broker = new InProcessBroker(CreateHost(growUsnJournal: (drive, maximumSize, allocationDelta) =>
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
-            Assert.AreEqual(new DriveKey('E'), drive);
-            return new UsnJournalSettings { MaximumSize = maximumSize * 2, AllocationDelta = allocationDelta };
+            GrowUsnJournal = (drive, maximumSize, allocationDelta) =>
+            {
+                Assert.AreEqual(new DriveKey('E'), drive);
+                return new UsnJournalSettings { MaximumSize = maximumSize * 2, AllocationDelta = allocationDelta };
+            }
         }));
 
         var settings = await broker.Process.GrowUsnJournalAsync('E', new UsnJournalSettings { MaximumSize = 65536, AllocationDelta = 4096 }, CancellationToken.None)
@@ -48,8 +54,10 @@ public partial class BrokerProcessTests
     [TestMethod]
     public async Task QueryVolume_HostError_ThrowsInvalidOperationWithMessage()
     {
-        await using var broker = new InProcessBroker(CreateHost(
-            queryVolumeInfo: _ => throw new UnauthorizedAccessException("access denied")));
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            QueryVolumeInformation = _ => throw new UnauthorizedAccessException("access denied")
+        }));
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
             broker.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
@@ -61,16 +69,19 @@ public partial class BrokerProcessTests
     public async Task ControlRequestIds_CancelledWaitDropsLateReply_NextRequestSucceeds()
     {
         var gate = new TestGate();
-        await using var broker = new InProcessBroker(CreateHost(queryVolumeInfo: drive =>
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
-            if (drive != 'C')
+            QueryVolumeInformation = drive =>
             {
-                return Volume with { MftValidDataLength = 2048 * 1000 };
-            }
+                if (drive != 'C')
+                {
+                    return Volume with { MftValidDataLength = 2048 * 1000 };
+                }
 
-            gate.MarkEntered();
-            gate.WaitForRelease();
-            return Volume;
+                gate.MarkEntered();
+                gate.WaitForRelease();
+                return Volume;
+            }
         }));
         using var cancellation = new CancellationTokenSource();
 
@@ -90,7 +101,7 @@ public partial class BrokerProcessTests
     {
         var attempted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var broker = new InProcessBroker(CreateHost(), new BrokerTestHarnessOptions
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(), new BrokerTestHarnessOptions
         {
             HoldWrites = pipeName =>
             {
@@ -189,7 +200,7 @@ public partial class BrokerProcessTests
     public async Task ControlWrite_CancelledMidFrame_FinishesFrame_NextRequestSucceeds()
     {
         var control = new SplitFrameWrite(splitWriteNumber: 1);
-        await using var broker = new InProcessBroker(CreateHost(queryVolumeInfo: _ => Volume),
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new() { QueryVolumeInformation = _ => Volume }),
             wrapClientStream: (name, stream) => name == "control" ? control.Wrap(stream) : stream);
         using var cancellation = new CancellationTokenSource();
 
@@ -209,12 +220,15 @@ public partial class BrokerProcessTests
     {
         var gate = new TestGate();
         var control = new SplitFrameWrite(splitWriteNumber: 2, failAfterPrefix: true);
-        await using var broker = new InProcessBroker(CreateHost(queryVolumeInfo: _ =>
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            QueryVolumeInformation = _ =>
             {
                 gate.MarkEntered();
                 gate.WaitForRelease();
                 return Volume;
-            }),
+            }
+        }),
             wrapClientStream: (name, stream) => name == "control" ? control.Wrap(stream) : stream);
         try
         {
@@ -243,8 +257,11 @@ public partial class BrokerProcessTests
     {
         var watchCancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var watching = new TestGate();
-        var broker = new InProcessBroker(CreateHost(watchDrive: (_, _, _, cancellationToken) =>
-            WatchUntilCancelledAsync(watching, watchCancelled, cancellationToken)));
+        var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            WatchDrive = (_, _, _, cancellationToken) =>
+                WatchUntilCancelledAsync(watching, watchCancelled, cancellationToken)
+        }));
         try
         {
             await using var channel = await broker.Process.OpenChannelAsync('C',
@@ -302,33 +319,5 @@ public partial class BrokerProcessTests
         }
 
         yield break;
-    }
-
-    static JournalBrokerHost CreateHost(
-        Func<DriveKey, UsnJournalCursor>? queryCursor = null,
-        MftRecordBatchSource? scanDrive = null,
-        Func<DriveKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
-        Func<DriveKey, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchDrive = null,
-        Func<DriveKey, NtfsVolumeInformation>? queryVolumeInfo = null,
-        Func<DriveKey, long, long, UsnJournalSettings>? growUsnJournal = null,
-        TimeProvider? timeProvider = null)
-    {
-        return new JournalBrokerHost(
-            new ScriptedVolumeAccess
-            {
-                CursorQuery = queryCursor ?? (_ => Armed),
-                RecordBatches = scanDrive ?? ((_, _, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
-                JournalRead = readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
-                JournalWatch = watchDrive ?? ScriptedVolumeAccess.UnsupportedWatch,
-                VolumeInformation = queryVolumeInfo ?? (_ => Volume),
-                JournalGrow = growUsnJournal ?? ScriptedVolumeAccess.UnsupportedGrow
-            },
-            processorCount: 4,
-            timeProvider: timeProvider);
-    }
-
-    static MftRecord Record(ulong recordNumber, string name, ushort flags = 1)
-    {
-        return new MftRecord(recordNumber, 5, new MftRecordFields(flags), name);
     }
 }

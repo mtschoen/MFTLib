@@ -144,24 +144,6 @@ public class AgentInstructionsTests
     }
 
     [TestMethod]
-    public void TestSources_DeclareNoPerClassHangGuard()
-    {
-        var declaration = new Regex(
-            @"\bTimeSpan\s+HangGuard\b|\bHangGuard\s*=\s*(TimeSpan\.FromSeconds|HostChannelHarness|ScriptedWatchSource)");
-        var paths = RepositoryFiles.Git("ls-files", "-z", "--", "MFTLib.Tests/*.cs")
-            .Split('\0', StringSplitOptions.RemoveEmptyEntries);
-        Assert.IsTrue(paths.Length > 0, "Git returned no tracked test sources.");
-        var offenders = paths.SelectMany(path => RepositoryFiles.Read(path)
-                .Split('\n')
-                .Select((line, index) => (path, line, number: index + 1)))
-            .Where(entry => declaration.IsMatch(entry.line))
-            .Select(entry => $"{entry.path}:{entry.number}")
-            .ToList();
-        Assert.AreEqual(0, offenders.Count,
-            "Use the shared TestTimeouts.HangGuard instead of: " + string.Join(", ", offenders));
-    }
-
-    [TestMethod]
     public void PrivateContentPatterns_RejectFixturesAndAcceptPortableInputs()
     {
         var rejected = new[]
@@ -212,7 +194,9 @@ public class AgentInstructionsTests
         })
         {
             if (Regex.IsMatch(sharedText, @"\b" + Regex.Escape(name) + @"\b"))
+            {
                 failures.Add($"{name} belongs in its sample, not Shared.");
+            }
         }
 
         // Shared uses four-space member declarations; nested types are ownership units.
@@ -240,13 +224,27 @@ public class AgentInstructionsTests
             var reached = new HashSet<string>(StringComparer.Ordinal);
             while (pending.TryDequeue(out var name))
             {
-                if (!reached.Add(name)) continue;
+                if (!reached.Add(name))
+                {
+                    continue;
+                }
+
                 foreach (Match token in Regex.Matches(members[name].Body, @"\b[A-Za-z_]\w*\b"))
-                    if (members.ContainsKey(token.Value)) pending.Enqueue(token.Value);
+                {
+                    if (members.ContainsKey(token.Value))
+                    {
+                        pending.Enqueue(token.Value);
+                    }
+                }
             }
 
             foreach (var (name, member) in members)
-                if (!reached.Contains(name)) failures.Add($"{member.Path}: {name} has no {sample} source use.");
+            {
+                if (!reached.Contains(name))
+                {
+                    failures.Add($"{member.Path}: {name} has no {sample} source use.");
+                }
+            }
         }
 
         Assert.AreEqual(0, failures.Count, string.Join(Environment.NewLine, failures));

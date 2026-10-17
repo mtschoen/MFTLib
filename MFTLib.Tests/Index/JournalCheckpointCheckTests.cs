@@ -1,6 +1,7 @@
 using MFTLib.Index;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using static MFTLib.Tests.TestSupport.JournalWindows;
 
 namespace MFTLib.Tests.Index;
 
@@ -67,14 +68,6 @@ public class JournalCheckpointCheckTests
         Assert.IsNull(JournalCheckpointCheck.CheckUnmoved('T', JournalIdentifier, 2000,
             JournalCheckpointLossDetection.DriveOpening));
     }
-
-    static IDisposable Journal(ulong journalIdentifier = JournalIdentifier, long firstUsn = 1_000, long nextUsn = 5_000,
-        long maximumSize = 128L * 1024 * 1024, long allocationDelta = 64)
-    {
-        return JournalIsolation.OverrideJournalWindow(
-            _ => new SyntheticJournalWindow(journalIdentifier, firstUsn, nextUsn, allocationDelta, maximumSize));
-    }
-
     /// <summary>
     ///     The check does not decide which moment it is running in; its caller does, and every
     ///     loss carries whichever it was told, for both causes.

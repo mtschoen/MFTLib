@@ -13,41 +13,26 @@ namespace MFTLib.Tests.Index;
 ///     <see cref="BlockFile" /> and <see cref="BlockWriter" />, so these tests run on Linux too.
 /// </summary>
 [TestClass]
-public class FileIndexProducerSelectionTests
+public sealed class FileIndexProducerSelectionTests : IDisposable
 {
     static readonly DateTime FixedMoment = new(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
 
-    OwnedIndexDirectories _directories = null!;
-    string _treeRoot = null!;
-    string _cacheDirectory = null!;
+    IndexTreeFixture _fixture = null!;
+    string _treeRoot => _fixture.TreeRoot;
+    string _cacheDirectory => _fixture.CacheDirectory;
 
     public TestContext TestContext { get; set; } = null!;
 
     [TestInitialize]
-    public void Initialize()
-    {
-        _directories = new OwnedIndexDirectories();
-        _treeRoot = _directories.TreeRoot;
-        _cacheDirectory = _directories.CacheDirectory;
-        Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
-        File.WriteAllText(Path.Combine(_treeRoot, "Documents", "readme.md"), "hello");
-    }
+    public void Initialize() => _fixture = new IndexTreeFixture();
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        _directories.Dispose();
-    }
+    public void Dispose() => _fixture.Dispose();
 
-    FileIndexOptions Options(ProducerKind producer, MftBlockProducer? mftProducer)
-    {
-        return new FileIndexOptions
+    FileIndexOptions Options(ProducerKind producer, MftBlockProducer? mftProducer) =>
+        _fixture.Options(producer: producer) with
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, producer)],
-            CacheDirectory = _cacheDirectory,
             MftSource = mftProducer is null ? null : new MftIndexSource(mftProducer)
         };
-    }
 
     [TestMethod]
     public async Task Mft_SkippedRecordsAreSeparateFromAccessDeniedSubtreesAndResetOnRescan()

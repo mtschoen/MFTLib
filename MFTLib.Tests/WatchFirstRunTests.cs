@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
@@ -12,33 +11,25 @@ namespace MFTLib.Tests;
 // code when a drive fails. The drive list, the key reader and the delay are seams, so nothing waits on a clock.
 [TestClass]
 [DoNotParallelize]
-public class WatchFirstRunTests
+public sealed class WatchFirstRunTests : IDisposable
 {
     static readonly SyntheticJournalCursor Armed = new(7, 1000);
 
-    string _directory = null!;
+    TempDirectory _tempDirectory = null!;
+    string _directory => _tempDirectory.Path;
     UnattendedEnvironmentScope _attended = null!;
 
     [TestInitialize]
     public void Initialize()
     {
         _attended = new UnattendedEnvironmentScope(null);
-        _directory = Path.Combine(Path.GetTempPath(), $"watchFirstRun-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_directory);
+        _tempDirectory = new TempDirectory("watchFirstRun");
     }
 
-    [TestCleanup]
-    public void Cleanup()
+    public void Dispose()
     {
         _attended.Dispose();
-        try
-        {
-            Directory.Delete(_directory, recursive: true);
-        }
-        catch (IOException)
-        {
-            // A just-unmapped block file can stay locked briefly on Windows.
-        }
+        _tempDirectory.Dispose();
     }
 
     static (string RootDirectory, bool IsIndexable, string? Reason)
@@ -116,7 +107,7 @@ public class WatchFirstRunTests
         };
         await using var handle = BrokerTestHarness.StartInProcess(Volumes() with
         {
-            WatchDrive = (_, _, cancellationToken) => OneBatchThenQuiet([created], new SyntheticJournalCursor(7, 1500), cancellationToken)
+            WatchDrive = (_, _, cancellationToken) => ScriptedJournalStreams.OneBatchThenQuiet([created], new SyntheticJournalCursor(7, 1500), cancellationToken)
         });
         var lines = new List<string>();
         var seen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -294,7 +285,7 @@ public class WatchFirstRunTests
         return new ScriptedBrokerVolumes
         {
             QueryJournalCursor = _ => Armed,
-            WatchDrive = (_, _, cancellationToken) => OneBatchThenQuiet([], Armed, cancellationToken),
+            WatchDrive = (_, _, cancellationToken) => ScriptedJournalStreams.OneBatchThenQuiet([], Armed, cancellationToken),
             ScanDrive = _ =>
             [
                 [
@@ -303,12 +294,5 @@ public class WatchFirstRunTests
                 ]
             ]
         };
-    }
-
-    static async IAsyncEnumerable<(IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Cursor)> OneBatchThenQuiet(
-        SyntheticJournalRecord[] entries, SyntheticJournalCursor cursor, [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        yield return (entries, cursor);
-        await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false);
     }
 }

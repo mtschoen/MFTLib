@@ -34,21 +34,33 @@ partial class SampleHost
 
     internal int RunWithElevation(string[] arguments, ElevationNeed need, Func<int> run)
     {
-        if (need is ElevationNeed.None) return run();
+        if (need is ElevationNeed.None)
+        {
+            return run();
+        }
+
         if (_isElevated())
         {
             return RunWithOutputLog(run);
         }
-        if (IsUnattended()) return SkipElevationUnattended(arguments);
+
+        if (IsUnattended())
+        {
+            return SkipElevationUnattended(arguments);
+        }
 
         _output.WriteLine("Not running as administrator. Attempting to self-elevate...");
         if (_canSelfElevate() && ConfirmElevation(arguments, SelfElevationReason))
         {
             _output.WriteLine($"The elevated run writes its output to {OutputLogPath}");
-            if (_tryRunElevated(arguments, Timeout.InfiniteTimeSpan)) return 0;
+            if (_tryRunElevated(arguments, Timeout.InfiniteTimeSpan))
+            {
+                return 0;
+            }
             PrintElevatedRunIncomplete();
             return 1;
         }
+
         PrintElevationFailure(arguments);
         return 1;
     }

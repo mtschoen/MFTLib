@@ -12,8 +12,6 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public class BlockFileFlushDisposalRaceTests
 {
-    static readonly TimeSpan HandoffTimeout = TimeSpan.FromSeconds(30);
-
     [TestMethod]
     public void Flush_DisposeBeginsInsideARangeFlush_DisposeWaitsForTheFlush()
     {
@@ -79,17 +77,17 @@ public class BlockFileFlushDisposalRaceTests
         }));
         try
         {
-            Assert.IsTrue(held.Entered.Wait(HandoffTimeout), "the flush never reached the hold point, so the race was never set up");
+            Assert.IsTrue(held.Entered.Wait(HangGuard * 3), "the flush never reached the hold point, so the race was never set up");
 
             var disposeTask = Task.Run(() => block.Dispose());
-            Assert.IsTrue(disposeStarted.Entered.Wait(HandoffTimeout), "dispose never began, so the race was never set up");
+            Assert.IsTrue(disposeStarted.Entered.Wait(HangGuard * 3), "dispose never began, so the race was never set up");
             Assert.IsTrue(disposeWillWait,
                 "dispose found no in-flight access to wait for, so a flush was not holding the block");
 
             releaseFlush.Release();
 
-            Assert.IsTrue(flushTask.Wait(HandoffTimeout), "the in-flight flush never finished");
-            Assert.IsTrue(disposeTask.Wait(HandoffTimeout), "dispose never finished after the flush left the block");
+            Assert.IsTrue(flushTask.Wait(HangGuard * 3), "the in-flight flush never finished");
+            Assert.IsTrue(disposeTask.Wait(HangGuard * 3), "dispose never finished after the flush left the block");
             Assert.ThrowsException<ObjectDisposedException>(() => block.Flush(null));
         }
         finally

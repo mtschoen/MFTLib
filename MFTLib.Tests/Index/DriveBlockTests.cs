@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -9,18 +10,10 @@ public class DriveBlockTests
 {
     static readonly DateTime ScanMoment = new(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
 
-    static SyntheticBlockBuilder CompletedBuilder()
-    {
-        var builder = new SyntheticBlockBuilder();
-        builder.AddRoot();
-        builder.Complete(ScanMoment);
-        return builder;
-    }
-
     [TestMethod]
     public void NewDriveBlock_IsNotReleased()
     {
-        using var builder = CompletedBuilder();
+        using var builder = CompletedBlocks.Create(ScanMoment);
         var block = builder.OpenForReading(out _)!;
         var driveBlock = new DriveBlock('T', 0, block);
 
@@ -34,7 +27,7 @@ public class DriveBlockTests
     [TestMethod]
     public void Release_DisposesTheBlockOnce()
     {
-        using var builder = CompletedBuilder();
+        using var builder = CompletedBlocks.Create(ScanMoment);
         var block = builder.OpenForReading(out _)!;
         var driveBlock = new DriveBlock('T', 0, block);
 
@@ -57,7 +50,7 @@ public class DriveBlockTests
     [TestMethod]
     public void Finalizer_ReleasesTheBlockWhenItBecomesUnreachable()
     {
-        using var builder = CompletedBuilder();
+        using var builder = CompletedBlocks.Create(ScanMoment);
         var block = builder.OpenForReading(out _)!;
         var release = CreateUnrootedDriveBlock(block);
 
@@ -71,7 +64,7 @@ public class DriveBlockTests
     [TestMethod]
     public void Finalizer_WhenTheReleaseThrows_SwallowsItAndLeavesTheBlockMapped()
     {
-        using var builder = CompletedBuilder();
+        using var builder = CompletedBlocks.Create(ScanMoment);
         var block = builder.OpenForReading(out _)!;
         var release = CreateUnrootedDriveBlock(block,
             () => throw new InvalidOperationException("Simulated release failure."));
@@ -90,7 +83,7 @@ public class DriveBlockTests
     [TestMethod]
     public void ScheduleDeleteAt_DeletesTheOverridePathInsteadOfTheBlocksOwnPath()
     {
-        using var builder = CompletedBuilder();
+        using var builder = CompletedBlocks.Create(ScanMoment);
         var block = builder.OpenForReading(out _)!;
         var driveBlock = new DriveBlock('T', 0, block);
 
@@ -106,7 +99,7 @@ public class DriveBlockTests
     [TestMethod]
     public void Release_WithOverridePathLocked_DoesNotThrow()
     {
-        using var builder = CompletedBuilder();
+        using var builder = CompletedBlocks.Create(ScanMoment);
         var block = builder.OpenForReading(out _)!;
         var driveBlock = new DriveBlock('T', 0, block);
 
@@ -128,7 +121,7 @@ public class DriveBlockTests
     [TestMethod]
     public void Release_WithOverridePathReadOnly_DoesNotThrow()
     {
-        using var builder = CompletedBuilder();
+        using var builder = CompletedBlocks.Create(ScanMoment);
         var block = builder.OpenForReading(out _)!;
         var driveBlock = new DriveBlock('T', 0, block);
 

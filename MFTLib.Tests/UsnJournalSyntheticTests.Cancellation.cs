@@ -47,7 +47,7 @@ public partial class UsnJournalSyntheticTests
                 }
                 pipe.ContinueIssue.Set();
                 await harness.CloseControlAsync();
-                await harness.Serve.WaitAsync(TimeSpan.FromSeconds(10));
+                await harness.Serve.WaitAsync(HangGuard);
             }
             finally
             {
@@ -84,7 +84,7 @@ public partial class UsnJournalSyntheticTests
                 }
                 await cancellation.CancelAsync();
                 pipe.ContinueIssue.Set();
-                await watch.WaitAsync(TimeSpan.FromSeconds(10));
+                await watch.WaitAsync(HangGuard);
             }
             finally
             {
@@ -92,7 +92,7 @@ public partial class UsnJournalSyntheticTests
                 await cancellation.CancelAsync();
                 try
                 {
-                    await watch.WaitAsync(TimeSpan.FromSeconds(10));
+                    await watch.WaitAsync(HangGuard);
                 }
                 catch (InvalidOperationException) when (cancellation.IsCancellationRequested)
                 {

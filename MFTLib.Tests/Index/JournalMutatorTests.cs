@@ -1,16 +1,17 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.TestSupport.JournalMutatorDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
 [TestClass]
-public partial class JournalMutatorTests
+public sealed partial class JournalMutatorTests : IAsyncDisposable
 {
     static readonly DateTime Moment = new(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
     static readonly DateTime ChangeMoment = new(2026, 9, 2, 6, 0, 0, DateTimeKind.Utc);
 
-    string _directory = null!;
+    TempDirectory _directory = null!;
     BlockFile _block = null!;
     BlockWriter _writer = null!;
     DriveBlock _driveBlock = null!;
@@ -19,11 +20,10 @@ public partial class JournalMutatorTests
     [TestInitialize]
     public void Initialize()
     {
-        _directory = Path.Combine(Path.GetTempPath(), $"mftlib-mutate-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_directory);
+        _directory = new TempDirectory("mftlib-mutate");
         _block = BlockFile.Create(new BlockFileCreateOptions
         {
-            Path = Path.Combine(_directory, "T-0BADF00D.mlix"),
+            Path = Path.Combine(_directory.Path, "T-0BADF00D.mlix"),
             VolumeSerial = 0x0BADF00D,
             ProducerKind = ProducerKind.Mft,
             SlotCapacity = 32,
@@ -43,18 +43,10 @@ public partial class JournalMutatorTests
         _snapshot = [_driveBlock];
     }
 
-    [TestCleanup]
-    public async Task Cleanup()
+    public async ValueTask DisposeAsync()
     {
         await _snapshot.ReleaseNowAsync();
-        try
-        {
-            Directory.Delete(_directory, recursive: true);
-        }
-        catch (IOException)
-        {
-            // A just-unmapped file can stay locked briefly on Windows.
-        }
+        _directory.Dispose();
     }
 
     [TestMethod]

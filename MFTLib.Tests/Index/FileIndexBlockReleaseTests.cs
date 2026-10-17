@@ -14,11 +14,11 @@ namespace MFTLib.Tests.Index;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public class FileIndexBlockReleaseTests
+public sealed class FileIndexBlockReleaseTests : IDisposable
 {
-    OwnedIndexDirectories _directories = null!;
-    string _treeRoot = null!;
-    string _cacheDirectory = null!;
+    IndexTreeFixture _fixture = null!;
+    string _treeRoot => _fixture.TreeRoot;
+    string _cacheDirectory => _fixture.CacheDirectory;
     uint _volumeSerial;
 
     /// <summary>Creates an isolated enumeration tree and cache location.</summary>
@@ -26,28 +26,13 @@ public class FileIndexBlockReleaseTests
     public void Initialize()
     {
         _volumeSerial = TestVolumeSerial.GetNext();
-        _directories = new OwnedIndexDirectories();
-        _treeRoot = _directories.TreeRoot;
-        _cacheDirectory = _directories.CacheDirectory;
-        Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
-        File.WriteAllText(Path.Combine(_treeRoot, "Documents", "readme.md"), "hello");
+        _fixture = new IndexTreeFixture();
     }
 
     /// <summary>Removes the test tree and cached blocks.</summary>
-    [TestCleanup]
-    public void Cleanup()
-    {
-        _directories.Dispose();
-    }
+    public void Dispose() => _fixture.Dispose();
 
-    FileIndexOptions Options()
-    {
-        return new FileIndexOptions
-        {
-            Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial, ProducerKind.Enumeration)],
-            CacheDirectory = _cacheDirectory,
-        };
-    }
+    FileIndexOptions Options() => _fixture.Options(volumeSerial: _volumeSerial);
 
     FileIndexOptions TwoDriveOptions(string secondTreeRoot, uint secondVolumeSerial)
     {
@@ -100,27 +85,20 @@ public class FileIndexBlockReleaseTests
     [TestMethod]
     public async Task DisposeAsync_AfterAGarbageCollectedRetiredSnapshot_ReleasesEveryDriveBlock()
     {
-        var secondTreeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
+        using var secondTree = new TempDirectory("mftlib-tree");
+        var secondTreeRoot = secondTree.Path;
         var secondVolumeSerial = TestVolumeSerial.GetNext();
-        Directory.CreateDirectory(secondTreeRoot);
         await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "unchanged.md"), "unchanged");
-        try
-        {
-            var index = await OpenAndRescanWithoutRetainingThePreviousSnapshotAsync(
-                secondTreeRoot, secondVolumeSerial);
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        var index = await OpenAndRescanWithoutRetainingThePreviousSnapshotAsync(
+            secondTreeRoot, secondVolumeSerial);
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
 
-            await index.DisposeAsync();
+        await index.DisposeAsync();
 
-            var unchangedBlockPath = Path.Combine(_cacheDirectory,
-                CacheDirectory.BlockFileName('U', secondVolumeSerial));
-            BlockFileHoldAssertions.AssertNotHeld(unchangedBlockPath);
-            Assert.AreEqual(0, Directory.GetFiles(_cacheDirectory, "*.retired-*").Length);
-        }
-        finally
-        {
-            Directory.Delete(secondTreeRoot, recursive: true);
-        }
+        var unchangedBlockPath = Path.Combine(_cacheDirectory,
+            CacheDirectory.BlockFileName('U', secondVolumeSerial));
+        BlockFileHoldAssertions.AssertNotHeld(unchangedBlockPath);
+        Assert.AreEqual(0, Directory.GetFiles(_cacheDirectory, "*.retired-*").Length);
     }
 
     /// <summary>
@@ -130,32 +108,25 @@ public class FileIndexBlockReleaseTests
     [TestMethod]
     public async Task RescanAsync_OfAnotherDrive_ReleasesItsRetiredBlockWhileAHandleIsHeld()
     {
-        var secondTreeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
+        using var secondTree = new TempDirectory("mftlib-tree");
+        var secondTreeRoot = secondTree.Path;
         var secondVolumeSerial = TestVolumeSerial.GetNext();
-        Directory.CreateDirectory(secondTreeRoot);
         await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "unchanged.md"), "unchanged");
-        try
-        {
-            var index = await FileIndex.OpenAsync(TwoDriveOptions(secondTreeRoot, secondVolumeSerial),
-                CancellationToken.None);
-            var held = index.Search(new SearchQuery("readme.md", NameMatchMode.Exact)).Single();
-            var retiredRelease = ReleaseStateOf(index, 'U');
-            await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "second.md"), "second");
-            await index.RescanAsync(['U'], CancellationToken.None);
+        var index = await FileIndex.OpenAsync(TwoDriveOptions(secondTreeRoot, secondVolumeSerial),
+            CancellationToken.None);
+        var held = index.Search(new SearchQuery("readme.md", NameMatchMode.Exact)).Single();
+        var retiredRelease = ReleaseStateOf(index, 'U');
+        await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "second.md"), "second");
+        await index.RescanAsync(['U'], CancellationToken.None);
 
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
 
-            Assert.IsTrue(retiredRelease.IsReleaseComplete, "a handle on drive T kept drive U's retired block mapped");
-            Assert.AreEqual(0, Directory.GetFiles(_cacheDirectory,
-                CacheDirectory.BlockFileName('U', secondVolumeSerial) + ".retired-*").Length);
-            Assert.AreEqual("readme.md", held.Name);
-            await index.DisposeAsync();
-        }
-        finally
-        {
-            Directory.Delete(secondTreeRoot, recursive: true);
-        }
+        Assert.IsTrue(retiredRelease.IsReleaseComplete, "a handle on drive T kept drive U's retired block mapped");
+        Assert.AreEqual(0, Directory.GetFiles(_cacheDirectory,
+            CacheDirectory.BlockFileName('U', secondVolumeSerial) + ".retired-*").Length);
+        Assert.AreEqual("readme.md", held.Name);
+        await index.DisposeAsync();
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -194,9 +165,9 @@ public class FileIndexBlockReleaseTests
     [TestMethod]
     public async Task DisposeAsync_WhileACompetingReleaseIsInProgress_WaitsForThatReleaseToFinish()
     {
-        var secondTreeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
+        using var secondTree = new TempDirectory("mftlib-tree");
+        var secondTreeRoot = secondTree.Path;
         var secondVolumeSerial = TestVolumeSerial.GetNext();
-        Directory.CreateDirectory(secondTreeRoot);
         await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "unchanged.md"), "unchanged");
         var reachedTheGate = new TestGate();
         var gate = new TestGate();
@@ -239,7 +210,6 @@ public class FileIndexBlockReleaseTests
         finally
         {
             gate.Release();
-            Directory.Delete(secondTreeRoot, recursive: true);
         }
     }
 

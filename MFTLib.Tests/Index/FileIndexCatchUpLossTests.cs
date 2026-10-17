@@ -23,10 +23,6 @@ public partial class FileIndexCatchUpLossTests
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
-    /// <summary>A scan whose catch-up the producer reports lost with the standard loss.</summary>
-    static WatchHarnessScan Lost(char driveLetter, TestGate? hold = null) =>
-        new(StandardCatchUpLoss(driveLetter), Hold: hold);
-
     /// <summary>A scan whose catch-up held.</summary>
     static WatchHarnessScan Held => new();
 

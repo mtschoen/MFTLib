@@ -12,7 +12,7 @@ public partial class BrokerProcessTests
     public async Task HostFault_WithPendingRequest_FailsRequestEndsProcessOnceAndDisposesQuietly()
     {
         var corrupt = new CorruptFrameWrite(corruptWriteNumber: 1);
-        var broker = new InProcessBroker(CreateHost(), wrapClientStream: ControlOnly(corrupt));
+        var broker = new InProcessBroker(BrokerHostFactory.Create(), wrapClientStream: ControlOnly(corrupt));
 
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
             broker.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
@@ -29,9 +29,11 @@ public partial class BrokerProcessTests
         var sourceCancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         // Writes 1 and 2 are the scan's volume query and channel open; write 3 is corrupted.
         var corrupt = new CorruptFrameWrite(corruptWriteNumber: 3);
-        var broker = new InProcessBroker(CreateHost(
-                scanDrive: (_, _, _, _, _, cancellationToken) =>
-                    WaitForCancellation(scanning, sourceCancelled, cancellationToken)),
+        var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, _, _, _, cancellationToken) =>
+                WaitForCancellation(scanning, sourceCancelled, cancellationToken)
+        }),
             wrapClientStream: ControlOnly(corrupt));
 
         var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
@@ -53,7 +55,7 @@ public partial class BrokerProcessTests
         var escaped = await Assert.ThrowsExceptionAsync<InvalidTimeZoneException>(async () =>
         {
             var corrupt = new CorruptFrameWrite(corruptWriteNumber: 1);
-            await using var broker = new InProcessBroker(CreateHost(), wrapClientStream: ControlOnly(corrupt));
+            await using var broker = new InProcessBroker(BrokerHostFactory.Create(), wrapClientStream: ControlOnly(corrupt));
             var request = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
             try
             {
@@ -83,7 +85,7 @@ public partial class BrokerProcessTests
         try
         {
             var corrupt = new CorruptFrameWrite(corruptWriteNumber: 1);
-            await using (var broker = new InProcessBroker(CreateHost(), wrapClientStream: ControlOnly(corrupt)))
+            await using (var broker = new InProcessBroker(BrokerHostFactory.Create(), wrapClientStream: ControlOnly(corrupt)))
             {
                 await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
                     broker.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));

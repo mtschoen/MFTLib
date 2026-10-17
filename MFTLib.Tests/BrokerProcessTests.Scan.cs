@@ -17,8 +17,10 @@ public partial class BrokerProcessTests
     public async Task ScanDrive_ReturnsArmedCursorAndBlockAfterCatchUp()
     {
         var advanced = new UsnJournalCursor(7, 1500);
-        await using var broker = new InProcessBroker(CreateHost(
-            readJournal: CatchUpSources.ToTip(advanced, JournalEntries.Create(20, 1200, "file.txt"))));
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            ReadJournal = CatchUpSources.ToTip(advanced, JournalEntries.Create(20, 1200, "file.txt"))
+        }));
         var target = TestBlockSections.Target() with { CacheTag = new CacheTag("TEST", 3) };
 
         var result = await broker.Process.ScanDriveAsync('c', target, new MftScanOptions(), null, CancellationToken.None)
@@ -43,10 +45,13 @@ public partial class BrokerProcessTests
     public async Task ScanDrive_ReportsProgress()
     {
         var reports = new List<BlockWriteProgress>();
-        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, reporting, _, _, _) =>
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
-            reporting.Progress?.Report(new BlockWriteProgress(2, 0, 2, null, BlockScanPhase.Parsing));
-            return [[Record(5, ".", 3)], [Record(20, "file.txt")]];
+            ScanDrive = (_, _, reporting, _, _, _) =>
+            {
+                reporting.Progress?.Report(new BlockWriteProgress(2, 0, 2, null, BlockScanPhase.Parsing));
+                return [[BrokerHostFactory.Record(5, ".", 3)], [BrokerHostFactory.Record(20, "file.txt")]];
+            }
         }));
         var progressSink = new SynchronousProgress<BlockWriteProgress>(report =>
         {
@@ -70,7 +75,7 @@ public partial class BrokerProcessTests
     [DataRow(new[] { ".git" })]
     public async Task ScanDrive_ForwardsRetainedFileNames(string[]? names)
     {
-        await using var broker = new InProcessBroker(CreateHost());
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create());
         var options = new MftScanOptions
         {
             RetainedFileNames = names
@@ -98,7 +103,7 @@ public partial class BrokerProcessTests
         using var journal = JournalIsolation.OverrideJournalWindow(_ => TrimmedWindow);
         var hostEnd = new TaskCompletionSource<DisposalRecordingStream>(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var broker = new InProcessBroker(
-            CreateHost(readJournal: (_, _, _) => throw new IOException("catch-up read failed")),
+            BrokerHostFactory.Create(new() { ReadJournal = (_, _, _) => throw new IOException("catch-up read failed") }),
             wrapConnector: RecordHostEnd(hostEnd));
 
         var result = await broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
@@ -123,7 +128,7 @@ public partial class BrokerProcessTests
     {
         using var journal = JournalIsolation.OverrideJournalWindow(_ => RetainedWindow);
         await using var broker = new InProcessBroker(
-            CreateHost(readJournal: (_, _, _) => throw new IOException("catch-up read failed")));
+            BrokerHostFactory.Create(new() { ReadJournal = (_, _, _) => throw new IOException("catch-up read failed") }));
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
             broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
@@ -206,7 +211,7 @@ public partial class BrokerProcessTests
     {
         using var journal = JournalIsolation.OverrideJournalWindow(_ => TrimmedWindow);
         await using var broker = new InProcessBroker(
-            CreateHost(readJournal: (_, _, _) => throw new IOException("catch-up read failed")));
+            BrokerHostFactory.Create(new() { ReadJournal = (_, _, _) => throw new IOException("catch-up read failed") }));
         var process = broker.Process;
         var producer = new BrokerMftBlockProducer(_ => Task.FromResult(process)).CreateIndexSource().Producer;
         var target = TestBlockSections.Target();
@@ -233,8 +238,10 @@ public partial class BrokerProcessTests
     {
         var scanning = new TestGate();
         var sourceCancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var broker = new InProcessBroker(CreateHost(
-            scanDrive: (_, _, _, _, _, cancellationToken) => WaitForCancellation(scanning, sourceCancelled, cancellationToken)));
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, _, _, _, cancellationToken) => WaitForCancellation(scanning, sourceCancelled, cancellationToken)
+        }));
         using var cancellation = new CancellationTokenSource();
 
         var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
@@ -252,10 +259,13 @@ public partial class BrokerProcessTests
     {
         var scanning = new TestGate();
         var sourceCancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var broker = new InProcessBroker(CreateHost(scanDrive: (drive, _, _, _, _, cancellationToken) =>
-            drive == 'C'
-                ? WaitForCancellation(scanning, sourceCancelled, cancellationToken)
-                : [[Record(5, ".", 3)], [Record(20, "file.txt")]]));
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (drive, _, _, _, _, cancellationToken) =>
+                drive == 'C'
+                    ? WaitForCancellation(scanning, sourceCancelled, cancellationToken)
+                    : [[BrokerHostFactory.Record(5, ".", 3)], [BrokerHostFactory.Record(20, "file.txt")]]
+        }));
         using var cancellation = new CancellationTokenSource();
 
         var cancelled = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
@@ -277,11 +287,14 @@ public partial class BrokerProcessTests
     public async Task ScanDrive_TwoDrivesConcurrently_BothComplete()
     {
         var gates = new Dictionary<DriveKey, TestGate> { ['C'] = new(), ['D'] = new() };
-        await using var broker = new InProcessBroker(CreateHost(scanDrive: (drive, _, _, _, _, _) =>
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
-            gates[drive].MarkEntered();
-            gates[drive].WaitForRelease();
-            return [[Record(5, ".", 3)], [Record(20, drive.Letter + ".txt")]];
+            ScanDrive = (drive, _, _, _, _, _) =>
+            {
+                gates[drive].MarkEntered();
+                gates[drive].WaitForRelease();
+                return [[BrokerHostFactory.Record(5, ".", 3)], [BrokerHostFactory.Record(20, drive.Letter + ".txt")]];
+            }
         }));
 
         var scanC = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
@@ -306,7 +319,7 @@ public partial class BrokerProcessTests
     public async Task Producer_ReportsProgressToRequest()
     {
         var indexReports = new List<IndexScanProgress>();
-        await using var broker = new InProcessBroker(CreateHost());
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create());
         var process = broker.Process;
         var producer = new BrokerMftBlockProducer(_ => Task.FromResult(process), new MftScanOptions())
             .CreateIndexSource().Producer;
@@ -395,7 +408,7 @@ public partial class BrokerProcessTests
     [TestMethod]
     public async Task Producer_ConnectsExactlyOnce()
     {
-        await using var broker = new InProcessBroker(CreateHost());
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create());
         var process = broker.Process;
         var connections = new System.Collections.Concurrent.ConcurrentQueue<CancellationToken>();
         var producer = new BrokerMftBlockProducer(connectToken =>

@@ -13,10 +13,13 @@ public partial class BrokerProcessTests
         var connection = new TaskCompletionSource<Task<Stream>>(TaskCreationOptions.RunContinuationsAsynchronously);
         var watchStarts = 0;
         await using var broker = new InProcessBroker(
-            CreateHost(watchDrive: (_, _, _, cancellationToken) =>
+            BrokerHostFactory.Create(new()
             {
-                Interlocked.Increment(ref watchStarts);
-                return WatchUntilCancelledAsync(new TestGate(), new TaskCompletionSource(), cancellationToken);
+                WatchDrive = (_, _, _, cancellationToken) =>
+                {
+                    Interlocked.Increment(ref watchStarts);
+                    return WatchUntilCancelledAsync(new TestGate(), new TaskCompletionSource(), cancellationToken);
+                }
             }),
             wrapConnector: connect => async (pipeName, cancellationToken) =>
             {
@@ -47,7 +50,7 @@ public partial class BrokerProcessTests
     public async Task OpenChannel_ConnectedButErrorReply_ClientDisposesStream_HostChannelEnds()
     {
         var hostEnd = new TaskCompletionSource<Stream>(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var broker = new InProcessBroker(CreateHost(),
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(),
             wrapConnector: connect => async (pipeName, cancellationToken) =>
             {
                 hostEnd.TrySetResult(await connect(pipeName, cancellationToken));
@@ -68,7 +71,7 @@ public partial class BrokerProcessTests
     [TestMethod]
     public async Task OpenChannel_FailConnection_ThrowsWithHostMessage()
     {
-        await using var broker = new InProcessBroker(CreateHost(), new BrokerTestHarnessOptions
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(), new BrokerTestHarnessOptions
         {
             FailConnection = pipeName => pipeName.Contains("-C-", StringComparison.Ordinal)
                 ? new IOException("no pipe for drive C")
@@ -88,7 +91,7 @@ public partial class BrokerProcessTests
     {
         var clientEnd = new FailingWrites();
         var hostEnd = new TaskCompletionSource<DisposalRecordingStream>(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var broker = new InProcessBroker(CreateHost(),
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(),
             wrapClientStream: (name, stream) =>
                 name == InMemoryBrokerPipes.ControlPipeName ? stream : clientEnd.Wrap(stream),
             wrapConnector: RecordHostEnd(hostEnd));

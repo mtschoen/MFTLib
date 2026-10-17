@@ -11,42 +11,30 @@ namespace MFTLib.Tests.Index;
 ///     scans into a private block and leaves the canonical cache alone.
 /// </summary>
 [TestClass]
-public class FileIndexOwnerLockTests
+public sealed class FileIndexOwnerLockTests : IDisposable
 {
-    OwnedIndexDirectories _directories = null!;
-    string _treeRoot = null!;
-    string _cacheDirectory = null!;
+    IndexTreeFixture _fixture = null!;
+    string _treeRoot => _fixture.TreeRoot;
+    string _cacheDirectory => _fixture.CacheDirectory;
     uint _volumeSerial;
 
     [TestInitialize]
     public void Initialize()
     {
         _volumeSerial = TestVolumeSerial.GetNext();
-        _directories = new OwnedIndexDirectories();
-        _treeRoot = _directories.TreeRoot;
-        _cacheDirectory = _directories.CacheDirectory;
-        Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
-        File.WriteAllText(Path.Combine(_treeRoot, "Documents", "readme.md"), "hello");
+        _fixture = new IndexTreeFixture();
     }
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        _directories.Dispose();
-    }
+    public void Dispose() => _fixture.Dispose();
 
     FileIndexOptions Options(bool cacheOnly = false, IProgress<IndexScanProgress>? progress = null,
-        Action<string>? diagnostics = null)
-    {
-        return new FileIndexOptions
+        Action<string>? diagnostics = null) =>
+        _fixture.Options(volumeSerial: _volumeSerial,
+            cacheMode: cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent) with
         {
-            Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial, ProducerKind.Enumeration)],
-            CacheDirectory = _cacheDirectory,
-            CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
             ScanProgress = progress,
             Diagnostics = diagnostics
         };
-    }
 
     string CanonicalPath => Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
 
@@ -340,7 +328,7 @@ public class FileIndexOwnerLockTests
             var rescan = second.RescanAsync(['T'], cancellation.Token);
             try
             {
-                await progress.Reported.WaitAsync(TimeSpan.FromSeconds(30));
+                await progress.Reported.WaitAsync(HangGuard * 3);
                 Assert.AreEqual(CacheSlotState.PrivateFallback, second.Drives.Single().Block!.CacheSlot);
                 Assert.AreEqual(rowCountBefore, second.HeaderOf().RowCount);
             }

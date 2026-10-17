@@ -137,8 +137,6 @@ public class BrokerDiagnosticsTests
         StringAssert.Contains(line, ":test-C-3]");
     }
 
-    static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(30);
-
     [DataTestMethod]
     [DataRow("ui")]
     [DataRow("Client-2_test")]
@@ -206,13 +204,13 @@ public class BrokerDiagnosticsTests
                 }
 
                 await Task.WhenAll(clientWriter.FlushAsync(CancellationToken.None),
-                    brokerWriter.FlushAsync(CancellationToken.None)).WaitAsync(TestTimeout);
+                    brokerWriter.FlushAsync(CancellationToken.None)).WaitAsync(HangGuard * 3);
             }
 
             Assert.IsNotNull(appendFailure);
             var failure = appendFailure;
             Assert.IsTrue(clientWriter.TryEnqueue("client-recovered"));
-            await clientWriter.FlushAsync(CancellationToken.None).WaitAsync(TestTimeout);
+            await clientWriter.FlushAsync(CancellationToken.None).WaitAsync(HangGuard * 3);
             var clientLines = await File.ReadAllLinesAsync(clientPath);
             StringAssert.Contains(clientLines[0], $"1 records dropped: append failed: {failure.GetType().Name}: {failure.Message}");
             Assert.IsFalse(clientLines[0].Contains("buffer full", StringComparison.Ordinal));
@@ -225,7 +223,7 @@ public class BrokerDiagnosticsTests
             clientWriter.Complete();
             brokerWriter.Complete();
             await Task.WhenAll(clientWriter.FlushAsync(CancellationToken.None),
-                brokerWriter.FlushAsync(CancellationToken.None)).WaitAsync(TestTimeout);
+                brokerWriter.FlushAsync(CancellationToken.None)).WaitAsync(HangGuard * 3);
         }
     }
 
@@ -241,10 +239,10 @@ public class BrokerDiagnosticsTests
         foreach (var drive in new[] { 'C', 'D', 'C' })
         {
             await using var channel = await broker.Process.OpenChannelAsync(drive,
-                writer => BrokerProtocol.WriteStartWatch(writer, default), CancellationToken.None).WaitAsync(TestTimeout);
+                writer => BrokerProtocol.WriteStartWatch(writer, default), CancellationToken.None).WaitAsync(HangGuard * 3);
             Assert.AreEqual(BrokerFrameKind.Error,
-                (await channel.ReadAsync(CancellationToken.None).AsTask().WaitAsync(TestTimeout))?.Kind);
-            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(TestTimeout);
+                (await channel.ReadAsync(CancellationToken.None).AsTask().WaitAsync(HangGuard * 3))?.Kind);
+            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard * 3);
             var traces = lines.Where(line => line.Contains($" kind={(byte)BrokerFrameKind.StartWatch} ", StringComparison.Ordinal))
                 .Select(line => System.Text.RegularExpressions.Regex.Match(line,
                     @"^\d{4}-\d\d-\d\dT[\d:.]+Z  \[broker:\d+:(?<tag>[^\]]+)\]  frame (?<direction>read|write) kind=\d+ len=17 t=\d+$"))
@@ -276,8 +274,8 @@ public class BrokerDiagnosticsTests
             }
         })).ToArray();
         start.Release();
-        await Task.WhenAll(writers).WaitAsync(TestTimeout);
-        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(TestTimeout);
+        await Task.WhenAll(writers).WaitAsync(HangGuard * 3);
+        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard * 3);
 
         Assert.AreEqual(1600, lines.Count);
         for (var channelIndex = 0; channelIndex < 8; channelIndex++)
@@ -301,7 +299,7 @@ public class BrokerDiagnosticsTests
         }));
 
         BrokerDiagnostics.Log("test-C-1", "parks the sink");
-        await gate.Entered.WaitAsync(TestTimeout);
+        await gate.Entered.WaitAsync(HangGuard * 3);
         var otherChannel = "test-D-1";
         var callerTask = Task.Run(() =>
         {
@@ -310,10 +308,10 @@ public class BrokerDiagnosticsTests
                 BrokerDiagnostics.Log(otherChannel, "queued " + index);
             }
         });
-        await callerTask.WaitAsync(TestTimeout);
+        await callerTask.WaitAsync(HangGuard * 3);
 
         gate.Release();
-        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(TestTimeout);
+        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard * 3);
         Assert.AreEqual(101, lines.Count);
     }
 
@@ -331,14 +329,14 @@ public class BrokerDiagnosticsTests
         }));
 
         BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "parks the sink");
-        await gate.Entered.WaitAsync(TestTimeout);
+        await gate.Entered.WaitAsync(HangGuard * 3);
         for (var index = 0; index < BrokerDiagnosticsWriter.Capacity + 5; index++)
         {
             BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "fill " + index);
         }
 
         gate.Release();
-        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(TestTimeout);
+        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard * 3);
 
         Assert.AreEqual(1, lines.Count(line => line.Contains("5 records dropped: queue full", StringComparison.Ordinal)));
         Assert.AreEqual(1 + BrokerDiagnosticsWriter.Capacity + 1, lines.Count);
@@ -363,7 +361,7 @@ public class BrokerDiagnosticsTests
         BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "first");
         BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "second");
         BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "third");
-        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(TestTimeout);
+        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard * 3);
 
         Assert.AreEqual(2, lines.Count);
         StringAssert.Contains(lines[0], "2 records dropped: append failed: IOException: sink offline");

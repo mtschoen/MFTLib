@@ -10,25 +10,25 @@ namespace MFTLib.Tests;
 // source standing in for the live volume of an elevated run. Runs on every platform.
 [TestClass]
 [DoNotParallelize]
-public class DirectHostTests
+public sealed class DirectHostTests : IDisposable
 {
     const string DumpRoot = "dump:/D";
 
-    string _directory = null!;
+    TempDirectory _tempDirectory = null!;
+    string _directory => _tempDirectory.Path;
     string _dumpFile = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _directory = MftDumpFixture.NewOwnedDirectory();
+        _tempDirectory = new TempDirectory("mftlib-dump", create: false);
         _dumpFile = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
     }
 
-    [TestCleanup]
-    public void Cleanup()
+    public void Dispose()
     {
         NativeTestHooks.NativeResetTestState();
-        MftDumpFixture.DeleteOwnedDirectory(_directory);
+        _tempDirectory.Dispose();
     }
 
     SampleHost HostOver(List<string> lines)

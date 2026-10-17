@@ -2,12 +2,13 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using MFTLib.Index;
 using MFTLib.NativeInterop;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
 
 [TestClass]
-public class BlockFileRangedFlushTests
+public sealed class BlockFileRangedFlushTests : IDisposable
 {
     static readonly DateTime Moment = new(2026, 9, 2, 8, 0, 0, DateTimeKind.Utc);
 
@@ -19,29 +20,17 @@ public class BlockFileRangedFlushTests
         ModifiedTicks: Moment.Ticks,
         SequenceNumber: 0);
 
-    string _directory = null!;
+    TempDirectory _directory = null!;
     string _blockPath = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _directory = Path.Combine(Path.GetTempPath(), $"mftlib-ranged-flush-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_directory);
-        _blockPath = Path.Combine(_directory, "T-0BADF00D.mlix");
+        _directory = new TempDirectory("mftlib-ranged-flush");
+        _blockPath = Path.Combine(_directory.Path, "T-0BADF00D.mlix");
     }
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        try
-        {
-            Directory.Delete(_directory, recursive: true);
-        }
-        catch (IOException)
-        {
-            // Windows can hold a just-unmapped file briefly; a leftover temp directory is harmless.
-        }
-    }
+    public void Dispose() => _directory.Dispose();
 
     BlockFile CreateBlock()
     {

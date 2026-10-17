@@ -10,24 +10,24 @@ namespace MFTLib.Tests;
 ///     whose content fails a check is rejected with the check's own message.
 /// </summary>
 [TestClass]
-public class MftDumpInputTests
+public sealed class MftDumpInputTests : IDisposable
 {
     internal const string IncompleteMessage = "The dump file could not be read completely.";
 
     const string RecordSizeMessage = "Invalid or unsupported MFT record size.";
 
-    string _directory = null!;
+    TempDirectory _tempDirectory = null!;
+    string _directory => _tempDirectory.Path;
 
     [TestInitialize]
     public void Initialize()
     {
-        _directory = MftDumpFixture.NewOwnedDirectory();
+        _tempDirectory = new TempDirectory("mftlib-dump", create: false);
     }
 
-    [TestCleanup]
-    public void Cleanup()
+    public void Dispose()
     {
-        MftDumpFixture.DeleteOwnedDirectory(_directory);
+        _tempDirectory.Dispose();
     }
 
     [TestMethod]

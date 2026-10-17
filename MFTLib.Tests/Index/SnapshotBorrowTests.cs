@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -14,14 +15,6 @@ public class SnapshotBorrowTests
 {
     static readonly DateTime ScanMoment = new(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
 
-    static SyntheticBlockBuilder CompletedBuilder(char driveLetter = 'T')
-    {
-        var builder = new SyntheticBlockBuilder(driveLetter);
-        builder.AddRoot();
-        builder.Complete(ScanMoment);
-        return builder;
-    }
-
     static DriveBlock OpenDriveBlock(SyntheticBlockBuilder builder)
     {
         return new DriveBlock(builder.Drive, 0, builder.OpenForReading(out _)!);
@@ -30,7 +23,7 @@ public class SnapshotBorrowTests
     [TestMethod]
     public async Task Borrow_OnALiveSnapshot_IsHandedOut()
     {
-        using var builder = CompletedBuilder();
+        using var builder = CompletedBlocks.Create(ScanMoment);
         DriveBlock[] snapshot = [OpenDriveBlock(builder)];
         try
         {
@@ -47,8 +40,8 @@ public class SnapshotBorrowTests
     [TestMethod]
     public async Task Borrow_WhenABlockIsReleased_ThrowsAndReturnsTheBorrowsItTook()
     {
-        using var liveBuilder = CompletedBuilder();
-        using var releasedBuilder = CompletedBuilder('U');
+        using var liveBuilder = CompletedBlocks.Create(ScanMoment);
+        using var releasedBuilder = CompletedBlocks.Create(ScanMoment, 'U');
         DriveBlock[] snapshot = [OpenDriveBlock(liveBuilder), OpenDriveBlock(releasedBuilder)];
         await snapshot[1].ReleaseState.ReleaseAsync();
         try
@@ -67,7 +60,7 @@ public class SnapshotBorrowTests
     [TestMethod]
     public async Task Borrow_RejectedDuringRelease_CollectionDoesNotReturnAnotherReadersBorrow()
     {
-        using var builder = CompletedBuilder();
+        using var builder = CompletedBlocks.Create(ScanMoment);
         var driveBlock = OpenDriveBlock(builder);
         DriveBlock[] snapshot = [driveBlock];
         var borrow = new SnapshotBorrow(snapshot);
@@ -106,7 +99,7 @@ public class SnapshotBorrowTests
     [TestMethod]
     public async Task ReleaseNowAsync_WhileABorrowIsHeld_LeavesTheBlockMappedUntilItIsReturned()
     {
-        using var builder = CompletedBuilder();
+        using var builder = CompletedBlocks.Create(ScanMoment);
         var driveBlock = OpenDriveBlock(builder);
         DriveBlock[] snapshot = [driveBlock];
         var borrow = new SnapshotBorrow(snapshot);
@@ -135,7 +128,7 @@ public class SnapshotBorrowTests
     [TestMethod]
     public async Task ReleaseAsync_WhileABorrowIsHeld_CompletesOnlyOnceItIsReturned()
     {
-        using var builder = CompletedBuilder();
+        using var builder = CompletedBlocks.Create(ScanMoment);
         var driveBlock = OpenDriveBlock(builder);
         DriveBlock[] snapshot = [driveBlock];
         var borrow = new SnapshotBorrow(snapshot);
@@ -166,7 +159,7 @@ public class SnapshotBorrowTests
     [TestMethod]
     public async Task Borrow_ReturnedTwice_CountsOnce()
     {
-        using var builder = CompletedBuilder();
+        using var builder = CompletedBlocks.Create(ScanMoment);
         var driveBlock = OpenDriveBlock(builder);
         DriveBlock[] snapshot = [driveBlock];
         try
@@ -193,7 +186,7 @@ public class SnapshotBorrowTests
     [TestMethod]
     public async Task Borrow_AbandonedWithoutDisposal_IsReturnedWhenCollected()
     {
-        using var builder = CompletedBuilder();
+        using var builder = CompletedBlocks.Create(ScanMoment);
         DriveBlock[] snapshot = [OpenDriveBlock(builder)];
         try
         {

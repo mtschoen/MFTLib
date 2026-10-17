@@ -6,9 +6,10 @@ namespace MFTLib.Tests;
 
 [TestClass]
 [DoNotParallelize]
-public class MftDumpBlockProducerTests
+public sealed class MftDumpBlockProducerTests : IDisposable
 {
-    string _directory = null!;
+    TempDirectory _tempDirectory = null!;
+    string _directory => _tempDirectory.Path;
     string _path = null!;
 
     public TestContext TestContext { get; set; } = null!;
@@ -18,17 +19,15 @@ public class MftDumpBlockProducerTests
     [TestInitialize]
     public void Initialize()
     {
-        _directory = MftDumpFixture.NewOwnedDirectory();
-        Directory.CreateDirectory(_directory);
+        _tempDirectory = new TempDirectory("mftlib-dump");
         _path = Path.Combine(_directory, "input.mft");
         File.WriteAllBytes(_path, MftDumpFixture.Standard());
     }
 
-    [TestCleanup]
-    public void Cleanup()
+    public void Dispose()
     {
         NativeTestHooks.NativeResetTestState();
-        MftDumpFixture.DeleteOwnedDirectory(_directory);
+        _tempDirectory.Dispose();
     }
 
     MftBlockProduceRequest Request() => new()

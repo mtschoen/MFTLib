@@ -12,29 +12,28 @@ namespace MFTLib.Tests;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public class LiveVolumeSourcesIncludeFreedTests
+public sealed class LiveVolumeSourcesIncludeFreedTests : IDisposable
 {
     const int ClusterSize = 4096;
     const int RecordSize = 1024;
     const int RecordFlagsOffset = 0x16;
 
-    string _directory = null!;
+    TempDirectory _tempDirectory = null!;
+    string _directory => _tempDirectory.Path;
 
     [TestInitialize]
     public void Initialize()
     {
-        _directory = MftDumpFixture.NewOwnedDirectory();
-        Directory.CreateDirectory(_directory);
+        _tempDirectory = new TempDirectory("mftlib-dump");
     }
 
-    [TestCleanup]
-    public void Cleanup()
+    public void Dispose()
     {
         NativeTestHooks.NativeResetTestState();
         MFTLibNative.Hooks.ResetToDefaults();
         FileUtilities.Hooks.ResetToDefaults();
         Kernel32.Hooks.ResetToDefaults();
-        MftDumpFixture.DeleteOwnedDirectory(_directory);
+        _tempDirectory.Dispose();
     }
 
     [DataTestMethod]

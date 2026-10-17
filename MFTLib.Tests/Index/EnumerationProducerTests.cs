@@ -5,40 +5,28 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 [TestClass]
-public class EnumerationProducerTests
+public sealed class EnumerationProducerTests : IDisposable
 {
+    IndexTreeFixture _fixture = null!;
     string _treeRoot = null!;
-    string _blockDirectory = null!;
+    string _blockDirectory => _fixture.CacheDirectory;
 
     [TestInitialize]
     public void Initialize()
     {
-        _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        _blockDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-block-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_treeRoot);
+        _fixture = new IndexTreeFixture();
+        _treeRoot = _fixture.TreeRoot;
         Directory.CreateDirectory(_blockDirectory);
 
         Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents", "Projects"));
         Directory.CreateDirectory(Path.Combine(_treeRoot, "Pictures"));
-        File.WriteAllText(Path.Combine(_treeRoot, "Documents", "readme.md"), "hello");
         File.WriteAllText(Path.Combine(_treeRoot, "Documents", "Projects", "report.pdf"), new string('x', 100));
         File.WriteAllText(Path.Combine(_treeRoot, "Pictures", "holiday.jpg"), new string('y', 50));
     }
 
-    [TestCleanup]
-    public void Cleanup()
+    public void Dispose()
     {
-        foreach (var directory in new[] { _treeRoot, _blockDirectory })
-        {
-            try
-            {
-                Directory.Delete(directory, recursive: true);
-            }
-            catch (IOException)
-            {
-                // A just-unmapped block file can stay locked briefly on Windows.
-            }
-        }
+        _fixture.Dispose();
     }
 
     (BlockFile Block, BlockWriter Writer) CreateBlock(uint slotCapacity = 256, uint namePoolCapacity = 4096)

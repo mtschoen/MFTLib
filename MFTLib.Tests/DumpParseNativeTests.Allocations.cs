@@ -7,7 +7,7 @@ namespace MFTLib.Tests;
 // Allocation ordinals of a dump parse, counted from the parse alone because the countdown is armed
 // after the open: 1 the result, 2 and 3 the two read buffers, 4 the entry array, 5 the string pool,
 // then each growth of the entry array or the string pool as slices merge, the entry array first.
-public partial class DumpParseNativeTests
+public sealed partial class DumpParseNativeTests : IDisposable
 {
     [DataTestMethod]
     [DataRow(2)]

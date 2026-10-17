@@ -36,7 +36,12 @@ public partial class JournalBrokerHostChannelTests
     public async Task ParseThreadAllocator_ScanStarts_RunningScanIsReducedWithoutItsCooperation()
     {
         var scans = new HeldScans();
-        var host = CreateHost(processorCount: 4, scanDrive: scans.Source);
+        var host = BrokerHostFactory.Create(new()
+        {
+            ProcessorCount = 4,
+            ScanDrive = scans.Source,
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
+        });
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipeC = await harness.OpenScanChannelAsync('C');
         await scans['C'].Gate.Entered.WaitAsync(HangGuard);
@@ -59,7 +64,12 @@ public partial class JournalBrokerHostChannelTests
     public async Task ParseThreadAllocator_ScanEndsCancelsOrFails_RemainingScansAreRaised(ScanEnding ending)
     {
         var scans = new HeldScans();
-        var host = CreateHost(processorCount: 4, scanDrive: scans.Source);
+        var host = BrokerHostFactory.Create(new()
+        {
+            ProcessorCount = 4,
+            ScanDrive = scans.Source,
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
+        });
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipeC = await harness.OpenScanChannelAsync('C');
         var pipeD = await harness.OpenScanChannelAsync('D');
@@ -146,7 +156,12 @@ public partial class JournalBrokerHostChannelTests
     public async Task QueuedScan_PipeClosed_LeavesQueueAndSourceNeverRuns()
     {
         var scans = new HeldScans();
-        var host = CreateHost(processorCount: 1, scanDrive: scans.Source);
+        var host = BrokerHostFactory.Create(new()
+        {
+            ProcessorCount = 1,
+            ScanDrive = scans.Source,
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
+        });
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipeC = await harness.OpenScanChannelAsync('C');
         await scans['C'].Gate.Entered.WaitAsync(HangGuard);
@@ -170,7 +185,12 @@ public partial class JournalBrokerHostChannelTests
     {
         var scans = new HeldScans();
         scans['C'].HonorCancellation = false;
-        var host = CreateHost(processorCount: 2, scanDrive: scans.Source);
+        var host = BrokerHostFactory.Create(new()
+        {
+            ProcessorCount = 2,
+            ScanDrive = scans.Source,
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
+        });
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipeC = await harness.OpenScanChannelAsync('C');
         var pipeD = await harness.OpenScanChannelAsync('D');
@@ -198,7 +218,12 @@ public partial class JournalBrokerHostChannelTests
     public async Task ScanChannel_PipeClosed_CancelsOnlyThatScan()
     {
         var scans = new HeldScans();
-        var host = CreateHost(processorCount: 4, scanDrive: scans.Source);
+        var host = BrokerHostFactory.Create(new()
+        {
+            ProcessorCount = 4,
+            ScanDrive = scans.Source,
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
+        });
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipeC = await harness.OpenScanChannelAsync('C');
         var pipeD = await harness.OpenScanChannelAsync('D');
@@ -332,7 +357,7 @@ public partial class JournalBrokerHostChannelTests
                 _returned.TrySetResult();
             }
 
-            yield return [Record(5, ".", 3)];
+            yield return [BrokerHostFactory.Record(5, ".", 3)];
         }
     }
 }

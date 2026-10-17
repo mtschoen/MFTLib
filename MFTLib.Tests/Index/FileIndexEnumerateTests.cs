@@ -12,29 +12,22 @@ namespace MFTLib.Tests.Index;
 ///     the borrow bookkeeping, the laziness, and the cancellation and disposal contract.
 /// </summary>
 [TestClass]
-public class FileIndexEnumerateTests
+public sealed class FileIndexEnumerateTests : IDisposable
 {
     static readonly DateTime FixedMoment = new(2026, 9, 16, 0, 0, 0, DateTimeKind.Utc);
 
-    OwnedIndexDirectories _directories = null!;
-    string _treeRoot = null!;
-    string _cacheDirectory = null!;
+    IndexTreeFixture _fixture = null!;
+    string _treeRoot => _fixture.TreeRoot;
+    string _cacheDirectory => _fixture.CacheDirectory;
 
     [TestInitialize]
     public void Initialize()
     {
-        _directories = new OwnedIndexDirectories();
-        _treeRoot = _directories.TreeRoot;
-        _cacheDirectory = _directories.CacheDirectory;
-        Directory.CreateDirectory(_treeRoot);
+        _fixture = new IndexTreeFixture(seedDocuments: false);
         Directory.CreateDirectory(_cacheDirectory);
     }
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        _directories.Dispose();
-    }
+    public void Dispose() => _fixture.Dispose();
 
     string FirstRoot => Path.Combine(_treeRoot, "first");
 
@@ -264,24 +257,19 @@ public class FileIndexEnumerateTests
         await File.WriteAllTextAsync(Path.Combine(SecondRoot, "notes.md"), new string('z', 300));
         await File.WriteAllTextAsync(Path.Combine(SecondRoot, "Pictures", "readme.md"), "world");
 
-        return await FileIndex.OpenAsync(new FileIndexOptions
+        return await FileIndex.OpenAsync(_fixture.Options() with
         {
             Drives = [new IndexedDrive('T', FirstRoot, 1, ProducerKind.Enumeration), new IndexedDrive('U', SecondRoot, 2, ProducerKind.Enumeration)],
-            CacheDirectory = _cacheDirectory,
         }, CancellationToken.None);
     }
 
-    Task<FileIndex> OpenSyntheticIndexAsync(uint rowCount)
-    {
-        return FileIndex.OpenAsync(new FileIndexOptions
+    Task<FileIndex> OpenSyntheticIndexAsync(uint rowCount) =>
+        FileIndex.OpenAsync(_fixture.Options(volumeSerial: TestVolumeSerial.GetNext(), producer: ProducerKind.Mft) with
         {
-            Drives = [new IndexedDrive('T', _treeRoot, TestVolumeSerial.GetNext())],
-            CacheDirectory = _cacheDirectory,
             MftSource = new MftIndexSource((request, _) => Task.FromResult(
                 new MftBlockProduceResult(SeededBlocks.Build(request, rowCount, i => $"file{i}.dat", FixedMoment),
                     SkippedRecordCount: 0)))
         }, CancellationToken.None);
-    }
 
     /// <summary>
     ///     The documented abandonment caveat: an enumerator dropped without disposal holds
@@ -345,17 +333,13 @@ public class FileIndexEnumerateTests
         Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
     }
 
-    Task<FileIndex> OpenSyntheticIndexWithDeepCandidateAsync()
-    {
-        return FileIndex.OpenAsync(new FileIndexOptions
+    Task<FileIndex> OpenSyntheticIndexWithDeepCandidateAsync() =>
+        FileIndex.OpenAsync(_fixture.Options(volumeSerial: TestVolumeSerial.GetNext(), producer: ProducerKind.Mft) with
         {
-            Drives = [new IndexedDrive('T', _treeRoot, TestVolumeSerial.GetNext())],
-            CacheDirectory = _cacheDirectory,
             MftSource = new MftIndexSource((request, _) => Task.FromResult(
                 new MftBlockProduceResult(BuildSyntheticBlockWithDeepCandidate(request),
                     SkippedRecordCount: 0)))
         }, CancellationToken.None);
-    }
 
     static BlockFile BuildSyntheticBlockWithDeepCandidate(MftBlockProduceRequest request)
     {

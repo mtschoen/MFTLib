@@ -31,8 +31,13 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
     [TestMethod]
     public async Task OpenAsync_AdoptsBrokerBlockAndAppliesCatchUpAtRecordNumbers()
     {
-        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, _, _) => Records(),
-            readJournal: CatchUpSources.ToTip(AdvancedCursor, CatchUpEntries())));
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            QueryVolumeInformation = _ => VolumeInformation,
+            ScanDrive = (_, _, _, _, _, _) => Records(),
+            ReadJournal = CatchUpSources.ToTip(AdvancedCursor, CatchUpEntries())
+        }));
         var source = new BrokerMftBlockProducer(Connect(broker.Process)).CreateIndexSource();
         await using var index = await FileIndex.OpenAsync(Options(source), CancellationToken.None).WaitAsync(HangGuard);
 
@@ -78,11 +83,16 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
     {
         var parsingReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var progress = new List<IndexScanProgress>();
-        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, reporting, _, _, cancellationToken) =>
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
-            reporting.Progress?.Report(new BlockWriteProgress(6, 0, 6, null, BlockScanPhase.Parsing));
-            parsingReceived.Task.Wait(HangGuard, cancellationToken);
-            return Records();
+            QueryCursor = _ => ArmedCursor,
+            QueryVolumeInformation = _ => VolumeInformation,
+            ScanDrive = (_, _, reporting, _, _, cancellationToken) =>
+            {
+                reporting.Progress?.Report(new BlockWriteProgress(6, 0, 6, null, BlockScanPhase.Parsing));
+                parsingReceived.Task.Wait(HangGuard, cancellationToken);
+                return Records();
+            }
         }));
         var source = new BrokerMftBlockProducer(Connect(broker.Process), new MftScanOptions
         {
@@ -120,9 +130,12 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
     [TestMethod]
     public async Task OpenAsync_RecordBeyondPlannedCapacityReportsReadyWithCapacityExhausted()
     {
-        await using var broker = new InProcessBroker(CreateHost(
-            scanDrive: (_, _, _, _, _, _) => Records().Append([Record(1_000_000, 5, "beyond.txt")]),
-            queryVolumeInfo: _ => new NtfsVolumeInformation(1024, 1024)));
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            ScanDrive = (_, _, _, _, _, _) => Records().Append([Record(1_000_000, 5, "beyond.txt")]),
+            QueryVolumeInformation = _ => new NtfsVolumeInformation(1024, 1024)
+        }));
         var source = new BrokerMftBlockProducer(Connect(broker.Process)).CreateIndexSource();
         await using var index = await FileIndex.OpenAsync(Options(source), CancellationToken.None).WaitAsync(HangGuard);
 
@@ -146,12 +159,15 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         var rearmed = new StrongBox<int>();
         var scanCount = new StrongBox<int>();
         var watchSource = new ScriptedWatchSource();
-        await using var broker = new InProcessBroker(CreateHost(
-            queryCursor: _ => Volatile.Read(ref rearmed.Value) == 0 ? ArmedCursor : RearmedCursor,
-            scanDrive: (_, _, _, _, _, _) => Interlocked.Increment(ref scanCount.Value) == 1
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            QueryVolumeInformation = _ => VolumeInformation,
+            QueryCursor = _ => Volatile.Read(ref rearmed.Value) == 0 ? ArmedCursor : RearmedCursor,
+            ScanDrive = (_, _, _, _, _, _) => Interlocked.Increment(ref scanCount.Value) == 1
                 ? Records()
                 : [[Record(5, 5, ".", directory: true), Record(40, 5, "replacement.txt")]],
-            readJournal: (_, since, _) => (Array.Empty<UsnJournalEntry>(), Volatile.Read(ref rearmed.Value) == 0 ? AdvancedCursor : since)));
+            ReadJournal = (_, since, _) => (Array.Empty<UsnJournalEntry>(), Volatile.Read(ref rearmed.Value) == 0 ? AdvancedCursor : since)
+        }));
         var producer = new BrokerMftBlockProducer(Connect(broker.Process)).CreateIndexSource().Producer;
         await using var index = await FileIndex.OpenAsync(Options(new MftIndexSource(producer, watchSource.IndexSource)),
             CancellationToken.None).WaitAsync(HangGuard);
@@ -189,8 +205,13 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
     public async Task OpenAsync_CatchUpLossAdoptsCompleteBlockWithTheArmedCursor()
     {
         using var journal = JournalIsolation.OverrideJournalWindow(_ => TrimmedWindow);
-        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, _, _) => Records(),
-            readJournal: (_, _, _) => throw new IOException("journal wrapped during scan")));
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            QueryCursor = _ => ArmedCursor,
+            QueryVolumeInformation = _ => VolumeInformation,
+            ScanDrive = (_, _, _, _, _, _) => Records(),
+            ReadJournal = (_, _, _) => throw new IOException("journal wrapped during scan")
+        }));
         var source = new BrokerMftBlockProducer(Connect(broker.Process)).CreateIndexSource();
         await using var index = await FileIndex.OpenAsync(Options(source), CancellationToken.None).WaitAsync(HangGuard);
 

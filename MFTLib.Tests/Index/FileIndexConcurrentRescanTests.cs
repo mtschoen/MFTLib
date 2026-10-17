@@ -13,39 +13,24 @@ namespace MFTLib.Tests.Index;
 ///     holds: both held steps are entered before either is released.
 /// </summary>
 [TestClass]
-public class FileIndexConcurrentRescanTests
+public sealed class FileIndexConcurrentRescanTests : IDisposable
 {
     public TestContext TestContext { get; set; } = null!;
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
-    string _treeRoot = null!;
-    string _cacheDirectory = null!;
+    IndexTreeFixture _fixture = null!;
+    string _treeRoot => _fixture.TreeRoot;
+    string _cacheDirectory => _fixture.CacheDirectory;
 
     [TestInitialize]
     public void Initialize()
     {
-        _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_treeRoot);
+        _fixture = new IndexTreeFixture(seedDocuments: false);
         Directory.CreateDirectory(_cacheDirectory);
     }
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        foreach (var directory in new[] { _treeRoot, _cacheDirectory })
-        {
-            try
-            {
-                Directory.Delete(directory, recursive: true);
-            }
-            catch (IOException)
-            {
-                // A just-unmapped block file can stay locked briefly on Windows.
-            }
-        }
-    }
+    public void Dispose() => _fixture.Dispose();
 
     [TestMethod]
     public async Task ConcurrentRescans_BothProducersInsideAtOnce_BothCommit_SnapshotHoldsBoth()

@@ -6,20 +6,20 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 [TestClass]
-public partial class FileIndexPerDriveProducerKindTests
+public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
 {
-    readonly OwnedIndexDirectories _directories = new();
+    IndexTreeFixture _fixture = null!;
+    string _cacheDirectory => _fixture.CacheDirectory;
     static readonly DateTime Moment = new(2026, 10, 13, 0, 0, 0, DateTimeKind.Utc);
 
     [TestInitialize]
     public void Initialize()
     {
-        Directory.CreateDirectory(_directories.TreeRoot);
-        File.WriteAllText(Path.Combine(_directories.TreeRoot, "walked.txt"), "owned tree");
+        _fixture = new IndexTreeFixture(seedDocuments: false);
+        File.WriteAllText(Path.Combine(_fixture.TreeRoot, "walked.txt"), "owned tree");
     }
 
-    [TestCleanup]
-    public void Cleanup() => _directories.Dispose();
+    public void Dispose() => _fixture.Dispose();
 
     static SyntheticMftProducer Producer() => new(_ =>
     [
@@ -31,12 +31,12 @@ public partial class FileIndexPerDriveProducerKindTests
         JournalCursor = new SyntheticJournalCursor(7, 4096)
     };
 
-    IndexedDrive Drive(char letter, ProducerKind policy) => new(letter, _directories.TreeRoot, 123, policy);
+    IndexedDrive Drive(char letter, ProducerKind policy) => new(letter, _fixture.TreeRoot, 123, policy);
 
     FileIndexOptions Options(params IndexedDrive[] drives) => new()
     {
         Drives = drives,
-        CacheDirectory = _directories.CacheDirectory,
+        CacheDirectory = _fixture.CacheDirectory,
         MftSource = SyntheticIndexSource.Create(Producer())
     };
 
@@ -139,7 +139,7 @@ public partial class FileIndexPerDriveProducerKindTests
         var diagnostics = new List<string>();
         await using var index = await FileIndex.OpenAsync(options with
         {
-            Drives = [new IndexedDrive('T', _directories.TreeRoot, 123, Producer: requested)],
+            Drives = [new IndexedDrive('T', _fixture.TreeRoot, 123, Producer: requested)],
             CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
             MftSource = requested == ProducerKind.Enumeration ? null : options.MftSource,
             Diagnostics = diagnostics.Add

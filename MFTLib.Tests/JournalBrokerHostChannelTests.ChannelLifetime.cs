@@ -13,7 +13,11 @@ public partial class JournalBrokerHostChannelTests
     public async Task OpenChannel_InvalidDrive_EndsMalformedControlSessionBeforeConnecting()
     {
         await using var pair = new InMemoryPipePair();
-        var host = CreateHost();
+        var host = BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
+        });
         var serve = host.ServeAsync(pair.Host,
             (_, _) => throw new AssertFailedException("Invalid drive reached the connector."),
             null, CancellationToken.None);
@@ -26,7 +30,11 @@ public partial class JournalBrokerHostChannelTests
     [TestMethod]
     public async Task ControlPipe_DriveOperationFrame_RepliesErrorNamingTheKind()
     {
-        var host = CreateHost();
+        var host = BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
+        });
         await using var harness = new HostChannelHarness(host);
 
         await harness.SendControlAsync(BrokerProtocol.WriteCaughtUp);
@@ -41,7 +49,11 @@ public partial class JournalBrokerHostChannelTests
     [TestMethod]
     public async Task ControlRequest_SourceCancelsItselfWhileSessionLives_RepliesError()
     {
-        var host = CreateHost(queryVolumeInfo: _ => throw new OperationCanceledException("the source gave up"));
+        var host = BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryVolumeInformation = _ => throw new OperationCanceledException("the source gave up")
+        });
         await using var harness = new HostChannelHarness(host);
 
         await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 6, 'C'));
@@ -58,7 +70,11 @@ public partial class JournalBrokerHostChannelTests
     {
         await using var pair = new InMemoryPipePair();
         var connected = new DisposalRecordingStream(pair.Host);
-        var host = CreateHost();
+        var host = BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
+        });
         await using var harness = new HostChannelHarness(host, breakableControl: true,
             connectChannel: (_, _) => Task.FromResult<Stream>(connected));
         // The client is gone when its request arrives, so the ChannelOpened reply is the first
@@ -76,7 +92,11 @@ public partial class JournalBrokerHostChannelTests
     {
         var connection = new TaskCompletionSource<Stream>(TaskCreationOptions.RunContinuationsAsynchronously);
         var connecting = new TestGate();
-        var host = CreateHost();
+        var host = BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
+        });
         await using var harness = new HostChannelHarness(host, connectChannel: (_, _) =>
         {
             connecting.MarkEntered();
@@ -98,7 +118,12 @@ public partial class JournalBrokerHostChannelTests
     public async Task OpenChannel_FirstRequestReadEndsNormallyAfterTimeout_StillRepliesError()
     {
         var clock = new TimerSignalingClock();
-        var host = CreateHost(timeProvider: clock);
+        var host = BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
+            TimeProvider = clock
+        });
         var readCancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseRead = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var connectionsReleased = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -123,8 +148,12 @@ public partial class JournalBrokerHostChannelTests
     {
         using var readBreaker = new ReadBreaker();
         var watchStopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var host = CreateHost(queryCursor: _ => Armed,
-            watchDrive: (_, _, _, token) => ParkedUntilCancelled(watchStopped, token));
+        var host = BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
+            WatchDrive = (_, _, _, token) => ParkedUntilCancelled(watchStopped, token)
+        });
         await using var harness = new HostChannelHarness(host, wrapDrivePipe: readBreaker.Wrap);
         var pipe = await harness.OpenWatchChannelAsync('C', Armed);
         Assert.AreEqual(BrokerFrameKind.CaughtUp, (await HostChannelHarness.ReadFrameAsync(pipe))?.Kind);
@@ -141,7 +170,12 @@ public partial class JournalBrokerHostChannelTests
     public async Task ControlSessionEnds_ChannelTrackedWhileDrainIsWaiting_DrainWaitsForItToo()
     {
         var clock = new TimerSignalingClock();
-        var host = CreateHost(timeProvider: clock);
+        var host = BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
+            TimeProvider = clock
+        });
         var (client, hostControl) = new InMemoryPipePair();
         await using var serverEnd = hostControl;
         await using var pipes = new InMemoryPipePair();

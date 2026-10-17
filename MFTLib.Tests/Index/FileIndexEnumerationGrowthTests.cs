@@ -6,7 +6,7 @@ namespace MFTLib.Tests.Index;
 
 /// <summary>An enumeration scan of a tree larger than its first capacity plan plans a larger block on rescan.</summary>
 [TestClass]
-public class FileIndexEnumerationGrowthTests
+public sealed class FileIndexEnumerationGrowthTests : IDisposable
 {
     /// <summary>
     ///     The root holds one directory, so the first plan is the 4096-row minimum, whose name pool of about 1.2
@@ -14,32 +14,25 @@ public class FileIndexEnumerationGrowthTests
     /// </summary>
     const int FileCount = 5000;
 
-    OwnedIndexDirectories _directories = null!;
+    IndexTreeFixture _fixture = null!;
+    string _treeRoot => _fixture.TreeRoot;
 
     [TestInitialize]
     public void Initialize()
     {
-        _directories = new OwnedIndexDirectories();
-        var crowded = Path.Combine(_directories.TreeRoot, "crowded");
+        _fixture = new IndexTreeFixture(seedDocuments: false);
+        var crowded = Path.Combine(_treeRoot, "crowded");
         Directory.CreateDirectory(crowded);
         var padding = new string('n', 200);
         Parallel.For(0, FileCount, number => File.WriteAllBytes(Path.Combine(crowded, $"{padding}{number}"), []));
     }
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        _directories.Dispose();
-    }
+    public void Dispose() => _fixture.Dispose();
 
     [TestMethod]
     public async Task Rescan_ATreeBeyondTheFirstCapacityPlanProducesACompleteBlock()
     {
-        var options = new FileIndexOptions
-        {
-            Drives = [new IndexedDrive('T', _directories.TreeRoot, 0x0BADF00D, ProducerKind.Enumeration)],
-            CacheDirectory = _directories.CacheDirectory
-        };
+        var options = _fixture.Options();
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         Assert.IsTrue(index.Drives.Single().Block!.IsCapacityExhausted);

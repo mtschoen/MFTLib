@@ -13,7 +13,7 @@ namespace MFTLib.Tests;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public class MftDumpValidationTests
+public sealed class MftDumpValidationTests : IDisposable
 {
     const string RecordSizeMessage = "Invalid or unsupported MFT record size.";
     const string PartialRecordMessage = "File size is not a whole multiple of record size.";
@@ -21,22 +21,21 @@ public class MftDumpValidationTests
     const string DuplicateMessage = "The dump contains duplicate base record numbers.";
     const string OutsideIndexMessage = "The dump contains required record numbers outside the index range.";
 
-    string _directory = null!;
+    TempDirectory _tempDirectory = null!;
+    string _directory => _tempDirectory.Path;
 
     [TestInitialize]
     public void Initialize()
     {
-        _directory = MftDumpFixture.NewOwnedDirectory();
-        Directory.CreateDirectory(_directory);
+        _tempDirectory = new TempDirectory("mftlib-dump");
     }
 
-    [TestCleanup]
-    public void Cleanup()
+    public void Dispose()
     {
         FileUtilities.Hooks.ResetToDefaults();
         MFTLibNative.Hooks.ResetToDefaults();
         JournalQueryFake.Reset();
-        MftDumpFixture.DeleteOwnedDirectory(_directory);
+        _tempDirectory.Dispose();
     }
 
     public static IEnumerable<object[]> RejectedDumps =>

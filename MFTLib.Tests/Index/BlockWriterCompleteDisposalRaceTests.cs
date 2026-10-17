@@ -12,8 +12,6 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public class BlockWriterCompleteDisposalRaceTests
 {
-    static readonly TimeSpan HandoffTimeout = TimeSpan.FromSeconds(30);
-
     static readonly DateTime Moment = new(2026, 9, 29, 8, 0, 0, DateTimeKind.Utc);
 
     [TestMethod]
@@ -41,20 +39,20 @@ public class BlockWriterCompleteDisposalRaceTests
         var completeTask = Task.Run(() => writer.Complete(Moment, null));
         try
         {
-            Assert.IsTrue(accessTaken.Entered.Wait(HandoffTimeout),
+            Assert.IsTrue(accessTaken.Entered.Wait(HangGuard * 3),
                 "Complete never took its access, so the race was never set up");
 
             var disposeTask = Task.Run(() => block.Dispose());
-            Assert.IsTrue(disposeStarted.Entered.Wait(HandoffTimeout), "dispose never began, so the race was never set up");
+            Assert.IsTrue(disposeStarted.Entered.Wait(HangGuard * 3), "dispose never began, so the race was never set up");
             Assert.IsTrue(disposeWillWait,
                 "dispose found no in-flight access to wait for, so Complete was not holding the block");
 
             releaseComplete.Release();
 
-            completeTask.Wait(HandoffTimeout);
+            completeTask.Wait(HangGuard * 3);
             Assert.AreEqual(TaskStatus.RanToCompletion, completeTask.Status,
                 "Complete was admitted before disposal began and must finish its flush without throwing");
-            Assert.IsTrue(disposeTask.Wait(HandoffTimeout), "dispose never finished after Complete left the block");
+            Assert.IsTrue(disposeTask.Wait(HangGuard * 3), "dispose never finished after Complete left the block");
         }
         finally
         {

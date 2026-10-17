@@ -9,15 +9,16 @@ namespace MFTLib.Tests.Index;
 
 [TestClass]
 [DoNotParallelize]
-public class IndexedDriveTests
+public sealed class IndexedDriveTests : IDisposable
 {
-    OwnedIndexDirectories _directories = null!;
+    IndexTreeFixture _fixture = null!;
+    string _treeRoot => _fixture.TreeRoot;
+    string _cacheDirectory => _fixture.CacheDirectory;
 
     [TestInitialize]
-    public void Initialize() => _directories = new OwnedIndexDirectories();
+    public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
 
-    [TestCleanup]
-    public void Cleanup() => _directories.Dispose();
+    public void Dispose() => _fixture.Dispose();
 
     [TestMethod]
     [SupportedOSPlatform("windows")]
@@ -165,9 +166,9 @@ public class IndexedDriveTests
     [DataRow('t', 't')]
     public async Task OpenAsync_RejectsDuplicateDriveKeysBeforeSideEffects(char firstLetter, char secondLetter)
     {
-        Directory.CreateDirectory(_directories.TreeRoot);
-        var absentRoot = Path.Combine(_directories.TreeRoot, "absent");
-        var first = new IndexedDrive(firstLetter, _directories.TreeRoot, 1, ProducerKind.Enumeration);
+        Directory.CreateDirectory(_treeRoot);
+        var absentRoot = Path.Combine(_treeRoot, "absent");
+        var first = new IndexedDrive(firstLetter, _treeRoot, 1, ProducerKind.Enumeration);
         var second = new IndexedDrive(secondLetter, absentRoot, 2, ProducerKind.Enumeration);
 
         var failure = await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
@@ -190,8 +191,8 @@ public class IndexedDriveTests
     [TestMethod]
     public async Task OpenAsync_RejectsNullDriveElementBeforeSideEffects()
     {
-        Directory.CreateDirectory(_directories.TreeRoot);
-        var valid = new IndexedDrive('T', _directories.TreeRoot, 1, ProducerKind.Enumeration);
+        Directory.CreateDirectory(_treeRoot);
+        var valid = new IndexedDrive('T', _treeRoot, 1, ProducerKind.Enumeration);
 
         var singleNull = await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
             options => options with { Drives = [null!] });
@@ -221,11 +222,11 @@ public class IndexedDriveTests
     [DataRow((ProducerKind)999)]
     public async Task OpenAsync_RejectsUndefinedProducerKindBeforeSideEffects(ProducerKind invalidPolicy)
     {
-        Directory.CreateDirectory(_directories.TreeRoot);
+        Directory.CreateDirectory(_treeRoot);
         await AssertInvalidOpenCreatesNothingAsync<ArgumentOutOfRangeException>(
-            options => options with { Drives = [new IndexedDrive('T', _directories.TreeRoot, 1, invalidPolicy)] });
+            options => options with { Drives = [new IndexedDrive('T', _treeRoot, 1, invalidPolicy)] });
 
-        var bypassed = CreateBypassedDrive(new DriveKey('T'), _directories.TreeRoot, invalidPolicy);
+        var bypassed = CreateBypassedDrive(new DriveKey('T'), _treeRoot, invalidPolicy);
         await AssertInvalidOpenCreatesNothingAsync<ArgumentOutOfRangeException>(
             options => options with { Drives = [bypassed] });
     }
@@ -233,8 +234,8 @@ public class IndexedDriveTests
     [TestMethod]
     public async Task OpenAsync_RejectsDefaultDriveKeyBeforeSideEffects()
     {
-        Directory.CreateDirectory(_directories.TreeRoot);
-        var bypassed = CreateBypassedDrive(default, _directories.TreeRoot, ProducerKind.Enumeration);
+        Directory.CreateDirectory(_treeRoot);
+        var bypassed = CreateBypassedDrive(default, _treeRoot, ProducerKind.Enumeration);
 
         await AssertInvalidOpenCreatesNothingAsync<ArgumentException>(
             options => options with { Drives = [bypassed] });
@@ -243,8 +244,8 @@ public class IndexedDriveTests
     [TestMethod]
     public async Task OpenAsync_AcceptsDistinctValidKeysAndMaterializesOnce()
     {
-        var rootT = Path.Combine(_directories.TreeRoot, "T");
-        var rootU = Path.Combine(_directories.TreeRoot, "U");
+        var rootT = Path.Combine(_treeRoot, "T");
+        var rootU = Path.Combine(_treeRoot, "U");
         Directory.CreateDirectory(rootT);
         Directory.CreateDirectory(rootU);
         await File.WriteAllTextAsync(Path.Combine(rootT, "t.txt"), "t");
@@ -277,21 +278,21 @@ public class IndexedDriveTests
     [TestMethod]
     public async Task OpenAsync_InvalidConfigurationLeavesAnExistingOwnedCacheDirectoryUntouched()
     {
-        Directory.CreateDirectory(_directories.CacheDirectory);
-        var existingFile = Path.Combine(_directories.CacheDirectory, "existing.txt");
+        Directory.CreateDirectory(_cacheDirectory);
+        var existingFile = Path.Combine(_cacheDirectory, "existing.txt");
         await File.WriteAllTextAsync(existingFile, "keep");
-        var contentsBefore = SnapshotDirectory(_directories.CacheDirectory);
-        var protectionBefore = ReadProtection(_directories.CacheDirectory);
+        var contentsBefore = SnapshotDirectory(_cacheDirectory);
+        var protectionBefore = ReadProtection(_cacheDirectory);
         var producerCalls = 0;
         var progressCalls = 0;
-        Directory.CreateDirectory(_directories.TreeRoot);
-        var first = new IndexedDrive('T', _directories.TreeRoot, 1, ProducerKind.Enumeration);
-        var duplicate = new IndexedDrive('t', _directories.TreeRoot, 2, ProducerKind.Enumeration);
+        Directory.CreateDirectory(_treeRoot);
+        var first = new IndexedDrive('T', _treeRoot, 1, ProducerKind.Enumeration);
+        var duplicate = new IndexedDrive('t', _treeRoot, 2, ProducerKind.Enumeration);
 
         await Assert.ThrowsExceptionAsync<ArgumentException>(() => FileIndex.OpenAsync(new FileIndexOptions
         {
             CacheMode = CacheMode.Persistent,
-            CacheDirectory = _directories.CacheDirectory,
+            CacheDirectory = _cacheDirectory,
             Drives = [first, duplicate],
             MftSource = new MftIndexSource((_, _) =>
             {
@@ -304,10 +305,10 @@ public class IndexedDriveTests
 
         Assert.AreEqual(0, producerCalls);
         Assert.AreEqual(0, progressCalls);
-        CollectionAssert.AreEqual(contentsBefore, SnapshotDirectory(_directories.CacheDirectory),
+        CollectionAssert.AreEqual(contentsBefore, SnapshotDirectory(_cacheDirectory),
             "no block slot, lock file or other entry may appear or vanish");
         Assert.AreEqual("keep", await File.ReadAllTextAsync(existingFile));
-        Assert.AreEqual(protectionBefore, ReadProtection(_directories.CacheDirectory));
+        Assert.AreEqual(protectionBefore, ReadProtection(_cacheDirectory));
     }
 
     static string ReadProtection(string directory) =>
@@ -332,7 +333,7 @@ public class IndexedDriveTests
         var baseOptions = new FileIndexOptions
         {
             CacheMode = CacheMode.Persistent,
-            CacheDirectory = _directories.CacheDirectory,
+            CacheDirectory = _cacheDirectory,
             MftSource = new MftIndexSource((_, _) =>
             {
                 Interlocked.Increment(ref producerCalls);
@@ -349,7 +350,7 @@ public class IndexedDriveTests
         Assert.AreEqual(0, producerCalls);
         Assert.AreEqual(0, scanProgressCalls);
         Assert.AreEqual(0, openProgressCalls);
-        Assert.IsFalse(Directory.Exists(_directories.CacheDirectory));
+        Assert.IsFalse(Directory.Exists(_cacheDirectory));
         return exception;
     }
 

@@ -6,39 +6,25 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 [TestClass]
-public class FileIndexLifetimeTests
+public sealed class FileIndexLifetimeTests : IDisposable
 {
-    OwnedIndexDirectories _directories = null!;
-    string _treeRoot = null!;
-    string _cacheDirectory = null!;
+    IndexTreeFixture _fixture = null!;
+    string _treeRoot => _fixture.TreeRoot;
+    string _cacheDirectory => _fixture.CacheDirectory;
     uint _volumeSerial;
 
     [TestInitialize]
     public void Initialize()
     {
         _volumeSerial = TestVolumeSerial.GetNext();
-        _directories = new OwnedIndexDirectories();
-        _treeRoot = _directories.TreeRoot;
-        _cacheDirectory = _directories.CacheDirectory;
-        Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
-        File.WriteAllText(Path.Combine(_treeRoot, "Documents", "readme.md"), "hello");
+        _fixture = new IndexTreeFixture();
     }
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        _directories.Dispose();
-    }
+    public void Dispose() => _fixture.Dispose();
 
-    FileIndexOptions Options(bool cacheDisabled = false, ProducerKind producerKind = ProducerKind.Enumeration)
-    {
-        return new FileIndexOptions
-        {
-            Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial, producerKind)],
-            CacheDirectory = _cacheDirectory,
-            CacheMode = cacheDisabled ? CacheMode.Disabled : CacheMode.Persistent,
-        };
-    }
+    FileIndexOptions Options(bool cacheDisabled = false, ProducerKind producerKind = ProducerKind.Enumeration) =>
+        _fixture.Options(volumeSerial: _volumeSerial, producer: producerKind,
+            cacheMode: cacheDisabled ? CacheMode.Disabled : CacheMode.Persistent);
 
     [TestMethod]
     public async Task OpenAsync_ColdScansAndWritesABlockIntoTheCacheDirectory()

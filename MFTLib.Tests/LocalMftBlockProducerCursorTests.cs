@@ -8,22 +8,21 @@ namespace MFTLib.Tests;
 
 [TestClass]
 [DoNotParallelize]
-public class LocalMftBlockProducerCursorTests
+public sealed class LocalMftBlockProducerCursorTests : IDisposable
 {
     public TestContext TestContext { get; set; } = null!;
-    OwnedIndexDirectories _directories = null!;
+    IndexTreeFixture _fixture = null!;
+    string _cacheDirectory => _fixture.CacheDirectory;
 
     [TestInitialize]
-    public void Initialize() => _directories = new OwnedIndexDirectories();
+    public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
 
-    [TestCleanup]
-    public void Cleanup() => _directories.Dispose();
+    public void Dispose() => _fixture.Dispose();
 
     [TestMethod]
     public async Task CachedScan_ArmsCursorBeforeBatchesAndStampsResult()
     {
-        var directories = _directories;
-        Directory.CreateDirectory(directories.CacheDirectory);
+        Directory.CreateDirectory(_cacheDirectory);
         var calls = new List<string>();
         var cursor = new UsnJournalCursor(99, 2000);
         var access = new ScriptedVolumeAccess
@@ -46,7 +45,7 @@ public class LocalMftBlockProducerCursorTests
             {
                 Drive = 'T',
                 VolumeSerial = 123,
-                BlockPath = Path.Combine(directories.CacheDirectory, "cached.mlix")
+                BlockPath = Path.Combine(_cacheDirectory, "cached.mlix")
             }, TestContext.CancellationTokenSource.Token);
         using var block = result.Block;
         CollectionAssert.AreEqual(new[] { "cursor", "scan" }, calls);
@@ -59,9 +58,7 @@ public class LocalMftBlockProducerCursorTests
     [DataRow(true)]
     public async Task JournalLessVolume_FailsCachedDriveButSkipsQueryWithoutCache(bool cacheDisabled)
     {
-        var directories = _directories;
-        Directory.CreateDirectory(directories.TreeRoot);
-        Directory.CreateDirectory(directories.CacheDirectory);
+        Directory.CreateDirectory(_cacheDirectory);
         var scans = 0;
         var queries = 0;
         var access = new ScriptedVolumeAccess
@@ -81,11 +78,12 @@ public class LocalMftBlockProducerCursorTests
         var source = new LocalMftBlockProducer(
             new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 0, 0, 0, TimeSpan.Zero)), null, access)
             .CreateIndexSource();
-        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
+        await using var index = await FileIndex.OpenAsync(_fixture.Options(
+            drive: 'T',
+            volumeSerial: 123,
+            producer: ProducerKind.Mft,
+            cacheMode: cacheDisabled ? CacheMode.Disabled : CacheMode.Persistent) with
         {
-            Drives = [new IndexedDrive('T', directories.TreeRoot, 123)],
-            CacheDirectory = directories.CacheDirectory,
-            CacheMode = cacheDisabled ? CacheMode.Disabled : CacheMode.Persistent,
             MftSource = source
         }, TestContext.CancellationTokenSource.Token);
         var status = index.Drives.Single();
@@ -95,7 +93,7 @@ public class LocalMftBlockProducerCursorTests
         if (!cacheDisabled)
         {
             Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind);
-            Assert.AreEqual(0, Directory.GetFiles(directories.CacheDirectory, "*.mlix").Length);
+            Assert.AreEqual(0, Directory.GetFiles(_cacheDirectory, "*.mlix").Length);
         }
     }
 }

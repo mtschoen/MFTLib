@@ -146,7 +146,7 @@ public partial class BrokerProcessTests
         // aislop-ignore-next-line dotnet/IDISP001 -- ownership moves to InProcessBrokerHandle on Start
         var resources = ScriptedBrokerResources.Create();
         var handle = BrokerTestHarness.Start(
-            CreateHost(timeProvider: new UnavailableHostClock(failure)), resources,
+            BrokerHostFactory.Create(new() { TimeProvider = new UnavailableHostClock(failure) }), resources,
             new BrokerTestHarnessOptions(), null, null);
         var process = handle.Process;
         try
@@ -430,14 +430,6 @@ public partial class BrokerProcessTests
                 .WaitAsync(HangGuard));
     }
 
-    static async IAsyncEnumerable<(IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Cursor)> OneBatchThenQuiet(
-        SyntheticJournalRecord[] entries, SyntheticJournalCursor cursor, [System.Runtime.CompilerServices.EnumeratorCancellation]
-        CancellationToken cancellationToken)
-    {
-        yield return (entries, cursor);
-        await Task.Delay(Timeout.Infinite, cancellationToken);
-    }
-
     static async IAsyncEnumerable<(IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Cursor)> OneBatchThenEnd(
         SyntheticJournalRecord[] entries, SyntheticJournalCursor cursor, TaskCompletionSource ended)
     {
@@ -459,7 +451,7 @@ public partial class BrokerProcessTests
         var cursor = new SyntheticJournalCursor(7, 1500);
         var volumes = ScriptedVolumes() with
         {
-            WatchDrive = (_, _, cancellationToken) => OneBatchThenQuiet([entry], cursor, cancellationToken)
+            WatchDrive = (_, _, cancellationToken) => ScriptedJournalStreams.OneBatchThenQuiet([entry], cursor, cancellationToken)
         };
         await using var handle = BrokerTestHarness.StartInProcess(volumes);
         using var deadline = new CancellationTokenSource(HangGuard);

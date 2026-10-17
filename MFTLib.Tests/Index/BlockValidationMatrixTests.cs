@@ -5,36 +5,18 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 [TestClass]
-public class BlockValidationMatrixTests
+public sealed class BlockValidationMatrixTests : IDisposable
 {
-    OwnedIndexDirectories _directories = null!;
-    string _treeRoot = null!;
-    string _cacheDirectory = null!;
+    IndexTreeFixture _fixture = null!;
+    string _cacheDirectory => _fixture.CacheDirectory;
 
     [TestInitialize]
-    public void Initialize()
-    {
-        _directories = new OwnedIndexDirectories();
-        _treeRoot = _directories.TreeRoot;
-        _cacheDirectory = _directories.CacheDirectory;
-        Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
-        File.WriteAllText(Path.Combine(_treeRoot, "Documents", "readme.md"), "hello");
-    }
+    public void Initialize() => _fixture = new IndexTreeFixture();
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        _directories.Dispose();
-    }
+    public void Dispose() => _fixture.Dispose();
 
-    FileIndexOptions Options(uint volumeSerial = 0x0BADF00D)
-    {
-        return new FileIndexOptions
-        {
-            Drives = [new IndexedDrive('T', _treeRoot, volumeSerial, ProducerKind.Enumeration)],
-            CacheDirectory = _cacheDirectory,
-        };
-    }
+    FileIndexOptions Options(uint volumeSerial = 0x0BADF00D) =>
+        _fixture.Options(volumeSerial: volumeSerial);
 
     string BlockPath(uint volumeSerial = 0x0BADF00D)
     {

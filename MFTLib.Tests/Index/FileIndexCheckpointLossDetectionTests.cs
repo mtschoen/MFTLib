@@ -2,7 +2,7 @@ using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.TestSupport.CheckpointCacheTestSupport;
+using static MFTLib.Tests.TestSupport.CheckpointLossFixture;
 
 namespace MFTLib.Tests.Index;
 
@@ -15,72 +15,18 @@ namespace MFTLib.Tests.Index;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public class FileIndexCheckpointLossDetectionTests
+public sealed class FileIndexCheckpointLossDetectionTests : IDisposable
 {
-    const long AllocationDelta = 64;
-    const long MaximumSize = 128L * 1024 * 1024;
     public TestContext TestContext { get; set; } = null!;
 
-    string _treeRoot = null!;
-    string _cacheDirectory = null!;
-    SyntheticJournalWindow? _window;
-    IDisposable? _journalScope;
+    CheckpointLossFixture _fixture = null!;
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
     [TestInitialize]
-    public void Initialize()
-    {
-        // One scope for the test, installed first so it is disposed after every index.
-        _journalScope = JournalIsolation.OverrideJournalWindow(_ => _window);
-        _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
-        File.WriteAllText(Path.Combine(_treeRoot, "Documents", "readme.md"), "hello");
-    }
+    public void Initialize() => _fixture = new CheckpointLossFixture();
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        _journalScope?.Dispose();
-        foreach (var directory in new[] { _treeRoot, _cacheDirectory })
-        {
-            try
-            {
-                if (Directory.Exists(directory))
-                {
-                    Directory.Delete(directory, recursive: true);
-                }
-            }
-            catch (IOException)
-            {
-                // A just-unmapped block file can stay locked briefly on Windows.
-            }
-        }
-    }
-
-    FileIndexOptions Options(IIndexWatchSource watchSource)
-    {
-        return new FileIndexOptions
-        {
-            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
-            CacheDirectory = _cacheDirectory,
-            MftSource = new MftIndexSource(ProduceMftShapedBlock, watchSource)
-        };
-    }
-
-    void SetJournal(long firstUsn, long nextUsn)
-    {
-        _window = new SyntheticJournalWindow(CachedJournalIdentifier, firstUsn, nextUsn, AllocationDelta, MaximumSize);
-    }
-
-    /// <summary>Writes the cache block a later open will try to warm-start from.</summary>
-    async Task SeedCacheAsync(IIndexWatchSource watchSource)
-    {
-        SetJournal(firstUsn: 0, nextUsn: CachedNextUsn);
-        await using var index = await FileIndex.OpenAsync(Options(watchSource), CancellationToken.None);
-        Assert.IsNull(index.Drives.Single().Watch.CheckpointLoss);
-    }
+    public void Dispose() => _fixture.Dispose();
 
     /// <summary>
     ///     Opens over a cache whose checkpoint the journal has trimmed away, so the drive
@@ -88,9 +34,9 @@ public class FileIndexCheckpointLossDetectionTests
     /// </summary>
     async Task<FileIndex> OpenWithAnOpenTimeLossAsync(IIndexWatchSource watchSource)
     {
-        await SeedCacheAsync(watchSource);
-        SetJournal(firstUsn: CachedNextUsn + 500, nextUsn: CachedNextUsn + 4_000);
-        var index = await FileIndex.OpenAsync(Options(watchSource), CancellationToken.None);
+        await _fixture.Seed(_fixture.Options(watchSource: watchSource));
+        using var journal = JournalWindows.Journal(firstUsn: CachedNextUsn + 500, nextUsn: CachedNextUsn + 4_000);
+        var index = await FileIndex.OpenAsync(_fixture.Options(watchSource: watchSource), CancellationToken.None);
         try
         {
             var loss = index.Drives.Single().Watch.CheckpointLoss;
@@ -122,7 +68,7 @@ public class FileIndexCheckpointLossDetectionTests
 
         // The cold scan wrote a fresh cursor and the journal holds it, so the drive is healthy
         // now. Only the report from the open remains.
-        SetJournal(firstUsn: 0, nextUsn: CachedNextUsn + 4_000);
+        using var journal = JournalWindows.Journal(firstUsn: 0, nextUsn: CachedNextUsn + 4_000);
         await index.StartWatchingAsync(['T'], Token);
 
         await FailDriveAndWaitForFaultAsync(index, source,
@@ -156,7 +102,7 @@ public class FileIndexCheckpointLossDetectionTests
         await index.StartWatchingAsync(['T'], Token);
 
         // A window distinct from the open's, so the numbers say which detection produced them.
-        SetJournal(firstUsn: CachedNextUsn + 900, nextUsn: CachedNextUsn + 8_000);
+        using var journal = JournalWindows.Journal(firstUsn: CachedNextUsn + 900, nextUsn: CachedNextUsn + 8_000);
         await FailDriveAndWaitForFaultAsync(index, source,
             new IOException("USN journal entries have been deleted; full rescan needed"));
 

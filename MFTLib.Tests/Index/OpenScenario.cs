@@ -21,16 +21,11 @@ internal sealed class OpenScenario : IDisposable
     readonly ConcurrentDictionary<char, int> _productions = [];
     readonly ConcurrentQueue<IndexDriveOpened> _reports = [];
     readonly SemaphoreSlim _reportSignal = new(0);
-    readonly string _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
+    readonly IndexTreeFixture _fixture = new(seedDocuments: false);
+    string _treeRoot => _fixture.TreeRoot;
     int _activeProducers;
 
-    public OpenScenario()
-    {
-        Directory.CreateDirectory(_treeRoot);
-        CacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
-    }
-
-    public string CacheDirectory { get; }
+    public string CacheDirectory => _fixture.CacheDirectory;
 
     public ScriptedWatchSource Source { get; } = new();
 
@@ -41,16 +36,6 @@ internal sealed class OpenScenario : IDisposable
 
     /// <summary>Runs inside the progress callback after the report is kept and signalled; may park or throw.</summary>
     public Action<IndexDriveOpened>? OnReport { get; set; }
-
-    public static JournalCheckpointLoss Loss(char driveLetter) => new JournalCheckpointLoss(driveLetter, JournalCheckpointLossDetection.ScanCatchUp, JournalCheckpointLossCause.CheckpointTrimmed,
-        new UsnJournalSettings { AllocationDelta = 4096, MaximumSize = 32768 })
-    {
-        CheckpointUsn = 1000,
-        FirstUsn = 5000,
-        NextUsn = 9000,
-        BytesBehind = 4000,
-        SizeThatWouldHaveRetained = 12288
-    };
 
     /// <summary>Parks every production of the drive until the returned gate is released.</summary>
     public TestGate Hold(char driveLetter)
@@ -68,7 +53,7 @@ internal sealed class OpenScenario : IDisposable
 
     /// <summary>Queues a lost catch-up for the drive's next production.</summary>
     public void ScriptLoss(char driveLetter) =>
-        _losses.GetOrAdd(driveLetter, _ => new ConcurrentQueue<JournalCheckpointLoss>()).Enqueue(Loss(driveLetter));
+        _losses.GetOrAdd(driveLetter, _ => new ConcurrentQueue<JournalCheckpointLoss>()).Enqueue(WatchDeduplicationTestSupport.StandardCatchUpLoss(driveLetter));
 
     public int ProductionsOf(char driveLetter) => _productions.GetValueOrDefault(driveLetter);
 
@@ -119,21 +104,7 @@ internal sealed class OpenScenario : IDisposable
         })
     };
 
-    public void Dispose()
-    {
-        foreach (var directory in new[] { _treeRoot, CacheDirectory })
-        {
-            try
-            {
-                Directory.Delete(directory, recursive: true);
-            }
-            catch (IOException)
-            {
-                // A just-unmapped block file can stay locked briefly on Windows, and a directory the
-                // scenario never created is already gone.
-            }
-        }
-    }
+    public void Dispose() => _fixture.Dispose();
 
     static uint SerialOf(char driveLetter) => driveLetter;
 

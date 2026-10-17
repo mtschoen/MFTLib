@@ -12,8 +12,10 @@ public partial class BrokerProcessTests
     {
         var scanning = new TestGate();
         var sourceCancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var broker = new InProcessBroker(CreateHost(
-            scanDrive: (_, _, _, _, _, cancellationToken) => WaitForCancellation(scanning, sourceCancelled, cancellationToken)));
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, _, _, _, cancellationToken) => WaitForCancellation(scanning, sourceCancelled, cancellationToken)
+        }));
 
         var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
             null, CancellationToken.None);
@@ -36,13 +38,16 @@ public partial class BrokerProcessTests
     {
         var scanning = new TestGate();
         var hostClock = new TimerSignalingClock();
-        await using var broker = new InProcessBroker(CreateHost(timeProvider: hostClock,
-            scanDrive: (_, _, _, _, _, _) =>
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            TimeProvider = hostClock,
+            ScanDrive = (_, _, _, _, _, _) =>
             {
                 scanning.MarkEntered();
                 scanning.WaitForRelease();
-                return [[Record(5, ".", 3)]];
-            }));
+                return [[BrokerHostFactory.Record(5, ".", 3)]];
+            }
+        }));
         try
         {
             var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
@@ -188,7 +193,7 @@ public partial class BrokerProcessTests
     {
         var tracking = new TestGate();
         var hostEnd = new TaskCompletionSource<DisposalRecordingStream>(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var broker = new InProcessBroker(CreateHost(), wrapConnector: RecordHostEnd(hostEnd));
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(), wrapConnector: RecordHostEnd(hostEnd));
         broker.Process.BeforeChannelTrackedForTest = () =>
         {
             tracking.MarkEntered();

@@ -11,39 +11,20 @@ namespace MFTLib.Tests.Index;
 ///     publishing, and a call made after disposal is refused by the flag.
 /// </summary>
 [TestClass]
-public class FileIndexDisposalRaceTests
+public sealed class FileIndexDisposalRaceTests : IDisposable
 {
-    static readonly TimeSpan HandoffTimeout = TimeSpan.FromSeconds(30);
-
-    OwnedIndexDirectories _directories = null!;
-    string _treeRoot = null!;
-    string _cacheDirectory = null!;
+    IndexTreeFixture _fixture = null!;
 
     [TestInitialize]
-    public void Initialize()
-    {
-        _directories = new OwnedIndexDirectories();
-        _treeRoot = _directories.TreeRoot;
-        _cacheDirectory = _directories.CacheDirectory;
-        Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
-        File.WriteAllText(Path.Combine(_treeRoot, "Documents", "readme.md"), "hello");
-    }
+    public void Initialize() => _fixture = new IndexTreeFixture();
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        _directories.Dispose();
-    }
+    public void Dispose() => _fixture.Dispose();
 
-    FileIndexOptions Options(IProgress<IndexScanProgress> progress)
-    {
-        return new FileIndexOptions
+    FileIndexOptions Options(IProgress<IndexScanProgress> progress) =>
+        _fixture.Options() with
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerKind.Enumeration)],
-            CacheDirectory = _cacheDirectory,
             ScanProgress = progress
         };
-    }
 
     /// <summary>
     ///     Parks the first armed scan inside its progress callback and holds it there until the
@@ -72,7 +53,7 @@ public class FileIndexDisposalRaceTests
 
         public bool WaitUntilParked()
         {
-            return _parked.Wait(HandoffTimeout);
+            return _parked.Wait(HangGuard * 3);
         }
 
         public void Release()
@@ -135,7 +116,7 @@ public class FileIndexDisposalRaceTests
     public async Task RescanAsync_AdmittedBeforeDisposal_ReachingACheckpointBeforeTheTokenIsCancelled_IsCancelled()
     {
         using var progress = new BlockOnFirstReport();
-        var index = await FileIndex.OpenAsync(Options(progress), CancellationToken.None).WaitAsync(HandoffTimeout);
+        var index = await FileIndex.OpenAsync(Options(progress), CancellationToken.None).WaitAsync(HangGuard * 3);
         try
         {
             progress.Armed = true;
@@ -151,7 +132,7 @@ public class FileIndexDisposalRaceTests
                 releaseTheScan();
                 try
                 {
-                    settledInTheWindow = Task.WaitAll([gateHolder, queuedRescan], HandoffTimeout);
+                    settledInTheWindow = Task.WaitAll([gateHolder, queuedRescan], HangGuard * 3);
                 }
                 catch (AggregateException)
                 {
@@ -164,16 +145,16 @@ public class FileIndexDisposalRaceTests
 
             Assert.IsTrue(settledInTheWindow, "both rescans settled before disposal cancelled its token");
             await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => gateHolder)
-                .WaitAsync(HandoffTimeout);
+                .WaitAsync(HangGuard * 3);
             await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => queuedRescan)
-                .WaitAsync(HandoffTimeout);
-            await disposal.WaitAsync(HandoffTimeout);
+                .WaitAsync(HangGuard * 3);
+            await disposal.WaitAsync(HangGuard * 3);
             Assert.IsTrue(original.IsReleased, "the block neither rescan replaced was released by the disposal");
         }
         finally
         {
             progress.Release();
-            await index.DisposeAsync().AsTask().WaitAsync(HandoffTimeout);
+            await index.DisposeAsync().AsTask().WaitAsync(HangGuard * 3);
         }
     }
 

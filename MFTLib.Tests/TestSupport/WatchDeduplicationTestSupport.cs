@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.TestSupport;
@@ -14,6 +15,9 @@ internal static class WatchDeduplicationTestSupport
         BytesBehind = 4000,
         SizeThatWouldHaveRetained = 12288
     };
+
+    public static WatchHarnessScan Lost(char driveLetter, TestGate? hold = null) =>
+        new(StandardCatchUpLoss(driveLetter), Hold: hold);
 
     public static JournalCatchUpLostException[] CatchUpLosses(WatchHarness harness, char driveLetter) =>
         harness.Faults.Where(fault => fault.Kind == WatchFaultKind.CatchUpLost && fault.Drive == driveLetter)

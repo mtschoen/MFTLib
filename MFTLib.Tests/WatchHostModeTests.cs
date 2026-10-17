@@ -14,9 +14,6 @@ namespace MFTLib.Tests;
 [DoNotParallelize]
 public class WatchHostModeTests
 {
-    static readonly UsnJournalCursor Armed = new(7, 1000);
-    static readonly NtfsVolumeInformation Volume = new(1024 * 1000, 1024);
-
     string _directory = null!;
 
     [TestInitialize]
@@ -54,7 +51,7 @@ public class WatchHostModeTests
     [TestMethod]
     public async Task Run_Scan_NotElevated_ScansThroughTheBrokerWithoutSelfElevating()
     {
-        await using var broker = new InProcessBroker(CreateHost());
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create());
         var lines = new List<string>();
         var scanner = ScannerOverBroker(lines, new Microsoft.Extensions.Time.Testing.FakeTimeProvider(
             new DateTimeOffset(2026, 10, 16, 12, 34, 56, TimeSpan.Zero)));
@@ -73,7 +70,7 @@ public class WatchHostModeTests
     [TestMethod]
     public async Task Run_Scan_SeveralDrives_LaunchesOneBrokerForTheWholeRun()
     {
-        await using var broker = new InProcessBroker(CreateHost());
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create());
         var lines = new List<string>();
         var scanner = ScannerOverBroker(lines);
         var handle = broker.Handle;
@@ -93,8 +90,10 @@ public class WatchHostModeTests
     public async Task ScanThroughBroker_CatchUpLostByTheJournal_ReportsTheLoss()
     {
         using var journal = JournalIsolation.OverrideJournalWindow(_ => new SyntheticJournalWindow(7, 5000, 9000, 4096, 32768));
-        await using var broker = new InProcessBroker(CreateHost(
-            readJournal: (_, _, _) => throw new IOException("catch-up read failed")));
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            ReadJournal = (_, _, _) => throw new IOException("catch-up read failed")
+        }));
         var lines = new List<string>();
         var scanner = ScannerOverBroker(lines);
         var sessionLaunch = Task.FromResult(broker.Handle);
@@ -109,8 +108,10 @@ public class WatchHostModeTests
     [TestMethod]
     public async Task ScanThroughBroker_ScanFailsOnTheBroker_PrintsTheProducerFailure()
     {
-        await using var broker = new InProcessBroker(CreateHost(
-            scanDrive: (_, _, _, _, _, _) => throw new IOException("volume unreadable")));
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
+        {
+            ScanDrive = (_, _, _, _, _, _) => throw new IOException("volume unreadable")
+        }));
         var lines = new List<string>();
         var scanner = ScannerOverBroker(lines);
         var sessionLaunch = Task.FromResult(broker.Handle);
@@ -138,7 +139,7 @@ public class WatchHostModeTests
     [TestMethod]
     public async Task ScanThroughBroker_DriveRootMissing_ReportsOfflineWithoutSuccessLines()
     {
-        await using var broker = new InProcessBroker(CreateHost());
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create());
         var lines = new List<string>();
         var scanner = ScannerOverBroker(lines);
         var handle = broker.Handle;
@@ -205,25 +206,5 @@ public class WatchHostModeTests
     {
         var driveLetter = char.ToUpperInvariant(letter[0]);
         return new IndexedDrive(driveLetter, _directory, 4242);
-    }
-
-    static JournalBrokerHost CreateHost(
-        Func<DriveKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
-        MftRecordBatchSource? scanDrive = null)
-    {
-        return new JournalBrokerHost(
-            new ScriptedVolumeAccess
-            {
-                CursorQuery = _ => Armed,
-                RecordBatches = scanDrive ?? ((_, _, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
-                JournalRead = readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
-                VolumeInformation = _ => Volume
-            },
-            processorCount: 4);
-    }
-
-    static MftRecord Record(ulong recordNumber, string name, ushort flags = 1)
-    {
-        return new MftRecord(recordNumber, 5, new MftRecordFields(flags), name);
     }
 }

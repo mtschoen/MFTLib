@@ -11,11 +11,12 @@ namespace MFTLib.Tests;
 ///     longer reports.
 /// </summary>
 [TestClass]
-public class SyntheticIndexInspectionTests
+public sealed class SyntheticIndexInspectionTests : IDisposable
 {
     const uint Serial = 0x2345;
 
-    OwnedIndexDirectories _directories = null!;
+    IndexTreeFixture _fixture = null!;
+    string _treeRoot => _fixture.TreeRoot;
 
     public TestContext TestContext { get; set; } = null!;
 
@@ -24,29 +25,24 @@ public class SyntheticIndexInspectionTests
     [TestInitialize]
     public void Initialize()
     {
-        _directories = new OwnedIndexDirectories();
-        Directory.CreateDirectory(_directories.TreeRoot);
-        File.WriteAllText(Path.Combine(_directories.TreeRoot, "readme.md"), "hello");
+        _fixture = new IndexTreeFixture(seedDocuments: false);
+        File.WriteAllText(Path.Combine(_treeRoot, "readme.md"), "hello");
     }
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        _directories.Dispose();
-    }
+    public void Dispose() => _fixture.Dispose();
 
-    FileIndexOptions Options(string root, CacheTag cacheTag = default) => new()
-    {
-        Drives = [new IndexedDrive('T', root, Serial, ProducerKind.Enumeration)],
-        CacheDirectory = _directories.CacheDirectory,
-        CacheTag = cacheTag
-    };
+    FileIndexOptions Options(string root, CacheTag cacheTag = default) =>
+        _fixture.Options(volumeSerial: Serial) with
+        {
+            Drives = [new IndexedDrive('T', root, Serial, ProducerKind.Enumeration)],
+            CacheTag = cacheTag
+        };
 
     [TestMethod]
     public async Task ReadHeader_OfAReadyDrive_ReportsTheBlockTheIndexHolds()
     {
         var tag = new CacheTag("INSP", 2);
-        await using var index = await FileIndex.OpenAsync(Options(_directories.TreeRoot, tag), Token);
+        await using var index = await FileIndex.OpenAsync(Options(_treeRoot, tag), Token);
 
         var header = SyntheticIndexInspection.ReadHeader(index, 't');
 
@@ -60,7 +56,7 @@ public class SyntheticIndexInspectionTests
     public async Task ReadHeader_ForADriveWithNoBlock_IsNull()
     {
         await using var index = await FileIndex.OpenAsync(
-            Options(Path.Combine(_directories.TreeRoot, "absent")), Token);
+            Options(Path.Combine(_treeRoot, "absent")), Token);
 
         Assert.AreEqual(DriveState.Offline, index.Drives.Single().State);
         Assert.IsNull(SyntheticIndexInspection.ReadHeader(index, 'T'));
@@ -69,7 +65,7 @@ public class SyntheticIndexInspectionTests
     [TestMethod]
     public async Task ReadHeader_ForAnUnconfiguredDrive_IsNull()
     {
-        await using var index = await FileIndex.OpenAsync(Options(_directories.TreeRoot), Token);
+        await using var index = await FileIndex.OpenAsync(Options(_treeRoot), Token);
 
         Assert.IsNull(SyntheticIndexInspection.ReadHeader(index, 'Q'));
     }
@@ -77,7 +73,7 @@ public class SyntheticIndexInspectionTests
     [TestMethod]
     public async Task ReadHeader_IsACopyThatOutlivesTheIndex()
     {
-        FileIndex index = await FileIndex.OpenAsync(Options(_directories.TreeRoot), Token);
+        FileIndex index = await FileIndex.OpenAsync(Options(_treeRoot), Token);
         var header = SyntheticIndexInspection.ReadHeader(index, 'T');
         await index.DisposeAsync();
 
