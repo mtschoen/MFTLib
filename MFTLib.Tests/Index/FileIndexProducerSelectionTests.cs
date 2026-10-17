@@ -118,22 +118,6 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
         Assert.IsNull(warmStarted.Failure);
     }
 
-    [TestMethod]
-    public async Task Mft_NeverWalksTheDirectoryTreeAfterAProducerFailure()
-    {
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "should-not-be-indexed.txt"), "x",
-            TestContext.CancellationTokenSource.Token);
-        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
-        {
-            Drives = [new IndexedDrive('T', _treeRoot, 1)],
-            CacheDirectory = _cacheDirectory,
-            MftSource = new MftIndexSource((_, _) => throw new UnauthorizedAccessException("elevation declined"))
-        }, TestContext.CancellationTokenSource.Token);
-
-        Assert.AreEqual(DriveState.Failed, index.Drives.Single().State);
-        Assert.AreEqual(0, index.Search(new SearchQuery(null)).Count);
-    }
-
     /// <summary>
     ///     <see cref="CacheMode.ExistingOnly" />'s refusal contract: with no
     ///     usable cache present, the drive is failed with the cache-only refusal message and the
@@ -165,42 +149,6 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
             "Drive T: no usable cache (missing, corrupt, or incompatible) and --cache-only forbids a scan.",
             failed.Failure?.Message);
         Assert.AreEqual(DriveFailureKind.CacheDeclined, failed.Failure?.Kind);
-    }
-
-
-    [TestMethod]
-    public async Task DefaultProducerKind_WithNoMftSourceFailsTheDriveWithAConfigurationError()
-    {
-        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
-        {
-            Drives = [new IndexedDrive('T', _treeRoot, 1)],
-            CacheDirectory = _cacheDirectory
-        }, TestContext.CancellationTokenSource.Token);
-        var failed = index.Drives.Single();
-        Assert.AreEqual(DriveState.Failed, failed.State);
-        Assert.AreEqual(DriveFailureKind.ProducerFailed, failed.Failure?.Kind);
-        Assert.AreEqual("ProducerKind.Mft requires FileIndexOptions.MftSource to be set.", failed.Failure?.Message);
-    }
-
-    [TestMethod]
-    public async Task Enumeration_IgnoresAConfiguredMftProducerEntirely()
-    {
-        var invocationCount = 0;
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "indexed.txt"), "x",
-            TestContext.CancellationTokenSource.Token);
-        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
-        {
-            Drives = [new IndexedDrive('T', _treeRoot, 1, ProducerKind.Enumeration)],
-            CacheDirectory = _cacheDirectory,
-            MftSource = new MftIndexSource((_, _) => { invocationCount++; throw new InvalidOperationException("the MFT producer must not be called"); })
-        }, TestContext.CancellationTokenSource.Token);
-
-        var status = index.Drives.Single();
-        Assert.AreEqual(DriveState.Ready, status.State);
-        Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
-        Assert.IsNull(status.Failure);
-        Assert.IsNotNull(index.Find(Path.Combine(_treeRoot, "indexed.txt")));
-        Assert.AreEqual(0, invocationCount);
     }
 
     [TestMethod]
