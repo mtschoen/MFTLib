@@ -19,7 +19,6 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="TngTech.ArchUnitNET" Version="0.13.4" />
-    <PackageReference Include="TngTech.ArchUnitNET.MSTestV2" Version="0.13.4" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -99,37 +100,29 @@ public partial class IndexNavigationTests
     [TestMethod]
     public void IsUnder_MatchesTransitiveContainmentAndExcludesSiblings()
     {
-        Assert.IsTrue(IndexNavigation.IsUnder(Entry(_reportRow), Entry(_documentsRow)));
-        Assert.IsTrue(IndexNavigation.IsUnder(Entry(_reportRow), Entry(_projectsRow)));
-        Assert.IsFalse(IndexNavigation.IsUnder(Entry(_notesRow), Entry(_projectsRow)));
-        Assert.IsTrue(IndexNavigation.IsUnder(Entry(_projectsRow), Entry(_projectsRow)));
+        var block = _snapshot.GetDriveBlock(0).Block;
+        Assert.IsTrue(IndexNavigation.IsUnder(block, _reportRow, _documentsRow));
+        Assert.IsTrue(IndexNavigation.IsUnder(block, _reportRow, _projectsRow));
+        Assert.IsFalse(IndexNavigation.IsUnder(block, _notesRow, _projectsRow));
+        Assert.IsTrue(IndexNavigation.IsUnder(block, _projectsRow, _projectsRow));
     }
 
     [TestMethod]
-    public async Task IsUnder_WithAnInvalidOrADifferentDriveEntry_ReturnsFalse()
+    public void SubtreeQueries_ExcludeOtherDrivesAndRejectDefaultAnchors()
     {
-        using var secondBuilder = new SyntheticBlockBuilder('U');
-        var secondRoot = secondBuilder.AddRoot();
-        secondBuilder.Complete(Moment);
-        var secondBlock = secondBuilder.OpenForReading(out _)!;
-        var secondSnapshot = Snapshot.Create([_snapshot.GetDriveBlock(0),
-            new DriveBlock('U', 1, secondBlock, rootDirectoryPath: TestDriveRoot.For('U'))]);
-        try
-        {
-            var report = Entry(_reportRow);
-            var foreignRoot = FileEntry.Create(secondSnapshot, 1, secondRoot);
+        using var harness = new WatchHarness('T', 'U');
+        var index = harness.Index;
+        var firstRoot = index.Root('T');
+        var secondRoot = index.Root('U');
 
-            // Different drives are never under one another, and a default handle is
-            // never under anything (nor is anything under it).
-            Assert.IsFalse(IndexNavigation.IsUnder(report, foreignRoot));
-            Assert.IsFalse(IndexNavigation.IsUnder(foreignRoot, report));
-            Assert.IsFalse(IndexNavigation.IsUnder(default, report));
-            Assert.IsFalse(IndexNavigation.IsUnder(report, default));
-        }
-        finally
-        {
-            await secondSnapshot.ReleaseNowAsync();
-        }
+        Assert.IsFalse(index.Search(new SearchQuery(null, Subtree: firstRoot))
+            .Any(entry => entry.Drive == 'U'));
+        Assert.IsFalse(index.Search(new SearchQuery(null, Subtree: secondRoot))
+            .Any(entry => entry.Drive == 'T'));
+        Assert.ThrowsException<ArgumentException>(() =>
+            index.Search(new SearchQuery(null, Subtree: default(FileEntry))));
+        Assert.ThrowsException<ArgumentException>(() =>
+            index.Enumerate(new SearchQuery(null, Subtree: default(FileEntry))));
     }
 
     /// <summary>
@@ -156,9 +149,7 @@ public partial class IndexNavigationTests
         {
             // The candidate sits exactly MaximumPathDepth hops below the root; the target
             // is a real row that is not on that chain.
-            Assert.IsFalse(IndexNavigation.IsUnder(
-                FileEntry.Create(snapshot, 0, candidate),
-                FileEntry.Create(snapshot, 0, unrelated)));
+            Assert.IsFalse(IndexNavigation.IsUnder(block, candidate, unrelated));
         }
         finally
         {
@@ -203,10 +194,9 @@ public partial class IndexNavigationTests
         try
         {
             var liveFile = FileEntry.Create(snapshot, 0, liveFileRow);
-            var deletedDirectory = FileEntry.Create(snapshot, 0, deletedDirectoryRow);
 
             Assert.AreEqual(Path.Combine(TestDriveRoot.For('V'), "Old", "survivor.txt"), liveFile.Path);
-            Assert.IsTrue(IndexNavigation.IsUnder(liveFile, deletedDirectory));
+            Assert.IsTrue(IndexNavigation.IsUnder(block, liveFileRow, deletedDirectoryRow));
         }
         finally
         {
@@ -332,9 +322,7 @@ public partial class IndexNavigationTests
         var snapshot = Snapshot.Create([new DriveBlock('Z', 0, block, rootDirectoryPath: TestDriveRoot.For('Z'))]);
         try
         {
-            Assert.IsTrue(IndexNavigation.IsUnder(
-                FileEntry.Create(snapshot, 0, candidate),
-                FileEntry.Create(snapshot, 0, root)));
+            Assert.IsTrue(IndexNavigation.IsUnder(block, candidate, root));
         }
         finally
         {
@@ -357,26 +345,14 @@ public partial class IndexNavigationTests
         try
         {
             // Rows 1 and 2 point at each other. None of these reach root.
-            Assert.IsFalse(IndexNavigation.IsUnder(
-                FileEntry.Create(snapshot, 0, second),
-                FileEntry.Create(snapshot, 0, root)));
-            Assert.IsFalse(IndexNavigation.IsUnder(
-                FileEntry.Create(snapshot, 0, first),
-                FileEntry.Create(snapshot, 0, root)));
-            Assert.IsFalse(IndexNavigation.IsUnder(
-                FileEntry.Create(snapshot, 0, child),
-                FileEntry.Create(snapshot, 0, root)));
+            Assert.IsFalse(IndexNavigation.IsUnder(block, second, root));
+            Assert.IsFalse(IndexNavigation.IsUnder(block, first, root));
+            Assert.IsFalse(IndexNavigation.IsUnder(block, child, root));
 
             // But rows in the cycle or under the cycle are under cycle members.
-            Assert.IsTrue(IndexNavigation.IsUnder(
-                FileEntry.Create(snapshot, 0, second),
-                FileEntry.Create(snapshot, 0, first)));
-            Assert.IsTrue(IndexNavigation.IsUnder(
-                FileEntry.Create(snapshot, 0, first),
-                FileEntry.Create(snapshot, 0, second)));
-            Assert.IsTrue(IndexNavigation.IsUnder(
-                FileEntry.Create(snapshot, 0, child),
-                FileEntry.Create(snapshot, 0, first)));
+            Assert.IsTrue(IndexNavigation.IsUnder(block, second, first));
+            Assert.IsTrue(IndexNavigation.IsUnder(block, first, second));
+            Assert.IsTrue(IndexNavigation.IsUnder(block, child, first));
         }
         finally
         {

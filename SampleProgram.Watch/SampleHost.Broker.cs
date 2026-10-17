@@ -60,7 +60,7 @@ partial class SampleHost
         var failureCount = 0;
         foreach (var drive in parsed.Drives)
         {
-            if (!await RunOnDriveAsync(session, source, parsed, drive.TrimEnd(':'), cancellationToken).ConfigureAwait(false))
+            if (!await RunOnDriveAsync(session, source, parsed, drive, cancellationToken).ConfigureAwait(false))
             {
                 failureCount++;
             }

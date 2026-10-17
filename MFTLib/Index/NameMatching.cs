@@ -92,13 +92,6 @@ internal static class NameMatching
         return patternIndex == pattern.Length;
     }
 
-    public static int GetNameHashCode(ReadOnlySpan<char> name, bool caseSensitive)
-    {
-        return caseSensitive
-            ? string.GetHashCode(name, StringComparison.Ordinal)
-            : string.GetHashCode(name, StringComparison.OrdinalIgnoreCase);
-    }
-
     static bool IsSingleCharacterMatch(char nameCharacter, char patternCharacter, bool caseSensitive)
     {
         if (patternCharacter == '?')

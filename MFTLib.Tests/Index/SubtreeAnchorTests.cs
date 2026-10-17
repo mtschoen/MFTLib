@@ -147,13 +147,18 @@ public class SubtreeAnchorTests
     }
 
     [TestMethod]
-    public void ForeignHandles_AreNeverUnderOneAnother()
+    public void ForeignAnchor_IsRejectedWhileOwnRootIncludesItself()
     {
         using var first = new WatchHarness('T');
         using var second = new WatchHarness('T');
+        var firstIndex = first.Index;
+        var ownRoot = firstIndex.Root('T');
+        var foreignRoot = second.Index.Root('T');
 
-        Assert.IsFalse(IndexNavigation.IsUnder(first.Index.Root('T'), second.Index.Root('T')));
-        Assert.IsTrue(IndexNavigation.IsUnder(first.Index.Root('T'), first.Index.Root('T')));
+        Assert.ThrowsException<ArgumentException>(() =>
+            firstIndex.Search(new SearchQuery(null, Subtree: foreignRoot)));
+        CollectionAssert.Contains(
+            firstIndex.Search(new SearchQuery(null, Subtree: ownRoot)).ToArray(), ownRoot);
     }
 
     [DataTestMethod]

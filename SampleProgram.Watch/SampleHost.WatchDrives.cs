@@ -15,9 +15,8 @@ partial class SampleHost
         var watched = new List<(string Letter, FileIndex Index, DriveChangeCounter Counter)>();
         try
         {
-            foreach (var drive in parsed.Drives)
+            foreach (var letter in parsed.Drives)
             {
-                var letter = drive.TrimEnd(':');
                 _writeLine($"=== Drive {letter}: ===");
                 try
                 {

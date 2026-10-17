@@ -38,11 +38,10 @@ internal static class LiveVolumeSources
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // The parse only returns freed records when asked, so without the option every record is live.
-            var records = scanOptions.IncludeFreed ? batch : Array.FindAll(batch, record => record.InUse);
-            if (records.Length > 0)
+            // The parser applies IncludeFreed before materializing these batches.
+            if (batch.Length > 0)
             {
-                yield return records;
+                yield return batch;
             }
         }
 

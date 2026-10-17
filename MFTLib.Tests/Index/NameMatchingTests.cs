@@ -105,15 +105,4 @@ public class NameMatchingTests
         Assert.AreEqual("query", exception.ParamName);
         StringAssert.StartsWith(exception.Message, "Unknown name match mode.");
     }
-
-    [TestMethod]
-    public void GetNameHashCode_AgreesWithCaseFoldedEquality()
-    {
-        Assert.AreEqual(
-            NameMatching.GetNameHashCode("Readme.MD", caseSensitive: false),
-            NameMatching.GetNameHashCode("readme.md", caseSensitive: false));
-        Assert.AreNotEqual(
-            NameMatching.GetNameHashCode("Readme.MD", caseSensitive: true),
-            NameMatching.GetNameHashCode("readme.md", caseSensitive: true));
-    }
 }
