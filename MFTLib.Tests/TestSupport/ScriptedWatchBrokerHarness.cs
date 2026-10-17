@@ -45,10 +45,8 @@ internal sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
                 VolumeInformation = _ => new NtfsVolumeInformation(1024 * 100, 1024)
             },
             processorCount: 4,
-            timeProvider: seams.HostClock)
-        {
-            HeartbeatVisitedForTest = seams.HeartbeatVisited
-        };
+            timeProvider: seams.HostClock);
+        host.Hooks.HeartbeatVisited = seams.HeartbeatVisited;
         _broker = new InProcessBroker(host, seams.ClientOptions,
             wrapClientStream: (name, stream) =>
             {

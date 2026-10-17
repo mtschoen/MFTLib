@@ -14,11 +14,14 @@ public partial class JournalBrokerHostLivenessTests
     {
         var liveness = new Liveness();
         var held = new HeldWrites();
-        await using var harness = HarnessHoldingWritesTo('X', liveness.Host(watchDrive: NeverYields), held);
+        var enteredX = new TestGate();
+        var enteredY = new TestGate();
+        var host = liveness.Host(watchDrive: (drive, _, _, token) =>
+            QuietWatchAsync(drive == 'X' ? enteredX : enteredY, token));
+        await using var harness = HarnessHoldingWritesTo('X', host, held);
         var blocked = await harness.OpenWatchChannelAsync('X', BehindTip);
         var healthy = await harness.OpenWatchChannelAsync('Y', BehindTip);
-        await liveness.WhenPublished("harness-X-1", ChannelOperationKind.WaitingOnVolume);
-        await liveness.WhenPublished("harness-Y-2", ChannelOperationKind.WaitingOnVolume);
+        await Task.WhenAll(enteredX.Entered, enteredY.Entered).WaitAsync(HangGuard);
 
         // Well past the client's 30-second stall limit.
         for (var interval = 0; interval < 10; interval++)
@@ -41,38 +44,58 @@ public partial class JournalBrokerHostLivenessTests
     public async Task CatchUp_BoundedReads_RepublishesPerCall()
     {
         var liveness = new Liveness();
-        var reads = new List<int>();
-        var readCursors = new System.Collections.Concurrent.ConcurrentQueue<UsnJournalCursor>();
+        var calls = Enumerable.Range(0, 4).Select(_ => new TestGate()).ToArray();
+        var observed = new System.Collections.Concurrent.ConcurrentQueue<(UsnJournalCursor Cursor, int Limit)>();
         var host = liveness.Host(readJournal: (_, since, maximumBufferReads) =>
         {
-            readCursors.Enqueue(since);
-            reads.Add(maximumBufferReads);
-            // Three chunks of one entry each, 100 USNs apart, then the tip.
-            return since.NextUsn < Tip.NextUsn + 300
-                ? ([JournalEntries.Create((ulong)since.NextUsn, since.NextUsn, $"{since.NextUsn}.txt")],
+            var index = checked((int)((since.NextUsn - Tip.NextUsn) / 100));
+            Assert.IsTrue(index >= 0 && index < calls.Length);
+            observed.Enqueue((since, maximumBufferReads));
+            calls[index].MarkEntered();
+            calls[index].WaitForRelease();
+            return index < 3
+                ? ([JournalEntries.Create((ulong)since.NextUsn, since.NextUsn, "entry.txt")],
                     since with { NextUsn = since.NextUsn + 100 })
                 : ([], since);
         });
         using var sectionWriter = new RecordingBlockSectionWriter();
         await using var harness = new HostChannelHarness(host, sectionWriter);
-
-        var frames = await HostChannelHarness.ReadToEndAsync(await harness.OpenScanChannelAsync('C'));
-
-        var terminal = frames[^1];
-        Assert.AreEqual(BrokerFrameKind.ScanCompleted, terminal.Kind);
-        Assert.AreEqual(0, terminal.Entries.Length, "The chunks the catch-up read stay on the host.");
-        Assert.AreEqual(default(UsnJournalCursor), terminal.Cursor);
-        CollectionAssert.AreEqual(new[]
+        try
         {
-            Tip,
-            Tip with { NextUsn = Tip.NextUsn + 100 },
-            Tip with { NextUsn = Tip.NextUsn + 200 },
-            Tip with { NextUsn = Tip.NextUsn + 300 }
-        }, readCursors.ToArray());
-        CollectionAssert.AreEqual(Enumerable.Repeat(BrokerLiveness.CatchUpBufferReadsPerCall, 4).ToArray(),
-            reads.ToArray(), "Each call is bounded; the fourth returns at the tip and ends catch-up.");
-        Assert.AreEqual(3, liveness.Republishes("harness-C-1", "journal catch-up"),
-            "The progress clock restarts once per call that returned a chunk.");
+            var pipe = await harness.OpenScanChannelAsync('C');
+            foreach (var expected in new[] { BrokerFrameKind.Cursor, BrokerFrameKind.ScanProgress, BrokerFrameKind.ScanReady })
+            {
+                Assert.AreEqual(expected, await ReadIncludingHeartbeatsAsync(pipe));
+            }
+            await calls[0].Entered.WaitAsync(HangGuard);
+            await liveness.AdvanceOneIntervalAsync(); // Consume the operation-frame skip.
+            foreach (var call in calls)
+            {
+                await call.Entered.WaitAsync(HangGuard);
+                for (var interval = 0; interval < 4; interval++)
+                {
+                    await liveness.AdvanceOneIntervalAsync();
+                    Assert.AreEqual(BrokerFrameKind.Heartbeat, await ReadIncludingHeartbeatsAsync(pipe));
+                }
+                call.Release();
+            }
+            var rest = await HostChannelHarness.ReadToEndAsync(pipe, includeHeartbeats: true);
+            CollectionAssert.AreEqual(new[] { BrokerFrameKind.ScanCompleted }, rest.Select(frame => frame.Kind).ToArray());
+            Assert.AreEqual(0, rest[0].Entries.Length);
+            Assert.AreEqual(default(UsnJournalCursor), rest[0].Cursor);
+            CollectionAssert.AreEqual(Enumerable.Range(0, 4)
+                .Select(index => Tip with { NextUsn = Tip.NextUsn + index * 100 }).ToArray(),
+                observed.Select(read => read.Cursor).ToArray());
+            CollectionAssert.AreEqual(Enumerable.Repeat(BrokerLiveness.CatchUpBufferReadsPerCall, 4).ToArray(),
+                observed.Select(read => read.Limit).ToArray());
+        }
+        finally
+        {
+            foreach (var call in calls)
+            {
+                call.Release();
+            }
+        }
     }
 
     [TestMethod]
@@ -101,9 +124,9 @@ public partial class JournalBrokerHostLivenessTests
         Assert.AreEqual(BrokerFrameKind.CatchUpLost, frames[^1].Kind, "CatchUpLost is the last frame, then EOF.");
         Assert.IsNull(frames[^1].Message, "The failure text stays on the host.");
         Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.ScanCompleted));
+        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.JournalBatch));
+        Assert.IsNotNull(frames[^1].CatchUpLoss);
         Assert.AreEqual(2, calls, "A failed bounded read is not retried.");
-        Assert.AreEqual(1, liveness.Republishes("harness-C-1", "journal catch-up"),
-            "Only the call that returned a chunk restarted the progress clock.");
         Assert.AreEqual(startTime, liveness.Clock.GetUtcNow(), "The host never waited on its clock.");
     }
 
@@ -134,17 +157,79 @@ public partial class JournalBrokerHostLivenessTests
         {
             var ranges = (block.Length + BlockFile.FlushRangeBytes - 1) / BlockFile.FlushRangeBytes;
             Assert.AreEqual(3L, ranges);
+            var flushes = Enumerable.Range(0, checked((int)ranges)).Select(_ => new TestGate()).ToArray();
             await using var harness = new HostChannelHarness(
                 liveness.Host(scanDrive: (_, _, _, _, _, _) => [[new MftRecord(5, 5, new MftRecordFields(3), ".")]]),
-                new RealBlockSectionWriter(TimeProvider.System));
+                new GatedFlushWriter(flushes, liveness.Clock));
+            try
+            {
+                var pipe = await harness.OpenScanChannelAsync('C', sectionName);
+                Assert.AreEqual(BrokerFrameKind.Cursor, await ReadIncludingHeartbeatsAsync(pipe));
+                await flushes[0].Entered.WaitAsync(HangGuard);
+                await liveness.AdvanceOneIntervalAsync(); // Cursor accounts for the first visit.
+                foreach (var flush in flushes)
+                {
+                    await flush.Entered.WaitAsync(HangGuard);
+                    for (var interval = 0; interval < 4; interval++)
+                    {
+                        await liveness.AdvanceOneIntervalAsync();
+                        Assert.AreEqual(BrokerFrameKind.Heartbeat, await ReadIncludingHeartbeatsAsync(pipe));
+                    }
+                    flush.Release();
+                }
+                var frames = await HostChannelHarness.ReadToEndAsync(pipe, includeHeartbeats: true);
+                CollectionAssert.AreEqual(new[]
+                {
+                    BrokerFrameKind.ScanProgress, BrokerFrameKind.ScanReady, BrokerFrameKind.ScanCompleted
+                }, frames.Select(frame => frame.Kind).ToArray());
+                Assert.IsTrue(block.Header.IsComplete);
+                GC.KeepAlive(block);
+            }
+            finally
+            {
+                foreach (var flush in flushes)
+                {
+                    flush.Release();
+                }
+            }
+        }
+    }
 
-            var frames = await HostChannelHarness.ReadToEndAsync(await harness.OpenScanChannelAsync('C', sectionName));
+    [SupportedOSPlatform("windows")]
+    sealed class GatedFlushWriter(TestGate[] ranges, TimeProvider clock) : IBlockSectionWriter
+    {
+        readonly RealBlockSectionWriter _inner = new(clock);
 
-            Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
-            Assert.AreEqual(ranges, liveness.Published.Count(entry =>
-                entry.Tag == "harness-C-1" && entry.State is
-                { Kind: ChannelOperationKind.Processing, Step: MftBlockScan.FlushStep }),
-                "Each flushed range republishes the scan pipe's state.");
+        public BlockWriteResult Write(string sectionName, UsnJournalCursor cursor,
+            IEnumerable<IReadOnlyList<MftRecord>> batches, MftScanOptions scanOptions,
+            BlockWriteReporting reporting, CancellationToken cancellationToken)
+        {
+            Assert.IsNotNull(reporting.Operation);
+            // Deliberately omit intermediate progress frames: only operation progress
+            // may keep this scenario alive while the real block is flushed.
+            return _inner.Write(sectionName, cursor, batches, scanOptions,
+                new BlockWriteReporting(null, new GatedFlushReporter(reporting.Operation, ranges)),
+                cancellationToken);
+        }
+    }
+
+    sealed class GatedFlushReporter(ISourceOperationReporter inner, TestGate[] ranges) : ISourceOperationReporter
+    {
+        int _nextRange;
+
+        public void WaitingOnVolume() => inner.WaitingOnVolume();
+
+        public void Processing(string stepName)
+        {
+            inner.Processing(stepName);
+            if (stepName != MftBlockScan.FlushStep)
+            {
+                return;
+            }
+            var index = Interlocked.Increment(ref _nextRange) - 1;
+            Assert.IsTrue(index < ranges.Length, "Unexpected additional flush range.");
+            ranges[index].MarkEntered();
+            ranges[index].WaitForRelease();
         }
     }
 

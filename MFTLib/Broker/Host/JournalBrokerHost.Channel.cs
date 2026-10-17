@@ -113,7 +113,7 @@ internal sealed partial class JournalBrokerHost
             using var channelCancellation = CancellationTokenSource.CreateLinkedTokenSource(session.Token);
             var channelToken = channelCancellation.Token;
             var pipe = new HostPipeWriter(stream, tag, _timeProvider, heartbeatsWhenIdle: false,
-                channelCancellation, OperationStatePublishedForTest);
+                channelCancellation);
             var channel = new DriveChannel(stream, drive, pipe);
             session.Heartbeats.Register(pipe);
             try

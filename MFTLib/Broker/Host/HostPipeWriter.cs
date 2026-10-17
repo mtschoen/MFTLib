@@ -21,7 +21,6 @@ internal sealed class HostPipeWriter : ISourceOperationReporter
     readonly TimeProvider _timeProvider;
     readonly bool _heartbeatsWhenIdle;
     readonly CancellationTokenSource _owner;
-    readonly Action<string, ChannelOperationState>? _statePublished;
 
     // Held for the whole of one frame write. The heartbeat sender only ever tries it without
     // waiting, so a write blocked on this pipe never blocks the sender.
@@ -45,16 +44,14 @@ internal sealed class HostPipeWriter : ISourceOperationReporter
     ///     or a failed heartbeat write, until <see cref="Close" /> runs; the owner disposes it only
     ///     after that.
     /// </param>
-    /// <param name="statePublished">Test hook: receives the tag and the new state on every publication.</param>
     public HostPipeWriter(Stream stream, string tag, TimeProvider timeProvider, bool heartbeatsWhenIdle,
-        CancellationTokenSource owner, Action<string, ChannelOperationState>? statePublished)
+        CancellationTokenSource owner)
     {
         _stream = stream;
         Tag = tag;
         _timeProvider = timeProvider;
         _heartbeatsWhenIdle = heartbeatsWhenIdle;
         _owner = owner;
-        _statePublished = statePublished;
         _state = new ChannelOperationState(ChannelOperationKind.Idle, string.Empty, timeProvider.GetUtcNow());
     }
 
@@ -79,13 +76,10 @@ internal sealed class HostPipeWriter : ISourceOperationReporter
 
     void Publish(ChannelOperationKind kind, string step)
     {
-        ChannelOperationState state;
         lock (_gate)
         {
-            state = _state = new ChannelOperationState(kind, step, _timeProvider.GetUtcNow());
+            _state = new ChannelOperationState(kind, step, _timeProvider.GetUtcNow());
         }
-
-        _statePublished?.Invoke(Tag, state);
     }
 
     /// <summary>
@@ -124,9 +118,6 @@ internal sealed class HostPipeWriter : ISourceOperationReporter
         }
     }
 
-    /// <summary>Test hook: runs at the start of each visit, before the visit takes the write lock.</summary>
-    internal Action? VisitStartingForTest { get; set; }
-
     /// <summary>
     ///     One heartbeat sender visit, on the sender's thread. Never blocks and never awaits a write.
     ///     A pipe whose write is in flight is skipped. Otherwise the visit holds the write lock, so no
@@ -138,7 +129,6 @@ internal sealed class HostPipeWriter : ISourceOperationReporter
     /// </summary>
     public void Visit(DateTimeOffset now)
     {
-        VisitStartingForTest?.Invoke();
         if (!_writeLock.Wait(0))
         {
             // The write in flight is this interval's write.

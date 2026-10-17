@@ -1,3 +1,4 @@
+using MFTLib.Tests.TestSupport;
 using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -30,29 +31,41 @@ public class JournalBrokerHostSourcesTests
         Assert.ThrowsException<ArgumentOutOfRangeException>(() => LiveVolumeSources.HostScanChunkRecords(0));
     }
 
-    [TestMethod]
-    public void OperationState_RecordsEachPublicationAndWhenItHappened()
+    [DataTestMethod]
+    [DataRow("queued", false)]
+    [DataRow("waiting", false)]
+    [DataRow("processing", true)]
+    public async Task OperationState_DeterminesHeartbeatAndStall(string state, bool stalls)
     {
         var clock = new FakeTimeProvider();
-        var published = new List<(string Tag, ChannelOperationState State)>();
         using var owner = new CancellationTokenSource();
-        var pipe = new HostPipeWriter(Stream.Null, "pipe", clock, heartbeatsWhenIdle: false, owner,
-            (tag, state) => published.Add((tag, state)));
-
-        clock.Advance(TimeSpan.FromSeconds(3));
-        pipe.Queued();
-        Assert.AreEqual(new ChannelOperationState(ChannelOperationKind.Queued, string.Empty, clock.GetUtcNow()),
-            published[^1].State);
-
-        clock.Advance(TimeSpan.FromSeconds(2));
-        pipe.Processing("MFT parse");
-        Assert.AreEqual(new ChannelOperationState(ChannelOperationKind.Processing, "MFT parse", clock.GetUtcNow()),
-            published[^1].State);
-
-        pipe.WaitingOnVolume();
-        Assert.AreEqual(new ChannelOperationState(ChannelOperationKind.WaitingOnVolume, string.Empty, clock.GetUtcNow()),
-            published[^1].State);
-        Assert.AreEqual(3, published.Count);
-        Assert.IsTrue(published.All(entry => entry.Tag == "pipe"));
+        using var stream = new MemoryStream();
+        var pipe = new HostPipeWriter(stream, "pipe", clock, heartbeatsWhenIdle: false, owner);
+        try
+        {
+            switch (state)
+            {
+                case "queued": pipe.Queued(); break;
+                case "waiting": pipe.WaitingOnVolume(); break;
+                case "processing": pipe.Processing("MFT parse"); break;
+                default: Assert.Fail("Unknown test state."); break;
+            }
+            clock.Advance(BrokerLiveness.ProcessingLimit);
+            pipe.Visit(clock.GetUtcNow());
+            stream.Position = 0;
+            var frame = await HostChannelHarness.ReadFrameAsync(stream, includeHeartbeats: true)
+                ?? throw new AssertFailedException("The writer emitted no frame.");
+            Assert.AreEqual(stalls ? BrokerFrameKind.Stalled : BrokerFrameKind.Heartbeat, frame.Kind);
+            Assert.AreEqual(stalls, owner.IsCancellationRequested);
+            if (stalls)
+            {
+                StringAssert.Contains(frame.Message, "MFT parse");
+                StringAssert.Contains(frame.Message, "30 seconds");
+            }
+        }
+        finally
+        {
+            pipe.Close();
+        }
     }
 }

@@ -32,7 +32,7 @@ internal sealed partial class JournalBrokerHost
         ArgumentNullException.ThrowIfNull(connectChannel);
 
         using var session = new ControlSession(control, connectChannel, blockSectionWriter, _timeProvider,
-            HeartbeatVisitedForTest, cancellationToken);
+            Hooks.HeartbeatVisited, cancellationToken);
         try
         {
             // A malformed control frame throws InvalidDataException and ends the session.
@@ -170,7 +170,7 @@ internal sealed partial class JournalBrokerHost
             ConnectChannel = connectChannel;
             BlockSectionWriter = blockSectionWriter;
             ControlPipe = new HostPipeWriter(control, BrokerDiagnostics.ControlChannel, timeProvider,
-                heartbeatsWhenIdle: true, _cancellation, statePublished: null);
+                heartbeatsWhenIdle: true, _cancellation);
             Heartbeats = new BrokerHeartbeatSender(timeProvider, heartbeatVisited);
             Heartbeats.Register(ControlPipe);
         }

@@ -117,7 +117,7 @@ public static class BrokerTestHarness
         ArgumentNullException.ThrowIfNull(resources);
         ArgumentNullException.ThrowIfNull(options);
 
-        host.ScanStartingForTest = resources.RecordScan;
+        host.Hooks.ScanStarting = resources.RecordScan;
         var pipes = new InMemoryBrokerPipes(options, wrapClientStream);
         var (clientControl, hostControl) = pipes.CreatePair(InMemoryBrokerPipes.ControlPipeName);
         BrokerChannelConnector connector = pipes.ConnectAsync;

@@ -5,10 +5,8 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
-// The host's scan, control and progress behavior over the wire, driven with raw frames through
-// HostChannelHarness. The scan tests install JournalBrokerHost's process-wide progress throttle,
-// so the class runs serially. Members here carry scan or control in their names; the watch
-// partials keep their own.
+// Scan, control and watch behavior over HostChannelHarness. Journal overrides and
+// diagnostics in the other partials mutate process-wide state, so this class is serial.
 [TestClass]
 [DoNotParallelize]
 public partial class JournalBrokerHostTests

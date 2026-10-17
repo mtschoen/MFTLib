@@ -64,7 +64,8 @@ internal sealed partial class JournalBrokerHost
             });
 
         var pumpTask = Task.Run(
-            () => RunProgressPumpAsync(channel, progressChannel.Reader, _timeProvider, cancellationToken),
+            () => RunProgressPumpAsync(channel, progressChannel.Reader, _timeProvider,
+                Hooks.ProgressThrottleInterval, cancellationToken),
             CancellationToken.None);
 
         try
@@ -95,7 +96,7 @@ internal sealed partial class JournalBrokerHost
                 progressState.Report(value, progressWriter));
 
             // Armed before the scan starts, so every change the scan misses is replayed by catch-up.
-            ScanStartingForTest?.Invoke(channel.Drive, request.RetainedFileNames);
+            Hooks.ScanStarting?.Invoke(channel.Drive, request.RetainedFileNames);
             channel.Pipe.WaitingOnVolume();
             var cursor = _volumeAccess.QueryCursor(channel.Drive);
             await channel.Pipe.WriteFrameAsync(writer => BrokerProtocol.WriteCursor(writer, cursor),
@@ -135,7 +136,7 @@ internal sealed partial class JournalBrokerHost
     }
 
     static async Task RunProgressPumpAsync(DriveChannel channel, ChannelReader<BrokerScanProgress> reader,
-        TimeProvider timeProvider, CancellationToken cancellationToken)
+        TimeProvider timeProvider, TimeSpan progressThrottleInterval, CancellationToken cancellationToken)
     {
         var started = timeProvider.GetTimestamp();
         var lastEmit = TimeSpan.Zero;
@@ -149,7 +150,7 @@ internal sealed partial class JournalBrokerHost
                 while (reader.TryRead(out var progress))
                 {
                     var now = timeProvider.GetElapsedTime(started);
-                    if (first || now - lastEmit >= _progressThrottleInterval)
+                    if (first || now - lastEmit >= progressThrottleInterval)
                     {
                         first = false;
                         lastEmit = now;

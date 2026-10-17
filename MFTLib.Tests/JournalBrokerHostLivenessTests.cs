@@ -26,9 +26,11 @@ public partial class JournalBrokerHostLivenessTests
     public async Task IdleWatch_WaitingOnVolume_HeartbeatsAndNeverStalls()
     {
         var liveness = new Liveness();
-        await using var harness = new HostChannelHarness(liveness.Host(watchDrive: NeverYields));
+        var entered = new TestGate();
+        await using var harness = new HostChannelHarness(liveness.Host(
+            watchDrive: (_, _, _, token) => QuietWatchAsync(entered, token)));
         var pipe = await harness.OpenWatchChannelAsync('C', BehindTip);
-        await liveness.WhenPublished("harness-C-1", ChannelOperationKind.WaitingOnVolume);
+        await entered.Entered.WaitAsync(HangGuard);
 
         for (var interval = 0; interval < 24; interval++)
         {
@@ -114,6 +116,7 @@ public partial class JournalBrokerHostLivenessTests
     {
         var liveness = new Liveness();
         var admitted = new TestGate();
+        var queuedSourceEntered = new TestGate();
         var host = liveness.Host(processorCount: 1, scanDrive: (drive, _, reporting, _, _, token) =>
         {
             if (drive == 'C')
@@ -124,6 +127,10 @@ public partial class JournalBrokerHostLivenessTests
                 token.WaitHandle.WaitOne(HangGuard);
                 token.ThrowIfCancellationRequested();
             }
+            else
+            {
+                queuedSourceEntered.MarkEntered();
+            }
 
             return [];
         });
@@ -132,13 +139,16 @@ public partial class JournalBrokerHostLivenessTests
         await harness.OpenScanChannelAsync('C');
         await admitted.Entered.WaitAsync(HangGuard);
         var queued = await harness.OpenScanChannelAsync('D');
-        await liveness.WhenPublished("harness-D-2", ChannelOperationKind.Queued);
+        await WaitForQueuedScanAsync(host);
 
         for (var interval = 0; interval < 12; interval++)
         {
             await liveness.AdvanceOneIntervalAsync();
             Assert.AreEqual(BrokerFrameKind.Heartbeat, await ReadIncludingHeartbeatsAsync(queued),
                 $"The queued scan's pipe heartbeats on interval {interval + 1}.");
+            Assert.AreEqual(1, host.ParseThreads.RunningScanCount);
+            Assert.AreEqual(1, host.ParseThreads.QueuedScanCount);
+            Assert.IsFalse(queuedSourceEntered.Entered.IsCompleted);
         }
     }
 
@@ -175,24 +185,30 @@ public partial class JournalBrokerHostLivenessTests
         return (await HostChannelHarness.ReadFrameAsync(pipe, includeHeartbeats: true))?.Kind;
     }
 
-    // A watch source that never yields: the drive's journal stays quiet until the pipe closes.
-    static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> NeverYields(
-        DriveKey drive, UsnJournalCursor since, ISourceOperationReporter operation,
-        [EnumeratorCancellation] CancellationToken cancellationToken)
+    static async Task WaitForQueuedScanAsync(JournalBrokerHost host)
     {
-        await Task.Delay(Timeout.Infinite, cancellationToken);
+        using var guard = new CancellationTokenSource(HangGuard);
+        while (host.ParseThreads.QueuedScanCount != 1)
+        {
+            guard.Token.ThrowIfCancellationRequested();
+            await Task.Yield();
+        }
+    }
+
+    static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> QuietWatchAsync(
+        TestGate entered, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        entered.MarkEntered();
+        await entered.WaitForReleaseAsync(cancellationToken);
         yield break;
     }
 
-    // One host on a fake clock, with the liveness test hooks installed.
+    // One host on a fake clock, with a completed-visit observation.
     sealed class Liveness
     {
         // A channel rather than a semaphore: the sender may still report a visit while the test is
         // tearing down, and a channel has nothing to dispose.
         readonly Channel<bool> _visits = Channel.CreateUnbounded<bool>();
-        readonly List<(string Tag, ChannelOperationState State)> _published = [];
-        readonly List<(string Tag, ChannelOperationKind Kind, TaskCompletionSource Reached)> _waiters = [];
-        readonly Lock _gate = new();
 
         public FakeTimeProvider Clock { get; } = new();
 
@@ -200,23 +216,12 @@ public partial class JournalBrokerHostLivenessTests
 
         public bool SenderIsBackground { get; private set; }
 
-        public IReadOnlyList<(string Tag, ChannelOperationState State)> Published
-        {
-            get
-            {
-                lock (_gate)
-                {
-                    return _published.ToArray();
-                }
-            }
-        }
-
         public JournalBrokerHost Host(
             Func<DriveKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
             Func<DriveKey, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchDrive = null,
             MftRecordBatchSource? scanDrive = null, int processorCount = 4)
         {
-            return new JournalBrokerHost(
+            var host = new JournalBrokerHost(
                 new ScriptedVolumeAccess
                 {
                     CursorQuery = _ => Tip,
@@ -225,16 +230,14 @@ public partial class JournalBrokerHostLivenessTests
                     JournalWatch = watchDrive ?? ScriptedVolumeAccess.UnsupportedWatch
                 },
                 processorCount: processorCount,
-                timeProvider: Clock)
+                timeProvider: Clock);
+            host.Hooks.HeartbeatVisited = () =>
             {
-                OperationStatePublishedForTest = Record,
-                HeartbeatVisitedForTest = () =>
-                {
-                    SenderIsThreadPoolThread = Thread.CurrentThread.IsThreadPoolThread;
-                    SenderIsBackground = Thread.CurrentThread.IsBackground;
-                    _visits.Writer.TryWrite(true);
-                }
+                SenderIsThreadPoolThread = Thread.CurrentThread.IsThreadPoolThread;
+                SenderIsBackground = Thread.CurrentThread.IsBackground;
+                _visits.Writer.TryWrite(true);
             };
+            return host;
         }
 
         // Each advance fires the sender's timer once; the next advance waits for that visit, so
@@ -243,41 +246,6 @@ public partial class JournalBrokerHostLivenessTests
         {
             Clock.Advance(BrokerLiveness.HeartbeatInterval);
             return _visits.Reader.ReadAsync().AsTask().WaitAsync(HangGuard);
-        }
-
-        public Task WhenPublished(string tag, ChannelOperationKind kind)
-        {
-            lock (_gate)
-            {
-                if (_published.Any(entry => entry.Tag == tag && entry.State.Kind == kind))
-                {
-                    return Task.CompletedTask;
-                }
-
-                var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-                _waiters.Add((tag, kind, reached));
-                return reached.Task.WaitAsync(HangGuard);
-            }
-        }
-
-        // Publications of the step that repeat the step before them on the same pipe: each one is
-        // a restart of the progress clock without a change of state.
-        public int Republishes(string tag, string step)
-        {
-            var steps = Published.Where(entry => entry.Tag == tag).Select(entry => entry.State.Step).ToList();
-            return steps.Zip(steps.Skip(1)).Count(pair => pair.First == step && pair.Second == step);
-        }
-
-        void Record(string tag, ChannelOperationState state)
-        {
-            lock (_gate)
-            {
-                _published.Add((tag, state));
-                foreach (var waiter in _waiters.Where(waiter => waiter.Tag == tag && waiter.Kind == state.Kind))
-                {
-                    waiter.Reached.TrySetResult();
-                }
-            }
         }
     }
 }

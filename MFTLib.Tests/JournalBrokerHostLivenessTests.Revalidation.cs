@@ -10,45 +10,6 @@ namespace MFTLib.Tests;
 public partial class JournalBrokerHostLivenessTests
 {
     [TestMethod]
-    public async Task Visit_ProgressPublishedAfterVisitBegan_WritesNoStalledAndKeepsChannel()
-    {
-        var clock = new FakeTimeProvider();
-        using var owner = new CancellationTokenSource();
-        using var stream = new MemoryStream();
-        var pipe = new HostPipeWriter(stream, "pipe", clock, heartbeatsWhenIdle: false, owner, null);
-        pipe.Processing("catch-up");
-        clock.Advance(BrokerLiveness.ProcessingLimit);
-
-        await VisitWithWindowAsync(pipe, clock, () =>
-        {
-            pipe.Processing("catch-up");
-            return Task.CompletedTask;
-        });
-
-        CollectionAssert.AreEqual(new[] { BrokerFrameKind.Heartbeat }, FrameKinds(stream),
-            "Progress published inside the visit's window restarts the clock: a heartbeat, not Stalled.");
-        Assert.IsFalse(owner.IsCancellationRequested, "A progressing channel is not cancelled.");
-    }
-
-    [TestMethod]
-    public async Task Visit_FrameCompletedAfterVisitBegan_WritesNoStalledAndKeepsChannel()
-    {
-        var clock = new FakeTimeProvider();
-        using var owner = new CancellationTokenSource();
-        using var stream = new MemoryStream();
-        var pipe = new HostPipeWriter(stream, "pipe", clock, heartbeatsWhenIdle: false, owner, null);
-        pipe.Processing("catch-up");
-        clock.Advance(BrokerLiveness.ProcessingLimit);
-
-        await VisitWithWindowAsync(pipe, clock,
-            () => pipe.WriteFrameAsync(BrokerProtocol.WriteCaughtUp, CancellationToken.None));
-
-        CollectionAssert.AreEqual(new[] { BrokerFrameKind.CaughtUp }, FrameKinds(stream),
-            "A frame completed inside the visit's window counts as this interval's write: no Stalled.");
-        Assert.IsFalse(owner.IsCancellationRequested, "A channel that just wrote is not cancelled.");
-    }
-
-    [TestMethod]
     public async Task ProgressingCatchUp_NoFrameForSixtySeconds_HeartbeatsAndNeverStalls()
     {
         var liveness = new Liveness();
@@ -128,7 +89,7 @@ public partial class JournalBrokerHostLivenessTests
         var clock = new FakeTimeProvider();
         using var owner = new CancellationTokenSource();
         using var stream = new MemoryStream();
-        var pipe = new HostPipeWriter(stream, "pipe", clock, heartbeatsWhenIdle: false, owner, null);
+        var pipe = new HostPipeWriter(stream, "pipe", clock, heartbeatsWhenIdle: false, owner);
         try
         {
             pipe.Processing("catch-up");
@@ -158,24 +119,6 @@ public partial class JournalBrokerHostLivenessTests
         {
             pipe.Close();
         }
-    }
-
-    // Runs one visit on another thread and performs the window action after the visit began but
-    // before it takes the pipe's write lock.
-    static async Task VisitWithWindowAsync(HostPipeWriter pipe, FakeTimeProvider clock, Func<Task> window)
-    {
-        var began = new TestGate();
-        pipe.VisitStartingForTest = () =>
-        {
-            began.MarkEntered();
-            began.WaitForRelease();
-        };
-        var now = clock.GetUtcNow();
-        var visit = Task.Run(() => pipe.Visit(now));
-        await began.Entered.WaitAsync(HangGuard);
-        await window().WaitAsync(HangGuard);
-        began.Release();
-        await visit.WaitAsync(HangGuard);
     }
 
     static BrokerFrameKind[] FrameKinds(MemoryStream stream)

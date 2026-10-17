@@ -205,6 +205,27 @@ Lifecycle races are tested behaviorally without one-use test seams:
 - Freedom from `_stateLock` during `WatchStateChanged` delivery is tested positively in `FileIndexWatchStateChangedTests.cs:Handler_RunsWithoutTheStateLock_SeesItsChange_AndCannotCallLifecycleMethods`: a held subscriber permits a concurrent second thread to read `Drives` while asserting that the subscriber has not yet exited.
 - Callback reentrancy rejection during disposal is tested positively in `FileIndexCallbackReentrancyTests.cs:ChangedHandler_CallsWaitWhileDisposalBeginsDuringDriveEnumeration_GetsTheGuardException`: a caller-owned deferred `Drives` read throws `ObjectDisposedException` during `ValidateBatch` materialization, which `WaitForCatchUpAsync` translates to the reentrancy guard exception.
 
+## Broker host component hooks
+
+Each `JournalBrokerHost` owns one internal `HostHooks` object through `Hooks`.
+Configure it before serving and retain observation state until the session has
+stopped. These controls are instance-local; they need no process-wide reset.
+Test classes using journal overrides or diagnostics still require their existing
+class-level isolation.
+
+| Member | Purpose and execution context | Test owner |
+| --- | --- | --- |
+| `ScanStarting` | Records an admitted scan before its cursor query, including attempts that subsequently fail. Runs on the scan worker without pipe locks and with its parse registration held; callbacks must be thread-safe, nonblocking and nonthrowing. | `BrokerTestHarness` connects `ScriptedBrokerResources.RecordScan`; `BrokerProcessTests.TestExtensions.cs` verifies public scan-log ordering, failed attempts and retention values. |
+| `HeartbeatVisited` | Signals completion of a sender pass on the dedicated background thread, outside pipe and sender-list locks. Started writes may still be in flight. Callbacks must not block, throw or wait for session disposal. | `JournalBrokerHostLivenessTests` paces fake-clock ticks and proves thread identity; `ScriptedWatchBrokerHarness` supplies `CrossDriveScenario` synchronization. |
+| `ProgressThrottleInterval` | Per-host minimum interval between intermediate scan reports, configured before serving; production default is 250 ms. | `JournalBrokerHostTests.Progress.cs` covers independent hosts, immediate reports and final throttled-report flushing. |
+
+Liveness tests establish readiness through test-owned source gates and allocator
+observations, then assert emitted frames and cancellation. Catch-up reads and
+real block-flush reports are held at existing collaborator seams while fake time
+advances. A completed heartbeat visit is not proof of write completion: tests
+also consume the expected frames. Gates are released in local finally blocks
+before disposing the host harness.
+
 ## Object lifetime
 
 Parallel classes allocate concurrently, so a garbage collection can land at any
