@@ -29,7 +29,7 @@ Dump sources require null `CacheMode` and `CacheDirectory` and default `CacheTag
 ownership; block operations still follow the locks described below.
 
 - Index contracts:
-    - **Block ownership**: a cache-mode `FileIndex` holds a sibling `<block>.lock` (opened with
+    - **Block ownership**: a cache-mode drive's `DriveRuntime` holds a sibling `<block>.lock` (opened with
       `FileShare.None`, an exclusive non-blocking `flock` on Unix) for as long as it owns a canonical
       cache block, and that lock is taken before any validation, retired-sibling sweep, rename, or
       delete. A second `FileIndex` over the same cache directory, in any process, that cannot take the
@@ -66,13 +66,13 @@ ownership; block operations still follow the locks described below.
       or deleted. Consumers can collect these reports to
       preserve their own corruption diagnostics without globbing the cache directory themselves.
       A scan into the canonical slot that fails or is cancelled without producing a block deletes its
-      partial file itself, while this index still holds the owner lock, and logs the delete (or the
+      partial file itself, while `DriveRuntime` still holds the owner lock, and logs the delete (or the
       failure to delete) through `Diagnostics`; a throwing callback never replaces the scan's own exception.
       A file that already sat in the slot before the scan, such as a complete block rejected only for an
       unresumable checkpoint, is judged by what is there after the failure: it stays only while it still
       opens as a complete, valid block, and a truncated or half-written replacement is deleted. A rescan
       restores its renamed-aside previous block instead.
-      `DriveBlockStatus.CacheLocation` reports the current published block's backing, read from the drive owner's adopted `LastResult.CacheLocation`. The drive owner holds the canonical lock (`CanonicalLock`) when it owns the slot, but `LastResult.CacheLocation` describes the published block:
+      `DriveBlockStatus.CacheLocation` reports the current published block's backing, read from the drive owner's adopted `LastResult.CacheLocation`. The drive owner (`DriveRuntime`) holds the canonical lock (`CanonicalLock`) when it owns the slot, but `LastResult.CacheLocation` describes the published block:
       `CacheLocation.OwnedCanonical` for the canonical slot held by this index,
       `PrivateFallback` for a private fallback block, and null for
       a `CacheMode.Disabled` block (a blockless drive has no `Block` at all). It is independent of

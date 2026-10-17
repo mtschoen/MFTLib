@@ -5,10 +5,9 @@ namespace MFTLib.Index;
 ///     drive, warm-starts from a valid block or cold-scans, and publishes a snapshot. A rescan
 ///     writes a new block beside the old one and swaps it in; handles minted from the old
 ///     snapshot keep the old block mapped until they are collected, so a held handle never
-///     dangles across a rescan. Split into partial files by responsibility: this file is
-///     construction and the read surface, <c>FileIndex.Scanning.cs</c> is the cold-scan and
-///     warm-start path used when opening a drive, <c>FileIndex.Rescan.cs</c> is rescanning
-///     and snapshot publication, and <c>FileIndex.Hooks.cs</c> is internal test injection and isolation hooks.
+///     dangles across a rescan. Split into partial files by responsibility: aggregate construction,
+///     admission, and query coordination live on <see cref="FileIndex" />, while drive behavior
+///     lives in <c>FileIndex.DriveRuntime.*.cs</c>.
 /// </summary>
 public sealed partial class FileIndex : IAsyncDisposable
 {

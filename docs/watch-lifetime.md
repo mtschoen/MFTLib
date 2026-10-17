@@ -57,7 +57,8 @@
       then the failed result settles, then `WatchFaulted` is raised, so a consumer reading `Drives` from
       the failed result sees the same state a `WatchFaulted` handler sees. A stop in that
       window retains the watch's fault in the wait's result. All four lifecycle methods fan out to the
-      requested drives concurrently and return one `DriveOperationResult` per drive. A `Drive` or
+      requested drives concurrently and return one `DriveOperationResult` per drive, dispatching each drive's
+      operation to its `DriveRuntime`. A `Drive` or
       `Apply` fault publishes `Recovering`, raises `WatchFaulted`, and automatically rescans and
       restarts only X. A second fault before the restarted watch reaches `CaughtUp`, or a failed
       recovery scan, raises `WatchFaulted(Recovery, X)` and leaves X `Faulted` until a consumer
@@ -164,7 +165,7 @@
       reports nothing; a cancelled or failed open may therefore have reported only some drives.
       Open-time catch-up retries and the exhausted drive's `Ready` unresumable block follow
       [checkpoint loss](checkpoint-loss.md).
-      `FileIndexOptions.ScanProgress` samples a scan while its producer runs, then `FileIndex`
+      `FileIndexOptions.ScanProgress` samples a scan while its producer runs, then `DriveRuntime`
       emits one `IndexScanPhase.Finished` sample after the producer's last sample for each
       drive scan, for MFT and enumeration producers, in opens and rescans.
       `IndexScanProgress.Outcome` is non-null only on that terminal sample: `Succeeded`,

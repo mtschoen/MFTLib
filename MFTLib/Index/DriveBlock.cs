@@ -7,7 +7,7 @@ namespace MFTLib.Index;
 ///     block retired by a rescan mapped while that handle remains reachable, and nothing else: a
 ///     rescan of another drive never waits on it. The finalizer releases a retired block once its
 ///     handles become unreachable while the index lives; index disposal releases every block
-///     through <see cref="ReleaseState" />, which it retains independently of this object.
+///     through <see cref="ReleaseState" />, which its drive owner retains independently of this object.
 /// </summary>
 internal sealed class DriveBlock
 {
@@ -59,7 +59,7 @@ internal sealed class DriveBlock
 
     public BlockFile Block { get; }
 
-    /// <summary>The block's mapping and borrows, retained by the index after it retires this block.</summary>
+    /// <summary>The block's mapping and borrows, retained by the drive owner after it retires this block.</summary>
     internal DriveBlockRelease ReleaseState { get; }
 
     /// <summary>True from the moment a release begins, before the block is unmapped.</summary>

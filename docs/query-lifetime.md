@@ -24,7 +24,7 @@
     - **Handle lifetime**: a retained `FileEntry` holds its own `DriveBlock` and no other drive's, so it keeps
       only that block mapped. A rescan retires only the rescanned drive's block; once no handle or borrow reaches
       a retired block its finalizer unmaps it while the index lives, whatever handles other drives hold. Index
-      disposal releases every current and retired block regardless of held handles.
+      disposal releases every current and retired block regardless of held handles. Each drive owner retains retired release states, not retired DriveBlock objects. Disposal stops all drives, takes every lifecycle gate and then every write gate in drive-letter order, drains retired releases, and atomically detaches all current blocks with aggregate snapshot unpublication before releasing their mappings outside the state lock.
 
     - **Row enumeration**: `FileIndex.EnumerateRows` takes its snapshot borrow when `foreach` begins
       (`GetEnumerator()`), and `foreach` releases it on completion, `break`, an exception or cancellation.
