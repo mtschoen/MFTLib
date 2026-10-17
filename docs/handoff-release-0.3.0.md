@@ -186,9 +186,13 @@ See [Linux package](linux-package.md) for the build and package acceptance contr
 - When the job builds, its artifact `linux-native-<sha>` contains the library and acceptance output for attended inspection ([Linux package](linux-package.md)).
 - The glibc floor policy states the actual imported symbol versions printed by the acceptance check ([Linux package](linux-package.md)).
 
-## Release measurement snapshot
+## Release measurement evidence
 
-The operator regenerates `TEST-REPORT.md` at `<release commit>` from the summaries
-of `scripts/run-coverage.ps1 -Configuration Release` and `scripts/coverage-linux.sh`.
-The coverage scripts supply evidence; the operator writes the snapshot. Record the
-attended consumer pins and results in the release checklist.
+Attach the coverage artifact (managed TRX plus commit.txt) from the `windows-coverage`
+and `linux-coverage` jobs that tested `<release commit>`. Verify that each `commit.txt`
+holds that exact checkout commit and that the TRX `<Counters>` element carries the
+total, passed, failed, and skipped counts. The Windows files are in
+`MFTLib.Tests/coverage-report/`; the Linux files are in `coverage-report/`. Retain the
+coverage reports with them and identify their workflow runs in
+the release checklist. Windows CI excludes admin tests; record attended admin
+testing, consumer pins, and consumer results separately in the release checklist.

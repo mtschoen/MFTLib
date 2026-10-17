@@ -391,6 +391,7 @@ out.txt
 native-coverage-html/
 coverage*.xml
 native-coverage.cobertura.xml
+/TEST-REPORT.md
 
 # Local maintenance breadcrumbs are disposable checkout state.
 /.maintenance.json

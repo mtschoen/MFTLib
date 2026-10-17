@@ -74,6 +74,9 @@ $jsonFile     = Join-Path $coverageDir "coverage.json"
 $coberturaFile= Join-Path $coverageDir "coverage.xml"
 $reportDir    = Join-Path $coverageDir "coverage-report"
 
+$copiedTrx    = Join-Path $reportDir "non-admin.trx"
+$commitFile   = Join-Path $reportDir "commit.txt"
+
 foreach ($path in @($jsonFile, $coberturaFile, $reportDir)) {
     if (Test-Path -LiteralPath $path) {
         Remove-Item -LiteralPath $path -Recurse -Force
@@ -83,6 +86,7 @@ foreach ($path in @($jsonFile, $coberturaFile, $reportDir)) {
 & "$PSScriptRoot/build-windows.ps1" -Configuration $Configuration
 if ($LASTEXITCODE -ne 0) { exit 1 }
 
+$testResultsDirectory = Join-Path $reportDir 'test-results'
 
 # Run non-admin tests - output JSON for MergeWith compatibility (or cobertura if non-interactive)
 if ($NonInteractive) {
@@ -92,6 +96,8 @@ if ($NonInteractive) {
         -p:CollectCoverage=true `
         -p:CoverletOutputFormat=cobertura `
         "-p:CoverletOutput=$coberturaFile" `
+        --results-directory "$testResultsDirectory" `
+        --logger 'trx;LogFileName=non-admin.trx' `
         --verbosity quiet `
         --logger "console;verbosity=normal"
 
@@ -106,6 +112,8 @@ if ($NonInteractive) {
         -p:CollectCoverage=true `
         -p:CoverletOutputFormat=json `
         "-p:CoverletOutput=$jsonFile" `
+        --results-directory "$testResultsDirectory" `
+        --logger 'trx;LogFileName=non-admin.trx' `
         --verbosity quiet
 
     if ($LASTEXITCODE -ne 0) {
@@ -123,6 +131,15 @@ if ($NonInteractive) {
     Remove-Item $jsonFile -ErrorAction SilentlyContinue
 }
 
+# Summary evidence for the CI artifact: the non-admin TRX file (its Counters element carries the totals) and the commit.
+Copy-Item -LiteralPath (Join-Path $testResultsDirectory 'non-admin.trx') -Destination $copiedTrx -ErrorAction Stop
+$commitSha = & git -C $repoRoot rev-parse HEAD
+if ($LASTEXITCODE -ne 0) {
+    Write-Host 'git rev-parse HEAD failed.' -ForegroundColor Red
+    exit 1
+}
+Set-Content -LiteralPath $commitFile -Value $commitSha -Encoding utf8 -ErrorAction Stop
+
 & reportgenerator "-reports:$coberturaFile" "-targetdir:$reportDir" '-reporttypes:TextSummary'
 if ($LASTEXITCODE -ne 0) {
     Write-Host 'Coverage report generation failed.' -ForegroundColor Red
@@ -136,8 +153,10 @@ if (-not (Test-Path -LiteralPath $summaryPath)) {
 Write-Host "`n--- Coverage Report ---" -ForegroundColor Cyan
 Get-Content -LiteralPath $summaryPath
 
-# Cleanup (skip in non-interactive mode so CI can upload artifacts)
+# Cleanup (skip in non-interactive mode so CI can upload artifacts); keep the copied TRX and commit.txt
 if (-not $NonInteractive) {
     Remove-Item $coberturaFile -ErrorAction SilentlyContinue
-    Remove-Item $reportDir -Recurse -ErrorAction SilentlyContinue
+    Get-ChildItem -LiteralPath $reportDir -Force |
+        Where-Object { $_.FullName -notin @($copiedTrx, $commitFile) } |
+        Remove-Item -Recurse -ErrorAction SilentlyContinue
 }

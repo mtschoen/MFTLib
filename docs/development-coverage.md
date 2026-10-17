@@ -30,6 +30,13 @@ executable-method coverage. The publisher checks the assembly's raw Cobertura
 line hits, branch counts, and method records; partial coverage, absent evidence,
 and malformed evidence fail closed even when aggregate coverage would pass.
 
+Attach the coverage artifact (managed TRX plus commit.txt). Each coverage run copies its
+TRX file (the `<Counters>` element carries total, passed, failed, skipped) and writes
+`commit.txt` (`git rev-parse HEAD`) into the directory the artifact already uploads,
+`MFTLib.Tests/coverage-report/` on Windows and `coverage-report/` on Linux. Both are
+deleted before the test run, and the job fails if git exits nonzero. Windows copies the
+non-admin pass only.
+
 Run `pwsh -NoProfile -File scripts/test-coverage-status.ps1` for the offline
 publisher regression checks. On a rejected run, inspect the `windows-coverage`
 artifact: `MFTLib.Tests/coverage.xml`, `MFTLib.Tests/coverage-report/`, and

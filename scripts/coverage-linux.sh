@@ -2,6 +2,8 @@
 # coverage-linux.sh  -  build with --coverage, run native + managed tests, produce reports.
 #
 # Outputs:
+#   coverage-report/managed.trx             -  managed test results (Counters element has the totals)
+#   coverage-report/commit.txt              -  tested commit SHA
 #   coverage-report/index.html              -  native (gcovr) HTML
 #   coverage-report/summary.txt             -  native text summary
 #   coverage-report/managed/coverage.cobertura.xml   -  managed (coverlet) cobertura
@@ -16,6 +18,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="$ROOT/build/linux-coverage"
 REPORT_DIR="$ROOT/coverage-report"
 MANAGED_REPORT_DIR="$REPORT_DIR/managed"
+
+# Any failure, including a missing prerequisite or a failed build, must not leave stale evidence behind.
+rm -f "$REPORT_DIR/managed.trx" "$REPORT_DIR/commit.txt" "$MANAGED_REPORT_DIR/test-results/managed.trx"
 
 if [ "$#" -gt 0 ]; then
     echo "unknown flag: $1" >&2
@@ -66,10 +71,20 @@ export VSTEST_TESTHOST_SHUTDOWN_TIMEOUT=120000
 dotnet test "$ROOT/MFTLib.Tests/MFTLib.Tests.csproj" \
     -p:MFTLibNativeLinuxFlavor=Coverage \
     --filter "$FILTER" \
+    --results-directory "$MANAGED_REPORT_DIR/test-results" \
+    --logger 'trx;LogFileName=managed.trx' \
     --logger "console;verbosity=minimal" \
     /p:CollectCoverage=true \
     /p:CoverletOutput="$MANAGED_REPORT_DIR/coverage.cobertura.xml" \
     /p:CoverletOutputFormat=cobertura
+
+# Summary evidence for the CI artifact: the TRX file (its Counters element carries the totals) and the commit.
+cp "$MANAGED_REPORT_DIR/test-results/managed.trx" "$REPORT_DIR/managed.trx"
+if ! commit_sha=$(git -C "$ROOT" rev-parse HEAD); then
+    echo "error: git rev-parse HEAD failed" >&2
+    exit 1
+fi
+printf '%s\n' "$commit_sha" > "$REPORT_DIR/commit.txt"
 
 # --- Native coverage report ---------------------------------------------------
 

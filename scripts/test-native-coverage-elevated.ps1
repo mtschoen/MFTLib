@@ -431,8 +431,12 @@ function dotnet {
     $outputArgument = @($arguments | Where-Object { $_.StartsWith('-p:CoverletOutput=') })
     if ($outputArgument.Count -ne 1) { throw 'Expected one coverlet output argument' }
     [IO.File]::WriteAllText($outputArgument[0].Substring('-p:CoverletOutput='.Length), '<coverage />')
+    $resultsDirectory = $arguments[[array]::IndexOf($arguments, '--results-directory') + 1]
+    [IO.Directory]::CreateDirectory($resultsDirectory) | Out-Null
+    [IO.File]::WriteAllText((Join-Path $resultsDirectory 'non-admin.trx'), '<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010"><ResultSummary><Counters total="2" passed="1" failed="0" notExecuted="1" /></ResultSummary></TestRun>')
     $global:LASTEXITCODE = 0
 }
+function git { 'fixture-sha' }
 function reportgenerator {
     $arguments = @($args)
     $targetArgument = @($arguments | Where-Object { $_.StartsWith('-targetdir:') })
