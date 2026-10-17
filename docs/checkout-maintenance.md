@@ -79,7 +79,7 @@ Referencing managed projects receive that item through the SDK. With neither
 source present, managed-only builds remain available. Package runtime assets
 follow the separate [Linux package contract](linux-package.md).
 
-CI verification: the `windows` job in `.gitea/workflows/test.yml` runs the clean, both init entry points, the idempotency rerun and `init.ps1 -Build` with a clean-tree assertion after each, but only on the push to `main` (see [quality gates](quality-gates.md)). A pull request does not run it, so run the disposable acceptance check below when a change touches init, build or ignore files.
+CI verification: the `windows` job in `.gitea/workflows/test.yml` runs `scripts/ci-post-clean-destructive.ps1` (the clean, both init entry points, the idempotency rerun and `init.ps1 -Build` with a clean-tree assertion after each), but only on the push to `main` (see [quality gates](quality-gates.md)). A pull request does not run it, so run the disposable acceptance check below when a change touches init, build or ignore files.
 
 The Linux CI job also runs `./init.sh --build` before coverage. It starts
 without the Release/x64 test assembly, verifies init creates that assembly,

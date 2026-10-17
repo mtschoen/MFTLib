@@ -400,22 +400,87 @@ for job in windows linux linux-package; do
     for obsolete in 'check_files()' 'git fetch' 'git diff' '-notmatch'; do
         assert_equal 0 "$(printf '%s\n' "$block" | grep -F -c -- "$obsolete")"
     done
-    case "$job" in
-        windows) expected_guards=20 ;;
-        linux) expected_guards=8 ;;
-        linux-package) expected_guards=4 ;;
-    esac
-    assert_equal "$expected_guards" "$(printf '%s\n' "$block" | grep -c "^        if: .*steps.changed-files.outputs.skip_build != 'true'")"
 done
+# Every step after a job's detector must be guarded by skip_build (exempt: none); upload and status steps also run always().
+unguarded_steps() {
+    workflow_job "$1" | awk '
+        function flush() {
+            if (name != "" && seen && index(condition, "steps.changed-files.outputs.skip_build != '\''true'\''") == 0) print name
+            else if (name ~ /^(Upload|Post coverage status)/ && seen && index(condition, "always()") == 0) print name
+            name = ""; condition = ""
+        }
+        /^      - / { flush() }
+        /^      - name: / { name = substr($0, 15) }
+        /^        id: changed-files/ { seen = 2 }
+        /^        if: / { condition = $0 }
+        /^      - name: Determine changed files/ { name = "" }
+        END { flush() }
+    '
+}
+for job in windows linux linux-package; do
+    assert_equal '' "$(unguarded_steps "$job")"
+done
+real_root="$root"
+mkdir -p "$scratch/negative/.gitea/workflows"
+root="$scratch/negative"
+sed "0,/^        if: steps.changed-files.outputs.skip_build != 'true'\$/s//        if: true/" "$real_root/.gitea/workflows/test.yml" > "$root/.gitea/workflows/test.yml"
+assert_equal 'Setup MSBuild' "$(unguarded_steps windows)"
+sed 's/always() && //' "$real_root/.gitea/workflows/test.yml" > "$root/.gitea/workflows/test.yml"
+assert_equal 'Upload coverage artifact' "$(unguarded_steps linux | head -n 1)"
+root="$real_root"
 block="$(workflow_job windows)"
 assert_contains "$block" 'run: bash scripts/ci-preflight.tests.sh'
 assert_contains "$block" 'if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }'
-assert_equal 7 "$(printf '%s\n' "$block" | grep -F -c "if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.skip_build != 'true'")"
+assert_contains "$block" "- name: Verify post-clean initialization (destructive)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.skip_build != 'true'
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/ci-post-clean-destructive.ps1"
+assert_equal 0 "$(printf '%s\n' "$block" | grep -c 'git clean')"
 block="$(workflow_job docs)"
 assert_contains "$block" 'bash scripts/test-agent-instructions.sh'
 assert_equal 0 "$(printf '%s\n' "$block" | grep -c 'skip_build')"
 assert_equal 0 "$(grep -c 'skip_build' "$root/.gitea/workflows/aislop.yml")"
 assert_equal 0 "$(grep -E -c '^[[:space:]]+paths(-ignore)?:' "$root/.gitea/workflows/test.yml")"
+
+if [[ "$OSTYPE" == msys* ]] && command -v pwsh > /dev/null; then
+    fixture="$(mktemp -d)"
+    git -C "$fixture" init -q
+    printf 'exit 0\n' > "$fixture/init.ps1"
+    printf '@exit /b 0\r\n' > "$fixture/init.bat"
+    git -C "$fixture" add -A
+    git -C "$fixture" -c user.email=ci@example.invalid -c user.name=ci commit -q -m fixture
+    printf 'untracked\n' > "$fixture/untracked.txt"
+    pwsh -NoProfile -File "$root/scripts/ci-post-clean-destructive.ps1" -RepositoryRoot "$(cygpath -m "$fixture")" > /dev/null
+    assert_equal 0 "$?"
+    assert_equal false "$([[ -e "$fixture/untracked.txt" ]] && echo true || echo false)"
+    printf 'exit 3\n' > "$fixture/init.ps1"
+    output="$(pwsh -NoProfile -File "$root/scripts/ci-post-clean-destructive.ps1" -RepositoryRoot "$(cygpath -m "$fixture")")"
+    assert_equal 1 "$?"
+    assert_contains "$output" 'Dirty tree after git clean -ffxd'
+    printf 'exit 0\n' > "$fixture/init.ps1"
+    fake_git="$(mktemp -d)"
+    printf '%s\n' 'if ($args[0] -eq "status") {' \
+        '    $n = 1 + [int](Get-Content -LiteralPath "$PSScriptRoot/count" -ErrorAction SilentlyContinue)' \
+        '    Set-Content -LiteralPath "$PSScriptRoot/count" -Value $n' \
+        '    if ($n -eq [int]$env:FAIL_STATUS_AT) { exit 128 }' \
+        '}' '& $env:REAL_GIT @args' 'exit $LASTEXITCODE' > "$fake_git/git.ps1"
+    for observation in 1 2 3 4 5; do
+        rm -f "$fake_git/count"
+        output="$(REAL_GIT="$(cygpath -m "$(command -v git)")" FAIL_STATUS_AT=$observation PATH="$fake_git:$PATH" \
+            pwsh -NoProfile -File "$root/scripts/ci-post-clean-destructive.ps1" -RepositoryRoot "$(cygpath -m "$fixture")" 2>&1)"
+        assert_equal 1 "$?"
+        assert_contains "$output" 'git status exited with code 128'
+        assert_equal "$observation" "$(tr -d '\r\n' < "$fake_git/count")"
+    done
+    rm -rf "$fake_git"
+    printf 'exit 0
+' > "$fixture/init.ps1"
+    git -C "$fixture" config status.showUntrackedFiles invalid
+    output="$(pwsh -NoProfile -File "$root/scripts/ci-post-clean-destructive.ps1" -RepositoryRoot "$(cygpath -m "$fixture")" 2>&1)"
+    assert_equal 1 "$?"
+    assert_contains "$output" 'git status exited with code'
+    rm -rf "$fixture"
+fi
 
 printf 'ci-preflight.tests.sh: %s checks, %s failures\n' "$checks" "$failures"
 [[ "$failures" -eq 0 ]]

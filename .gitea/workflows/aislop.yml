@@ -99,75 +99,15 @@ jobs:
       - name: Repair restored aislop dependency links
         id: aislop-link-repair
         if: steps.aislop-cache.outputs.cache-hit == 'true'
-        # pnpm links dependencies on Windows with junctions whose targets are
-        # ABSOLUTE paths into the producing job's directory. Gitea act gives
-        # every job a fresh random hostexecutor directory that is deleted at
-        # job cleanup, and actions/cache restores the archived links verbatim,
-        # so a cache hit leaves every junction pointing into the deleted
-        # producing job and node dies with MODULE_NOT_FOUND. Junctions cannot
-        # be relative, so re-point each restored link at the same path suffix
-        # inside this job's tree before the CLI runs. A link whose absolute
-        # target still resolves outside the tree is left alone; one that maps
-        # nowhere fails the step instead of running a broken gate. Verified
-        # with the same tar invocation actions/cache uses (GNU tar --posix -P
-        # with MSYS=winsymlinks:nativestrict): restore in a fresh directory
-        # reproduces MODULE_NOT_FOUND, and after this repair the CLI runs and
-        # its unbundled runtime deps (typescript, web-tree-sitter) resolve.
+        # Restored absolute dependency links point into the producing job's deleted
+        # directory. scripts/ci-aislop-link-repair.ps1 retargets them into this job's
+        # checkout and verifies the CLI before scanning; see cache path note above.
         shell: pwsh
         run: |
-          $aislopDir = (Resolve-Path -LiteralPath $env:AISLOP_FORK_DIRECTORY).Path
-          $links = [System.Collections.Generic.List[string]]::new()
-          $stack = [System.Collections.Generic.Stack[string]]::new([string[]]@($aislopDir))
-          while ($stack.Count -gt 0) {
-            $dir = $stack.Pop()
-            foreach ($entry in [System.IO.Directory]::EnumerateFileSystemEntries($dir)) {
-              $attrs = [System.IO.File]::GetAttributes($entry)
-              if (($attrs -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-                $links.Add($entry)
-              } elseif (($attrs -band [System.IO.FileAttributes]::Directory) -ne 0) {
-                $stack.Push($entry)
-              }
-            }
-          }
-          $retargeted = 0
-          $unrepairable = [System.Collections.Generic.List[string]]::new()
-          foreach ($entry in $links) {
-            $target = (Get-Item -LiteralPath $entry -Force).LinkTarget
-            if ([string]::IsNullOrEmpty($target)) { continue }
-            $normalized = $target -replace '^\\\\\?\\', '' -replace '^\\\?\?\\', ''
-            if (-not [System.IO.Path]::IsPathRooted($normalized)) { continue }
-            $components = $normalized.Split('\', [StringSplitOptions]::RemoveEmptyEntries)
-            $candidate = $null
-            for ($i = 1; $i -lt $components.Count; $i++) {
-              $candidatePath = Join-Path $aislopDir ([string]::Join('\', $components, $i, $components.Count - $i))
-              if (Test-Path -LiteralPath $candidatePath) { $candidate = $candidatePath; break }
-            }
-            if ($null -eq $candidate) {
-              if (Test-Path -LiteralPath $normalized) { continue }
-              $unrepairable.Add("$entry -> $target")
-              continue
-            }
-            if ($candidate -ieq $normalized) { continue }
-            $isDir = ([System.IO.File]::GetAttributes($entry) -band [System.IO.FileAttributes]::Directory) -ne 0
-            if ($isDir) {
-              [System.IO.Directory]::Delete($entry)
-              New-Item -ItemType Junction -Path $entry -Target $candidate | Out-Null
-            } else {
-              [System.IO.File]::Delete($entry)
-              New-Item -ItemType SymbolicLink -Path $entry -Target $candidate | Out-Null
-            }
-            $retargeted++
-          }
-          $repairLine = "Repaired $retargeted of $($links.Count) restored dependency links"
-          Write-Host $repairLine
-          Set-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'aislop-link-repair.txt') -Value $repairLine -Encoding utf8
-          if ($unrepairable.Count -gt 0) {
-            $unrepairable | ForEach-Object { Write-Host "UNREPAIRABLE: $_" }
-            Write-Error "Restored aislop tree has dependency links that do not map into this job's tree"
-            exit 1
-          }
-          & node "$aislopDir\dist\cli.js" --version
-          if ($LASTEXITCODE -ne 0) { Write-Error "restored aislop CLI failed to start after link repair"; exit 1 }
+          & "$env:GITHUB_WORKSPACE/scripts/ci-aislop-link-repair.ps1" `
+            -ForkDirectory $env:AISLOP_FORK_DIRECTORY `
+            -EvidenceLogPath (Join-Path $env:RUNNER_TEMP 'aislop-link-repair.txt')
+          exit $LASTEXITCODE
 
       - name: Build C#-capable aislop (pinned fork commit)
         id: aislop-cold-build

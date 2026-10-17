@@ -349,6 +349,39 @@ foreach ($expected in @('steps.aislop-cache.outputs.cache-hit', 'steps.aislop-li
 }
 Assert-True ($gateStep.Contains("-EvidenceLogPath (Join-Path `$env:RUNNER_TEMP 'aislop-provenance.txt')")) 'Gate step records provenance for the evidence'
 
+. "$PSScriptRoot/ci-aislop-link-repair.ps1"
+$repairRoot = Join-Path $temporaryDirectory 'link repair'
+$restored = Join-Path $repairRoot 'restored tree'
+$external = Join-Path $repairRoot 'external'
+$log = Join-Path $repairRoot 'repair.txt'
+New-Item -ItemType Directory -Force -Path "$restored/node_modules/.pnpm/pkg", "$repairRoot/old/node_modules/.pnpm/pkg", $external | Out-Null
+Set-Content -LiteralPath "$restored/node_modules/.pnpm/pkg/value.txt" -Value 'restored' -NoNewline
+New-Item -ItemType Junction -Path "$restored/stale" -Target "$repairRoot/old/node_modules/.pnpm/pkg" | Out-Null
+New-Item -ItemType Junction -Path "$restored/outside" -Target $external | Out-Null
+Remove-Item -LiteralPath "$repairRoot/old" -Recurse -Force
+Repair-AislopDependencyLinks $restored $log
+Assert-True ((Get-Content -LiteralPath "$restored/stale/value.txt" -Raw) -ceq 'restored') 'Stale link is retargeted into the restored tree'
+Assert-True ((Get-Item -LiteralPath "$restored/outside").LinkTarget -ceq $external) 'Link to an existing external target is left alone'
+Assert-True ((Get-Content -LiteralPath $log -Raw).Trim() -ceq 'Repaired 1 of 2 restored dependency links') 'Repair evidence carries actual outcomes'
+New-Item -ItemType Directory -Path "$repairRoot/gone" | Out-Null
+New-Item -ItemType Junction -Path "$restored/broken" -Target "$repairRoot/gone" | Out-Null
+Remove-Item -LiteralPath "$repairRoot/gone" -Force
+$repairFailure = ''
+try { Repair-AislopDependencyLinks $restored $log } catch { $repairFailure = $_.Exception.Message }
+Assert-True ($repairFailure.Contains('do not map')) 'Unmappable dangling target fails'
+[IO.Directory]::Delete("$restored/broken")
+Set-Content -LiteralPath "$restored/node_modules/.pnpm/kind" -Value 'file' -NoNewline
+New-Item -ItemType Directory -Path "$repairRoot/old/node_modules/.pnpm/kind" -Force | Out-Null
+New-Item -ItemType Junction -Path "$restored/wrongkind" -Target "$repairRoot/old/node_modules/.pnpm/kind" | Out-Null
+Remove-Item -LiteralPath "$repairRoot/old" -Recurse -Force
+$repairFailure = ''
+try { Repair-AislopDependencyLinks $restored $log } catch { $repairFailure = $_.Exception.Message }
+Assert-True ($repairFailure -ne '') 'Mapped target of the wrong kind fails repair'
+Assert-True ((Get-Content -LiteralPath "$restored/node_modules/.pnpm/kind" -Raw) -ceq 'file') 'Failed repair preserves the candidate contents'
+Assert-True ((Get-Item -LiteralPath "$restored/wrongkind" -Force).LinkTarget -ceq "$repairRoot/old/node_modules/.pnpm/kind".Replace('/', '\')) 'Failed repair leaves the original junction in place'
+[IO.Directory]::Delete("$restored/stale"); [IO.Directory]::Delete("$restored/outside")
+[IO.Directory]::Delete("$restored/wrongkind")
+
 foreach ($failure in $failures) { Write-Host "FAIL: $failure" }
 Write-Host "ci-aislop.tests.ps1: $checks checks, $($failures.Count) failures"
 if ($failures.Count -gt 0) { exit 1 }

@@ -44,7 +44,7 @@ The `linux` job verifies the initialization output before coverage whenever
 `bash scripts/test-agent-instructions.sh`. Checking before the script's own
 build ensures initialization produced the expected output.
 
-The `windows` job also runs the post-clean init verification (`git clean -ffxd`, `init.ps1` twice, `init.bat`, `init.ps1 -Build`, and a clean-tree check after each) described in [checkout maintenance](checkout-maintenance.md). It runs only on the push to `main`: each of those steps is guarded by `github.event_name == 'push' && github.ref == 'refs/heads/main'` (plus the skip-build check), never by workflow-level `paths`, which leaves a required check pending on Gitea (issue 36895). The steps stay in the same job and checkout, after the build and tests, because the first `git clean -ffxd` plus `git status --porcelain` assertion detects a build or test that modified a tracked file. A pull request therefore never proves the clean-tree invariant; the merge to `main` does.
+The `windows` job also runs `scripts/ci-post-clean-destructive.ps1`, the post-clean init verification (`git clean -ffxd`, `init.ps1` twice, `init.bat`, `init.ps1 -Build`, and a clean-tree check after each) described in [checkout maintenance](checkout-maintenance.md). It runs only on the push to `main`: the step is guarded by `github.event_name == 'push' && github.ref == 'refs/heads/main'` (plus the skip-build check), never by workflow-level `paths`, which leaves a required check pending on Gitea (issue 36895). The step stays in the same job and checkout, after the build and tests, because the first `git clean -ffxd` plus `git status --porcelain` assertion detects a build or test that modified a tracked file. A pull request therefore never proves the clean-tree invariant; the merge to `main` does.
 
 Both platform test jobs also run the package-free init/provisioning regression harness before coverage, guarded by the existing skip-build condition. These offline checks exercise the actual entry points with command doubles, including absent and failed optional provisioning, and run on pull requests. They are separate from the Windows main-push-only post-clean verification and the Linux real-build initialization check.
 
@@ -208,7 +208,7 @@ The workflow prepares the `schoen/aislop` fork at the commit in
 every job; actions/cache rejects `..` segments; and the act workspace is per-job,
 so no job shares a checkout with another job, which matters because concurrency
 is grouped per ref only). The directory is gitignored, which aislop honors, so
-the scan never reads the fork's source. The workflow repairs restored
+the scan never reads the fork's source. The workflow runs scripts/ci-aislop-link-repair.ps1 to repair restored
 dependency links on cache hits and clones/builds with pnpm on misses.
 After preparation it resolves that checkout into `AISLOP_HOME` and
 invokes `scripts/ci-aislop.ps1 -ReportPath` with
