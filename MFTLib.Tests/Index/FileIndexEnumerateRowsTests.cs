@@ -7,7 +7,6 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public sealed class FileIndexEnumerateRowsTests : IDisposable
 {
-    static readonly DateTime FixedMoment = new(2026, 9, 16, 0, 0, 0, DateTimeKind.Utc);
 
     IndexTreeFixture _fixture = null!;
     string _treeRoot => _fixture.TreeRoot;
@@ -108,35 +107,6 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
         Assert.ThrowsExactly<ArgumentNullException>(() => { index.EnumerateRows(null!); });
     }
 
-    [TestMethod]
-    public async Task EnumerateRows_WithACancelledToken_ThrowsBeforeTheFirstRow()
-    {
-        await using var index = await OpenTwoDriveIndexAsync();
-        using var source = new CancellationTokenSource();
-        await source.CancelAsync();
-        AssertCancelledBeforeFirstRow(index, source.Token);
-    }
-
-    static void AssertCancelledBeforeFirstRow(FileIndex index, CancellationToken cancellationToken)
-    {
-        Assert.ThrowsExactly<OperationCanceledException>(() => Collect(index, new SearchQuery(null), cancellationToken));
-    }
-
-    [TestMethod]
-    public async Task EnumerateRows_OnADisposedIndex_Throws()
-    {
-        var index = await OpenTwoDriveIndexAsync();
-        await index.DisposeAsync();
-        Assert.ThrowsExactly<ObjectDisposedException>(() => Collect(index, new SearchQuery(null)));
-    }
-
-    [TestMethod]
-    public async Task EnumerateRows_CompletedToTheEnd_LeavesNoBorrowOutstanding()
-    {
-        await using var index = await OpenTwoDriveIndexAsync();
-        Assert.IsTrue(Collect(index, new SearchQuery(null)).Count > 0);
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
-    }
 
     [TestMethod]
     public async Task EnumerateRows_BreakOnFirstRow_ReturnsItsBorrow()
@@ -183,39 +153,6 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
         }
     }
 
-    [TestMethod]
-    public async Task EnumerateRows_CancelledMidScan_ReturnsItsBorrow()
-    {
-        await using var index = await OpenSyntheticIndexAsync(10_000);
-        using var source = new CancellationTokenSource();
-        CancelInsideLoop(index, source);
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
-    }
-
-    static void CancelInsideLoop(FileIndex index, CancellationTokenSource source)
-    {
-        var seen = 0;
-        try
-        {
-            foreach (var row in index.EnumerateRows(new SearchQuery(null), source.Token))
-            {
-                _ = row.Size;
-                seen++;
-                if (seen == 1)
-                {
-                    Assert.AreEqual(1, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
-                    source.Cancel();
-                }
-            }
-
-            Assert.Fail("Cancellation must be observed while rows remain.");
-        }
-        catch (OperationCanceledException)
-        {
-            Assert.IsTrue(seen > 0 && seen <= RowScanner.CancellationCheckIntervalRows,
-                "Cancellation must be observed no later than 4096 rows after the first row.");
-        }
-    }
 
     [TestMethod]
     public async Task EnumerateRows_WithoutIteration_TakesNoBorrow()
@@ -309,11 +246,4 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
         }, CancellationToken.None);
     }
 
-    Task<FileIndex> OpenSyntheticIndexAsync(uint rowCount) =>
-        FileIndex.OpenAsync(_fixture.Options(volumeSerial: TestVolumeSerial.GetNext(), producer: ProducerKind.Mft) with
-        {
-            MftSource = new MftIndexSource((request, _) => Task.FromResult(
-                new MftBlockProduceResult(SeededBlocks.Build(request, rowCount, i => $"file{i}.dat", FixedMoment),
-                    SkippedRecordCount: 0)))
-        }, CancellationToken.None);
 }

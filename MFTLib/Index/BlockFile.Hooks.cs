@@ -9,6 +9,14 @@ internal sealed partial class BlockFile
     {
         internal Action<bool>? DisposeStarted;
 
+        /// <summary>
+        ///     Observes the absolute row index immediately before an existing scan cancellation check.
+        ///     Configured before scanning, called outside ownership locks, immediately before a token check,
+        ///     potentially concurrently by Search partitions. Callbacks must be nonblocking, nonthrowing, and
+        ///     synchronize their mutable state when several partitions run.
+        /// </summary>
+        internal Action<uint>? RowScanCheckpoint;
+
         // aislop-ignore-next-line jb/MemberHidesStaticFromOuterClass
         internal long FlushRangeBytes = BlockFile.FlushRangeBytes;
         internal Func<long, long, int> FlushViewRange = block.FlushViewRangeNatively;

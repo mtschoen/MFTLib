@@ -274,9 +274,11 @@ before disposing the host harness.
 | `UsnJournalSettingsQuery.Dependencies.QueryOverride` | Process-global; null selects the platform query. | `FileIndexJournalSettingsTests`; `MftDumpApplicabilityTests`; `UsnJournalSettingsQueryLiveTests` |
 | `JournalCheckpointCheck.Hooks.ObservationOverride` and one-way guard | Process-global; exclusive scope only through public `JournalIsolation`, the guard never resets. | `JournalWindowOverrideTests`; `ConsumerJournalIsolationTests`; `UsnJournalVolumeInteropTests` |
 | `BlockWriter.Hooks.RowCaptured`, `CompleteAccessTaken` | Per writer; set before work, no reset. | `BlockWriterDisposalRaceTests`; `BlockWriterCompleteDisposalRaceTests`; `JournalMutatorMetadataDisposalRaceTests` |
-| `BlockFile.Hooks` (`DisposeStarted`, `FlushRangeBytes`, `FlushViewRange`, `SynchronizeViewRange`, `PauseMilliseconds`, `SpinOnce`) | Per block; set before work, ends with the block. | `BlockFileFlushDisposalRaceTests`; `BlockFileRangedFlushTests`; the writer race classes |
+| `BlockFile.Hooks` (`DisposeStarted`, `FlushRangeBytes`, `FlushViewRange`, `SynchronizeViewRange`, `PauseMilliseconds`, `SpinOnce`, `RowScanCheckpoint`) | Per block; set before work, ends with the block. | `BlockFileFlushDisposalRaceTests`; `BlockFileRangedFlushTests`; the writer race classes; `RowScanningContractTests` |
 | `DriveBlockRelease.Hooks` (`ReleaseStarted`, `ReaderAdmitted`, `OutstandingBorrowCount`) | Per release object; count read under `_gate`. | `DriveBlockTests`; `FileIndexBlockReleaseTests`; `FileIndexDisposeCancelsQueryTests`; `SnapshotBorrowTests` |
 | `DeletedChildLinks.Observations` (`DescendantsVisited`, `SiblingsExamined`) | Per links object; accumulates, no reset. | `DeletedChildLinksTests`; `JournalMutatorFreedRowTests` |
+
+`BlockFile.Hooks.RowScanCheckpoint` observes the absolute row index immediately before an existing scan cancellation check. RowScanner and the entry-stream loop capture it when a scan starts. Set it before starting the query and keep callback state alive until that query and all its enumerators finish. It runs outside ownership locks and can run concurrently across Search partitions; callbacks must be nonblocking, nonthrowing and synchronize shared observations. The contract tests use sub-threshold synthetic blocks to cancel at deterministic checkpoints and clear their callbacks before disposing their token sources. The hook is instance-local and requires no process-wide isolation.
 
 ## Object lifetime
 

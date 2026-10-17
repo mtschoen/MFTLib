@@ -99,26 +99,6 @@ public class RowScannerTests
         Assert.AreEqual(1, visited);
     }
 
-    /// <summary>
-    ///     A token already cancelled when the scan starts stops it before any row is read, so a
-    ///     caller who cancelled before the query reached the rows pays for nothing.
-    /// </summary>
-    [TestMethod]
-    public void Scanner_WithAnAlreadyCancelledToken_ThrowsOnTheFirstMoveNext()
-    {
-        using var cancellation = new CancellationTokenSource();
-        cancellation.Cancel();
-        var token = cancellation.Token;
-
-        Assert.ThrowsExactly<OperationCanceledException>(() =>
-        {
-            var scanner = new RowScanner(_snapshot[0], token);
-            while (scanner.MoveNext())
-            {
-                // The first MoveNext is expected to throw, so the body is never reached.
-            }
-        });
-    }
 
     /// <summary>
     ///     A scanner whose range holds no rows still reads the token once. That is what makes the
@@ -143,61 +123,6 @@ public class RowScannerTests
         });
     }
 
-    /// <summary>
-    ///     Cancellation mid-scan is observed at the next checkpoint rather than at the end of the
-    ///     block: the scanner checks the token on its first row and then every
-    ///     <see cref="RowScanner.CancellationCheckIntervalRows" /> rows, which is what bounds how
-    ///     long a cancelled query keeps reading a mapping its caller has finished with.
-    /// </summary>
-    [TestMethod]
-    public async Task Scanner_WithATokenCancelledMidScan_StopsAtTheNextCheckpoint()
-    {
-        const uint rowCount = RowScanner.CancellationCheckIntervalRows + 512;
-        using var builder = new SyntheticBlockBuilder('U', 0x0BADCAFE, slotCapacity: rowCount + 8,
-            namePoolCapacity: (rowCount + 8) * 32);
-        var root = builder.AddRoot();
-        for (var index = 0u; index < rowCount; index++)
-        {
-            builder.AddRow($"row{index}", root, RowFlags.InUse, index, Moment, sequenceNumber: 0);
-        }
-
-        builder.Complete(Moment);
-        DriveBlock[] snapshot = [new DriveBlock('U', 0, builder.OpenForReading(out _)!)];
-        try
-        {
-            using var cancellation = new CancellationTokenSource();
-            var visited = 0;
-            OperationCanceledException? thrown = null;
-
-            // Scanned inline rather than inside an assertion lambda: the loop body cancels the
-            // token source, and a lambda that captures a source the enclosing scope disposes is
-            // what the quality gate refuses.
-            try
-            {
-                var scanner = new RowScanner(snapshot[0], cancellation.Token);
-                while (scanner.MoveNext())
-                {
-                    visited++;
-                    if (visited == 10)
-                    {
-                        cancellation.Cancel();
-                    }
-                }
-            }
-            catch (OperationCanceledException exception)
-            {
-                thrown = exception;
-            }
-
-            Assert.IsNotNull(thrown, "the scan ran to the end of the block after its token was cancelled");
-            Assert.AreEqual((int)RowScanner.CancellationCheckIntervalRows, visited,
-                "the scan ran past the checkpoint that follows the row the token was cancelled on");
-        }
-        finally
-        {
-            await snapshot.ReleaseNowAsync();
-        }
-    }
 
     [TestMethod]
     public void Scanner_WorksInAForeachThroughGetEnumerator()

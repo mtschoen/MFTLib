@@ -20,6 +20,7 @@ internal ref struct RowScanner
     readonly ReadOnlySpan<char> _namePool;
     readonly uint _endRowExclusive;
     readonly CancellationToken _cancellationToken;
+    readonly Action<uint>? _rowScanCheckpoint;
     uint _rowsUntilCancellationCheck;
     uint _currentRowIndex;
     bool _started;
@@ -38,6 +39,7 @@ internal ref struct RowScanner
         _namePool = block.NamePoolCharacters;
         _endRowExclusive = Math.Min(endRowExclusive, block.Header.RowCount);
         _cancellationToken = cancellationToken;
+        _rowScanCheckpoint = block.Hooks.RowScanCheckpoint;
 
         // One, not the interval: the first row a scanner produces is itself a checkpoint, so a
         // query whose token was already cancelled stops before reading a row, and an engine that
@@ -87,6 +89,7 @@ internal ref struct RowScanner
         _rowsUntilCancellationCheck--;
         if (_rowsUntilCancellationCheck == 0)
         {
+            _rowScanCheckpoint?.Invoke(_currentRowIndex);
             _cancellationToken.ThrowIfCancellationRequested();
             _rowsUntilCancellationCheck = CancellationCheckIntervalRows;
         }

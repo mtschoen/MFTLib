@@ -226,12 +226,14 @@ internal static class SearchEngine
         var block = driveBlock.Block;
         var rowCount = block.Header.RowCount;
         var rowsUntilCancellationCheck = 1u;
+        var rowScanCheckpoint = block.Hooks.RowScanCheckpoint;
 
         for (var rowIndex = 0u; rowIndex < rowCount; rowIndex++)
         {
             rowsUntilCancellationCheck--;
             if (rowsUntilCancellationCheck == 0)
             {
+                rowScanCheckpoint?.Invoke(rowIndex);
                 cancellationToken.ThrowIfCancellationRequested();
                 rowsUntilCancellationCheck = RowScanner.CancellationCheckIntervalRows;
             }

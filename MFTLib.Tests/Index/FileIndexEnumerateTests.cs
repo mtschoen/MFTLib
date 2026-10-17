@@ -68,16 +68,6 @@ public sealed class FileIndexEnumerateTests : IDisposable
         Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
     }
 
-    [TestMethod]
-    public async Task Enumerate_CompletedToTheEnd_LeavesNoBorrowOutstanding()
-    {
-        await using var index = await OpenTwoDriveIndexAsync();
-
-        var count = index.Enumerate(new SearchQuery(null)).Count();
-
-        Assert.IsTrue(count > 0);
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
-    }
 
     /// <summary>
     ///     A foreach that breaks early disposes the enumerator, and that disposal is what
@@ -186,38 +176,6 @@ public sealed class FileIndexEnumerateTests : IDisposable
         Assert.ThrowsExactly<ObjectDisposedException>(() => index.Enumerate(new SearchQuery(null)));
     }
 
-    /// <summary>
-    ///     With more rows after the first yield than one cancellation-check interval, a token
-    ///     cancelled after the first entry is observed from the next MoveNext, before the scan
-    ///     has visited every row. That the second pull throws rather than answering entry two
-    ///     is also the behavioural half of the laziness contract.
-    /// </summary>
-    [TestMethod]
-    public async Task Enumerate_ObservesCancellationMidEnumeration()
-    {
-        uint rowCount = 10_000;
-        Assert.IsTrue(rowCount > RowScanner.CancellationCheckIntervalRows,
-            "the test needs a cancellation checkpoint after the first row");
-
-        await using var index = await OpenSyntheticIndexAsync(rowCount);
-        using var cancellation = new CancellationTokenSource();
-        using var enumerator = index.Enumerate(new SearchQuery("file"), cancellation.Token).GetEnumerator();
-        Assert.IsTrue(enumerator.MoveNext(), "every file row matches the query");
-
-        cancellation.Cancel();
-
-        try
-        {
-            enumerator.MoveNext();
-            Assert.Fail("MoveNext after cancellation must throw OperationCanceledException.");
-        }
-        catch (OperationCanceledException)
-        {
-            // Expected
-        }
-
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
-    }
 
     /// <summary>
     ///     Parity is order as well as set: the point of the swap is that a consumer sees no
