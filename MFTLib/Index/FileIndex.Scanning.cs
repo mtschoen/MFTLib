@@ -12,16 +12,12 @@ public sealed partial class FileIndex
     /// </summary>
     async Task SettleDrivesAsync(CancellationToken cancellationToken)
     {
-        foreach (var drive in _options.Drives)
-        {
-            _driveConfigurations.Add(drive.Drive, drive);
-        }
-
         var total = _options.Drives.Count;
+        var settlement = new OpenSettlement();
         var settling = new List<Task>(total);
         foreach (var drive in _options.Drives)
         {
-            settling.Add(Task.Run(() => SettleDriveAsync(drive, total, cancellationToken), CancellationToken.None));
+            settling.Add(Task.Run(() => SettleDriveAsync(drive, total, settlement, cancellationToken), CancellationToken.None));
         }
 
         try
@@ -43,23 +39,12 @@ public sealed partial class FileIndex
     ///     <see cref="_stateLock" /> when its final state was recorded, so a callback that is slow
     ///     or blocked holds up no other drive, and reports may overlap and arrive out of count order.
     /// </summary>
-    async Task SettleDriveAsync(IndexedDrive drive, int total, CancellationToken cancellationToken)
+    async Task SettleDriveAsync(IndexedDrive drive, int total, OpenSettlement settlement,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        await AddDriveAsync(drive, cancellationToken).ConfigureAwait(false);
-        if (_options.DriveOpenProgress is not { } openProgress)
-        {
-            return;
-        }
-
-        var driveKey = drive.Drive;
-        int settledCount;
-        lock (_stateLock)
-        {
-            settledCount = _settledCountsByDrive[driveKey];
-        }
-
-        openProgress.Report(new IndexDriveOpened(driveKey, settledCount, total));
+        var settledCount = await AddDriveAsync(drive, settlement, cancellationToken).ConfigureAwait(false);
+        _options.DriveOpenProgress?.Report(new IndexDriveOpened(drive.Drive, settledCount, total));
     }
 
     /// <summary>
@@ -68,25 +53,24 @@ public sealed partial class FileIndex
     ///     under <see cref="_stateLock" />, which is where the drive's ordinal is assigned. A drive
     ///     that ends with no block is recorded by letter as blockless instead.
     /// </summary>
-    async Task AddDriveAsync(IndexedDrive drive, CancellationToken cancellationToken)
+    async Task<int> AddDriveAsync(IndexedDrive drive, OpenSettlement settlement,
+        CancellationToken cancellationToken)
     {
         var driveKey = drive.Drive;
         if (DriveKind.For(drive.Producer, _options.MftSource).RequiresExistingRoot &&
             !Directory.Exists(drive.RootDirectory))
         {
-            RecordOfflineDrive(driveKey);
-            return;
+            return RecordOfflineDrive(driveKey, settlement);
         }
 
         var slotOutcome = ResolveCanonicalOwnership(drive);
         if (slotOutcome == CanonicalSlotOutcome.DeclinedInUse)
         {
-            RecordFailedDrive(driveKey, DriveFailureKind.InUse, new PendingDriveResult
+            return RecordFailedDrive(driveKey, DriveFailureKind.InUse, new PendingDriveResult
             {
                 ProducerFailureMessage =
                     $"Drive {driveKey}: cache block is in use by another FileIndex and --cache-only forbids a scan."
-            });
-            return;
+            }, settlement);
         }
 
         var ownsCanonicalSlot = slotOutcome == CanonicalSlotOutcome.Owned;
@@ -102,13 +86,13 @@ public sealed partial class FileIndex
 
         if (warmStart.Block is { } warmStartedBlock)
         {
-            AdoptOpenedDrive(drive, warmStartedBlock, opened with
+            var (_, _, settledCount) = AdoptOpenedDrive(drive, warmStartedBlock, opened with
             {
                 Block = warmStartedBlock,
                 Origin = BlockOrigin.WarmStartedFromCache,
                 CacheOnlyUnresumable = warmStart.CacheOnlyUnresumable
-            });
-            return;
+            }, settlement);
+            return settledCount ?? throw new InvalidOperationException($"Drive {drive.Drive} settled without its count.");
         }
 
         if (_options.CacheMode == CacheMode.ExistingOnly)
@@ -116,50 +100,43 @@ public sealed partial class FileIndex
             var failureKind = warmStart.DiscardedBlock == BlockValidationResult.WrongCacheTag
                 ? DriveFailureKind.CacheTagMismatch
                 : DriveFailureKind.CacheDeclined;
-            RecordFailedDrive(driveKey, failureKind, opened with
+            return RecordFailedDrive(driveKey, failureKind, opened with
             {
                 ProducerFailureMessage =
                     $"Drive {driveKey}: no usable cache (missing, corrupt, or incompatible) and --cache-only forbids a scan."
-            });
-            return;
+            }, settlement);
         }
 
-        await ScanOpenedDriveAsync(drive, ownsCanonicalSlot, opened, cancellationToken).ConfigureAwait(false);
+        return await ScanOpenedDriveAsync(drive, ownsCanonicalSlot, opened, settlement, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
     ///     Adopts an opened drive's settled result: assigns its ordinal (the one of
     ///     <paramref name="replacing" />, an unpublished block an earlier attempt of the same settle
     ///     adopted, when there is one), builds its <see cref="DriveBlock" /> over
-    ///     <paramref name="block" />, and records every field of the result against that ordinal in
+    ///     <paramref name="block" />, and records the result on the drive's runtime in
     ///     one step under <see cref="_stateLock" />; the adoption that ends the drive's settle, one
     ///     that held its catch-up or reached the limit, also claims the drive's settle count. The
     ///     snapshot is published once every drive has settled. Returns the adopted block and the drive's count of lost catch-ups in a row.
     /// </summary>
-    (DriveBlock Adopted, int ConsecutiveLostCatchUps) AdoptOpenedDrive(IndexedDrive drive, BlockFile block,
-        PendingDriveResult settled, DriveBlock? replacing = null)
+    (DriveBlock Adopted, int ConsecutiveLostCatchUps, int? SettledCount) AdoptOpenedDrive(
+        IndexedDrive drive, BlockFile block, PendingDriveResult settled,
+        OpenSettlement settlement, DriveBlock? replacing = null)
     {
         var runtime = GetDriveRuntime(drive.Drive);
         lock (_stateLock)
         {
-            var driveOrdinal = replacing is null ? (ushort)_driveBlocks.Count : replacing.DriveOrdinal;
+            var driveOrdinal = replacing?.DriveOrdinal ?? AllocateDriveOrdinalLocked();
             var adopted = BuildDriveBlock(drive, driveOrdinal, block);
-            if (replacing is null)
-            {
-                _driveBlocks.Add(adopted);
-            }
-            else
-            {
-                _driveBlocks[driveOrdinal] = adopted;
-            }
+            runtime.Block = adopted;
 
-            RecordPendingResultLocked(runtime, driveOrdinal, settled, clearsCheckpointLoss: false);
-            if (settled.CatchUpLoss is null || runtime.ConsecutiveLostCatchUps >= LostCatchUpRecoveryLimit)
-            {
-                ClaimSettledCountLocked(drive.Drive);
-            }
+            RecordPendingResultLocked(runtime, settled, clearsCheckpointLoss: false);
+            int? settledCount = settled.CatchUpLoss is null ||
+                runtime.ConsecutiveLostCatchUps >= LostCatchUpRecoveryLimit
+                ? settlement.ClaimLocked()
+                : null;
 
-            return (adopted, runtime.ConsecutiveLostCatchUps);
+            return (adopted, runtime.ConsecutiveLostCatchUps, settledCount);
         }
     }
 
@@ -225,7 +202,7 @@ public sealed partial class FileIndex
     /// <summary>
     ///     Runs the MFT producer for one drive and checks its finished block before anything adopts
     ///     it. The returned header contains the durable pre-scan cursor, independently validated
-    ///     by the producer. <see cref="DescribeOnlineDriveBlock" /> derives
+    ///     by the producer. <see cref="DescribeDriveLocked" /> derives
     ///     <see cref="DriveBlockStatus.IsCapacityExhausted" /> from the header's own
     ///     <see cref="BlockFlags.CapacityExhausted" /> flag, which the producer sets on the block directly.
     /// </summary>
@@ -261,8 +238,7 @@ public sealed partial class FileIndex
     ///         otherwise follow a rejection, so the reasoning above does not apply to it: a
     ///         cache-only open never watches, and the block is still a correct snapshot as of
     ///         its age, so it is adopted anyway rather than failing the drive. The result says so,
-    ///         and the adoption marks the block unresumable in
-    ///         <see cref="_unresumableCheckpointsByOrdinal" /> so a later
+    ///         and the adoption marks the block unresumable on its runtime so a later
     ///         <see cref="StartWatchingAsync" /> refuses to start a watch from a cursor the
     ///         journal no longer holds.
     ///     </para>
@@ -367,8 +343,8 @@ public sealed partial class FileIndex
         var namePoolCapacity = BlockLayout.ComputeNamePoolCapacity(EnumerationProducer.EstimateNamePoolBytes(estimatedRows));
         lock (_stateLock)
         {
-            if (TryGetDriveOrdinalLocked(drive, out var driveOrdinal) &&
-                _driveBlocks[driveOrdinal].Block.Header is { IsCapacityExhausted: true } exhausted)
+            if (_driveRuntimes.TryGetValue(drive.Validated(), out var runtime) &&
+                runtime.Block?.Block.Header is { IsCapacityExhausted: true } exhausted)
             {
                 slotCapacity = Math.Max(slotCapacity, BlockLayout.DoubleCapacity(exhausted.SlotCapacity));
                 namePoolCapacity = Math.Max(namePoolCapacity, BlockLayout.DoubleCapacity(exhausted.NamePoolCapacity));

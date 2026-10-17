@@ -65,7 +65,7 @@ public sealed partial class FileIndex
         {
             if (IsCurrentWatchOverItsBlockLocked(runtime, instance))
             {
-                _checkpointLossesByOrdinal[driveBlock.DriveOrdinal] = loss;
+                runtime.CheckpointLoss = loss;
             }
         }
     }
@@ -88,12 +88,10 @@ public sealed partial class FileIndex
     /// </summary>
     DriveBlock? FindWatchableDriveBlockLocked(DriveKey drive)
     {
-        foreach (var driveBlock in _driveBlocks)
+        if (_driveRuntimes.TryGetValue(drive.Validated(), out var runtime) &&
+            runtime.Block is { Kind.CanWatch: true } block)
         {
-            if (driveBlock.Drive == drive && driveBlock.Kind.CanWatch)
-            {
-                return driveBlock;
-            }
+            return block;
         }
 
         return null;
@@ -108,10 +106,10 @@ public sealed partial class FileIndex
     ///     <see cref="DriveWatchStatus.State" />, and returned for the start to throw. Like a
     ///     start whose source threw, the refusal records the watch as requested and faults any
     ///     restart-pending wait. A rescan whose catch-up holds writes a fresh cursor, which clears
-    ///     the drive's entry in <see cref="_unresumableCheckpointsByOrdinal" /> and this refusal,
+    ///     the drive's unresumable checkpoint fact and this refusal,
     ///     and then starts the requested watch. The caller holds <see cref="_stateLock" />.
     /// </summary>
-    InvalidOperationException RecordUnresumableCheckpointWatchFailureLocked(DriveRuntime runtime,
+    static InvalidOperationException RecordUnresumableCheckpointWatchFailureLocked(DriveRuntime runtime,
         DriveBlock driveBlock, UnresumableCheckpointReason reason)
     {
         var because = reason == UnresumableCheckpointReason.LostCatchUp
@@ -122,7 +120,7 @@ public sealed partial class FileIndex
         var failure = new InvalidOperationException(
             $"Drive {driveBlock.Drive} cannot be watched: {because} Call FileIndex.RescanAsync " +
             "for this drive before watching it.");
-        _watchFailureMessagesByOrdinal[driveBlock.DriveOrdinal] = failure.Message;
+        runtime.WatchFailureMessage = failure.Message;
         runtime.WatchRequested = true;
         runtime.RefusedStartFault = failure;
         FaultRestartPendingWaiterLocked(runtime, failure);
@@ -138,7 +136,7 @@ public sealed partial class FileIndex
     ///     faulted. That fault was already raised through <see cref="WatchFaulted" />, and no stop
     ///     remains to rethrow it. The caller holds <see cref="_stateLock" />.
     /// </summary>
-    InvalidOperationException RefuseStartWithoutWatchableBlockLocked(DriveRuntime runtime, bool restart)
+    static InvalidOperationException RefuseStartWithoutWatchableBlockLocked(DriveRuntime runtime, bool restart)
     {
         var failure = new InvalidOperationException(
             $"Drive {runtime.Drive} has no MFT-backed block, so there is no journal cursor to watch from.");
@@ -156,10 +154,7 @@ public sealed partial class FileIndex
             superseded.OutstandingFault = null;
         }
 
-        if (TryGetDriveOrdinalLocked(runtime.Drive, out var driveOrdinal))
-        {
-            _watchFailureMessagesByOrdinal.Remove(driveOrdinal);
-        }
+        runtime.WatchFailureMessage = null;
 
         return failure;
     }

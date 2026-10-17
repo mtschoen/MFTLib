@@ -67,7 +67,7 @@ public sealed partial class FileIndex
     /// </summary>
     DriveWatchStatus DescribeWatchLocked(DriveRuntime runtime) =>
         DescribeWatchLocked(runtime,
-            _driveBlocks.First(driveBlock => driveBlock.Drive == runtime.Drive));
+            runtime.Block ?? throw new InvalidOperationException($"Drive {runtime.Drive} has no block."));
 
     DriveWatchStatus DescribeWatchLocked(DriveRuntime runtime, DriveBlock driveBlock) =>
         new()
@@ -76,10 +76,10 @@ public sealed partial class FileIndex
             IsRequested = runtime.WatchRequested,
             State = GetWatchStateLocked(driveBlock.Drive),
             StateVersion = runtime.WatchStateVersion,
-            FailureMessage = _watchFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
+            FailureMessage = runtime.WatchFailureMessage,
             ConsecutiveLostCatchUps = runtime.ConsecutiveLostCatchUps,
             IsRecoveryStopped = runtime.RecoveryStopped,
-            CheckpointLoss = _checkpointLossesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal)
+            CheckpointLoss = runtime.CheckpointLoss
         };
 
     /// <summary>

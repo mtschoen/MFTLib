@@ -14,24 +14,6 @@ namespace MFTLib.Index;
 /// </summary>
 public sealed partial class FileIndex : IAsyncDisposable
 {
-    readonly List<DriveBlock> _driveBlocks = [];
-    readonly Dictionary<DriveKey, IndexedDrive> _driveConfigurations = [];
-    readonly List<DriveStatus> _blocklessDriveStatuses = [];
-    readonly Dictionary<ushort, int> _accessDeniedSubtreeCountByOrdinal = [];
-    readonly Dictionary<ushort, int> _skippedRecordCountByOrdinal = [];
-    readonly Dictionary<ushort, string> _producerFailureMessagesByOrdinal = [];
-    readonly Dictionary<ushort, string> _watchFailureMessagesByOrdinal = [];
-    readonly Dictionary<ushort, BlockOrigin> _blockOriginsByOrdinal = [];
-    readonly Dictionary<ushort, CacheLocation?> _cacheLocationsByOrdinal = [];
-
-    /// <summary>
-    ///     One entry per drive whose cached block was rejected because its journal checkpoint
-    ///     could no longer be resumed. It outlives the cold scan that follows, so a consumer
-    ///     can explain the rescan once the index is open.
-    /// </summary>
-    readonly Dictionary<ushort, JournalCheckpointLoss> _checkpointLossesByOrdinal = [];
-
-    readonly Dictionary<DriveKey, BlockOwnerLock> _canonicalLocksByDrive = [];
     readonly List<DriveBlockRelease> _retiredBlocks = [];
     readonly FileIndexOptions _options;
 
@@ -52,7 +34,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     internal CancellationToken DisposalToken => _disposalCancellation.Token;
 
     /// <summary>
-    ///     Guards every drive's watch records and every ordinal-keyed record, and is the one step
+    ///     Guards every drive's runtime state, and is the one step
     ///     that publishes a snapshot: a commit of a drive's block, the new snapshot, and the
     ///     retirement of the replaced block all happen under it, so a reader (<see cref="Drives" />, <see cref="CurrentSnapshot" />,
     ///     <see cref="TryGetDriveOrdinal" />) never observes a partial swap. It is innermost in the
@@ -61,25 +43,15 @@ public sealed partial class FileIndex : IAsyncDisposable
     readonly Lock _stateLock = new();
 
     /// <summary>
-    ///     The published drive blocks queries borrow: an immutable copy of <see cref="_driveBlocks" />
+    ///     The published drive blocks queries borrow: an immutable array of active blocks
     ///     replaced on every publication, or null once disposal has unpublished it.
     /// </summary>
     DriveBlock[]? _snapshot = [];
     bool _disposed;
+    ushort _nextDriveOrdinal;
 
-    /// <summary>
-    ///     The open's settle counts by drive, claimed under <see cref="_stateLock" /> in the
-    ///     same section that records the drive's final state, so count order is settle order and,
-    ///     for drives with a block, ordinal order.
-    /// </summary>
-    readonly Dictionary<DriveKey, int> _settledCountsByDrive = [];
+    ushort AllocateDriveOrdinalLocked() => _nextDriveOrdinal++;
 
-    /// <summary>
-    ///     Claims the next settle count for a drive whose final open state is being recorded. The
-    ///     caller holds <see cref="_stateLock" />.
-    /// </summary>
-    void ClaimSettledCountLocked(DriveKey drive) =>
-        _settledCountsByDrive[drive] = _settledCountsByDrive.Count + 1;
 
     FileIndex(FileIndexOptions options, string cacheDirectoryPath, IndexHooks hooks)
     {
@@ -89,7 +61,7 @@ public sealed partial class FileIndex : IAsyncDisposable
         foreach (var configuredDrive in _options.Drives)
         {
             var drive = configuredDrive.Drive.Validated();
-            _driveRuntimes.Add(drive, new DriveRuntime(drive));
+            _driveRuntimes.Add(drive, new DriveRuntime(configuredDrive));
         }
     }
 
@@ -115,8 +87,7 @@ public sealed partial class FileIndex : IAsyncDisposable
                 var statuses = new List<DriveStatus>(_options.Drives.Count);
                 foreach (var configured in _options.Drives)
                 {
-                    var drive = configured.Drive;
-                    statuses.Add(DescribeOnlineDrive(drive) ?? DescribeBlocklessDrive(drive));
+                    statuses.Add(DescribeDriveLocked(GetDriveRuntime(configured.Drive)));
                 }
 
                 return statuses;
@@ -229,13 +200,10 @@ public sealed partial class FileIndex : IAsyncDisposable
     /// </summary>
     bool TryGetDriveOrdinalLocked(DriveKey drive, out ushort driveOrdinal)
     {
-        foreach (var driveBlock in _driveBlocks)
+        if (_driveRuntimes.TryGetValue(drive.Validated(), out var runtime) && runtime.Block is { } block)
         {
-            if (driveBlock.Drive == drive.Validated())
-            {
-                driveOrdinal = driveBlock.DriveOrdinal;
-                return true;
-            }
+            driveOrdinal = block.DriveOrdinal;
+            return true;
         }
 
         driveOrdinal = 0;
@@ -332,12 +300,12 @@ public sealed partial class FileIndex : IAsyncDisposable
         {
             lock (_stateLock)
             {
-                foreach (var ownerLock in _canonicalLocksByDrive.Values)
+                foreach (var runtime in _driveRuntimes.Values)
                 {
-                    ownerLock.Dispose();
+                    var owned = runtime.CanonicalLock;
+                    runtime.CanonicalLock = null;
+                    owned?.Dispose();
                 }
-
-                _canonicalLocksByDrive.Clear();
             }
         }
 
@@ -345,7 +313,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     }
 
     /// <summary>
-    ///     Unwinds every block already added to <see cref="_driveBlocks" /> when opening fails or
+    ///     Unwinds every block already added when opening fails or
     ///     is cancelled partway through <see cref="FileIndexOptions.Drives" />. These blocks were
     ///     never published, so no handle holds one, and none has a scheduled delete. A warm-started block's
     ///     file is left on disk (still valid for the next open); a freshly cold-scanned block's
@@ -356,62 +324,17 @@ public sealed partial class FileIndex : IAsyncDisposable
     {
         lock (_stateLock)
         {
-            foreach (var driveBlock in _driveBlocks)
+            foreach (var runtime in _driveRuntimes.Values)
             {
-                driveBlock.ReleaseState.Release();
-            }
+                var block = runtime.Block;
+                runtime.Block = null;
+                runtime.LastResult = null;
+                block?.ReleaseState.Release();
 
-            _driveBlocks.Clear();
-            foreach (var ownerLock in _canonicalLocksByDrive.Values)
-            {
-                ownerLock.Dispose();
-            }
-
-            _canonicalLocksByDrive.Clear();
-        }
-    }
-
-    DriveStatus? DescribeOnlineDrive(DriveKey drive)
-    {
-        foreach (var driveBlock in _driveBlocks)
-        {
-            if (driveBlock.Drive == drive)
-            {
-                return DescribeOnlineDriveBlock(driveBlock);
+                var owned = runtime.CanonicalLock;
+                runtime.CanonicalLock = null;
+                owned?.Dispose();
             }
         }
-
-        return null;
-    }
-
-    DriveStatus DescribeOnlineDriveBlock(DriveBlock driveBlock)
-    {
-        var runtime = GetDriveRuntime(driveBlock.Drive);
-        ref readonly var header = ref driveBlock.Block.Header;
-        return new DriveStatus(
-            driveBlock.Drive,
-            DriveState.Ready)
-        {
-            Failure = _producerFailureMessagesByOrdinal.TryGetValue(driveBlock.DriveOrdinal, out var producerMessage)
-                ? new DriveFailure(DriveFailureKind.ProducerFailed, producerMessage)
-                : null,
-            Block = new DriveBlockStatus
-            {
-                Origin = _blockOriginsByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-                CacheLocation = _cacheLocationsByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-                LiveRowCount = header.LiveRowCount,
-                ScanTimestamp = header.ScanTimestampUtc,
-                IsCapacityExhausted = header.IsCapacityExhausted,
-                SkippedRecordCount = _skippedRecordCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-                AccessDeniedSubtreeCount = _accessDeniedSubtreeCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal)
-            },
-            Watch = DescribeWatchLocked(runtime, driveBlock)
-        };
-    }
-
-    DriveStatus DescribeBlocklessDrive(DriveKey drive)
-    {
-        // Every configured drive of an undisposed index is online or blockless once it settles.
-        return _blocklessDriveStatuses.First(status => status.Drive == drive);
     }
 }

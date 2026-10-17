@@ -167,7 +167,7 @@ public sealed partial class FileIndex
     {
         try
         {
-            await RescanWithGateHeldAsync(runtime, _driveConfigurations[runtime.Drive], ticket,
+            await RescanWithGateHeldAsync(runtime, runtime.Configuration, ticket,
                 ticket.Cancellation.Token).ConfigureAwait(false);
             return null;
         }

@@ -155,7 +155,9 @@
       retains a faulted instance whose `RescanRestart` fault stop returns once as `Failed`. `DisposeAsync` cancels and drains all instances and recovery work without
       throwing a watch fault.
     - **Concurrent open**: `OpenAsync` settles every configured drive concurrently and waits for
-      them all before publishing the first snapshot or throwing. `FileIndexOptions.DriveOpenProgress`
+      them all before publishing the first snapshot or throwing. Open settlement counts belong only
+      to the concurrent open operation and are claimed inside the terminal state publication section
+      before progress is delivered. `FileIndexOptions.DriveOpenProgress`
       reports once for each drive that settles, from that drive's settling thread with no lock
       held. Callbacks may overlap and arrive out of `IndexDriveOpened.SettledDriveCount` order, so a
       consumer keeps the report with the largest count. A cancelled settle claims no count and

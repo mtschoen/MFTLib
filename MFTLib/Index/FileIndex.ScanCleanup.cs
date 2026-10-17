@@ -27,12 +27,17 @@ public sealed partial class FileIndex
         return _options.CacheMode == CacheMode.ExistingOnly ? CanonicalSlotOutcome.DeclinedInUse : CanonicalSlotOutcome.NotOwned;
     }
 
-    void RecordOfflineDrive(DriveKey drive)
+    int RecordOfflineDrive(DriveKey drive, OpenSettlement settlement)
     {
+        var runtime = GetDriveRuntime(drive);
         lock (_stateLock)
         {
-            ClaimSettledCountLocked(drive);
-            _blocklessDriveStatuses.Add(new DriveStatus(drive, DriveState.Offline));
+            var settledCount = settlement.ClaimLocked();
+            runtime.BlocklessState = DriveState.Offline;
+            runtime.Block = null;
+            runtime.LastResult = null;
+            runtime.Failure = null;
+            return settledCount;
         }
     }
 
@@ -40,20 +45,19 @@ public sealed partial class FileIndex
     ///     Records a drive that opening left with no block, from its settled result and keyed by
     ///     drive, since a drive that never adds a block never takes an ordinal.
     /// </summary>
-    void RecordFailedDrive(DriveKey drive, DriveFailureKind failureKind, PendingDriveResult settled)
+    int RecordFailedDrive(DriveKey drive, DriveFailureKind failureKind, PendingDriveResult settled,
+        OpenSettlement settlement)
     {
+        var runtime = GetDriveRuntime(drive);
         lock (_stateLock)
         {
-            ClaimSettledCountLocked(drive);
-            _blocklessDriveStatuses.Add(new DriveStatus(drive, DriveState.Failed)
-            {
-                Failure = new DriveFailure(failureKind, settled.RequireFailureMessage(drive)),
-                // A cache-only open declines the drive precisely because the checkpoint was
-                // lost, so this is where that reason has to reach the consumer: the drive ends
-                // up with no block, and so never travels through DescribeDrive.
-                Watch = new DriveWatchStatus { CheckpointLoss = settled.CheckpointLoss }
-            });
+            var settledCount = settlement.ClaimLocked();
+            runtime.BlocklessState = DriveState.Failed;
+            runtime.LastResult = settled;
+            runtime.Failure = new DriveFailure(failureKind, settled.RequireFailureMessage(drive));
+            runtime.CheckpointLoss = settled.CheckpointLoss;
             ReleaseCanonicalOwnershipLocked(drive);
+            return settledCount;
         }
     }
 
@@ -103,10 +107,10 @@ public sealed partial class FileIndex
     /// </summary>
     bool EnsureCanonicalOwnership(IndexedDrive drive)
     {
-        var driveKey = drive.Drive;
+        var runtime = GetDriveRuntime(drive.Drive);
         lock (_stateLock)
         {
-            if (_canonicalLocksByDrive.ContainsKey(driveKey))
+            if (runtime.CanonicalLock is not null)
             {
                 return true;
             }
@@ -120,7 +124,7 @@ public sealed partial class FileIndex
 
         lock (_stateLock)
         {
-            _canonicalLocksByDrive[driveKey] = ownerLock;
+            runtime.CanonicalLock = ownerLock;
         }
 
         return true;
@@ -129,10 +133,10 @@ public sealed partial class FileIndex
     /// <summary>The caller holds <see cref="_stateLock" />.</summary>
     void ReleaseCanonicalOwnershipLocked(DriveKey drive)
     {
-        if (_canonicalLocksByDrive.Remove(drive, out var ownerLock))
-        {
-            ownerLock.Dispose();
-        }
+        var runtime = GetDriveRuntime(drive);
+        var owned = runtime.CanonicalLock;
+        runtime.CanonicalLock = null;
+        owned?.Dispose();
     }
 
     void CleanupRetiredSiblings(DriveKey drive, uint volumeSerial)
@@ -302,14 +306,18 @@ public sealed partial class FileIndex
     }
 
     /// <summary>
-    ///     Swaps in a new snapshot over the current <see cref="_driveBlocks" /> list, which the
+    ///     Swaps in a new snapshot over the current runtime blocks, which the
     ///     caller has just committed. The caller holds <see cref="_stateLock" />, which is what
     ///     orders every publication and every change to <see cref="_retiredBlocks" />.
     /// </summary>
     void PublishSnapshotLocked()
     {
         ObjectDisposedException.ThrowIf(_snapshot is null, this);
-        _snapshot = [.. _driveBlocks];
+        _snapshot = _driveRuntimes.Values
+            .Select(runtime => runtime.Block)
+            .OfType<DriveBlock>()
+            .OrderBy(block => block.DriveOrdinal)
+            .ToArray();
     }
 
     /// <summary>

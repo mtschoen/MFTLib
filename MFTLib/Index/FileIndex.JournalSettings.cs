@@ -14,7 +14,7 @@ public sealed partial class FileIndex
     public UsnJournalSettings QueryUsnJournalSettings(DriveKey drive)
     {
         var validatedDrive = RequireConfiguredDrive(drive);
-        var configured = _driveConfigurations[validatedDrive];
+        var configured = GetDriveRuntime(validatedDrive).Configuration;
         if (!DriveKind.For(configured.Producer, _options.MftSource).HasJournalSettings)
         {
             throw new InvalidOperationException(

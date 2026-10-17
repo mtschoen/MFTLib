@@ -194,7 +194,7 @@ public sealed partial class FileIndex
 
                 instance.State = WatchInstanceState.Faulted;
                 instance.OutstandingFault ??= fault.Exception;
-                _watchFailureMessagesByOrdinal[instance.ArmedBlock.DriveOrdinal] = fault.Exception.Message;
+                runtime.WatchFailureMessage = fault.Exception.Message;
                 faultedWaiter = instance.CatchUp.MarkFaulted(fault.Exception);
                 recoveryFailed = runtime.RecoveryState == RecoveryState.RecoveredAwaitingCatchUp;
                 if (recoveryFailed)

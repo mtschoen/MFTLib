@@ -149,7 +149,7 @@ public sealed partial class FileIndex
                     throw RefuseStartWithoutWatchableBlockLocked(runtime, restart);
                 }
 
-                if (_unresumableCheckpointsByOrdinal.TryGetValue(armedBlock.DriveOrdinal, out var unresumable))
+                if (runtime.UnresumableCheckpoint is { } unresumable)
                 {
                     throw RecordUnresumableCheckpointWatchFailureLocked(runtime, armedBlock, unresumable);
                 }
@@ -273,7 +273,7 @@ public sealed partial class FileIndex
             runtime.RecoveryState = recovery is not null && ReferenceEquals(runtime.Recovery, recovery)
                 ? RecoveryState.RecoveredAwaitingCatchUp
                 : RecoveryState.None;
-            _watchFailureMessagesByOrdinal.Remove(armedBlock.DriveOrdinal);
+            runtime.WatchFailureMessage = null;
             NoteWatchStateLocked(runtime);
             return new RegisteredWatchStart(instance, BuildWatchTarget(armedBlock));
         }
@@ -312,7 +312,7 @@ public sealed partial class FileIndex
                 {
                     runtime.RefusedStartFault = exception;
                     instance.CatchUp.Fault(exception);
-                    _watchFailureMessagesByOrdinal[instance.ArmedBlock.DriveOrdinal] = exception.Message;
+                    runtime.WatchFailureMessage = exception.Message;
                     // A stop, a consumer start or disposal that cleared the recovery's ticket also
                     // retired this instance, so a recovery restart still current is still ticketed.
                     if (recovery is not null)

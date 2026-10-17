@@ -177,8 +177,9 @@ public sealed partial class FileIndex
         DriveState? blocklessDriveState;
         lock (_stateLock)
         {
-            blocklessDriveState = _blocklessDriveStatuses.FirstOrDefault(configured =>
-                configured.Drive == drive)?.State;
+            blocklessDriveState = _driveRuntimes.TryGetValue(drive, out var runtime) && runtime.Block is null
+                ? runtime.BlocklessState
+                : null;
             query = AdmitQuery(cancellationToken);
         }
 

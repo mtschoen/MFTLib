@@ -90,11 +90,8 @@ public sealed partial class FileIndex
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(entries);
-        var validatedDrive = drive.Validated();
-        if (!_driveConfigurations.ContainsKey(validatedDrive))
-        {
-            throw new ArgumentException($"Drive {drive} is not part of this index.", nameof(drive));
-        }
+        var runtime = GetDriveRuntime(drive);
+        var validatedDrive = runtime.Drive;
 
         if (!TryGetDriveOrdinal(drive, out var driveOrdinal))
         {
@@ -112,7 +109,7 @@ public sealed partial class FileIndex
         // not on a Task: it is the synchronous counterpart to the commit's WaitAsync, not
         // sync-over-async. An automated scanner can mistake any ".Wait()" call for blocking on
         // a Task; this one is not.
-        var writeGate = GetDriveRuntime(validatedDrive).WriteGate;
+        var writeGate = runtime.WriteGate;
         writeGate.Wait();
         try
         {

@@ -66,12 +66,21 @@ public sealed partial class FileIndex
     /// </remarks>
     sealed class DriveRuntime
     {
-        public DriveRuntime(DriveKey drive)
+        public DriveRuntime(IndexedDrive configuration)
         {
-            Drive = drive;
+            Configuration = configuration;
         }
 
-        public DriveKey Drive { get; }
+        public IndexedDrive Configuration { get; }
+        public DriveKey Drive => Configuration.Drive;
+        public DriveBlock? Block;
+        public PendingDriveResult? LastResult;
+        public DriveState BlocklessState = DriveState.Offline;
+        public DriveFailure? Failure;
+        public string? WatchFailureMessage;
+        public JournalCheckpointLoss? CheckpointLoss;
+        public UnresumableCheckpointReason? UnresumableCheckpoint;
+        public BlockOwnerLock? CanonicalLock;
 
         /// <summary>Serializes start and rescan for this drive. Never taken under the state lock.</summary>
         public SemaphoreSlim LifecycleGate { get; } = new(1, 1);

@@ -57,7 +57,7 @@ public sealed partial class FileIndex
             lock (_stateLock)
             {
                 if (FindWatchableDriveBlockLocked(runtime.Drive) is not { } driveBlock ||
-                    !_unresumableCheckpointsByOrdinal.TryGetValue(driveBlock.DriveOrdinal, out var reason))
+                    runtime.UnresumableCheckpoint is not { } reason)
                 {
                     return false;
                 }
@@ -124,11 +124,7 @@ public sealed partial class FileIndex
             }
 
             runtime.RefusedStartFault = null;
-            if (TryGetDriveOrdinalLocked(runtime.Drive, out var driveOrdinal))
-            {
-                _watchFailureMessagesByOrdinal.Remove(driveOrdinal);
-            }
-
+            runtime.WatchFailureMessage = null;
             NoteWatchStateLocked(runtime);
         }
 
@@ -184,7 +180,7 @@ public sealed partial class FileIndex
             runtime.RescanHandoffFault = null;
             instance.OutstandingFault = failure;
             instance.CatchUp.Fault(failure);
-            _watchFailureMessagesByOrdinal[instance.ArmedBlock.DriveOrdinal] = failure.Message;
+            runtime.WatchFailureMessage = failure.Message;
             NoteWatchStateLocked(runtime, fault);
         }
 

@@ -54,12 +54,5 @@ public class LocalMftCacheFreshnessTests
         Assert.AreEqual(cause, status.Watch.CheckpointLoss?.Cause);
         Assert.IsFalse(status.Watch.IsSupported);
         Assert.IsFalse(status.Watch.IsRequested);
-        if (cacheOnly)
-        {
-            var field = typeof(FileIndex).GetField("_unresumableCheckpointsByOrdinal",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
-            var unresumable = (System.Collections.IDictionary)field.GetValue(reopened)!;
-            Assert.AreEqual(1, unresumable.Count);
-        }
     }
 }

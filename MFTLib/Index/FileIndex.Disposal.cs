@@ -122,7 +122,11 @@ public sealed partial class FileIndex
             {
                 current = _snapshot;
                 _snapshot = null;
-                _driveBlocks.Clear();
+                foreach (var runtime in _driveRuntimes.Values)
+                {
+                    runtime.Block = null;
+                    runtime.LastResult = null;
+                }
             }
 
             // Unconditional: a consumer that disposed everything it owns has asked for the

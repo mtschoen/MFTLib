@@ -18,13 +18,6 @@ public sealed partial class FileIndex
         LostCatchUp
     }
 
-    /// <summary>
-    ///     Unresumable blocks by ordinal, with the reason. <see cref="StartWatchingAsync" /> refuses
-    ///     such a drive's watch, since starting it from that block's cursor would resume from a
-    ///     position the journal no longer holds. A scan whose catch-up holds replaces the block and
-    ///     clears the entry.
-    /// </summary>
-    readonly Dictionary<ushort, UnresumableCheckpointReason> _unresumableCheckpointsByOrdinal = [];
 
     /// <summary>
     ///     The scan operation every rescan of a drive runs with the drive's lifecycle gate held:
@@ -103,8 +96,8 @@ public sealed partial class FileIndex
     ///     no block leaves the drive blockless; a retry that produces none leaves the lost block in
     ///     place with the producer's failure.
     /// </summary>
-    async Task ScanOpenedDriveAsync(IndexedDrive drive, bool ownsCanonicalSlot, PendingDriveResult opened,
-        CancellationToken cancellationToken)
+    async Task<int> ScanOpenedDriveAsync(IndexedDrive drive, bool ownsCanonicalSlot, PendingDriveResult opened,
+        OpenSettlement settlement, CancellationToken cancellationToken)
     {
         var runtime = GetDriveRuntime(drive.Drive);
         DriveBlock? adopted = null;
@@ -132,34 +125,37 @@ public sealed partial class FileIndex
             if (settled.Block is not { } block)
             {
                 DiscardUnproducedTarget(drive, target, retired);
-                RecordOpenProducerFailure(runtime.Drive, settled, lostBlockInPlace: adopted is not null);
-                return;
+                return RecordOpenProducerFailure(runtime.Drive, settled, lostBlockInPlace: adopted is not null, settlement);
             }
 
-            var (newlyAdopted, consecutiveLostCatchUps) = AdoptOpenedDrive(drive, block, settled, adopted);
+            var (newlyAdopted, consecutiveLostCatchUps, settledCount) = AdoptOpenedDrive(
+                drive, block, settled, settlement, replacing: adopted);
             // Nothing published the lost block this retry replaced; releasing it deletes its renamed-aside file.
             adopted?.ReleaseState.Release();
             adopted = newlyAdopted;
             if (settled.CatchUpLoss is not { } catchUpLoss ||
                 RecordLostCatchUp(runtime, catchUpLoss, consecutiveLostCatchUps).IsRecoveryStopped)
             {
-                return;
+                return settledCount ?? throw new InvalidOperationException($"Drive {drive.Drive} settled without its count.");
             }
 
             opened = opened with { CheckpointLoss = catchUpLoss };
         }
     }
 
-    void RecordOpenProducerFailure(DriveKey drive, PendingDriveResult failed, bool lostBlockInPlace)
+    int RecordOpenProducerFailure(DriveKey drive, PendingDriveResult failed, bool lostBlockInPlace,
+        OpenSettlement settlement)
     {
         if (lostBlockInPlace)
         {
-            RecordRescanProducerFailure(drive, failed.RequireFailureMessage(drive), endsOpenSettle: true);
+            lock (_stateLock)
+            {
+                RecordRescanProducerFailure(drive, failed);
+                return settlement.ClaimLocked();
+            }
         }
-        else
-        {
-            RecordFailedDrive(drive, DriveFailureKind.ProducerFailed, failed);
-        }
+
+        return RecordFailedDrive(drive, DriveFailureKind.ProducerFailed, failed, settlement);
     }
 
     /// <summary>
@@ -192,10 +188,7 @@ public sealed partial class FileIndex
                 }
 
                 runtime.RefusedStartFault = lost;
-                if (TryGetDriveOrdinalLocked(drive, out var driveOrdinal))
-                {
-                    _watchFailureMessagesByOrdinal[driveOrdinal] = lost.Message;
-                }
+                runtime.WatchFailureMessage = lost.Message;
             }
 
             NoteWatchStateLocked(runtime, new WatchFault(WatchFaultKind.CatchUpLost, drive, lost));

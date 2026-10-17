@@ -89,7 +89,7 @@ public sealed partial class FileIndex
 
         ObjectDisposedException.ThrowIf(_disposed, this);
         var runtime = GetDriveRuntime(drive);
-        var configured = _driveConfigurations[runtime.Drive];
+        var configured = runtime.Configuration;
         using var rescanCancellation =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, DisposalToken);
         await runtime.LifecycleGate.WaitAsync(rescanCancellation.Token).ConfigureAwait(false);
@@ -153,7 +153,7 @@ public sealed partial class FileIndex
         {
             DiscardUnproducedTarget(drive, target, retired);
             var failureMessage = produced.RequireFailureMessage(runtime.Drive);
-            RecordRescanProducerFailure(runtime.Drive, failureMessage);
+            RecordRescanProducerFailure(runtime.Drive, produced);
             return new ScanAttempt(Published: false, produced.ProducerFailure, failureMessage);
         }
 
@@ -186,55 +186,38 @@ public sealed partial class FileIndex
     {
         lock (_stateLock)
         {
-            if (TryGetDriveOrdinalLocked(drive, out var driveOrdinal))
+            var runtime = GetDriveRuntime(drive);
+            if (runtime.Block is { } block)
             {
-                return _driveBlocks[driveOrdinal];
+                return block;
             }
 
-            var index = FindBlocklessStatusIndexLocked(drive);
-            if (index < 0 || _blocklessDriveStatuses[index].State != DriveState.Failed)
+            if (runtime.BlocklessState == DriveState.Failed)
             {
-                throw new ArgumentException($"Drive {drive} has no block.", nameof(drive));
+                return null;
             }
 
-            return null;
+            throw new ArgumentException($"Drive {drive} has no block.", nameof(drive));
         }
     }
 
     /// <summary>
-    ///     Records a rescan's producer failure: against the published block's ordinal when the
-    ///     drive has one, and otherwise on the drive's blockless status, keyed by drive, which
-    ///     then reads <see cref="DriveFailureKind.ProducerFailed" />.
+    ///     Records a rescan's producer failure on the drive's runtime, which then reads
+    ///     <see cref="DriveFailureKind.ProducerFailed" />.
     /// </summary>
-    void RecordRescanProducerFailure(DriveKey drive, string message, bool endsOpenSettle = false)
+    void RecordRescanProducerFailure(DriveKey drive, PendingDriveResult failed)
     {
         lock (_stateLock)
         {
-            if (endsOpenSettle)
+            var runtime = GetDriveRuntime(drive);
+            runtime.Failure = new DriveFailure(DriveFailureKind.ProducerFailed,
+                failed.RequireFailureMessage(drive));
+            if (runtime.Block is null)
             {
-                ClaimSettledCountLocked(drive);
+                runtime.LastResult = failed;
+                runtime.BlocklessState = DriveState.Failed;
+                ReleaseCanonicalOwnershipLocked(drive);
             }
-
-            if (TryGetDriveOrdinalLocked(drive, out var driveOrdinal))
-            {
-                _producerFailureMessagesByOrdinal[driveOrdinal] = message;
-                return;
-            }
-
-            var index = FindBlocklessStatusIndexLocked(drive);
-            if (index >= 0)
-            {
-                _blocklessDriveStatuses[index] = _blocklessDriveStatuses[index] with
-                {
-                    Failure = new DriveFailure(DriveFailureKind.ProducerFailed, message)
-                };
-            }
-
-            ReleaseCanonicalOwnershipLocked(drive);
         }
     }
-
-    int FindBlocklessStatusIndexLocked(DriveKey drive) =>
-        _blocklessDriveStatuses.FindIndex(status =>
-            status.Drive == drive);
 }

@@ -4,11 +4,10 @@ public sealed partial class FileIndex
 {
     /// <summary>
     ///     Everything one settle or scan attempt of a drive learned, held locally until the publish
-    ///     step records it. Nothing unpublished is keyed by an ordinal: the publish step assigns the
-    ///     drive's ordinal (the next free one for a drive with no block, its existing one otherwise),
-    ///     builds the <see cref="DriveBlock" /> over <see cref="Block" />, and writes every field
-    ///     against that ordinal in one step under <see cref="_stateLock" />. A result with no block
-    ///     is recorded by drive instead.
+    ///     step records it. The publish step assigns the drive's ordinal (the next free one for a drive
+    ///     with no block, its existing one otherwise), builds the <see cref="DriveBlock" /> over
+    ///     <see cref="Block" />, and writes the result on the drive's runtime in one step under
+    ///     <see cref="_stateLock" />. A result with no block is recorded by drive instead.
     /// </summary>
     internal sealed record PendingDriveResult
     {
@@ -60,47 +59,38 @@ public sealed partial class FileIndex
             mftSource: _options.MftSource);
 
     /// <summary>
-    ///     Writes every field of a published result against its ordinal and counts its catch-up:
+    ///     Writes every field of a published result on the drive's runtime and counts its catch-up:
     ///     one more for a lost catch-up, which also marks the block unresumable and makes the
     ///     loss the drive's report as the newer fact, and zero for one that held. A held catch-up
     ///     keeps the drive's report unless <paramref name="clearsCheckpointLoss" /> says the
     ///     publishing operation replaces what it explained. The caller holds
     ///     <see cref="_stateLock" />.
     /// </summary>
-    void RecordPendingResultLocked(DriveRuntime runtime, ushort driveOrdinal, PendingDriveResult published,
+    static void RecordPendingResultLocked(DriveRuntime runtime, PendingDriveResult published,
         bool clearsCheckpointLoss)
     {
-        _blockOriginsByOrdinal[driveOrdinal] = published.Origin;
-        _cacheLocationsByOrdinal[driveOrdinal] = published.CacheLocation;
-        _accessDeniedSubtreeCountByOrdinal[driveOrdinal] = published.AccessDeniedSubtreeCount;
-        _skippedRecordCountByOrdinal[driveOrdinal] = published.SkippedRecordCount;
-        _producerFailureMessagesByOrdinal.Remove(driveOrdinal);
+        runtime.LastResult = published;
+        runtime.Failure = null;
         if (published.CatchUpLoss is { } catchUpLoss)
         {
             runtime.ConsecutiveLostCatchUps++;
-            _checkpointLossesByOrdinal[driveOrdinal] = catchUpLoss;
-            _unresumableCheckpointsByOrdinal[driveOrdinal] = UnresumableCheckpointReason.LostCatchUp;
+            runtime.CheckpointLoss = catchUpLoss;
+            runtime.UnresumableCheckpoint = UnresumableCheckpointReason.LostCatchUp;
             return;
         }
 
         runtime.ConsecutiveLostCatchUps = 0;
         runtime.RecoveryStopped = false;
-        if (published.CacheOnlyUnresumable)
-        {
-            _unresumableCheckpointsByOrdinal[driveOrdinal] = UnresumableCheckpointReason.CacheOnlyAdoption;
-        }
-        else
-        {
-            _unresumableCheckpointsByOrdinal.Remove(driveOrdinal);
-        }
-
+        runtime.UnresumableCheckpoint = published.CacheOnlyUnresumable
+            ? UnresumableCheckpointReason.CacheOnlyAdoption
+            : null;
         if (published.CheckpointLoss is { } checkpointLoss)
         {
-            _checkpointLossesByOrdinal[driveOrdinal] = checkpointLoss;
+            runtime.CheckpointLoss = checkpointLoss;
         }
         else if (clearsCheckpointLoss)
         {
-            _checkpointLossesByOrdinal.Remove(driveOrdinal);
+            runtime.CheckpointLoss = null;
         }
     }
 
@@ -126,32 +116,23 @@ public sealed partial class FileIndex
             lock (_stateLock)
             {
                 ThrowIfCancelledByDisposal(cancellationToken);
-                var replacesBlock = TryGetDriveOrdinalLocked(runtime.Drive, out var driveOrdinal);
-                if (!replacesBlock)
-                {
-                    driveOrdinal = (ushort)_driveBlocks.Count;
-                }
+                var replaced = runtime.Block;
+                var driveOrdinal = replaced?.DriveOrdinal ?? AllocateDriveOrdinalLocked();
 
-                var driveBlock = BuildDriveBlock(_driveConfigurations[runtime.Drive], driveOrdinal, block);
+                var driveBlock = BuildDriveBlock(runtime.Configuration, driveOrdinal, block);
                 var handoff = RetireWatchAtCommitLocked(runtime);
                 if (recovery is null)
                 {
                     ClearRecoveryLocked(runtime);
                 }
 
-                if (replacesBlock)
+                if (replaced is not null)
                 {
-                    RetireBlockLocked(_driveBlocks[driveOrdinal]);
-                    _driveBlocks[driveOrdinal] = driveBlock;
-                }
-                else
-                {
-                    _driveBlocks.Add(driveBlock);
-                    _blocklessDriveStatuses.RemoveAll(status =>
-                        status.Drive == runtime.Drive);
+                    RetireBlockLocked(replaced);
                 }
 
-                RecordPendingResultLocked(runtime, driveOrdinal, produced, clearsCheckpointLoss);
+                runtime.Block = driveBlock;
+                RecordPendingResultLocked(runtime, produced, clearsCheckpointLoss);
                 PublishSnapshotLocked();
                 NoteWatchStateLocked(runtime);
                 return (runtime.ConsecutiveLostCatchUps, handoff);
