@@ -3,12 +3,17 @@ using System.Runtime.InteropServices;
 namespace MFTLib.Tests.TestSupport;
 
 /// <summary>
-///     P/Invoke declarations for the native test hooks and the raw-handle parse entry used by native coverage tests.
-///     The native exports are test-only and unsupported; product code never calls them.
+///     P/Invoke bindings owned by MFTLib.Tests for native test hooks, fixture generation,
+///     and raw-handle parser coverage. Failure-injection and fixture exports are test-only
+///     and unsupported; raw parser bindings exercise production exports.
 /// </summary>
 internal static class NativeTestHooks
 {
     const string LibraryName = "MFTLibNative";
+
+    [DllImport(LibraryName, EntryPoint = "GenerateFixtureMFTUtf8", CallingConvention = CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    internal static extern bool NativeGenerateFixtureMFTUtf8(byte[] filePathUtf8);
 
     // Native test-only exports (MFTLibNative/core/test_hooks.cpp): failure injection and observation.
     [DllImport(LibraryName, EntryPoint = "SetMaxThreads", CallingConvention = CallingConvention.Cdecl)]

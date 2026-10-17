@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using MFTLib.Index;
 using MFTLib.NativeInterop;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -401,9 +402,9 @@ public sealed class MftDumpValidationTests : IDisposable
 
     static IEnumerable<IReadOnlyList<MftRecord>> CancelAfterFirstBatch(CancellationTokenSource cancellation)
     {
-        yield return [MftRecord.CreateForTest(Root()), MftRecord.CreateForTest(Leaf(7, 5))];
+        yield return [MftRecordFactory.Create(Root()), MftRecordFactory.Create(Leaf(7, 5))];
         cancellation.Cancel();
-        yield return [MftRecord.CreateForTest(Leaf(8, 5))];
+        yield return [MftRecordFactory.Create(Leaf(8, 5))];
     }
 
     async Task<InvalidDataException> ProduceFailsAsync(params Func<ulong, MftRecordTestValues[]>[] batches)
@@ -427,7 +428,7 @@ public sealed class MftDumpValidationTests : IDisposable
         {
             ulong capacity = MftBlockCapacity.Plan(input.VolumeInformation).SlotCapacity;
             return batches.Select(IReadOnlyList<MftRecord> (batch) =>
-                batch(capacity).Select(MftRecord.CreateForTest).ToArray());
+                batch(capacity).Select(MftRecordFactory.Create).ToArray());
         });
     }
 

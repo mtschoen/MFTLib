@@ -1,8 +1,10 @@
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
 [TestClass]
+[DoNotParallelize]
 public class MftFixtureTests
 {
     internal const long ModifiedBaseFileTime = 132000000000000000L;
@@ -14,12 +16,13 @@ public class MftFixtureTests
     public void Initialize()
     {
         _fixturePath = Path.Combine(Path.GetTempPath(), $"mftlib-fixture-{Guid.NewGuid():N}.mft");
-        MftVolume.GenerateFixtureMFT(_fixturePath);
+        MftFixture.Generate(_fixturePath);
     }
 
     [TestCleanup]
     public void Cleanup()
     {
+        NativeTestHooks.NativeResetTestState();
         if (File.Exists(_fixturePath))
         {
             File.Delete(_fixturePath);

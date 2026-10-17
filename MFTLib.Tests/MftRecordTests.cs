@@ -1,3 +1,4 @@
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -80,19 +81,46 @@ public class MftRecordTests
         Assert.AreEqual("docs", materialized.FileName);
     }
 
-    [TestMethod]
-    public void CreateForTest_Materialize_PreservesSequenceNumber()
+    [DataTestMethod]
+    [DataRow(false, false, false, DisplayName = "Issue655_FreedFileUnknown")]
+    [DataRow(false, false, true, DisplayName = "Issue655_FreedFileKnown")]
+    [DataRow(false, true, false, DisplayName = "Issue655_FreedDirectoryUnknown")]
+    [DataRow(false, true, true, DisplayName = "Issue655_FreedDirectoryKnown")]
+    [DataRow(true, false, false, DisplayName = "Issue655_LiveFileUnknown")]
+    [DataRow(true, false, true, DisplayName = "Issue655_LiveFileKnown")]
+    [DataRow(true, true, false, DisplayName = "Issue655_LiveDirectoryUnknown")]
+    [DataRow(true, true, true, DisplayName = "Issue655_LiveDirectoryKnown")]
+    public void Factory_Materialize_PreservesEveryColumn(bool inUse, bool isDirectory, bool sizeKnown)
     {
-        var record = MftRecord.CreateForTest(new MftRecordTestValues
+        var record = MftRecordFactory.Create(new MftRecordTestValues
         {
             RecordNumber = 99,
             ParentRecordNumber = 7,
+            InUse = inUse,
+            IsDirectory = isDirectory,
+            SizeKnown = sizeKnown,
             FileName = "record",
-            SequenceNumber = 37
+            FileAttributes = FileAttributes.Hidden | FileAttributes.Archive,
+            Size = 1234567,
+            ModifiedFileTime = MftFixtureTests.ModifiedBaseFileTime,
+            SequenceNumber = 37,
+            ParentSequenceNumber = 42
         });
 
-        Assert.AreEqual((ushort)37, record.SequenceNumber);
-        Assert.AreEqual((ushort)37, record.Materialize().SequenceNumber);
+        foreach (var actual in new[] { record, record.Materialize() })
+        {
+            Assert.AreEqual(99UL, actual.RecordNumber);
+            Assert.AreEqual(7UL, actual.ParentRecordNumber);
+            Assert.AreEqual(inUse, actual.InUse);
+            Assert.AreEqual(isDirectory, actual.IsDirectory);
+            Assert.AreEqual(sizeKnown, actual.SizeKnown);
+            Assert.AreEqual("record", actual.FileName);
+            Assert.AreEqual(FileAttributes.Hidden | FileAttributes.Archive, actual.FileAttributes);
+            Assert.AreEqual(1234567L, actual.Size);
+            Assert.AreEqual(DateTime.FromFileTimeUtc(MftFixtureTests.ModifiedBaseFileTime), actual.ModifiedUtc);
+            Assert.AreEqual((ushort)37, actual.SequenceNumber);
+            Assert.AreEqual((ushort)42, actual.ParentSequenceNumber);
+        }
     }
 
     [TestMethod]

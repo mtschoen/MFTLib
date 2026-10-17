@@ -141,12 +141,11 @@ public class MockVolumeTests
     [TestMethod]
     public void Dispose_DisposesHandle()
     {
-        FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
-
         SafeFileHandle handle;
-        using (var volume = MftVolume.Open('C'))
+        using (var volume = FakeVolumeHandle.OpenVolume('C', out handle))
         {
-            handle = volume.GetVolumeHandleForTest();
+            Assert.IsFalse(handle.IsClosed);
+            GC.KeepAlive(volume);
         }
 
         Assert.IsTrue(handle.IsClosed);
@@ -246,22 +245,6 @@ public class MockVolumeTests
             new MftResult(errorResultPtr));
 
         Assert.AreEqual("Volume read failed", ex.Message);
-    }
-
-    [TestMethod]
-    public void MftVolume_GetVolumeHandleForTest_ReturnsHandle()
-    {
-        SafeFileHandle? handle = null;
-        try
-        {
-            FileUtilities.Hooks.GetVolumeHandle = _ => handle = FakeVolumeHandle.Create();
-            using var volume = MftVolume.Open('C');
-            Assert.AreSame(handle, volume.GetVolumeHandleForTest());
-        }
-        finally
-        {
-            handle?.Dispose();
-        }
     }
 
     [TestMethod]

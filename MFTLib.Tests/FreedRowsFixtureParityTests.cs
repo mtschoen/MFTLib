@@ -24,7 +24,7 @@ public class FreedRowsFixtureParityTests
     {
         _fixturePath = Path.Combine(Path.GetTempPath(), $"mftlib-freed-parity-{Guid.NewGuid():N}.mft");
         _imagePath = Path.ChangeExtension(_fixturePath, ".img");
-        MftVolume.GenerateFixtureMFT(_fixturePath);
+        MftFixture.Generate(_fixturePath);
     }
 
     [TestCleanup]

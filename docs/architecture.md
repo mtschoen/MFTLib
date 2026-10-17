@@ -232,11 +232,12 @@ Native exports write failure reasons into fixed-size `MftMessageChar errorMessag
 `GetChunkThreadCounts`, `ResetTestState` and the rest). On POSIX, `SetInterruptedIo` and `GetInterruptedIoCalls` replace the result of the positioned read and write system calls (EINTR failures before the real result, a zero result with a stale EINTR, or a genuine EIO), so the retry loop in `core/platform_posix.cpp` is covered by managed tests (`NativeInterruptedIoTests`). They are compiled into the Release
 `MFTLibNative.dll` that the NuGet package ships, deliberately. The exports are test-only and
 unsupported: they are not part of the managed public API, and they may change or disappear in
-any release. Their managed `DllImport` declarations live in `MFTLib.Tests`
-(`TestSupport/NativeTestHooks.cs`), not in `MFTLib`; the only native test-support exports
-MFTLib itself declares are `GenerateSyntheticMFTSizedUtf8`, reached from
-`MftVolume.GenerateSyntheticMFT`, and `GenerateFixtureMFTUtf8`, reached from
-`MftVolume.GenerateFixtureMFT`, both taking a UTF-8 path on every platform.
+Their managed `DllImport` declarations live in `MFTLib.Tests`
+(`TestSupport/NativeTestHooks.cs`), which also declares `GenerateFixtureMFTUtf8`.
+`MFTLib.Tests.TestSupport.MftFixture.Generate` calls that fixture export with a
+null-terminated UTF-8 path. The only native test-support export MFTLib itself
+declares is `GenerateSyntheticMFTSizedUtf8`, reached from
+`MftVolume.GenerateSyntheticMFT`, also taking a UTF-8 path on every platform.
 
 Why they stay:
 

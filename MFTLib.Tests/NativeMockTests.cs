@@ -42,7 +42,7 @@ public class NativeMockTests
         {
             NativeTestHooks.NativeSetAllocFailCountdown(1);
             var exception = Assert.ThrowsException<InvalidOperationException>(() =>
-                MftVolume.GenerateFixtureMFT(path));
+                MftFixture.Generate(path));
 
             StringAssert.Contains(exception.Message, path);
         }

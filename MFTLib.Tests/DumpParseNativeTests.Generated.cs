@@ -39,7 +39,7 @@ public partial class DumpParseNativeTests
         const int targetRecordNumber = 7;
         const int shortAttributeLength = 24;
         var path = Path.Combine(_directory, "fixture.mft");
-        MftVolume.GenerateFixtureMFT(path);
+        MftFixture.Generate(path);
         var data = File.ReadAllBytes(path);
         var recordOffset = targetRecordNumber * FixtureRecordSize;
         var attributeOffset = recordOffset + FindUnnamedDataAttributeOffset(data.AsSpan(recordOffset, FixtureRecordSize));

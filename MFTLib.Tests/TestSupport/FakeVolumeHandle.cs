@@ -1,3 +1,5 @@
+using MFTLib.Index;
+using MFTLib.NativeInterop;
 using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib.Tests.TestSupport;
@@ -6,4 +8,17 @@ namespace MFTLib.Tests.TestSupport;
 internal static class FakeVolumeHandle
 {
     internal static SafeFileHandle Create() => new(new IntPtr(1), false);
+
+    /// <summary>
+    ///     Opens a test volume and captures the handle supplied by its open hook.
+    ///     The returned volume owns disposal; the out handle is borrowed for native assertions.
+    /// </summary>
+    internal static MftVolume OpenVolume(DriveKey drive, out SafeFileHandle volumeHandle)
+    {
+        SafeFileHandle capturedHandle = null!;
+        FileUtilities.Hooks.GetVolumeHandle = _ => capturedHandle = Create();
+        var volume = MftVolume.Open(drive);
+        volumeHandle = capturedHandle;
+        return volume;
+    }
 }

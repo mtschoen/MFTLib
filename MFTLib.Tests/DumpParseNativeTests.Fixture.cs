@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using MFTLib.NativeInterop;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -9,12 +10,14 @@ namespace MFTLib.Tests;
 // byte, so a parser or generator change that moves either shows up here.
 public partial class DumpParseNativeTests
 {
-    [TestMethod]
+    [DataTestMethod]
+    [DataRow("fixture.mft", DisplayName = "Issue655_AsciiFixture")]
+    [DataRow("fixture-\u00e9-\u6d4b\u8bd5.mft", DisplayName = "Issue655_Utf8Fixture")]
     [TestCategory("Smoke")]
-    public void Parse_FixtureRowsAndStrings_AreByteIdentical()
+    public void Parse_FixtureRowsAndStrings_AreByteIdentical(string fileName)
     {
-        var path = Path.Combine(_directory, "fixture.mft");
-        MftVolume.GenerateFixtureMFT(path);
+        var path = Path.Combine(_directory, fileName);
+        MftFixture.Generate(path);
 
         var pointer = ParseNative(path, 256);
         Assert.AreNotEqual(IntPtr.Zero, pointer);

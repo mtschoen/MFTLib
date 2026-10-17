@@ -45,11 +45,6 @@ static class MFTLibNative
             recordSize);
     }
 
-    internal static bool GenerateFixtureMft(string filePath)
-    {
-        return NativeGenerateFixtureMFTUtf8(NullTerminatedUtf8(filePath));
-    }
-
     // The UTF-8 exports read the path up to its first null byte.
     internal static byte[] NullTerminatedUtf8(string path)
     {
@@ -71,10 +66,6 @@ static class MFTLibNative
     [return: MarshalAs(UnmanagedType.I1)]
     static extern bool NativeGenerateSyntheticMFTSizedUtf8(byte[] filePathUtf8, ulong recordCount,
         uint bufferSizeRecords, uint recordSize);
-
-    [DllImport(LibraryName, EntryPoint = "GenerateFixtureMFTUtf8", CallingConvention = CallingConvention.Cdecl)]
-    [return: MarshalAs(UnmanagedType.I1)]
-    static extern bool NativeGenerateFixtureMFTUtf8(byte[] filePathUtf8);
 
     // The dump input exports exist on every platform and take the path as null-terminated UTF-8
     // bytes. They have no swappable field: a dump is exercised with real files, never a

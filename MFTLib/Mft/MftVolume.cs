@@ -54,11 +54,6 @@ internal sealed class MftVolume : IDisposable
 
     void IDisposable.Dispose() => Dispose();
 
-    internal SafeFileHandle GetVolumeHandleForTest()
-    {
-        return _volumeHandle;
-    }
-
     /// <summary>Opens a volume for reading.</summary>
     /// <param name="drive">The drive to open.</param>
     /// <param name="bufferSizeRecords">Records the native parser reads per chunk; also the unit at which cancellation is observed.</param>
@@ -217,21 +212,6 @@ internal sealed class MftVolume : IDisposable
         if (!MFTLibNative.GenerateSyntheticMftSized(filePath, recordCount, bufferSizeRecords, recordSize))
         {
             throw new InvalidOperationException("Failed to generate synthetic MFT file");
-        }
-    }
-
-    /// <summary>
-    ///     Writes the deterministic size and modified-time fixture: twelve 1024-byte records
-    ///     with hand-authored sizes, timestamps, and attribute shapes, covering resident and
-    ///     non-resident data, directories, a record whose data attribute lives in an extension
-    ///     record, and a non-resident record whose first data attribute has a nonzero lowest
-    ///     virtual cluster number. Test support, not a production entry point.
-    /// </summary>
-    internal static void GenerateFixtureMFT(string filePath)
-    {
-        if (!MFTLibNative.GenerateFixtureMft(filePath))
-        {
-            throw new InvalidOperationException($"GenerateFixtureMFT failed for {filePath}");
         }
     }
 }

@@ -13,25 +13,6 @@ internal readonly struct MftRecordFields(
 }
 
 /// <summary>
-///     Every column a test needs to mint a materialized record. Grouped into one value so
-///     the factory stays inside the parameter limit as the row gains columns.
-/// </summary>
-internal sealed record MftRecordTestValues
-{
-    public required ulong RecordNumber { get; init; }
-    public required ulong ParentRecordNumber { get; init; }
-    public bool InUse { get; init; } = true;
-    public bool IsDirectory { get; init; }
-    public bool SizeKnown { get; init; } = true;
-    public required string FileName { get; init; }
-    public FileAttributes FileAttributes { get; init; }
-    public long Size { get; init; }
-    public long ModifiedFileTime { get; init; }
-    public ushort SequenceNumber { get; init; }
-    public ushort ParentSequenceNumber { get; init; }
-}
-
-/// <summary>
 ///     One parsed MFT file record. A record read straight from an <see cref="MftResult" /> borrows
 ///     its name from native memory and is valid only until that result is disposed; call
 ///     <see cref="Materialize" /> to keep one longer. Records from the batch and array APIs are
@@ -195,15 +176,5 @@ internal readonly struct MftRecord
         _namePtr = IntPtr.Zero;
         _nameLength = 0;
         _materialized = true;
-    }
-
-    internal static MftRecord CreateForTest(MftRecordTestValues values)
-    {
-        var flags = (ushort)((values.InUse ? InUseFlag : 0)
-                             | (values.IsDirectory ? DirectoryFlag : 0)
-                             | (values.SizeKnown ? 0 : SizeUnknownFlag));
-        var fields = new MftRecordFields(flags, values.FileAttributes, values.Size, values.ModifiedFileTime,
-            values.SequenceNumber, values.ParentSequenceNumber);
-        return new MftRecord(values.RecordNumber, values.ParentRecordNumber, fields, values.FileName);
     }
 }

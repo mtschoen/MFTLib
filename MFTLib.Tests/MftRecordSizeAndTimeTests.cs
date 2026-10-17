@@ -1,4 +1,5 @@
 using MFTLib.NativeInterop;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -26,24 +27,29 @@ public class MftRecordSizeAndTimeTests
         Assert.AreEqual(9u, MFTLibNative.Hooks.GetMftNativeAbiVersion());
     }
 
-    [TestMethod]
-    public void ModifiedUtc_OutOfRangeFileTime_ReadsAsMinValue()
+    [DataTestMethod]
+    [DataRow(long.MinValue, DisplayName = "Issue655_MinimumFileTime")]
+    [DataRow(-1L, DisplayName = "Issue655_NegativeFileTime")]
+    [DataRow(0L, DisplayName = "Issue655_AbsentFileTime")]
+    [DataRow(long.MaxValue, DisplayName = "Issue655_OverflowFileTime")]
+    public void ModifiedUtc_OutOfRangeFileTime_ReadsAsMinValue(long modifiedFileTime)
     {
-        var record = MftRecord.CreateForTest(new MftRecordTestValues
+        var record = MftRecordFactory.Create(new MftRecordTestValues
         {
             RecordNumber = 1,
             ParentRecordNumber = 5,
             FileName = "x",
-            ModifiedFileTime = long.MinValue
+            ModifiedFileTime = modifiedFileTime
         });
         Assert.AreEqual(DateTime.MinValue, record.ModifiedUtc);
+        Assert.AreEqual(DateTime.MinValue, record.Materialize().ModifiedUtc);
     }
 
     [TestMethod]
     public void ModifiedUtc_ValidFileTime_RoundTrips()
     {
         var expected = DateTime.FromFileTimeUtc(MftFixtureTests.ModifiedBaseFileTime);
-        var record = MftRecord.CreateForTest(new MftRecordTestValues
+        var record = MftRecordFactory.Create(new MftRecordTestValues
         {
             RecordNumber = 1,
             ParentRecordNumber = 5,
@@ -58,7 +64,7 @@ public class MftRecordSizeAndTimeTests
     [TestMethod]
     public void SizeKnown_IsFalse_WhenTheSizeUnknownFlagIsSet()
     {
-        var record = MftRecord.CreateForTest(new MftRecordTestValues
+        var record = MftRecordFactory.Create(new MftRecordTestValues
         {
             RecordNumber = 1,
             ParentRecordNumber = 5,

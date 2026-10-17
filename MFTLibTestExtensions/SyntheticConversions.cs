@@ -17,7 +17,7 @@ internal static class SyntheticConversions
     public static MftRecord ToProduction(this SyntheticScanRecord record)
     {
         ArgumentNullException.ThrowIfNull(record);
-        return MftRecord.CreateForTest(new MftRecordTestValues
+        return MftRecordFactory.Create(new MftRecordTestValues
         {
             RecordNumber = record.RecordNumber,
             ParentRecordNumber = record.ParentRecordNumber,
