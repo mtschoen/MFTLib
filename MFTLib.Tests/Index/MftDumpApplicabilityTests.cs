@@ -13,6 +13,10 @@ namespace MFTLib.Tests.Index;
 [DoNotParallelize]
 public class MftDumpApplicabilityTests
 {
+    [TestCleanup]
+    [SupportedOSPlatform("windows")]
+    public void Cleanup() => UsnJournalSettingsQuery.Dependencies.ResetToDefaults();
+
     [TestMethod]
     public async Task Open_ADumpDriveSharingARealLetterIsNotProbedAsALiveRoot()
     {
@@ -140,8 +144,8 @@ public class MftDumpApplicabilityTests
     [SupportedOSPlatform("windows")]
     public async Task QueryUsnJournalSettings_ADumpDriveRefusesBeforeTheLiveQuery()
     {
-        using var restore = UsnJournalSettingsQuery.OverrideQueryForTest(
-            drive => throw new AssertFailedException($"The live volume {drive} must not be queried."));
+        UsnJournalSettingsQuery.Dependencies.QueryOverride =
+            drive => throw new AssertFailedException($"The live volume {drive} must not be queried.");
         await using var index = await MftDumpIndexes.OpenAsync();
 
         var failure = MftDumpIndexes.Throws<InvalidOperationException>(index, i => i.QueryUsnJournalSettings('d'));
@@ -153,8 +157,8 @@ public class MftDumpApplicabilityTests
     [SupportedOSPlatform("windows")]
     public async Task QueryUsnJournalSettings_AFailedDumpDriveWithNoBlockStillRefuses()
     {
-        using var restore = UsnJournalSettingsQuery.OverrideQueryForTest(
-            drive => throw new AssertFailedException($"The live volume {drive} must not be queried."));
+        UsnJournalSettingsQuery.Dependencies.QueryOverride =
+            drive => throw new AssertFailedException($"The live volume {drive} must not be queried.");
         await using var index = await MftDumpIndexes.OpenAsync(MftDumpIndexes.Source(MftDumpIndexes.Fail));
 
         var failure = MftDumpIndexes.Throws<InvalidOperationException>(index, i => i.QueryUsnJournalSettings('D'));

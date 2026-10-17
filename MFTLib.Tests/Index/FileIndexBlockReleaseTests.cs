@@ -177,7 +177,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
                 CancellationToken.None);
             var retiredBlock = LookupEngine.FindDriveBlock(index.CurrentSnapshot, 'T')!;
             var retiredRelease = retiredBlock.ReleaseState;
-            retiredRelease._releaseStartedForTest = () =>
+            retiredRelease.Hooks.ReleaseStarted = () =>
             {
                 reachedTheGate.MarkEntered();
                 gate.WaitForRelease();
@@ -264,7 +264,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
         Assert.AreEqual(1, index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), token).Count);
 
         // Asserted before the disposal below, which is what a stranded borrow would hang forever.
-        Assert.AreEqual(0, release.OutstandingBorrowCount,
+        Assert.AreEqual(0, release.Hooks.OutstandingBorrowCount,
             "the query kept the borrow it took, so nothing can ever release this snapshot");
 
         await index.DisposeAsync();
@@ -290,7 +290,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
         Assert.ThrowsException<ObjectDisposedException>(() => index.Search(new SearchQuery("readme.md", NameMatchMode.Exact)));
         Assert.ThrowsException<ObjectDisposedException>(() => index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), token));
 
-        Assert.AreEqual(0, release.OutstandingBorrowCount);
+        Assert.AreEqual(0, release.Hooks.OutstandingBorrowCount);
     }
 
     /// <summary>
@@ -304,7 +304,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
     public async Task DisposeAsync_WhenBothTheCancellationAndTheReleaseFail_ReportsBoth()
     {
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        index.CurrentSnapshot[0].ReleaseState._releaseStartedForTest =
+        index.CurrentSnapshot[0].ReleaseState.Hooks.ReleaseStarted =
             () => throw new InvalidOperationException("the release itself");
         using var registration = index.DisposalToken.Register(
             () => throw new InvalidOperationException("a cancellation callback of someone else's"));
@@ -400,7 +400,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
             var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
             var retiredBlock = LookupEngine.FindDriveBlock(index.CurrentSnapshot, 'T')!;
             var retiredRelease = retiredBlock.ReleaseState;
-            retiredRelease._releaseStartedForTest = () =>
+            retiredRelease.Hooks.ReleaseStarted = () =>
             {
                 reachedTheGate.MarkEntered();
                 gate.WaitForRelease();

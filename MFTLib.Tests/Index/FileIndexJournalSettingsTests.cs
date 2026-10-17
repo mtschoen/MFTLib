@@ -9,7 +9,7 @@ namespace MFTLib.Tests.Index;
 /// <summary>
 ///     <see cref="FileIndex.QueryUsnJournalSettings" />: drive membership validation and
 ///     delegation to the query engine. The engine itself is swapped out through
-///     <c>UsnJournalSettingsQuery.OverrideQueryForTest</c>, so these run on every platform
+///     <c>UsnJournalSettingsQuery.Dependencies.QueryOverride</c>, so these run on every platform
 ///     (the <see cref="SupportedOSPlatformAttribute" /> on each test satisfies CA1416 and
 ///     is inert at runtime, same as <c>IndexedDriveTests</c>).
 /// </summary>
@@ -21,6 +21,10 @@ public sealed class FileIndexJournalSettingsTests : IDisposable
 
     [TestInitialize]
     public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
+
+    [TestCleanup]
+    [SupportedOSPlatform("windows")]
+    public void ResetQueryOverride() => UsnJournalSettingsQuery.Dependencies.ResetToDefaults();
 
     public void Dispose()
     {
@@ -41,10 +45,10 @@ public sealed class FileIndexJournalSettingsTests : IDisposable
             MaximumSize = 64L * 1024 * 1024,
             AllocationDelta = 8L * 1024 * 1024
         };
-        using var restore = UsnJournalSettingsQuery.OverrideQueryForTest(
+        UsnJournalSettingsQuery.Dependencies.QueryOverride =
             drive => drive == 'T'
                 ? expected
-                : throw new IOException($"Unexpected drive {drive}"));
+                : throw new IOException($"Unexpected drive {drive}");
         await using var index = await OpenIndexAsync();
 
         // Lowercase input normalizes to the configured uppercase letter.

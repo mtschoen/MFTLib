@@ -105,7 +105,7 @@ to a live read. The callback is evaluated for each query and may run on any
 drive's pump thread, concurrently for different drives, so mutable per-drive
 observations need synchronization.
 
-The returned IDisposable owns a process-global override. Nested and overlapping scopes throw InvalidOperationException. Disposal restores the guard-controlled observation behavior exactly once, including when a using block exits through an exception; it does not clear reports already recorded on an index or drain callbacks already in flight. Mark the entire consumer fixture nonparallel (class-level [DoNotParallelize] in MSTest), keep the scope alive through all awaited work, and stop/dispose indexes and watches before disposing it.
+The data owner is `JournalCheckpointCheck.Hooks` (`JournalHooks`), and the exclusive scope owner is `ProcessGlobalScope` through public `JournalIsolation.OverrideJournalWindow`. Nested and overlapping scopes throw InvalidOperationException. Callback publication is volatile, and mutable callback captures must be independently synchronized. Disposal does not drain callbacks already in flight, and restores the guard-controlled observation behavior exactly once, including when a using block exits through an exception; it does not clear reports already recorded on an index. The one-way live-read guard stays enabled after scope exit and is not inherited by children. Mark the entire consumer fixture nonparallel (class-level [DoNotParallelize] in MSTest), keep the scope alive through all awaited work, and stop/dispose indexes and watches before disposing it.
 
 MFTLib.Tests calls `JournalIsolation.OverrideJournalWindow` directly for every journal override, sharing the public scope's single-active ownership. The three explicit live-reader cases in `UsnJournalVolumeInteropTests` pass a private `ReadLive`, which converts `JournalCheckpointCheck.ReadLiveJournal` observations into `SyntheticJournalWindow` values. A null observation remains unknown. The one-way guard is never reset.
 
@@ -260,6 +260,23 @@ real block-flush reports are held at existing collaborator seams while fake time
 advances. A completed heartbeat visit is not proof of write completion: tests
 also consume the expected frames. Gates are released in local finally blocks
 before disposing the host harness.
+
+## Index-support seam ownership
+
+`EnumerationWalkLimit` holds a fixed capacity of `Environment.ProcessorCount`; tests that need contention reserve real leases with `EnterAsync` and release them in `finally`, never resize the semaphore. A test class touching a process-global owner below carries class-level `[DoNotParallelize]` and resets it in cleanup.
+
+| Component owner/members | Lifetime | Tests |
+| --- | --- | --- |
+| `EnumerationWalkLimit.Hooks.WalkQueued` | Process-global; reset after opens drain. | `FileIndexConcurrentOpenTests.Open_EnumerationWalks_NeverExceedTheWalkLimit` |
+| `CacheDirectory.Hooks.BeforeDelete` | Process-global; runs under the owner lock, reset after deletion drains. | `CacheDirectoryDeletionLiveOwnerTests`; `CacheDirectoryDeletionTests` |
+| `IndexedDrive.Dependencies.VolumeSerialReader` | Process-global; null selects the native reader. | `IndexedDriveTests`; `ReadmeWalkthroughTests` |
+| `FileEntry.Dependencies.OpenById` | Process-global; defaults to `DefaultOpenById`. | `FileEntryOpenTests`; `FileEntryIncarnationTests`; `MftDumpPathTests`; `DirectHostTests` |
+| `UsnJournalSettingsQuery.Dependencies.QueryOverride` | Process-global; null selects the platform query. | `FileIndexJournalSettingsTests`; `MftDumpApplicabilityTests`; `UsnJournalSettingsQueryLiveTests` |
+| `JournalCheckpointCheck.Hooks.ObservationOverride` and one-way guard | Process-global; exclusive scope only through public `JournalIsolation`, the guard never resets. | `JournalWindowOverrideTests`; `ConsumerJournalIsolationTests`; `UsnJournalVolumeInteropTests` |
+| `BlockWriter.Hooks.RowCaptured`, `CompleteAccessTaken` | Per writer; set before work, no reset. | `BlockWriterDisposalRaceTests`; `BlockWriterCompleteDisposalRaceTests`; `JournalMutatorMetadataDisposalRaceTests` |
+| `BlockFile.Hooks` (`DisposeStarted`, `FlushRangeBytes`, `FlushViewRange`, `SynchronizeViewRange`, `PauseMilliseconds`, `SpinOnce`) | Per block; set before work, ends with the block. | `BlockFileFlushDisposalRaceTests`; `BlockFileRangedFlushTests`; the writer race classes |
+| `DriveBlockRelease.Hooks` (`ReleaseStarted`, `ReaderAdmitted`, `OutstandingBorrowCount`) | Per release object; count read under `_gate`. | `DriveBlockTests`; `FileIndexBlockReleaseTests`; `FileIndexDisposeCancelsQueryTests`; `SnapshotBorrowTests` |
+| `DeletedChildLinks.Observations` (`DescendantsVisited`, `SiblingsExamined`) | Per links object; accumulates, no reset. | `DeletedChildLinksTests`; `JournalMutatorFreedRowTests` |
 
 ## Object lifetime
 

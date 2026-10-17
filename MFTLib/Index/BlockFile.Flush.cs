@@ -6,28 +6,6 @@ namespace MFTLib.Index;
 
 internal sealed unsafe partial class BlockFile
 {
-    /// <summary>
-    ///     The number of bytes flushed per native call. An instance field so a test can shrink it
-    ///     without mapping hundreds of megabytes.
-    /// </summary>
-    internal long _flushRangeBytes = FlushRangeBytes;
-
-    /// <summary>
-    ///     Windows test seams, per instance: flushes one range of the view and returns the Win32
-    ///     error (0 on success), and the two waits between retries. Defaults call the operating
-    ///     system, so a test can observe the retry's call pattern without sleeping.
-    /// </summary>
-    internal Func<long, long, int> _flushViewRange;
-
-    /// <summary>
-    ///     The Unix test seam, per instance: synchronizes one page-aligned range of the view with the
-    ///     given native msync flags and returns the errno (0 on success). The default calls msync.
-    /// </summary>
-    internal Func<long, long, int, int> _synchronizeViewRange;
-
-    internal Action<int> _pauseMilliseconds = Thread.Sleep;
-    internal SpinStep _spinOnce = static (ref spinWait) => spinWait.SpinOnce();
-
     internal delegate void SpinStep(ref SpinWait spinWait);
 
     const int ErrorLockViolation = 33;
@@ -54,7 +32,7 @@ internal sealed unsafe partial class BlockFile
     /// </summary>
     internal void FlushUnderHeldAccess(Action<long>? rangeFlushed)
     {
-        var rangeBytes = _flushRangeBytes;
+        var rangeBytes = Hooks.FlushRangeBytes;
         for (long start = 0; start < Length; start += rangeBytes)
         {
             var end = Math.Min(start + rangeBytes, Length);
@@ -92,7 +70,7 @@ internal sealed unsafe partial class BlockFile
         var flag = Libc.SelectSynchronousFlag(platform);
         var pageBytes = Environment.SystemPageSize;
         var alignedStart = start - (start % pageBytes);
-        var error = _synchronizeViewRange(alignedStart, end, flag);
+        var error = Hooks.SynchronizeViewRange(alignedStart, end, flag);
         if (error != 0)
         {
             throw new IOException($"msync failed with errno {error}.");
@@ -128,7 +106,7 @@ internal sealed unsafe partial class BlockFile
     /// </summary>
     internal void FlushViewWithRetry(long start, long end)
     {
-        var error = _flushViewRange(start, end);
+        var error = Hooks.FlushViewRange(start, end);
         if (error == 0)
         {
             return;
@@ -137,10 +115,10 @@ internal sealed unsafe partial class BlockFile
         var spinWait = default(SpinWait);
         for (var wait = 0; error == ErrorLockViolation && wait < MaximumFlushWaits; wait++)
         {
-            _pauseMilliseconds(1 << wait);
+            Hooks.PauseMilliseconds(1 << wait);
             for (var retry = 0; retry < MaximumFlushRetriesPerWait; retry++)
             {
-                error = _flushViewRange(start, end);
+                error = Hooks.FlushViewRange(start, end);
                 if (error == 0)
                 {
                     return;
@@ -151,7 +129,7 @@ internal sealed unsafe partial class BlockFile
                     break;
                 }
 
-                _spinOnce(ref spinWait);
+                Hooks.SpinOnce(ref spinWait);
             }
         }
 

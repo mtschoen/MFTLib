@@ -23,10 +23,24 @@ internal readonly record struct JournalWindow(
 /// </summary>
 static class JournalCheckpointCheck
 {
-    /// <summary>The observation callback owned by the test package's single-active journal scope.</summary>
-    internal static Func<DriveKey, JournalWindow?>? _journalOverride;
+    internal static readonly JournalHooks Hooks = new();
 
-    static int _liveJournalReadsForbidden;
+    internal sealed class JournalHooks
+    {
+        Func<DriveKey, JournalWindow?>? _observationOverride;
+        int _liveReadsForbidden;
+
+        internal Func<DriveKey, JournalWindow?>? ObservationOverride
+        {
+            get => Volatile.Read(ref _observationOverride);
+            set => Volatile.Write(ref _observationOverride, value);
+        }
+
+        internal bool LiveReadsForbidden => Volatile.Read(ref _liveReadsForbidden) != 0;
+
+        // aislop-ignore-next-line jb/MemberHidesStaticFromOuterClass
+        internal void ForbidLiveJournalReads() => Interlocked.Exchange(ref _liveReadsForbidden, 1);
+    }
 
     /// <summary>
     ///     Returns the loss when <paramref name="checkpointUsn" /> can no longer be resumed on
@@ -131,7 +145,7 @@ static class JournalCheckpointCheck
     ///     nothing can replace it or its guard.
     /// </summary>
     static readonly JournalReader ProcessJournal = new(
-        () => Volatile.Read(ref _liveJournalReadsForbidden) != 0, ReadLiveJournal);
+        () => Hooks.LiveReadsForbidden, ReadLiveJournal);
 
     /// <summary>
     ///     Reads the journal a check decides on, from a guard and a live read. The process reads
@@ -146,7 +160,7 @@ static class JournalCheckpointCheck
         /// </summary>
         public JournalWindow? Read(DriveKey drive)
         {
-            if (Volatile.Read(ref _journalOverride) is { } journalOverride)
+            if (Hooks.ObservationOverride is { } journalOverride)
             {
                 return journalOverride(drive);
             }
@@ -210,6 +224,6 @@ static class JournalCheckpointCheck
     /// </summary>
     internal static void ForbidLiveJournalReads()
     {
-        Interlocked.Exchange(ref _liveJournalReadsForbidden, 1);
+        Hooks.ForbidLiveJournalReads();
     }
 }

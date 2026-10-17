@@ -34,6 +34,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
     public void Dispose()
     {
         NativeTestHooks.NativeResetTestState();
+        IndexedDrive.Dependencies.ResetToDefaults();
         _tempDirectory.Dispose();
     }
 
@@ -115,7 +116,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
     [SupportedOSPlatform("windows")]
     public async Task LocalOneShotWalkthrough_CompilesPublicRecipeAndRunsMultipleQueriesOverOneScan()
     {
-        using var serialOverride = IndexedDrive.OverrideVolumeSerialReaderForTest(_ => 0x0BADF00Du);
+        IndexedDrive.Dependencies.VolumeSerialReader = _ => 0x0BADF00Du;
 
         var cancellationToken = TestContext.CancellationTokenSource.Token;
         var drive = IndexedDrive.FromWindowsVolume('C');
@@ -202,7 +203,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
     [SupportedOSPlatform("windows")]
     public async Task LocalOneShotWalkthrough_FailedAndCancelledOperations_SurfaceExpectedOutcomes()
     {
-        using var serialOverride = IndexedDrive.OverrideVolumeSerialReaderForTest(_ => 0x0BADF00Du);
+        IndexedDrive.Dependencies.VolumeSerialReader = _ => 0x0BADF00Du;
         var drive = IndexedDrive.FromWindowsVolume('C') with { RootDirectory = _directory };
 
         var failingOptions = new FileIndexOptions

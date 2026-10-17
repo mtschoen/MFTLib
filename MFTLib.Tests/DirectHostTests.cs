@@ -27,6 +27,7 @@ public sealed class DirectHostTests : IDisposable
 
     public void Dispose()
     {
+        FileEntry.Dependencies.ResetToDefaults();
         NativeTestHooks.NativeResetTestState();
         _tempDirectory.Dispose();
     }
@@ -204,8 +205,8 @@ public sealed class DirectHostTests : IDisposable
                 IsLastWriteTimeUnknown = isLastWriteTimeUnknown
             }
         ]));
-        using var restore = FileEntry.OverrideOpenByIdForTest((_, _, _, access) =>
-            new FileStream(path, FileMode.Open, access, FileShare.Read));
+        FileEntry.Dependencies.OpenById = (_, _, _, access) =>
+            new FileStream(path, FileMode.Open, access, FileShare.Read);
 
         Assert.IsTrue(DirectArguments.TryParse(["open", "C", "--path", path], out var parsed, out var error), error);
         await host.RunSourceAsync(parsed, source, new IndexedDrive('C', _directory, 4242), CancellationToken.None);

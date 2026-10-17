@@ -18,7 +18,11 @@ public sealed class IndexedDriveTests : IDisposable
     [TestInitialize]
     public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
 
-    public void Dispose() => _fixture.Dispose();
+    public void Dispose()
+    {
+        IndexedDrive.Dependencies.ResetToDefaults();
+        _fixture.Dispose();
+    }
 
     [TestMethod]
     [SupportedOSPlatform("windows")]
@@ -26,11 +30,11 @@ public sealed class IndexedDriveTests : IDisposable
     [DataRow('c')]
     public void FromWindowsVolume_NormalizesKeysToTheSameDrive(char spelling)
     {
-        using var restore = IndexedDrive.OverrideVolumeSerialReaderForTest(root =>
+        IndexedDrive.Dependencies.VolumeSerialReader = root =>
         {
             Assert.AreEqual(@"C:\", root);
             return 0xDEADBEEF;
-        });
+        };
 
         var drive = IndexedDrive.FromWindowsVolume(spelling);
 
@@ -43,7 +47,7 @@ public sealed class IndexedDriveTests : IDisposable
     [SupportedOSPlatform("windows")]
     public void FromWindowsVolume_ThrowsIOExceptionNamingTheDriveWhenTheQueryFails()
     {
-        using var restore = IndexedDrive.OverrideVolumeSerialReaderForTest(_ => null);
+        IndexedDrive.Dependencies.VolumeSerialReader = _ => null;
 
         var failure = Assert.ThrowsException<IOException>(() => IndexedDrive.FromWindowsVolume('Q'));
 

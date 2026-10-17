@@ -142,7 +142,7 @@ public class DirectLargestFilesTests
                 }
             }));
         Assert.AreEqual(cancelAfter, assembled);
-        Assert.AreEqual(0, _index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, _index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
     }
 
     [TestMethod]

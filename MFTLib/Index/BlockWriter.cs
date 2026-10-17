@@ -20,21 +20,6 @@ internal sealed partial class BlockWriter
     /// <summary>Provides the mapped block that each writer operation keeps accessible during its lifetime.</summary>
     public BlockFile Block { get; }
 
-    /// <summary>
-    ///     A test seam, held per instance rather than statically so two writers never share it.
-    ///     Invoked in <see cref="TryWriteRow" /> once the target row's reference is captured and
-    ///     before its first field access, which is the window in which a racing dispose used to
-    ///     unmap the view under the write.
-    /// </summary>
-    internal Action? _rowCapturedForTest;
-
-    /// <summary>
-    ///     A test seam, per instance. Invoked in <see cref="Complete" /> once its access is held and
-    ///     before the header is stamped, which is the window in which a dispose can begin while the
-    ///     operation is still admitted.
-    /// </summary>
-    internal Action? _completeAccessTakenForTest;
-
     /// <summary>Gets the highest written row index plus one, including tombstones and unpopulated gaps.</summary>
     public uint RowCount
     {
@@ -91,7 +76,7 @@ internal sealed partial class BlockWriter
         // published together as one atomic store, exactly as a rename publishes them. That
         // ordering holds for a fresh slot too, so there is no separate unpublished-slot case.
         ref var row = ref Block.Rows[(int)rowIndex];
-        _rowCapturedForTest?.Invoke();
+        Hooks.RowCaptured?.Invoke();
         var previousFlags = FileRow.DescriptorFlags(FileRow.ReadDescriptorWord(in row));
         var previousParentRow = row.ParentRow;
         var wasLive = (previousFlags & RowFlags.InUse) != 0 && (previousFlags & RowFlags.Tombstone) == 0;
@@ -319,7 +304,7 @@ internal sealed partial class BlockWriter
     public void Complete(DateTime scanTimestampUtc, Action<long>? rangeFlushed)
     {
         using var access = Block.TakeAccess();
-        _completeAccessTakenForTest?.Invoke();
+        Hooks.CompleteAccessTaken?.Invoke();
         ref var header = ref Block.Header;
         header.ScanTimestampTicks = scanTimestampUtc.Ticks;
         if (header.Generation == 0)

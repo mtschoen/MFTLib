@@ -49,7 +49,7 @@ public class SnapshotBorrowTests
             var thrown = Assert.ThrowsException<ObjectDisposedException>(() => new SnapshotBorrow(snapshot));
 
             StringAssert.Contains(thrown.ObjectName, nameof(DriveBlock));
-            Assert.AreEqual(0, snapshot[0].ReleaseState.OutstandingBorrowCount);
+            Assert.AreEqual(0, snapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
         }
         finally
         {
@@ -74,13 +74,13 @@ public class SnapshotBorrowTests
             GC.WaitForPendingFinalizers();
             GC.Collect();
 
-            Assert.AreEqual(1, snapshot[0].ReleaseState.OutstandingBorrowCount);
+            Assert.AreEqual(1, snapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
             Assert.IsFalse(release.IsCompleted);
             Assert.IsFalse(driveBlock.ReleaseState.IsReleaseComplete);
 
             borrow.Dispose();
             await release;
-            Assert.AreEqual(0, snapshot[0].ReleaseState.OutstandingBorrowCount);
+            Assert.AreEqual(0, snapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
             Assert.IsTrue(driveBlock.ReleaseState.IsReleaseComplete);
         }
         finally
@@ -169,7 +169,7 @@ public class SnapshotBorrowTests
             first.Dispose();
             first.Dispose();
 
-            Assert.AreEqual(1, snapshot[0].ReleaseState.OutstandingBorrowCount);
+            Assert.AreEqual(1, snapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
         }
         finally
         {
@@ -196,7 +196,7 @@ public class SnapshotBorrowTests
             GC.WaitForPendingFinalizers();
             GC.Collect();
 
-            Assert.AreEqual(0, snapshot[0].ReleaseState.OutstandingBorrowCount);
+            Assert.AreEqual(0, snapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
         }
         finally
         {
@@ -213,7 +213,7 @@ public class SnapshotBorrowTests
     {
         // aislop-ignore-next-line dotnet/IDISP001 -- the abandoned, undisposed borrow is the subject: its finalizer must return it
         var borrow = new SnapshotBorrow(snapshot);
-        Assert.AreEqual(1, snapshot[0].ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(1, snapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
         GC.KeepAlive(borrow);
     }
 }

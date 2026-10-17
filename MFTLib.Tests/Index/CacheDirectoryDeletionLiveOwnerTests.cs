@@ -9,7 +9,7 @@ namespace MFTLib.Tests.Index;
 ///     <see cref="FileIndex" /> owner rather than hand-written block files: MFTLib issue 234
 ///     requires that a clear never deletes, tears, or unlinks a block another index actually
 ///     owns, whether that ownership is settled before the clear runs, still in flight, or racing
-///     a concurrent open. This class also installs <see cref="CacheDirectory._beforeDeleteForTest" />,
+///     a concurrent open. This class also installs <see cref="CacheDirectory.Hooks" />,
 ///     a process-wide test seam with no synchronization of its own, so it must not run
 ///     concurrently with any other test that calls <see cref="CacheDirectory.DeleteCached(string, System.Collections.Generic.IEnumerable{DriveKey})" />.
 /// </summary>
@@ -29,7 +29,11 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
         _fixture = new IndexTreeFixture();
     }
 
-    public void Dispose() => _fixture.Dispose();
+    public void Dispose()
+    {
+        CacheDirectory.Hooks.ResetToDefaults();
+        _fixture.Dispose();
+    }
 
     FileIndexOptions Options(bool cacheOnly = false, IProgress<IndexScanProgress>? progress = null) =>
         _fixture.Options(volumeSerial: _volumeSerial,
@@ -121,7 +125,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
     }
 
     /// <summary>
-    ///     Parks the first call to <see cref="CacheDirectory._beforeDeleteForTest" /> until the
+    ///     Parks the first call to <see cref="CacheDirectory.Hooks" /> until the
     ///     test releases it, so <see cref="CacheDirectory.DeleteCached(string, System.Collections.Generic.IEnumerable{DriveKey})" /> can be driven from a
     ///     background task while it still holds the candidate block's owner lock and the file has
     ///     not been deleted yet, at a deterministic point a concurrent <see cref="FileIndex.OpenAsync" />
@@ -153,46 +157,44 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
 
         var gate = new DeleteParkGate();
         Task<IReadOnlyList<CachedBlockDeletionResult>> deleteTask;
-        using (CacheDirectory.ParkBeforeDeleteForTest(gate.ParkOnce))
+        CacheDirectory.Hooks.BeforeDelete = gate.ParkOnce;
+        // Runs DeleteCached on a background thread so it can park mid-delete, still holding
+        // the candidate block's owner lock, while this thread races opens against it.
+        deleteTask = Task.Run(() => CacheDirectory.DeleteCached(_cacheDirectory));
+        await gate.Parked;
+
+        await using (var cacheOnlyOpen = await FileIndex.OpenAsync(Options(cacheOnly: true), CancellationToken.None))
         {
-            // Runs DeleteCached on a background thread so it can park mid-delete, still holding
-            // the candidate block's owner lock, while this thread races opens against it.
-            deleteTask = Task.Run(() => CacheDirectory.DeleteCached(_cacheDirectory));
-            await gate.Parked;
-
-            await using (var cacheOnlyOpen = await FileIndex.OpenAsync(Options(cacheOnly: true), CancellationToken.None))
-            {
-                var status = cacheOnlyOpen.Drives.Single();
-                Assert.AreEqual(DriveState.Failed, status.State);
-                Assert.AreEqual(DriveFailureKind.InUse, status.Failure?.Kind);
-                Assert.IsTrue(File.Exists(CanonicalPath),
-                    "a cache-only open racing a parked delete must not delete or adopt the slot");
-                CollectionAssert.AreEqual(canonicalBytesBeforeRace, await SharedFileReader.ReadAllBytesAsync(CanonicalPath),
-                    "the slot must be byte-identical while the delete still holds it");
-            }
-
-            string privateBlockPath;
-            await using (var fallbackOpen = await FileIndex.OpenAsync(Options(), CancellationToken.None))
-            {
-                var status = fallbackOpen.Drives.Single();
-                Assert.AreEqual(DriveState.Ready, status.State);
-                Assert.AreEqual(BlockSource.ProducedByScan, status.Block!.Source);
-                Assert.IsTrue(fallbackOpen.TryGetDriveOrdinal('T', out var ordinal));
-                privateBlockPath = fallbackOpen.CurrentSnapshot[ordinal].Block.Path;
-                StringAssert.Contains(privateBlockPath, "mftlib-private-");
-                Assert.AreNotEqual(CanonicalPath, privateBlockPath);
-                Assert.IsNotNull(fallbackOpen.Find(Path.Combine(_treeRoot, "Documents", "readme.md")));
-                CollectionAssert.AreEqual(canonicalBytesBeforeRace, await SharedFileReader.ReadAllBytesAsync(CanonicalPath),
-                    "a non-cache-only open racing a parked delete must fall back to a private block "
-                    + "instead of touching the slot the delete still holds");
-            }
-            Assert.IsFalse(File.Exists(privateBlockPath), "the fallback's private block is delete-on-close");
-
-            gate.Release();
-            var results = await deleteTask;
-            var result = results.Single();
-            Assert.AreEqual(CachedBlockDeletionOutcome.Deleted, result.Outcome);
+            var status = cacheOnlyOpen.Drives.Single();
+            Assert.AreEqual(DriveState.Failed, status.State);
+            Assert.AreEqual(DriveFailureKind.InUse, status.Failure?.Kind);
+            Assert.IsTrue(File.Exists(CanonicalPath),
+                "a cache-only open racing a parked delete must not delete or adopt the slot");
+            CollectionAssert.AreEqual(canonicalBytesBeforeRace, await SharedFileReader.ReadAllBytesAsync(CanonicalPath),
+                "the slot must be byte-identical while the delete still holds it");
         }
+
+        string privateBlockPath;
+        await using (var fallbackOpen = await FileIndex.OpenAsync(Options(), CancellationToken.None))
+        {
+            var status = fallbackOpen.Drives.Single();
+            Assert.AreEqual(DriveState.Ready, status.State);
+            Assert.AreEqual(BlockSource.ProducedByScan, status.Block!.Source);
+            Assert.IsTrue(fallbackOpen.TryGetDriveOrdinal('T', out var ordinal));
+            privateBlockPath = fallbackOpen.CurrentSnapshot[ordinal].Block.Path;
+            StringAssert.Contains(privateBlockPath, "mftlib-private-");
+            Assert.AreNotEqual(CanonicalPath, privateBlockPath);
+            Assert.IsNotNull(fallbackOpen.Find(Path.Combine(_treeRoot, "Documents", "readme.md")));
+            CollectionAssert.AreEqual(canonicalBytesBeforeRace, await SharedFileReader.ReadAllBytesAsync(CanonicalPath),
+                "a non-cache-only open racing a parked delete must fall back to a private block "
+                + "instead of touching the slot the delete still holds");
+        }
+        Assert.IsFalse(File.Exists(privateBlockPath), "the fallback's private block is delete-on-close");
+
+        gate.Release();
+        var results = await deleteTask;
+        var result = results.Single();
+        Assert.AreEqual(CachedBlockDeletionOutcome.Deleted, result.Outcome);
 
         Assert.IsFalse(File.Exists(CanonicalPath), "the clear completes once it releases the lock");
         Assert.IsTrue(File.Exists(BlockOwnerLock.LockPathFor(CanonicalPath)), "the lock file itself is never deleted");

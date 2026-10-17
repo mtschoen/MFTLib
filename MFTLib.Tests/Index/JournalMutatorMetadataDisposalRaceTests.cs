@@ -24,26 +24,27 @@ public class JournalMutatorMetadataDisposalRaceTests
         var rowCaptured = new TestGate();
         var releaseWriter = new TestGate();
         var disposeStarted = new TestGate();
-        writer._rowCapturedForTest = () =>
+        writer.Hooks.RowCaptured = () =>
         {
             rowCaptured.MarkEntered();
             releaseWriter.WaitForRelease();
         };
         var disposeWillWait = false;
-        block._disposeStartedForTest = willWait =>
+        block.Hooks.DisposeStarted = willWait =>
         {
             disposeWillWait = willWait;
             disposeStarted.MarkEntered();
         };
 
         var timestamp = new DateTime(2026, 9, 2, 6, 0, 0, DateTimeKind.Utc);
+        Task? disposeTask = null;
         var applyTask = Task.Run(() => mutator.Apply(snapshot[0],
             [CreateEntry(7, 6, "notes.txt", UsnReason.DataExtend, timestamp)], 7, 2000));
         try
         {
             Assert.IsTrue(rowCaptured.Entered.Wait(HangGuard * 3),
                 "the metadata write never ran inside the writer's access scope, so the race was never set up");
-            var disposeTask = Task.Run(block.Dispose);
+            disposeTask = Task.Run(block.Dispose);
             Assert.IsTrue(disposeStarted.Entered.Wait(HangGuard * 3), "dispose never began");
             Assert.IsTrue(disposeWillWait, "dispose did not see the metadata write's access scope, so it would unmap under it");
             releaseWriter.Release();
@@ -64,6 +65,16 @@ public class JournalMutatorMetadataDisposalRaceTests
         finally
         {
             releaseWriter.Release();
+            try
+            {
+                applyTask.Wait(HangGuard * 3);
+            }
+            catch (AggregateException exception) when (exception.InnerException is ObjectDisposedException)
+            {
+                // Expected for a step admitted after disposal began.
+            }
+
+            disposeTask?.Wait(HangGuard * 3);
             snapshot.ReleaseNowAsync().Wait(HangGuard * 3);
         }
     }

@@ -101,7 +101,7 @@ public class JournalMutatorFreedRowTests
         // The invalidation visits exactly the reused slot's deleted descendants (child-dir and
         // deeper.txt), never the whole block: work scales with the affected subtree, not with the
         // row count. A null links index would mean invalidation never ran, which -1 fails too.
-        Assert.AreEqual(2L, fixture.Block.DeletedChildren?._descendantsVisitedForTest ?? -1L);
+        Assert.AreEqual(2L, fixture.Block.DeletedChildren?.Observations.DescendantsVisited ?? -1L);
     }
 
     [DataTestMethod]
@@ -126,7 +126,7 @@ public class JournalMutatorFreedRowTests
         // A fresh slot has no deleted descendants, so invalidation visits nothing no matter how
         // many rows the block holds; the full-row scan this replaced visited every row for every
         // create. A null links index would mean invalidation never ran, which -1 fails too.
-        Assert.AreEqual(0L, fixture.Block.DeletedChildren?._descendantsVisitedForTest ?? -1L);
+        Assert.AreEqual(0L, fixture.Block.DeletedChildren?.Observations.DescendantsVisited ?? -1L);
         if (deleteRowFirst)
         {
             Assert.IsTrue(fixture.Block.Rows[(int)NotesRow].IsDeleted);
@@ -171,7 +171,7 @@ public class JournalMutatorFreedRowTests
         Assert.AreEqual(BlockLayout.DetachedParentRow, fixture.Block.Rows[40].ParentRow);
 
         // Nothing above ever had a deleted descendant to detach.
-        Assert.AreEqual(0L, fixture.Block.DeletedChildren?._descendantsVisitedForTest ?? -1L);
+        Assert.AreEqual(0L, fixture.Block.DeletedChildren?.Observations.DescendantsVisited ?? -1L);
     }
 
     static UsnJournalEntry EntryAt(uint record, UsnReason reason, string name, ulong parent,

@@ -65,7 +65,7 @@ public sealed class FileIndexEnumerateTests : IDisposable
         Assert.AreEqual("query", enumerateFailure.ParamName);
         Assert.AreEqual("query", searchFailure.ParamName);
         StringAssert.StartsWith(enumerateFailure.Message, "Unknown name match mode.");
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
     }
 
     [TestMethod]
@@ -76,7 +76,7 @@ public sealed class FileIndexEnumerateTests : IDisposable
         var count = index.Enumerate(new SearchQuery(null)).Count();
 
         Assert.IsTrue(count > 0);
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
     }
 
     /// <summary>
@@ -92,10 +92,10 @@ public sealed class FileIndexEnumerateTests : IDisposable
         using (var enumerator = index.Enumerate(new SearchQuery(null)).GetEnumerator())
         {
             Assert.IsTrue(enumerator.MoveNext());
-            Assert.AreEqual(1, release.OutstandingBorrowCount);
+            Assert.AreEqual(1, release.Hooks.OutstandingBorrowCount);
         }
 
-        Assert.AreEqual(0, release.OutstandingBorrowCount);
+        Assert.AreEqual(0, release.Hooks.OutstandingBorrowCount);
     }
 
     /// <summary>
@@ -127,14 +127,14 @@ public sealed class FileIndexEnumerateTests : IDisposable
 
         // Enumerate is cold: no rows scanned, no borrow taken.
         var enumerable = index.Enumerate(query);
-        Assert.AreEqual(0, release.OutstandingBorrowCount, "the call itself already scanned");
+        Assert.AreEqual(0, release.Hooks.OutstandingBorrowCount, "the call itself already scanned");
 
         var enumerator = enumerable.GetEnumerator();
-        Assert.AreEqual(0, release.OutstandingBorrowCount, "GetEnumerator already scanned");
+        Assert.AreEqual(0, release.Hooks.OutstandingBorrowCount, "GetEnumerator already scanned");
 
         // The first MoveNext yields the shallow candidate before the scan has visited every row.
         Assert.IsTrue(enumerator.MoveNext());
-        Assert.AreEqual(1, release.OutstandingBorrowCount, "the borrow was not held across yield");
+        Assert.AreEqual(1, release.Hooks.OutstandingBorrowCount, "the borrow was not held across yield");
         Assert.AreEqual("candidate-shallow.dat", enumerator.Current.Name);
 
         // Advancing to the remaining rows visits the deep candidate, which throws InvalidDataException.
@@ -149,7 +149,7 @@ public sealed class FileIndexEnumerateTests : IDisposable
         }
 
         enumerator.Dispose();
-        Assert.AreEqual(0, release.OutstandingBorrowCount);
+        Assert.AreEqual(0, release.Hooks.OutstandingBorrowCount);
     }
 
     /// <summary>
@@ -174,7 +174,7 @@ public sealed class FileIndexEnumerateTests : IDisposable
             // Expected
         }
 
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
     }
 
     [TestMethod]
@@ -216,7 +216,7 @@ public sealed class FileIndexEnumerateTests : IDisposable
             // Expected
         }
 
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
     }
 
     /// <summary>
@@ -288,7 +288,7 @@ public sealed class FileIndexEnumerateTests : IDisposable
         GC.WaitForPendingFinalizers();
         GC.Collect();
 
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
         await index.DisposeAsync();
     }
 
@@ -300,7 +300,7 @@ public sealed class FileIndexEnumerateTests : IDisposable
         var getEnumerator = typeof(System.Collections.IEnumerable).GetMethod(nameof(System.Collections.IEnumerable.GetEnumerator))!;
         var enumerator = (System.Collections.IEnumerator)getEnumerator.Invoke(enumerable, null)!;
         _ = enumerator.MoveNext();
-        Assert.AreEqual(1, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(1, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
         GC.KeepAlive(enumerator);
     }
 
@@ -330,7 +330,7 @@ public sealed class FileIndexEnumerateTests : IDisposable
             // Expected
         }
 
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
     }
 
     Task<FileIndex> OpenSyntheticIndexWithDeepCandidateAsync() =>

@@ -194,7 +194,7 @@ public class DirectDuplicateNameSieveTests
                 }
             }));
         Assert.AreEqual(cancelAfter, assembled);
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
     }
 
     [TestMethod]

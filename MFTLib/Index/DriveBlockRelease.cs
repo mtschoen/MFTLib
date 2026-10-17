@@ -39,25 +39,34 @@ internal sealed class DriveBlockRelease
     string? _deleteAtPathOverride;
     Action<string>? _deleteDiagnostics;
 
-    /// <summary>
-    ///     A test seam, held per instance rather than statically so two blocks never share it
-    ///     and enabling test parallelism does not have to answer for it. Invoked once the release
-    ///     flag is set and before the block is unmapped, which is the window a competing caller
-    ///     has to observe.
-    /// </summary>
-    internal Action? _releaseStartedForTest;
+    internal ReleaseHooks Hooks { get; }
 
-    /// <summary>
-    ///     A test seam, per instance for the same reason. Invoked by <see cref="FileEntry.Children" />
-    ///     once its borrow is counted and before it reads a row, outside every lock, so a test can
-    ///     hold the reader there while a release begins. The borrow is already counted when this
-    ///     runs, so the callback must not throw.
-    /// </summary>
-    internal Action? _readerAdmittedForTest;
+    /// <summary>Per-instance test hooks for this release state.</summary>
+    internal sealed class ReleaseHooks(DriveBlockRelease owner)
+    {
+        /// <summary>Invoked after borrows drain, before the block is unmapped, outside <see cref="_gate" />.</summary>
+        internal Action? ReleaseStarted;
+
+        /// <summary>Invoked by <see cref="FileEntry.Children" /> once its borrow is counted, before it reads a row.</summary>
+        internal Action? ReaderAdmitted;
+
+        /// <summary>How many readers are holding this block open right now, read under the owner's gate.</summary>
+        internal int OutstandingBorrowCount
+        {
+            get
+            {
+                lock (owner._gate)
+                {
+                    return owner._borrowCount;
+                }
+            }
+        }
+    }
 
     internal DriveBlockRelease(BlockFile block)
     {
         _block = block;
+        Hooks = new ReleaseHooks(this);
     }
 
     /// <summary>
@@ -74,18 +83,6 @@ internal sealed class DriveBlockRelease
     ///     still open.
     /// </summary>
     internal bool IsReleaseComplete => _completed.Task.IsCompleted;
-
-    /// <summary>How many readers are holding this block open right now.</summary>
-    internal int OutstandingBorrowCount
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _borrowCount;
-            }
-        }
-    }
 
     /// <summary>
     ///     Overrides the path deleted on release. A rescan renames the superseded block's file
@@ -194,7 +191,7 @@ internal sealed class DriveBlockRelease
     {
         try
         {
-            _releaseStartedForTest?.Invoke();
+            Hooks.ReleaseStarted?.Invoke();
             Unmap();
         }
         finally

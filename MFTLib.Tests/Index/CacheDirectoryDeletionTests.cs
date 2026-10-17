@@ -17,7 +17,11 @@ public class CacheDirectoryDeletionTests
     }
 
     [TestCleanup]
-    public void Cleanup() => Directory.Delete(_directory, recursive: true);
+    public void Cleanup()
+    {
+        CacheDirectory.Hooks.ResetToDefaults();
+        Directory.Delete(_directory, recursive: true);
+    }
 
     string CreateBlock(char letter, uint serial = 1)
     {
@@ -87,7 +91,7 @@ public class CacheDirectoryDeletionTests
     {
         var paths = new[] { CreateBlock('T'), CreateBlock('U'), CreateBlock('V') };
         string? replaced = null;
-        using var deletionScope = CacheDirectory.ParkBeforeDeleteForTest(path =>
+        CacheDirectory.Hooks.BeforeDelete = path =>
         {
             if (replaced is not null)
             {
@@ -97,7 +101,7 @@ public class CacheDirectoryDeletionTests
             replaced = path;
             File.Delete(path);
             Directory.CreateDirectory(path);
-        });
+        };
 
         var results = CacheDirectory.DeleteCached(_directory);
 
@@ -119,7 +123,7 @@ public class CacheDirectoryDeletionTests
     public void DeleteCached_AlreadyAbsentInventoryEntryIsAnIdempotentSuccess()
     {
         var paths = new[] { CreateBlock('T'), CreateBlock('U') };
-        using var deletionScope = CacheDirectory.ParkBeforeDeleteForTest(File.Delete);
+        CacheDirectory.Hooks.BeforeDelete = File.Delete;
 
         var results = CacheDirectory.DeleteCached(_directory);
 

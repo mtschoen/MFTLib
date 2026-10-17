@@ -1,8 +1,40 @@
+using MFTLib.Index;
 using MFTLib.NativeInterop;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
+
+internal static class WalkHooksReferenceFixture
+{
+    public static void Reference() => EnumerationWalkLimit.Hooks.WalkQueued = null;
+}
+
+internal static class DeletionHooksReferenceFixture
+{
+    public static void Reference() => CacheDirectory.Hooks.BeforeDelete = null;
+}
+
+internal static class VolumeDependenciesReferenceFixture
+{
+    public static void Reference() => IndexedDrive.Dependencies.VolumeSerialReader = null;
+}
+
+internal static class OpenDependenciesReferenceFixture
+{
+    public static object Reference() => FileEntry.Dependencies.OpenById;
+}
+
+internal static class QueryDependenciesReferenceFixture
+{
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    public static void Reference() => UsnJournalSettingsQuery.Dependencies.QueryOverride = null;
+}
+
+internal static class JournalHooksReferenceFixture
+{
+    public static void Reference() => JournalCheckpointCheck.Hooks.ObservationOverride = null;
+}
 
 internal static class NativeFieldReferenceFixture
 {

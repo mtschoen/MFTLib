@@ -46,13 +46,6 @@ internal sealed unsafe partial class BlockFile : IDisposable
     volatile bool _disposed;
 
     /// <summary>
-    ///     A test seam, held per instance rather than statically so two blocks never share it.
-    ///     Invoked once disposal has begun and before the view is unmapped, which is the window a
-    ///     racing writer has to observe.
-    /// </summary>
-    internal Action<bool>? _disposeStartedForTest;
-
-    /// <summary>
     ///     Reverse links from parent rows to their deleted children, built lazily on the first
     ///     <see cref="BlockWriter.InvalidateDeletedDescendants" /> and owned by the block so every
     ///     writer over it shares one copy: a watch creates a fresh <see cref="BlockWriter" /> per
@@ -68,8 +61,7 @@ internal sealed unsafe partial class BlockFile : IDisposable
         Length = length;
         _mappedFile = mappedFile;
         _view = view;
-        _flushViewRange = FlushViewRangeNatively;
-        _synchronizeViewRange = SynchronizeViewRangeNatively;
+        Hooks = new BlockHooks(this);
         byte* pointer = null;
         _view.SafeMemoryMappedViewHandle.AcquirePointer(ref pointer);
         _base = pointer;
@@ -301,7 +293,7 @@ internal sealed unsafe partial class BlockFile : IDisposable
             drained = _accessDrained;
         }
 
-        _disposeStartedForTest?.Invoke(drained is not null);
+        Hooks.DisposeStarted?.Invoke(drained is not null);
 
         // Invariant: blocks synchronously on the ManualResetEventSlim until in-flight writers drain, not on a Task.
         drained?.Wait();

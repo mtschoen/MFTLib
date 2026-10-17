@@ -18,7 +18,10 @@ partial class SampleHost
 
     internal void PauseBeforeExit(bool ownsWindow)
     {
-        if (IsUnattended() || !ownsWindow) return;
+        if (IsUnattended() || !ownsWindow)
+        {
+            return;
+        }
         _output.WriteLine(PausePrompt);
         _input.Read();
     }

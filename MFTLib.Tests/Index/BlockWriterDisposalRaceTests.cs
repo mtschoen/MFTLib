@@ -32,20 +32,21 @@ public class BlockWriterDisposalRaceTests
         var rowCaptured = new TestGate();
         var releaseWriter = new TestGate();
         var disposeStarted = new TestGate();
-        writer._rowCapturedForTest = () =>
+        writer.Hooks.RowCaptured = () =>
         {
             rowCaptured.MarkEntered();
             releaseWriter.WaitForRelease();
         };
-        block._disposeStartedForTest = _ => disposeStarted.MarkEntered();
+        block.Hooks.DisposeStarted = _ => disposeStarted.MarkEntered();
 
+        Task? disposeTask = null;
         var writeTask = Task.Run(() => writer.TryWriteRow(1, "report.pdf", FileColumns()));
         try
         {
             Assert.IsTrue(rowCaptured.Entered.Wait(HangGuard * 3),
                 "the writer never reached the row capture, so the race was never set up");
 
-            var disposeTask = Task.Run(() => block.Dispose());
+            disposeTask = Task.Run(() => block.Dispose());
             Assert.IsTrue(disposeStarted.Entered.Wait(HangGuard * 3),
                 "dispose never began, so the race was never set up");
             Assert.IsFalse(disposeTask.IsCompleted,
@@ -67,6 +68,8 @@ public class BlockWriterDisposalRaceTests
         {
             // A failed assertion must not leave the writer parked on a thread-pool thread.
             releaseWriter.Release();
+            writeTask.Wait(HangGuard * 3);
+            disposeTask?.Wait(HangGuard * 3);
         }
     }
 

@@ -11,15 +11,19 @@ namespace MFTLib.Index;
 [SupportedOSPlatform("windows")]
 static class UsnJournalSettingsQuery
 {
-    /// <summary>
-    ///     A test seam with no synchronization, which is safe only while the test host runs
-    ///     one test at a time. Same shape as <c>IndexedDrive._volumeSerialReaderOverride</c>.
-    /// </summary>
-    internal static Func<DriveKey, UsnJournalSettings>? _queryOverride;
+    internal static readonly QueryDependencies Dependencies = new();
+
+    /// <summary>Process-global test dependencies for querying USN journal settings.</summary>
+    internal sealed class QueryDependencies
+    {
+        internal Func<DriveKey, UsnJournalSettings>? QueryOverride;
+
+        internal void ResetToDefaults() => QueryOverride = null;
+    }
 
     public static UsnJournalSettings Query(DriveKey drive)
     {
-        if (_queryOverride is { } queryOverride)
+        if (Dependencies.QueryOverride is { } queryOverride)
         {
             return queryOverride(drive);
         }
@@ -43,20 +47,5 @@ static class UsnJournalSettingsQuery
         using var handle = UsnJournalVolumeInterop.OpenVolumeRoot(
             drive, "query its USN journal settings");
         return UsnJournalVolumeInterop.QueryJournalData(handle).ToSettings();
-    }
-
-    internal static IDisposable OverrideQueryForTest(Func<DriveKey, UsnJournalSettings> query)
-    {
-        var previous = _queryOverride;
-        _queryOverride = query;
-        return new RestoreQuery(previous);
-    }
-
-    sealed class RestoreQuery(Func<DriveKey, UsnJournalSettings>? previous) : IDisposable
-    {
-        public void Dispose()
-        {
-            _queryOverride = previous;
-        }
     }
 }

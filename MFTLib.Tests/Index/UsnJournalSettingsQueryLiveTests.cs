@@ -17,6 +17,10 @@ namespace MFTLib.Tests.Index;
 [DoNotParallelize]
 public class UsnJournalSettingsQueryLiveTests
 {
+    [TestCleanup]
+    [SupportedOSPlatform("windows")]
+    public void Cleanup() => UsnJournalSettingsQuery.Dependencies.ResetToDefaults();
+
     [TestMethod]
     [SupportedOSPlatform("windows")]
     public void Query_HostIsNotWindows_ThrowsPlatformNotSupported()
@@ -36,7 +40,7 @@ public class UsnJournalSettingsQueryLiveTests
     public void Query_OverrideInstalled_AnswersThePublicEntryAndNotThePlatformTakingQuery()
     {
         var overridden = new UsnJournalSettings { MaximumSize = 7, AllocationDelta = 3 };
-        using var restore = UsnJournalSettingsQuery.OverrideQueryForTest(_ => overridden);
+        UsnJournalSettingsQuery.Dependencies.QueryOverride = _ => overridden;
 
         Assert.AreEqual(overridden, UsnJournalSettingsQuery.Query('C'));
         Assert.ThrowsException<PlatformNotSupportedException>(

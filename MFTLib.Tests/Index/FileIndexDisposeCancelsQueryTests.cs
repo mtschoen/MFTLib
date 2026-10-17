@@ -177,7 +177,7 @@ public sealed class FileIndexDisposeCancelsQueryTests : IDisposable
                 released.Task.Wait();
             };
             index.Hooks.ReaderAdmitted = holdTheReader;
-            index.CurrentSnapshot[0].ReleaseState._readerAdmittedForTest = holdTheReader;
+            index.CurrentSnapshot[0].ReleaseState.Hooks.ReaderAdmitted = holdTheReader;
             index.Hooks.LifecycleGatesTakenForDisposal = () => cancellationDelivered.TrySetResult();
 
             var reader = Task.Run(() => read(index, root));

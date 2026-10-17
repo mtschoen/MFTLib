@@ -215,28 +215,15 @@ public static class CacheDirectory
         return results;
     }
 
-    /// <summary>
-    ///     A test seam with no synchronization, safe only while the test host runs one test at a
-    ///     time for the class that installs it. Invoked after a candidate block's owner lock is
-    ///     taken and before the file is deleted, so a test can park a delete mid-flight while
-    ///     still holding the lock and observe how a concurrent <see cref="FileIndex.OpenAsync" />
-    ///     over the same slot behaves. Mirrors <see cref="JournalCheckpointCheck._journalOverride" />.
-    /// </summary>
-    internal static Action<string>? _beforeDeleteForTest;
+    internal static readonly DeletionHooks Hooks = new();
 
-    internal static IDisposable ParkBeforeDeleteForTest(Action<string> beforeDelete)
+    /// <summary>Process-global test hooks for cache directory deletion.</summary>
+    internal sealed class DeletionHooks
     {
-        var previous = _beforeDeleteForTest;
-        _beforeDeleteForTest = beforeDelete;
-        return new RestoreBeforeDelete(previous);
-    }
+        /// <summary>Invoked with the owner lock held, before File.Delete.</summary>
+        internal Action<string>? BeforeDelete;
 
-    sealed class RestoreBeforeDelete(Action<string>? previous) : IDisposable
-    {
-        public void Dispose()
-        {
-            _beforeDeleteForTest = previous;
-        }
+        internal void ResetToDefaults() => BeforeDelete = null;
     }
 
     static CachedBlockDeletionResult DeleteCachedFile(CachedBlockFile file)
@@ -247,7 +234,7 @@ public static class CacheDirectory
             return new CachedBlockDeletionResult(file, CachedBlockDeletionOutcome.InUse, null);
         }
 
-        _beforeDeleteForTest?.Invoke(file.Path);
+        Hooks.BeforeDelete?.Invoke(file.Path);
 
         try
         {

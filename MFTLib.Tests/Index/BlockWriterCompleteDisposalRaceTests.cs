@@ -25,24 +25,25 @@ public class BlockWriterCompleteDisposalRaceTests
         var releaseComplete = new TestGate();
         var disposeStarted = new TestGate();
         var disposeWillWait = false;
-        writer._completeAccessTakenForTest = () =>
+        writer.Hooks.CompleteAccessTaken = () =>
         {
             accessTaken.MarkEntered();
             releaseComplete.WaitForRelease();
         };
-        block._disposeStartedForTest = willWait =>
+        block.Hooks.DisposeStarted = willWait =>
         {
             disposeWillWait = willWait;
             disposeStarted.MarkEntered();
         };
 
+        Task? disposeTask = null;
         var completeTask = Task.Run(() => writer.Complete(Moment, null));
         try
         {
             Assert.IsTrue(accessTaken.Entered.Wait(HangGuard * 3),
                 "Complete never took its access, so the race was never set up");
 
-            var disposeTask = Task.Run(() => block.Dispose());
+            disposeTask = Task.Run(() => block.Dispose());
             Assert.IsTrue(disposeStarted.Entered.Wait(HangGuard * 3), "dispose never began, so the race was never set up");
             Assert.IsTrue(disposeWillWait,
                 "dispose found no in-flight access to wait for, so Complete was not holding the block");
@@ -57,6 +58,8 @@ public class BlockWriterCompleteDisposalRaceTests
         finally
         {
             releaseComplete.Release();
+            completeTask.Wait(HangGuard * 3);
+            disposeTask?.Wait(HangGuard * 3);
         }
     }
 }

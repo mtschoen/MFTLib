@@ -12,6 +12,9 @@ namespace MFTLib.Tests.Index;
 [DoNotParallelize]
 public class FileEntryIncarnationTests
 {
+    [TestCleanup]
+    public void Cleanup() => FileEntry.Dependencies.ResetToDefaults();
+
     const uint DirectoryRow = 6;
     const uint ChildRow = 7;
     const uint NewChildRow = 8;
@@ -149,11 +152,11 @@ public class FileEntryIncarnationTests
         await using var fixture = SeededFixture();
         var retained = FileEntry.Create(fixture.Snapshot[0], DirectoryRow);
         var calls = new List<(uint Record, ushort Sequence)>();
-        using var restore = FileEntry.OverrideOpenByIdForTest((_, record, sequence, _) =>
+        FileEntry.Dependencies.OpenById = (_, record, sequence, _) =>
         {
             calls.Add((record, sequence));
             return new MemoryBackedFileStream();
-        });
+        };
 
         using (retained.Open(FileAccess.Read))
         {
@@ -223,11 +226,11 @@ public class FileEntryIncarnationTests
         await using var fixture = SeededFixture();
         var retained = FileEntry.Create(fixture.Snapshot[0], DirectoryRow);
         var calls = new List<ushort>();
-        using var restore = FileEntry.OverrideOpenByIdForTest((_, _, sequence, _) =>
+        FileEntry.Dependencies.OpenById = (_, _, sequence, _) =>
         {
             calls.Add(sequence);
             return new MemoryBackedFileStream();
-        });
+        };
 
         fixture.Apply([Record(DirectoryRow, UsnReason.FileCreate | UsnReason.Close, "documents", 5,
             DirectorySequence, FileAttributes.Directory)]);
@@ -316,11 +319,11 @@ public class FileEntryIncarnationTests
         fixture.Block.SequenceNumbers[(int)ChildRow] = 11;
         var retained = FileEntry.Create(fixture.Snapshot[0], ChildRow);
         var calls = new List<ushort>();
-        using var restore = FileEntry.OverrideOpenByIdForTest((_, _, sequence, _) =>
+        FileEntry.Dependencies.OpenById = (_, _, sequence, _) =>
         {
             calls.Add(sequence);
             return new MemoryBackedFileStream();
-        });
+        };
 
         var changes = fixture.Apply([
             Record(ChildRow, UsnReason.FileDelete | UsnReason.Close, "notes.txt", DirectoryRow, 10),
@@ -371,11 +374,11 @@ public class FileEntryIncarnationTests
         await using var fixture = SeededFixture();
         fixture.Block.SequenceNumbers[(int)ChildRow] = ushort.MaxValue;
         var calls = new List<ushort>();
-        using var restore = FileEntry.OverrideOpenByIdForTest((_, _, sequence, _) =>
+        FileEntry.Dependencies.OpenById = (_, _, sequence, _) =>
         {
             calls.Add(sequence);
             return new MemoryBackedFileStream();
-        });
+        };
         var retained = FileEntry.Create(fixture.Snapshot[0], ChildRow);
 
         fixture.Apply([

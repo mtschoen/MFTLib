@@ -28,7 +28,7 @@ public class BlockFileFlushDisposalRaceTests
     {
         using var builder = new SyntheticBlockBuilder();
         var block = builder.OpenForWriting();
-        block._flushRangeBytes = Environment.SystemPageSize;
+        block.Hooks.FlushRangeBytes = Environment.SystemPageSize;
 
         var held = new TestGate();
         var releaseFlush = new TestGate();
@@ -43,7 +43,7 @@ public class BlockFileFlushDisposalRaceTests
             }
         }
 
-        block._flushViewRange = (_, _) =>
+        block.Hooks.FlushViewRange = (_, _) =>
         {
             if (holdInsideRangeFlush)
             {
@@ -52,7 +52,7 @@ public class BlockFileFlushDisposalRaceTests
 
             return 0;
         };
-        block._synchronizeViewRange = (_, _, _) =>
+        block.Hooks.SynchronizeViewRange = (_, _, _) =>
         {
             if (holdInsideRangeFlush)
             {
@@ -62,12 +62,13 @@ public class BlockFileFlushDisposalRaceTests
             return 0;
         };
         var disposeWillWait = false;
-        block._disposeStartedForTest = willWait =>
+        block.Hooks.DisposeStarted = willWait =>
         {
             disposeWillWait = willWait;
             disposeStarted.MarkEntered();
         };
 
+        Task? disposeTask = null;
         var flushTask = Task.Run(() => block.Flush(_ =>
         {
             if (!holdInsideRangeFlush)
@@ -79,7 +80,7 @@ public class BlockFileFlushDisposalRaceTests
         {
             Assert.IsTrue(held.Entered.Wait(HangGuard * 3), "the flush never reached the hold point, so the race was never set up");
 
-            var disposeTask = Task.Run(() => block.Dispose());
+            disposeTask = Task.Run(() => block.Dispose());
             Assert.IsTrue(disposeStarted.Entered.Wait(HangGuard * 3), "dispose never began, so the race was never set up");
             Assert.IsTrue(disposeWillWait,
                 "dispose found no in-flight access to wait for, so a flush was not holding the block");
@@ -93,6 +94,8 @@ public class BlockFileFlushDisposalRaceTests
         finally
         {
             releaseFlush.Release();
+            flushTask.Wait(HangGuard * 3);
+            disposeTask?.Wait(HangGuard * 3);
         }
     }
 }

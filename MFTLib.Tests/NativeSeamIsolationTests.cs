@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
+using MFTLib.Index;
 using MFTLib.NativeInterop;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -50,6 +51,12 @@ public class NativeSeamIsolationTests
     [DataRow(typeof(ProductionResetReferenceFixture), "LaunchDependencies.ResetToDefaults")]
     [DataRow(typeof(LaunchOwnerReferenceFixture), "BrokerLauncher.Dependencies")]
     [DataRow(typeof(LaunchMemberReferenceFixture), "LaunchDependencies.StartProcess")]
+    [DataRow(typeof(WalkHooksReferenceFixture), "EnumerationWalkLimit.Hooks")]
+    [DataRow(typeof(DeletionHooksReferenceFixture), "CacheDirectory.Hooks")]
+    [DataRow(typeof(VolumeDependenciesReferenceFixture), "IndexedDrive.Dependencies")]
+    [DataRow(typeof(OpenDependenciesReferenceFixture), "FileEntry.Dependencies")]
+    [DataRow(typeof(QueryDependenciesReferenceFixture), "UsnJournalSettingsQuery.Dependencies")]
+    [DataRow(typeof(JournalHooksReferenceFixture), "JournalCheckpointCheck.Hooks")]
     [DataRow(typeof(DiagnosticsOwnerReferenceFixture), "BrokerDiagnostics.Dependencies")]
     [DataRow(typeof(DiagnosticsMemberReferenceFixture), "DiagnosticsDependencies.InstallWriter")]
     public void Detector_ReportsUnmarkedReferences(Type fixture, string member)
@@ -159,7 +166,13 @@ public class NativeSeamIsolationTests
         type == typeof(FileUtilities.VolumeHandleHooks) ||
         type == typeof(Kernel32.Win32Hooks) ||
         type == typeof(BrokerLauncher.LaunchDependencies) ||
-        type == typeof(BrokerDiagnostics.DiagnosticsDependencies);
+        type == typeof(BrokerDiagnostics.DiagnosticsDependencies) ||
+        type == typeof(EnumerationWalkLimit.WalkHooks) ||
+        type == typeof(CacheDirectory.DeletionHooks) ||
+        type == typeof(IndexedDrive.VolumeDependencies) ||
+        type == typeof(FileEntry.OpenDependencies) ||
+        type == typeof(UsnJournalSettingsQuery.QueryDependencies) ||
+        type == typeof(JournalCheckpointCheck.JournalHooks);
 
     static bool IsNativeSeam(MemberInfo member)
     {

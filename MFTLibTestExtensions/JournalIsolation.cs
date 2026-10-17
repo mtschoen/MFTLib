@@ -65,12 +65,12 @@ public static class JournalIsolation
         ArgumentNullException.ThrowIfNull(journal);
         return ProcessGlobalScope.Acquire("A synthetic journal-window override", () =>
         {
-            Volatile.Write(ref JournalCheckpointCheck._journalOverride, drive =>
+            JournalCheckpointCheck.Hooks.ObservationOverride = drive =>
                 journal(drive) is { } window
                     ? new JournalWindow(window.JournalIdentifier, window.FirstUsn,
                         window.NextUsn, window.AllocationDelta, window.MaximumSize)
-                    : null);
-            return () => Volatile.Write(ref JournalCheckpointCheck._journalOverride, null);
+                    : null;
+            return () => JournalCheckpointCheck.Hooks.ObservationOverride = null;
         });
     }
 }

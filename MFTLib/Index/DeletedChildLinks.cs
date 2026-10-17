@@ -18,21 +18,17 @@ internal sealed class DeletedChildLinks
 {
     readonly Dictionary<uint, HashSet<uint>> _childrenByParent = [];
 
-    /// <summary>
-    ///     A test seam, held per instance. Counts the deleted rows <see cref="DetachDescendants" />
-    ///     has visited (every visit detaches the row), so a test can prove invalidation work scales
-    ///     with the affected descendants of a reused slot and not with the block's row count. The
-    ///     build pass is not counted: it runs once per block, not once per create.
-    /// </summary>
-    internal long _descendantsVisitedForTest;
+    internal LinkObservations Observations { get; } = new();
 
-    /// <summary>
-    ///     A test seam, held per instance. Counts the sibling entries <see cref="RemoveDeletedRow" />
-    ///     examines while looking for the row to unlink (one hashed lookup per call that reaches its
-    ///     parent's set), so a test can prove a slot reuse costs one
-    ///     examination however many deleted siblings share its parent.
-    /// </summary>
-    internal long _siblingsExaminedForTest;
+    /// <summary>Per-instance work counters for this deleted-links table.</summary>
+    internal sealed class LinkObservations
+    {
+        /// <summary>Deleted rows <see cref="DetachDescendants" /> has visited; the build pass is not counted.</summary>
+        internal long DescendantsVisited;
+
+        /// <summary>Sibling entries <see cref="RemoveDeletedRow" /> examines while unlinking a row.</summary>
+        internal long SiblingsExamined;
+    }
 
     /// <summary>
     ///     Indexes every deleted, non-detached row under its parent in one pass over the written
@@ -86,7 +82,7 @@ internal sealed class DeletedChildLinks
             return;
         }
 
-        _siblingsExaminedForTest++;
+        Observations.SiblingsExamined++;
         if (children.Remove(rowIndex) && children.Count == 0)
         {
             _childrenByParent.Remove(parentRow);
@@ -127,7 +123,7 @@ internal sealed class DeletedChildLinks
                 }
 
                 block.Rows[(int)child].ParentRow = BlockLayout.DetachedParentRow;
-                _descendantsVisitedForTest++;
+                Observations.DescendantsVisited++;
                 pending.Push(child);
             }
         }

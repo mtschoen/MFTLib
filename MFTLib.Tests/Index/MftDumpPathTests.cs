@@ -11,6 +11,9 @@ namespace MFTLib.Tests.Index;
 [DoNotParallelize]
 public class MftDumpPathTests
 {
+    [TestCleanup]
+    public void Cleanup() => FileEntry.Dependencies.ResetToDefaults();
+
     const string BackslashRoot = "dump:\\D";
 
     [TestMethod]
@@ -92,8 +95,8 @@ public class MftDumpPathTests
     [TestMethod]
     public async Task Open_AnEntryOfADumpRefusesBeforeAnyByIdOrPathSeam()
     {
-        using var restore = FileEntry.OverrideOpenByIdForTest((_, _, _, _) =>
-            throw new AssertFailedException("A dump entry must not reach the by-id open."));
+        FileEntry.Dependencies.OpenById = (_, _, _, _) =>
+            throw new AssertFailedException("A dump entry must not reach the by-id open.");
         await using var index = await MftDumpIndexes.OpenAsync();
 
         foreach (var path in new[] { "dump:/D", "dump:/D/documents", "dump:/D/documents/Notes.txt" })

@@ -4,6 +4,17 @@ namespace MFTLib.Index;
 
 public readonly partial record struct FileEntry
 {
+    internal static readonly OpenDependencies Dependencies = new();
+
+    /// <summary>Process-global test dependencies for opening MFT entries by file id.</summary>
+    internal sealed class OpenDependencies
+    {
+        // aislop-ignore-next-line jb/MemberHidesStaticFromOuterClass
+        internal Func<string, uint, ushort, FileAccess, FileStream> OpenById = DefaultOpenById;
+
+        internal void ResetToDefaults() => OpenById = DefaultOpenById;
+    }
+
     /// <summary>
     ///     Opens the underlying file. Enumeration entries open by path. For MFT entries,
     ///     the route is the NTFS file id opened against a handle on the target volume,
@@ -37,7 +48,7 @@ public readonly partial record struct FileEntry
                 $"{this}: Drive block {driveBlock.Drive} has no configured root directory to open by file id.");
         }
 
-        return _openById(anyPathOnVolume, RowIndex, _sequenceNumber, access);
+        return Dependencies.OpenById(anyPathOnVolume, RowIndex, _sequenceNumber, access);
     }
 
     static FileStream DefaultOpenById(string anyPathOnVolume, uint recordNumber, ushort sequenceNumber,
@@ -58,33 +69,5 @@ public readonly partial record struct FileEntry
         }
 
         return WindowsFileById.Open(anyPathOnVolume, recordNumber, sequenceNumber, access);
-    }
-
-    /// <summary>
-    ///     A test seam with no synchronization, which is safe only while the test host runs one
-    ///     test at a time. <c>IndexedDrive._volumeSerialReaderOverride</c> is the same seam in the
-    ///     same shape, so enabling test parallelism has to answer for both together.
-    /// </summary>
-    static Func<string, uint, ushort, FileAccess, FileStream> _openById = DefaultOpenById;
-
-    /// <summary>
-    ///     Replaces the by-id open seam for the duration of a test. Restores the previous
-    ///     delegate on <see cref="IDisposable.Dispose" />, the same shape as
-    ///     <c>IndexedDrive.OverrideVolumeSerialReaderForTest</c>.
-    /// </summary>
-    internal static IDisposable OverrideOpenByIdForTest(
-        Func<string, uint, ushort, FileAccess, FileStream> replacement)
-    {
-        var previous = _openById;
-        _openById = replacement;
-        return new RestoreOpenById(previous);
-    }
-
-    sealed class RestoreOpenById(Func<string, uint, ushort, FileAccess, FileStream> previous) : IDisposable
-    {
-        public void Dispose()
-        {
-            _openById = previous;
-        }
     }
 }
