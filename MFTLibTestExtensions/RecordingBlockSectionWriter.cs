@@ -7,11 +7,9 @@ namespace MFTLibTestExtensions;
 ///     Writes each scan through the production row writer into the section the client created, and
 ///     remembers the last section and scan options.
 /// </summary>
-internal sealed class RecordingBlockSectionWriter(Func<string, BlockFile?>? resolveSection = null)
-    : IBlockSectionWriter, IDisposable
+internal sealed class RecordingBlockSectionWriter(Func<string, BlockFile?>? resolveSection = null,
+    TimeProvider? timeProvider = null) : IBlockSectionWriter, IDisposable
 {
-    static readonly DateTime CompletedUtc = new(2026, 9, 3, 0, 0, 0, DateTimeKind.Utc);
-
     public BlockFile Block { get; } = BlockFile.Create(new BlockFileCreateOptions
     {
         Path = Path.Combine(Path.GetTempPath(), $"mft-block-section-{Guid.NewGuid():N}.bin"),
@@ -32,7 +30,7 @@ internal sealed class RecordingBlockSectionWriter(Func<string, BlockFile?>? reso
         LastSectionName = sectionName;
         LastScanOptions = scanOptions;
         return MftBlockScan.WriteToBlock(resolveSection?.Invoke(sectionName) ?? Block,
-            new BlockStamp(cursor, () => CompletedUtc), batches, scanOptions, reporting with { Operation = null },
+            new BlockStamp(cursor, timeProvider ?? TimeProvider.System), batches, scanOptions, reporting with { Operation = null },
             cancellationToken);
     }
 

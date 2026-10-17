@@ -9,43 +9,25 @@ namespace MFTLib;
 ///     Cached blocks carry the journal cursor armed before scanning; uncached blocks carry zero.
 ///     Concurrent scans divide the process's parse threads through a shared <see cref="ParseThreadAllocator" />.
 /// </summary>
-internal sealed class LocalMftBlockProducer
+internal sealed class LocalMftBlockProducer(TimeProvider timeProvider, MftScanOptions? scanOptions = null,
+    LocalMftBlockProducer.Seams? seams = null, ParseThreadAllocator? allocator = null)
 {
     internal static readonly ParseThreadAllocator SharedAllocator = new(Environment.ProcessorCount);
 
-    readonly MftScanOptions? _scanOptions;
-    readonly Seams _seams;
-    readonly ParseThreadAllocator _allocator;
+    readonly Seams _seams = seams ?? Seams.Live;
+    readonly ParseThreadAllocator _allocator = allocator ?? SharedAllocator;
 
-    /// <summary>Builds a producer over the live volume seams.</summary>
-    /// <param name="scanOptions">Retention, freed-record inclusion and progress for every scan.</param>
-    internal LocalMftBlockProducer(MftScanOptions? scanOptions = null)
-        : this(scanOptions, Seams.Live)
-    {
-    }
-
-    /// <summary>Builds a producer over the given volume seams and parse-thread allocator.</summary>
-    internal LocalMftBlockProducer(MftScanOptions? scanOptions, Seams seams,
-        ParseThreadAllocator? allocator = null)
-    {
-        _scanOptions = scanOptions;
-        _seams = seams;
-        _allocator = allocator ?? SharedAllocator;
-    }
-
-    /// <summary>The native calls and clock a scan uses; tests replace them.</summary>
+    /// <summary>The native calls a scan uses; tests replace them.</summary>
     /// <param name="QueryVolumeInformation">Reads the volume geometry that sizes the block.</param>
     /// <param name="ScanDriveRecordBatches">Streams the records of a drive, the in-use ones unless the scan options ask for freed records too.</param>
-    /// <param name="Clock">Supplies the completion time stamped into the block.</param>
     /// <param name="QueryCursor">Arms the live journal cursor before a cached scan.</param>
     internal readonly record struct Seams(
         Func<string, NtfsVolumeInformation> QueryVolumeInformation,
         MftRecordBatchSource ScanDriveRecordBatches,
-        Func<DateTime> Clock,
         UsnJournalCursorQuery QueryCursor)
     {
         internal static Seams Live { get; } = new(
-            LiveVolumeSources.QueryVolumeInfo, LiveVolumeSources.ScanDriveRecordBatches, () => DateTime.UtcNow,
+            LiveVolumeSources.QueryVolumeInfo, LiveVolumeSources.ScanDriveRecordBatches,
             LiveVolumeSources.QueryCursor);
     }
 
@@ -67,7 +49,7 @@ internal sealed class LocalMftBlockProducer
     MftBlockProduceResult Produce(MftBlockProduceRequest request, ParseThreadAllowance allowance,
         CancellationToken cancellationToken)
     {
-        var options = _scanOptions ?? new MftScanOptions();
+        var options = scanOptions ?? new MftScanOptions();
         var drive = request.Drive.ToString();
         BlockFile? block = BlockFile.Create(MftBlockCapacity.CreateOptions(
             _seams.QueryVolumeInformation(drive), request.BlockPath, request.VolumeSerial, request.DeleteOnClose,
@@ -81,7 +63,7 @@ internal sealed class LocalMftBlockProducer
             long recordsOmitted = 0;
             var batches = _seams.ScanDriveRecordBatches(drive, allowance, reporting, options,
                 count => recordsOmitted += count, cancellationToken);
-            var result = MftBlockScan.WriteToBlock(block, new BlockStamp(cursor, _seams.Clock), batches, options,
+            var result = MftBlockScan.WriteToBlock(block, new BlockStamp(cursor, timeProvider), batches, options,
                 reporting, cancellationToken);
             BrokerMftBlockProducer.ValidateBlock(block, request.VolumeSerial, cursor, request.CacheTag);
             var produced = new MftBlockProduceResult(block, cursor.JournalIdentifier, cursor.NextUsn,

@@ -24,13 +24,13 @@ public class LocalMftCacheFreshnessTests
             Directory.CreateDirectory(directories.TreeRoot);
             Directory.CreateDirectory(directories.CacheDirectory);
             var scans = 0;
-            var source = new LocalMftBlockProducer(null, new LocalMftBlockProducer.Seams(
+            var source = new LocalMftBlockProducer(TimeProvider.System, null, new LocalMftBlockProducer.Seams(
                 _ => new NtfsVolumeInformation(1024 * 1000, 1024),
                 (_, _, _, _, _, _) =>
                 {
                     Interlocked.Increment(ref scans);
                     return [[new MftRecord(5, 5, new MftRecordFields(3), ".")]];
-                }, () => new DateTime(2026, 10, 6, 0, 0, 0, DateTimeKind.Utc),
+                },
                 _ => new UsnJournalCursor(99, 2000))).CreateIndexSource();
             var options = new FileIndexOptions
             {

@@ -21,4 +21,7 @@ public static class FileIndexTestAccess
         return index.ApplyJournalEntries(drive, entries.ToProduction(), cursor.JournalIdentifier,
             cursor.NextUsn);
     }
+
+    internal static FileIndexOptions WithTimeProvider(FileIndexOptions options, TimeProvider timeProvider) =>
+        options with { TimeProvider = timeProvider };
 }

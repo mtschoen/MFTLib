@@ -36,7 +36,7 @@ public static partial class MftIndexSources
         }
 
         var identity = new MftDumpSourceIdentity(filePath, drive);
-        var producer = new MftDumpBlockProducer(identity.DumpFilePath);
+        var producer = new MftDumpBlockProducer(identity.DumpFilePath, TimeProvider.System);
         return new MftIndexSource(producer.ProduceAsync, dumpIdentity: identity);
     }
 }

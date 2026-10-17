@@ -31,12 +31,13 @@ internal static class MftBlockScan
         var result = MftBlockRowWriter.WriteBatches(writer, batches, scanOptions, reporting.Progress, cancellationToken);
         writer.SetJournalCursor(stamp.Cursor.JournalIdentifier, stamp.Cursor.NextUsn);
         var operation = reporting.Operation;
-        writer.Complete(stamp.Clock(), operation is null ? null : _ => operation.Processing(FlushStep));
+        writer.Complete(stamp.TimeProvider.GetUtcNow().UtcDateTime,
+            operation is null ? null : _ => operation.Processing(FlushStep));
         return result;
     }
 }
 
 /// <summary>What a completed block records about when and where in the journal it was written.</summary>
 /// <param name="Cursor">The journal cursor armed before the scan; zero for a dump or uncached local scan.</param>
-/// <param name="Clock">Read once, after the last batch is written, for the completion time stamped into the block header.</param>
-internal readonly record struct BlockStamp(UsnJournalCursor Cursor, Func<DateTime> Clock);
+/// <param name="TimeProvider">Read once, after the last batch is written, for the completion time stamped into the block header.</param>
+internal readonly record struct BlockStamp(UsnJournalCursor Cursor, TimeProvider TimeProvider);

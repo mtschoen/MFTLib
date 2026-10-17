@@ -23,15 +23,18 @@ internal sealed class MftDumpBlockProducer
     const int RecordBatchSize = 4096;
 
     readonly string _dumpFilePath;
+    readonly TimeProvider _timeProvider;
     readonly MftDumpRecordSource? _readRecords;
 
     /// <summary>Builds a producer for one dump file.</summary>
     /// <param name="dumpFilePath">The full path of the dump, opened anew by each request.</param>
+    /// <param name="timeProvider">Supplies the completion time stamped into the block.</param>
     /// <param name="readRecords">Reads the opened input's records; null parses the file.</param>
-    internal MftDumpBlockProducer(string dumpFilePath, MftDumpRecordSource? readRecords = null)
+    internal MftDumpBlockProducer(string dumpFilePath, TimeProvider timeProvider, MftDumpRecordSource? readRecords = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dumpFilePath);
         _dumpFilePath = dumpFilePath;
+        _timeProvider = timeProvider;
         _readRecords = readRecords;
     }
 
@@ -78,7 +81,7 @@ internal sealed class MftDumpBlockProducer
             var records = new MftDumpRecordValidation(block).Validate(Remaining(batches, hasBatch));
 
             // A dump has no journal: the zero cursor says nothing can be resumed from this block.
-            var written = MftBlockScan.WriteToBlock(block, new BlockStamp(default, () => DateTime.UtcNow), records,
+            var written = MftBlockScan.WriteToBlock(block, new BlockStamp(default, _timeProvider), records,
                 new MftScanOptions(), new BlockWriteReporting(TransferProgress(request), null), cancellationToken);
 
             var produced = new MftBlockProduceResult(block, JournalIdentifier: 0, NextUsn: 0,

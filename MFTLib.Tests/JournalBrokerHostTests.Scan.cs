@@ -170,7 +170,7 @@ public partial class JournalBrokerHostTests
         using (lifetime)
         {
             var cursor = new UsnJournalCursor(7, 100);
-            var written = new RealBlockSectionWriter().Write(sectionName, cursor,
+            var written = new RealBlockSectionWriter(TimeProvider.System).Write(sectionName, cursor,
                 [[new MftRecord(5, 5, new MftRecordFields(3), "."),
                     new MftRecord(100, 5, new MftRecordFields(1, FileAttributes.Normal, 2048), "nöte.txt")]],
                 new MftScanOptions(), default, CancellationToken.None);

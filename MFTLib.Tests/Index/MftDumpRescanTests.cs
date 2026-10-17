@@ -116,7 +116,7 @@ public class MftDumpRescanTests
     {
         var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
         using var cancellation = new CancellationTokenSource();
-        var producer = new MftDumpBlockProducer(path, CancelOnTheSecondScan(cancellation));
+        var producer = new MftDumpBlockProducer(path, TimeProvider.System, CancelOnTheSecondScan(cancellation));
         await using var index = await OpenAsync(Source(producer, path));
 
         await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(
@@ -132,7 +132,7 @@ public class MftDumpRescanTests
         var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
         var inputs = new ConcurrentBag<MftDumpInput>();
         using var bothOpened = new CountdownEvent(2);
-        var producer = new MftDumpBlockProducer(path, HoldUntilBothOpened(inputs, bothOpened));
+        var producer = new MftDumpBlockProducer(path, TimeProvider.System, HoldUntilBothOpened(inputs, bothOpened));
         var source = Source(producer, path);
 
         var indexes = await Task.WhenAll(OpenAsync(source), OpenAsync(source));

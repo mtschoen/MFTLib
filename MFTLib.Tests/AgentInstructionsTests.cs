@@ -113,6 +113,12 @@ public class AgentInstructionsTests
         foreach (var path in paths)
         {
             var text = RepositoryFiles.Read(path);
+            if (path.StartsWith("MFTLib/", StringComparison.Ordinal))
+            {
+                Assert.IsFalse(Regex.IsMatch(text, @"Func<DateTime>|=> DateTime\.UtcNow"),
+                    $"{path}: block completion must use TimeProvider.");
+            }
+
             if (path.EndsWith(".md", StringComparison.OrdinalIgnoreCase) &&
                 Regex.IsMatch(text, @"(?i)no library " + "default|default-cache " + "guard"))
             {

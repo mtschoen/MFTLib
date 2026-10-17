@@ -193,8 +193,8 @@ public class FreedRowsIndexTests
     Task<FileIndex> OpenAsync(bool includeFreed)
     {
         var seams = new LocalMftBlockProducer.Seams(_ => Volume,
-            (_, _, _, scanOptions, _, _) => Scan(scanOptions), () => FixedMoment, _ => default);
-        var producer = new LocalMftBlockProducer(new MftScanOptions { IncludeFreed = includeFreed }, seams);
+            (_, _, _, scanOptions, _, _) => Scan(scanOptions), _ => default);
+        var producer = new LocalMftBlockProducer(TimeProvider.System, new MftScanOptions { IncludeFreed = includeFreed }, seams);
         return FileIndex.OpenAsync(new FileIndexOptions
         {
             Drives = [new IndexedDrive('T', _directories.TreeRoot, 0x0BADF00D)],

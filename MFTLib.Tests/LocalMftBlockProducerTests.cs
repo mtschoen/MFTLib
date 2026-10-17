@@ -1,6 +1,7 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
+using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -10,7 +11,6 @@ namespace MFTLib.Tests;
 public class LocalMftBlockProducerTests
 {
     static readonly NtfsVolumeInformation Volume = new(1024 * 1000, 1024);
-    static readonly DateTime FixedMoment = new(2026, 10, 6, 12, 0, 0, DateTimeKind.Utc);
     static readonly CacheTag RequestedTag = new("LOCL", 3);
 
     OwnedIndexDirectories _directories = null!;
@@ -42,7 +42,7 @@ public class LocalMftBlockProducerTests
     static LocalMftBlockProducer.Seams Scripted(
         Func<string, NtfsVolumeInformation>? query = null, MftRecordBatchSource? scan = null,
         UsnJournalCursorQuery? queryCursor = null) => new(
-        query ?? (_ => Volume), scan ?? ((_, _, _, _, _, _) => Batches()), () => FixedMoment,
+        query ?? (_ => Volume), scan ?? ((_, _, _, _, _, _) => Batches()),
         queryCursor ?? (_ => new UsnJournalCursor(99, 2000)));
 
     MftBlockProduceRequest Request(bool deleteOnClose = true, IProgress<IndexScanProgress>? progress = null,
@@ -98,7 +98,7 @@ public class LocalMftBlockProducerTests
             return Batches();
         });
 
-        _ = new LocalMftBlockProducer(null, seams).CreateIndexSource();
+        _ = new LocalMftBlockProducer(TimeProvider.System, null, seams).CreateIndexSource();
 
         Assert.AreEqual(0, calls);
     }
@@ -106,13 +106,23 @@ public class LocalMftBlockProducerTests
     [TestMethod]
     public async Task Produce_DeleteOnCloseBlockCarriesGeometryTagAndZeroCursor()
     {
+        var timeProvider = new FakeTimeProvider(new DateTimeOffset(2031, 2, 3, 4, 5, 6, TimeSpan.Zero));
+        IEnumerable<IReadOnlyList<MftRecord>> TimedBatches()
+        {
+            foreach (var batch in Batches())
+            {
+                yield return batch;
+                timeProvider.Advance(TimeSpan.FromMinutes(1));
+            }
+        }
+
         var request = Request();
         var queried = new List<string>();
-        var producer = new LocalMftBlockProducer(null, Scripted(drive =>
+        var producer = new LocalMftBlockProducer(timeProvider, null, Scripted(drive =>
         {
             queried.Add(drive);
             return Volume;
-        }));
+        }, scan: (_, _, _, _, _, _) => TimedBatches()));
 
         var result = await ProducerOf(producer)(request, TestContext.CancellationTokenSource.Token);
         var block = result.Block;
@@ -130,15 +140,24 @@ public class LocalMftBlockProducerTests
         Assert.AreEqual(0, result.SkippedRecordCount);
         Assert.IsNull(result.CatchUpLoss);
         Assert.AreEqual(22u, block.Header.RowCount);
+        Assert.AreEqual(new DateTime(2031, 2, 3, 4, 7, 6, DateTimeKind.Utc), block.Header.ScanTimestampUtc);
         var path = block.Path;
         block.Dispose();
         Assert.IsFalse(File.Exists(path), "a delete-on-close block is removed when the index releases it");
+
+        await using var enumeration = await FileIndex.OpenAsync(
+            FileIndexTestAccess.WithTimeProvider(new FileIndexOptions
+            {
+                Drives = [new IndexedDrive('T', _directories.TreeRoot, 123, ProducerKind.Enumeration)],
+                CacheMode = CacheMode.Disabled
+            }, timeProvider), TestContext.CancellationTokenSource.Token);
+        Assert.AreEqual(timeProvider.GetUtcNow().UtcDateTime, enumeration.Drives.Single().Block!.ScanTimestamp);
     }
 
     [TestMethod]
     public async Task Produce_SaturatesSkippedRecordCount()
     {
-        var producer = new LocalMftBlockProducer(null, Scripted(scan: (_, _, _, _, recordsOmitted, _) =>
+        var producer = new LocalMftBlockProducer(TimeProvider.System, null, Scripted(scan: (_, _, _, _, recordsOmitted, _) =>
         {
             recordsOmitted((long)int.MaxValue + 1);
             return [new[] { Record(5, ".", 3) }];
@@ -151,6 +170,7 @@ public class LocalMftBlockProducerTests
         Assert.IsTrue(block.Header.IsComplete);
     }
 
+
     [DataTestMethod]
     [DataRow(false, DisplayName = "normal-reopen-unmoved-journal")]
     [DataRow(true, DisplayName = "cache-only-reopen-unmoved-journal")]
@@ -159,7 +179,7 @@ public class LocalMftBlockProducerTests
         using var journal = JournalCheckpointCheck.OverrideJournalForTest(
             _ => new JournalWindow(99, 1000, 2000, 4096, 32768));
         var scanCalls = 0;
-        var producer = new LocalMftBlockProducer(null, Scripted(scan: (_, _, _, _, _, _) =>
+        var producer = new LocalMftBlockProducer(TimeProvider.System, null, Scripted(scan: (_, _, _, _, _, _) =>
         {
             Interlocked.Increment(ref scanCalls);
             return Batches();
@@ -218,7 +238,7 @@ public class LocalMftBlockProducerTests
         ParseThreadAllowance? allowanceT = null;
         ParseThreadAllowance? allowanceU = null;
 
-        var producer = new LocalMftBlockProducer(null, Scripted(scan: (drive, allowance, _, _, _, token) =>
+        var producer = new LocalMftBlockProducer(TimeProvider.System, null, Scripted(scan: (drive, allowance, _, _, _, token) =>
         {
             if (drive == "T")
             {
@@ -286,7 +306,7 @@ public class LocalMftBlockProducerTests
         var indexReports = new List<IndexScanProgress>();
         var scanReports = new List<BrokerScanProgress>();
         var options = new MftScanOptions { Progress = new DirectProgress<BrokerScanProgress>(scanReports.Add) };
-        var producer = new LocalMftBlockProducer(options, Scripted());
+        var producer = new LocalMftBlockProducer(TimeProvider.System, options, Scripted());
 
         var result = await ProducerOf(producer)(
             Request(progress: new DirectProgress<IndexScanProgress>(indexReports.Add)),
@@ -304,7 +324,7 @@ public class LocalMftBlockProducerTests
     {
         using var cancellation = new CancellationTokenSource();
         var request = Request();
-        var producer = new LocalMftBlockProducer(null,
+        var producer = new LocalMftBlockProducer(TimeProvider.System, null,
             Scripted(scan: CancellingScan(cancellation)));
 
         await Assert.ThrowsExceptionAsync<OperationCanceledException>(
@@ -328,7 +348,7 @@ public class LocalMftBlockProducerTests
     public async Task Produce_AlreadyCancelledNeverQueriesTheVolume()
     {
         var queried = false;
-        var producer = new LocalMftBlockProducer(null, Scripted(_ =>
+        var producer = new LocalMftBlockProducer(TimeProvider.System, null, Scripted(_ =>
         {
             queried = true;
             return Volume;
@@ -345,7 +365,7 @@ public class LocalMftBlockProducerTests
     {
         const string message = "Unable to open volume \\\\.\\T:";
         var request = Request();
-        var producer = new LocalMftBlockProducer(null,
+        var producer = new LocalMftBlockProducer(TimeProvider.System, null,
             Scripted(scan: (_, _, _, _, _, _) => throw new IOException(message)));
 
         var failure = await Assert.ThrowsExceptionAsync<IOException>(
@@ -359,7 +379,7 @@ public class LocalMftBlockProducerTests
     public async Task Produce_ABlockWithNoRowsFailsValidationAndIsDisposed()
     {
         var request = Request();
-        var producer = new LocalMftBlockProducer(null, Scripted(scan: (_, _, _, _, _, _) => []));
+        var producer = new LocalMftBlockProducer(TimeProvider.System, null, Scripted(scan: (_, _, _, _, _, _) => []));
 
         var failure = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
             () => ProducerOf(producer)(request, TestContext.CancellationTokenSource.Token));
@@ -372,7 +392,7 @@ public class LocalMftBlockProducerTests
     public async Task Index_FullSyntheticScanYieldsSearchableEntriesAndNoWatch()
     {
         var reports = new List<IndexScanProgress>();
-        var source = new LocalMftBlockProducer(null, Scripted()).CreateIndexSource();
+        var source = new LocalMftBlockProducer(TimeProvider.System, null, Scripted()).CreateIndexSource();
 
         await using var index = await FileIndex.OpenAsync(
             Options(source, new DirectProgress<IndexScanProgress>(reports.Add)),
@@ -391,7 +411,7 @@ public class LocalMftBlockProducerTests
     [TestMethod]
     public async Task Index_WatchStartAndCatchUpAreNotApplicableThroughTheNoWatchGate()
     {
-        var source = new LocalMftBlockProducer(null, Scripted()).CreateIndexSource();
+        var source = new LocalMftBlockProducer(TimeProvider.System, null, Scripted()).CreateIndexSource();
         await using var index = await FileIndex.OpenAsync(Options(source), TestContext.CancellationTokenSource.Token);
         await DriveResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync(['t'], CancellationToken.None));
         await DriveResultAssertions.NotApplicableAsync(() => index.WaitForCatchUpAsync(['t'], CancellationToken.None));
@@ -404,7 +424,7 @@ public class LocalMftBlockProducerTests
     public async Task Index_NonWindowsSeamSettlesProducerFailedWithTheSeamMessage()
     {
         const string message = "NTFS volume information queries require Windows (FSCTL_GET_NTFS_VOLUME_DATA).";
-        var source = new LocalMftBlockProducer(null,
+        var source = new LocalMftBlockProducer(TimeProvider.System, null,
             Scripted(_ => throw new PlatformNotSupportedException(message))).CreateIndexSource();
 
         await using var index = await FileIndex.OpenAsync(Options(source), TestContext.CancellationTokenSource.Token);
@@ -422,7 +442,6 @@ public class LocalMftBlockProducerTests
             LocalMftBlockProducer.Seams.Live.QueryCursor);
         if (OperatingSystem.IsWindows())
         {
-            Assert.IsNotNull(LocalMftBlockProducer.Seams.Live.Clock);
             return;
         }
 

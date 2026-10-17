@@ -30,13 +30,13 @@ public class LocalMftBlockProducerCursorTests
             {
                 calls.Add("scan");
                 return [[new MftRecord(5, 5, new MftRecordFields(3), ".")]];
-            }, () => new DateTime(2026, 10, 6, 0, 0, 0, DateTimeKind.Utc),
+            },
             _ =>
             {
                 calls.Add("cursor");
                 return cursor;
             });
-        var result = await new LocalMftBlockProducer(null, seams).CreateIndexSource().Producer(new MftBlockProduceRequest
+        var result = await new LocalMftBlockProducer(TimeProvider.System, null, seams).CreateIndexSource().Producer(new MftBlockProduceRequest
         {
             Drive = 'T',
             VolumeSerial = 123,
@@ -60,13 +60,13 @@ public class LocalMftBlockProducerCursorTests
         Directory.CreateDirectory(directories.CacheDirectory);
         var scans = 0;
         var queries = 0;
-        var source = new LocalMftBlockProducer(null, new LocalMftBlockProducer.Seams(
+        var source = new LocalMftBlockProducer(TimeProvider.System, null, new LocalMftBlockProducer.Seams(
             _ => new NtfsVolumeInformation(1024 * 1000, 1024),
             (_, _, _, _, _, _) =>
             {
                 scans++;
                 return [[new MftRecord(5, 5, new MftRecordFields(3), ".")]];
-            }, () => new DateTime(2026, 10, 6, 0, 0, 0, DateTimeKind.Utc),
+            },
             _ =>
             {
                 queries++;

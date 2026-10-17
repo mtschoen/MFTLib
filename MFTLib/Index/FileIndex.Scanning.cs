@@ -438,7 +438,7 @@ public sealed partial class FileIndex
             });
 
             var result = producer.Produce(writer, _options.ScanProgress, cancellationToken);
-            writer.Complete(DateTime.UtcNow, null);
+            writer.Complete(_options.TimeProvider.GetUtcNow().UtcDateTime, null);
             var completed = new BlockScanResult(block, result);
             block = null;
             return completed;

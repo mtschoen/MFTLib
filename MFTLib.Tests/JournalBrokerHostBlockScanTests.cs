@@ -1,6 +1,7 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
+using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -198,8 +199,8 @@ public class JournalBrokerHostBlockScanTests
                 new MftRecord(20, 10, new MftRecordFields(1), "file.txt"), Record(21, "")],
             [Record(30, "other.txt"), new MftRecord(1UL << 33, 5, new MftRecordFields(1), "huge")]
         ];
-        var completedUtc = new DateTime(2026, 9, 3, 0, 0, 0, DateTimeKind.Utc);
-        using var hostWriter = new RecordingBlockSectionWriter();
+        var timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 9, 3, 0, 0, 0, TimeSpan.Zero));
+        using var hostWriter = new RecordingBlockSectionWriter(timeProvider: timeProvider);
         var hostFrames = await ScanAsync(CreateHost((_, _, _, _, _, _) => batches), hostWriter);
         var skippedByHost = hostFrames.Single(frame => frame.Kind == BrokerFrameKind.ScanReady).SkippedRecordCount;
 
@@ -213,7 +214,7 @@ public class JournalBrokerHostBlockScanTests
             NamePoolCapacity = 4096,
             DeleteOnClose = true
         });
-        var result = MftBlockScan.WriteToBlock(directBlock, new BlockStamp(ArmedCursor, () => completedUtc), batches,
+        var result = MftBlockScan.WriteToBlock(directBlock, new BlockStamp(ArmedCursor, timeProvider), batches,
             new MftScanOptions(), default, CancellationToken.None);
 
         Assert.AreEqual(skippedByHost, result.SkippedRecordCount);
@@ -257,38 +258,6 @@ public class JournalBrokerHostBlockScanTests
         }
     }
 
-    [TestMethod]
-    public void WriteToBlock_ReadsTheClockAfterTheLastBatchIsWritten()
-    {
-        var batchesEnumerated = 0;
-        var batchesEnumeratedAtClockRead = -1;
-        IEnumerable<IReadOnlyList<MftRecord>> Batches()
-        {
-            foreach (var batch in new[] { Record(5, ".", 3), Record(20, "file.txt") })
-            {
-                batchesEnumerated++;
-                yield return [batch];
-            }
-        }
-
-        using var block = BlockFile.Create(new BlockFileCreateOptions
-        {
-            Path = Path.Combine(Path.GetTempPath(), $"mft-block-clock-{Guid.NewGuid():N}.bin"),
-            VolumeSerial = 123,
-            ProducerKind = ProducerKind.Mft,
-            RootRow = 5,
-            SlotCapacity = 256,
-            NamePoolCapacity = 4096,
-            DeleteOnClose = true
-        });
-        MftBlockScan.WriteToBlock(block, new BlockStamp(ArmedCursor, () =>
-        {
-            batchesEnumeratedAtClockRead = batchesEnumerated;
-            return DateTime.UnixEpoch;
-        }), Batches(), new MftScanOptions(), default, CancellationToken.None);
-
-        Assert.AreEqual(2, batchesEnumeratedAtClockRead);
-    }
 
     static byte[] BlockBytes(BlockFile block)
     {

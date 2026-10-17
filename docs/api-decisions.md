@@ -717,3 +717,7 @@ owns the policy once. file-wizard migrates in its pin-bump pull request.
 ## The public-surface pin stays bespoke
 
 **Decision (2026-10-16):** retain the bespoke public-surface pin; do not add PublicApiGenerator or PublicApiAnalyzers. **Reason:** the caller gate needs the bespoke metadata reader anyway; another library adds a second IL reader and a third-party dependency. **Revisit only if:** the caller gate no longer needs that reader and one replacement can cover both contracts.
+
+## Block completion uses an internal TimeProvider
+
+**Decision (2026-10-16):** producers and section writers take an internal `TimeProvider`; enumeration uses internal `FileIndexOptions.TimeProvider`, defaulting to `TimeProvider.System`. Tests reach the option through internal `MFTLibTestExtensions` forwarding. Completion stores `GetUtcNow().UtcDateTime` after production. **Reason:** one clock abstraction makes completion deterministic without public configuration. **Revisit only if:** a consumer production requirement needs clock configuration.

@@ -16,16 +16,16 @@ internal sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
     readonly TimeProvider _timeProvider;
 
     /// <summary>
-    ///     Initializes the production runner, using the system clock to bound diagnostic
-    ///     flushing when the elevated broker exits.
+    ///     Initializes the production runner, using the system clock for block completion and
+    ///     to bound diagnostic flushing when the elevated broker exits.
     /// </summary>
     public DefaultElevatedEntryRunner()
         : this(TimeProvider.System)
     {
     }
 
-    /// <summary>A runner whose exit flush is bounded on <paramref name="timeProvider" />, so a test can hold the bound.</summary>
-    /// <param name="timeProvider">The clock of the diagnostics flush's bound at exit.</param>
+    /// <summary>A runner whose exit flush and block completion use <paramref name="timeProvider" />, so a test can supply a fake clock.</summary>
+    /// <param name="timeProvider">The clock for block completion and the diagnostics flush bound.</param>
     internal DefaultElevatedEntryRunner(TimeProvider timeProvider)
     {
         _timeProvider = timeProvider;
@@ -75,7 +75,7 @@ internal sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
         try
         {
             JournalBrokerHost.CreateDefault()
-                .ServeAsync(control, ConnectDrivePipeAsync, new RealBlockSectionWriter(), CancellationToken.None)
+                .ServeAsync(control, ConnectDrivePipeAsync, new RealBlockSectionWriter(_timeProvider), CancellationToken.None)
                 // aislop-ignore-next-line csharp-sync-over-async -- every await in the ServeAsync chain uses ConfigureAwait(false), so no continuation needs the calling thread's SynchronizationContext and GetResult() cannot deadlock even when the entry thread has one
                 .GetAwaiter().GetResult();
         }

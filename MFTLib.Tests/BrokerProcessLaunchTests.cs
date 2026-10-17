@@ -144,7 +144,7 @@ public class BrokerProcessLaunchTests
                         (_, cursor, _) => (Array.Empty<UsnJournalEntry>(), cursor),
                         QueryVolumeInformation: _ => new NtfsVolumeInformation(1024 * 1000, 1024)));
                 await host.ServeAsync(pipe, DefaultElevatedEntryRunner.ConnectDrivePipeAsync,
-                    new RealBlockSectionWriter(), CancellationToken.None);
+                    new RealBlockSectionWriter(TimeProvider.System), CancellationToken.None);
             });
             return true;
         });

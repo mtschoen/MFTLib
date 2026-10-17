@@ -52,7 +52,7 @@ public class MftDumpBlockProducerTests
         using var live = liveScanRunning
             ? await Allocator.AdmitAsync(TestContext.CancellationTokenSource.Token)
             : null;
-        var result = await new MftDumpBlockProducer(_path).ProduceAsync(Request(),
+        var result = await new MftDumpBlockProducer(_path, TimeProvider.System).ProduceAsync(Request(),
             TestContext.CancellationTokenSource.Token);
         using var block = result.Block;
         var counts = ParseControlBlock.ChunkThreadCounts();
@@ -79,7 +79,7 @@ public class MftDumpBlockProducerTests
                 registrations.Add(await Allocator.AdmitAsync(TestContext.CancellationTokenSource.Token));
             }
 
-            var producer = new MftDumpBlockProducer(_path, (_, _, token) =>
+            var producer = new MftDumpBlockProducer(_path, TimeProvider.System, (_, _, token) =>
             {
                 waiting = Allocator.AdmitAsync(TestContext.CancellationTokenSource.Token).AsTask();
                 queuedDuringScan = Allocator.QueuedScanCount;

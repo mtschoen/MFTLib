@@ -73,7 +73,7 @@ public class LiveScanInvalidFixupTests
         long omitted = 0;
         var batches = LiveVolumeSources.ScanDriveRecordBatches("C", new ParseThreadAllowance(2),
             new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions(), count => omitted += count, CancellationToken.None);
-        var written = MftBlockScan.WriteToBlock(block, new BlockStamp(default, () => DateTime.UtcNow), batches,
+        var written = MftBlockScan.WriteToBlock(block, new BlockStamp(default, TimeProvider.System), batches,
             new MftScanOptions(), new BlockWriteReporting(null, null), CancellationToken.None);
 
         Assert.AreEqual(1L, omitted);
@@ -125,13 +125,14 @@ public class LiveScanInvalidFixupTests
         long omitted = 0;
         var batches = LiveVolumeSources.ScanDriveRecordBatches("C", new ParseThreadAllowance(1),
             new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions(), count => omitted += count, CancellationToken.None);
-        var written = MftBlockScan.WriteToBlock(block, new BlockStamp(default, () => DateTime.UtcNow), batches,
+        var written = MftBlockScan.WriteToBlock(block, new BlockStamp(default, TimeProvider.System), batches,
             new MftScanOptions(), new BlockWriteReporting(null, null), CancellationToken.None);
 
         Assert.AreEqual(0L, omitted);
         Assert.AreEqual(0L, written.SkippedRecordCount);
         Assert.IsTrue(block.Header.RowCount > 5);
     }
+
 
     [DataTestMethod]
     [DataRow("F1-1", false)]

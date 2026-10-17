@@ -23,7 +23,7 @@ public static partial class MftIndexSources
     /// <returns>The source to assign to <see cref="FileIndexOptions.MftSource" />.</returns>
     public static MftIndexSource FromLocalVolumes(MftScanOptions? scanOptions = null)
     {
-        return new LocalMftBlockProducer(scanOptions).CreateIndexSource();
+        return new LocalMftBlockProducer(TimeProvider.System, scanOptions).CreateIndexSource();
     }
 
     /// <summary>

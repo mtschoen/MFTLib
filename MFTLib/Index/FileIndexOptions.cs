@@ -109,6 +109,7 @@ public sealed record FileIndexOptions
     ///     to test code before it has settled.
     /// </summary>
     internal Func<string, string, IEnumerable<string>>? EnumerateCacheFilesForTest { get; init; }
+    internal TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 
     internal static IndexedDrive[] ValidateDrives(FileIndexOptions options)
     {
