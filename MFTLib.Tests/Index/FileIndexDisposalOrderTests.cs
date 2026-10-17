@@ -1,5 +1,4 @@
 using MFTLib.Tests.TestSupport;
-using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -12,8 +11,6 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public class FileIndexDisposalOrderTests
 {
-    static readonly TimeSpan HangGuard = ScriptedWatchSource.HangGuard;
-
     public TestContext TestContext { get; set; } = null!;
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;

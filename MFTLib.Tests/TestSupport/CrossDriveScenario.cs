@@ -21,7 +21,6 @@ namespace MFTLib.Tests.TestSupport;
 internal sealed class CrossDriveScenario : IAsyncDisposable
 {
     const string ControlPipeName = "control";
-    static readonly TimeSpan HangGuard = HostChannelHarness.HangGuard;
     static readonly int HeartbeatLength = MeasureHeartbeat();
 
     readonly string _cacheDirectory = Path.Combine(Path.GetTempPath(), $"broker-cross-drive-{Guid.NewGuid():N}");

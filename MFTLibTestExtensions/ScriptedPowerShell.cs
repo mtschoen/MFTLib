@@ -22,15 +22,18 @@ public sealed class PowerShellLaunch
 /// <summary>The scope returned by <see cref="DefenderExclusionIsolation.ScriptPowerShell" />: it records each PowerShell launch instead of making it.</summary>
 public sealed class ScriptedPowerShell : IDisposable
 {
-    static readonly Lock OwnershipLock = new();
-    static ScriptedPowerShell? _active;
     readonly ConcurrentQueue<PowerShellLaunch> _launches = new();
     readonly bool _succeeds;
-    bool _disposed;
+    readonly IDisposable _scope;
 
     ScriptedPowerShell(bool succeeds)
     {
         _succeeds = succeeds;
+        _scope = ProcessGlobalScope.Acquire("A scripted PowerShell", () =>
+        {
+            DefenderExclusionSequence.RunnerOverride = Record;
+            return () => DefenderExclusionSequence.RunnerOverride = null;
+        });
     }
 
     /// <summary>The launches made so far, oldest first.</summary>
@@ -38,37 +41,11 @@ public sealed class ScriptedPowerShell : IDisposable
 
     internal static ScriptedPowerShell Create(bool succeeds)
     {
-        lock (OwnershipLock)
-        {
-            if (_active is not null)
-            {
-                throw new InvalidOperationException(
-                    "A scripted PowerShell is already active. " +
-                    "Use nonparallel fixtures and dispose the owning scope before acquiring another.");
-            }
-
-            var scope = new ScriptedPowerShell(succeeds);
-            DefenderExclusionSequence.RunnerOverride = scope.Record;
-            _active = scope;
-            return scope;
-        }
+        return new ScriptedPowerShell(succeeds);
     }
 
     /// <summary>Restores the real PowerShell launcher.</summary>
-    public void Dispose()
-    {
-        lock (OwnershipLock)
-        {
-            if (_disposed)
-            {
-                return;
-            }
-
-            _disposed = true;
-            _active = null;
-            DefenderExclusionSequence.RunnerOverride = null;
-        }
-    }
+    public void Dispose() => _scope.Dispose();
 
     bool Record(string script, bool elevated)
     {

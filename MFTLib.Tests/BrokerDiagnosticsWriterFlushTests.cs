@@ -7,8 +7,6 @@ namespace MFTLib.Tests;
 [TestClass]
 public class BrokerDiagnosticsWriterFlushTests
 {
-    static readonly TimeSpan HangGuard = ScriptedWatchSource.HangGuard;
-
     [TestMethod]
     public async Task Append_QueueDropsAndRepeatedAppendFailures_RetainsBothCausesUntilRecovery()
     {

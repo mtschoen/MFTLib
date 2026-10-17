@@ -93,7 +93,7 @@ public partial class JournalBrokerHostLivenessTests
             Assert.AreEqual(expected, await ReadIncludingHeartbeatsAsync(pipe));
         }
 
-        await calls[0].Entered.WaitAsync(HostChannelHarness.HangGuard);
+        await calls[0].Entered.WaitAsync(HangGuard);
         // The first visit sees the scan's frames and skips the pipe.
         await liveness.AdvanceOneIntervalAsync();
 
@@ -109,7 +109,7 @@ public partial class JournalBrokerHostLivenessTests
             calls[index].Release();
             if (index + 1 < calls.Length)
             {
-                await calls[index + 1].Entered.WaitAsync(HostChannelHarness.HangGuard);
+                await calls[index + 1].Entered.WaitAsync(HangGuard);
             }
         }
 
@@ -172,10 +172,10 @@ public partial class JournalBrokerHostLivenessTests
         };
         var now = clock.GetUtcNow();
         var visit = Task.Run(() => pipe.Visit(now));
-        await began.Entered.WaitAsync(HostChannelHarness.HangGuard);
-        await window().WaitAsync(HostChannelHarness.HangGuard);
+        await began.Entered.WaitAsync(HangGuard);
+        await window().WaitAsync(HangGuard);
         began.Release();
-        await visit.WaitAsync(HostChannelHarness.HangGuard);
+        await visit.WaitAsync(HangGuard);
     }
 
     static BrokerFrameKind[] FrameKinds(MemoryStream stream)

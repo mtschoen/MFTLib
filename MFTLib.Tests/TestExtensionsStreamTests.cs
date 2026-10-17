@@ -1,4 +1,3 @@
-using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -200,7 +199,7 @@ public class TestExtensionsStreamTests
             exited.TrySetResult();
         }
 
-        await disposal.WaitAsync(HostChannelHarness.HangGuard);
+        await disposal.WaitAsync(HangGuard);
         await stream.DisposeAsync();
     }
 }

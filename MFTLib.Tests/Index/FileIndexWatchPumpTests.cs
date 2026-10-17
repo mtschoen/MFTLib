@@ -160,7 +160,7 @@ public class FileIndexWatchPumpTests
         await harness.Index.StartWatchingAsync(['T'], Token);
         var handle = harness.Source.WatchFor('T');
         _ = handle.Queue(WatchHarness.Batch(recordNumber: 9, "one.txt"));
-        await applying.Entered.WaitAsync(ScriptedWatchSource.HangGuard);
+        await applying.Entered.WaitAsync(HangGuard);
         var producedBlock = harness.BlockFor('T');
 
         var dispose = harness.Index.DisposeAsync().AsTask();
@@ -169,7 +169,7 @@ public class FileIndexWatchPumpTests
         Assert.AreEqual(WatchHarness.NextUsn + 100, producedBlock.Header.UsnNextUsn,
             "the block is still mapped while the watch drains");
         applying.Release();
-        await dispose.WaitAsync(ScriptedWatchSource.HangGuard);
+        await dispose.WaitAsync(HangGuard);
 
         Assert.AreEqual(1, handle.DisposeCount);
         Assert.ThrowsException<ObjectDisposedException>(() => _ = producedBlock.Header.Generation);
@@ -187,7 +187,7 @@ public class FileIndexWatchPumpTests
 
         ended.End();
         var fault = await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
-        await ended.Disposed.WaitAsync(ScriptedWatchSource.HangGuard);
+        await ended.Disposed.WaitAsync(HangGuard);
 
         Assert.AreEqual(1, harness.Faults.Count);
         Assert.IsInstanceOfType<InvalidOperationException>(fault.Exception);
@@ -199,19 +199,19 @@ public class FileIndexWatchPumpTests
         if (restartBeforeStop)
         {
             await harness.Index.StartWatchingAsync(['T'], Token)
-                .WaitAsync(ScriptedWatchSource.HangGuard);
+                .WaitAsync(HangGuard);
             Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
             Assert.AreNotSame(ended, harness.Source.WatchFor('T'));
             Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
             Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
             await harness.Index.StopWatchingAsync(['T'], Token)
-                .WaitAsync(ScriptedWatchSource.HangGuard);
+                .WaitAsync(HangGuard);
         }
         else
         {
             var thrown = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
                 () => harness.Index.StopWatchingAsync(['T'], Token)
-                    .WaitAsync(ScriptedWatchSource.HangGuard));
+                    .WaitAsync(HangGuard));
             Assert.AreSame(fault.Exception, thrown);
         }
 
@@ -220,9 +220,9 @@ public class FileIndexWatchPumpTests
             () => harness.Index.StopWatchingAsync(['T'], Token));
 
         await harness.Index.StartWatchingAsync(['T'], Token)
-            .WaitAsync(ScriptedWatchSource.HangGuard);
+            .WaitAsync(HangGuard);
         await harness.Index.StopWatchingAsync(['T'], Token)
-            .WaitAsync(ScriptedWatchSource.HangGuard);
+            .WaitAsync(HangGuard);
         Assert.AreEqual(1, harness.Faults.Count);
         foreach (var handle in harness.Source.Watches)
         {
@@ -277,7 +277,7 @@ public class FileIndexWatchPumpTests
         using var harness = new WatchHarness(source, 'T');
         await harness.Index.StartWatchingAsync(['T'], Token);
 
-        await harness.Index.StopWatchingAsync(['T'], Token).WaitAsync(ScriptedWatchSource.HangGuard);
+        await harness.Index.StopWatchingAsync(['T'], Token).WaitAsync(HangGuard);
 
         Assert.AreEqual(1, source.DisposalAttempts, "the failing disposal ran once");
         Assert.AreEqual(1, inner.WatchFor('T').DisposeCount);

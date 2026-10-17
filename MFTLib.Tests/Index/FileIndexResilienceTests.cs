@@ -68,13 +68,14 @@ public partial class FileIndexResilienceTests
         }
     }
 
-    static readonly TimeSpan HangGuard = TimeSpan.FromSeconds(30);
+    // Real index work on a loaded runner outlasts the shared guard.
+    static readonly TimeSpan SlowHangGuard = HangGuard * 3;
 
     static async Task AssertThrowsCancellation(Func<Task> action)
     {
         try
         {
-            await action().WaitAsync(HangGuard);
+            await action().WaitAsync(SlowHangGuard);
         }
         catch (OperationCanceledException)
         {
@@ -112,7 +113,7 @@ public partial class FileIndexResilienceTests
     {
         var secondTreeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree2-{Guid.NewGuid():N}");
         Directory.CreateDirectory(Path.Combine(secondTreeRoot, "Documents"));
-        await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "Documents", "readme2.md"), "hello2").WaitAsync(HangGuard);
+        await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "Documents", "readme2.md"), "hello2").WaitAsync(SlowHangGuard);
 
         // Drives settle concurrently, so nothing but the first drive's own settle can say it has
         // been adopted. It warm-starts from a cache a first open leaves behind. The open is
@@ -125,8 +126,8 @@ public partial class FileIndexResilienceTests
             {
                 Drives = [firstDrive with { Producer = ProducerKind.Enumeration }],
                 CacheDirectory = _cacheDirectory,
-            }, CancellationToken.None).WaitAsync(HangGuard);
-        await warmingOpen.DisposeAsync().AsTask().WaitAsync(HangGuard);
+            }, CancellationToken.None).WaitAsync(SlowHangGuard);
+        await warmingOpen.DisposeAsync().AsTask().WaitAsync(SlowHangGuard);
 
         using var cancellationTokenSource = new CancellationTokenSource();
         var firstSettled = new DriveSettledSignal('T');
@@ -144,10 +145,10 @@ public partial class FileIndexResilienceTests
             await AssertThrowsCancellation(async () =>
             {
                 var opening = FileIndex.OpenAsync(options, cancellationTokenSource.Token);
-                await Task.WhenAll(firstSettled.Reported, secondParked.Parked).WaitAsync(HangGuard);
+                await Task.WhenAll(firstSettled.Reported, secondParked.Parked).WaitAsync(SlowHangGuard);
                 Assert.IsFalse(opening.IsCompleted, "the second drive is still mid-scan when the open is cancelled");
-                await cancellationTokenSource.CancelAsync().WaitAsync(HangGuard);
-                await opening.WaitAsync(HangGuard);
+                await cancellationTokenSource.CancelAsync().WaitAsync(SlowHangGuard);
+                await opening.WaitAsync(SlowHangGuard);
             });
 
             var firstBlockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));

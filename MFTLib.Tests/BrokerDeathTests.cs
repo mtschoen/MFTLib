@@ -14,8 +14,6 @@ namespace MFTLib.Tests;
 [DoNotParallelize]
 public class BrokerDeathTests
 {
-    static readonly TimeSpan HangGuard = HostChannelHarness.HangGuard;
-
     [TestMethod]
     public async Task WatchChannel_ProcessDeath_CompletesEnded_AndReadThrowsChannelLost()
     {

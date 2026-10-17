@@ -33,7 +33,7 @@ public partial class JournalBrokerHostTests
         Assert.IsFalse(cancelled.Task.IsCompleted, "The watch stays open while its pipe is open.");
 
         await pipe.DisposeAsync();
-        await cancelled.Task.WaitAsync(HostChannelHarness.HangGuard);
+        await cancelled.Task.WaitAsync(HangGuard);
     }
 
     [TestMethod]
@@ -114,10 +114,10 @@ public partial class JournalBrokerHostTests
 
         // The client goes away while its watch is still armed. Breaking the pipe and only then
         // releasing the pending batch keeps the disconnect deterministic.
-        var brokenHostEnd = await drivePipe.Connected.WaitAsync(HostChannelHarness.HangGuard);
+        var brokenHostEnd = await drivePipe.Connected.WaitAsync(HangGuard);
         brokenHostEnd.BreakPipe();
         secondBatchGate.SetResult();
-        await brokenHostEnd.WriteFailureObserved.WaitAsync(HostChannelHarness.HangGuard);
+        await brokenHostEnd.WriteFailureObserved.WaitAsync(HangGuard);
 
         await AssertOnlyThatChannelEndedAsync(harness, pipe, sibling, siblingGate);
     }
@@ -148,10 +148,10 @@ public partial class JournalBrokerHostTests
 
         // The pipe dies, then the watch faults for real: the Error frame that reports the fault
         // has no one left to receive it, and its write fails too.
-        var brokenHostEnd = await drivePipe.Connected.WaitAsync(HostChannelHarness.HangGuard);
+        var brokenHostEnd = await drivePipe.Connected.WaitAsync(HangGuard);
         brokenHostEnd.BreakPipe();
         faultGate.SetResult();
-        await brokenHostEnd.WriteFailureObserved.WaitAsync(HostChannelHarness.HangGuard);
+        await brokenHostEnd.WriteFailureObserved.WaitAsync(HangGuard);
 
         await AssertOnlyThatChannelEndedAsync(harness, pipe, sibling, siblingGate);
     }
@@ -177,8 +177,8 @@ public partial class JournalBrokerHostTests
         Assert.AreEqual(BrokerFrameKind.CaughtUp, (await HostChannelHarness.ReadFrameAsync(sibling))?.Kind);
         Assert.AreEqual(BrokerFrameKind.JournalBatch, (await HostChannelHarness.ReadFrameAsync(sibling))?.Kind);
         var pipe = await harness.OpenWatchChannelAsync('C', armed);
-        var brokenHostEnd = await drivePipe.Connected.WaitAsync(HostChannelHarness.HangGuard);
-        await brokenHostEnd.WriteFailureObserved.WaitAsync(HostChannelHarness.HangGuard);
+        var brokenHostEnd = await drivePipe.Connected.WaitAsync(HangGuard);
+        await brokenHostEnd.WriteFailureObserved.WaitAsync(HangGuard);
 
         await AssertOnlyThatChannelEndedAsync(harness, pipe, sibling, siblingGate);
     }

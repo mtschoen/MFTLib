@@ -31,7 +31,7 @@ internal sealed class ScriptedBroker : IAsyncDisposable
 
     public async Task<BrokerFrame> ReadRequestAsync()
     {
-        return await HostChannelHarness.ReadFrameAsync(_hostControl).WaitAsync(HostChannelHarness.HangGuard)
+        return await HostChannelHarness.ReadFrameAsync(_hostControl).WaitAsync(HangGuard)
                ?? throw new AssertFailedException("The client closed its control pipe.");
     }
 
@@ -64,11 +64,11 @@ internal sealed class ScriptedBroker : IAsyncDisposable
     {
         try
         {
-            await Process.DisposeAsync().AsTask().WaitAsync(HostChannelHarness.HangGuard);
+            await Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
         }
         finally
         {
-            await _hostControl.DisposeAsync().AsTask().WaitAsync(HostChannelHarness.HangGuard);
+            await _hostControl.DisposeAsync().AsTask().WaitAsync(HangGuard);
             Sections.Dispose();
         }
     }

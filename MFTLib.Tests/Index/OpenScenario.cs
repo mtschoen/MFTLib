@@ -87,7 +87,7 @@ internal sealed class OpenScenario : IDisposable
     /// <summary>Completes when one more report has arrived than this method has already consumed.</summary>
     public async Task WaitForReportAsync()
     {
-        if (!await _reportSignal.WaitAsync(ScriptedWatchSource.HangGuard))
+        if (!await _reportSignal.WaitAsync(HangGuard))
         {
             throw new TimeoutException("No further DriveOpenProgress report arrived.");
         }
@@ -148,7 +148,7 @@ internal sealed class OpenScenario : IDisposable
                 production > _productionsBeforeHold.GetValueOrDefault(driveLetter))
             {
                 gate.MarkEntered();
-                await gate.WaitForReleaseAsync(cancellationToken).WaitAsync(ScriptedWatchSource.HangGuard, cancellationToken);
+                await gate.WaitForReleaseAsync(cancellationToken).WaitAsync(HangGuard, cancellationToken);
             }
 
             if (_failures.TryGetValue(driveLetter, out var failure))

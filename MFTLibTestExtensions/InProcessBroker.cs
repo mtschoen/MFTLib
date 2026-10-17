@@ -21,9 +21,6 @@ internal sealed class InProcessBroker : IAsyncDisposable
             wrapClientStream, wrapConnector);
     }
 
-    // A guard, not a measurement: a disposal that hangs fails the test instead of the run.
-    static readonly TimeSpan DisposeTimeout = TimeSpan.FromSeconds(10);
-
     public InProcessBrokerHandle Handle { get; }
 
     public BrokerProcess Process => Handle.Process;
@@ -36,7 +33,7 @@ internal sealed class InProcessBroker : IAsyncDisposable
     {
         try
         {
-            await Process.DisposeAsync().AsTask().WaitAsync(DisposeTimeout);
+            await Process.DisposeAsync().AsTask().WaitAsync(TestTimeouts.HangGuard);
         }
         finally
         {

@@ -62,6 +62,13 @@ public static class JournalIsolation
     /// </remarks>
     public static IDisposable OverrideJournalWindow(Func<DriveKey, SyntheticJournalWindow?> journal)
     {
-        return JournalWindowOverride.Create(journal);
+        ArgumentNullException.ThrowIfNull(journal);
+        return ProcessGlobalScope.Acquire(
+            "A synthetic journal-window override",
+            () => JournalCheckpointCheck.OverrideJournalForTest(drive =>
+                journal(drive) is { } window
+                    ? new JournalWindow(window.JournalIdentifier, window.FirstUsn, window.NextUsn,
+                        window.AllocationDelta, window.MaximumSize)
+                    : null).Dispose);
     }
 }

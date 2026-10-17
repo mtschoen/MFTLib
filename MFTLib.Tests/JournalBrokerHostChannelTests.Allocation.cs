@@ -38,11 +38,11 @@ public partial class JournalBrokerHostChannelTests
         var host = CreateHost(processorCount: 4, scanDrive: scans.Source);
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipeC = await harness.OpenScanChannelAsync('C');
-        await scans["C"].Gate.Entered.WaitAsync(HostChannelHarness.HangGuard);
+        await scans["C"].Gate.Entered.WaitAsync(HangGuard);
         Assert.AreEqual(4, scans["C"].Allowance!.Count);
 
         var pipeD = await harness.OpenScanChannelAsync('D');
-        await scans["D"].Gate.Entered.WaitAsync(HostChannelHarness.HangGuard);
+        await scans["D"].Gate.Entered.WaitAsync(HangGuard);
 
         Assert.AreEqual(2, scans["C"].Allowance!.Count, "The running scan's share shrinks while it does nothing.");
         Assert.AreEqual(2, scans["D"].Allowance!.Count);
@@ -62,7 +62,7 @@ public partial class JournalBrokerHostChannelTests
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipeC = await harness.OpenScanChannelAsync('C');
         var pipeD = await harness.OpenScanChannelAsync('D');
-        await Task.WhenAll(scans["C"].Gate.Entered, scans["D"].Gate.Entered).WaitAsync(HostChannelHarness.HangGuard);
+        await Task.WhenAll(scans["C"].Gate.Entered, scans["D"].Gate.Entered).WaitAsync(HangGuard);
         Assert.AreEqual(2, scans["D"].Allowance!.Count);
 
         switch (ending)
@@ -73,7 +73,7 @@ public partial class JournalBrokerHostChannelTests
                 break;
             case ScanEnding.Cancelled:
                 await pipeC.DisposeAsync();
-                await scans["C"].Returned.WaitAsync(HostChannelHarness.HangGuard);
+                await scans["C"].Returned.WaitAsync(HangGuard);
                 break;
             case ScanEnding.SourceThrows:
                 scans["C"].Fail = true;
@@ -132,12 +132,12 @@ public partial class JournalBrokerHostChannelTests
         Assert.AreEqual(1, second.Allowance.Count);
 
         first.Dispose();
-        using var admittedThird = await third.WaitAsync(HostChannelHarness.HangGuard);
+        using var admittedThird = await third.WaitAsync(HangGuard);
         Assert.AreEqual(1, admittedThird.Allowance.Count);
         Assert.IsFalse(fourth.IsCompleted, "The fourth scan arrived after the third and still waits.");
 
         second.Dispose();
-        using var admittedFourth = await fourth.WaitAsync(HostChannelHarness.HangGuard);
+        using var admittedFourth = await fourth.WaitAsync(HangGuard);
         Assert.AreEqual(1, admittedFourth.Allowance.Count);
     }
 
@@ -148,7 +148,7 @@ public partial class JournalBrokerHostChannelTests
         var host = CreateHost(processorCount: 1, scanDrive: scans.Source);
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipeC = await harness.OpenScanChannelAsync('C');
-        await scans["C"].Gate.Entered.WaitAsync(HostChannelHarness.HangGuard);
+        await scans["C"].Gate.Entered.WaitAsync(HangGuard);
 
         var pipeD = await harness.OpenScanChannelAsync('D');
         await WaitUntilAsync(() => host.ParseThreads.QueuedScanCount == 1);
@@ -173,7 +173,7 @@ public partial class JournalBrokerHostChannelTests
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipeC = await harness.OpenScanChannelAsync('C');
         var pipeD = await harness.OpenScanChannelAsync('D');
-        await Task.WhenAll(scans["C"].Gate.Entered, scans["D"].Gate.Entered).WaitAsync(HostChannelHarness.HangGuard);
+        await Task.WhenAll(scans["C"].Gate.Entered, scans["D"].Gate.Entered).WaitAsync(HangGuard);
         var pipeE = await harness.OpenScanChannelAsync('E');
         await WaitUntilAsync(() => host.ParseThreads.QueuedScanCount == 1);
 
@@ -185,7 +185,7 @@ public partial class JournalBrokerHostChannelTests
         Assert.IsFalse(scans["E"].Gate.Entered.IsCompleted);
 
         scans["C"].Gate.Release();
-        await scans["E"].Gate.Entered.WaitAsync(HostChannelHarness.HangGuard);
+        await scans["E"].Gate.Entered.WaitAsync(HangGuard);
         Assert.AreEqual(1, scans["E"].Allowance!.Count);
         Assert.AreEqual(1, scans["D"].Allowance!.Count);
         scans.ReleaseAll();
@@ -201,10 +201,10 @@ public partial class JournalBrokerHostChannelTests
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipeC = await harness.OpenScanChannelAsync('C');
         var pipeD = await harness.OpenScanChannelAsync('D');
-        await Task.WhenAll(scans["C"].Gate.Entered, scans["D"].Gate.Entered).WaitAsync(HostChannelHarness.HangGuard);
+        await Task.WhenAll(scans["C"].Gate.Entered, scans["D"].Gate.Entered).WaitAsync(HangGuard);
 
         await pipeC.DisposeAsync();
-        await scans["C"].Returned.WaitAsync(HostChannelHarness.HangGuard);
+        await scans["C"].Returned.WaitAsync(HangGuard);
         scans["D"].Gate.Release();
         var frames = await HostChannelHarness.ReadToEndAsync(pipeD);
 
@@ -234,7 +234,7 @@ public partial class JournalBrokerHostChannelTests
         var running = new List<ParseThreadRegistration>();
         foreach (var admission in outstanding.Take(expected))
         {
-            running.Add(await admission.WaitAsync(HostChannelHarness.HangGuard));
+            running.Add(await admission.WaitAsync(HangGuard));
         }
 
         Assert.IsTrue(outstanding.Skip(expected).All(admission => !admission.IsCompleted));
@@ -243,7 +243,7 @@ public partial class JournalBrokerHostChannelTests
 
     static async Task WaitUntilAsync(Func<bool> condition)
     {
-        using var guard = new CancellationTokenSource(HostChannelHarness.HangGuard);
+        using var guard = new CancellationTokenSource(HangGuard);
         while (!condition())
         {
             await Task.Delay(TimeSpan.FromMilliseconds(10), guard.Token);
@@ -320,7 +320,7 @@ public partial class JournalBrokerHostChannelTests
             try
             {
                 Gate.WaitForReleaseAsync(HonorCancellation ? token : CancellationToken.None)
-                    .WaitAsync(HostChannelHarness.HangGuard, CancellationToken.None).GetAwaiter().GetResult();
+                    .WaitAsync(HangGuard, CancellationToken.None).GetAwaiter().GetResult();
                 if (Fail)
                 {
                     throw new IOException("scan source failed");

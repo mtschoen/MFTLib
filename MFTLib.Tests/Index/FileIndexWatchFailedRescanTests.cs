@@ -1,6 +1,5 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
-using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
@@ -62,18 +61,18 @@ public class FileIndexWatchFailedRescanTests
         harness.FailNextProduction('T', productionFailure);
         var production = harness.HoldNextProduction('T');
         var rescan = harness.Index.RescanAsync(['T'], Token);
-        await production.Entered.WaitAsync(ScriptedWatchSource.HangGuard);
+        await production.Entered.WaitAsync(HangGuard);
         production.Release();
         if (thrownSwap)
         {
             var thrown = await DriveResultAssertions.FailureAsync<OperationCanceledException>(
-                () => rescan.WaitAsync(ScriptedWatchSource.HangGuard));
+                () => rescan.WaitAsync(HangGuard));
             Assert.AreSame(productionFailure, thrown);
         }
         else
         {
             var thrown = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
-                () => rescan.WaitAsync(ScriptedWatchSource.HangGuard));
+                () => rescan.WaitAsync(HangGuard));
             Assert.AreSame(productionFailure, thrown.InnerException);
             Assert.AreEqual(productionFailure.Message, harness.DriveFor('T').Failure?.Message);
         }
@@ -111,7 +110,7 @@ public class FileIndexWatchFailedRescanTests
             var unpublished = await FileIndexWatchRescanTests.WaitForReplacementBlockAsync(
                 harness, 'T', initialProducedBlock, rescan);
             await cancellation.CancelAsync();
-            await ThrowsAsync<OperationCanceledException>(() => rescan.WaitAsync(ScriptedWatchSource.HangGuard));
+            await ThrowsAsync<OperationCanceledException>(() => rescan.WaitAsync(HangGuard));
             Assert.ThrowsException<ObjectDisposedException>(() => _ = unpublished.Header);
             AssertStillFaulted(harness, before, original, startCount);
         }
@@ -184,7 +183,7 @@ public class FileIndexWatchFailedRescanTests
         await handle.Publish(new JournalBatch([WatchHarness.Create(9, "recovered.txt")], 13, 9500));
         var caughtUp = harness.Index.WaitForCatchUpAsync(['T'], Token);
         await handle.Publish(new DriveCaughtUp());
-        await caughtUp.WaitAsync(ScriptedWatchSource.HangGuard);
+        await caughtUp.WaitAsync(HangGuard);
         Assert.AreEqual(9500L, harness.Index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
         Assert.AreEqual(WatchState.CaughtUp, harness.DriveFor('T').Watch.State);
         await harness.Index.StopWatchingAsync(['T'], Token);

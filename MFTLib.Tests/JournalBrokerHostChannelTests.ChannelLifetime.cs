@@ -67,8 +67,8 @@ public partial class JournalBrokerHostChannelTests
 
         await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 8, "C", "pipe"));
 
-        await connected.Disposed.WaitAsync(HostChannelHarness.HangGuard);
-        await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
+        await connected.Disposed.WaitAsync(HangGuard);
+        await harness.Serve.WaitAsync(HangGuard);
     }
 
     [TestMethod]
@@ -86,12 +86,12 @@ public partial class JournalBrokerHostChannelTests
         await using var lateStream = new DisposalRecordingStream(late.Host);
 
         await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 9, "C", "slow"));
-        await connecting.Entered.WaitAsync(HostChannelHarness.HangGuard);
+        await connecting.Entered.WaitAsync(HangGuard);
         await harness.CloseControlAsync();
-        await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
+        await harness.Serve.WaitAsync(HangGuard);
         connection.SetResult(lateStream);
 
-        await lateStream.Disposed.WaitAsync(HostChannelHarness.HangGuard);
+        await lateStream.Disposed.WaitAsync(HangGuard);
     }
 
     [TestMethod]
@@ -132,7 +132,7 @@ public partial class JournalBrokerHostChannelTests
         // The client's end is gone the way a broken named pipe reports it: the read throws.
         readBreaker.BreakReads();
 
-        await watchStopped.Task.WaitAsync(HostChannelHarness.HangGuard);
+        await watchStopped.Task.WaitAsync(HangGuard);
         Assert.IsNull(await HostChannelHarness.ReadFrameAsync(pipe), "The host closes the channel.");
         Assert.IsFalse(harness.Serve.IsCompleted, "One channel's broken pipe does not end the session.");
     }
@@ -152,20 +152,20 @@ public partial class JournalBrokerHostChannelTests
 
         // The ChannelOpened reply passed the session's end check and is held mid-write.
         await HostChannelHarness.WriteFrameAsync(client, writer => BrokerProtocol.WriteOpenChannel(writer, 3, "C", "late"));
-        await heldReply.Started.WaitAsync(HostChannelHarness.HangGuard);
+        await heldReply.Started.WaitAsync(HangGuard);
 
         // The client goes away: the session ends and its drain starts (the drain's grace timer is
         // the second 5 second timer after the heartbeat sender's), holding only the request's task.
         await client.DisposeAsync();
-        await clock.TimerCreated(JournalBrokerHost.ControlClosedGracePeriod, 2).WaitAsync(HostChannelHarness.HangGuard);
+        await clock.TimerCreated(JournalBrokerHost.ControlClosedGracePeriod, 2).WaitAsync(HangGuard);
 
         // The reply completes, so the request tracks its channel task, which cannot finish while its
         // pipe is held open: the drain must take a second snapshot and wait for that task as well.
         heldReply.Finish();
-        await connected.DisposalStarted.WaitAsync(HostChannelHarness.HangGuard);
+        await connected.DisposalStarted.WaitAsync(HangGuard);
         Assert.IsFalse(serve.IsCompleted, "The session cannot return while a channel it tracked is still running.");
         connected.FinishDisposal();
-        await serve.WaitAsync(HostChannelHarness.HangGuard);
+        await serve.WaitAsync(HangGuard);
     }
 
     static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> ParkedUntilCancelled(
@@ -216,7 +216,7 @@ public partial class JournalBrokerHostChannelTests
                 CancellationToken cancellationToken = default)
             {
                 owner._started.TrySetResult();
-                await owner._finish.Task.WaitAsync(HostChannelHarness.HangGuard, CancellationToken.None);
+                await owner._finish.Task.WaitAsync(HangGuard, CancellationToken.None);
                 // The write is already under way, so it completes even though the session has ended.
                 await base.WriteAsync(buffer, CancellationToken.None);
             }
@@ -238,7 +238,7 @@ public partial class JournalBrokerHostChannelTests
         public override async ValueTask DisposeAsync()
         {
             _started.TrySetResult();
-            await _finish.Task.WaitAsync(HostChannelHarness.HangGuard);
+            await _finish.Task.WaitAsync(HangGuard);
             await base.DisposeAsync();
         }
     }

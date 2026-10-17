@@ -20,8 +20,6 @@ namespace MFTLib.Tests.Index;
 [DoNotParallelize]
 public partial class FileIndexPerDriveWatchTests
 {
-    static readonly TimeSpan HangGuard = ScriptedWatchSource.HangGuard;
-
     public TestContext TestContext { get; set; } = null!;
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;

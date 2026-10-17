@@ -129,6 +129,24 @@ public class AgentInstructionsTests
     }
 
     [TestMethod]
+    public void TestSources_DeclareNoPerClassHangGuard()
+    {
+        var declaration = new Regex(
+            @"\bTimeSpan\s+HangGuard\b|\bHangGuard\s*=\s*(TimeSpan\.FromSeconds|HostChannelHarness|ScriptedWatchSource)");
+        var paths = RepositoryFiles.Git("ls-files", "-z", "--", "MFTLib.Tests/*.cs")
+            .Split('\0', StringSplitOptions.RemoveEmptyEntries);
+        Assert.IsTrue(paths.Length > 0, "Git returned no tracked test sources.");
+        var offenders = paths.SelectMany(path => RepositoryFiles.Read(path)
+                .Split('\n')
+                .Select((line, index) => (path, line, number: index + 1)))
+            .Where(entry => declaration.IsMatch(entry.line))
+            .Select(entry => $"{entry.path}:{entry.number}")
+            .ToList();
+        Assert.AreEqual(0, offenders.Count,
+            "Use the shared TestTimeouts.HangGuard instead of: " + string.Join(", ", offenders));
+    }
+
+    [TestMethod]
     public void PrivateContentPatterns_RejectFixturesAndAcceptPortableInputs()
     {
         var rejected = new[]

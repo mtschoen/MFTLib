@@ -18,8 +18,6 @@ namespace MFTLib.Tests;
 [SupportedOSPlatform("windows")]
 public partial class BrokerSessionTests
 {
-    static readonly TimeSpan HangGuard = HostChannelHarness.HangGuard;
-
     [TestCleanup]
     public void Cleanup()
     {

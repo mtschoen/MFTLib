@@ -198,15 +198,15 @@ public partial class JournalBrokerHostTests
             scanStarted.MarkEntered();
             // Blocks without ever reporting progress, so the progress pump stays parked in its
             // first wait when the session ends.
-            cancellationToken.WaitHandle.WaitOne(HostChannelHarness.HangGuard);
+            cancellationToken.WaitHandle.WaitOne(HangGuard);
             throw new OperationCanceledException(cancellationToken);
         });
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipe = await harness.OpenScanChannelAsync('C');
-        await scanStarted.Entered.WaitAsync(HostChannelHarness.HangGuard);
+        await scanStarted.Entered.WaitAsync(HangGuard);
 
         await harness.CloseControlAsync();
-        await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
+        await harness.Serve.WaitAsync(HangGuard);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
         Assert.IsFalse(frames.Any(f => f.Kind == BrokerFrameKind.Error),

@@ -1,6 +1,5 @@
 using System.Buffers;
 using System.Buffers.Binary;
-using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -98,12 +97,12 @@ public class BrokerFrameWriteLimitTests
 
         var exception = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
             broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), options, CancellationToken.None)
-                .WaitAsync(HostChannelHarness.HangGuard));
+                .WaitAsync(HangGuard));
 
         Assert.AreEqual("options", exception.ParamName);
         StringAssert.Contains(exception.Message, "frame limit");
         var volume = await broker.Process.QueryVolumeAsync('C', CancellationToken.None)
-            .WaitAsync(HostChannelHarness.HangGuard);
+            .WaitAsync(HangGuard);
         Assert.AreEqual(Volume.BytesPerFileRecordSegment, volume.BytesPerFileRecordSegment);
     }
 

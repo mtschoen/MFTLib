@@ -1,6 +1,5 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
-using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -83,7 +82,7 @@ public class FileIndexRescanCleanupTests
             var rescan = index.RescanAsync(['T'], rescanCancellation.Token);
 
             // The rescan has produced its replacement block and is parked at the write gate.
-            await producerReturned.Task.WaitAsync(ScriptedWatchSource.HangGuard);
+            await producerReturned.Task.WaitAsync(HangGuard);
             await rescanCancellation.CancelAsync();
 
             await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => rescan);
@@ -194,7 +193,7 @@ public class FileIndexRescanCleanupTests
             using var rescanCancellation = new CancellationTokenSource();
             var rescan = index.RescanAsync(['T'], rescanCancellation.Token);
 
-            await producerEntered.Task.WaitAsync(ScriptedWatchSource.HangGuard);
+            await producerEntered.Task.WaitAsync(HangGuard);
             // Cancel before the producer returns: the scan completes normally, and the
             // cancellation is observed by the commit's write-gate wait.
             await rescanCancellation.CancelAsync();

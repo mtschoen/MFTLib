@@ -249,7 +249,7 @@ public class BrokerProcessLaunchTests
         var process = CreateProcess(clientSide);
         await clientSide.DisposeAsync();
 
-        await process.DisposeAsync().AsTask().WaitAsync(HostChannelHarness.HangGuard);
+        await process.DisposeAsync().AsTask().WaitAsync(HangGuard);
     }
 
     // No scan runs on these processes, so their section factory is never called.

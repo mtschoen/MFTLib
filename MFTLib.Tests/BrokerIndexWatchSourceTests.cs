@@ -10,8 +10,6 @@ namespace MFTLib.Tests;
 [DoNotParallelize]
 public class BrokerIndexWatchSourceTests
 {
-    static readonly TimeSpan HangGuard = HostChannelHarness.HangGuard;
-
     [TestMethod]
     public async Task WatchSource_StartsOnePipePerDriveAndEachBatchArrivesOnItsOwnHandle()
     {

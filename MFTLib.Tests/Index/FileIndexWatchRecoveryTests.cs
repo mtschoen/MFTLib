@@ -17,8 +17,6 @@ namespace MFTLib.Tests.Index;
 [DoNotParallelize]
 public partial class FileIndexWatchRecoveryTests
 {
-    static readonly TimeSpan HangGuard = ScriptedWatchSource.HangGuard;
-
     [ThreadStatic] static bool _completingRecoveryTicket;
 
     public TestContext TestContext { get; set; } = null!;

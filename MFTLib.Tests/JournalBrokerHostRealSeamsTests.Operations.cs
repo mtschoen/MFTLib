@@ -88,7 +88,7 @@ public partial class JournalBrokerHostRealSeamsTests
                 case 2:
                     return BuildSingleEntryWatchResult(journalIdentifier, startUsn + 100, "watched.txt", 0x100 /* FileCreate */);
                 default:
-                    cancelled.Task.Wait(HostChannelHarness.HangGuard);
+                    cancelled.Task.Wait(HangGuard);
                     return BuildEmptyWatchResult(journalIdentifier, startUsn);
             }
         };
@@ -110,7 +110,7 @@ public partial class JournalBrokerHostRealSeamsTests
         Assert.AreEqual(BrokerFrameKind.CaughtUp, caughtUp?.Kind);
 
         await pipe.DisposeAsync(); // the client closing its pipe cancels the watch
-        await cancelled.Task.WaitAsync(HostChannelHarness.HangGuard); // closing the pipe cancels the native watch
+        await cancelled.Task.WaitAsync(HangGuard); // closing the pipe cancels the native watch
     }
 
     [TestMethod]
@@ -128,7 +128,7 @@ public partial class JournalBrokerHostRealSeamsTests
         MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalIdentifier, _) =>
         {
             watchEntered.TrySetResult();
-            cancelled.Task.Wait(HostChannelHarness.HangGuard);
+            cancelled.Task.Wait(HangGuard);
             return BuildEmptyWatchResult(journalIdentifier, startUsn);
         };
         MFTLibNative._cancelUsnJournalWatch = _ =>
@@ -139,11 +139,11 @@ public partial class JournalBrokerHostRealSeamsTests
         MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
         await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
         var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7, 100));
-        await watchEntered.Task.WaitAsync(HostChannelHarness.HangGuard);
+        await watchEntered.Task.WaitAsync(HangGuard);
 
         // Ending the session cancels the channel while the read is blocked.
         await harness.CloseControlAsync();
-        await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
+        await harness.Serve.WaitAsync(HangGuard);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
         Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Error),
@@ -406,7 +406,7 @@ public partial class JournalBrokerHostRealSeamsTests
 
             // Ending the session cancels every armed channel at once.
             await harness.CloseControlAsync();
-            await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
+            await harness.Serve.WaitAsync(HangGuard);
 
             foreach (var pipe in pipes)
             {

@@ -19,8 +19,6 @@ namespace MFTLib.Tests.Index;
 [DoNotParallelize]
 public partial class FileIndexCatchUpLossTests
 {
-    static readonly TimeSpan HangGuard = ScriptedWatchSource.HangGuard;
-
     public TestContext TestContext { get; set; } = null!;
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;

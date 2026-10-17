@@ -169,7 +169,7 @@ public class SyntheticConversionTests
         try
         {
             var settings = await session.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None)
-                .WaitAsync(ScriptedWatchSource.HangGuard);
+                .WaitAsync(HangGuard);
 
             Assert.AreEqual(1, launches);
             Assert.AreEqual(0x08000000L, settings.MaximumSize);
@@ -181,7 +181,7 @@ public class SyntheticConversionTests
             await handle.DisposeAsync();
         }
 
-        await handle.Ended.WaitAsync(ScriptedWatchSource.HangGuard);
+        await handle.Ended.WaitAsync(HangGuard);
     }
 
     [TestMethod]

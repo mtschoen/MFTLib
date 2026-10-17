@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
-using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -303,7 +302,7 @@ public class FileIndexMidSessionCheckpointLossTests
         harness.Source.WatchFor('T').FailDrive(
             new IOException("USN journal entries have been deleted; full rescan needed"));
 
-        var loss = await seenByHandler.Task.WaitAsync(ScriptedWatchSource.HangGuard);
+        var loss = await seenByHandler.Task.WaitAsync(HangGuard);
         Assert.IsNotNull(loss, "the handler must see the loss the fault found");
         Assert.AreEqual(JournalCheckpointLossDetection.LiveWatch, loss.DetectedDuring);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);

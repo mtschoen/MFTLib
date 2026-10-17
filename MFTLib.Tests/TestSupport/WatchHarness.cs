@@ -115,7 +115,7 @@ internal sealed class WatchHarness : IDisposable
 
             var completion = new TaskCompletionSource<WatchFault>(TaskCreationOptions.RunContinuationsAsynchronously);
             _faultWaiters.Add((Match, completion));
-            return completion.Task.WaitAsync(ScriptedWatchSource.HangGuard);
+            return completion.Task.WaitAsync(HangGuard);
         }
     }
 
@@ -228,7 +228,7 @@ internal sealed class WatchHarness : IDisposable
             }
         }
 
-        Index.DisposeAsync().AsTask().WaitAsync(ScriptedWatchSource.HangGuard).GetAwaiter().GetResult();
+        Index.DisposeAsync().AsTask().WaitAsync(HangGuard).GetAwaiter().GetResult();
         foreach (var blockBuilder in _blockBuilders.Values)
         {
             blockBuilder.Dispose();
@@ -246,7 +246,7 @@ internal sealed class WatchHarness : IDisposable
         lock (_faults)
         {
             return _recoveriesByDrive.TryGetValue(char.ToUpperInvariant(driveLetter), out var recoveries)
-                ? recoveries[^1].WaitAsync(ScriptedWatchSource.HangGuard)
+                ? recoveries[^1].WaitAsync(HangGuard)
                 : throw new InvalidOperationException($"No recovery of drive {driveLetter} was queued.");
         }
     }

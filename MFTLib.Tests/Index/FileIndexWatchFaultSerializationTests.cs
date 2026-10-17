@@ -1,6 +1,5 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
-using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -42,12 +41,12 @@ public class FileIndexWatchFaultSerializationTests
             : successorPump;
 
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
-        await recoveryHandlerEntered.Task.WaitAsync(ScriptedWatchSource.HangGuard, Token);
+        await recoveryHandlerEntered.Task.WaitAsync(HangGuard, Token);
         await harness.Index.StartWatchingAsync(['T'], Token);
         harness.Source.WatchFor('T').LoseChannel(new IOException("the successor's broker died"));
 
         // Serialized, the successor's pump (captured by its state change) blocks; overlapped, its handler enters.
-        using var hangGuard = new CancellationTokenSource(ScriptedWatchSource.HangGuard);
+        using var hangGuard = new CancellationTokenSource(HangGuard);
         while (!successorHandlerEntered.Task.IsCompleted && successorPump?.ThreadState.HasFlag(ThreadState.WaitSleepJoin) != true)
         {
             hangGuard.Token.ThrowIfCancellationRequested();
@@ -55,7 +54,7 @@ public class FileIndexWatchFaultSerializationTests
         }
 
         releaseRecoveryHandler.SetResult();
-        await successorHandlerEntered.Task.WaitAsync(ScriptedWatchSource.HangGuard, Token);
+        await successorHandlerEntered.Task.WaitAsync(HangGuard, Token);
 
         Assert.IsFalse(overlapped, "the successor's fault was delivered while the recovery's fault handler ran");
     }

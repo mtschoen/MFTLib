@@ -149,17 +149,17 @@ public class JournalBrokerHostBlockScanTests
         {
             yield return [Record(5, ".", 3)];
             scanParked.MarkEntered();
-            cancellationToken.WaitHandle.WaitOne(HostChannelHarness.HangGuard);
+            cancellationToken.WaitHandle.WaitOne(HangGuard);
             yield return [Record(20, "file.txt")];
         }
 
         var host = CreateHost((_, _, _, _, _, cancellationToken) => Batches(cancellationToken));
         await using var harness = new HostChannelHarness(host, blockWriter);
         var pipe = await harness.OpenScanChannelAsync('C', "section-C");
-        await scanParked.Entered.WaitAsync(HostChannelHarness.HangGuard);
+        await scanParked.Entered.WaitAsync(HangGuard);
 
         await harness.CloseControlAsync();
-        await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
+        await harness.Serve.WaitAsync(HangGuard);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
         Assert.AreEqual(6u, blockWriter.Block.Header.RowCount);

@@ -1,6 +1,5 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
-using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -65,7 +64,7 @@ public class FileIndexWatchCatchUpTests
         Assert.IsFalse(wait.IsCompleted);
 
         await handle.Publish(new DriveCaughtUp());
-        await wait.WaitAsync(ScriptedWatchSource.HangGuard);
+        await wait.WaitAsync(HangGuard);
     }
 
     [TestMethod]
@@ -123,7 +122,7 @@ public class FileIndexWatchCatchUpTests
         Assert.IsFalse(wait.IsCompleted);
 
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
-        await wait.WaitAsync(ScriptedWatchSource.HangGuard);
+        await wait.WaitAsync(HangGuard);
     }
 
     [TestMethod]
@@ -167,7 +166,7 @@ public class FileIndexWatchCatchUpTests
         var replacementWait = harness.Index.WaitForCatchUpAsync(['T'], Token);
         Assert.IsFalse(replacementWait.IsCompleted, "the replacement wait remains pending until the drive catches up");
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
-        await replacementWait.WaitAsync(ScriptedWatchSource.HangGuard);
+        await replacementWait.WaitAsync(HangGuard);
     }
 
     [TestMethod]
@@ -235,7 +234,7 @@ public class FileIndexWatchCatchUpTests
 
         Assert.AreEqual(WatchState.CaughtUp, harness.DriveFor('T').Watch.State);
         Assert.AreEqual(0, harness.Faults.Count);
-        await harness.Index.WaitForCatchUpAsync(['T'], Token).WaitAsync(ScriptedWatchSource.HangGuard);
+        await harness.Index.WaitForCatchUpAsync(['T'], Token).WaitAsync(HangGuard);
     }
 
     [TestMethod]

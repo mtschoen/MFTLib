@@ -21,7 +21,7 @@ internal sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
 
     readonly ConcurrentDictionary<char, ScriptedHostWatch> _watches = new();
     readonly ConcurrentDictionary<char, UsnJournalCursor> _tips = new();
-    readonly CancellationTokenSource _hangGuard = new(HostChannelHarness.HangGuard);
+    readonly CancellationTokenSource _hangGuard = new(HangGuard);
     readonly InProcessBroker _broker;
     readonly ArmableControlCorruption _corruption = new();
     int _connectionCount;
@@ -56,7 +56,7 @@ internal sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
 
     public BrokerProcess Process => _broker.Process;
 
-    /// <summary>Cancelled if a test outlives <see cref="HostChannelHarness.HangGuard" />.</summary>
+    /// <summary>Cancelled if a test outlives <see cref="HangGuard" />.</summary>
     public CancellationToken CancellationToken => _hangGuard.Token;
 
     public int ConnectionCount => Volatile.Read(ref _connectionCount);
@@ -87,7 +87,7 @@ internal sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
     {
         _corruption.CorruptNextWrite();
         return Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
-            Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HostChannelHarness.HangGuard));
+            Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
     }
 
     public async ValueTask DisposeAsync()
@@ -171,7 +171,7 @@ internal sealed class ScriptedHostWatch
 
     /// <summary>Completes with the <paramref name="number" />th watch the host starts on this drive.</summary>
     public Task<ScriptedWatchRun> RunAsync(int number) =>
-        Slot(number).Task.WaitAsync(HostChannelHarness.HangGuard);
+        Slot(number).Task.WaitAsync(HangGuard);
 
     public int StartedCount => Volatile.Read(ref _count);
 
@@ -307,7 +307,7 @@ internal static class ChangeSignal
                 applied.TrySetResult();
             }
         };
-        return applied.Task.WaitAsync(HostChannelHarness.HangGuard);
+        return applied.Task.WaitAsync(HangGuard);
     }
 }
 
@@ -316,7 +316,7 @@ internal static class WatchReads
 {
     public static async Task<WatchStreamItem> NextAsync(IAsyncEnumerator<WatchStreamItem> reader)
     {
-        Assert.IsTrue(await reader.MoveNextAsync().AsTask().WaitAsync(HostChannelHarness.HangGuard),
+        Assert.IsTrue(await reader.MoveNextAsync().AsTask().WaitAsync(HangGuard),
             "The watch ended where an item was expected.");
         return reader.Current;
     }
@@ -332,5 +332,5 @@ internal static class WatchReads
     public static Task<TException> ThrowsNextAsync<TException>(IAsyncEnumerator<WatchStreamItem> reader)
         where TException : Exception =>
         WatchDeduplicationTestSupport.ThrowsAsync<TException>(
-            async () => await reader.MoveNextAsync().AsTask().WaitAsync(HostChannelHarness.HangGuard));
+            async () => await reader.MoveNextAsync().AsTask().WaitAsync(HangGuard));
 }

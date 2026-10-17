@@ -31,14 +31,14 @@ public partial class JournalBrokerHostTests
         // The scan is live over the healthy pipe: the armed cursor arrives, and the record source
         // then parks with the rest of the scan still ahead of it.
         Assert.AreEqual(BrokerFrameKind.Cursor, (await HostChannelHarness.ReadFrameAsync(pipe))?.Kind);
-        await scanParked.Entered.WaitAsync(HostChannelHarness.HangGuard);
+        await scanParked.Entered.WaitAsync(HangGuard);
 
         // The client goes away mid-scan. Breaking the pipe before releasing the scan keeps the
         // disconnect deterministic: the next frame the host writes lands on the dead client end.
-        var hostEnd = await connector.Connected.WaitAsync(HostChannelHarness.HangGuard);
+        var hostEnd = await connector.Connected.WaitAsync(HangGuard);
         hostEnd.BreakPipe();
         scanParked.Release();
-        await hostEnd.WriteFailureObserved.WaitAsync(HostChannelHarness.HangGuard);
+        await hostEnd.WriteFailureObserved.WaitAsync(HangGuard);
 
         await AssertControlStillAnswersAsync(harness);
         Assert.IsFalse(harness.Serve.IsCompleted, "One channel's dead pipe must not end the session.");
@@ -54,11 +54,11 @@ public partial class JournalBrokerHostTests
         harness.BreakableControl!.BreakPipe();
 
         await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 1, "C"));
-        await harness.BreakableControl.WriteFailureObserved.WaitAsync(HostChannelHarness.HangGuard);
+        await harness.BreakableControl.WriteFailureObserved.WaitAsync(HangGuard);
 
         // ServeAsync completes rather than faulting with the broken pipe's IOException, which is
         // what killed the elevated broker child.
-        await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
+        await harness.Serve.WaitAsync(HangGuard);
     }
 
     [TestMethod]
@@ -73,9 +73,9 @@ public partial class JournalBrokerHostTests
         harness.BreakableControl!.BreakPipe();
 
         await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 1, "C", 0x08000000, 0x01000000));
-        await harness.BreakableControl.WriteFailureObserved.WaitAsync(HostChannelHarness.HangGuard);
+        await harness.BreakableControl.WriteFailureObserved.WaitAsync(HangGuard);
 
-        await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
+        await harness.Serve.WaitAsync(HangGuard);
     }
 
     [TestMethod]
@@ -96,13 +96,13 @@ public partial class JournalBrokerHostTests
         // the client gone.
         harness.BreakableControl!.BreakPipe();
         await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 9, "C"));
-        await harness.BreakableControl.WriteFailureObserved.WaitAsync(HostChannelHarness.HangGuard);
+        await harness.BreakableControl.WriteFailureObserved.WaitAsync(HangGuard);
 
-        await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
+        await harness.Serve.WaitAsync(HangGuard);
 
         // Ending the session on a disconnect must not leave the armed watch behind: it was
         // cancelled on the way out, not merely awaited.
-        await watchStopped.Task.WaitAsync(HostChannelHarness.HangGuard);
+        await watchStopped.Task.WaitAsync(HangGuard);
     }
 
     // A watch that yields nothing: it parks until the session stops it and reports that stop, so

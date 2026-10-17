@@ -57,7 +57,7 @@ public class WatchFailureObservationTests
         var source = new BrokerIndexWatchSource(_ => Task.FromResult(process));
         using var harness = new WatchHarness(source, 'T');
         var index = harness.Index;
-        using var timeout = new CancellationTokenSource(HostChannelHarness.HangGuard);
+        using var timeout = new CancellationTokenSource(HangGuard);
         var token = timeout.Token;
         var announced = new TaskCompletionSource<WatchFault>(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -121,14 +121,14 @@ public class WatchFailureObservationTests
         var starting = source.StartAsync(new IndexWatchTarget('T', 7, 100), CancellationToken.None);
         await using var host = await broker.AcceptChannelAsync();
         Assert.AreEqual(BrokerFrameKind.StartWatch, (await HostChannelHarness.ReadFrameAsync(host))?.Kind);
-        await using var handle = await starting.WaitAsync(HostChannelHarness.HangGuard);
+        await using var handle = await starting.WaitAsync(HangGuard);
         var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator();
         await using var _ = reader.ConfigureAwait(false);
         var first = reader.MoveNextAsync().AsTask();
         await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteError(writer, 0, marker));
 
         var failure = await WatchDeduplicationTestSupport.ThrowsAsync<DriveWatchFaultException>(
-            () => first.WaitAsync(HostChannelHarness.HangGuard));
+            () => first.WaitAsync(HangGuard));
         Assert.IsNull(failure.InnerException);
         Assert.AreEqual(marker, failure.Message);
         return [new WeakReference(source)];

@@ -51,12 +51,12 @@ public partial class JournalBrokerHostLivenessTests
         {
             operation.Processing("wedged step");
             entered.MarkEntered();
-            token.WaitHandle.WaitOne(HostChannelHarness.HangGuard);
+            token.WaitHandle.WaitOne(HangGuard);
             token.ThrowIfCancellationRequested();
             return [];
         }), sectionWriter);
         var pipe = await harness.OpenScanChannelAsync('C');
-        await entered.Entered.WaitAsync(HostChannelHarness.HangGuard);
+        await entered.Entered.WaitAsync(HangGuard);
 
         for (var interval = 0; interval < 6; interval++)
         {
@@ -96,7 +96,7 @@ public partial class JournalBrokerHostLivenessTests
         // Progress every 10 seconds for 120 seconds: each step is published, then two intervals pass.
         foreach (var step in steps)
         {
-            await step.Entered.WaitAsync(HostChannelHarness.HangGuard);
+            await step.Entered.WaitAsync(HangGuard);
             await liveness.AdvanceOneIntervalAsync();
             await liveness.AdvanceOneIntervalAsync();
             step.Release();
@@ -120,7 +120,7 @@ public partial class JournalBrokerHostLivenessTests
                 // Holds the only parse thread, waiting on its volume, which never stalls.
                 operation.WaitingOnVolume();
                 admitted.MarkEntered();
-                token.WaitHandle.WaitOne(HostChannelHarness.HangGuard);
+                token.WaitHandle.WaitOne(HangGuard);
                 token.ThrowIfCancellationRequested();
             }
 
@@ -129,7 +129,7 @@ public partial class JournalBrokerHostLivenessTests
         using var sectionWriter = new RecordingBlockSectionWriter();
         await using var harness = new HostChannelHarness(host, sectionWriter);
         await harness.OpenScanChannelAsync('C');
-        await admitted.Entered.WaitAsync(HostChannelHarness.HangGuard);
+        await admitted.Entered.WaitAsync(HangGuard);
         var queued = await harness.OpenScanChannelAsync('D');
         await liveness.WhenPublished("harness-D-2", ChannelOperationKind.Queued);
 
@@ -237,7 +237,7 @@ public partial class JournalBrokerHostLivenessTests
         public Task<bool> AdvanceOneIntervalAsync()
         {
             Clock.Advance(BrokerLiveness.HeartbeatInterval);
-            return _visits.Reader.ReadAsync().AsTask().WaitAsync(HostChannelHarness.HangGuard);
+            return _visits.Reader.ReadAsync().AsTask().WaitAsync(HangGuard);
         }
 
         public Task WhenPublished(string tag, ChannelOperationKind kind)
@@ -251,7 +251,7 @@ public partial class JournalBrokerHostLivenessTests
 
                 var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 _waiters.Add((tag, kind, reached));
-                return reached.Task.WaitAsync(HostChannelHarness.HangGuard);
+                return reached.Task.WaitAsync(HangGuard);
             }
         }
 

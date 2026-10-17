@@ -16,8 +16,6 @@ namespace MFTLib.Tests;
 [DoNotParallelize]
 public sealed class BrokerFileIndexRescanTests
 {
-    static readonly TimeSpan HangGuard = HostChannelHarness.HangGuard;
-
     [TestMethod]
     public async Task RescanOfT_OverBroker_ReopensOnlyTsChannel()
     {

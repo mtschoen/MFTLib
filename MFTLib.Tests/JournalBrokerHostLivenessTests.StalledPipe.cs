@@ -23,7 +23,7 @@ public partial class JournalBrokerHostLivenessTests
             return [];
         }), sectionWriter);
         var pipe = await harness.OpenScanChannelAsync('C');
-        await entered.Entered.WaitAsync(HostChannelHarness.HangGuard);
+        await entered.Entered.WaitAsync(HangGuard);
 
         // Six 5 second intervals reach the 30 second limit and Stalled is written; the operation ignores the
         // cancellation that follows, so the pipe stays visited for the intervals after it.
@@ -74,7 +74,7 @@ public partial class JournalBrokerHostLivenessTests
                 return [];
             }), sectionWriter, wrapDrivePipe: (_, hostEnd) => stalledWrite.Wrap(hostEnd));
             var pipe = await harness.OpenScanChannelAsync('C');
-            await entered.Entered.WaitAsync(HostChannelHarness.HangGuard);
+            await entered.Entered.WaitAsync(HangGuard);
             // The Stalled write starts on the sixth interval (30 second limit, six 5 second visits);
             // the bound only makes a missing write fail the test instead of looping.
             for (var interval = 0; !stalledWrite.Started.IsCompleted; interval++)
@@ -88,7 +88,7 @@ public partial class JournalBrokerHostLivenessTests
             // and queues its next frame behind that write; once the write lets go, the frame finds
             // the pipe stalled and is not written.
             release.Release();
-            await laterFrame.Task.WaitAsync(HostChannelHarness.HangGuard);
+            await laterFrame.Task.WaitAsync(HangGuard);
             stalledWrite.Finish();
             var frames = await HostChannelHarness.ReadToEndAsync(pipe, includeHeartbeats: true);
 
@@ -126,7 +126,7 @@ public partial class JournalBrokerHostLivenessTests
                 if (buffer.Span[4] == (byte)BrokerFrameKind.Stalled)
                 {
                     owner._started.TrySetResult();
-                    await owner._finish.Task.WaitAsync(HostChannelHarness.HangGuard, CancellationToken.None);
+                    await owner._finish.Task.WaitAsync(HangGuard, CancellationToken.None);
                 }
 
                 await base.WriteAsync(buffer, cancellationToken);

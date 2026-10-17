@@ -17,7 +17,6 @@ namespace MFTLib.Tests;
 public class BrokerProcessLivenessTests
 {
     const string StallMessage = "No frame from the broker for 30 seconds";
-    static readonly TimeSpan HangGuard = HostChannelHarness.HangGuard;
     static readonly TimeSpan OneTick = TimeSpan.FromTicks(1);
     static readonly TimeSpan StallLimit = BrokerLiveness.StallLimit;
     static readonly TimeSpan HalfWindow = TimeSpan.FromSeconds(10);
@@ -377,7 +376,7 @@ public class BrokerProcessLivenessTests
         }
 
         // Starts a scan and scripts it to the point where the client waits for ScanReady.
-        public async Task<ScriptedScan> StartScanAsync(char letter, IProgress<BrokerScanProgress>? progress = null)
+        public async Task<StubbedScan> StartScanAsync(char letter, IProgress<BrokerScanProgress>? progress = null)
         {
             var scan = Broker.Process.ScanDriveAsync(letter, TestBlockSections.Target(),
                 new MftScanOptions { Progress = progress }, CancellationToken.None);
@@ -388,7 +387,7 @@ public class BrokerProcessLivenessTests
                 .WaitAsync(HangGuard);
             await SendControlAsync(writer => BrokerProtocol.WriteChannelOpened(writer, open.RequestId));
             Assert.AreEqual(BrokerFrameKind.ArmAndScan, (await HostChannelHarness.ReadFrameAsync(pipe).WaitAsync(HangGuard))?.Kind);
-            var scripted = new ScriptedScan(pipe, DriveReads(letter), scan);
+            var scripted = new StubbedScan(pipe, DriveReads(letter), scan);
             await scripted.SendAsync(writer => BrokerProtocol.WriteCursor(writer, new UsnJournalCursor(7, 1000)));
             await scripted.SettledAsync();
             return scripted;
@@ -398,7 +397,7 @@ public class BrokerProcessLivenessTests
     }
 
     // The host's end of one scan channel, with the count of bytes it has sent.
-    sealed class ScriptedScan(Stream hostPipe, ReadCounter reads, Task<BrokerDriveScanResult> scan)
+    sealed class StubbedScan(Stream hostPipe, ReadCounter reads, Task<BrokerDriveScanResult> scan)
     {
         long _sent;
 

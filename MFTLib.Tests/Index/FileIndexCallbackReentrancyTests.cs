@@ -19,8 +19,6 @@ namespace MFTLib.Tests.Index;
 [DoNotParallelize]
 public class FileIndexCallbackReentrancyTests
 {
-    static readonly TimeSpan HangGuard = ScriptedWatchSource.HangGuard;
-
     [ThreadStatic] static bool _insideHandlerStack;
 
     public TestContext TestContext { get; set; } = null!;

@@ -54,9 +54,9 @@ internal sealed class HeldWrites
 
     public int Attempts => Volatile.Read(ref _attempts);
 
-    public Stream Wrap(Stream inner) => new HeldWriteStream(inner, this);
+    public Stream Wrap(Stream inner) => new BlockingWriteStream(inner, this);
 
-    sealed class HeldWriteStream(Stream inner, HeldWrites held) : DelegatingStream(inner)
+    sealed class BlockingWriteStream(Stream inner, HeldWrites held) : DelegatingStream(inner)
     {
         public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
         {

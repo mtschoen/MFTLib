@@ -24,7 +24,7 @@ internal sealed class TestGate
 
     /// <summary>
     ///     The blocking counterpart for a step that runs inside a synchronous callback. Bounded by
-    ///     <see cref="ScriptedWatchSource.HangGuard" /> so a test that never releases the gate
+    ///     <see cref="TestTimeouts.HangGuard" /> so a test that never releases the gate
     ///     reports a failure instead of wedging the thread that entered it.
     /// </summary>
     internal void WaitForRelease()
@@ -34,7 +34,7 @@ internal sealed class TestGate
 
     internal static void WaitSynchronously(Task task)
     {
-        WaitSynchronously(task, ScriptedWatchSource.HangGuard);
+        WaitSynchronously(task, TestTimeouts.HangGuard);
     }
 
     internal static void WaitSynchronously(Task task, TimeSpan timeout)

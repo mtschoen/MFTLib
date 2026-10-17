@@ -75,7 +75,7 @@ public partial class JournalBrokerHostChannelTests
             if (drive == "C")
             {
                 gate.MarkEntered();
-                gate.WaitForReleaseAsync(CancellationToken.None).Wait(HostChannelHarness.HangGuard);
+                gate.WaitForReleaseAsync(CancellationToken.None).Wait(HangGuard);
             }
 
             return Volume;
@@ -83,7 +83,7 @@ public partial class JournalBrokerHostChannelTests
         await using var harness = new HostChannelHarness(host);
 
         await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 1, "C"));
-        await gate.Entered.WaitAsync(HostChannelHarness.HangGuard);
+        await gate.Entered.WaitAsync(HangGuard);
         await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 2, "D"));
 
         var first = await harness.ReadControlAsync();
@@ -105,7 +105,7 @@ public partial class JournalBrokerHostChannelTests
             connectChannel: DefaultElevatedEntryRunner.ConnectDrivePipeAsync);
 
         await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 5, "C", pipeName));
-        await server.WaitForConnectionAsync().WaitAsync(HostChannelHarness.HangGuard);
+        await server.WaitForConnectionAsync().WaitAsync(HangGuard);
         var reply = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.ChannelOpened, reply.Kind);
@@ -286,9 +286,9 @@ public partial class JournalBrokerHostChannelTests
     // Timers with the same due time are numbered in creation order, from 1.
     static async Task AdvanceWhenTimerExistsAsync(TimerSignalingClock clock, TimeSpan dueTime, int occurrence, Task task)
     {
-        await clock.TimerCreated(dueTime, occurrence).WaitAsync(HostChannelHarness.HangGuard);
+        await clock.TimerCreated(dueTime, occurrence).WaitAsync(HangGuard);
         clock.Advance(dueTime);
-        await task.WaitAsync(HostChannelHarness.HangGuard);
+        await task.WaitAsync(HangGuard);
     }
 
     // Opens a channel whose connect bound is the first 30 second timer on the host's clock, so the
@@ -299,9 +299,9 @@ public partial class JournalBrokerHostChannelTests
         TaskCompletionSource connectionsReleased, char drive)
     {
         var open = harness.OpenChannelAsync(drive);
-        await clock.TimerCreated(JournalBrokerHost.ChannelConnectTimeout).WaitAsync(HostChannelHarness.HangGuard);
+        await clock.TimerCreated(JournalBrokerHost.ChannelConnectTimeout).WaitAsync(HangGuard);
         connectionsReleased.SetResult();
-        return await open.WaitAsync(HostChannelHarness.HangGuard);
+        return await open.WaitAsync(HangGuard);
     }
 
     static MftRecord Record(ulong recordNumber, string name, ushort flags = 1)

@@ -9,8 +9,6 @@ namespace MFTLibTestExtensions;
 /// </summary>
 public sealed class ScriptedWatchSource
 {
-    internal static readonly TimeSpan HangGuard = TimeSpan.FromSeconds(10);
-
     readonly Lock _stateLock = new();
     readonly List<IndexWatchTarget> _targets = [];
     readonly List<ScriptedDriveWatch> _watches = [];
@@ -190,7 +188,7 @@ public sealed class ScriptedWatchSource
         {
             hold.Gate.MarkEntered();
             await hold.Gate.WaitForReleaseAsync(hold.ObserveToken ? cancellationToken : CancellationToken.None)
-                .WaitAsync(HangGuard, CancellationToken.None).ConfigureAwait(false);
+                .WaitAsync(TestTimeouts.HangGuard, CancellationToken.None).ConfigureAwait(false);
         }
 
         failure ??= StartFailure?.Invoke(target.Drive);

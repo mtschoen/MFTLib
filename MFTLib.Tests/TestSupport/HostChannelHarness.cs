@@ -14,9 +14,6 @@ namespace MFTLib.Tests.TestSupport;
 /// </summary>
 internal sealed class HostChannelHarness : IAsyncDisposable
 {
-    /// <summary>Bounds every wait on the host, so a hang fails the test instead of wedging it.</summary>
-    public static readonly TimeSpan HangGuard = TimeSpan.FromSeconds(10);
-
     readonly ConcurrentDictionary<string, InMemoryPipePair> _pipes = new(StringComparer.Ordinal);
     readonly InMemoryPipePair _control = new();
     readonly Func<string, Stream, Stream>? _wrapDrivePipe;

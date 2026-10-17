@@ -14,8 +14,6 @@ namespace MFTLib.Tests;
 [DoNotParallelize]
 public class BrokerLiveWatchErrorTests
 {
-    static readonly TimeSpan HangGuard = HostChannelHarness.HangGuard;
-
     [TestMethod]
     public async Task LiveWatch_ErrorFrameForDrive_FaultsThatDrivesHandle()
     {

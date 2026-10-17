@@ -11,8 +11,6 @@ namespace MFTLib.Tests;
 [TestClass]
 public class BrokerFrameLengthTests
 {
-    static readonly TimeSpan HangGuard = HostChannelHarness.HangGuard;
-
     // The cap's arithmetic (BrokerFrameStream.MaximumFrameLength): the largest legitimate frame is an
     // ArmAndScan retained names. With the 107 bytes of kind, default section name, include-freed flag and count
     // around it and 514 bytes per maximum-length NTFS name (255 UTF-16 units plus a 4-byte prefix), 32,640 names make

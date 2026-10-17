@@ -271,7 +271,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
 
             Assert.IsNotNull(wait);
             var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
-                () => wait.WaitAsync(ScriptedWatchSource.HangGuard));
+                () => wait.WaitAsync(HangGuard));
             StringAssert.Contains(failure.Message, "no MFT-backed block");
             var status = index.Drives.Single();
             Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
@@ -314,7 +314,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         };
         await index.StartWatchingAsync(['T'], Token);
         source.WatchFor('T').LoseChannel(new IOException("the channel went away"));
-        await channelFaulted.Task.WaitAsync(ScriptedWatchSource.HangGuard);
+        await channelFaulted.Task.WaitAsync(HangGuard);
         Assert.AreEqual(WatchState.Faulted, index.Drives.Single().Watch.State);
 
         await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.RescanAsync(['T'], Token));

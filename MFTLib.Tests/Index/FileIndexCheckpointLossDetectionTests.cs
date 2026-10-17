@@ -180,7 +180,7 @@ public class FileIndexCheckpointLossDetectionTests
         try
         {
             source.WatchFor('T').FailDrive(failure);
-            await announced.Task.WaitAsync(ScriptedWatchSource.HangGuard);
+            await announced.Task.WaitAsync(HangGuard);
         }
         finally
         {

@@ -9,7 +9,6 @@ public abstract class BrokerBlockTestBase
     internal static readonly UsnJournalCursor ArmedCursor = new(71, 12345);
     internal static readonly UsnJournalCursor AdvancedCursor = new(71, 12500);
     internal static readonly NtfsVolumeInformation VolumeInformation = new(1024L * 100000, 1024);
-    protected static readonly TimeSpan HangGuard = HostChannelHarness.HangGuard;
 
     internal static JournalBrokerHost CreateHost(
         UsnJournalCursorQuery? queryCursor = null,

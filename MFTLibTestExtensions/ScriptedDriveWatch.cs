@@ -132,7 +132,7 @@ public sealed class ScriptedDriveWatch
     internal void FailOnCancellation(Exception exception) => _cancellationFailure = exception;
 
     /// <summary>Writes one item and waits until the pump has finished with it.</summary>
-    internal Task Publish(WatchStreamItem item) => Queue(item).WaitAsync(ScriptedWatchSource.HangGuard);
+    internal Task Publish(WatchStreamItem item) => Queue(item).WaitAsync(TestTimeouts.HangGuard);
 
     /// <summary>Writes one item and returns the task that completes once the pump has finished with it, without waiting.</summary>
     internal Task Queue(WatchStreamItem item)

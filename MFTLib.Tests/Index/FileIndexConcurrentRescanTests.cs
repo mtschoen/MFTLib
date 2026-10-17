@@ -15,8 +15,6 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public class FileIndexConcurrentRescanTests
 {
-    static readonly TimeSpan HangGuard = ScriptedWatchSource.HangGuard;
-
     public TestContext TestContext { get; set; } = null!;
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;

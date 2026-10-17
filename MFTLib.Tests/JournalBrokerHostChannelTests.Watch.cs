@@ -87,10 +87,10 @@ public partial class JournalBrokerHostChannelTests
         var pipeD = await harness.OpenWatchChannelAsync('D', Tip);
         Assert.AreEqual(BrokerFrameKind.CaughtUp, (await HostChannelHarness.ReadFrameAsync(pipeC))?.Kind);
         Assert.AreEqual(BrokerFrameKind.CaughtUp, (await HostChannelHarness.ReadFrameAsync(pipeD))?.Kind);
-        await sources["C"].Entered.WaitAsync(HostChannelHarness.HangGuard);
+        await sources["C"].Entered.WaitAsync(HangGuard);
 
         await pipeC.DisposeAsync();
-        await sources["C"].Cancelled.WaitAsync(HostChannelHarness.HangGuard);
+        await sources["C"].Cancelled.WaitAsync(HangGuard);
         sources["D"].Push(new UsnJournalCursor(7, 400));
 
         var batch = await HostChannelHarness.ReadFrameAsync(pipeD);
@@ -113,12 +113,12 @@ public partial class JournalBrokerHostChannelTests
         {
             await harness.OpenWatchChannelAsync('C', Tip);
             await harness.OpenWatchChannelAsync('D', Tip);
-            await Task.WhenAll(stubborn.Entered, cooperative.Entered).WaitAsync(HostChannelHarness.HangGuard);
+            await Task.WhenAll(stubborn.Entered, cooperative.Entered).WaitAsync(HangGuard);
             var start = clock.GetUtcNow();
 
             await harness.CloseControlAsync();
-            await cooperative.Cancelled.WaitAsync(HostChannelHarness.HangGuard);
-            await stubborn.Cancelled.WaitAsync(HostChannelHarness.HangGuard);
+            await cooperative.Cancelled.WaitAsync(HangGuard);
+            await stubborn.Cancelled.WaitAsync(HangGuard);
             Assert.IsFalse(harness.Serve.IsCompleted, "A source still running must hold the session open.");
 
             // The heartbeat sender's 5 second timer is the first; the drain's grace period is the second.
@@ -146,12 +146,12 @@ public partial class JournalBrokerHostChannelTests
         {
             await harness.OpenWatchChannelAsync('C', Tip);
             await harness.OpenWatchChannelAsync('D', Tip);
-            await Task.WhenAll(stubborn.Entered, cooperative.Entered).WaitAsync(HostChannelHarness.HangGuard);
+            await Task.WhenAll(stubborn.Entered, cooperative.Entered).WaitAsync(HangGuard);
 
             hostControl.BreakPipe();
             await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 1, "C"));
-            await hostControl.WriteFailureObserved.WaitAsync(HostChannelHarness.HangGuard);
-            await Task.WhenAll(stubborn.Cancelled, cooperative.Cancelled).WaitAsync(HostChannelHarness.HangGuard);
+            await hostControl.WriteFailureObserved.WaitAsync(HangGuard);
+            await Task.WhenAll(stubborn.Cancelled, cooperative.Cancelled).WaitAsync(HangGuard);
 
             // The heartbeat sender's 5 second timer is the first; the drain's grace period is the second.
             await AdvanceWhenTimerExistsAsync(clock, JournalBrokerHost.ControlClosedGracePeriod, 2, harness.Serve);

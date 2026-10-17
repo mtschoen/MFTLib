@@ -18,8 +18,6 @@ namespace MFTLib.Tests;
 public sealed partial class BrokerCrossDriveLivenessTests
 {
     const string StallMessage = "No frame from the broker for 30 seconds";
-    static readonly TimeSpan HangGuard = HostChannelHarness.HangGuard;
-
     // The intervals a 30 second limit takes to reach, at 5 seconds each.
     static readonly int IntervalsToStallLimit = (int)(BrokerLiveness.StallLimit / BrokerLiveness.HeartbeatInterval);
 

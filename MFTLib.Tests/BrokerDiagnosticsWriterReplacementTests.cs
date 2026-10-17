@@ -72,7 +72,7 @@ public class BrokerDiagnosticsWriterReplacementTests
             BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "acquired-before-replacement"));
         try
         {
-            await gate.Entered.WaitAsync(ScriptedWatchSource.HangGuard);
+            await gate.Entered.WaitAsync(HangGuard);
             for (var index = 0; index < replacementCount; index++)
             {
                 BrokerDiagnostics.ReplaceWriterForTest(
@@ -80,11 +80,11 @@ public class BrokerDiagnosticsWriterReplacementTests
             }
 
             gate.Release();
-            await logging.WaitAsync(ScriptedWatchSource.HangGuard);
+            await logging.WaitAsync(HangGuard);
             await BrokerDiagnostics.FlushAsync(CancellationToken.None)
-                .WaitAsync(ScriptedWatchSource.HangGuard);
+                .WaitAsync(HangGuard);
             await original.FlushAsync(CancellationToken.None)
-                .WaitAsync(ScriptedWatchSource.HangGuard);
+                .WaitAsync(HangGuard);
 
             var delivered = replacementLines.ToArray();
             Assert.AreEqual(1, delivered.Length,
@@ -98,7 +98,7 @@ public class BrokerDiagnosticsWriterReplacementTests
             gate.Release();
             try
             {
-                await logging.WaitAsync(ScriptedWatchSource.HangGuard);
+                await logging.WaitAsync(HangGuard);
             }
             finally
             {

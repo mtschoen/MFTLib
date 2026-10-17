@@ -49,7 +49,7 @@ public class FileIndexWatchRescanCacheTests
                 using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
                 rescanRequested.SetResult();
                 var rescan = index.RescanAsync(['T'], cancellation.Token);
-                await production.Entered.WaitAsync(ScriptedWatchSource.HangGuard);
+                await production.Entered.WaitAsync(HangGuard);
                 Assert.AreEqual(0, handle.DisposeCount);
                 Assert.AreEqual(1, Directory.GetFiles(directory.FullName, "*.retired-*").Length);
                 await handle.Publish(WatchHarness.Batch(9, "during.txt", 700));
@@ -74,7 +74,7 @@ public class FileIndexWatchRescanCacheTests
                 Assert.IsNotNull(restored, validation.ToString());
                 Assert.AreEqual(700L, restored.Header.UsnNextUsn);
                 await handle.Publish(new DriveCaughtUp());
-                await catchUp.WaitAsync(ScriptedWatchSource.HangGuard);
+                await catchUp.WaitAsync(HangGuard);
                 await index.StopWatchingAsync(['T'], token);
             }
             finally

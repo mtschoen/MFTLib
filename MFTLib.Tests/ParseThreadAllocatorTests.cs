@@ -5,8 +5,6 @@ namespace MFTLib.Tests;
 [TestClass]
 public class ParseThreadAllocatorTests
 {
-    static readonly TimeSpan HangGuard = TimeSpan.FromSeconds(10);
-
     [TestMethod]
     public async Task Release_SameRegistrationTwice_ReleasesItOnceAndLeavesOthersUntouched()
     {

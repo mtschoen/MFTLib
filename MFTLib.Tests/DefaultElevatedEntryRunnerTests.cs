@@ -257,8 +257,6 @@ public class DefaultElevatedEntryRunnerTests
         }, message => TestContext.WriteLine(message));
     }
 
-    static readonly TimeSpan HangGuard = TimeSpan.FromSeconds(10);
-
     string _drivePipeName = string.Empty;
 
     // RunBroker blocks synchronously for the whole session, so it runs on a background thread

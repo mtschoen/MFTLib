@@ -23,7 +23,7 @@ sealed class SingleThreadSynchronizationContext : SynchronizationContext, IDispo
     public void Dispose()
     {
         _queue.CompleteAdding();
-        _thread.Join(HostChannelHarness.HangGuard);
+        _thread.Join(HangGuard);
         _queue.Dispose();
     }
 

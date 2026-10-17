@@ -90,7 +90,7 @@ public class BrokerIndexWatchSourceFaultTests
         await index.StartWatchingAsync(['U'], token);
         var runT = await broker.Watch('T').RunAsync(1);
         var runU = await broker.Watch('U').RunAsync(1);
-        await index.WaitForCatchUpAsync(['U'], token).WaitAsync(HostChannelHarness.HangGuard);
+        await index.WaitForCatchUpAsync(['U'], token).WaitAsync(HangGuard);
 
         // The host closes T's pipe: its watch ends without a word.
         runT.End();
