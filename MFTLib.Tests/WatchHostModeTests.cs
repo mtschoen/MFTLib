@@ -6,7 +6,7 @@ using SampleProgram.Watch;
 
 namespace MFTLib.Tests;
 
-// The SampleProgram.Watch scan-drive mode behind a command line: argument errors, the unelevated scan (a FileIndex over an
+// The SampleProgram.Watch scan verb behind a command line: argument errors, the unelevated scan (a FileIndex over an
 // in-process broker) and the self-elevation relaunch.
 [TestClass]
 [DoNotParallelize]
@@ -43,7 +43,7 @@ public class WatchHostModeTests
             _writeLine = lines.Add
         };
 
-        var result = scanner.Run(["scan-drive", "--verbose"]);
+        var result = scanner.Run(["scan", "--verbose"]);
 
         Assert.AreEqual(2, result);
         Assert.IsTrue(lines.Any(line => line.Contains("Unknown option --verbose")));
@@ -51,15 +51,23 @@ public class WatchHostModeTests
     }
 
     [TestMethod]
-    public async Task Run_ScanDrive_NotElevated_ScansThroughTheBrokerWithoutSelfElevating()
+    public async Task Run_Scan_NotElevated_ScansThroughTheBrokerWithoutSelfElevating()
     {
         await using var broker = new InProcessBroker(CreateHost());
         var lines = new List<string>();
         var scanner = ScannerOverBroker(broker, lines);
+        var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(
+            new DateTimeOffset(2026, 10, 16, 12, 34, 56, TimeSpan.Zero));
+        scanner._timeProvider = clock;
+        scanner._messageBox = (_, _, _, _) =>
+        {
+            clock.Advance(SampleHost.AccidentalDismissalInterval);
+            return SampleHost.MessageBoxResultOk;
+        };
         scanner._cacheDirectory = Path.Combine(_directory, "unused-cache");
         scanner._getUserProfileDirectory = () => throw new AssertFailedException("CacheMode.Disabled must not resolve a profile.");
 
-        var result = scanner.Run(["scan-drive", "c:"]);
+        var result = scanner.Run(["scan", "c:"]);
 
         Assert.AreEqual(0, result);
         Assert.IsTrue(lines.Contains("Index holds 2 rows; 0 records skipped"), string.Join(Environment.NewLine, lines));
@@ -67,10 +75,12 @@ public class WatchHostModeTests
         Assert.IsTrue(lines.Any(line => line.StartsWith("  C: Finished: ", StringComparison.Ordinal)));
         Assert.IsTrue(lines.Contains("=== Drive C: done ==="));
         Assert.IsFalse(Directory.Exists(scanner._cacheDirectory));
+        Assert.IsTrue(lines.Contains("Completed at 2026-10-16 12:34:56Z"),
+            string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
-    public async Task Run_ScanDrive_SeveralDrives_LaunchesOneBrokerForTheWholeRun()
+    public async Task Run_Scan_SeveralDrives_LaunchesOneBrokerForTheWholeRun()
     {
         await using var broker = new InProcessBroker(CreateHost());
         var lines = new List<string>();
@@ -83,7 +93,7 @@ public class WatchHostModeTests
             return Task.FromResult(handle);
         });
 
-        var result = scanner.Run(["scan-drive", "C", "D:"]);
+        var result = scanner.Run(["scan", "C", "D:"]);
 
         Assert.AreEqual(0, result);
         Assert.AreEqual(1, launches);
@@ -94,7 +104,7 @@ public class WatchHostModeTests
     }
 
     [TestMethod]
-    public async Task ScanDriveThroughBroker_CatchUpLostByTheJournal_ReportsTheLoss()
+    public async Task ScanThroughBroker_CatchUpLostByTheJournal_ReportsTheLoss()
     {
         using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => new JournalWindow(7, 5000, 9000, 4096, 32768));
         await using var broker = new InProcessBroker(CreateHost(
@@ -102,21 +112,21 @@ public class WatchHostModeTests
         var lines = new List<string>();
         var scanner = ScannerOverBroker(broker, lines);
 
-        await scanner.RunThroughBrokerAsync(new WatchArguments(ProgramMode.ScanDrive, ["C"]), CancellationToken.None);
+        await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["C"]), CancellationToken.None);
 
         Assert.IsTrue(lines.Any(line => line.StartsWith("Index holds ", StringComparison.Ordinal)));
         Assert.IsTrue(lines.Contains("Catch-up lost: CheckpointTrimmed"));
     }
 
     [TestMethod]
-    public async Task ScanDriveThroughBroker_ScanFailsOnTheBroker_PrintsTheProducerFailure()
+    public async Task ScanThroughBroker_ScanFailsOnTheBroker_PrintsTheProducerFailure()
     {
         await using var broker = new InProcessBroker(CreateHost(
             scanDrive: (_, _, _, _, _, _) => throw new IOException("volume unreadable")));
         var lines = new List<string>();
         var scanner = ScannerOverBroker(broker, lines);
 
-        await scanner.RunThroughBrokerAsync(new WatchArguments(ProgramMode.ScanDrive, ["C"]), CancellationToken.None);
+        await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["C"]), CancellationToken.None);
 
         Assert.IsTrue(lines.Any(line => line.StartsWith("Error on drive C: ", StringComparison.Ordinal) &&
                                         line.Contains("volume unreadable")), string.Join(Environment.NewLine, lines));
@@ -136,7 +146,7 @@ public class WatchHostModeTests
     }
 
     [TestMethod]
-    public async Task ScanDriveThroughBroker_DriveRootMissing_ReportsOfflineWithoutSuccessLines()
+    public async Task ScanThroughBroker_DriveRootMissing_ReportsOfflineWithoutSuccessLines()
     {
         await using var broker = new InProcessBroker(CreateHost());
         var lines = new List<string>();
@@ -150,7 +160,7 @@ public class WatchHostModeTests
         });
         scanner._resolveDrive = _ => new IndexedDrive('Q', Path.Combine(_directory, "missing-root"), 4242);
 
-        await scanner.RunThroughBrokerAsync(new WatchArguments(ProgramMode.ScanDrive, ["Q"]), CancellationToken.None);
+        await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["Q"]), CancellationToken.None);
 
         Assert.AreEqual(0, launches, "An offline drive needs no elevated broker.");
         Assert.IsTrue(lines.Contains("Error on drive Q: The drive is offline; nothing was scanned."),
@@ -162,7 +172,7 @@ public class WatchHostModeTests
     [DataTestMethod]
     [DataRow(true)]
     [DataRow(false)]
-    public async Task ScanDriveThroughBroker_LaunchDeclined_PrintsTheError(bool failAtCreation)
+    public async Task ScanThroughBroker_LaunchDeclined_PrintsTheError(bool failAtCreation)
     {
         var lines = new List<string>();
         var scanner = new SampleHost
@@ -176,7 +186,7 @@ public class WatchHostModeTests
             _writeLine = lines.Add
         };
 
-        await scanner.RunThroughBrokerAsync(new WatchArguments(ProgramMode.ScanDrive, ["C"]), CancellationToken.None);
+        await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["C"]), CancellationToken.None);
 
         var prefix = failAtCreation ? "Error creating broker session: " : "Error on drive C: ";
         Assert.IsTrue(lines.Any(line => line.StartsWith(prefix, StringComparison.Ordinal) &&
@@ -191,87 +201,16 @@ public class WatchHostModeTests
         var lines = new List<string>();
         var scanner = new SampleHost
         {
-            _elevationNeed = _ => ElevationNeed.None,
+            _isElevated = () => true,
             _createBrokerSession = () => throw new InvalidOperationException("UAC prompt declined"),
             _writeLine = lines.Add
         };
 
-        var result = scanner.Run(["scan-drive", "C"]);
+        var result = scanner.Run(["scan", "C"]);
 
         Assert.AreEqual(1, result);
         Assert.IsTrue(lines.Any(line => line.StartsWith("Error creating broker session: ", StringComparison.Ordinal)));
         Assert.IsFalse(lines.Any(line => line.StartsWith("Completed at", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
-    }
-
-    [TestMethod]
-    public void Run_NotElevated_WhenTheRunRequiresElevation_SelfElevatesWithTheOriginalArguments()
-    {
-        string[] arguments = ["scan-drive", "C", "D"];
-        IReadOnlyList<string>? relaunchedWith = null;
-        var elevationTimeout = TimeSpan.Zero;
-        var scanner = new SampleHost
-        {
-            _elevationNeed = _ => ElevationNeed.SelfElevate,
-            _isElevated = () => false,
-            _canSelfElevate = () => true,
-            _tryRunElevated = (relaunchArguments, timeout) =>
-            {
-                relaunchedWith = relaunchArguments;
-                elevationTimeout = timeout;
-                return true;
-            },
-            _writeLine = _ => { }
-        };
-        WatchNoticeSupport.AcknowledgeDeliberately(scanner);
-
-        var result = scanner.Run(arguments);
-
-        Assert.AreEqual(0, result);
-        CollectionAssert.AreEqual(arguments, relaunchedWith!.ToArray());
-        Assert.AreEqual(Timeout.InfiniteTimeSpan, elevationTimeout);
-    }
-
-    // The library quotes each element for the child's command line, so the scanner hands over the
-    // arguments exactly as it accepted them, whatever whitespace or quotes they hold.
-    [DataTestMethod]
-    [DataRow(new[] { "scan-drive", "--cache-directory", "C\" --maximum-size 9000 --allocation-delta 4096" },
-        DisplayName = "an option-injection value stays one argument")]
-    [DataRow(new[] { "scan-drive", "--cache-directory", "a\"b" },
-        DisplayName = "a literal quote survives")]
-    [DataRow(new[] { "scan-drive", "--cache-directory", "a\\\"b" },
-        DisplayName = "a backslash before a quote survives")]
-    [DataRow(new[] { "scan-drive", "C", "--cache-directory", "" },
-        DisplayName = "an empty value last survives")]
-    [DataRow(new[] { "scan-drive", "--cache-directory", "", "C" },
-        DisplayName = "an empty value before another drive survives")]
-    [DataRow(new[] { "scan-drive", "--cache-directory", "a\tb.txt" },
-        DisplayName = "a tab inside a value survives")]
-    [DataRow(new[] { "scan-drive", "--cache-directory", "C:\\spaced directory\\" },
-        DisplayName = "a trailing backslash last survives")]
-    [DataRow(new[] { "scan-drive", "--cache-directory", "C:\\spaced directory\\", "D" },
-        DisplayName = "a trailing backslash before another drive survives")]
-    public void Run_NotElevated_RelaunchesWithEachArgumentVerbatim(string[] arguments)
-    {
-        IReadOnlyList<string>? relaunchedWith = null;
-        var scanner = new SampleHost
-        {
-            _listDrives = () => [WatchFirstRunTests.Facts(@"C:\")],
-            _elevationNeed = _ => ElevationNeed.SelfElevate,
-            _isElevated = () => false,
-            _canSelfElevate = () => true,
-            _tryRunElevated = (relaunchArguments, _) =>
-            {
-                relaunchedWith = relaunchArguments;
-                return true;
-            },
-            _writeLine = _ => { }
-        };
-        WatchNoticeSupport.AcknowledgeDeliberately(scanner);
-
-        Assert.AreEqual(0, scanner.Run(arguments));
-
-        CollectionAssert.AreEqual(arguments, relaunchedWith!.ToArray(),
-            "The child must receive exactly the arguments the parent accepted.");
     }
 
     SampleHost ScannerOverBroker(InProcessBroker broker, List<string> lines)
@@ -280,8 +219,7 @@ public class WatchHostModeTests
         {
             _isElevated = () => false,
             _getEnvironmentVariable = _ => null,
-            _canSelfElevate = () => throw new AssertFailedException("scan-drive must not self-elevate."),
-            _tryRunElevated = (_, _) => throw new AssertFailedException("scan-drive must not self-elevate."),
+            _canSelfElevate = () => throw new AssertFailedException("scan must not self-elevate."),
             _createBrokerSession = () => BrokerTestHarness.CreateSession(_ => Task.FromResult(broker.Handle)),
             _resolveDrive = ResolveDrive,
             _cacheDirectory = _directory,

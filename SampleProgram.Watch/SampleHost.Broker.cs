@@ -3,7 +3,7 @@ using MFTLib.Index;
 
 namespace SampleProgram.Watch;
 
-// Each drive opened as a FileIndex over the broker, the path every consumer ships. scan-drive opens CacheMode.Disabled and only
+// Each drive opened as a FileIndex over the broker, the path every consumer ships. scan opens CacheMode.Disabled and only
 // reports; the other modes open the cached index and act on it. This process stays unelevated.
 partial class SampleHost
 {
@@ -31,14 +31,14 @@ partial class SampleHost
         }
 
         await using var ownedSession = session.ConfigureAwait(false);
-        if (parsed.Mode is not ProgramMode.ScanDrive)
+        if (parsed.Verb is not WatchVerb.Scan)
         {
             session.Connecting += () => _writeLine("Broker: connecting; a UAC prompt may follow.");
             session.Connected += () => _writeLine("Broker: connected.");
         }
 
         var source = session.CreateIndexSource(parsed.ScanOptions);
-        var failureCount = parsed.Mode is ProgramMode.Watch
+        var failureCount = parsed.Verb is WatchVerb.Watch
             ? await WatchDrivesAsync(source, parsed, cancellationToken).ConfigureAwait(false)
             : await RunEachDriveAsync(session, source, parsed, cancellationToken).ConfigureAwait(false);
 
@@ -72,12 +72,13 @@ partial class SampleHost
     // Opens one drive's index and writes its status line; a failure after the open disposes the index again.
     async Task<FileIndex> OpenDriveAsync(MftIndexSource source, WatchArguments parsed, string letter, CancellationToken cancellationToken)
     {
-        var cached = parsed.Mode is not ProgramMode.ScanDrive;
+        var cached = parsed.Verb is not WatchVerb.Scan;
         var options = new FileIndexOptions
         {
             Drives = [_resolveDrive(letter)],
             CacheMode = cached ? CacheMode.Persistent : CacheMode.Disabled,
-            CacheDirectory = cached ? Path.Combine(ResolveCacheDirectory(parsed), parsed.PolicyDirectoryName) : null,
+            // aislop-ignore-next-line ai-slop/csharp-null-forgiving -- Run resolves the cache root before entering cached verbs
+            CacheDirectory = cached ? Path.Combine(parsed.CacheDirectory!, parsed.PolicyDirectoryName) : null,
             CacheTag = cached ? WatchArguments.CacheTag : default,
             Diagnostics = cached ? _writeLine : null,
             MftSource = source,
@@ -108,15 +109,15 @@ partial class SampleHost
         {
             await using var index = await OpenDriveAsync(source, parsed, letter, cancellationToken).ConfigureAwait(false);
             var driveLetter = char.ToUpperInvariant(letter[0]);
-            switch (parsed.Mode)
+            switch (parsed.Verb)
             {
-                case ProgramMode.Rescan:
+                case WatchVerb.Rescan:
                     var results = await index.RescanAsync([driveLetter], cancellationToken).ConfigureAwait(false);
                     WriteResults("rescan", results);
                     succeeded = results.All(result => result.Outcome == DriveOperationOutcome.Succeeded);
                     WriteDriveDetail(index.Drives.Single());
                     break;
-                case ProgramMode.Journal:
+                case WatchVerb.Journal:
                     await WriteJournalAsync(session, index, driveLetter, parsed, cancellationToken).ConfigureAwait(false);
                     break;
             }
@@ -131,5 +132,20 @@ partial class SampleHost
 
         _writeLine(string.Empty);
         return succeeded;
+    }
+
+    // Reports each drive as it settles, one self-describing line per report. Reports arrive synchronously on the settling
+    // threads and can overlap or arrive out of order, so the line carries its own count and the write is serialized.
+    internal sealed class DriveOpenedReporter(Action<string> writeLine) : IProgress<IndexDriveOpened>
+    {
+        readonly object _gate = new();
+
+        public void Report(IndexDriveOpened value)
+        {
+            lock (_gate)
+            {
+                writeLine($"{value.Drive}: opened ({value.SettledDriveCount} of {value.TotalDriveCount} drives)");
+            }
+        }
     }
 }

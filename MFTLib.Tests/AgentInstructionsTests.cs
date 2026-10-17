@@ -180,6 +180,68 @@ public class AgentInstructionsTests
         }
     }
 
+    [TestMethod]
+    public void SampleSharedMembers_AreUsedByBothSamples()
+    {
+        var paths = RepositoryFiles.Git("ls-files", "-z", "--",
+                "SampleProgram.Shared", "SampleProgram.Direct", "SampleProgram.Watch")
+            .Split('\0', StringSplitOptions.RemoveEmptyEntries)
+            .Where(path => path.EndsWith(".cs", StringComparison.Ordinal)).ToArray();
+        var sources = paths.ToDictionary(path => path,
+            path => Regex.Replace(RepositoryFiles.Read(path), @"//[^\r\n]*|/\*[\s\S]*?\*/", ""));
+        var shared = sources.Where(pair => pair.Key.StartsWith("SampleProgram.Shared/", StringComparison.Ordinal)).ToArray();
+        Assert.IsTrue(shared.Length > 0, "The shared source set must not be empty.");
+        var sharedText = string.Join("\n", shared.Select(pair => pair.Value));
+        var failures = new List<string>();
+        foreach (var name in new[]
+        {
+            "ElevationNeed", "RunWithElevation", "SelfElevationReason", "BrokerLaunchReason",
+            "_tryRunElevated", "_acrtIobFunc", "_wFreopen", "_outputRedirectedToFile",
+            "AcrtIobFuncNative", "WFreopenNative", "RedirectStdout", "OutputLogPath",
+            "PrintElevatedRunIncomplete", "Integer", "Date", "DriveOpenedReporter"
+        })
+        {
+            if (Regex.IsMatch(sharedText, @"\b" + Regex.Escape(name) + @"\b"))
+                failures.Add($"{name} belongs in its sample, not Shared.");
+        }
+
+        // Shared uses four-space member declarations; nested types are ownership units.
+        var declaration = new Regex(@"(?m)^    (?:[\w<>,?\[\].]+[ \t]+)+(?<name>\w+)[ \t]*(?:\(|=>|[=;{])");
+        var members = new Dictionary<string, (string Path, string Body)>();
+        foreach (var (path, text) in shared)
+        {
+            var declarations = declaration.Matches(text).ToArray();
+            Assert.IsTrue(declarations.Length > 0, $"No shared members found in {path}.");
+            for (var index = 0; index < declarations.Length; index++)
+            {
+                var match = declarations[index];
+                var end = index + 1 < declarations.Length ? declarations[index + 1].Index : text.Length;
+                members.Add(match.Groups["name"].Value, (path, text[(match.Index + match.Length)..end]));
+            }
+        }
+
+        foreach (var sample in new[] { "Direct", "Watch" })
+        {
+            var local = sources.Where(pair => pair.Key.StartsWith($"SampleProgram.{sample}/", StringComparison.Ordinal)).ToArray();
+            Assert.IsTrue(local.Length > 0, $"No source found for {sample}.");
+            var identifiers = Regex.Matches(string.Join("\n", local.Select(pair => pair.Value)), @"\b[A-Za-z_]\w*\b")
+                .Select(match => match.Value).ToHashSet(StringComparer.Ordinal);
+            var pending = new Queue<string>(members.Keys.Where(identifiers.Contains));
+            var reached = new HashSet<string>(StringComparer.Ordinal);
+            while (pending.TryDequeue(out var name))
+            {
+                if (!reached.Add(name)) continue;
+                foreach (Match token in Regex.Matches(members[name].Body, @"\b[A-Za-z_]\w*\b"))
+                    if (members.ContainsKey(token.Value)) pending.Enqueue(token.Value);
+            }
+
+            foreach (var (name, member) in members)
+                if (!reached.Contains(name)) failures.Add($"{member.Path}: {name} has no {sample} source use.");
+        }
+
+        Assert.AreEqual(0, failures.Count, string.Join(Environment.NewLine, failures));
+    }
+
     static string ReadInstructions() =>
         new UTF8Encoding(false, true).GetString(File.ReadAllBytes(
             Path.Combine(AppContext.BaseDirectory, "repository-docs", "AGENTS.md")));

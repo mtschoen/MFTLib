@@ -2,9 +2,28 @@ namespace SampleProgram.Watch;
 
 partial class SampleHost
 {
-    // What a run needs from the process. The broker is the elevated process, so no mode self-elevates; the seam
-    // keeps the self-elevation path testable.
-    internal Func<WatchArguments, ElevationNeed> _elevationNeed = parsed => parsed.Need;
+    /// <summary>Runs the command line, reports an escaping failure as one readable line, then holds an attended, self-owned console window open until a key press.</summary>
+    internal int RunAndPause(string[] arguments)
+    {
+        int exitCode;
+        try
+        {
+            exitCode = Run(arguments);
+        }
+        catch (Exception exception)
+        {
+            WriteFailure("Error: ", exception);
+            exitCode = 1;
+        }
+
+        if (!IsUnattended() && _ownsConsoleWindow())
+        {
+            _writeLine(PausePrompt);
+            _readKey();
+        }
+
+        return exitCode;
+    }
 
     internal int Run(string[] arguments)
     {
@@ -20,7 +39,7 @@ partial class SampleHost
             return 1;
         }
 
-        if (parsed.Mode is not (ProgramMode.ScanDrive or ProgramMode.ElevationStatus))
+        if (parsed.Verb is not (WatchVerb.Scan or WatchVerb.ElevationStatus))
         {
             try
             {
@@ -33,13 +52,13 @@ partial class SampleHost
             }
         }
 
-        return RunWithElevation(arguments, _elevationNeed(parsed), () => RunMode(parsed));
+        return RunWithElevation(arguments, parsed.Need, () => RunVerb(parsed));
     }
 
-    int RunMode(WatchArguments parsed) => parsed.Mode switch
+    int RunVerb(WatchArguments parsed) => parsed.Verb switch
     {
-        ProgramMode.Cache => RunCache(parsed),
-        ProgramMode.ElevationStatus => WriteElevationStatus(),
+        WatchVerb.Cache => RunCache(parsed),
+        WatchVerb.ElevationStatus => WriteElevationStatus(),
         _ => RunBroker(parsed)
     };
 
@@ -49,7 +68,7 @@ partial class SampleHost
         var exitCode = RunThroughBrokerAsync(parsed, CancellationToken.None).GetAwaiter().GetResult();
         if (exitCode == 0)
         {
-            _writeLine($"Completed at {DateTime.Now}");
+            _writeLine($"Completed at {_timeProvider.GetUtcNow():u}");
         }
 
         return exitCode;

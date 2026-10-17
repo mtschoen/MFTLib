@@ -2,17 +2,18 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace SampleProgram.Watch;
 
-// The command-line parser: the mode name, then the drives and the mode's flags.
+// The command-line parser: the verb name, then the drives and the verb's flags.
 internal sealed partial record WatchArguments
 {
-    internal static bool TryParse(string[] arguments, out WatchArguments parsed,
+    internal static bool TryParse(string[] arguments, [NotNullWhen(true)] out WatchArguments? parsed,
         [NotNullWhen(false)] out string? error)
     {
-        var mode = ProgramMode.Watch;
+        parsed = null;
+        var verb = WatchVerb.Watch;
         var start = 0;
-        if (arguments.Length > 0 && ProgramModes.Names.TryGetValue(arguments[0], out var named))
+        if (arguments.Length > 0 && WatchVerbs.Names.TryGetValue(arguments[0], out var named))
         {
-            mode = named;
+            verb = named;
             start = 1;
         }
 
@@ -20,7 +21,7 @@ internal sealed partial record WatchArguments
         var keep = reader.Text("--keep-name");
         var directoriesOnly = reader.Flag("--directories-only");
         var seconds = reader.Number("--seconds");
-        var candidate = new WatchArguments(mode, [])
+        var candidate = new WatchArguments(verb, [])
         {
             RetainedFileNames = directoriesOnly ? [] : keep?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             Seconds = seconds is >= 1 and <= MaximumSeconds ? (int)seconds : null,
@@ -30,10 +31,9 @@ internal sealed partial record WatchArguments
             Clear = reader.Flag("--clear")
         };
         var tokens = reader.Positionals();
-        error = reader.Error ?? Validate(candidate, keep, directoriesOnly, seconds) ?? NotApplicable(candidate.Mode, reader.Supplied) ?? NotADrive(tokens);
+        error = reader.Error ?? Validate(candidate, keep, directoriesOnly, seconds) ?? NotApplicable(candidate.Verb, reader.Supplied) ?? NotADrive(tokens);
         if (error is not null)
         {
-            parsed = new WatchArguments(ProgramMode.Watch, []);
             return false;
         }
 
@@ -47,11 +47,11 @@ internal sealed partial record WatchArguments
         return stray is null ? null : $"'{stray}' is not a drive letter.";
     }
 
-    // The first flag on the command line that the mode never reads, named with the mode as the user knows it.
-    static string? NotApplicable(ProgramMode mode, IEnumerable<string> supplied)
+    // The first flag on the command line that the verb never reads, named with the verb as the user knows it.
+    static string? NotApplicable(WatchVerb verb, IEnumerable<string> supplied)
     {
-        var stray = supplied.FirstOrDefault(name => !ModeFlags[mode].Contains(name));
-        return stray is null ? null : $"Option {stray} does not apply to {ProgramModes.Names.First(pair => pair.Value == mode).Key}.";
+        var stray = supplied.FirstOrDefault(name => !VerbFlags[verb].Contains(name));
+        return stray is null ? null : $"Option {stray} does not apply to {WatchVerbs.Names.First(pair => pair.Value == verb).Key}.";
     }
 
     static string? Validate(WatchArguments candidate, string? keep, bool directoriesOnly, long? seconds)
@@ -61,7 +61,7 @@ internal sealed partial record WatchArguments
             _ when directoriesOnly && keep is not null => "Options --directories-only and --keep-name cannot be combined.",
             _ when keep is not null && candidate.RetainedFileNames is { Count: 0 } => "Option --keep-name needs a file name; use --directories-only for directories alone.",
             _ when seconds is < 1 or > MaximumSeconds => $"Option --seconds must be from 1 to {MaximumSeconds}.",
-            { Mode: ProgramMode.Journal } when candidate.MaximumSize.HasValue != candidate.AllocationDelta.HasValue
+            { Verb: WatchVerb.Journal } when candidate.MaximumSize.HasValue != candidate.AllocationDelta.HasValue
                 => "journal needs --maximum-size and --allocation-delta together.",
             _ => null
         };

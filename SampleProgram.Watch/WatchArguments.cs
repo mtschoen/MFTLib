@@ -5,14 +5,14 @@ using MFTLib.Index;
 
 namespace SampleProgram.Watch;
 
-internal enum ProgramMode { ScanDrive, Watch, Rescan, Journal, Cache, ElevationStatus }
+internal enum WatchVerb { Scan, Watch, Rescan, Journal, Cache, ElevationStatus }
 
 /// <summary>
-///     The parsed command line: an optional mode name, then drive letters and the mode's flags. A first argument
-///     that names no mode is a drive letter and selects <see cref="ProgramMode.Watch" />. An index mode that names
+///     The parsed command line: an optional verb name, then drive letters and the verb's flags. A first argument
+///     that names no verb is a drive letter and selects <see cref="WatchVerb.Watch" />. An index verb that names
 ///     no drive leaves <see cref="Drives" /> empty for the host to fill from the machine.
 /// </summary>
-internal sealed partial record WatchArguments(ProgramMode Mode, IReadOnlyList<string> Drives)
+internal sealed partial record WatchArguments(WatchVerb Verb, IReadOnlyList<string> Drives)
 {
     /// <summary>How long an unattended watch runs when <c>--seconds</c> is not given; an attended one runs until a key press.</summary>
     internal const int DefaultSeconds = 10;
@@ -21,21 +21,21 @@ internal sealed partial record WatchArguments(ProgramMode Mode, IReadOnlyList<st
     internal const int MaximumSeconds = int.MaxValue / 1000;
 
     internal static string Usage =>
-        "Usage: SampleProgram.Watch [mode] [drive ...] [--directories-only | --keep-name A,B]" + Environment.NewLine +
-        "  modes: " + string.Join(", ", ProgramModes.Names.Keys) + " (default watch); with no drive, every ready NTFS fixed drive" + Environment.NewLine +
+        "Usage: SampleProgram.Watch [verb] [drive ...] [--directories-only | --keep-name A,B]" + Environment.NewLine +
+        "  verbs: " + string.Join(", ", WatchVerbs.Names.Keys) + " (default watch); with no drive, every ready NTFS fixed drive" + Environment.NewLine +
         "  watch [--seconds N] [--cache-directory D]  (without --seconds an attended watch runs until a key press, an unattended elevated one for " + DefaultSeconds + " seconds; an unattended run that is not elevated exits 1 without watching)" + Environment.NewLine +
         "  rescan [--cache-directory D]  journal [--cache-directory D] [--maximum-size B --allocation-delta B]  cache [--cache-directory D] [--clear]" + Environment.NewLine +
-        "  (each scan policy caches under D/policy-DIGEST; scan-drive accepts and ignores --cache-directory)";
+        "  (each scan policy caches under D/policy-DIGEST; scan accepts and ignores --cache-directory)";
 
-    // The flags each mode reads; any other flag on the command line is a usage error rather than silently ignored.
-    static readonly Dictionary<ProgramMode, string[]> ModeFlags = new()
+    // The flags each verb reads; any other flag on the command line is a usage error rather than silently ignored.
+    static readonly Dictionary<WatchVerb, string[]> VerbFlags = new()
     {
-        [ProgramMode.ScanDrive] = ["--keep-name", "--directories-only", "--cache-directory"],
-        [ProgramMode.Watch] = ["--keep-name", "--directories-only", "--cache-directory", "--seconds"],
-        [ProgramMode.Rescan] = ["--keep-name", "--directories-only", "--cache-directory"],
-        [ProgramMode.Journal] = ["--keep-name", "--directories-only", "--cache-directory", "--maximum-size", "--allocation-delta"],
-        [ProgramMode.Cache] = ["--cache-directory", "--clear"],
-        [ProgramMode.ElevationStatus] = []
+        [WatchVerb.Scan] = ["--keep-name", "--directories-only", "--cache-directory"],
+        [WatchVerb.Watch] = ["--keep-name", "--directories-only", "--cache-directory", "--seconds"],
+        [WatchVerb.Rescan] = ["--keep-name", "--directories-only", "--cache-directory"],
+        [WatchVerb.Journal] = ["--keep-name", "--directories-only", "--cache-directory", "--maximum-size", "--allocation-delta"],
+        [WatchVerb.Cache] = ["--cache-directory", "--clear"],
+        [WatchVerb.ElevationStatus] = []
     };
 
     internal IReadOnlyList<string>? RetainedFileNames { get; init; }
@@ -46,11 +46,11 @@ internal sealed partial record WatchArguments(ProgramMode Mode, IReadOnlyList<st
     internal string? CacheDirectory { get; init; }
     internal bool Clear { get; init; }
 
-    /// <summary>Whether the mode opens an index, so it needs the drives it works on.</summary>
-    internal bool NeedsDrives => Mode is not (ProgramMode.Cache or ProgramMode.ElevationStatus);
+    /// <summary>Whether the verb opens an index, so it needs the drives it works on.</summary>
+    internal bool NeedsDrives => Verb is not (WatchVerb.Cache or WatchVerb.ElevationStatus);
 
-    // Modes that open an index launch the broker, which asks for elevation itself; cache and elevation-status touch no volume.
-    internal ElevationNeed Need => Mode is ProgramMode.Cache or ProgramMode.ElevationStatus ? ElevationNeed.None : ElevationNeed.BrokerLaunch;
+    // Verbs that open an index launch the broker, which asks for elevation itself; cache and elevation-status touch no volume.
+    internal ElevationNeed Need => Verb is WatchVerb.Cache or WatchVerb.ElevationStatus ? ElevationNeed.None : ElevationNeed.BrokerLaunch;
 
     /// <summary>The scan options the broker source gets; null scans every record, as the library does by default.</summary>
     internal MftScanOptions? ScanOptions =>
@@ -77,15 +77,15 @@ internal sealed partial record WatchArguments(ProgramMode Mode, IReadOnlyList<st
     }
 }
 
-internal static class ProgramModes
+internal static class WatchVerbs
 {
-    internal static readonly Dictionary<string, ProgramMode> Names = new(StringComparer.OrdinalIgnoreCase)
+    internal static readonly Dictionary<string, WatchVerb> Names = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["scan-drive"] = ProgramMode.ScanDrive,
-        ["watch"] = ProgramMode.Watch,
-        ["rescan"] = ProgramMode.Rescan,
-        ["journal"] = ProgramMode.Journal,
-        ["cache"] = ProgramMode.Cache,
-        ["elevation-status"] = ProgramMode.ElevationStatus
+        ["scan"] = WatchVerb.Scan,
+        ["watch"] = WatchVerb.Watch,
+        ["rescan"] = WatchVerb.Rescan,
+        ["journal"] = WatchVerb.Journal,
+        ["cache"] = WatchVerb.Cache,
+        ["elevation-status"] = WatchVerb.ElevationStatus
     };
 }

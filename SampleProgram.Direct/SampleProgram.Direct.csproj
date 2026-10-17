@@ -18,7 +18,7 @@
     <ProjectReference Include="..\MFTLib\MFTLib.csproj" />
   </ItemGroup>
 
-  <!-- The elevation flow and the unattended switch live once and compile into both samples. -->
+  <!-- Common sample members compile into both executables as linked source. -->
   <ItemGroup>
     <Compile Include="..\SampleProgram.Shared\*.cs" Link="Shared\%(Filename)%(Extension)" />
   </ItemGroup>

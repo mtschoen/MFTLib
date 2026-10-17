@@ -8,8 +8,7 @@ namespace SampleProgram.Watch;
 namespace SampleProgram.Direct;
 #endif
 
-// The heads-up dialog shown before this run raises a Windows UAC prompt: the elevated relaunch, or the broker
-// launch of an attended, unelevated scan-drive run. The prompt that follows is expected and a stray key press
+// The heads-up dialog shown before either sample's elevation request. The prompt that follows is expected and a stray key press
 // cannot dismiss it unseen. It lives here, not in MFTLib: a consumer's runtime flow must never gain a dialog.
 // The two native seams are the bare user32 imports, so every flag, text and decision below runs in tests and
 // the only untested lines are the import declarations.
@@ -17,9 +16,6 @@ partial class SampleHost
 {
     internal const string ElevationNoticeTitle = "SampleProgram: administrator approval needed next";
 
-    // The one sentence that differs between the two UAC prompts this dialog precedes.
-    const string SelfElevationReason = "SampleProgram relaunches itself elevated.";
-    const string BrokerLaunchReason = "SampleProgram launches its broker elevated.";
     // The opening of the sentence the reason completes; a verb that needs elevation for another purpose supplies its own.
     const string MftNeed = "Reading a volume's MFT needs administrator rights, so ";
     internal const uint MessageBoxOkCancel = 0x00000001;

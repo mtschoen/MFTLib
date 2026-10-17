@@ -26,7 +26,7 @@ public class PhaseReporterTests
     public void DriveOpenedReporter_PrintsOneSelfDescribingLinePerReport()
     {
         var lines = new List<string>();
-        var reporter = new SampleHost.DriveOpenedReporter(lines.Add);
+        var reporter = new SampleProgram.Watch.SampleHost.DriveOpenedReporter(lines.Add);
 
         reporter.Report(new IndexDriveOpened('D', 2, 3));
         reporter.Report(new IndexDriveOpened('C', 1, 3));

@@ -13,7 +13,6 @@ public class WatchHostFailureTests
         return new SampleHost
         {
             _listDrives = () => throw new InvalidOperationException("drive listing failed", new IOException("device gone")),
-            _elevationNeed = _ => ElevationNeed.None,
             _getEnvironmentVariable = _ => null,
             _ownsConsoleWindow = () => ownsWindow,
             _readKey = readKey,

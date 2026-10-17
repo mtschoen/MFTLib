@@ -50,7 +50,7 @@ public class WatchFirstRunTests
             [
                 Facts(@"G:\"), Facts(@"C:\"), Facts(@"h:\"), Facts(@"F:\", "not NTFS (exFAT)")
             ],
-            _elevationNeed = _ => ElevationNeed.None,
+            _isElevated = () => true,
             _createBrokerSession = () => throw new InvalidOperationException("stop here"),
             _writeLine = lines.Add
         };
@@ -69,7 +69,7 @@ public class WatchFirstRunTests
         var host = new SampleHost
         {
             _listDrives = () => throw new AssertFailedException("A named drive must not list the machine."),
-            _elevationNeed = _ => ElevationNeed.None,
+            _isElevated = () => true,
             _createBrokerSession = () => throw new InvalidOperationException("stop here"),
             _writeLine = lines.Add
         };
@@ -169,7 +169,7 @@ public class WatchFirstRunTests
             delays.Add(span);
             return Task.CompletedTask;
         };
-        host._elevationNeed = _ => ElevationNeed.None;
+        host._isElevated = () => true;
 
         var result = host.Run([]);
 
@@ -233,13 +233,13 @@ public class WatchFirstRunTests
     }
 
     [TestMethod]
-    public async Task Run_ScanDriveOfOneFailingDrive_ExitsOne()
+    public async Task Run_ScanOfOneFailingDrive_ExitsOne()
     {
         await using var handle = BrokerTestHarness.StartInProcess(Volumes());
         var host = HostOver(handle, _ => { });
         host._resolveDrive = _ => new IndexedDrive('Q', Path.Combine(_directory, "missing-root"), 4242);
 
-        Assert.AreEqual(1, host.Run(["scan-drive", "Q"]));
+        Assert.AreEqual(1, host.Run(["scan", "Q"]));
     }
 
     SampleHost HostOver(InProcessBrokerHandle handle, Action<string> writeLine)

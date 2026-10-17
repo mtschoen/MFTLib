@@ -15,6 +15,29 @@ partial class SampleHost
     // The elevation flow is Windows only (UAC and its dialog), so elsewhere the verb runs straight into its platform check.
     internal Func<bool> _isWindows = OperatingSystem.IsWindows;
 
+    /// <summary>Runs the command line, reports an escaping failure as one readable line, then holds an attended, self-owned console window open until a key press.</summary>
+    internal int RunAndPause(string[] arguments)
+    {
+        int exitCode;
+        try
+        {
+            exitCode = Run(arguments);
+        }
+        catch (Exception exception)
+        {
+            WriteFailure("Error: ", exception);
+            exitCode = 1;
+        }
+
+        if (!_outputRedirectedToFile && !IsUnattended() && _ownsConsoleWindow())
+        {
+            _writeLine(PausePrompt);
+            _readKey();
+        }
+
+        return exitCode;
+    }
+
     internal int Run(string[] arguments)
     {
         if (IsExcludeDefender(arguments))

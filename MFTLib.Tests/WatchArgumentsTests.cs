@@ -12,7 +12,7 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse([], out var parsed, out var error));
 
         Assert.IsNull(error);
-        Assert.AreEqual(ProgramMode.Watch, parsed.Mode);
+        Assert.AreEqual(WatchVerb.Watch, parsed.Verb);
         Assert.AreEqual(0, parsed.Drives.Count);
         Assert.IsNull(parsed.Seconds);
         Assert.IsTrue(parsed.NeedsDrives);
@@ -23,27 +23,27 @@ public class WatchArgumentsTests
     {
         Assert.IsTrue(WatchArguments.TryParse(["C", "D:"], out var parsed, out _));
 
-        Assert.AreEqual(ProgramMode.Watch, parsed.Mode);
+        Assert.AreEqual(WatchVerb.Watch, parsed.Verb);
         CollectionAssert.AreEqual(new[] { "C", "D" }, parsed.Drives.ToArray());
     }
 
     [DataTestMethod]
-    [DataRow("scan-drive")]
-    [DataRow("SCAN-Drive")]
-    public void TryParse_ModeName_SelectsTheModeAndKeepsTheDrivesAfterIt(string name)
+    [DataRow("scan")]
+    [DataRow("SCAN")]
+    public void TryParse_VerbName_SelectsTheVerbAndKeepsTheDrivesAfterIt(string name)
     {
         Assert.IsTrue(WatchArguments.TryParse([name, "C", "E"], out var parsed, out _));
 
-        Assert.AreEqual(ProgramMode.ScanDrive, parsed.Mode);
+        Assert.AreEqual(WatchVerb.Scan, parsed.Verb);
         CollectionAssert.AreEqual(new[] { "C", "E" }, parsed.Drives.ToArray());
     }
 
     [TestMethod]
-    public void TryParse_ModeWithoutDrives_LeavesTheDrivesToTheHost()
+    public void TryParse_VerbWithoutDrives_LeavesTheDrivesToTheHost()
     {
-        Assert.IsTrue(WatchArguments.TryParse(["scan-drive"], out var parsed, out _));
+        Assert.IsTrue(WatchArguments.TryParse(["scan"], out var parsed, out _));
 
-        Assert.AreEqual(ProgramMode.ScanDrive, parsed.Mode);
+        Assert.AreEqual(WatchVerb.Scan, parsed.Verb);
         Assert.AreEqual(0, parsed.Drives.Count);
     }
 
@@ -52,7 +52,7 @@ public class WatchArgumentsTests
     [DataRow("elevation-status", false)]
     [DataRow("rescan", true)]
     [DataRow("journal", true)]
-    public void NeedsDrives_OnlyTheModesThatOpenAnIndex(string name, bool expected)
+    public void NeedsDrives_OnlyTheVerbsThatOpenAnIndex(string name, bool expected)
     {
         Assert.IsTrue(WatchArguments.TryParse([name], out var parsed, out _));
 
@@ -62,25 +62,24 @@ public class WatchArgumentsTests
     [TestMethod]
     public void TryParse_UnknownOption_IsRefusedAndNamed()
     {
-        Assert.IsFalse(WatchArguments.TryParse(["scan-drive", "C", "--verbose"], out var parsed, out var error));
+        Assert.IsFalse(WatchArguments.TryParse(["scan", "C", "--verbose"], out var parsed, out var error));
 
         Assert.AreEqual("Unknown option --verbose.", error);
-        Assert.AreEqual(ProgramMode.Watch, parsed.Mode);
-        Assert.AreEqual(0, parsed.Drives.Count);
+        Assert.IsNull(parsed);
     }
 
     [TestMethod]
-    public void Need_ScanDrive_IsTheBrokerLaunchBecauseTheBrokerIsTheElevatedProcess()
+    public void Need_Scan_IsTheBrokerLaunchBecauseTheBrokerIsTheElevatedProcess()
     {
-        Assert.IsTrue(WatchArguments.TryParse(["scan-drive", "C"], out var parsed, out _));
+        Assert.IsTrue(WatchArguments.TryParse(["scan", "C"], out var parsed, out _));
 
         Assert.AreEqual(ElevationNeed.BrokerLaunch, parsed.Need);
     }
 
     [TestMethod]
-    public void Usage_NamesEveryMode()
+    public void Usage_NamesEveryVerb()
     {
-        foreach (var name in ProgramModes.Names.Keys)
+        foreach (var name in WatchVerbs.Names.Keys)
         {
             StringAssert.Contains(WatchArguments.Usage, name);
         }
@@ -97,11 +96,11 @@ public class WatchArgumentsTests
     [DataRow("watch", "Watch")]
     [DataRow("rescan", "Rescan")]
     [DataRow("journal", "Journal")]
-    public void TryParse_IndexMode_SelectsItAndLeavesTheDrives(string name, string mode)
+    public void TryParse_IndexVerb_SelectsItAndLeavesTheDrives(string name, string verb)
     {
         Assert.IsTrue(WatchArguments.TryParse([name], out var parsed, out _));
 
-        Assert.AreEqual(mode, parsed.Mode.ToString());
+        Assert.AreEqual(verb, parsed.Verb.ToString());
         Assert.AreEqual(0, parsed.Drives.Count);
         Assert.AreEqual(ElevationNeed.BrokerLaunch, parsed.Need);
     }
@@ -142,13 +141,13 @@ public class WatchArgumentsTests
     [DataRow("watch")]
     [DataRow("rescan")]
     [DataRow("journal")]
-    [DataRow("scan-drive")]
+    [DataRow("scan")]
     [DataRow("cache")]
-    public void TryParse_EmptyOrGarbageDriveToken_IsRefusedForEveryMode(string mode)
+    public void TryParse_EmptyOrGarbageDriveToken_IsRefusedForEveryVerb(string verb)
     {
-        Assert.IsFalse(WatchArguments.TryParse([mode, string.Empty], out _, out var empty));
-        Assert.IsFalse(WatchArguments.TryParse([mode, "Cjunk"], out _, out var garbage));
-        Assert.IsFalse(WatchArguments.TryParse([mode, "C:x"], out _, out var path));
+        Assert.IsFalse(WatchArguments.TryParse([verb, string.Empty], out _, out var empty));
+        Assert.IsFalse(WatchArguments.TryParse([verb, "Cjunk"], out _, out var garbage));
+        Assert.IsFalse(WatchArguments.TryParse([verb, "C:x"], out _, out var path));
 
         Assert.AreEqual("'' is not a drive letter.", empty);
         Assert.AreEqual("'Cjunk' is not a drive letter.", garbage);
@@ -208,7 +207,7 @@ public class WatchArgumentsTests
     }
 
     [DataTestMethod]
-    [DataRow(new[] { "scan-drive", "C", "--seconds", "5" }, "Option --seconds does not apply to scan-drive.")]
+    [DataRow(new[] { "scan", "C", "--seconds", "5" }, "Option --seconds does not apply to scan.")]
     [DataRow(new[] { "C", "--allocation-delta", "5" }, "Option --allocation-delta does not apply to watch.")]
     [DataRow(new[] { "watch", "C", "--maximum-size", "1" }, "Option --maximum-size does not apply to watch.")]
     [DataRow(new[] { "rescan", "C", "--allocation-delta", "1" }, "Option --allocation-delta does not apply to rescan.")]
@@ -218,7 +217,7 @@ public class WatchArgumentsTests
     [DataRow(new[] { "cache", "--seconds", "3" }, "Option --seconds does not apply to cache.")]
     [DataRow(new[] { "elevation-status", "--cache-directory", "folder" }, "Option --cache-directory does not apply to elevation-status.")]
     [DataRow(new[] { "elevation-status", "--clear" }, "Option --clear does not apply to elevation-status.")]
-    public void TryParse_FlagTheModeNeverReads_IsRefusedWithTheFlagAndTheModeNamed(string[] arguments, string expected)
+    public void TryParse_FlagTheVerbNeverReads_IsRefusedWithTheFlagAndTheVerbNamed(string[] arguments, string expected)
     {
         Assert.IsFalse(WatchArguments.TryParse(arguments, out _, out var error));
 
@@ -226,13 +225,13 @@ public class WatchArgumentsTests
     }
 
     [DataTestMethod]
-    [DataRow("scan-drive")]
+    [DataRow("scan")]
     [DataRow("watch")]
     [DataRow("rescan")]
     [DataRow("journal")]
-    public void TryParse_ScanAndCacheFlags_ApplyToEveryModeThatOpensAnIndex(string mode)
+    public void TryParse_ScanAndCacheFlags_ApplyToEveryVerbThatOpensAnIndex(string verb)
     {
-        Assert.IsTrue(WatchArguments.TryParse([mode, "C", "--keep-name", "a.txt", "--cache-directory", "folder"], out var parsed, out var error), error);
+        Assert.IsTrue(WatchArguments.TryParse([verb, "C", "--keep-name", "a.txt", "--cache-directory", "folder"], out var parsed, out var error), error);
 
         Assert.AreEqual("folder", parsed.CacheDirectory);
         CollectionAssert.AreEqual(new[] { "a.txt" }, parsed.RetainedFileNames!.ToArray());

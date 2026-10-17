@@ -5,12 +5,10 @@ using SampleProgram.Direct;
 
 namespace MFTLib.Tests;
 
-// The heads-up dialog before the elevated relaunch (a Direct local scan) or the broker launch (the shared flow with
-// ElevationNeed.BrokerLaunch, which Watch uses and Direct never asks for). The dialog and
-// the clock are scripted: each stubbed dialog answers after a chosen amount of fake time, so no test sleeps
-// or reads the real clock.
+// The heads-up dialog before the elevated relaunch (a Direct local scan). The dialog and the clock are scripted:
+// each stubbed dialog answers after a chosen amount of fake time, so no test sleeps or reads the real clock.
 [TestClass]
-public class SampleHostElevationNoticeTests
+public partial class SampleHostElevationNoticeTests
 {
     const string ProcessPath = @"C:\tools\SampleProgram.Watch.exe";
 
@@ -31,30 +29,26 @@ public class SampleHostElevationNoticeTests
         };
     }
 
-    [DataTestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public void Run_NotElevated_DeliberateOk_ElevatesExactlyOnceAfterTheDialog(bool isScanDrive)
+    [TestMethod]
+    public void Run_NotElevated_DeliberateOk_ElevatesExactlyOnceAfterTheDialog()
     {
         var events = new List<string>();
-        var (scanner, args, launchEvent) = CreateScannerForMode(isScanDrive, new List<string>(), events, [Answer(SampleHost.MessageBoxResultOk, 2)]);
+        var scanner = Scanner(new List<string>(), events, [Answer(SampleHost.MessageBoxResultOk, 2)]);
 
-        var result = RunMode(scanner, isScanDrive, args, events);
+        var result = scanner.Run(["scan", "C"]);
 
         Assert.AreEqual(0, result);
-        CollectionAssert.AreEqual(new[] { "dialog", launchEvent }, events);
+        CollectionAssert.AreEqual(new[] { "dialog", "elevate" }, events);
     }
 
-    [DataTestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public void Run_NotElevated_DeliberateCancel_SkipsElevationAndPrintsTheFallback(bool isScanDrive)
+    [TestMethod]
+    public void Run_NotElevated_DeliberateCancel_SkipsElevationAndPrintsTheFallback()
     {
         var lines = new List<string>();
         var events = new List<string>();
-        var (scanner, args, _) = CreateScannerForMode(isScanDrive, lines, events, [Answer(SampleHost.MessageBoxResultCancel, 2)]);
+        var scanner = Scanner(lines, events, [Answer(SampleHost.MessageBoxResultCancel, 2)]);
 
-        var result = RunMode(scanner, isScanDrive, args, events);
+        var result = scanner.Run(["scan", "C"]);
 
         Assert.AreEqual(1, result);
         CollectionAssert.AreEqual(new[] { "dialog" }, events);
@@ -62,24 +56,21 @@ public class SampleHostElevationNoticeTests
         Assert.IsTrue(lines.Any(line => line.Contains(ProcessPath, StringComparison.Ordinal) || line.Contains(ProcessPath)));
     }
 
-    [DataTestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public void Run_NotElevated_TooFastOk_ShowsAgainAndElevatesOnlyAfterADeliberateAnswer(bool isScanDrive)
+    [TestMethod]
+    public void Run_NotElevated_TooFastOk_ShowsAgainAndElevatesOnlyAfterADeliberateAnswer()
     {
         var events = new List<string>();
         var messages = new List<string>();
-        var (scanner, args, launchEvent) = CreateScannerForMode(
-            isScanDrive,
+        var scanner = Scanner(
             new List<string>(),
             events,
             [Answer(SampleHost.MessageBoxResultOk, 0.2), Answer(SampleHost.MessageBoxResultOk, 3)],
             messages);
 
-        var result = RunMode(scanner, isScanDrive, args, events);
+        var result = scanner.Run(["scan", "C"]);
 
         Assert.AreEqual(0, result);
-        CollectionAssert.AreEqual(new[] { "dialog", "dialog", launchEvent }, events);
+        CollectionAssert.AreEqual(new[] { "dialog", "dialog", "elevate" }, events);
         Assert.IsFalse(messages[0].Contains("too fast", StringComparison.Ordinal));
         Assert.IsTrue(messages[1].Contains("too fast", StringComparison.Ordinal));
     }
@@ -202,14 +193,12 @@ public class SampleHostElevationNoticeTests
         Assert.IsTrue(text.Contains("  a b&c", StringComparison.Ordinal));
     }
 
-    [DataTestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public void Run_NotElevated_DialogNeverAnswered_TimesOutAsCancelWithoutElevating(bool isScanDrive)
+    [TestMethod]
+    public void Run_NotElevated_DialogNeverAnswered_TimesOutAsCancelWithoutElevating()
     {
         var lines = new List<string>();
         var events = new List<string>();
-        var (scanner, args, _) = CreateScannerForMode(isScanDrive, lines, events, []);
+        var scanner = Scanner(lines, events, []);
         var clock = new FakeTimeProvider();
         var neverAnswered = new TaskCompletionSource();
         scanner._timeProvider = clock;
@@ -226,7 +215,7 @@ public class SampleHostElevationNoticeTests
         int result;
         try
         {
-            result = RunMode(scanner, isScanDrive, args, events);
+            result = scanner.Run(["scan", "C"]);
         }
         finally
         {
@@ -309,30 +298,6 @@ public class SampleHostElevationNoticeTests
     }
 
     [TestMethod]
-    public void Run_NotElevated_DialogStartedLateThenAnsweredAtOnce_IsAccidentalAndShownAgain()
-    {
-        var events = new List<string>();
-        var clock = new FakeTimeProvider();
-        var scanner = Scanner(new List<string>(), events, []);
-        scanner._timeProvider = clock;
-        // The dialog thread starts ten minutes late, as when the pool is busy. Only the time on screen counts.
-        scanner._dialogScheduler = new LateStartScheduler(() => clock.Advance(TimeSpan.FromMinutes(10)));
-        var answers = new Queue<(int Result, double Seconds)>([(SampleHost.MessageBoxResultOk, 0), (SampleHost.MessageBoxResultOk, 3)]);
-        scanner._messageBox = (_, _, _, _) =>
-        {
-            events.Add("dialog");
-            var answer = answers.Dequeue();
-            clock.Advance(TimeSpan.FromSeconds(answer.Seconds));
-            return answer.Result;
-        };
-
-        var result = scanner.Run(["scan", "C"]);
-
-        Assert.AreEqual(0, result);
-        CollectionAssert.AreEqual(new[] { "dialog", "dialog", "elevate" }, events);
-    }
-
-    [TestMethod]
     public void Run_LocalScan_UnattendedButAlreadyElevated_ScansAsUsual()
     {
         var lines = new List<string>();
@@ -350,237 +315,6 @@ public class SampleHostElevationNoticeTests
         Assert.IsFalse(lines.Any(line => line.Contains("Running unattended")));
     }
 
-
-
-
-
-    [TestMethod]
-    public void RunWithElevation_BrokerLaunch_NotElevated_DialogNamesTheBrokerLaunchItPrecedes()
-    {
-        string? text = null;
-        string? title = null;
-        var clock = new FakeTimeProvider();
-        var scanner = new SampleHost
-        {
-            _isElevated = () => false,
-            _getEnvironmentVariable = _ => null,
-            _getProcessPath = () => ProcessPath,
-            _writeLine = _ => { },
-            _timeProvider = clock,
-            _messageBeep = _ => true,
-            _messageBox = (_, body, caption, _) =>
-            {
-                text = body;
-                title = caption;
-                clock.Advance(TimeSpan.FromSeconds(5));
-                return SampleHost.MessageBoxResultOk;
-            },
-            _canSelfElevate = () => throw new AssertFailedException("A broker launch must not self-elevate."),
-            _tryRunElevated = (_, _) => throw new AssertFailedException("A broker launch must not self-elevate.")
-        };
-
-        var result = scanner.RunWithElevation(["scan-drive", "C"], ElevationNeed.BrokerLaunch, () => 0);
-
-        Assert.AreEqual(0, result);
-        Assert.IsTrue(title!.Contains("SampleProgram", StringComparison.Ordinal));
-        Assert.IsTrue(text!.Contains("UAC", StringComparison.Ordinal));
-        Assert.IsTrue(text.Contains("administrator rights", StringComparison.Ordinal));
-        Assert.IsTrue(text.Contains("launches its broker elevated", StringComparison.Ordinal));
-    }
-
-    // The caller resumes only after the dialog thread is done, so an immediate answer followed by a long delay before
-    // the caller runs must still be judged by the time the dialog was on screen, which was none.
-    [DataTestMethod]
-    [DataRow(SampleHost.MessageBoxResultOk)]
-    [DataRow(SampleHost.MessageBoxResultCancel)]
-    public void Run_NotElevated_ImmediateAnswerThenALongCallerDelay_IsStillAccidentalAndShownAgain(int button)
-    {
-        var events = new List<string>();
-        var delayedCaller = new TaskCompletionSource();
-        var clock = new FakeTimeProvider();
-        var scanner = Scanner(new List<string>(), events, []);
-        scanner._timeProvider = clock;
-        var beepCount = 0;
-        scanner._messageBeep = _ =>
-        {
-            if (++beepCount > 1)
-            {
-                delayedCaller.Task.Wait();
-            }
-
-            return true;
-        };
-        scanner._dialogScheduler = new AfterRunScheduler(() =>
-        {
-            clock.Advance(TimeSpan.FromMinutes(10));
-            delayedCaller.TrySetResult();
-        });
-        var answers = new Queue<(int Result, double Seconds)>([(button, 0), (SampleHost.MessageBoxResultOk, 3)]);
-        scanner._messageBox = (_, _, _, _) =>
-        {
-            events.Add("dialog");
-            var answer = answers.Dequeue();
-            clock.Advance(TimeSpan.FromSeconds(answer.Seconds));
-            return answer.Result;
-        };
-
-        var result = scanner.Run(["scan", "C"]);
-
-        Assert.AreEqual(0, result);
-        CollectionAssert.AreEqual(new[] { "dialog", "dialog", "elevate" }, events);
-    }
-
-    [DataTestMethod]
-    [DataRow(SampleHost.MessageBoxResultOk)]
-    [DataRow(SampleHost.MessageBoxResultCancel)]
-    public void Run_NotElevated_ImmediateAnswerThenForcedCallerDelayAtNextBeep_IsStillAccidentalAndShownAgain(int button)
-    {
-        var events = new List<string>();
-        var delayedCaller = new TaskCompletionSource();
-        var callerReachedNextBeep = new TaskCompletionSource();
-        var callerWaitingOnDelayedCaller = new TaskCompletionSource();
-        var secondDialogStarted = new TaskCompletionSource();
-        var hookFinishedAdvance = new TaskCompletionSource();
-        var clock = new FakeTimeProvider();
-        var scanner = Scanner(new List<string>(), events, []);
-        scanner._timeProvider = clock;
-        var beepCount = 0;
-        scanner._messageBeep = _ =>
-        {
-            if (++beepCount > 1)
-            {
-                callerReachedNextBeep.TrySetResult();
-                callerWaitingOnDelayedCaller.TrySetResult();
-                delayedCaller.Task.Wait();
-            }
-
-            return true;
-        };
-        scanner._dialogScheduler = new AfterRunScheduler(() =>
-        {
-            callerReachedNextBeep.Task.Wait();
-            Task.WaitAny(callerWaitingOnDelayedCaller.Task, secondDialogStarted.Task);
-            clock.Advance(TimeSpan.FromMinutes(10));
-            delayedCaller.TrySetResult();
-            hookFinishedAdvance.TrySetResult();
-        });
-        var answers = new Queue<(int Result, double Seconds)>([(button, 0), (SampleHost.MessageBoxResultOk, 3)]);
-        scanner._messageBox = (_, _, _, _) =>
-        {
-            events.Add("dialog");
-            if (events.Count == 2)
-            {
-                secondDialogStarted.TrySetResult();
-                hookFinishedAdvance.Task.Wait();
-            }
-
-            var answer = answers.Dequeue();
-            clock.Advance(TimeSpan.FromSeconds(answer.Seconds));
-            return answer.Result;
-        };
-
-        var result = scanner.Run(["scan", "C"]);
-
-        Assert.AreEqual(0, result);
-        CollectionAssert.AreEqual(new[] { "dialog", "dialog", "elevate" }, events);
-    }
-
-    [TestMethod]
-    public void Run_NotElevated_OkReturnedAfterTheTimeoutButBothTasksComplete_IsNotAuthorization()
-    {
-        var lines = new List<string>();
-        var events = new List<string>();
-        var scanner = Scanner(lines, events, [Answer(SampleHost.MessageBoxResultOk, SampleHost.ElevationNoticeTimeout.TotalSeconds + 1)]);
-
-        var result = scanner.Run(["scan", "C"]);
-
-        Assert.AreEqual(1, result);
-        CollectionAssert.AreEqual(new[] { "dialog" }, events);
-        Assert.IsTrue(lines.Any(line => line.Contains("not answered in time")));
-    }
-
-    [TestMethod]
-    public void Run_NotElevated_AnswerExactlyAtTheTimeout_TimesOutAndOneTickEarlierStands()
-    {
-        var atTimeoutEvents = new List<string>();
-        var atTimeout = Scanner(new List<string>(), atTimeoutEvents, [Answer(SampleHost.MessageBoxResultOk, SampleHost.ElevationNoticeTimeout.TotalSeconds)]);
-        var earlierEvents = new List<string>();
-        var earlier = Scanner(
-            new List<string>(), earlierEvents,
-            [Answer(SampleHost.MessageBoxResultOk, SampleHost.ElevationNoticeTimeout.TotalSeconds - 0.001)]);
-
-        Assert.AreEqual(1, atTimeout.Run(["scan", "C"]));
-        Assert.AreEqual(0, earlier.Run(["scan", "C"]));
-
-        CollectionAssert.AreEqual(new[] { "dialog" }, atTimeoutEvents);
-        CollectionAssert.AreEqual(new[] { "dialog", "elevate" }, earlierEvents);
-    }
-
-    // Runs each queued task on a new thread, then a hook once the task has completed.
-    sealed class AfterRunScheduler(Action afterRun) : TaskScheduler
-    {
-        protected override void QueueTask(Task task)
-        {
-            new Thread(() =>
-            {
-                TryExecuteTask(task);
-                afterRun();
-            }).Start();
-        }
-
-        protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued) => false;
-
-        protected override IEnumerable<Task> GetScheduledTasks() => [];
-    }
-
-    // Runs each queued task on a new thread after a hook, standing in for a thread pool that is slow to start work.
-    sealed class LateStartScheduler(Action beforeStart) : TaskScheduler
-    {
-        protected override void QueueTask(Task task)
-        {
-            new Thread(() =>
-            {
-                beforeStart();
-                TryExecuteTask(task);
-            }).Start();
-        }
-
-        protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued) => false;
-
-        protected override IEnumerable<Task> GetScheduledTasks() => [];
-    }
-
-    static (SampleHost Scanner, string[] Arguments, string LaunchEvent) CreateScannerForMode(
-        bool isScanDrive,
-        List<string> lines,
-        List<string> events,
-        (int Result, double SecondsToAnswer)[] answers,
-        List<string>? messages = null)
-    {
-        var scanner = Scanner(lines, events, answers, messages);
-        if (isScanDrive)
-        {
-            scanner._canSelfElevate = () => throw new AssertFailedException("A broker launch must not self-elevate.");
-            scanner._tryRunElevated = (_, _) => throw new AssertFailedException("A broker launch must not self-elevate.");
-        }
-
-        string[] args = isScanDrive ? ["scan-drive", "C"] : ["scan", "C"];
-        var launchEvent = isScanDrive ? "create-session" : "elevate";
-        return (scanner, args, launchEvent);
-    }
-
-    // The broker-launch path is the shared flow asked for ElevationNeed.BrokerLaunch, as the Watch sample asks for it.
-    static int RunMode(SampleHost scanner, bool isScanDrive, string[] args, List<string> events)
-    {
-        return isScanDrive
-            ? scanner.RunWithElevation(args, ElevationNeed.BrokerLaunch, () =>
-            {
-                events.Add("create-session");
-                return 0;
-            })
-            : scanner.Run(args);
-    }
-
     static (int Result, double SecondsToAnswer) Answer(int result, double secondsToAnswer) => (result, secondsToAnswer);
 
     static SampleHost Scanner(
@@ -591,7 +325,7 @@ public class SampleHostElevationNoticeTests
     {
         var clock = new FakeTimeProvider();
         var next = 0;
-        // The scanner of a run that must itself be elevated; the scan-drive tests turn that off, as the real scan is.
+        // The scanner of a run that must itself be elevated.
         return new SampleHost
         {
             _isWindows = () => true,
@@ -618,5 +352,4 @@ public class SampleHostElevationNoticeTests
             }
         };
     }
-
 }

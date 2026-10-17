@@ -210,7 +210,7 @@ Console.ReadLine();
 
 `SampleProgram.Direct` runs one-shot queries over a live volume or a saved dump: `search`,
 `tree`, `open`, `largest`, `duplicate-names` and `scan`. `SampleProgram.Watch` uses the broker:
-`scan-drive`, `watch`, `rescan`, `journal`, `cache` and `elevation-status`. With no arguments
+`scan`, `watch`, `rescan`, `journal`, `cache` and `elevation-status`. With no arguments
 it watches every ready NTFS fixed drive until a key press.
 
 ```powershell

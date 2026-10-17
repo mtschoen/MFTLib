@@ -48,7 +48,8 @@ partial class SampleHost
     // blocks in its own policy-* folder under the cache directory, so the root and every such folder are covered.
     int RunCache(WatchArguments parsed)
     {
-        var root = ResolveCacheDirectory(parsed);
+        // aislop-ignore-next-line ai-slop/csharp-null-forgiving -- Run resolves the cache root before entering cached verbs
+        var root = parsed.CacheDirectory!;
         var letters = parsed.Drives.Count == 0 ? null : parsed.Drives.Select(drive => new DriveKey(drive[0])).ToArray();
         IEnumerable<string> policies = Directory.Exists(root)
             ? Directory.EnumerateDirectories(root, WatchArguments.PolicyDirectoryPrefix + "*").Order(StringComparer.Ordinal)

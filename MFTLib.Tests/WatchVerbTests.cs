@@ -1,5 +1,7 @@
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SampleProgram.Watch;
@@ -191,6 +193,15 @@ public class WatchVerbTests
         Assert.IsTrue(Directory.Exists(root));
         Assert.IsTrue(lines.Any(line => line.StartsWith("X: ", StringComparison.Ordinal) && line.Contains(root, StringComparison.Ordinal)));
         Assert.IsTrue(lines.Any(line => line.Trim() == "X: Deleted"));
+
+        var hostSource = string.Join("\n", new[]
+        {
+            "SampleProgram.Watch/SampleHost.Run.cs",
+            "SampleProgram.Watch/SampleHost.Verbs.cs",
+            "SampleProgram.Watch/SampleHost.Broker.cs"
+        }.Select(RepositoryFiles.Read));
+        Assert.AreEqual(1, Regex.Count(hostSource, @"\bResolveCacheDirectory\(parsed\)"),
+            "Run resolves the cache root; cache and broker verbs consume that value.");
     }
 
     [DataTestMethod]

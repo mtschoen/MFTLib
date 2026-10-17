@@ -23,7 +23,7 @@ the manual-elevation instructions. A dismissal within 0.75 seconds is treated as
 dialog is shown again. A dialog nobody answers for five minutes counts as Cancel, so a run left unattended does not
 hang: no UAC prompt, the manual-elevation fallback, exit code 1.
 
-A Watch verb that opens an index (`scan-drive`, `watch`, `rescan`, `journal`) stays unelevated and the broker it
+A Watch verb that opens an index (`scan`, `watch`, `rescan`, `journal`) stays unelevated and the broker it
 launches asks for elevation, so an attended, unelevated run shows the same heads-up dialog before the broker launch;
 Cancel or the five-minute timeout skips the launch with the same fallback text and exit code 1. `cache` and
 `elevation-status` touch no volume and show no dialog, and neither does Direct with `--source dump`.
@@ -50,7 +50,7 @@ Watch with no arguments is `watch` over every ready NTFS fixed drive: it prints 
 running row count (a line each 250000 rows within a scan phase), then prints changes until a key press. `--seconds N`
 replaces the key press with a fixed length, and an unattended run that is elevated, or one whose input is redirected,
 watches for ten seconds. An unattended run that is not elevated exits 1 without watching, as the Unattended section
-below describes. `scan-drive` makes one pass per listed drive and returns. Any drive that failed makes the exit code 1.
+below describes. `scan` makes one pass per listed drive and returns. Any drive that failed makes the exit code 1.
 
 ## Windows Defender process exclusions
 

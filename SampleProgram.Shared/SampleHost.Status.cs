@@ -52,19 +52,4 @@ partial class SampleHost
             writeLine($"  {value.Drive}: {value.Phase}: {value.WrittenRowCount} rows{(value.ExpectedRowCount is { } total ? $" of {total}" : string.Empty)}{(value.Outcome is { } outcome ? $" ({outcome})" : string.Empty)}{(value.CurrentDirectory is { } directory ? $" in {directory}" : string.Empty)}");
         }
     }
-
-    // Reports each drive as it settles, one self-describing line per report. Reports arrive synchronously on the settling
-    // threads and can overlap or arrive out of order, so the line carries its own count and the write is serialized.
-    internal sealed class DriveOpenedReporter(Action<string> writeLine) : IProgress<IndexDriveOpened>
-    {
-        readonly object _gate = new();
-
-        public void Report(IndexDriveOpened value)
-        {
-            lock (_gate)
-            {
-                writeLine($"{value.Drive}: opened ({value.SettledDriveCount} of {value.TotalDriveCount} drives)");
-            }
-        }
-    }
 }
