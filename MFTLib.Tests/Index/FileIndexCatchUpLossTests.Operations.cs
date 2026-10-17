@@ -94,7 +94,7 @@ public partial class FileIndexCatchUpLossTests
     }
 
     [TestMethod]
-    public async Task Rescan_ProducerFailureWithNoMessage_ThrowsNamingTheDriveAndKeepsThePreviousFailure()
+    public async Task Rescan_ProducerFailureWithNoMessage_ReportsFailureNamingTheDriveAndKeepsThePreviousFailure()
     {
         using var harness = new WatchHarness('T');
         harness.FailNextProduction('T', new MessagelessException("the first scan failed", new IOException()));

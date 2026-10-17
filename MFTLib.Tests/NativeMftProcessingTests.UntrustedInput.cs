@@ -5,7 +5,7 @@ namespace MFTLib.Tests;
 
 // Images whose sizes, run lengths and attribute chains are forged. Each must be rejected or ignored without
 // reading outside the buffers the parser owns.
-public partial class NativeCoverageTests
+public partial class NativeMftProcessingTests
 {
     private const int BaseMftRecords = 1024;
     private const int ExtensionRecordOffset = MftRunOffset + 2 * 1024; // segment 2

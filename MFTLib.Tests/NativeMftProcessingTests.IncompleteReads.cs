@@ -6,7 +6,7 @@ using static MFTLib.Tests.TestSupport.SyntheticNtfsImage;
 
 namespace MFTLib.Tests;
 
-public partial class NativeCoverageTests
+public partial class NativeMftProcessingTests
 {
     private const int MftRunOffset = 4096;
     private const int BatchBytes = 256 * 1024; // 256 records of 1024 bytes

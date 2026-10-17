@@ -65,15 +65,15 @@ public class FileIndexWatchFailedRescanTests
         production.Release();
         if (thrownSwap)
         {
-            var thrown = await DriveResultAssertions.FailureAsync<OperationCanceledException>(
+            var failure = await DriveResultAssertions.FailureAsync<OperationCanceledException>(
                 () => rescan.WaitAsync(HangGuard));
-            Assert.AreSame(productionFailure, thrown);
+            Assert.AreSame(productionFailure, failure);
         }
         else
         {
-            var thrown = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+            var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
                 () => rescan.WaitAsync(HangGuard));
-            Assert.AreSame(productionFailure, thrown.InnerException);
+            Assert.AreSame(productionFailure, failure.InnerException);
             Assert.AreEqual(productionFailure.Message, harness.DriveFor('T').Failure?.Message);
         }
 
@@ -135,9 +135,9 @@ public class FileIndexWatchFailedRescanTests
         var producerFailure = new IOException("rescan producer failed");
         harness.FailNextProduction('T', producerFailure);
 
-        var thrown = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => harness.Index.RescanAsync(['T'], Token));
+        var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => harness.Index.RescanAsync(['T'], Token));
 
-        Assert.AreSame(producerFailure, thrown.InnerException);
+        Assert.AreSame(producerFailure, failure.InnerException);
         Assert.AreSame(original, harness.Index.Root('T').DriveBlock);
         Assert.AreEqual("rescan producer failed", harness.DriveFor('T').Failure?.Message);
         Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);

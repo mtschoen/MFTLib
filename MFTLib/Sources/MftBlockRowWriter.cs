@@ -17,8 +17,8 @@ internal static class MftBlockRowWriter
         ArgumentNullException.ThrowIfNull(batches);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var keepFileNames = scanOptions.RetainedFileNames is { } retainedFileNames
-            ? new HashSet<string>(retainedFileNames, StringComparer.OrdinalIgnoreCase)
+        var retainedFileNames = scanOptions.RetainedFileNames is { } names
+            ? new HashSet<string>(names, StringComparer.OrdinalIgnoreCase)
             : null;
         var freedRows = scanOptions.IncludeFreed ? new FreedRowTrust(writer.Block) : null;
         long recordsWritten = 0;
@@ -36,7 +36,7 @@ internal static class MftBlockRowWriter
                 }
 
                 freedRows?.Observe(in record);
-                if (!ShouldKeepRecord(record, keepFileNames))
+                if (!ShouldKeepRecord(record, retainedFileNames))
                 {
                     continue;
                 }
@@ -65,12 +65,12 @@ internal static class MftBlockRowWriter
 
     static bool ShouldKeepRecord(
         in MftRecord record,
-        HashSet<string>? keepFileNames)
+        HashSet<string>? retainedFileNames)
     {
         // Null is a full scan; an empty set keeps directories only.
-        return keepFileNames is null ||
+        return retainedFileNames is null ||
             record.IsDirectory ||
-            keepFileNames.Contains(record.FileName);
+            retainedFileNames.Contains(record.FileName);
     }
 
     static bool TryWriteRecord(BlockWriter writer, MftRecord record)

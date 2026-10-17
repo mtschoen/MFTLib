@@ -143,12 +143,12 @@ public class FileIndexRescanCleanupTests
         Assert.IsTrue(File.Exists(canonicalPath));
 
         failTheScan.Value = true;
-        var thrown = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+        var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
             () => index.RescanAsync(['T'], Token));
 
         try
         {
-            Assert.AreSame(producerFailure, thrown.InnerException);
+            Assert.AreSame(producerFailure, failure.InnerException);
             var drive = index.Drives.Single();
             Assert.AreEqual("the producer lost the volume", drive.Failure?.Message);
             Assert.AreEqual(DriveState.Ready, drive.State,

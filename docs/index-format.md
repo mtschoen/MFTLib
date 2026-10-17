@@ -63,7 +63,7 @@ validating a block another index is mutating can observe a half-updated header o
 descriptor, and deleting a mapped file's name succeeds on Windows. Cache-only opens report the
 drive `Failed` with `DriveFailureKind.InUse`; other opens scan into a private
 `mftlib-private-<guid>-<name>` temp file with delete-on-close, the same shape `CacheMode.Disabled` uses
-with its `mftlib-nocache-` prefix. The lock file itself is never deleted, because unlinking it
+with its `mftlib-cache-disabled-` prefix. The lock file itself is never deleted, because unlinking it
 races another opener's create-and-lock; a leftover lock file matches no block-file pattern and
 is re-locked in place.
 

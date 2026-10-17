@@ -91,7 +91,7 @@ public class FileIndexDriveStatusTests
     }
 
     [TestMethod]
-    public async Task RescanAsync_OfflineDrive_ThrowsBecauseItHasNoBlock()
+    public async Task RescanAsync_OfflineDrive_ReportsFailureBecauseItHasNoBlock()
     {
         var options = new FileIndexOptions
         {

@@ -173,10 +173,10 @@ public partial class FileIndexWatchRecoveryTests
     /// <summary>
     ///     A stop that lands after the pump marked its fault and before the pump settled the wait
     ///     does not cancel the wait: the wait reports the fault that ended the watch it followed,
-    ///     and the stop rethrows that same fault once.
+    ///     and the stop reports that same fault once in a failed result.
     /// </summary>
     [TestMethod]
-    public async Task StopRacingAPumpFault_FaultsThePendingWaitWithTheWatchFault()
+    public async Task StopRacingAPumpFault_SettlesThePendingWaitWithTheWatchFailure()
     {
         using var harness = new WatchHarness('T');
         var index = harness.Index;

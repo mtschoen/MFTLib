@@ -43,7 +43,7 @@ public class CacheDirectoryEnumerationTests
         WriteFile("A-ZZZZZZZZ.mlix", "invalid hexadecimal serial");
         WriteFile("A_12345678.mlix", "invalid separator");
         WriteFile("notes.mlix", "an unrelated name that happens to end in the extension");
-        WriteFile($"mftlib-nocache-{Guid.NewGuid():N}-{CacheDirectory.BlockFileName('E', 1)}", "no-cache temp file");
+        WriteFile($"mftlib-cache-disabled-{Guid.NewGuid():N}-{CacheDirectory.BlockFileName('E', 1)}", "disabled-cache temp file");
         WriteFile(CacheDirectory.BlockFileName('F', 2) + ".retired-" + Guid.NewGuid().ToString("N"), "retired");
 
         var cached = CacheDirectory.EnumerateCached(_cacheDirectory)

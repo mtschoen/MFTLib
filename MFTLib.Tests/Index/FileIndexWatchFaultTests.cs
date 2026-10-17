@@ -67,9 +67,9 @@ public class FileIndexWatchFaultTests
         Assert.AreEqual(frozenCursor, harness.BlockFor('T').Header.UsnNextUsn);
         Assert.AreEqual(9000L, harness.BlockFor('U').Header.UsnNextUsn);
 
-        var thrown = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
+        var failure = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
             () => harness.Index.StopWatchingAsync(['T'], Token));
-        Assert.AreSame(driveFault, thrown);
+        Assert.AreSame(driveFault, failure);
     }
 
     [TestMethod]
@@ -93,9 +93,9 @@ public class FileIndexWatchFaultTests
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('U').Watch.State);
         Assert.AreEqual(9000L, harness.BlockFor('U').Header.UsnNextUsn);
 
-        var thrown = await DriveResultAssertions.FailureAsync<IOException>(
+        var failure = await DriveResultAssertions.FailureAsync<IOException>(
             () => harness.Index.StopWatchingAsync(['T'], Token));
-        Assert.AreSame(lost, thrown);
+        Assert.AreSame(lost, failure);
     }
 
     [TestMethod]

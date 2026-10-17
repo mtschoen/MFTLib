@@ -5,7 +5,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
-public partial class NativeCoverageTests
+public partial class NativeMftProcessingTests
 {
     // --- ParseMFTRecords error paths (via raw handle) ---
 

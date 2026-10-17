@@ -166,10 +166,10 @@ public partial class FileIndexWatchRecoveryTests
         await heldRetry.Entered.WaitAsync(HangGuard);
         Assert.AreEqual(WatchState.Recovering, harness.DriveFor('T').Watch.State);
 
-        var thrown = await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(
+        var failure = await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(
             () => harness.Index.WaitForCatchUpAsync(['T'], Token).WaitAsync(HangGuard));
 
-        Assert.AreSame(WatchDeduplicationTestSupport.CatchUpLosses(harness, 'T').Single(), thrown);
+        Assert.AreSame(WatchDeduplicationTestSupport.CatchUpLosses(harness, 'T').Single(), failure);
         heldRetry.Release();
         await rescan.WaitAsync(HangGuard);
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);

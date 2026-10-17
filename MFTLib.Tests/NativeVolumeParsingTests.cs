@@ -7,15 +7,10 @@ using static MFTLib.Tests.TestSupport.SyntheticNtfsImage;
 
 namespace MFTLib.Tests;
 
-/// <summary>
-///     Additional tests targeting specific native C++ lines that remained
-///     uncovered after the initial coverage burn-down: real (non-mocked)
-///     progress-callback wiring and the volume export's extension-record
-///     and record-size branches.
-/// </summary>
+/// <summary>Native volume parsing, attribute validation, progress and parse control.</summary>
 [TestClass]
 [DoNotParallelize]
-public partial class NativeParserCoverageTests
+public partial class NativeVolumeParsingTests
 {
     [TestCleanup]
     public void Cleanup()
@@ -25,13 +20,13 @@ public partial class NativeParserCoverageTests
         FileUtilities.Hooks.ResetToDefaults();
     }
 
-    // --- mft.parse.cpp line 63: QueryVolumeRecordSize's real DeviceIoControl
-    // failure branch. A plain file handle on an NTFS volume actually lets
+    // A named pipe makes the volume record-size query fail: its driver does not support the request.
+    // A plain file handle on an NTFS volume actually lets
     // FSCTL_GET_NTFS_VOLUME_DATA pass through successfully (verified
     // empirically), so a genuinely non-filesystem handle is needed instead: a
     // named pipe, whose driver (NPFS) does not implement that FSCTL at all,
     // distinct from the earlier "Volume handle is invalid" short-circuit that
-    // only guards INVALID_HANDLE_VALUE. ---
+    // only guards INVALID_HANDLE_VALUE.
 
     [TestMethod]
     public void ParseMFTRecordsWithProgress_NonVolumeHandle_RecordSizeQueryFails()
@@ -132,9 +127,7 @@ public partial class NativeParserCoverageTests
         }
     }
 
-    // --- mft.parse_core.cpp lines 300-302: in-loop progress callback,
-    // reached only via a real (non-mocked) native progress callback wired
-    // through ParseMFTRecordsWithProgress with an actual data payload. ---
+    // A real native callback reports each completed chunk.
 
     [TestMethod]
     public void ParseMFTRecordsWithProgress_RealCallback_ReportsPerChunkProgress()

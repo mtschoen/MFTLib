@@ -186,13 +186,13 @@ public class FileIndexCacheOnlyUnresumableWatchTests
     }
 
     /// <summary>
-    ///     A rescan whose producer returns no block replaces nothing and throws
-    ///     <see cref="InvalidOperationException" /> carrying the producer's failure, and the drive's
+    ///     A rescan whose producer returns no block replaces nothing and reports a failed result
+    ///     carrying <see cref="InvalidOperationException" /> with the producer's failure, and the drive's
     ///     refusal survives exactly as it was: the old, still-unresumable block is not started, and
     ///     the message explaining why is not cleared.
     /// </summary>
     [TestMethod]
-    public async Task RescanAsync_OnTheUnresumableDrive_WhenTheProducerReturnsNoBlock_ThrowsAndLeavesTheRefusalIntact()
+    public async Task RescanAsync_OnTheUnresumableDrive_WhenTheProducerReturnsNoBlock_ReportsFailureAndLeavesTheRefusalIntact()
     {
         var driveT = Drive('T', _firstTreeRoot);
         var driveU = Drive('U', _secondTreeRoot);
@@ -219,10 +219,10 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         Assert.AreEqual(WatchState.Faulted, before.Watch.State);
         Assert.IsNotNull(before.Watch.CheckpointLoss);
 
-        var thrown = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+        var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
             () => index.RescanAsync(['T'], Token));
 
-        Assert.AreSame(scanFailure, thrown.InnerException);
+        Assert.AreSame(scanFailure, failure.InnerException);
         Assert.AreEqual(0, source.TargetsFor('T').Count,
             "a failed rescan must not start the cursor the journal still cannot resume");
 
@@ -378,8 +378,8 @@ public class FileIndexCacheOnlyUnresumableWatchTests
             () => index.WaitForCatchUpAsync(['T'], Token));
         StringAssert.Contains(waitFailure.Message, "RescanAsync");
 
-        // The refusal records the request, so a stop withdraws it without rethrowing the refusal,
-        // which the start already threw; after that there is nothing left to stop.
+        // The refusal records the request, so a stop withdraws it without reporting the refusal again,
+        // which the start already reported; after that there is nothing left to stop.
         Assert.IsTrue(status.Watch.IsRequested);
         await index.StopWatchingAsync(['T'], Token);
         var stopped = index.Drives.Single();

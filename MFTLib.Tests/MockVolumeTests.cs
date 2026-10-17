@@ -167,10 +167,8 @@ public class MockVolumeTests
             volume.ReadRecordBatches(4096, null, null, CancellationToken.None).ToList());
     }
 
-    // --- ReadAllRecords ---
-
     [TestMethod]
-    public void ReadAllRecords_ReturnsRecords()
+    public void ReadAll_ReturnsRecords()
     {
         SetupMocks();
 
@@ -227,8 +225,6 @@ public class MockVolumeTests
         Assert.AreEqual(3UL, stream.UsedRecords);
         Assert.AreEqual(210UL, stream.NativeCompactBytes);
     }
-
-    // --- ParseMFTFromFile ---
 
     // --- MftResult Error and Dispose ---
 
@@ -443,7 +439,7 @@ public class MockVolumeTests
     }
 
     [TestMethod]
-    public void MftVolume_ReadRecordBatches_BatchesMatchReadAllRecords()
+    public void MftVolume_ReadRecordBatches_PreservesRecordOrderAcrossBatches()
     {
         SetupMocks(7);
         using var volume = MftVolume.Open("C");

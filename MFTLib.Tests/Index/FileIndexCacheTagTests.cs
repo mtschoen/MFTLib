@@ -90,12 +90,12 @@ public class FileIndexCacheTagTests
     [DataRow(ProducerKind.Mft, false)]
     [DataRow(ProducerKind.Enumeration, true)]
     [DataRow(ProducerKind.Mft, true)]
-    public async Task CreationAndRescanKeepTheRequestedTag(ProducerKind policy, bool noCache)
+    public async Task CreationAndRescanKeepTheRequestedTag(ProducerKind producerKind, bool cacheDisabled)
     {
         var options = Options(OriginalTag) with
         {
-            Drives = [new IndexedDrive('T', Root, 123, policy)],
-            CacheMode = noCache ? CacheMode.Disabled : CacheMode.Persistent
+            Drives = [new IndexedDrive('T', Root, 123, producerKind)],
+            CacheMode = cacheDisabled ? CacheMode.Disabled : CacheMode.Persistent
         };
         await using (var index = await FileIndex.OpenAsync(options, CancellationToken.None))
         {
@@ -104,7 +104,7 @@ public class FileIndexCacheTagTests
             await index.RescanAsync(['T'], CancellationToken.None);
             Assert.AreEqual(OriginalTag, index.CurrentSnapshot.Single().Block.Header.CacheTag);
         }
-        if (noCache)
+        if (cacheDisabled)
         {
             Assert.IsFalse(File.Exists(BlockPath));
         }

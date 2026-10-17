@@ -60,7 +60,7 @@ public class JournalBrokerHostBlockScanTests
     }
 
     [TestMethod]
-    public async Task ScanChannel_BlockFormat_ForwardsDirectoryIndexProfileAndKeepNamesToSectionWriter()
+    public async Task ScanChannel_BlockFormat_ForwardsRetainedFileNamesToSectionWriter()
     {
         using var blockWriter = new RecordingBlockSectionWriter();
         var host = CreateHost((_, _, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]);

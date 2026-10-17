@@ -81,7 +81,7 @@ public sealed partial class FileIndex
         if (_options.CacheMode == CacheMode.Disabled)
         {
             return new ScanBlockTarget(Path.Combine(Path.GetTempPath(),
-                $"mftlib-nocache-{Guid.NewGuid():N}-{CacheDirectory.BlockFileName(drive.Drive, drive.VolumeSerial)}"),
+                $"mftlib-cache-disabled-{Guid.NewGuid():N}-{CacheDirectory.BlockFileName(drive.Drive, drive.VolumeSerial)}"),
                 DeleteOnClose: true, OwnsCanonicalSlot: false);
         }
 

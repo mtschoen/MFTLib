@@ -6,21 +6,19 @@ using static MFTLib.Tests.TestSupport.SyntheticNtfsImage;
 
 namespace MFTLib.Tests;
 
-public partial class NativeCoverageTests
+public partial class NativeMftProcessingTests
 {
-    // --- Variable record size and geometry validation tests ---
+    // --- FindAttribute null return ---
 
     [TestMethod]
-    public void ParseMFTRecords_VolumeRecordSizeOverride_InvalidSize_ReturnsError()
+    public void ParseMFTRecords_WithNtfsHeaderButBadMagic_ReturnsError()
     {
+        // Create a file that looks like NTFS boot sector but has invalid MFT record 0
         var path = Path.GetTempFileName();
         try
         {
-            // Override with unsupported record size 1536
-            NativeTestHooks.NativeSetVolumeRecordSizeOverride(1536);
-
             var data = BuildBootSector();
-            WriteFileRecord(data, 4096);
+
             File.WriteAllBytes(path, data);
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -30,7 +28,10 @@ public partial class NativeCoverageTests
             try
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.IsTrue(result.ErrorMessage.Contains("record size", StringComparison.OrdinalIgnoreCase));
+                var errorMessage = result.ErrorMessage;
+                Assert.IsTrue(
+                    errorMessage!.Contains("magic") || errorMessage.Contains("MFT record 0"),
+                    $"Unexpected error: {errorMessage}");
             }
             finally
             {
@@ -39,7 +40,6 @@ public partial class NativeCoverageTests
         }
         finally
         {
-            NativeTestHooks.NativeResetTestState();
             if (File.Exists(path))
             {
                 File.Delete(path);
@@ -48,19 +48,18 @@ public partial class NativeCoverageTests
     }
 
     [TestMethod]
-    public void ParseMFTRecords_VolumeRecordSizeOverride_Supported1024_Succeeds()
+    public void ParseMFTRecords_WithValidMagicButNoDataAttribute_ReturnsError()
     {
+        // Create a file with valid NTFS BPB + valid FILE magic in record 0,
+        // but no Data attribute  -  triggers FindAttribute returning nullptr
         var path = Path.GetTempFileName();
         try
         {
-            NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
-
             var data = BuildBootSector();
-            WriteFileRecord(data, 4096, recordSize: 1024);
-            var dataAttribute = 4096 + 0x38;
-            var dataLength = WriteNonResidentDataAttribute(
-                data, dataAttribute, 1024L * 1024, 1, 256);
-            WriteEndMarker(data, dataAttribute + dataLength);
+            const int recordOffset = 4096;
+            WriteFileRecord(data, recordOffset);
+            WriteEndMarker(data, recordOffset + 0x38);
+
             File.WriteAllBytes(path, data);
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -70,7 +69,142 @@ public partial class NativeCoverageTests
             try
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.AreEqual(string.Empty, result.ErrorMessage);
+                var errorMessage = result.ErrorMessage;
+                Assert.IsTrue(
+                    errorMessage!.Contains("Data attribute") || errorMessage.Contains("magic"),
+                    $"Unexpected error: {errorMessage}");
+            }
+            finally
+            {
+                MFTLibNative.Hooks.FreeMftResult(resultPointer);
+            }
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void ParseMFTRecords_ZeroLengthAttribute_ReturnsMalformedAttributeError()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            var data = BuildBootSector();
+            WriteFileRecord(data, 4096);
+            data[4096 + 0x38] = 0x10;
+            File.WriteAllBytes(path, data);
+
+            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
+                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
+            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+            try
+            {
+                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+                Assert.IsTrue(result.ErrorMessage.Contains("malformed attribute"));
+            }
+            finally
+            {
+                MFTLibNative.Hooks.FreeMftResult(resultPointer);
+            }
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    // Synthetic image handles exercise batch, attribute-list and extension-record read failures
+    // without administrator access. Each failure rejects the scan with no entries.
+
+    // --- ParseMFTRecords Read failure on MFT record 0 ---
+
+    [TestMethod]
+    public void ParseMFTRecords_ReadFailOnMftRecord0_ReturnsError()
+    {
+        // Create a file with valid NTFS BPB so boot sector read succeeds,
+        // then fail the 2nd Read (MFT record 0)
+        var path = Path.GetTempFileName();
+        try
+        {
+            var data = new byte[1024 * 1024];
+            data[3] = (byte)'N';
+            data[4] = (byte)'T';
+            data[5] = (byte)'F';
+            data[6] = (byte)'S';
+            data[0x0B] = 0x00;
+            data[0x0C] = 0x02;
+            data[0x0D] = 0x08;
+            data[0x30] = 0x01;
+            File.WriteAllBytes(path, data);
+
+            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
+            NativeTestHooks.NativeSetReadFailCountdown(2); // fail 2nd Read
+            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
+                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
+            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+            try
+            {
+                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+                Assert.IsTrue(result.ErrorMessage.Contains("MFT record 0"));
+            }
+            finally
+            {
+                MFTLibNative.Hooks.FreeMftResult(resultPointer);
+            }
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    // --- Resident AttributeList path ---
+
+    [TestMethod]
+    public void ParseMFTRecords_ResidentAttributeList_EmptyValueReturnsDataRecords()
+    {
+        // Record 0 with Data + empty resident AttributeList.
+        var path = Path.GetTempFileName();
+        try
+        {
+            var data = BuildBootSector();
+            WriteFileRecord(data, 4096);
+
+            var a1 = 4096 + 0x38;
+            var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
+
+            // Resident AttributeList with empty value (no extension records)
+            var a2 = a1 + a1Len;
+            data[a2] = 0x20; // TypeCode = AttributeList
+            data[a2 + 4] = 0x20; // RecordLength = 32
+            data[a2 + 8] = 0x00; // FormCode = resident
+            data[a2 + 0x10] = 0x00; // ValueLength = 0
+            data[a2 + 0x14] = 0x18; // ValueOffset
+
+            WriteEndMarker(data, a2 + 0x20);
+
+            File.WriteAllBytes(path, data);
+
+            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
+                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
+            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+            try
+            {
+                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
                 Assert.IsTrue(result.TotalRecords > 0);
             }
             finally
@@ -80,146 +214,10 @@ public partial class NativeCoverageTests
         }
         finally
         {
-            NativeTestHooks.NativeResetTestState();
             if (File.Exists(path))
             {
                 File.Delete(path);
             }
-        }
-    }
-
-    [TestMethod]
-    public void ParseMFTRecords_VolumeRecordSizeOverride_Supported4096_Succeeds()
-    {
-        var path = Path.GetTempFileName();
-        try
-        {
-            NativeTestHooks.NativeSetVolumeRecordSizeOverride(4096);
-
-            var data = BuildBootSector();
-            WriteFileRecord(data, 4096, 0x0001, 4096);
-            var dataAttribute = 4096 + 0x48;
-            var dataLength = WriteNonResidentDataAttribute(
-                data, dataAttribute, 1024L * 1024, 1, 256);
-            WriteEndMarker(data, dataAttribute + dataLength);
-            File.WriteAllBytes(path, data);
-
-            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
-            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            try
-            {
-                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.AreEqual(string.Empty, result.ErrorMessage);
-                Assert.AreEqual(256UL, result.TotalRecords);
-            }
-            finally
-            {
-                MFTLibNative.Hooks.FreeMftResult(resultPointer);
-            }
-        }
-        finally
-        {
-            NativeTestHooks.NativeResetTestState();
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-    }
-
-    [TestMethod]
-    public void ResetTestState_ClearsVolumeRecordSizeOverride()
-    {
-        var path = Path.GetTempFileName();
-        try
-        {
-            NativeTestHooks.NativeSetVolumeRecordSizeOverride(1536);
-            NativeTestHooks.NativeResetTestState();
-
-            var data = BuildBootSector();
-            WriteFileRecord(data, 4096, recordSize: 1024);
-            var dataAttribute = 4096 + 0x38;
-            var dataLength = WriteNonResidentDataAttribute(
-                data, dataAttribute, 1024L * 1024, 1, 256);
-            WriteEndMarker(data, dataAttribute + dataLength);
-            File.WriteAllBytes(path, data);
-
-            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
-            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            try
-            {
-                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.IsFalse(result.ErrorMessage.Contains("record size", StringComparison.OrdinalIgnoreCase));
-            }
-            finally
-            {
-                MFTLibNative.Hooks.FreeMftResult(resultPointer);
-            }
-        }
-        finally
-        {
-            NativeTestHooks.NativeResetTestState();
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-    }
-
-    [DataTestMethod]
-    [DataRow((byte)0xF6, true, DisplayName = "-10 declares 1024-byte records")]
-    [DataRow((byte)0x00, false, DisplayName = "zero declares no record size")]
-    [DataRow((byte)0xE0, false, DisplayName = "-32 declares a size past the supported range")]
-    public void ParseMFTRecords_OffWindowsWithoutAnOverride_TakesTheRecordSizeFromTheBootSector(
-        byte clustersPerFileRecord, bool parses)
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("On Windows the record size comes from FSCTL_GET_NTFS_VOLUME_DATA, not the boot sector.");
-        }
-
-        var path = Path.GetTempFileName();
-        try
-        {
-            var data = BuildBootSector();
-            data[0x40] = clustersPerFileRecord;
-            WriteFileRecord(data, 4096, recordSize: 1024);
-            var dataAttribute = 4096 + 0x38;
-            var dataLength = WriteNonResidentDataAttribute(
-                data, dataAttribute, 1024L * 1024, 1, 256);
-            WriteEndMarker(data, dataAttribute + dataLength);
-            File.WriteAllBytes(path, data);
-
-            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
-            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            try
-            {
-                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                if (parses)
-                {
-                    Assert.AreEqual(string.Empty, result.ErrorMessage);
-                    Assert.AreEqual(1024UL, result.TotalRecords);
-                }
-                else
-                {
-                    Assert.AreEqual("Failed to query volume record size or unsupported record size", result.ErrorMessage);
-                }
-            }
-            finally
-            {
-                MFTLibNative.Hooks.FreeMftResult(resultPointer);
-            }
-        }
-        finally
-        {
-            NativeTestHooks.NativeResetTestState();
-            File.Delete(path);
         }
     }
 }

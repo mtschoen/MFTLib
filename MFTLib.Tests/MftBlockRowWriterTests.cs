@@ -212,7 +212,7 @@ public class MftBlockRowWriterTests
     }
 
     [TestMethod]
-    public void WriteBatches_DirectoryIndexWithoutKeepNames_WritesOnlyDirectoriesAndSlotsForFilesAreUnused()
+    public void WriteBatches_EmptyRetention_WritesOnlyDirectoriesAndSlotsForFilesAreUnused()
     {
         using var block = CreateBlock();
         MftRecord[] records =
@@ -232,7 +232,7 @@ public class MftBlockRowWriterTests
     }
 
     [TestMethod]
-    public void WriteBatches_DirectoryIndexWithKeepName_PreservesNamedFileCaseInsensitively()
+    public void WriteBatches_RetainedFileNames_PreservesNamedFileCaseInsensitively()
     {
         using var block = CreateBlock();
         MftRecord[] records =

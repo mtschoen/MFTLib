@@ -8,7 +8,7 @@ namespace MFTLib.Tests.Index;
 /// <summary>
 ///     Failure, cancellation, and cleanup behavior for <see cref="FileIndex" />: a scan that
 ///     throws or is cancelled must not leak a mapping or a temp file, a rescan that fails must
-///     leave the previous block usable, and superseded blocks (no-cache temp files and
+///     leave the previous block usable, and superseded blocks (disabled-cache temp files and
 ///     cache-mode rescan leftovers) must be cleaned up deterministically.
 /// </summary>
 [TestClass]
@@ -36,14 +36,14 @@ public partial class FileIndexResilienceTests
         _directories.Dispose();
     }
 
-    FileIndexOptions Options(bool noCache = false, IProgress<IndexScanProgress>? progress = null,
+    FileIndexOptions Options(bool cacheDisabled = false, IProgress<IndexScanProgress>? progress = null,
         Action<string>? diagnostics = null)
     {
         return new FileIndexOptions
         {
             Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial, ProducerKind.Enumeration)],
             CacheDirectory = _cacheDirectory,
-            CacheMode = noCache ? CacheMode.Disabled : CacheMode.Persistent,
+            CacheMode = cacheDisabled ? CacheMode.Disabled : CacheMode.Persistent,
             ScanProgress = progress,
             Diagnostics = diagnostics
         };
@@ -218,12 +218,12 @@ public partial class FileIndexResilienceTests
     public async Task OpenAsync_DisabledCacheMode_CancelledMidScan_DeletesTheTempBlockImmediately()
     {
         using var cancellationTokenSource = new CancellationTokenSource();
-        var options = Options(noCache: true, progress: new CancelOnFirstReport(cancellationTokenSource));
+        var options = Options(cacheDisabled: true, progress: new CancelOnFirstReport(cancellationTokenSource));
 
         await AssertThrowsCancellation(() => FileIndex.OpenAsync(options, cancellationTokenSource.Token));
 
         Assert.AreEqual(0, Directory.EnumerateFiles(Path.GetTempPath(),
-            $"mftlib-nocache-*-{CacheDirectory.BlockFileName('T', _volumeSerial)}").Count());
+            $"mftlib-cache-disabled-*-{CacheDirectory.BlockFileName('T', _volumeSerial)}").Count());
     }
 
     [TestMethod]
@@ -290,7 +290,7 @@ public partial class FileIndexResilienceTests
     [TestMethod]
     public async Task DisposeAsync_DisabledCacheMode_DeletesEveryTempBlockIncludingAHeldSupersededOne()
     {
-        var index = await FileIndex.OpenAsync(Options(noCache: true), CancellationToken.None);
+        var index = await FileIndex.OpenAsync(Options(cacheDisabled: true), CancellationToken.None);
         string firstPath;
         string secondPath;
         try
@@ -320,7 +320,7 @@ public partial class FileIndexResilienceTests
     [TestMethod]
     public async Task RescanAsync_DisabledCacheMode_UnheldSupersededTempBlockIsDeletedByFinalization()
     {
-        var index = await FileIndex.OpenAsync(Options(noCache: true), CancellationToken.None);
+        var index = await FileIndex.OpenAsync(Options(cacheDisabled: true), CancellationToken.None);
         try
         {
             Assert.IsTrue(index.TryGetDriveOrdinal('T', out var driveOrdinal));
@@ -453,16 +453,16 @@ public partial class FileIndexResilienceTests
         try
         {
             await using var firstIndex =
-                await FileIndex.OpenAsync(firstFixture.Options(noCache: true), CancellationToken.None);
+                await FileIndex.OpenAsync(firstFixture.Options(cacheDisabled: true), CancellationToken.None);
             Assert.IsTrue(firstIndex.TryGetDriveOrdinal('T', out var firstDriveOrdinal));
             var firstBlockPath = firstIndex.CurrentSnapshot[firstDriveOrdinal].Block.Path;
             Assert.IsTrue(File.Exists(firstBlockPath));
 
             await using var secondIndex =
-                await FileIndex.OpenAsync(secondFixture.Options(noCache: true), CancellationToken.None);
+                await FileIndex.OpenAsync(secondFixture.Options(cacheDisabled: true), CancellationToken.None);
 
             Assert.IsTrue(File.Exists(firstBlockPath),
-                "opening another test fixture must not unlink this fixture's live no-cache block");
+                "opening another test fixture must not unlink this fixture's live disabled-cache block");
         }
         finally
         {

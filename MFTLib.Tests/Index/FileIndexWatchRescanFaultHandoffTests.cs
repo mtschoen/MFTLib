@@ -22,21 +22,21 @@ public class FileIndexWatchRescanFaultHandoffTests
     [DataRow("starting", true, false, false)]
     [DataRow("none", false, true, true)]
     [DataRow("production", false, true, true)]
-    public async Task StopDuringHandoff_RethrowsSubscriberFaultOnce(string stage, bool faultDuringProduction,
+    public async Task StopDuringHandoff_ReportsSubscriberFaultOnceAsFailedResult(string stage, bool faultDuringProduction,
         bool faultAfterRetirement = false, bool delayedOverlappingStop = false)
     {
         using var harness = new WatchHarness('T');
         var index = harness.Index;
         await index.StartWatchingAsync(['T'], Token);
         var handle = harness.Source.WatchFor('T');
-        var failure = new IOException(faultAfterRetirement ? "delayed subscriber failed" : "subscriber failed before rescan");
-        void FailSubscriber(FileChange _) => throw failure;
+        var subscriberFailure = new IOException(faultAfterRetirement ? "delayed subscriber failed" : "subscriber failed before rescan");
+        void FailSubscriber(FileChange _) => throw subscriberFailure;
         if (!faultAfterRetirement)
         {
             index.Changed += FailSubscriber;
             await handle.Publish(WatchHarness.Batch(9, "before.txt"));
             index.Changed -= FailSubscriber;
-            Assert.AreSame(failure, (await harness.WaitForFaultAsync(WatchFaultKind.Subscriber, 'T')).Exception);
+            Assert.AreSame(subscriberFailure, (await harness.WaitForFaultAsync(WatchFaultKind.Subscriber, 'T')).Exception);
         }
 
         var held = stage == "production" ? harness.HoldNextProduction('T') : harness.TrackGate();
@@ -119,7 +119,7 @@ public class FileIndexWatchRescanFaultHandoffTests
                 }
 
                 delivery!.Release();
-                Assert.AreSame(failure, (await harness.WaitForFaultAsync(WatchFaultKind.Subscriber, 'T')).Exception);
+                Assert.AreSame(subscriberFailure, (await harness.WaitForFaultAsync(WatchFaultKind.Subscriber, 'T')).Exception);
             }
 
             await held.Entered.WaitAsync(HangGuard);
@@ -143,7 +143,7 @@ public class FileIndexWatchRescanFaultHandoffTests
             var overlappingFault = await CaptureFailureAsync(overlappingStop);
             var failures = new[] { stoppingFault, overlappingFault }.Where(item => item is not null).ToArray();
             Assert.AreEqual(1, failures.Length, "delayed fault must be consumed exactly once across overlapping stops");
-            Assert.AreSame(failure, failures[0]);
+            Assert.AreSame(subscriberFailure, failures[0]);
         }
         else
         {
@@ -151,8 +151,8 @@ public class FileIndexWatchRescanFaultHandoffTests
             overlappingStop = stage == "drain" ? index.StopWatchingAsync(['T'], Token)
                 : Task.FromResult<IReadOnlyList<DriveOperationResult>>([]);
             held.Release();
-            var thrown = await DriveResultAssertions.FailureAsync<IOException>(() => stopping);
-            Assert.AreSame(failure, thrown);
+            var failure = await DriveResultAssertions.FailureAsync<IOException>(() => stopping);
+            Assert.AreSame(subscriberFailure, failure);
             await overlappingStop.WaitAsync(HangGuard);
         }
 
@@ -178,8 +178,8 @@ public class FileIndexWatchRescanFaultHandoffTests
         using var harness = new WatchHarness('T');
         var index = harness.Index;
         await index.StartWatchingAsync(['T'], Token);
-        var failure = new IOException("old subscriber fault");
-        void FailSubscriber(FileChange _) => throw failure;
+        var subscriberFailure = new IOException("old subscriber fault");
+        void FailSubscriber(FileChange _) => throw subscriberFailure;
         index.Changed += FailSubscriber;
         await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(9, "before.txt"));
         index.Changed -= FailSubscriber;
@@ -196,9 +196,9 @@ public class FileIndexWatchRescanFaultHandoffTests
         {
             var fault = harness.Faults.Single(item => item.Kind == WatchFaultKind.RescanRestart);
             Assert.AreSame(startFailure, fault.Exception.InnerException);
-            var thrown = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+            var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
                 () => index.StopWatchingAsync(['T'], Token));
-            Assert.AreSame(fault.Exception, thrown);
+            Assert.AreSame(fault.Exception, failure);
         }
         else
         {

@@ -54,7 +54,7 @@ public class MftVolumeAdminTests
     }
 
     [TestMethod]
-    public void ReadAllRecords_ReturnsNonEmpty()
+    public void ReadAll_ReturnsNonEmpty()
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");

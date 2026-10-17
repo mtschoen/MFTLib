@@ -6,14 +6,13 @@ using static MFTLib.Tests.TestSupport.SyntheticNtfsImage;
 
 namespace MFTLib.Tests;
 
-public partial class NativeCoverageTests
+public partial class NativeMftProcessingTests
 {
     // --- ReadMFTRecord: Read failure during extension record ---
 
     [TestMethod]
     public void ParseMFTRecords_ReadFailDuringExtensionRecordRead()
     {
-        // Covers line 162 (ReadMFTRecord Read failure).
         // Reads: 1=boot sector, 2=record 0, 3=ReadMFTRecord for extension â†’ fail here
         var path = Path.GetTempFileName();
         try
@@ -65,7 +64,6 @@ public partial class NativeCoverageTests
     [TestMethod]
     public void ParseMFTRecords_VolumeReadChunkFail_ReturnsZeroUsedRecords()
     {
-        // Covers line 950 (VolumeReadChunk returns 0 on Read failure).
         // With no attribute list, reads: 1=boot sector, 2=record 0, 3=VolumeReadChunk â†’ fail
         var path = Path.GetTempFileName();
         try
@@ -111,7 +109,6 @@ public partial class NativeCoverageTests
     [TestMethod]
     public void ParseMFTRecords_ReadFailDuringNonResidentAttributeList()
     {
-        // Covers lines 138-140 (ReadNonResidentData Read failure).
         // Record 0 has non-resident AttributeList. Read #3 targets its data â†’ fail.
         var path = Path.GetTempFileName();
         try

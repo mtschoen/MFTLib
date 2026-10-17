@@ -159,11 +159,11 @@ public class FileIndexWatchRescanHandoffTests
             harness.Index.BeforeRestartDecisionForTest = BeginDisposal;
         }
 
-        var failure = new OperationCanceledException("production failed");
-        harness.FailNextProduction('T', failure);
-        var thrown = await DriveResultAssertions.FailureAsync<OperationCanceledException>(
+        var producerFailure = new OperationCanceledException("production failed");
+        harness.FailNextProduction('T', producerFailure);
+        var failure = await DriveResultAssertions.FailureAsync<OperationCanceledException>(
             () => harness.Index.RescanAsync(['T'], Token));
-        Assert.AreSame(failure, thrown);
+        Assert.AreSame(producerFailure, failure);
         Assert.IsNull(disposal, "a failed scan never enters a restart checkpoint");
         await harness.Index.DisposeAsync();
     }

@@ -41,7 +41,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         var rescanOfT = index.RescanAsync(['T'], token);
         var rescanOfU = index.RescanAsync(['U'], token);
         await rescanOfU.WaitAsync(HangGuard);
-        var thrown = await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(() => rescanOfT.WaitAsync(HangGuard));
+        var failure = await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(() => rescanOfT.WaitAsync(HangGuard));
 
         Assert.AreEqual(3, scenario.ChannelsOpenedFor('T') - channelsBefore, "T opens exactly three scan channels");
         Assert.AreEqual(4, scenario.ScansOf('T'), "the open's scan and three lost ones");
@@ -52,7 +52,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         var statusesAtLoss = scenario.CatchUpLossStatuses('T');
         CollectionAssert.AreEqual(new[] { 1, 2, 3 }, statusesAtLoss.Select(status => status.Watch.ConsecutiveLostCatchUps).ToArray());
         CollectionAssert.AreEqual(new[] { false, false, true }, losses.Select(loss => loss.IsRecoveryStopped).ToArray());
-        Assert.AreSame(losses[2], thrown, "the rescan throws the loss that stopped it");
+        Assert.AreSame(losses[2], failure, "the rescan reports the loss that stopped it");
 
         var drive = scenario.DriveOf('T');
         Assert.AreEqual(3, drive.Watch.ConsecutiveLostCatchUps);

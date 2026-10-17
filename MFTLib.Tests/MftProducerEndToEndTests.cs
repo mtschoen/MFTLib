@@ -74,7 +74,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
     }
 
     [TestMethod]
-    public async Task OpenAsync_BlockProgressAndDirectoryProfileSurviveTheProtocol()
+    public async Task OpenAsync_BlockProgressAndRetainedFileNamesSurviveTheProtocol()
     {
         var parsingReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var progress = new List<IndexScanProgress>();

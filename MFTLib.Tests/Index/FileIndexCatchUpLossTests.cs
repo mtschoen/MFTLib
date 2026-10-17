@@ -88,7 +88,7 @@ public partial class FileIndexCatchUpLossTests
         harness.ScriptScans('T', Lost('T'), Lost('T'), Lost('T'), Held);
         var producedBefore = harness.ProductionCount('T');
 
-        var thrown = await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(
+        var failure = await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(
             () => harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard));
 
         Assert.AreEqual(3, harness.ProductionCount('T') - producedBefore);
@@ -98,7 +98,7 @@ public partial class FileIndexCatchUpLossTests
         CollectionAssert.AreEqual(new[] { false, false, true }, losses.Select(loss => loss.IsRecoveryStopped).ToArray());
         CollectionAssert.AreEqual(new[] { false, false, true }, statusesAtLoss.Select(status => status.Watch.IsRecoveryStopped).ToArray());
         Assert.AreEqual(3, harness.DriveFor('T').Watch.ConsecutiveLostCatchUps);
-        Assert.IsTrue(thrown.IsRecoveryStopped);
+        Assert.IsTrue(failure.IsRecoveryStopped);
         Assert.AreEqual(WatchDeduplicationTestSupport.StandardCatchUpLoss('T'), statusesAtLoss[^1].Watch.CheckpointLoss);
 
         Assert.AreSame(harness.BlockFor('T'), harness.Index.Root('T').DriveBlock.Block,
@@ -106,12 +106,12 @@ public partial class FileIndexCatchUpLossTests
         var drive = harness.DriveFor('T');
         Assert.AreEqual(DriveState.Ready, drive.State);
         Assert.AreEqual(WatchState.Faulted, drive.Watch.State);
-        Assert.AreEqual(thrown.Message, drive.Watch.FailureMessage);
+        Assert.AreEqual(failure.Message, drive.Watch.FailureMessage);
         StringAssert.Contains(drive.Watch.FailureMessage, "T");
         StringAssert.Contains(drive.Watch.FailureMessage, "3");
         StringAssert.Contains(drive.Watch.FailureMessage, "12288");
-        StringAssert.Contains(thrown.Message, "BrokerSession.GrowUsnJournalAsync");
-        Assert.IsFalse(thrown.Message.Contains("BrokerProcess.GrowUsnJournalAsync", StringComparison.Ordinal));
+        StringAssert.Contains(failure.Message, "BrokerSession.GrowUsnJournalAsync");
+        Assert.IsFalse(failure.Message.Contains("BrokerProcess.GrowUsnJournalAsync", StringComparison.Ordinal));
         Assert.AreEqual(WatchDeduplicationTestSupport.StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss);
         Assert.AreEqual(3, drive.Watch.ConsecutiveLostCatchUps);
 
@@ -149,10 +149,10 @@ public partial class FileIndexCatchUpLossTests
 
         harness.ScriptScans('T', Lost('T'), Held);
         var producedBefore = harness.ProductionCount('T');
-        var thrown = await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(
+        var failure = await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(
             () => harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard));
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore);
-        Assert.IsTrue(thrown.IsRecoveryStopped);
+        Assert.IsTrue(failure.IsRecoveryStopped);
         Assert.AreEqual(4, harness.DriveFor('T').Watch.ConsecutiveLostCatchUps);
         Assert.IsTrue(harness.DriveFor('T').Watch.IsRecoveryStopped);
 
@@ -182,12 +182,12 @@ public partial class FileIndexCatchUpLossTests
 
         harness.ScriptScans('T', Lost('T'), Held);
         var producedBefore = harness.ProductionCount('T');
-        var thrown = await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(
+        var failure = await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(
             () => harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard));
 
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore);
         Assert.AreEqual(3, harness.DriveFor('T').Watch.ConsecutiveLostCatchUps);
-        Assert.IsTrue(thrown.IsRecoveryStopped);
+        Assert.IsTrue(failure.IsRecoveryStopped);
     }
 
     [TestMethod]
@@ -202,11 +202,11 @@ public partial class FileIndexCatchUpLossTests
         };
         harness.ScriptScans('T', new WatchHarnessScan(recreated), new WatchHarnessScan(recreated), new WatchHarnessScan(recreated));
 
-        var thrown = await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(
+        var failure = await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(
             () => harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard));
 
         Assert.AreEqual(recreated, harness.CatchUpLossStatuses('T')[^1].Watch.CheckpointLoss);
-        Assert.IsTrue(thrown.IsRecoveryStopped);
+        Assert.IsTrue(failure.IsRecoveryStopped);
         Assert.AreEqual(recreated, harness.DriveFor('T').Watch.CheckpointLoss);
         foreach (var message in WatchDeduplicationTestSupport.CatchUpLosses(harness, 'T').Select(loss => loss.Message))
         {
@@ -222,10 +222,10 @@ public partial class FileIndexCatchUpLossTests
         var producerFailure = new InvalidOperationException("the broker reported an error after ScanReady");
         harness.FailNextProduction('T', producerFailure);
 
-        var thrown = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => harness.Index.RescanAsync(['T'], Token));
+        var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => harness.Index.RescanAsync(['T'], Token));
 
-        Assert.AreSame(producerFailure, thrown.InnerException);
-        StringAssert.Contains(thrown.Message, producerFailure.Message);
+        Assert.AreSame(producerFailure, failure.InnerException);
+        StringAssert.Contains(failure.Message, producerFailure.Message);
         var drive = harness.DriveFor('T');
         Assert.AreEqual(producerFailure.Message, drive.Failure?.Message);
         Assert.AreEqual(0, drive.Watch.ConsecutiveLostCatchUps);
@@ -313,21 +313,21 @@ public partial class FileIndexCatchUpLossTests
 
     /// <summary>
     ///     A healthy watched drive whose first attempt publishes a lost catch-up no longer has the
-    ///     old cursor to go back to, so when its retry produces no block the rescan throws the
-    ///     producer's failure and refuses the watch rather than restarting from the lost block.
+    ///     old cursor to go back to, so when its retry produces no block the rescan reports a failed
+    ///     result carrying the producer's failure and refuses the watch rather than restarting from the lost block.
     /// </summary>
     [TestMethod]
-    public async Task Rescan_WatchedDrive_LostThenNoBlock_ThrowsProducerFailureAndRefusesTheWatch()
+    public async Task Rescan_WatchedDrive_LostThenNoBlock_ReportsProducerFailureAndRefusesTheWatch()
     {
         using var harness = new WatchHarness('T');
         await harness.Index.StartWatchingAsync(['T'], Token);
         var producerFailure = new IOException("the volume went away");
         harness.ScriptScans('T', Lost('T'), new WatchHarnessScan(Failure: producerFailure));
 
-        var thrown = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+        var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
             () => harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard));
 
-        Assert.AreSame(producerFailure, thrown.InnerException);
+        Assert.AreSame(producerFailure, failure.InnerException);
         Assert.AreEqual(1, harness.Source.TargetsFor('T').Count, "the lost block's cursor is never started");
         var drive = harness.DriveFor('T');
         Assert.AreEqual(1, drive.Watch.ConsecutiveLostCatchUps);

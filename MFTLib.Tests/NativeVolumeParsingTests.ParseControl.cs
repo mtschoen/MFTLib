@@ -9,7 +9,7 @@ namespace MFTLib.Tests;
 // before each chunk read, after each chunk's parse, and between 4096-record sub-slices.
 // Every case parses a synthetic NTFS image in 64-record chunks, so several chunks run and the
 // progress callback (fired after each chunk is parsed) can only affect the chunks after it.
-public partial class NativeParserCoverageTests
+public partial class NativeVolumeParsingTests
 {
     const int ImageRecordCount = 1024;
     const int ImageChunkCount = ImageRecordCount / 64;

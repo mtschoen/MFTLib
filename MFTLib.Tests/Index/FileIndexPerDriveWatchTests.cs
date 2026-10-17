@@ -52,15 +52,15 @@ public partial class FileIndexPerDriveWatchTests
     }
 
     [TestMethod]
-    public async Task StartWatching_SourceStartThrows_ThrowsAndFaultsSlot()
+    public async Task StartWatching_SourceStartThrows_ReportsFailedResultAndFaultsSlot()
     {
         using var harness = new WatchHarness();
-        var failure = new IOException("the broker is gone");
-        harness.Source.FailNextStart(failure);
+        var sourceFailure = new IOException("the broker is gone");
+        harness.Source.FailNextStart(sourceFailure);
 
-        var thrown = await DriveResultAssertions.FailureAsync<IOException>(() => harness.Index.StartWatchingAsync(['T'], Token));
+        var failure = await DriveResultAssertions.FailureAsync<IOException>(() => harness.Index.StartWatchingAsync(['T'], Token));
 
-        Assert.AreSame(failure, thrown);
+        Assert.AreSame(sourceFailure, failure);
         var drive = harness.DriveFor('T');
         Assert.AreEqual(WatchState.Faulted, drive.Watch.State);
         Assert.AreEqual("the broker is gone", drive.Watch.FailureMessage);
@@ -91,10 +91,10 @@ public partial class FileIndexPerDriveWatchTests
     public async Task StartWatching_AfterASourceStartFailure_StartsFresh()
     {
         using var harness = new WatchHarness();
-        var failure = new IOException("the broker could not be reached");
-        harness.Source.FailNextStart(failure);
-        var thrown = await DriveResultAssertions.FailureAsync<IOException>(() => harness.Index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard));
-        Assert.AreSame(failure, thrown);
+        var sourceFailure = new IOException("the broker could not be reached");
+        harness.Source.FailNextStart(sourceFailure);
+        var failure = await DriveResultAssertions.FailureAsync<IOException>(() => harness.Index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard));
+        Assert.AreSame(sourceFailure, failure);
 
         await harness.Index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
 
@@ -270,7 +270,7 @@ public partial class FileIndexPerDriveWatchTests
     }
 
     [TestMethod]
-    public async Task Stop_RethrowsOutstandingFaultOnce()
+    public async Task Stop_ReportsOutstandingFaultOnceAsFailedResult()
     {
         using var harness = new WatchHarness();
         harness.Index.HoldEveryRecovery();
@@ -278,9 +278,9 @@ public partial class FileIndexPerDriveWatchTests
         harness.Source.WatchFor('T').FailDrive(new IOException("the volume went away"));
         var fault = await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
 
-        var thrown = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => harness.Index.StopWatchingAsync(['T'], Token));
+        var failure = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => harness.Index.StopWatchingAsync(['T'], Token));
 
-        Assert.AreSame(fault.Exception, thrown);
+        Assert.AreSame(fault.Exception, failure);
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
         await DriveResultAssertions.NotApplicableAsync(
             () => harness.Index.StopWatchingAsync(['T'], Token),
@@ -298,16 +298,16 @@ public partial class FileIndexPerDriveWatchTests
     }
 
     [TestMethod]
-    public async Task CacheOnlyUnresumable_StartThrowsWithRescanMessage()
+    public async Task CacheOnlyUnresumable_StartReportsFailedResultWithRescanMessage()
     {
         using var fixture = new CacheOnlyUnresumableFixture();
         await using var index = await fixture.OpenAdoptingAnUnresumableBlockAsync(Token);
 
-        var thrown = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.StartWatchingAsync(['T'], Token));
+        var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.StartWatchingAsync(['T'], Token));
 
-        StringAssert.Contains(thrown.Message, "FileIndex.RescanAsync");
+        StringAssert.Contains(failure.Message, "FileIndex.RescanAsync");
         var drive = index.Drives.Single();
-        Assert.AreEqual(thrown.Message, drive.Watch.FailureMessage);
+        Assert.AreEqual(failure.Message, drive.Watch.FailureMessage);
         Assert.AreEqual(WatchState.Faulted, drive.Watch.State);
         Assert.AreEqual(0, fixture.Source.Starts.Count, "the source is never asked to start the drive");
     }

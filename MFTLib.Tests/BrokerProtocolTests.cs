@@ -12,8 +12,8 @@ namespace MFTLib.Tests;
 [TestClass]
 public partial class BrokerProtocolTests
 {
-    static readonly string[] KeepFileNamesGitAndNonAscii = [".git", "repört"];
-    static readonly string[] KeepFileNamesSingleLetter = ["a"];
+    static readonly string[] RetainedFileNamesGitAndNonAscii = [".git", "repört"];
+    static readonly string[] RetainedFileNamesSingleLetter = ["a"];
 
     static void AssertWireBytes(Action<ArrayBufferWriter<byte>> write, byte[] expected)
     {

@@ -16,7 +16,7 @@ public partial class JournalBrokerHostTests
     static readonly UsnJournalCursor ScanArmedCursor = new(7UL, 100L);
     static readonly NtfsVolumeInformation ControlVolume = new(1024 * 1000, 1024);
 
-    static readonly MftRecord[] DirectoryIndexSampleRecords =
+    static readonly MftRecord[] RetentionSampleRecords =
     [
         new(100, 5, new MftRecordFields(3, FileAttributes.Directory), "repo"),
         new(101, 100, new MftRecordFields(1, FileAttributes.Archive), ".git"),

@@ -104,7 +104,7 @@ public sealed class BrokerFileIndexRescanTests
     }
 
     [TestMethod]
-    public async Task StartWatchingAsync_WhenTheBrokerConnectionFails_ThrowsItAndLeavesTheIndexStartable()
+    public async Task StartWatchingAsync_WhenTheBrokerConnectionFails_ReportsFailureAndLeavesTheIndexStartable()
     {
         using var scenario = new BrokerScenario();
         await using var harness = scenario.CreateHarness();
@@ -118,9 +118,9 @@ public sealed class BrokerFileIndexRescanTests
             : connect(connectToken));
         await using var index = await scenario.OpenIndexAsync(producer.CreateIndexSource().Producer, source, token);
 
-        var thrown = await DriveResultAssertions.FailureAsync<IOException>(() => index.StartWatchingAsync(['T'], token));
+        var failure = await DriveResultAssertions.FailureAsync<IOException>(() => index.StartWatchingAsync(['T'], token));
 
-        Assert.AreSame(connectionFailure, thrown);
+        Assert.AreSame(connectionFailure, failure);
         Assert.AreEqual(WatchState.Faulted, index.Drives.Single(drive => drive.Drive == 'T').Watch.State);
         await index.StopWatchingAsync(['T'], token);
         await index.StartWatchingAsync(['T'], token);

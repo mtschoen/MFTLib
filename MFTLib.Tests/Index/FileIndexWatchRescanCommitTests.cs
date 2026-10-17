@@ -99,7 +99,7 @@ public class FileIndexWatchRescanCommitTests
     [DataTestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public async Task RestartFailure_IsARescanFaultAndStopRethrowsItOnce(bool alreadyFaulted)
+    public async Task RestartFailure_IsARescanFaultAndStopReportsItOnceAsFailedResult(bool alreadyFaulted)
     {
         using var harness = new WatchHarness('T', 'U');
         await harness.Index.StartWatchingAsync(['T'], Token);

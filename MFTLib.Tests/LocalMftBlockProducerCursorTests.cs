@@ -57,7 +57,7 @@ public class LocalMftBlockProducerCursorTests
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public async Task JournalLessVolume_FailsCachedDriveButSkipsQueryWithoutCache(bool noCache)
+    public async Task JournalLessVolume_FailsCachedDriveButSkipsQueryWithoutCache(bool cacheDisabled)
     {
         var directories = _directories;
         Directory.CreateDirectory(directories.TreeRoot);
@@ -85,14 +85,14 @@ public class LocalMftBlockProducerCursorTests
         {
             Drives = [new IndexedDrive('T', directories.TreeRoot, 123)],
             CacheDirectory = directories.CacheDirectory,
-            CacheMode = noCache ? CacheMode.Disabled : CacheMode.Persistent,
+            CacheMode = cacheDisabled ? CacheMode.Disabled : CacheMode.Persistent,
             MftSource = source
         }, TestContext.CancellationTokenSource.Token);
         var status = index.Drives.Single();
-        Assert.AreEqual(noCache ? 0 : 1, queries);
-        Assert.AreEqual(noCache ? 1 : 0, scans);
-        Assert.AreEqual(noCache ? DriveState.Ready : DriveState.Failed, status.State);
-        if (!noCache)
+        Assert.AreEqual(cacheDisabled ? 0 : 1, queries);
+        Assert.AreEqual(cacheDisabled ? 1 : 0, scans);
+        Assert.AreEqual(cacheDisabled ? DriveState.Ready : DriveState.Failed, status.State);
+        if (!cacheDisabled)
         {
             Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind);
             Assert.AreEqual(0, Directory.GetFiles(directories.CacheDirectory, "*.mlix").Length);

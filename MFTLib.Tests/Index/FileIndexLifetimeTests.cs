@@ -30,13 +30,13 @@ public class FileIndexLifetimeTests
         _directories.Dispose();
     }
 
-    FileIndexOptions Options(bool noCache = false, ProducerKind policy = ProducerKind.Enumeration)
+    FileIndexOptions Options(bool cacheDisabled = false, ProducerKind producerKind = ProducerKind.Enumeration)
     {
         return new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial, policy)],
+            Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial, producerKind)],
             CacheDirectory = _cacheDirectory,
-            CacheMode = noCache ? CacheMode.Disabled : CacheMode.Persistent,
+            CacheMode = cacheDisabled ? CacheMode.Disabled : CacheMode.Persistent,
         };
     }
 
@@ -70,7 +70,7 @@ public class FileIndexLifetimeTests
     [TestMethod]
     public async Task OpenAsync_DisabledCacheMode_LeavesNothingInTheCacheDirectory()
     {
-        await using (var index = await FileIndex.OpenAsync(Options(noCache: true), CancellationToken.None))
+        await using (var index = await FileIndex.OpenAsync(Options(cacheDisabled: true), CancellationToken.None))
         {
             Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
         }

@@ -57,16 +57,15 @@ public partial class JournalBrokerHostTests
         Assert.AreEqual(2, InUseRowCount(blockWriter));
     }
 
-    // The directory (repo) is always kept; a file is kept only when its name matches a keep name.
     [DataTestMethod]
-    [DataRow(new[] { ".git" }, 2, DisplayName = "KeepFileNameMatch_KeepsTheNamedFile")]
-    [DataRow(new[] { ".GIT" }, 2, DisplayName = "KeepFileNameMatch_IsCaseInsensitive")]
+    [DataRow(new[] { ".git" }, 2, DisplayName = "RetainedFileNameMatch_RetainsTheNamedFile")]
+    [DataRow(new[] { ".GIT" }, 2, DisplayName = "RetainedFileNameMatch_IsCaseInsensitive")]
     [DataRow(new[] { "other.txt" }, 1, DisplayName = "NonMatchingFiles_AreDropped")]
     [DataRow(null, 3, DisplayName = "NullRetention_YieldsAllRecords")]
-    [DataRow(new string[0], 1, DisplayName = "EmptyKeepFileNames_YieldsDirectoriesOnly")]
-    public async Task DirectoryIndexProfile_KeepFileNames_DecideWhichFilesAreKept(string[]? keepFileNames, int expectedInUseRows)
+    [DataRow(new string[0], 1, DisplayName = "EmptyRetainedFileNames_YieldsDirectoriesOnly")]
+    public async Task RetainedFileNames_DecideWhichFilesAreRetained(string[]? retainedFileNames, int expectedInUseRows)
     {
-        using var writer = await ServeDirectoryIndexAsync(DirectoryIndexSampleRecords, keepFileNames);
+        using var writer = await ServeRetentionScanAsync(RetentionSampleRecords, retainedFileNames);
 
         Assert.AreEqual(expectedInUseRows, InUseRowCount(writer));
     }
@@ -186,14 +185,14 @@ public partial class JournalBrokerHostTests
         }
     }
 
-    static async Task<RecordingBlockSectionWriter> ServeDirectoryIndexAsync(
-        MftRecord[] records, IReadOnlyCollection<string>? keepFileNames)
+    static async Task<RecordingBlockSectionWriter> ServeRetentionScanAsync(
+        MftRecord[] records, IReadOnlyCollection<string>? retainedFileNames)
     {
         var writer = new RecordingBlockSectionWriter();
         var host = ScanHost(scanDrive: (_, _, _, _, _, _) => [records]);
         await using var harness = new HostChannelHarness(host, writer);
 
-        var frames = await ScanFramesAsync(harness, 'C', "mftlib-scan-C", keepFileNames);
+        var frames = await ScanFramesAsync(harness, 'C', "mftlib-scan-C", retainedFileNames);
 
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
         return writer;

@@ -5,7 +5,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
-public partial class NativeCoverageTests
+public partial class NativeMftProcessingTests
 {
     [TestMethod]
     public void GenerateDump_ThreadStartExceptionReturnsFalseAndNextGenerationSucceeds()

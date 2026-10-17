@@ -260,7 +260,7 @@ public class WatchArgumentsTests
     }
 
     [TestMethod]
-    public void PolicyDirectoryName_SameKeepNamesInAnotherOrder_IsTheSameDirectory()
+    public void PolicyDirectoryName_SameRetainedNamesInAnotherOrder_IsTheSameDirectory()
     {
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", "a.txt,b.txt"], out var one, out _));
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", "b.txt, a.txt"], out var two, out _));

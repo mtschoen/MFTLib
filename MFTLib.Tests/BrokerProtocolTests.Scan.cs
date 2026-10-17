@@ -37,10 +37,10 @@ public partial class BrokerProtocolTests
     public void ArmAndScanFrame_RoundTrips_IncludeFreed(bool includeFreed)
     {
         var frame = RoundTrip(writer => BrokerProtocol.WriteArmAndScan(
-            writer, "s", KeepFileNamesGitAndNonAscii, includeFreed));
+            writer, "s", RetainedFileNamesGitAndNonAscii, includeFreed));
 
         Assert.AreEqual(includeFreed, frame.IncludeFreed);
-        CollectionAssert.AreEqual(KeepFileNamesGitAndNonAscii, frame.RetainedFileNames!.ToArray());
+        CollectionAssert.AreEqual(RetainedFileNamesGitAndNonAscii, frame.RetainedFileNames!.ToArray());
     }
 
     [TestMethod]
@@ -58,12 +58,12 @@ public partial class BrokerProtocolTests
     }
 
     [TestMethod]
-    public void ArmAndScanFrame_RoundTrips_KeepFileNames()
+    public void ArmAndScanFrame_RoundTrips_RetainedFileNames()
     {
         var frame = RoundTrip(writer => BrokerProtocol.WriteArmAndScan(
-            writer, "s", KeepFileNamesGitAndNonAscii)); // non-ASCII to prove UTF-16
+            writer, "s", RetainedFileNamesGitAndNonAscii)); // non-ASCII to prove UTF-16
 
-        CollectionAssert.AreEqual(KeepFileNamesGitAndNonAscii, frame.RetainedFileNames!.ToArray());
+        CollectionAssert.AreEqual(RetainedFileNamesGitAndNonAscii, frame.RetainedFileNames!.ToArray());
     }
 
     [TestMethod]
@@ -295,17 +295,17 @@ public partial class BrokerProtocolTests
     }
 
     [TestMethod]
-    public void WireBytes_Golden_ArmAndScanFrame_WithKeepFileNames()
+    public void WireBytes_Golden_ArmAndScanFrame_WithRetainedFileNames()
     {
         AssertWireBytes(w => BrokerProtocol.WriteArmAndScan(w, "C",
-                KeepFileNamesSingleLetter),
+                RetainedFileNamesSingleLetter),
         [
             0x15, 0x00, 0x00, 0x00, // totalLength = 21
             0x0A, // kind = ArmAndScan
             0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // sectionName "C"
             0x00, 0x00, 0x00, 0x00, // includeFreed = false
-            0x01, 0x00, 0x00, 0x00, // keepFileNames count = 1
-            0x02, 0x00, 0x00, 0x00, 0x61, 0x00 // keepFileNames[0] "a"
+            0x01, 0x00, 0x00, 0x00, // retainedFileNames count = 1
+            0x02, 0x00, 0x00, 0x00, 0x61, 0x00 // retainedFileNames[0] "a"
         ]);
     }
 

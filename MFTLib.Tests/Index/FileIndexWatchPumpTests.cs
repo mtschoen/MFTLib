@@ -82,16 +82,15 @@ public class FileIndexWatchPumpTests
 
         // The source throws before it returns a handle, so the start itself reports the failure,
         // as the source's own exception rather than as a cancellation of this call.
-        var thrown = await DriveResultAssertions.FailureAsync<OperationCanceledException>(
+        var failure = await DriveResultAssertions.FailureAsync<OperationCanceledException>(
             () => harness.Index.StartWatchingAsync(['T'], Token));
 
-        Assert.AreSame(sourceFault, thrown);
+        Assert.AreSame(sourceFault, failure);
         Assert.AreEqual(0, harness.Faults.Count, "reported once, through the start");
         Assert.AreEqual(WatchState.Faulted, harness.DriveFor('T').Watch.State);
         Assert.AreEqual("source aborted", harness.DriveFor('T').Watch.FailureMessage);
 
-        // The failed start leaves the watch requested with no instance, so a stop has nothing to
-        // rethrow and clears the faulted state.
+        // The failed start leaves the watch requested with no instance; stop clears the faulted state.
         await harness.Index.StopWatchingAsync(['T'], Token);
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
     }
@@ -109,7 +108,7 @@ public class FileIndexWatchPumpTests
     }
 
     [TestMethod]
-    public async Task WatchFaulted_SwallowsAThrowingFaultHandlerAndStillRethrowsTheOriginal()
+    public async Task WatchFaulted_SwallowsAThrowingFaultHandlerAndStopReportsTheOriginalFailure()
     {
         using var harness = new WatchHarness();
         harness.Index.WatchFaulted += _ => throw new NotSupportedException("fault handler failed");
@@ -124,7 +123,7 @@ public class FileIndexWatchPumpTests
     }
 
     [TestMethod]
-    public async Task SubscriberOperationCanceledException_IsReportedAndRethrownAfterPumpingContinues()
+    public async Task SubscriberOperationCanceledException_IsReportedByStopAfterPumpingContinues()
     {
         using var harness = new WatchHarness();
         var subscriberFault = new OperationCanceledException("subscriber cancelled");
@@ -178,7 +177,7 @@ public class FileIndexWatchPumpTests
     [DataTestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public async Task HandleEndingWithoutAStop_FaultIsRethrownUnlessFreshStartSupersedesIt(
+    public async Task HandleEndingWithoutAStop_StopReportsFailedResultUnlessFreshStartSupersedesIt(
         bool restartBeforeStop)
     {
         using var harness = new WatchHarness('T');
@@ -209,10 +208,10 @@ public class FileIndexWatchPumpTests
         }
         else
         {
-            var thrown = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+            var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
                 () => harness.Index.StopWatchingAsync(['T'], Token)
                     .WaitAsync(HangGuard));
-            Assert.AreSame(fault.Exception, thrown);
+            Assert.AreSame(fault.Exception, failure);
         }
 
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);

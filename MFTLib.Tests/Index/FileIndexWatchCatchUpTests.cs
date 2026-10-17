@@ -80,33 +80,33 @@ public class FileIndexWatchCatchUpTests
     }
 
     [TestMethod]
-    public async Task WaitForCatchUpAsync_FaultsWhenTheDrivesWatchFaults()
+    public async Task WaitForCatchUpAsync_ReportsFailureWhenTheDrivesWatchFaults()
     {
         using var harness = new WatchHarness();
         await harness.Index.StartWatchingAsync(['T'], Token);
-        var failure = new IOException("journal wrapped");
+        var watchFailure = new IOException("journal wrapped");
         var wait = harness.Index.WaitForCatchUpAsync(['T'], Token);
 
-        harness.Source.WatchFor('T').FailDrive(failure);
+        harness.Source.WatchFor('T').FailDrive(watchFailure);
 
-        var thrown = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => wait);
-        Assert.AreSame(failure, thrown.InnerException);
+        var failure = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => wait);
+        Assert.AreSame(watchFailure, failure.InnerException);
     }
 
     [TestMethod]
-    public async Task WaitForCatchUpAsync_OnAnAlreadyFaultedDrive_ReturnsAFaultedTask()
+    public async Task WaitForCatchUpAsync_OnAnAlreadyFaultedDrive_ReturnsFailedResult()
     {
         using var harness = new WatchHarness();
         harness.Index.HoldEveryRecovery();
         await harness.Index.StartWatchingAsync(['T'], Token);
-        var failure = new IOException("journal wrapped");
-        harness.Source.WatchFor('T').FailDrive(failure);
+        var watchFailure = new IOException("journal wrapped");
+        harness.Source.WatchFor('T').FailDrive(watchFailure);
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
 
         var wait = harness.Index.WaitForCatchUpAsync(['T'], Token);
 
-        var thrown = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => wait);
-        Assert.AreSame(failure, thrown.InnerException);
+        var failure = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => wait);
+        Assert.AreSame(watchFailure, failure.InnerException);
     }
 
     [TestMethod]
@@ -170,7 +170,7 @@ public class FileIndexWatchCatchUpTests
     }
 
     [TestMethod]
-    public async Task WaitForCatchUpAsync_ThrowsWhenTheDriveIsNotWatched()
+    public async Task WaitForCatchUpAsync_ReportsNotApplicableWhenTheDriveIsNotWatched()
     {
         using var harness = new WatchHarness();
 
@@ -189,21 +189,21 @@ public class FileIndexWatchCatchUpTests
     }
 
     [TestMethod]
-    public async Task WaitForCatchUpAsync_ChannelLoss_FaultsPendingWait()
+    public async Task WaitForCatchUpAsync_ChannelLoss_SettlesPendingWaitWithFailedResult()
     {
         using var harness = new WatchHarness();
         await harness.Index.StartWatchingAsync(['T'], Token);
         var wait = harness.Index.WaitForCatchUpAsync(['T'], Token);
 
-        var failure = new IOException("stream died");
-        harness.Source.WatchFor('T').LoseChannel(failure);
+        var channelFailure = new IOException("stream died");
+        harness.Source.WatchFor('T').LoseChannel(channelFailure);
 
-        var thrown = await DriveResultAssertions.FailureAsync<IOException>(() => wait);
-        Assert.AreSame(failure, thrown);
+        var failure = await DriveResultAssertions.FailureAsync<IOException>(() => wait);
+        Assert.AreSame(channelFailure, failure);
     }
 
     [TestMethod]
-    public async Task WaitForCatchUpAsync_DriveFaultsAfterCatchUp_ReturnsFaultedTask()
+    public async Task WaitForCatchUpAsync_DriveFaultsAfterCatchUp_ReturnsFailedResult()
     {
         using var harness = new WatchHarness();
         harness.Index.HoldEveryRecovery();
@@ -213,13 +213,13 @@ public class FileIndexWatchCatchUpTests
         var caughtUpWait = harness.Index.WaitForCatchUpAsync(['T'], Token);
         Assert.IsTrue(caughtUpWait.IsCompletedSuccessfully);
 
-        var failure = new IOException("journal wrapped");
-        harness.Source.WatchFor('T').FailDrive(failure);
+        var watchFailure = new IOException("journal wrapped");
+        harness.Source.WatchFor('T').FailDrive(watchFailure);
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
 
         var singleWait = harness.Index.WaitForCatchUpAsync(['T'], Token);
-        var thrown = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => singleWait);
-        Assert.AreSame(failure, thrown.InnerException);
+        var failure = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => singleWait);
+        Assert.AreSame(watchFailure, failure.InnerException);
     }
 
     [TestMethod]

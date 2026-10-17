@@ -6,7 +6,7 @@ using static MFTLib.Tests.TestSupport.SyntheticNtfsImage;
 
 namespace MFTLib.Tests;
 
-public partial class NativeCoverageTests
+public partial class NativeMftProcessingTests
 {
     // --- ReadNonResidentData success path ---
 
@@ -16,7 +16,6 @@ public partial class NativeCoverageTests
     public void ParseMFTRecords_NonResidentAttributeList_RequiresReadableData(bool failAttributeListAllocation)
     {
         // Non-resident AttributeList with data runs pointing to valid data in the file.
-        // Exercises ReadNonResidentData success path (lines 142-145, 147).
         var path = Path.GetTempFileName();
         try
         {
@@ -320,7 +319,6 @@ public partial class NativeCoverageTests
     public void ParseMFTRecords_ExtensionRecordNotInRuns_FailsTheParse()
     {
         // AttributeList points to segment 9999 which is beyond the data runs.
-        // Exercises lines 166-170 (ReadMFTRecord "not found").
         var path = Path.GetTempFileName();
         try
         {

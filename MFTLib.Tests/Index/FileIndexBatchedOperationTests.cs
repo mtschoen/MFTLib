@@ -313,31 +313,31 @@ public class FileIndexBatchedOperationTests
     }
 
     [TestMethod]
-    public async Task SingleRescan_CatchUpStop_ThrowsJournalCatchUpLostException()
+    public async Task SingleRescan_CatchUpStop_ReportsJournalCatchUpLostFailure()
     {
         using var harness = new WatchHarness('T');
         harness.ScriptScans('T', Lost('T'), Lost('T'), Lost('T'));
 
-        var thrown = await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(
+        var failure = await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(
             () => harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard));
 
-        Assert.IsTrue(thrown.IsRecoveryStopped);
+        Assert.IsTrue(failure.IsRecoveryStopped);
         Assert.AreEqual(3, harness.DriveFor('T').Watch.ConsecutiveLostCatchUps);
-        StringAssert.Contains(thrown.Message, "12288");
+        StringAssert.Contains(failure.Message, "12288");
     }
 
     [TestMethod]
-    public async Task SingleRescan_ProducerReturnsNoBlock_ThrowsWithFailureMessage()
+    public async Task SingleRescan_ProducerReturnsNoBlock_ReportsFailedResultWithFailureMessage()
     {
         using var harness = new WatchHarness('T');
-        var failure = new IOException("the scan could not read the volume");
-        harness.FailNextProduction('T', failure);
+        var producerFailure = new IOException("the scan could not read the volume");
+        harness.FailNextProduction('T', producerFailure);
 
-        var thrown = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+        var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
             () => harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard));
 
-        StringAssert.Contains(thrown.Message, "the scan could not read the volume");
-        Assert.AreSame(failure, thrown.InnerException);
+        StringAssert.Contains(failure.Message, "the scan could not read the volume");
+        Assert.AreSame(producerFailure, failure.InnerException);
         Assert.AreEqual("the scan could not read the volume", harness.DriveFor('T').Failure?.Message);
     }
 }

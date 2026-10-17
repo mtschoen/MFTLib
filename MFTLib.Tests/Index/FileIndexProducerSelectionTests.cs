@@ -184,7 +184,7 @@ public class FileIndexProducerSelectionTests
 
 
     [TestMethod]
-    public async Task DefaultPolicy_WithNoProducerFailsTheDriveWithAConfigurationError()
+    public async Task DefaultProducerKind_WithNoMftSourceFailsTheDriveWithAConfigurationError()
     {
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {

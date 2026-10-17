@@ -98,8 +98,8 @@ public partial class FileIndexWatchRecoveryTests
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore);
         Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
         Assert.AreEqual(WatchState.Faulted, harness.DriveFor('T').Watch.State);
-        var thrown = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => harness.Index.StopWatchingAsync(['T'], Token));
-        Assert.AreSame(second, thrown.InnerException);
+        var failure = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => harness.Index.StopWatchingAsync(['T'], Token));
+        Assert.AreSame(second, failure.InnerException);
     }
 
     [TestMethod]
