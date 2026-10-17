@@ -78,7 +78,7 @@ public class UsnJournalTests
         FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
         var volume = MftVolume.Open("C");
         volume.Dispose();
-        Assert.ThrowsException<ObjectDisposedException>(() => volume.ReadUsnJournal(new UsnJournalCursor(1, 0)));
+        Assert.ThrowsException<ObjectDisposedException>(() => volume.ReadUsnJournalBounded(new UsnJournalCursor(1, 0), 0));
     }
 
     [TestMethod]

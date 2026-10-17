@@ -50,7 +50,7 @@ public class UsnJournalLiveTests
         try
         {
             // Read journal since our cursor
-            var (entries, updatedCursor) = volume.ReadUsnJournal(cursor);
+            var (entries, updatedCursor) = volume.ReadUsnJournalBounded(cursor, 0);
 
             Assert.IsTrue(entries.Length > 0, "Should have at least one journal entry");
             Assert.IsTrue(updatedCursor.NextUsn >= cursor.NextUsn, "Cursor should advance");
@@ -79,7 +79,7 @@ public class UsnJournalLiveTests
         var cursor = volume.QueryUsnJournalCursor();
 
         // Reading from current position should return very few entries
-        var (entries, _) = volume.ReadUsnJournal(cursor);
+        var (entries, _) = volume.ReadUsnJournalBounded(cursor, 0);
 
         Assert.IsTrue(entries.Length < 1000,
             $"Expected few entries from current position, got {entries.Length}");

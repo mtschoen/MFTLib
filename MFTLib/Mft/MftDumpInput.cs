@@ -122,7 +122,7 @@ internal sealed class MftDumpInput : IDisposable
     {
         using var result = Parse(new MftFileScanOptions(progress, ParseThreads: parseThreads,
             CancellationToken: cancellationToken, BufferSizeRecords: 0));
-        foreach (var batch in result.MaterializeBatches(batchSize))
+        foreach (var batch in result.ReadBatches(batchSize))
         {
             cancellationToken.ThrowIfCancellationRequested();
             yield return batch;

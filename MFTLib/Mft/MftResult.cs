@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using MFTLib.Interop;
@@ -7,11 +6,10 @@ namespace MFTLib;
 
 /// <summary>
 ///     The native result of one MFT parse. It owns the native record table and string pool
-///     until disposed. Enumerating it yields records that borrow their strings from that native
-///     memory, so they and any open enumerator must not outlive <see cref="Dispose" />; use
-///     <see cref="MaterializeBatches" /> or <see cref="ToArray" /> for records that do.
+///     until disposed. <see cref="ReadBatches" /> copies the records into managed memory one batch at a
+///     time, so a caller holds at most one batch of managed strings while the native result stays alive.
 /// </summary>
-internal sealed class MftResult : IDisposable, IEnumerable<MftRecord>
+internal sealed class MftResult : IDisposable
 {
     readonly MftParseResult _result;
     bool _disposed;
@@ -48,9 +46,6 @@ internal sealed class MftResult : IDisposable, IEnumerable<MftRecord>
             throw new InvalidOperationException(
                 $"MFTLib managed/native ABI mismatch: managed expects stride {MFTLibNative.NativeCompactEntrySize}, native reports {_result.EntryStride}.");
         }
-
-        Timings = new MftParseTimings(
-            _result.IoTimeMs, _result.FixupTimeMs, _result.ParseTimeMs, _result.TotalTimeMs);
     }
 
     /// <summary>
@@ -72,12 +67,6 @@ internal sealed class MftResult : IDisposable, IEnumerable<MftRecord>
     public ulong InvalidFixupRecordCount => _result.InvalidFixupRecords;
 
     /// <summary>
-    ///     Detailed phase timings for the parse pass.
-    ///     Remains readable after <see cref="Dispose" />.
-    /// </summary>
-    public MftParseTimings Timings { get; }
-
-    /// <summary>
     ///     Total bytes occupied by the native compact entry buffer and UTF-16 string pool.
     ///     Cached from the parsed result header and remains readable after <see cref="Dispose" />.
     /// </summary>
@@ -96,8 +85,8 @@ internal sealed class MftResult : IDisposable, IEnumerable<MftRecord>
     }
 
     /// <summary>
-    ///     Frees the native tables and pools. Safe to call more than once. The count and timing
-    ///     properties stay readable afterward; enumeration and materialization throw.
+    ///     Frees the native tables and pools. Safe to call more than once. The count
+    ///     properties stay readable afterward; reading batches throws.
     /// </summary>
     public void Dispose()
     {
@@ -113,42 +102,12 @@ internal sealed class MftResult : IDisposable, IEnumerable<MftRecord>
         }
     }
 
-    /// <summary>Enumerates the records in native order, borrowing strings from native memory.</summary>
-    /// <returns>An enumerator that is valid only until this result is disposed.</returns>
-    /// <exception cref="ObjectDisposedException">This result has been disposed.</exception>
-    public IEnumerator<MftRecord> GetEnumerator()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return EnumerateRecords();
-    }
-
-    IEnumerator IEnumerable.GetEnumerator()
-    {
-        return GetEnumerator();
-    }
-
-    IEnumerator<MftRecord> EnumerateRecords()
-    {
-        for (ulong i = 0; i < _result.UsedRecords; i++)
-        {
-            yield return GetValidatedEntry(i);
-        }
-    }
-
-    unsafe MftRecord GetValidatedEntry(ulong index)
-    {
-        return GetCompactEntry((byte*)_result.Entries, (ushort*)_result.EntryStrings, _result.EntryStringUnits, index);
-    }
-
-    /// <summary>
-    ///     Copies the records into managed memory one batch at a time, so a caller holds at most
-    ///     one batch of managed strings while the native result stays alive.
-    /// </summary>
+    /// <summary>Copies the records into managed memory one batch at a time, in native order.</summary>
     /// <param name="batchSize">Records per batch; the last batch may be smaller.</param>
-    /// <returns>Batches of materialized records in native order. Enumerate before disposing this result.</returns>
+    /// <returns>Batches of materialized records, which stay valid after this result is disposed.</returns>
     /// <exception cref="ObjectDisposedException">This result has been disposed; thrown when enumeration starts.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="batchSize" /> is not positive; thrown when enumeration starts.</exception>
-    public IEnumerable<MftRecord[]> MaterializeBatches(int batchSize = 4096)
+    public IEnumerable<MftRecord[]> ReadBatches(int batchSize)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
@@ -165,22 +124,9 @@ internal sealed class MftResult : IDisposable, IEnumerable<MftRecord>
         }
     }
 
-    /// <summary>Copies every record into one managed array of materialized records.</summary>
-    /// <returns>The records, which stay valid after this result is disposed.</returns>
-    /// <exception cref="ObjectDisposedException">This result has been disposed.</exception>
-    public MftRecord[] ToArray()
+    unsafe MftRecord GetValidatedEntry(ulong index)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        var count = (int)_result.UsedRecords;
-        var records = new MftRecord[count];
-        var offset = 0;
-        foreach (var batch in MaterializeBatches())
-        {
-            Array.Copy(batch, 0, records, offset, batch.Length);
-            offset += batch.Length;
-        }
-
-        return records;
+        return GetCompactEntry((byte*)_result.Entries, (ushort*)_result.EntryStrings, _result.EntryStringUnits, index);
     }
 
     static unsafe MftRecord GetCompactEntry(byte* table, ushort* pool, ulong poolUnits, ulong index)

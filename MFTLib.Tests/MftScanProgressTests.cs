@@ -54,7 +54,7 @@ public class MftScanProgressTests
     }
 
     [TestMethod]
-    public void StreamRecords_WithProgress_DeliversSamplesDuringParseExecution()
+    public void ReadRecordBatches_WithProgress_DeliversSamplesDuringParseExecution()
     {
         var reported = new List<MftScanProgress>();
         var reportedDuringParse = 0;
@@ -69,7 +69,7 @@ public class MftScanProgressTests
         var directProgress = new SynchronousProgress<MftScanProgress>(reported.Add);
 
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords(false, directProgress, null, CancellationToken.None);
+        _ = volume.ReadRecordBatches(4096, directProgress, null, CancellationToken.None).ToList();
 
         Assert.AreEqual(2, reportedDuringParse, "Both progress samples must have arrived before parse returned");
         Assert.AreEqual(2, reported.Count);
@@ -78,7 +78,7 @@ public class MftScanProgressTests
     }
 
     [TestMethod]
-    public void StreamRecords_ProgressCallbackThrows_SwallowsExceptionAndCompletes()
+    public void ReadRecordBatches_ProgressCallbackThrows_SwallowsExceptionAndCompletes()
     {
         MftProgressParseFixture.ConfigureSingleRecordParse(callback =>
         {
@@ -89,8 +89,8 @@ public class MftScanProgressTests
             _ => throw new InvalidOperationException("Simulated UI progress failure"));
 
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords(false, throwingProgress, null, CancellationToken.None);
+        var batches = volume.ReadRecordBatches(4096, throwingProgress, null, CancellationToken.None).ToList();
 
-        Assert.AreEqual(1, result.ToArray().Length, "Parse must complete normally despite exception in progress handler");
+        Assert.AreEqual(1, batches.Sum(batch => batch.Length), "Parse must complete normally despite exception in progress handler");
     }
 }

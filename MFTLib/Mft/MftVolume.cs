@@ -76,35 +76,11 @@ internal sealed partial class MftVolume : IDisposable
     }
 
     /// <summary>
-    ///     Parses every record, then yields them in batches of at most <paramref name="batchSize" />.
-    ///     <paramref name="parseThreads" /> and <paramref name="cancellationToken" /> apply as in
-    ///     <see cref="StreamRecords" />; the token is also checked before each batch is yielded.
+    ///     Parses every allocated base record of the volume, then yields them in batches of at most
+    ///     <paramref name="batchSize" />. The records are materialized; the native result is freed when the
+    ///     enumeration ends or is disposed.
     /// </summary>
-    /// <exception cref="InvalidOperationException">
-    ///     <paramref name="parseThreads" /> is attached to another parse that is still running. The
-    ///     parse starts on the first enumeration, so that is when this is thrown.
-    /// </exception>
-    /// <remarks>
-    ///     <see cref="MftBatchReadOptions.UnreadableRecords" /> is told, once the parse ends and before the first
-    ///     batch, how many allocated records the scan passed over because their fixup was invalid.
-    /// </remarks>
-    internal IEnumerable<MftRecord[]> ReadRecordBatches(int batchSize, IProgress<MftScanProgress>? progress,
-        ParseThreadAllowance? parseThreads, CancellationToken cancellationToken, MftBatchReadOptions options = default)
-    {
-        using var result = StreamRecords(options.IncludeFreed, progress, parseThreads, cancellationToken);
-        options.UnreadableRecords?.Invoke(result.InvalidFixupRecordCount);
-        foreach (var batch in result.MaterializeBatches(batchSize))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            yield return batch;
-        }
-    }
-
-    /// <summary>
-    ///     Parses every allocated base record of the volume, optionally reporting progress as the
-    ///     native scan runs.
-    /// </summary>
-    /// <param name="includeFreed">Also returns the base records NTFS has freed, with <see cref="MftRecord.InUse" /> false.</param>
+    /// <param name="batchSize">The maximum number of records per batch.</param>
     /// <param name="progress">
     ///     Receives one <see cref="MftScanProgress" /> sample per native progress callback.
     ///     <see cref="IProgress{T}.Report" /> is invoked synchronously on the parse thread after each
@@ -119,21 +95,38 @@ internal sealed partial class MftVolume : IDisposable
     /// </param>
     /// <param name="cancellationToken">
     ///     Stops the native parse between chunks and between 4096-record sub-slices; a stopped parse
-    ///     throws <see cref="OperationCanceledException" />.
+    ///     throws <see cref="OperationCanceledException" />. The token is also checked before each batch is yielded.
+    /// </param>
+    /// <param name="options">
+    ///     Whether the parse also returns the base records NTFS has freed, with <see cref="MftRecord.InUse" /> false;
+    ///     null returns allocated records only.
+    /// </param>
+    /// <param name="recordsOmitted">
+    ///     Told, once the parse ends and before the first batch, how many allocated records the scan passed over
+    ///     because their fixup was invalid.
     /// </param>
     /// <exception cref="InvalidOperationException">
-    ///     <paramref name="parseThreads" /> is attached to another parse that is still running.
+    ///     <paramref name="parseThreads" /> is attached to another parse that is still running. The
+    ///     parse starts on the first enumeration, so that is when this is thrown.
     /// </exception>
-    public MftResult StreamRecords(bool includeFreed, IProgress<MftScanProgress>? progress,
-        ParseThreadAllowance? parseThreads, CancellationToken cancellationToken)
+    internal IEnumerable<MftRecord[]> ReadRecordBatches(int batchSize, IProgress<MftScanProgress>? progress,
+        ParseThreadAllowance? parseThreads, CancellationToken cancellationToken, MftScanOptions? options = null,
+        Action<long>? recordsOmitted = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         MFTLibNative.EnsureCompatibleNativeAbi();
 
-        return ParseToResult(
+        var includeFreed = options?.IncludeFreed ?? false;
+        using var result = ParseToResult(
             (control, callback) => MFTLibNative._parseMftRecordsWithProgress(
                 _volumeHandle, includeFreed, _bufferSizeRecords, control, callback),
             "ParseMFTRecords", progress, parseThreads, cancellationToken);
+        recordsOmitted?.Invoke(checked((long)result.InvalidFixupRecordCount));
+        foreach (var batch in result.ReadBatches(batchSize))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return batch;
+        }
     }
 
     // The one place a streaming parse is assembled, for a volume or a dump alike: the

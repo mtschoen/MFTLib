@@ -79,7 +79,7 @@ internal sealed class MftDumpBlockProducer
 
             // A dump has no journal: the zero cursor says nothing can be resumed from this block.
             var written = MftBlockScan.WriteToBlock(block, new BlockStamp(default, () => DateTime.UtcNow), records,
-                MftBlockRowFilter.Full, new BlockWriteReporting(TransferProgress(request), null), cancellationToken);
+                new MftScanOptions(), new BlockWriteReporting(TransferProgress(request), null), cancellationToken);
 
             var produced = new MftBlockProduceResult(block, JournalIdentifier: 0, NextUsn: 0,
                 SkippedRecordCount: MftBlockScan.SaturateSkippedRecordCount(written.SkippedRecordCount));

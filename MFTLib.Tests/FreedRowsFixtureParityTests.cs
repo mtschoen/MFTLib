@@ -39,7 +39,7 @@ public class FreedRowsFixtureParityTests
     public void ManagedTrustRule_SplitsTheFixturesFreedRecordsByTheirParentChain()
     {
         using var scanned = FixtureVolume.Parse(_imagePath, File.ReadAllBytes(_fixturePath), true);
-        var freedRecords = scanned.Where(record => !record.InUse).Select(record => record.RecordNumber).ToArray();
+        var freedRecords = scanned.ToRecords().Where(record => !record.InUse).Select(record => record.RecordNumber).ToArray();
         using var block = BlockFile.Create(new BlockFileCreateOptions
         {
             Path = Path.Combine(Path.GetTempPath(), $"mft-parity-{Guid.NewGuid():N}.bin"),
@@ -50,8 +50,8 @@ public class FreedRowsFixtureParityTests
             NamePoolCapacity = 4096,
             DeleteOnClose = true
         });
-        MftBlockRowWriter.WriteBatches(new BlockWriter(block), [scanned.ToArray()],
-            new MftBlockRowFilter(IncludeFreed: true), null, CancellationToken.None);
+        MftBlockRowWriter.WriteBatches(new BlockWriter(block), [scanned.ToRecords()],
+            new MftScanOptions { IncludeFreed = true }, null, CancellationToken.None);
 
         CollectionAssert.AreEquivalent(TrustedFreedRecords.Concat(UntrustedFreedRecords).ToArray(), freedRecords);
         foreach (var recordNumber in freedRecords)
@@ -67,7 +67,7 @@ public class FreedRowsFixtureParityTests
     public void NativeScan_ReportsEveryRecordsReferencedParentSequence()
     {
         using var result = FixtureVolume.Parse(_imagePath, File.ReadAllBytes(_fixturePath), true);
-        var sequences = result.ToDictionary(record => record.RecordNumber, record => record.ParentSequenceNumber);
+        var sequences = result.ToRecords().ToDictionary(record => record.RecordNumber, record => record.ParentSequenceNumber);
 
         Assert.AreEqual((ushort)6, sequences[8], "sub references its parent, the root, at sequence 6");
         Assert.AreEqual((ushort)0, sequences[6], "live records without a stated parent sequence report zero");

@@ -11,7 +11,7 @@ namespace MFTLib.Tests;
 public class MftBlockRowWriterFreedTests
 {
     const ushort RootSequence = 5;
-    static readonly MftBlockRowFilter IncludingFreed = new(IncludeFreed: true);
+    static readonly MftScanOptions IncludingFreed = new() { IncludeFreed = true };
 
     [TestMethod]
     public void FreedRow_HasTheFlagsAJournalDeleteLeavesAndIsNotLive()
@@ -57,7 +57,7 @@ public class MftBlockRowWriterFreedTests
         using var block = CreateBlock();
         MftRecord[] records = [Root(), Freed(21, 5, "freed.txt", 4, RootSequence)];
 
-        var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records], MftBlockRowFilter.Full, null,
+        var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records], new MftScanOptions(), null,
             CancellationToken.None);
 
         Assert.AreEqual(RowFlags.None, block.Rows[21].Flags);
@@ -86,7 +86,7 @@ public class MftBlockRowWriterFreedTests
         ];
 
         MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records],
-            new MftBlockRowFilter(names, IncludeFreed: includeFreed), null,
+            new MftScanOptions { RetainedFileNames = names, IncludeFreed = includeFreed }, null,
             CancellationToken.None);
 
         Assert.AreEqual(includeFreed, block.Rows[12].IsDeleted);

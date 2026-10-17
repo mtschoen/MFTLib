@@ -1,45 +1,31 @@
 namespace MFTLib.Tests;
 
 /// <summary>
-///     Test-side array views of the two streaming entry points. The library returns native
-///     results; most tests want the records as values and sometimes the native timings and the
+///     Test-side array views of the two scan entry points. The library yields batches of records;
+///     most tests want the records as values and sometimes the
 ///     count of records examined.
 /// </summary>
 internal static class DirectParse
 {
-    internal static MftRecord[] ParseFile(string path, out MftParseTimings timings,
-        uint bufferSizeRecords = MftVolume.DefaultBufferSizeRecords)
-    {
-        return ParseFile(path, out timings, out _, bufferSizeRecords);
-    }
-
     // Opens the dump, parses it at bufferSizeRecords per chunk and closes it again.
-    internal static MftRecord[] ParseFile(string path, out MftParseTimings timings, out ulong totalRecords,
+    internal static MftRecord[] ParseFile(string path, out ulong totalRecords,
         uint bufferSizeRecords = MftVolume.DefaultBufferSizeRecords)
     {
         using var input = MftDumpInput.Open(path);
         using var result = input.Parse(new MftFileScanOptions(BufferSizeRecords: bufferSizeRecords));
-        timings = result.Timings;
         totalRecords = result.TotalRecords;
-        return result.ToArray();
+        return result.ToRecords();
     }
 
     internal static MftRecord[] ReadAll(this MftVolume volume, bool includeFreed = false)
     {
-        return ReadAll(volume, includeFreed, out _, out _);
+        return volume.ReadRecordBatches(4096, null, null, CancellationToken.None,
+            new MftScanOptions { IncludeFreed = includeFreed }).SelectMany(batch => batch).ToArray();
     }
 
-    internal static MftRecord[] ReadAll(this MftVolume volume, out MftParseTimings timings, out ulong totalRecords)
+    /// <summary>Copies every record of the result, which stay valid after it is disposed.</summary>
+    internal static MftRecord[] ToRecords(this MftResult result)
     {
-        return ReadAll(volume, false, out timings, out totalRecords);
-    }
-
-    internal static MftRecord[] ReadAll(this MftVolume volume, bool includeFreed, out MftParseTimings timings,
-        out ulong totalRecords)
-    {
-        using var result = volume.StreamRecords(includeFreed, null, null, CancellationToken.None);
-        timings = result.Timings;
-        totalRecords = result.TotalRecords;
-        return result.ToArray();
+        return result.ReadBatches(4096).SelectMany(batch => batch).ToArray();
     }
 }

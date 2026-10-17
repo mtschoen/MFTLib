@@ -173,7 +173,7 @@ public partial class JournalBrokerHostTests
             var written = new RealBlockSectionWriter().Write(sectionName, cursor,
                 [[new MftRecord(5, 5, new MftRecordFields(3), "."),
                     new MftRecord(100, 5, new MftRecordFields(1, FileAttributes.Normal, 2048), "nöte.txt")]],
-                MftBlockRowFilter.Full, default, CancellationToken.None);
+                new MftScanOptions(), default, CancellationToken.None);
 
             Assert.AreEqual(101L, written.RowCount);
             Assert.AreEqual(18L, written.NamePoolUsedBytes);

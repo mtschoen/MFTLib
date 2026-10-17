@@ -7,9 +7,9 @@ namespace MFTLib.Tests;
 public class MftRecordSizeAndTimeTests
 {
     [TestMethod]
-    public void ExpectedAbiVersion_IsEight()
+    public void ExpectedAbiVersion_IsNine()
     {
-        Assert.AreEqual(8u, MFTLibNative.ExpectedMftNativeAbiVersion);
+        Assert.AreEqual(9u, MFTLibNative.ExpectedMftNativeAbiVersion);
     }
 
     [TestMethod]
@@ -20,9 +20,9 @@ public class MftRecordSizeAndTimeTests
 
     [TestMethod]
     [TestCategory("Smoke")]
-    public void NativeLibrary_ReportsAbiVersionEight()
+    public void NativeLibrary_ReportsAbiVersionNine()
     {
-        Assert.AreEqual(8u, MFTLibNative._getMftNativeAbiVersion());
+        Assert.AreEqual(9u, MFTLibNative._getMftNativeAbiVersion());
     }
 
     [TestMethod]

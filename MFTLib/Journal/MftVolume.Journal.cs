@@ -49,19 +49,10 @@ internal sealed partial class MftVolume
     }
 
     /// <summary>
-    ///     Read USN journal entries since the given cursor.
-    ///     Returns entries and an updated cursor for the next call.
-    ///     Throws InvalidOperationException if the journal was recreated or entries
-    ///     were overwritten - caller should fall back to a full MFT rescan.
-    /// </summary>
-    public (UsnJournalEntry[] Entries, UsnJournalCursor UpdatedCursor) ReadUsnJournal(UsnJournalCursor since)
-    {
-        return ReadUsnJournalBounded(since, 0);
-    }
-
-    /// <summary>
     ///     Reads at most <paramref name="maximumBufferReads" /> journal buffers (64 KB each) since the
     ///     given cursor; 0 reads to the journal tip. The updated cursor resumes where the read stopped.
+    ///     Throws InvalidOperationException if the journal was recreated or entries
+    ///     were overwritten - caller should fall back to a full MFT rescan.
     /// </summary>
     internal (UsnJournalEntry[] Entries, UsnJournalCursor UpdatedCursor) ReadUsnJournalBounded(
         UsnJournalCursor since, int maximumBufferReads)

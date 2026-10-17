@@ -69,8 +69,8 @@ public static class BrokerTestHarness
                 driveLetter => queryCursor(new DriveKey(driveLetter[0])).ToProduction(),
                 scan is null
                     ? null
-                    : (driveLetter, parseThreads, operation, progress, _, cancellationToken) =>
-                        ConvertScan(scan(new ScriptedScan(new DriveKey(driveLetter[0]), parseThreads, operation, progress,
+                    : (driveLetter, parseThreads, reporting, _, _, cancellationToken) =>
+                        ConvertScan(scan(new ScriptedScan(new DriveKey(driveLetter[0]), parseThreads, reporting,
                             cancellationToken))),
                 scan is null ? null : (driveLetter, since, maximumBufferReads) =>
                     ConvertJournal(readJournal(new DriveKey(driveLetter[0]), since.ToSynthetic(), maximumBufferReads)),

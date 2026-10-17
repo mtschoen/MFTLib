@@ -43,9 +43,9 @@ public partial class BrokerProcessTests
     public async Task ScanDrive_ReportsProgress()
     {
         var reports = new List<BrokerScanProgress>();
-        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, progress, _, _) =>
+        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, reporting, _, _, _) =>
         {
-            progress?.Report(new BlockWriteProgress(2, 0, 2, null, BrokerScanPhase.Parsing));
+            reporting.Progress?.Report(new BlockWriteProgress(2, 0, 2, null, BrokerScanPhase.Parsing));
             return [[Record(5, ".", 3)], [Record(20, "file.txt")]];
         }));
         var options = new MftScanOptions
@@ -86,11 +86,11 @@ public partial class BrokerProcessTests
 
         if (names is null)
         {
-            Assert.IsNull(broker.Writer.LastFilter.RetainedFileNames);
+            Assert.IsNull(broker.Writer.LastScanOptions.RetainedFileNames);
         }
         else
         {
-            CollectionAssert.AreEqual(names, broker.Writer.LastFilter.RetainedFileNames!.ToArray());
+            CollectionAssert.AreEqual(names, broker.Writer.LastScanOptions.RetainedFileNames!.ToArray());
         }
     }
 

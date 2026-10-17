@@ -16,9 +16,9 @@ public partial class MftVolumeTests
     }
 
     [TestMethod]
-    public void StreamRecords_ProgressCallbackElapsedMsIsNaN_SwallowsExceptionAndStillCompletes()
+    public void ReadRecordBatches_ProgressCallbackElapsedMsIsNaN_SwallowsExceptionAndStillCompletes()
     {
-        // The native progress adapter in MftVolume.StreamRecords wraps sample
+        // The native progress adapter in MftVolume.ReadRecordBatches wraps sample
         // construction and the progress.Report call in a bare try/catch specifically
         // because it runs inside a delegate invoked from unmanaged code: an exception
         // must never cross that boundary. Feeding an elapsedMs of NaN makes
@@ -41,14 +41,14 @@ public partial class MftVolumeTests
     }
 
     [TestMethod]
-    public void StreamRecords_ProgressReportedLive_AllSamplesArriveBeforeNativeCallReturns()
+    public void ReadRecordBatches_ProgressReportedLive_AllSamplesArriveBeforeNativeCallReturns()
     {
-        // MftVolume.StreamRecords must call progress.Report(sample) directly from the
+        // MftVolume.ReadRecordBatches must call progress.Report(sample) directly from the
         // native callback, not buffer samples into a queue and drain them only after
         // MFTLibNative._parseMftRecordsWithProgress returns. The fake native function
         // below invokes the callback three times and then, still inside that same
         // delegate invocation (i.e. before the "native call" has returned to
-        // StreamRecords), snapshots how many samples the consumer has received. With
+        // ReadRecordBatches), snapshots how many samples the consumer has received. With
         // live delivery that snapshot must already be 3.
         var receivedCount = 0;
         var receivedCountAtReturn = -1;
@@ -73,7 +73,7 @@ public partial class MftVolumeTests
     }
 
     [TestMethod]
-    public void StreamRecords_ProgressConsumerThrows_DoesNotAbortParseAndLaterSamplesStillArrive()
+    public void ReadRecordBatches_ProgressConsumerThrows_DoesNotAbortParseAndLaterSamplesStillArrive()
     {
         // The never-throw-across-the-unmanaged-boundary guarantee must hold for a
         // consumer that throws from Report, not just for a malformed sample: the parse

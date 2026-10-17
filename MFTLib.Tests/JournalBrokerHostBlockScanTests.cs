@@ -68,10 +68,26 @@ public class JournalBrokerHostBlockScanTests
         Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Error));
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
         Assert.AreEqual("section-C", blockWriter.LastSectionName);
-        Assert.IsNotNull(blockWriter.LastFilter.RetainedFileNames);
-        CollectionAssert.AreEqual(new[] { ".git" }, blockWriter.LastFilter.RetainedFileNames.ToArray());
+        Assert.IsNotNull(blockWriter.LastScanOptions.RetainedFileNames);
+        CollectionAssert.AreEqual(new[] { ".git" }, blockWriter.LastScanOptions.RetainedFileNames.ToArray());
         Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, blockWriter.Block.Rows[5].Flags);
         Assert.AreEqual(RowFlags.None, blockWriter.Block.Rows[20].Flags);
+    }
+
+    [TestMethod]
+    public async Task ScanChannel_RecordsTheSourceOmitted_AreAddedToTheSkippedRecordCount()
+    {
+        using var blockWriter = new RecordingBlockSectionWriter();
+        var host = CreateHost((_, _, _, _, recordsOmitted, _) =>
+        {
+            recordsOmitted(3);
+            return [[Record(5, ".", 3)], [Record(20, "file.txt"), Record(uint.MaxValue + 1UL, "wide")]];
+        });
+
+        var frames = await ScanAsync(host, blockWriter);
+
+        Assert.AreEqual(4L, frames.Single(frame => frame.Kind == BrokerFrameKind.ScanReady).SkippedRecordCount,
+            "three left out by the source and one the writer could not place");
     }
 
     [TestMethod]
@@ -111,9 +127,9 @@ public class JournalBrokerHostBlockScanTests
     {
         using var blockWriter = new RecordingBlockSectionWriter();
         var parsingReported = new TestGate();
-        var host = CreateHost((_, _, _, progress, _, _) =>
+        var host = CreateHost((_, _, reporting, _, _, _) =>
         {
-            progress!.Report(new BlockWriteProgress(500, 0, 1000, null, BrokerScanPhase.Parsing));
+            reporting.Progress!.Report(new BlockWriteProgress(500, 0, 1000, null, BrokerScanPhase.Parsing));
             parsingReported.MarkEntered();
             parsingReported.WaitForRelease();
             return [[Record(5, ".", 3)], [Record(20, "file.txt")]];
@@ -198,7 +214,7 @@ public class JournalBrokerHostBlockScanTests
             DeleteOnClose = true
         });
         var result = MftBlockScan.WriteToBlock(directBlock, new BlockStamp(ArmedCursor, () => completedUtc), batches,
-            MftBlockRowFilter.Full, default, CancellationToken.None);
+            new MftScanOptions(), default, CancellationToken.None);
 
         Assert.AreEqual(skippedByHost, result.SkippedRecordCount);
         Assert.AreEqual(2L, result.SkippedRecordCount);
@@ -269,7 +285,7 @@ public class JournalBrokerHostBlockScanTests
         {
             batchesEnumeratedAtClockRead = batchesEnumerated;
             return DateTime.UnixEpoch;
-        }), Batches(), MftBlockRowFilter.Full, default, CancellationToken.None);
+        }), Batches(), new MftScanOptions(), default, CancellationToken.None);
 
         Assert.AreEqual(2, batchesEnumeratedAtClockRead);
     }

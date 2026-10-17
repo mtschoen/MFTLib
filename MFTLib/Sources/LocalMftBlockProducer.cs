@@ -76,15 +76,16 @@ internal sealed class LocalMftBlockProducer
         {
             var cursor = request.DeleteOnClose ? default : _seams.QueryCursor(drive);
             var progress = CreateProgress(request, options);
-            var batches = _seams.ScanDriveRecordBatches(drive, allowance,
-                IdleOperation.Instance, progress,
-                new MftRecordScanOptions { IncludeFreed = options.IncludeFreed }, cancellationToken);
-            var result = MftBlockScan.WriteToBlock(block, new BlockStamp(cursor, _seams.Clock), batches,
-                new MftBlockRowFilter(options.RetainedFileNames, options.IncludeFreed),
-                new BlockWriteReporting(progress, null), cancellationToken);
+            // No host watchdog watches a direct scan, so there is no operation to tell what the source is doing.
+            var reporting = new BlockWriteReporting(progress, null);
+            long recordsOmitted = 0;
+            var batches = _seams.ScanDriveRecordBatches(drive, allowance, reporting, options,
+                count => recordsOmitted += count, cancellationToken);
+            var result = MftBlockScan.WriteToBlock(block, new BlockStamp(cursor, _seams.Clock), batches, options,
+                reporting, cancellationToken);
             BrokerMftBlockProducer.ValidateBlock(block, request.VolumeSerial, cursor, request.CacheTag);
             var produced = new MftBlockProduceResult(block, cursor.JournalIdentifier, cursor.NextUsn,
-                MftBlockScan.SaturateSkippedRecordCount(result.SkippedRecordCount));
+                MftBlockScan.SaturateSkippedRecordCount(result.SkippedRecordCount + recordsOmitted));
             block = null;
             return produced;
         }
@@ -115,19 +116,5 @@ internal sealed class LocalMftBlockProducer
             TotalBytes = value.TotalBytes,
             Elapsed = stopwatch.Elapsed
         }));
-    }
-
-    // No host watchdog watches a direct scan, so there is nobody to tell what the source is doing.
-    sealed class IdleOperation : IBrokerOperationReporter
-    {
-        internal static readonly IdleOperation Instance = new();
-
-        public void WaitingOnVolume()
-        {
-        }
-
-        public void Processing(string stepName)
-        {
-        }
     }
 }

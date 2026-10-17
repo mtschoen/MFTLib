@@ -19,22 +19,16 @@ internal static class LiveVolumeSources
     // allowance and token reach the native parse, so a rebalance takes effect at its next chunk
     // and a closed pipe stops it.
     internal static IEnumerable<IReadOnlyList<MftRecord>> ScanDriveRecordBatches(string driveLetter,
-        ParseThreadAllowance parseThreads, IBrokerOperationReporter operation, IProgress<BlockWriteProgress>? progress,
-        MftRecordScanOptions scanOptions, CancellationToken cancellationToken)
+        ParseThreadAllowance parseThreads, BlockWriteReporting reporting, MftScanOptions scanOptions,
+        Action<long> recordsOmitted, CancellationToken cancellationToken)
     {
-        operation.WaitingOnVolume();
+        reporting.Operation?.WaitingOnVolume();
         var bytesPerFileRecordSegment = QueryVolumeInfo(driveLetter).BytesPerFileRecordSegment;
         using var volume = MftVolume.Open(Bare(driveLetter), HostScanChunkRecords(bytesPerFileRecordSegment));
-        operation.Processing("MFT parse");
-        var mftProgress = CreateMftProgressAdapter(operation, progress);
-        ulong unreadableRecords = 0;
-        foreach (var batch in volume.ReadRecordBatches(4096, mftProgress, parseThreads,
-                     cancellationToken,
-                     new MftBatchReadOptions
-                     {
-                         IncludeFreed = scanOptions.IncludeFreed,
-                         UnreadableRecords = count => unreadableRecords = count
-                     }))
+        reporting.Operation?.Processing("MFT parse");
+        var mftProgress = CreateMftProgressAdapter(reporting);
+        foreach (var batch in volume.ReadRecordBatches(4096, mftProgress, parseThreads, cancellationToken,
+                     scanOptions, recordsOmitted))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -44,23 +38,16 @@ internal static class LiveVolumeSources
                 yield return batch;
             }
         }
-
-        // A record the parser could not trust has no row, so it is counted with the skipped ones.
-        if (unreadableRecords > 0)
-        {
-            yield return new MftOmittedRecords(checked((long)unreadableRecords));
-        }
     }
 
     // Synchronous delivery preserves the parse total before the transfer phase reports its
     // smaller live-record count. Every native progress callback is also a processing step.
-    static DirectProgress<MftScanProgress> CreateMftProgressAdapter(IBrokerOperationReporter operation,
-        IProgress<BlockWriteProgress>? progress)
+    static DirectProgress<MftScanProgress> CreateMftProgressAdapter(BlockWriteReporting reporting)
     {
         return new DirectProgress<MftScanProgress>(value =>
         {
-            operation.Processing("MFT parse");
-            progress?.Report(new BlockWriteProgress(value.RecordsScanned, 0, value.TotalRecords, null,
+            reporting.Operation?.Processing("MFT parse");
+            reporting.Progress?.Report(new BlockWriteProgress(value.RecordsScanned, 0, value.TotalRecords, null,
                 BrokerScanPhase.Parsing));
         });
     }

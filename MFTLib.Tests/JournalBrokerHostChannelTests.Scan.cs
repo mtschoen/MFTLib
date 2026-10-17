@@ -13,10 +13,10 @@ public partial class JournalBrokerHostChannelTests
         using var sectionWriter = new RecordingBlockSectionWriter();
         UsnJournalCursor? caughtUpFrom = null;
         var host = CreateHost(
-            scanDrive: (_, _, operation, progress, _, _) =>
+            scanDrive: (_, _, reporting, _, _, _) =>
             {
-                operation.Processing("MFT parse");
-                progress?.Report(new BlockWriteProgress(2, 0, 2, null, BrokerScanPhase.Parsing));
+                reporting.Operation!.Processing("MFT parse");
+                reporting.Progress?.Report(new BlockWriteProgress(2, 0, 2, null, BrokerScanPhase.Parsing));
                 return [[Record(5, ".", 3)], [Record(20, "file.txt")]];
             },
             readJournal: (_, since, _) =>

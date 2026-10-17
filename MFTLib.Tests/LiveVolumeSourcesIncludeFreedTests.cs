@@ -57,8 +57,8 @@ public class LiveVolumeSourcesIncludeFreedTests
             return parse(handle, freed, bufferSize, control, callback);
         };
 
-        var records = LiveVolumeSources.ScanDriveRecordBatches("C", new ParseThreadAllowance(2), new QuietReporter(),
-                null, new MftRecordScanOptions { IncludeFreed = includeFreed }, CancellationToken.None)
+        var records = LiveVolumeSources.ScanDriveRecordBatches("C", new ParseThreadAllowance(2),
+                new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions { IncludeFreed = includeFreed }, _ => { }, CancellationToken.None)
             .SelectMany(batch => batch).ToArray();
 
         CollectionAssert.AreEqual(new[] { includeFreed }, requests);
@@ -92,10 +92,10 @@ public class LiveVolumeSourcesIncludeFreedTests
             DeleteOnClose = true
         });
 
-        var batches = LiveVolumeSources.ScanDriveRecordBatches("C", new ParseThreadAllowance(2), new QuietReporter(),
-            null, new MftRecordScanOptions { IncludeFreed = true }, CancellationToken.None);
+        var batches = LiveVolumeSources.ScanDriveRecordBatches("C", new ParseThreadAllowance(2),
+            new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions { IncludeFreed = true }, _ => { }, CancellationToken.None);
         MftBlockScan.WriteToBlock(block, new BlockStamp(default, () => DateTime.UtcNow), batches,
-            new MftBlockRowFilter(IncludeFreed: true), new BlockWriteReporting(null, null),
+            new MftScanOptions { IncludeFreed = true }, new BlockWriteReporting(null, null),
             CancellationToken.None);
 
         Assert.IsTrue(block.Rows[(int)freedRecord].IsDeleted);
@@ -123,7 +123,7 @@ public class LiveVolumeSourcesIncludeFreedTests
         using var image = File.OpenHandle(imagePath);
         using var result = new MftResult(
             MFTLibNative._parseMftRecordsWithProgress(image, false, 64, IntPtr.Zero, null));
-        return result.ToArray().Where(record => record.InUse).Select(record => record.RecordNumber).ToHashSet();
+        return result.ToRecords().Where(record => record.InUse).Select(record => record.RecordNumber).ToHashSet();
     }
 
     sealed class QuietReporter : IBrokerOperationReporter

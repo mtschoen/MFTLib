@@ -37,14 +37,14 @@ public class NativeMockTests
     }
 
     [TestMethod]
-    public void StreamRecords_NullReturn_ThrowsInvalidOperation()
+    public void ReadRecordBatches_NullReturn_ThrowsInvalidOperation()
     {
         FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
         MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _) => IntPtr.Zero;
 
         using var volume = MftVolume.Open("C");
         // ReSharper disable once AccessToDisposedClosure
-        Assert.ThrowsException<InvalidOperationException>(() => volume.StreamRecords(false, null, null, CancellationToken.None));
+        Assert.ThrowsException<InvalidOperationException>(() => volume.ReadRecordBatches(4096, null, null, CancellationToken.None).ToList());
     }
 
     [TestMethod]

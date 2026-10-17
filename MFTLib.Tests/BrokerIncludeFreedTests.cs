@@ -18,7 +18,7 @@ public class BrokerIncludeFreedTests : BrokerBlockTestBase
     public async Task Produce_IncludeFreedReachesTheHostScanAndFilter(bool includeFreed)
     {
         var seen = new List<bool>();
-        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, options, _) =>
+        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, options, _, _) =>
         {
             seen.Add(options.IncludeFreed);
             return Batches(options);
@@ -39,7 +39,7 @@ public class BrokerIncludeFreedTests : BrokerBlockTestBase
     public async Task Produce_ADefaultScanAsksForNoFreedRecords()
     {
         var seen = new List<bool>();
-        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, options, _) =>
+        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, options, _, _) =>
         {
             seen.Add(options.IncludeFreed);
             return Batches(options);
@@ -56,7 +56,7 @@ public class BrokerIncludeFreedTests : BrokerBlockTestBase
     public async Task Produce_AScriptedSourceThatIgnoresTheOptionStillGetsNoFreedRowsWithoutIt()
     {
         await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, _, _) =>
-            Batches(new MftRecordScanOptions { IncludeFreed = true })));
+            Batches(new MftScanOptions { IncludeFreed = true })));
 
         var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard);
 
@@ -66,7 +66,7 @@ public class BrokerIncludeFreedTests : BrokerBlockTestBase
     }
 
     // Root, one live directory and file, then (only when the scan asks) a freed file under the directory.
-    static IEnumerable<IReadOnlyList<MftRecord>> Batches(MftRecordScanOptions options)
+    static IEnumerable<IReadOnlyList<MftRecord>> Batches(MftScanOptions options)
     {
         yield return
         [

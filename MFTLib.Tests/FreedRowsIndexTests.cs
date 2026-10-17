@@ -160,7 +160,7 @@ public class FreedRowsIndexTests
     }
 
     // The scripted source behaves like the live one: freed records are yielded only when the scan asks for them.
-    static IEnumerable<IReadOnlyList<MftRecord>> Scan(MftRecordScanOptions options)
+    static IEnumerable<IReadOnlyList<MftRecord>> Scan(MftScanOptions options)
     {
         yield return
         [
@@ -193,7 +193,7 @@ public class FreedRowsIndexTests
     Task<FileIndex> OpenAsync(bool includeFreed)
     {
         var seams = new LocalMftBlockProducer.Seams(_ => Volume,
-            (_, _, _, _, scanOptions, _) => Scan(scanOptions), () => FixedMoment, _ => default);
+            (_, _, _, scanOptions, _, _) => Scan(scanOptions), () => FixedMoment, _ => default);
         var producer = new LocalMftBlockProducer(new MftScanOptions { IncludeFreed = includeFreed }, seams);
         return FileIndex.OpenAsync(new FileIndexOptions
         {

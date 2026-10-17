@@ -47,7 +47,7 @@ public class LiveScanInvalidFixupTests
             null);
         var counted = Marshal.PtrToStructure<MftParseResult>(resultPointer);
         using var result = new MftResult(resultPointer);
-        var recordNumbers = result.ToArray().Select(record => record.RecordNumber).ToArray();
+        var recordNumbers = result.ToRecords().Select(record => record.RecordNumber).ToArray();
 
         Assert.AreEqual(string.Empty, counted.ErrorMessage);
         Assert.AreEqual(0u, counted.InvalidInput, "a live scan never fails on the record");
@@ -59,7 +59,7 @@ public class LiveScanInvalidFixupTests
     }
 
     [TestMethod]
-    public void LiveBlockScan_AllocatedRecordWithAnInvalidFixup_IsAddedToTheSkippedRecordCount()
+    public void LiveScan_AllocatedRecordWithAnInvalidFixup_IsReportedAsOmitted()
     {
         if (WindowsOnlyLiveScan.Skip())
         {
@@ -70,12 +70,14 @@ public class LiveScanInvalidFixupTests
         ServeImageAsVolume(imagePath);
         using var block = CreateBlock();
 
-        var batches = LiveVolumeSources.ScanDriveRecordBatches("C", new ParseThreadAllowance(2), new QuietReporter(),
-            null, default, CancellationToken.None);
+        long omitted = 0;
+        var batches = LiveVolumeSources.ScanDriveRecordBatches("C", new ParseThreadAllowance(2),
+            new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions(), count => omitted += count, CancellationToken.None);
         var written = MftBlockScan.WriteToBlock(block, new BlockStamp(default, () => DateTime.UtcNow), batches,
-            MftBlockRowFilter.Full, new BlockWriteReporting(null, null), CancellationToken.None);
+            new MftScanOptions(), new BlockWriteReporting(null, null), CancellationToken.None);
 
-        Assert.AreEqual(1L, written.SkippedRecordCount);
+        Assert.AreEqual(1L, omitted);
+        Assert.AreEqual(0L, written.SkippedRecordCount, "the source reports the record; the producer adds it");
         Assert.IsFalse(block.Rows[(int)corruptRecord].IsInUse, "the corrupt record has no row");
         Assert.IsTrue(block.Rows[(int)corruptRecord - 1].IsInUse, "the record before it is imported");
         Assert.IsTrue(block.Rows[(int)corruptRecord + 1].IsInUse, "the record after it is imported");
@@ -120,32 +122,15 @@ public class LiveScanInvalidFixupTests
         ServeImageAsVolume(imagePath);
         using var block = CreateBlock();
 
-        var batches = LiveVolumeSources.ScanDriveRecordBatches("C", new ParseThreadAllowance(1), new QuietReporter(),
-            null, default, CancellationToken.None).ToArray();
+        long omitted = 0;
+        var batches = LiveVolumeSources.ScanDriveRecordBatches("C", new ParseThreadAllowance(1),
+            new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions(), count => omitted += count, CancellationToken.None);
         var written = MftBlockScan.WriteToBlock(block, new BlockStamp(default, () => DateTime.UtcNow), batches,
-            MftBlockRowFilter.Full, new BlockWriteReporting(null, null), CancellationToken.None);
+            new MftScanOptions(), new BlockWriteReporting(null, null), CancellationToken.None);
 
-        Assert.IsFalse(batches.Any(batch => batch is MftOmittedRecords));
+        Assert.AreEqual(0L, omitted);
         Assert.AreEqual(0L, written.SkippedRecordCount);
         Assert.IsTrue(block.Header.RowCount > 5);
-    }
-
-    [TestMethod]
-    public void BlockScan_OmittedRecordsBatch_AddsItsCountToTheSkippedRecords()
-    {
-        using var block = CreateBlock();
-        IReadOnlyList<MftRecord>[] batches =
-        [
-            [Record(5, 5, isDirectory: true), Record(7, 5), Record(uint.MaxValue + 1UL, 5)],
-            new MftOmittedRecords(3)
-        ];
-
-        var written = MftBlockScan.WriteToBlock(block, new BlockStamp(default, () => DateTime.UtcNow), batches,
-            MftBlockRowFilter.Full, new BlockWriteReporting(null, null), CancellationToken.None);
-
-        Assert.AreEqual(4L, written.SkippedRecordCount, "one record the writer could not place and three left out");
-        Assert.AreEqual(8L, written.RowCount);
-        Assert.AreEqual(0, new MftOmittedRecords(3).Count, "the batch itself carries no record");
     }
 
     [DataTestMethod]
@@ -209,7 +194,7 @@ public class LiveScanInvalidFixupTests
         using var result = new MftResult(
             MFTLibNative._parseMftRecordsWithProgress(image, false, 64, IntPtr.Zero, null));
         Assert.AreEqual(0UL, result.InvalidFixupRecordCount, "the untouched image has no invalid fixup");
-        return result.ToArray().Where(record => record.InUse).Select(record => record.RecordNumber).ToHashSet();
+        return result.ToRecords().Where(record => record.InUse).Select(record => record.RecordNumber).ToHashSet();
     }
 
     // Every volume open reads the image, and the volume query reports its record size.
@@ -239,15 +224,6 @@ public class LiveScanInvalidFixupTests
         NamePoolCapacity = 16 * 1024,
         DeleteOnClose = true
     });
-
-    static MftRecord Record(ulong recordNumber, ulong parent, bool isDirectory = false) =>
-        MftRecord.CreateForTest(new MftRecordTestValues
-        {
-            RecordNumber = recordNumber,
-            ParentRecordNumber = parent,
-            IsDirectory = isDirectory,
-            FileName = $"record-{recordNumber}"
-        });
 
     sealed class QuietReporter : IBrokerOperationReporter
     {

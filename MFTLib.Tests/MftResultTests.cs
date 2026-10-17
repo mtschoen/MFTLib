@@ -131,7 +131,7 @@ public partial class MftResultTests
             MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
 
             using var mftResult = new MftResult(resultPtr);
-            var ex = Assert.ThrowsException<InvalidDataException>(mftResult.ToArray);
+            var ex = Assert.ThrowsException<InvalidDataException>(mftResult.ToRecords);
             Assert.AreEqual("Native MFT string offset is outside its pool", ex.Message);
         }
         finally
@@ -170,7 +170,7 @@ public partial class MftResultTests
             MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
 
             using var mftResult = new MftResult(resultPtr);
-            var ex = Assert.ThrowsException<InvalidDataException>(mftResult.ToArray);
+            var ex = Assert.ThrowsException<InvalidDataException>(mftResult.ToRecords);
             Assert.AreEqual("Native MFT string offset is outside its pool", ex.Message);
         }
         finally
@@ -209,7 +209,7 @@ public partial class MftResultTests
             MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
 
             using var mftResult = new MftResult(resultPtr);
-            var records = mftResult.ToArray();
+            var records = mftResult.ToRecords();
             Assert.AreEqual(1, records.Length);
             Assert.AreEqual(string.Empty, records[0].FileName);
         }

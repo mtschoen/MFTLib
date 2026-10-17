@@ -54,7 +54,7 @@ public class MftDumpInputTests
         using var input = MftDumpInput.Open(path);
 
         using var result = input.Parse();
-        var records = result.ToArray().ToDictionary(record => record.RecordNumber);
+        var records = result.ToRecords().ToDictionary(record => record.RecordNumber);
 
         CollectionAssert.AreEquivalent(new ulong[] { 0, 5, 6, 7, 8, 9, 10 }, records.Keys.ToArray());
         Assert.AreEqual(16UL, result.TotalRecords);
@@ -332,7 +332,7 @@ public class MftDumpInputTests
     static string[] Names(MftDumpInput input)
     {
         using var result = input.Parse();
-        return result.ToArray().Select(record => record.FileName).ToArray();
+        return result.ToRecords().Select(record => record.FileName).ToArray();
     }
 
     static byte[] Header(int recordSize) => MftDumpFixture.Standard(recordSize)[..32];

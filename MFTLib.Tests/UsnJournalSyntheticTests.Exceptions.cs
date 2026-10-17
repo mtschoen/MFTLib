@@ -30,7 +30,7 @@ public partial class UsnJournalSyntheticTests
         var failure = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C:");
-            volume.ReadUsnJournal(Cursor);
+            volume.ReadUsnJournalBounded(Cursor, 0);
         });
         StringAssert.Contains(failure.Message, "ReadUsnJournal returned null");
     }

@@ -12,12 +12,6 @@ struct MftParseResult
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
     public string ErrorMessage;
 
-    // Performance counters (milliseconds)
-    public double IoTimeMs;
-    public double FixupTimeMs;
-    public double ParseTimeMs;
-    public double TotalTimeMs;
-
     public IntPtr EntryStrings; // ushort*
     public ulong EntryStringUnits;
     public uint EntryStride;

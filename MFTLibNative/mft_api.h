@@ -10,7 +10,7 @@
     #endif
 #endif
 
-constexpr uint32_t MFT_NATIVE_ABI_VERSION = 8;
+constexpr uint32_t MFT_NATIVE_ABI_VERSION = 9;
 
 // One UTF-16 code unit of a native error message. wchar_t is 16 bits on Windows and 32 bits
 // elsewhere, so the result structs declare their message buffers in this type and keep one
@@ -75,11 +75,6 @@ struct MftParseResult {
     MftCompactEntry* entries;
     // NOLINTNEXTLINE(modernize-avoid-c-arrays)
     MftMessageChar errorMessage[MFT_ERROR_MESSAGE_UNITS];
-    // Performance counters (milliseconds)
-    double ioTimeMs;
-    double fixupTimeMs;
-    double parseTimeMs;
-    double totalTimeMs;
     uint16_t* entryStrings;
     uint64_t entryStringUnits;
     uint32_t entryStride;
@@ -129,8 +124,8 @@ struct UsnJournalResult {
     MftMessageChar errorMessage[MFT_ERROR_MESSAGE_UNITS];
 };
 
-static_assert(sizeof(MftParseResult) == 588 + (2 * sizeof(void*)),
-              "MftParseResult is the 588 bytes of counters and 256 UTF-16 message units around two pointers");
+static_assert(sizeof(MftParseResult) == 556 + (2 * sizeof(void*)),
+              "MftParseResult is the 556 bytes of counters and 256 UTF-16 message units around two pointers");
 static_assert(sizeof(MftDumpInputInfo) == 528,
               "MftDumpInputInfo is a 64-bit length, two 32-bit fields and 256 UTF-16 message units");
 #ifdef _WIN32

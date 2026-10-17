@@ -160,6 +160,6 @@ public partial class DumpFileParseTests
         using var result = StreamFile();
 
         Assert.AreEqual(1000UL, result.TotalRecords);
-        Assert.AreEqual(result.UsedRecords, (ulong)result.ToArray().Length);
+        Assert.AreEqual(result.UsedRecords, (ulong)result.ToRecords().Length);
     }
 }

@@ -78,9 +78,9 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
     {
         var parsingReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var progress = new List<BrokerScanProgress>();
-        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, reporter, _, cancellationToken) =>
+        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, reporting, _, _, cancellationToken) =>
         {
-            reporter?.Report(new BlockWriteProgress(6, 0, 6, null, BrokerScanPhase.Parsing));
+            reporting.Progress?.Report(new BlockWriteProgress(6, 0, 6, null, BrokerScanPhase.Parsing));
             parsingReceived.Task.Wait(HangGuard, cancellationToken);
             return Records();
         }));

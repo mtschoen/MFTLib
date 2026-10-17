@@ -9,7 +9,7 @@ internal static class MftBlockRowWriter
     public static BlockWriteResult WriteBatches(
         BlockWriter writer,
         IEnumerable<IReadOnlyList<MftRecord>> batches,
-        MftBlockRowFilter filter,
+        MftScanOptions scanOptions,
         IProgress<BlockWriteProgress>? progress,
         CancellationToken cancellationToken)
     {
@@ -17,19 +17,16 @@ internal static class MftBlockRowWriter
         ArgumentNullException.ThrowIfNull(batches);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var keepFileNames = filter.CreateKeepSet();
-        var freedRows = filter.IncludeFreed ? new FreedRowTrust(writer.Block) : null;
+        var keepFileNames = scanOptions.RetainedFileNames is { } retainedFileNames
+            ? new HashSet<string>(retainedFileNames, StringComparer.OrdinalIgnoreCase)
+            : null;
+        var freedRows = scanOptions.IncludeFreed ? new FreedRowTrust(writer.Block) : null;
         long recordsWritten = 0;
         long skippedRecordCount = 0;
 
         foreach (var batch in batches)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (batch is MftOmittedRecords omitted)
-            {
-                skippedRecordCount += omitted.OmittedCount;
-            }
-
             foreach (var record in batch)
             {
                 cancellationToken.ThrowIfCancellationRequested();

@@ -15,20 +15,20 @@ internal static class MftBlockScan
     internal static int SaturateSkippedRecordCount(long skippedRecordCount) =>
         (int)Math.Min(skippedRecordCount, int.MaxValue);
 
-    /// <summary>Writes all batches through the filter, stamps the journal cursor, then completes the block.</summary>
+    /// <summary>Writes all batches under the scan options, stamps the journal cursor, then completes the block.</summary>
     /// <param name="block">The block section to fill.</param>
     /// <param name="stamp">The journal cursor and completion clock to stamp into the block; a dump or uncached local producer passes a zero cursor.</param>
     /// <param name="batches">The record batches to write.</param>
-    /// <param name="filter">Selects which records receive block rows.</param>
+    /// <param name="scanOptions">Selects which records receive block rows.</param>
     /// <param name="reporting">Where the write publishes its progress.</param>
     /// <param name="cancellationToken">Cancels the write between records and between batches.</param>
     /// <returns>The row count, name pool usage and skipped record count of the completed block.</returns>
     internal static BlockWriteResult WriteToBlock(
         BlockFile block, BlockStamp stamp, IEnumerable<IReadOnlyList<MftRecord>> batches,
-        MftBlockRowFilter filter, BlockWriteReporting reporting, CancellationToken cancellationToken)
+        MftScanOptions scanOptions, BlockWriteReporting reporting, CancellationToken cancellationToken)
     {
         var writer = new BlockWriter(block);
-        var result = MftBlockRowWriter.WriteBatches(writer, batches, filter, reporting.Progress, cancellationToken);
+        var result = MftBlockRowWriter.WriteBatches(writer, batches, scanOptions, reporting.Progress, cancellationToken);
         writer.SetJournalCursor(stamp.Cursor.JournalIdentifier, stamp.Cursor.NextUsn);
         var operation = reporting.Operation;
         writer.Complete(stamp.Clock(), operation is null ? null : _ => operation.Processing(FlushStep));

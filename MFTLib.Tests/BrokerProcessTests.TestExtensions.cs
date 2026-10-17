@@ -368,15 +368,18 @@ public partial class BrokerProcessTests
         public void Processing(string stepName) => ProcessingSteps++;
     }
 
-    [TestMethod]
-    public void ScriptedScan_ReportParsedWithoutAProgressSinkStillMarksProcessing()
+    [DataTestMethod]
+    [DataRow(true, DisplayName = "operation reporter marks processing")]
+    [DataRow(false, DisplayName = "#598-scripted-scan-without-operation-reporter")]
+    public void ScriptedScan_ReportParsedWithoutAProgressSinkStillMarksProcessing(bool hasReporter)
     {
-        var operation = new CountingOperationReporter();
-        var scan = new ScriptedScan('C', new ParseThreadAllowance(1), operation, null, CancellationToken.None);
+        var operation = hasReporter ? new CountingOperationReporter() : null;
+        var scan = new ScriptedScan('C', new ParseThreadAllowance(1), new BlockWriteReporting(null, operation),
+            CancellationToken.None);
 
         scan.ReportParsed(1, null);
 
-        Assert.AreEqual(1, operation.ProcessingSteps);
+        Assert.AreEqual(hasReporter ? 1 : 0, operation?.ProcessingSteps ?? 0);
     }
 
     [TestMethod]

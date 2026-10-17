@@ -40,20 +40,11 @@ public partial class DumpFileParseTests
     [TestMethod]
     public void Parse_ReadAll_ReturnsRecords()
     {
-        var records = DirectParse.ParseFile(_syntheticPath, out _, out var totalRecords);
+        var records = DirectParse.ParseFile(_syntheticPath, out var totalRecords);
 
         Assert.IsTrue(records.Length > 0);
         Assert.IsTrue(totalRecords >= 1000);
         Assert.IsNotNull(records[0].FileName);
-    }
-
-    [TestMethod]
-    public void Parse_Timings_ArePopulated()
-    {
-        DirectParse.ParseFile(_syntheticPath, out var timings, out var totalRecords);
-
-        Assert.IsTrue(totalRecords >= 1000);
-        Assert.IsTrue(timings.NativeTotal >= TimeSpan.Zero);
     }
 
     [TestMethod]
@@ -157,7 +148,7 @@ public partial class DumpFileParseTests
         try
         {
             MftVolume.GenerateSyntheticMFT(tempPath, 1000, 256, recordSize);
-            var records = DirectParse.ParseFile(tempPath, out _, out var totalRecords);
+            var records = DirectParse.ParseFile(tempPath, out var totalRecords);
 
             Assert.IsTrue(records.Length > 0);
             Assert.AreEqual(1000UL, totalRecords);

@@ -47,9 +47,9 @@ public partial class JournalBrokerHostLivenessTests
         var liveness = new Liveness();
         var entered = new TestGate();
         using var sectionWriter = new RecordingBlockSectionWriter();
-        await using var harness = new HostChannelHarness(liveness.Host(scanDrive: (_, _, operation, _, _, token) =>
+        await using var harness = new HostChannelHarness(liveness.Host(scanDrive: (_, _, reporting, _, _, token) =>
         {
-            operation.Processing("wedged step");
+            reporting.Operation!.Processing("wedged step");
             entered.MarkEntered();
             token.WaitHandle.WaitOne(HangGuard);
             token.ThrowIfCancellationRequested();
@@ -80,11 +80,11 @@ public partial class JournalBrokerHostLivenessTests
         var liveness = new Liveness();
         var steps = Enumerable.Range(0, 12).Select(_ => new TestGate()).ToArray();
         using var sectionWriter = new RecordingBlockSectionWriter();
-        await using var harness = new HostChannelHarness(liveness.Host(scanDrive: (_, _, operation, _, _, _) =>
+        await using var harness = new HostChannelHarness(liveness.Host(scanDrive: (_, _, reporting, _, _, _) =>
         {
             foreach (var step in steps)
             {
-                operation.Processing("MFT parse");
+                reporting.Operation!.Processing("MFT parse");
                 step.MarkEntered();
                 step.WaitForRelease();
             }
@@ -113,12 +113,12 @@ public partial class JournalBrokerHostLivenessTests
     {
         var liveness = new Liveness();
         var admitted = new TestGate();
-        var host = liveness.Host(processorCount: 1, scanDrive: (drive, _, operation, _, _, token) =>
+        var host = liveness.Host(processorCount: 1, scanDrive: (drive, _, reporting, _, _, token) =>
         {
             if (drive == "C")
             {
                 // Holds the only parse thread, waiting on its volume, which never stalls.
-                operation.WaitingOnVolume();
+                reporting.Operation!.WaitingOnVolume();
                 admitted.MarkEntered();
                 token.WaitHandle.WaitOne(HangGuard);
                 token.ThrowIfCancellationRequested();

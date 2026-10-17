@@ -6,17 +6,15 @@ namespace MFTLibTestExtensions;
 /// <summary>What a scan source is told, and how it reports back.</summary>
 public sealed class ScriptedScan
 {
-    readonly IBrokerOperationReporter _operation;
-    readonly IProgress<BlockWriteProgress>? _progress;
+    readonly BlockWriteReporting _reporting;
 
-    internal ScriptedScan(DriveKey driveLetter, ParseThreadAllowance parseThreads, IBrokerOperationReporter operation,
-        IProgress<BlockWriteProgress>? progress, CancellationToken cancellationToken)
+    internal ScriptedScan(DriveKey driveLetter, ParseThreadAllowance parseThreads, BlockWriteReporting reporting,
+        CancellationToken cancellationToken)
     {
         Drive = driveLetter.Validated();
         ParseThreads = parseThreads;
         CancellationToken = cancellationToken;
-        _operation = operation;
-        _progress = progress;
+        _reporting = reporting;
     }
 
     /// <summary>The drive the client asked to scan, as the host names it.</summary>
@@ -36,7 +34,7 @@ public sealed class ScriptedScan
     /// <param name="totalRecords">The expected total, or null when unknown.</param>
     public void ReportParsed(long recordsProcessed, long? totalRecords)
     {
-        _operation.Processing("MFT parse");
-        _progress?.Report(new BlockWriteProgress(recordsProcessed, 0, totalRecords, null, BrokerScanPhase.Parsing));
+        _reporting.Operation?.Processing("MFT parse");
+        _reporting.Progress?.Report(new BlockWriteProgress(recordsProcessed, 0, totalRecords, null, BrokerScanPhase.Parsing));
     }
 }

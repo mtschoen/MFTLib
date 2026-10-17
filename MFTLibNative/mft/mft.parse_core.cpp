@@ -25,9 +25,6 @@ namespace {
 // reference instead of a long list of same-typed in/out counters and timers.
 struct ParseState {
     CompactOutput output{};
-    double ioMs = 0.0;
-    double fixupMs = 0.0;
-    double parseMs = 0.0;
     uint64_t invalidFixupRecords = 0;
     ParseThreadRecording* threadRecording = nullptr;
 };
@@ -42,9 +39,7 @@ struct ChunkReader {
     const ParseSource* source = nullptr;
     std::array<uint8_t*, 2>* chunkBuffers = nullptr;
 
-    uint64_t read(int bufferIndex, double& ioMs) const {
-        return source->readChunk(source->context, (*chunkBuffers)[bufferIndex], ioMs);
-    }
+    uint64_t read(int bufferIndex) const { return source->readChunk(source->context, (*chunkBuffers)[bufferIndex]); }
 
     bool incomplete() const { return source->incomplete != nullptr && source->incomplete(source->context); }
 };
@@ -120,22 +115,18 @@ uint64_t FixupRange(uint8_t* buffer, SliceRange range, ParseGeometry geometry) {
 
 // Fix up and parse buffer[range) in kCancelCheckRecords-record sub-slices, stopping between
 // sub-slices once cancellation is requested, or at once when the scan rejects invalid fixups
-// and an allocated record has one. Returns the milliseconds the fixups took.
-double FixupAndParseSlice(uint8_t* buffer, SliceRange range, uint64_t recordBase, SliceResult& slice,
-                          const ScanContext& scan) {
-    double fixupMs = 0.0;
+// and an allocated record has one.
+void FixupAndParseSlice(uint8_t* buffer, SliceRange range, uint64_t recordBase, SliceResult& slice,
+                        const ScanContext& scan) {
     for (uint64_t start = range.start; start < range.end && !IsCancelRequested(scan.control);
          start += kCancelCheckRecords) {
         const SliceRange subSlice{start, (std::min)(start + kCancelCheckRecords, range.end)};
-        auto fixupStart = SteadyClock::now();
         slice.invalidFixupRecords += FixupRange(buffer, subSlice, scan.geometry);
-        fixupMs += ElapsedMs(fixupStart, SteadyClock::now());
         if (slice.invalidFixupRecords != 0 && scan.rejectInvalidFixup) {
             break;
         }
         ProcessRecordSlice(buffer, subSlice, recordBase, &slice, scan);
     }
-    return fixupMs;
 }
 
 // Fail the parse because an allocated record of untrusted input has an invalid fixup.
@@ -154,10 +145,7 @@ bool ParseChunkSerial(uint8_t* buffer, ChunkSpan chunk, const ScanContext& scan,
     batchSlice.entries.reserve(chunk.chunkSize / 4);
     batchSlice.strings.reserve(batchSlice.entries.capacity() * 32);
 
-    auto parseStart = SteadyClock::now();
-    double fixupMs = FixupAndParseSlice(buffer, SliceRange{0, chunk.chunkSize}, chunk.recordIndex, batchSlice, scan);
-    state.fixupMs += fixupMs;
-    state.parseMs += ElapsedMs(parseStart, SteadyClock::now()) - fixupMs;
+    FixupAndParseSlice(buffer, SliceRange{0, chunk.chunkSize}, chunk.recordIndex, batchSlice, scan);
 
     if (batchSlice.invalidFixupRecords != 0 && scan.rejectInvalidFixup) {
         return RejectInvalidFixup(result);
@@ -170,23 +158,15 @@ bool ParseChunkSerial(uint8_t* buffer, ChunkSpan chunk, const ScanContext& scan,
 // Returns false if a fixup was rejected or the merge ran out of memory (error already set).
 bool ParseChunkParallel(uint8_t* buffer, ChunkSpan chunk, unsigned threadCount, const ScanContext& scan,
                         ParseState& state, MftParseResult* result) {
-    auto fixupStart = SteadyClock::now();
     std::vector<SliceResult> slices(threadCount);
-    std::vector<double> threadFixupMs(threadCount, 0.0);
     unsigned actualThreads = ForEachRange(chunk.chunkSize, threadCount, [&](unsigned index, SliceRange range) {
         ThrowInjectedException(ExceptionTestPoint::ParseAllocation);
         ThrowInjectedException(ExceptionTestPoint::WorkerFailure);
         const uint64_t initialCapacity = std::max<uint64_t>((range.end - range.start) / 4, 64);
         slices[index].entries.reserve(initialCapacity);
         slices[index].strings.reserve(initialCapacity * 32);
-        threadFixupMs[index] = FixupAndParseSlice(buffer, range, chunk.recordIndex, slices[index], scan);
+        FixupAndParseSlice(buffer, range, chunk.recordIndex, slices[index], scan);
     });
-
-    double totalElapsed = ElapsedMs(fixupStart, SteadyClock::now());
-    double maximumFixup =
-        (actualThreads > 0) ? *std::max_element(threadFixupMs.begin(), threadFixupMs.begin() + actualThreads) : 0.0;
-    state.fixupMs += maximumFixup;
-    state.parseMs += totalElapsed - maximumFixup;
 
     uint64_t invalidFixupRecords = 0;
     for (const auto& slice : slices) {
@@ -222,7 +202,7 @@ ParseOutcome ParseAllChunks(ChunkReader& reader, const ScanContext& scan, ParseS
     }
     uint64_t recordIndex = 0;
     uint64_t lastReportedRecords = 0;
-    uint64_t currentChunkSize = reader.read(0, state.ioMs);
+    uint64_t currentChunkSize = reader.read(0);
     int currentBufferIndex = 0;
 
     while (currentChunkSize > 0) {
@@ -233,12 +213,11 @@ ParseOutcome ParseAllChunks(ChunkReader& reader, const ScanContext& scan, ParseS
         state.threadRecording->Record(threadCount);
 
         uint64_t nextChunkSize = 0;
-        double nextIoMs = 0;
         NativeFailure readFailure = NativeFailure::None;
         auto ioThread = StartNativeThread(
             [&]() {
                 ThrowInjectedException(ExceptionTestPoint::ReadWorker);
-                nextChunkSize = reader.read(1 - currentBufferIndex, nextIoMs);
+                nextChunkSize = reader.read(1 - currentBufferIndex);
             },
             readFailure);
         const NativeScopeExit joined([&]() {
@@ -271,7 +250,6 @@ ParseOutcome ParseAllChunks(ChunkReader& reader, const ScanContext& scan, ParseS
 
         ioThread.join();
         ThrowNativeFailure(readFailure);
-        state.ioMs += nextIoMs;
 
         currentChunkSize = nextChunkSize;
         currentBufferIndex = 1 - currentBufferIndex;
@@ -383,11 +361,6 @@ MftParseResult* ParseMFTImpl(const ParseSource& source, const ParseRequest& requ
             result->entries = state.output.entries;
             result->entryStrings = state.output.strings;
             result->entryStringUnits = state.output.stringUnits;
-
-            result->ioTimeMs = state.ioMs;
-            result->fixupTimeMs = state.fixupMs;
-            result->parseTimeMs = state.parseMs;
-            result->totalTimeMs = ElapsedMs(wallStart, SteadyClock::now());
             return result;
         },
         [&](const wchar_t* message) {

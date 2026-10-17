@@ -5,7 +5,7 @@ namespace MFTLibTestExtensions;
 
 /// <summary>
 ///     Writes each scan through the production row writer into the section the client created, and
-///     remembers the last section and filter.
+///     remembers the last section and scan options.
 /// </summary>
 internal sealed class RecordingBlockSectionWriter(Func<string, BlockFile?>? resolveSection = null)
     : IBlockSectionWriter, IDisposable
@@ -24,15 +24,15 @@ internal sealed class RecordingBlockSectionWriter(Func<string, BlockFile?>? reso
     });
 
     public string? LastSectionName { get; private set; }
-    public MftBlockRowFilter LastFilter { get; private set; }
+    public MftScanOptions LastScanOptions { get; private set; } = new();
 
     public BlockWriteResult Write(string sectionName, UsnJournalCursor cursor, IEnumerable<IReadOnlyList<MftRecord>> batches,
-        MftBlockRowFilter filter, BlockWriteReporting reporting, CancellationToken cancellationToken)
+        MftScanOptions scanOptions, BlockWriteReporting reporting, CancellationToken cancellationToken)
     {
         LastSectionName = sectionName;
-        LastFilter = filter;
+        LastScanOptions = scanOptions;
         return MftBlockScan.WriteToBlock(resolveSection?.Invoke(sectionName) ?? Block,
-            new BlockStamp(cursor, () => CompletedUtc), batches, filter, reporting with { Operation = null },
+            new BlockStamp(cursor, () => CompletedUtc), batches, scanOptions, reporting with { Operation = null },
             cancellationToken);
     }
 

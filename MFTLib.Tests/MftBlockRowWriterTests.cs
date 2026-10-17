@@ -22,7 +22,7 @@ public class MftBlockRowWriterTests
         ];
 
         var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records],
-            MftBlockRowFilter.Full, null, CancellationToken.None);
+            new MftScanOptions(), null, CancellationToken.None);
 
         Assert.AreEqual(5u, block.Rows[20].ParentRow);
         Assert.AreEqual((uint)(FileAttributes.Archive | FileAttributes.Hidden), block.Rows[20].Attributes);
@@ -52,7 +52,7 @@ public class MftBlockRowWriterTests
         var record = new MftRecord(20, 5, new MftRecordFields(1, sequenceNumber: 37), "record");
 
         MftBlockRowWriter.WriteBatches(new BlockWriter(block), [[record]],
-            MftBlockRowFilter.Full, null, CancellationToken.None);
+            new MftScanOptions(), null, CancellationToken.None);
 
         Assert.AreEqual((ushort)37, block.SequenceNumbers[20]);
     }
@@ -62,7 +62,7 @@ public class MftBlockRowWriterTests
     {
         using var block = CreateBlock();
         var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block),
-            [[Record(32, "overflow"), Record(31, "last")]], MftBlockRowFilter.Full, null, CancellationToken.None);
+            [[Record(32, "overflow"), Record(31, "last")]], new MftScanOptions(), null, CancellationToken.None);
 
         Assert.AreEqual(1L, result.SkippedRecordCount);
         Assert.AreEqual(32L, result.RowCount);
@@ -76,7 +76,7 @@ public class MftBlockRowWriterTests
         using var block = CreateBlock();
         var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block),
             [[Record((ulong)uint.MaxValue + 1, "overflow"), Record(6, ""), Record(7, "kept")]],
-            MftBlockRowFilter.Full, null, CancellationToken.None);
+            new MftScanOptions(), null, CancellationToken.None);
 
         Assert.AreEqual(2L, result.SkippedRecordCount);
         Assert.AreEqual(8L, result.RowCount);
@@ -95,7 +95,7 @@ public class MftBlockRowWriterTests
         using var block = CreateBlock();
         var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block),
             [[RecordWithParent(8, (ulong)uint.MaxValue + 1, "orphan"), Record(9, "kept")]],
-            MftBlockRowFilter.Full, null, CancellationToken.None);
+            new MftScanOptions(), null, CancellationToken.None);
 
         Assert.AreEqual(1L, result.SkippedRecordCount);
         Assert.AreEqual(RowFlags.None, block.Rows[8].Flags);
@@ -107,7 +107,7 @@ public class MftBlockRowWriterTests
     {
         using var block = CreateBlock(namePoolCapacity: 8);
         var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block),
-            [[Record(5, "abc"), Record(6, "long"), Record(7, "z")]], MftBlockRowFilter.Full, null, CancellationToken.None);
+            [[Record(5, "abc"), Record(6, "long"), Record(7, "z")]], new MftScanOptions(), null, CancellationToken.None);
 
         Assert.AreEqual(1L, result.SkippedRecordCount);
         Assert.AreEqual(8L, result.RowCount);
@@ -131,7 +131,7 @@ public class MftBlockRowWriterTests
             yield return [Record(20, "file"), Record(21, "")];
         }
 
-        MftBlockRowWriter.WriteBatches(writer, Batches(), MftBlockRowFilter.Full,
+        MftBlockRowWriter.WriteBatches(writer, Batches(), new MftScanOptions(),
             new SynchronousProgress<BlockWriteProgress>(reports.Add), CancellationToken.None);
 
         Assert.AreEqual(2, reports.Count);
@@ -155,7 +155,7 @@ public class MftBlockRowWriterTests
         }
 
         Assert.ThrowsException<OperationCanceledException>(() =>
-            MftBlockRowWriter.WriteBatches(writer, Batches(), MftBlockRowFilter.Full, null, cancellationToken));
+            MftBlockRowWriter.WriteBatches(writer, Batches(), new MftScanOptions(), null, cancellationToken));
         Assert.AreEqual(0u, block.Header.RowCount);
         Assert.IsFalse(block.Header.IsComplete);
     }
@@ -170,7 +170,7 @@ public class MftBlockRowWriterTests
         var cancellationToken = cancellation.Token;
 
         Assert.ThrowsException<OperationCanceledException>(() => MftBlockRowWriter.WriteBatches(
-            writer, [[Record(5, ".")], [Record(6, "file")]], MftBlockRowFilter.Full, progress, cancellationToken));
+            writer, [[Record(5, ".")], [Record(6, "file")]], new MftScanOptions(), progress, cancellationToken));
 
         Assert.AreEqual(6u, block.Header.RowCount);
         Assert.AreEqual(RowFlags.None, block.Rows[6].Flags);
@@ -185,7 +185,7 @@ public class MftBlockRowWriterTests
         Assert.IsTrue(writer.TryWriteRow(5, ".", new RowColumns(5, RowFlags.InUse, 0, 0, 0, 0)));
         writer.MarkCapacityExhausted();
 
-        var result = MftBlockRowWriter.WriteBatches(writer, [], MftBlockRowFilter.Full, null, CancellationToken.None);
+        var result = MftBlockRowWriter.WriteBatches(writer, [], new MftScanOptions(), null, CancellationToken.None);
 
         Assert.AreEqual(new BlockWriteResult(6, 2, 0), result);
         Assert.IsTrue(block.Header.IsCapacityExhausted);
@@ -202,7 +202,7 @@ public class MftBlockRowWriterTests
         ];
 
         var result = MftBlockRowWriter.WriteBatches(
-            new BlockWriter(block), [records], new MftBlockRowFilter(RetainedFileNames: null),
+            new BlockWriter(block), [records], new MftScanOptions(),
             null, CancellationToken.None);
 
         Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, block.Rows[5].Flags);
@@ -222,7 +222,7 @@ public class MftBlockRowWriterTests
         ];
 
         var result = MftBlockRowWriter.WriteBatches(
-            new BlockWriter(block), [records], new MftBlockRowFilter(RetainedFileNames: []),
+            new BlockWriter(block), [records], new MftScanOptions { RetainedFileNames = [] },
             null, CancellationToken.None);
 
         Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, block.Rows[5].Flags);
@@ -243,7 +243,7 @@ public class MftBlockRowWriterTests
         ];
 
         var result = MftBlockRowWriter.WriteBatches(
-            new BlockWriter(block), [records], new MftBlockRowFilter(RetainedFileNames: [".git"]),
+            new BlockWriter(block), [records], new MftScanOptions { RetainedFileNames = [".git"] },
             null, CancellationToken.None);
 
         Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, block.Rows[5].Flags);
@@ -266,21 +266,12 @@ public class MftBlockRowWriterTests
         ];
 
         var result = MftBlockRowWriter.WriteBatches(
-            new BlockWriter(block), [records], new MftBlockRowFilter([]),
+            new BlockWriter(block), [records], new MftScanOptions { RetainedFileNames = [] },
             new SynchronousProgress<BlockWriteProgress>(reports.Add), CancellationToken.None);
 
         Assert.AreEqual(0L, result.SkippedRecordCount);
         Assert.AreEqual(1, reports.Count);
         Assert.AreEqual(1L, reports[0].RecordsProcessed);
-    }
-
-    [TestMethod]
-    public void WriteBatches_DefaultFilterRetainsFiles()
-    {
-        using var block = CreateBlock();
-        var writer = new BlockWriter(block);
-        MftBlockRowWriter.WriteBatches(writer, [[Record(10, "file.txt")]], default, null, CancellationToken.None);
-        Assert.AreEqual(RowFlags.InUse, block.Rows[10].Flags);
     }
 
     static MftRecord Record(ulong recordNumber, string name)

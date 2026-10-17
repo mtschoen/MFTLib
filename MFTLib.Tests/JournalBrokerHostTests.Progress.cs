@@ -28,12 +28,12 @@ public partial class JournalBrokerHostTests
         return WithScanProgressThrottleAsync(TimeSpan.FromMinutes(10), async () =>
         {
             var afterFirstReport = new TestGate();
-            var host = ScanHost(scanDrive: (_, _, _, progress, _, _) =>
+            var host = ScanHost(scanDrive: (_, _, reporting, _, _, _) =>
             {
-                progress!.Report(new BlockWriteProgress(5, 0, 20, null, BrokerScanPhase.Parsing));
+                reporting.Progress!.Report(new BlockWriteProgress(5, 0, 20, null, BrokerScanPhase.Parsing));
                 afterFirstReport.MarkEntered();
                 afterFirstReport.WaitForRelease();
-                progress.Report(new BlockWriteProgress(19, 0, 20, null, BrokerScanPhase.Parsing));
+                reporting.Progress.Report(new BlockWriteProgress(19, 0, 20, null, BrokerScanPhase.Parsing));
                 return [[ScanRecord(5, ".", 3)]];
             });
             await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
@@ -72,9 +72,9 @@ public partial class JournalBrokerHostTests
         return WithScanProgressThrottleAsync(TimeSpan.Zero, async () =>
         {
             using var blockWriter = new RecordingBlockSectionWriter();
-            var host = ScanHost(scanDrive: (_, _, _, progress, _, _) =>
+            var host = ScanHost(scanDrive: (_, _, reporting, _, _, _) =>
             {
-                progress?.Report(new BlockWriteProgress(100, 0, 1000, null, BrokerScanPhase.Parsing));
+                reporting.Progress?.Report(new BlockWriteProgress(100, 0, 1000, null, BrokerScanPhase.Parsing));
                 return
                 [
                     [new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "r1.txt")],
@@ -104,11 +104,11 @@ public partial class JournalBrokerHostTests
         return WithScanProgressThrottleAsync(TimeSpan.Zero, async () =>
         {
             using var blockWriter = new RecordingBlockSectionWriter();
-            var host = ScanHost(scanDrive: (_, _, _, progress, _, _) =>
+            var host = ScanHost(scanDrive: (_, _, reporting, _, _, _) =>
             {
                 for (var i = 1; i <= 5; i++)
                 {
-                    progress?.Report(new BlockWriteProgress(i * 1000, 0, 5000, null, BrokerScanPhase.Parsing));
+                    reporting.Progress?.Report(new BlockWriteProgress(i * 1000, 0, 5000, null, BrokerScanPhase.Parsing));
                 }
 
                 return
@@ -219,9 +219,9 @@ public partial class JournalBrokerHostTests
         // More records processed than the (deliberately understated) TotalRecords, so the final
         // frame has to bump both counts up to the processed maximum instead of trusting the
         // last reported total.
-        var host = ScanHost(scanDrive: (_, _, _, progress, _, _) =>
+        var host = ScanHost(scanDrive: (_, _, reporting, _, _, _) =>
         {
-            progress!.Report(new BlockWriteProgress(10, 500, 5, 1000, BrokerScanPhase.Parsing));
+            reporting.Progress!.Report(new BlockWriteProgress(10, 500, 5, 1000, BrokerScanPhase.Parsing));
             return [[new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "r1.txt")]];
         });
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
@@ -278,12 +278,12 @@ public partial class JournalBrokerHostTests
             using var blockWriter = new RecordingBlockSectionWriter();
             var host = ScanHost(
                 queryCursor: _ => new UsnJournalCursor(7UL, 0L),
-                scanDrive: (_, _, _, progress, _, _) =>
+                scanDrive: (_, _, reporting, _, _, _) =>
                 {
                     var batches = new List<IReadOnlyList<MftRecord>>();
                     for (var i = 0; i < 20; i++)
                     {
-                        progress?.Report(new BlockWriteProgress(i, i * 100, 20, 2000));
+                        reporting.Progress?.Report(new BlockWriteProgress(i, i * 100, 20, 2000));
                         batches.Add([new MftRecord((ulong)i, 0, new MftRecordFields(1, FileAttributes.Archive, 100), $"r{i}.txt")]);
                     }
 

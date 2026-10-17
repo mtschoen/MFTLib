@@ -87,7 +87,7 @@ public class IncludeFreedTests
     {
         using var result = FixtureVolume.Parse(_imagePath, fixture, includeFreed);
         totalRecords = result.TotalRecords;
-        return result.ToArray();
+        return result.ToRecords();
     }
 
     static void AssertRowsEqual(MftRecord[] expected, MftRecord[] actual)

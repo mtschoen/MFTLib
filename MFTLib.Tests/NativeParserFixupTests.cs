@@ -159,7 +159,7 @@ public class NativeParserFixupTests
         var path = MftDumpFixture.WriteFile(_directory, dump, $"{Guid.NewGuid():N}.mft");
         using var input = MftDumpInput.Open(path);
         using var result = input.Parse();
-        return result.ToArray().Select(record => record.FileName).ToArray();
+        return result.ToRecords().Select(record => record.FileName).ToArray();
     }
 
     static Span<byte> Record(byte[] dump, int recordSize, int recordNumber) =>

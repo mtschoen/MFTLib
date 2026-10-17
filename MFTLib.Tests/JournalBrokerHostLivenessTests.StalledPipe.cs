@@ -15,9 +15,9 @@ public partial class JournalBrokerHostLivenessTests
         var entered = new TestGate();
         var release = new TestGate();
         using var sectionWriter = new RecordingBlockSectionWriter();
-        await using var harness = new HostChannelHarness(liveness.Host(scanDrive: (_, _, operation, _, _, _) =>
+        await using var harness = new HostChannelHarness(liveness.Host(scanDrive: (_, _, reporting, _, _, _) =>
         {
-            operation.Processing("wedged step");
+            reporting.Operation!.Processing("wedged step");
             entered.MarkEntered();
             release.WaitForRelease();
             return [];
@@ -66,9 +66,9 @@ public partial class JournalBrokerHostLivenessTests
         try
         {
             using var sectionWriter = new RecordingBlockSectionWriter();
-            await using var harness = new HostChannelHarness(liveness.Host(scanDrive: (_, _, operation, _, _, _) =>
+            await using var harness = new HostChannelHarness(liveness.Host(scanDrive: (_, _, reporting, _, _, _) =>
             {
-                operation.Processing("wedged step");
+                reporting.Operation!.Processing("wedged step");
                 entered.MarkEntered();
                 release.WaitForRelease();
                 return [];

@@ -289,8 +289,8 @@ public partial class JournalBrokerHostChannelTests
         }
 
         public IEnumerable<IReadOnlyList<MftRecord>> Source(string drive, ParseThreadAllowance parseThreads,
-            IBrokerOperationReporter operation, IProgress<BlockWriteProgress>? progress,
-            MftRecordScanOptions scanOptions, CancellationToken cancellationToken)
+            BlockWriteReporting reporting,
+            MftScanOptions scanOptions, Action<long> recordsOmitted, CancellationToken cancellationToken)
         {
             lock (_scans)
             {

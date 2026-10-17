@@ -63,47 +63,13 @@ public class MftVolumeAdminTests
     }
 
     [TestMethod]
-    public void ReadAllRecords_WithTimings_PopulatesTimings()
+    public void ReadAll_MaterializesRecordsWithStableStrings()
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        var records = volume.ReadAll(out var timings, out var totalRecords);
+        var records = volume.ReadAll();
 
         Assert.IsTrue(records.Length > 0);
-        Assert.IsTrue(totalRecords > 0);
-        Assert.IsTrue(timings.NativeTotal > TimeSpan.Zero);
-    }
-
-    [TestMethod]
-    public void StreamRecords_CanEnumerate()
-    {
-        RequireElevation();
-        using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords(false, null, null, CancellationToken.None);
-
-        var count = 0;
-        foreach (var unused in result)
-        {
-            count++;
-            if (count >= 100)
-            {
-                break; // Don't enumerate everything
-            }
-        }
-
-        Assert.IsTrue(count >= 100, "Expected at least 100 records on C:");
-    }
-
-    [TestMethod]
-    public void StreamRecords_ToArray_MaterializesAll()
-    {
-        RequireElevation();
-        using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords(false, null, null, CancellationToken.None);
-        var records = result.ToArray();
-
-        Assert.IsTrue(records.Length > 0);
-        // Verify materialized records have stable strings
         var first = records[0];
         var name1 = first.FileName;
         var name2 = first.FileName;
@@ -131,18 +97,6 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         Assert.ThrowsException<IOException>(() => FileUtilities._getVolumeHandle(@"\\.\Q:"));
-    }
-
-    [TestMethod]
-    public void MftResult_Properties_MatchRecordCounts()
-    {
-        RequireElevation();
-        using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords(false, null, null, CancellationToken.None);
-
-        Assert.IsTrue(result.TotalRecords > 0);
-        Assert.IsTrue(result.UsedRecords > 0);
-        Assert.IsTrue(result.UsedRecords <= result.TotalRecords);
     }
 
     [TestMethod]

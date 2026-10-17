@@ -54,35 +54,29 @@ public class ParseThreadAllowanceTests
         });
 
         using var volume = MftVolume.Open("C");
-        using (volume.StreamRecords(false, null, allowance, CancellationToken.None))
-        {
-            CollectionAssert.AreEqual(new[] { 2, 3, 5 }, observed);
-        }
+        _ = volume.ReadRecordBatches(4096, null, allowance, CancellationToken.None).ToList();
+        CollectionAssert.AreEqual(new[] { 2, 3, 5 }, observed);
 
         // Detached when the parse returned: the next parse attaches again and sees the current count.
         observed.Clear();
         allowance.Count = 7;
-        using (volume.StreamRecords(false, null, allowance, CancellationToken.None))
-        {
-            Assert.AreEqual(7, observed[0]);
-        }
+        _ = volume.ReadRecordBatches(4096, null, allowance, CancellationToken.None).ToList();
+        Assert.AreEqual(7, observed[0]);
     }
 
     [TestMethod]
-    public unsafe void StreamRecords_NullAllowance_LeavesTheControlBlockAllowanceZero()
+    public unsafe void ReadRecordBatches_NullAllowance_LeavesTheControlBlockAllowanceZero()
     {
         var observed = -1;
         FakeParse(control => observed = control->ParseThreadAllowance);
 
         using var volume = MftVolume.Open("C");
-        using (volume.StreamRecords(false, null, null, CancellationToken.None))
-        {
-            Assert.AreEqual(0, observed);
-        }
+        _ = volume.ReadRecordBatches(4096, null, null, CancellationToken.None).ToList();
+        Assert.AreEqual(0, observed);
     }
 
     [TestMethod]
-    public unsafe void StreamRecords_TokenCancelledDuringParse_SetsCancelRequested()
+    public unsafe void ReadRecordBatches_TokenCancelledDuringParse_SetsCancelRequested()
     {
         using var cancellation = new CancellationTokenSource();
         var observed = new List<int>();
@@ -96,10 +90,8 @@ public class ParseThreadAllowanceTests
         });
 
         using var volume = MftVolume.Open("C");
-        using (volume.StreamRecords(false, null, null, cancellation.Token))
-        {
-            CollectionAssert.AreEqual(new[] { 0, 1 }, observed);
-        }
+        _ = volume.ReadRecordBatches(4096, null, null, cancellation.Token).ToList();
+        CollectionAssert.AreEqual(new[] { 0, 1 }, observed);
     }
 
     [TestMethod]
