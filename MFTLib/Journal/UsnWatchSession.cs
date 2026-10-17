@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using MFTLib.NativeInterop;
 
 namespace MFTLib;
 
@@ -11,14 +12,14 @@ sealed class UsnWatchSession(SafeHandle watchHandle) : IDisposable
 {
     readonly EventWaitHandle _cancellationEvent = new(false, EventResetMode.ManualReset);
 
-    public void Cancel()
+    internal void Cancel()
     {
         _cancellationEvent.Set();
         MFTLibNative.NativeCancelUsnJournalWatch(watchHandle);
     }
 
     /// <summary>Blocks on a thread-pool thread until the journal has entries at or after the position.</summary>
-    public Task<IntPtr> ReadBatchAsync(long currentUsn, ulong journalIdentifier, CancellationToken cancellationToken)
+    internal Task<IntPtr> ReadBatchAsync(long currentUsn, ulong journalIdentifier, CancellationToken cancellationToken)
     {
         return Task.Factory.StartNew(
             () => MFTLibNative.NativeWatchUsnJournalBatchCancelable(
@@ -28,9 +29,12 @@ sealed class UsnWatchSession(SafeHandle watchHandle) : IDisposable
             TaskScheduler.Default);
     }
 
-    public void Dispose()
+    internal void Dispose()
     {
         _cancellationEvent.Dispose();
         watchHandle.Dispose();
     }
+
+    void IDisposable.Dispose() => Dispose();
 }
+

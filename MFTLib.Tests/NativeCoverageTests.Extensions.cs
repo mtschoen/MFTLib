@@ -1,5 +1,5 @@
 using System.Runtime.InteropServices;
-using MFTLib.Interop;
+using MFTLib.NativeInterop;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.TestSupport.SyntheticNtfsImage;
@@ -23,12 +23,12 @@ public partial class NativeCoverageTests
             var data = BuildBootSector();
             WriteFileRecord(data, 4096);
 
-            // Attribute 1: Data (non-resident) → clusters 1..256 (1MB)
+            // Attribute 1: Data (non-resident) â†’ clusters 1..256 (1MB)
             var a1 = 4096 + 0x38;
             var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
 
             // Attribute 2: Non-resident AttributeList with data at cluster 260
-            // The data at cluster 260 is all zeros → empty/invalid entries → no extensions
+            // The data at cluster 260 is all zeros â†’ empty/invalid entries â†’ no extensions
             var a2 = a1 + a1Len;
             data[a2] = 0x20; // TypeCode = AttributeList
             data[a2 + 4] = 0x48; // RecordLength = 72

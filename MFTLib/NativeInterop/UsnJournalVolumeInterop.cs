@@ -1,35 +1,15 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using MFTLib.Index;
 using Microsoft.Win32.SafeHandles;
 
-namespace MFTLib.Index;
-
-/// <summary>
-///     Seam delegate for the <c>DeviceIoControl</c> import below: the out parameter rules
-///     out a plain <see cref="Func{T, TResult}" />, so this mirrors the named-delegate
-///     pattern <c>Kernel32</c> uses. Declared here rather than reused from <c>Kernel32</c>
-///     because the index may not reference the flat namespace.
-/// </summary>
-delegate bool VolumeIoControl(
-    SafeFileHandle device,
-    uint ioControlCode,
-    IntPtr inBuffer,
-    uint inBufferSize,
-    IntPtr outBuffer,
-    uint outBufferSize,
-    out uint bytesReturned,
-    IntPtr overlapped);
+namespace MFTLib.NativeInterop;
 
 /// <summary>
 ///     The unelevated volume-root handle recipe shared by the index's USN journal queries,
 ///     and the journal query IOCTL they issue against it. The handle is the one
 ///     <see cref="WindowsFileById" /> documents - backup semantics, attributes-only access -
-///     which is also what <c>fsutil usn queryjournal</c> uses unelevated. Declared inside
-///     the index (rather than reusing <c>MFTLib.Interop</c>) because the packed index is
-///     substrate-neutral and may not reference the interop layer. <c>MftVolume</c> issues the same
-///     query, so the class carries no platform attribute: tests drive both through
-///     <c>_ioControl</c> on every platform, and the real imports fail off Windows as
-///     <c>Kernel32</c>'s do.
+///     which is also what <c>fsutil usn queryjournal</c> uses unelevated.
 /// </summary>
 static class UsnJournalVolumeInterop
 {
@@ -42,24 +22,13 @@ static class UsnJournalVolumeInterop
     internal const uint FsctlQueryUsnJournal = 0x000900F4;
 
     /// <summary>
-    ///     A test seam with no synchronization, which is safe only while the test host runs
-    ///     one test at a time. Same shape as <c>Kernel32._deviceIoControl</c>.
-    /// </summary>
-    internal static VolumeIoControl _ioControl = DeviceIoControl;
-
-    internal static void ResetToDefaults()
-    {
-        _ioControl = DeviceIoControl;
-    }
-
-    /// <summary>
     ///     Opens a drive's root directory for journal queries. <paramref name="purpose" />
     ///     names the query in the failure message, since the caller knows which one it is.
     /// </summary>
-    public static SafeFileHandle OpenVolumeRoot(DriveKey driveLetter, string purpose)
+    internal static SafeFileHandle OpenVolumeRoot(DriveKey driveLetter, string purpose)
     {
         var rootDirectory = driveLetter + @":\";
-        var handle = CreateFileW(rootDirectory, FileReadAttributes, ShareAll, IntPtr.Zero,
+        var handle = Kernel32._createFile(rootDirectory, FileReadAttributes, ShareAll, IntPtr.Zero,
             OpenExisting, FileFlagBackupSemantics, IntPtr.Zero);
         if (handle.IsInvalid)
         {
@@ -73,13 +42,13 @@ static class UsnJournalVolumeInterop
     }
 
     /// <summary>Issues <c>FSCTL_QUERY_USN_JOURNAL</c> against an open volume-root handle.</summary>
-    public static UsnJournalDataV0 QueryJournalData(SafeFileHandle handle)
+    internal static UsnJournalDataV0 QueryJournalData(SafeFileHandle handle)
     {
         var bufferSize = Marshal.SizeOf<UsnJournalDataV0>();
         var buffer = Marshal.AllocHGlobal(bufferSize);
         try
         {
-            var succeeded = _ioControl(
+            var succeeded = Kernel32._deviceIoControl(
                 handle, FsctlQueryUsnJournal, IntPtr.Zero, 0, buffer, (uint)bufferSize, out _, IntPtr.Zero);
             if (!succeeded)
             {
@@ -93,27 +62,6 @@ static class UsnJournalVolumeInterop
             Marshal.FreeHGlobal(buffer);
         }
     }
-
-    [DllImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true, CharSet = CharSet.Unicode)]
-    static extern SafeFileHandle CreateFileW(
-        string fileName,
-        uint desiredAccess,
-        uint shareMode,
-        IntPtr securityAttributes,
-        uint creationDisposition,
-        uint flagsAndAttributes,
-        IntPtr templateFile);
-
-    [DllImport("kernel32.dll", EntryPoint = "DeviceIoControl", SetLastError = true)]
-    static extern bool DeviceIoControl(
-        SafeFileHandle device,
-        uint ioControlCode,
-        IntPtr inBuffer,
-        uint inBufferSize,
-        IntPtr outBuffer,
-        uint outBufferSize,
-        out uint bytesReturned,
-        IntPtr overlapped);
 
     /// <summary>
     ///     Mirrors <c>USN_JOURNAL_DATA_V0</c>: seven 8-byte fields. The whole layout is

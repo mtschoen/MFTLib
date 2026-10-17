@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using MFTLib.Interop;
+using MFTLib.NativeInterop;
 using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib.Tests.TestSupport;

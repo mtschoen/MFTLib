@@ -13,7 +13,12 @@
       passes that retain few rows. `IndexRow.ToEntry()` creates a handle for a retained row; `IndexRow` exposes
       no block layout, row index or mapped columns. `RowScanner` stays internal. Snapshot borrows and cancellation
       follow the contract in `docs/query-lifetime.md`.
-    - **Index namespace boundary**: `MFTLib.Index` depends on nothing in the flat `MFTLib` namespace or in `MFTLib.Interop` beyond an allowlist of journal value types (`UsnJournalEntry`, `UsnJournalSettings`, `UsnReason`). Enforced by `MFTLib.Tests/Index/NamespaceBoundaryTests.cs`, an IL-level ArchUnitNET test over the built assembly, with a mandatory negative-control fixture. Not an aislop rule: the forbidden folders share the flat `MFTLib` namespace, so there is no `using` for an import rule to match. Growing the allowlist is a review decision.
+    - **Index namespace boundary**: `MFTLib.Index` may use `MFTLib.NativeInterop` for the shared
+      native boundary. Its dependencies on the flat `MFTLib` namespace and `MFTLib.Interop` remain restricted
+      to `UsnJournalEntry`, `UsnJournalSettings`, and `UsnReason`. `NamespaceBoundaryTests` enforces the
+      compiled-IL rule, retains its deliberate `MftRecord` violation, and verifies the exact shared
+      namespace permission. Not an aislop rule: the forbidden folders share the flat `MFTLib` namespace, so
+      there is no `using` for an import rule to match. Growing the allowlist is a review decision.
     - **MFT dump drives**: a source built with a dump identity (`MftDumpSourceIdentity`) makes its drive a virtual
       inventory with the root `dump:/{DRIVE}` (upper-case letter), rendered with `/` and read with `/` or `\`,
       case-insensitive on every platform; `MftDumpPaths` owns those rules and touches no filesystem. The block
@@ -166,6 +171,7 @@
     - **Lazy Materialization**: `MftRecord` stores native pointers; strings are only created on access.
     - **Memory Safety**: `ToArray()` and `Materialize()` ensure strings are stable in managed memory after native buffers are freed.
     - **Streaming API**: `MftVolume.ReadRecordBatches` (a volume) and `MftDumpInput.Parse` (a saved image) are the only scan entry points. Both support the same progress, `ParseThreadAllowance` and cancellation controls (supplied directly on `ReadRecordBatches` or grouped into `MftFileScanOptions` for `MftDumpInput.Parse`) and share one managed path (`ParseWithControl` allocates the native `MftParseControl` block, attaches the allowance, registers the token and frees it) over one native core (`ParseMFTImpl`); the dump export and the volume export both take the control block and callback. Neither filters names or resolves paths. `ReadRecordBatches` also returns freed base records when its `MftScanOptions.IncludeFreed` is set; a dump parse never does. The scan's `MftScanOptions` value travels unchanged from the producer to the native parse and the block writer; the count of records the parser passed over reaches the producer through the `recordsOmitted` callback. `MftResult.TotalRecords` is the examined count. `MftResult.ReadBatches` yields bounded batches of materialized records, so no batch borrows the native result that `ReadRecordBatches` frees when its enumeration ends or is disposed.
+    - **Volume handle and journal ownership**: `MftVolume` owns one synchronous volume handle and MFT record parsing. Its internal `Journal` component, `UsnJournalVolume`, borrows the same handle for cursor, settings, bounded reads, and growth. The owner closes that handle; retained journal components reject operations once it is closed. Watches create a separate overlapped handle through `UsnWatchSession`, whose pending read and cancellation registration finish before its event and handle are released.
     - **ElevationUtilities**: Names the public route to elevation: `DefaultProvider`, the production `IElevationProvider`. Callers supply a timeout appropriate to their operation; the shared Defender exclusion sequence allows 60 seconds for its elevated child. `IsElevated()`, `CanSelfElevate()` and `TryRunElevated(IReadOnlyList<string> arguments, TimeSpan timeout)` are interface members; `TryRunElevated` relaunches the executable with the `runas` verb and quotes each argument through `ProcessStartInfo.ArgumentList`, which .NET honours with `UseShellExecute = true`. `TryAddDefenderProcessExclusions` is the one Windows Defender process-exclusion sequence built on those members ([Defender exclusions](elevation.md#windows-defender-process-exclusions)). The internal `DefaultElevationProvider` holds the logic and takes its process, platform and wait dependencies through an internal constructor, so tests build their own instance with fakes.
 
 - **SampleProgram.Direct** and **SampleProgram.Watch** (C# Console Apps) - the two samples, each a CLI that compiles against the public API with no access to MFTLib internals; together their IL is the caller set the public surface is measured against. The heads-up dialog, unattended check, console primitives, common status reporting and common option readers live in `SampleProgram.Shared` and compile into both samples as linked source. Each sample owns its elevation flow; Direct owns self-relaunch/output redirection and integer/date option readers, while Watch owns drive-open progress reporting. Each verb is small, so a public member that needs contortion to appear is an internalization candidate, not a reason to grow a sample.
@@ -371,9 +377,8 @@ The managed source is organized by responsibility:
 
 - `MFTLib/Index` - the substrate-neutral packed index: block format, `FileIndex`, snapshots, queries, mutation, and the enumeration producer. It depends on nothing else in the library beyond a few journal value types, a boundary an architecture test enforces.
 - `MFTLib/Mft` - scans, records, results and timings
-- `MFTLib/Journal` - USN cursor, entries and reasons
+- `MFTLib/Journal` - journal values and journal-volume read, watch, and growth operations
 - `MFTLib/Sources` - producers, row writer and scan
 - `MFTLib/Broker` - elevated host and client, protocol, block writing, and diagnostics
 - `MFTLib/Elevation` - elevation detection and the injectable provider
-- `MFTLib/Interop` - native result layouts
-- `MFTLib/Internal` - native bindings and internal volume utilities
+- `MFTLib/NativeInterop` - native imports, ABI layouts, and handle/query helpers shared by the MFT and index code; `Kernel32` owns the create-file, device-control, and file-information seams

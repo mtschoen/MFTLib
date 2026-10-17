@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
-namespace MFTLib;
+namespace MFTLib.NativeInterop;
 
 // Seam delegate for NativeDeviceIoControl: DeviceIoControl's out parameter rules out a
 // plain Func<...>, so this mirrors _createFile's swappable-Func pattern with a named
@@ -49,7 +49,8 @@ static class Kernel32
     internal static DeviceIoControl _deviceIoControl = NativeDeviceIoControl;
     internal static GetFileInformationByHandle _getFileInformationByHandle = NativeGetFileInformationByHandle;
 
-    [DllImport("kernel32.dll", EntryPoint = "CreateFile", SetLastError = true, CharSet = CharSet.Unicode)]
+    [DllImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true,
+        CharSet = CharSet.Unicode, ExactSpelling = true)]
     static extern SafeFileHandle NativeCreateFile(
         string lpFileName,
         uint dwDesiredAccess,
@@ -75,6 +76,17 @@ static class Kernel32
         SafeFileHandle hFile,
         out ByHandleFileInformation lpFileInformation);
 
+    [DllImport("kernel32.dll", EntryPoint = "FlushViewOfFile", SetLastError = true)]
+    internal static extern unsafe bool FlushViewOfFile(byte* baseAddress, nuint numberOfBytesToFlush);
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    [DllImport("kernel32.dll", EntryPoint = "GetVolumeInformationW", SetLastError = true,
+        CharSet = CharSet.Unicode, ExactSpelling = true)]
+    internal static extern bool GetVolumeInformationW(
+        string rootPathName, IntPtr volumeNameBuffer, uint volumeNameSize,
+        out uint volumeSerialNumber, out uint maximumComponentLength, out uint fileSystemFlags,
+        IntPtr fileSystemNameBuffer, uint fileSystemNameSize);
+
     internal static void ResetToDefaults()
     {
         _createFile = NativeCreateFile;
@@ -82,3 +94,4 @@ static class Kernel32
         _getFileInformationByHandle = NativeGetFileInformationByHandle;
     }
 }
+

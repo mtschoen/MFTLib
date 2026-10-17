@@ -1,5 +1,5 @@
 using System.Runtime.InteropServices;
-using MFTLib.Interop;
+using MFTLib.NativeInterop;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;

@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace MFTLib.Interop;
+namespace MFTLib.NativeInterop;
 
 /// <summary>
 ///     What the native open of a dump found. <see cref="ErrorMessage" /> is empty exactly when the

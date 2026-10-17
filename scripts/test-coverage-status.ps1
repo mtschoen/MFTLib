@@ -24,6 +24,7 @@ function Write-Report([string]$Percentage, [int]$IndexHits = 1) {
 <class name="MFTLib.Index.Uncovered"><lines><line number="2" hits="0"/></lines></class>
 <class name="MFTLib.Index.FileIndex/Nested"><lines><line number="3" hits="0"/></lines></class>
 <class name="MFTLib.IndexExtra.Other"><lines><line number="1" hits="1"/></lines></class>
+<class name="MFTLib.NativeInterop.UsnJournalVolumeInterop"><lines><line number="1" hits="1"/></lines></class>
 </classes></package><package name="SampleProgram.Direct"><classes>
 <class name="SampleProgram.Direct.SampleHost"><lines><line number="1" hits="1"/></lines></class>
 </classes></package><package name="SampleProgram.Watch"><classes>

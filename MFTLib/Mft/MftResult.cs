@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using MFTLib.Interop;
+using MFTLib.NativeInterop;
 
 namespace MFTLib;
 

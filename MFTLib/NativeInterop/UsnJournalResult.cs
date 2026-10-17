@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace MFTLib.Interop;
+namespace MFTLib.NativeInterop;
 
 [StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Unicode)]
 struct UsnJournalResultNative

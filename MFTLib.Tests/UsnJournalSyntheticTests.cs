@@ -1,6 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
-using MFTLib.Interop;
+using MFTLib.NativeInterop;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Win32.SafeHandles;
@@ -54,7 +54,7 @@ public partial class UsnJournalSyntheticTests
         return data;
     }
 
-    // --- QueryUsnJournal: the managed query path, scripted through UsnJournalVolumeInterop._ioControl ---
+    // --- QueryUsnJournal: the managed query path, scripted through JournalQueryFake ---
 
     [TestMethod]
     public void QueryUsnJournal_SyntheticSuccess_ReturnsCursor()
@@ -62,7 +62,7 @@ public partial class UsnJournalSyntheticTests
         UseFakeHandle();
         JournalQueryFake.Serve(journalIdentifier: 0xABCD, nextUsn: 5000);
         using var volume = MftVolume.Open("C");
-        var cursor = volume.QueryUsnJournalCursor();
+        var cursor = volume.Journal.QueryUsnJournalCursor();
         Assert.AreEqual(0xABCDUL, cursor.JournalIdentifier);
         Assert.AreEqual(5000L, cursor.NextUsn);
     }
@@ -78,7 +78,7 @@ public partial class UsnJournalSyntheticTests
         var exception = Assert.ThrowsException<Win32Exception>(() =>
         {
             using var volume = MftVolume.Open("C");
-            volume.QueryUsnJournalCursor();
+            volume.Journal.QueryUsnJournalCursor();
         });
         Assert.AreEqual(win32Error, exception.NativeErrorCode);
     }
@@ -89,7 +89,7 @@ public partial class UsnJournalSyntheticTests
         UseFakeHandle();
         JournalQueryFake.Serve(maximumSize: 0x08000000, allocationDelta: 0x01000000);
         using var volume = MftVolume.Open("C");
-        var settings = volume.QueryUsnJournalSettings();
+        var settings = volume.Journal.QueryUsnJournalSettings();
         Assert.AreEqual(0x08000000L, settings.MaximumSize);
         Assert.AreEqual(0x01000000L, settings.AllocationDelta);
     }
@@ -106,7 +106,7 @@ public partial class UsnJournalSyntheticTests
         QueueSuccess(UsnReadBuffers.Build(2000)); // same nextUsn, zero records → break
 
         using var volume = MftVolume.Open("C");
-        var (entries, cursor) = volume.ReadUsnJournalBounded(Cursor, 0);
+        var (entries, cursor) = volume.Journal.ReadUsnJournalBounded(Cursor, 0);
 
         Assert.AreEqual(2, entries.Length);
         Assert.AreEqual(100UL, entries[0].RecordNumber);
@@ -127,7 +127,7 @@ public partial class UsnJournalSyntheticTests
         QueueSuccess(UsnReadBuffers.Build(3000)); // terminate
 
         using var volume = MftVolume.Open("C");
-        var (entries, _) = volume.ReadUsnJournalBounded(Cursor, 0);
+        var (entries, _) = volume.Journal.ReadUsnJournalBounded(Cursor, 0);
         Assert.AreEqual(1400, entries.Length);
     }
 
@@ -140,13 +140,13 @@ public partial class UsnJournalSyntheticTests
         QueueSuccess(UsnReadBuffers.Build(4000, (300, 5, 3000, 0x00000100u, "third.txt")));
 
         using var volume = MftVolume.Open("C");
-        var (firstEntries, firstCursor) = volume.ReadUsnJournalBounded(Cursor, 1);
+        var (firstEntries, firstCursor) = volume.Journal.ReadUsnJournalBounded(Cursor, 1);
 
         Assert.AreEqual(1, firstEntries.Length);
         Assert.AreEqual("first.txt", firstEntries[0].FileName);
         Assert.AreEqual(2000L, firstCursor.NextUsn);
 
-        var (secondEntries, secondCursor) = volume.ReadUsnJournalBounded(firstCursor, 1);
+        var (secondEntries, secondCursor) = volume.Journal.ReadUsnJournalBounded(firstCursor, 1);
 
         Assert.AreEqual(1, secondEntries.Length);
         Assert.AreEqual("second.txt", secondEntries[0].FileName);
@@ -163,7 +163,7 @@ public partial class UsnJournalSyntheticTests
         QueueSuccess(UsnReadBuffers.Build(4000));
 
         using var volume = MftVolume.Open("C");
-        var (entries, cursor) = volume.ReadUsnJournalBounded(Cursor, 0);
+        var (entries, cursor) = volume.Journal.ReadUsnJournalBounded(Cursor, 0);
 
         Assert.AreEqual(3, entries.Length);
         Assert.AreEqual(4000L, cursor.NextUsn);
@@ -190,7 +190,7 @@ public partial class UsnJournalSyntheticTests
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C");
-            volume.ReadUsnJournalBounded(Cursor, 0);
+            volume.Journal.ReadUsnJournalBounded(Cursor, 0);
         });
         Assert.IsTrue(exception.Message.Contains("allocate"));
     }
@@ -203,7 +203,7 @@ public partial class UsnJournalSyntheticTests
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C");
-            volume.ReadUsnJournalBounded(Cursor, 0);
+            volume.Journal.ReadUsnJournalBounded(Cursor, 0);
         });
         Assert.IsTrue(exception.Message.Contains("allocate"));
     }
@@ -219,7 +219,7 @@ public partial class UsnJournalSyntheticTests
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C");
-            volume.ReadUsnJournalBounded(Cursor, 0);
+            volume.Journal.ReadUsnJournalBounded(Cursor, 0);
         });
         Assert.IsTrue(exception.Message.Contains("grow"));
     }
@@ -232,7 +232,7 @@ public partial class UsnJournalSyntheticTests
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C");
-            volume.ReadUsnJournalBounded(Cursor, 0);
+            volume.Journal.ReadUsnJournalBounded(Cursor, 0);
         });
         Assert.IsTrue(exception.Message.Contains("not active"));
     }
@@ -245,7 +245,7 @@ public partial class UsnJournalSyntheticTests
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C");
-            volume.ReadUsnJournalBounded(Cursor, 0);
+            volume.Journal.ReadUsnJournalBounded(Cursor, 0);
         });
         Assert.IsTrue(exception.Message.Contains("deletion"));
     }
@@ -258,7 +258,7 @@ public partial class UsnJournalSyntheticTests
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C");
-            volume.ReadUsnJournalBounded(Cursor, 0);
+            volume.Journal.ReadUsnJournalBounded(Cursor, 0);
         });
         Assert.IsTrue(exception.Message.Contains("rescan"));
     }
@@ -271,7 +271,7 @@ public partial class UsnJournalSyntheticTests
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C");
-            volume.ReadUsnJournalBounded(Cursor, 0);
+            volume.Journal.ReadUsnJournalBounded(Cursor, 0);
         });
         Assert.IsTrue(exception.Message.Contains("Error: 5"));
     }
@@ -282,7 +282,7 @@ public partial class UsnJournalSyntheticTests
         UseFakeHandle();
         QueueSuccess(new byte[4]);
         using var volume = MftVolume.Open("C");
-        var (entries, _) = volume.ReadUsnJournalBounded(Cursor, 0);
+        var (entries, _) = volume.Journal.ReadUsnJournalBounded(Cursor, 0);
         Assert.AreEqual(0, entries.Length);
     }
 
@@ -293,7 +293,7 @@ public partial class UsnJournalSyntheticTests
         QueueSuccess(BuildZeroLengthRecordBuffer(2000));
         QueueSuccess(UsnReadBuffers.Build(2000));
         using var volume = MftVolume.Open("C");
-        var (entries, cursor) = volume.ReadUsnJournalBounded(Cursor, 0);
+        var (entries, cursor) = volume.Journal.ReadUsnJournalBounded(Cursor, 0);
         Assert.AreEqual(0, entries.Length);
         Assert.AreEqual(2000L, cursor.NextUsn);
     }
@@ -304,7 +304,7 @@ public partial class UsnJournalSyntheticTests
         UseFakeHandle();
         NativeTestHooks.NativeSetUsnIoFailError(ERROR_HANDLE_EOF, 1);
         using var volume = MftVolume.Open("C");
-        var (entries, _) = volume.ReadUsnJournalBounded(Cursor, 0);
+        var (entries, _) = volume.Journal.ReadUsnJournalBounded(Cursor, 0);
         Assert.AreEqual(0, entries.Length);
     }
 
@@ -318,7 +318,7 @@ public partial class UsnJournalSyntheticTests
         NativeTestHooks.NativeSetUsnIoFailError(ERROR_HANDLE_EOF, 2);
         QueueSuccess(UsnReadBuffers.Build(2000, (100, 5, 1000, 0x00000100u, "passed.txt")));
         using var volume = MftVolume.Open("C");
-        var (entries, _) = volume.ReadUsnJournalBounded(Cursor, 0);
+        var (entries, _) = volume.Journal.ReadUsnJournalBounded(Cursor, 0);
         Assert.AreEqual(1, entries.Length);
         Assert.AreEqual("passed.txt", entries[0].FileName);
     }
@@ -373,7 +373,7 @@ public partial class UsnJournalSyntheticTests
         var exception = Assert.ThrowsException<Win32Exception>(() =>
         {
             using var volume = MftVolume.Open("C");
-            volume.QueryUsnJournalCursor();
+            volume.Journal.QueryUsnJournalCursor();
         });
         Assert.AreEqual(errorInvalidHandle, exception.NativeErrorCode);
     }
@@ -548,7 +548,7 @@ public partial class UsnJournalSyntheticTests
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
         {
-            await foreach (var _ in volume.WatchUsnJournal(Cursor))
+            await foreach (var _ in volume.Journal.WatchUsnJournal(Cursor))
             {
             }
         });
@@ -565,7 +565,7 @@ public partial class UsnJournalSyntheticTests
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
         {
-            await foreach (var _ in volume.WatchUsnJournal(Cursor))
+            await foreach (var _ in volume.Journal.WatchUsnJournal(Cursor))
             {
             }
         });
@@ -581,7 +581,7 @@ public partial class UsnJournalSyntheticTests
         QueueSuccess(UsnReadBuffers.Build(600, ((0xA9UL << 48) | 0x1246A1, 5, 550, 0x00000100u, "created.txt")));
         using var volume = MftVolume.Open("C");
 
-        await using var enumerator = volume.WatchUsnJournal(Cursor).GetAsyncEnumerator();
+        await using var enumerator = volume.Journal.WatchUsnJournal(Cursor).GetAsyncEnumerator();
         Assert.IsTrue(await enumerator.MoveNextAsync());
 
         var (entries, cursor) = enumerator.Current;
@@ -600,11 +600,18 @@ public partial class UsnJournalSyntheticTests
     public void GrowUsnJournal_RequestedNotLargerThanCurrent_RefusesWithoutIoctl(uint requestedMaximumSize)
     {
         UseFakeHandle();
-        JournalQueryFake.Serve(maximumSize: 0x200000, allocationDelta: 0x100000);
+        var query = JournalQueryFake.Create(() =>
+            JournalQueryFake.Describe(7, 200, maximumSize: 0x200000, allocationDelta: 0x100000));
         var createCalled = false;
         bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
             uint inBufferSize, IntPtr outBuffer, uint outBufferSize, out uint bytesReturned, IntPtr overlapped)
         {
+            if (ioControlCode == UsnJournalVolumeInterop.FsctlQueryUsnJournal)
+            {
+                return query(device, ioControlCode, inBuffer, inBufferSize,
+                    outBuffer, outBufferSize, out bytesReturned, overlapped);
+            }
+            Assert.AreEqual(0x000900E7u, ioControlCode);
             createCalled = true;
             bytesReturned = 0;
             return true;
@@ -614,7 +621,7 @@ public partial class UsnJournalSyntheticTests
         try
         {
             using var volume = MftVolume.Open("C");
-            volume.GrowUsnJournal(requestedMaximumSize, 0x100000);
+            volume.Journal.GrowUsnJournal(requestedMaximumSize, 0x100000);
             Assert.Fail("Expected InvalidOperationException");
         }
         catch (InvalidOperationException exception)
@@ -630,7 +637,7 @@ public partial class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         var queryCount = 0;
-        JournalQueryFake.Serve(() => ++queryCount == 1
+        var query = JournalQueryFake.Create(() => ++queryCount == 1
             ? JournalQueryFake.Describe(7, 200, maximumSize: 0x200000, allocationDelta: 0x100000) // pre-check
             : JournalQueryFake.Describe(7, 200, maximumSize: 0x400000, allocationDelta: 0x200000)); // post-change
         uint? capturedCode = null;
@@ -639,6 +646,12 @@ public partial class UsnJournalSyntheticTests
         bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
             uint inBufferSize, IntPtr outBuffer, uint outBufferSize, out uint bytesReturned, IntPtr overlapped)
         {
+            if (ioControlCode == UsnJournalVolumeInterop.FsctlQueryUsnJournal)
+            {
+                return query(device, ioControlCode, inBuffer, inBufferSize,
+                    outBuffer, outBufferSize, out bytesReturned, overlapped);
+            }
+            Assert.AreEqual(0x000900E7u, ioControlCode);
             capturedCode = ioControlCode;
             capturedMaximum = Marshal.ReadInt64(inBuffer, 0);
             capturedDelta = Marshal.ReadInt64(inBuffer, 8);
@@ -648,7 +661,7 @@ public partial class UsnJournalSyntheticTests
 
         Kernel32._deviceIoControl = FakeDeviceIoControl;
         using var volume = MftVolume.Open("C");
-        var settings = volume.GrowUsnJournal(0x400000, 0x200000);
+        var settings = volume.Journal.GrowUsnJournal(0x400000, 0x200000);
         Assert.AreEqual(0x000900E7u, capturedCode);
         Assert.AreEqual(0x400000L, capturedMaximum);
         Assert.AreEqual(0x200000L, capturedDelta);
@@ -660,10 +673,17 @@ public partial class UsnJournalSyntheticTests
     public void GrowUsnJournal_CreateFails_ThrowsWin32Exception()
     {
         UseFakeHandle();
-        JournalQueryFake.Serve(maximumSize: 0x200000, allocationDelta: 0x100000);
-        static bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
+        var query = JournalQueryFake.Create(() =>
+            JournalQueryFake.Describe(7, 200, maximumSize: 0x200000, allocationDelta: 0x100000));
+        bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
             uint inBufferSize, IntPtr outBuffer, uint outBufferSize, out uint bytesReturned, IntPtr overlapped)
         {
+            if (ioControlCode == UsnJournalVolumeInterop.FsctlQueryUsnJournal)
+            {
+                return query(device, ioControlCode, inBuffer, inBufferSize,
+                    outBuffer, outBufferSize, out bytesReturned, overlapped);
+            }
+            Assert.AreEqual(0x000900E7u, ioControlCode);
             bytesReturned = 0;
             return false;
         }
@@ -672,7 +692,7 @@ public partial class UsnJournalSyntheticTests
         try
         {
             using var volume = MftVolume.Open("C");
-            volume.GrowUsnJournal(0x400000, 0x100000);
+            volume.Journal.GrowUsnJournal(0x400000, 0x100000);
             Assert.Fail("Expected Win32Exception");
         }
         catch (Win32Exception)
@@ -688,7 +708,7 @@ public partial class UsnJournalSyntheticTests
         try
         {
             using var volume = MftVolume.Open("C");
-            volume.GrowUsnJournal(0, 0x100000);
+            volume.Journal.GrowUsnJournal(0, 0x100000);
             Assert.Fail("Expected ArgumentOutOfRangeException");
         }
         catch (ArgumentOutOfRangeException)
@@ -699,7 +719,7 @@ public partial class UsnJournalSyntheticTests
         try
         {
             using var volume = MftVolume.Open("C");
-            volume.GrowUsnJournal(0x400000, 0);
+            volume.Journal.GrowUsnJournal(0x400000, 0);
             Assert.Fail("Expected ArgumentOutOfRangeException");
         }
         catch (ArgumentOutOfRangeException)

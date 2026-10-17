@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.NativeInterop;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Win32.SafeHandles;

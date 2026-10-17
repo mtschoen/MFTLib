@@ -1,3 +1,5 @@
+using MFTLib.NativeInterop;
+
 namespace MFTLib;
 
 /// <summary>

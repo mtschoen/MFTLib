@@ -1,3 +1,4 @@
+using MFTLib.NativeInterop;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -68,8 +69,11 @@ public class UsnJournalTests
     {
         FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
         var volume = MftVolume.Open("C");
+        var journal = volume.Journal;
         volume.Dispose();
-        Assert.ThrowsException<ObjectDisposedException>(() => volume.QueryUsnJournalCursor());
+        Assert.ThrowsException<ObjectDisposedException>(() => journal.QueryUsnJournalCursor());
+        Assert.ThrowsException<ObjectDisposedException>(() => journal.QueryUsnJournalSettings());
+        Assert.ThrowsException<ObjectDisposedException>(() => journal.GrowUsnJournal(4096, 1024));
     }
 
     [TestMethod]
@@ -77,8 +81,9 @@ public class UsnJournalTests
     {
         FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
         var volume = MftVolume.Open("C");
+        var journal = volume.Journal;
         volume.Dispose();
-        Assert.ThrowsException<ObjectDisposedException>(() => volume.ReadUsnJournalBounded(new UsnJournalCursor(1, 0), 0));
+        Assert.ThrowsException<ObjectDisposedException>(() => journal.ReadUsnJournalBounded(new UsnJournalCursor(1, 0), 0));
     }
 
     [TestMethod]
@@ -86,10 +91,11 @@ public class UsnJournalTests
     {
         FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
         var volume = MftVolume.Open("C");
+        var journal = volume.Journal;
         volume.Dispose();
         await Assert.ThrowsExceptionAsync<ObjectDisposedException>(async () =>
         {
-            await foreach (var _ in volume.WatchUsnJournal(new UsnJournalCursor(1, 0)))
+            await foreach (var _ in journal.WatchUsnJournal(new UsnJournalCursor(1, 0)))
             {
             }
         });

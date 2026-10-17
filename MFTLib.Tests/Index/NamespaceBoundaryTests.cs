@@ -26,7 +26,8 @@ public class NamespaceBoundaryTests
     // ResideInNamespaceMatching uses anchored regexes to select only these exact namespaces.
     // One forbidden namespace pattern keeps every allowlist exclusion under the same And chain.
     const string IndexNamespacePattern = @"^MFTLib\.Index$";
-    const string ForbiddenNamespacePattern = @"^MFTLib(\.Interop)?$";
+    const string ForbiddenNamespacePattern = @"^MFTLib(\.Interop|\.NativeInterop)?$";
+    const string SharedInteropNamespace = "MFTLib.NativeInterop";
 
     static readonly Architecture ProductionArchitecture =
         new ArchLoader().LoadAssembly(typeof(FileIndex).Assembly).Build();
@@ -45,6 +46,7 @@ public class NamespaceBoundaryTests
     {
         var forbidden = Types().That()
             .ResideInNamespaceMatching(ForbiddenNamespacePattern)
+            .And().DoNotResideInNamespace(SharedInteropNamespace)
             // ArchUnitNET 0.13.4: DoNotHaveFullName(string) excludes one exact full type name.
             // The journal batch a JournalMutator applies is a value type, not a substrate. It
             // carries no volume handle and no native dependency.
@@ -60,8 +62,8 @@ public class NamespaceBoundaryTests
 
         return Types().That().ResideInNamespaceMatching(IndexNamespacePattern)
             .Should().NotDependOnAny(forbidden)
-            .Because("the packed index is substrate-neutral and must not reach into the MFT, " +
-                     "broker, elevation or interop code");
+            .Because("the packed index is substrate-neutral and may only use the explicitly shared " +
+                     "native boundary, and must not reach into the MFT, broker, elevation or unshared interop code");
     }
 
     /// <summary>Checks the namespace boundary against the production assembly alone.</summary>

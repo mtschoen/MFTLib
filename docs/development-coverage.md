@@ -22,7 +22,7 @@ missing/malformed reports, and unavailable baseline lookup also fail closed.
 The baseline follows main's first-parent history (up to 100 commits), using
 the latest successful coverage status on the nearest measured commit; it is
 not a hard-coded percentage. The tested namespace checks cover MFTLib,
-MFTLib.Index, SampleProgram.Direct, SampleProgram.Watch, Benchmark, and MFTLibTestExtensions; extend that list
+MFTLib.Index, MFTLib.NativeInterop, SampleProgram.Direct, SampleProgram.Watch, Benchmark, and MFTLibTestExtensions; extend that list
 and its regression fixtures when adding another tested executable namespace.
 
 MFTLibTestExtensions is additionally required to have complete line, branch, and

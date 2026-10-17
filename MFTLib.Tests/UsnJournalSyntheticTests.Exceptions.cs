@@ -1,5 +1,5 @@
 using System.Runtime.InteropServices;
-using MFTLib.Interop;
+using MFTLib.NativeInterop;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -30,7 +30,7 @@ public partial class UsnJournalSyntheticTests
         var failure = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C:");
-            volume.ReadUsnJournalBounded(Cursor, 0);
+            volume.Journal.ReadUsnJournalBounded(Cursor, 0);
         });
         StringAssert.Contains(failure.Message, "ReadUsnJournal returned null");
     }

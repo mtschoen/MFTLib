@@ -61,7 +61,8 @@ internal static class LiveVolumeSources
     {
         operation.WaitingOnVolume();
         using var volume = MftVolume.Open(Bare(drive));
-        var batches = volume.WatchUsnJournal(since, cancellationToken).GetAsyncEnumerator(cancellationToken);
+        var batches = volume.Journal.WatchUsnJournal(since, cancellationToken)
+            .GetAsyncEnumerator(cancellationToken);
         try
         {
             while (true)
@@ -85,13 +86,13 @@ internal static class LiveVolumeSources
     internal static UsnJournalSettings GrowUsnJournal(string drive, long maximumSize, long allocationDelta)
     {
         using var volume = MftVolume.Open(Bare(drive));
-        return volume.GrowUsnJournal(maximumSize, allocationDelta);
+        return volume.Journal.GrowUsnJournal(maximumSize, allocationDelta);
     }
 
     internal static UsnJournalCursor QueryCursor(string drive)
     {
         using var volume = MftVolume.Open(Bare(drive));
-        return volume.QueryUsnJournalCursor();
+        return volume.Journal.QueryUsnJournalCursor();
     }
 
     // NtfsVolumeInformation.Query is [SupportedOSPlatform("windows")]; the explicit
@@ -110,7 +111,7 @@ internal static class LiveVolumeSources
         int maximumBufferReads)
     {
         using var volume = MftVolume.Open(Bare(drive));
-        return volume.ReadUsnJournalBounded(since, maximumBufferReads);
+        return volume.Journal.ReadUsnJournalBounded(since, maximumBufferReads);
     }
 
     static string Bare(string drive)

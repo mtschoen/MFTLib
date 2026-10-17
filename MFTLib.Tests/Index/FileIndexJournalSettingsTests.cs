@@ -1,5 +1,6 @@
 using System.Runtime.Versioning;
 using MFTLib.Index;
+using MFTLib.NativeInterop;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -103,7 +104,7 @@ public class FileIndexJournalSettingsTests
         }, CancellationToken.None);
         using var volume = MftVolume.Open("C");
 
-        var fromVolume = volume.QueryUsnJournalSettings();
+        var fromVolume = volume.Journal.QueryUsnJournalSettings();
         var fromIndex = index.QueryUsnJournalSettings('C');
 
         Assert.AreEqual(fromVolume, fromIndex);

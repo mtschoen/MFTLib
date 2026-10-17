@@ -1,5 +1,5 @@
 using System.Runtime.InteropServices;
-using MFTLib.Interop;
+using MFTLib.NativeInterop;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.TestSupport.SyntheticNtfsImage;
@@ -14,7 +14,7 @@ public partial class NativeCoverageTests
     public void ParseMFTRecords_ReadFailDuringExtensionRecordRead()
     {
         // Covers line 162 (ReadMFTRecord Read failure).
-        // Reads: 1=boot sector, 2=record 0, 3=ReadMFTRecord for extension → fail here
+        // Reads: 1=boot sector, 2=record 0, 3=ReadMFTRecord for extension â†’ fail here
         var path = Path.GetTempFileName();
         try
         {
@@ -66,14 +66,14 @@ public partial class NativeCoverageTests
     public void ParseMFTRecords_VolumeReadChunkFail_ReturnsZeroUsedRecords()
     {
         // Covers line 950 (VolumeReadChunk returns 0 on Read failure).
-        // With no attribute list, reads: 1=boot sector, 2=record 0, 3=VolumeReadChunk → fail
+        // With no attribute list, reads: 1=boot sector, 2=record 0, 3=VolumeReadChunk â†’ fail
         var path = Path.GetTempFileName();
         try
         {
             var data = BuildBootSector();
             WriteFileRecord(data, 4096);
 
-            // Just a Data attribute, no AttributeList → straight to VolumeReadChunk
+            // Just a Data attribute, no AttributeList â†’ straight to VolumeReadChunk
             var a1 = 4096 + 0x38;
             WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
             WriteEndMarker(data, a1 + 0x48);
@@ -112,14 +112,14 @@ public partial class NativeCoverageTests
     public void ParseMFTRecords_ReadFailDuringNonResidentAttributeList()
     {
         // Covers lines 138-140 (ReadNonResidentData Read failure).
-        // Record 0 has non-resident AttributeList. Read #3 targets its data → fail.
+        // Record 0 has non-resident AttributeList. Read #3 targets its data â†’ fail.
         var path = Path.GetTempFileName();
         try
         {
             var data = BuildBootSector();
             WriteFileRecord(data, 4096);
 
-            // Attribute 1: Data (non-resident) → clusters 1..256
+            // Attribute 1: Data (non-resident) â†’ clusters 1..256
             var a1 = 4096 + 0x38;
             var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
 

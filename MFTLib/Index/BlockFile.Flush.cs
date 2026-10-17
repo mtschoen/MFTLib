@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using MFTLib.NativeInterop;
 
 namespace MFTLib.Index;
 
@@ -62,13 +63,10 @@ internal sealed unsafe partial class BlockFile
         }
     }
 
-    [DllImport("kernel32.dll", EntryPoint = "FlushViewOfFile", SetLastError = true)]
-    static extern bool FlushViewOfFile(byte* baseAddress, nuint numberOfBytesToFlush);
-
     int FlushViewRangeNatively(long start, long end)
     {
         var pointer = _base + _view.PointerOffset;
-        return FlushViewOfFile(pointer + start, (nuint)(end - start)) ? 0 : Marshal.GetLastWin32Error();
+        return Kernel32.FlushViewOfFile(pointer + start, (nuint)(end - start)) ? 0 : Marshal.GetLastWin32Error();
     }
 
     void FlushRange(long start, long end)

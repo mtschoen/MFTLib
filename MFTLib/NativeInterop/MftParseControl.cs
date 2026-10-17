@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace MFTLib.Interop;
+namespace MFTLib.NativeInterop;
 
 // Mirrors the native MftParseControl: caller-owned, kept in place for the whole parse call,
 // written by the caller and only read by the parser. Naturally aligned, like the native struct,

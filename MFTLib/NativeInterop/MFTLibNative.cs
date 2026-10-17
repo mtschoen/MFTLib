@@ -1,8 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
-using MFTLib.Interop;
 
-namespace MFTLib;
+namespace MFTLib.NativeInterop;
 
 static class MFTLibNative
 {

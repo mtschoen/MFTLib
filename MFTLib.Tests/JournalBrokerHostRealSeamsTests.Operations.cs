@@ -2,7 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using MFTLib.Index;
-using MFTLib.Interop;
+using MFTLib.NativeInterop;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -111,7 +111,7 @@ public partial class JournalBrokerHostRealSeamsTests
         MockWatchJournalTip();
 
         // The kernel wait comes back only when the watch is cancelled, with an empty batch while
-        // already cancelled. MftVolume.WatchUsnJournal treats that as a clean end, distinct
+        // already cancelled. UsnJournalVolume.WatchUsnJournal treats that as a clean end, distinct
         // from a cancelled Task.Run throwing OperationCanceledException.
         using var idlePipe = await IdleUsnPipe.CreateAsync(gateReadNumber: 1);
         await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
@@ -200,6 +200,7 @@ public partial class JournalBrokerHostRealSeamsTests
         var preChange = JournalQueryFake.Describe(7, 200, maximumSize: 0x200000, allocationDelta: 0x100000);
         var postChange = JournalQueryFake.Describe(7, 200, maximumSize: 0x400000, allocationDelta: 0x200000);
         var queryCount = 0;
+        var query = JournalQueryFake.Create(() => ++queryCount == 1 ? preChange : postChange);
         uint? capturedIoctl = null;
         long capturedMaximum = 0;
         long capturedDelta = 0;
@@ -207,6 +208,12 @@ public partial class JournalBrokerHostRealSeamsTests
         bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
             uint inBufferSize, IntPtr outBuffer, uint outBufferSize, out uint bytesReturned, IntPtr overlapped)
         {
+            if (ioControlCode == UsnJournalVolumeInterop.FsctlQueryUsnJournal)
+            {
+                return query(device, ioControlCode, inBuffer, inBufferSize,
+                    outBuffer, outBufferSize, out bytesReturned, overlapped);
+            }
+            Assert.AreEqual(0x000900E7u, ioControlCode);
             capturedIoctl = ioControlCode;
             capturedMaximum = Marshal.ReadInt64(inBuffer, 0);
             capturedDelta = Marshal.ReadInt64(inBuffer, 8);
@@ -214,7 +221,6 @@ public partial class JournalBrokerHostRealSeamsTests
             return true;
         }
 
-        JournalQueryFake.Serve(() => ++queryCount == 1 ? preChange : postChange);
         Kernel32._deviceIoControl = FakeDeviceIoControl;
         await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
 

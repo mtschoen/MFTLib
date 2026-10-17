@@ -1,18 +1,29 @@
 using System.ComponentModel;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using MFTLib.Index;
-using MFTLib.Interop;
+using MFTLib.NativeInterop;
+using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib;
 
-internal sealed partial class MftVolume
+/// <summary>
+///     USN change journal read, cursor, and query operations over a borrowed volume handle.
+/// </summary>
+internal sealed partial class UsnJournalVolume
 {
     // Native UsnJournalEntry layout (pack 1):
     //   recordNumber(8) + parentRecordNumber(8) + usn(8) + timestamp(8) +
     //   reason(4) + fileAttributes(4) + fileNameLength(2) + fileName(260*2=520) +
     //   sequenceNumber(2) = 564 bytes
     internal const int NativeUsnEntrySize = 564;
+
+    readonly SafeFileHandle _volumeHandle;
+    readonly string _volumePath;
+
+    internal UsnJournalVolume(SafeFileHandle volumeHandle, string volumePath)
+    {
+        _volumeHandle = volumeHandle;
+        _volumePath = volumePath;
+    }
 
     /// <summary>
     ///     Query the USN journal to get the current cursor position.
@@ -21,7 +32,7 @@ internal sealed partial class MftVolume
     /// </summary>
     /// <exception cref="ObjectDisposedException">This volume has been disposed.</exception>
     /// <exception cref="Win32Exception">Windows rejects the journal query, for example because the journal is not active.</exception>
-    public UsnJournalCursor QueryUsnJournalCursor()
+    internal UsnJournalCursor QueryUsnJournalCursor()
     {
         var data = QueryJournalData();
         return new UsnJournalCursor(data.UsnJournalIdentifier, data.NextUsn);
@@ -35,7 +46,7 @@ internal sealed partial class MftVolume
     /// </summary>
     /// <exception cref="ObjectDisposedException">This volume has been disposed.</exception>
     /// <exception cref="Win32Exception">Windows rejects the journal query, for example because the journal is not active.</exception>
-    public UsnJournalSettings QueryUsnJournalSettings()
+    internal UsnJournalSettings QueryUsnJournalSettings()
     {
         return QueryJournalData().ToSettings();
     }
@@ -44,7 +55,7 @@ internal sealed partial class MftVolume
     // and the checkpoint check issue, against this volume's handle.
     UsnJournalVolumeInterop.UsnJournalDataV0 QueryJournalData()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ObjectDisposedException.ThrowIf(_volumeHandle.IsClosed, this);
         return UsnJournalVolumeInterop.QueryJournalData(_volumeHandle);
     }
 
@@ -58,7 +69,7 @@ internal sealed partial class MftVolume
         UsnJournalCursor since, int maximumBufferReads)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(maximumBufferReads);
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ObjectDisposedException.ThrowIf(_volumeHandle.IsClosed, this);
         var resultPtr = MFTLibNative.NativeReadUsnJournal(_volumeHandle, since.NextUsn, since.JournalIdentifier,
             (uint)maximumBufferReads);
         if (resultPtr == IntPtr.Zero)
@@ -122,71 +133,5 @@ internal sealed partial class MftVolume
         }
 
         return entries;
-    }
-
-    /// <summary>
-    ///     Yields batches of USN journal entries and their post-batch cursors as filesystem changes arrive.
-    ///     Blocks on the kernel (zero CPU) until new entries appear.
-    ///     Cancellation remains observable across read issuance and interrupts an idle kernel wait.
-    ///     The pending read completes before its native buffers and cancellation event are released.
-    /// </summary>
-    public async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> WatchUsnJournal(
-        UsnJournalCursor since,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        var nextUsn = since.NextUsn;
-        var journalIdentifier = since.JournalIdentifier;
-
-        using var session = new UsnWatchSession(FileUtilities._getWatchVolumeHandle(_volumePath));
-        await using var registration = cancellationToken.Register(session.Cancel);
-
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-
-            var currentUsn = nextUsn;
-            var resultPtr = await session.ReadBatchAsync(currentUsn, journalIdentifier, cancellationToken)
-                .ConfigureAwait(false);
-
-            if (resultPtr == IntPtr.Zero)
-            {
-                throw new InvalidOperationException("WatchUsnJournalBatch returned null");
-            }
-
-            UsnJournalEntry[] entries;
-            UsnJournalCursor cursor;
-            try
-            {
-                var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
-                if (!string.IsNullOrEmpty(result.ErrorMessage))
-                {
-                    throw new InvalidOperationException(result.ErrorMessage);
-                }
-
-                entries = MarshalUsnEntries(result);
-                nextUsn = result.NextUsn;
-                cursor = new UsnJournalCursor(result.JournalIdentifier, result.NextUsn);
-            }
-            finally
-            {
-                MFTLibNative.NativeFreeUsnJournalResult(resultPtr);
-            }
-
-            if (entries.Length == 0)
-            {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    yield break;
-                }
-
-                // If ERROR_OPERATION_ABORTED (995) arrives without a requested cancellation,
-                // the loop silently retries instead of surfacing an error; acceptable today
-                // because CancelIoEx is only invoked from this token's registration.
-                continue;
-            }
-
-            yield return (entries, cursor);
-        }
     }
 }

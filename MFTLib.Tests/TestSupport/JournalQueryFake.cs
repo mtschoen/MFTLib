@@ -1,19 +1,21 @@
 using System.Runtime.InteropServices;
-using MFTLib.Index;
+using MFTLib.NativeInterop;
 using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib.Tests.TestSupport;
 
 /// <summary>
-///     Scripts the one USN journal query path, <c>UsnJournalVolumeInterop.QueryJournalData</c>, which
-///     <c>MftVolume</c> and <c>FileIndex.QueryUsnJournalSettings</c> both issue. Classes that install a
-///     fake must call <see cref="Reset" /> in their cleanup.
+///     Scripts the shared <c>Kernel32._deviceIoControl</c> seam for USN journal queries
+///     (<c>UsnJournalVolumeInterop.QueryJournalData</c>), which <c>UsnJournalVolume</c> and
+///     <c>FileIndex.QueryUsnJournalSettings</c> both issue. Classes that install a fake must
+///     call <see cref="Reset" /> in their cleanup.
 /// </summary>
 internal static class JournalQueryFake
 {
-    /// <summary>Answers every query with the reply the callback returns for that call.</summary>
-    public static void Serve(Func<UsnJournalVolumeInterop.UsnJournalDataV0> reply)
+    internal static DeviceIoControl Create(Func<UsnJournalVolumeInterop.UsnJournalDataV0> reply)
     {
+        return Fake;
+
         bool Fake(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer, uint inBufferSize,
             IntPtr outBuffer, uint outBufferSize, out uint bytesReturned, IntPtr overlapped)
         {
@@ -26,8 +28,12 @@ internal static class JournalQueryFake
             bytesReturned = (uint)Marshal.SizeOf<UsnJournalVolumeInterop.UsnJournalDataV0>();
             return true;
         }
+    }
 
-        UsnJournalVolumeInterop._ioControl = Fake;
+    /// <summary>Answers every query with the reply the callback returns for that call.</summary>
+    public static void Serve(Func<UsnJournalVolumeInterop.UsnJournalDataV0> reply)
+    {
+        Kernel32._deviceIoControl = Create(reply);
     }
 
     /// <summary>Answers every query with one journal state.</summary>
@@ -50,7 +56,7 @@ internal static class JournalQueryFake
             return false;
         }
 
-        UsnJournalVolumeInterop._ioControl = Fake;
+        Kernel32._deviceIoControl = Fake;
     }
 
     public static UsnJournalVolumeInterop.UsnJournalDataV0 Describe(ulong journalIdentifier, long nextUsn,
@@ -67,6 +73,6 @@ internal static class JournalQueryFake
 
     public static void Reset()
     {
-        UsnJournalVolumeInterop.ResetToDefaults();
+        Kernel32.ResetToDefaults();
     }
 }

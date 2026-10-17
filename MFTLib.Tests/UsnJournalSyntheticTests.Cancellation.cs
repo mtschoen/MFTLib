@@ -1,3 +1,4 @@
+using MFTLib.NativeInterop;
 using MFTLib.Tests.TestSupport;
 using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -110,7 +111,7 @@ public partial class UsnJournalSyntheticTests
     {
         try
         {
-            await foreach (var batch in volume.WatchUsnJournal(Cursor, token))
+            await foreach (var batch in volume.Journal.WatchUsnJournal(Cursor, token))
             {
                 Assert.Fail($"Unexpected idle batch with {batch.Entries.Length} entries.");
             }

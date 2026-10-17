@@ -1,15 +1,21 @@
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
-using MFTLib.Index;
+using MFTLib.NativeInterop;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib.Tests.Index;
 
 [TestClass]
+[DoNotParallelize]
 public class WindowsFileByIdTests
 {
+    [TestCleanup]
+    public void Cleanup()
+    {
+        Kernel32.ResetToDefaults();
+    }
     [TestMethod]
     [SupportedOSPlatform("windows")] // Assert.Inconclusive() below is a runtime guard the analyzer cannot see through.
     public void Open_RoundTripsARealFileThroughItsFileReference()
@@ -113,6 +119,13 @@ public class WindowsFileByIdTests
 
         var missingPath = Path.Combine(Path.GetTempPath(), $"mftlib-missing-hint-{Guid.NewGuid():N}",
             "no-such-directory");
+
+        var failedHandle = new SafeFileHandle(new IntPtr(-1), false);
+        Kernel32._createFile = (_, _, _, _, _, _, _) =>
+        {
+            Marshal.SetLastPInvokeError(3);
+            return failedHandle;
+        };
 
         var failure = Assert.ThrowsException<IOException>(
             () => WindowsFileById.Open(missingPath, recordNumber: 5, sequenceNumber: 1, FileAccess.Read));

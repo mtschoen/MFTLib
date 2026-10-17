@@ -1,5 +1,6 @@
 using System.IO.Pipes;
 using System.Runtime.Versioning;
+using MFTLib.NativeInterop;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.Extensions.Time.Testing;

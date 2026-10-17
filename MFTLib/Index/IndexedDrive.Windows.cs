@@ -1,5 +1,5 @@
-using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using MFTLib.NativeInterop;
 
 namespace MFTLib.Index;
 
@@ -29,23 +29,10 @@ public sealed partial record IndexedDrive
     [SupportedOSPlatform("windows")]
     static uint? ReadVolumeSerial(string rootDirectory)
     {
-        return GetVolumeInformationW(rootDirectory, IntPtr.Zero, 0, out var serial, out _, out _, IntPtr.Zero, 0)
+        return Kernel32.GetVolumeInformationW(rootDirectory, IntPtr.Zero, 0, out var serial, out _, out _, IntPtr.Zero, 0)
             ? serial
             : null;
     }
-
-    [SupportedOSPlatform("windows")]
-    [DllImport("kernel32.dll", EntryPoint = "GetVolumeInformationW", SetLastError = true,
-        CharSet = CharSet.Unicode, ExactSpelling = true)]
-    static extern bool GetVolumeInformationW(
-        string lpRootPathName,
-        IntPtr lpVolumeNameBuffer,
-        uint nVolumeNameSize,
-        out uint lpVolumeSerialNumber,
-        out uint lpMaximumComponentLength,
-        out uint lpFileSystemFlags,
-        IntPtr lpFileSystemNameBuffer,
-        uint nFileSystemNameSize);
 
     internal static IDisposable OverrideVolumeSerialReaderForTest(Func<string, uint?> reader)
     {

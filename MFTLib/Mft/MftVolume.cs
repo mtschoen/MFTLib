@@ -1,5 +1,5 @@
 using System.Runtime.InteropServices;
-using MFTLib.Interop;
+using MFTLib.NativeInterop;
 using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib;
@@ -21,27 +21,28 @@ internal readonly record struct MftFileScanOptions(
 /// <summary>
 ///     A raw read handle on one NTFS volume. Opening needs the Administrator role because it
 ///     opens the volume device itself. Dispose releases the handle. The scan members here parse
-///     the MFT natively; the USN journal members live in the same type.
+///     the MFT natively; USN journal operations are provided by <see cref="Journal" />.
 /// </summary>
-internal sealed partial class MftVolume : IDisposable
+internal sealed class MftVolume : IDisposable
 {
     /// <summary>The records the native parser reads per chunk when the caller names no buffer size: 262144.</summary>
-    public const uint DefaultBufferSizeRecords = 262144;
+    internal const uint DefaultBufferSizeRecords = 262144;
 
     readonly uint _bufferSizeRecords;
-    readonly string _volumePath;
     readonly SafeFileHandle _volumeHandle;
     bool _disposed;
+
+    internal UsnJournalVolume Journal { get; }
 
     MftVolume(SafeFileHandle volumeHandle, string volumePath, uint bufferSizeRecords)
     {
         _volumeHandle = volumeHandle;
-        _volumePath = volumePath;
         _bufferSizeRecords = bufferSizeRecords;
+        Journal = new UsnJournalVolume(volumeHandle, volumePath);
     }
 
     /// <summary>Closes the volume handle. Safe to call more than once.</summary>
-    public void Dispose()
+    internal void Dispose()
     {
         if (!_disposed)
         {
@@ -49,6 +50,8 @@ internal sealed partial class MftVolume : IDisposable
             _disposed = true;
         }
     }
+
+    void IDisposable.Dispose() => Dispose();
 
     internal SafeFileHandle GetVolumeHandleForTest()
     {
@@ -66,7 +69,7 @@ internal sealed partial class MftVolume : IDisposable
     /// <exception cref="ArgumentException"><paramref name="volumePath" /> is in none of the recognized formats.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="bufferSizeRecords" /> is zero.</exception>
     /// <exception cref="IOException">The volume could not be opened, for example without elevation.</exception>
-    public static MftVolume Open(string volumePath, uint bufferSizeRecords = DefaultBufferSizeRecords)
+    internal static MftVolume Open(string volumePath, uint bufferSizeRecords = DefaultBufferSizeRecords)
     {
         ArgumentOutOfRangeException.ThrowIfZero(bufferSizeRecords);
         var normalizedPath = MFTUtilities.GetVolumePath(volumePath);

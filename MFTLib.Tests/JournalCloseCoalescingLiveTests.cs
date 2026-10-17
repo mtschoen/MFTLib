@@ -31,7 +31,7 @@ public class JournalCloseCoalescingLiveTests
             ? volumeRoot[..1]
             : "C";
         using var volume = MftVolume.Open(driveSpecifier);
-        var cursor = volume.QueryUsnJournalCursor();
+        var cursor = volume.Journal.QueryUsnJournalCursor();
         var tempFileName = Path.GetFileName(tempPath);
 
         var batches = new List<UsnJournalEntry[]>();
@@ -40,7 +40,7 @@ public class JournalCloseCoalescingLiveTests
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             // ReSharper disable once AccessToDisposedClosure
             // volume is captured from outer scope; watchTask is awaited before volume's using exits.
-            await foreach (var (batch, _) in volume.WatchUsnJournal(cursor, timeout.Token))
+            await foreach (var (batch, _) in volume.Journal.WatchUsnJournal(cursor, timeout.Token))
             {
                 batches.Add(batch);
                 if (batch.Any(e => e.FileName.Equals(tempFileName, StringComparison.OrdinalIgnoreCase)

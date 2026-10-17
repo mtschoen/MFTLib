@@ -47,11 +47,12 @@ and name the failing classes in the issue. Tests that need administrator rights
 (`TestCategory=RequiresAdmin`) are not part of the unelevated runs and are
 qualified only by the elevated coverage job.
 
-Tests that reference the process-wide native delegate seams in `MFTLibNative`
-or `FileUtilities`, including calls to either `ResetToDefaults`, must carry
-class-level `[DoNotParallelize]`. Keep cleanup resets, but do not rely on them
-for isolation from concurrently running test classes. The same rule applies to
-any member of `NativeTestHooks` (the native failure-injection and observation
+Tests that reference the process-wide native delegate seams in `MFTLib.NativeInterop.MFTLibNative`,
+`MFTLib.NativeInterop.FileUtilities`, or `MFTLib.NativeInterop.Kernel32`, including calls to their
+`ResetToDefaults`, must carry class-level `[DoNotParallelize]`, cleanup resets, and one explicit
+control-code dispatcher when a scenario needs multiple `DeviceIoControl` operations. Keep cleanup
+resets, but do not rely on them for isolation from concurrently running test classes. The same rule
+applies to any member of `NativeTestHooks` (the native failure-injection and observation
 hooks), whose calls mutate process-global native state. The guard checks compiled
 IL references, including nested generated methods and local test helpers. Run it
 on Windows as well as Linux: the Linux build leaves out the real WMI tests and its

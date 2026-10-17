@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Microsoft.Win32.SafeHandles;
 
-namespace MFTLib.Index;
+namespace MFTLib.NativeInterop;
 
 /// <summary>
 ///     Opens an NTFS file by its file reference (record number plus sequence number) instead of
@@ -20,10 +20,10 @@ internal static class WindowsFileById
     const uint OpenExisting = 3;
     const uint FileFlagBackupSemantics = 0x02000000;
 
-    public static FileStream Open(string anyPathOnVolume, uint recordNumber, ushort sequenceNumber,
+    internal static FileStream Open(string anyPathOnVolume, uint recordNumber, ushort sequenceNumber,
         FileAccess access)
     {
-        using var volumeHandle = CreateFileW(anyPathOnVolume, FileReadAttributes, ShareAll, IntPtr.Zero,
+        using var volumeHandle = Kernel32._createFile(anyPathOnVolume, FileReadAttributes, ShareAll, IntPtr.Zero,
             OpenExisting, FileFlagBackupSemantics, IntPtr.Zero);
         if (volumeHandle.IsInvalid)
         {
@@ -67,16 +67,6 @@ internal static class WindowsFileById
             _ => throw new ArgumentOutOfRangeException(nameof(access), access, "Unrecognized FileAccess value.")
         };
     }
-
-    [DllImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true, CharSet = CharSet.Unicode)]
-    static extern SafeFileHandle CreateFileW(
-        string fileName,
-        uint desiredAccess,
-        uint shareMode,
-        IntPtr securityAttributes,
-        uint creationDisposition,
-        uint flagsAndAttributes,
-        IntPtr templateFile);
 
     [DllImport("kernel32.dll", EntryPoint = "OpenFileById", SetLastError = true)]
     static extern SafeFileHandle OpenFileById(

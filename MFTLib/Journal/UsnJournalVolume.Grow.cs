@@ -1,13 +1,13 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using MFTLib.NativeInterop;
 
 namespace MFTLib;
 
 /// <summary>
-///     Adds USN journal management to an open volume while preserving the disposal and handle
-///     ownership contract of the MFT reader partial type.
+///     USN change journal resizing operations over a borrowed volume handle.
 /// </summary>
-internal sealed partial class MftVolume
+internal sealed partial class UsnJournalVolume
 {
     /// <summary>
     ///     Grows this volume's USN change journal in place via
@@ -26,9 +26,9 @@ internal sealed partial class MftVolume
     /// <exception cref="ArgumentOutOfRangeException">Either size is not positive.</exception>
     /// <exception cref="InvalidOperationException"><paramref name="maximumSize" /> does not grow the journal.</exception>
     /// <exception cref="Win32Exception">Windows rejects the journal creation control request.</exception>
-    public UsnJournalSettings GrowUsnJournal(long maximumSize, long allocationDelta)
+    internal UsnJournalSettings GrowUsnJournal(long maximumSize, long allocationDelta)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ObjectDisposedException.ThrowIf(_volumeHandle.IsClosed, this);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(maximumSize, 0L);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(allocationDelta, 0L);
 

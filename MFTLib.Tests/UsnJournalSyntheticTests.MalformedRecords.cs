@@ -1,4 +1,5 @@
 using System.Text;
+using MFTLib.NativeInterop;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -10,8 +11,8 @@ public partial class UsnJournalSyntheticTests
 
     /// <summary>
     ///     A non-zero <c>RecordLength</c> smaller than <c>offsetof(USN_RECORD_V2, FileName)</c> (60 bytes)
-    ///     stops the buffer walk cleanly in both <see cref="MftVolume.ReadUsnJournalBounded" /> and
-    ///     <see cref="MftVolume.WatchUsnJournal" />: well-formed records before the malformed record are
+    ///     stops the buffer walk cleanly in both <see cref="UsnJournalVolume.ReadUsnJournalBounded" /> and
+    ///     <see cref="UsnJournalVolume.WatchUsnJournal" />: well-formed records before the malformed record are
     ///     returned, and the malformed record and any records after it in the buffer are dropped.
     /// </summary>
     [DataTestMethod]
@@ -41,7 +42,7 @@ public partial class UsnJournalSyntheticTests
 
     /// <summary>
     ///     A <c>RecordLength</c> larger than the remaining bytes in the buffer stops the walk cleanly in
-    ///     both <see cref="MftVolume.ReadUsnJournalBounded" /> and <see cref="MftVolume.WatchUsnJournal" />:
+    ///     both <see cref="UsnJournalVolume.ReadUsnJournalBounded" /> and <see cref="UsnJournalVolume.WatchUsnJournal" />:
     ///     well-formed records before the truncated record are returned, and the truncated record is dropped.
     /// </summary>
     [DataTestMethod]
@@ -150,10 +151,10 @@ public partial class UsnJournalSyntheticTests
         if (!watch)
         {
             QueueSuccess(UsnReadBuffers.Build(2000));
-            return volume.ReadUsnJournalBounded(Cursor, 0);
+            return volume.Journal.ReadUsnJournalBounded(Cursor, 0);
         }
 
-        await using var enumerator = volume.WatchUsnJournal(Cursor).GetAsyncEnumerator();
+        await using var enumerator = volume.Journal.WatchUsnJournal(Cursor).GetAsyncEnumerator();
         Assert.IsTrue(await enumerator.MoveNextAsync());
         return enumerator.Current;
     }

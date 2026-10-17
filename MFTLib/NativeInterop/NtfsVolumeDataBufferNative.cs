@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace MFTLib.Interop;
+namespace MFTLib.NativeInterop;
 
 // Mirrors the Win32 NTFS_VOLUME_DATA_BUFFER layout returned by
 // FSCTL_GET_NTFS_VOLUME_DATA (winioctl.h). Field order and sizes are load-bearing: the

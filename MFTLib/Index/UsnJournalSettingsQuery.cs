@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using MFTLib.NativeInterop;
 
 namespace MFTLib.Index;
 

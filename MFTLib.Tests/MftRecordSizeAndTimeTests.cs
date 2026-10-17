@@ -1,3 +1,4 @@
+using MFTLib.NativeInterop;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;

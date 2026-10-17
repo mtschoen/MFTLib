@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using MFTLib.NativeInterop;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 

@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using MFTLib.NativeInterop;
 using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib.Tests.TestSupport;

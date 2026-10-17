@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
-using MFTLib.Interop;
+using MFTLib.NativeInterop;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;

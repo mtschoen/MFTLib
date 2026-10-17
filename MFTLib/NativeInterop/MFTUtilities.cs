@@ -1,4 +1,4 @@
-namespace MFTLib;
+namespace MFTLib.NativeInterop;
 
 static class MFTUtilities
 {

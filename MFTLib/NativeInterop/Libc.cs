@@ -1,7 +1,6 @@
 using System.Runtime.InteropServices;
 
-// Declared in MFTLib.Index, not MFTLib: the index namespace may not depend on the flat one.
-namespace MFTLib.Index;
+namespace MFTLib.NativeInterop;
 
 static class Libc
 {

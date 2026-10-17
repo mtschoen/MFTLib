@@ -21,7 +21,7 @@ public class UsnJournalLiveTests
         }
 
         using var volume = MftVolume.Open("C");
-        var cursor = volume.QueryUsnJournalCursor();
+        var cursor = volume.Journal.QueryUsnJournalCursor();
 
         Assert.IsTrue(cursor.JournalIdentifier > 0, "JournalIdentifier should be nonzero");
         Assert.IsTrue(cursor.NextUsn > 0, "NextUsn should be positive");
@@ -40,7 +40,7 @@ public class UsnJournalLiveTests
         using var volume = MftVolume.Open("C");
 
         // Get current cursor
-        var cursor = volume.QueryUsnJournalCursor();
+        var cursor = volume.Journal.QueryUsnJournalCursor();
 
         // Create and delete a temp file to generate journal entries
         var tempPath = Path.Combine(Path.GetTempPath(), $"mftlib-usn-test-{Guid.NewGuid()}.tmp");
@@ -50,7 +50,7 @@ public class UsnJournalLiveTests
         try
         {
             // Read journal since our cursor
-            var (entries, updatedCursor) = volume.ReadUsnJournalBounded(cursor, 0);
+            var (entries, updatedCursor) = volume.Journal.ReadUsnJournalBounded(cursor, 0);
 
             Assert.IsTrue(entries.Length > 0, "Should have at least one journal entry");
             Assert.IsTrue(updatedCursor.NextUsn >= cursor.NextUsn, "Cursor should advance");
@@ -76,10 +76,10 @@ public class UsnJournalLiveTests
         }
 
         using var volume = MftVolume.Open("C");
-        var cursor = volume.QueryUsnJournalCursor();
+        var cursor = volume.Journal.QueryUsnJournalCursor();
 
         // Reading from current position should return very few entries
-        var (entries, _) = volume.ReadUsnJournalBounded(cursor, 0);
+        var (entries, _) = volume.Journal.ReadUsnJournalBounded(cursor, 0);
 
         Assert.IsTrue(entries.Length < 1000,
             $"Expected few entries from current position, got {entries.Length}");
@@ -96,7 +96,7 @@ public class UsnJournalLiveTests
         }
 
         using var volume = MftVolume.Open("C");
-        var cursor = volume.QueryUsnJournalCursor();
+        var cursor = volume.Journal.QueryUsnJournalCursor();
 
         var tempPath = Path.Combine(Path.GetTempPath(), $"mftlib-watch-test-{Guid.NewGuid()}.tmp");
         var tempFileName = Path.GetFileName(tempPath);
@@ -107,7 +107,7 @@ public class UsnJournalLiveTests
             using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             // ReSharper disable once AccessToDisposedClosure
             // volume is captured from outer scope; watchTask is awaited before volume's using exits.
-            await foreach (var (batch, _) in volume.WatchUsnJournal(cursor, cancellationTokenSource.Token))
+            await foreach (var (batch, _) in volume.Journal.WatchUsnJournal(cursor, cancellationTokenSource.Token))
             {
                 batches.Add(batch);
                 if (batch.Any(e => e.FileName.Equals(tempFileName, StringComparison.OrdinalIgnoreCase)))
@@ -148,7 +148,7 @@ public class UsnJournalLiveTests
         }
 
         using var volume = MftVolume.Open("C");
-        var before = volume.QueryUsnJournalSettings();
+        var before = volume.Journal.QueryUsnJournalSettings();
         if (before.MaximumSize >= 1024L * 1024 * 1024)
         {
             // Bound the cumulative growth across repeated runs: this test mutates a
@@ -159,7 +159,7 @@ public class UsnJournalLiveTests
         }
 
         var targetMaximum = before.MaximumSize + before.AllocationDelta;
-        var grown = volume.GrowUsnJournal(targetMaximum, before.AllocationDelta);
+        var grown = volume.Journal.GrowUsnJournal(targetMaximum, before.AllocationDelta);
 
         Assert.IsTrue(grown.MaximumSize >= targetMaximum,
             $"Expected at least {targetMaximum} bytes, got {grown.MaximumSize}");
@@ -167,7 +167,7 @@ public class UsnJournalLiveTests
         // Grow-only refusal, using the just-grown size (no second mutation).
         try
         {
-            volume.GrowUsnJournal(grown.MaximumSize, grown.AllocationDelta);
+            volume.Journal.GrowUsnJournal(grown.MaximumSize, grown.AllocationDelta);
             Assert.Fail("Expected InvalidOperationException");
         }
         catch (InvalidOperationException exception)

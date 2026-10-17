@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using MFTLib.Index;
+using MFTLib.NativeInterop;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Win32.SafeHandles;
 
@@ -12,7 +13,7 @@ namespace MFTLib.Tests.Index;
 ///     The unelevated volume-root handle both index journal reads share, and what they do
 ///     when the volume refuses the IOCTL. The handle is a real unelevated one on C:, because
 ///     opening it is the part worth exercising for real; only the IOCTL is swapped out,
-///     through <c>UsnJournalVolumeInterop._ioControl</c>, so a drive whose journal is healthy
+///     through <c>Kernel32._deviceIoControl</c>, so a drive whose journal is healthy
 ///     can still stand in for one that is not.
 /// </summary>
 [TestClass]
@@ -22,10 +23,9 @@ public class UsnJournalVolumeInteropTests
     const int ErrorJournalNotActive = 1179;
 
     [TestCleanup]
-    [SupportedOSPlatform("windows")]
     public void Cleanup()
     {
-        UsnJournalVolumeInterop.ResetToDefaults();
+        Kernel32.ResetToDefaults();
     }
 
     /// <summary>Fails every IOCTL whose control code matches, and serves the rest a reply.</summary>
@@ -50,11 +50,10 @@ public class UsnJournalVolumeInteropTests
             return true;
         }
 
-        UsnJournalVolumeInterop._ioControl = Fake;
+        Kernel32._deviceIoControl = Fake;
     }
 
     /// <summary>Serves one <c>USN_JOURNAL_DATA_V0</c> buffer to every query.</summary>
-    [SupportedOSPlatform("windows")]
     static void ServeJournalData(byte[] journalData)
     {
         bool Fake(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer, uint inBufferSize,
@@ -65,7 +64,7 @@ public class UsnJournalVolumeInteropTests
             return true;
         }
 
-        UsnJournalVolumeInterop._ioControl = Fake;
+        Kernel32._deviceIoControl = Fake;
     }
 
     /// <summary>A <c>USN_JOURNAL_DATA_V0</c> buffer: seven 8-byte fields.</summary>
@@ -108,19 +107,27 @@ public class UsnJournalVolumeInteropTests
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")]
     public void QueryJournalData_ReadsEveryFieldTheCheckpointCheckNeeds()
     {
-        if (SkipOffWindows())
+        var expectedHandle = new SafeFileHandle(new IntPtr(1), false);
+        var opened = false;
+        Kernel32._createFile = (path, access, share, security, disposition, flags, template) =>
         {
-            return;
-        }
-
+            Assert.AreEqual(@"C:\", path);
+            Assert.AreEqual(0x80u, access);
+            Assert.AreEqual(7u, share);
+            Assert.AreEqual(3u, disposition);
+            Assert.AreEqual(0x02000000u, flags);
+            Assert.AreEqual(IntPtr.Zero, security);
+            Assert.AreEqual(IntPtr.Zero, template);
+            opened = true;
+            return expectedHandle;
+        };
         ServeJournalData(BuildJournalData(journalIdentifier: 0xFEED, firstUsn: 2_048, nextUsn: 9_216));
-
         using var handle = UsnJournalVolumeInterop.OpenVolumeRoot('C', "read its journal for a test");
+        Assert.IsTrue(opened);
+        Assert.AreSame(expectedHandle, handle);
         var journal = UsnJournalVolumeInterop.QueryJournalData(handle);
-
         Assert.AreEqual(0xFEEDul, journal.UsnJournalIdentifier);
         Assert.AreEqual(2_048L, journal.FirstUsn);
         Assert.AreEqual(9_216L, journal.NextUsn);
@@ -256,7 +263,7 @@ public class UsnJournalVolumeInteropTests
         }
 
         FailIoControl(UsnJournalVolumeInterop.FsctlQueryUsnJournal, ErrorJournalNotActive);
-        UsnJournalVolumeInterop.ResetToDefaults();
+        Kernel32.ResetToDefaults();
 
         // Back on the real IOCTL, C: answers its settings again.
         Assert.IsTrue(UsnJournalSettingsQuery.Query('C').MaximumSize > 0);

@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using MFTLib.Interop;
+using MFTLib.NativeInterop;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -9,7 +9,7 @@ namespace MFTLib.Tests;
 
 /// <summary>
 ///     Exercises the real production delegates <see cref="JournalBrokerHost.CreateDefault" />
-///     wires up (MftVolume-backed query/scan/catch-up/watch), using the same non-admin
+///     wires up (MftVolume and UsnJournalVolume-backed query/scan/catch-up/watch), using the same non-admin
 ///     native-mock technique as MockVolumeTests / UsnJournalSyntheticTests, instead of the fake
 ///     delegates JournalBrokerHostTests injects directly. Requests reach the host as raw frames
 ///     through <see cref="HostChannelHarness" />.
@@ -40,14 +40,21 @@ public partial class JournalBrokerHostRealSeamsTests
     static void MockVolumeRecordSize()
     {
         FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
-        Kernel32._deviceIoControl = (_, _, _, _, outBuffer, _, out bytesReturned, _) =>
+        var query = Kernel32._deviceIoControl;
+        Kernel32._deviceIoControl = (device, code, input, inputSize, output, outputSize,
+            out returned, overlapped) =>
         {
+            if (code == UsnJournalVolumeInterop.FsctlQueryUsnJournal)
+            {
+                return query(device, code, input, inputSize, output, outputSize, out returned, overlapped);
+            }
+            Assert.AreEqual(0x00090064u, code);
             Marshal.StructureToPtr(new NtfsVolumeDataBufferNative
             {
                 MftValidDataLength = 409_600,
                 BytesPerFileRecordSegment = DefaultRecordSize
-            }, outBuffer, false);
-            bytesReturned = (uint)Marshal.SizeOf<NtfsVolumeDataBufferNative>();
+            }, output, false);
+            returned = (uint)Marshal.SizeOf<NtfsVolumeDataBufferNative>();
             return true;
         };
     }
@@ -149,4 +156,5 @@ public partial class JournalBrokerHostRealSeamsTests
             string.Join("; ", frames.Where(frame => frame.Kind == BrokerFrameKind.Error).Select(frame => frame.Message)));
         return frames;
     }
+
 }
