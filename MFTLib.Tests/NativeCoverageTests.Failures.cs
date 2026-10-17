@@ -48,7 +48,7 @@ public partial class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative._freeMftResult(resultPointer);
+                MFTLibNative.Hooks.FreeMftResult(resultPointer);
             }
         }
         finally
@@ -94,7 +94,7 @@ public partial class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative._freeMftResult(resultPointer);
+                MFTLibNative.Hooks.FreeMftResult(resultPointer);
             }
         }
         finally
@@ -163,7 +163,7 @@ public partial class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative._freeMftResult(resultPointer);
+                MFTLibNative.Hooks.FreeMftResult(resultPointer);
             }
         }
         finally
@@ -180,7 +180,7 @@ public partial class NativeCoverageTests
     [TestMethod]
     public void FreeMftResult_NullPointer_DoesNotThrow()
     {
-        MFTLibNative._freeMftResult(IntPtr.Zero);
+        MFTLibNative.Hooks.FreeMftResult(IntPtr.Zero);
     }
 
     // --- Platform pread/pwrite failure branches (platform_win32.cpp) ---
@@ -195,7 +195,7 @@ public partial class NativeCoverageTests
         {
             File.Delete(path);
             NativeTestHooks.NativeSetFailPlatformWrite(1);
-            var success = MFTLibNative._generateSyntheticMftSized(path, 600, 256, 1024);
+            var success = MFTLibNative.GenerateSyntheticMftSized(path, 600, 256, 1024);
             Assert.IsFalse(success, "Generation should report failure when the write fails");
         }
         finally

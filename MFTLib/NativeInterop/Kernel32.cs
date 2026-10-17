@@ -4,7 +4,7 @@ using Microsoft.Win32.SafeHandles;
 namespace MFTLib.NativeInterop;
 
 // Seam delegate for NativeDeviceIoControl: DeviceIoControl's out parameter rules out a
-// plain Func<...>, so this mirrors _createFile's swappable-Func pattern with a named
+// plain Func<...>, so this mirrors Hooks.CreateFile's swappable-Func pattern with a named
 // delegate type instead.
 delegate bool DeviceIoControl(
     SafeFileHandle device,
@@ -15,12 +15,6 @@ delegate bool DeviceIoControl(
     uint outBufferSize,
     out uint bytesReturned,
     IntPtr overlapped);
-
-// Seam delegate for NativeGetFileInformationByHandle: the out parameter rules out a
-// plain Func<...>, mirroring the DeviceIoControl delegate above.
-delegate bool GetFileInformationByHandle(
-    SafeFileHandle file,
-    out ByHandleFileInformation fileInformation);
 
 // Mirrors the Win32 BY_HANDLE_FILE_INFORMATION layout. Every member is 4-aligned, so a
 // uint pair stands in for each FILETIME; only FileIndexHigh/FileIndexLow are read -
@@ -45,9 +39,20 @@ struct ByHandleFileInformation
 
 static class Kernel32
 {
-    internal static Func<string, uint, uint, IntPtr, uint, uint, IntPtr, SafeFileHandle> _createFile = NativeCreateFile;
-    internal static DeviceIoControl _deviceIoControl = NativeDeviceIoControl;
-    internal static GetFileInformationByHandle _getFileInformationByHandle = NativeGetFileInformationByHandle;
+    internal static readonly Win32Hooks Hooks = new();
+
+    internal sealed class Win32Hooks
+    {
+        internal Func<string, uint, uint, IntPtr, uint, uint, IntPtr, SafeFileHandle>
+            CreateFile = NativeCreateFile;
+        internal DeviceIoControl DeviceIoControl = NativeDeviceIoControl;
+
+        internal void ResetToDefaults()
+        {
+            CreateFile = NativeCreateFile;
+            DeviceIoControl = NativeDeviceIoControl;
+        }
+    }
 
     [DllImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true,
         CharSet = CharSet.Unicode, ExactSpelling = true)]
@@ -72,7 +77,7 @@ static class Kernel32
         IntPtr lpOverlapped);
 
     [DllImport("kernel32.dll", EntryPoint = "GetFileInformationByHandle", SetLastError = true)]
-    static extern bool NativeGetFileInformationByHandle(
+    internal static extern bool GetFileInformationByHandle(
         SafeFileHandle hFile,
         out ByHandleFileInformation lpFileInformation);
 
@@ -86,12 +91,5 @@ static class Kernel32
         string rootPathName, IntPtr volumeNameBuffer, uint volumeNameSize,
         out uint volumeSerialNumber, out uint maximumComponentLength, out uint fileSystemFlags,
         IntPtr fileSystemNameBuffer, uint fileSystemNameSize);
-
-    internal static void ResetToDefaults()
-    {
-        _createFile = NativeCreateFile;
-        _deviceIoControl = NativeDeviceIoControl;
-        _getFileInformationByHandle = NativeGetFileInformationByHandle;
-    }
 }
 

@@ -18,7 +18,7 @@ public partial class JournalBrokerHostRealSeamsTests
         JournalQueryFake.Serve(journalIdentifier: 0xABCD, nextUsn: 5000);
 
         var parsePtr = BuildThreeNameRecordsResult();
-        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _) => parsePtr;
+        MFTLibNative.Hooks.ParseMftRecordsWithProgress = (_, _, _, _, _) => parsePtr;
         MockFreeMftResult();
 
         using var writer = new RecordingBlockSectionWriter();
@@ -45,7 +45,7 @@ public partial class JournalBrokerHostRealSeamsTests
 
         var parsePtr = BuildThreeNameRecordsResult();
         var freedRequests = new List<bool>();
-        MFTLibNative._parseMftRecordsWithProgress = (_, freed, _, _, callback) =>
+        MFTLibNative.Hooks.ParseMftRecordsWithProgress = (_, freed, _, _, callback) =>
         {
             freedRequests.Add(freed);
             callback?.Invoke(200, 300, 42.0);
@@ -76,7 +76,7 @@ public partial class JournalBrokerHostRealSeamsTests
             Assert.Inconclusive("The native USN watch hooks are Windows-only.");
         }
 
-        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
         MockWatchJournalTip();
 
         // The watch's first two reads are queued replies; its third parks on the idle pipe like a
@@ -107,7 +107,7 @@ public partial class JournalBrokerHostRealSeamsTests
             Assert.Inconclusive("The native USN watch hooks are Windows-only.");
         }
 
-        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
         MockWatchJournalTip();
 
         // The kernel wait comes back only when the watch is cancelled, with an empty batch while
@@ -176,7 +176,7 @@ public partial class JournalBrokerHostRealSeamsTests
             var parsePtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
             Marshal.StructureToPtr(parseResult, parsePtr, false);
 
-            MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _) => parsePtr;
+            MFTLibNative.Hooks.ParseMftRecordsWithProgress = (_, _, _, _, _) => parsePtr;
             MockFreeMftResult();
         }
 
@@ -193,7 +193,7 @@ public partial class JournalBrokerHostRealSeamsTests
     [TestMethod]
     public async Task ServeAsync_GrowUsnJournal_UsesRealMftVolumeSeams()
     {
-        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
 
         // The pre-check reports the journal smaller than the request, so the grow is
         // issued; the post-change read returns the grown sizing.
@@ -221,7 +221,7 @@ public partial class JournalBrokerHostRealSeamsTests
             return true;
         }
 
-        Kernel32._deviceIoControl = FakeDeviceIoControl;
+        Kernel32.Hooks.DeviceIoControl = FakeDeviceIoControl;
         await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
 
         await harness.SendControlAsync(writer =>
@@ -248,13 +248,13 @@ public partial class JournalBrokerHostRealSeamsTests
             return;
         }
 
-        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
         var native = new NtfsVolumeDataBufferNative
         {
             MftValidDataLength = 409_600,
             BytesPerFileRecordSegment = 1024
         };
-        Kernel32._deviceIoControl = (_, _, _, _, outBuffer, _, out bytesReturned, _) =>
+        Kernel32.Hooks.DeviceIoControl = (_, _, _, _, outBuffer, _, out bytesReturned, _) =>
         {
             Marshal.StructureToPtr(native, outBuffer, false);
             bytesReturned = (uint)Marshal.SizeOf<NtfsVolumeDataBufferNative>();
@@ -281,7 +281,7 @@ public partial class JournalBrokerHostRealSeamsTests
             Assert.Inconclusive("The native USN watch hooks are Windows-only.");
         }
 
-        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
         MockWatchJournalTip();
 
         // Every drive's watch reads its own idle pipe; the third read to start is the gate.
@@ -295,7 +295,7 @@ public partial class JournalBrokerHostRealSeamsTests
             [@"\\.\D:"] = pipeD,
             [@"\\.\E:"] = idlePipe
         };
-        FileUtilities._getWatchVolumeHandle = volumePath => idlePipes[volumePath].BorrowHandle();
+        FileUtilities.Hooks.GetWatchVolumeHandle = volumePath => idlePipes[volumePath].BorrowHandle();
         await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
 
         // Watch several drives with cursors at or beyond the journal tip (7:200).

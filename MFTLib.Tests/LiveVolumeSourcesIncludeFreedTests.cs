@@ -31,9 +31,9 @@ public class LiveVolumeSourcesIncludeFreedTests
     public void Cleanup()
     {
         NativeTestHooks.NativeResetTestState();
-        MFTLibNative.ResetToDefaults();
-        FileUtilities.ResetToDefaults();
-        Kernel32.ResetToDefaults();
+        MFTLibNative.Hooks.ResetToDefaults();
+        FileUtilities.Hooks.ResetToDefaults();
+        Kernel32.Hooks.ResetToDefaults();
         MftDumpFixture.DeleteOwnedDirectory(_directory);
     }
 
@@ -50,8 +50,8 @@ public class LiveVolumeSourcesIncludeFreedTests
         var (imagePath, freedRecord) = WriteImageWithOneFreedRecord();
         ServeImageAsVolume(imagePath);
         var requests = new List<bool>();
-        var parse = MFTLibNative._parseMftRecordsWithProgress;
-        MFTLibNative._parseMftRecordsWithProgress = (handle, freed, bufferSize, control, callback) =>
+        var parse = MFTLibNative.Hooks.ParseMftRecordsWithProgress;
+        MFTLibNative.Hooks.ParseMftRecordsWithProgress = (handle, freed, bufferSize, control, callback) =>
         {
             requests.Add(freed);
             return parse(handle, freed, bufferSize, control, callback);
@@ -122,7 +122,7 @@ public class LiveVolumeSourcesIncludeFreedTests
     {
         using var image = File.OpenHandle(imagePath);
         using var result = new MftResult(
-            MFTLibNative._parseMftRecordsWithProgress(image, false, 64, IntPtr.Zero, null));
+            MFTLibNative.Hooks.ParseMftRecordsWithProgress(image, false, 64, IntPtr.Zero, null));
         return result.ToRecords().Where(record => record.InUse).Select(record => record.RecordNumber).ToHashSet();
     }
 
@@ -140,8 +140,8 @@ public class LiveVolumeSourcesIncludeFreedTests
     static void ServeImageAsVolume(string imagePath)
     {
         NativeTestHooks.NativeSetVolumeRecordSizeOverride(RecordSize);
-        FileUtilities._getVolumeHandle = _ => File.OpenHandle(imagePath);
-        Kernel32._deviceIoControl = (_, _, _, _, outBuffer, _, out bytesReturned, _) =>
+        FileUtilities.Hooks.GetVolumeHandle = _ => File.OpenHandle(imagePath);
+        Kernel32.Hooks.DeviceIoControl = (_, _, _, _, outBuffer, _, out bytesReturned, _) =>
         {
             Marshal.StructureToPtr(new NtfsVolumeDataBufferNative
             {

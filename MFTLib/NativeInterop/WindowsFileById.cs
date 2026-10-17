@@ -23,7 +23,7 @@ internal static class WindowsFileById
     internal static FileStream Open(string anyPathOnVolume, uint recordNumber, ushort sequenceNumber,
         FileAccess access)
     {
-        using var volumeHandle = Kernel32._createFile(anyPathOnVolume, FileReadAttributes, ShareAll, IntPtr.Zero,
+        using var volumeHandle = Kernel32.Hooks.CreateFile(anyPathOnVolume, FileReadAttributes, ShareAll, IntPtr.Zero,
             OpenExisting, FileFlagBackupSemantics, IntPtr.Zero);
         if (volumeHandle.IsInvalid)
         {

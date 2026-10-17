@@ -13,18 +13,22 @@ static class MFTLibNative
     internal const uint ExpectedMftNativeAbiVersion = 9;
     internal const uint NativeCompactEntrySize = 52;
 
-    // Swappable function pointers - default to the native P/Invoke implementations.
-    // Tests or platforms without the native library can replace these.
-    internal static Func<uint> _getMftNativeAbiVersion = NativeGetMftNativeAbiVersion;
+    internal static readonly NativeHooks Hooks = new();
 
-    // The bool asks for freed base records too. The IntPtr after bufferSizeRecords is the caller's
-    // MftParseControl block, or zero for none. The callback retains its managed closure state.
-    internal static Func<SafeHandle, bool, uint, IntPtr, NativeMftProgressCallback?, IntPtr>
-        _parseMftRecordsWithProgress = NativeParseMFTRecordsWithProgressDefault;
+    internal sealed class NativeHooks
+    {
+        internal Func<uint> GetMftNativeAbiVersion = NativeGetMftNativeAbiVersion;
+        internal Func<SafeHandle, bool, uint, IntPtr, NativeMftProgressCallback?, IntPtr>
+            ParseMftRecordsWithProgress = NativeParseMFTRecordsWithProgressDefault;
+        internal Action<IntPtr> FreeMftResult = NativeFreeMftResult;
 
-    internal static Action<IntPtr> _freeMftResult = NativeFreeMftResult;
-    internal static Func<string, ulong, uint, uint, bool> _generateSyntheticMftSized = NativeGenerateSyntheticMFTSized;
-    internal static Func<string, bool> _generateFixtureMft = NativeGenerateFixtureMFT;
+        internal void ResetToDefaults()
+        {
+            GetMftNativeAbiVersion = NativeGetMftNativeAbiVersion;
+            ParseMftRecordsWithProgress = NativeParseMFTRecordsWithProgressDefault;
+            FreeMftResult = NativeFreeMftResult;
+        }
+    }
 
     static IntPtr NativeParseMFTRecordsWithProgressDefault(
         SafeHandle volumeHandle, bool includeFreed, uint bufferSizeRecords, IntPtr control,
@@ -34,14 +38,14 @@ static class MFTLibNative
             callback);
     }
 
-    static bool NativeGenerateSyntheticMFTSized(string filePath, ulong recordCount, uint bufferSizeRecords,
+    internal static bool GenerateSyntheticMftSized(string filePath, ulong recordCount, uint bufferSizeRecords,
         uint recordSize)
     {
         return NativeGenerateSyntheticMFTSizedUtf8(NullTerminatedUtf8(filePath), recordCount, bufferSizeRecords,
             recordSize);
     }
 
-    static bool NativeGenerateFixtureMFT(string filePath)
+    internal static bool GenerateFixtureMft(string filePath)
     {
         return NativeGenerateFixtureMFTUtf8(NullTerminatedUtf8(filePath));
     }
@@ -102,24 +106,12 @@ static class MFTLibNative
 
     internal static void EnsureCompatibleNativeAbi()
     {
-        var actual = _getMftNativeAbiVersion();
+        var actual = Hooks.GetMftNativeAbiVersion();
         if (actual != ExpectedMftNativeAbiVersion)
         {
             throw new InvalidOperationException(
                 $"MFTLib managed/native ABI mismatch: managed expects {ExpectedMftNativeAbiVersion}, native reports {actual}.");
         }
-    }
-
-    /// <summary>
-    ///     Reset all function pointers to their native P/Invoke defaults.
-    /// </summary>
-    internal static void ResetToDefaults()
-    {
-        _getMftNativeAbiVersion = NativeGetMftNativeAbiVersion;
-        _parseMftRecordsWithProgress = NativeParseMFTRecordsWithProgressDefault;
-        _freeMftResult = NativeFreeMftResult;
-        _generateSyntheticMftSized = NativeGenerateSyntheticMFTSized;
-        _generateFixtureMft = NativeGenerateFixtureMFT;
     }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]

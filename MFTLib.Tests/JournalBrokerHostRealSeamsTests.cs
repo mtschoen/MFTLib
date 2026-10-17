@@ -8,10 +8,10 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 /// <summary>
-///     Exercises the real production delegates <see cref="JournalBrokerHost.CreateDefault" />
+///     Exercises the real production volume access <see cref="JournalBrokerHost.CreateDefault" />
 ///     wires up (MftVolume and UsnJournalVolume-backed query/scan/catch-up/watch), using the same non-admin
 ///     native-mock technique as MockVolumeTests / UsnJournalSyntheticTests, instead of the fake
-///     delegates JournalBrokerHostTests injects directly. Requests reach the host as raw frames
+///     volume access JournalBrokerHostTests injects directly. Requests reach the host as raw frames
 ///     through <see cref="HostChannelHarness" />.
 /// </summary>
 [TestClass]
@@ -25,9 +25,9 @@ public partial class JournalBrokerHostRealSeamsTests
     {
         NativeTestHooks.NativeResetTestState();
         QueuedUsnReads.Release();
-        MFTLibNative.ResetToDefaults();
-        FileUtilities.ResetToDefaults();
-        Kernel32.ResetToDefaults();
+        MFTLibNative.Hooks.ResetToDefaults();
+        FileUtilities.Hooks.ResetToDefaults();
+        Kernel32.Hooks.ResetToDefaults();
         JournalQueryFake.Reset();
     }
 
@@ -39,9 +39,9 @@ public partial class JournalBrokerHostRealSeamsTests
     // A host scan sizes its chunks from FSCTL_GET_NTFS_VOLUME_DATA before it opens the parse.
     static void MockVolumeRecordSize()
     {
-        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
-        var query = Kernel32._deviceIoControl;
-        Kernel32._deviceIoControl = (device, code, input, inputSize, output, outputSize,
+        FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
+        var query = Kernel32.Hooks.DeviceIoControl;
+        Kernel32.Hooks.DeviceIoControl = (device, code, input, inputSize, output, outputSize,
             out returned, overlapped) =>
         {
             if (code == UsnJournalVolumeInterop.FsctlQueryUsnJournal)
@@ -61,7 +61,7 @@ public partial class JournalBrokerHostRealSeamsTests
 
     static void MockFreeMftResult()
     {
-        MFTLibNative._freeMftResult = ptr =>
+        MFTLibNative.Hooks.FreeMftResult = ptr =>
         {
             var parsed = Marshal.PtrToStructure<MftParseResult>(ptr);
             if (parsed.Entries != IntPtr.Zero)

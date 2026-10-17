@@ -5,8 +5,19 @@ namespace MFTLib.NativeInterop;
 
 static class FileUtilities
 {
-    internal static Func<string, SafeFileHandle> _getVolumeHandle = NativeGetVolumeHandle;
-    internal static Func<string, SafeFileHandle> _getWatchVolumeHandle = NativeGetWatchVolumeHandle;
+    internal static readonly VolumeHandleHooks Hooks = new();
+
+    internal sealed class VolumeHandleHooks
+    {
+        internal Func<string, SafeFileHandle> GetVolumeHandle = NativeGetVolumeHandle;
+        internal Func<string, SafeFileHandle> GetWatchVolumeHandle = NativeGetWatchVolumeHandle;
+
+        internal void ResetToDefaults()
+        {
+            GetVolumeHandle = NativeGetVolumeHandle;
+            GetWatchVolumeHandle = NativeGetWatchVolumeHandle;
+        }
+    }
 
     static SafeFileHandle NativeGetVolumeHandle(string volume) => OpenVolumeHandle(volume, 0);
 
@@ -14,7 +25,7 @@ static class FileUtilities
 
     static SafeFileHandle OpenVolumeHandle(string volume, uint flags)
     {
-        var volumeHandle = Kernel32._createFile(
+        var volumeHandle = Kernel32.Hooks.CreateFile(
             volume,
             GENERIC_READ,
             FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -29,12 +40,6 @@ static class FileUtilities
         }
 
         return volumeHandle;
-    }
-
-    internal static void ResetToDefaults()
-    {
-        _getVolumeHandle = NativeGetVolumeHandle;
-        _getWatchVolumeHandle = NativeGetWatchVolumeHandle;
     }
 
     // ReSharper disable InconsistentNaming

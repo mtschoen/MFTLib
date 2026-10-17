@@ -28,7 +28,7 @@ static class UsnJournalVolumeInterop
     internal static SafeFileHandle OpenVolumeRoot(DriveKey driveLetter, string purpose)
     {
         var rootDirectory = driveLetter + @":\";
-        var handle = Kernel32._createFile(rootDirectory, FileReadAttributes, ShareAll, IntPtr.Zero,
+        var handle = Kernel32.Hooks.CreateFile(rootDirectory, FileReadAttributes, ShareAll, IntPtr.Zero,
             OpenExisting, FileFlagBackupSemantics, IntPtr.Zero);
         if (handle.IsInvalid)
         {
@@ -48,7 +48,7 @@ static class UsnJournalVolumeInterop
         var buffer = Marshal.AllocHGlobal(bufferSize);
         try
         {
-            var succeeded = Kernel32._deviceIoControl(
+            var succeeded = Kernel32.Hooks.DeviceIoControl(
                 handle, FsctlQueryUsnJournal, IntPtr.Zero, 0, buffer, (uint)bufferSize, out _, IntPtr.Zero);
             if (!succeeded)
             {

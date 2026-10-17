@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
+using MFTLib.NativeInterop;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -29,16 +30,17 @@ public class NativeSeamIsolationTests
     }
 
     [DataTestMethod]
-    [DataRow(typeof(NativeFieldReferenceFixture), "_getMftNativeAbiVersion")]
-    [DataRow(typeof(VolumeFieldReferenceFixture), "_getVolumeHandle")]
-    [DataRow(typeof(NativeResetReferenceFixture), "MFTLibNative.ResetToDefaults")]
-    [DataRow(typeof(VolumeResetReferenceFixture), "FileUtilities.ResetToDefaults")]
-    [DataRow(typeof(AsyncSeamReferenceFixture), "MFTLibNative.ResetToDefaults")]
-    [DataRow(typeof(NestedSeamReferenceFixture), "FileUtilities.ResetToDefaults")]
-    [DataRow(typeof(HelperSeamReferenceFixture), "MFTLibNative.ResetToDefaults")]
-    [DataRow(typeof(InheritedSeamReferenceFixture), "MFTLibNative.ResetToDefaults")]
-    [DataRow(typeof(ExternalAsyncHelperSeamReferenceFixture), "MFTLibNative.ResetToDefaults")]
-    [DataRow(typeof(ExternalIteratorHelperSeamReferenceFixture), "MFTLibNative.ResetToDefaults")]
+    [DataRow(typeof(NativeFieldReferenceFixture), "GetMftNativeAbiVersion")]
+    [DataRow(typeof(VolumeFieldReferenceFixture), "GetVolumeHandle")]
+    [DataRow(typeof(NativeResetReferenceFixture), "NativeHooks.ResetToDefaults")]
+    [DataRow(typeof(VolumeResetReferenceFixture), "VolumeHandleHooks.ResetToDefaults")]
+    [DataRow(typeof(Win32HooksReferenceFixture), "DeviceIoControl")]
+    [DataRow(typeof(AsyncSeamReferenceFixture), "NativeHooks.ResetToDefaults")]
+    [DataRow(typeof(NestedSeamReferenceFixture), "VolumeHandleHooks.ResetToDefaults")]
+    [DataRow(typeof(HelperSeamReferenceFixture), "NativeHooks.ResetToDefaults")]
+    [DataRow(typeof(InheritedSeamReferenceFixture), "NativeHooks.ResetToDefaults")]
+    [DataRow(typeof(ExternalAsyncHelperSeamReferenceFixture), "NativeHooks.ResetToDefaults")]
+    [DataRow(typeof(ExternalIteratorHelperSeamReferenceFixture), "NativeHooks.ResetToDefaults")]
     [DataRow(typeof(NativeHookReferenceFixture), "NativeTestHooks.NativeSetAllocFailCountdown")]
     [DataRow(typeof(EnvironmentVariableReferenceFixture), "Environment.SetEnvironmentVariable")]
     [DataRow(typeof(CurrentDirectoryReferenceFixture), "Environment.set_CurrentDirectory")]
@@ -145,6 +147,11 @@ public class NativeSeamIsolationTests
         return methods;
     }
 
+    static bool IsNativeHooksType(Type type) =>
+        type == typeof(MFTLibNative.NativeHooks) ||
+        type == typeof(FileUtilities.VolumeHandleHooks) ||
+        type == typeof(Kernel32.Win32Hooks);
+
     static bool IsNativeSeam(MemberInfo member)
     {
         if (member.DeclaringType == typeof(NativeTestHooks))
@@ -155,6 +162,12 @@ public class NativeSeamIsolationTests
         if (member.DeclaringType is not { } declaringType)
         {
             return false;
+        }
+
+        if (IsNativeHooksType(declaringType) ||
+            member is FieldInfo hooksField && IsNativeHooksType(hooksField.FieldType))
+        {
+            return true;
         }
 
         if (IsRepositoryAssembly(declaringType.Assembly))

@@ -9,17 +9,10 @@ internal sealed partial class JournalBrokerHost
     async Task HandleQueryVolumeAsync(ControlSession session, BrokerFrame request)
     {
         var requestId = request.RequestId;
-        if (_queryVolumeInfo == null)
-        {
-            await WriteControlErrorAsync(session, requestId, "Broker has no volume information source")
-                .ConfigureAwait(false);
-            return;
-        }
-
         NtfsVolumeInformation info;
         try
         {
-            info = _queryVolumeInfo(BrokerDriveLetter.Normalize(request.RequireDrive()));
+            info = _volumeAccess.QueryVolumeInformation(BrokerDriveLetter.Normalize(request.RequireDrive()));
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {

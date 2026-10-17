@@ -47,9 +47,9 @@ and name the failing classes in the issue. Tests that need administrator rights
 (`TestCategory=RequiresAdmin`) are not part of the unelevated runs and are
 qualified only by the elevated coverage job.
 
-Tests that reference the process-wide native delegate seams in `MFTLib.NativeInterop.MFTLibNative`,
-`MFTLib.NativeInterop.FileUtilities`, or `MFTLib.NativeInterop.Kernel32`, including calls to their
-`ResetToDefaults`, must carry class-level `[DoNotParallelize]`, cleanup resets, and one explicit
+Tests that reference the process-wide native hooks in `MFTLibNative.Hooks`,
+`FileUtilities.Hooks` or `Kernel32.Hooks`, including calls to their `ResetToDefaults`,
+must carry class-level `[DoNotParallelize]`, cleanup resets, and one explicit
 control-code dispatcher when a scenario needs multiple `DeviceIoControl` operations. Keep cleanup
 resets, but do not rely on them for isolation from concurrently running test classes. The same rule
 applies to any member of `NativeTestHooks` (the native failure-injection and observation
@@ -59,6 +59,15 @@ on Windows as well as Linux: the Linux build leaves out the real WMI tests and i
 run filters out `UsnJournalSyntheticTests`. For stress validation, use 32 ClassLevel
 MSTest workers with the existing Linux platform exclusions in `scripts/coverage-linux.sh`;
 do not add new exclusions to hide seam races.
+
+The shared `MFTLibNative.Hooks` object owns ABI-query, controlled parse and result-free substitutions. `FileUtilities.Hooks` owns ordinary and watch-volume handle substitution. `Kernel32.Hooks` owns CreateFile and DeviceIoControl substitution. These are process-global even though the delegates are instance fields. Tests accessing the objects or their members require class-level DoNotParallelize and restore defaults only after their operations have stopped. `NativeSeamIsolationTests` recognizes the hooks-object types and their access fields, including calls through generated methods and test helpers. Higher-level broker and local-producer tests inject IVolumeAccess instead.
+
+The retained native substitutions remain for targeted low-level testing:
+- `MFTLibNative.Hooks.GetMftNativeAbiVersion`: ABI-mismatch handling in `MftResultTests.Batches.cs` and `MftDumpInputFaultTests.cs`.
+- `MFTLibNative.Hooks.ParseMftRecordsWithProgress`: callback exceptions, NaN progress samples, and synchronous delivery in `MftVolumeTests` and `MftProgressParseFixture`.
+- `MFTLibNative.Hooks.FreeMftResult`: freeing deliberately constructed malformed ABI buffers in `MftResultTests` and `MockVolumeTests`.
+- `FileUtilities.Hooks.GetVolumeHandle` and `GetWatchVolumeHandle`: fixture-file scans and cancellable idle-pipe tests using owned handles without privileged live volumes.
+- `Kernel32.Hooks.CreateFile` and `DeviceIoControl`: volume-open flags and error paths in `MockVolumeTests`, plus synthetic geometry and grow buffer injection.
 
 `Persistent` and `ExistingOnly` opens (an unset `FileIndexOptions.CacheMode` is `Persistent`)
 require an explicit nonblank `FileIndexOptions.CacheDirectory`,

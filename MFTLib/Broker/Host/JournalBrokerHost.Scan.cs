@@ -19,13 +19,6 @@ internal sealed partial class JournalBrokerHost
     async Task RunScanAsync(DriveChannel channel, BrokerFrame request, IBlockSectionWriter? blockSectionWriter,
         CancellationToken cancellationToken)
     {
-        if (_scanSources is not { } sources)
-        {
-            await WriteChannelErrorAsync(channel, "Broker has no scan source", cancellationToken)
-                .ConfigureAwait(false);
-            return;
-        }
-
         if (blockSectionWriter == null)
         {
             await WriteChannelErrorAsync(channel, "Block scans require the blockSectionWriter session parameter.",
@@ -44,11 +37,11 @@ internal sealed partial class JournalBrokerHost
             // the section are released inside it, then the registration here.
             using (registration)
             {
-                output = await ProduceBlockAsync(channel, request, blockSectionWriter, sources, registration.Allowance,
+                output = await ProduceBlockAsync(channel, request, blockSectionWriter, registration.Allowance,
                     cancellationToken).ConfigureAwait(false);
             }
 
-            await EmitScanCompletionFramesAsync(channel, output, sources.JournalReader, cancellationToken)
+            await EmitScanCompletionFramesAsync(channel, output, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is not OperationCanceledException
@@ -59,7 +52,7 @@ internal sealed partial class JournalBrokerHost
     }
 
     async Task<ScanOutput> ProduceBlockAsync(DriveChannel channel, BrokerFrame request,
-        IBlockSectionWriter blockSectionWriter, ScanSources sources, ParseThreadAllowance parseThreads,
+        IBlockSectionWriter blockSectionWriter, ParseThreadAllowance parseThreads,
         CancellationToken cancellationToken)
     {
         var progressChannel = Channel.CreateBounded<BrokerScanProgress>(
@@ -77,7 +70,7 @@ internal sealed partial class JournalBrokerHost
         try
         {
             return await Task.Run(
-                () => WriteBlockAsync(channel, request, new ScanStage(blockSectionWriter, sources.ScanDrive),
+                () => WriteBlockAsync(channel, request, blockSectionWriter,
                     parseThreads, progressChannel.Writer, cancellationToken),
                 cancellationToken).ConfigureAwait(false);
         }
@@ -92,7 +85,7 @@ internal sealed partial class JournalBrokerHost
     }
 
     async Task<ScanOutput> WriteBlockAsync(DriveChannel channel, BrokerFrame request,
-        ScanStage stage, ParseThreadAllowance parseThreads,
+        IBlockSectionWriter blockSectionWriter, ParseThreadAllowance parseThreads,
         ChannelWriter<BrokerScanProgress> progressWriter, CancellationToken cancellationToken)
     {
         try
@@ -104,7 +97,7 @@ internal sealed partial class JournalBrokerHost
             // Armed before the scan starts, so every change the scan misses is replayed by catch-up.
             ScanStartingForTest?.Invoke(channel.Drive, request.RetainedFileNames);
             channel.Pipe.WaitingOnVolume();
-            var cursor = _queryCursor(channel.Drive);
+            var cursor = _volumeAccess.QueryCursor(channel.Drive);
             await channel.Pipe.WriteFrameAsync(writer => BrokerProtocol.WriteCursor(writer, cursor),
                 cancellationToken).ConfigureAwait(false);
 
@@ -116,10 +109,10 @@ internal sealed partial class JournalBrokerHost
             var reporting = new BlockWriteReporting(progressReporter, channel.Pipe);
             long recordsOmitted = 0;
             var batches = PublishEachBatch(
-                stage.ScanDrive(channel.Drive, parseThreads, reporting, scanOptions,
+                _volumeAccess.ScanDriveRecordBatches(channel.Drive, parseThreads, reporting, scanOptions,
                     count => recordsOmitted += count, cancellationToken),
                 channel.Pipe);
-            var result = stage.Writer.Write(request.RequireSectionName(), cursor, batches, scanOptions, reporting,
+            var result = blockSectionWriter.Write(request.RequireSectionName(), cursor, batches, scanOptions, reporting,
                 cancellationToken);
             return progressState.Complete(cursor,
                 result with { SkippedRecordCount = result.SkippedRecordCount + recordsOmitted });
@@ -190,8 +183,8 @@ internal sealed partial class JournalBrokerHost
         }
     }
 
-    static async Task EmitScanCompletionFramesAsync(DriveChannel channel, ScanOutput output,
-        UsnJournalCatchUpSource readJournal, CancellationToken cancellationToken)
+    async Task EmitScanCompletionFramesAsync(DriveChannel channel, ScanOutput output,
+        CancellationToken cancellationToken)
     {
         var finalRecords = output.TotalRecords ?? output.WriteResult.RowCount;
         if (finalRecords < output.MaximumRecordsProcessed)
@@ -225,7 +218,7 @@ internal sealed partial class JournalBrokerHost
 
         try
         {
-            CatchUp(channel, output.Cursor, readJournal, cancellationToken);
+            CatchUp(channel, output.Cursor, cancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -243,15 +236,14 @@ internal sealed partial class JournalBrokerHost
     // republishing progress after each advancing call, until an empty read at the tip.
     // The live watch replays these entries from the armed cursor. A throwing read or
     // entries without advancement ends catch-up; the caller classifies the journal loss.
-    static void CatchUp(DriveChannel channel, UsnJournalCursor armed,
-        UsnJournalCatchUpSource readJournal, CancellationToken cancellationToken)
+    void CatchUp(DriveChannel channel, UsnJournalCursor armed, CancellationToken cancellationToken)
     {
         channel.Pipe.Processing(CatchUpStep);
         var cursor = armed;
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var (chunk, updated) = readJournal(channel.Drive, cursor, BrokerLiveness.CatchUpBufferReadsPerCall);
+            var (chunk, updated) = _volumeAccess.ReadJournal(channel.Drive, cursor, BrokerLiveness.CatchUpBufferReadsPerCall);
             if (updated == cursor)
             {
                 if (chunk.Length != 0)

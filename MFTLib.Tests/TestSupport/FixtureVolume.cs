@@ -15,6 +15,6 @@ internal static class FixtureVolume
         SyntheticNtfsImage.Write(imagePath, mft);
         NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
         using var image = File.OpenHandle(imagePath);
-        return new MftResult(MFTLibNative._parseMftRecordsWithProgress(image, includeFreed, 64, IntPtr.Zero, null));
+        return new MftResult(MFTLibNative.Hooks.ParseMftRecordsWithProgress(image, includeFreed, 64, IntPtr.Zero, null));
     }
 }

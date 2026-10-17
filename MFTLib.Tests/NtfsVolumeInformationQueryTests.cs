@@ -8,8 +8,8 @@ using Microsoft.Win32.SafeHandles;
 namespace MFTLib.Tests;
 
 /// <summary>
-///     <see cref="NtfsVolumeInformation.Query" /> with the <c>FileUtilities._getVolumeHandle</c>
-///     and <c>Kernel32._deviceIoControl</c> seams feeding a synthetic
+///     <see cref="NtfsVolumeInformation.Query" /> with the <c>FileUtilities.Hooks.GetVolumeHandle</c>
+///     and <c>Kernel32.Hooks.DeviceIoControl</c> seams feeding a synthetic
 ///     <c>FSCTL_GET_NTFS_VOLUME_DATA</c> answer, so the marshaling and error paths run
 ///     unelevated. The live, elevated query is covered by
 ///     <see cref="NtfsVolumeInformationAdminTests" />.
@@ -21,8 +21,8 @@ public class NtfsVolumeInformationQueryTests
     [TestCleanup]
     public void Cleanup()
     {
-        FileUtilities.ResetToDefaults();
-        Kernel32.ResetToDefaults();
+        FileUtilities.Hooks.ResetToDefaults();
+        Kernel32.Hooks.ResetToDefaults();
     }
 
     [TestMethod]
@@ -49,8 +49,8 @@ public class NtfsVolumeInformationQueryTests
             return true;
         }
 
-        FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), ownsHandle: false);
-        Kernel32._deviceIoControl = FakeDeviceIoControl;
+        FileUtilities.Hooks.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), ownsHandle: false);
+        Kernel32.Hooks.DeviceIoControl = FakeDeviceIoControl;
 
         var info = NtfsVolumeInformation.Query("C");
 
@@ -76,8 +76,8 @@ public class NtfsVolumeInformationQueryTests
             return false;
         }
 
-        FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), ownsHandle: false);
-        Kernel32._deviceIoControl = FakeDeviceIoControl;
+        FileUtilities.Hooks.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), ownsHandle: false);
+        Kernel32.Hooks.DeviceIoControl = FakeDeviceIoControl;
 
         Assert.ThrowsException<Win32Exception>(() => NtfsVolumeInformation.Query("C"));
     }

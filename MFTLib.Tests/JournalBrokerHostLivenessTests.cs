@@ -210,15 +210,19 @@ public partial class JournalBrokerHostLivenessTests
             }
         }
 
-        public JournalBrokerHost Host(UsnJournalCatchUpSource? readJournal = null, JournalBatchSource? watchDrive = null,
+        public JournalBrokerHost Host(
+            Func<string, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
+            Func<string, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchDrive = null,
             MftRecordBatchSource? scanDrive = null, int processorCount = 4)
         {
             return new JournalBrokerHost(
-                new JournalBrokerHost.VolumeSources(
-                    _ => Tip,
-                    scanDrive ?? ((_, _, _, _, _, _) => []),
-                    readJournal ?? ((_, since, _) => ([], since)),
-                    watchDrive),
+                new ScriptedVolumeAccess
+                {
+                    CursorQuery = _ => Tip,
+                    RecordBatches = scanDrive ?? ((_, _, _, _, _, _) => []),
+                    JournalRead = readJournal ?? ((_, since, _) => ([], since)),
+                    JournalWatch = watchDrive ?? ScriptedVolumeAccess.UnsupportedWatch
+                },
                 processorCount: processorCount,
                 timeProvider: Clock)
             {

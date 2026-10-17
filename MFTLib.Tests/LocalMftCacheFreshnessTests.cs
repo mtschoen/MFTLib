@@ -1,5 +1,7 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
+using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -24,14 +26,19 @@ public class LocalMftCacheFreshnessTests
             Directory.CreateDirectory(directories.TreeRoot);
             Directory.CreateDirectory(directories.CacheDirectory);
             var scans = 0;
-            var source = new LocalMftBlockProducer(TimeProvider.System, null, new LocalMftBlockProducer.Seams(
-                _ => new NtfsVolumeInformation(1024 * 1000, 1024),
-                (_, _, _, _, _, _) =>
+            var access = new ScriptedVolumeAccess
+            {
+                VolumeInformation = _ => new NtfsVolumeInformation(1024 * 1000, 1024),
+                RecordBatches = (_, _, _, _, _, _) =>
                 {
                     Interlocked.Increment(ref scans);
                     return [[new MftRecord(5, 5, new MftRecordFields(3), ".")]];
                 },
-                _ => new UsnJournalCursor(99, 2000))).CreateIndexSource();
+                CursorQuery = _ => new UsnJournalCursor(99, 2000)
+            };
+            var source = new LocalMftBlockProducer(
+                new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 0, 0, 0, TimeSpan.Zero)), null, access)
+                .CreateIndexSource();
             var options = new FileIndexOptions
             {
                 Drives = [new IndexedDrive('T', directories.TreeRoot, 123)],

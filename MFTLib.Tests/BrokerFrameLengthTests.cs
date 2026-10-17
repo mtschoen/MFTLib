@@ -130,11 +130,12 @@ public class BrokerFrameLengthTests
 
     static JournalBrokerHost CreateHost()
     {
-        return new JournalBrokerHost(
-            new JournalBrokerHost.VolumeSources(
-                _ => new UsnJournalCursor(7, 1000),
-                (_, _, _, _, _, _) => [],
-                (_, since, _) => (Array.Empty<UsnJournalEntry>(), since),
-                QueryVolumeInformation: _ => new NtfsVolumeInformation(1024 * 1000, 1024)));
+        return new JournalBrokerHost(new ScriptedVolumeAccess
+        {
+            CursorQuery = _ => new UsnJournalCursor(7, 1000),
+            RecordBatches = (_, _, _, _, _, _) => [],
+            JournalRead = (_, since, _) => (Array.Empty<UsnJournalEntry>(), since),
+            VolumeInformation = _ => new NtfsVolumeInformation(1024 * 1000, 1024)
+        });
     }
 }

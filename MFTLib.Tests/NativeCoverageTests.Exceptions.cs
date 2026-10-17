@@ -15,10 +15,10 @@ public partial class NativeCoverageTests
         {
             NativeTestHooks.NativeSetMaxThreads(2);
             NativeTestHooks.NativeSetAllocFailCountdown(-2);
-            Assert.IsFalse(MFTLibNative._generateSyntheticMftSized(path, 1024, 256, 1024));
+            Assert.IsFalse(MFTLibNative.GenerateSyntheticMftSized(path, 1024, 256, 1024));
             NativeTestHooks.NativeResetTestState();
             NativeTestHooks.NativeSetMaxThreads(2);
-            Assert.IsTrue(MFTLibNative._generateSyntheticMftSized(path, 1024, 256, 1024));
+            Assert.IsTrue(MFTLibNative.GenerateSyntheticMftSized(path, 1024, 256, 1024));
             using var input = MftDumpInput.Open(path);
             using var result = input.Parse();
             Assert.IsTrue(result.UsedRecords > 0);
@@ -41,7 +41,7 @@ public partial class NativeCoverageTests
         try
         {
             NativeTestHooks.NativeSetMaxThreads(2);
-            Assert.IsTrue(MFTLibNative._generateSyntheticMftSized(path, 1024, 256, 1024));
+            Assert.IsTrue(MFTLibNative.GenerateSyntheticMftSized(path, 1024, 256, 1024));
             using var input = MFTLibNative.OpenMftDumpInput(MFTLibNative.NullTerminatedUtf8(path), out var info);
             Assert.IsFalse(input.IsInvalid, info.ErrorMessage);
             NativeTestHooks.NativeSetAllocFailCountdown(mode);
@@ -57,7 +57,7 @@ public partial class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative._freeMftResult(pointer);
+                MFTLibNative.Hooks.FreeMftResult(pointer);
             }
 
             NativeTestHooks.NativeResetTestState();
@@ -72,7 +72,7 @@ public partial class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative._freeMftResult(pointer);
+                MFTLibNative.Hooks.FreeMftResult(pointer);
             }
         }
         finally
@@ -90,7 +90,7 @@ public partial class NativeCoverageTests
         try
         {
             NativeTestHooks.NativeSetMaxThreads(threads);
-            Assert.IsTrue(MFTLibNative._generateSyntheticMftSized(path, 1024, 256, 1024));
+            Assert.IsTrue(MFTLibNative.GenerateSyntheticMftSized(path, 1024, 256, 1024));
             using var input = MFTLibNative.OpenMftDumpInput(MFTLibNative.NullTerminatedUtf8(path), out var info);
             Assert.IsFalse(input.IsInvalid, info.ErrorMessage);
             var pointer = MFTLibNative.ParseMftDumpInput(input, 256, IntPtr.Zero,
@@ -112,7 +112,7 @@ public partial class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative._freeMftResult(pointer);
+                MFTLibNative.Hooks.FreeMftResult(pointer);
             }
 
             NativeTestHooks.NativeResetTestState();

@@ -6,22 +6,27 @@ namespace MFTLib.Tests;
 
 internal static class NativeFieldReferenceFixture
 {
-    public static void Reference() => MFTLibNative._getMftNativeAbiVersion = () => 1;
+    public static void Reference() => MFTLibNative.Hooks.GetMftNativeAbiVersion = () => 1;
 }
 
 internal static class VolumeFieldReferenceFixture
 {
-    public static object Reference() => FileUtilities._getVolumeHandle;
+    public static object Reference() => FileUtilities.Hooks.GetVolumeHandle;
 }
 
 internal class NativeResetReferenceFixture
 {
-    public virtual void Reference() => MFTLibNative.ResetToDefaults();
+    public virtual void Reference() => MFTLibNative.Hooks.ResetToDefaults();
 }
 
 internal static class VolumeResetReferenceFixture
 {
-    public static void Reference() => FileUtilities.ResetToDefaults();
+    public static void Reference() => FileUtilities.Hooks.ResetToDefaults();
+}
+
+internal static class Win32HooksReferenceFixture
+{
+    public static object Reference() => Kernel32.Hooks.DeviceIoControl;
 }
 
 internal static class AsyncSeamReferenceFixture
@@ -29,7 +34,7 @@ internal static class AsyncSeamReferenceFixture
     public static async Task Reference()
     {
         await Task.Yield();
-        MFTLibNative.ResetToDefaults();
+        MFTLibNative.Hooks.ResetToDefaults();
     }
 }
 
@@ -37,7 +42,7 @@ internal static class NestedSeamReferenceFixture
 {
     internal static class Helper
     {
-        public static void Reference() => FileUtilities.ResetToDefaults();
+        public static void Reference() => FileUtilities.Hooks.ResetToDefaults();
     }
 }
 
@@ -53,7 +58,7 @@ internal sealed class InheritedSeamReferenceFixture : NativeResetReferenceFixtur
 [DoNotParallelize]
 internal static class IsolatedSeamReferenceFixture
 {
-    public static void Reference() => MFTLibNative.ResetToDefaults();
+    public static void Reference() => MFTLibNative.Hooks.ResetToDefaults();
 }
 
 internal static class HarmlessReferenceFixture
@@ -66,7 +71,7 @@ internal static class ExternalAsyncHelper
     public static async Task ResetAsync()
     {
         await Task.Yield();
-        MFTLibNative.ResetToDefaults();
+        MFTLibNative.Hooks.ResetToDefaults();
     }
 }
 
@@ -86,7 +91,7 @@ internal static class ExternalIteratorHelper
     public static IEnumerable<int> YieldReset()
     {
         yield return 1;
-        MFTLibNative.ResetToDefaults();
+        MFTLibNative.Hooks.ResetToDefaults();
     }
 }
 

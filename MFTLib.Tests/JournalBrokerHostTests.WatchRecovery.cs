@@ -138,9 +138,9 @@ public partial class JournalBrokerHostTests
         var pipe = await harness.OpenWatchChannelAsync('C', default);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        CollectionAssert.AreEqual(new[] { BrokerFrameKind.CaughtUp, BrokerFrameKind.Error },
+        CollectionAssert.AreEqual(new[] { BrokerFrameKind.Error },
             frames.Select(frame => frame.Kind).ToArray());
-        Assert.AreEqual(failureMessage, frames[1].Message);
+        Assert.AreEqual(failureMessage, frames[0].Message);
     }
 
     [TestMethod]

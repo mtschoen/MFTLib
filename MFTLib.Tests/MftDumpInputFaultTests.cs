@@ -29,7 +29,7 @@ public class MftDumpInputFaultTests
     public void Cleanup()
     {
         NativeTestHooks.NativeResetTestState();
-        MFTLibNative.ResetToDefaults();
+        MFTLibNative.Hooks.ResetToDefaults();
         MftDumpFixture.DeleteOwnedDirectory(_directory);
     }
 
@@ -119,7 +119,7 @@ public class MftDumpInputFaultTests
     [TestMethod]
     public void Open_NativeLibraryOfAnotherAbiVersion_ThrowsBeforeOpeningTheFile()
     {
-        MFTLibNative._getMftNativeAbiVersion = () => MFTLibNative.ExpectedMftNativeAbiVersion - 1;
+        MFTLibNative.Hooks.GetMftNativeAbiVersion = () => MFTLibNative.ExpectedMftNativeAbiVersion - 1;
 
         var failure = Assert.ThrowsException<InvalidOperationException>(
             () => MftDumpInput.Open(Path.Combine(_directory, "absent.mft")));
@@ -140,7 +140,7 @@ public class MftDumpInputFaultTests
         }
         finally
         {
-            MFTLibNative._freeMftResult(resultPointer);
+            MFTLibNative.Hooks.FreeMftResult(resultPointer);
         }
     }
 
@@ -185,7 +185,7 @@ public class MftDumpInputFaultTests
             }
             finally
             {
-                MFTLibNative._freeMftResult(resultPointer);
+                MFTLibNative.Hooks.FreeMftResult(resultPointer);
             }
         }
         finally

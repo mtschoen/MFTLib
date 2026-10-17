@@ -304,22 +304,24 @@ public partial class BrokerProcessTests
     }
 
     static JournalBrokerHost CreateHost(
-        UsnJournalCursorQuery? queryCursor = null,
+        Func<string, UsnJournalCursor>? queryCursor = null,
         MftRecordBatchSource? scanDrive = null,
-        UsnJournalCatchUpSource? readJournal = null,
-        JournalBatchSource? watchDrive = null,
-        NtfsVolumeInformationQuery? queryVolumeInfo = null,
-        GrowUsnJournalQuery? growUsnJournal = null,
+        Func<string, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
+        Func<string, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchDrive = null,
+        Func<string, NtfsVolumeInformation>? queryVolumeInfo = null,
+        Func<string, long, long, UsnJournalSettings>? growUsnJournal = null,
         TimeProvider? timeProvider = null)
     {
         return new JournalBrokerHost(
-            new JournalBrokerHost.VolumeSources(
-                queryCursor ?? (_ => Armed),
-                scanDrive ?? ((_, _, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
-                readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
-                watchDrive,
-                queryVolumeInfo ?? (_ => Volume),
-                growUsnJournal),
+            new ScriptedVolumeAccess
+            {
+                CursorQuery = queryCursor ?? (_ => Armed),
+                RecordBatches = scanDrive ?? ((_, _, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
+                JournalRead = readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
+                JournalWatch = watchDrive ?? ScriptedVolumeAccess.UnsupportedWatch,
+                VolumeInformation = queryVolumeInfo ?? (_ => Volume),
+                JournalGrow = growUsnJournal ?? ScriptedVolumeAccess.UnsupportedGrow
+            },
             processorCount: 4,
             timeProvider: timeProvider);
     }

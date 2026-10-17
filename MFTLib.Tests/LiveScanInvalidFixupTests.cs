@@ -31,9 +31,9 @@ public class LiveScanInvalidFixupTests
     public void Cleanup()
     {
         NativeTestHooks.NativeResetTestState();
-        MFTLibNative.ResetToDefaults();
-        FileUtilities.ResetToDefaults();
-        Kernel32.ResetToDefaults();
+        MFTLibNative.Hooks.ResetToDefaults();
+        FileUtilities.Hooks.ResetToDefaults();
+        Kernel32.Hooks.ResetToDefaults();
         MftDumpFixture.DeleteOwnedDirectory(_directory);
     }
 
@@ -43,7 +43,7 @@ public class LiveScanInvalidFixupTests
         var (imagePath, corruptRecord) = WriteImageWithOneCorruptFixup();
         using var image = File.OpenHandle(imagePath);
 
-        var resultPointer = MFTLibNative._parseMftRecordsWithProgress(image, false, 64, IntPtr.Zero,
+        var resultPointer = MFTLibNative.Hooks.ParseMftRecordsWithProgress(image, false, 64, IntPtr.Zero,
             null);
         var counted = Marshal.PtrToStructure<MftParseResult>(resultPointer);
         using var result = new MftResult(resultPointer);
@@ -157,7 +157,7 @@ public class LiveScanInvalidFixupTests
         File.WriteAllBytes(imagePath, image);
         using var handle = File.OpenHandle(imagePath);
 
-        var resultPointer = MFTLibNative._parseMftRecordsWithProgress(handle, false, 64, IntPtr.Zero,
+        var resultPointer = MFTLibNative.Hooks.ParseMftRecordsWithProgress(handle, false, 64, IntPtr.Zero,
             null);
         try
         {
@@ -168,7 +168,7 @@ public class LiveScanInvalidFixupTests
         }
         finally
         {
-            MFTLibNative._freeMftResult(resultPointer);
+            MFTLibNative.Hooks.FreeMftResult(resultPointer);
         }
     }
 
@@ -193,7 +193,7 @@ public class LiveScanInvalidFixupTests
     {
         using var image = File.OpenHandle(imagePath);
         using var result = new MftResult(
-            MFTLibNative._parseMftRecordsWithProgress(image, false, 64, IntPtr.Zero, null));
+            MFTLibNative.Hooks.ParseMftRecordsWithProgress(image, false, 64, IntPtr.Zero, null));
         Assert.AreEqual(0UL, result.InvalidFixupRecordCount, "the untouched image has no invalid fixup");
         return result.ToRecords().Where(record => record.InUse).Select(record => record.RecordNumber).ToHashSet();
     }
@@ -202,8 +202,8 @@ public class LiveScanInvalidFixupTests
     static void ServeImageAsVolume(string imagePath)
     {
         NativeTestHooks.NativeSetVolumeRecordSizeOverride(RecordSize);
-        FileUtilities._getVolumeHandle = _ => File.OpenHandle(imagePath);
-        Kernel32._deviceIoControl = (_, _, _, _, outBuffer, _, out bytesReturned, _) =>
+        FileUtilities.Hooks.GetVolumeHandle = _ => File.OpenHandle(imagePath);
+        Kernel32.Hooks.DeviceIoControl = (_, _, _, _, outBuffer, _, out bytesReturned, _) =>
         {
             Marshal.StructureToPtr(new NtfsVolumeDataBufferNative
             {

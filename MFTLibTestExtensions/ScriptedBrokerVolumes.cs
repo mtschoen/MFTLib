@@ -5,8 +5,8 @@ namespace MFTLibTestExtensions;
 
 /// <summary>
 ///     The fake volumes an in-process broker serves. A null ScanDrive, WatchDrive or
-///     GrowUsnJournal refuses that operation, as the real host does; a null ReadJournal answers
-///     "nothing new" from every cursor.
+///     GrowUsnJournal configures the fake to refuse that operation; a null ReadJournal
+///     configures an unchanged cursor.
 /// </summary>
 public sealed record ScriptedBrokerVolumes
 {

@@ -1,5 +1,7 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
+using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -24,24 +26,28 @@ public class LocalMftBlockProducerCursorTests
         Directory.CreateDirectory(directories.CacheDirectory);
         var calls = new List<string>();
         var cursor = new UsnJournalCursor(99, 2000);
-        var seams = new LocalMftBlockProducer.Seams(
-            _ => new NtfsVolumeInformation(1024 * 1000, 1024),
-            (_, _, _, _, _, _) =>
+        var access = new ScriptedVolumeAccess
+        {
+            VolumeInformation = _ => new NtfsVolumeInformation(1024 * 1000, 1024),
+            RecordBatches = (_, _, _, _, _, _) =>
             {
                 calls.Add("scan");
                 return [[new MftRecord(5, 5, new MftRecordFields(3), ".")]];
             },
-            _ =>
+            CursorQuery = _ =>
             {
                 calls.Add("cursor");
                 return cursor;
-            });
-        var result = await new LocalMftBlockProducer(TimeProvider.System, null, seams).CreateIndexSource().Producer(new MftBlockProduceRequest
-        {
-            Drive = 'T',
-            VolumeSerial = 123,
-            BlockPath = Path.Combine(directories.CacheDirectory, "cached.mlix")
-        }, TestContext.CancellationTokenSource.Token);
+            }
+        };
+        var result = await new LocalMftBlockProducer(
+            new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 0, 0, 0, TimeSpan.Zero)), null, access)
+            .CreateIndexSource().Producer(new MftBlockProduceRequest
+            {
+                Drive = 'T',
+                VolumeSerial = 123,
+                BlockPath = Path.Combine(directories.CacheDirectory, "cached.mlix")
+            }, TestContext.CancellationTokenSource.Token);
         using var block = result.Block;
         CollectionAssert.AreEqual(new[] { "cursor", "scan" }, calls);
         Assert.AreEqual(cursor.JournalIdentifier, block.Header.UsnJournalIdentifier);
@@ -58,18 +64,23 @@ public class LocalMftBlockProducerCursorTests
         Directory.CreateDirectory(directories.CacheDirectory);
         var scans = 0;
         var queries = 0;
-        var source = new LocalMftBlockProducer(TimeProvider.System, null, new LocalMftBlockProducer.Seams(
-            _ => new NtfsVolumeInformation(1024 * 1000, 1024),
-            (_, _, _, _, _, _) =>
+        var access = new ScriptedVolumeAccess
+        {
+            VolumeInformation = _ => new NtfsVolumeInformation(1024 * 1000, 1024),
+            RecordBatches = (_, _, _, _, _, _) =>
             {
                 scans++;
                 return [[new MftRecord(5, 5, new MftRecordFields(3), ".")]];
             },
-            _ =>
+            CursorQuery = _ =>
             {
                 queries++;
                 throw new InvalidOperationException("No active USN journal.");
-            })).CreateIndexSource();
+            }
+        };
+        var source = new LocalMftBlockProducer(
+            new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 0, 0, 0, TimeSpan.Zero)), null, access)
+            .CreateIndexSource();
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
             Drives = [new IndexedDrive('T', directories.TreeRoot, 123)],

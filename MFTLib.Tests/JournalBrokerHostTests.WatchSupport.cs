@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -12,18 +13,20 @@ public partial class JournalBrokerHostTests
     static readonly NtfsVolumeInformation WatchVolume = new(1024 * 1000, 1024);
 
     static JournalBrokerHost CreateWatchHost(
-        UsnJournalCursorQuery? queryCursor = null,
-        JournalBatchSource? watchDrive = null,
-        UsnJournalCatchUpSource? readJournal = null,
+        Func<string, UsnJournalCursor>? queryCursor = null,
+        Func<string, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchDrive = null,
+        Func<string, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
         MftRecordBatchSource? scanDrive = null)
     {
         return new JournalBrokerHost(
-            new JournalBrokerHost.VolumeSources(
-                queryCursor ?? (_ => new UsnJournalCursor(7, 1000)),
-                scanDrive ?? ((_, _, _, _, _, _) => [[WatchRecord(5, ".", 3)]]),
-                readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
-                watchDrive,
-                _ => WatchVolume),
+            new ScriptedVolumeAccess
+            {
+                CursorQuery = queryCursor ?? (_ => new UsnJournalCursor(7, 1000)),
+                RecordBatches = scanDrive ?? ((_, _, _, _, _, _) => [[WatchRecord(5, ".", 3)]]),
+                JournalRead = readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
+                JournalWatch = watchDrive ?? ScriptedVolumeAccess.UnsupportedWatch,
+                VolumeInformation = _ => WatchVolume
+            },
             4);
     }
 

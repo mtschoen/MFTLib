@@ -37,7 +37,7 @@ internal sealed class CrossDriveScenario : IAsyncDisposable
 
     FileIndex? _index;
 
-    CrossDriveScenario(UsnJournalCatchUpSource? readJournal)
+    CrossDriveScenario(Func<string, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal)
     {
         Broker = new ScriptedWatchBrokerHarness(scanDrive: Scan, seams: new ScriptedBrokerSeams
         {
@@ -76,7 +76,8 @@ internal sealed class CrossDriveScenario : IAsyncDisposable
     ///     scan of a drive names its own number, so a test can tell which scan produced a block.
     /// </summary>
     /// <param name="readJournal">The host's catch-up source; null reads nothing and holds at the armed cursor.</param>
-    public static async Task<CrossDriveScenario> OpenAsync(UsnJournalCatchUpSource? readJournal = null)
+    public static async Task<CrossDriveScenario> OpenAsync(
+        Func<string, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null)
     {
         var scenario = new CrossDriveScenario(readJournal);
         try

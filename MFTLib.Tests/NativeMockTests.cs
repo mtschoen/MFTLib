@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using MFTLib.NativeInterop;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Win32.SafeHandles;
 
@@ -12,35 +13,50 @@ public class NativeMockTests
     [TestCleanup]
     public void Cleanup()
     {
-        MFTLibNative.ResetToDefaults();
-        FileUtilities.ResetToDefaults();
+        MFTLibNative.Hooks.ResetToDefaults();
+        FileUtilities.Hooks.ResetToDefaults();
+        NativeTestHooks.NativeResetTestState();
     }
 
     [TestMethod]
     public void GenerateSyntheticMFT_ReturnsFalse_ThrowsInvalidOperation()
     {
-        MFTLibNative._generateSyntheticMftSized = (_, _, _, _) => false;
-
-        Assert.ThrowsException<InvalidOperationException>(() =>
-            MftVolume.GenerateSyntheticMFT("fake.bin", 100));
+        var path = Path.GetTempFileName();
+        try
+        {
+            NativeTestHooks.NativeSetAllocFailCountdown(1);
+            Assert.ThrowsException<InvalidOperationException>(() =>
+                MftVolume.GenerateSyntheticMFT(path, 100));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     [TestMethod]
     public void GenerateFixtureMFT_ReturnsFalse_ThrowsInvalidOperationNamingThePath()
     {
-        MFTLibNative._generateFixtureMft = _ => false;
+        var path = Path.GetTempFileName();
+        try
+        {
+            NativeTestHooks.NativeSetAllocFailCountdown(1);
+            var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+                MftVolume.GenerateFixtureMFT(path));
 
-        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
-            MftVolume.GenerateFixtureMFT("fake-fixture.bin"));
-
-        StringAssert.Contains(exception.Message, "fake-fixture.bin");
+            StringAssert.Contains(exception.Message, path);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     [TestMethod]
     public void ReadRecordBatches_NullReturn_ThrowsInvalidOperation()
     {
-        FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
-        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _) => IntPtr.Zero;
+        FileUtilities.Hooks.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
+        MFTLibNative.Hooks.ParseMftRecordsWithProgress = (_, _, _, _, _) => IntPtr.Zero;
 
         using var volume = MftVolume.Open("C");
         // ReSharper disable once AccessToDisposedClosure
@@ -50,14 +66,14 @@ public class NativeMockTests
     [TestMethod]
     public void ParseMftRecordsWithProgressDefault_NoOverrideConfigured_CallsRealNativeExport()
     {
-        // Leave _parseMftRecordsWithProgress at its native P/Invoke default (guaranteed by
+        // Leave ParseMftRecordsWithProgress at its native P/Invoke default (guaranteed by
         // TestCleanup running after every test in this class) so the call reaches the real
         // ParseMFTRecordsWithProgress export.
         // INVALID_HANDLE_VALUE (-1) lets the native side fail gracefully with an error
         // result instead of needing a real, elevated volume handle.
         using var handle = new SafeFileHandle(new IntPtr(-1), false);
 
-        var resultPointer = MFTLibNative._parseMftRecordsWithProgress(
+        var resultPointer = MFTLibNative.Hooks.ParseMftRecordsWithProgress(
             handle, false, 256, IntPtr.Zero, null);
 
         Assert.AreNotEqual(IntPtr.Zero, resultPointer);
@@ -73,7 +89,7 @@ public class NativeMockTests
         }
         finally
         {
-            MFTLibNative._freeMftResult(resultPointer);
+            MFTLibNative.Hooks.FreeMftResult(resultPointer);
         }
     }
 }

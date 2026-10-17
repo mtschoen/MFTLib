@@ -194,7 +194,7 @@ public partial class DumpParseNativeTests
         }
         finally
         {
-            MFTLibNative._freeMftResult(pointer);
+            MFTLibNative.Hooks.FreeMftResult(pointer);
         }
     }
 }

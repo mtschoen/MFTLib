@@ -120,7 +120,7 @@ public class NativeInterruptedIoTests
         var path = Path.Combine(_directory, "failed.mft");
         NativeTestHooks.NativeSetInterruptedIo(NativeTestHooks.InterruptedIoMode.GenuineError, 0);
 
-        Assert.IsFalse(MFTLibNative._generateSyntheticMftSized(path, 100, 256, 1024));
+        Assert.IsFalse(MFTLibNative.GenerateSyntheticMftSized(path, 100, 256, 1024));
 
         Assert.AreEqual(1, NativeTestHooks.NativeGetInterruptedIoCalls(), "a genuine error is never retried");
     }

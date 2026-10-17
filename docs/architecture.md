@@ -159,6 +159,7 @@
       scan failures to its MFT drives. The block producer
       delegate, the watch source and drive watch interfaces and their records are internal;
       only MFTLib implements them, and tests build sources through `MFTLibTestExtensions`.
+      `JournalBrokerHost` and `LocalMftBlockProducer` take the internal `IVolumeAccess` contract: cursor query, record-batch scan, bounded journal read, watch, volume information and journal grow. Every operation is a nonnullable method. `LiveVolumeAccess` forwards to `LiveVolumeSources`, which owns native resource lifetime. The internal `ScriptedVolumeAccess` in MFTLibTestExtensions throws for unsupported operations. The local producer receives its TimeProvider independently of volume access and samples completion time after batch enumeration.
     - **Watch state events**: `FileIndex.WatchStateChanged` reports every change of a drive's
       derived `DriveWatchStatus.State` as a `WatchStateChange` whose `Watch` is the drive's `DriveWatchStatus`
       with a per-drive `StateVersion`, built by the same helper `Drives` uses and noted by one helper inside the
@@ -199,7 +200,7 @@
   to read the scans it served. A test scripts the host through `ScriptedBrokerVolumes` (journal cursor,
   scan, catch-up, watch and journal grow sources) and `ScriptedScan`; the harness supplies fixed
   volume sizing (256 KiB of 1024-byte records). The volume-query override, client clock,
-  per-pipe connection failures and held host writes stay internal seams for `MFTLib.Tests`. Host faults surface only through production behavior:
+  per-pipe connection failures and held host writes stay internal seams for `MFTLib.Tests`. `BrokerTestHarness` maps `ScriptedBrokerVolumes` into `ScriptedVolumeAccess`. Missing scan, watch and grow scripts throw their named refusal from the fake. Missing read scripts return no new journal entries, and missing volume-query scripts return the fixed small volume. Unsupported scans are not added to the harness's scan log; configured scans are recorded before their cursor query, even if that query fails. Host faults surface only through production behavior:
   the `InProcessBrokerHandle.Ended` task, an `IOException` on pending operations, and
   `Error` frames; disposing the process never throws a host fault. `SyntheticBlock`,
   `SyntheticBlockEditor` and `SyntheticMftProducer` seed, edit and read cache blocks and produce MFT

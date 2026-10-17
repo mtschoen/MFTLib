@@ -23,14 +23,14 @@ public class WatchHostModeTests
     {
         _directory = Path.Combine(Path.GetTempPath(), $"watchHostModes-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_directory);
-        FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
+        FileUtilities.Hooks.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
     }
 
     [TestCleanup]
     public void Cleanup()
     {
-        MFTLibNative.ResetToDefaults();
-        FileUtilities.ResetToDefaults();
+        MFTLibNative.Hooks.ResetToDefaults();
+        FileUtilities.Hooks.ResetToDefaults();
         Directory.Delete(_directory, recursive: true);
     }
 
@@ -237,14 +237,18 @@ public class WatchHostModeTests
         return new IndexedDrive(driveLetter, _directory, 4242);
     }
 
-    static JournalBrokerHost CreateHost(UsnJournalCatchUpSource? readJournal = null, MftRecordBatchSource? scanDrive = null)
+    static JournalBrokerHost CreateHost(
+        Func<string, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
+        MftRecordBatchSource? scanDrive = null)
     {
         return new JournalBrokerHost(
-            new JournalBrokerHost.VolumeSources(
-                _ => Armed,
-                scanDrive ?? ((_, _, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
-                readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
-                QueryVolumeInformation: _ => Volume),
+            new ScriptedVolumeAccess
+            {
+                CursorQuery = _ => Armed,
+                RecordBatches = scanDrive ?? ((_, _, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
+                JournalRead = readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
+                VolumeInformation = _ => Volume
+            },
             processorCount: 4);
     }
 

@@ -5,7 +5,7 @@ using Microsoft.Win32.SafeHandles;
 namespace MFTLib.Tests.TestSupport;
 
 /// <summary>
-///     Scripts the shared <c>Kernel32._deviceIoControl</c> seam for USN journal queries
+///     Scripts the shared <c>Kernel32.Hooks.DeviceIoControl</c> seam for USN journal queries
 ///     (<c>UsnJournalVolumeInterop.QueryJournalData</c>), which <c>UsnJournalVolume</c> and
 ///     <c>FileIndex.QueryUsnJournalSettings</c> both issue. Classes that install a fake must
 ///     call <see cref="Reset" /> in their cleanup.
@@ -33,7 +33,7 @@ internal static class JournalQueryFake
     /// <summary>Answers every query with the reply the callback returns for that call.</summary>
     public static void Serve(Func<UsnJournalVolumeInterop.UsnJournalDataV0> reply)
     {
-        Kernel32._deviceIoControl = Create(reply);
+        Kernel32.Hooks.DeviceIoControl = Create(reply);
     }
 
     /// <summary>Answers every query with one journal state.</summary>
@@ -56,7 +56,7 @@ internal static class JournalQueryFake
             return false;
         }
 
-        Kernel32._deviceIoControl = Fake;
+        Kernel32.Hooks.DeviceIoControl = Fake;
     }
 
     public static UsnJournalVolumeInterop.UsnJournalDataV0 Describe(ulong journalIdentifier, long nextUsn,
@@ -73,6 +73,6 @@ internal static class JournalQueryFake
 
     public static void Reset()
     {
-        Kernel32.ResetToDefaults();
+        Kernel32.Hooks.ResetToDefaults();
     }
 }

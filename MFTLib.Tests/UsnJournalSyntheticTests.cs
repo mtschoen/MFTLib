@@ -32,16 +32,16 @@ public partial class UsnJournalSyntheticTests
     public void Cleanup()
     {
         NativeTestHooks.NativeResetTestState();
-        MFTLibNative.ResetToDefaults();
-        FileUtilities.ResetToDefaults();
-        Kernel32.ResetToDefaults();
+        MFTLibNative.Hooks.ResetToDefaults();
+        FileUtilities.Hooks.ResetToDefaults();
+        Kernel32.Hooks.ResetToDefaults();
         JournalQueryFake.Reset();
         QueuedUsnReads.Release();
     }
 
     static void UseFakeHandle()
     {
-        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
     }
 
     // Queues a synthetic IOCTL success buffer; keeps it alive until cleanup.
@@ -542,7 +542,7 @@ public partial class UsnJournalSyntheticTests
     public async Task WatchUsnJournal_NativeError_ThrowsTheMessage()
     {
         UseFakeHandle();
-        FileUtilities._getWatchVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks.GetWatchVolumeHandle = _ => FakeVolumeHandle.Create();
         NativeTestHooks.NativeSetUsnIoFailError(ERROR_JOURNAL_NOT_ACTIVE, 1);
         using var volume = MftVolume.Open("C");
 
@@ -559,7 +559,7 @@ public partial class UsnJournalSyntheticTests
     public async Task WatchUsnJournal_ResultAllocationException_ThrowsNullResult()
     {
         UseFakeHandle();
-        FileUtilities._getWatchVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks.GetWatchVolumeHandle = _ => FakeVolumeHandle.Create();
         NativeTestHooks.NativeSetAllocFailCountdown(-3);
         using var volume = MftVolume.Open("C");
 
@@ -576,7 +576,7 @@ public partial class UsnJournalSyntheticTests
     public async Task WatchUsnJournal_EmptyBatchThenEntry_YieldsTheEntryWithItsCursor()
     {
         UseFakeHandle();
-        FileUtilities._getWatchVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks.GetWatchVolumeHandle = _ => FakeVolumeHandle.Create();
         QueueSuccess(UsnReadBuffers.Build(Cursor.NextUsn));
         QueueSuccess(UsnReadBuffers.Build(600, ((0xA9UL << 48) | 0x1246A1, 5, 550, 0x00000100u, "created.txt")));
         using var volume = MftVolume.Open("C");
@@ -617,7 +617,7 @@ public partial class UsnJournalSyntheticTests
             return true;
         }
 
-        Kernel32._deviceIoControl = FakeDeviceIoControl;
+        Kernel32.Hooks.DeviceIoControl = FakeDeviceIoControl;
         try
         {
             using var volume = MftVolume.Open("C");
@@ -659,7 +659,7 @@ public partial class UsnJournalSyntheticTests
             return true;
         }
 
-        Kernel32._deviceIoControl = FakeDeviceIoControl;
+        Kernel32.Hooks.DeviceIoControl = FakeDeviceIoControl;
         using var volume = MftVolume.Open("C");
         var settings = volume.Journal.GrowUsnJournal(0x400000, 0x200000);
         Assert.AreEqual(0x000900E7u, capturedCode);
@@ -688,7 +688,7 @@ public partial class UsnJournalSyntheticTests
             return false;
         }
 
-        Kernel32._deviceIoControl = FakeDeviceIoControl;
+        Kernel32.Hooks.DeviceIoControl = FakeDeviceIoControl;
         try
         {
             using var volume = MftVolume.Open("C");

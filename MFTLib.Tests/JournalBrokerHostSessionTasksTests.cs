@@ -1,3 +1,4 @@
+using MFTLibTestExtensions;
 using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -49,10 +50,12 @@ public class JournalBrokerHostSessionTasksTests
     public async Task Drain_FaultedTask_IsRetainedAndRethrown()
     {
         var host = new JournalBrokerHost(
-            new JournalBrokerHost.VolumeSources(
-                _ => default,
-                (_, _, _, _, _, _) => [],
-                (_, since, _) => ([], since)),
+            new ScriptedVolumeAccess
+            {
+                CursorQuery = _ => default,
+                RecordBatches = (_, _, _, _, _, _) => [],
+                JournalRead = (_, since, _) => ([], since)
+            },
             timeProvider: new FakeTimeProvider());
         var tasks = new JournalBrokerHost.SessionTasks();
         var failure = new InvalidOperationException("request failed");

@@ -14,7 +14,7 @@ public partial class MftResultTests
     public void Cleanup()
     {
         NativeTestHooks.NativeResetTestState();
-        MFTLibNative.ResetToDefaults();
+        MFTLibNative.Hooks.ResetToDefaults();
     }
 
     [TestMethod]
@@ -39,7 +39,7 @@ public partial class MftResultTests
             using var control = new ParseControlBlock();
             control.RequestCancel();
             using var image = new FileStream(imagePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var resultPtr = MFTLibNative._parseMftRecordsWithProgress(
+            var resultPtr = MFTLibNative.Hooks.ParseMftRecordsWithProgress(
                 image.SafeFileHandle, false, 64, control.Pointer, null);
             try
             {
@@ -48,7 +48,7 @@ public partial class MftResultTests
             }
             finally
             {
-                MFTLibNative._freeMftResult(resultPtr);
+                MFTLibNative.Hooks.FreeMftResult(resultPtr);
             }
         }
         finally
@@ -69,7 +69,7 @@ public partial class MftResultTests
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
         Marshal.StructureToPtr(result, resultPtr, false);
         var freed = IntPtr.Zero;
-        MFTLibNative._freeMftResult = pointer =>
+        MFTLibNative.Hooks.FreeMftResult = pointer =>
         {
             freed = pointer;
             Marshal.FreeHGlobal(pointer);
@@ -95,7 +95,7 @@ public partial class MftResultTests
         };
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
         Marshal.StructureToPtr(result, resultPtr, false);
-        MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
+        MFTLibNative.Hooks.FreeMftResult = Marshal.FreeHGlobal;
 
         var ex = Assert.ThrowsException<InvalidOperationException>(() =>
             new MftResult(resultPtr));
@@ -128,7 +128,7 @@ public partial class MftResultTests
             };
             var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
             Marshal.StructureToPtr(result, resultPtr, false);
-            MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
+            MFTLibNative.Hooks.FreeMftResult = Marshal.FreeHGlobal;
 
             using var mftResult = new MftResult(resultPtr);
             var ex = Assert.ThrowsException<InvalidDataException>(mftResult.ToRecords);
@@ -167,7 +167,7 @@ public partial class MftResultTests
             };
             var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
             Marshal.StructureToPtr(result, resultPtr, false);
-            MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
+            MFTLibNative.Hooks.FreeMftResult = Marshal.FreeHGlobal;
 
             using var mftResult = new MftResult(resultPtr);
             var ex = Assert.ThrowsException<InvalidDataException>(mftResult.ToRecords);
@@ -206,7 +206,7 @@ public partial class MftResultTests
             };
             var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
             Marshal.StructureToPtr(result, resultPtr, false);
-            MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
+            MFTLibNative.Hooks.FreeMftResult = Marshal.FreeHGlobal;
 
             using var mftResult = new MftResult(resultPtr);
             var records = mftResult.ToRecords();

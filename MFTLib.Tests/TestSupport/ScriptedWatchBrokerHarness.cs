@@ -36,11 +36,14 @@ internal sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
         seams ??= new ScriptedBrokerSeams();
         var journalTip = tip ?? DefaultTip;
         var host = new JournalBrokerHost(
-            new JournalBrokerHost.VolumeSources(drive => _tips.GetValueOrDefault(drive[0], journalTip),
-                scanDrive ?? ((_, _, _, _, _, _) => throw new InvalidOperationException("A scan is not expected.")),
-                seams.ReadJournal ?? ((_, since, _) => ([], since)),
-                (drive, since, operation, token) => Watch(drive[0]).RunAsync(since, operation, token),
-                QueryVolumeInformation: _ => new NtfsVolumeInformation(1024 * 100, 1024)),
+            new ScriptedVolumeAccess
+            {
+                CursorQuery = drive => _tips.GetValueOrDefault(drive[0], journalTip),
+                RecordBatches = scanDrive ?? ((_, _, _, _, _, _) => throw new InvalidOperationException("A scan is not expected.")),
+                JournalRead = seams.ReadJournal ?? ((_, since, _) => ([], since)),
+                JournalWatch = (drive, since, operation, token) => Watch(drive[0]).RunAsync(since, operation, token),
+                VolumeInformation = _ => new NtfsVolumeInformation(1024 * 100, 1024)
+            },
             processorCount: 4,
             timeProvider: seams.HostClock)
         {
@@ -132,7 +135,7 @@ internal sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
 internal sealed record ScriptedBrokerSeams
 {
     /// <summary>The host's journal catch-up source; the default reads nothing and stays at the cursor it is given.</summary>
-    public UsnJournalCatchUpSource? ReadJournal { get; init; }
+    public Func<string, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? ReadJournal { get; init; }
 
     /// <summary>The host's clock; null reads the system clock.</summary>
     public TimeProvider? HostClock { get; init; }

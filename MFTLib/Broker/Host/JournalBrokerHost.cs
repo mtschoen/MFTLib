@@ -25,54 +25,23 @@ internal sealed partial class JournalBrokerHost
     // The processing step a watch publishes while it ships one journal batch.
     const string JournalBatchStep = "journal batch";
 
-    readonly UsnJournalCursorQuery _queryCursor;
-    readonly ScanSources? _scanSources;
-    readonly JournalBatchSource? _watchDrive;
-    readonly NtfsVolumeInformationQuery? _queryVolumeInfo;
-    readonly GrowUsnJournalQuery? _growUsnJournal;
+    readonly IVolumeAccess _volumeAccess;
     readonly TimeProvider _timeProvider;
     readonly ParseThreadAllocator _parseThreads;
 
     /// <summary>Builds a host over injected volume access, so it runs without real elevation in tests.</summary>
-    /// <param name="volumeSources">The volume operations this host can serve.</param>
+    /// <param name="volumeAccess">The volume operations this host can serve.</param>
     /// <param name="processorCount">The parse-thread budget every running scan shares; null is <see cref="Environment.ProcessorCount" />.</param>
     /// <param name="timeProvider">The clock of every host timeout; null is <see cref="TimeProvider.System" />.</param>
     public JournalBrokerHost(
-        VolumeSources volumeSources,
+        IVolumeAccess volumeAccess,
         int? processorCount = null,
         TimeProvider? timeProvider = null)
     {
-        _queryCursor = volumeSources.QueryCursor;
-        _scanSources = volumeSources.ScanDrive != null && volumeSources.ReadJournal != null
-            ? new ScanSources(volumeSources.ScanDrive, volumeSources.ReadJournal)
-            : null;
-        _watchDrive = volumeSources.WatchDrive;
-        _queryVolumeInfo = volumeSources.QueryVolumeInformation;
-        _growUsnJournal = volumeSources.GrowUsnJournal;
+        _volumeAccess = volumeAccess;
         _timeProvider = timeProvider ?? TimeProvider.System;
         _parseThreads = new ParseThreadAllocator(processorCount ?? Environment.ProcessorCount);
     }
-
-    /// <summary>The volume operations a host serves, independent of its clock and parse-thread budget.</summary>
-    /// <param name="QueryCursor">Arms a drive's journal cursor before its scan, and bounds a watch's backlog.</param>
-    /// <param name="ScanDrive">Streams one drive's MFT records for a scan; null refuses every scan.</param>
-    /// <param name="ReadJournal">Replays the journal from a scan's armed cursor after the scan; null refuses every scan.</param>
-    /// <param name="WatchDrive">Streams a drive's journal for a watch; null refuses every watch.</param>
-    /// <param name="QueryVolumeInformation">Answers volume sizing queries; null refuses every query.</param>
-    /// <param name="GrowUsnJournal">Grows a drive's journal; null refuses every grow request.</param>
-    internal sealed record VolumeSources(
-        UsnJournalCursorQuery QueryCursor,
-        MftRecordBatchSource? ScanDrive = null,
-        UsnJournalCatchUpSource? ReadJournal = null,
-        JournalBatchSource? WatchDrive = null,
-        NtfsVolumeInformationQuery? QueryVolumeInformation = null,
-        GrowUsnJournalQuery? GrowUsnJournal = null);
-
-    // A scan needs both sources; a host missing either refuses every scan.
-    readonly record struct ScanSources(MftRecordBatchSource ScanDrive, UsnJournalCatchUpSource JournalReader);
-
-    // What one scan's block write needs: where the records go and where they come from.
-    readonly record struct ScanStage(IBlockSectionWriter Writer, MftRecordBatchSource ScanDrive);
 
     /// <summary>The parse-thread budget every scan on this host is admitted to.</summary>
     internal ParseThreadAllocator ParseThreads => _parseThreads;
@@ -96,14 +65,7 @@ internal sealed partial class JournalBrokerHost
         var yieldedAny = false;
         try
         {
-            if (_watchDrive == null)
-            {
-                await WriteChannelErrorAsync(channel, "Broker has no watch source", cancellationToken)
-                    .ConfigureAwait(false);
-                return;
-            }
-
-            var arm = await ArmWatchAsync(channel, since, cancellationToken).ConfigureAwait(false);
+            var arm = ArmWatch(channel, since);
 
             // While diagnostics are enabled, drop the diagnostics logs' own journal entries: each
             // shipped frame is logged, the log write produces a USN record, and that record would
@@ -111,9 +73,15 @@ internal sealed partial class JournalBrokerHost
             // it would keep the loop alive, because even an empty frame gets logged.
             var logFilter = BrokerDiagnostics.CreateLogFilter();
             var caughtUpReported = arm.CaughtUpReported;
-            var batches = _watchDrive(drive, arm.Since, channel.Pipe, cancellationToken)
+            var batches = _volumeAccess.WatchDrive(drive, arm.Since, channel.Pipe, cancellationToken)
                 .GetAsyncEnumerator(cancellationToken);
             await using var batchesLifetime = batches.ConfigureAwait(false);
+            if (caughtUpReported)
+            {
+                await channel.Pipe.WriteFrameAsync(BrokerProtocol.WriteCaughtUp, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             while (true)
             {
                 channel.Pipe.WaitingOnVolume();
@@ -156,15 +124,15 @@ internal sealed partial class JournalBrokerHost
 
     // Resolves what bounds this watch's backlog and reports the leading CaughtUp marker when the
     // requested cursor already sits at the journal tip.
-    async Task<(UsnJournalCursor Tip, UsnJournalCursor Since, bool CaughtUpReported)> ArmWatchAsync(
-        DriveChannel channel, UsnJournalCursor since, CancellationToken cancellationToken)
+    (UsnJournalCursor Tip, UsnJournalCursor Since, bool CaughtUpReported) ArmWatch(
+        DriveChannel channel, UsnJournalCursor since)
     {
         // The journal tip at arm time is what bounds this watch's backlog: every record up to it
         // must be delivered before the drive can be called caught up. One query per watch, and the
         // same query resolves a (0,0) sentinel into a watch-from-now cursor, so only the
         // pre-launch gap is lost, and there is no cached cursor that could have gone stale.
         channel.Pipe.WaitingOnVolume();
-        var tip = _queryCursor(channel.Drive);
+        var tip = _volumeAccess.QueryCursor(channel.Drive);
         var effectiveSince = since.JournalIdentifier == 0 ? tip : since;
 
         // No backlog at all: the drive starts on live entries, so the marker leads. The journal identifier
@@ -172,11 +140,6 @@ internal sealed partial class JournalBrokerHost
         // mismatched tip belongs to a dead journal generation.
         var caughtUpReported = effectiveSince.JournalIdentifier == tip.JournalIdentifier &&
                                effectiveSince.NextUsn >= tip.NextUsn;
-        if (caughtUpReported)
-        {
-            await channel.Pipe.WriteFrameAsync(BrokerProtocol.WriteCaughtUp, cancellationToken)
-                .ConfigureAwait(false);
-        }
 
         return (tip, effectiveSince, caughtUpReported);
     }

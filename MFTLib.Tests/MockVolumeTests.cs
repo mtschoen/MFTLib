@@ -18,9 +18,9 @@ public class MockVolumeTests
     [TestCleanup]
     public void Cleanup()
     {
-        MFTLibNative.ResetToDefaults();
-        FileUtilities.ResetToDefaults();
-        Kernel32.ResetToDefaults();
+        MFTLibNative.Hooks.ResetToDefaults();
+        FileUtilities.Hooks.ResetToDefaults();
+        Kernel32.Hooks.ResetToDefaults();
     }
 
     static unsafe IntPtr BuildResult(uint usedRecords, string? errorMessage = null)
@@ -77,10 +77,10 @@ public class MockVolumeTests
 
     static void SetupMocks(uint usedRecords = 3)
     {
-        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
         var resultPtr = BuildResult(usedRecords);
-        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _) => resultPtr;
-        MFTLibNative._freeMftResult = FreeBuiltResult;
+        MFTLibNative.Hooks.ParseMftRecordsWithProgress = (_, _, _, _, _) => resultPtr;
+        MFTLibNative.Hooks.FreeMftResult = FreeBuiltResult;
     }
 
     static void FreeBuiltResult(IntPtr pointer)
@@ -104,18 +104,18 @@ public class MockVolumeTests
     [TestMethod]
     public void GetVolumeHandle_InvalidHandle_ThrowsIOException()
     {
-        Kernel32._createFile = (_, _, _, _, _, _, _) => new SafeFileHandle(new IntPtr(-1), false);
+        Kernel32.Hooks.CreateFile = (_, _, _, _, _, _, _) => new SafeFileHandle(new IntPtr(-1), false);
 
         Assert.ThrowsException<IOException>(() =>
-            FileUtilities._getVolumeHandle(@"\\.\C:"));
+            FileUtilities.Hooks.GetVolumeHandle(@"\\.\C:"));
     }
 
     [TestMethod]
     public void GetVolumeHandle_ValidHandle_ReturnsHandle()
     {
-        Kernel32._createFile = (_, _, _, _, _, _, _) => FakeVolumeHandle.Create();
+        Kernel32.Hooks.CreateFile = (_, _, _, _, _, _, _) => FakeVolumeHandle.Create();
 
-        using var handle = FileUtilities._getVolumeHandle(@"\\.\C:");
+        using var handle = FileUtilities.Hooks.GetVolumeHandle(@"\\.\C:");
         Assert.IsFalse(handle.IsInvalid);
     }
 
@@ -124,7 +124,7 @@ public class MockVolumeTests
     [TestMethod]
     public void Open_ValidVolume_ReturnsOpenVolume()
     {
-        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
 
         using var volume = MftVolume.Open("C");
         Assert.IsNotNull(volume);
@@ -133,7 +133,7 @@ public class MockVolumeTests
     [TestMethod]
     public void Dispose_DisposesHandle()
     {
-        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
 
         SafeFileHandle handle;
         using (var volume = MftVolume.Open("C"))
@@ -147,7 +147,7 @@ public class MockVolumeTests
     [TestMethod]
     public void Dispose_CalledTwice_DoesNotThrow()
     {
-        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
 
         var volume = MftVolume.Open("C");
         volume.Dispose();
@@ -157,7 +157,7 @@ public class MockVolumeTests
     [TestMethod]
     public void Methods_AfterDispose_ThrowObjectDisposed()
     {
-        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
 
         var volume = MftVolume.Open("C");
         volume.Dispose();
@@ -190,13 +190,13 @@ public class MockVolumeTests
     public void ReadRecordBatches_PassesIncludeFreedToTheNativeParser(bool includeFreed)
     {
         bool? requested = null;
-        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
-        MFTLibNative._parseMftRecordsWithProgress = (_, freed, _, _, _) =>
+        FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
+        MFTLibNative.Hooks.ParseMftRecordsWithProgress = (_, freed, _, _, _) =>
         {
             requested = freed;
             return BuildResult(1);
         };
-        MFTLibNative._freeMftResult = FreeBuiltResult;
+        MFTLibNative.Hooks.FreeMftResult = FreeBuiltResult;
         using var volume = MftVolume.Open("C");
 
         _ = volume.ReadRecordBatches(4096, null, null, CancellationToken.None,
@@ -208,7 +208,7 @@ public class MockVolumeTests
     [TestMethod]
     public void MftResult_NativeCompactBytes_ComputesCorrectSize()
     {
-        MFTLibNative._freeMftResult = FreeBuiltResult;
+        MFTLibNative.Hooks.FreeMftResult = FreeBuiltResult;
         using var stream = new MftResult(BuildResult(3));
 
         // 3 records * 52 bytes + string units (file0.txt=9, file1.txt=9, file2.txt=9 = 27 units * 2 bytes = 54)
@@ -219,7 +219,7 @@ public class MockVolumeTests
     [TestMethod]
     public void MftResult_Dispose_TotalsAndCompactBytesRemainReadable()
     {
-        MFTLibNative._freeMftResult = FreeBuiltResult;
+        MFTLibNative.Hooks.FreeMftResult = FreeBuiltResult;
         var stream = new MftResult(BuildResult(3));
         stream.Dispose();
 
@@ -236,7 +236,7 @@ public class MockVolumeTests
     public void MftResult_ErrorMessage_ThrowsInvalidOperation()
     {
         var errorResultPtr = BuildResult(0, errorMessage: "Volume read failed");
-        MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
+        MFTLibNative.Hooks.FreeMftResult = Marshal.FreeHGlobal;
 
         var ex = Assert.ThrowsException<InvalidOperationException>(() =>
             new MftResult(errorResultPtr));
@@ -250,7 +250,7 @@ public class MockVolumeTests
         SafeFileHandle? handle = null;
         try
         {
-            FileUtilities._getVolumeHandle = _ => handle = FakeVolumeHandle.Create();
+            FileUtilities.Hooks.GetVolumeHandle = _ => handle = FakeVolumeHandle.Create();
             using var volume = MftVolume.Open("C");
             Assert.AreSame(handle, volume.GetVolumeHandleForTest());
         }
@@ -265,7 +265,7 @@ public class MockVolumeTests
     {
         var freed = false;
         var resultPtr = BuildResult(1);
-        MFTLibNative._freeMftResult = ptr =>
+        MFTLibNative.Hooks.FreeMftResult = ptr =>
         {
             var p = Marshal.PtrToStructure<MftParseResult>(ptr);
             if (p.Entries != IntPtr.Zero)
@@ -293,7 +293,7 @@ public class MockVolumeTests
     {
         var freeCount = 0;
         var resultPtr = BuildResult(1);
-        MFTLibNative._freeMftResult = ptr =>
+        MFTLibNative.Hooks.FreeMftResult = ptr =>
         {
             var p = Marshal.PtrToStructure<MftParseResult>(ptr);
             if (p.Entries != IntPtr.Zero)
@@ -321,7 +321,7 @@ public class MockVolumeTests
     public void MftResult_EnumerationAfterDispose_ThrowsObjectDisposed()
     {
         var resultPtr = BuildResult(1);
-        MFTLibNative._freeMftResult = ptr =>
+        MFTLibNative.Hooks.FreeMftResult = ptr =>
         {
             var p = Marshal.PtrToStructure<MftParseResult>(ptr);
             if (p.Entries != IntPtr.Zero)
@@ -363,7 +363,7 @@ public class MockVolumeTests
     [DataRow(-100)]
     public void MftResult_ReadBatches_ZeroOrNegativeBatchSize_ThrowsArgumentOutOfRangeException(int batchSize)
     {
-        MFTLibNative._freeMftResult = FreeBuiltResult;
+        MFTLibNative.Hooks.FreeMftResult = FreeBuiltResult;
         Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
         {
             using var result = new MftResult(BuildResult(5));
@@ -374,7 +374,7 @@ public class MockVolumeTests
     [TestMethod]
     public void MftResult_ReadBatches_Disposed_ThrowsObjectDisposedException()
     {
-        MFTLibNative._freeMftResult = FreeBuiltResult;
+        MFTLibNative.Hooks.FreeMftResult = FreeBuiltResult;
         var result = new MftResult(BuildResult(5));
         result.Dispose();
 
@@ -385,7 +385,7 @@ public class MockVolumeTests
     [TestMethod]
     public void MftResult_ReadBatches_BatchesMatchRecordsInOrder()
     {
-        MFTLibNative._freeMftResult = FreeBuiltResult;
+        MFTLibNative.Hooks.FreeMftResult = FreeBuiltResult;
         using var result = new MftResult(BuildResult(7));
 
         var batches = result.ReadBatches(3).ToList();
@@ -407,7 +407,7 @@ public class MockVolumeTests
     [TestMethod]
     public void MftResult_ReadBatches_RecordsStayValidAfterResultDisposed()
     {
-        MFTLibNative._freeMftResult = FreeBuiltResult;
+        MFTLibNative.Hooks.FreeMftResult = FreeBuiltResult;
         var result = new MftResult(BuildResult(3));
         var batches = result.ReadBatches(2).ToList();
         result.Dispose();
@@ -466,10 +466,10 @@ public class MockVolumeTests
     public void MftVolume_ReadRecordBatches_EarlyEnumerationDisposal_FreesNativeResult()
     {
         var freed = false;
-        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
         var resultPtr = BuildResult(10);
-        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _) => resultPtr;
-        MFTLibNative._freeMftResult = ptr =>
+        MFTLibNative.Hooks.ParseMftRecordsWithProgress = (_, _, _, _, _) => resultPtr;
+        MFTLibNative.Hooks.FreeMftResult = ptr =>
         {
             var parseResult = Marshal.PtrToStructure<MftParseResult>(ptr);
             if (parseResult.Entries != IntPtr.Zero)
@@ -529,7 +529,7 @@ public class MockVolumeTests
             var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
             Marshal.StructureToPtr(result, resultPtr, false);
 
-            MFTLibNative._freeMftResult = _ => { };
+            MFTLibNative.Hooks.FreeMftResult = _ => { };
 
             using var stream = new MftResult(resultPtr);
             var record = stream.ReadBatches(1).First()[0];

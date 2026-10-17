@@ -13,7 +13,7 @@ namespace MFTLib.Tests.Index;
 ///     The unelevated volume-root handle both index journal reads share, and what they do
 ///     when the volume refuses the IOCTL. The handle is a real unelevated one on C:, because
 ///     opening it is the part worth exercising for real; only the IOCTL is swapped out,
-///     through <c>Kernel32._deviceIoControl</c>, so a drive whose journal is healthy
+///     through <c>Kernel32.Hooks.DeviceIoControl</c>, so a drive whose journal is healthy
 ///     can still stand in for one that is not.
 /// </summary>
 [TestClass]
@@ -25,7 +25,7 @@ public class UsnJournalVolumeInteropTests
     [TestCleanup]
     public void Cleanup()
     {
-        Kernel32.ResetToDefaults();
+        Kernel32.Hooks.ResetToDefaults();
     }
 
     /// <summary>Fails every IOCTL whose control code matches, and serves the rest a reply.</summary>
@@ -50,7 +50,7 @@ public class UsnJournalVolumeInteropTests
             return true;
         }
 
-        Kernel32._deviceIoControl = Fake;
+        Kernel32.Hooks.DeviceIoControl = Fake;
     }
 
     /// <summary>Serves one <c>USN_JOURNAL_DATA_V0</c> buffer to every query.</summary>
@@ -64,7 +64,7 @@ public class UsnJournalVolumeInteropTests
             return true;
         }
 
-        Kernel32._deviceIoControl = Fake;
+        Kernel32.Hooks.DeviceIoControl = Fake;
     }
 
     /// <summary>A <c>USN_JOURNAL_DATA_V0</c> buffer: seven 8-byte fields.</summary>
@@ -111,7 +111,7 @@ public class UsnJournalVolumeInteropTests
     {
         var expectedHandle = new SafeFileHandle(new IntPtr(1), false);
         var opened = false;
-        Kernel32._createFile = (path, access, share, security, disposition, flags, template) =>
+        Kernel32.Hooks.CreateFile = (path, access, share, security, disposition, flags, template) =>
         {
             Assert.AreEqual(@"C:\", path);
             Assert.AreEqual(0x80u, access);
@@ -263,7 +263,7 @@ public class UsnJournalVolumeInteropTests
         }
 
         FailIoControl(UsnJournalVolumeInterop.FsctlQueryUsnJournal, ErrorJournalNotActive);
-        Kernel32.ResetToDefaults();
+        Kernel32.Hooks.ResetToDefaults();
 
         // Back on the real IOCTL, C: answers its settings again.
         Assert.IsTrue(UsnJournalSettingsQuery.Query('C').MaximumSize > 0);

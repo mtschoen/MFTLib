@@ -73,7 +73,7 @@ internal sealed class MftVolume : IDisposable
     {
         ArgumentOutOfRangeException.ThrowIfZero(bufferSizeRecords);
         var normalizedPath = MFTUtilities.GetVolumePath(volumePath);
-        var handle = FileUtilities._getVolumeHandle(normalizedPath);
+        var handle = FileUtilities.Hooks.GetVolumeHandle(normalizedPath);
 
         return new MftVolume(handle, normalizedPath, bufferSizeRecords);
     }
@@ -121,7 +121,7 @@ internal sealed class MftVolume : IDisposable
 
         var includeFreed = options?.IncludeFreed ?? false;
         using var result = ParseToResult(
-            (control, callback) => MFTLibNative._parseMftRecordsWithProgress(
+            (control, callback) => MFTLibNative.Hooks.ParseMftRecordsWithProgress(
                 _volumeHandle, includeFreed, _bufferSizeRecords, control, callback),
             "ParseMFTRecords", progress, parseThreads, cancellationToken);
         recordsOmitted?.Invoke(checked((long)result.InvalidFixupRecordCount));
@@ -217,7 +217,7 @@ internal sealed class MftVolume : IDisposable
     internal static void GenerateSyntheticMFT(string filePath, ulong recordCount, uint bufferSizeRecords,
         uint recordSize)
     {
-        if (!MFTLibNative._generateSyntheticMftSized(filePath, recordCount, bufferSizeRecords, recordSize))
+        if (!MFTLibNative.GenerateSyntheticMftSized(filePath, recordCount, bufferSizeRecords, recordSize))
         {
             throw new InvalidOperationException("Failed to generate synthetic MFT file");
         }
@@ -232,7 +232,7 @@ internal sealed class MftVolume : IDisposable
     /// </summary>
     internal static void GenerateFixtureMFT(string filePath)
     {
-        if (!MFTLibNative._generateFixtureMft(filePath))
+        if (!MFTLibNative.GenerateFixtureMft(filePath))
         {
             throw new InvalidOperationException($"GenerateFixtureMFT failed for {filePath}");
         }

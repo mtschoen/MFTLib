@@ -11,20 +11,21 @@ public abstract class BrokerBlockTestBase
     internal static readonly NtfsVolumeInformation VolumeInformation = new(1024L * 100000, 1024);
 
     internal static JournalBrokerHost CreateHost(
-        UsnJournalCursorQuery? queryCursor = null,
+        Func<string, UsnJournalCursor>? queryCursor = null,
         MftRecordBatchSource? scanDrive = null,
-        UsnJournalCatchUpSource? readJournal = null,
-        NtfsVolumeInformationQuery? queryVolumeInfo = null,
-        GrowUsnJournalQuery? growUsnJournal = null)
+        Func<string, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
+        Func<string, NtfsVolumeInformation>? queryVolumeInfo = null,
+        Func<string, long, long, UsnJournalSettings>? growUsnJournal = null)
     {
         return new JournalBrokerHost(
-            new JournalBrokerHost.VolumeSources(
-                queryCursor ?? (_ => ArmedCursor),
-                scanDrive ?? ((_, _, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
-                readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
-                null,
-                queryVolumeInfo ?? (_ => VolumeInformation),
-                growUsnJournal),
+            new ScriptedVolumeAccess
+            {
+                CursorQuery = queryCursor ?? (_ => ArmedCursor),
+                RecordBatches = scanDrive ?? ((_, _, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
+                JournalRead = readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
+                VolumeInformation = queryVolumeInfo ?? (_ => VolumeInformation),
+                JournalGrow = growUsnJournal ?? ScriptedVolumeAccess.UnsupportedGrow
+            },
             processorCount: 4);
     }
 
@@ -55,7 +56,7 @@ public abstract class BrokerBlockTestBase
     ///     written it and sent ScanReady, before the client validates it.
     /// </summary>
     internal static InProcessBroker CreateBrokerChangingBlock(Action<BlockFile> change,
-        MftRecordBatchSource? scanDrive = null, NtfsVolumeInformationQuery? queryVolumeInfo = null)
+        MftRecordBatchSource? scanDrive = null, Func<string, NtfsVolumeInformation>? queryVolumeInfo = null)
     {
         var created = new StrongBox<InProcessBroker?>();
         created.Value = new InProcessBroker(CreateHost(scanDrive: scanDrive, queryVolumeInfo: queryVolumeInfo,

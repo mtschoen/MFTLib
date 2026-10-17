@@ -1,4 +1,5 @@
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -45,9 +46,9 @@ public class GrowUsnJournalHostTests
     }
 
     [TestMethod]
-    public async Task GrowUsnJournal_NoSeamConfigured_EmitsError()
+    public async Task GrowUsnJournal_UnsupportedOperation_EmitsError()
     {
-        await using var harness = new HostChannelHarness(CreateHost()); // growUsnJournal omitted -> null
+        await using var harness = new HostChannelHarness(CreateHost()); // growUsnJournal omitted -> unsupported throws
 
         await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 33, "C", 0x08000000, 0x01000000));
         var frame = await harness.ReadControlAsync();
@@ -57,13 +58,14 @@ public class GrowUsnJournalHostTests
         Assert.AreEqual("Broker has no journal grow source", frame.Message);
     }
 
-    static JournalBrokerHost CreateHost(GrowUsnJournalQuery? growUsnJournal = null)
+    static JournalBrokerHost CreateHost(Func<string, long, long, UsnJournalSettings>? growUsnJournal = null)
     {
-        return new JournalBrokerHost(
-            new JournalBrokerHost.VolumeSources(
-                _ => default,
-                (_, _, _, _, _, _) => Array.Empty<IReadOnlyList<MftRecord>>(),
-                (_, cursor, _) => (Array.Empty<UsnJournalEntry>(), cursor),
-                GrowUsnJournal: growUsnJournal));
+        return new JournalBrokerHost(new ScriptedVolumeAccess
+        {
+            CursorQuery = _ => default,
+            RecordBatches = (_, _, _, _, _, _) => [],
+            JournalRead = (_, cursor, _) => (Array.Empty<UsnJournalEntry>(), cursor),
+            JournalGrow = growUsnJournal ?? ScriptedVolumeAccess.UnsupportedGrow
+        });
     }
 }

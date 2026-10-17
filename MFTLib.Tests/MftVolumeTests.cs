@@ -12,8 +12,8 @@ public partial class MftVolumeTests
     public void Cleanup()
     {
         NativeTestHooks.NativeResetTestState();
-        MFTLibNative.ResetToDefaults();
-        FileUtilities.ResetToDefaults();
+        MFTLibNative.Hooks.ResetToDefaults();
+        FileUtilities.Hooks.ResetToDefaults();
     }
 
     [TestMethod]
@@ -46,7 +46,7 @@ public partial class MftVolumeTests
     {
         // MftVolume.ReadRecordBatches must call progress.Report(sample) directly from the
         // native callback, not buffer samples into a queue and drain them only after
-        // MFTLibNative._parseMftRecordsWithProgress returns. The fake native function
+        // MFTLibNative.Hooks.ParseMftRecordsWithProgress returns. The fake native function
         // below invokes the callback three times and then, still inside that same
         // delegate invocation (i.e. before the "native call" has returned to
         // ReadRecordBatches), snapshots how many samples the consumer has received. With

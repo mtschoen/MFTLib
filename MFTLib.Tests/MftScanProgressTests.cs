@@ -30,8 +30,8 @@ public class MftScanProgressTests
     [TestCleanup]
     public void Cleanup()
     {
-        MFTLibNative.ResetToDefaults();
-        FileUtilities.ResetToDefaults();
+        MFTLibNative.Hooks.ResetToDefaults();
+        FileUtilities.Hooks.ResetToDefaults();
     }
 
     [TestMethod]

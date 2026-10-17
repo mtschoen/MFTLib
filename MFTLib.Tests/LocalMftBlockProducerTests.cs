@@ -39,11 +39,14 @@ public class LocalMftBlockProducerTests
     static IEnumerable<IReadOnlyList<MftRecord>> Batches() =>
         [[Record(5, ".", 3)], [Record(20, "file.txt"), Record(21, "other.md")]];
 
-    static LocalMftBlockProducer.Seams Scripted(
+    static ScriptedVolumeAccess Scripted(
         Func<string, NtfsVolumeInformation>? query = null, MftRecordBatchSource? scan = null,
-        UsnJournalCursorQuery? queryCursor = null) => new(
-        query ?? (_ => Volume), scan ?? ((_, _, _, _, _, _) => Batches()),
-        queryCursor ?? (_ => new UsnJournalCursor(99, 2000)));
+        Func<string, UsnJournalCursor>? queryCursor = null) => new()
+        {
+            VolumeInformation = query ?? (_ => Volume),
+            RecordBatches = scan ?? ((_, _, _, _, _, _) => Batches()),
+            CursorQuery = queryCursor ?? (_ => new UsnJournalCursor(99, 2000))
+        };
 
     MftBlockProduceRequest Request(bool deleteOnClose = true, IProgress<IndexScanProgress>? progress = null,
         char driveLetter = 'T') => new()
@@ -88,7 +91,7 @@ public class LocalMftBlockProducerTests
     public void Constructing_CallsNoSeam()
     {
         var calls = 0;
-        var seams = Scripted(_ =>
+        var access = Scripted(_ =>
         {
             calls++;
             return Volume;
@@ -98,7 +101,7 @@ public class LocalMftBlockProducerTests
             return Batches();
         });
 
-        _ = new LocalMftBlockProducer(TimeProvider.System, null, seams).CreateIndexSource();
+        _ = new LocalMftBlockProducer(TimeProvider.System, null, access).CreateIndexSource();
 
         Assert.AreEqual(0, calls);
     }
@@ -439,14 +442,12 @@ public class LocalMftBlockProducerTests
     [TestMethod]
     public void LiveSeams_OnANonWindowsHostRefuseTheVolumeQuery()
     {
-        Assert.AreEqual((UsnJournalCursorQuery)LiveVolumeSources.QueryCursor,
-            LocalMftBlockProducer.Seams.Live.QueryCursor);
         if (OperatingSystem.IsWindows())
         {
             return;
         }
 
         Assert.ThrowsException<PlatformNotSupportedException>(
-            () => LocalMftBlockProducer.Seams.Live.QueryVolumeInformation("T"));
+            () => LiveVolumeAccess.Instance.QueryVolumeInformation("T"));
     }
 }

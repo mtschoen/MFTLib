@@ -253,7 +253,7 @@ public partial class NativeParserCoverageTests
     {
         NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
         using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        var resultPointer = MFTLibNative._parseMftRecordsWithProgress(
+        var resultPointer = MFTLibNative.Hooks.ParseMftRecordsWithProgress(
             fileStream.SafeFileHandle, false, bufferSizeRecords, control, callback);
         Assert.AreNotEqual(IntPtr.Zero, resultPointer);
         try
@@ -262,7 +262,7 @@ public partial class NativeParserCoverageTests
         }
         finally
         {
-            MFTLibNative._freeMftResult(resultPointer);
+            MFTLibNative.Hooks.FreeMftResult(resultPointer);
         }
     }
 }

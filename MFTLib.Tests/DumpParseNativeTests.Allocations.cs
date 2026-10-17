@@ -92,7 +92,7 @@ public partial class DumpParseNativeTests
         var path = Path.Combine(_directory, "generated.mft");
         NativeTestHooks.NativeSetAllocFailCountdown(allocationToFail);
 
-        Assert.IsFalse(MFTLibNative._generateSyntheticMftSized(path, 10, 256, 1024));
+        Assert.IsFalse(MFTLibNative.GenerateSyntheticMftSized(path, 10, 256, 1024));
     }
 
     [TestMethod]
@@ -106,6 +106,6 @@ public partial class DumpParseNativeTests
     {
         var path = Path.Combine(_directory, "missing", "fixture.mft");
 
-        Assert.IsFalse(MFTLibNative._generateSyntheticMftSized(path, 10, 256, 1024));
+        Assert.IsFalse(MFTLibNative.GenerateSyntheticMftSized(path, 10, 256, 1024));
     }
 }

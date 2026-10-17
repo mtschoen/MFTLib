@@ -57,18 +57,25 @@ public partial class JournalBrokerHostTests
         Assert.AreEqual(new UsnJournalCursor(9UL, 500L), watchedFrom);
     }
 
-    [TestMethod]
-    public async Task StartWatch_NoWatchSourceConfigured_EmitsErrorFrame()
+    [DataTestMethod]
+    [DataRow(false, 7UL, 100L)]
+    [DataRow(true, 7UL, 100L)]
+    public async Task StartWatch_UnsupportedOperation_EmitsOnlyErrorFrame(
+        bool explicitFailure, ulong journalIdentifier, long nextUsn)
     {
-        var host = CreateWatchHost();
+        var host = CreateWatchHost(
+            queryCursor: _ => new UsnJournalCursor(7, 100),
+            watchDrive: explicitFailure
+                ? (_, _, _, _) => throw new NotSupportedException("Broker has no watch source")
+                : null);
         await using var harness = new HostChannelHarness(host);
-
-        var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
+        var pipe = await harness.OpenWatchChannelAsync('C',
+            new UsnJournalCursor(journalIdentifier, nextUsn));
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
-
         Assert.AreEqual(1, frames.Count);
         Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
         Assert.AreEqual("Broker has no watch source", frames[0].Message);
+        await AssertControlStillServesAsync(harness);
     }
 
     [TestMethod]

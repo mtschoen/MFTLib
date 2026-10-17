@@ -9,17 +9,10 @@ internal sealed partial class JournalBrokerHost
     async Task HandleGrowUsnJournalAsync(ControlSession session, BrokerFrame request)
     {
         var requestId = request.RequestId;
-        if (_growUsnJournal == null)
-        {
-            await WriteControlErrorAsync(session, requestId, "Broker has no journal grow source")
-                .ConfigureAwait(false);
-            return;
-        }
-
         UsnJournalSettings settings;
         try
         {
-            settings = _growUsnJournal(BrokerDriveLetter.Normalize(request.RequireDrive()),
+            settings = _volumeAccess.GrowUsnJournal(BrokerDriveLetter.Normalize(request.RequireDrive()),
                 request.JournalMaximumSize, request.JournalAllocationDelta);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)

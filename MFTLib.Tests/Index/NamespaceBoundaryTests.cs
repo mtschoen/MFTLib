@@ -117,7 +117,7 @@ public class NamespaceBoundaryTests
         "MftDumpBlockProducer", "MftDumpRecordSource", "MftDumpRecordValidation",
         "MftRecordBatchSource",
         "MftBlockCapacity", "ParseThreadAllocator", "ParseThreadRegistration",
-        "UsnJournalCursorQuery", "ISourceOperationReporter", "BlockWriteProgress",
+        "IVolumeAccess", "LiveVolumeAccess", "ISourceOperationReporter", "BlockWriteProgress",
         "BlockScanPhase", "BlockWriteReporting", "BlockWriteResult",
         "MftBlockProgressAdapter", "MftBlockValidation", "MftBlockProducerPipeline",
         "Index.SourcesBoundaryViolationFixture");
@@ -127,8 +127,7 @@ public class NamespaceBoundaryTests
         "ChannelOperationKind", "ChannelOperationState", "ClientDisconnectedException",
         "RealBlockSectionWriter", "IBlockSectionWriter", "BlockScanOutcome", "BlockScanTarget",
         "DefaultElevatedEntryRunner", "IElevatedEntryRunner", "ElevatedEntryPoint",
-        "JournalBatchSource", "GrowUsnJournalQuery", "NtfsVolumeInformationQuery",
-        "UsnJournalCatchUpSource", "NamedPipeBrokerPipeFactory");
+        "NamedPipeBrokerPipeFactory");
 
     static TypesShouldConjunctionWithDescription SourceBoundaryRule() =>
         Types().That().Are(SourceTypes()).Should().NotDependOnAny(BrokerTypes())

@@ -17,7 +17,7 @@ public partial class UsnJournalSyntheticTests
         var pipe = await IdleUsnPipe.CreateAsync(readNumber);
         try
         {
-            FileUtilities._getVolumeHandle = pipe.BorrowHandle;
+            FileUtilities.Hooks.GetVolumeHandle = pipe.BorrowHandle;
             JournalQueryFake.Serve(journalIdentifier: 7, nextUsn: 200);
 
             // The host's clock never advances, so the session can only end once the watch channel
@@ -57,7 +57,7 @@ public partial class UsnJournalSyntheticTests
         }
         finally
         {
-            FileUtilities.ResetToDefaults();
+            FileUtilities.Hooks.ResetToDefaults();
             pipe.Dispose();
         }
     }
@@ -70,7 +70,7 @@ public partial class UsnJournalSyntheticTests
         var pipe = await IdleUsnPipe.CreateAsync(1);
         try
         {
-            FileUtilities._getVolumeHandle = pipe.BorrowHandle;
+            FileUtilities.Hooks.GetVolumeHandle = pipe.BorrowHandle;
             using var volume = MftVolume.Open("C");
             using var cancellation = new CancellationTokenSource();
             var watch = ConsumeIdleWatchAsync(volume, cancellation.Token);
@@ -102,7 +102,7 @@ public partial class UsnJournalSyntheticTests
         }
         finally
         {
-            FileUtilities.ResetToDefaults();
+            FileUtilities.Hooks.ResetToDefaults();
             pipe.Dispose();
         }
     }

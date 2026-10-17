@@ -74,7 +74,7 @@ public partial class UsnJournalSyntheticTests
         var path = Path.GetTempFileName();
         try
         {
-            Assert.IsTrue(MFTLibNative._generateSyntheticMftSized(path, 256, 256, 1024));
+            Assert.IsTrue(MFTLibNative.GenerateSyntheticMftSized(path, 256, 256, 1024));
             using var input = MftDumpInput.Open(path);
             using var result = input.Parse();
             Assert.IsTrue(result.UsedRecords > 0);

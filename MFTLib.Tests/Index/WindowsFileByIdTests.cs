@@ -14,7 +14,7 @@ public class WindowsFileByIdTests
     [TestCleanup]
     public void Cleanup()
     {
-        Kernel32.ResetToDefaults();
+        Kernel32.Hooks.ResetToDefaults();
     }
     [TestMethod]
     [SupportedOSPlatform("windows")] // Assert.Inconclusive() below is a runtime guard the analyzer cannot see through.
@@ -121,7 +121,7 @@ public class WindowsFileByIdTests
             "no-such-directory");
 
         var failedHandle = new SafeFileHandle(new IntPtr(-1), false);
-        Kernel32._createFile = (_, _, _, _, _, _, _) =>
+        Kernel32.Hooks.CreateFile = (_, _, _, _, _, _, _) =>
         {
             Marshal.SetLastPInvokeError(3);
             return failedHandle;

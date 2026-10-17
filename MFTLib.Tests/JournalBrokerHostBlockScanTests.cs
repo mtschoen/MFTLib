@@ -17,27 +17,28 @@ public class JournalBrokerHostBlockScanTests
         using var blockWriter = new RecordingBlockSectionWriter();
         var capturedBlockWriter = new BlockWriter(blockWriter.Block);
         var cursorArmed = false;
-        var host = new JournalBrokerHost(
-            new JournalBrokerHost.VolumeSources(
-                _ =>
-                {
-                    cursorArmed = true;
-                    return ArmedCursor;
-                },
-                ReadJournal: (_, cursor, maximumBufferReads) =>
-                {
-                    Assert.IsTrue(capturedBlockWriter.Block.Header.IsComplete);
-                    Assert.AreEqual(BrokerLiveness.CatchUpBufferReadsPerCall, maximumBufferReads);
-                    return cursor == ArmedCursor
-                        ? (Array.Empty<UsnJournalEntry>(), new UsnJournalCursor(cursor.JournalIdentifier, 12500))
-                        : (Array.Empty<UsnJournalEntry>(), cursor);
-                },
-                ScanDrive: (driveLetter, _, _, _, _, _) =>
-                {
-                    Assert.IsTrue(cursorArmed);
-                    Assert.AreEqual("C", driveLetter);
-                    return [[Record(5, ".", 3)], [Record(20, "file.txt")]];
-                }));
+        var host = new JournalBrokerHost(new ScriptedVolumeAccess
+        {
+            CursorQuery = _ =>
+            {
+                cursorArmed = true;
+                return ArmedCursor;
+            },
+            JournalRead = (_, cursor, maximumBufferReads) =>
+            {
+                Assert.IsTrue(capturedBlockWriter.Block.Header.IsComplete);
+                Assert.AreEqual(BrokerLiveness.CatchUpBufferReadsPerCall, maximumBufferReads);
+                return cursor == ArmedCursor
+                    ? (Array.Empty<UsnJournalEntry>(), new UsnJournalCursor(cursor.JournalIdentifier, 12500))
+                    : (Array.Empty<UsnJournalEntry>(), cursor);
+            },
+            RecordBatches = (driveLetter, _, _, _, _, _) =>
+            {
+                Assert.IsTrue(cursorArmed);
+                Assert.AreEqual("C", driveLetter);
+                return [[Record(5, ".", 3)], [Record(20, "file.txt")]];
+            }
+        });
 
         var frames = await ScanAsync(host, blockWriter);
 
@@ -186,8 +187,12 @@ public class JournalBrokerHostBlockScanTests
 
     static JournalBrokerHost CreateHost(MftRecordBatchSource source)
     {
-        return new JournalBrokerHost(
-            new JournalBrokerHost.VolumeSources(_ => ArmedCursor, source, (_, cursor, _) => ([], cursor)));
+        return new JournalBrokerHost(new ScriptedVolumeAccess
+        {
+            CursorQuery = _ => ArmedCursor,
+            RecordBatches = source,
+            JournalRead = (_, cursor, _) => ([], cursor)
+        });
     }
 
     [TestMethod]

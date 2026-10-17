@@ -34,7 +34,7 @@ public partial class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative._freeMftResult(resultPointer);
+                MFTLibNative.Hooks.FreeMftResult(resultPointer);
             }
         }
         finally
@@ -75,7 +75,7 @@ public partial class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative._freeMftResult(resultPointer);
+                MFTLibNative.Hooks.FreeMftResult(resultPointer);
             }
         }
         finally
@@ -116,7 +116,7 @@ public partial class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative._freeMftResult(resultPointer);
+                MFTLibNative.Hooks.FreeMftResult(resultPointer);
             }
         }
         finally
@@ -157,7 +157,7 @@ public partial class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative._freeMftResult(resultPointer);
+                MFTLibNative.Hooks.FreeMftResult(resultPointer);
             }
         }
         finally
@@ -213,7 +213,7 @@ public partial class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative._freeMftResult(resultPointer);
+                MFTLibNative.Hooks.FreeMftResult(resultPointer);
             }
         }
         finally

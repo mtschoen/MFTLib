@@ -35,9 +35,9 @@ public class VolumeQueryHostTests
     }
 
     [TestMethod]
-    public async Task QueryVolume_NoSeamConfigured_EmitsError()
+    public async Task QueryVolume_UnsupportedOperation_EmitsError()
     {
-        await using var harness = new HostChannelHarness(CreateHost()); // queryVolumeInfo omitted -> null
+        await using var harness = new HostChannelHarness(CreateHost()); // queryVolumeInfo omitted -> unsupported throws
 
         await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 14, "C"));
         var frame = await harness.ReadControlAsync();
@@ -65,13 +65,14 @@ public class VolumeQueryHostTests
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, scanFrames[^1].Kind);
     }
 
-    static JournalBrokerHost CreateHost(NtfsVolumeInformationQuery? queryVolumeInfo = null)
+    static JournalBrokerHost CreateHost(Func<string, NtfsVolumeInformation>? queryVolumeInfo = null)
     {
-        return new JournalBrokerHost(
-            new JournalBrokerHost.VolumeSources(
-                _ => new UsnJournalCursor(7UL, 0L),
-                (_, _, _, _, _, _) => [[new MftRecord(5, 5, new MftRecordFields(3), ".")]],
-                (_, cursor, _) => (Array.Empty<UsnJournalEntry>(), cursor),
-                QueryVolumeInformation: queryVolumeInfo));
+        return new JournalBrokerHost(new ScriptedVolumeAccess
+        {
+            CursorQuery = _ => new UsnJournalCursor(7UL, 0L),
+            RecordBatches = (_, _, _, _, _, _) => [[new MftRecord(5, 5, new MftRecordFields(3), ".")]],
+            JournalRead = (_, cursor, _) => (Array.Empty<UsnJournalEntry>(), cursor),
+            VolumeInformation = queryVolumeInfo ?? (_ => throw new NotSupportedException("Broker has no volume information source"))
+        });
     }
 }

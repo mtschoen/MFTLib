@@ -20,7 +20,7 @@ internal sealed partial class UsnJournalVolume
         var nextUsn = since.NextUsn;
         var journalIdentifier = since.JournalIdentifier;
 
-        using var session = new UsnWatchSession(FileUtilities._getWatchVolumeHandle(_volumePath));
+        using var session = new UsnWatchSession(FileUtilities.Hooks.GetWatchVolumeHandle(_volumePath));
         await using var registration = cancellationToken.Register(session.Cancel);
 
         while (!cancellationToken.IsCancellationRequested)

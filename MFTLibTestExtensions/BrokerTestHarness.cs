@@ -28,7 +28,10 @@ public static class BrokerTestHarness
         var host = CreateHost(volumes);
         // aislop-ignore-next-line IDISP001 -- ownership moves to the returned handle, which disposes it
         var resources = new ScriptedBrokerResources();
-        host.ScanStartingForTest = resources.RecordScan;
+        if (volumes.ScanDrive is not null)
+        {
+            host.ScanStartingForTest = resources.RecordScan;
+        }
         return Start(host, resources.Writer, resources.Sections.Create, new BrokerTestHarnessOptions(),
             null, null).Own(resources);
     }
@@ -64,23 +67,23 @@ public static class BrokerTestHarness
         var watch = volumes.WatchDrive;
         var queryVolume = volumes.QueryVolume ?? SmallVolume;
         var grow = volumes.GrowUsnJournal;
-        return new JournalBrokerHost(
-            new JournalBrokerHost.VolumeSources(
-                driveLetter => queryCursor(new DriveKey(driveLetter[0])).ToProduction(),
-                scan is null
-                    ? null
-                    : (driveLetter, parseThreads, reporting, _, _, cancellationToken) =>
-                        ConvertScan(scan(new ScriptedScan(new DriveKey(driveLetter[0]), parseThreads, reporting,
-                            cancellationToken))),
-                scan is null ? null : (driveLetter, since, maximumBufferReads) =>
-                    ConvertJournal(readJournal(new DriveKey(driveLetter[0]), since.ToSynthetic(), maximumBufferReads)),
-                watch is null
-                    ? null
-                    : (driveLetter, since, _, cancellationToken) =>
-                        ConvertWatch(watch(new DriveKey(driveLetter[0]), since.ToSynthetic(), cancellationToken), cancellationToken),
-                driveLetter => queryVolume(new DriveKey(driveLetter[0])),
-                grow is null ? null : (driveLetter, maximumSize, allocationDelta) => grow(new DriveKey(driveLetter[0]),
-                    new UsnJournalSettings { MaximumSize = maximumSize, AllocationDelta = allocationDelta })));
+        return new JournalBrokerHost(new ScriptedVolumeAccess
+        {
+            CursorQuery = drive => queryCursor(new DriveKey(drive[0])).ToProduction(),
+            RecordBatches = scan is null ? ScriptedVolumeAccess.UnsupportedScan :
+                (drive, parseThreads, reporting, _, _, cancellationToken) =>
+                    ConvertScan(scan(new ScriptedScan(new DriveKey(drive[0]), parseThreads,
+                        reporting, cancellationToken))),
+            JournalRead = (drive, since, maximumBufferReads) =>
+                ConvertJournal(readJournal(new DriveKey(drive[0]), since.ToSynthetic(), maximumBufferReads)),
+            JournalWatch = watch is null ? ScriptedVolumeAccess.UnsupportedWatch :
+                (drive, since, _, cancellationToken) => ConvertWatch(
+                    watch(new DriveKey(drive[0]), since.ToSynthetic(), cancellationToken), cancellationToken),
+            VolumeInformation = drive => queryVolume(new DriveKey(drive[0])),
+            JournalGrow = grow is null ? ScriptedVolumeAccess.UnsupportedGrow :
+                (drive, maximumSize, allocationDelta) => grow(new DriveKey(drive[0]),
+                    new UsnJournalSettings { MaximumSize = maximumSize, AllocationDelta = allocationDelta })
+        });
     }
 
     static (IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Updated) NothingNew(DriveKey driveLetter,

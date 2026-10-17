@@ -21,8 +21,8 @@ public partial class NativeParserCoverageTests
     public void Cleanup()
     {
         NativeTestHooks.NativeResetTestState();
-        MFTLibNative.ResetToDefaults();
-        FileUtilities.ResetToDefaults();
+        MFTLibNative.Hooks.ResetToDefaults();
+        FileUtilities.Hooks.ResetToDefaults();
     }
 
     // --- mft.parse.cpp line 63: QueryVolumeRecordSize's real DeviceIoControl
@@ -41,7 +41,7 @@ public partial class NativeParserCoverageTests
         using var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut);
         client.Connect(5000);
 
-        var resultPointer = MFTLibNative._parseMftRecordsWithProgress(
+        var resultPointer = MFTLibNative.Hooks.ParseMftRecordsWithProgress(
             client.SafePipeHandle, false, 256, IntPtr.Zero, null);
         Assert.AreNotEqual(IntPtr.Zero, resultPointer);
         try
@@ -53,7 +53,7 @@ public partial class NativeParserCoverageTests
         }
         finally
         {
-            MFTLibNative._freeMftResult(resultPointer);
+            MFTLibNative.Hooks.FreeMftResult(resultPointer);
         }
     }
 
@@ -120,7 +120,7 @@ public partial class NativeParserCoverageTests
             }
             finally
             {
-                MFTLibNative._freeMftResult(resultPointer);
+                MFTLibNative.Hooks.FreeMftResult(resultPointer);
             }
         }
         finally
@@ -156,7 +156,7 @@ public partial class NativeParserCoverageTests
                 invocations.Add((scanned, total));
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var resultPointer = MFTLibNative._parseMftRecordsWithProgress(
+            var resultPointer = MFTLibNative.Hooks.ParseMftRecordsWithProgress(
                 fileStream.SafeFileHandle, false, 64, IntPtr.Zero, callback);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
@@ -170,7 +170,7 @@ public partial class NativeParserCoverageTests
             }
             finally
             {
-                MFTLibNative._freeMftResult(resultPointer);
+                MFTLibNative.Hooks.FreeMftResult(resultPointer);
             }
 
             GC.KeepAlive(callback);
@@ -211,7 +211,7 @@ public partial class NativeParserCoverageTests
             // Fail the 3rd Read: 1=boot sector, 2=record 0, 3=VolumeReadChunk's
             // first read, so the chunk loop body never executes.
             NativeTestHooks.NativeSetReadFailCountdown(3);
-            var resultPointer = MFTLibNative._parseMftRecordsWithProgress(
+            var resultPointer = MFTLibNative.Hooks.ParseMftRecordsWithProgress(
                 fileStream.SafeFileHandle, false, 64, IntPtr.Zero, callback);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
@@ -223,7 +223,7 @@ public partial class NativeParserCoverageTests
             }
             finally
             {
-                MFTLibNative._freeMftResult(resultPointer);
+                MFTLibNative.Hooks.FreeMftResult(resultPointer);
             }
 
             GC.KeepAlive(callback);

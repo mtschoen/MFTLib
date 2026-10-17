@@ -32,7 +32,7 @@ public class FileIndexJournalSettingsTests
     public void Cleanup()
     {
         JournalQueryFake.Reset();
-        FileUtilities.ResetToDefaults();
+        FileUtilities.Hooks.ResetToDefaults();
         foreach (var directory in new[] { _treeRoot, _cacheDirectory })
         {
             try
@@ -95,7 +95,7 @@ public class FileIndexJournalSettingsTests
             return;
         }
 
-        FileUtilities._getVolumeHandle = _ => new Microsoft.Win32.SafeHandles.SafeFileHandle(new IntPtr(1), false);
+        FileUtilities.Hooks.GetVolumeHandle = _ => new Microsoft.Win32.SafeHandles.SafeFileHandle(new IntPtr(1), false);
         JournalQueryFake.Serve(journalIdentifier: 9, nextUsn: 77, maximumSize: 0x08000000, allocationDelta: 0x01000000);
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {

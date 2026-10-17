@@ -1,5 +1,7 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
+using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -192,9 +194,14 @@ public class FreedRowsIndexTests
 
     Task<FileIndex> OpenAsync(bool includeFreed)
     {
-        var seams = new LocalMftBlockProducer.Seams(_ => Volume,
-            (_, _, _, scanOptions, _, _) => Scan(scanOptions), _ => default);
-        var producer = new LocalMftBlockProducer(TimeProvider.System, new MftScanOptions { IncludeFreed = includeFreed }, seams);
+        var access = new ScriptedVolumeAccess
+        {
+            VolumeInformation = _ => Volume,
+            RecordBatches = (_, _, _, scanOptions, _, _) => Scan(scanOptions),
+            CursorQuery = _ => default
+        };
+        var producer = new LocalMftBlockProducer(new FakeTimeProvider(new DateTimeOffset(FixedMoment)),
+            new MftScanOptions { IncludeFreed = includeFreed }, access);
         return FileIndex.OpenAsync(new FileIndexOptions
         {
             Drives = [new IndexedDrive('T', _directories.TreeRoot, 0x0BADF00D)],

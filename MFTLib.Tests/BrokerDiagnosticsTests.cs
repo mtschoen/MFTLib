@@ -235,7 +235,7 @@ public class BrokerDiagnosticsTests
         BrokerDiagnostics.Enable("broker", _temporaryRoot);
         var lines = new System.Collections.Concurrent.ConcurrentQueue<string>();
         BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(lines.Enqueue, () => "broker"));
-        var host = new JournalBrokerHost(new JournalBrokerHost.VolumeSources(_ => default));
+        var host = new JournalBrokerHost(new ScriptedVolumeAccess { CursorQuery = _ => default });
         await using var broker = new InProcessBroker(host);
         var seenTags = new HashSet<string>(StringComparer.Ordinal);
         foreach (var drive in new[] { 'C', 'D', 'C' })
