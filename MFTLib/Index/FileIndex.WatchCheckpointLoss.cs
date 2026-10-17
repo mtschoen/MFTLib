@@ -8,7 +8,7 @@ public sealed partial class FileIndex
     ///     about is the drive's block header cursor, which is both where
     ///     <see cref="BuildWatchTarget(DriveBlock)" /> armed the watch from and where every
     ///     applied batch has since advanced it to, so this is the same question over the same
-    ///     numbers that <see cref="RejectUnresumableCheckpoint" /> asks of a cached block at
+    ///     numbers that <see cref="DriveRuntime.RejectUnresumableCheckpoint" /> asks of a cached block at
     ///     open. Running it on every watch fault rather than on a classified subset of them is
     ///     deliberate: the native layer turns a journal error into a message and no error code
     ///     reaches managed code, so the only honest classifier is the journal itself. A fault

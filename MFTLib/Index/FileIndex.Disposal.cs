@@ -158,4 +158,15 @@ public sealed partial class FileIndex
             }
         }
     }
+
+    /// <summary>
+    ///     Keeps a replaced block's release state until its release completes, so disposal can
+    ///     release it even after its last handle was collected. The caller holds
+    ///     <see cref="_stateLock" />.
+    /// </summary>
+    void RetireBlockLocked(DriveBlock replaced)
+    {
+        _retiredBlocks.RemoveAll(retired => retired.IsReleaseComplete);
+        _retiredBlocks.Add(replaced.ReleaseState);
+    }
 }

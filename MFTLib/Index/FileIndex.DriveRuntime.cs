@@ -38,6 +38,16 @@ public sealed partial class FileIndex
         RecoveredAwaitingCatchUp
     }
 
+    /// <summary>Why a published block's journal cursor cannot be resumed by a watch.</summary>
+    enum UnresumableCheckpointReason
+    {
+        /// <summary>A cache-only open adopted the block despite a lost checkpoint.</summary>
+        CacheOnlyAdoption,
+
+        /// <summary>The scan that produced the block lost its journal catch-up.</summary>
+        LostCatchUp
+    }
+
     /// <summary>
     ///     One drive's watch and scan records. The fields are read and written under
     ///     <see cref="FileIndex._stateLock" />; <see cref="LifecycleGate" /> and
@@ -69,6 +79,9 @@ public sealed partial class FileIndex
 
         Lock StateLock => _index._stateLock;
         FileIndexOptions Options => _index._options;
+        IndexHooks Hooks => _index.Hooks;
+        CancellationToken DisposalToken => _index.DisposalToken;
+        bool IsDisposed => _index._disposed;
         IIndexWatchSource? WatchSourceOrNull => Options.MftSource?.WatchSource;
 
         public IndexedDrive Configuration { get; }

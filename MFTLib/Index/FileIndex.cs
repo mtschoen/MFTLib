@@ -50,6 +50,12 @@ public sealed partial class FileIndex : IAsyncDisposable
     bool _disposed;
     ushort _nextDriveOrdinal;
 
+    /// <summary>
+    ///     How many scans of one drive in a row may lose their journal catch-up before a scan
+    ///     operation stops rescanning the drive by itself.
+    /// </summary>
+    internal const int LostCatchUpRecoveryLimit = 3;
+
     ushort AllocateDriveOrdinalLocked() => _nextDriveOrdinal++;
 
 
@@ -302,9 +308,7 @@ public sealed partial class FileIndex : IAsyncDisposable
             {
                 foreach (var runtime in _driveRuntimes.Values)
                 {
-                    var owned = runtime.CanonicalLock;
-                    runtime.CanonicalLock = null;
-                    owned?.Dispose();
+                    runtime.ReleaseCanonicalOwnershipLocked();
                 }
             }
         }
@@ -331,9 +335,7 @@ public sealed partial class FileIndex : IAsyncDisposable
                 runtime.LastResult = null;
                 block?.ReleaseState.Release();
 
-                var owned = runtime.CanonicalLock;
-                runtime.CanonicalLock = null;
-                owned?.Dispose();
+                runtime.ReleaseCanonicalOwnershipLocked();
             }
         }
     }

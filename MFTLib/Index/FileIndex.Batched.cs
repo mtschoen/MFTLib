@@ -61,7 +61,7 @@ public sealed partial class FileIndex
         }
 
         return RunBatchAsync(drives, applicable: null,
-            key => RescanDriveAsync(key, cancellationToken), cancellationToken);
+            key => GetDriveRuntime(key).RescanDriveAsync(cancellationToken), cancellationToken);
     }
 
     /// <summary>

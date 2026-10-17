@@ -1,0 +1,134 @@
+namespace MFTLib.Index;
+
+public sealed partial class FileIndex
+{
+    sealed partial class DriveRuntime
+    {
+        /// <summary>
+        ///     What opening a drive's cached block found: the block to adopt, if any; why an existing
+        ///     block was discarded; the journal checkpoint loss that rejected the block, or that a
+        ///     cache-only open adopted it despite, which <see cref="CacheOnlyUnresumable" /> then says.
+        /// </summary>
+        readonly record struct WarmStartResult(
+            BlockFile? Block,
+            BlockValidationResult? DiscardedBlock,
+            JournalCheckpointLoss? CheckpointLoss = null,
+            bool CacheOnlyUnresumable = false);
+
+        WarmStartResult TryOpenExistingBlock()
+        {
+            var path = CanonicalBlockPath();
+            var existedBeforeOpen = File.Exists(path);
+
+            // Ownership of a successfully opened block passes to the DriveBlock its adoption builds,
+            // which releases it through the reference-counted Release() (see DriveBlock's own
+            // summary), not through IDisposable.
+            if (BlockFile.Open(path, Configuration.VolumeSerial, out var validation) is { } block)
+            {
+                if (block.Header.ProducerKind != Configuration.Producer)
+                {
+                    var storedProducerKind = block.Header.ProducerKind;
+                    block.Dispose();
+                    TryDeleteBestEffort(path,
+                        $"cache producer kind mismatch: stored {storedProducerKind}; requested {Configuration.Producer}");
+                    return new WarmStartResult(null, null);
+                }
+
+                if (block.Header.CacheTag != Options.CacheTag)
+                {
+                    return RejectCacheTag(block, path);
+                }
+
+                if (block.Header.ProducerKind == ProducerKind.Enumeration)
+                {
+                    var cachedRoot = NamePool.ReadRowName(block, 0);
+                    if (!NameMatching.EqualsName(cachedRoot, Configuration.RootDirectory, caseSensitive: !OperatingSystem.IsWindows()))
+                    {
+                        block.Dispose();
+                        TryDeleteBestEffort(path, $"cache validation failed: {BlockValidationResult.WrongRootDirectory}");
+                        return new WarmStartResult(null, BlockValidationResult.WrongRootDirectory);
+                    }
+                }
+
+                return new WarmStartResult(block, null);
+            }
+
+            if (validation != BlockValidationResult.WrongMagic || existedBeforeOpen)
+            {
+                TryDeleteBestEffort(path, $"cache validation failed: {validation}");
+            }
+
+            // A block is only "discarded" when one genuinely existed and was rejected; a first-ever
+            // scan with nothing at the path is not a discard.
+            return new WarmStartResult(null, existedBeforeOpen ? validation : null);
+        }
+
+        /// <summary>
+        ///     Drops a warm-start candidate whose journal checkpoint its source cannot safely adopt,
+        ///     returning why in the result. Rejecting it here rescans once and keeps the reason,
+        ///     rather than publishing stale rows or arming a watch from a lost position.
+        ///     A watch-capable source checks retention and catches
+        ///     up later; a scan-only source requires the journal's next USN to equal its stamped cursor.
+        ///     Dump sources are never cached and never reach warm start. An enumeration block is also not
+        ///     watched through the journal, so nothing about it can have fallen out of one.
+        ///     <para>
+        ///         <see cref="CacheMode.ExistingOnly" /> forbids the scan that would
+        ///         otherwise follow a rejection, so the reasoning above does not apply to it: a
+        ///         cache-only open never watches, and the block is still a correct snapshot as of
+        ///         its age, so it is adopted anyway rather than failing the drive. The result says so,
+        ///         and the adoption marks the block unresumable on its runtime so a later
+        ///         <see cref="StartWatchingAsync" /> refuses to start a watch from a cursor the
+        ///         journal no longer holds.
+        ///     </para>
+        /// </summary>
+        WarmStartResult RejectUnresumableCheckpoint(WarmStartResult warmStart)
+        {
+            if (warmStart.Block is not { } candidate || candidate.Header.ProducerKind != ProducerKind.Mft)
+            {
+                return warmStart;
+            }
+
+            var accepted = false;
+            try
+            {
+                ref readonly var header = ref candidate.Header;
+                var checkpointLoss = WatchSourceOrNull is null
+                    ? JournalCheckpointCheck.CheckUnmoved(Drive, header.UsnJournalIdentifier, header.UsnNextUsn,
+                        JournalCheckpointLossDetection.DriveOpening)
+                    : JournalCheckpointCheck.Check(Drive, header.UsnJournalIdentifier, header.UsnNextUsn,
+                        JournalCheckpointLossDetection.DriveOpening);
+                if (checkpointLoss is not { } loss)
+                {
+                    accepted = true;
+                    return warmStart;
+                }
+
+                if (Options.CacheMode == CacheMode.ExistingOnly)
+                {
+                    accepted = true;
+                    return warmStart with { CheckpointLoss = loss, CacheOnlyUnresumable = true };
+                }
+
+                return new WarmStartResult(null, warmStart.DiscardedBlock, loss);
+            }
+            finally
+            {
+                if (!accepted)
+                {
+                    // An unadopted candidate owns no references; close its mapping directly.
+                    candidate.Dispose();
+                }
+            }
+        }
+
+        WarmStartResult RejectCacheTag(BlockFile block, string path)
+        {
+            var stored = block.Header.CacheTag;
+            block.Dispose();
+            Options.Diagnostics?.Invoke(
+                $"Cache tag mismatch for '{path}': stored {stored}; requested {Options.CacheTag}.");
+            TryDeleteBestEffort(path, $"cache validation failed: {BlockValidationResult.WrongCacheTag}");
+            return new WarmStartResult(null, BlockValidationResult.WrongCacheTag);
+        }
+    }
+}

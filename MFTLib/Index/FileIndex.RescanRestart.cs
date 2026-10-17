@@ -8,6 +8,7 @@ public sealed partial class FileIndex
     ///     at publication, then restart it when it is still requested. A manual rescan first
     ///     clears the drive's recovery ticket, which it supersedes.
     /// </summary>
+    // ReSharper disable once UnusedParameter.Local
     async Task RescanWithGateHeldAsync(DriveRuntime runtime, IndexedDrive drive, RecoveryTicket? recovery,
         CancellationToken cancellationToken)
     {
@@ -23,10 +24,10 @@ public sealed partial class FileIndex
             runtime.RaiseWatchStateChanged();
         }
 
-        ScanAttempt outcome;
+        DriveRuntime.ScanAttempt outcome;
         try
         {
-            outcome = await RunScanOperationAsync(runtime, drive, recovery, cancellationToken).ConfigureAwait(false);
+            outcome = await runtime.RunScanOperationAsync(recovery, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception failure) when (failure is not JournalCatchUpLostException)
         {
