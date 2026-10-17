@@ -53,36 +53,58 @@ public class BrokerDiagnosticsWriterFlushTests
     }
 
     [TestMethod]
-    public async Task FlushAsync_TakenWhileARecordIsBeingDropped_CompletesOnceTheQueuedRecordsAreAppended()
+    public async Task FlushAsync_AfterRefusedEnqueue_WaitsForAllAcceptedLines()
     {
-        var gate = new TestGate();
+        var firstAppend = new TestGate();
+        var lastAppend = new TestGate();
         var lines = new List<string>();
+        var lastLine = $"fill {BrokerDiagnosticsWriter.Capacity - 1}";
         var writer = new BrokerDiagnosticsWriter(line =>
         {
-            gate.MarkEntered();
-            gate.WaitForRelease();
+            if (line == "parks the sink")
+            {
+                firstAppend.MarkEntered();
+                firstAppend.WaitForRelease();
+            }
+            if (line == lastLine)
+            {
+                lastAppend.MarkEntered();
+                lastAppend.WaitForRelease();
+            }
             lines.Add(line);
         });
-        Assert.IsTrue(writer.TryEnqueue("parks the sink"));
-        await gate.Entered.WaitAsync(HangGuard);
-        for (var index = 0; index < BrokerDiagnosticsWriter.Capacity; index++)
+        try
         {
-            Assert.IsTrue(writer.TryEnqueue("fill " + index));
+            Assert.IsTrue(writer.TryEnqueue("parks the sink"));
+            await firstAppend.Entered.WaitAsync(HangGuard);
+            for (var index = 0; index < BrokerDiagnosticsWriter.Capacity; index++)
+            {
+                Assert.IsTrue(writer.TryEnqueue($"fill {index}"));
+            }
+            Assert.IsFalse(writer.TryEnqueue("dropped"));
+            var flush = writer.FlushAsync(CancellationToken.None);
+            Assert.IsFalse(flush.IsCompleted);
+            firstAppend.Release();
+            await lastAppend.Entered.WaitAsync(HangGuard);
+            Assert.IsFalse(flush.IsCompleted);
+            lastAppend.Release();
+            await flush.WaitAsync(HangGuard);
+            Assert.AreEqual(BrokerDiagnosticsWriter.Capacity + 2, lines.Count);
+            Assert.AreEqual(1, lines.Count(line =>
+                line.Contains("1 records dropped: queue full", StringComparison.Ordinal)));
+            Assert.IsFalse(lines.Contains("dropped"));
+            CollectionAssert.AreEqual(
+                new[] { "parks the sink" }.Concat(Enumerable.Range(0, BrokerDiagnosticsWriter.Capacity)
+                    .Select(index => $"fill {index}")).ToArray(),
+                lines.Where(line => !line.Contains("records dropped:", StringComparison.Ordinal)).ToArray());
         }
-
-        // The flush is taken from inside the drop, the moment the dropped record's accounting is
-        // still open: it must wait only for the records that were really queued.
-        Task? flush = null;
-        writer.BeforeDropAccountedForTest = () => flush ??= writer.FlushAsync(CancellationToken.None);
-        Assert.IsFalse(writer.TryEnqueue("dropped"));
-        Assert.IsNotNull(flush);
-
-        gate.Release();
-        await flush.WaitAsync(HangGuard);
-
-        // Every queued record, plus the report of the one that was dropped.
-        Assert.AreEqual(1 + BrokerDiagnosticsWriter.Capacity + 1, lines.Count);
-        Assert.AreEqual(1, lines.Count(line => line.Contains("1 records dropped: queue full", StringComparison.Ordinal)));
+        finally
+        {
+            firstAppend.Release();
+            lastAppend.Release();
+            writer.Complete();
+            await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+        }
     }
 
     [TestMethod]

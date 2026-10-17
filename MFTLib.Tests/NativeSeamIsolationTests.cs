@@ -50,6 +50,8 @@ public class NativeSeamIsolationTests
     [DataRow(typeof(ProductionResetReferenceFixture), "LaunchDependencies.ResetToDefaults")]
     [DataRow(typeof(LaunchOwnerReferenceFixture), "BrokerLauncher.Dependencies")]
     [DataRow(typeof(LaunchMemberReferenceFixture), "LaunchDependencies.StartProcess")]
+    [DataRow(typeof(DiagnosticsOwnerReferenceFixture), "BrokerDiagnostics.Dependencies")]
+    [DataRow(typeof(DiagnosticsMemberReferenceFixture), "DiagnosticsDependencies.InstallWriter")]
     public void Detector_ReportsUnmarkedReferences(Type fixture, string member)
     {
         var violations = FindViolations([fixture]);
@@ -68,6 +70,7 @@ public class NativeSeamIsolationTests
     [DataRow(typeof(ReadOnlyEnvironmentReferenceFixture))]
     [DataRow(typeof(IsolatedLaunchReferenceFixture))]
     [DataRow(typeof(PerProcessHooksReferenceFixture))]
+    [DataRow(typeof(IsolatedDiagnosticsReferenceFixture))]
     public void Detector_AcceptsIsolatedAndUnrelatedTypes(Type fixture)
     {
         Assert.AreEqual(0, FindViolations([fixture]).Length);
@@ -155,7 +158,8 @@ public class NativeSeamIsolationTests
         type == typeof(MFTLibNative.NativeHooks) ||
         type == typeof(FileUtilities.VolumeHandleHooks) ||
         type == typeof(Kernel32.Win32Hooks) ||
-        type == typeof(BrokerLauncher.LaunchDependencies);
+        type == typeof(BrokerLauncher.LaunchDependencies) ||
+        type == typeof(BrokerDiagnostics.DiagnosticsDependencies);
 
     static bool IsNativeSeam(MemberInfo member)
     {
@@ -194,7 +198,7 @@ public class NativeSeamIsolationTests
     // Static methods in the repository assemblies that install process-wide overrides or reset them.
     static readonly HashSet<string> ProductionMutators = new(StringComparer.Ordinal)
     {
-        "ResetToDefaults", "Enable", "OverrideJournalWindow", "ReplaceWriterForTest"
+        "ResetToDefaults", "Enable", "OverrideJournalWindow"
     };
 
     // Framework members that change state shared by every concurrently running test class.

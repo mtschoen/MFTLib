@@ -67,9 +67,10 @@ public class ElevatedEntryPointTests
     }
 
     [TestCleanup]
-    public void Cleanup()
+    public async Task Cleanup()
     {
-        BrokerDiagnostics.ResetToDefaults();
+        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+        BrokerDiagnostics.Dependencies.ResetToDefaults();
     }
 
     [DataTestMethod]
@@ -87,7 +88,7 @@ public class ElevatedEntryPointTests
             var suppliedPath = BrokerDiagnostics.LogPath;
             BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "client-enabled-check");
             await BrokerDiagnostics.FlushAsync(CancellationToken.None);
-            BrokerDiagnostics.ResetToDefaults();
+            BrokerDiagnostics.Dependencies.ResetToDefaults();
             var handled = ElevatedEntryPoint.RunBrokerIfRequested(
                 ["--broker", "--pipe", "p", "--diag", "--diag-log", suppliedPath], runner, runner.RecordExit);
 
@@ -108,7 +109,8 @@ public class ElevatedEntryPointTests
         }
         finally
         {
-            BrokerDiagnostics.ResetToDefaults();
+            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            BrokerDiagnostics.Dependencies.ResetToDefaults();
             Directory.Delete(cleanupDirectory, true);
         }
     }

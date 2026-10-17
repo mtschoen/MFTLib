@@ -9,12 +9,11 @@ namespace MFTLibTestExtensions;
 public static class BrokerDiagnosticsIsolation
 {
     /// <summary>
-    ///     Undoes <see cref="BrokerDiagnostics.Enable" />: restores the default role tag, OS temp log directory and the
-    ///     environment-variable-controlled enablement, and discards the log writer after it drains
-    ///     the lines already queued. Call <see cref="BrokerDiagnosticsIsolation.FlushAsync" /> first to
-    ///     read those lines from the log file.
+    ///     Restores the default role, OS temp log directory and environment-controlled enablement,
+    ///     and completes and detaches the current writer. Stop logging producers and await
+    ///     <see cref="FlushAsync" /> before resetting diagnostics or deleting their log directory.
     /// </summary>
-    public static void Reset() => BrokerDiagnostics.ResetToDefaults();
+    public static void Reset() => BrokerDiagnostics.Dependencies.ResetToDefaults();
 
     /// <summary>
     ///     Waits until every line already queued has been appended or dropped, so a test can read what a broker

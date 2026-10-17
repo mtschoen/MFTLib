@@ -21,8 +21,8 @@ A test class must carry class-level `[DoNotParallelize]` when any of its code
 
 - calls a process-wide seam or its `ResetToDefaults` (the native delegate seams below, and
   any other static mutable field, static property setter, `ResetToDefaults`, `Enable`,
-  `OverrideJournalWindow` or `ReplaceWriterForTest` in MFTLib, MFTLibTestExtensions,
-  the samples or Benchmark, for example `BrokerLauncher`,
+  `OverrideJournalWindow`, or access to the `BrokerDiagnostics.Dependencies` owner in MFTLib,
+  MFTLibTestExtensions, the samples or Benchmark, for example `BrokerLauncher`,
   `BrokerDiagnostics`);
 - changes `Environment.CurrentDirectory`, an environment variable, `Console` output,
   error or input, `Environment.ExitCode`, an `AppContext` switch, the default thread
@@ -164,6 +164,41 @@ diagnostics arguments. Tests supply recording actions to both routes; runner
 cleanup cannot change an existing runner's captured exit action. Fixtures that
 also replace native or diagnostic state remain nonparallel and drain that work
 before restoring its defaults.
+
+## Broker diagnostics dependencies
+
+`BrokerDiagnostics.Dependencies` is the process-global `DiagnosticsDependencies`
+owner. `InstallWriter` installs a sink-injected writer and completes its predecessor
+under the same `WriterLock` used for writer creation and queue admission. Append
+I/O happens on each writer's drain outside that lock. `ResetToDefaults` completes
+and detaches the current writer and restores process diagnostics configuration.
+The existing isolation detector recognizes both the owner field and its members.
+
+Fixtures using the owner or changing diagnostics configuration require class-level
+`DoNotParallelize`. Stop brokers and logging tasks, release sink gates, complete
+and flush every owned writer, then reset configuration. Flush retired writers
+through their retained instances: the process-level `FlushAsync` observes only
+the current writer. Reset is synchronous and is not a drain wait. The public
+`BrokerDiagnosticsIsolation` facade forwards to this same owner.
+
+`BrokerDiagnosticsWriter` captures its append sink and role provider. Flush
+snapshots accepted records under the queue-admission lock and completes when
+those records have been processed, including failed append attempts. Refused
+enqueues are counted as drops but do not increase the flush target. Gated sinks
+test saturation, pending flushes and recovery without callbacks inside accounting.
+
+Each `BrokerDiagnosticsLogFilter` captures its own file-reference resolver. The
+default is the real resolver. A host captures a filter factory and creates a
+fresh filter for every watch; tests pass resolver-owning factories through the
+internal constructor. Resolver-only instances need no global reset. Fixtures
+that also enable diagnostics or change environment variables remain nonparallel.
+
+Replacement routing is tested before and after installation with blocked sink
+I/O and one or two replacements, asserting exactly one delivery per accepted
+line and refusal by retired writers. Acquisition and admission are one critical
+section, so a replacement cannot occur between them. Full-queue flush tests hold
+the first and final accepted appends, refuse another enqueue, and verify one
+drop notice and completion only after the accepted lines drain.
 
 ## FileIndex component injection
 

@@ -18,10 +18,7 @@ namespace MFTLib;
 /// </summary>
 sealed class BrokerDiagnosticsLogFilter
 {
-    // Swappable for tests, matching the Kernel32 seam pattern: production resolves a path
-    // to its 64-bit NTFS file reference number; null means unresolvable (the file does not
-    // exist yet, the host is not Windows, or the open/query failed).
-    internal static Func<string, ulong?> _resolveFileReference = ResolveFileReference;
+    readonly Func<string, ulong?> _resolveFileReference;
 
     const uint ShareAll = 0x7; // FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE
     const uint OpenExisting = 3;
@@ -34,8 +31,10 @@ sealed class BrokerDiagnosticsLogFilter
     // Watched drive -> references to drop.
     readonly Dictionary<DriveKey, HashSet<ulong>> _referencesByDrive = [];
 
-    internal BrokerDiagnosticsLogFilter(string ownLogPath, string? clientLogPath)
+    internal BrokerDiagnosticsLogFilter(string ownLogPath, string? clientLogPath,
+        Func<string, ulong?>? resolveFileReference = null)
     {
+        _resolveFileReference = resolveFileReference ?? ResolveFileReference;
         var normalizedOwn = NormalizePath(ownLogPath, OperatingSystem.IsWindows());
         _logPaths.Add(normalizedOwn);
         if (!string.IsNullOrEmpty(clientLogPath))
@@ -129,11 +128,6 @@ sealed class BrokerDiagnosticsLogFilter
         }
 
         return ((ulong)info.FileIndexHigh << 32) | info.FileIndexLow;
-    }
-
-    internal static void ResetToDefaults()
-    {
-        _resolveFileReference = ResolveFileReference;
     }
 
     static ulong FileReferenceOf(UsnJournalEntry entry) =>

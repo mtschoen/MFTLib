@@ -32,6 +32,7 @@ public class BrokerProcessLaunchTests
         }
         finally
         {
+            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
             Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", null);
         }
     }
@@ -52,7 +53,8 @@ public class BrokerProcessLaunchTests
         }
         finally
         {
-            BrokerDiagnostics.ResetToDefaults();
+            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            BrokerDiagnostics.Dependencies.ResetToDefaults();
         }
     }
 
@@ -70,7 +72,8 @@ public class BrokerProcessLaunchTests
         }
         finally
         {
-            BrokerDiagnostics.ResetToDefaults();
+            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            BrokerDiagnostics.Dependencies.ResetToDefaults();
         }
     }
 
@@ -85,6 +88,7 @@ public class BrokerProcessLaunchTests
         }
         finally
         {
+            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
             Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", null);
             Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG_INCLUDE_SELF", null);
         }
@@ -101,7 +105,8 @@ public class BrokerProcessLaunchTests
         }
         finally
         {
-            BrokerDiagnostics.ResetToDefaults();
+            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            BrokerDiagnostics.Dependencies.ResetToDefaults();
         }
     }
 

@@ -51,7 +51,7 @@ public partial class JournalBrokerHostLivenessTests
         var stalledWrite = new HeldStalledWrite();
         var laterFrame = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         BrokerDiagnostics.Enable("broker", Path.GetTempPath());
-        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(line =>
+        BrokerDiagnostics.Dependencies.InstallWriter(new BrokerDiagnosticsWriter(line =>
         {
             // A frame written to drive C's pipe after the Stalled write began, other than the
             // liveness frames: the operation's own, which is about to wait for the pipe's write lock.
@@ -73,31 +73,40 @@ public partial class JournalBrokerHostLivenessTests
                 release.WaitForRelease();
                 return [];
             }), sectionWriter, wrapDrivePipe: (_, hostEnd) => stalledWrite.Wrap(hostEnd));
-            var pipe = await harness.OpenScanChannelAsync('C');
-            await entered.Entered.WaitAsync(HangGuard);
-            // The Stalled write starts on the sixth interval (30 second limit, six 5 second visits);
-            // the bound only makes a missing write fail the test instead of looping.
-            for (var interval = 0; !stalledWrite.Started.IsCompleted; interval++)
+            try
             {
-                Assert.IsTrue(interval < MaximumIntervalsBeforeStalled,
-                    $"No Stalled write started within {MaximumIntervalsBeforeStalled} heartbeat intervals.");
-                await liveness.AdvanceOneIntervalAsync();
+                var pipe = await harness.OpenScanChannelAsync('C');
+                await entered.Entered.WaitAsync(HangGuard);
+                // The Stalled write starts on the sixth interval (30 second limit, six 5 second visits);
+                // the bound only makes a missing write fail the test instead of looping.
+                for (var interval = 0; !stalledWrite.Started.IsCompleted; interval++)
+                {
+                    Assert.IsTrue(interval < MaximumIntervalsBeforeStalled,
+                        $"No Stalled write started within {MaximumIntervalsBeforeStalled} heartbeat intervals.");
+                    await liveness.AdvanceOneIntervalAsync();
+                }
+
+                // The Stalled write is in flight and the pipe is marked stalled. The operation finishes
+                // and queues its next frame behind that write; once the write lets go, the frame finds
+                // the pipe stalled and is not written.
+                release.Release();
+                await laterFrame.Task.WaitAsync(HangGuard);
+                stalledWrite.Finish();
+                var frames = await HostChannelHarness.ReadToEndAsync(pipe, includeHeartbeats: true);
+
+                var kinds = frames.Where(frame => frame.Kind != BrokerFrameKind.Heartbeat).Select(frame => frame.Kind).ToArray();
+                CollectionAssert.AreEqual(new[] { BrokerFrameKind.Cursor, BrokerFrameKind.Stalled }, kinds);
             }
-
-            // The Stalled write is in flight and the pipe is marked stalled. The operation finishes
-            // and queues its next frame behind that write; once the write lets go, the frame finds
-            // the pipe stalled and is not written.
-            release.Release();
-            await laterFrame.Task.WaitAsync(HangGuard);
-            stalledWrite.Finish();
-            var frames = await HostChannelHarness.ReadToEndAsync(pipe, includeHeartbeats: true);
-
-            var kinds = frames.Where(frame => frame.Kind != BrokerFrameKind.Heartbeat).Select(frame => frame.Kind).ToArray();
-            CollectionAssert.AreEqual(new[] { BrokerFrameKind.Cursor, BrokerFrameKind.Stalled }, kinds);
+            finally
+            {
+                release.Release();
+                stalledWrite.Finish();
+            }
         }
         finally
         {
-            BrokerDiagnostics.ResetToDefaults();
+            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            BrokerDiagnostics.Dependencies.ResetToDefaults();
         }
     }
 

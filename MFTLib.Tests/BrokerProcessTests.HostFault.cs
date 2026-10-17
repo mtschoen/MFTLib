@@ -75,7 +75,7 @@ public partial class BrokerProcessTests
     {
         var lines = new List<string>();
         BrokerDiagnostics.Enable("client", Path.GetTempPath());
-        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(line =>
+        BrokerDiagnostics.Dependencies.InstallWriter(new BrokerDiagnosticsWriter(line =>
         {
             lock (lines)
             {
@@ -102,7 +102,8 @@ public partial class BrokerProcessTests
         }
         finally
         {
-            BrokerDiagnostics.ResetToDefaults();
+            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            BrokerDiagnostics.Dependencies.ResetToDefaults();
         }
     }
 

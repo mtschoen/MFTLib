@@ -17,9 +17,10 @@ public class DefaultElevatedEntryRunnerTests
     Func<Task, Task> _waitForRunnerExit = left => left.WaitAsync(HangGuard);
 
     [TestCleanup]
-    public void Cleanup()
+    public async Task Cleanup()
     {
-        BrokerDiagnostics.ResetToDefaults();
+        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+        BrokerDiagnostics.Dependencies.ResetToDefaults();
         NativeTestHooks.NativeResetTestState();
         FileUtilities.Hooks.ResetToDefaults();
         JournalQueryFake.Reset();
@@ -196,7 +197,7 @@ public class DefaultElevatedEntryRunnerTests
         var sink = new TestGate();
         var appended = new List<string>();
         BrokerDiagnostics.Enable("broker", Path.GetTempPath());
-        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(line =>
+        BrokerDiagnostics.Dependencies.InstallWriter(new BrokerDiagnosticsWriter(line =>
         {
             sink.MarkEntered();
             sink.WaitForReleaseAsync(CancellationToken.None).WaitAsync(HangGuard, CancellationToken.None)
@@ -340,7 +341,7 @@ public class DefaultElevatedEntryRunnerTests
 
             var exits = new List<int>();
             var delayedRunner = new DefaultElevatedEntryRunner(TimeProvider.System, exits.Add);
-            Cleanup();
+            await Cleanup();
             delayedRunner.RunBroker(null);
             CollectionAssert.AreEqual(new[] { 1 }, exits);
         }

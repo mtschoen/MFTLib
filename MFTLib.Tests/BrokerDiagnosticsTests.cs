@@ -17,10 +17,11 @@ public class BrokerDiagnosticsTests
     }
 
     [TestCleanup]
-    public void Cleanup()
+    public async Task Cleanup()
     {
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", null);
-        BrokerDiagnostics.ResetToDefaults();
+        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+        BrokerDiagnostics.Dependencies.ResetToDefaults();
         // Best-effort cleanup only: a locked file or already-missing directory must
         // not fail the test.
         try
@@ -36,15 +37,28 @@ public class BrokerDiagnosticsTests
     }
 
     [TestMethod]
-    public void IsolationReset_RestoresTheDefaultDiagnosticsState()
+    public async Task IsolationReset_RestoresTheDefaultDiagnosticsState()
     {
-        BrokerDiagnostics.Enable("test", _temporaryRoot);
-        Assert.IsTrue(BrokerDiagnostics.Enabled);
-
-        BrokerDiagnosticsIsolation.Reset();
-
-        Assert.IsFalse(BrokerDiagnostics.Enabled);
-        Assert.AreEqual(Path.Combine(Path.GetTempPath(), "broker-diagnostics.client.log"), BrokerDiagnostics.LogPath);
+        var lines = new List<string>();
+        var writer = new BrokerDiagnosticsWriter(lines.Add);
+        try
+        {
+            BrokerDiagnostics.Dependencies.InstallWriter(writer);
+            BrokerDiagnostics.Enable("test", _temporaryRoot);
+            BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "before-reset");
+            await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            BrokerDiagnosticsIsolation.Reset();
+            Assert.IsFalse(BrokerDiagnostics.Enabled);
+            Assert.AreEqual(Path.Combine(Path.GetTempPath(), "broker-diagnostics.client.log"), BrokerDiagnostics.LogPath);
+            Assert.IsFalse(writer.TryEnqueue("after-reset"));
+            Assert.AreEqual(1, lines.Count);
+            StringAssert.EndsWith(lines[0], ":control]  before-reset");
+        }
+        finally
+        {
+            writer.Complete();
+            await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+        }
     }
 
     [DataTestMethod]
@@ -75,7 +89,7 @@ public class BrokerDiagnosticsTests
     {
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", "1");
         var lines = new List<string>();
-        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(lines.Add));
+        BrokerDiagnostics.Dependencies.InstallWriter(new BrokerDiagnosticsWriter(lines.Add));
 
         BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "environment-opt-in");
         await BrokerDiagnostics.FlushAsync(CancellationToken.None);
@@ -232,7 +246,7 @@ public class BrokerDiagnosticsTests
     {
         BrokerDiagnostics.Enable("broker", _temporaryRoot);
         var lines = new System.Collections.Concurrent.ConcurrentQueue<string>();
-        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(lines.Enqueue, () => "broker"));
+        BrokerDiagnostics.Dependencies.InstallWriter(new BrokerDiagnosticsWriter(lines.Enqueue, () => "broker"));
         var host = new JournalBrokerHost(new ScriptedVolumeAccess { CursorQuery = _ => default });
         await using var broker = new InProcessBroker(host);
         var seenTags = new HashSet<string>(StringComparer.Ordinal);
@@ -261,7 +275,7 @@ public class BrokerDiagnosticsTests
     {
         BrokerDiagnostics.Enable("client", _temporaryRoot);
         var lines = new List<string>();
-        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(lines.Add));
+        BrokerDiagnostics.Dependencies.InstallWriter(new BrokerDiagnosticsWriter(lines.Add));
         var start = new TestGate();
 
         var writers = Enumerable.Range(0, 8).Select(channelIndex => Task.Run(async () =>
@@ -291,28 +305,38 @@ public class BrokerDiagnosticsTests
         BrokerDiagnostics.Enable("client", _temporaryRoot);
         var gate = new TestGate();
         var lines = new List<string>();
-        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(line =>
+        BrokerDiagnostics.Dependencies.InstallWriter(new BrokerDiagnosticsWriter(line =>
         {
             gate.MarkEntered();
             gate.WaitForRelease();
             lines.Add(line);
         }));
 
-        BrokerDiagnostics.Log("test-C-1", "parks the sink");
-        await gate.Entered.WaitAsync(HangGuard * 3);
-        var otherChannel = "test-D-1";
-        var callerTask = Task.Run(() =>
+        Task callerTask = Task.CompletedTask;
+        try
         {
-            for (var index = 0; index < 100; index++)
+            BrokerDiagnostics.Log("test-C-1", "parks the sink");
+            await gate.Entered.WaitAsync(HangGuard * 3);
+            var otherChannel = "test-D-1";
+            callerTask = Task.Run(() =>
             {
-                BrokerDiagnostics.Log(otherChannel, "queued " + index);
-            }
-        });
-        await callerTask.WaitAsync(HangGuard * 3);
+                for (var index = 0; index < 100; index++)
+                {
+                    BrokerDiagnostics.Log(otherChannel, "queued " + index);
+                }
+            });
+            await callerTask.WaitAsync(HangGuard * 3);
 
-        gate.Release();
-        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard * 3);
-        Assert.AreEqual(101, lines.Count);
+            gate.Release();
+            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard * 3);
+            Assert.AreEqual(101, lines.Count);
+        }
+        finally
+        {
+            gate.Release();
+            await callerTask.WaitAsync(HangGuard);
+            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+        }
     }
 
     [TestMethod]
@@ -321,25 +345,33 @@ public class BrokerDiagnosticsTests
         BrokerDiagnostics.Enable("client", _temporaryRoot);
         var gate = new TestGate();
         var lines = new List<string>();
-        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(line =>
+        BrokerDiagnostics.Dependencies.InstallWriter(new BrokerDiagnosticsWriter(line =>
         {
             gate.MarkEntered();
             gate.WaitForRelease();
             lines.Add(line);
         }));
 
-        BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "parks the sink");
-        await gate.Entered.WaitAsync(HangGuard * 3);
-        for (var index = 0; index < BrokerDiagnosticsWriter.Capacity + 5; index++)
+        try
         {
-            BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "fill " + index);
+            BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "parks the sink");
+            await gate.Entered.WaitAsync(HangGuard * 3);
+            for (var index = 0; index < BrokerDiagnosticsWriter.Capacity + 5; index++)
+            {
+                BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "fill " + index);
+            }
+
+            gate.Release();
+            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard * 3);
+
+            Assert.AreEqual(1, lines.Count(line => line.Contains("5 records dropped: queue full", StringComparison.Ordinal)));
+            Assert.AreEqual(1 + BrokerDiagnosticsWriter.Capacity + 1, lines.Count);
         }
-
-        gate.Release();
-        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard * 3);
-
-        Assert.AreEqual(1, lines.Count(line => line.Contains("5 records dropped: queue full", StringComparison.Ordinal)));
-        Assert.AreEqual(1 + BrokerDiagnosticsWriter.Capacity + 1, lines.Count);
+        finally
+        {
+            gate.Release();
+            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+        }
     }
 
     [TestMethod]
@@ -348,7 +380,7 @@ public class BrokerDiagnosticsTests
         BrokerDiagnostics.Enable("client", _temporaryRoot);
         var lines = new List<string>();
         var attempts = 0;
-        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(line =>
+        BrokerDiagnostics.Dependencies.InstallWriter(new BrokerDiagnosticsWriter(line =>
         {
             if (Interlocked.Increment(ref attempts) <= 2)
             {

@@ -120,27 +120,40 @@ public static class BrokerDiagnostics
     ///     nothing needs filtering) or <see cref="IncludeSelfEntries" /> opted the entries
     ///     back in.
     /// </summary>
-    internal static BrokerDiagnosticsLogFilter? CreateLogFilter()
+    internal static BrokerDiagnosticsLogFilter? CreateLogFilter(
+        Func<string, ulong?>? resolveFileReference = null)
     {
         return Enabled && !IncludeSelfEntries
-            ? new BrokerDiagnosticsLogFilter(LogPath, ClientLogPath)
+            ? new BrokerDiagnosticsLogFilter(LogPath, ClientLogPath, resolveFileReference)
             : null;
     }
 
-    // Test seam: undo Enable() and restore the default role tag. Enable() has no
-    // production counterpart that turns diagnostics back off (an elevated broker
-    // child that calls it is short-lived), so only tests need this.
-    internal static void ResetToDefaults()
+    /// <summary>Process-global diagnostics substitutions; reset after producers and drains stop.</summary>
+    internal static readonly DiagnosticsDependencies Dependencies = new();
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static",
+        Justification = "Named dependency container member pattern.")]
+    internal sealed class DiagnosticsDependencies
     {
-        _forced = false;
-        _role = "client";
-        _logDirectory = Path.GetTempPath();
-        ClientLogPath = null;
-        _includeSelfEntries = false;
-        AfterWriterAcquiredForTest = null;
-        lock (WriterLock)
+        internal void InstallWriter(BrokerDiagnosticsWriter writer)
         {
-            Interlocked.Exchange(ref _writer, null)?.Complete();
+            lock (WriterLock)
+            {
+                Interlocked.Exchange(ref _writer, writer)?.Complete();
+            }
+        }
+
+        internal void ResetToDefaults()
+        {
+            lock (WriterLock)
+            {
+                Interlocked.Exchange(ref _writer, null)?.Complete();
+                _forced = false;
+                _role = "client";
+                _logDirectory = Path.GetTempPath();
+                ClientLogPath = null;
+                _includeSelfEntries = false;
+            }
         }
     }
 
@@ -151,23 +164,6 @@ public static class BrokerDiagnostics
     static readonly Lock WriterLock = new();
 
     static BrokerDiagnosticsWriter? _writer;
-
-    static BrokerDiagnosticsWriter Writer =>
-        LazyInitializer.EnsureInitialized(ref _writer, () => new BrokerDiagnosticsWriter(
-            line => File.AppendAllText(LogPath, line + Environment.NewLine),
-            () => _role));
-
-    // Runs after acquisition and outside writer synchronization so tests can replace the writer.
-    internal static Action? AfterWriterAcquiredForTest { get; set; }
-
-    // Test seam: route this process's diagnostics into a writer with a controllable sink.
-    internal static void ReplaceWriterForTest(BrokerDiagnosticsWriter writer)
-    {
-        lock (WriterLock)
-        {
-            Interlocked.Exchange(ref _writer, writer)?.Complete();
-        }
-    }
 
     /// <summary>Completes once every line logged before this call has been appended or dropped.</summary>
     internal static Task FlushAsync(CancellationToken cancellationToken)
@@ -187,16 +183,11 @@ public static class BrokerDiagnostics
         }
 
         var line = $"{DateTime.UtcNow:O}  [{_role}:{Environment.ProcessId}:{channel}]  {message}";
-        var writer = Writer;
-        AfterWriterAcquiredForTest?.Invoke();
         lock (WriterLock)
         {
-            // Replacement can complete the instance acquired before this lock was taken.
-            if (!ReferenceEquals(writer, _writer))
-            {
-                writer = Writer;
-            }
-
+            var writer = _writer ??= new BrokerDiagnosticsWriter(
+                queuedLine => File.AppendAllText(LogPath, queuedLine + Environment.NewLine),
+                () => _role);
             writer.TryEnqueue(line);
         }
     }

@@ -145,3 +145,18 @@ after child dispatch. The broker relies on the forwarded command line, not inher
 environment or application configuration before dispatch. Set
 `MFTLIB_BROKER_DIAG_INCLUDE_SELF=1` before launch to retain the diagnostic logs' own
 journal entries while debugging diagnostics.
+
+The background diagnostics channel holds up to 8192 queued lines. Admission does
+not wait for disk I/O: a full queue refuses the line and counts a queue drop. A
+completed writer also refuses new records while draining accepted records.
+Flush snapshots accepted lines and waits until each has been appended or handled
+as an append failure; refused lines do not extend that target. Drop notices are
+best effort, emitted before a later append, and retain queue and append-failure
+counts if the notice itself fails. Broker session exit, including a faulted
+session, waits for diagnostics flush for at most two seconds on the runner's clock.
+
+Each watch filters the broker and client diagnostics paths by full file reference
+(record number and sequence number), scoped to the watched drive. Paths are
+resolved again on every batch so newly created or replaced logs become filtered;
+prior references remain tracked for renamed logs. A filtered-empty batch emits
+no JournalBatch, but its cursor still advances the CaughtUp decision.

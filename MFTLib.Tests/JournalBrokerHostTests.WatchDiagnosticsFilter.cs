@@ -10,37 +10,36 @@ public partial class JournalBrokerHostTests
     const ulong DiagOwnLogReference = 9101;
     const ulong DiagClientLogReference = 9102;
 
-    static string DiagOwnLogPath => BrokerDiagnostics.LogPath;
-
     static UsnJournalEntry DiagEntry(ulong recordNumber, string fileName = "broker-diagnostics.broker.log") =>
         JournalEntries.Create(recordNumber, 110, fileName);
 
     // Point diagnostics at a synthetic C:-rooted directory and resolve both log paths to fixed file
     // reference numbers, so no real file system or elevation is involved. The log lines go to a
     // sink that discards them.
-    static void EnableDiagFilterSeams()
+    static Func<BrokerDiagnosticsLogFilter?> EnableDiagFilterSeams()
     {
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", "1");
         BrokerDiagnostics.Enable("broker", @"C:\broker-diag-tests");
         BrokerDiagnostics.ClientLogPath = DiagClientLogPath;
-        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(_ => { }, () => "broker"));
-        BrokerDiagnosticsLogFilter._resolveFileReference = path =>
-            string.Equals(path, DiagOwnLogPath, StringComparison.OrdinalIgnoreCase) ? DiagOwnLogReference :
+        BrokerDiagnostics.Dependencies.InstallWriter(new BrokerDiagnosticsWriter(_ => { }, () => "broker"));
+        var ownPath = BrokerDiagnostics.LogPath;
+        return () => BrokerDiagnostics.CreateLogFilter(path =>
+            string.Equals(path, ownPath, StringComparison.OrdinalIgnoreCase) ? DiagOwnLogReference :
             string.Equals(path, DiagClientLogPath, StringComparison.OrdinalIgnoreCase) ? DiagClientLogReference :
-            null;
+            null);
     }
 
-    static void ResetDiagFilterSeams()
+    static async Task ResetDiagFilterSeamsAsync()
     {
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", null);
-        BrokerDiagnostics.ResetToDefaults();
-        BrokerDiagnosticsLogFilter.ResetToDefaults();
+        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+        BrokerDiagnostics.Dependencies.ResetToDefaults();
     }
 
     [TestMethod]
     public async Task StartWatch_WithDiagnostics_SkipsLogOnlyBatches_StillReportsCaughtUp()
     {
-        EnableDiagFilterSeams();
+        var createLogFilter = EnableDiagFilterSeams();
         try
         {
             var batches = new[]
@@ -52,7 +51,8 @@ public partial class JournalBrokerHostTests
             };
             var host = CreateWatchHost(
                 queryCursor: _ => new UsnJournalCursor(7UL, 140L), // journal tip at arm time
-                watchDrive: (_, _, _, _) => FiniteWatch(batches));
+                watchDrive: (_, _, _, _) => FiniteWatch(batches),
+                createLogFilter: createLogFilter);
             await using var harness = new HostChannelHarness(host);
 
             // since (7,100) < tip (7,140): backlog
@@ -68,14 +68,14 @@ public partial class JournalBrokerHostTests
         }
         finally
         {
-            ResetDiagFilterSeams();
+            await ResetDiagFilterSeamsAsync();
         }
     }
 
     [TestMethod]
     public async Task StartWatch_WithDiagIncludeSelf_ShipsLogEntries()
     {
-        EnableDiagFilterSeams();
+        var createLogFilter = EnableDiagFilterSeams();
         BrokerDiagnostics.IncludeSelfEntries = true;
         try
         {
@@ -92,7 +92,8 @@ public partial class JournalBrokerHostTests
             // so no CaughtUp frame precedes the batch.
             var host = CreateWatchHost(
                 queryCursor: _ => default,
-                watchDrive: (_, _, _, _) => FiniteWatch(batches));
+                watchDrive: (_, _, _, _) => FiniteWatch(batches),
+                createLogFilter: createLogFilter);
             await using var harness = new HostChannelHarness(host);
 
             var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
@@ -104,7 +105,7 @@ public partial class JournalBrokerHostTests
         }
         finally
         {
-            ResetDiagFilterSeams();
+            await ResetDiagFilterSeamsAsync();
         }
     }
 
@@ -154,7 +155,7 @@ public partial class JournalBrokerHostTests
         }
         finally
         {
-            ResetDiagFilterSeams();
+            await ResetDiagFilterSeamsAsync();
         }
     }
 }

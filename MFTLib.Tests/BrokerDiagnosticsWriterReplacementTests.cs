@@ -10,100 +10,131 @@ namespace MFTLib.Tests;
 public class BrokerDiagnosticsWriterReplacementTests
 {
     [TestCleanup]
-    public void Cleanup()
+    public async Task Cleanup()
     {
-        BrokerDiagnostics.ResetToDefaults();
-    }
-
-    [TestMethod]
-    public async Task ReplaceWriterForTest_NoWriterYet_RoutesLogLinesIntoTheReplacement()
-    {
-        BrokerDiagnostics.ResetToDefaults();
-        var lines = new List<string>();
-
-        // Diagnostics are still off, so nothing has created the process's writer: the replacement
-        // is the first.
-        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(lines.Add, () => "broker"));
-        BrokerDiagnostics.Enable("broker", Path.GetTempPath());
-        BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "hello");
         await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
-
-        Assert.AreEqual(1, lines.Count);
-        StringAssert.Contains(lines[0], ":control]  hello");
+        BrokerDiagnostics.Dependencies.ResetToDefaults();
     }
 
     [TestMethod]
-    public async Task ReplaceWriterForTest_ReplacingALiveWriter_RoutesLaterLinesOnlyToTheReplacement()
+    public async Task InstallWriter_NoWriterYet_RoutesLogLinesIntoTheReplacement()
     {
-        BrokerDiagnostics.ResetToDefaults();
+        BrokerDiagnostics.Dependencies.ResetToDefaults();
+        var lines = new List<string>();
+        var writer = new BrokerDiagnosticsWriter(lines.Add, () => "broker");
+        try
+        {
+            // Diagnostics are still off, so nothing has created the process's writer: the replacement
+            // is the first.
+            BrokerDiagnostics.Dependencies.InstallWriter(writer);
+            BrokerDiagnostics.Enable("broker", Path.GetTempPath());
+            BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "hello");
+            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+
+            Assert.AreEqual(1, lines.Count);
+            StringAssert.Contains(lines[0], ":control]  hello");
+        }
+        finally
+        {
+            writer.Complete();
+            await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            BrokerDiagnostics.Dependencies.ResetToDefaults();
+        }
+    }
+
+    [TestMethod]
+    public async Task InstallWriter_ReplacingALiveWriter_RoutesLaterLinesOnlyToTheReplacement()
+    {
+        BrokerDiagnostics.Dependencies.ResetToDefaults();
         var first = new List<string>();
         var second = new List<string>();
-        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(first.Add, () => "broker"));
-        BrokerDiagnostics.Enable("broker", Path.GetTempPath());
+        var firstWriter = new BrokerDiagnosticsWriter(first.Add, () => "broker");
+        var secondWriter = new BrokerDiagnosticsWriter(second.Add, () => "broker");
+        try
+        {
+            BrokerDiagnostics.Dependencies.InstallWriter(firstWriter);
+            BrokerDiagnostics.Enable("broker", Path.GetTempPath());
 
-        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(second.Add, () => "broker"));
-        BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "after");
-        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            BrokerDiagnostics.Dependencies.InstallWriter(secondWriter);
+            BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "after");
+            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
 
-        Assert.AreEqual(1, second.Count);
-        StringAssert.Contains(second[0], ":control]  after");
-        Assert.AreEqual(0, first.Count, "The replaced writer was completed and receives nothing more.");
+            Assert.AreEqual(1, second.Count);
+            StringAssert.Contains(second[0], ":control]  after");
+            Assert.AreEqual(0, first.Count, "The replaced writer was completed and receives nothing more.");
+        }
+        finally
+        {
+            firstWriter.Complete();
+            secondWriter.Complete();
+            await Task.WhenAll(firstWriter.FlushAsync(CancellationToken.None), secondWriter.FlushAsync(CancellationToken.None))
+                .WaitAsync(HangGuard);
+            BrokerDiagnostics.Dependencies.ResetToDefaults();
+        }
     }
 
     [DataTestMethod]
     [DataRow(1)]
     [DataRow(2)]
-    public async Task Log_AcquiredWriterIsReplaced_DeliversOnceToCurrentWriter(int replacementCount)
+    public async Task Log_BeforeAndAfterReplacement_DeliversEachLineExactlyOnce(int replacementCount)
     {
-        BrokerDiagnostics.ResetToDefaults();
+        BrokerDiagnostics.Dependencies.ResetToDefaults();
         var gate = new TestGate();
-        var originalLines = new ConcurrentQueue<string>();
-        var replacementLines = new ConcurrentQueue<string>();
-        var original = new BrokerDiagnosticsWriter(originalLines.Enqueue);
-        BrokerDiagnostics.ReplaceWriterForTest(original);
+        var writers = new List<BrokerDiagnosticsWriter>();
+        var outputs = new List<ConcurrentQueue<string>>();
+        Task installation = Task.CompletedTask;
         BrokerDiagnostics.Enable("broker", Path.GetTempPath());
-        BrokerDiagnostics.AfterWriterAcquiredForTest = () =>
-        {
-            gate.MarkEntered();
-            gate.WaitForRelease();
-        };
-
-        var logging = Task.Run(() =>
-            BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "acquired-before-replacement"));
         try
         {
-            await gate.Entered.WaitAsync(HangGuard);
-            for (var index = 0; index < replacementCount; index++)
+            for (var index = 0; index <= replacementCount; index++)
             {
-                BrokerDiagnostics.ReplaceWriterForTest(
-                    new BrokerDiagnosticsWriter(replacementLines.Enqueue));
+                var output = new ConcurrentQueue<string>();
+                var holdSink = index == 0;
+                var writer = new BrokerDiagnosticsWriter(line =>
+                {
+                    if (holdSink)
+                    {
+                        gate.MarkEntered();
+                        gate.WaitForRelease();
+                    }
+                    output.Enqueue(line);
+                });
+                writers.Add(writer);
+                outputs.Add(output);
+                installation = Task.Run(() => BrokerDiagnostics.Dependencies.InstallWriter(writer));
+                await installation.WaitAsync(HangGuard);
+                BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, $"writer-{index}");
+                if (index == 0)
+                {
+                    await gate.Entered.WaitAsync(HangGuard);
+                }
             }
-
+            await writers[^1].FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            Assert.AreEqual(0, outputs[0].Count);
             gate.Release();
-            await logging.WaitAsync(HangGuard);
-            await BrokerDiagnostics.FlushAsync(CancellationToken.None)
+            await Task.WhenAll(writers.Select(writer => writer.FlushAsync(CancellationToken.None)))
                 .WaitAsync(HangGuard);
-            await original.FlushAsync(CancellationToken.None)
-                .WaitAsync(HangGuard);
-
-            var delivered = replacementLines.ToArray();
-            Assert.AreEqual(1, delivered.Length,
-                "A line acquired before replacement must reach the current writer exactly once.");
-            StringAssert.Contains(delivered[0], ":control]  acquired-before-replacement");
-            Assert.AreEqual(0, originalLines.Count,
-                "The completed original writer must not receive the delayed line.");
+            for (var index = 0; index < writers.Count; index++)
+            {
+                Assert.AreEqual(1, outputs[index].Count);
+                StringAssert.EndsWith(outputs[index].Single(), $":control]  writer-{index}");
+            }
+            foreach (var retired in writers.Take(replacementCount))
+            {
+                Assert.IsFalse(retired.TryEnqueue("late"));
+            }
         }
         finally
         {
             gate.Release();
-            try
+            await installation.WaitAsync(HangGuard);
+            foreach (var writer in writers)
             {
-                await logging.WaitAsync(HangGuard);
+                writer.Complete();
             }
-            finally
-            {
-                BrokerDiagnostics.ResetToDefaults();
-            }
+            await Task.WhenAll(writers.Select(writer => writer.FlushAsync(CancellationToken.None)))
+                .WaitAsync(HangGuard);
+            BrokerDiagnostics.Dependencies.ResetToDefaults();
         }
     }
 }

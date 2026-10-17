@@ -63,14 +63,10 @@ internal sealed class BrokerDiagnosticsWriter
                 return true;
             }
 
-            BeforeDropAccountedForTest?.Invoke();
             Interlocked.Increment(ref _dropped);
             return false;
         }
     }
-
-    /// <summary>Runs on the enqueuing thread, holding the lock a flush takes, as a record is dropped.</summary>
-    internal Action? BeforeDropAccountedForTest { get; set; }
 
     /// <summary>Completes once every record accepted before this call has been processed.</summary>
     public Task FlushAsync(CancellationToken cancellationToken)

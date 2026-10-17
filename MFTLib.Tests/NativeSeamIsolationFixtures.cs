@@ -179,3 +179,20 @@ internal static class ReadOnlyEnvironmentReferenceFixture
 {
     public static string Reference() => Environment.GetEnvironmentVariable("MFTLIB_FIXTURE") ?? Environment.CurrentDirectory;
 }
+
+internal static class DiagnosticsOwnerReferenceFixture
+{
+    public static object Reference() => BrokerDiagnostics.Dependencies;
+}
+
+internal static class DiagnosticsMemberReferenceFixture
+{
+    public static void Reference(BrokerDiagnostics.DiagnosticsDependencies dependencies,
+        BrokerDiagnosticsWriter writer) => dependencies.InstallWriter(writer);
+}
+
+[DoNotParallelize]
+internal static class IsolatedDiagnosticsReferenceFixture
+{
+    public static void Reference() => BrokerDiagnostics.Dependencies.ResetToDefaults();
+}

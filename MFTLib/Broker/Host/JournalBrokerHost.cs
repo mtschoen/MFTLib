@@ -26,19 +26,23 @@ internal sealed partial class JournalBrokerHost
     readonly IVolumeAccess _volumeAccess;
     readonly TimeProvider _timeProvider;
     readonly ParseThreadAllocator _parseThreads;
+    readonly Func<BrokerDiagnosticsLogFilter?> _createLogFilter;
 
     /// <summary>Builds a host over injected volume access, so it runs without real elevation in tests.</summary>
     /// <param name="volumeAccess">The volume operations this host can serve.</param>
     /// <param name="processorCount">The parse-thread budget every running scan shares; null is <see cref="Environment.ProcessorCount" />.</param>
     /// <param name="timeProvider">The clock of every host timeout; null is <see cref="TimeProvider.System" />.</param>
+    /// <param name="createLogFilter">Creates a fresh diagnostics filter per watch; null uses process diagnostics configuration and the real resolver.</param>
     public JournalBrokerHost(
         IVolumeAccess volumeAccess,
         int? processorCount = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        Func<BrokerDiagnosticsLogFilter?>? createLogFilter = null)
     {
         _volumeAccess = volumeAccess;
         _timeProvider = timeProvider ?? TimeProvider.System;
         _parseThreads = new ParseThreadAllocator(processorCount ?? Environment.ProcessorCount);
+        _createLogFilter = createLogFilter ?? (() => BrokerDiagnostics.CreateLogFilter());
     }
 
     /// <summary>The parse-thread budget every scan on this host is admitted to.</summary>
@@ -60,7 +64,7 @@ internal sealed partial class JournalBrokerHost
             // shipped frame is logged, the log write produces a USN record, and that record would
             // ship as another frame. A batch the filter leaves empty is skipped entirely - shipping
             // it would keep the loop alive, because even an empty frame gets logged.
-            var logFilter = BrokerDiagnostics.CreateLogFilter();
+            var logFilter = _createLogFilter();
             var caughtUpReported = arm.CaughtUpReported;
             var batches = _volumeAccess.WatchDrive(drive, arm.Since, channel.Pipe, cancellationToken)
                 .GetAsyncEnumerator(cancellationToken);
