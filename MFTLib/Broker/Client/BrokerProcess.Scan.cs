@@ -13,7 +13,8 @@ internal sealed partial class BrokerProcess
     /// </summary>
     /// <param name="driveLetter">The drive to scan.</param>
     /// <param name="target">Where the block file is created, and the identity it carries.</param>
-    /// <param name="options">Row filtering and progress for the scan.</param>
+    /// <param name="options">Row filtering for the scan.</param>
+    /// <param name="progress">Destination for transfer and parse progress notifications; null reports none.</param>
     /// <param name="cancellationToken">Closes the channel and releases the section.</param>
     /// <exception cref="ArgumentException">
     ///     <see cref="MftScanOptions.RetainedFileNames" /> is too long for one request frame. Nothing is sent.
@@ -22,7 +23,7 @@ internal sealed partial class BrokerProcess
     /// <exception cref="BrokerChannelLostException">The channel or the process was lost first.</exception>
     /// <exception cref="TimeoutException">The broker did not answer the volume query or the channel open within the reply timeout.</exception>
     internal async Task<BrokerDriveScanResult> ScanDriveAsync(char driveLetter, BlockScanTarget target,
-        MftScanOptions options, CancellationToken cancellationToken)
+        MftScanOptions options, IProgress<BlockWriteProgress>? progress, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(options);
@@ -42,9 +43,10 @@ internal sealed partial class BrokerProcess
             MftBlockCapacity.CreateOptions(volume, target.Path, target.VolumeSerial, target.DeleteOnClose,
                 target.CacheTag));
         var sectionLifetime = new ReleaseOnce(lifetime);
+        var section = new DriveBlockSection(sectionName, block, sectionLifetime);
         try
         {
-            return await ScanOnChannelAsync(letter, sectionName, block, sectionLifetime, options, cancellationToken)
+            return await ScanOnChannelAsync(letter, section, options, progress, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch
@@ -62,10 +64,10 @@ internal sealed partial class BrokerProcess
         }
     }
 
-    async Task<BrokerDriveScanResult> ScanOnChannelAsync(char letter, string sectionName, BlockFile block,
-        ReleaseOnce sectionLifetime, MftScanOptions options, CancellationToken cancellationToken)
+    async Task<BrokerDriveScanResult> ScanOnChannelAsync(char letter, DriveBlockSection section,
+        MftScanOptions options, IProgress<BlockWriteProgress>? progress, CancellationToken cancellationToken)
     {
-        var frameLength = BrokerProtocol.ArmAndScanFrameLength(sectionName, options.RetainedFileNames);
+        var frameLength = BrokerProtocol.ArmAndScanFrameLength(section.SectionName, options.RetainedFileNames);
         if (frameLength > BrokerFrameStream.MaximumFrameLength)
         {
             throw new ArgumentException(FormattableString.Invariant(
@@ -73,21 +75,23 @@ internal sealed partial class BrokerProcess
                 nameof(options));
         }
 
-        var channel = await OpenChannelAsync(letter, writer => BrokerProtocol.WriteArmAndScan(writer, sectionName,
+        var channel = await OpenChannelAsync(letter, writer => BrokerProtocol.WriteArmAndScan(writer, section.SectionName,
             options.RetainedFileNames, options.IncludeFreed), cancellationToken).ConfigureAwait(false);
         await using var ownedChannel = channel.ConfigureAwait(false);
-        var collector = new ScanFrames(channel, options.Progress);
+        var collector = new ScanFrames(channel, progress);
         var armed = await collector.ReadArmedCursorAsync(cancellationToken).ConfigureAwait(false);
         var ready = await collector.ReadToScanReadyAsync(cancellationToken).ConfigureAwait(false);
 
         // The section is written: unpublish its name. The block's own view keeps it mapped.
-        sectionLifetime.Release();
+        section.Lifetime.Release();
         var terminal = await collector.ReadTerminalAsync(cancellationToken).ConfigureAwait(false);
-        var outcome = new BlockScanOutcome(block, ready.SkippedRecordCount);
+        var outcome = new BlockScanOutcome(section.Block, ready.SkippedRecordCount);
         return terminal.Kind == BrokerFrameKind.ScanCompleted
             ? new BrokerDriveScanResult(letter, armed, null, outcome)
             : new BrokerDriveScanResult(letter, armed, terminal.RequireCatchUpLoss(letter), outcome);
     }
+
+    readonly record struct DriveBlockSection(string SectionName, BlockFile Block, ReleaseOnce Lifetime);
 
     // The flag is set before Dispose runs, so a lifetime whose Dispose throws is not disposed a second time.
     sealed class ReleaseOnce(IDisposable lifetime)
@@ -110,9 +114,18 @@ internal sealed partial class BrokerProcess
     // or CatchUpLost, then EOF. Heartbeats may arrive anywhere and are skipped. An Error frame fails
     // the scan with the host's message; any other frame out of order, or EOF before the terminal
     // frame, is a lost channel.
-    sealed class ScanFrames(BrokerDriveChannel channel, IProgress<BrokerScanProgress>? progress)
+    sealed class ScanFrames
     {
-        readonly char _letter = channel.Drive;
+        readonly BrokerDriveChannel _channel;
+        readonly IProgress<BlockWriteProgress>? _progress;
+        readonly char _letter;
+
+        public ScanFrames(BrokerDriveChannel channel, IProgress<BlockWriteProgress>? progress)
+        {
+            _channel = channel;
+            _progress = progress;
+            _letter = channel.Drive;
+        }
 
         public async Task<UsnJournalCursor> ReadArmedCursorAsync(CancellationToken cancellationToken)
         {
@@ -130,7 +143,9 @@ internal sealed partial class BrokerProcess
                     case BrokerFrameKind.ScanProgress:
                         if (frame.Progress is { } sample)
                         {
-                            progress?.Report(sample with { Drive = _letter.ToString() });
+                            _progress?.Report(new BlockWriteProgress(sample.RecordsProcessed, sample.BytesProcessed,
+                                sample.TotalRecords, sample.TotalBytes,
+                                sample.Phase == BrokerScanPhase.Parsing ? BlockScanPhase.Parsing : BlockScanPhase.Transferring));
                         }
 
                         break;
@@ -161,7 +176,7 @@ internal sealed partial class BrokerProcess
             {
                 extra = await ReadSkippingHeartbeatsAsync(cancellationToken).ConfigureAwait(false);
             }
-            catch (BrokerChannelLostException exception) when (channel.IsOwnClose(exception))
+            catch (BrokerChannelLostException exception) when (_channel.IsOwnClose(exception))
             {
                 return terminal;
             }
@@ -183,7 +198,7 @@ internal sealed partial class BrokerProcess
         {
             while (true)
             {
-                var frame = await channel.ReadAsync(cancellationToken).ConfigureAwait(false);
+                var frame = await _channel.ReadAsync(cancellationToken).ConfigureAwait(false);
                 if (frame is not { Kind: BrokerFrameKind.Heartbeat })
                 {
                     return frame;

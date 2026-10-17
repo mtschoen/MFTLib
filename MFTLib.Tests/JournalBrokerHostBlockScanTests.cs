@@ -130,7 +130,7 @@ public class JournalBrokerHostBlockScanTests
         var parsingReported = new TestGate();
         var host = CreateHost((_, _, reporting, _, _, _) =>
         {
-            reporting.Progress!.Report(new BlockWriteProgress(500, 0, 1000, null, BrokerScanPhase.Parsing));
+            reporting.Progress!.Report(new BlockWriteProgress(500, 0, 1000, null, BlockScanPhase.Parsing));
             parsingReported.MarkEntered();
             parsingReported.WaitForRelease();
             return [[Record(5, ".", 3)], [Record(20, "file.txt")]];

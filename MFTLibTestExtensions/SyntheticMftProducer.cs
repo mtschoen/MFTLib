@@ -73,15 +73,15 @@ public sealed class SyntheticMftProducer
                 JournalCursor = cursor,
                 ScanTimestamp = ScanTimestamp,
                 CacheTag = request.CacheTag
-            }, _rowsForDrive(request.Drive)), cursor, request.Drive);
+            }, _rowsForDrive(request.Drive)), request.Drive);
     }
 
     /// <summary>Wraps the built block, closing it when the catch-up loss callback throws so no handle leaks.</summary>
-    MftBlockProduceResult Describe(BlockFile block, SyntheticJournalCursor cursor, DriveKey driveLetter)
+    MftBlockProduceResult Describe(BlockFile block, DriveKey driveLetter)
     {
         try
         {
-            return new MftBlockProduceResult(block, cursor.JournalIdentifier, cursor.NextUsn, SkippedRecordCount)
+            return new MftBlockProduceResult(block, SkippedRecordCount)
             {
                 CatchUpLoss = CatchUpLoss?.Invoke(driveLetter)
             };

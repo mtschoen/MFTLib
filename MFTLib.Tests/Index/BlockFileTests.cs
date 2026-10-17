@@ -402,4 +402,23 @@ public class BlockFileTests
             Directory.Delete(directory, recursive: true);
         }
     }
+
+    [TestMethod]
+    public void TryDeleteFailedCreate_ThrowingDiagnosticStillDeletesWithoutThrowing()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"mftlib-cleanup-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "rejected.mlix");
+        File.WriteAllBytes(path, [1, 2, 3]);
+        try
+        {
+            BlockFile.TryDeleteFailedCreate(path,
+                _ => throw new InvalidOperationException("diagnostic sink failed"));
+            Assert.IsFalse(File.Exists(path));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
 }

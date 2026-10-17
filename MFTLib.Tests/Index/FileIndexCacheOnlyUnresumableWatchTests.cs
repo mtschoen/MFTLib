@@ -254,12 +254,25 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         await SeedCacheAsync(driveT);
         var source = new ScriptedWatchSource();
         using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = HealthyWindow });
+        BlockFile? producedBlock = null;
         var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
             Drives = [driveT],
             CacheDirectory = _cacheDirectory,
-            MftSource = new MftIndexSource(ProduceUnwatchableBlock, source.IndexSource)
+            MftSource = new MftIndexSource(async (request, cancellationToken) =>
+            {
+                var result = await ProduceMftShapedBlock(request, cancellationToken);
+                producedBlock = result.Block;
+                return result;
+            }, source.IndexSource)
         }, Token);
+        index.PublishInsideWriteGateForTest = _ =>
+        {
+            if (producedBlock is not null)
+            {
+                producedBlock.Header.ProducerKind = ProducerKind.Enumeration;
+            }
+        };
         try
         {
             Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind, "the cached MFT block warm-started");
@@ -298,12 +311,25 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         await SeedCacheAsync(driveT);
         var source = new ScriptedWatchSource();
         using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = HealthyWindow });
+        BlockFile? producedBlock = null;
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
             Drives = [driveT],
             CacheDirectory = _cacheDirectory,
-            MftSource = new MftIndexSource(ProduceUnwatchableBlock, source.IndexSource)
+            MftSource = new MftIndexSource(async (request, cancellationToken) =>
+            {
+                var result = await ProduceMftShapedBlock(request, cancellationToken);
+                producedBlock = result.Block;
+                return result;
+            }, source.IndexSource)
         }, Token);
+        index.PublishInsideWriteGateForTest = _ =>
+        {
+            if (producedBlock is not null)
+            {
+                producedBlock.Header.ProducerKind = ProducerKind.Enumeration;
+            }
+        };
         var channelFaulted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         index.WatchFaulted += fault =>
         {
@@ -327,17 +353,6 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         await DriveResultAssertions.NotApplicableAsync(() => index.WaitForCatchUpAsync(['T'], Token));
         await DriveResultAssertions.NotApplicableAsync(() => index.StopWatchingAsync(['T'], Token));
         Assert.AreEqual(1, source.TargetsFor('T').Count);
-    }
-
-    // Script a contradictory producer result to exercise the restart's defensive refusal,
-    // rather than relying on warm adoption to ignore a drive's requested producer policy.
-    static async Task<MftBlockProduceResult> ProduceUnwatchableBlock(MftBlockProduceRequest request,
-        CancellationToken cancellationToken)
-    {
-        var result = await ProduceMftShapedBlock(request, cancellationToken);
-        result.Block.Header.ProducerKind = ProducerKind.Enumeration;
-        new BlockWriter(result.Block).Complete(result.Block.Header.ScanTimestampUtc, null);
-        return result;
     }
 
     [TestMethod]

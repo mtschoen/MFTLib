@@ -224,17 +224,10 @@ public sealed partial class FileIndex
 
     /// <summary>
     ///     Runs the MFT producer for one drive and checks its finished block before anything adopts
-    ///     it. <see cref="MftBlockProduceResult.JournalIdentifier" /> and <see cref="MftBlockProduceResult.NextUsn" />
-    ///     are already durable in the returned <see cref="MftBlockProduceResult.Block" />'s header by
-    ///     the time it gets here (the producer stamps them before its own <c>Complete()</c> call, the
-    ///     one flush-safe place to do it), so this method does not write them again.
-    ///     <see cref="DescribeOnlineDriveBlock" /> derives <see cref="DriveBlockStatus.IsCapacityExhausted" /> from the
-    ///     header's own <see cref="BlockFlags.CapacityExhausted" /> flag, which the producer sets on
-    ///     the block directly. The cursor is instead used for a consistency check: a producer that
-    ///     reports one cursor but stamped a different one into the block it built violated its own
-    ///     contract, and that must not go unnoticed any more than an on-disk block that fails
-    ///     validation would. It is treated as a producer failure, not adopted as a warning on an
-    ///     otherwise-trusted block.
+    ///     it. The returned header contains the durable pre-scan cursor, independently validated
+    ///     by the producer. <see cref="DescribeOnlineDriveBlock" /> derives
+    ///     <see cref="DriveBlockStatus.IsCapacityExhausted" /> from the header's own
+    ///     <see cref="BlockFlags.CapacityExhausted" /> flag, which the producer sets on the block directly.
     /// </summary>
     async Task<MftBlockProduceResult> RunMftProducerAsync(IndexedDrive drive, string blockPath,
         bool deleteOnClose, MftBlockProducer producer, CancellationToken cancellationToken)
@@ -246,30 +239,12 @@ public sealed partial class FileIndex
             BlockPath = blockPath,
             DeleteOnClose = deleteOnClose,
             Progress = _options.ScanProgress,
-            CacheTag = _options.CacheTag
+            CacheTag = _options.CacheTag,
+            Diagnostics = _options.Diagnostics
         };
 
         var produceResult = await producer(request, cancellationToken).ConfigureAwait(false);
-        ValidateProducedCacheTag(produceResult, blockPath);
-
-        var header = produceResult.Block.Header;
-        if (header.UsnJournalIdentifier != produceResult.JournalIdentifier || header.UsnNextUsn != produceResult.NextUsn)
-        {
-            // Nothing has adopted the block yet, so its mapping is closed directly.
-            produceResult.Block.Dispose();
-
-            // The producer already Complete()d this block before this check ran, so it would
-            // pass BlockHeader.Validate like any other valid block. Deleting it here, mirroring
-            // BuildAndInitialize and RestoreRetiredFile, keeps a later TryOpenExistingBlock from
-            // warm-starting off a block whose cursor invariant was just rejected.
-            BlockFile.TryDeleteFailedCreate(blockPath, _options.Diagnostics,
-                "the MFT producer's block failed the journal cursor consistency check");
-            throw new InvalidOperationException(
-                $"The MFT producer's block header carries journal cursor ({header.UsnJournalIdentifier}, " +
-                $"{header.UsnNextUsn}) but its result reported cursor ({produceResult.JournalIdentifier}, " +
-                $"{produceResult.NextUsn}). A producer that contradicts its own block cannot be trusted.");
-        }
-
+        ValidateProducedBlock(produceResult, request);
         return produceResult;
     }
 

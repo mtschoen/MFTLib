@@ -100,4 +100,61 @@ public class NamespaceBoundaryTests
         StringAssert.Contains(descriptions, nameof(NamespaceBoundaryViolationFixture));
         StringAssert.Contains(descriptions, "MftRecord");
     }
+
+    static GivenTypesConjunction OwnedTypes(params string[] names)
+    {
+        var selection = Types().That().HaveFullNameContaining("MFTLib." + names[0]);
+        foreach (var name in names.Skip(1))
+        {
+            selection = selection.Or().HaveFullNameContaining("MFTLib." + name);
+        }
+        return selection;
+    }
+
+    static GivenTypesConjunction SourceTypes() => OwnedTypes(
+        "DirectProgress", "FreedRowTrust", "LiveVolumeSources", "LocalMftBlockProducer",
+        "MftBlockRowWriter", "MftBlockScan", "BlockStamp",
+        "MftDumpBlockProducer", "MftDumpRecordSource", "MftDumpRecordValidation",
+        "MftRecordBatchSource",
+        "MftBlockCapacity", "ParseThreadAllocator", "ParseThreadRegistration",
+        "UsnJournalCursorQuery", "ISourceOperationReporter", "BlockWriteProgress",
+        "BlockScanPhase", "BlockWriteReporting", "BlockWriteResult",
+        "MftBlockProgressAdapter", "MftBlockValidation", "MftBlockProducerPipeline",
+        "Index.SourcesBoundaryViolationFixture");
+
+    static GivenTypesConjunction BrokerTypes() => OwnedTypes(
+        "Broker", "IBroker", "JournalBrokerHost", "HostPipeWriter",
+        "ChannelOperationKind", "ChannelOperationState", "ClientDisconnectedException",
+        "RealBlockSectionWriter", "IBlockSectionWriter", "BlockScanOutcome", "BlockScanTarget",
+        "DefaultElevatedEntryRunner", "IElevatedEntryRunner", "ElevatedEntryPoint",
+        "JournalBatchSource", "GrowUsnJournalQuery", "NtfsVolumeInformationQuery",
+        "UsnJournalCatchUpSource", "NamedPipeBrokerPipeFactory");
+
+    static TypesShouldConjunctionWithDescription SourceBoundaryRule() =>
+        Types().That().Are(SourceTypes()).Should().NotDependOnAny(BrokerTypes())
+            .Because("source-owned scan plumbing must not depend on broker-owned types");
+
+    [TestMethod]
+    public void Sources_DoNotDependOnBrokerOwnedTypes()
+    {
+        Assert.IsTrue(SourceTypes().GetObjects(ProductionArchitecture).Any(), "SourceTypes must match production types.");
+        Assert.IsTrue(BrokerTypes().GetObjects(ProductionArchitecture).Any(), "BrokerTypes must match production types.");
+        var rule = SourceBoundaryRule();
+        Assert.IsTrue(rule.HasNoViolations(ProductionArchitecture),
+            string.Join(Environment.NewLine,
+                rule.Evaluate(ProductionArchitecture).Select(result => result.Description)));
+    }
+
+    [TestMethod]
+    public void SourceBoundary_ReportsTheDeliberateBrokerReference()
+    {
+        Assert.IsTrue(SourceTypes().GetObjects(ProductionArchitecture).Any(), "SourceTypes must match production types.");
+        Assert.IsTrue(BrokerTypes().GetObjects(ProductionArchitecture).Any(), "BrokerTypes must match production types.");
+        var rule = SourceBoundaryRule();
+        Assert.IsFalse(rule.HasNoViolations(ProductionAndFixtureArchitecture));
+        var descriptions = string.Join(Environment.NewLine,
+            rule.Evaluate(ProductionAndFixtureArchitecture).Select(result => result.Description));
+        StringAssert.Contains(descriptions, "SourcesBoundaryViolationFixture");
+        StringAssert.Contains(descriptions, "BrokerMftBlockProducer");
+    }
 }

@@ -7,7 +7,7 @@ namespace MFTLib;
 /// <summary>
 ///     One host pipe (the control pipe or one drive pipe): serializes its frame writes under a
 ///     write lock, records whether it wrote since the heartbeat sender's last visit, and holds the
-///     operation state its loop and its source publish. It is the <see cref="IBrokerOperationReporter" />
+///     operation state its loop and its source publish. It is the <see cref="ISourceOperationReporter" />
 ///     every source on that pipe receives. A frame write or a publication restarts the progress
 ///     clock; the heartbeat sender's own writes do not.
 /// </summary>
@@ -15,7 +15,7 @@ namespace MFTLib;
     Justification = "The write lock is never disposed: after the pipe's owner has ended, the heartbeat " +
                     "sender may still try it and a write in flight still releases it. SemaphoreSlim holds " +
                     "no kernel handle unless its AvailableWaitHandle is read, which nothing here does.")]
-internal sealed class HostPipeWriter : IBrokerOperationReporter
+internal sealed class HostPipeWriter : ISourceOperationReporter
 {
     readonly Stream _stream;
     readonly TimeProvider _timeProvider;

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Threading.Channels;
 
 namespace MFTLib;
@@ -7,12 +6,11 @@ namespace MFTLib;
 internal sealed partial class JournalBrokerHost
 {
     // What a finished block scan hands to its completion frames.
-    readonly record struct ScanOutput(UsnJournalCursor Cursor, BlockWriteResult WriteResult, TimeSpan Elapsed,
+    readonly record struct ScanOutput(UsnJournalCursor Cursor, BlockWriteResult WriteResult,
         long MaximumRecordsProcessed, long? TotalRecords);
 
     sealed class ScanProgressState
     {
-        readonly Stopwatch _stopwatch = Stopwatch.StartNew();
         readonly object _progressLock = new();
         long _maximumParsingRecordsProcessed;
         long _maximumTransferringRecordsProcessed;
@@ -26,12 +24,11 @@ internal sealed partial class JournalBrokerHost
                 writer.TryWrite(new BrokerScanProgress
                 {
                     Drive = driveLetter,
-                    Phase = progress.Phase,
+                    Phase = progress.Phase == BlockScanPhase.Parsing ? BrokerScanPhase.Parsing : BrokerScanPhase.Transferring,
                     RecordsProcessed = recordsProcessed,
                     BytesProcessed = progress.BytesProcessed,
                     TotalRecords = totalRecords,
-                    TotalBytes = progress.TotalBytes,
-                    Elapsed = _stopwatch.Elapsed
+                    TotalBytes = progress.TotalBytes
                 });
             }
         }
@@ -40,8 +37,7 @@ internal sealed partial class JournalBrokerHost
         {
             lock (_progressLock)
             {
-                _stopwatch.Stop();
-                return new ScanOutput(cursor, writeResult, _stopwatch.Elapsed, _maximumParsingRecordsProcessed,
+                return new ScanOutput(cursor, writeResult, _maximumParsingRecordsProcessed,
                     _totalRecordsKnown);
             }
         }
@@ -50,7 +46,7 @@ internal sealed partial class JournalBrokerHost
         {
             switch (progress.Phase)
             {
-                case BrokerScanPhase.Parsing:
+                case BlockScanPhase.Parsing:
                     // The parser knows the whole-volume total; a later transfer total counts
                     // only live records and must not replace it with that smaller number.
                     if (progress.TotalRecords.HasValue &&
@@ -62,7 +58,7 @@ internal sealed partial class JournalBrokerHost
                     _maximumParsingRecordsProcessed = Math.Max(_maximumParsingRecordsProcessed, progress.RecordsProcessed);
                     return (_maximumParsingRecordsProcessed, _totalRecordsKnown);
 
-                case BrokerScanPhase.Transferring:
+                case BlockScanPhase.Transferring:
                 default:
                     _maximumTransferringRecordsProcessed = Math.Max(_maximumTransferringRecordsProcessed, progress.RecordsProcessed);
                     return (_maximumTransferringRecordsProcessed, progress.TotalRecords);

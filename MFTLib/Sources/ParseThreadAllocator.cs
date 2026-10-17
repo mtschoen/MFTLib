@@ -1,7 +1,7 @@
 namespace MFTLib;
 
 /// <summary>
-///     Divides one parse thread per processor among the host's running scans. At most
+///     Divides one parse thread per processor among running scans. At most
 ///     <c>processorCount</c> scans run at once, so every running scan has at least one thread;
 ///     later scans wait in arrival order. With <c>r</c> running scans each holds
 ///     <c>processorCount / r</c> threads, and the first <c>processorCount % r</c> in admission

@@ -26,10 +26,8 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         Assert.AreEqual(ProducerKind.Mft, block.Header.ProducerKind);
         Assert.AreEqual(5u, block.Header.RootRow);
         Assert.AreEqual(123u, block.Header.VolumeSerial);
-        Assert.AreEqual(ArmedCursor.JournalIdentifier, result.JournalIdentifier);
-        Assert.AreEqual(ArmedCursor.NextUsn, result.NextUsn);
-        Assert.AreEqual(result.JournalIdentifier, block.Header.UsnJournalIdentifier);
-        Assert.AreEqual(result.NextUsn, block.Header.UsnNextUsn);
+        Assert.AreEqual(ArmedCursor.JournalIdentifier, block.Header.UsnJournalIdentifier);
+        Assert.AreEqual(ArmedCursor.NextUsn, block.Header.UsnNextUsn);
         Assert.AreEqual(0, result.SkippedRecordCount);
         Assert.IsFalse(result.Block.Header.IsCapacityExhausted);
         Assert.AreEqual("file.txt", NamePool.ReadRowName(block, 20).ToString());
@@ -50,7 +48,8 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
     [DataRow("WrongVolumeSerial")]
     [DataRow("ProducerKind")]
     [DataRow("RowCount")]
-    [DataRow("journal cursor")]
+    [DataRow("cursor next usn")]
+    [DataRow("cursor journal id")]
     public async Task Produce_RejectsInvalidHeaderAndDisposesBlock(string check)
     {
         await using var broker = CreateBrokerChangingBlock(block =>
@@ -61,7 +60,8 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
                 case "WrongVolumeSerial": block.Header.VolumeSerial++; break;
                 case "ProducerKind": block.Header.ProducerKind = ProducerKind.Enumeration; break;
                 case "RowCount": block.Header.RowCount = 0; break;
-                case "journal cursor": block.Header.UsnNextUsn++; break;
+                case "cursor next usn": block.Header.UsnNextUsn++; break;
+                case "cursor journal id": block.Header.UsnJournalIdentifier++; break;
             }
         });
         var request = Request(Target());
@@ -69,7 +69,8 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
             () => ProduceAsync(broker.Process, request).WaitAsync(HangGuard));
 
-        StringAssert.Contains(exception.Message, check);
+        var expectedMessage = check.StartsWith("cursor ", StringComparison.Ordinal) ? "journal cursor" : check;
+        StringAssert.Contains(exception.Message, expectedMessage);
         var section = broker.Sections.Single();
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
         BlockFileAssertions.IsDisposed(section.Block);
@@ -136,18 +137,15 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
     }
 
     [TestMethod]
-    public async Task ProduceAsync_KeepsTheCallersOwnBrokerProgressChannel()
+    public async Task ProduceAsync_WithoutRequestProgressChannel_CompletesUsableBlock()
     {
         await using var broker = new InProcessBroker(CreateHost());
-        var brokerSamples = new List<BrokerScanProgress>();
 
-        var result = await ProduceAsync(broker.Process, Request(Target()), new MftScanOptions
-        {
-            Progress = new SynchronousProgress<BrokerScanProgress>(brokerSamples.Add)
-        }).WaitAsync(HangGuard);
-        result.Block.Dispose();
+        var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard);
+        using var block = result.Block;
 
-        Assert.IsTrue(brokerSamples.Count > 0);
+        Assert.IsTrue(block.Header.IsComplete);
+        Assert.IsTrue(block.Header.RowCount > 0);
     }
 
     [TestMethod]

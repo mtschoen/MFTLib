@@ -14,7 +14,7 @@ public partial class BrokerProcessTests
         var armedD = new UsnJournalCursor(8, 200);
         await using var broker = new ScriptedBroker();
 
-        var scanC = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(), CancellationToken.None);
+        var scanC = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(), null, CancellationToken.None);
         var (pipeC, _) = await broker.AcceptScanAsync(Volume);
         var channelC = pipeC;
         var sectionC = broker.Sections.ForDrive('C');
@@ -24,7 +24,7 @@ public partial class BrokerProcessTests
         await sectionC.Lifetime.Disposed.WaitAsync(HangGuard);
 
         // C's section is released after its ScanReady while its scan still waits for catch-up.
-        var scanD = broker.Process.ScanDriveAsync('D', TestBlockSections.Target(), new MftScanOptions(), CancellationToken.None);
+        var scanD = broker.Process.ScanDriveAsync('D', TestBlockSections.Target(), new MftScanOptions(), null, CancellationToken.None);
         var (pipeD, _) = await broker.AcceptScanAsync(Volume);
         var channelD = pipeD;
         var sectionD = broker.Sections.ForDrive('D');
@@ -64,7 +64,7 @@ public partial class BrokerProcessTests
             throw new IOException("drive failed")));
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => broker.Process.ScanDriveAsync('C',
-            TestBlockSections.Target(), new MftScanOptions(), CancellationToken.None).WaitAsync(HangGuard));
+            TestBlockSections.Target(), new MftScanOptions(), null, CancellationToken.None).WaitAsync(HangGuard));
 
         var section = broker.Sections.Single();
         Assert.AreEqual("drive failed", exception.Message);
@@ -75,12 +75,10 @@ public partial class BrokerProcessTests
     [TestMethod]
     public async Task ScanDriveAsync_ScanProgressFrames_ReachTheOptionsProgressCallback()
     {
-        var reports = new List<BrokerScanProgress>();
+        var reports = new List<BlockWriteProgress>();
         await using var broker = new ScriptedBroker();
-        var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions
-        {
-            Progress = new SynchronousProgress<BrokerScanProgress>(reports.Add)
-        }, CancellationToken.None);
+        var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
+            new SynchronousProgress<BlockWriteProgress>(reports.Add), CancellationToken.None);
 
         var (pipe, _) = await broker.AcceptScanAsync(Volume);
         var channel = pipe;
@@ -94,8 +92,7 @@ public partial class BrokerProcessTests
                 RecordsProcessed = 50,
                 BytesProcessed = 1000,
                 TotalRecords = 100,
-                TotalBytes = 2000,
-                Elapsed = TimeSpan.FromMilliseconds(50)
+                TotalBytes = 2000
             }));
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanProgress(writer,
             new BrokerScanProgress
@@ -105,8 +102,7 @@ public partial class BrokerProcessTests
                 RecordsProcessed = 100,
                 BytesProcessed = 2000,
                 TotalRecords = 100,
-                TotalBytes = 2000,
-                Elapsed = TimeSpan.FromMilliseconds(100)
+                TotalBytes = 2000
             }));
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanReady(writer, 0));
         await HostChannelHarness.WriteFrameAsync(channel, BrokerProtocol.WriteScanCompleted);
@@ -120,24 +116,21 @@ public partial class BrokerProcessTests
         Assert.AreEqual(100, reports[1].RecordsProcessed);
         Assert.AreEqual(2000, reports[1].BytesProcessed);
         Assert.IsTrue(reports.All(report => report.TotalRecords == 100 && report.TotalBytes == 2000));
-        Assert.IsTrue(reports.All(report => report.Drive == "C"),
-            "the client fills the drive letter in from the channel a progress frame arrived on");
+        Assert.IsTrue(reports.All(report => report.Phase == BlockScanPhase.Parsing));
     }
 
     [TestMethod]
     public async Task ScanDriveAsync_ScanProgressFrame_DoesNotCompleteTheScan()
     {
         var progressReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var reports = new List<BrokerScanProgress>();
+        var reports = new List<BlockWriteProgress>();
         await using var broker = new ScriptedBroker();
-        var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions
-        {
-            Progress = new SynchronousProgress<BrokerScanProgress>(report =>
+        var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
+            new SynchronousProgress<BlockWriteProgress>(report =>
             {
                 reports.Add(report);
                 progressReceived.TrySetResult();
-            })
-        }, CancellationToken.None);
+            }), CancellationToken.None);
 
         var (pipe, _) = await broker.AcceptScanAsync(Volume);
         var channel = pipe;
@@ -151,8 +144,7 @@ public partial class BrokerProcessTests
                 RecordsProcessed = 10,
                 BytesProcessed = 200,
                 TotalRecords = 100,
-                TotalBytes = 2000,
-                Elapsed = TimeSpan.FromMilliseconds(10)
+                TotalBytes = 2000
             }));
         await progressReceived.Task.WaitAsync(HangGuard);
 
@@ -182,7 +174,7 @@ public partial class BrokerProcessTests
             new BrokerTestHarnessOptions(), null, null);
 
         var exception = await Assert.ThrowsExceptionAsync<IOException>(() => handle.Process.ScanDriveAsync('C',
-            TestBlockSections.Target(), new MftScanOptions(), CancellationToken.None).WaitAsync(HangGuard));
+            TestBlockSections.Target(), new MftScanOptions(), null, CancellationToken.None).WaitAsync(HangGuard));
 
         Assert.AreEqual("release failed", exception.Message);
         Assert.AreEqual(1, sections.Lifetime.DisposeCount, "the catch must not dispose a lifetime whose release already ran");

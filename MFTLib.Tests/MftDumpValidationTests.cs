@@ -163,8 +163,6 @@ public class MftDumpValidationTests
 
         using var block = result.Block;
         var header = block.Header;
-        Assert.AreEqual(0UL, result.JournalIdentifier);
-        Assert.AreEqual(0L, result.NextUsn);
         Assert.AreEqual(0, result.SkippedRecordCount);
         Assert.IsNull(result.CatchUpLoss);
         Assert.AreEqual(0UL, header.UsnJournalIdentifier);

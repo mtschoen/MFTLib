@@ -33,7 +33,7 @@ public partial class JournalBrokerHostChannelTests
         return;
 
         async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> Watch(string drive,
-            UsnJournalCursor from, IBrokerOperationReporter operation,
+            UsnJournalCursor from, ISourceOperationReporter operation,
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             watchedDrive = drive;
@@ -60,7 +60,7 @@ public partial class JournalBrokerHostChannelTests
         return;
 
         static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> FailingWatch(
-            string drive, UsnJournalCursor since, IBrokerOperationReporter operation,
+            string drive, UsnJournalCursor since, ISourceOperationReporter operation,
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             await Task.Yield();

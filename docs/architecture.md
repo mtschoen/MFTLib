@@ -373,12 +373,14 @@ never writes an approved file.
 
 ## Source layout
 
+`MFTLib/Sources` owns MFT block capacity planning, validation against the independently armed cursor, parse admission, operation reporting and progress projection. Local-volume and dump producers share `MftBlockProducerPipeline` for admission and block lifetime; dump preparation keeps one input open and parses before allocating its block. `BlockWriteProgress` is transport-neutral and projects synchronously to `IndexScanProgress` through one saturating row-count conversion. The broker maps between this contract and its wire samples at the channel boundary. The source-to-broker dependency guard uses explicit folder-owned type groups against compiled IL because these folders share the flat `MFTLib` namespace.
+
 The managed source is organized by responsibility:
 
 - `MFTLib/Index` - the substrate-neutral packed index: block format, `FileIndex`, snapshots, queries, mutation, and the enumeration producer. It depends on nothing else in the library beyond a few journal value types, a boundary an architecture test enforces.
 - `MFTLib/Mft` - scans, records, results and timings
 - `MFTLib/Journal` - journal values and journal-volume read, watch, and growth operations
-- `MFTLib/Sources` - producers, row writer and scan
-- `MFTLib/Broker` - elevated host and client, protocol, block writing, and diagnostics
+- `MFTLib/Sources` - direct producers, shared producer pipeline, capacity, validation, parse admission, row writing and neutral progress/operation contracts.
+- `MFTLib/Broker` - elevated host and client, protocol adapters, shared section transport, watchdog and diagnostics.
 - `MFTLib/Elevation` - elevation detection and the injectable provider
 - `MFTLib/NativeInterop` - native imports, ABI layouts, and handle/query helpers shared by the MFT and index code; `Kernel32` owns the create-file, device-control, and file-information seams

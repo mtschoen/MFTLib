@@ -107,7 +107,7 @@ public class BrokerProcessLivenessTests
         var clock = new FakeTimeProvider();
         await using var session = new LivenessSession(clock);
         var reports = 0;
-        var scan = await session.StartScanAsync('C', new SynchronousProgress<BrokerScanProgress>(_ => reports++));
+        var scan = await session.StartScanAsync('C', new SynchronousProgress<BlockWriteProgress>(_ => reports++));
         await session.ControlSettledAsync();
 
         for (var report = 0; report < 4; report++)
@@ -120,8 +120,7 @@ public class BrokerProcessLivenessTests
                 RecordsProcessed = report,
                 BytesProcessed = report,
                 TotalRecords = 100,
-                TotalBytes = 100,
-                Elapsed = TimeSpan.Zero
+                TotalBytes = 100
             };
             await scan.SendAsync(writer => BrokerProtocol.WriteScanProgress(writer, sample));
             await session.SendControlAsync(BrokerProtocol.WriteHeartbeat);
@@ -376,10 +375,10 @@ public class BrokerProcessLivenessTests
         }
 
         // Starts a scan and scripts it to the point where the client waits for ScanReady.
-        public async Task<StubbedScan> StartScanAsync(char letter, IProgress<BrokerScanProgress>? progress = null)
+        public async Task<StubbedScan> StartScanAsync(char letter, IProgress<BlockWriteProgress>? progress = null)
         {
             var scan = Broker.Process.ScanDriveAsync(letter, TestBlockSections.Target(),
-                new MftScanOptions { Progress = progress }, CancellationToken.None);
+                new MftScanOptions(), progress, CancellationToken.None);
             await AnswerQueryVolumeAsync(Volume);
             var open = await Broker.ReadRequestAsync();
             Assert.AreEqual(BrokerFrameKind.OpenChannel, open.Kind);

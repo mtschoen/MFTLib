@@ -90,7 +90,7 @@ public partial class BrokerProcessTests
         try
         {
             var scanTask = activeProcess.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
-                CancellationToken.None);
+                null, CancellationToken.None);
             await scanStarted.Entered.WaitAsync(HangGuard);
 
             var first = edge == HandleDisposalEdge.ProcessFirst
@@ -186,7 +186,7 @@ public partial class BrokerProcessTests
         await using var handle = BrokerTestHarness.StartInProcess(ScriptedVolumes());
 
         var failure = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
-            handle.Process.ScanDriveAsync('C', ScanTarget(), new MftScanOptions(), CancellationToken.None)
+            handle.Process.ScanDriveAsync('C', ScanTarget(), new MftScanOptions(), null, CancellationToken.None)
                 .WaitAsync(HangGuard));
 
         StringAssert.Contains(failure.Message, "no scan source");
@@ -232,10 +232,10 @@ public partial class BrokerProcessTests
                 }
             });
 
-            var scanC = handle.Process.ScanDriveAsync('c', TestBlockSections.Target(), options, CancellationToken.None);
+            var scanC = handle.Process.ScanDriveAsync('c', TestBlockSections.Target(), options, null, CancellationToken.None);
             await firstCallbackEntered.Entered.WaitAsync(HangGuard);
 
-            var resultD = await handle.Process.ScanDriveAsync('d', TestBlockSections.Target(), options, CancellationToken.None).WaitAsync(HangGuard);
+            var resultD = await handle.Process.ScanDriveAsync('d', TestBlockSections.Target(), options, null, CancellationToken.None).WaitAsync(HangGuard);
             Assert.AreEqual('D', resultD.DriveLetter);
 
             Assert.AreEqual(2, handle.Scans.Count);
@@ -275,7 +275,7 @@ public partial class BrokerProcessTests
                 ? "scripted scan failure"
                 : "scripted cursor failure";
             var failure = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
-                singleHandle.Process.ScanDriveAsync('c', TestBlockSections.Target(), options, CancellationToken.None)
+                singleHandle.Process.ScanDriveAsync('c', TestBlockSections.Target(), options, null, CancellationToken.None)
                     .WaitAsync(HangGuard));
             StringAssert.Contains(failure.Message, expectedMessage);
 
@@ -286,7 +286,7 @@ public partial class BrokerProcessTests
         }
 
         var result = await singleHandle.Process.ScanDriveAsync('c', TestBlockSections.Target(), options,
-            CancellationToken.None).WaitAsync(HangGuard);
+            null, CancellationToken.None).WaitAsync(HangGuard);
 
         Assert.AreEqual('C', result.DriveLetter);
         Assert.AreEqual(Armed, result.ArmedCursor);
@@ -308,7 +308,7 @@ public partial class BrokerProcessTests
             ScanDrive = _ => [[SyntheticRecord(5, ".", 3)]]
         });
         await handle.Process.ScanDriveAsync('C', TestBlockSections.Target(),
-            new MftScanOptions { RetainedFileNames = names }, CancellationToken.None).WaitAsync(HangGuard);
+            new MftScanOptions { RetainedFileNames = names }, null, CancellationToken.None).WaitAsync(HangGuard);
         var scan = handle.Scans.Single();
         if (names is null)
         {
@@ -326,7 +326,7 @@ public partial class BrokerProcessTests
     {
         // The host throttles progress, so the scan waits until the client has seen the parse frame; the first
         // frame the host emits is never throttled, and the parse report is the first it is given.
-        var parsedSeen = new TaskCompletionSource<BrokerScanProgress>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var parsedSeen = new TaskCompletionSource<BlockWriteProgress>(TaskCreationOptions.RunContinuationsAsynchronously);
         var seen = new List<(DriveKey Drive, int ParseThreads, bool Cancelled)>();
         await using var handle = BrokerTestHarness.StartInProcess(ScriptedVolumes(scan =>
         {
@@ -335,18 +335,15 @@ public partial class BrokerProcessTests
             parsedSeen.Task.Wait(HangGuard);
             return [[SyntheticRecord(5, ".", 3)], [SyntheticRecord(20, "file.txt")]];
         }));
-        var options = new MftScanOptions
+        var progressSink = new SynchronousProgress<BlockWriteProgress>(report =>
         {
-            Progress = new SynchronousProgress<BrokerScanProgress>(report =>
+            if (report.Phase == BlockScanPhase.Parsing)
             {
-                if (report.Phase == BrokerScanPhase.Parsing)
-                {
-                    parsedSeen.TrySetResult(report);
-                }
-            })
-        };
+                parsedSeen.TrySetResult(report);
+            }
+        });
 
-        await handle.Process.ScanDriveAsync('C', TestBlockSections.Target(), options, CancellationToken.None)
+        await handle.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(), progressSink, CancellationToken.None)
             .WaitAsync(HangGuard);
 
         Assert.AreEqual(1, seen.Count);
@@ -354,10 +351,10 @@ public partial class BrokerProcessTests
         Assert.IsTrue(seen[0].ParseThreads >= 1);
         Assert.IsFalse(seen[0].Cancelled);
         Assert.IsTrue(parsedSeen.Task.IsCompletedSuccessfully);
-        Assert.AreEqual(2, (await parsedSeen.Task).TotalRecords);
+        Assert.AreEqual(2L, (await parsedSeen.Task).TotalRecords);
     }
 
-    sealed class CountingOperationReporter : IBrokerOperationReporter
+    sealed class CountingOperationReporter : ISourceOperationReporter
     {
         public int ProcessingSteps { get; private set; }
 
@@ -407,7 +404,7 @@ public partial class BrokerProcessTests
         await using var handle = BrokerTestHarness.StartInProcess(volumes);
 
         var scan = await handle.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
-            CancellationToken.None).WaitAsync(HangGuard);
+            null, CancellationToken.None).WaitAsync(HangGuard);
         var settings = await handle.Process.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None)
             .WaitAsync(HangGuard);
 

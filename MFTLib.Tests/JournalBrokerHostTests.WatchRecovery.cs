@@ -22,7 +22,7 @@ public partial class JournalBrokerHostTests
         }
 
         IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> WatchDrive(
-            string drive, UsnJournalCursor since, IBrokerOperationReporter operation,
+            string drive, UsnJournalCursor since, ISourceOperationReporter operation,
             CancellationToken cancellationToken)
         {
             if (drive == "C" && since.JournalIdentifier == 7UL)

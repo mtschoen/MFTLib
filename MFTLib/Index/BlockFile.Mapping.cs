@@ -45,16 +45,26 @@ internal sealed partial class BlockFile
         try
         {
             File.Delete(path);
-            diagnostics?.Invoke($"Deleted block file '{path}': {reason}.");
         }
         catch (IOException)
         {
             // Best effort, and only ever a cleanup: the caller's own exception is the one worth
             // surfacing, and a header-less file left behind is rejected by the next Open anyway.
+            return;
         }
         catch (UnauthorizedAccessException)
         {
             // Same reasoning as the IOException case above.
+            return;
+        }
+
+        try
+        {
+            diagnostics?.Invoke($"Deleted block file '{path}': {reason}.");
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // Cleanup reporting must not replace the producer's original failure.
         }
     }
 }

@@ -278,8 +278,8 @@ public class FileIndexEnumerateTests
             Drives = [new IndexedDrive('T', _treeRoot, TestVolumeSerial.GetNext())],
             CacheDirectory = _cacheDirectory,
             MftSource = new MftIndexSource((request, _) => Task.FromResult(
-                new MftBlockProduceResult(SeededBlocks.Build(request, rowCount, i => $"file{i}.dat", FixedMoment), JournalIdentifier: 7,
-                    NextUsn: 4096, SkippedRecordCount: 0)))
+                new MftBlockProduceResult(SeededBlocks.Build(request, rowCount, i => $"file{i}.dat", FixedMoment),
+                    SkippedRecordCount: 0)))
         }, CancellationToken.None);
     }
 
@@ -352,8 +352,8 @@ public class FileIndexEnumerateTests
             Drives = [new IndexedDrive('T', _treeRoot, TestVolumeSerial.GetNext())],
             CacheDirectory = _cacheDirectory,
             MftSource = new MftIndexSource((request, _) => Task.FromResult(
-                new MftBlockProduceResult(BuildSyntheticBlockWithDeepCandidate(request), JournalIdentifier: 7,
-                    NextUsn: 4096, SkippedRecordCount: 0)))
+                new MftBlockProduceResult(BuildSyntheticBlockWithDeepCandidate(request),
+                    SkippedRecordCount: 0)))
         }, CancellationToken.None);
     }
 

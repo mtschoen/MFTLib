@@ -37,64 +37,16 @@ internal sealed class BrokerMftBlockProducer
     // and the loss travels with it so the index can refuse to watch from the block's cursor.
     async Task<MftBlockProduceResult> ProduceAsync(MftBlockProduceRequest request, CancellationToken cancellationToken)
     {
-        var options = (_scanOptions ?? new MftScanOptions()) with
-        {
-            Progress = BrokerProgressAdapter.Create(request, _scanOptions?.Progress)
-        };
+        var options = _scanOptions ?? new MftScanOptions();
+        var progress = MftBlockProgressAdapter.Create(request);
         var target = new BlockScanTarget(request.BlockPath, request.VolumeSerial, request.DeleteOnClose)
         {
             CacheTag = request.CacheTag
         };
         var process = await _connectAsync(cancellationToken).ConfigureAwait(false);
-        var result = await process.ScanDriveAsync(request.Drive.Letter, target, options, cancellationToken)
+        var result = await process.ScanDriveAsync(request.Drive.Letter, target, options, progress, cancellationToken)
             .ConfigureAwait(false);
-        var block = result.Block.Block;
-        try
-        {
-            ValidateBlock(block, request.VolumeSerial, result.ArmedCursor, request.CacheTag);
-            return new MftBlockProduceResult(block, result.ArmedCursor.JournalIdentifier, result.ArmedCursor.NextUsn,
-                SkippedRecordCount: MftBlockScan.SaturateSkippedRecordCount(result.Block.SkippedRecordCount))
-            {
-                CatchUpLoss = result.CatchUpLoss
-            };
-        }
-        catch
-        {
-            block.Dispose();
-            throw;
-        }
-    }
-
-    internal static void ValidateBlock(BlockFile block, uint volumeSerial, UsnJournalCursor armed, CacheTag requestedCacheTag)
-    {
-        var header = block.Header;
-        if (header.RowCount == 0)
-        {
-            throw new InvalidOperationException("Block RowCount must be greater than zero.");
-        }
-
-        var validation = BlockHeader.Validate(in header, volumeSerial, block.Length);
-        if (validation is not null)
-        {
-            throw new InvalidOperationException($"Block validation failed: {validation}.");
-        }
-
-        if (header.ProducerKind != ProducerKind.Mft)
-        {
-            throw new InvalidOperationException("Block ProducerKind must be Mft.");
-        }
-
-        if (header.UsnJournalIdentifier != armed.JournalIdentifier || header.UsnNextUsn != armed.NextUsn)
-        {
-            throw new InvalidOperationException("Block journal cursor does not match the armed cursor.");
-        }
-
-        // A block that carries a different tag than requested is a producer failure, exactly
-        // like a wrong journal cursor above, and must not be returned as adopted.
-        if (header.CacheTag != requestedCacheTag)
-        {
-            throw new InvalidOperationException(
-                $"Block cache tag {header.CacheTag} does not match the requested tag {requestedCacheTag}.");
-        }
+        return MftBlockValidation.Finish(request, result.Block.Block, result.ArmedCursor,
+            MftBlockScan.SaturateSkippedRecordCount(result.Block.SkippedRecordCount), result.CatchUpLoss);
     }
 }

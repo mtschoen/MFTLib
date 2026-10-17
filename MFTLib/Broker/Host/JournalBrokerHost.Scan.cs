@@ -212,8 +212,7 @@ internal sealed partial class JournalBrokerHost
             RecordsProcessed = finalRecords,
             BytesProcessed = output.WriteResult.NamePoolUsedBytes,
             TotalRecords = finalTotalRecords,
-            TotalBytes = output.WriteResult.NamePoolUsedBytes,
-            Elapsed = output.Elapsed
+            TotalBytes = output.WriteResult.NamePoolUsedBytes
         };
 
         await channel.Pipe.WriteFrameAsync(

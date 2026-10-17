@@ -96,7 +96,7 @@ public class BrokerFrameWriteLimitTests
         };
 
         var exception = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
-            broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), options, CancellationToken.None)
+            broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), options, null, CancellationToken.None)
                 .WaitAsync(HangGuard));
 
         Assert.AreEqual("options", exception.ParamName);

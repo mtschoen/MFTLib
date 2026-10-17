@@ -26,7 +26,7 @@ internal static class LiveVolumeSources
         var bytesPerFileRecordSegment = QueryVolumeInfo(driveLetter).BytesPerFileRecordSegment;
         using var volume = MftVolume.Open(Bare(driveLetter), HostScanChunkRecords(bytesPerFileRecordSegment));
         reporting.Operation?.Processing("MFT parse");
-        var mftProgress = CreateMftProgressAdapter(reporting);
+        var mftProgress = MftBlockProgressAdapter.CreateParse(reporting.Progress, reporting.Operation);
         foreach (var batch in volume.ReadRecordBatches(4096, mftProgress, parseThreads, cancellationToken,
                      scanOptions, recordsOmitted))
         {
@@ -40,23 +40,11 @@ internal static class LiveVolumeSources
         }
     }
 
-    // Synchronous delivery preserves the parse total before the transfer phase reports its
-    // smaller live-record count. Every native progress callback is also a processing step.
-    static DirectProgress<MftScanProgress> CreateMftProgressAdapter(BlockWriteReporting reporting)
-    {
-        return new DirectProgress<MftScanProgress>(value =>
-        {
-            reporting.Operation?.Processing("MFT parse");
-            reporting.Progress?.Report(new BlockWriteProgress(value.RecordsScanned, 0, value.TotalRecords, null,
-                BrokerScanPhase.Parsing));
-        });
-    }
-
     // Open the volume, stream cursor-tagged batches until cancelled, and dispose the volume when
     // the watch ends. The native read blocks until the journal changes, so the source reports
     // waiting on the volume before each read and processing once a batch arrives.
     internal static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> WatchAndDisposeAsync(
-        string drive, UsnJournalCursor since, IBrokerOperationReporter operation,
+        string drive, UsnJournalCursor since, ISourceOperationReporter operation,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         operation.WaitingOnVolume();

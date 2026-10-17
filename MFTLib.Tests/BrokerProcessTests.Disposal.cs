@@ -16,7 +16,7 @@ public partial class BrokerProcessTests
             scanDrive: (_, _, _, _, _, cancellationToken) => WaitForCancellation(scanning, sourceCancelled, cancellationToken)));
 
         var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
-            CancellationToken.None);
+            null, CancellationToken.None);
         await scanning.Entered.WaitAsync(HangGuard);
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
 
@@ -46,7 +46,7 @@ public partial class BrokerProcessTests
         try
         {
             var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
-                CancellationToken.None);
+                null, CancellationToken.None);
             await scanning.Entered.WaitAsync(HangGuard);
             var dispose = broker.Process.DisposeAsync().AsTask();
             // The first host timer with this due time is the heartbeat sender's, created when the
@@ -108,7 +108,7 @@ public partial class BrokerProcessTests
         var clientReads = new ReadCounter();
         await using var broker = new ScriptedBroker(wrapClientDrivePipe: (_, stream) => clientReads.Wrap(stream));
         var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
-            CancellationToken.None);
+            null, CancellationToken.None);
         await broker.AnswerQueryVolumeAsync(Volume);
         await using var hostEnd = await broker.AcceptChannelAsync();
         Assert.AreEqual(BrokerFrameKind.ArmAndScan, (await HostChannelHarness.ReadFrameAsync(hostEnd))?.Kind);
@@ -133,7 +133,7 @@ public partial class BrokerProcessTests
         var clientReads = new ReadCounter();
         await using var broker = new ScriptedBroker(wrapClientDrivePipe: (_, stream) => clientReads.Wrap(stream));
         var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
-            CancellationToken.None);
+            null, CancellationToken.None);
         await broker.AnswerQueryVolumeAsync(Volume);
         await using var hostEnd = await broker.AcceptChannelAsync();
         Assert.AreEqual(BrokerFrameKind.ArmAndScan, (await HostChannelHarness.ReadFrameAsync(hostEnd))?.Kind);
@@ -162,7 +162,7 @@ public partial class BrokerProcessTests
         var clientReads = new ReadCounter();
         await using var broker = new ScriptedBroker(wrapClientDrivePipe: (_, stream) => clientReads.Wrap(stream));
         var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
-            CancellationToken.None);
+            null, CancellationToken.None);
         await broker.AnswerQueryVolumeAsync(Volume);
         await using var hostEnd = await broker.AcceptChannelAsync();
         Assert.AreEqual(BrokerFrameKind.ArmAndScan, (await HostChannelHarness.ReadFrameAsync(hostEnd))?.Kind);

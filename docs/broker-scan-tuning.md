@@ -12,7 +12,7 @@ for the drive's MFT geometry and creates a file-backed named section at the
 path, volume serial, delete-on-close choice, and cache tag in the index's
 `MftBlockProduceRequest`.
 
-`MftBlockCapacity.Plan` estimates rows from `MftRecordCount`, with a minimum of
+`MFTLib/Sources/MftBlockCapacity.cs` (`MftBlockCapacity.Plan`) estimates rows from `MftRecordCount`, with a minimum of
 65,536 when information is absent or smaller. Slot capacity adds 25 percent or
 65,536 rows, whichever is larger. The default name estimate is 48 bytes per
 slot, then name-pool headroom adds 25 percent or one mebibyte, whichever is

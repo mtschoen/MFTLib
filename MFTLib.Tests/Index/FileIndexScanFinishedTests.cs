@@ -72,7 +72,7 @@ public class FileIndexScanFinishedTests
         request.Progress?.Report(new IndexScanProgress(request.Drive, IndexScanPhase.ParsingMft, 1));
         return Task.FromResult(new MftBlockProduceResult(
             SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment),
-            JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
+            SkippedRecordCount: 0));
     }
 
     [TestMethod]

@@ -126,7 +126,7 @@ public class LiveVolumeSourcesIncludeFreedTests
         return result.ToRecords().Where(record => record.InUse).Select(record => record.RecordNumber).ToHashSet();
     }
 
-    sealed class QuietReporter : IBrokerOperationReporter
+    sealed class QuietReporter : ISourceOperationReporter
     {
         public void WaitingOnVolume()
         {

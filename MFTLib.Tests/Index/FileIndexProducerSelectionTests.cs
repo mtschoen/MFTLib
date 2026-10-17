@@ -55,7 +55,7 @@ public class FileIndexProducerSelectionTests
         var skippedRecordCount = new[] { 3 };
         Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request, CancellationToken _) =>
             Task.FromResult(new MftBlockProduceResult(
-                SeededBlocks.Build(request, 7, 4096, FixedMoment), 7, 4096, skippedRecordCount[0]));
+                SeededBlocks.Build(request, 7, 4096, FixedMoment), skippedRecordCount[0]));
 
         var options = Options(ProducerKind.Mft, Produce);
         await using (var index = await FileIndex.OpenAsync(options, CancellationToken.None))
@@ -88,8 +88,7 @@ public class FileIndexProducerSelectionTests
             CacheDirectory = _cacheDirectory,
             MftSource = new MftIndexSource((request, _) => request.Drive == 'T'
                 ? throw new UnauthorizedAccessException("elevation declined")
-                : Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, 7, 4096, FixedMoment),
-                    7, 4096, 0)))
+                : Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, 7, 4096, FixedMoment), 0)))
         }, TestContext.CancellationTokenSource.Token);
 
         var failed = index.Drives.Single(drive => drive.Drive == 'T');
@@ -163,8 +162,7 @@ public class FileIndexProducerSelectionTests
         Task<MftBlockProduceResult> CountingProducer(MftBlockProduceRequest request, CancellationToken _)
         {
             invocationCount++;
-            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: FixedMoment),
-                JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
+            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: FixedMoment), 0));
         }
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
@@ -242,8 +240,7 @@ public class FileIndexProducerSelectionTests
                 throw new UnauthorizedAccessException("elevation declined during rescan");
             }
 
-            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, 7, 4096, FixedMoment),
-                7, 4096, 2));
+            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, 7, 4096, FixedMoment), 2));
         }
 
         var options = Options(ProducerKind.Mft, Produce);
@@ -281,8 +278,7 @@ public class FileIndexProducerSelectionTests
             }
 
             var nextUsn = 4096L * invocationCount;
-            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, 7, nextUsn, FixedMoment),
-                7, nextUsn, 0));
+            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, 7, nextUsn, FixedMoment), 0));
         }
 
         await using var index = await FileIndex.OpenAsync(Options(ProducerKind.Mft, Produce),
@@ -304,8 +300,7 @@ public class FileIndexProducerSelectionTests
         Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request, CancellationToken cancellationToken)
         {
             var nextUsn = 4096L * ++invocationCount;
-            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, 7, nextUsn, FixedMoment),
-                7, nextUsn, 0));
+            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, 7, nextUsn, FixedMoment), 0));
         }
 
         await using var index = await FileIndex.OpenAsync(Options(ProducerKind.Mft, Produce),
@@ -327,8 +322,7 @@ public class FileIndexProducerSelectionTests
     {
         Task<MftBlockProduceResult> FakeProducer(MftBlockProduceRequest request, CancellationToken _)
         {
-            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: FixedMoment),
-                JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
+            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: FixedMoment), 0));
         }
 
         var options = Options(ProducerKind.Mft, FakeProducer);
@@ -339,33 +333,49 @@ public class FileIndexProducerSelectionTests
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
     }
 
-    [TestMethod]
-    public async Task OpenAsync_MftWithACursorMismatchedProducer_DeletesTheRejectedBlockSoALaterOpenDoesNotWarmStartFromIt()
+    [DataTestMethod]
+    [DataRow("cache tag")]
+    [DataRow("journal cursor")]
+    public async Task OpenAsync_MftWithAnInvalidProducedBlock_DeletesItAndColdScansNextTime(string check)
     {
-        Task<MftBlockProduceResult> MismatchedProducer(MftBlockProduceRequest request, CancellationToken _)
+        BlockFile? producedBlock = null;
+        Task<MftBlockProduceResult> InvalidProducer(MftBlockProduceRequest request, CancellationToken _)
         {
-            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: FixedMoment),
-                JournalIdentifier: 99, NextUsn: 12345, SkippedRecordCount: 0));
+            // aislop-ignore-next-line dotnet/IDISP001 -- ownership moves to result, and the test asserts FileIndex disposes it on rejection
+            var block = SeededBlocks.Build(request, 7, 4096, FixedMoment);
+            // aislop-ignore-next-line dotnet/IDISP001 -- captures the instance to assert disposal on rejection
+            producedBlock = block;
+            if (check == "journal cursor")
+            {
+                return Task.FromResult(MftBlockValidation.Finish(request, block, new UsnJournalCursor(99, 12345), 0, null));
+            }
+
+            block.Header.CacheTagVersion++;
+            return Task.FromResult(new MftBlockProduceResult(block, 0));
         }
 
-        var options = Options(ProducerKind.Mft, MismatchedProducer);
+        var options = Options(ProducerKind.Mft, InvalidProducer);
 
         await using (var failedIndex = await FileIndex.OpenAsync(options, CancellationToken.None))
         {
-            Assert.AreEqual(DriveState.Failed, failedIndex.Drives.Single().State);
-            StringAssert.Contains(failedIndex.Drives.Single().Failure?.Message, "journal cursor");
+            var failedDrive = failedIndex.Drives.Single();
+            Assert.AreEqual(DriveState.Failed, failedDrive.State);
+            Assert.AreEqual(DriveFailureKind.ProducerFailed, failedDrive.Failure?.Kind);
+            StringAssert.Contains(failedDrive.Failure?.Message, check);
         }
+
+        Assert.IsNotNull(producedBlock);
+        BlockFileAssertions.IsDisposed(producedBlock);
 
         var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
         Assert.IsFalse(File.Exists(blockPath),
-            "a block rejected for a journal cursor mismatch must not survive to be warm-started by a later open");
+            "a rejected block must not survive to be warm-started by a later open");
 
         var invocationCount = 0;
         Task<MftBlockProduceResult> CountingProducer(MftBlockProduceRequest request, CancellationToken _)
         {
             invocationCount++;
-            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: FixedMoment),
-                JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
+            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: FixedMoment), 0));
         }
 
         var recoveryOptions = Options(ProducerKind.Mft, CountingProducer);
@@ -389,8 +399,7 @@ public class FileIndexProducerSelectionTests
         Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request, CancellationToken cancellationToken)
         {
             var nextUsn = 4096L * ++invocationCount;
-            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, 7, nextUsn, FixedMoment),
-                7, nextUsn, 0));
+            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, 7, nextUsn, FixedMoment), 0));
         }
 
         await using var index = await FileIndex.OpenAsync(Options(ProducerKind.Mft, Produce),
@@ -460,8 +469,7 @@ public class FileIndexProducerSelectionTests
         Task<MftBlockProduceResult> Producer(MftBlockProduceRequest request, CancellationToken _)
         {
             invocationCount++;
-            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: FixedMoment),
-                JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
+            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: FixedMoment), 0));
         }
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
@@ -520,8 +528,7 @@ public class FileIndexProducerSelectionTests
                 throw new UnauthorizedAccessException("elevation declined");
             }
 
-            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: FixedMoment),
-                JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
+            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: FixedMoment), 0));
         }
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
@@ -548,8 +555,9 @@ public class FileIndexProducerSelectionTests
     {
         Task<MftBlockProduceResult> MismatchedProducer(MftBlockProduceRequest request, CancellationToken _)
         {
-            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: FixedMoment),
-                JournalIdentifier: 99, NextUsn: 12345, SkippedRecordCount: 0));
+            // aislop-ignore-next-line dotnet/IDISP001 -- ownership moves to Finish, which disposes it on rejection
+            var block = SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: FixedMoment);
+            return Task.FromResult(MftBlockValidation.Finish(request, block, new UsnJournalCursor(99, 12345), 0, null));
         }
 
         var deletions = new List<string>();

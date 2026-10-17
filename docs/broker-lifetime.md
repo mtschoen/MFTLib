@@ -80,24 +80,13 @@ catch-up or a proven catch-up loss. [Checkpoint loss](checkpoint-loss.md)
 defines proof and recovery; [scan sizing](broker-scan-tuning.md#sizing-the-block)
 defines the volume query and capacity planning.
 
-The internal scan result carries the block, armed cursor and optional `CatchUpLoss`.
-`DriveStatus` exposes the block's row and skipped counts and, after proven loss,
-`DriveWatchStatus.CheckpointLoss`. Proven loss still returns the completed block.
-`BlockScanOutcome` carries the block and skipped record count; row count and
-name-pool size are in the header. The section writer returns row count, name-pool
-usage and skipped record count; capacity exhaustion is read from the block header.
+The broker-internal scan result carries the completed block, independently received armed cursor and optional `CatchUpLoss`. The producer validates that cursor against the completed header before transferring ownership. The index-facing result carries the block, skipped record count and optional loss; the header supplies the durable cursor used to start watching. The index validates returned block structure, producer kind and requested cache tag before adoption. Rejected completed output is closed and deleted under the caller's ownership, with cleanup diagnostics, so a later open cannot warm-start it.
 
-The `FileIndex` adapter keeps the armed cursor and propagates proven `CatchUpLoss`.
-It watches from the cursor armed before scanning so the watch replays the scan
-window and anything after it, provided those entries are still retained when
-watching starts. A loss after scanning is reported by the watch.
+`DriveStatus` exposes the block's row and skipped counts and, after proven loss, `DriveWatchStatus.CheckpointLoss`. Proven loss still returns the completed block. `BlockScanOutcome` carries the block and skipped record count; row count and name-pool size are in the header. The section writer returns row count, name-pool usage and skipped record count; capacity exhaustion is read from the block header. The watch replays the scan window and anything after it, provided those entries are still retained when watching starts. A loss after scanning is reported by the watch.
 
-Frames are `Cursor`, zero or more `ScanProgress`, `ScanReady` (skipped record count),
-then one terminal frame: payload-free `ScanCompleted` for successful catch-up or
-`CatchUpLost` with the journal facts of proven loss. Catch-up entries stay on the
-host. `Error` replaces any of these frames, including an unproven catch-up failure.
-`BrokerMftBlockProducer` disposes a block that fails validation and fails its scan;
-a validated block transfers to the index.
+Frames are `Cursor`, zero or more `ScanProgress`, `ScanReady` (skipped record count), then one terminal frame: payload-free `ScanCompleted` for successful catch-up or `CatchUpLost` with the journal facts of proven loss. Catch-up entries stay on the host. `Error` replaces any of these frames, including an unproven catch-up failure. `BrokerMftBlockProducer` disposes a block that fails validation and fails its scan; a validated block transfers to the index.
+
+`ScanProgress` carries a 32-bit phase (Parsing = 0, Transferring = 1), then four signed 64-bit values: records processed, name-pool bytes processed, total records and total name-pool bytes. Unknown totals are encoded as -1. The length field is 37 (kind plus payload), for 41 bytes including the four-byte prefix. The channel identifies the drive. Watchdog progress and progress throttling use their own clocks.
 
 The frame length limit is 16 MiB, checked before sending and before allocating a
 received frame. A native-source watch `JournalBatch` is one 64 KiB journal read;

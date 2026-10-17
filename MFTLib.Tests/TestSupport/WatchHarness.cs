@@ -351,12 +351,10 @@ internal sealed class WatchHarness : IDisposable
             throw scriptedFailure;
         }
 
-        var cursor = _cursorsByDrive[driveLetter];
         var block = _blockBuilders[driveLetter].OpenForReading(out var validation) ??
                     throw new InvalidOperationException($"Synthetic watch block was invalid: {validation}.");
         _producedBlocks[driveLetter] = block;
-        return new MftBlockProduceResult(block, cursor.JournalIdentifier, cursor.NextUsn,
-            SkippedRecordCount: 0)
+        return new MftBlockProduceResult(block, SkippedRecordCount: 0)
         {
             CatchUpLoss = scripted.CatchUpLoss
         };

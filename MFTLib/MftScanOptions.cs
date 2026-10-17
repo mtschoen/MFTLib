@@ -22,9 +22,4 @@ public sealed record MftScanOptions
     ///     <see cref="MFTLib.Index.CacheTag" /> version.
     /// </summary>
     public bool IncludeFreed { get; init; }
-    /// <summary>
-    ///     Receives progress reported while the broker performs the cold scan, or null when
-    ///     no progress notifications are required.
-    /// </summary>
-    internal IProgress<BrokerScanProgress>? Progress { get; init; }
 }

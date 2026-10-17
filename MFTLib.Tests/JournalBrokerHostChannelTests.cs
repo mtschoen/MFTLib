@@ -273,7 +273,7 @@ public partial class JournalBrokerHostChannelTests
     }
 
     static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> IdleWatch(
-        string drive, UsnJournalCursor since, IBrokerOperationReporter operation,
+        string drive, UsnJournalCursor since, ISourceOperationReporter operation,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
         operation.WaitingOnVolume();

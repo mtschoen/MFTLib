@@ -181,7 +181,7 @@ internal static partial class BrokerProtocol
         var bytesProcessed = payload.Int64();
         var totalRecordsRaw = payload.Int64();
         var totalBytesRaw = payload.Int64();
-        var elapsedTicks = payload.Int64();
+        payload.RequireComplete();
 
         return new BrokerScanProgress
         {
@@ -190,8 +190,7 @@ internal static partial class BrokerProtocol
             RecordsProcessed = recordsProcessed,
             BytesProcessed = bytesProcessed,
             TotalRecords = totalRecordsRaw >= 0 ? totalRecordsRaw : null,
-            TotalBytes = totalBytesRaw >= 0 ? totalBytesRaw : null,
-            Elapsed = TimeSpan.FromTicks(elapsedTicks)
+            TotalBytes = totalBytesRaw >= 0 ? totalBytesRaw : null
         };
     }
 }

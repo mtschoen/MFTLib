@@ -21,7 +21,7 @@ public partial class BrokerProcessTests
             readJournal: CatchUpSources.ToTip(advanced, JournalEntries.Create(20, 1200, "file.txt"))));
         var target = TestBlockSections.Target() with { CacheTag = new CacheTag("TEST", 3) };
 
-        var result = await broker.Process.ScanDriveAsync('c', target, new MftScanOptions(), CancellationToken.None)
+        var result = await broker.Process.ScanDriveAsync('c', target, new MftScanOptions(), null, CancellationToken.None)
             .WaitAsync(HangGuard);
         using var block = result.Block.Block;
 
@@ -42,30 +42,26 @@ public partial class BrokerProcessTests
     [TestMethod]
     public async Task ScanDrive_ReportsProgress()
     {
-        var reports = new List<BrokerScanProgress>();
+        var reports = new List<BlockWriteProgress>();
         await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, reporting, _, _, _) =>
         {
-            reporting.Progress?.Report(new BlockWriteProgress(2, 0, 2, null, BrokerScanPhase.Parsing));
+            reporting.Progress?.Report(new BlockWriteProgress(2, 0, 2, null, BlockScanPhase.Parsing));
             return [[Record(5, ".", 3)], [Record(20, "file.txt")]];
         }));
-        var options = new MftScanOptions
+        var progressSink = new SynchronousProgress<BlockWriteProgress>(report =>
         {
-            Progress = new SynchronousProgress<BrokerScanProgress>(report =>
+            lock (reports)
             {
-                lock (reports)
-                {
-                    reports.Add(report);
-                }
-            })
-        };
+                reports.Add(report);
+            }
+        });
 
-        var result = await broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), options, CancellationToken.None)
+        var result = await broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(), progressSink, CancellationToken.None)
             .WaitAsync(HangGuard);
         result.Block.Block.Dispose();
 
         Assert.IsTrue(reports.Count > 0);
-        Assert.IsTrue(reports.All(report => report.Drive == "C"), "The channel's drive fills the sample.");
-        Assert.AreEqual(BrokerScanPhase.Transferring, reports[^1].Phase);
+        Assert.AreEqual(BlockScanPhase.Transferring, reports[^1].Phase);
     }
 
     [TestMethod]
@@ -80,7 +76,7 @@ public partial class BrokerProcessTests
             RetainedFileNames = names
         };
 
-        var result = await broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), options, CancellationToken.None)
+        var result = await broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), options, null, CancellationToken.None)
             .WaitAsync(HangGuard);
         result.Block.Block.Dispose();
 
@@ -104,7 +100,7 @@ public partial class BrokerProcessTests
             wrapConnector: RecordHostEnd(hostEnd));
 
         var result = await broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
-            CancellationToken.None).WaitAsync(HangGuard);
+            null, CancellationToken.None).WaitAsync(HangGuard);
         using var block = result.Block.Block;
 
         Assert.AreEqual(Armed, result.ArmedCursor);
@@ -129,7 +125,7 @@ public partial class BrokerProcessTests
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
             broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
-                CancellationToken.None).WaitAsync(HangGuard));
+                null, CancellationToken.None).WaitAsync(HangGuard));
 
         Assert.AreEqual("catch-up read failed", exception.Message);
         AssertSectionReleased(broker.Sections.Single());
@@ -225,8 +221,8 @@ public partial class BrokerProcessTests
         Assert.IsNotNull(produced.CatchUpLoss);
         Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, produced.CatchUpLoss.DetectedDuring);
         Assert.AreEqual(5000L, produced.CatchUpLoss.FirstUsn);
-        Assert.AreEqual(Armed.JournalIdentifier, produced.JournalIdentifier);
-        Assert.AreEqual(Armed.NextUsn, produced.NextUsn);
+        Assert.AreEqual(Armed.JournalIdentifier, block.Header.UsnJournalIdentifier);
+        Assert.AreEqual(Armed.NextUsn, block.Header.UsnNextUsn);
         Assert.IsTrue(block.Header.RowCount > 0);
     }
 
@@ -240,7 +236,7 @@ public partial class BrokerProcessTests
         using var cancellation = new CancellationTokenSource();
 
         var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
-            cancellation.Token);
+            null, cancellation.Token);
         await scanning.Entered.WaitAsync(HangGuard);
         await cancellation.CancelAsync();
 
@@ -261,13 +257,13 @@ public partial class BrokerProcessTests
         using var cancellation = new CancellationTokenSource();
 
         var cancelled = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
-            cancellation.Token);
+            null, cancellation.Token);
         await scanning.Entered.WaitAsync(HangGuard);
         await cancellation.CancelAsync();
         await AssertCancelledAsync(cancelled);
         await sourceCancelled.Task.WaitAsync(HangGuard);
         var other = await broker.Process.ScanDriveAsync('D', TestBlockSections.Target(), new MftScanOptions(),
-            CancellationToken.None).WaitAsync(HangGuard);
+            null, CancellationToken.None).WaitAsync(HangGuard);
         using var block = other.Block.Block;
 
         Assert.AreEqual('D', other.DriveLetter);
@@ -287,9 +283,9 @@ public partial class BrokerProcessTests
         }));
 
         var scanC = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
-            CancellationToken.None);
+            null, CancellationToken.None);
         var scanD = broker.Process.ScanDriveAsync('D', TestBlockSections.Target(), new MftScanOptions(),
-            CancellationToken.None);
+            null, CancellationToken.None);
         await Task.WhenAll(gates["C"].Entered, gates["D"].Entered).WaitAsync(HangGuard);
         gates["C"].Release();
         gates["D"].Release();
@@ -305,16 +301,13 @@ public partial class BrokerProcessTests
     }
 
     [TestMethod]
-    public async Task Producer_ReportsProgressToRequestAndScanOptions()
+    public async Task Producer_ReportsProgressToRequest()
     {
         var indexReports = new List<IndexScanProgress>();
-        var brokerReports = new List<BrokerScanProgress>();
         await using var broker = new InProcessBroker(CreateHost());
         var process = broker.Process;
-        var producer = new BrokerMftBlockProducer(_ => Task.FromResult(process), new MftScanOptions
-        {
-            Progress = new SynchronousProgress<BrokerScanProgress>(brokerReports.Add)
-        }).CreateIndexSource().Producer;
+        var producer = new BrokerMftBlockProducer(_ => Task.FromResult(process), new MftScanOptions())
+            .CreateIndexSource().Producer;
         var target = TestBlockSections.Target();
 
         var produced = await producer(new MftBlockProduceRequest
@@ -328,11 +321,10 @@ public partial class BrokerProcessTests
         produced.Block.Dispose();
 
         Assert.IsNull(produced.CatchUpLoss);
-        Assert.AreEqual(brokerReports.Count, indexReports.Count);
         Assert.IsTrue(indexReports.Count > 0);
         Assert.IsTrue(indexReports.All(report => report.Drive == 'C'));
         Assert.AreEqual(IndexScanPhase.Transferring, indexReports[^1].Phase);
-        Assert.AreEqual((uint?)brokerReports[^1].TotalRecords, indexReports[^1].ExpectedRowCount);
+        Assert.IsTrue(indexReports[^1].ExpectedRowCount > 0);
     }
 
     [TestMethod]
@@ -340,7 +332,7 @@ public partial class BrokerProcessTests
     {
         await using var broker = new ScriptedBroker();
         var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
-            CancellationToken.None);
+            null, CancellationToken.None);
         Assert.AreEqual(BrokerFrameKind.QueryVolume, (await broker.ReadRequestAsync()).Kind);
 
         await broker.CloseControlAsync();
@@ -384,7 +376,7 @@ public partial class BrokerProcessTests
     {
         await using var broker = new ScriptedBroker();
         var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(),
-            new MftScanOptions(), CancellationToken.None);
+            new MftScanOptions(), null, CancellationToken.None);
         await broker.AnswerQueryVolumeAsync(Volume);
         await using (var pipe = await broker.AcceptChannelAsync())
         {
@@ -428,7 +420,7 @@ public partial class BrokerProcessTests
     {
         await using var broker = new ScriptedBroker();
         var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
-            CancellationToken.None);
+            null, CancellationToken.None);
         await broker.AnswerQueryVolumeAsync(Volume);
         await using (var pipe = await broker.AcceptChannelAsync())
         {

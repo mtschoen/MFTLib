@@ -133,8 +133,6 @@ public class LocalMftBlockProducerTests
         Assert.AreEqual(123u, block.Header.VolumeSerial);
         Assert.AreEqual(ProducerKind.Mft, block.Header.ProducerKind);
         Assert.IsTrue(block.Header.IsComplete);
-        Assert.AreEqual(0UL, result.JournalIdentifier);
-        Assert.AreEqual(0L, result.NextUsn);
         Assert.AreEqual(0UL, block.Header.UsnJournalIdentifier);
         Assert.AreEqual(0L, block.Header.UsnNextUsn);
         Assert.AreEqual(0, result.SkippedRecordCount);
@@ -300,23 +298,26 @@ public class LocalMftBlockProducerTests
         Assert.AreEqual(0, allocator.QueuedScanCount);
     }
 
-    [TestMethod]
-    public async Task Produce_ProgressFlowsToIndexRequestAndScanOptions()
+    [DataTestMethod]
+    [DataRow(-1L, 0u)]
+    [DataRow(4294967296L, uint.MaxValue)]
+    public async Task Produce_ProgressFlowsToIndexRequestWithSaturatedCounts(long count, uint expected)
     {
-        var indexReports = new List<IndexScanProgress>();
-        var scanReports = new List<BrokerScanProgress>();
-        var options = new MftScanOptions { Progress = new DirectProgress<BrokerScanProgress>(scanReports.Add) };
-        var producer = new LocalMftBlockProducer(TimeProvider.System, options, Scripted());
-
-        var result = await ProducerOf(producer)(
-            Request(progress: new DirectProgress<IndexScanProgress>(indexReports.Add)),
-            TestContext.CancellationTokenSource.Token);
-        result.Block.Dispose();
-
-        Assert.IsTrue(indexReports.Count > 0);
-        Assert.IsTrue(indexReports.All(report => report.Drive == 'T'));
-        Assert.AreEqual(indexReports.Count, scanReports.Count);
-        Assert.IsTrue(scanReports.All(report => report.Drive == "T"));
+        var samples = new List<IndexScanProgress>();
+        var producer = new LocalMftBlockProducer(TimeProvider.System, null, Scripted(scan: (_, _, reporting, _, _, _) =>
+        {
+            reporting.Progress!.Report(new BlockWriteProgress(count, 0, count, null, BlockScanPhase.Parsing));
+            return Batches();
+        }));
+        using var block = (await ProducerOf(producer)(
+            Request(progress: new DirectProgress<IndexScanProgress>(samples.Add)),
+            TestContext.CancellationTokenSource.Token)).Block;
+        var parsing = samples.Single(sample => sample.Phase == IndexScanPhase.ParsingMft);
+        Assert.AreEqual(expected, parsing.WrittenRowCount);
+        Assert.AreEqual(expected, parsing.ExpectedRowCount);
+        Assert.IsTrue(samples.All(sample => sample.Drive == 'T'));
+        Assert.AreEqual(IndexScanPhase.Transferring, samples[^1].Phase);
+        Assert.IsNull(samples[^1].ExpectedRowCount);
     }
 
     [TestMethod]

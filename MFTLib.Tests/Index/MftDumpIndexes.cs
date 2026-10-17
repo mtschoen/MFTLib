@@ -32,7 +32,7 @@ internal static class MftDumpIndexes
         FileIndex.OpenAsync(Options(source), CancellationToken.None);
 
     internal static Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request, CancellationToken _) =>
-        Task.FromResult(new MftBlockProduceResult(Build(request), 7, 4096, SkippedRecordCount: 0));
+        Task.FromResult(new MftBlockProduceResult(Build(request), SkippedRecordCount: 0));
 
     /// <summary>Runs <paramref name="action" /> on the index and returns the exception it throws.</summary>
     internal static TException Throws<TException>(FileIndex index, Action<FileIndex> action)

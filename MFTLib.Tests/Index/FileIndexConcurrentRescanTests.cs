@@ -278,7 +278,7 @@ public class FileIndexConcurrentRescanTests
             SeededBlocks.Write(request.BlockPath, request.VolumeSerial,
                 journalIdentifier: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment);
             return new MftBlockProduceResult(BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
-                JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0);
+                SkippedRecordCount: 0);
         }
     }
 }

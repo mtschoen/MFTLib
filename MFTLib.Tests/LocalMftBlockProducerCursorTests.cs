@@ -44,8 +44,6 @@ public class LocalMftBlockProducerCursorTests
         }, TestContext.CancellationTokenSource.Token);
         using var block = result.Block;
         CollectionAssert.AreEqual(new[] { "cursor", "scan" }, calls);
-        Assert.AreEqual(cursor.JournalIdentifier, result.JournalIdentifier);
-        Assert.AreEqual(cursor.NextUsn, result.NextUsn);
         Assert.AreEqual(cursor.JournalIdentifier, block.Header.UsnJournalIdentifier);
         Assert.AreEqual(cursor.NextUsn, block.Header.UsnNextUsn);
     }

@@ -9,5 +9,5 @@ namespace MFTLib;
 internal delegate IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> JournalBatchSource(
     string driveLetter,
     UsnJournalCursor since,
-    IBrokerOperationReporter operation,
+    ISourceOperationReporter operation,
     CancellationToken cancellationToken);

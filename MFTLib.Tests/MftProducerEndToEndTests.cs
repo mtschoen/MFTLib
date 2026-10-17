@@ -77,32 +77,39 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
     public async Task OpenAsync_BlockProgressAndDirectoryProfileSurviveTheProtocol()
     {
         var parsingReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var progress = new List<BrokerScanProgress>();
+        var progress = new List<IndexScanProgress>();
         await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, reporting, _, _, cancellationToken) =>
         {
-            reporting.Progress?.Report(new BlockWriteProgress(6, 0, 6, null, BrokerScanPhase.Parsing));
+            reporting.Progress?.Report(new BlockWriteProgress(6, 0, 6, null, BlockScanPhase.Parsing));
             parsingReceived.Task.Wait(HangGuard, cancellationToken);
             return Records();
         }));
         var source = new BrokerMftBlockProducer(Connect(broker.Process), new MftScanOptions
         {
-            RetainedFileNames = ["NOTES.TXT"],
-            Progress = new SynchronousProgress<BrokerScanProgress>(value =>
+            RetainedFileNames = ["NOTES.TXT"]
+        }).CreateIndexSource();
+        var options = Options(source) with
+        {
+            ScanProgress = new SynchronousProgress<IndexScanProgress>(value =>
             {
                 progress.Add(value);
-                if (value.Phase == BrokerScanPhase.Parsing)
+                if (value.Phase == IndexScanPhase.ParsingMft)
                 {
                     parsingReceived.TrySetResult();
                 }
             })
-        }).CreateIndexSource();
-        await using var index = await FileIndex.OpenAsync(Options(source), CancellationToken.None).WaitAsync(HangGuard);
+        };
+        await using var index = await FileIndex.OpenAsync(options, CancellationToken.None).WaitAsync(HangGuard);
 
         AssertReady(index);
-        Assert.AreEqual(BrokerScanPhase.Parsing, progress[0].Phase);
-        Assert.AreEqual(BrokerScanPhase.Transferring, progress[^1].Phase);
-        Assert.IsTrue(progress.All(value => value.Drive == "C"));
-        Assert.IsTrue(progress[^1].BytesProcessed > 0);
+        Assert.IsTrue(progress.Any(value => value.Phase == IndexScanPhase.ParsingMft));
+        Assert.IsTrue(progress.Any(value => value.Phase == IndexScanPhase.Transferring));
+        Assert.IsTrue(progress.All(value => value.Drive == 'C'));
+        var transferring = progress.FindLast(value => value.Phase == IndexScanPhase.Transferring);
+        Assert.IsNotNull(transferring);
+        Assert.IsNotNull(transferring.ExpectedRowCount);
+        Assert.IsTrue(transferring.ExpectedRowCount > 0);
+        Assert.IsTrue(progress[^1].WrittenRowCount > 0);
         Assert.IsTrue(index.Find(At("documents"))!.Value.IsDirectory);
         Assert.IsNotNull(index.Find(At("documents", "notes.txt")));
         Assert.IsNotNull(index.Find(At("notes.txt")));

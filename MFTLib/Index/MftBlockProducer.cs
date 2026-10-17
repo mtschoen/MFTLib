@@ -43,6 +43,12 @@ internal sealed record MftBlockProduceRequest
     public IProgress<IndexScanProgress>? Progress { get; init; }
 
     /// <summary>
+    ///     Where the producer logs cleanup actions on failure, taken from <see cref="FileIndexOptions.Diagnostics" />.
+    ///     Null when the caller did not ask for diagnostics.
+    /// </summary>
+    public Action<string>? Diagnostics { get; init; }
+
+    /// <summary>
     ///     The consumer cache tag for the block. A custom MFT producer must copy this into
     ///     <see cref="BlockFileCreateOptions.CacheTag" /> before calling <see cref="BlockWriter.Complete" />;
     ///     returning a differently tagged block is a producer failure.
@@ -51,16 +57,10 @@ internal sealed record MftBlockProduceRequest
 }
 
 /// <summary>
-///     One finished block plus the journal cursor armed before the scan began, so a watch
-///     resumes from before the scan rather than after it and nothing that changed during the
-///     scan is lost. <paramref name="SkippedRecordCount" /> counts records the producer could
+///     One finished block. <paramref name="SkippedRecordCount" /> counts records the producer could
 ///     not place, reported as <see cref="DriveBlockStatus.SkippedRecordCount" />.
 /// </summary>
-internal sealed record MftBlockProduceResult(
-    BlockFile Block,
-    ulong JournalIdentifier,
-    long NextUsn,
-    int SkippedRecordCount)
+internal sealed record MftBlockProduceResult(BlockFile Block, int SkippedRecordCount)
 {
     /// <summary>
     ///     Set only when the journal proved that catch-up after the scan lost the armed cursor: the

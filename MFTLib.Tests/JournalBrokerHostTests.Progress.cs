@@ -30,10 +30,10 @@ public partial class JournalBrokerHostTests
             var afterFirstReport = new TestGate();
             var host = ScanHost(scanDrive: (_, _, reporting, _, _, _) =>
             {
-                reporting.Progress!.Report(new BlockWriteProgress(5, 0, 20, null, BrokerScanPhase.Parsing));
+                reporting.Progress!.Report(new BlockWriteProgress(5, 0, 20, null, BlockScanPhase.Parsing));
                 afterFirstReport.MarkEntered();
                 afterFirstReport.WaitForRelease();
-                reporting.Progress.Report(new BlockWriteProgress(19, 0, 20, null, BrokerScanPhase.Parsing));
+                reporting.Progress.Report(new BlockWriteProgress(19, 0, 20, null, BlockScanPhase.Parsing));
                 return [[ScanRecord(5, ".", 3)]];
             });
             await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
@@ -74,7 +74,7 @@ public partial class JournalBrokerHostTests
             using var blockWriter = new RecordingBlockSectionWriter();
             var host = ScanHost(scanDrive: (_, _, reporting, _, _, _) =>
             {
-                reporting.Progress?.Report(new BlockWriteProgress(100, 0, 1000, null, BrokerScanPhase.Parsing));
+                reporting.Progress?.Report(new BlockWriteProgress(100, 0, 1000, null, BlockScanPhase.Parsing));
                 return
                 [
                     [new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "r1.txt")],
@@ -108,7 +108,7 @@ public partial class JournalBrokerHostTests
             {
                 for (var i = 1; i <= 5; i++)
                 {
-                    reporting.Progress?.Report(new BlockWriteProgress(i * 1000, 0, 5000, null, BrokerScanPhase.Parsing));
+                    reporting.Progress?.Report(new BlockWriteProgress(i * 1000, 0, 5000, null, BlockScanPhase.Parsing));
                 }
 
                 return
@@ -221,7 +221,7 @@ public partial class JournalBrokerHostTests
         // last reported total.
         var host = ScanHost(scanDrive: (_, _, reporting, _, _, _) =>
         {
-            reporting.Progress!.Report(new BlockWriteProgress(10, 500, 5, 1000, BrokerScanPhase.Parsing));
+            reporting.Progress!.Report(new BlockWriteProgress(10, 500, 5, 1000, BlockScanPhase.Parsing));
             return [[new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "r1.txt")]];
         });
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());

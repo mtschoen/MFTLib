@@ -12,3 +12,8 @@ static class NamespaceBoundaryViolationFixture
         return default;
     }
 }
+
+static class SourcesBoundaryViolationFixture
+{
+    internal static BrokerMftBlockProducer? ForbiddenReference() => null;
+}

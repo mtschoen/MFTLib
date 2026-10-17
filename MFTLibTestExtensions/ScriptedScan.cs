@@ -35,6 +35,6 @@ public sealed class ScriptedScan
     public void ReportParsed(long recordsProcessed, long? totalRecords)
     {
         _reporting.Operation?.Processing("MFT parse");
-        _reporting.Progress?.Report(new BlockWriteProgress(recordsProcessed, 0, totalRecords, null, BrokerScanPhase.Parsing));
+        _reporting.Progress?.Report(new BlockWriteProgress(recordsProcessed, 0, totalRecords, null, BlockScanPhase.Parsing));
     }
 }

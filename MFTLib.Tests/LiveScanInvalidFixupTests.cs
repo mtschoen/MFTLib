@@ -226,7 +226,7 @@ public class LiveScanInvalidFixupTests
         DeleteOnClose = true
     });
 
-    sealed class QuietReporter : IBrokerOperationReporter
+    sealed class QuietReporter : ISourceOperationReporter
     {
         public void WaitingOnVolume()
         {

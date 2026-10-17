@@ -113,8 +113,7 @@ public partial class BrokerProtocolTests
             RecordsProcessed = 1000,
             BytesProcessed = 20480,
             TotalRecords = 5000,
-            TotalBytes = 102400,
-            Elapsed = TimeSpan.FromMilliseconds(150)
+            TotalBytes = 102400
         };
         var frame = RoundTrip(writer => BrokerProtocol.WriteScanProgress(writer, progress));
 
@@ -135,8 +134,7 @@ public partial class BrokerProtocolTests
             RecordsProcessed = 500,
             BytesProcessed = 10240,
             TotalRecords = null,
-            TotalBytes = null,
-            Elapsed = TimeSpan.FromMilliseconds(50)
+            TotalBytes = null
         };
         var frame = RoundTrip(writer => BrokerProtocol.WriteScanProgress(writer, progress));
 
@@ -152,14 +150,13 @@ public partial class BrokerProtocolTests
     {
         byte[] payload =
         [
-            0x2D, 0x00, 0x00, 0x00, // totalLength = 45
+            0x25, 0x00, 0x00, 0x00, // totalLength = 37
             0x0C, // kind = ScanProgress
             0x00, 0x00, 0x00, 0x00, // phase, written below
             0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // recordsProcessed = 1
             0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // bytesProcessed = 2
             0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // totalRecords = -1
-            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // totalBytes = -1
-            0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // elapsedTicks = 3
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF // totalBytes = -1
         ];
         BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(5), phase);
 
@@ -334,19 +331,17 @@ public partial class BrokerProtocolTests
             RecordsProcessed = 100,
             BytesProcessed = 200,
             TotalRecords = 300,
-            TotalBytes = 400,
-            Elapsed = TimeSpan.FromTicks(500)
+            TotalBytes = 400
         };
         AssertWireBytes(w => BrokerProtocol.WriteScanProgress(w, progress),
         [
-            0x2D, 0x00, 0x00, 0x00, // totalLength = 45 (1 + 4 + 8*5)
-            0x0C, // kind = ScanProgress
-            0x00, 0x00, 0x00, 0x00, // phase = Parsing (0)
-            0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // recordsProcessed = 100
-            0xC8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // bytesProcessed = 200
-            0x2C, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // totalRecords = 300
-            0x90, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // totalBytes = 400
-            0xF4, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // elapsedTicks = 500
+            0x25, 0x00, 0x00, 0x00,
+            0x0C,
+            0x00, 0x00, 0x00, 0x00,
+            0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0xC8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x2C, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x90, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
         ]);
     }
 
@@ -360,19 +355,17 @@ public partial class BrokerProtocolTests
             RecordsProcessed = 1,
             BytesProcessed = 2,
             TotalRecords = null,
-            TotalBytes = null,
-            Elapsed = TimeSpan.FromTicks(3)
+            TotalBytes = null
         };
         AssertWireBytes(w => BrokerProtocol.WriteScanProgress(w, progress),
         [
-            0x2D, 0x00, 0x00, 0x00, // totalLength = 45
+            0x25, 0x00, 0x00, 0x00, // totalLength = 37
             0x0C, // kind = ScanProgress
             0x00, 0x00, 0x00, 0x00, // phase = Parsing (0)
             0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // recordsProcessed = 1
             0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // bytesProcessed = 2
             0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // totalRecords = -1
-            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // totalBytes = -1
-            0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // elapsedTicks = 3
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF // totalBytes = -1
         ]);
     }
 
@@ -481,8 +474,7 @@ public partial class BrokerProtocolTests
             RecordsProcessed = 10,
             BytesProcessed = 20,
             TotalRecords = 30,
-            TotalBytes = 40,
-            Elapsed = TimeSpan.FromSeconds(1)
+            TotalBytes = 40
         };
 
         var frame = BrokerFrame.ScanProgress(progress);

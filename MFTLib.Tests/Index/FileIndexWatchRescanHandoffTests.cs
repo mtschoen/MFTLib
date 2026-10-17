@@ -28,7 +28,7 @@ public class FileIndexWatchRescanHandoffTests
                 {
                     SeededBlocks.Write(request.BlockPath, 1, WatchHarness.JournalIdentifier, 100, moment: SeededBlocks.SeededMoment);
                     var block = BlockFile.Open(request.BlockPath, 1, out _)!;
-                    return Task.FromResult(new MftBlockProduceResult(block, WatchHarness.JournalIdentifier, 100, 0));
+                    return Task.FromResult(new MftBlockProduceResult(block, 0));
                 }, source.IndexSource)
             }, Token);
             var changes = new System.Collections.Concurrent.ConcurrentQueue<FileChange>();

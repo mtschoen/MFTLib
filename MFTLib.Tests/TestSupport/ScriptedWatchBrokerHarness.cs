@@ -176,7 +176,7 @@ internal sealed class ScriptedHostWatch
     public int StartedCount => Volatile.Read(ref _count);
 
     internal IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> RunAsync(UsnJournalCursor since,
-        IBrokerOperationReporter operation, CancellationToken cancellationToken)
+        ISourceOperationReporter operation, CancellationToken cancellationToken)
     {
         var number = Interlocked.Increment(ref _count);
         var wedge = _wedgeInNextRun;
@@ -216,10 +216,10 @@ internal sealed class ScriptedWatchRun
         Channel.CreateUnbounded<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>();
 
     readonly bool _ignoreCancellation;
-    readonly IBrokerOperationReporter _operation;
+    readonly ISourceOperationReporter _operation;
     readonly (string StepName, TestGate Gate)? _wedge;
 
-    internal ScriptedWatchRun(UsnJournalCursor since, bool ignoreCancellation, IBrokerOperationReporter operation,
+    internal ScriptedWatchRun(UsnJournalCursor since, bool ignoreCancellation, ISourceOperationReporter operation,
         (string StepName, TestGate Gate)? wedge)
     {
         Since = since;

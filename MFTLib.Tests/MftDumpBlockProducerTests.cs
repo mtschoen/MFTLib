@@ -13,7 +13,7 @@ public class MftDumpBlockProducerTests
 
     public TestContext TestContext { get; set; } = null!;
 
-    static ParseThreadAllocator Allocator => LocalMftBlockProducer.SharedAllocator;
+    static ParseThreadAllocator Allocator => MftBlockProducerPipeline.SharedAllocator;
 
     [TestInitialize]
     public void Initialize()
@@ -64,8 +64,10 @@ public class MftDumpBlockProducerTests
         Assert.AreEqual(liveScanRunning ? 1 : 0, Allocator.RunningScanCount);
     }
 
-    [TestMethod]
-    public async Task Produce_CancelledScanReleasesRegistrationAndAdmitsWaiter()
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Produce_CancelledScanReleasesRegistrationAndAdmitsWaiter(bool cancelled)
     {
         var registrations = new List<ParseThreadRegistration>();
         using var cancellation = new CancellationTokenSource();
@@ -83,18 +85,34 @@ public class MftDumpBlockProducerTests
             {
                 waiting = Allocator.AdmitAsync(TestContext.CancellationTokenSource.Token).AsTask();
                 queuedDuringScan = Allocator.QueuedScanCount;
+                if (!cancelled)
+                {
+                    throw new IOException("dump source failed");
+                }
+
                 cancelScan();
                 token.ThrowIfCancellationRequested();
                 return [];
             });
 
-            await Assert.ThrowsExceptionAsync<OperationCanceledException>(() =>
-                producer.ProduceAsync(Request(), cancellation.Token));
+            var request = Request();
+            if (cancelled)
+            {
+                await Assert.ThrowsExceptionAsync<OperationCanceledException>(() =>
+                    producer.ProduceAsync(request, cancellation.Token));
+            }
+            else
+            {
+                var failure = await Assert.ThrowsExceptionAsync<IOException>(() =>
+                    producer.ProduceAsync(request, cancellation.Token));
+                Assert.AreEqual("dump source failed", failure.Message);
+            }
+
             using var admitted = await waiting!.WaitAsync(TestContext.CancellationTokenSource.Token);
             Assert.AreEqual(1, queuedDuringScan, "The dump occupies the last running slot until cancellation.");
             Assert.AreEqual(Environment.ProcessorCount, Allocator.RunningScanCount);
             Assert.AreEqual(0, Allocator.QueuedScanCount);
-            Assert.IsFalse(File.Exists(Request().BlockPath));
+            Assert.IsFalse(File.Exists(request.BlockPath));
         }
         finally
         {

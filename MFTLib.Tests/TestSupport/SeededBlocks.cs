@@ -52,7 +52,7 @@ internal static class SeededBlocks
     {
         return Task.FromResult(new MftBlockProduceResult(
             Build(request, journalIdentifier, nextUsn, moment),
-            journalIdentifier, nextUsn, SkippedRecordCount: 0));
+            SkippedRecordCount: 0));
     }
 
     static BlockFile Create(string path, uint volumeSerial, bool deleteOnClose, CacheTag cacheTag,

@@ -329,19 +329,40 @@ public sealed partial class FileIndex
         _retiredBlocks.Add(replaced.ReleaseState);
     }
 
-    void ValidateProducedCacheTag(MftBlockProduceResult result, string blockPath)
+    static void ValidateProducedBlock(MftBlockProduceResult result, MftBlockProduceRequest request)
     {
-        var stored = result.Block.Header.CacheTag;
-        if (stored == _options.CacheTag)
+        try
         {
-            return;
-        }
+            var header = result.Block.Header;
+            if (header.RowCount == 0)
+            {
+                throw new InvalidOperationException("Block RowCount must be greater than zero.");
+            }
 
-        result.Block.Dispose();
-        BlockFile.TryDeleteFailedCreate(blockPath, _options.Diagnostics,
-            "the MFT producer's block failed the cache tag consistency check");
-        throw new InvalidOperationException(
-            $"The MFT producer's block carries cache tag {stored}, but the request requires {_options.CacheTag}.");
+            var validation = BlockHeader.Validate(in header, request.VolumeSerial, result.Block.Length);
+            if (validation is not null)
+            {
+                throw new InvalidOperationException($"Block validation failed: {validation}.");
+            }
+
+            if (header.ProducerKind != ProducerKind.Mft)
+            {
+                throw new InvalidOperationException("Block ProducerKind must be Mft.");
+            }
+
+            if (header.CacheTag != request.CacheTag)
+            {
+                throw new InvalidOperationException(
+                    $"The MFT producer's block carries cache tag {header.CacheTag}, but the request requires {request.CacheTag}.");
+            }
+        }
+        catch (Exception exception)
+        {
+            result.Block.Dispose();
+            BlockFile.TryDeleteFailedCreate(request.BlockPath, request.Diagnostics,
+                $"the MFT producer's returned block failed validation: {exception.Message}");
+            throw;
+        }
     }
 
     WarmStartResult RejectCacheTag(BlockFile block, string path)

@@ -16,7 +16,7 @@ public partial class JournalBrokerHostChannelTests
             scanDrive: (_, _, reporting, _, _, _) =>
             {
                 reporting.Operation!.Processing("MFT parse");
-                reporting.Progress?.Report(new BlockWriteProgress(2, 0, 2, null, BrokerScanPhase.Parsing));
+                reporting.Progress?.Report(new BlockWriteProgress(2, 0, 2, null, BlockScanPhase.Parsing));
                 return [[Record(5, ".", 3)], [Record(20, "file.txt")]];
             },
             readJournal: (_, since, _) =>

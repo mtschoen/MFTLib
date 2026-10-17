@@ -176,7 +176,7 @@ public partial class JournalBrokerHostLivenessTests
 
     // A watch source that never yields: the drive's journal stays quiet until the pipe closes.
     static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> NeverYields(
-        string drive, UsnJournalCursor since, IBrokerOperationReporter operation,
+        string drive, UsnJournalCursor since, ISourceOperationReporter operation,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         await Task.Delay(Timeout.Infinite, cancellationToken);

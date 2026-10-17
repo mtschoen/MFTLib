@@ -42,7 +42,4 @@ internal readonly record struct BrokerScanProgress
     ///     final sample, so it conveys completion rather than a ratio.
     /// </summary>
     public long? TotalBytes { get; init; }
-
-    /// <summary>Time since the broker began this scan, spanning both phases.</summary>
-    public TimeSpan Elapsed { get; init; }
 }

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using MFTLib.Index;
 
 namespace MFTLib;
@@ -12,10 +11,8 @@ namespace MFTLib;
 internal sealed class LocalMftBlockProducer(TimeProvider timeProvider, MftScanOptions? scanOptions = null,
     LocalMftBlockProducer.Seams? seams = null, ParseThreadAllocator? allocator = null)
 {
-    internal static readonly ParseThreadAllocator SharedAllocator = new(Environment.ProcessorCount);
-
     readonly Seams _seams = seams ?? Seams.Live;
-    readonly ParseThreadAllocator _allocator = allocator ?? SharedAllocator;
+    readonly ParseThreadAllocator _allocator = allocator ?? MftBlockProducerPipeline.SharedAllocator;
 
     /// <summary>The native calls a scan uses; tests replace them.</summary>
     /// <param name="QueryVolumeInformation">Reads the volume geometry that sizes the block.</param>
@@ -34,69 +31,23 @@ internal sealed class LocalMftBlockProducer(TimeProvider timeProvider, MftScanOp
     /// <summary>The index source over this producer: scans fill the requested block directly, and no watch is offered.</summary>
     internal MftIndexSource CreateIndexSource() => new(ProduceAsync);
 
-    async Task<MftBlockProduceResult> ProduceAsync(MftBlockProduceRequest request, CancellationToken cancellationToken)
-    {
-        if (cancellationToken.IsCancellationRequested)
-        {
-            return await Task.FromCanceled<MftBlockProduceResult>(cancellationToken).ConfigureAwait(false);
-        }
-
-        using var registration = await _allocator.AdmitAsync(cancellationToken).ConfigureAwait(false);
-        var allowance = registration.Allowance;
-        return await Task.Run(() => Produce(request, allowance, cancellationToken)).ConfigureAwait(false);
-    }
+    Task<MftBlockProduceResult> ProduceAsync(MftBlockProduceRequest request, CancellationToken cancellationToken) =>
+        MftBlockProducerPipeline.RunAsync(request, _allocator,
+            (allowance, token) => Produce(request, allowance, token), cancellationToken);
 
     MftBlockProduceResult Produce(MftBlockProduceRequest request, ParseThreadAllowance allowance,
         CancellationToken cancellationToken)
     {
         var options = scanOptions ?? new MftScanOptions();
         var drive = request.Drive.ToString();
-        BlockFile? block = BlockFile.Create(MftBlockCapacity.CreateOptions(
-            _seams.QueryVolumeInformation(drive), request.BlockPath, request.VolumeSerial, request.DeleteOnClose,
-            request.CacheTag));
-        try
-        {
-            var cursor = request.DeleteOnClose ? default : _seams.QueryCursor(drive);
-            var progress = CreateProgress(request, options);
-            // No host watchdog watches a direct scan, so there is no operation to tell what the source is doing.
-            var reporting = new BlockWriteReporting(progress, null);
-            long recordsOmitted = 0;
-            var batches = _seams.ScanDriveRecordBatches(drive, allowance, reporting, options,
-                count => recordsOmitted += count, cancellationToken);
-            var result = MftBlockScan.WriteToBlock(block, new BlockStamp(cursor, timeProvider), batches, options,
-                reporting, cancellationToken);
-            BrokerMftBlockProducer.ValidateBlock(block, request.VolumeSerial, cursor, request.CacheTag);
-            var produced = new MftBlockProduceResult(block, cursor.JournalIdentifier, cursor.NextUsn,
-                MftBlockScan.SaturateSkippedRecordCount(result.SkippedRecordCount + recordsOmitted));
-            block = null;
-            return produced;
-        }
-        finally
-        {
-            block?.Dispose();
-        }
-    }
-
-    // Null when neither the index request nor the scan options want progress, so no samples are composed.
-    static DirectProgress<BlockWriteProgress>? CreateProgress(MftBlockProduceRequest request,
-        MftScanOptions options)
-    {
-        var destination = BrokerProgressAdapter.Create(request, options.Progress);
-        if (destination is null)
-        {
-            return null;
-        }
-
-        var stopwatch = Stopwatch.StartNew();
-        return new DirectProgress<BlockWriteProgress>(value => destination.Report(new BrokerScanProgress
-        {
-            Drive = request.Drive.ToString(),
-            Phase = value.Phase,
-            RecordsProcessed = value.RecordsProcessed,
-            BytesProcessed = value.BytesProcessed,
-            TotalRecords = value.TotalRecords,
-            TotalBytes = value.TotalBytes,
-            Elapsed = stopwatch.Elapsed
-        }));
+        var volume = _seams.QueryVolumeInformation(drive);
+        var cursor = request.DeleteOnClose ? default : _seams.QueryCursor(drive);
+        var progress = MftBlockProgressAdapter.Create(request);
+        var plan = new MftBlockProducerPipeline.WritePlan(volume, new BlockStamp(cursor, timeProvider), options);
+        // No host watchdog watches a direct scan, so there is no operation to tell what the source is doing.
+        return MftBlockProducerPipeline.Write(request, plan,
+            (_, recordsOmitted) => _seams.ScanDriveRecordBatches(drive, allowance,
+                new BlockWriteReporting(progress, null), options, recordsOmitted, cancellationToken),
+            progress, cancellationToken);
     }
 }
