@@ -62,7 +62,7 @@ and an empty package cache. The step follows the existing `skip_build` condition
 The smoke also validates the selected package's Windows imports and plain-x64
 instruction baseline, then runs the real AVX2 negative-control regression.
 
-The `linux-package` job builds the Release linux-x64 library, runs `scripts/check-linux-native.sh` on it and smoke-tests the packed library through `scripts/smoke-package-linux.sh`; the release rebuilds the library in WSL, since Gitea lists no CI artifact over REST ([Linux package](linux-package.md)).
+The `linux-package` job builds the Release linux-x64 library, runs `scripts/check-linux-native.sh` on it and smoke-tests the packed library through `scripts/smoke-package-linux.sh`; the release rebuilds the library in WSL from its validated release commit ([Linux package](linux-package.md)).
 
 Windows jobs run on the host-mode `windows-latest` runner, where toolchains are provisioned on the host: no `actions/setup-*` step belongs in a job that runs on it (`microsoft/setup-msbuild` only locates MSBuild and is allowed). The `linux`, `docs` and `linux-package` jobs read their container image from the repository Actions variable `MFTLIB_CI_IMAGE`. The repository operator provisions the image reference before enabling these jobs. The image supplies CMake, Ninja, gcovr, .NET SDK 10, g++, gcov and make; workflows do not install those tools. Each container retains `--ulimit nofile=65536:65536`.
 

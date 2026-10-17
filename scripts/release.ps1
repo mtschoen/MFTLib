@@ -189,7 +189,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host ""
 
 # --- Build the linux-x64 native library ---
-# Gitea lists no downloadable CI artifact, so the library is built here in WSL from the clean HEAD checked above.
+# Rebuild in WSL from the validated release commit (clean HEAD); see [Linux package](../docs/linux-package.md).
 Write-Host "Building the linux-x64 native library..." -ForegroundColor Cyan
 try {
     $linuxNativeLibrary = & "$PSScriptRoot\build-linux-native.ps1"

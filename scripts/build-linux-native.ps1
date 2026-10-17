@@ -1,9 +1,8 @@
 # Builds the Release linux-x64 native library for the NuGet package inside WSL and checks it.
 #
-# Gitea's artifacts endpoint lists no uploaded artifact, so a Windows release cannot download the
-# library the CI linux-package job builds. This script builds the same library the same way, on
-# the same Ubuntu 24.04 floor, through scripts/build-linux.sh (Release, never the coverage build)
-# and scripts/check-linux-native.sh. It returns the Windows path of the library on success.
+# A release rebuilds from its validated release commit in WSL on Ubuntu 24.04 through
+# scripts/build-linux.sh and scripts/check-linux-native.sh, returning the Windows library path.
+# See [Linux package](../docs/linux-package.md).
 #
 # Usage: $library = .\scripts\build-linux-native.ps1 [-Distribution Ubuntu-24.04]
 

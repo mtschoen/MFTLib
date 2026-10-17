@@ -113,6 +113,11 @@ public class AgentInstructionsTests
         foreach (var path in paths)
         {
             var text = RepositoryFiles.Read(path);
+            if (path.EndsWith(".md", StringComparison.OrdinalIgnoreCase) &&
+                Regex.IsMatch(text, @"(?i)no library " + "default|default-cache " + "guard"))
+            {
+                failures.Add($"{path}: describe explicit cache ownership using the current contract");
+            }
             for (var index = 0; index < patterns.Length; index++)
             {
                 if (Regex.IsMatch(text, patterns[index]))

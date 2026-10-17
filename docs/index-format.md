@@ -20,7 +20,7 @@ not enter during the scan, including directories that vanished before entry.
 `DriveBlockStatus.SkippedRecordCount` counts records the MFT producer could not place,
 including unsupported record identifiers, empty names and exhausted block capacity.
 All MFT producers saturate this diagnostic at `int.MaxValue` when the scan's count is larger.
-Profile-filtered records contribute to neither count. These diagnostics describe the
+Records excluded by `MftScanOptions.RetainedFileNames` or `MftScanOptions.IncludeFreed` contribute to neither count. These diagnostics describe the
 current block's production: successful rescans replace the counts, failed or cancelled
 rescans retain them with the block, and warm starts report zero because these counts
 are not stored in the block header. `DriveBlockStatus.IsCompactionNeeded` reads the header's

@@ -62,8 +62,7 @@ do not add new exclusions to hide seam races.
 `Persistent` and `ExistingOnly` opens (an unset `FileIndexOptions.CacheMode` is `Persistent`)
 require an explicit nonblank `FileIndexOptions.CacheDirectory`,
 including empty-drive opens. Missing configuration throws `ArgumentException`
-before creating a directory. There is no library default cache path or cache
-guard facade. Tests supply temporary directories they own. `Disabled` opens
+before creating a directory. Tests supply temporary directories they own. `Disabled` opens
 require no cache path and ignore supplied paths without resolving or creating
 them. A dump source supplies its own drive: its options validate first and `Drives`, `CacheMode`, `CacheDirectory` and `CacheTag` must be unset.
 

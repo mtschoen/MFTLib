@@ -78,7 +78,6 @@
     - **Cache directory ownership**: cached opens require an explicit nonblank
       application-owned `FileIndexOptions.CacheDirectory`, even with no drives.
       Missing configuration throws `ArgumentException` before directory creation.
-      The library has no default cache directory or default-cache guard.
       Cached opens call `CacheDirectory.EnsureCreated(path)` to create or reprotect
       the directory: current user and SYSTEM only with inheritance blocked on Windows,
       owner-only `0700` on Unix. Applications call it explicitly before writing their

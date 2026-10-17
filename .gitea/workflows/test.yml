@@ -380,11 +380,9 @@ jobs:
       - name: Restore, build and run agent instruction tests (managed only)
         run: bash scripts/test-agent-instructions.sh
 
-  # Builds the Release linux-x64 library the 0.3.0 package ships, runs the acceptance checks on it,
-  # and proves a package user on Linux can load an MFT dump with the library resolved from the
-  # package. Gitea lists no uploaded artifact over REST, so a release rebuilds the library with
-  # scripts/build-linux-native.ps1 on Ubuntu 24.04 under WSL; this job enforces the same checks on
-  # every pull request. The coverage build in the linux job above is never shipped.
+  # Checks the Release linux-x64 library and packaged MFT dump loading on every pull request.
+  # A release rebuilds in WSL from its validated release commit through scripts/build-linux-native.ps1.
+  # See [Linux package](../../docs/linux-package.md); the coverage build is never shipped.
   linux-package:
     runs-on: ubuntu-latest
     container:
