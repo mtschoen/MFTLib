@@ -135,18 +135,12 @@ public sealed partial class FileIndex
         }
     }
 
-    /// <summary>
-    ///     Lists the cache directory's files matching a pattern: <see cref="Directory.EnumerateFiles(string, string)" />
-    ///     unless the options supplied <see cref="FileIndexOptions.EnumerateCacheFilesForTest" />.
-    /// </summary>
-    readonly Func<string, string, IEnumerable<string>> _enumerateCacheFiles;
-
     void CleanupRetiredSiblings(DriveKey drive, uint volumeSerial)
     {
         var pattern = CacheDirectory.BlockFileName(drive, volumeSerial) + ".retired-*";
         try
         {
-            foreach (var path in _enumerateCacheFiles(CacheDirectoryPath, pattern))
+            foreach (var path in Hooks.EnumerateCacheFiles(CacheDirectoryPath, pattern))
             {
                 TryDeleteBestEffort(path,
                     "sweeping a stale \".retired-*\" sibling left by a killed process");

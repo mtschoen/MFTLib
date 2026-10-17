@@ -441,28 +441,87 @@ public partial class FileIndexWatchStateChangedTests
     {
         using var harness = new WatchHarness('T');
         var index = harness.Index;
-        var observations = new List<(WatchStateChange Event, bool StateLockHeld, long VisibleVersion)>();
-        Task? rejectedStop = null;
-        index.WatchStateChanged += state =>
+        var gates = new[] { harness.TrackGate(), harness.TrackGate() };
+        var entered = Enumerable.Range(0, 2).Select(_ =>
+            new TaskCompletionSource<(WatchStateChange Change, long VisibleVersion,
+                Task RejectedStop)>(TaskCreationOptions.RunContinuationsAsynchronously)).ToArray();
+        var exited = Enumerable.Range(0, 2).Select(_ =>
+            new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).ToArray();
+
+        void Observe(WatchStateChange change)
         {
+            var position = change.Watch.State switch
+            {
+                WatchState.CatchingUp => 0,
+                WatchState.CaughtUp => 1,
+                _ => -1
+            };
+            if (position < 0)
+            {
+                return;
+            }
+
             var visible = index.Drives.Single(drive => drive.Drive == 'T');
-            observations.Add((state, index.IsStateLockHeldForTest, visible.Watch.StateVersion));
-            rejectedStop ??= index.StopWatchingAsync(['T'], CancellationToken.None);
-        };
-
-        await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
-        await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
-
-        Assert.AreEqual(2, observations.Count);
-        foreach (var (state, stateLockHeld, visibleVersion) in observations)
-        {
-            Assert.IsFalse(stateLockHeld, $"version {state.Watch.StateVersion} was delivered under the state lock");
-            Assert.IsTrue(visibleVersion >= state.Watch.StateVersion, "a change is visible before it is delivered");
+            var rejected = index.StopWatchingAsync(['T'], CancellationToken.None);
+            entered[position].TrySetResult((change, visible.Watch.StateVersion, rejected));
+            try
+            {
+                gates[position].MarkEntered();
+                gates[position].WaitForRelease();
+            }
+            finally
+            {
+                exited[position].TrySetResult();
+            }
         }
 
-        var rejection = await ThrowsAsync<InvalidOperationException>(() => rejectedStop!);
-        StringAssert.Contains(rejection.Message, "WatchStateChanged");
-        Assert.AreEqual(WatchState.CaughtUp, harness.DriveFor('T').Watch.State);
+        async Task VerifyDeliveryAsync(int position, Task operation)
+        {
+            Task<DriveStatus>? reader = null;
+            try
+            {
+                var observation = await entered[position].Task.WaitAsync(HangGuard);
+                await gates[position].Entered.WaitAsync(HangGuard);
+                reader = Task.Factory.StartNew(
+                    () => index.Drives.Single(drive => drive.Drive == 'T'),
+                    CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                var read = await reader.WaitAsync(HangGuard);
+                Assert.IsFalse(exited[position].Task.IsCompleted,
+                    "the second-thread read completed while the subscriber was held");
+                Assert.IsTrue(observation.VisibleVersion >= observation.Change.Watch.StateVersion);
+                Assert.IsTrue(read.Watch.StateVersion >= observation.Change.Watch.StateVersion);
+                var rejection = await ThrowsAsync<InvalidOperationException>(
+                    () => observation.RejectedStop.WaitAsync(HangGuard));
+                StringAssert.Contains(rejection.Message, "WatchStateChanged");
+            }
+            finally
+            {
+                gates[position].Release();
+                if (reader is not null)
+                {
+                    await reader.WaitAsync(HangGuard);
+                }
+                await operation.WaitAsync(HangGuard);
+            }
+        }
+
+        index.WatchStateChanged += Observe;
+        try
+        {
+            var start = Task.Run(() => index.StartWatchingAsync(['T'], Token));
+            await VerifyDeliveryAsync(0, start);
+            var catchUp = harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
+            await VerifyDeliveryAsync(1, catchUp);
+            Assert.AreEqual(WatchState.CaughtUp, harness.DriveFor('T').Watch.State);
+        }
+        finally
+        {
+            foreach (var gate in gates)
+            {
+                gate.Release();
+            }
+            index.WatchStateChanged -= Observe;
+        }
         await index.StopWatchingAsync(['T'], Token).WaitAsync(HangGuard);
     }
 

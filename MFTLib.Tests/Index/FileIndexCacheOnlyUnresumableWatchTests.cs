@@ -266,7 +266,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
                 return result;
             }, source.IndexSource)
         }, Token);
-        index.PublishInsideWriteGateForTest = _ =>
+        index.Hooks.PublishInsideWriteGate = _ =>
         {
             if (producedBlock is not null)
             {
@@ -278,7 +278,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
             Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind, "the cached MFT block warm-started");
             await index.StartWatchingAsync(['T'], Token);
             Task<IReadOnlyList<DriveOperationResult>>? wait = null;
-            index.BeforeRestartDecisionForTest = _ => wait ??= index.WaitForCatchUpAsync(['T'], CancellationToken.None);
+            index.Hooks.BeforeRestartDecision = _ => wait ??= index.WaitForCatchUpAsync(['T'], CancellationToken.None);
 
             await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.RescanAsync(['T'], Token));
 
@@ -323,7 +323,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
                 return result;
             }, source.IndexSource)
         }, Token);
-        index.PublishInsideWriteGateForTest = _ =>
+        index.Hooks.PublishInsideWriteGate = _ =>
         {
             if (producedBlock is not null)
             {

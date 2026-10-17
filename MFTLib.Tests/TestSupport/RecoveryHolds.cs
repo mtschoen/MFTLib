@@ -15,7 +15,7 @@ internal static class RecoveryHolds
     /// </summary>
     public static void HoldEveryRecovery(this FileIndex index)
     {
-        index.RecoveryBeforeLifecycleGateForTest =
+        index.Hooks.RecoveryBeforeLifecycleGate =
             static (_, cancellationToken) => Task.Delay(Timeout.Infinite, cancellationToken);
     }
 }

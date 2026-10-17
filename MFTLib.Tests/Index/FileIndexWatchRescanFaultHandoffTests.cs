@@ -46,7 +46,7 @@ public class FileIndexWatchRescanFaultHandoffTests
         Task<IReadOnlyList<DriveOperationResult>> rescan = Task.FromResult<IReadOnlyList<DriveOperationResult>>([]);
         if (delayedOverlappingStop)
         {
-            index.BeforeWatchChangedForTest = _ => HoldSynchronously(delivery!);
+            index.Hooks.BeforeWatchChanged = _ => HoldSynchronously(delivery!);
             index.Changed += FailSubscriber;
             index.WatchFaulted += _ => HoldSynchronously(faultAnnounced!);
             _ = handle.Queue(WatchHarness.Batch(10, "during.txt"));
@@ -60,7 +60,7 @@ public class FileIndexWatchRescanFaultHandoffTests
         }
         else if (stage == "drain")
         {
-            index.BeforeWatchChangedForTest = _ => HoldSynchronously(held);
+            index.Hooks.BeforeWatchChanged = _ => HoldSynchronously(held);
             var delivering = handle.Queue(WatchHarness.Batch(10, "during.txt"));
             await held.Entered.WaitAsync(HangGuard);
             var original = index.Root('T').DriveBlock;
@@ -76,21 +76,21 @@ public class FileIndexWatchRescanFaultHandoffTests
             var original = index.Root('T').DriveBlock;
             if (faultAfterRetirement)
             {
-                index.BeforeWatchChangedForTest = _ => HoldSynchronously(delivery!);
+                index.Hooks.BeforeWatchChanged = _ => HoldSynchronously(delivery!);
                 index.Changed += FailSubscriber;
                 _ = handle.Queue(WatchHarness.Batch(10, "during.txt"));
                 await delivery!.Entered.WaitAsync(HangGuard);
-                index.PublishInsideWriteGateForTest = _ => published!.MarkEntered();
+                index.Hooks.PublishInsideWriteGate = _ => published!.MarkEntered();
             }
 
             harness.SetNextProducedCursor('T', 13, 9000);
             switch (stage)
             {
                 case "restart decision":
-                    index.BeforeRestartDecisionForTest = _ => HoldSynchronously(held);
+                    index.Hooks.BeforeRestartDecision = _ => HoldSynchronously(held);
                     break;
                 case "registration":
-                    index.RestartBeforeRegistrationForTest = _ =>
+                    index.Hooks.RestartBeforeRegistration = _ =>
                     {
                         held.MarkEntered();
                         return held.WaitForReleaseAsync(Token);
@@ -226,7 +226,7 @@ public class FileIndexWatchRescanFaultHandoffTests
         Assert.AreEqual(WatchState.Recovering, index.Drives.Single().Watch.State);
         Assert.IsTrue(index.TryGetRecoveryCompletionForTest('T', out var recovery));
         var publishing = harness.TrackGate();
-        index.PublishInsideWriteGateForTest = _ => publishing.MarkEntered();
+        index.Hooks.PublishInsideWriteGate = _ => publishing.MarkEntered();
 
         production.Release();
         await publishing.Entered.WaitAsync(HangGuard);

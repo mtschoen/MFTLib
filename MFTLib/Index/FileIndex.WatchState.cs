@@ -144,7 +144,4 @@ public sealed partial class FileIndex
 
     /// <summary>A test seam: how many deliveries waited for another thread delivering the same drive.</summary>
     internal long ContendedWatchStateDeliveriesForTest => Interlocked.Read(ref _contendedWatchStateDeliveries);
-
-    /// <summary>A test seam: whether the calling thread holds <see cref="_stateLock" />.</summary>
-    internal bool IsStateLockHeldForTest => _stateLock.IsHeldByCurrentThread;
 }

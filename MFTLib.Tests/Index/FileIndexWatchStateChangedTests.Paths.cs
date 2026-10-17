@@ -46,7 +46,7 @@ public partial class FileIndexWatchStateChangedTests
         await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         Task<IReadOnlyList<DriveOperationResult>>? stop = null;
-        index.PumpFaultSettlementWrapperForTest = settle =>
+        index.Hooks.PumpFaultSettlementWrapper = settle =>
         {
             settle();
             stop = Task.Run(() => index.StopWatchingAsync(['T'], CancellationToken.None));
@@ -89,7 +89,7 @@ public partial class FileIndexWatchStateChangedTests
         var index = harness.Index;
         var recorder = new WatchStateRecorder(index);
         var recoveryHeld = harness.TrackGate();
-        index.RecoveryBeforeLifecycleGateForTest = async (_, token) =>
+        index.Hooks.RecoveryBeforeLifecycleGate = async (_, token) =>
         {
             recoveryHeld.MarkEntered();
             await recoveryHeld.WaitForReleaseAsync(token);
@@ -118,7 +118,7 @@ public partial class FileIndexWatchStateChangedTests
         await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         Task? stop = null;
-        index.BeforeRestartDecisionForTest = _ => stop ??= index.StopWatchingAsync(['T'], CancellationToken.None);
+        index.Hooks.BeforeRestartDecision = _ => stop ??= index.StopWatchingAsync(['T'], CancellationToken.None);
 
         await index.RescanAsync(['T'], Token).WaitAsync(HangGuard);
         await stop!.WaitAsync(HangGuard);

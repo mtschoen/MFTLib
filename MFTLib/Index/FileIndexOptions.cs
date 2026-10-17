@@ -99,16 +99,6 @@ public sealed record FileIndexOptions
     /// </summary>
     public CacheTag CacheTag { get; init; }
 
-    /// <summary>
-    ///     A test seam, owned by the index these options open: lists the cache directory's files
-    ///     matching a pattern for the sweep of stale ".retired-*" siblings. Null (the default)
-    ///     lists the real directory. The directory holds the index's owner lock file while the
-    ///     sweep runs, so only a failure of the listing itself (a network share that drops, an
-    ///     access-control change made meanwhile) reaches the sweep's handlers, and a test needs
-    ///     this to stand in for one. Supplied through the options so the index is never handed
-    ///     to test code before it has settled.
-    /// </summary>
-    internal Func<string, string, IEnumerable<string>>? EnumerateCacheFilesForTest { get; init; }
     internal TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 
     internal static IndexedDrive[] ValidateDrives(FileIndexOptions options)

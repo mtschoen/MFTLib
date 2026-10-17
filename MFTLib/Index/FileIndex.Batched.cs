@@ -76,7 +76,6 @@ public sealed partial class FileIndex
     {
         try
         {
-            BeforeNoListWaitResolvesDrivesForTest?.Invoke();
             var keys = ValidateBatch(drives);
             Task?[] waits;
             lock (_stateLock)
@@ -98,9 +97,6 @@ public sealed partial class FileIndex
                 RejectInsideHandler(nameof(WaitForCatchUpAsync)) ?? disposal);
         }
     }
-
-    /// <summary>A test seam invoked before catch-up wait admission.</summary>
-    internal Action? BeforeNoListWaitResolvesDrivesForTest { get; set; }
 
     bool HasWatchableBlock(DriveKey drive)
     {

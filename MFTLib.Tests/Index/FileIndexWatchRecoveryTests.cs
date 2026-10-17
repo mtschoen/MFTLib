@@ -370,7 +370,7 @@ public partial class FileIndexWatchRecoveryTests
         using var harness = new WatchHarness('T');
         await harness.Index.StartWatchingAsync(['T'], Token);
         var index = harness.Index;
-        index.RecoveryCompletionWrapperForTest = complete =>
+        index.Hooks.RecoveryCompletionWrapper = complete =>
         {
             _completingRecoveryTicket = true;
             try
@@ -406,7 +406,7 @@ public partial class FileIndexWatchRecoveryTests
     {
         var gate = harness.TrackGate();
         var held = 0;
-        harness.Index.RecoveryBeforeLifecycleGateForTest = async (letter, cancellationToken) =>
+        harness.Index.Hooks.RecoveryBeforeLifecycleGate = async (letter, cancellationToken) =>
         {
             if (letter == driveLetter && Interlocked.Exchange(ref held, 1) == 0)
             {

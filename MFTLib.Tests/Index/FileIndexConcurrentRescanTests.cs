@@ -148,7 +148,7 @@ public class FileIndexConcurrentRescanTests
         using var harness = new WatchHarness('T', 'U');
         await harness.Index.StartWatchingAsync(['T'], Token);
         var commitOfU = harness.TrackGate();
-        harness.Index.PublishInsideWriteGateForTest = driveLetter =>
+        harness.Index.Hooks.PublishInsideWriteGate = driveLetter =>
         {
             if (driveLetter == 'U')
             {
@@ -176,7 +176,7 @@ public class FileIndexConcurrentRescanTests
         using var harness = new WatchHarness('T', 'U');
         await harness.Index.StartWatchingAsync(['T'], Token);
         var batchOnT = harness.TrackGate();
-        harness.Index.ApplyJournalEntriesInsideWriteGateForTest = driveLetter =>
+        harness.Index.Hooks.ApplyJournalEntriesInsideWriteGate = driveLetter =>
         {
             if (driveLetter == 'T')
             {
@@ -206,7 +206,7 @@ public class FileIndexConcurrentRescanTests
         var index = harness.Index;
         bool? ownGateFree = null;
         bool? otherGatesFree = null;
-        index.ApplyJournalEntriesInsideWriteGateForTest = driveLetter =>
+        index.Hooks.ApplyJournalEntriesInsideWriteGate = driveLetter =>
         {
             ownGateFree = index.AreDriveGatesFreeForTest((driveLetter).Letter);
             otherGatesFree = index.AreDriveGatesFreeForTest('U');

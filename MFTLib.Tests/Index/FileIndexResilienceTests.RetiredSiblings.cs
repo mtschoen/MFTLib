@@ -86,9 +86,9 @@ public partial class FileIndexResilienceTests
             CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-" + Guid.NewGuid().ToString("N"));
         await File.WriteAllTextAsync(staleRetiredPath, "leftover from a killed process").WaitAsync(HangGuard);
         var listings = new List<string>();
-        var options = Options() with
+        var hooks = new FileIndex.IndexHooks
         {
-            EnumerateCacheFilesForTest = (directory, pattern) =>
+            EnumerateCacheFiles = (directory, pattern) =>
             {
                 listings.Add(pattern);
                 throw denied
@@ -96,8 +96,8 @@ public partial class FileIndexResilienceTests
                     : new IOException($"listing {directory} failed");
             }
         };
-
-        var index = await FileIndex.OpenAsync(options, CancellationToken.None).WaitAsync(HangGuard);
+        var index = await FileIndex.OpenWithHooksAsync(Options(), hooks, CancellationToken.None)
+            .WaitAsync(HangGuard);
         try
         {
             CollectionAssert.AreEqual(new[] { CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*" },

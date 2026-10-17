@@ -34,7 +34,7 @@ public class FileIndexWatchRescanHandoffTests
             var changes = new System.Collections.Concurrent.ConcurrentQueue<FileChange>();
             index.Changed += changes.Enqueue;
             await index.StartWatchingAsync(['T'], Token);
-            index.BeforeWatchChangedForTest = _ =>
+            index.Hooks.BeforeWatchChanged = _ =>
             {
                 delivering.MarkEntered();
                 delivering.WaitForRelease();
@@ -81,14 +81,14 @@ public class FileIndexWatchRescanHandoffTests
         var original = index.Root('T').DriveBlock;
         var catchUp = index.WaitForCatchUpAsync(['T'], Token);
         var applying = harness.TrackGate();
-        index.ApplyJournalEntriesEnteredForTest = _ =>
+        index.Hooks.ApplyJournalEntriesEntered = _ =>
         {
             applying.MarkEntered();
             applying.WaitForRelease();
         };
         var queued = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "stale.txt", 700));
         await applying.Entered.WaitAsync(HangGuard);
-        index.PublishInsideWriteGateForTest = _ =>
+        index.Hooks.PublishInsideWriteGate = _ =>
         {
             Assert.AreSame(original, index.Root('T').DriveBlock);
             Assert.IsFalse(catchUp.IsCompleted, "retirement must wait until the locked commit");
@@ -152,11 +152,11 @@ public class FileIndexWatchRescanHandoffTests
         void BeginDisposal(DriveKey _) => disposal = index.DisposeAsync().AsTask();
         if (afterDecision)
         {
-            harness.Index.RestartRequestedForTest = BeginDisposal;
+            harness.Index.Hooks.RestartRequested = BeginDisposal;
         }
         else
         {
-            harness.Index.BeforeRestartDecisionForTest = BeginDisposal;
+            harness.Index.Hooks.BeforeRestartDecision = BeginDisposal;
         }
 
         var producerFailure = new OperationCanceledException("production failed");
@@ -175,7 +175,7 @@ public class FileIndexWatchRescanHandoffTests
         var index = harness.Index;
         await harness.Index.StartWatchingAsync(['T'], Token);
         var faultSettled = harness.TrackGate();
-        harness.Index.PumpFaultSettlementWrapperForTest = settle =>
+        harness.Index.Hooks.PumpFaultSettlementWrapper = settle =>
         {
             settle();
             faultSettled.MarkEntered();
@@ -189,7 +189,7 @@ public class FileIndexWatchRescanHandoffTests
         harness.Source.WatchFor('T').FailDrive(new IOException("fault before commit"));
         await faultSettled.Entered.WaitAsync(HangGuard);
         var restart = harness.TrackGate();
-        harness.Index.BeforeRestartDecisionForTest = _ =>
+        harness.Index.Hooks.BeforeRestartDecision = _ =>
         {
             restart.MarkEntered();
             restart.WaitForRelease();
@@ -197,7 +197,7 @@ public class FileIndexWatchRescanHandoffTests
         WatchState? stateAtFault = null;
         index.WatchFaulted += _ => stateAtFault = index.Drives.Single().Watch.State;
         var publishing = harness.TrackGate();
-        harness.Index.PublishInsideWriteGateForTest = _ => publishing.MarkEntered();
+        harness.Index.Hooks.PublishInsideWriteGate = _ => publishing.MarkEntered();
         production.Release();
         // Publication can be observed while the faulted pump is held before queuing recovery.
         await publishing.Entered.WaitAsync(HangGuard);

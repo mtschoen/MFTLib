@@ -259,7 +259,7 @@ public class FileIndexDriveStatusTests
         var index = await FileIndex.OpenAsync(Options(), TestContext.CancellationTokenSource.Token)
             .WaitAsync(TimeSpan.FromSeconds(30));
         var disposals = 0;
-        index.DrivesReadBeforeLockForTest = () =>
+        index.Hooks.DrivesReadBeforeLock = () =>
         {
             if (Interlocked.Increment(ref disposals) == 1)
             {

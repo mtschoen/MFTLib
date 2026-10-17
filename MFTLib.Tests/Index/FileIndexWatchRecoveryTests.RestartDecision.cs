@@ -18,7 +18,7 @@ public partial class FileIndexWatchRecoveryTests
         var index = harness.Index;
         await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
         Task? stop = null;
-        index.RestartRequestedForTest = letter =>
+        index.Hooks.RestartRequested = letter =>
         {
             if (letter == 'T' && stop is null)
             {
@@ -26,7 +26,7 @@ public partial class FileIndexWatchRecoveryTests
             }
         };
         var registrationsReached = 0;
-        harness.Index.RestartBeforeRegistrationForTest = _ =>
+        harness.Index.Hooks.RestartBeforeRegistration = _ =>
         {
             Interlocked.Increment(ref registrationsReached);
             return Task.CompletedTask;

@@ -184,7 +184,7 @@ public sealed partial class FileIndex
 
         using (query)
         {
-            ReaderAdmittedForTest?.Invoke();
+            Hooks.ReaderAdmitted?.Invoke();
             query.CancellationToken.ThrowIfCancellationRequested();
             if (LookupEngine.FindDriveBlock(query.Snapshot, drive) is null && blocklessDriveState is { } state)
             {
@@ -221,7 +221,7 @@ public sealed partial class FileIndex
     QueryScope BeginQuery(CancellationToken cancellationToken)
     {
         var scope = AdmitQuery(cancellationToken);
-        ReaderAdmittedForTest?.Invoke();
+        Hooks.ReaderAdmitted?.Invoke();
         return scope;
     }
 

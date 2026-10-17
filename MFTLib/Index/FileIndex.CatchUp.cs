@@ -8,12 +8,6 @@ public sealed partial class FileIndex
     /// </summary>
     internal const int LostCatchUpRecoveryLimit = 3;
 
-    /// <summary>
-    ///     A test seam: invoked with the drive while a commit holds the drive's write gate,
-    ///     before it takes the state lock to publish.
-    /// </summary>
-    internal Action<DriveKey>? PublishInsideWriteGateForTest { get; set; }
-
     /// <summary>Why a published block's journal cursor cannot be resumed by a watch.</summary>
     enum UnresumableCheckpointReason
     {

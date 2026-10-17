@@ -3,17 +3,6 @@ namespace MFTLib.Index;
 public sealed partial class FileIndex
 {
     /// <summary>
-    ///     A test seam: when set, the pump calls it as <c>wrapper(settleFault)</c> around exactly
-    ///     the step that records a drive's fault and marks that drive's catch-up slot faulted,
-    ///     before its catch-up waiter is faulted and <see cref="WatchFaulted" /> is raised, so a
-    ///     test can observe what runs on the settling stack.
-    /// </summary>
-    internal Action<Action>? PumpFaultSettlementWrapperForTest { get; set; }
-
-    /// <summary>A test seam: invoked after apply releases the write gate, before Changed is raised.</summary>
-    internal Action<DriveKey>? BeforeWatchChangedForTest { get; set; }
-
-    /// <summary>
     ///     One drive's pump: reads the drive's handle until it is stopped or faults, applies each
     ///     batch, and records a fault only while its instance is still the drive's current one. On
     ///     every exit it is the handle's only disposer, and it completes the instance's
@@ -112,7 +101,7 @@ public sealed partial class FileIndex
 
         try
         {
-            BeforeWatchChangedForTest?.Invoke(runtime.Drive);
+            Hooks.BeforeWatchChanged?.Invoke(runtime.Drive);
             RaiseChanged(changes);
         }
         catch (Exception exception)
@@ -221,7 +210,7 @@ public sealed partial class FileIndex
             }
         }
 
-        if (PumpFaultSettlementWrapperForTest is { } wrapper)
+        if (Hooks.PumpFaultSettlementWrapper is { } wrapper)
         {
             wrapper(Settle);
         }

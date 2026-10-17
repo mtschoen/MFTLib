@@ -191,9 +191,9 @@ public class FileIndexDisposeCancelsQueryTests
                 admitted.TrySetResult();
                 released.Task.Wait();
             };
-            index.ReaderAdmittedForTest = holdTheReader;
+            index.Hooks.ReaderAdmitted = holdTheReader;
             index.CurrentSnapshot[0].ReleaseState._readerAdmittedForTest = holdTheReader;
-            index.LifecycleGatesTakenForDisposalForTest = () => cancellationDelivered.TrySetResult();
+            index.Hooks.LifecycleGatesTakenForDisposal = () => cancellationDelivered.TrySetResult();
 
             var reader = Task.Run(() => read(index, root));
             await admitted.Task.WaitAsync(HandshakeTimeout);

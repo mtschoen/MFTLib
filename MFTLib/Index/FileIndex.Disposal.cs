@@ -56,18 +56,6 @@ public sealed partial class FileIndex
     }
 
     /// <summary>
-    ///     A test seam: invoked once disposal holds every drive's lifecycle gate, before it waits for
-    ///     any write gate.
-    /// </summary>
-    internal Action? LifecycleGatesTakenForDisposalForTest { get; set; }
-
-    /// <summary>
-    ///     A test seam: invoked once disposal has set the disposed flag, before it cancels the
-    ///     disposal token.
-    /// </summary>
-    internal Action? DisposedFlagSetForTest { get; set; }
-
-    /// <summary>
     ///     The checkpoint of an operation that was admitted before disposal began (a rescan, a
     ///     recovery's scan, a start or a restart): once disposal has begun, the operation is
     ///     cancelled by it and ends with <see cref="OperationCanceledException" />, the outcome
@@ -109,7 +97,7 @@ public sealed partial class FileIndex
             await runtime.LifecycleGate.WaitAsync().ConfigureAwait(false);
         }
 
-        LifecycleGatesTakenForDisposalForTest?.Invoke();
+        Hooks.LifecycleGatesTakenForDisposal?.Invoke();
         foreach (var runtime in runtimes)
         {
             await runtime.WriteGate.WaitAsync().ConfigureAwait(false);

@@ -12,19 +12,9 @@ public sealed partial class FileIndex
     readonly HashSet<Task> _recoveryCompletions = [];
 
     /// <summary>
-    ///     A test seam: awaited with the drive letter and the recovery's token, which the index's
-    ///     disposal cancels, by a queued recovery before it waits for the drive's lifecycle gate, so
-    ///     a test can hold a recovery that has not started yet.
+    ///     A test observation: the completion of the drive's current recovery ticket, when it has one.
+    ///     Exposes exact recovery ticket completion identity under the state lock. Complements <see cref="IndexHooks" />.
     /// </summary>
-    internal Func<DriveKey, CancellationToken, Task>? RecoveryBeforeLifecycleGateForTest { get; set; }
-
-    /// <summary>
-    ///     A test seam: when set, a recovery calls it as <c>wrapper(complete)</c> around exactly the
-    ///     step that completes its ticket, so a test can observe what runs on that stack.
-    /// </summary>
-    internal Action<Action>? RecoveryCompletionWrapperForTest { get; set; }
-
-    /// <summary>A test seam: the completion of the drive's current recovery ticket, when it has one.</summary>
     internal bool TryGetRecoveryCompletionForTest(DriveKey drive, [NotNullWhen(true)] out Task? completion)
     {
         var runtime = GetDriveRuntime(drive);
@@ -119,7 +109,7 @@ public sealed partial class FileIndex
         Exception? failure = null;
         try
         {
-            if (RecoveryBeforeLifecycleGateForTest is { } beforeGate)
+            if (Hooks.RecoveryBeforeLifecycleGate is { } beforeGate)
             {
                 await beforeGate(runtime.Drive, ticket.Cancellation.Token).ConfigureAwait(false);
             }
@@ -230,7 +220,7 @@ public sealed partial class FileIndex
         }
         finally
         {
-            if (RecoveryCompletionWrapperForTest is { } wrapper)
+            if (Hooks.RecoveryCompletionWrapper is { } wrapper)
             {
                 wrapper(ticket.Complete);
             }

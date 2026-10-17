@@ -58,7 +58,7 @@ public class FileIndexDisposalOrderTests
     {
         using var harness = new WatchHarness('T', 'U');
         var batch = harness.TrackGate();
-        harness.Index.ApplyJournalEntriesInsideWriteGateForTest = driveLetter =>
+        harness.Index.Hooks.ApplyJournalEntriesInsideWriteGate = driveLetter =>
         {
             if (driveLetter == 'T')
             {
@@ -71,7 +71,7 @@ public class FileIndexDisposalOrderTests
             WatchHarness.JournalIdentifier, 600));
         await batch.Entered.WaitAsync(HangGuard);
         var lifecycleGatesTaken = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        index.LifecycleGatesTakenForDisposalForTest = () => lifecycleGatesTaken.TrySetResult();
+        index.Hooks.LifecycleGatesTakenForDisposal = () => lifecycleGatesTaken.TrySetResult();
 
         var disposal = index.DisposeAsync().AsTask();
         await lifecycleGatesTaken.Task.WaitAsync(HangGuard);

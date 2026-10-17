@@ -146,7 +146,7 @@ public class FileIndexDisposalRaceTests
             var queuedRescan = index.RescanAsync(['T'], CancellationToken.None);
             var settledInTheWindow = false;
             Action releaseTheScan = progress.Release;
-            index.DisposedFlagSetForTest = () =>
+            index.Hooks.DisposedFlagSet = () =>
             {
                 releaseTheScan();
                 try

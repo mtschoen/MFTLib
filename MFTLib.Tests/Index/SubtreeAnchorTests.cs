@@ -111,7 +111,7 @@ public class SubtreeAnchorTests
 
         var admissions = new int[1];
         var snapshot = harness.Index.CurrentSnapshot;
-        harness.Index.ReaderAdmittedForTest = () => Interlocked.Increment(ref admissions[0]);
+        harness.Index.Hooks.ReaderAdmitted = () => Interlocked.Increment(ref admissions[0]);
         ArgumentException exception;
         try
         {
@@ -119,7 +119,7 @@ public class SubtreeAnchorTests
         }
         finally
         {
-            harness.Index.ReaderAdmittedForTest = null;
+            harness.Index.Hooks.ReaderAdmitted = null;
         }
 
         StringAssert.Contains(exception.Message, "default FileEntry");
@@ -242,7 +242,7 @@ public class SubtreeAnchorTests
         var snapshot = harness.Index.CurrentSnapshot;
         var admitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var proceed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        harness.Index.ReaderAdmittedForTest = () =>
+        harness.Index.Hooks.ReaderAdmitted = () =>
         {
             admitted.TrySetResult();
             proceed.Task.GetAwaiter().GetResult();
@@ -262,7 +262,7 @@ public class SubtreeAnchorTests
         finally
         {
             proceed.TrySetResult();
-            harness.Index.ReaderAdmittedForTest = null;
+            harness.Index.Hooks.ReaderAdmitted = null;
         }
 
         CollectionAssert.AreEqual(DocumentsSubtree, names,

@@ -49,20 +49,6 @@ public sealed partial class FileIndex
     public event Action<WatchFault>? WatchFaulted;
 
     /// <summary>
-    ///     A test seam: invoked with the drive on entry to a watch pump's apply, before the
-    ///     drive's write gate is taken, so a test can hold a pump in the middle of applying a batch
-    ///     it has already read.
-    /// </summary>
-    internal Action<DriveKey>? ApplyJournalEntriesEnteredForTest { get; set; }
-
-    /// <summary>
-    ///     A test seam: invoked with the drive while an apply holds its drive's write gate,
-    ///     after the batch passed its instance check and read the current snapshot, and before the
-    ///     block is mutated.
-    /// </summary>
-    internal Action<DriveKey>? ApplyJournalEntriesInsideWriteGateForTest { get; set; }
-
-    /// <summary>
     ///     Applies one journal batch to a drive's block in place and raises
     ///     <see cref="Changed" /> for each applied change. This is the seam the watch pipeline
     ///     drives; it returns the batch so a caller can act on it without subscribing. A drive's
@@ -118,7 +104,7 @@ public sealed partial class FileIndex
 
         if (instance is not null)
         {
-            ApplyJournalEntriesEnteredForTest?.Invoke(validatedDrive);
+            Hooks.ApplyJournalEntriesEntered?.Invoke(validatedDrive);
         }
 
         // ApplyJournalEntries is synchronous by its public contract (it returns
@@ -146,7 +132,7 @@ public sealed partial class FileIndex
                     $"Drive {drive} was indexed by an enumeration producer and does not support journal mutation.");
             }
 
-            ApplyJournalEntriesInsideWriteGateForTest?.Invoke(validatedDrive);
+            Hooks.ApplyJournalEntriesInsideWriteGate?.Invoke(validatedDrive);
             var writer = new BlockWriter(driveBlock.Block);
             var mutator = new JournalMutator(writer);
             return mutator.Apply(driveBlock, entries, journalIdentifier, nextUsn);

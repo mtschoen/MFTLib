@@ -263,7 +263,7 @@ public class FileIndexBatchedOperationTests
         using var harness = new WatchHarness();
         harness.Index.HoldEveryRecovery();
         await harness.Index.StartWatchingAsync(['T', 'U'], Token).WaitAsync(HangGuard);
-        harness.Index.PumpFaultSettlementWrapperForTest = settle =>
+        harness.Index.Hooks.PumpFaultSettlementWrapper = settle =>
         {
             _settlingPumpFault = true;
             try

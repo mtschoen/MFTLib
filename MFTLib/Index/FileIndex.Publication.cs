@@ -122,7 +122,7 @@ public sealed partial class FileIndex
         await runtime.WriteGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            PublishInsideWriteGateForTest?.Invoke(runtime.Drive);
+            Hooks.PublishInsideWriteGate?.Invoke(runtime.Drive);
             lock (_stateLock)
             {
                 ThrowIfCancelledByDisposal(cancellationToken);

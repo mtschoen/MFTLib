@@ -242,7 +242,7 @@ public class FileIndexQueryTests
     {
         var admitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var released = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        index.ReaderAdmittedForTest = () =>
+        index.Hooks.ReaderAdmitted = () =>
         {
             admitted.TrySetResult();
             released.Task.GetAwaiter().GetResult();
@@ -257,7 +257,7 @@ public class FileIndexQueryTests
         {
             released.TrySetResult();
             await reader;
-            index.ReaderAdmittedForTest = null;
+            index.Hooks.ReaderAdmitted = null;
         }
 
         return await reader;
@@ -268,8 +268,8 @@ public class FileIndexQueryTests
         using var callerCancellation = new CancellationTokenSource();
         var cancellationDelivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Task? disposal = null;
-        index.LifecycleGatesTakenForDisposalForTest = () => cancellationDelivered.TrySetResult();
-        index.DrivesReadBeforeLockForTest = () =>
+        index.Hooks.LifecycleGatesTakenForDisposal = () => cancellationDelivered.TrySetResult();
+        index.Hooks.DrivesReadBeforeLock = () =>
         {
             disposal = index.DisposeAsync().AsTask();
             cancellationDelivered.Task.GetAwaiter().GetResult();
@@ -287,8 +287,8 @@ public class FileIndexQueryTests
         }
         finally
         {
-            index.DrivesReadBeforeLockForTest = null;
-            index.LifecycleGatesTakenForDisposalForTest = null;
+            index.Hooks.DrivesReadBeforeLock = null;
+            index.Hooks.LifecycleGatesTakenForDisposal = null;
             await (disposal ?? index.DisposeAsync().AsTask());
             Assert.IsFalse(callerCancellation.IsCancellationRequested);
         }

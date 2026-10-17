@@ -144,7 +144,7 @@ public sealed partial class FileIndex
     /// </summary>
     Task RestartRequestedWatchAsync(DriveRuntime runtime, RecoveryTicket? recovery)
     {
-        BeforeRestartDecisionForTest?.Invoke(runtime.Drive);
+        Hooks.BeforeRestartDecision?.Invoke(runtime.Drive);
         bool requested;
         lock (_stateLock)
         {
@@ -158,22 +158,9 @@ public sealed partial class FileIndex
             return Task.CompletedTask;
         }
 
-        RestartRequestedForTest?.Invoke(runtime.Drive);
+        Hooks.RestartRequested?.Invoke(runtime.Drive);
         return StartWatchingWithGateHeldAsync(runtime, restart: true, recovery, CancellationToken.None);
     }
-
-    /// <summary>
-    ///     A test seam: invoked with the drive once a rescan's or a recovery's restart has
-    ///     read that the watch is still requested, before the start re-reads it.
-    /// </summary>
-    internal Action<DriveKey>? RestartRequestedForTest { get; set; }
-
-    /// <summary>
-    ///     A test seam: invoked with the drive once a rescan or a recovery has finished its
-    ///     scans, before its restart reads whether the index is being disposed and whether the
-    ///     watch is still requested.
-    /// </summary>
-    internal Action<DriveKey>? BeforeRestartDecisionForTest { get; set; }
 
     /// <summary>
     ///     Retains a failed rescan restart as a faulted instance, so stop takes its outstanding

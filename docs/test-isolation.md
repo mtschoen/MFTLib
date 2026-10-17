@@ -109,6 +109,46 @@ The returned IDisposable owns a process-global override. Nested and overlapping 
 
 MFTLib.Tests calls `JournalIsolation.OverrideJournalWindow` directly for every journal override, sharing the public scope's single-active ownership. The three explicit live-reader cases in `UsnJournalVolumeInteropTests` pass a private `ReadLive`, which converts `JournalCheckpointCheck.ReadLiveJournal` observations into `SyntheticJournalWindow` values. A null observation remains unknown. The one-way guard is never reset.
 
+## FileIndex component injection
+
+Each FileIndex owns one internal Hooks object of type FileIndex.IndexHooks.
+Public OpenAsync creates a fresh default object. Tests that replace cache listing
+use OpenWithHooksAsync(options, hooks, cancellationToken), which supplies that
+object to construction before any drive settles. A hooks object belongs to one
+index and is instance-local, so it needs no DoNotParallelize. FileIndex.Hooks.cs
+documents each member's lock context and waiting restriction. Release test gates
+in finally blocks, and dispose the index before discarding callback state.
+
+| Member | Purpose | Test owner |
+| --- | --- | --- |
+| `EnumerateCacheFiles` | stale-sibling sweep listing | `FileIndexResilienceTests.RetiredSiblings.cs:OpenAsync_CacheMode_RetiredSiblingListingFails_OpensAndLeavesTheSibling` |
+| `DrivesReadBeforeLock` | Drives read before the state lock | `FileIndexDriveStatusTests.cs`; `FileIndexQueryTests.cs:RootAcrossDisposalAsync` |
+| `ReaderAdmitted` | query admitted, before first row | `FileIndexDisposeCancelsQueryTests.cs:ReadAcrossDisposalAsync`; `SubtreeAnchorTests.cs` |
+| `LifecycleGatesTakenForDisposal` | disposal holds lifecycle gates | `FileIndexDisposalOrderTests.cs` |
+| `DisposedFlagSet` | disposed flag set, before cancel | `FileIndexAdmittedOperationDisposalTests.cs`; `FileIndexDisposalRaceTests.cs` |
+| `PublishInsideWriteGate` | publication inside the write gate | `FileIndexConcurrentRescanTests.cs:BatchOnT_DoesNotWaitForUCommit`; `FileIndexWatchRescanHandoffTests.cs` |
+| `RecoveryBeforeLifecycleGate` | recovery before its lifecycle gate | `FileIndexWatchRecoveryTests.cs:HoldRecoveryBeforeItsGate`; `RecoveryHolds.cs` |
+| `RecoveryCompletionWrapper` | wraps recovery ticket completion | `FileIndexWatchRecoveryTests.cs:RecoveryTicketCompletion_ContinuationNotInline` |
+| `BeforeRestartDecision` | before the restart decision | `FileIndexWatchRecoveryTests.RestartDecision.cs`; `FileIndexAdmittedOperationDisposalTests.cs` |
+| `RestartRequested` | restart requested, before revalidation | `FileIndexWatchRecoveryTests.RestartDecision.cs` |
+| `RestartBeforeRegistration` | restart before registration | `FileIndexWatchRecoveryTests.StopWindow.cs`; `FileIndexAdmittedOperationDisposalTests.cs` |
+| `ApplyJournalEntriesEntered` | pump enters apply | `WatchHarness.cs:HoldFirstApply`; `FileIndexWatchRescanHandoffTests.cs` |
+| `ApplyJournalEntriesInsideWriteGate` | apply inside the write gate | `FileIndexConcurrentRescanTests.cs` |
+| `PumpFaultSettlementWrapper` | wraps pump fault settlement | `FileIndexBatchedOperationTests.cs`; `FileIndexWatchRecoveryTests.cs` |
+| `BeforeWatchChanged` | before the Changed event | `FileIndexWatchRescanHandoffTests.cs`; fault-handoff tests |
+
+### Retained observations and controls
+
+Single access paths remain for non-substitutable test observation and gate control:
+- `Task FileIndex.WaitForDriveWriteGateForTest(DriveKey)` and `void FileIndex.ReleaseDriveWriteGateForTest(DriveKey)` in `MFTLib/Index/FileIndex.DriveRuntime.cs`: Tests own a real gate acquisition and release it in `finally`. Used by `FileIndexRescanCleanupTests.cs:RescanAsync_CancelledAtTheWriteGate_RestoresTheRenamedAsideCacheFile` and `FileIndexWatchFailedRescanTests.cs:CancelledPublication_PreservesFaultAndDisposesUnpublishedBlock` to test cancellation while queued at the write gate, and by handoff tests to observe publication leaving its write gate.
+- `bool FileIndex.AreDriveGatesFreeForTest(DriveKey)` in `MFTLib/Index/FileIndex.DriveRuntime.cs`: Nonblocking acquire/release of lifecycle and write gates under a test-controlled ordering. Owned by `FileIndexConcurrentRescanTests.cs:ApplyJournalEntries_TakesOnlyItsDrivesWriteGate`, `FileIndexCatchUpLossTests.cs:CatchUpLost_HandlerRunsWithLifecycleGateHeld`, and `FileIndexDisposalOrderTests.cs:Dispose_DuringGatedRescans_CancelsThemAwaitsPumpsReleasesGates`.
+- `bool FileIndex.TryGetRecoveryCompletionForTest(DriveKey, [NotNullWhen(true)] out Task?)` in `MFTLib/Index/FileIndex.Recovery.cs`: Exposes exact recovery ticket completion identity under the state lock. Owned by `FileIndexWatchRecoveryTests.cs:RecoveryTicketCompletion_ContinuationNotInline`, `QueuedRecovery_SupersededByConsumerStart_DoesNotScan`, and harness recovery waits.
+- `long FileIndex.ContendedWatchStateDeliveriesForTest` in `MFTLib/Index/FileIndex.WatchState.cs`: Interlocked observation of actual failed DeliveryLock.TryEnter attempts. Owned by `FileIndexWatchStateChangedTests.cs:FaultStateTakenByAConcurrentStop_IsDeliveredBeforeTheFaultIsReported`.
+
+Lifecycle races are tested behaviorally without one-use test seams:
+- Freedom from `_stateLock` during `WatchStateChanged` delivery is tested positively in `FileIndexWatchStateChangedTests.cs:Handler_RunsWithoutTheStateLock_SeesItsChange_AndCannotCallLifecycleMethods`: a held subscriber permits a concurrent second thread to read `Drives` while asserting that the subscriber has not yet exited.
+- Callback reentrancy rejection during disposal is tested positively in `FileIndexCallbackReentrancyTests.cs:ChangedHandler_CallsWaitWhileDisposalBeginsDuringDriveEnumeration_GetsTheGuardException`: a caller-owned deferred `Drives` read throws `ObjectDisposedException` during `ValidateBatch` materialization, which `WaitForCatchUpAsync` translates to the reentrancy guard exception.
+
 ## Object lifetime
 
 Parallel classes allocate concurrently, so a garbage collection can land at any

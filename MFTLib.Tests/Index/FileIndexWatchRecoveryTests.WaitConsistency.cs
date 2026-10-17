@@ -31,7 +31,7 @@ public partial class FileIndexWatchRecoveryTests
         Action? thenInsideTheWindow = null)
     {
         var observation = new RestartWindowObservation();
-        harness.Index.BeforeRestartDecisionForTest = letter =>
+        harness.Index.Hooks.BeforeRestartDecision = letter =>
         {
             if (letter != driveLetter || observation.Status is not null)
             {
@@ -187,7 +187,7 @@ public partial class FileIndexWatchRecoveryTests
         var producedBefore = harness.ProductionCount('T');
         var wait = index.WaitForCatchUpAsync(['T'], Token);
         var stop = new TaskCompletionSource<Task<IReadOnlyList<DriveOperationResult>>>(TaskCreationOptions.RunContinuationsAsynchronously);
-        index.PumpFaultSettlementWrapperForTest = settle =>
+        index.Hooks.PumpFaultSettlementWrapper = settle =>
         {
             settle();
             stop.TrySetResult(index.StopWatchingAsync(['T'], Token));
@@ -222,7 +222,7 @@ public partial class FileIndexWatchRecoveryTests
         harness.ScriptScans('T', Lost('T'), Held());
         var pumpParked = harness.TrackGate();
         var parked = 0;
-        index.BeforeWatchChangedForTest = letter =>
+        index.Hooks.BeforeWatchChanged = letter =>
         {
             if (letter == 'T' && Interlocked.Exchange(ref parked, 1) == 0)
             {

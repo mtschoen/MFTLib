@@ -445,26 +445,44 @@ public class FileIndexCallbackReentrancyTests
     }
 
     [TestMethod]
-    public async Task ChangedHandler_CallsNoListWaitWhileDisposalBeginsBeforeTheDriveListResolves_GetsTheGuardException()
+    public async Task ChangedHandler_CallsWaitWhileDisposalBeginsDuringDriveEnumeration_GetsTheGuardException()
     {
         using var harness = new WatchHarness('T', 'U');
         var index = harness.Index;
-        ValueTask disposal = default;
-        index.BeforeNoListWaitResolvesDrivesForTest = () =>
-        {
-            var starter = new Thread(() => disposal = index.DisposeAsync());
-            starter.UnsafeStart();
-            Assert.IsTrue(starter.Join(HangGuard), "disposal began");
-        };
+        var materializing = harness.TrackGate();
         var outcome = NewSignal<Exception?>();
-        OnChanged(harness, "t.txt", () =>
-            outcome.TrySetResult(BlockOn(() => index.WaitForCatchUpAsync(index.Drives.Select(drive => drive.Drive), CancellationToken.None))));
+        Task? disposal = null;
+
+        IEnumerable<DriveKey> ResolveDrives()
+        {
+            materializing.MarkEntered();
+            materializing.WaitForRelease();
+            foreach (var drive in index.Drives)
+            {
+                yield return drive.Drive;
+            }
+        }
+
+        OnChanged(harness, "t.txt", () => outcome.TrySetResult(BlockOn(
+            () => index.WaitForCatchUpAsync(ResolveDrives(), CancellationToken.None))));
         await StartBothAsync(harness).WaitAsync(HangGuard);
-
-        _ = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
-
-        AssertRejected(await outcome.Task.WaitAsync(HangGuard), "WaitForCatchUpAsync");
-        await disposal.AsTask().WaitAsync(HangGuard);
+        var consumed = harness.Source.WatchFor('T').Queue(
+            WatchHarness.Batch(9, "t.txt", nextUsn: 300));
+        try
+        {
+            await materializing.Entered.WaitAsync(HangGuard);
+            disposal = index.DisposeAsync().AsTask();
+            Assert.ThrowsException<ObjectDisposedException>(() => index.Drives);
+            Assert.IsFalse(disposal.IsCompleted, "disposal still waits for the held handler's pump");
+            materializing.Release();
+            AssertRejected(await outcome.Task.WaitAsync(HangGuard), "WaitForCatchUpAsync");
+        }
+        finally
+        {
+            materializing.Release();
+            await consumed.WaitAsync(HangGuard);
+            await (disposal ?? index.DisposeAsync().AsTask()).WaitAsync(HangGuard);
+        }
     }
 
     [TestMethod]

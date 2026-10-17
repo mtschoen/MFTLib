@@ -98,7 +98,7 @@ public partial class FileIndexWatchRecoveryTests
     {
         var gate = harness.TrackGate();
         var held = 0;
-        harness.Index.RestartBeforeRegistrationForTest = async letter =>
+        harness.Index.Hooks.RestartBeforeRegistration = async letter =>
         {
             if (letter == driveLetter && Interlocked.Exchange(ref held, 1) == 0)
             {

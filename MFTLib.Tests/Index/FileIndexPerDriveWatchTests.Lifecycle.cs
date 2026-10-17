@@ -344,7 +344,7 @@ public partial class FileIndexPerDriveWatchTests
         using var harness = new WatchHarness();
         await harness.Index.StartWatchingAsync(['T'], Token);
         await harness.Index.StartWatchingAsync(['U'], Token);
-        harness.Index.PumpFaultSettlementWrapperForTest = settle =>
+        harness.Index.Hooks.PumpFaultSettlementWrapper = settle =>
         {
             _settlingPumpFault = true;
             try

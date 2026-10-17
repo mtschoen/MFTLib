@@ -67,12 +67,6 @@ public sealed partial class FileIndex
     IIndexWatchSource? WatchSourceOrNull => _options.MftSource?.WatchSource;
 
     /// <summary>
-    ///     A test seam: awaited with the drive by a rescan's or a recovery's restart just
-    ///     before it registers the drive's new instance.
-    /// </summary>
-    internal Func<DriveKey, Task>? RestartBeforeRegistrationForTest { get; set; }
-
-    /// <summary>
     ///     A consumer's start (no <paramref name="recovery" />) clears the drive's recovery ticket,
     ///     which it supersedes; a recovery's restart keeps its own.
     /// </summary>
@@ -108,7 +102,7 @@ public sealed partial class FileIndex
             await AwaitQueuedAsync(previousDrain, cancellationToken, CancellationToken.None).ConfigureAwait(false);
         }
 
-        if (restart && RestartBeforeRegistrationForTest is { } beforeRegistration)
+        if (restart && Hooks.RestartBeforeRegistration is { } beforeRegistration)
         {
             await beforeRegistration(drive).ConfigureAwait(false);
         }

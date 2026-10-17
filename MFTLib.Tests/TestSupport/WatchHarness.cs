@@ -185,7 +185,7 @@ internal sealed class WatchHarness : IDisposable
     {
         var gate = TrackGate();
         var held = 0;
-        Index.ApplyJournalEntriesEnteredForTest = letter =>
+        Index.Hooks.ApplyJournalEntriesEntered = letter =>
         {
             if (letter == driveLetter && Interlocked.Exchange(ref held, 1) == 0)
             {

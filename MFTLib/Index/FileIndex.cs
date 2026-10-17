@@ -9,8 +9,8 @@ namespace MFTLib.Index;
 ///     snapshot keep the old block mapped until they are collected, so a held handle never
 ///     dangles across a rescan. Split into partial files by responsibility: this file is
 ///     construction and the read surface, <c>FileIndex.Scanning.cs</c> is the cold-scan and
-///     warm-start path used when opening a drive, and <c>FileIndex.Rescan.cs</c> is rescanning
-///     and snapshot publication.
+///     warm-start path used when opening a drive, <c>FileIndex.Rescan.cs</c> is rescanning
+///     and snapshot publication, and <c>FileIndex.Hooks.cs</c> is internal test injection and isolation hooks.
 /// </summary>
 public sealed partial class FileIndex : IAsyncDisposable
 {
@@ -81,11 +81,11 @@ public sealed partial class FileIndex : IAsyncDisposable
     void ClaimSettledCountLocked(DriveKey drive) =>
         _settledCountsByDrive[drive] = _settledCountsByDrive.Count + 1;
 
-    FileIndex(FileIndexOptions options, string cacheDirectoryPath)
+    FileIndex(FileIndexOptions options, string cacheDirectoryPath, IndexHooks hooks)
     {
         _options = options;
         CacheDirectoryPath = cacheDirectoryPath;
-        _enumerateCacheFiles = options.EnumerateCacheFilesForTest ?? Directory.EnumerateFiles;
+        Hooks = hooks;
         foreach (var configuredDrive in _options.Drives)
         {
             var drive = configuredDrive.Drive.Validated();
@@ -106,7 +106,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     {
         get
         {
-            DrivesReadBeforeLockForTest?.Invoke();
+            Hooks.DrivesReadBeforeLock?.Invoke();
             lock (_stateLock)
             {
                 // Checked under the lock: disposal sets the flag under it before it unpublishes
@@ -123,15 +123,6 @@ public sealed partial class FileIndex : IAsyncDisposable
             }
         }
     }
-
-    /// <summary>A test seam: invoked by a read of <see cref="Drives" /> just before it takes <see cref="_stateLock" />.</summary>
-    internal Action? DrivesReadBeforeLockForTest { get; set; }
-
-    /// <summary>
-    ///     A test seam: invoked by an admitted query once its borrow is counted and before it reads a
-    ///     row, outside every lock. The borrow is already counted when this runs, so it must not throw.
-    /// </summary>
-    internal Action? ReaderAdmittedForTest { get; set; }
 
     internal IReadOnlyList<DriveBlock> CurrentSnapshot
     {
@@ -171,8 +162,15 @@ public sealed partial class FileIndex : IAsyncDisposable
     ///     contains a null or invalid drive, or lists a drive more than once.
     /// </exception>
     /// <exception cref="OperationCanceledException">The token was cancelled before the open finished.</exception>
-    public static async Task<FileIndex> OpenAsync(FileIndexOptions options,
-        CancellationToken cancellationToken)
+    public static Task<FileIndex> OpenAsync(FileIndexOptions options,
+        CancellationToken cancellationToken) =>
+        OpenWithHooksAsync(options, new IndexHooks(), cancellationToken);
+
+    /// <summary>
+    ///     Opens an index with the supplied per-index hooks, invoking open-time dependencies before returning.
+    /// </summary>
+    internal static async Task<FileIndex> OpenWithHooksAsync(FileIndexOptions options,
+        IndexHooks hooks, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(options);
 
@@ -192,7 +190,7 @@ public sealed partial class FileIndex : IAsyncDisposable
             CacheDirectory.EnsureCreated(cacheDirectoryPath);
         }
 
-        var index = new FileIndex(options, cacheDirectoryPath);
+        var index = new FileIndex(options, cacheDirectoryPath, hooks);
         try
         {
             await index.SettleDrivesAsync(cancellationToken).ConfigureAwait(false);
@@ -302,7 +300,7 @@ public sealed partial class FileIndex : IAsyncDisposable
             _disposed = true;
         }
 
-        DisposedFlagSetForTest?.Invoke();
+        Hooks.DisposedFlagSet?.Invoke();
 
         // Before the gates, not after: a query already inside the index holds a borrow that every
         // release below waits for, so it has to be told to stop before anything starts waiting on

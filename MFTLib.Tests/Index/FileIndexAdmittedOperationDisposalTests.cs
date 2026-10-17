@@ -32,7 +32,7 @@ public class FileIndexAdmittedOperationDisposalTests
         await production.Entered.WaitAsync(HangGuard);
         var start = index.StartWatchingAsync(['T'], Token);
         var settledInTheWindow = false;
-        index.DisposedFlagSetForTest = () =>
+        index.Hooks.DisposedFlagSet = () =>
         {
             production.Release();
             try
@@ -76,7 +76,7 @@ public class FileIndexAdmittedOperationDisposalTests
         }), new WatchHarnessScan());
         var lostRaised = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var flagSet = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        index.DisposedFlagSetForTest = () => flagSet.TrySetResult();
+        index.Hooks.DisposedFlagSet = () => flagSet.TrySetResult();
         index.WatchFaulted += fault =>
         {
             if (fault.Kind == WatchFaultKind.CatchUpLost)
@@ -111,8 +111,8 @@ public class FileIndexAdmittedOperationDisposalTests
         await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
         var decisionReached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var flagSet = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        index.DisposedFlagSetForTest = () => flagSet.TrySetResult();
-        index.BeforeRestartDecisionForTest = _ =>
+        index.Hooks.DisposedFlagSet = () => flagSet.TrySetResult();
+        index.Hooks.BeforeRestartDecision = _ =>
         {
             decisionReached.TrySetResult();
             TestGate.WaitSynchronously(flagSet.Task);
@@ -139,8 +139,8 @@ public class FileIndexAdmittedOperationDisposalTests
         await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
         var decisionReached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var flagSet = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        index.DisposedFlagSetForTest = () => flagSet.TrySetResult();
-        index.BeforeRestartDecisionForTest = _ =>
+        index.Hooks.DisposedFlagSet = () => flagSet.TrySetResult();
+        index.Hooks.BeforeRestartDecision = _ =>
         {
             decisionReached.TrySetResult();
             TestGate.WaitSynchronously(flagSet.Task);
@@ -166,7 +166,7 @@ public class FileIndexAdmittedOperationDisposalTests
         var index = harness.Index;
         await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
         Task? disposal = null;
-        index.RestartRequestedForTest = _ => disposal ??= index.DisposeAsync().AsTask();
+        index.Hooks.RestartRequested = _ => disposal ??= index.DisposeAsync().AsTask();
 
         await DriveResultAssertions.FailureAsync<OperationCanceledException>(
             () => index.RescanAsync(['T'], Token)).WaitAsync(HangGuard);
@@ -183,7 +183,7 @@ public class FileIndexAdmittedOperationDisposalTests
         var index = harness.Index;
         await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
         Task? disposal = null;
-        index.RestartBeforeRegistrationForTest = _ =>
+        index.Hooks.RestartBeforeRegistration = _ =>
         {
             disposal ??= index.DisposeAsync().AsTask();
             return Task.CompletedTask;
