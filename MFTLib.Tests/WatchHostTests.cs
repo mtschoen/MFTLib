@@ -41,7 +41,7 @@ public class WatchHostTests
         Assert.IsTrue(text.Contains("launches its broker elevated", StringComparison.Ordinal));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("scan C", DisplayName = "scan")]
     [DataRow("", DisplayName = "default-watch-verb")]
     public void Run_Unattended_NeverLaunchesTheBroker(string commandLine)

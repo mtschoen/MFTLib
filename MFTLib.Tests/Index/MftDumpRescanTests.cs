@@ -104,7 +104,7 @@ public sealed class MftDumpRescanTests : IDisposable
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
-        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(
+        await Assert.ThrowsAsync<OperationCanceledException>(
             () => index.RescanAsync(['D'], cancellation.Token));
         Assert.IsNotNull(index.Find(NotesPath));
         Assert.IsNull(index.Find(RenamedPath));
@@ -119,7 +119,7 @@ public sealed class MftDumpRescanTests : IDisposable
         var producer = new MftDumpBlockProducer(path, TimeProvider.System, CancelOnTheSecondScan(cancellation));
         await using var index = await OpenAsync(Source(producer, path));
 
-        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(
+        await Assert.ThrowsAsync<OperationCanceledException>(
             () => index.RescanAsync(['D'], cancellation.Token));
         Assert.IsNotNull(index.Find(NotesPath));
         using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);

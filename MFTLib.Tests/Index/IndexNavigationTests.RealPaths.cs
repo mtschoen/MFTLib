@@ -79,7 +79,7 @@ public partial class IndexNavigationTests
         DriveBlock[] snapshot = [new DriveBlock('T', 0, block)];
         try
         {
-            var exception = Assert.ThrowsException<InvalidOperationException>(
+            var exception = Assert.ThrowsExactly<InvalidOperationException>(
                 () => _ = FileEntry.Create(snapshot[0], orphan).Path);
             StringAssert.Contains(exception.Message, "root directory");
         }

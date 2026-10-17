@@ -10,7 +10,7 @@ public partial class MftResultTests
     {
         MFTLibNative.Hooks.GetMftNativeAbiVersion = () => 999;
 
-        var ex = Assert.ThrowsException<InvalidOperationException>(MFTLibNative.EnsureCompatibleNativeAbi);
+        var ex = Assert.ThrowsExactly<InvalidOperationException>(MFTLibNative.EnsureCompatibleNativeAbi);
         Assert.IsTrue(ex.Message.Contains("ABI mismatch"));
     }
 }

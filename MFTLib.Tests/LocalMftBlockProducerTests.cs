@@ -164,7 +164,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
     }
 
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false, DisplayName = "normal-reopen-unmoved-journal")]
     [DataRow(true, DisplayName = "cache-only-reopen-unmoved-journal")]
     public async Task Produce_CachePathBlockSurvivesDisposal(bool cacheOnly)
@@ -218,7 +218,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
         Cancels
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(ScanTermination.Completes, DisplayName = "completion-releases-allowance")]
     [DataRow(ScanTermination.Fails, DisplayName = "failure-releases-allowance")]
     [DataRow(ScanTermination.Cancels, DisplayName = "cancellation-releases-allowance")]
@@ -274,12 +274,12 @@ public sealed class LocalMftBlockProducerTests : IDisposable
                 break;
             case ScanTermination.Fails:
                 gateT.Release();
-                await Assert.ThrowsExceptionAsync<IOException>(() => taskT);
+                await Assert.ThrowsExactlyAsync<IOException>(() => taskT);
                 break;
             case ScanTermination.Cancels:
                 cancellationT.Cancel();
                 gateT.Release();
-                await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => taskT);
+                await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => taskT);
                 break;
         }
 
@@ -292,7 +292,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
         Assert.AreEqual(0, allocator.QueuedScanCount);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(-1L, 0u)]
     [DataRow(4294967296L, uint.MaxValue)]
     public async Task Produce_ProgressFlowsToIndexRequestWithSaturatedCounts(long count, uint expected)
@@ -322,7 +322,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
         var producer = new LocalMftBlockProducer(TimeProvider.System, null,
             Scripted(scan: CancellingScan(cancellation)));
 
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(
             () => ProducerOf(producer)(request, cancellation.Token));
 
         Assert.IsFalse(File.Exists(request.BlockPath));
@@ -349,7 +349,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
             return Volume;
         }));
 
-        await Assert.ThrowsExceptionAsync<TaskCanceledException>(
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(
             () => ProducerOf(producer)(Request(), new CancellationToken(true)));
 
         Assert.IsFalse(queried);
@@ -363,7 +363,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
         var producer = new LocalMftBlockProducer(TimeProvider.System, null,
             Scripted(scan: (_, _, _, _, _, _) => throw new IOException(message)));
 
-        var failure = await Assert.ThrowsExceptionAsync<IOException>(
+        var failure = await Assert.ThrowsExactlyAsync<IOException>(
             () => ProducerOf(producer)(request, TestContext.CancellationTokenSource.Token));
 
         Assert.AreEqual(message, failure.Message);
@@ -376,7 +376,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
         var request = Request();
         var producer = new LocalMftBlockProducer(TimeProvider.System, null, Scripted(scan: (_, _, _, _, _, _) => []));
 
-        var failure = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+        var failure = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => ProducerOf(producer)(request, TestContext.CancellationTokenSource.Token));
 
         StringAssert.Contains(failure.Message, "RowCount");
@@ -438,7 +438,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
             return;
         }
 
-        Assert.ThrowsException<PlatformNotSupportedException>(
+        Assert.ThrowsExactly<PlatformNotSupportedException>(
             () => LiveVolumeAccess.Instance.QueryVolumeInformation('T'));
     }
 }

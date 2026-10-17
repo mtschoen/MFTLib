@@ -31,7 +31,7 @@ public class NativeCleanupRegressionTests
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public void VolumeRecordWithoutDataRuns_ReturnsError(bool resident)
@@ -73,7 +73,7 @@ public class NativeCleanupRegressionTests
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public unsafe void OversizedJournalName_ReportsCopiedLength(bool watch)

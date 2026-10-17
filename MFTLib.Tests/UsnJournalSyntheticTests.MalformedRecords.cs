@@ -15,7 +15,7 @@ public partial class UsnJournalSyntheticTests
     ///     <see cref="UsnJournalVolume.WatchUsnJournal" />: well-formed records before the malformed record are
     ///     returned, and the malformed record and any records after it in the buffer are dropped.
     /// </summary>
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false, 8u)]
     [DataRow(false, 59u)]
     [DataRow(true, 8u)]
@@ -45,7 +45,7 @@ public partial class UsnJournalSyntheticTests
     ///     both <see cref="UsnJournalVolume.ReadUsnJournalBounded" /> and <see cref="UsnJournalVolume.WatchUsnJournal" />:
     ///     well-formed records before the truncated record are returned, and the truncated record is dropped.
     /// </summary>
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false, 68, 72u)]
     [DataRow(false, 64, 72u)]
     [DataRow(false, 60, 64u)]
@@ -76,7 +76,7 @@ public partial class UsnJournalSyntheticTests
     ///     (either inside the fixed header or at/past <c>RecordLength</c>), the record is retained with an
     ///     empty <see cref="UsnJournalEntry.FileName" /> and the buffer walk continues to subsequent records.
     /// </summary>
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false, (ushort)8)]
     [DataRow(false, (ushort)59)]
     [DataRow(false, (ushort)64)]
@@ -114,7 +114,7 @@ public partial class UsnJournalSyntheticTests
     ///     clamped to the whole <c>WCHAR</c> units within <c>[FileNameOffset, RecordLength)</c> and the buffer
     ///     walk continues cleanly to subsequent records.
     /// </summary>
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false, (ushort)60, (ushort)16, "ab")]
     [DataRow(false, (ushort)63, (ushort)8, "")]
     [DataRow(true, (ushort)60, (ushort)16, "ab")]

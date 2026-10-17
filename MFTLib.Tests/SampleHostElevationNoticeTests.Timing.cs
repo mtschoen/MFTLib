@@ -31,7 +31,7 @@ partial class SampleHostElevationNoticeTests
 
     // The caller resumes only after the dialog thread is done, so an immediate answer followed by a long delay before
     // the caller runs must still be judged by the time the dialog was on screen, which was none.
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(SampleHost.MessageBoxResultOk)]
     [DataRow(SampleHost.MessageBoxResultCancel)]
     public void Run_NotElevated_ImmediateAnswerThenALongCallerDelay_IsStillAccidentalAndShownAgain(int button)
@@ -70,7 +70,7 @@ partial class SampleHostElevationNoticeTests
         CollectionAssert.AreEqual(new[] { "dialog", "dialog", "elevate" }, events);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(SampleHost.MessageBoxResultOk)]
     [DataRow(SampleHost.MessageBoxResultCancel)]
     public void Run_NotElevated_ImmediateAnswerThenForcedCallerDelayAtNextBeep_IsStillAccidentalAndShownAgain(int button)

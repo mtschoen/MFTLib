@@ -12,7 +12,7 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse([], out var parsed, out var error));
 
         Assert.IsNull(error);
-        Assert.AreEqual(WatchVerb.Watch, parsed.Verb);
+        Assert.AreEqual(WatchVerb.Watch, parsed!.Verb);
         Assert.AreEqual(0, parsed.Drives.Count);
         Assert.IsNull(parsed.Seconds);
         Assert.IsTrue(parsed.NeedsDrives);
@@ -23,18 +23,18 @@ public class WatchArgumentsTests
     {
         Assert.IsTrue(WatchArguments.TryParse(["C", "D:"], out var parsed, out _));
 
-        Assert.AreEqual(WatchVerb.Watch, parsed.Verb);
+        Assert.AreEqual(WatchVerb.Watch, parsed!.Verb);
         CollectionAssert.AreEqual(new[] { "C", "D" }, parsed.Drives.ToArray());
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("scan")]
     [DataRow("SCAN")]
     public void TryParse_VerbName_SelectsTheVerbAndKeepsTheDrivesAfterIt(string name)
     {
         Assert.IsTrue(WatchArguments.TryParse([name, "C", "E"], out var parsed, out _));
 
-        Assert.AreEqual(WatchVerb.Scan, parsed.Verb);
+        Assert.AreEqual(WatchVerb.Scan, parsed!.Verb);
         CollectionAssert.AreEqual(new[] { "C", "E" }, parsed.Drives.ToArray());
     }
 
@@ -43,11 +43,11 @@ public class WatchArgumentsTests
     {
         Assert.IsTrue(WatchArguments.TryParse(["scan"], out var parsed, out _));
 
-        Assert.AreEqual(WatchVerb.Scan, parsed.Verb);
+        Assert.AreEqual(WatchVerb.Scan, parsed!.Verb);
         Assert.AreEqual(0, parsed.Drives.Count);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("cache", false)]
     [DataRow("elevation-status", false)]
     [DataRow("rescan", true)]
@@ -56,7 +56,7 @@ public class WatchArgumentsTests
     {
         Assert.IsTrue(WatchArguments.TryParse([name], out var parsed, out _));
 
-        Assert.AreEqual(expected, parsed.NeedsDrives);
+        Assert.AreEqual(expected, parsed!.NeedsDrives);
     }
 
     [TestMethod]
@@ -73,7 +73,7 @@ public class WatchArgumentsTests
     {
         Assert.IsTrue(WatchArguments.TryParse(["scan", "C"], out var parsed, out _));
 
-        Assert.AreEqual(ElevationNeed.BrokerLaunch, parsed.Need);
+        Assert.AreEqual(ElevationNeed.BrokerLaunch, parsed!.Need);
     }
 
     [TestMethod]
@@ -92,7 +92,7 @@ public class WatchArgumentsTests
         StringAssert.Contains(WatchArguments.Usage, "an unattended run that is not elevated exits 1 without watching");
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("watch", "Watch")]
     [DataRow("rescan", "Rescan")]
     [DataRow("journal", "Journal")]
@@ -100,7 +100,7 @@ public class WatchArgumentsTests
     {
         Assert.IsTrue(WatchArguments.TryParse([name], out var parsed, out _));
 
-        Assert.AreEqual(verb, parsed.Verb.ToString());
+        Assert.AreEqual(verb, parsed!.Verb.ToString());
         Assert.AreEqual(0, parsed.Drives.Count);
         Assert.AreEqual(ElevationNeed.BrokerLaunch, parsed.Need);
     }
@@ -110,12 +110,12 @@ public class WatchArgumentsTests
     {
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--seconds", "45"], out var parsed, out _));
 
-        Assert.AreEqual(45, parsed.Seconds);
+        Assert.AreEqual(45, parsed!.Seconds);
         Assert.IsTrue(WatchArguments.TryParse(["watch"], out var plain, out _));
-        Assert.IsNull(plain.Seconds, "Without --seconds an attended watch runs until a key press.");
+        Assert.IsNull(plain!.Seconds, "Without --seconds an attended watch runs until a key press.");
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("0")]
     [DataRow("4294967295")]
     [DataRow("4294967296")]
@@ -127,17 +127,17 @@ public class WatchArgumentsTests
         Assert.AreEqual("Option --seconds must be from 1 to 2147483.", error);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("1", 1)]
     [DataRow("2147483", 2147483)]
     public void TryParse_SecondsAtTheEdgesOfTheDelayRange_AreAccepted(string seconds, int expected)
     {
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--seconds", seconds], out var parsed, out _));
 
-        Assert.AreEqual(expected, parsed.Seconds);
+        Assert.AreEqual(expected, parsed!.Seconds);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("watch")]
     [DataRow("rescan")]
     [DataRow("journal")]
@@ -154,7 +154,7 @@ public class WatchArgumentsTests
         Assert.AreEqual("'C:x' is not a drive letter.", path);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public void TryParse_CacheWithAGarbageToken_IsRefusedWithAndWithoutClear(bool clear)
@@ -179,7 +179,7 @@ public class WatchArgumentsTests
     {
         Assert.IsTrue(WatchArguments.TryParse(["cache", "c:", "d"], out var parsed, out _));
 
-        CollectionAssert.AreEqual(new[] { "C", "D" }, parsed.Drives.ToArray());
+        CollectionAssert.AreEqual(new[] { "C", "D" }, parsed!.Drives.ToArray());
     }
 
     [TestMethod]
@@ -187,10 +187,10 @@ public class WatchArgumentsTests
     {
         Assert.IsTrue(WatchArguments.TryParse(["journal", "C", "--maximum-size", "9000", "--allocation-delta", "4096"], out var parsed, out _));
 
-        Assert.AreEqual((9000L, 4096L), (parsed.MaximumSize, parsed.AllocationDelta));
+        Assert.AreEqual((9000L, 4096L), (parsed!.MaximumSize, parsed.AllocationDelta));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(new[] { "journal", "C", "--maximum-size", "9000" }, "journal needs --maximum-size and --allocation-delta together.")]
     [DataRow(new[] { "journal", "C", "--allocation-delta", "1" }, "journal needs --maximum-size and --allocation-delta together.")]
     [DataRow(new[] { "watch", "C", "--clear" }, "Option --clear does not apply to watch.")]
@@ -206,7 +206,7 @@ public class WatchArgumentsTests
         Assert.AreEqual(expected, error);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(new[] { "scan", "C", "--seconds", "5" }, "Option --seconds does not apply to scan.")]
     [DataRow(new[] { "C", "--allocation-delta", "5" }, "Option --allocation-delta does not apply to watch.")]
     [DataRow(new[] { "watch", "C", "--maximum-size", "1" }, "Option --maximum-size does not apply to watch.")]
@@ -224,7 +224,7 @@ public class WatchArgumentsTests
         Assert.AreEqual(expected, error);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("scan")]
     [DataRow("watch")]
     [DataRow("rescan")]
@@ -233,11 +233,11 @@ public class WatchArgumentsTests
     {
         Assert.IsTrue(WatchArguments.TryParse([verb, "C", "--keep-name", "a.txt", "--cache-directory", "folder"], out var parsed, out var error), error);
 
-        Assert.AreEqual("folder", parsed.CacheDirectory);
+        Assert.AreEqual("folder", parsed!.CacheDirectory);
         CollectionAssert.AreEqual(new[] { "a.txt" }, parsed.RetainedFileNames!.ToArray());
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("Aa", "BB")]
     [DataRow("b", "a")]
     [DataRow("keep63926.txt", "keep68897.txt")]
@@ -248,7 +248,7 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", keepOne], out var one, out _));
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", keepTwo], out var two, out _));
 
-        Assert.AreNotEqual(one.PolicyDirectoryName, two.PolicyDirectoryName);
+        Assert.AreNotEqual(one!.PolicyDirectoryName, two!.PolicyDirectoryName);
     }
 
     [TestMethod]
@@ -256,7 +256,7 @@ public class WatchArgumentsTests
     {
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", "a.txt"], out var parsed, out _));
 
-        StringAssert.Matches(parsed.PolicyDirectoryName, new System.Text.RegularExpressions.Regex("^policy-[0-9a-f]{64}$"));
+        StringAssert.Matches(parsed!.PolicyDirectoryName, new System.Text.RegularExpressions.Regex("^policy-[0-9a-f]{64}$"));
     }
 
     [TestMethod]
@@ -265,7 +265,7 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", "a.txt,b.txt"], out var one, out _));
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", "b.txt, a.txt"], out var two, out _));
 
-        Assert.AreEqual(one.PolicyDirectoryName, two.PolicyDirectoryName);
+        Assert.AreEqual(one!.PolicyDirectoryName, two!.PolicyDirectoryName);
     }
 
     [TestMethod]
@@ -274,8 +274,8 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse(["cache", "--cache-directory", "cache-folder", "--clear"], out var cache, out _));
         Assert.IsTrue(WatchArguments.TryParse(["elevation-status"], out var status, out _));
 
-        Assert.AreEqual(ElevationNeed.None, cache.Need);
-        Assert.AreEqual(ElevationNeed.None, status.Need);
+        Assert.AreEqual(ElevationNeed.None, cache!.Need);
+        Assert.AreEqual(ElevationNeed.None, status!.Need);
         Assert.AreEqual(0, cache.Drives.Count);
         Assert.AreEqual("cache-folder", cache.CacheDirectory);
         Assert.IsTrue(cache.Clear);
@@ -288,10 +288,10 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C"], out var plain, out _));
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--directories-only"], out var directories, out _));
 
-        var options = parsed.ScanOptions!;
+        var options = parsed!.ScanOptions!;
         CollectionAssert.AreEqual(new[] { "desktop.ini", ".gitignore" }, options.RetainedFileNames!.ToArray());
-        Assert.AreEqual(0, directories.ScanOptions!.RetainedFileNames!.Count);
-        Assert.AreNotEqual(plain.PolicyDirectoryName, directories.PolicyDirectoryName);
+        Assert.AreEqual(0, directories!.ScanOptions!.RetainedFileNames!.Count);
+        Assert.AreNotEqual(plain!.PolicyDirectoryName, directories.PolicyDirectoryName);
         Assert.AreNotEqual(parsed.PolicyDirectoryName, directories.PolicyDirectoryName);
         Assert.AreEqual(new MFTLib.Index.CacheTag("SMPW", 2), WatchArguments.CacheTag);
         Assert.IsNull(plain.ScanOptions);

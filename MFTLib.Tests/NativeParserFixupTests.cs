@@ -58,7 +58,7 @@ public sealed class NativeParserFixupTests : IDisposable
         var dump = MftDumpFixture.Standard();
         SetArray(Record(dump, 1024, HostileRecord), arrayOffset, arraySize);
 
-        var failure = Assert.ThrowsException<InvalidDataException>(() => ParseNames(dump), description);
+        var failure = Assert.ThrowsExactly<InvalidDataException>(() => ParseNames(dump), description);
 
         Assert.AreEqual(InvalidFixupMessage, failure.Message, description);
     }
@@ -91,7 +91,7 @@ public sealed class NativeParserFixupTests : IDisposable
         var tail = Record(dump, recordSize, HostileRecord).Slice(sector * 512 - 2, 2);
         tail[0] ^= 0xFF;
 
-        var failure = Assert.ThrowsException<InvalidDataException>(() => ParseNames(dump));
+        var failure = Assert.ThrowsExactly<InvalidDataException>(() => ParseNames(dump));
 
         Assert.AreEqual(InvalidFixupMessage, failure.Message);
     }
@@ -118,7 +118,7 @@ public sealed class NativeParserFixupTests : IDisposable
         var dump = MftDumpFixture.Standard(4096);
         SetArray(Record(dump, 4096, HostileRecord), 0x30, 3);
 
-        var failure = Assert.ThrowsException<InvalidDataException>(() => ParseNames(dump));
+        var failure = Assert.ThrowsExactly<InvalidDataException>(() => ParseNames(dump));
 
         Assert.AreEqual(InvalidFixupMessage, failure.Message);
     }

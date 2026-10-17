@@ -74,7 +74,7 @@ public class JournalMutatorHydrationTests
         Assert.IsNull(change.PreviousPath);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(22ul, "orphan.cs", (uint)UsnReason.DataOverwrite)]
     [DataRow(25ul, "orphan-delete.cs", (uint)UsnReason.FileDelete)]
     [DataRow(26ul, "orphan-rename.cs", (uint)UsnReason.RenameNewName)]

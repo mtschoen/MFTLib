@@ -32,7 +32,7 @@ public class FileIndexWatchRescanCommitTests
         Assert.AreSame(fault.Exception, stopped.Single(result => result.Drive == 'T').Failure);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task StopOrDisposal_DuringRestart_RecordsNoRescanFault(bool dispose)
@@ -53,7 +53,7 @@ public class FileIndexWatchRescanCommitTests
         Assert.AreEqual(0, harness.Faults.Count);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task FailedProduction_KeepsTheWatchAndPendingCatchUp(bool cancel)
@@ -79,7 +79,7 @@ public class FileIndexWatchRescanCommitTests
         if (cancel)
         {
             await cancellation.CancelAsync();
-            await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => rescan);
+            await Assert.ThrowsAsync<OperationCanceledException>(() => rescan);
         }
         else
         {
@@ -96,7 +96,7 @@ public class FileIndexWatchRescanCommitTests
         await harness.Index.StopWatchingAsync(['T'], Token);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task RestartFailure_IsARescanFaultAndStopReportsItOnceAsFailedResult(bool alreadyFaulted)
@@ -136,7 +136,7 @@ public class FileIndexWatchRescanCommitTests
         await harness.Index.StopWatchingAsync(['U'], Token);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task FaultDuringProduction_RecoversOnlyWhenTheScanFails(bool scanFails)

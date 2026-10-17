@@ -66,7 +66,7 @@ public sealed class MftDumpInputFaultTests : IDisposable
     {
         NativeTestHooks.NativeSetFailPlatformRead(1);
 
-        var failure = Assert.ThrowsException<InvalidDataException>(() => MftDumpInput.Open(_path));
+        var failure = Assert.ThrowsExactly<InvalidDataException>(() => MftDumpInput.Open(_path));
 
         Assert.AreEqual(MftDumpInputTests.IncompleteMessage, failure.Message);
     }
@@ -88,7 +88,7 @@ public sealed class MftDumpInputFaultTests : IDisposable
     {
         NativeTestHooks.NativeSetFailFileSize(1);
 
-        var failure = Assert.ThrowsException<IOException>(() => MftDumpInput.Open(_path));
+        var failure = Assert.ThrowsExactly<IOException>(() => MftDumpInput.Open(_path));
 
         Assert.AreEqual("Failed to get file size", failure.Message);
     }
@@ -98,7 +98,7 @@ public sealed class MftDumpInputFaultTests : IDisposable
     {
         NativeTestHooks.NativeSetAllocFailCountdown(1);
 
-        var failure = Assert.ThrowsException<IOException>(() => MftDumpInput.Open(_path));
+        var failure = Assert.ThrowsExactly<IOException>(() => MftDumpInput.Open(_path));
 
         Assert.AreEqual("Failed to allocate dump input", failure.Message);
         File.Delete(_path);
@@ -121,7 +121,7 @@ public sealed class MftDumpInputFaultTests : IDisposable
     {
         MFTLibNative.Hooks.GetMftNativeAbiVersion = () => MFTLibNative.ExpectedMftNativeAbiVersion - 1;
 
-        var failure = Assert.ThrowsException<InvalidOperationException>(
+        var failure = Assert.ThrowsExactly<InvalidOperationException>(
             () => MftDumpInput.Open(Path.Combine(_directory, "absent.mft")));
 
         StringAssert.Contains(failure.Message, "ABI mismatch");

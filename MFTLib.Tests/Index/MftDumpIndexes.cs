@@ -37,12 +37,12 @@ internal static class MftDumpIndexes
     /// <summary>Runs <paramref name="action" /> on the index and returns the exception it throws.</summary>
     internal static TException Throws<TException>(FileIndex index, Action<FileIndex> action)
         where TException : Exception =>
-        Assert.ThrowsException<TException>(() => action(index));
+        Assert.ThrowsExactly<TException>(() => action(index));
 
     /// <summary>Awaits <paramref name="action" /> on the index and returns the exception it throws.</summary>
     internal static Task<TException> ThrowsAsync<TException>(FileIndex index, Func<FileIndex, Task> action)
         where TException : Exception =>
-        Assert.ThrowsExceptionAsync<TException>(() => action(index));
+        Assert.ThrowsExactlyAsync<TException>(() => action(index));
 
     static BlockFile Build(MftBlockProduceRequest request) =>
         SyntheticBlock.Build(request.BlockPath, request.VolumeSerial, request.DeleteOnClose,

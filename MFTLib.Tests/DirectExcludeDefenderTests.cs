@@ -112,7 +112,7 @@ public class DirectExcludeDefenderTests
         Assert.AreEqual(AppliedExitCode, Host(lines, true, false).Run(["Exclude-Defender"]));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(true)]
     [DataRow(false)]
     public void Run_UnelevatedButAbleToRelaunch_RelaunchesWithTheVerbAndReportsItsResult(bool relaunchResult)
@@ -138,7 +138,7 @@ public class DirectExcludeDefenderTests
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(true, DisplayName = "self-elevating route")]
     [DataRow(false, DisplayName = "PowerShell fallback route")]
     public void Run_UnelevatedAndTheHeadsUpIsCancelled_MakesNoLibraryCallAndFails(bool canSelfElevate)

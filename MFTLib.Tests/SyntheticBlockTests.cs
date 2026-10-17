@@ -154,7 +154,7 @@ public sealed partial class SyntheticBlockTests : IDisposable
         Assert.AreEqual(Cursor.NextUsn, block.Header.UsnNextUsn);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false, DisplayName = "missing-root-row")]
     [DataRow(true, DisplayName = "#360-empty-rows")]
     public void WriteCached_RootRowMissingFromTheRows_YieldsABlockTheReaderRejects(bool emptyRows)
@@ -256,11 +256,11 @@ public sealed partial class SyntheticBlockTests : IDisposable
         SyntheticBlockEditor? kept = null;
         SyntheticBlock.Edit(path, Serial, editor => kept = editor);
 
-        Assert.ThrowsException<InvalidOperationException>(() => _ = kept!.RowCount);
-        Assert.ThrowsException<InvalidOperationException>(() => kept!.ReadRow(7));
-        Assert.ThrowsException<InvalidOperationException>(() => kept!.WriteRow(new SyntheticRow(7, "x", 6)));
-        Assert.ThrowsException<InvalidOperationException>(() => kept!.CorruptNamePool());
-        Assert.ThrowsException<InvalidOperationException>(
+        Assert.ThrowsExactly<InvalidOperationException>(() => _ = kept!.RowCount);
+        Assert.ThrowsExactly<InvalidOperationException>(() => kept!.ReadRow(7));
+        Assert.ThrowsExactly<InvalidOperationException>(() => kept!.WriteRow(new SyntheticRow(7, "x", 6)));
+        Assert.ThrowsExactly<InvalidOperationException>(() => kept!.CorruptNamePool());
+        Assert.ThrowsExactly<InvalidOperationException>(
             () => kept!.SetCacheTag(new CacheTag("TEST", 7)));
     }
 
@@ -271,10 +271,10 @@ public sealed partial class SyntheticBlockTests : IDisposable
 
         SyntheticBlock.Edit(path, Serial, editor =>
         {
-            Assert.ThrowsException<ArgumentOutOfRangeException>(() => editor.ReadRow(3));
-            Assert.ThrowsException<ArgumentOutOfRangeException>(() => editor.SetAttributes(500, 0));
-            Assert.ThrowsException<ArgumentOutOfRangeException>(() => editor.MarkTombstone(4));
-            Assert.ThrowsException<InvalidOperationException>(() => editor.WriteRow(new SyntheticRow(100_000, "overflow", 5)));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => editor.ReadRow(3));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => editor.SetAttributes(500, 0));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => editor.MarkTombstone(4));
+            Assert.ThrowsExactly<InvalidOperationException>(() => editor.WriteRow(new SyntheticRow(100_000, "overflow", 5)));
         });
     }
 
@@ -282,16 +282,16 @@ public sealed partial class SyntheticBlockTests : IDisposable
     public void Edit_MissingOrInvalidBlock_ThrowsNamingTheProblem()
     {
         var missing = SyntheticBlock.CachedPath(CacheDirectoryPath, 'T', Serial);
-        var absent = Assert.ThrowsException<InvalidOperationException>(
+        var absent = Assert.ThrowsExactly<InvalidOperationException>(
             () => SyntheticBlock.Edit(missing, Serial, _ => { }));
         StringAssert.Contains(absent.Message, "does not exist");
 
         var path = Seed();
-        var wrongSerial = Assert.ThrowsException<InvalidOperationException>(
+        var wrongSerial = Assert.ThrowsExactly<InvalidOperationException>(
             () => SyntheticBlock.ReadRows(path, Serial + 1));
         StringAssert.Contains(wrongSerial.Message, nameof(BlockValidationResult.WrongVolumeSerial));
 
-        var oversized = Assert.ThrowsException<InvalidOperationException>(
+        var oversized = Assert.ThrowsExactly<InvalidOperationException>(
             () => Seed([new SyntheticRow(5, new string('x', 32768), 5)]));
         StringAssert.Contains(oversized.Message, "does not fit");
     }
@@ -318,10 +318,10 @@ public sealed partial class SyntheticBlockTests : IDisposable
         bytes[0] = 0;
         File.WriteAllBytes(path, bytes);
 
-        var failure = Assert.ThrowsException<InvalidOperationException>(() => SyntheticBlock.ReadHeader(path, Serial));
+        var failure = Assert.ThrowsExactly<InvalidOperationException>(() => SyntheticBlock.ReadHeader(path, Serial));
 
         StringAssert.Contains(failure.Message, nameof(BlockValidationResult.WrongMagic));
-        Assert.ThrowsException<InvalidOperationException>(
+        Assert.ThrowsExactly<InvalidOperationException>(
             () => SyntheticBlock.ReadHeader(Path.Combine(CacheDirectoryPath, "absent.mlix"), Serial));
     }
 
@@ -331,10 +331,10 @@ public sealed partial class SyntheticBlockTests : IDisposable
         var path = Seed();
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
-        Assert.ThrowsException<InvalidOperationException>(() => SyntheticBlock.Edit(path, Serial, _ => { }));
-        Assert.ThrowsException<InvalidOperationException>(() => SyntheticBlock.ReadRows(path, Serial));
-        Assert.ThrowsException<InvalidOperationException>(() => SyntheticBlock.ReadHeader(path, Serial));
-        Assert.ThrowsException<InvalidOperationException>(() => Seed());
+        Assert.ThrowsExactly<InvalidOperationException>(() => SyntheticBlock.Edit(path, Serial, _ => { }));
+        Assert.ThrowsExactly<InvalidOperationException>(() => SyntheticBlock.ReadRows(path, Serial));
+        Assert.ThrowsExactly<InvalidOperationException>(() => SyntheticBlock.ReadHeader(path, Serial));
+        Assert.ThrowsExactly<InvalidOperationException>(() => Seed());
     }
 
     [TestMethod]
@@ -394,12 +394,12 @@ public sealed partial class SyntheticBlockTests : IDisposable
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false, DisplayName = "retry-on-loss")]
     [DataRow(true, DisplayName = "#360-throw-disposes-block")]
     public async Task Producer_CatchUpLoss_SurfacesAsTheDrivesCheckpointLossAndTriggersARetry(bool throwOnEvaluation)
     {
-        var loss = WatchDeduplicationTestSupport.StandardCatchUpLoss('T');
+        var loss = CatchUpLossTestSupport.StandardCatchUpLoss('T');
         if (throwOnEvaluation)
         {
             var throwing = SampleProducer(
@@ -426,6 +426,6 @@ public sealed partial class SyntheticBlockTests : IDisposable
     [TestMethod]
     public void Producer_NullRowSource_IsRejected()
     {
-        Assert.ThrowsException<ArgumentNullException>(() => new SyntheticMftProducer(null!));
+        Assert.ThrowsExactly<ArgumentNullException>(() => new SyntheticMftProducer(null!));
     }
 }

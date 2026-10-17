@@ -73,8 +73,8 @@ public class ElevatedEntryPointTests
         BrokerDiagnostics.Dependencies.ResetToDefaults();
     }
 
-    [DataTestMethod]
-    [DynamicData(nameof(ClientDiagnosticsPathKinds), DynamicDataSourceType.Method)]
+    [TestMethod]
+    [DynamicData(nameof(ClientDiagnosticsPathKinds))]
     public async Task RunBrokerIfRequested_BrokerModeWithDiagFlag_EnablesDiagnostics(bool extendedLength, string directoryName)
     {
         var runner = new RecordingRunner();
@@ -128,8 +128,8 @@ public class ElevatedEntryPointTests
         }
     }
 
-    [DataTestMethod]
-    [DynamicData(nameof(InvalidDiagnosticsArguments), DynamicDataSourceType.Method)]
+    [TestMethod]
+    [DynamicData(nameof(InvalidDiagnosticsArguments))]
     public void RunBrokerIfRequested_InvalidDiagnosticsPath_HandlesModeWithoutRunningBroker(string[] arguments)
     {
         var runner = new RecordingRunner();

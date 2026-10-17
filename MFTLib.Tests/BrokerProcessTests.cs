@@ -59,7 +59,7 @@ public partial class BrokerProcessTests
             QueryVolumeInformation = _ => throw new UnauthorizedAccessException("access denied")
         }));
 
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             broker.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
 
         Assert.AreEqual("access denied", exception.Message);
@@ -137,7 +137,7 @@ public partial class BrokerProcessTests
         Assert.AreEqual(2, broker.Process.Hooks.PendingRequestCount, "A cancelled wait keeps its id until its reply.");
 
         await broker.CloseControlAsync();
-        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => first.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => first.WaitAsync(HangGuard));
 
         Assert.IsNull(lost.Drive);
         Assert.AreEqual(0, broker.Process.Hooks.PendingRequestCount);
@@ -183,8 +183,8 @@ public partial class BrokerProcessTests
             await gate.Entered.WaitAsync(HangGuard);
             var failing = broker.Process.QueryVolumeAsync('D', CancellationToken.None);
 
-            await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => failing.WaitAsync(HangGuard));
-            await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
+            await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => failing.WaitAsync(HangGuard));
+            await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
             Assert.IsTrue(control.Gate.Entered.IsCompleted);
             await broker.Process.Ended.WaitAsync(HangGuard);
             StringAssert.Contains(await broker.Process.Ended.WaitAsync(HangGuard), "could not be written");
@@ -229,7 +229,7 @@ public partial class BrokerProcessTests
     [SupportedOSPlatform("windows")]
     public async Task LaunchAsync_LaunchDeclined_Throws()
     {
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             BrokerProcess.LaunchAsync(_ => false, CancellationToken.None));
 
         StringAssert.Contains(exception.Message, "declined");

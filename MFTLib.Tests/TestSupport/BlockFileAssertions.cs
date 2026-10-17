@@ -7,6 +7,6 @@ internal static class BlockFileAssertions
 {
     public static void IsDisposed(BlockFile block)
     {
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = block.Header.RowCount);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = block.Header.RowCount);
     }
 }

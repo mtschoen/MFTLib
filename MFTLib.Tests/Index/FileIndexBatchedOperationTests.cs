@@ -2,7 +2,7 @@ using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
+using static MFTLib.Tests.TestSupport.CatchUpLossTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -60,7 +60,7 @@ public class FileIndexBatchedOperationTests
 
             await cancellation.CancelAsync().WaitAsync(HangGuard);
 
-            await ThrowsAsync<OperationCanceledException>(() => batch.WaitAsync(HangGuard));
+            await Assert.ThrowsAsync<OperationCanceledException>(() => batch.WaitAsync(HangGuard));
         }
         finally
         {
@@ -92,7 +92,7 @@ public class FileIndexBatchedOperationTests
 
             Assert.IsFalse(batch.IsCompleted, "V's start ignores the token, so the call has not settled");
             heldStartV.Release();
-            await ThrowsAsync<OperationCanceledException>(() => batch.WaitAsync(HangGuard));
+            await Assert.ThrowsAsync<OperationCanceledException>(() => batch.WaitAsync(HangGuard));
         }
         finally
         {
@@ -113,12 +113,12 @@ public class FileIndexBatchedOperationTests
         var index = harness.Index;
         var none = Array.Empty<char>();
 
-        await ThrowsAsync<OperationCanceledException>(() => index.StartWatchingAsync(none.Select(letter => new DriveKey(letter)), cancelled.Token).WaitAsync(HangGuard));
-        await ThrowsAsync<OperationCanceledException>(() => index.StopWatchingAsync(none.Select(letter => new DriveKey(letter)), cancelled.Token).WaitAsync(HangGuard));
-        await ThrowsAsync<OperationCanceledException>(() => index.RescanAsync(none.Select(letter => new DriveKey(letter)), cancelled.Token).WaitAsync(HangGuard));
-        await ThrowsAsync<OperationCanceledException>(() => index.WaitForCatchUpAsync(none.Select(letter => new DriveKey(letter)), cancelled.Token).WaitAsync(HangGuard));
-        await ThrowsAsync<OperationCanceledException>(() => index.StopWatchingAsync(['V'], cancelled.Token).WaitAsync(HangGuard));
-        await ThrowsAsync<OperationCanceledException>(() => index.WaitForCatchUpAsync(['V'], cancelled.Token).WaitAsync(HangGuard));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => index.StartWatchingAsync(none.Select(letter => new DriveKey(letter)), cancelled.Token).WaitAsync(HangGuard));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => index.StopWatchingAsync(none.Select(letter => new DriveKey(letter)), cancelled.Token).WaitAsync(HangGuard));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => index.RescanAsync(none.Select(letter => new DriveKey(letter)), cancelled.Token).WaitAsync(HangGuard));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => index.WaitForCatchUpAsync(none.Select(letter => new DriveKey(letter)), cancelled.Token).WaitAsync(HangGuard));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => index.StopWatchingAsync(['V'], cancelled.Token).WaitAsync(HangGuard));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => index.WaitForCatchUpAsync(['V'], cancelled.Token).WaitAsync(HangGuard));
     }
 
     [TestMethod]
@@ -126,10 +126,10 @@ public class FileIndexBatchedOperationTests
     {
         using var harness = new WatchHarness();
 
-        await ThrowsAsync<ArgumentException>(() => harness.Index.StartWatchingAsync(['T', 'U', 't'], Token));
-        await ThrowsAsync<ArgumentException>(() => harness.Index.StopWatchingAsync(['U', 'U'], Token));
-        await ThrowsAsync<ArgumentException>(() => harness.Index.RescanAsync(['T', 'T'], Token));
-        await ThrowsAsync<ArgumentException>(() => harness.Index.WaitForCatchUpAsync(['V', 'v'], Token));
+        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.StartWatchingAsync(['T', 'U', 't'], Token));
+        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.StopWatchingAsync(['U', 'U'], Token));
+        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.RescanAsync(['T', 'T'], Token));
+        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.WaitForCatchUpAsync(['V', 'v'], Token));
 
         Assert.AreEqual(0, harness.Source.Starts.Count);
         Assert.AreEqual(1, harness.ProductionCount('T'), "only the open scanned");
@@ -141,10 +141,10 @@ public class FileIndexBatchedOperationTests
     {
         using var harness = new WatchHarness();
 
-        await ThrowsAsync<ArgumentException>(() => harness.Index.StartWatchingAsync(['T', 'X'], Token));
-        await ThrowsAsync<ArgumentException>(() => harness.Index.StopWatchingAsync(['X'], Token));
-        await ThrowsAsync<ArgumentException>(() => harness.Index.RescanAsync(['U', 'X'], Token));
-        await ThrowsAsync<ArgumentException>(() => harness.Index.WaitForCatchUpAsync(['X'], Token));
+        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.StartWatchingAsync(['T', 'X'], Token));
+        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.StopWatchingAsync(['X'], Token));
+        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.RescanAsync(['U', 'X'], Token));
+        await Assert.ThrowsAsync<ArgumentException>(() => harness.Index.WaitForCatchUpAsync(['X'], Token));
 
         Assert.AreEqual(0, harness.Source.Starts.Count, "the list is validated before any drive starts");
         Assert.AreEqual(1, harness.ProductionCount('U'), "only the open scanned");
@@ -156,10 +156,10 @@ public class FileIndexBatchedOperationTests
         using var harness = new WatchHarness();
         var index = harness.Index;
 
-        await ThrowsAsync<ArgumentNullException>(() => index.StartWatchingAsync(null!, Token));
-        await ThrowsAsync<ArgumentNullException>(() => index.StopWatchingAsync(null!, Token));
-        await ThrowsAsync<ArgumentNullException>(() => index.RescanAsync(null!, Token));
-        await ThrowsAsync<ArgumentNullException>(() => index.WaitForCatchUpAsync(null!, Token));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => index.StartWatchingAsync(null!, Token));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => index.StopWatchingAsync(null!, Token));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => index.RescanAsync(null!, Token));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => index.WaitForCatchUpAsync(null!, Token));
     }
 
     [TestMethod]
@@ -169,13 +169,13 @@ public class FileIndexBatchedOperationTests
         var index = harness.Index;
         await index.DisposeAsync().AsTask().WaitAsync(HangGuard);
 
-        await ThrowsAsync<ObjectDisposedException>(() => index.StartWatchingAsync(['T'], Token));
-        await ThrowsAsync<ObjectDisposedException>(() => index.StopWatchingAsync(['T'], Token));
-        await ThrowsAsync<ObjectDisposedException>(() => index.RescanAsync(['T'], Token));
-        await ThrowsAsync<ObjectDisposedException>(() => index.WaitForCatchUpAsync(['T'], Token));
-        await ThrowsAsync<ObjectDisposedException>(() => index.StartWatchingAsync(index.Drives.Select(drive => drive.Drive), Token));
-        await ThrowsAsync<ObjectDisposedException>(() => index.StopWatchingAsync(index.Drives.Select(drive => drive.Drive), Token));
-        await ThrowsAsync<ObjectDisposedException>(() => index.WaitForCatchUpAsync(index.Drives.Select(drive => drive.Drive), Token));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => index.StartWatchingAsync(['T'], Token));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => index.StopWatchingAsync(['T'], Token));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => index.RescanAsync(['T'], Token));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => index.WaitForCatchUpAsync(['T'], Token));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => index.StartWatchingAsync(index.Drives.Select(drive => drive.Drive), Token));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => index.StopWatchingAsync(index.Drives.Select(drive => drive.Drive), Token));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => index.WaitForCatchUpAsync(index.Drives.Select(drive => drive.Drive), Token));
     }
 
     [TestMethod]

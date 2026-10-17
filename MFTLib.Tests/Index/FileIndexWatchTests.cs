@@ -126,13 +126,13 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
     [TestMethod]
     public void ApplyJournalEntries_OnEnumerationDrive_ThrowsInvalidOperation()
     {
-        var exception = Assert.ThrowsException<InvalidOperationException>(
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(
             () => _index.ApplyJournalEntries('E', [Entry(20, 0, "injected.txt", UsnReason.FileCreate | UsnReason.Close)], 5, 100));
 
         StringAssert.Contains(exception.Message, "enumeration producer");
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public void ApplyJournalEntries_CreatesARowAndRaisesChanged(bool throughTestExtensions)
@@ -173,7 +173,7 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
     [TestMethod]
     public void ApplyJournalEntries_TestExtensionRejectsNullIndex()
     {
-        Assert.ThrowsException<ArgumentNullException>(() =>
+        Assert.ThrowsExactly<ArgumentNullException>(() =>
             FileIndexTestAccess.ApplyJournalEntries(null!, 'T', [], new SyntheticJournalCursor(5, 100)));
     }
 
@@ -279,13 +279,13 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
     [TestMethod]
     public void ApplyJournalEntries_UnknownDriveThrows()
     {
-        Assert.ThrowsException<ArgumentException>(() => _index.ApplyJournalEntries('Q', [], 0, 0));
+        Assert.ThrowsExactly<ArgumentException>(() => _index.ApplyJournalEntries('Q', [], 0, 0));
     }
 
     [TestMethod]
     public void ApplyJournalEntries_ConfiguredButOfflineDriveThrowsInvalidOperation()
     {
-        var exception = Assert.ThrowsException<InvalidOperationException>(
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(
             () => _index.ApplyJournalEntries('Z', [], 0, 0));
 
         StringAssert.Contains(exception.Message, "offline");
@@ -307,7 +307,7 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
         var secondSubscriberChanges = new List<FileChange>();
         _index.Changed += secondSubscriberChanges.Add;
 
-        var thrown = Assert.ThrowsException<InvalidOperationException>(() => _index.ApplyJournalEntries('T',
+        var thrown = Assert.ThrowsExactly<InvalidOperationException>(() => _index.ApplyJournalEntries('T',
             [
                 Entry(20, 0, "first.txt", UsnReason.FileCreate | UsnReason.Close),
                 Entry(21, 0, "second.txt", UsnReason.FileCreate | UsnReason.Close)
@@ -326,7 +326,7 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
         _index.Changed += _ => throw new InvalidOperationException("first boom");
         _index.Changed += _ => throw new InvalidOperationException("second boom");
 
-        var thrown = Assert.ThrowsException<AggregateException>(() => _index.ApplyJournalEntries('T',
+        var thrown = Assert.ThrowsExactly<AggregateException>(() => _index.ApplyJournalEntries('T',
             [Entry(20, 0, "first.txt", UsnReason.FileCreate | UsnReason.Close)],
             journalIdentifier: 5, nextUsn: 100));
 
@@ -340,7 +340,7 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
     {
         _index.Changed += ThrowingSubscriber;
 
-        var thrown = Assert.ThrowsException<InvalidOperationException>(() => _index.ApplyJournalEntries('T',
+        var thrown = Assert.ThrowsExactly<InvalidOperationException>(() => _index.ApplyJournalEntries('T',
             [Entry(20, 0, "first.txt", UsnReason.FileCreate | UsnReason.Close)],
             journalIdentifier: 5, nextUsn: 100));
 

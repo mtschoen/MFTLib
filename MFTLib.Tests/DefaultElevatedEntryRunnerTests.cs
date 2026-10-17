@@ -12,8 +12,6 @@ namespace MFTLib.Tests;
 [DoNotParallelize] // replaces the FileUtilities delegate seams and the native test hooks
 public class DefaultElevatedEntryRunnerTests
 {
-    public TestContext TestContext { get; set; } = null!;
-
     Func<Task, Task> _waitForRunnerExit = left => left.WaitAsync(HangGuard);
 
     [TestCleanup]
@@ -57,15 +55,16 @@ public class DefaultElevatedEntryRunnerTests
         var server = new NamedPipeServerStream(
             pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
         var runTask = Task.Run(() => new DefaultElevatedEntryRunner(TimeProvider.System, code => exitCode = code).RunBroker(pipeName));
-        await TestBodyCleanup.RunAsync(async () =>
+        try
         {
             await server.WaitForConnectionAsync(cts.Token);
             await server.DisposeAsync();
             await runTask.WaitAsync(cts.Token);
-        }, async () =>
+        }
+        finally
         {
             await EnsureRunnerLeavesAsync(runTask, server);
-        }, message => TestContext.WriteLine(message));
+        }
 
         Assert.AreEqual(0, exitCode);
     }
@@ -97,7 +96,7 @@ public class DefaultElevatedEntryRunnerTests
         using var timeoutRelease = cts.Token.Register(idlePipe.UnblockForCleanup); // never leak the parked read
 
         var (control, drive, runTask) = StartRunnerWithDrivePipe(code => exitCode = code);
-        await TestBodyCleanup.RunAsync(async () =>
+        try
         {
             await AcceptDriveChannelAsync(control, drive, cts.Token);
 
@@ -121,11 +120,12 @@ public class DefaultElevatedEntryRunnerTests
             idlePipe.ContinueIssue.Set();
 
             await runTask.WaitAsync(cts.Token);
-        }, async () =>
+        }
+        finally
         {
             idlePipe.UnblockForCleanup();
             await EnsureRunnerLeavesAsync(runTask, drive, control);
-        }, message => TestContext.WriteLine(message));
+        }
 
         Assert.AreEqual(0, exitCode);
         var calls = IdleUsnPipe.CallOrder();
@@ -156,7 +156,7 @@ public class DefaultElevatedEntryRunnerTests
         using var timeoutRelease = cts.Token.Register(() => releaseCursorQuery.TrySetResult());
 
         var (control, drive, runTask) = StartRunnerWithDrivePipe(code => exitCode = code);
-        await TestBodyCleanup.RunAsync(async () =>
+        try
         {
             await AcceptDriveChannelAsync(control, drive, cts.Token);
             await HostChannelHarness.WriteFrameAsync(drive,
@@ -176,11 +176,12 @@ public class DefaultElevatedEntryRunnerTests
             releaseCursorQuery.TrySetResult();
 
             await runTask.WaitAsync(cts.Token);
-        }, async () =>
+        }
+        finally
         {
             releaseCursorQuery.TrySetResult();
             await EnsureRunnerLeavesAsync(runTask, drive, control);
-        }, message => TestContext.WriteLine(message));
+        }
 
         Assert.AreEqual(0, exitCode);
     }
@@ -213,7 +214,7 @@ public class DefaultElevatedEntryRunnerTests
         await using var server = new NamedPipeServerStream(
             pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
         var runTask = Task.Run(() => new DefaultElevatedEntryRunner(clock, code => exitCode = code).RunBroker(pipeName));
-        await TestBodyCleanup.RunAsync(async () =>
+        try
         {
             await server.WaitForConnectionAsync(cts.Token);
 
@@ -225,19 +226,20 @@ public class DefaultElevatedEntryRunnerTests
 
             Assert.IsFalse(runTask.IsCompleted, "The runner must wait for the queued lines while the sink is held.");
             sink.Release();
-            await Assert.ThrowsExceptionAsync<InvalidDataException>(() => runTask.WaitAsync(cts.Token));
+            await Assert.ThrowsExactlyAsync<InvalidDataException>(() => runTask.WaitAsync(cts.Token));
             Assert.IsNull(exitCode);
             lock (appended)
             {
                 Assert.IsTrue(appended.Any(line => line.Contains("frame read kind=200", StringComparison.Ordinal)),
                     "The line logged as the session failed must reach the log before the runner leaves.");
             }
-        }, async () =>
+        }
+        finally
         {
             // Release the sink on every exit before draining the runner.
             sink.Release();
             await EnsureRunnerLeavesAsync(runTask, server);
-        }, message => TestContext.WriteLine(message));
+        }
     }
 
     string _drivePipeName = string.Empty;
@@ -272,8 +274,6 @@ public class DefaultElevatedEntryRunnerTests
     }
 
     // Close the caller's pipe ends and drain runner completion before seam reset.
-    // TestBodyCleanup keeps a body exception primary and reports this cleanup failure
-    // as a secondary diagnostic; without a body failure, the cleanup exception fails the test directly.
     async Task EnsureRunnerLeavesAsync(Task runTask, params IAsyncDisposable[] pipes)
     {
         foreach (var pipe in pipes)
@@ -301,18 +301,14 @@ public class DefaultElevatedEntryRunnerTests
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [SupportedOSPlatform("windows")]
-    [DataRow(false)]
-    [DataRow(true)]
-    public async Task CleanupTimeout_PreservesFailureAndKeepsInjectedExit(bool bodyFails)
+    public async Task CleanupTimeout_DisposesPipesAndKeepsInjectedExit()
     {
         var runner = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var drive = new RecordingCleanupPipe();
         var control = new RecordingCleanupPipe();
         var timeout = new TimeoutException("injected runner drain timeout");
-        var bodyFailure = new InvalidOperationException("injected body failure");
-        var diagnostics = new List<string>();
         _waitForRunnerExit = _ =>
         {
             Assert.IsTrue(drive.Disposed);
@@ -322,22 +318,9 @@ public class DefaultElevatedEntryRunnerTests
 
         try
         {
-            if (bodyFails)
-            {
-                var observed = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
-                    TestBodyCleanup.RunAsync(() => Task.FromException(bodyFailure),
-                        () => EnsureRunnerLeavesAsync(runner.Task, drive, control), diagnostics.Add));
-                Assert.AreSame(bodyFailure, observed);
-                Assert.AreEqual("Secondary test cleanup failure: " + timeout, diagnostics.Single());
-            }
-            else
-            {
-                var observed = await Assert.ThrowsExceptionAsync<TimeoutException>(() =>
-                    TestBodyCleanup.RunAsync(() => Task.CompletedTask,
-                        () => EnsureRunnerLeavesAsync(runner.Task, drive, control), diagnostics.Add));
-                Assert.AreSame(timeout, observed);
-                Assert.AreEqual(0, diagnostics.Count);
-            }
+            var observed = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
+                EnsureRunnerLeavesAsync(runner.Task, drive, control));
+            Assert.AreSame(timeout, observed);
 
             var exits = new List<int>();
             var delayedRunner = new DefaultElevatedEntryRunner(TimeProvider.System, exits.Add);
@@ -347,12 +330,11 @@ public class DefaultElevatedEntryRunnerTests
         }
         finally
         {
-            // There is no real runner. Complete the synthetic task before normal seam reset.
             runner.TrySetResult();
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task EnsureRunnerLeavesAsync_CompletedRunnerIsNotCleanupFailure(bool runnerFaulted)

@@ -76,7 +76,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IDisposable
             Diagnostics = diagnostics.Add
         };
 
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(
             () => FileIndex.OpenAsync(options, cancellation.Token));
 
         Assert.IsFalse(File.Exists(_canonicalPath), "the cancelled cold scan leaves no partial canonical block");
@@ -93,7 +93,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IDisposable
             throw new OperationCanceledException();
         }, diagnostics);
 
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => FileIndex.OpenAsync(options, Token));
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => FileIndex.OpenAsync(options, Token));
 
         Assert.IsFalse(File.Exists(_canonicalPath));
         AssertPartialDeleteLogged(diagnostics);
@@ -270,7 +270,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IDisposable
         }, []) with
         { Diagnostics = _ => throw new InvalidOperationException("the log destination closed") };
 
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => FileIndex.OpenAsync(options, Token));
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => FileIndex.OpenAsync(options, Token));
     }
 
     /// <summary>
@@ -345,7 +345,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IDisposable
                 WritePartialFile(request);
                 return new OperationCanceledException();
             }, diagnostics,
-            opening => Assert.ThrowsExceptionAsync<OperationCanceledException>(() => opening));
+            opening => Assert.ThrowsExactlyAsync<OperationCanceledException>(() => opening));
 
         Assert.IsFalse(File.Exists(_canonicalPath), "the cancelled scan's partial replacement is deleted");
         AssertPartialDeleteLogged(diagnostics);

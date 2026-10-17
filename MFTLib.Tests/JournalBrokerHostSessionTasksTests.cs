@@ -62,7 +62,7 @@ public class JournalBrokerHostSessionTasksTests
         tasks.Track(Task.FromException(failure));
 
         Assert.AreEqual(1, tasks.Snapshot().Length);
-        var thrown = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => host.DrainAsync(tasks));
+        var thrown = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => host.DrainAsync(tasks));
         Assert.AreSame(failure, thrown);
     }
 

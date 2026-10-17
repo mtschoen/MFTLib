@@ -6,7 +6,7 @@ namespace MFTLib.Tests;
 [TestClass]
 public class BrokerMftBlockProducerProtocolTests : BrokerBlockTestBase
 {
-    [DataTestMethod]
+    [TestMethod]
     [DataRow((long)int.MaxValue)]
     [DataRow((long)int.MaxValue + 1)]
     public async Task Produce_SaturatesSkippedRecordCount(long skippedRecordCount)
@@ -61,7 +61,7 @@ public class BrokerMftBlockProducerProtocolTests : BrokerBlockTestBase
         Assert.AreEqual(BrokerFrameKind.QueryVolume, query.Kind);
         await broker.WriteControlAsync(writer => BrokerProtocol.WriteError(writer, query.RequestId, "query failed"));
 
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => resultTask.WaitAsync(HangGuard));
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => resultTask.WaitAsync(HangGuard));
 
         Assert.AreEqual("query failed", exception.Message);
         Assert.AreEqual(0, broker.Sections.All().Count);
@@ -88,7 +88,7 @@ public class BrokerMftBlockProducerProtocolTests : BrokerBlockTestBase
             }
         }
 
-        await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => resultTask.WaitAsync(HangGuard));
+        await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => resultTask.WaitAsync(HangGuard));
         var section = broker.Sections.Single();
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
         BlockFileAssertions.IsDisposed(section.Block);
@@ -137,11 +137,11 @@ public class BrokerMftBlockProducerProtocolTests : BrokerBlockTestBase
         Exception exception;
         if (fault == "ErrorAfterReady")
         {
-            exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => resultTask.WaitAsync(HangGuard));
+            exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => resultTask.WaitAsync(HangGuard));
         }
         else
         {
-            exception = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => resultTask.WaitAsync(HangGuard));
+            exception = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => resultTask.WaitAsync(HangGuard));
         }
 
         StringAssert.Contains(exception.Message, message);

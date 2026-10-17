@@ -5,7 +5,7 @@ namespace MFTLib.Tests;
 
 public partial class BrokerProcessTests
 {
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("dispose", "The broker process was disposed.", false)]
     [DataRow("eof", "The broker closed its control pipe.", false)]
     [DataRow("eof", "The broker closed its control pipe.", true)]
@@ -58,13 +58,13 @@ public partial class BrokerProcessTests
             "a caller that looks after the end still gets the reason");
         foreach (var request in new[] { first, second })
         {
-            var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(
+            var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(
                 () => request.WaitAsync(HangGuard));
             Assert.IsNull(lost.Drive);
             Assert.AreEqual(expectedReason, lost.Message);
         }
 
-        var rejected = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(
+        var rejected = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(
             () => broker.Process.QueryVolumeAsync('E', CancellationToken.None).WaitAsync(HangGuard));
         Assert.AreEqual(expectedReason, rejected.Message);
         Assert.IsNull(rejected.Drive, "the control pipe is what was lost");
@@ -91,7 +91,7 @@ public partial class BrokerProcessTests
         await broker.CloseControlAsync();
 
         Assert.AreEqual("The broker closed its control pipe.", await broker.Process.Ended.WaitAsync(HangGuard));
-        await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
+        await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
     }
 
@@ -105,7 +105,7 @@ public partial class BrokerProcessTests
         await broker.CloseControlAsync();
 
         Assert.AreEqual("The broker closed its control pipe.", await broker.Process.Ended.WaitAsync(HangGuard));
-        await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
-        await Assert.ThrowsExceptionAsync<IOException>(() => broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard));
+        await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
+        await Assert.ThrowsExactlyAsync<IOException>(() => broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard));
     }
 }

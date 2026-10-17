@@ -42,7 +42,7 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
     {
         var entry = _index.Find(Path.Combine(_treeRoot, "Documents", "Projects", "report.pdf"));
         Assert.IsTrue(entry.HasValue);
-        Assert.AreEqual(100L, entry.Value.Size);
+        Assert.AreEqual(100L, entry.GetValueOrDefault().Size);
     }
 
     [TestMethod]
@@ -74,7 +74,7 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
     [TestMethod]
     public void Search_Under_DefaultAncestor_ThrowsArgumentException()
     {
-        Assert.ThrowsException<ArgumentException>(
+        Assert.ThrowsExactly<ArgumentException>(
             () => _index.Search(new SearchQuery("readme", Subtree: default(FileEntry))));
     }
 
@@ -84,7 +84,7 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
         Assert.AreEqual(_treeRoot, _index.Root('T').Path);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(DriveState.Offline, 'T', false)]
     [DataRow(DriveState.Offline, 'T', true)]
     [DataRow(DriveState.Offline, 't', false)]
@@ -101,7 +101,7 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
         var blockless = new IndexedDrive(duplicateLetter,
             blocklessState == DriveState.Offline ? Path.Combine(_treeRoot, "absent") : _treeRoot, 2, policy);
         var producerCalls = 0;
-        var exception = await Assert.ThrowsExceptionAsync<ArgumentException>(() => FileIndex.OpenAsync(new FileIndexOptions
+        var exception = await Assert.ThrowsExactlyAsync<ArgumentException>(() => FileIndex.OpenAsync(new FileIndexOptions
         {
             Drives = blocklessFirst ? [blockless, ready] : [ready, blockless],
             CacheMode = CacheMode.Disabled,
@@ -117,7 +117,7 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
         Assert.AreEqual(0, producerCalls);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(DriveState.Failed, 'T', "normal")]
     [DataRow(DriveState.Failed, 't', "normal")]
     [DataRow(DriveState.Offline, 'T', "normal")]
@@ -188,7 +188,7 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow('Z', "normal")]
     [DataRow('z', "normal")]
     [DataRow('Z', "dispose-at-admission")]

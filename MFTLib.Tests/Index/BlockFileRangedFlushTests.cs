@@ -101,7 +101,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
         var block = CreateBlock();
         block.Dispose();
 
-        Assert.ThrowsException<ObjectDisposedException>(() => block.Flush(null));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => block.Flush(null));
     }
 
     [TestMethod]
@@ -220,7 +220,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
         var other = BlockFile.ClassifyPlatform(isLinux: false, isMacOS: false);
         Assert.AreNotEqual(OSPlatform.Linux, other);
         Assert.AreNotEqual(OSPlatform.OSX, other);
-        Assert.ThrowsException<PlatformNotSupportedException>(() => Libc.SelectSynchronousFlag(other));
+        Assert.ThrowsExactly<PlatformNotSupportedException>(() => Libc.SelectSynchronousFlag(other));
     }
 
     [TestMethod]
@@ -228,8 +228,8 @@ public sealed class BlockFileRangedFlushTests : IDisposable
     {
         Assert.AreEqual(6, Libc.SelectSynchronousFlag(OSPlatform.Linux));
         Assert.AreEqual(0x12, Libc.SelectSynchronousFlag(OSPlatform.OSX));
-        Assert.ThrowsException<PlatformNotSupportedException>(() => Libc.SelectSynchronousFlag(OSPlatform.Windows));
-        Assert.ThrowsException<PlatformNotSupportedException>(() => Libc.SelectSynchronousFlag(OSPlatform.FreeBSD));
+        Assert.ThrowsExactly<PlatformNotSupportedException>(() => Libc.SelectSynchronousFlag(OSPlatform.Windows));
+        Assert.ThrowsExactly<PlatformNotSupportedException>(() => Libc.SelectSynchronousFlag(OSPlatform.FreeBSD));
     }
 
     [TestMethod]

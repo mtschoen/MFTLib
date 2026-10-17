@@ -52,7 +52,7 @@ public partial class BrokerProtocolTests
 
         // length prefix 4 + kind 1 + section (4 + 2) = the flag's offset.
         bytes[11] = 2;
-        var exception = Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(bytes, out _));
+        var exception = Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(bytes, out _));
 
         StringAssert.Contains(exception.Message, "2");
     }
@@ -74,7 +74,7 @@ public partial class BrokerProtocolTests
         var bytes = buffer.WrittenSpan.ToArray();
         BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(15), -99);
 
-        var exception = Assert.ThrowsException<InvalidDataException>(() =>
+        var exception = Assert.ThrowsExactly<InvalidDataException>(() =>
             BrokerProtocol.ReadFrame(bytes, out _));
 
         StringAssert.Contains(exception.Message, "99");
@@ -140,7 +140,7 @@ public partial class BrokerProtocolTests
         Assert.IsNull(frame.Progress.Value.TotalBytes);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(99, DisplayName = "an undefined phase")]
     [DataRow(256, DisplayName = "a phase outside the byte range")]
     public void ReadFrame_ScanProgress_InvalidPhase_ThrowsInvalidDataException(int phase)
@@ -157,7 +157,7 @@ public partial class BrokerProtocolTests
         ];
         BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(5), phase);
 
-        Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(payload, out _));
+        Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(payload, out _));
     }
 
     [TestMethod]
@@ -213,7 +213,7 @@ public partial class BrokerProtocolTests
         var buffer = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteCatchUpLost(buffer, FullLoss with { Cause = (JournalCheckpointLossCause)42 });
 
-        var exception = Assert.ThrowsException<InvalidDataException>(() =>
+        var exception = Assert.ThrowsExactly<InvalidDataException>(() =>
             BrokerProtocol.ReadFrame(buffer.WrittenSpan, out _));
         Assert.AreEqual("Unknown checkpoint loss cause: 42", exception.Message);
     }
@@ -276,7 +276,7 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(0, frame.Entries.Length);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false, (byte)0)]
     [DataRow(true, (byte)1)]
     public void WireBytes_Golden_ArmAndScanFrame(bool includeFreed, byte expectedFlagByte)

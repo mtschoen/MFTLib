@@ -49,7 +49,7 @@ public sealed class IndexedDriveTests : IDisposable
     {
         IndexedDrive.Dependencies.VolumeSerialReader = _ => null;
 
-        var failure = Assert.ThrowsException<IOException>(() => IndexedDrive.FromWindowsVolume('Q'));
+        var failure = Assert.ThrowsExactly<IOException>(() => IndexedDrive.FromWindowsVolume('Q'));
 
         StringAssert.Contains(failure.Message, "Q");
     }
@@ -58,7 +58,7 @@ public sealed class IndexedDriveTests : IDisposable
     [SupportedOSPlatform("windows")]
     public void FromWindowsVolume_RejectsDefaultKey()
     {
-        Assert.ThrowsException<ArgumentException>(() => IndexedDrive.FromWindowsVolume(default));
+        Assert.ThrowsExactly<ArgumentException>(() => IndexedDrive.FromWindowsVolume(default));
     }
 
     [TestMethod]
@@ -77,7 +77,7 @@ public sealed class IndexedDriveTests : IDisposable
         Assert.AreEqual(systemRoot, drive.RootDirectory);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(DriveType.Fixed, true, "NTFS", null)]
     [DataRow(DriveType.Fixed, true, "ntfs", null)]
     [DataRow(DriveType.Fixed, true, "exFAT", "not NTFS (exFAT)")]
@@ -115,30 +115,30 @@ public sealed class IndexedDriveTests : IDisposable
     public void ConstructorAndWithInitializer_RejectNullRootDirectory()
     {
         var valid = new IndexedDrive('T', @"T:\", 1);
-        Assert.ThrowsException<ArgumentNullException>(() => new IndexedDrive('T', null!, 1));
-        Assert.ThrowsException<ArgumentNullException>(() => valid with { RootDirectory = null! });
+        Assert.ThrowsExactly<ArgumentNullException>(() => new IndexedDrive('T', null!, 1));
+        Assert.ThrowsExactly<ArgumentNullException>(() => valid with { RootDirectory = null! });
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("")]
     [DataRow(" ")]
     [DataRow("\t\r\n")]
     public void ConstructorAndWithInitializer_RejectEmptyOrWhiteSpaceRootDirectory(string blankRoot)
     {
         var valid = new IndexedDrive('T', @"T:\", 1);
-        Assert.ThrowsException<ArgumentException>(() => new IndexedDrive('T', blankRoot, 1));
-        Assert.ThrowsException<ArgumentException>(() => valid with { RootDirectory = blankRoot });
+        Assert.ThrowsExactly<ArgumentException>(() => new IndexedDrive('T', blankRoot, 1));
+        Assert.ThrowsExactly<ArgumentException>(() => valid with { RootDirectory = blankRoot });
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow((ProducerKind)uint.MaxValue)]
     [DataRow(default(ProducerKind))]
     [DataRow((ProducerKind)999)]
     public void ConstructorAndWithInitializer_RejectUndefinedProducerKind(ProducerKind invalidPolicy)
     {
         var valid = new IndexedDrive('T', @"T:\", 1);
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => new IndexedDrive('T', @"T:\", 1, invalidPolicy));
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => valid with { Producer = invalidPolicy });
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new IndexedDrive('T', @"T:\", 1, invalidPolicy));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => valid with { Producer = invalidPolicy });
     }
 
     [TestMethod]
@@ -163,7 +163,7 @@ public sealed class IndexedDriveTests : IDisposable
         Assert.AreEqual(ProducerKind.Mft, updated.Producer);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow('T', 'T')]
     [DataRow('T', 't')]
     [DataRow('t', 'T')]
@@ -207,7 +207,7 @@ public sealed class IndexedDriveTests : IDisposable
         Assert.AreEqual("options", secondNull.ParamName);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("")]
     [DataRow(" ")]
     public async Task OpenAsync_RejectsBlankRootDirectoryBeforeSideEffects(string blankRoot)
@@ -220,7 +220,7 @@ public sealed class IndexedDriveTests : IDisposable
             options => options with { Drives = [bypassed] });
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow((ProducerKind)uint.MaxValue)]
     [DataRow(default(ProducerKind))]
     [DataRow((ProducerKind)999)]
@@ -293,7 +293,7 @@ public sealed class IndexedDriveTests : IDisposable
         var first = new IndexedDrive('T', _treeRoot, 1, ProducerKind.Enumeration);
         var duplicate = new IndexedDrive('t', _treeRoot, 2, ProducerKind.Enumeration);
 
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() => FileIndex.OpenAsync(new FileIndexOptions
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => FileIndex.OpenAsync(new FileIndexOptions
         {
             CacheMode = CacheMode.Persistent,
             CacheDirectory = _cacheDirectory,
@@ -348,7 +348,7 @@ public sealed class IndexedDriveTests : IDisposable
             DriveOpenProgress = new SynchronousProgress<IndexDriveOpened>(_ => Interlocked.Increment(ref openProgressCalls))
         };
 
-        var exception = await Assert.ThrowsExceptionAsync<TException>(
+        var exception = await Assert.ThrowsExactlyAsync<TException>(
             () => FileIndex.OpenAsync(configure(baseOptions), CancellationToken.None));
 
         Assert.AreEqual(0, producerCalls);

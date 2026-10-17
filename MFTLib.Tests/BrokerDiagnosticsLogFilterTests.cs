@@ -36,7 +36,7 @@ public class BrokerDiagnosticsLogFilterTests
             FileName = fileName
         });
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow('C')]
     [DataRow('c')]
     public void Filter_DropsBothLogEntries_KeepsUnrelated(char driveChar)
@@ -100,7 +100,7 @@ public class BrokerDiagnosticsLogFilterTests
         Assert.AreSame(entries, filter.Filter('C', entries));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(@"\\?\C:\broker-diag\broker-diagnostics.broker.log", DisplayName = "extended drive root")]
     [DataRow(@"\\.\C:\broker-diag\broker-diagnostics.broker.log", DisplayName = "device drive root")]
     public void Filter_PrefixedDriveRootPath_ResolvesAndFiltersMatchingEntries(string prefixedPath)
@@ -124,7 +124,7 @@ public class BrokerDiagnosticsLogFilterTests
         Assert.AreEqual("unrelated.txt", kept[0].FileName);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(9103UL)]
     [DataRow(9101UL)]
     public void Filter_WhenLogFileReplaced_RefreshesFileReference_WhilePreservingRenameHandling(ulong replacementRecordNumber)
@@ -276,10 +276,11 @@ public class BrokerDiagnosticsLogFilterTests
             Assert.IsTrue(reference.HasValue);
 
             var filter = new BrokerDiagnosticsLogFilter(logPath, null);
+            var refVal = reference.GetValueOrDefault();
             var matching = UsnJournalEntry.Create(new UsnJournalEntryOptions
             {
-                RecordNumber = reference.Value & 0xFFFFFFFFFFFF,
-                SequenceNumber = (ushort)(reference.Value >> 48),
+                RecordNumber = refVal & 0xFFFFFFFFFFFF,
+                SequenceNumber = (ushort)(refVal >> 48),
                 ParentRecordNumber = 5,
                 Usn = 110,
                 TimestampUtc = DateTime.UnixEpoch,
@@ -338,7 +339,7 @@ public class BrokerDiagnosticsLogFilterTests
         Assert.AreEqual(default(DriveKey), drive);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("   ", DisplayName = "whitespace path")]
     [DataRow("bad\0path.log", DisplayName = "path GetFullPath rejects")]
     public void Filter_WithAnUnresolvableOwnLogPath_KeepsTheRawPathAndFiltersNothing(string ownLogPath)

@@ -28,10 +28,10 @@ public class JournalBrokerHostSourcesTests
     [TestMethod]
     public void HostScanChunk_NoRecordSize_Throws()
     {
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => LiveVolumeSources.HostScanChunkRecords(0));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => LiveVolumeSources.HostScanChunkRecords(0));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("queued", false)]
     [DataRow("waiting", false)]
     [DataRow("processing", true)]

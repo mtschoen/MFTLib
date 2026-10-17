@@ -46,7 +46,7 @@ public class SnapshotBorrowTests
         await snapshot[1].ReleaseState.ReleaseAsync();
         try
         {
-            var thrown = Assert.ThrowsException<ObjectDisposedException>(() => new SnapshotBorrow(snapshot));
+            var thrown = Assert.ThrowsExactly<ObjectDisposedException>(() => new SnapshotBorrow(snapshot));
 
             StringAssert.Contains(thrown.ObjectName, nameof(DriveBlock));
             Assert.AreEqual(0, snapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
@@ -93,7 +93,7 @@ public class SnapshotBorrowTests
     [MethodImpl(MethodImplOptions.NoInlining)]
     static void RejectABorrow(DriveBlock[] snapshot)
     {
-        Assert.ThrowsException<ObjectDisposedException>(() => new SnapshotBorrow(snapshot));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => new SnapshotBorrow(snapshot));
     }
 
     [TestMethod]

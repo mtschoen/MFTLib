@@ -146,7 +146,7 @@ public class CacheDirectoryDeletionTests
         Assert.AreEqual(0, CacheDirectory.DeleteCached(missing).Count);
         Assert.IsFalse(Directory.Exists(missing));
         Assert.AreEqual(0, CacheDirectory.DeleteCached(_directory).Count);
-        Assert.ThrowsException<ArgumentNullException>(() => CacheDirectory.DeleteCached(null!));
-        Assert.ThrowsException<ArgumentException>(() => CacheDirectory.DeleteCached(string.Empty));
+        Assert.ThrowsExactly<ArgumentNullException>(() => CacheDirectory.DeleteCached(null!));
+        Assert.ThrowsExactly<ArgumentException>(() => CacheDirectory.DeleteCached(string.Empty));
     }
 }

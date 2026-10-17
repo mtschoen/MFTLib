@@ -57,7 +57,7 @@ public partial class JournalBrokerHostTests
         Assert.AreEqual(new UsnJournalCursor(9UL, 500L), watchedFrom);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false, 7UL, 100L)]
     [DataRow(true, 7UL, 100L)]
     public async Task StartWatch_UnsupportedOperation_EmitsOnlyErrorFrame(

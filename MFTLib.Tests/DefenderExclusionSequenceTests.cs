@@ -67,7 +67,7 @@ public class DefenderExclusionSequenceTests
         Assert.IsFalse(DefenderExclusionSequence.Run(OneName, Relaunch, new FakeElevation(true, false), true, runner.Run));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(true)]
     [DataRow(false)]
     public void Run_CanSelfElevate_RelaunchesWithTheArgumentsAndReturnsItsResultWithoutPowerShell(bool relaunchResult)
@@ -84,7 +84,7 @@ public class DefenderExclusionSequenceTests
         Assert.AreEqual(DefenderExclusionSequence.ElevatedTimeout, timeout);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(true)]
     [DataRow(false)]
     public void Run_CannotSelfElevate_UsesTheElevatedPowerShellAndReturnsItsResult(bool powerShellResult)
@@ -142,7 +142,7 @@ public class DefenderExclusionSequenceTests
 
     // --- input safety ---
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("", DisplayName = "empty")]
     [DataRow("   ", DisplayName = "whitespace-only")]
     [DataRow(" app.exe", DisplayName = "leading-space")]
@@ -163,19 +163,19 @@ public class DefenderExclusionSequenceTests
     [DataRow("a\tb.exe", DisplayName = "tab")]
     public void BuildScript_NameThatIsNotAPlainFileName_IsRefused(string name)
     {
-        Assert.ThrowsException<ArgumentException>(() => DefenderExclusionSequence.BuildScript(["ok.exe", name]));
+        Assert.ThrowsExactly<ArgumentException>(() => DefenderExclusionSequence.BuildScript(["ok.exe", name]));
     }
 
     [TestMethod]
     public void BuildScript_NullName_IsRefused()
     {
-        Assert.ThrowsException<ArgumentException>(() => DefenderExclusionSequence.BuildScript([null!]));
+        Assert.ThrowsExactly<ArgumentException>(() => DefenderExclusionSequence.BuildScript([null!]));
     }
 
     [TestMethod]
     public void BuildScript_InvalidName_ReportsThePublicParameterName()
     {
-        var exception = Assert.ThrowsException<ArgumentException>(() => DefenderExclusionSequence.BuildScript(["a;b.exe"]));
+        var exception = Assert.ThrowsExactly<ArgumentException>(() => DefenderExclusionSequence.BuildScript(["a;b.exe"]));
 
         Assert.AreEqual("processNames", exception.ParamName);
     }
@@ -183,19 +183,19 @@ public class DefenderExclusionSequenceTests
     [TestMethod]
     public void BuildScript_EmptyList_IsRefused()
     {
-        Assert.ThrowsException<ArgumentException>(() => DefenderExclusionSequence.BuildScript([]));
+        Assert.ThrowsExactly<ArgumentException>(() => DefenderExclusionSequence.BuildScript([]));
     }
 
     [TestMethod]
     public void BuildScript_NullList_IsRefused()
     {
-        Assert.ThrowsException<ArgumentNullException>(() => DefenderExclusionSequence.BuildScript(null!));
+        Assert.ThrowsExactly<ArgumentNullException>(() => DefenderExclusionSequence.BuildScript(null!));
     }
 
     [TestMethod]
     public void Run_NullRelaunchArguments_IsRefused()
     {
-        Assert.ThrowsException<ArgumentNullException>(
+        Assert.ThrowsExactly<ArgumentNullException>(
             () => DefenderExclusionSequence.Run(OneName, null!, new FakeElevation(true, true), true, new RecordingRunner().Run));
     }
 
@@ -205,7 +205,7 @@ public class DefenderExclusionSequenceTests
         var elevation = new FakeElevation(true, true);
         var runner = new RecordingRunner();
 
-        Assert.ThrowsException<ArgumentException>(
+        Assert.ThrowsExactly<ArgumentException>(
             () => DefenderExclusionSequence.Run(["a;b.exe"], Relaunch, elevation, false, runner.Run));
         Assert.AreEqual(0, runner.Launches.Count);
     }
@@ -284,7 +284,7 @@ public class DefenderExclusionSequenceTests
         Assert.AreEqual(TrustedPowerShellPath, started.FileName, "The direct, already elevated branch must not search PATH either.");
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(0, true)]
     [DataRow(1, false)]
     public void RunPowerShell_Exit_IsAppliedOnlyForZeroAndNeverKills(int exitCode, bool expected)
@@ -366,7 +366,7 @@ public class DefenderExclusionSequenceTests
     {
         var sequence = SequenceOver(startProcess: _ => throw new NotSupportedException("unexpected"));
 
-        Assert.ThrowsException<NotSupportedException>(() => sequence.RunPowerShell("script", true));
+        Assert.ThrowsExactly<NotSupportedException>(() => sequence.RunPowerShell("script", true));
     }
 
     // --- the public member and the test-extension scope ---
@@ -374,14 +374,14 @@ public class DefenderExclusionSequenceTests
     [TestMethod]
     public void TryAddDefenderProcessExclusions_NullElevation_UsesTheDefaultProviderOnlyAfterValidation()
     {
-        Assert.ThrowsException<ArgumentException>(
+        Assert.ThrowsExactly<ArgumentException>(
             () => ElevationUtilities.TryAddDefenderProcessExclusions(["a;b.exe"], Relaunch));
     }
 
     [TestMethod]
     public void TryAddDefenderProcessExclusions_WithoutAScope_RefusesAnInvalidNameBeforeAnyLaunch()
     {
-        Assert.ThrowsException<ArgumentException>(
+        Assert.ThrowsExactly<ArgumentException>(
             () => ElevationUtilities.TryAddDefenderProcessExclusions([""], Relaunch, new FakeElevation(true, true)));
     }
 
@@ -426,7 +426,7 @@ public class DefenderExclusionSequenceTests
         var first = DefenderExclusionIsolation.ScriptPowerShell();
         try
         {
-            Assert.ThrowsException<InvalidOperationException>(() => DefenderExclusionIsolation.ScriptPowerShell());
+            Assert.ThrowsExactly<InvalidOperationException>(() => DefenderExclusionIsolation.ScriptPowerShell());
         }
         finally
         {

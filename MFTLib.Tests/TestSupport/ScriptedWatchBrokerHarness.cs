@@ -87,7 +87,7 @@ internal sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
     public Task EndHostAsync()
     {
         _corruption.CorruptNextWrite();
-        return Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
+        return Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
             Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
     }
 
@@ -332,6 +332,6 @@ internal static class WatchReads
     /// <summary>The read that throws <typeparamref name="TException" />, or a type derived from it.</summary>
     public static Task<TException> ThrowsNextAsync<TException>(IAsyncEnumerator<WatchStreamItem> reader)
         where TException : Exception =>
-        WatchDeduplicationTestSupport.ThrowsAsync<TException>(
+        Assert.ThrowsAsync<TException>(
             async () => await reader.MoveNextAsync().AsTask().WaitAsync(HangGuard));
 }

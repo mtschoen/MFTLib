@@ -81,7 +81,7 @@ public class MftRecordTests
         Assert.AreEqual("docs", materialized.FileName);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false, false, false, DisplayName = "Issue655_FreedFileUnknown")]
     [DataRow(false, false, true, DisplayName = "Issue655_FreedFileKnown")]
     [DataRow(false, true, false, DisplayName = "Issue655_FreedDirectoryUnknown")]

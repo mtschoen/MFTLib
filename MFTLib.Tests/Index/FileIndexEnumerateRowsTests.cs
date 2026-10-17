@@ -93,7 +93,7 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
 
     static void AssertInvalidMatchMode(FileIndex index, SearchQuery query)
     {
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => { index.EnumerateRows(query); });
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => { index.EnumerateRows(query); });
     }
 
     [TestMethod]
@@ -105,7 +105,7 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
 
     static void AssertNullQuery(FileIndex index)
     {
-        Assert.ThrowsException<ArgumentNullException>(() => { index.EnumerateRows(null!); });
+        Assert.ThrowsExactly<ArgumentNullException>(() => { index.EnumerateRows(null!); });
     }
 
     [TestMethod]
@@ -119,7 +119,7 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
 
     static void AssertCancelledBeforeFirstRow(FileIndex index, CancellationToken cancellationToken)
     {
-        Assert.ThrowsException<OperationCanceledException>(() => Collect(index, new SearchQuery(null), cancellationToken));
+        Assert.ThrowsExactly<OperationCanceledException>(() => Collect(index, new SearchQuery(null), cancellationToken));
     }
 
     [TestMethod]
@@ -127,7 +127,7 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
     {
         var index = await OpenTwoDriveIndexAsync();
         await index.DisposeAsync();
-        Assert.ThrowsException<ObjectDisposedException>(() => Collect(index, new SearchQuery(null)));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => Collect(index, new SearchQuery(null)));
     }
 
     [TestMethod]
@@ -170,7 +170,7 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
 
     static void AssertLoopBodyThrows(FileIndex index)
     {
-        Assert.ThrowsException<InvalidOperationException>(() => ThrowFromLoopBody(index));
+        Assert.ThrowsExactly<InvalidOperationException>(() => ThrowFromLoopBody(index));
     }
 
     static void ThrowFromLoopBody(FileIndex index)

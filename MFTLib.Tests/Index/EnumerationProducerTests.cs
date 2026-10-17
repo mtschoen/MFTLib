@@ -92,8 +92,9 @@ public sealed class EnumerationProducerTests : IDisposable
         {
             var entry = EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents", "Projects", "report.pdf"));
             Assert.IsTrue(entry.HasValue);
-            Assert.AreEqual(100L, entry.Value.Size);
-            Assert.IsFalse(entry.Value.IsDirectory);
+            var entryVal = entry.GetValueOrDefault();
+            Assert.AreEqual(100L, entryVal.Size);
+            Assert.IsFalse(entryVal.IsDirectory);
         }
         finally
         {
@@ -109,8 +110,9 @@ public sealed class EnumerationProducerTests : IDisposable
         {
             var documents = EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents"));
             Assert.IsTrue(documents.HasValue);
-            Assert.IsTrue(documents.Value.IsDirectory);
-            Assert.AreEqual(0L, documents.Value.Size);
+            var docVal = documents.GetValueOrDefault();
+            Assert.IsTrue(docVal.IsDirectory);
+            Assert.AreEqual(0L, docVal.Size);
         }
         finally
         {
@@ -331,7 +333,7 @@ public sealed class EnumerationProducerTests : IDisposable
         });
 
         // ReSharper disable once AccessToDisposedClosure
-        Assert.ThrowsException<OperationCanceledException>(
+        Assert.ThrowsExactly<OperationCanceledException>(
             () => producer.Produce(created.Writer, progress: null, cancellation.Token));
     }
 

@@ -61,7 +61,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
         File.Delete(blockPath);
         Assert.IsFalse(File.Exists(blockPath));
         Assert.IsTrue(entry.IsDisposed);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Size);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.Size);
     }
 
     /// <summary>Disposal releases both the retired and current snapshots after a rescan.</summary>
@@ -287,8 +287,8 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
         var token = cancellation.Token;
         await index.DisposeAsync();
 
-        Assert.ThrowsException<ObjectDisposedException>(() => index.Search(new SearchQuery("readme.md", NameMatchMode.Exact)));
-        Assert.ThrowsException<ObjectDisposedException>(() => index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), token));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => index.Search(new SearchQuery("readme.md", NameMatchMode.Exact)));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), token));
 
         Assert.AreEqual(0, release.Hooks.OutstandingBorrowCount);
     }
@@ -309,7 +309,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
         using var registration = index.DisposalToken.Register(
             () => throw new InvalidOperationException("a cancellation callback of someone else's"));
 
-        var thrown = await Assert.ThrowsExceptionAsync<AggregateException>(
+        var thrown = await Assert.ThrowsExactlyAsync<AggregateException>(
             async () => await index.DisposeAsync());
 
         Assert.AreEqual(2, thrown.InnerExceptions.Count, "one of the two failures was dropped");
@@ -342,7 +342,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
         using var registration = index.DisposalToken.Register(
             () => throw new InvalidOperationException("a cancellation callback of someone else's"));
 
-        var thrown = await Assert.ThrowsExceptionAsync<AggregateException>(
+        var thrown = await Assert.ThrowsExactlyAsync<AggregateException>(
             async () => await index.DisposeAsync());
 
         Assert.IsInstanceOfType<InvalidOperationException>(thrown.InnerExceptions.Single());

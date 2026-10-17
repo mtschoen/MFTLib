@@ -65,7 +65,7 @@ public partial class MftVolumeTests
                 .GetEnumerator();
             // The assertion runs the lambda synchronously.
             // ReSharper disable once AccessToDisposedClosure
-            var exception = Assert.ThrowsException<OperationCanceledException>(() => batches.MoveNext());
+            var exception = Assert.ThrowsExactly<OperationCanceledException>(() => batches.MoveNext());
 
             Assert.AreEqual(cancellation.Token, exception.CancellationToken);
             Assert.AreEqual(1, ParseControlBlock.ChunkThreadCounts().Length, "The parse must stop after one chunk");
@@ -85,7 +85,7 @@ public partial class MftVolumeTests
 
             // The assertion runs the lambda synchronously.
             // ReSharper disable once AccessToDisposedClosure
-            Assert.ThrowsException<OperationCanceledException>(() => batches.MoveNext());
+            Assert.ThrowsExactly<OperationCanceledException>(() => batches.MoveNext());
         });
     }
 

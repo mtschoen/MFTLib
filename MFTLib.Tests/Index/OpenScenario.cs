@@ -53,7 +53,7 @@ internal sealed class OpenScenario : IDisposable
 
     /// <summary>Queues a lost catch-up for the drive's next production.</summary>
     public void ScriptLoss(char driveLetter) =>
-        _losses.GetOrAdd(driveLetter, _ => new ConcurrentQueue<JournalCheckpointLoss>()).Enqueue(WatchDeduplicationTestSupport.StandardCatchUpLoss(driveLetter));
+        _losses.GetOrAdd(driveLetter, _ => new ConcurrentQueue<JournalCheckpointLoss>()).Enqueue(CatchUpLossTestSupport.StandardCatchUpLoss(driveLetter));
 
     public int ProductionsOf(char driveLetter) => _productions.GetValueOrDefault(driveLetter);
 

@@ -45,7 +45,7 @@ public partial class BrokerProtocolTests
     {
         var frame = FrameWithPayload(BrokerFrameKind.ChannelOpened, [1, 2]);
 
-        var exception = Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(frame, out _));
+        var exception = Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(frame, out _));
 
         StringAssert.Contains(exception.Message, "4 bytes needed, 2 left");
     }
@@ -56,7 +56,7 @@ public partial class BrokerProtocolTests
         var frame = BatchFrameWithOneEntry("a.txt");
         BinaryPrimitives.WriteInt32LittleEndian(frame.AsSpan(NameLengthOffset), int.MaxValue);
 
-        var exception = Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(frame, out _));
+        var exception = Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(frame, out _));
 
         StringAssert.Contains(exception.Message, "journal entry declares");
     }
@@ -67,7 +67,7 @@ public partial class BrokerProtocolTests
         var frame = BatchFrameWithOneEntry("a.txt");
         BinaryPrimitives.WriteInt32LittleEndian(frame.AsSpan(NameLengthOffset), -1);
 
-        Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(frame, out _));
+        Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(frame, out _));
     }
 
     [TestMethod]
@@ -81,7 +81,7 @@ public partial class BrokerProtocolTests
         var frame = BatchFrameWithOneEntry(new string('n', EntryFixedBytes / 2));
         BinaryPrimitives.WriteInt32LittleEndian(frame.AsSpan(5 + 16), count);
 
-        var exception = Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(frame, out _));
+        var exception = Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(frame, out _));
 
         StringAssert.Contains(exception.Message, expectedMessage);
     }
@@ -103,17 +103,17 @@ public partial class BrokerProtocolTests
         {
             byte[] payload = [1, 0, 0, 0, (byte)character, (byte)(character >> 8), .. suffix];
             var frame = FrameWithPayload(kind, payload);
-            Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(frame, out _));
+            Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(frame, out _));
         }
         byte[][] invalidCharacterBytes = [[], [(byte)'C']];
         foreach (var characterBytes in invalidCharacterBytes)
         {
             var frame = FrameWithPayload(kind, [1, 0, 0, 0, .. characterBytes]);
-            Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(frame, out _));
+            Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(frame, out _));
         }
         // A valid C character followed by path-shaped trailing bytes is not a drive request.
         var trailing = FrameWithPayload(kind, [1, 0, 0, 0, (byte)'C', 0, .. suffix, (byte)':', 0, (byte)'\\', 0]);
-        Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(trailing, out _));
+        Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(trailing, out _));
         // Old length-prefixed string payloads must not survive as an alternate grammar.
         foreach (var text in new[] { "C", @"C:\", @"\\.\C:" })
         {
@@ -124,7 +124,7 @@ public partial class BrokerProtocolTests
             bytes.CopyTo(payload, 8);
             suffix.CopyTo(payload, 8 + bytes.Length);
             var frame = FrameWithPayload(kind, payload);
-            Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(frame, out _));
+            Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(frame, out _));
         }
     }
 }

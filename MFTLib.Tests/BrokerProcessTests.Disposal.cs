@@ -22,7 +22,7 @@ public partial class BrokerProcessTests
         await scanning.Entered.WaitAsync(HangGuard);
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
 
-        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
         Assert.AreEqual('C', lost.Drive);
         await sourceCancelled.Task.WaitAsync(HangGuard);
         var section = broker.Sections.Single();
@@ -60,7 +60,7 @@ public partial class BrokerProcessTests
             hostClock.Advance(JournalBrokerHost.ControlClosedGracePeriod);
             await dispose.WaitAsync(HangGuard);
 
-            var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
+            var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
             Assert.AreEqual('C', lost.Drive);
             AssertSectionReleased(broker.Sections.Single());
         }
@@ -99,8 +99,8 @@ public partial class BrokerProcessTests
         await using var hostEnd = host;
         await client.DisposeAsync();
 
-        await Assert.ThrowsExceptionAsync<ObjectDisposedException>(() => client.ReadAsync(new byte[4]).AsTask());
-        await Assert.ThrowsExceptionAsync<ObjectDisposedException>(() => client.WriteAsync(new byte[4]).AsTask());
+        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => client.ReadAsync(new byte[4]).AsTask());
+        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => client.WriteAsync(new byte[4]).AsTask());
     }
 
     // The scripted host keeps its end of the scan's pipe open and silent, and the client is already
@@ -125,7 +125,7 @@ public partial class BrokerProcessTests
 
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
 
-        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
         Assert.AreEqual('C', lost.Drive);
         AssertSectionReleased(broker.Sections.Single());
     }
@@ -183,7 +183,7 @@ public partial class BrokerProcessTests
 
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
 
-        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
         Assert.AreEqual('C', lost.Drive);
         AssertSectionReleased(broker.Sections.Single());
     }
@@ -226,7 +226,7 @@ public partial class BrokerProcessTests
                 "The untracked listener is still owned by the pending open, not the disposal sweep.");
             connectionGate.Release();
 
-            var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => open.WaitAsync(HangGuard));
+            var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => open.WaitAsync(HangGuard));
             Assert.AreEqual('C', lost.Drive);
             StringAssert.Contains(lost.Message, "the broker process was disposed");
             Assert.IsFalse(firstRequestWritten, "Tracking rejects the channel before its first request is built.");

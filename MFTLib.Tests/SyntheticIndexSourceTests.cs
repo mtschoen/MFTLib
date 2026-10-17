@@ -40,7 +40,7 @@ public class SyntheticIndexSourceTests
     {
         var source = SyntheticIndexSource.Create();
 
-        var failure = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var failure = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             source.Producer(Request(Path.Combine(Path.GetTempPath(), "never-created.mlix")), CancellationToken.None));
 
         StringAssert.Contains(failure.Message, "no synthetic producer was supplied");

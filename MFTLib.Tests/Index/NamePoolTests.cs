@@ -101,7 +101,7 @@ public class NamePoolTests
     ///     unsigned 32-bit byte count comfortably, and this method's whole contract is to report
     ///     "does not fit" by returning false rather than throwing its way out.
     /// </summary>
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(uint.MaxValue)]
     [DataRow(uint.MaxValue - 1)]
     [DataRow(uint.MaxValue - 2)]

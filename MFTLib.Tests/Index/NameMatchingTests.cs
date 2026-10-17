@@ -87,7 +87,7 @@ public class NameMatchingTests
     [TestMethod]
     public void Matches_UndefinedMode_Throws()
     {
-        var exception = Assert.ThrowsException<ArgumentOutOfRangeException>(
+        var exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
             () => NameMatching.Matches("a", "a", (NameMatchMode)99, caseSensitive: false));
 
         Assert.AreEqual("mode", exception.ParamName);
@@ -99,7 +99,7 @@ public class NameMatchingTests
     {
         NameMatching.ThrowIfUndefined(new SearchQuery("a", NameMatchMode.Glob));
 
-        var exception = Assert.ThrowsException<ArgumentOutOfRangeException>(
+        var exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
             () => NameMatching.ThrowIfUndefined(new SearchQuery("a", (NameMatchMode)99)));
 
         Assert.AreEqual("query", exception.ParamName);

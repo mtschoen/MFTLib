@@ -85,7 +85,7 @@ public class ConsumerJournalIsolationTests
         Assert.AreEqual(1, _productions);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false, false)]
     [DataRow(false, true)]
     [DataRow(true, false)]
@@ -126,7 +126,7 @@ public class ConsumerJournalIsolationTests
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task RetainedOrUnknownWindow_WarmStartsAndArms(bool unknown)
@@ -145,7 +145,7 @@ public class ConsumerJournalIsolationTests
         await index.StopWatchingAsync(['T'], Token);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(0)]
     [DataRow(1)]
     [DataRow(2)]
@@ -199,7 +199,7 @@ public class ConsumerJournalIsolationTests
         {
             await SeedAsync();
         }
-        await Assert.ThrowsExceptionAsync<IOException>(async () =>
+        await Assert.ThrowsExactlyAsync<IOException>(async () =>
         {
             using var scope = JournalIsolation.OverrideJournalWindow(_ => Lost(false));
             await using var index = await FileIndex.OpenAsync(Options(true), Token);

@@ -37,7 +37,7 @@ public class JournalWindowOverrideTests
     [TestMethod]
     public void NullCallback_DoesNotClaimOwnership()
     {
-        Assert.ThrowsException<ArgumentNullException>(
+        Assert.ThrowsExactly<ArgumentNullException>(
             () => JournalIsolation.OverrideJournalWindow(null!));
         using var scope = JournalIsolation.OverrideJournalWindow(_ => Trimmed);
         Assert.IsNotNull(Check());
@@ -47,10 +47,10 @@ public class JournalWindowOverrideTests
     public async Task Overlap_IsRejectedAcrossAwaitAndFromAnotherThread()
     {
         using var scope = JournalIsolation.OverrideJournalWindow(_ => Trimmed);
-        var failure = Assert.ThrowsException<InvalidOperationException>(
+        var failure = Assert.ThrowsExactly<InvalidOperationException>(
             () => JournalIsolation.OverrideJournalWindow(_ => null));
         StringAssert.Contains(failure.Message, "already active");
-        await Task.Run(() => Assert.ThrowsException<InvalidOperationException>(
+        await Task.Run(() => Assert.ThrowsExactly<InvalidOperationException>(
             () => JournalIsolation.OverrideJournalWindow(_ => null)));
         Assert.IsNotNull(Check());
     }
@@ -60,7 +60,7 @@ public class JournalWindowOverrideTests
     {
         JournalIsolation.ForbidLiveJournalReads();
         var failure = new IOException("synthetic observation failure");
-        var actual = Assert.ThrowsException<IOException>(() =>
+        var actual = Assert.ThrowsExactly<IOException>(() =>
         {
             using var scope = JournalIsolation.OverrideJournalWindow(_ => throw failure);
             Check();

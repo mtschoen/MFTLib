@@ -127,7 +127,7 @@ public class WindowsFileByIdTests
             return failedHandle;
         };
 
-        var failure = Assert.ThrowsException<IOException>(
+        var failure = Assert.ThrowsExactly<IOException>(
             () => WindowsFileById.Open(missingPath, recordNumber: 5, sequenceNumber: 1, FileAccess.Read));
 
         StringAssert.Contains(failure.Message, missingPath);
@@ -149,7 +149,7 @@ public class WindowsFileByIdTests
             var (recordNumber, sequenceNumber) = FileReferenceProbe.Read(path);
             var volumeRoot = Path.GetPathRoot(Path.GetFullPath(path))!;
 
-            Assert.ThrowsException<ArgumentOutOfRangeException>(
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(
                 () => WindowsFileById.Open(volumeRoot, recordNumber, sequenceNumber, default));
         }
         finally
@@ -174,7 +174,7 @@ public class WindowsFileByIdTests
             var (recordNumber, sequenceNumber) = FileReferenceProbe.Read(path);
             var volumeRoot = Path.GetPathRoot(Path.GetFullPath(path))!;
 
-            var failure = Assert.ThrowsException<IOException>(
+            var failure = Assert.ThrowsExactly<IOException>(
                 () => WindowsFileById.Open(volumeRoot, recordNumber, (ushort)(sequenceNumber + 1), FileAccess.Read));
 
             StringAssert.Contains(failure.Message, recordNumber.ToString(CultureInfo.InvariantCulture));

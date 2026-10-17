@@ -115,7 +115,7 @@ public partial class FileIndexPerDriveProducerKindTests
             ScanProgress = new CancelEnumerationAfterSiblingSettles(cancellation, siblingSettled.Task)
         };
 
-        var thrown = await Assert.ThrowsExceptionAsync<OperationCanceledException>(async () =>
+        var thrown = await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () =>
         {
             await using var unexpected = await FileIndex.OpenAsync(options, token);
         });
@@ -123,7 +123,7 @@ public partial class FileIndexPerDriveProducerKindTests
         Assert.AreEqual(token, thrown.CancellationToken);
         Assert.IsNotNull(siblingBlock);
         Assert.IsNotNull(siblingPath);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = siblingBlock.Header);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = siblingBlock.Header);
         BlockFileHoldAssertions.AssertNotHeld(siblingPath);
         if (cacheMode == CacheMode.Disabled)
         {

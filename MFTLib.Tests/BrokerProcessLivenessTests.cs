@@ -43,7 +43,7 @@ public class BrokerProcessLivenessTests
         Assert.IsTrue(stallTimer.Fired);
         Assert.AreEqual(StallMessage, await ended.WaitAsync(HangGuard));
         await session.Process.Ended.WaitAsync(HangGuard);
-        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
             session.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
         Assert.IsNull(lost.Drive);
         Assert.AreEqual(StallMessage, lost.Message);
@@ -88,7 +88,7 @@ public class BrokerProcessLivenessTests
         Assert.IsFalse(silent.Scan.IsCompleted, "The channel has been silent for one tick less than the limit.");
         clock.Advance(OneTick);
 
-        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
             silent.Scan.WaitAsync(HangGuard));
         Assert.AreEqual('C', lost.Drive);
         Assert.AreEqual(StallMessage, lost.Message);
@@ -152,7 +152,7 @@ public class BrokerProcessLivenessTests
 
         // The host never closed the channel after its terminal frame. The stall is the peer's
         // silence, not this scan closing its own channel, so the complete result is not returned.
-        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.Scan.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.Scan.WaitAsync(HangGuard));
         Assert.AreEqual('C', lost.Drive);
         Assert.AreEqual(StallMessage, lost.Message);
     }
@@ -168,7 +168,7 @@ public class BrokerProcessLivenessTests
 
         await stalled.SendAsync(writer => BrokerProtocol.WriteStalled(writer, hostMessage));
 
-        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
             stalled.Scan.WaitAsync(HangGuard));
         Assert.AreEqual('C', lost.Drive);
         Assert.AreEqual(hostMessage, lost.Message);
@@ -203,7 +203,7 @@ public class BrokerProcessLivenessTests
         clock.Advance(OneTick);
 
         Assert.IsTrue(replyTimeout.Fired);
-        var timeout = await Assert.ThrowsExceptionAsync<TimeoutException>(() => slow.WaitAsync(HangGuard));
+        var timeout = await Assert.ThrowsExactlyAsync<TimeoutException>(() => slow.WaitAsync(HangGuard));
         StringAssert.Contains(timeout.Message, "did not answer request");
         StringAssert.Contains(timeout.Message, "30 seconds");
         Assert.IsFalse(session.Process.Ended.IsCompleted, "Only the request timed out.");
@@ -238,7 +238,7 @@ public class BrokerProcessLivenessTests
         clock.Advance(OneTick);
 
         Assert.IsTrue(stallTimer.Fired);
-        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => read.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => read.WaitAsync(HangGuard));
         Assert.AreEqual('C', lost.Drive);
         Assert.AreEqual(StallMessage, lost.Message);
         Assert.IsNull(await HostChannelHarness.ReadFrameAsync(hostPipe).WaitAsync(HangGuard));
@@ -261,7 +261,7 @@ public class BrokerProcessLivenessTests
         Assert.IsFalse(second.IsCompleted, "The window restarted at the second read, 20 seconds in.");
         clock.Advance(SendInterval);
 
-        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => second.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => second.WaitAsync(HangGuard));
         Assert.AreEqual(StallMessage, lost.Message);
     }
 
@@ -281,7 +281,7 @@ public class BrokerProcessLivenessTests
         clock.Advance(StallLimit);
         gate.Release();
 
-        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => read.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => read.WaitAsync(HangGuard));
         Assert.AreEqual(StallMessage, lost.Message);
     }
 

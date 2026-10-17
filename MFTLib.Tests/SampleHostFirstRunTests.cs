@@ -84,7 +84,7 @@ public class SampleHostFirstRunTests
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(true)]
     [DataRow(false)]
     public void Run_ElevatedRelaunchTookOver_NamesTheOutputLogOnTheUnelevatedConsole(bool childSucceeded)

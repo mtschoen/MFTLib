@@ -10,7 +10,7 @@ namespace MFTLib.Tests;
 // byte, so a parser or generator change that moves either shows up here.
 public partial class DumpParseNativeTests
 {
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("fixture.mft", DisplayName = "Issue655_AsciiFixture")]
     [DataRow("fixture-\u00e9-\u6d4b\u8bd5.mft", DisplayName = "Issue655_Utf8Fixture")]
     [TestCategory("Smoke")]

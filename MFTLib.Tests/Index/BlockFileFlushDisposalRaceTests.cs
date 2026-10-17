@@ -89,7 +89,7 @@ public class BlockFileFlushDisposalRaceTests
 
             Assert.IsTrue(flushTask.Wait(HangGuard * 3), "the in-flight flush never finished");
             Assert.IsTrue(disposeTask.Wait(HangGuard * 3), "dispose never finished after the flush left the block");
-            Assert.ThrowsException<ObjectDisposedException>(() => block.Flush(null));
+            Assert.ThrowsExactly<ObjectDisposedException>(() => block.Flush(null));
         }
         finally
         {

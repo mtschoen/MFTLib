@@ -234,7 +234,7 @@ public partial class JournalBrokerHostChannelTests
         StringAssert.Contains(frames[0].Message, "CaughtUp");
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("truncated section name")]
     [DataRow("negative name count")]
     [DataRow("name count beyond the payload")]

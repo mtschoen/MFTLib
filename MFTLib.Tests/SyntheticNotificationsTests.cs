@@ -33,7 +33,7 @@ public class SyntheticNotificationsTests
     [TestMethod]
     public void CreateCachedBlockFile_RefusesANullPath()
     {
-        Assert.ThrowsException<ArgumentNullException>(() =>
+        Assert.ThrowsExactly<ArgumentNullException>(() =>
             SyntheticNotifications.CreateCachedBlockFile('T', 7, null!, 0, Moment));
     }
 
@@ -55,7 +55,7 @@ public class SyntheticNotificationsTests
     [TestMethod]
     public void CreateCachedBlockDeletionResult_RefusesANullFile()
     {
-        Assert.ThrowsException<ArgumentNullException>(() =>
+        Assert.ThrowsExactly<ArgumentNullException>(() =>
             SyntheticNotifications.CreateCachedBlockDeletionResult(null!, CachedBlockDeletionOutcome.Deleted, null));
     }
 
@@ -72,9 +72,9 @@ public class SyntheticNotificationsTests
     [TestMethod]
     public void CreateCachedBlockRejection_RefusesNullText()
     {
-        Assert.ThrowsException<ArgumentNullException>(() =>
+        Assert.ThrowsExactly<ArgumentNullException>(() =>
             SyntheticNotifications.CreateCachedBlockRejection(null!, "reason"));
-        Assert.ThrowsException<ArgumentNullException>(() =>
+        Assert.ThrowsExactly<ArgumentNullException>(() =>
             SyntheticNotifications.CreateCachedBlockRejection("path", null!));
     }
 
@@ -115,7 +115,7 @@ public class SyntheticNotificationsTests
     [TestMethod]
     public void CreateCachedBlockStatus_RefusesANullFile()
     {
-        Assert.ThrowsException<ArgumentNullException>(() =>
+        Assert.ThrowsExactly<ArgumentNullException>(() =>
             SyntheticNotifications.CreateCachedBlockStatus(null!, CachedBlockAvailability.InUse, null, null, null));
     }
 
@@ -144,7 +144,7 @@ public class SyntheticNotificationsTests
     [TestMethod]
     public void CreateFileChange_RefusesANullPath()
     {
-        Assert.ThrowsException<ArgumentNullException>(() =>
+        Assert.ThrowsExactly<ArgumentNullException>(() =>
             SyntheticNotifications.CreateFileChange(FileChangeKind.Created, default, null!, Moment));
     }
 
@@ -164,7 +164,7 @@ public class SyntheticNotificationsTests
     [TestMethod]
     public void CreateWatchFault_RefusesANullException()
     {
-        Assert.ThrowsException<ArgumentNullException>(() =>
+        Assert.ThrowsExactly<ArgumentNullException>(() =>
             SyntheticNotifications.CreateWatchFault(WatchFaultKind.Drive, 'T', null!));
     }
 
@@ -219,7 +219,7 @@ public class SyntheticNotificationsTests
     [TestMethod]
     public void CreateJournalCatchUpLostException_RefusesANullMessage()
     {
-        Assert.ThrowsException<ArgumentNullException>(() =>
+        Assert.ThrowsExactly<ArgumentNullException>(() =>
             SyntheticNotifications.CreateJournalCatchUpLostException(false, null!));
     }
 

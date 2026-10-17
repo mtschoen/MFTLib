@@ -95,7 +95,7 @@ public sealed class NamedBlockSectionTests : IDisposable
                 NamePoolCapacity = 256
             };
 
-            Assert.ThrowsException<IOException>(() => NamedBlockSection.Create(secondOptions, sectionName));
+            Assert.ThrowsExactly<IOException>(() => NamedBlockSection.Create(secondOptions, sectionName));
 
             Assert.IsFalse(File.Exists(secondPath), "a failed create must not leave a header-less file behind");
         }
@@ -111,7 +111,7 @@ public sealed class NamedBlockSectionTests : IDisposable
             return;
         }
 
-        Assert.ThrowsException<FileNotFoundException>(() =>
+        Assert.ThrowsExactly<FileNotFoundException>(() =>
             NamedBlockSection.OpenExisting(NamedBlockSection.BuildSectionName('Z'), 4096));
     }
 }

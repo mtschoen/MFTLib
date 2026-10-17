@@ -133,7 +133,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
     }
 
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("F1-1", false)]
     [DataRow("F2-1", true)]
     public void VolumeParse_BootstrapRecordWithAnInvalidFixup_FailsWithoutReturningRecords(string caseId,

@@ -57,7 +57,7 @@ public partial class JournalBrokerHostChannelTests
         await HostChannelHarness.ReadToEndAsync(pipeD);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(ScanEnding.Completes)]
     [DataRow(ScanEnding.Cancelled)]
     [DataRow(ScanEnding.SourceThrows)]

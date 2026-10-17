@@ -12,7 +12,7 @@ public class FileIndexWatchRescanFaultHandoffTests
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("production", false, false, false)]
     [DataRow("drain", false, false, false)]
     [DataRow("restart decision", false, false, false)]
@@ -170,7 +170,7 @@ public class FileIndexWatchRescanFaultHandoffTests
         await DriveResultAssertions.NotApplicableAsync(() => index.StopWatchingAsync(['T'], Token));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task ReplacementStart_SupersedesTheOldSubscriberFault(bool startFails)
@@ -239,7 +239,7 @@ public class FileIndexWatchRescanFaultHandoffTests
         Assert.AreEqual(WatchState.Faulted, index.Drives.Single().Watch.State,
             "a recovery for the replaced block cannot remain published during the drain");
         Assert.IsFalse(index.TryGetRecoveryCompletionForTest('T', out _));
-        Assert.IsFalse(recovery.IsCompleted, "the superseded ticket still has to finish its own teardown");
+        Assert.IsFalse(recovery!.IsCompleted, "the superseded ticket still has to finish its own teardown");
         faultHandler.Release();
         await rescan.WaitAsync(HangGuard);
         await recovery.WaitAsync(HangGuard);

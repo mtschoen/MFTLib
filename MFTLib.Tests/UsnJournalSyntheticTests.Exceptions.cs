@@ -27,7 +27,7 @@ public partial class UsnJournalSyntheticTests
 
         UseFakeHandle();
         NativeTestHooks.NativeSetAllocFailCountdown(-3);
-        var failure = Assert.ThrowsException<InvalidOperationException>(() =>
+        var failure = Assert.ThrowsExactly<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open('C');
             volume.Journal.ReadUsnJournalBounded(Cursor, 0);

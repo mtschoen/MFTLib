@@ -111,7 +111,7 @@ public class SearchQueryMatchModeTests
     {
         var query = new SearchQuery(null, (NameMatchMode)99);
 
-        var searchFailure = Assert.ThrowsException<ArgumentOutOfRangeException>(
+        var searchFailure = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
             () => SearchEngine.Search(_snapshot, query));
 
         Assert.AreEqual("query", searchFailure.ParamName);

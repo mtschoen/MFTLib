@@ -387,12 +387,12 @@ public sealed partial class FileIndexResilienceTests : IDisposable
         var entry = index.Find(Path.Combine(_treeRoot, "Documents", "readme.md"))!.Value;
         await index.DisposeAsync();
 
-        Assert.ThrowsException<ObjectDisposedException>(() => index.Drives);
-        Assert.ThrowsException<ObjectDisposedException>(() => index.CurrentSnapshot);
-        Assert.ThrowsException<ObjectDisposedException>(() => index.TryGetDriveOrdinal('T', out _));
-        Assert.ThrowsException<ObjectDisposedException>(() => index.BorrowCurrentSnapshot());
+        Assert.ThrowsExactly<ObjectDisposedException>(() => index.Drives);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => index.CurrentSnapshot);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => index.TryGetDriveOrdinal('T', out _));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => index.BorrowCurrentSnapshot());
         Assert.IsTrue(entry.IsDisposed);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Name);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.Name);
     }
 
 

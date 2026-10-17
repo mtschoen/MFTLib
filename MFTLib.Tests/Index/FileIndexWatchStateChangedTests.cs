@@ -1,7 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -252,7 +251,7 @@ public partial class FileIndexWatchStateChangedTests
         var recorder = new WatchStateRecorder(harness.Index);
         await harness.Index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
-        harness.ScriptScans('T', new WatchHarnessScan(WatchDeduplicationTestSupport.StandardCatchUpLoss('T')), new WatchHarnessScan());
+        harness.ScriptScans('T', new WatchHarnessScan(CatchUpLossTestSupport.StandardCatchUpLoss('T')), new WatchHarnessScan());
 
         await harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
@@ -287,9 +286,9 @@ public partial class FileIndexWatchStateChangedTests
 
         var after = opening.Length;
         string At(string state, int stepsAfterOpening) => $"{state}:{after + stepsAfterOpening}";
-        harness.ScriptScans('T', new WatchHarnessScan(WatchDeduplicationTestSupport.StandardCatchUpLoss('T')),
-            new WatchHarnessScan(WatchDeduplicationTestSupport.StandardCatchUpLoss('T')),
-            new WatchHarnessScan(WatchDeduplicationTestSupport.StandardCatchUpLoss('T')));
+        harness.ScriptScans('T', new WatchHarnessScan(CatchUpLossTestSupport.StandardCatchUpLoss('T')),
+            new WatchHarnessScan(CatchUpLossTestSupport.StandardCatchUpLoss('T')),
+            new WatchHarnessScan(CatchUpLossTestSupport.StandardCatchUpLoss('T')));
 
         JournalCatchUpLostException stopped;
         if (automaticRecovery)
@@ -368,7 +367,7 @@ public partial class FileIndexWatchStateChangedTests
         await starting.Entered.WaitAsync(HangGuard);
         await cancellation.CancelAsync();
 
-        await ThrowsAsync<OperationCanceledException>(() => start.WaitAsync(HangGuard));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => start.WaitAsync(HangGuard));
         AssertHistory(recorder, 'T', "CatchingUp:1", "NotStarted:2");
     }
 
@@ -490,7 +489,7 @@ public partial class FileIndexWatchStateChangedTests
                     "the second-thread read completed while the subscriber was held");
                 Assert.IsTrue(observation.VisibleVersion >= observation.Change.Watch.StateVersion);
                 Assert.IsTrue(read.Watch.StateVersion >= observation.Change.Watch.StateVersion);
-                var rejection = await ThrowsAsync<InvalidOperationException>(
+                var rejection = await Assert.ThrowsAsync<InvalidOperationException>(
                     () => observation.RejectedStop.WaitAsync(HangGuard));
                 StringAssert.Contains(rejection.Message, "WatchStateChanged");
             }

@@ -10,7 +10,7 @@ public class FileIndexWatchRescanCacheTests
 {
     public TestContext TestContext { get; set; } = null!;
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task FailedProduction_RestoresTheRenamedFileWithLiveJournalUpdates(bool cancel)
@@ -55,7 +55,7 @@ public class FileIndexWatchRescanCacheTests
                 if (cancel)
                 {
                     await cancellation.CancelAsync();
-                    await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => rescan);
+                    await Assert.ThrowsAsync<OperationCanceledException>(() => rescan);
                 }
                 else
                 {

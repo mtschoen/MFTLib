@@ -147,9 +147,9 @@ public class SyntheticConversionTests
     [TestMethod]
     public void Conversions_RejectNull()
     {
-        Assert.ThrowsException<ArgumentNullException>(() => ((SyntheticScanRecord)null!).ToProduction());
-        Assert.ThrowsException<ArgumentNullException>(() => ((SyntheticJournalRecord)null!).ToProduction());
-        Assert.ThrowsException<ArgumentNullException>(() => ((IReadOnlyList<SyntheticJournalRecord>)null!).ToProduction());
+        Assert.ThrowsExactly<ArgumentNullException>(() => ((SyntheticScanRecord)null!).ToProduction());
+        Assert.ThrowsExactly<ArgumentNullException>(() => ((SyntheticJournalRecord)null!).ToProduction());
+        Assert.ThrowsExactly<ArgumentNullException>(() => ((IReadOnlyList<SyntheticJournalRecord>)null!).ToProduction());
     }
 
     [TestMethod]
@@ -187,6 +187,6 @@ public class SyntheticConversionTests
     [TestMethod]
     public void CreateSession_NullLaunch_Throws()
     {
-        Assert.ThrowsException<ArgumentNullException>(() => BrokerTestHarness.CreateSession(null!));
+        Assert.ThrowsExactly<ArgumentNullException>(() => BrokerTestHarness.CreateSession(null!));
     }
 }

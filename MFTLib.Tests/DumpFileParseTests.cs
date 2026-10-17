@@ -138,7 +138,7 @@ public partial class DumpFileParseTests
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(1024u)]
     [DataRow(4096u)]
     [TestCategory("Smoke")]
@@ -153,12 +153,12 @@ public partial class DumpFileParseTests
             Assert.IsTrue(records.Length > 0);
             Assert.AreEqual(1000UL, totalRecords);
 
-            var rec0 = records.FirstOrDefault(r => r.RecordNumber == 0);
-            Assert.IsNotNull(rec0, "Record 0 ($MFT) must exist");
+            Assert.IsTrue(records.Any(r => r.RecordNumber == 0), "Record 0 ($MFT) must exist");
+            var rec0 = records.First(r => r.RecordNumber == 0);
             Assert.AreEqual("$MFT", rec0.FileName);
 
-            var rec5 = records.FirstOrDefault(r => r.RecordNumber == 5);
-            Assert.IsNotNull(rec5, "Record 5 (root directory) must exist");
+            Assert.IsTrue(records.Any(r => r.RecordNumber == 5), "Record 5 (root directory) must exist");
+            var rec5 = records.First(r => r.RecordNumber == 5);
             Assert.AreEqual(".", rec5.FileName);
             Assert.IsTrue(rec5.IsDirectory, "Record 5 must be a directory");
         }
@@ -171,7 +171,7 @@ public partial class DumpFileParseTests
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(0u)]
     [DataRow(256u)]
     [DataRow(1536u)]
@@ -181,7 +181,7 @@ public partial class DumpFileParseTests
         var tempPath = Path.GetTempFileName();
         try
         {
-            Assert.ThrowsException<InvalidOperationException>(() =>
+            Assert.ThrowsExactly<InvalidOperationException>(() =>
                 MftVolume.GenerateSyntheticMFT(tempPath, 100, 256, recordSize));
         }
         finally
@@ -199,7 +199,7 @@ public partial class DumpFileParseTests
         var tempPath = Path.GetTempFileName();
         try
         {
-            Assert.ThrowsException<InvalidOperationException>(() => MftVolume.GenerateSyntheticMFT(tempPath, 100, 0));
+            Assert.ThrowsExactly<InvalidOperationException>(() => MftVolume.GenerateSyntheticMFT(tempPath, 100, 0));
         }
         finally
         {

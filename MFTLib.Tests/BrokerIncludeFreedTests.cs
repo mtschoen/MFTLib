@@ -12,7 +12,7 @@ namespace MFTLib.Tests;
 [TestClass]
 public class BrokerIncludeFreedTests : BrokerBlockTestBase
 {
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(true)]
     [DataRow(false)]
     public async Task Produce_IncludeFreedReachesTheHostScanAndFilter(bool includeFreed)

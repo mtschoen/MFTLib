@@ -77,7 +77,7 @@ public partial class MftResultTests
         using var cancellation = new CancellationTokenSource();
         var token = cancellation.Token;
 
-        var exception = Assert.ThrowsException<OperationCanceledException>(() =>
+        var exception = Assert.ThrowsExactly<OperationCanceledException>(() =>
             new MftResult(resultPtr, token));
 
         Assert.AreEqual(token, exception.CancellationToken);
@@ -97,7 +97,7 @@ public partial class MftResultTests
         Marshal.StructureToPtr(result, resultPtr, false);
         MFTLibNative.Hooks.FreeMftResult = Marshal.FreeHGlobal;
 
-        var ex = Assert.ThrowsException<InvalidOperationException>(() =>
+        var ex = Assert.ThrowsExactly<InvalidOperationException>(() =>
             new MftResult(resultPtr));
         Assert.IsTrue(ex.Message.Contains("stride"));
     }
@@ -131,7 +131,7 @@ public partial class MftResultTests
             MFTLibNative.Hooks.FreeMftResult = Marshal.FreeHGlobal;
 
             using var mftResult = new MftResult(resultPtr);
-            var ex = Assert.ThrowsException<InvalidDataException>(mftResult.ToRecords);
+            var ex = Assert.ThrowsExactly<InvalidDataException>(mftResult.ToRecords);
             Assert.AreEqual("Native MFT string offset is outside its pool", ex.Message);
         }
         finally
@@ -170,7 +170,7 @@ public partial class MftResultTests
             MFTLibNative.Hooks.FreeMftResult = Marshal.FreeHGlobal;
 
             using var mftResult = new MftResult(resultPtr);
-            var ex = Assert.ThrowsException<InvalidDataException>(mftResult.ToRecords);
+            var ex = Assert.ThrowsExactly<InvalidDataException>(mftResult.ToRecords);
             Assert.AreEqual("Native MFT string offset is outside its pool", ex.Message);
         }
         finally

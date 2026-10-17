@@ -207,13 +207,13 @@ public sealed class WatchVerbTests : IDisposable
             "Run resolves the cache root; cache and broker verbs consume that value.");
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(null)]
     [DataRow("")]
     [DataRow(" \t")]
     public void Run_CacheWithoutAProfile_RequiresAnExplicitDirectory(string? profile)
     {
-        var exception = Assert.ThrowsException<ArgumentException>(() =>
+        var exception = Assert.ThrowsExactly<ArgumentException>(() =>
             SampleHost.ResolveCacheDirectory(new WatchArguments(WatchVerb.Cache, []), profile));
         Assert.IsTrue(exception.Message.Contains("--cache-directory", StringComparison.Ordinal));
 

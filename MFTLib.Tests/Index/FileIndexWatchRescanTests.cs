@@ -3,7 +3,6 @@ using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -257,9 +256,9 @@ public partial class FileIndexWatchRescanTests
             var producedBlock = await WaitForReplacementBlockAsync(harness, 'T', initialProducedBlock, rescan);
             await rescanCancellation.CancelAsync();
 
-            await ThrowsAsync<OperationCanceledException>(() => rescan.WaitAsync(HangGuard));
+            await Assert.ThrowsAsync<OperationCanceledException>(() => rescan.WaitAsync(HangGuard));
 
-            Assert.ThrowsException<ObjectDisposedException>(() => _ = producedBlock.Header);
+            Assert.ThrowsExactly<ObjectDisposedException>(() => _ = producedBlock.Header);
             Assert.AreSame(initialBlock, harness.Index.Root('T').DriveBlock);
             Assert.AreEqual(0, Directory.GetFiles(harness.CacheDirectory, "*.retired-*").Length);
         }

@@ -7,33 +7,11 @@ namespace MFTLib.Tests.TestSupport;
 public class DriveAssertionStrictnessTests
 {
     [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public async Task ThrowsAsync_CompletedFailedResult_DoesNotSatisfyThrowAssertion(bool eraseResultType)
-    {
-        IReadOnlyList<DriveOperationResult> results =
-            [new('T', DriveOperationOutcome.Failed, new InvalidOperationException("drive failure"))];
-        var completed = Task.FromResult(results);
-
-        if (eraseResultType)
-        {
-            Func<Task> operation = () => completed;
-            await Assert.ThrowsExceptionAsync<AssertFailedException>(() =>
-                WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(operation));
-        }
-        else
-        {
-            await Assert.ThrowsExceptionAsync<AssertFailedException>(() =>
-                WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() => completed));
-        }
-    }
-
-    [TestMethod]
     public void Failure_ThrownExpectedException_DoesNotSatisfyResultAssertion()
     {
         var failure = new InvalidOperationException("drive failure");
 
-        var thrown = Assert.ThrowsException<InvalidOperationException>(() =>
+        var thrown = Assert.ThrowsExactly<InvalidOperationException>(() =>
             DriveResultAssertions.Failure<InvalidOperationException>(() => throw failure));
 
         Assert.AreSame(failure, thrown);
@@ -46,7 +24,7 @@ public class DriveAssertionStrictnessTests
     {
         var failure = new InvalidOperationException("drive failure");
 
-        var thrown = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var thrown = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             DriveResultAssertions.FailureAsync<InvalidOperationException>(() => throwSynchronously
                 ? throw failure
                 : Task.FromException<IReadOnlyList<DriveOperationResult>>(failure)));

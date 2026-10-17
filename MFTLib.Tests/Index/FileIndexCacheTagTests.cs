@@ -137,7 +137,7 @@ public class FileIndexCacheTagTests
     public void InvalidTagIsRejectedWhileConstructingOptions()
     {
         var cache = Path.Combine(_directory, "invalid-options-cache");
-        Assert.ThrowsException<ArgumentException>(() => new FileIndexOptions
+        Assert.ThrowsExactly<ArgumentException>(() => new FileIndexOptions
         {
             CacheDirectory = cache,
             CacheTag = new CacheTag("GIT", 1)

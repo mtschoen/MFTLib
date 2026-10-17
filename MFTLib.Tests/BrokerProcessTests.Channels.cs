@@ -39,7 +39,7 @@ public partial class BrokerProcessTests
         connecting.Release();
 
         var connected = await connection.Task.WaitAsync(HangGuard);
-        await Assert.ThrowsExceptionAsync<IOException>(() => connected.WaitAsync(HangGuard),
+        await Assert.ThrowsExactlyAsync<IOException>(() => connected.WaitAsync(HangGuard),
             "The pipe the client released has nothing listening.");
         await broker.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard);
         Assert.AreEqual(0, watchStarts, "No channel ran on the host.");
@@ -57,7 +57,7 @@ public partial class BrokerProcessTests
                 throw new IOException("refused after connecting");
             });
 
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, Armed),
                 CancellationToken.None).WaitAsync(HangGuard));
 
@@ -78,7 +78,7 @@ public partial class BrokerProcessTests
                 : null
         });
 
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, Armed),
                 CancellationToken.None).WaitAsync(HangGuard));
 
@@ -96,7 +96,7 @@ public partial class BrokerProcessTests
                 name == InMemoryBrokerPipes.ControlPipeName ? stream : clientEnd.Wrap(stream),
             wrapConnector: RecordHostEnd(hostEnd));
 
-        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
             broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, Armed),
                 CancellationToken.None).WaitAsync(HangGuard));
 

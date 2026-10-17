@@ -90,7 +90,7 @@ public partial class DumpParseNativeTests
         Assert.IsFalse(records.Any(record => record.RecordNumber == 6));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(0x38)]
     [DataRow(0x98)]
     public void Parse_MalformedResidentValueOffset_SkipsRecord(int attributeOffset)
@@ -108,7 +108,7 @@ public partial class DumpParseNativeTests
     }
 
     // ScanRecordAttributes' FirstAttributeOffset guard: below 42, or overflowing the record.
-    [DataTestMethod]
+    [TestMethod]
     [DataRow((ushort)10)]
     [DataRow((ushort)1022)]
     public void Parse_InvalidFirstAttributeOffset_SkipsRecord(ushort firstAttributeOffset)

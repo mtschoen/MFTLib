@@ -158,7 +158,7 @@ public sealed class BrokerFileIndexRescanTests
             await connectGate.Entered.WaitAsync(HangGuard);
             await startCancellation.CancelAsync();
 
-            await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => start.WaitAsync(HangGuard));
+            await Assert.ThrowsAsync<OperationCanceledException>(() => start.WaitAsync(HangGuard));
             await index.StartWatchingAsync(['T'], token);
             await index.RescanAsync(['T'], token);
             Assert.IsTrue(index.Drives.All(drive => drive.Watch.FailureMessage == null));

@@ -14,13 +14,13 @@ public class CacheTagTests
     [DataRow("\uff27ITW")]
     public void InvalidFourCcIsRejected(string code)
     {
-        Assert.ThrowsException<ArgumentException>(() => new CacheTag(code, 1));
+        Assert.ThrowsExactly<ArgumentException>(() => new CacheTag(code, 1));
     }
 
     [TestMethod]
     public void NullFourCcIsRejected()
     {
-        Assert.ThrowsException<ArgumentNullException>(() => new CacheTag(null!, 1));
+        Assert.ThrowsExactly<ArgumentNullException>(() => new CacheTag(null!, 1));
     }
 
     [TestMethod]

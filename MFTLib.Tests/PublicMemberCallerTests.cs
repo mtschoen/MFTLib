@@ -346,7 +346,7 @@ public class PublicMemberCallerTests
     {
         var surface = ReadSurface(typeof(PublicMemberCallerTests).Assembly.Location, ["MFTLib.Tests.CallerGateFixtures"]);
 
-        var failure = Assert.ThrowsException<AssertFailedException>(() => AssertNoOutOfScopeTypes(surface));
+        var failure = Assert.ThrowsExactly<AssertFailedException>(() => AssertNoOutOfScopeTypes(surface));
         StringAssert.Contains(failure.Message, "MFTLib.Tests.PublicMemberCallerTests");
     }
 
@@ -355,9 +355,9 @@ public class PublicMemberCallerTests
     {
         var absent = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
 
-        var failure = Assert.ThrowsException<AssertFailedException>(() => GateSamplePaths(true, absent));
+        var failure = Assert.ThrowsExactly<AssertFailedException>(() => GateSamplePaths(true, absent));
         StringAssert.Contains(failure.Message, Path.Combine(absent, WatchSample));
-        Assert.ThrowsException<AssertInconclusiveException>(() => GateSamplePaths(false, absent));
+        Assert.ThrowsExactly<AssertInconclusiveException>(() => GateSamplePaths(false, absent));
     }
 
     [TestMethod]
@@ -365,9 +365,9 @@ public class PublicMemberCallerTests
     {
         var absent = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "MFTLib.dll");
 
-        var failure = Assert.ThrowsException<AssertFailedException>(() => ResolveLibraryPath(absent));
+        var failure = Assert.ThrowsExactly<AssertFailedException>(() => ResolveLibraryPath(absent));
         StringAssert.Contains(failure.Message, absent);
-        Assert.ThrowsException<AssertFailedException>(() => ResolveLibraryPath(null));
+        Assert.ThrowsExactly<AssertFailedException>(() => ResolveLibraryPath(null));
         Assert.AreEqual(typeof(FileIndex).Assembly.Location, ResolveLibraryPath(typeof(FileIndex).Assembly.Location));
     }
 }

@@ -75,7 +75,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
         CollectionAssert.AreEqual(new[] { "dump:/D/documents/Notes.txt  11" }, lines);
         Assert.IsTrue(retainedEntry.IsValid);
         Assert.IsTrue(retainedEntry.IsDisposed);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = retainedEntry.Path);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = retainedEntry.Path);
     }
 
     [TestMethod]
@@ -100,7 +100,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
             Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind, filePath);
             Assert.IsFalse(string.IsNullOrWhiteSpace(status.Failure?.Message), filePath);
 
-            var failure = Assert.ThrowsException<InvalidOperationException>(() =>
+            var failure = Assert.ThrowsExactly<InvalidOperationException>(() =>
             {
                 if (status.State != DriveState.Ready)
                 {
@@ -196,7 +196,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
             },
             lines);
         Assert.IsTrue(retainedEntry.IsDisposed);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = retainedEntry.Size);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = retainedEntry.Size);
     }
 
     [TestMethod]
@@ -220,7 +220,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
             Assert.AreEqual(DriveState.Failed, status.State);
             Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind);
 
-            var thrown = Assert.ThrowsException<InvalidOperationException>(() =>
+            var thrown = Assert.ThrowsExactly<InvalidOperationException>(() =>
             {
                 if (status.State != DriveState.Ready)
                 {
@@ -235,7 +235,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
 
         using var cancelledSource = new CancellationTokenSource();
         await cancelledSource.CancelAsync();
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(
             () => FileIndex.OpenAsync(failingOptions, cancelledSource.Token));
     }
 }

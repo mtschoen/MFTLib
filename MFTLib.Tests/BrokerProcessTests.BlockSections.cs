@@ -66,7 +66,7 @@ public partial class BrokerProcessTests
                 throw new IOException("drive failed")
         }));
 
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => broker.Process.ScanDriveAsync('C',
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => broker.Process.ScanDriveAsync('C',
             TestBlockSections.Target(), new MftScanOptions(), null, CancellationToken.None).WaitAsync(HangGuard));
 
         var section = broker.Sections.Single();
@@ -175,7 +175,7 @@ public partial class BrokerProcessTests
         await using var handle = BrokerTestHarness.Start(BrokerHostFactory.Create(), resources,
             new BrokerTestHarnessOptions(), null, null);
 
-        var exception = await Assert.ThrowsExceptionAsync<IOException>(() => handle.Process.ScanDriveAsync('C',
+        var exception = await Assert.ThrowsExactlyAsync<IOException>(() => handle.Process.ScanDriveAsync('C',
             TestBlockSections.Target(), new MftScanOptions(), null, CancellationToken.None).WaitAsync(HangGuard));
 
         Assert.AreEqual("release failed", exception.Message);

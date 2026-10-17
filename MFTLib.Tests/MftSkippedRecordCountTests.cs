@@ -5,7 +5,7 @@ namespace MFTLib.Tests;
 [TestClass]
 public class MftSkippedRecordCountTests
 {
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(0L, 0)]
     [DataRow(17L, 17)]
     [DataRow((long)int.MaxValue, int.MaxValue)]

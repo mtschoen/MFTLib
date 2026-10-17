@@ -170,7 +170,7 @@ public partial class NativeMftProcessingTests
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow((byte)0xF6, true, DisplayName = "-10 declares 1024-byte records")]
     [DataRow((byte)0x00, false, DisplayName = "zero declares no record size")]
     [DataRow((byte)0xE0, false, DisplayName = "-32 declares a size past the supported range")]

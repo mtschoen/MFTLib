@@ -65,7 +65,7 @@ public class NtfsVolumeInformationQueryTests
         Assert.AreEqual(8_000_000L, info.MftRecordCount);
 
         FileUtilities.Hooks.GetVolumeHandle = _ => throw new AssertFailedException("Default drive reached volume I/O.");
-        Assert.ThrowsException<ArgumentException>(() => NtfsVolumeInformation.Query(default, isWindows: true));
+        Assert.ThrowsExactly<ArgumentException>(() => NtfsVolumeInformation.Query(default, isWindows: true));
     }
 
     [TestMethod]
@@ -88,6 +88,6 @@ public class NtfsVolumeInformationQueryTests
         FileUtilities.Hooks.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), ownsHandle: false);
         Kernel32.Hooks.DeviceIoControl = FakeDeviceIoControl;
 
-        Assert.ThrowsException<Win32Exception>(() => NtfsVolumeInformation.Query('C'));
+        Assert.ThrowsExactly<Win32Exception>(() => NtfsVolumeInformation.Query('C'));
     }
 }

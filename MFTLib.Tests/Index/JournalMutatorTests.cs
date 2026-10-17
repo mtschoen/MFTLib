@@ -352,7 +352,7 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
         Assert.AreEqual(4242L, _block.Header.UsnNextUsn);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(1ul, "reused.txt")]
     [DataRow(0ul, "reincarnated.txt")]
     public void CreateOverATombstonedSlot_ProducesALiveRowWithTheNewNameParentAndColumns(

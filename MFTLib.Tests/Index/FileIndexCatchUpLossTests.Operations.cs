@@ -1,7 +1,7 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
+using static MFTLib.Tests.TestSupport.CatchUpLossTestSupport;
 
 namespace MFTLib.Tests.Index;
 

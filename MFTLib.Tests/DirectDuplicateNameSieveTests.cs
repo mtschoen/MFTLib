@@ -87,7 +87,7 @@ public class DirectDuplicateNameSieveTests
             $"{materializedCount} names were materialized; the hash passes should leave at most one percent of 20000 unique names as candidates.");
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(64)]
     [DataRow(1 << 16)]
     public async Task Find_TrueDuplicatesSurviveEveryRefinementPassUnderCollisions(int bucketCount)
@@ -157,7 +157,7 @@ public class DirectDuplicateNameSieveTests
 
     static void AssertCancelled(FileIndex index, CancellationToken token)
     {
-        Assert.ThrowsException<OperationCanceledException>(() => DuplicateNameSieve.Find(index, token));
+        Assert.ThrowsExactly<OperationCanceledException>(() => DuplicateNameSieve.Find(index, token));
     }
 
     [TestMethod]
@@ -184,7 +184,7 @@ public class DirectDuplicateNameSieveTests
         var token = cancellation.Token;
         Action cancel = cancellation.Cancel;
         var assembled = 0;
-        Assert.ThrowsException<OperationCanceledException>(() =>
+        Assert.ThrowsExactly<OperationCanceledException>(() =>
             DuplicateNameSieve.Find(index, token, resultAssembledForTest: completed =>
             {
                 assembled = completed;
@@ -252,7 +252,7 @@ public class DirectDuplicateNameSieveTests
         Assert.IsTrue(pairs.Count(pair => seedOne.BucketIndexFor(pair.First) == seedOne.BucketIndexFor(pair.Second)) < pairs.Count / 4);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(0L, 1 << 24)]
     [DataRow(-5L, 1 << 24)]
     [DataRow(1L, 1 << 16)]
@@ -266,7 +266,7 @@ public class DirectDuplicateNameSieveTests
         Assert.AreEqual(expected, SieveBitmap.ComputeBucketCount(rows));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(1 << 27, 32L * 1024 * 1024)]
     [DataRow(1 << 24, 4L * 1024 * 1024)]
     [DataRow(1 << 16, 16384L)]
@@ -293,16 +293,16 @@ public class DirectDuplicateNameSieveTests
         Assert.AreEqual(80L * 1024 * 1024, peakBytes);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(1000)]
     [DataRow(0)]
     [DataRow(32)]
     public void Constructor_RejectsInvalidBucketCounts(int bucketCount)
     {
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => new SieveBitmap(bucketCount, 0));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new SieveBitmap(bucketCount, 0));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(100L, 10_000L, 1 << 16, 1, true)]
     [DataRow(6000L, 10_000L, 1 << 20, 1, true)]
     [DataRow(40_000L, 100_000L, 1 << 20, 3, true)]

@@ -102,7 +102,7 @@ public sealed class MftDumpInputTests : IDisposable
     {
         var path = MftDumpFixture.WriteFile(_directory, content);
 
-        var failure = Assert.ThrowsException<InvalidDataException>(() => MftDumpInput.Open(path), description);
+        var failure = Assert.ThrowsExactly<InvalidDataException>(() => MftDumpInput.Open(path), description);
 
         Assert.AreEqual(message, failure.Message, description);
     }
@@ -111,7 +111,7 @@ public sealed class MftDumpInputTests : IDisposable
     public void Open_RejectedContent_LeavesTheFileUnlocked()
     {
         var path = MftDumpFixture.WriteFile(_directory, WithDeclaredRecordSize(2048));
-        Assert.ThrowsException<InvalidDataException>(() => MftDumpInput.Open(path));
+        Assert.ThrowsExactly<InvalidDataException>(() => MftDumpInput.Open(path));
 
         File.Delete(path);
 
@@ -121,7 +121,7 @@ public sealed class MftDumpInputTests : IDisposable
     [TestMethod]
     public void Open_MissingFile_ThrowsIOExceptionWithThePlatformErrorCode()
     {
-        var failure = Assert.ThrowsException<IOException>(
+        var failure = Assert.ThrowsExactly<IOException>(
             () => MftDumpInput.Open(Path.Combine(_directory, "absent.mft")));
 
         StringAssert.StartsWith(failure.Message, "Failed to open file. Error: ");
@@ -130,7 +130,7 @@ public sealed class MftDumpInputTests : IDisposable
     [TestMethod]
     public void Open_EmptyPath_ThrowsArgumentException()
     {
-        Assert.ThrowsException<ArgumentException>(() => MftDumpInput.Open(string.Empty));
+        Assert.ThrowsExactly<ArgumentException>(() => MftDumpInput.Open(string.Empty));
     }
 
     [TestMethod]
@@ -138,7 +138,7 @@ public sealed class MftDumpInputTests : IDisposable
     {
         var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
 
-        var failure = Assert.ThrowsException<ArgumentException>(() => MftDumpInput.Open(path + "\0.ignored"));
+        var failure = Assert.ThrowsExactly<ArgumentException>(() => MftDumpInput.Open(path + "\0.ignored"));
 
         Assert.AreEqual("filePath", failure.ParamName);
     }
@@ -314,14 +314,14 @@ public sealed class MftDumpInputTests : IDisposable
 
     internal static TException ParseThrows<TException>(MftDumpInput input, MftFileScanOptions options = default)
         where TException : Exception =>
-        Assert.ThrowsException<TException>(() => input.Parse(options));
+        Assert.ThrowsExactly<TException>(() => input.Parse(options));
 
     static SynchronousProgress<MftScanProgress> CancelOnReport(CancellationTokenSource cancellation) =>
         new(_ => cancellation.Cancel());
 
     static void AssertCancelledAfterTheFirstBatch(MftDumpInput input, CancellationTokenSource cancellation)
     {
-        Assert.ThrowsException<OperationCanceledException>(() =>
+        Assert.ThrowsExactly<OperationCanceledException>(() =>
         {
             foreach (var _ in input.ReadRecordBatches(3, null, cancellation.Token))
             {

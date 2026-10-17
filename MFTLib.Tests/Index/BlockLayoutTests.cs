@@ -89,11 +89,17 @@ public class BlockLayoutTests
     [TestMethod]
     public void RowFlags_HaveDistinctSingleBitValues()
     {
-        Assert.AreEqual((ushort)1, (ushort)RowFlags.InUse);
-        Assert.AreEqual((ushort)2, (ushort)RowFlags.Directory);
-        Assert.AreEqual((ushort)4, (ushort)RowFlags.Tombstone);
-        Assert.AreEqual((ushort)8, (ushort)RowFlags.SizeUnknown);
-        Assert.AreEqual((ushort)16, (ushort)RowFlags.SubtreeSkipped);
+        var inUse = (ushort)RowFlags.InUse;
+        var directory = (ushort)RowFlags.Directory;
+        var tombstone = (ushort)RowFlags.Tombstone;
+        var sizeUnknown = (ushort)RowFlags.SizeUnknown;
+        var subtreeSkipped = (ushort)RowFlags.SubtreeSkipped;
+
+        Assert.AreEqual((ushort)1, inUse);
+        Assert.AreEqual((ushort)2, directory);
+        Assert.AreEqual((ushort)4, tombstone);
+        Assert.AreEqual((ushort)8, sizeUnknown);
+        Assert.AreEqual((ushort)16, subtreeSkipped);
     }
 
     [TestMethod]

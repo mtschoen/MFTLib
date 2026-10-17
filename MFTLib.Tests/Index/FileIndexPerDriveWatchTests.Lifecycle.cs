@@ -2,7 +2,6 @@ using System.Reflection;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -21,7 +20,7 @@ public partial class FileIndexPerDriveWatchTests
         await applying.Entered.WaitAsync(HangGuard);
         using var alreadyCancelled = new CancellationTokenSource();
         await alreadyCancelled.CancelAsync();
-        await ThrowsAsync<OperationCanceledException>(
+        await Assert.ThrowsAsync<OperationCanceledException>(
             () => harness.Index.StopWatchingAsync(['T'], alreadyCancelled.Token));
 
         var restart = harness.Index.StartWatchingAsync(['T'], Token);
@@ -45,7 +44,7 @@ public partial class FileIndexPerDriveWatchTests
         await applying.Entered.WaitAsync(HangGuard);
         using var alreadyCancelled = new CancellationTokenSource();
         await alreadyCancelled.CancelAsync();
-        await ThrowsAsync<OperationCanceledException>(
+        await Assert.ThrowsAsync<OperationCanceledException>(
             () => harness.Index.StopWatchingAsync(['T'], alreadyCancelled.Token));
         var restart = harness.Index.StartWatchingAsync(['T'], Token);
 
@@ -108,7 +107,7 @@ public partial class FileIndexPerDriveWatchTests
         await rescanCancellation.CancelAsync();
         applying.Release();
 
-        await ThrowsAsync<OperationCanceledException>(() => rescan.WaitAsync(HangGuard));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => rescan.WaitAsync(HangGuard));
         var starts = harness.Source.TargetsFor('T');
         Assert.AreEqual(2, starts.Count, "cancellation after commit does not abandon the replacement watch");
         Assert.AreEqual(new IndexWatchTarget('T', WatchHarness.JournalIdentifier, WatchHarness.NextUsn), starts[1]);
@@ -141,7 +140,7 @@ public partial class FileIndexPerDriveWatchTests
 
         static async Task<bool> ObserveAsync(Task operation)
         {
-            await ThrowsAsync<OperationCanceledException>(() => operation);
+            await Assert.ThrowsAsync<OperationCanceledException>(() => operation);
             return _settlingPumpFault;
         }
     }
@@ -191,7 +190,7 @@ public partial class FileIndexPerDriveWatchTests
 
         // The rescan was waiting for the starting watch's lifecycle gate and had touched nothing, so
         // it scans nothing and records no failure against a drive the start is about to watch.
-        await ThrowsAsync<OperationCanceledException>(() => rescan.WaitAsync(HangGuard));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => rescan.WaitAsync(HangGuard));
         Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
         Assert.AreEqual(productionsBefore, harness.ProductionCount('T'));
 
@@ -332,7 +331,7 @@ public partial class FileIndexPerDriveWatchTests
             .GetValue(harness.Index)!;
         await disposalCancellation.CancelAsync();
 
-        await ThrowsAsync<OperationCanceledException>(() => wait);
+        await Assert.ThrowsAsync<OperationCanceledException>(() => wait);
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         Assert.AreEqual(WatchState.CaughtUp, harness.DriveFor('T').Watch.State);

@@ -127,7 +127,7 @@ public sealed class FileIndexScanFinishedTests : IDisposable
         var drives = new[] { new IndexedDrive('T', CreateDriveRoot("first"), 1) };
         var options = Options(drives, samples, ProducerKind.Mft,
             (_, _) => throw new OperationCanceledException());
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(async () =>
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () =>
         {
             await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
         });
@@ -192,7 +192,7 @@ public sealed class FileIndexScanFinishedTests : IDisposable
             ScanProgress = new ThrowingOnFinished()
         };
 
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(async () =>
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () =>
         {
             await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
         });
@@ -225,7 +225,7 @@ public sealed class FileIndexScanFinishedTests : IDisposable
             Diagnostics = _ => throw new InvalidOperationException("diagnostics boom")
         };
 
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(async () =>
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () =>
         {
             await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
         });

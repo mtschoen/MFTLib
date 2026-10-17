@@ -29,7 +29,7 @@ public partial class BrokerSessionTests
             }
 
             var disposal = StartDisposalBeforePublication(session, launch, handle, endedBeforeDisposal);
-            await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => connecting)
+            await Assert.ThrowsAsync<OperationCanceledException>(() => connecting)
                 .WaitAsync(HangGuard);
             await disposal.WaitAsync(HangGuard);
             await session.DisposeAsync();

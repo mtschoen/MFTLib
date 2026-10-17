@@ -52,6 +52,6 @@ public partial class BrokerProtocolTests
         {
             BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(19), 2);
         }
-        Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(bytes, out _));
+        Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(bytes, out _));
     }
 }

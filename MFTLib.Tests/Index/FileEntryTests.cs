@@ -128,9 +128,9 @@ public class FileEntryTests
         var entry = default(FileEntry);
         Assert.IsFalse(entry.IsValid);
         Assert.IsFalse(entry.IsDisposed);
-        Assert.ThrowsException<InvalidOperationException>(() => _ = entry.RecordKey);
-        Assert.ThrowsException<InvalidOperationException>(() => _ = entry.Drive);
-        var failure = Assert.ThrowsException<InvalidOperationException>(() => entry.Open(FileAccess.Read));
+        Assert.ThrowsExactly<InvalidOperationException>(() => _ = entry.RecordKey);
+        Assert.ThrowsExactly<InvalidOperationException>(() => _ = entry.Drive);
+        var failure = Assert.ThrowsExactly<InvalidOperationException>(() => entry.Open(FileAccess.Read));
         StringAssert.Contains(failure.Message, entry.ToString());
     }
 
@@ -160,7 +160,7 @@ public class FileEntryTests
         try
         {
             var entry = FileEntry.Create(snapshot[0], fileRow);
-            var failure = Assert.ThrowsException<InvalidOperationException>(() => entry.Open(FileAccess.Read));
+            var failure = Assert.ThrowsExactly<InvalidOperationException>(() => entry.Open(FileAccess.Read));
             StringAssert.Contains(failure.Message, entry.ToString());
         }
         finally
@@ -175,6 +175,6 @@ public class FileEntryTests
         // Initialize's DriveBlock is built without a rootDirectoryPath, matching the case
         // documented on DriveBlock.RootDirectoryPath: a synthetic block that never calls Open.
         var entry = FileEntry.Create(_snapshot[0], _fileRow);
-        Assert.ThrowsException<InvalidOperationException>(() => entry.Open(FileAccess.Read));
+        Assert.ThrowsExactly<InvalidOperationException>(() => entry.Open(FileAccess.Read));
     }
 }

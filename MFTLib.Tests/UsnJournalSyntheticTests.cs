@@ -67,7 +67,7 @@ public partial class UsnJournalSyntheticTests
         Assert.AreEqual(5000L, cursor.NextUsn);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow((int)ERROR_JOURNAL_NOT_ACTIVE)]
     [DataRow((int)ERROR_JOURNAL_DELETE_IN_PROGRESS)]
     [DataRow(5)] // ERROR_ACCESS_DENIED
@@ -75,7 +75,7 @@ public partial class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         JournalQueryFake.Fail(win32Error);
-        var exception = Assert.ThrowsException<Win32Exception>(() =>
+        var exception = Assert.ThrowsExactly<Win32Exception>(() =>
         {
             using var volume = MftVolume.Open('C');
             volume.Journal.QueryUsnJournalCursor();
@@ -187,7 +187,7 @@ public partial class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         NativeTestHooks.NativeSetAllocFailCountdown(1); // fail read buffer alloc (before any IOCTL)
-        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open('C');
             volume.Journal.ReadUsnJournalBounded(Cursor, 0);
@@ -200,7 +200,7 @@ public partial class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         NativeTestHooks.NativeSetAllocFailCountdown(2); // skip read buffer, fail entry array
-        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open('C');
             volume.Journal.ReadUsnJournalBounded(Cursor, 0);
@@ -216,7 +216,7 @@ public partial class UsnJournalSyntheticTests
         QueueSuccess(BuildManyRecords(1000, 2000, 700));
         QueueSuccess(BuildManyRecords(2000, 3000, 700));
         NativeTestHooks.NativeSetAllocFailCountdown(3); // readBuffer, entryArray, then grow → fail
-        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open('C');
             volume.Journal.ReadUsnJournalBounded(Cursor, 0);
@@ -229,7 +229,7 @@ public partial class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         NativeTestHooks.NativeSetUsnIoFailError(ERROR_JOURNAL_NOT_ACTIVE, 1);
-        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open('C');
             volume.Journal.ReadUsnJournalBounded(Cursor, 0);
@@ -242,7 +242,7 @@ public partial class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         NativeTestHooks.NativeSetUsnIoFailError(ERROR_JOURNAL_DELETE_IN_PROGRESS, 1);
-        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open('C');
             volume.Journal.ReadUsnJournalBounded(Cursor, 0);
@@ -255,7 +255,7 @@ public partial class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         NativeTestHooks.NativeSetUsnIoFailError(ERROR_JOURNAL_ENTRY_DELETED, 1);
-        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open('C');
             volume.Journal.ReadUsnJournalBounded(Cursor, 0);
@@ -268,7 +268,7 @@ public partial class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         NativeTestHooks.NativeSetUsnIoFailError(5, 1);
-        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open('C');
             volume.Journal.ReadUsnJournalBounded(Cursor, 0);
@@ -368,7 +368,7 @@ public partial class UsnJournalSyntheticTests
         // which fails with ERROR_INVALID_HANDLE. Covers the real-syscall path without admin.
         const int errorInvalidHandle = 6;
         UseFakeHandle();
-        var exception = Assert.ThrowsException<Win32Exception>(() =>
+        var exception = Assert.ThrowsExactly<Win32Exception>(() =>
         {
             using var volume = MftVolume.Open('C');
             volume.Journal.QueryUsnJournalCursor();
@@ -384,7 +384,7 @@ public partial class UsnJournalSyntheticTests
         MFTLibNative.NativeCancelUsnJournalWatch(FakeVolumeHandle.Create());
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public void WatchUsnJournal_OperationAborted_ReturnsEmptyAtOriginalCursor(bool pending)
@@ -534,7 +534,7 @@ public partial class UsnJournalSyntheticTests
         NativeTestHooks.NativeSetUsnIoFailError(ERROR_JOURNAL_NOT_ACTIVE, 1);
         using var volume = MftVolume.Open('C');
 
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () =>
         {
             await foreach (var _ in volume.Journal.WatchUsnJournal(Cursor))
             {
@@ -551,7 +551,7 @@ public partial class UsnJournalSyntheticTests
         NativeTestHooks.NativeSetAllocFailCountdown(-3);
         using var volume = MftVolume.Open('C');
 
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () =>
         {
             await foreach (var _ in volume.Journal.WatchUsnJournal(Cursor))
             {
@@ -582,7 +582,7 @@ public partial class UsnJournalSyntheticTests
 
     // --- GrowUsnJournal (managed FSCTL_CREATE_USN_JOURNAL path; Kernel32 seam swapped) ---
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(0x200000u)]
     [DataRow(0x100000u)]
     public void GrowUsnJournal_RequestedNotLargerThanCurrent_RefusesWithoutIoctl(uint requestedMaximumSize)

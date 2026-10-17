@@ -106,7 +106,7 @@ public class MockVolumeTests
     {
         Kernel32.Hooks.CreateFile = (_, _, _, _, _, _, _) => new SafeFileHandle(new IntPtr(-1), false);
 
-        Assert.ThrowsException<IOException>(() =>
+        Assert.ThrowsExactly<IOException>(() =>
             FileUtilities.Hooks.GetVolumeHandle(@"\\.\C:"));
     }
 
@@ -135,7 +135,7 @@ public class MockVolumeTests
         Assert.AreEqual(@"\\.\C:", openedPath);
 
         FileUtilities.Hooks.GetVolumeHandle = _ => throw new AssertFailedException("Default drive reached volume I/O.");
-        Assert.ThrowsException<ArgumentException>(() => MftVolume.Open(default));
+        Assert.ThrowsExactly<ArgumentException>(() => MftVolume.Open(default));
     }
 
     [TestMethod]
@@ -169,8 +169,8 @@ public class MockVolumeTests
         var volume = MftVolume.Open('C');
         volume.Dispose();
 
-        Assert.ThrowsException<ObjectDisposedException>(() => volume.ReadAll());
-        Assert.ThrowsException<ObjectDisposedException>(() =>
+        Assert.ThrowsExactly<ObjectDisposedException>(() => volume.ReadAll());
+        Assert.ThrowsExactly<ObjectDisposedException>(() =>
             volume.ReadRecordBatches(4096, null, null, CancellationToken.None).ToList());
     }
 
@@ -189,7 +189,7 @@ public class MockVolumeTests
 
     // --- ReadRecordBatches ---
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public void ReadRecordBatches_PassesIncludeFreedToTheNativeParser(bool includeFreed)
@@ -241,7 +241,7 @@ public class MockVolumeTests
         var errorResultPtr = BuildResult(0, errorMessage: "Volume read failed");
         MFTLibNative.Hooks.FreeMftResult = Marshal.FreeHGlobal;
 
-        var ex = Assert.ThrowsException<InvalidOperationException>(() =>
+        var ex = Assert.ThrowsExactly<InvalidOperationException>(() =>
             new MftResult(errorResultPtr));
 
         Assert.AreEqual("Volume read failed", ex.Message);
@@ -327,7 +327,7 @@ public class MockVolumeTests
         var result = new MftResult(resultPtr);
         result.Dispose();
 
-        Assert.ThrowsException<ObjectDisposedException>(() => result.ReadBatches(4096).ToList());
+        Assert.ThrowsExactly<ObjectDisposedException>(() => result.ReadBatches(4096).ToList());
     }
 
     [TestMethod]
@@ -343,7 +343,7 @@ public class MockVolumeTests
         Assert.AreEqual("file4.txt", records[4].FileName);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(0)]
     [DataRow(-1)]
     [DataRow(-50)]
@@ -351,7 +351,7 @@ public class MockVolumeTests
     public void MftResult_ReadBatches_ZeroOrNegativeBatchSize_ThrowsArgumentOutOfRangeException(int batchSize)
     {
         MFTLibNative.Hooks.FreeMftResult = FreeBuiltResult;
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
         {
             using var result = new MftResult(BuildResult(5));
             _ = result.ReadBatches(batchSize).ToList();
@@ -365,7 +365,7 @@ public class MockVolumeTests
         var result = new MftResult(BuildResult(5));
         result.Dispose();
 
-        Assert.ThrowsException<ObjectDisposedException>(() =>
+        Assert.ThrowsExactly<ObjectDisposedException>(() =>
             result.ReadBatches(4096).ToList());
     }
 
@@ -412,17 +412,17 @@ public class MockVolumeTests
         var volume = MftVolume.Open('C');
         volume.Dispose();
 
-        Assert.ThrowsException<ObjectDisposedException>(() =>
+        Assert.ThrowsExactly<ObjectDisposedException>(() =>
             volume.ReadRecordBatches(4096, null, null, CancellationToken.None).ToList());
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(0)]
     [DataRow(-1)]
     public void MftVolume_ReadRecordBatches_ZeroOrNegativeBatchSize_ThrowsArgumentOutOfRangeException(int batchSize)
     {
         SetupMocks(5);
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
         {
             using var volume = MftVolume.Open('C');
             _ = volume.ReadRecordBatches(batchSize, null, null, CancellationToken.None).ToList();

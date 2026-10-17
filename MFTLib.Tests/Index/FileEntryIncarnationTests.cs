@@ -82,7 +82,7 @@ public class FileEntryIncarnationTests
         };
         foreach (var (column, read) in reads)
         {
-            var exception = Assert.ThrowsException<InvalidOperationException>(() => read(), column);
+            var exception = Assert.ThrowsExactly<InvalidOperationException>(() => read(), column);
             StringAssert.Contains(exception.Message, "reused after deletion", column);
         }
 
@@ -101,7 +101,7 @@ public class FileEntryIncarnationTests
                                                change.Entry.RecordKey.RecordNumber == DirectoryRow);
         Assert.IsTrue(deleted.Entry.IsDeleted);
         StringAssert.EndsWith(deleted.Path, "documents");
-        Assert.ThrowsException<InvalidOperationException>(() => deleted.Entry.Name);
+        Assert.ThrowsExactly<InvalidOperationException>(() => deleted.Entry.Name);
     }
 
     [TestMethod]
@@ -167,7 +167,7 @@ public class FileEntryIncarnationTests
         ApplyReuseBatch(fixture);
         calls.Clear();
 
-        var exception = Assert.ThrowsException<FileNotFoundException>(() => retained.Open(FileAccess.Read));
+        var exception = Assert.ThrowsExactly<FileNotFoundException>(() => retained.Open(FileAccess.Read));
         Assert.AreEqual($"{retained}: The entry has been deleted.", exception.Message);
         Assert.AreEqual(0, calls.Count);
 
@@ -266,7 +266,7 @@ public class FileEntryIncarnationTests
             Assert.IsTrue(handles[index].IsDeleted, $"handle {index} is superseded");
             Assert.AreNotEqual(handles[index], handles[^1], $"handle {index} never equals the live one");
             var superseded = handles[index];
-            Assert.ThrowsException<InvalidOperationException>(() => superseded.Name);
+            Assert.ThrowsExactly<InvalidOperationException>(() => superseded.Name);
         }
 
         Assert.IsFalse(handles[^1].IsDeleted);
@@ -274,7 +274,7 @@ public class FileEntryIncarnationTests
         Assert.AreEqual(handles.Count, handles.Distinct().Count());
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(true, DisplayName = "one batch")]
     [DataRow(false, DisplayName = "separate batches")]
     public async Task RetainedOrdinaryFile_AndItsDeletedNotification_AreSupersededByTheReplacement(bool oneBatch)
@@ -304,7 +304,7 @@ public class FileEntryIncarnationTests
         {
             Assert.IsTrue(handle.IsDeleted);
             Assert.AreNotEqual(replacement, handle);
-            Assert.ThrowsException<InvalidOperationException>(() => handle.Size);
+            Assert.ThrowsExactly<InvalidOperationException>(() => handle.Size);
             Assert.AreEqual(0, handle.Children().Count);
         }
 

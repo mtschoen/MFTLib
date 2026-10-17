@@ -68,7 +68,7 @@ public partial class IndexNavigationTests
         var report = Entry(_reportRow);
         var projects = report.Parent;
         Assert.IsTrue(projects.HasValue);
-        Assert.AreEqual("Projects", projects.Value.Name);
+        Assert.AreEqual("Projects", projects.GetValueOrDefault().Name);
 
         var root = Entry(_rootRow);
         Assert.IsNull(root.Parent);
@@ -119,9 +119,9 @@ public partial class IndexNavigationTests
             .Any(entry => entry.Drive == 'U'));
         Assert.IsFalse(index.Search(new SearchQuery(null, Subtree: secondRoot))
             .Any(entry => entry.Drive == 'T'));
-        Assert.ThrowsException<ArgumentException>(() =>
+        Assert.ThrowsExactly<ArgumentException>(() =>
             index.Search(new SearchQuery(null, Subtree: default(FileEntry))));
-        Assert.ThrowsException<ArgumentException>(() =>
+        Assert.ThrowsExactly<ArgumentException>(() =>
             index.Enumerate(new SearchQuery(null, Subtree: default(FileEntry))));
     }
 
@@ -296,7 +296,7 @@ public partial class IndexNavigationTests
         DriveBlock[] snapshot = [new DriveBlock('X', 0, block, rootDirectoryPath: TestDriveRoot.For('X'))];
         try
         {
-            var exception = Assert.ThrowsException<InvalidDataException>(
+            var exception = Assert.ThrowsExactly<InvalidDataException>(
                 () => _ = FileEntry.Create(snapshot[0], parent).Path);
             StringAssert.Contains(exception.Message, BlockLayout.MaximumPathDepth.ToString(CultureInfo.InvariantCulture));
         }

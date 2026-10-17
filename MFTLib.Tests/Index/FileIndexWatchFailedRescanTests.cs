@@ -2,7 +2,6 @@ using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -38,7 +37,7 @@ public class FileIndexWatchFailedRescanTests
         Assert.AreEqual(startCount, harness.Source.TargetsFor('T').Count, "the condemned cursor is never started again");
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task FailedRescan_PreservesFaultAndDoesNotRecover(bool thrownSwap)
@@ -111,8 +110,8 @@ public class FileIndexWatchFailedRescanTests
             var unpublished = await FileIndexWatchRescanTests.WaitForReplacementBlockAsync(
                 harness, 'T', initialProducedBlock, rescan);
             await cancellation.CancelAsync();
-            await ThrowsAsync<OperationCanceledException>(() => rescan.WaitAsync(HangGuard));
-            Assert.ThrowsException<ObjectDisposedException>(() => _ = unpublished.Header);
+            await Assert.ThrowsAsync<OperationCanceledException>(() => rescan.WaitAsync(HangGuard));
+            Assert.ThrowsExactly<ObjectDisposedException>(() => _ = unpublished.Header);
             AssertStillFaulted(harness, before, original, startCount);
         }
         finally

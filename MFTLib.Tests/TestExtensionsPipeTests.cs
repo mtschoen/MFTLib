@@ -12,8 +12,8 @@ public class TestExtensionsPipeTests
     {
         var pipes = new InMemoryBrokerPipes(new BrokerTestHarnessOptions(), null);
         var first = pipes.Listen("drive");
-        Assert.ThrowsException<IOException>(() => pipes.Listen("drive"));
-        await Assert.ThrowsExceptionAsync<IOException>(() => pipes.ConnectAsync("missing", CancellationToken.None));
+        Assert.ThrowsExactly<IOException>(() => pipes.Listen("drive"));
+        await Assert.ThrowsExactlyAsync<IOException>(() => pipes.ConnectAsync("missing", CancellationToken.None));
         var waiting = first.WaitForConnectionAsync(CancellationToken.None);
         await first.DisposeAsync();
         try
@@ -46,14 +46,14 @@ public class TestExtensionsPipeTests
             FailConnection = name => name == "drive" && fail.Value ? failure : null
         }, null);
         await using var listener = pipes.Listen("drive");
-        Assert.AreSame(failure, await Assert.ThrowsExceptionAsync<IOException>(() =>
+        Assert.AreSame(failure, await Assert.ThrowsExactlyAsync<IOException>(() =>
             pipes.ConnectAsync("drive", CancellationToken.None)));
         fail.Value = false;
         await using var host = await pipes.ConnectAsync("drive", CancellationToken.None);
         await using var client = await listener.WaitForConnectionAsync(CancellationToken.None);
         pipes.CloseHostEnds();
         Assert.AreEqual(0, await client.ReadAsync(new byte[1].AsMemory()));
-        await Assert.ThrowsExceptionAsync<IOException>(() => pipes.ConnectAsync("later", CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<IOException>(() => pipes.ConnectAsync("later", CancellationToken.None));
     }
 
     [TestMethod]
@@ -71,12 +71,12 @@ public class TestExtensionsPipeTests
         var listener = pipes.Listen("drive");
         listenerBox.Value = listener;
         await using var ownedListener = listener;
-        var failure = await Assert.ThrowsExceptionAsync<IOException>(() =>
+        var failure = await Assert.ThrowsExactlyAsync<IOException>(() =>
             pipes.ConnectAsync("drive", CancellationToken.None));
         StringAssert.Contains(failure.Message, "closed before it connected");
         await released!;
         Assert.IsNotNull(createdClient);
-        await Assert.ThrowsExceptionAsync<ObjectDisposedException>(() =>
+        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() =>
             createdClient.ReadAsync(new byte[1].AsMemory()).AsTask());
         pipes.CloseHostEnds();
     }

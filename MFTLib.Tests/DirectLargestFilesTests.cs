@@ -132,7 +132,7 @@ public class DirectLargestFilesTests
         var token = cancellation.Token;
         Action cancel = cancellation.Cancel;
         var assembled = 0;
-        Assert.ThrowsException<OperationCanceledException>(() =>
+        Assert.ThrowsExactly<OperationCanceledException>(() =>
             LargestFiles.Find(_index, 3, under: null, token, completed =>
             {
                 assembled = completed;
@@ -154,7 +154,7 @@ public class DirectLargestFilesTests
     [TestMethod]
     public void Largest_NegativeCountThrows()
     {
-        Assert.ThrowsException<ArgumentOutOfRangeException>(
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(
             () => LargestFiles.Find(_index, -1, under: null, CancellationToken.None));
     }
 
@@ -165,7 +165,7 @@ public class DirectLargestFilesTests
         cancellation.Cancel();
         var token = cancellation.Token;
 
-        Assert.ThrowsException<OperationCanceledException>(() =>
+        Assert.ThrowsExactly<OperationCanceledException>(() =>
             LargestFiles.Find(_index, 10, under: null, token));
     }
 
@@ -177,7 +177,7 @@ public class DirectLargestFilesTests
         cancellation.Cancel();
         var token = cancellation.Token;
 
-        Assert.ThrowsException<OperationCanceledException>(() =>
+        Assert.ThrowsExactly<OperationCanceledException>(() =>
             LargestFiles.Find(_index, 10, under: documents, token));
     }
 
@@ -185,7 +185,7 @@ public class DirectLargestFilesTests
     public void Largest_Under_DefaultAncestor_ThrowsArgumentException()
     {
         var invalidAncestor = default(FileEntry);
-        Assert.ThrowsException<ArgumentException>(
+        Assert.ThrowsExactly<ArgumentException>(
             () => LargestFiles.Find(_index, 5, invalidAncestor, CancellationToken.None));
     }
 
@@ -197,7 +197,7 @@ public class DirectLargestFilesTests
         cancellation.Cancel();
         var token = cancellation.Token;
 
-        Assert.ThrowsException<OperationCanceledException>(() =>
+        Assert.ThrowsExactly<OperationCanceledException>(() =>
             LargestFiles.Find(_index, 10, under: invalidAncestor, token));
     }
 

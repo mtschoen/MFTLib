@@ -25,7 +25,7 @@ public class NativeMockTests
         try
         {
             NativeTestHooks.NativeSetAllocFailCountdown(1);
-            Assert.ThrowsException<InvalidOperationException>(() =>
+            Assert.ThrowsExactly<InvalidOperationException>(() =>
                 MftVolume.GenerateSyntheticMFT(path, 100));
         }
         finally
@@ -41,7 +41,7 @@ public class NativeMockTests
         try
         {
             NativeTestHooks.NativeSetAllocFailCountdown(1);
-            var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+            var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
                 MftFixture.Generate(path));
 
             StringAssert.Contains(exception.Message, path);
@@ -60,7 +60,7 @@ public class NativeMockTests
 
         using var volume = MftVolume.Open('C');
         // ReSharper disable once AccessToDisposedClosure
-        Assert.ThrowsException<InvalidOperationException>(() => volume.ReadRecordBatches(4096, null, null, CancellationToken.None).ToList());
+        Assert.ThrowsExactly<InvalidOperationException>(() => volume.ReadRecordBatches(4096, null, null, CancellationToken.None).ToList());
     }
 
     [TestMethod]

@@ -56,11 +56,11 @@ public class TestExtensionsStreamTests
 
     static void AssertNonSeekingContract(Stream nonSeekingStream)
     {
-        Assert.ThrowsException<NotSupportedException>(() => _ = nonSeekingStream.Length);
-        Assert.ThrowsException<NotSupportedException>(() => _ = nonSeekingStream.Position);
-        Assert.ThrowsException<NotSupportedException>(() => nonSeekingStream.Position = 1);
-        Assert.ThrowsException<NotSupportedException>(() => nonSeekingStream.Seek(0, SeekOrigin.Begin));
-        Assert.ThrowsException<NotSupportedException>(() => nonSeekingStream.SetLength(1));
+        Assert.ThrowsExactly<NotSupportedException>(() => _ = nonSeekingStream.Length);
+        Assert.ThrowsExactly<NotSupportedException>(() => _ = nonSeekingStream.Position);
+        Assert.ThrowsExactly<NotSupportedException>(() => nonSeekingStream.Position = 1);
+        Assert.ThrowsExactly<NotSupportedException>(() => nonSeekingStream.Seek(0, SeekOrigin.Begin));
+        Assert.ThrowsExactly<NotSupportedException>(() => nonSeekingStream.SetLength(1));
     }
 
     [TestMethod]
@@ -95,19 +95,19 @@ public class TestExtensionsStreamTests
 
     static void AssertDisposedSyncOperations(Stream disposedStream, byte[] buffer)
     {
-        Assert.ThrowsException<ObjectDisposedException>(() => disposedStream.Read(buffer, 0, 1));
-        Assert.ThrowsException<ObjectDisposedException>(() => disposedStream.Write(buffer, 0, 1));
-        Assert.ThrowsException<ObjectDisposedException>(disposedStream.Flush);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => disposedStream.Read(buffer, 0, 1));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => disposedStream.Write(buffer, 0, 1));
+        Assert.ThrowsExactly<ObjectDisposedException>(disposedStream.Flush);
     }
 
     static async Task AssertDisposedAsyncOperations(Stream disposedStream, byte[] buffer)
     {
-        await Assert.ThrowsExceptionAsync<ObjectDisposedException>(() => disposedStream.FlushAsync(CancellationToken.None));
-        await Assert.ThrowsExceptionAsync<ObjectDisposedException>(() => disposedStream.ReadAsync(buffer.AsMemory()).AsTask());
-        await Assert.ThrowsExceptionAsync<ObjectDisposedException>(() => disposedStream.WriteAsync(buffer.AsMemory()).AsTask());
+        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => disposedStream.FlushAsync(CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => disposedStream.ReadAsync(buffer.AsMemory()).AsTask());
+        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => disposedStream.WriteAsync(buffer.AsMemory()).AsTask());
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task PendingRead_TranslatesMisuseOnlyAfterClose(bool close)
@@ -127,11 +127,11 @@ public class TestExtensionsStreamTests
             input.Result.SetException(failure);
             if (close)
             {
-                await Assert.ThrowsExceptionAsync<ObjectDisposedException>(() => read);
+                await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => read);
             }
             else
             {
-                Assert.AreSame(failure, await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => read));
+                Assert.AreSame(failure, await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => read));
             }
         }
         finally
@@ -143,7 +143,7 @@ public class TestExtensionsStreamTests
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task HeldWrite_ReleasesBytesOrCancelsWithoutWriting(bool cancel)

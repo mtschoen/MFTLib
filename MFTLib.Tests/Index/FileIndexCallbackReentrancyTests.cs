@@ -231,7 +231,7 @@ public class FileIndexCallbackReentrancyTests
     {
         using var harness = new WatchHarness('T', 'U');
         var index = harness.Index;
-        harness.ScriptScans('T', new WatchHarnessScan(CatchUpLoss: WatchDeduplicationTestSupport.StandardCatchUpLoss('T')));
+        harness.ScriptScans('T', new WatchHarnessScan(CatchUpLoss: CatchUpLossTestSupport.StandardCatchUpLoss('T')));
         var outcome = NewSignal<Exception?>();
         index.WatchFaulted += fault =>
         {
@@ -472,7 +472,7 @@ public class FileIndexCallbackReentrancyTests
         {
             await materializing.Entered.WaitAsync(HangGuard);
             disposal = index.DisposeAsync().AsTask();
-            Assert.ThrowsException<ObjectDisposedException>(() => index.Drives);
+            Assert.ThrowsExactly<ObjectDisposedException>(() => index.Drives);
             Assert.IsFalse(disposal.IsCompleted, "disposal still waits for the held handler's pump");
             materializing.Release();
             AssertRejected(await outcome.Task.WaitAsync(HangGuard), "WaitForCatchUpAsync");

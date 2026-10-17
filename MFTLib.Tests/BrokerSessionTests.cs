@@ -64,7 +64,7 @@ public partial class BrokerSessionTests
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
 
-        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() =>
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
             session.ConnectAsync(cancellation.Token));
 
         Assert.AreEqual(0, launches);
@@ -83,7 +83,7 @@ public partial class BrokerSessionTests
         await launch.Entered.WaitAsync(HangGuard);
 
         await cancellation.CancelAsync();
-        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => cancelled);
+        await Assert.ThrowsAsync<OperationCanceledException>(() => cancelled);
         Assert.IsFalse(launch.LaunchToken.IsCancellationRequested, "one caller's token must not reach the launch");
         Assert.IsFalse(patient.IsCompleted);
 
@@ -109,7 +109,7 @@ public partial class BrokerSessionTests
         session.Connecting += () => Interlocked.Increment(ref connecting);
         session.Connected += () => Interlocked.Increment(ref connected);
 
-        var failure = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() =>
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             session.ConnectAsync(CancellationToken.None));
         Assert.AreEqual("the UAC prompt was declined", failure.Message);
         Assert.IsFalse(session.Ended.IsCompleted, "a declined prompt does not end the session");
@@ -135,8 +135,8 @@ public partial class BrokerSessionTests
 
         launch.Fail(new IOException("launch failed"));
 
-        await WatchDeduplicationTestSupport.ThrowsAsync<IOException>(() => first);
-        await WatchDeduplicationTestSupport.ThrowsAsync<IOException>(() => second);
+        await Assert.ThrowsAsync<IOException>(() => first);
+        await Assert.ThrowsAsync<IOException>(() => second);
         Assert.AreEqual(1, launch.Count);
     }
 
@@ -231,7 +231,7 @@ public partial class BrokerSessionTests
 
         var connecting = await userInterface.RunAsync(() => session.ConnectAsync(CancellationToken.None))
             .WaitAsync(HangGuard);
-        await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() => connecting)
+        await Assert.ThrowsAsync<InvalidOperationException>(() => connecting)
             .WaitAsync(HangGuard);
         await session.DisposeAsync();
 
@@ -252,7 +252,7 @@ public partial class BrokerSessionTests
         });
         session.Connecting += () => disposal = session.DisposeAsync().AsTask();
 
-        var failure = await WatchDeduplicationTestSupport.ThrowsAsync<Exception>(() =>
+        var failure = await Assert.ThrowsAsync<Exception>(() =>
             session.ConnectAsync(CancellationToken.None)).WaitAsync(HangGuard);
         await disposal!.WaitAsync(HangGuard);
 
@@ -281,7 +281,7 @@ public partial class BrokerSessionTests
             }
         };
 
-        await WatchDeduplicationTestSupport.ThrowsAsync<FormatException>(() =>
+        await Assert.ThrowsAsync<FormatException>(() =>
             session.ConnectAsync(CancellationToken.None));
         Assert.AreEqual(0, launches);
 
@@ -304,7 +304,7 @@ public partial class BrokerSessionTests
         session.Connected += () => throw new FormatException("bad subscriber");
         session.Connected += () => Interlocked.Increment(ref later);
 
-        await WatchDeduplicationTestSupport.ThrowsAsync<FormatException>(() =>
+        await Assert.ThrowsAsync<FormatException>(() =>
             session.ConnectAsync(CancellationToken.None));
 
         Assert.AreEqual(1, later, "a throwing subscriber must not hide the event from the others");
@@ -331,7 +331,7 @@ public partial class BrokerSessionTests
         handle.Crash();
         var reason = await first.Ended.WaitAsync(HangGuard);
 
-        var refusal = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() =>
+        var refusal = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             session.ConnectAsync(CancellationToken.None));
         StringAssert.Contains(refusal.Message, reason);
         Assert.AreEqual(reason, await session.Ended.WaitAsync(HangGuard));
@@ -353,9 +353,9 @@ public partial class BrokerSessionTests
             return brokerProcess;
         });
 
-        await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
             session.ConnectAsync(CancellationToken.None));
-        await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
             session.ConnectAsync(CancellationToken.None));
 
         var expected = await brokerProcess.Ended.WaitAsync(HangGuard);
@@ -376,7 +376,7 @@ public partial class BrokerSessionTests
         await session.DisposeAsync();
 
         Assert.AreEqual(reason, await session.Ended.WaitAsync(HangGuard));
-        await WatchDeduplicationTestSupport.ThrowsAsync<ObjectDisposedException>(() =>
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
             session.ConnectAsync(CancellationToken.None));
     }
 
@@ -409,10 +409,10 @@ public partial class BrokerSessionTests
 
         Assert.IsTrue(brokerProcess.Ended.IsCompleted, "disposal ends the process it owns");
         Assert.IsFalse(session.Ended.IsCompleted, "disposal is not a broker end");
-        var refusal = await WatchDeduplicationTestSupport.ThrowsAsync<ObjectDisposedException>(() =>
+        var refusal = await Assert.ThrowsAsync<ObjectDisposedException>(() =>
             session.ConnectAsync(CancellationToken.None));
         Assert.AreEqual(typeof(BrokerSession).FullName, refusal.ObjectName);
-        await WatchDeduplicationTestSupport.ThrowsAsync<ObjectDisposedException>(() =>
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
             session.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 2, AllocationDelta = 1 }, CancellationToken.None));
     }
 
@@ -422,10 +422,10 @@ public partial class BrokerSessionTests
         CallBackIntoSessionOnEndedAsync(BrokerSession session)
     {
         await session.Ended.ConfigureAwait(false);
-        var beforeDispose = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() =>
+        var beforeDispose = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             session.ConnectAsync(CancellationToken.None)).ConfigureAwait(false);
         await session.DisposeAsync().ConfigureAwait(false);
-        var afterDispose = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() =>
+        var afterDispose = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             session.ConnectAsync(CancellationToken.None)).ConfigureAwait(false);
         return (beforeDispose, afterDispose);
     }
@@ -454,7 +454,7 @@ public partial class BrokerSessionTests
 
         Assert.IsTrue(process.Ended.IsCompleted);
         Assert.IsFalse(session.Ended.IsCompleted, "disposing a live process is not a broker end");
-        await WatchDeduplicationTestSupport.ThrowsAsync<ObjectDisposedException>(() =>
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
             session.ConnectAsync(CancellationToken.None));
     }
 
@@ -474,7 +474,7 @@ public partial class BrokerSessionTests
         Assert.AreEqual(0, launches);
         Assert.IsFalse(session.Ended.IsCompleted, "disposal is not a broker end");
         Assert.IsFalse(session.Ended.IsCompleted);
-        await WatchDeduplicationTestSupport.ThrowsAsync<ObjectDisposedException>(() =>
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
             session.ConnectAsync(CancellationToken.None));
     }
 
@@ -503,7 +503,7 @@ public partial class BrokerSessionTests
         // The launcher returns despite cancellation, as one that already started a process does.
         launch.Complete(brokerProcess);
 
-        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => connecting);
+        await Assert.ThrowsAsync<OperationCanceledException>(() => connecting);
         await Task.WhenAll(first, second).WaitAsync(HangGuard);
         Assert.IsTrue(brokerProcess.Ended.IsCompleted);
         Assert.IsFalse(session.Ended.IsCompleted, "reclaiming a late process is not a broker end");
@@ -523,7 +523,7 @@ public partial class BrokerSessionTests
         launch.Fail(new IOException("launch failed"));
 
         await disposal.WaitAsync(HangGuard);
-        await WatchDeduplicationTestSupport.ThrowsAsync<IOException>(() => connecting);
+        await Assert.ThrowsAsync<IOException>(() => connecting);
     }
 
     [TestMethod]
@@ -546,7 +546,7 @@ public partial class BrokerSessionTests
         Assert.IsFalse(session.Ended.IsCompleted, "disposal is not a broker end");
         launchScheduler.RunPending();
         await disposal.WaitAsync(HangGuard);
-        var failure = await WatchDeduplicationTestSupport.ThrowsAsync<Exception>(() => use).WaitAsync(HangGuard);
+        var failure = await Assert.ThrowsAsync<Exception>(() => use).WaitAsync(HangGuard);
 
         Assert.AreEqual(0, launches, "the launcher ran after disposal ended the session");
         Assert.AreEqual(0, connectingRaised, "Connecting was raised after disposal ended the session");
@@ -610,7 +610,7 @@ public partial class BrokerSessionTests
             return new TaskCompletionSource<BrokerProcess>().Task;
         });
 
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             session.GrowUsnJournalAsync(default, new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None));
         Assert.AreEqual(0, launches);
     }
@@ -625,7 +625,7 @@ public partial class BrokerSessionTests
         handle.Crash();
         await process.Ended.WaitAsync(HangGuard);
 
-        await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
             session.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None));
     }
 
@@ -706,9 +706,9 @@ public partial class BrokerSessionTests
         };
         await using var session = new BrokerSession();
 
-        var first = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() =>
+        var first = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             session.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 2, AllocationDelta = 1 }, CancellationToken.None));
-        await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
             session.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 2, AllocationDelta = 1 }, CancellationToken.None));
 
         StringAssert.Contains(first.Message, "UAC prompt was declined");
@@ -728,9 +728,9 @@ public partial class BrokerSessionTests
             : new BrokerSession(Decline);
         session.Connecting += () => Interlocked.Increment(ref connecting);
 
-        await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
             session.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 2, AllocationDelta = 1 }, CancellationToken.None));
-        await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
             session.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 2, AllocationDelta = 1 }, CancellationToken.None));
 
         Assert.AreEqual(2, commandLines.Count);
@@ -750,15 +750,15 @@ public partial class BrokerSessionTests
     {
         await using var session = new BrokerSession(_ => true, TimeSpan.FromSeconds(-5));
 
-        await WatchDeduplicationTestSupport.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
             session.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 2, AllocationDelta = 1 }, CancellationToken.None));
     }
 
     [TestMethod]
     public void Constructors_RejectNullLaunchers()
     {
-        Assert.ThrowsException<ArgumentNullException>(() => new BrokerSession((Func<string, bool>)null!));
-        Assert.ThrowsException<ArgumentNullException>(() =>
+        Assert.ThrowsExactly<ArgumentNullException>(() => new BrokerSession((Func<string, bool>)null!));
+        Assert.ThrowsExactly<ArgumentNullException>(() =>
             BrokerTestHarness.CreateSession(null!));
     }
 

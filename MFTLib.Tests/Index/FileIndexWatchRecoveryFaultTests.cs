@@ -16,7 +16,7 @@ public class FileIndexWatchRecoveryFaultTests
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task RecoveredDrive_StopDoesNotReportItsPreviousFault(bool applyFailure)

@@ -7,7 +7,7 @@ public partial class BlockWriterTests
 {
     static RowColumns Columns(ushort sequence) => new(0, RowFlags.InUse, 0, 10, 0, sequence);
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow((ushort)9, (ushort)9, DisplayName = "live slot, same sequence")]
     [DataRow((ushort)9, (ushort)12, DisplayName = "live slot, higher sequence")]
     [DataRow(ushort.MaxValue, (ushort)1, DisplayName = "live slot, real wrap")]
@@ -23,7 +23,7 @@ public partial class BlockWriterTests
         Assert.AreEqual(supplied, block.SequenceNumbers[3]);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow((ushort)14, (ushort)15, DisplayName = "the next sequence")]
     [DataRow((ushort)14, (ushort)14, DisplayName = "the same sequence, as a freed record imported by a scan")]
     [DataRow(ushort.MaxValue, (ushort)1, DisplayName = "a real wrap")]

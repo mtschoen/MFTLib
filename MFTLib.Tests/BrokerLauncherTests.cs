@@ -24,7 +24,7 @@ public class BrokerLauncherTests
     {
         BrokerLauncher.Dependencies.GetProcessPath = () => null;
         BrokerLauncher.Dependencies.StartProcess = _ => throw new AssertFailedException("Missing path must fail before launch.");
-        Assert.ThrowsException<InvalidOperationException>(() => BrokerLauncher.Launch("--broker"));
+        Assert.ThrowsExactly<InvalidOperationException>(() => BrokerLauncher.Launch("--broker"));
     }
 
     [TestMethod]
@@ -49,7 +49,7 @@ public class BrokerLauncherTests
         Assert.IsTrue(launched.UseShellExecute);
         Assert.AreEqual("runas", launched.Verb);
         Assert.AreEqual(ProcessWindowStyle.Hidden, launched.WindowStyle);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = process.StandardInput, "The process wrapper must be disposed before Launch returns.");
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = process.StandardInput, "The process wrapper must be disposed before Launch returns.");
     }
 
     [TestMethod]

@@ -37,7 +37,7 @@ public partial class JournalBrokerHostTests
 
     // A length prefix claims a 10-byte frame; the pipe closes after three body bytes (EOF partway
     // through the body read) or after none (EOF exactly at the frame boundary).
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(3, DisplayName = "TruncatedFrameBody")]
     [DataRow(0, DisplayName = "HeaderOnlyThenEof")]
     public async Task ServeAsync_FrameCutShortByEof_ThrowsEndOfStreamException(int deliveredBodyBytes)
@@ -55,6 +55,6 @@ public partial class JournalBrokerHostTests
         await harness.CloseControlAsync();
 
         // The session's fault surfaces from its serve task, which disposing the harness awaits.
-        await Assert.ThrowsExceptionAsync<EndOfStreamException>(async () => await harness.DisposeAsync());
+        await Assert.ThrowsExactlyAsync<EndOfStreamException>(async () => await harness.DisposeAsync());
     }
 }

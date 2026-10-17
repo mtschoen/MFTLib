@@ -110,7 +110,7 @@ public class FileIndexWatchRescanHandoffTests
         await index.StopWatchingAsync(['T'], Token);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task StopOrDisposal_DuringProduction_EndsTheOriginalWatch(bool dispose)
@@ -140,7 +140,7 @@ public class FileIndexWatchRescanHandoffTests
         Assert.AreEqual(1, harness.Source.TargetsFor('T').Count);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task FailedScan_HasNoRestartCheckpointAtWhichDisposalCanReplaceItsFailure(bool afterDecision)

@@ -65,7 +65,7 @@ public class MftVolumeAdminTests
     public void Open_InvalidVolume_Throws()
     {
         RequireElevation();
-        Assert.ThrowsException<IOException>(() => MftVolume.Open('Q'));
+        Assert.ThrowsExactly<IOException>(() => MftVolume.Open('Q'));
     }
 
     [TestMethod]
@@ -81,7 +81,7 @@ public class MftVolumeAdminTests
     public void GetVolumeHandle_InvalidVolume_Throws()
     {
         RequireElevation();
-        Assert.ThrowsException<IOException>(() => FileUtilities.Hooks.GetVolumeHandle(@"\\.\Q:"));
+        Assert.ThrowsExactly<IOException>(() => FileUtilities.Hooks.GetVolumeHandle(@"\\.\Q:"));
     }
 
     [TestMethod]

@@ -183,7 +183,7 @@ public sealed class FileIndexEnumerateTests : IDisposable
         var index = await OpenSyntheticIndexAsync(64);
         await index.DisposeAsync();
 
-        Assert.ThrowsException<ObjectDisposedException>(() => index.Enumerate(new SearchQuery(null)));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => index.Enumerate(new SearchQuery(null)));
     }
 
     /// <summary>
@@ -195,7 +195,7 @@ public sealed class FileIndexEnumerateTests : IDisposable
     [TestMethod]
     public async Task Enumerate_ObservesCancellationMidEnumeration()
     {
-        const uint rowCount = 10_000;
+        uint rowCount = 10_000;
         Assert.IsTrue(rowCount > RowScanner.CancellationCheckIntervalRows,
             "the test needs a cancellation checkpoint after the first row");
 

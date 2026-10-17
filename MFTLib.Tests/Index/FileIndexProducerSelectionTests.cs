@@ -206,7 +206,7 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
     [TestMethod]
     public async Task Mft_StillPropagatesCancellation()
     {
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => FileIndex.OpenAsync(new FileIndexOptions
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => FileIndex.OpenAsync(new FileIndexOptions
         {
             Drives = [new IndexedDrive('T', _treeRoot, 1)],
             CacheDirectory = _cacheDirectory,
@@ -318,7 +318,7 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("cache tag")]
     [DataRow("journal cursor")]
     public async Task OpenAsync_MftWithAnInvalidProducedBlock_DeletesItAndColdScansNextTime(string check)

@@ -1,7 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -181,7 +180,7 @@ public class FileIndexBatchedWaitTests
 
         await harness.Index.DisposeAsync().AsTask().WaitAsync(HangGuard);
 
-        await ThrowsAsync<OperationCanceledException>(() => wait.WaitAsync(HangGuard));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => wait.WaitAsync(HangGuard));
     }
 
     [TestMethod]
@@ -194,7 +193,7 @@ public class FileIndexBatchedWaitTests
 
         await cancellation.CancelAsync().WaitAsync(HangGuard);
 
-        await ThrowsAsync<OperationCanceledException>(() => wait.WaitAsync(HangGuard));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => wait.WaitAsync(HangGuard));
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State,
             "cancelling the wait leaves the drives' watches alone");
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('U').Watch.State);

@@ -12,14 +12,14 @@ public class DirectArgumentsTests
     {
         Assert.IsTrue(DirectArguments.TryParse(arguments, out var parsed, out var error), error);
         Assert.IsNull(error);
-        return parsed;
+        return parsed!;
     }
 
     static string Refused(params string[] arguments)
     {
         Assert.IsFalse(DirectArguments.TryParse(arguments, out var parsed, out var error));
         Assert.IsNull(parsed);
-        return error;
+        return error!;
     }
 
     [TestMethod]
@@ -90,7 +90,7 @@ public class DirectArgumentsTests
         Assert.IsFalse(parsed.RequiresElevation);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(new string[0], "A verb is required.")]
     [DataRow(new[] { "list", "C" }, "Unknown verb list.")]
     [DataRow(new[] { "search" }, "Expected exactly one drive letter.")]
@@ -114,7 +114,7 @@ public class DirectArgumentsTests
         Assert.AreEqual(expected, Refused(arguments));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(new[] { "largest", "C", "--path", "C:\a" }, "Option --path does not apply to largest.")]
     [DataRow(new[] { "search", "C", "--path", "C:\a" }, "Option --path does not apply to search.")]
     [DataRow(new[] { "duplicate-names", "C", "--name", "foo", "--limit", "3" }, "Option --name does not apply to duplicate-names.")]
@@ -129,7 +129,7 @@ public class DirectArgumentsTests
         Assert.AreEqual(expected, Refused(arguments));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("scan")]
     [DataRow("search")]
     [DataRow("tree")]
@@ -164,7 +164,7 @@ public class DirectArgumentsTests
         Assert.IsFalse(SampleHost.BuildQuery(withoutFlag, null).IncludeDeleted);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("report", false, NameMatchMode.Substring)]
     [DataRow("report", true, NameMatchMode.Exact)]
     [DataRow("*.log", false, NameMatchMode.Glob)]

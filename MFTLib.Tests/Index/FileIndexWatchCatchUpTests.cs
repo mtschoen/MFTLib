@@ -146,7 +146,7 @@ public class FileIndexWatchCatchUpTests
 
         await harness.Index.DisposeAsync();
 
-        await Assert.ThrowsExceptionAsync<TaskCanceledException>(() => wait);
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(() => wait);
         harness.Dispose();
     }
 
@@ -160,7 +160,7 @@ public class FileIndexWatchCatchUpTests
 
         await caller.CancelAsync();
 
-        await Assert.ThrowsExceptionAsync<TaskCanceledException>(() => wait);
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(() => wait);
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
 
         var replacementWait = harness.Index.WaitForCatchUpAsync(['T'], Token);
@@ -184,7 +184,7 @@ public class FileIndexWatchCatchUpTests
         using var harness = new WatchHarness();
         await harness.Index.StartWatchingAsync(['T'], Token);
 
-        await WatchDeduplicationTestSupport.ThrowsAsync<ArgumentException>(
+        await Assert.ThrowsAsync<ArgumentException>(
             () => harness.Index.WaitForCatchUpAsync(['X'], Token));
     }
 

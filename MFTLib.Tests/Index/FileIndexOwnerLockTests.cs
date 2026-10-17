@@ -308,7 +308,7 @@ public sealed class FileIndexOwnerLockTests : IDisposable
         Assert.IsNull(index.Drives.Single().Block);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task RescanAsync_PrivateTakeover_ChangesCacheSlotOnlyAfterPublication(bool cancel)

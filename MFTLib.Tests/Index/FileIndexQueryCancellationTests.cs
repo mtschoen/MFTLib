@@ -62,7 +62,7 @@ public sealed class FileIndexQueryCancellationTests : IAsyncDisposable
         using var cancellation = Cancelled();
         var token = cancellation.Token;
 
-        Assert.ThrowsException<OperationCanceledException>(
+        Assert.ThrowsExactly<OperationCanceledException>(
             () => _index.Find(Path.Combine(_treeRoot, "Documents", "readme.md"), token));
     }
 
@@ -72,7 +72,7 @@ public sealed class FileIndexQueryCancellationTests : IAsyncDisposable
         using var cancellation = Cancelled();
         var token = cancellation.Token;
 
-        Assert.ThrowsException<OperationCanceledException>(
+        Assert.ThrowsExactly<OperationCanceledException>(
             () => _index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), token));
         Assert.AreEqual(0, _index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
     }
@@ -83,7 +83,7 @@ public sealed class FileIndexQueryCancellationTests : IAsyncDisposable
         using var cancellation = Cancelled();
         var token = cancellation.Token;
 
-        Assert.ThrowsException<OperationCanceledException>(
+        Assert.ThrowsExactly<OperationCanceledException>(
             () => _index.Search(new SearchQuery("readme"), token));
     }
 
@@ -94,7 +94,7 @@ public sealed class FileIndexQueryCancellationTests : IAsyncDisposable
         using var cancellation = Cancelled();
         var token = cancellation.Token;
 
-        Assert.ThrowsException<OperationCanceledException>(
+        Assert.ThrowsExactly<OperationCanceledException>(
             () => _index.Search(new SearchQuery("readme", Subtree: root), token));
     }
 
@@ -104,7 +104,7 @@ public sealed class FileIndexQueryCancellationTests : IAsyncDisposable
         using var cancellation = Cancelled();
         var token = cancellation.Token;
 
-        Assert.ThrowsException<OperationCanceledException>(
+        Assert.ThrowsExactly<OperationCanceledException>(
             () => ConsumeRows(_index, new SearchQuery(null), token));
     }
 
@@ -115,7 +115,7 @@ public sealed class FileIndexQueryCancellationTests : IAsyncDisposable
         using var cancellation = Cancelled();
         var token = cancellation.Token;
 
-        Assert.ThrowsException<OperationCanceledException>(
+        Assert.ThrowsExactly<OperationCanceledException>(
             () => ConsumeRows(_index, new SearchQuery(null, Subtree: root), token));
     }
 
@@ -133,7 +133,7 @@ public sealed class FileIndexQueryCancellationTests : IAsyncDisposable
         using var cancellation = Cancelled();
         var token = cancellation.Token;
 
-        Assert.ThrowsException<OperationCanceledException>(() => _index.Root('T', token));
+        Assert.ThrowsExactly<OperationCanceledException>(() => _index.Root('T', token));
     }
 
     /// <summary>
@@ -147,7 +147,7 @@ public sealed class FileIndexQueryCancellationTests : IAsyncDisposable
         using var cancellation = Cancelled();
         var token = cancellation.Token;
 
-        Assert.ThrowsException<OperationCanceledException>(() => root.Children(token));
+        Assert.ThrowsExactly<OperationCanceledException>(() => root.Children(token));
     }
 
     /// <summary>

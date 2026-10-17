@@ -177,18 +177,18 @@ public class BrokerProcessLaunchTests
     [TestMethod]
     public async Task LaunchAsync_NullLaunchBroker_ThrowsArgumentNull()
     {
-        await Assert.ThrowsExceptionAsync<ArgumentNullException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentNullException>(() =>
             BrokerProcess.LaunchAsync(null!, CancellationToken.None));
     }
 
     [TestMethod]
     public async Task LaunchAsync_NegativeTimeout_ThrowsArgumentOutOfRange()
     {
-        await Assert.ThrowsExceptionAsync<ArgumentOutOfRangeException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(() =>
             BrokerProcess.LaunchAsync(_ => true, TimeSpan.FromSeconds(-5), CancellationToken.None));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task LaunchAsync_NeverConnects_TimesOut(bool explicitTimeout)
@@ -218,7 +218,7 @@ public class BrokerProcessLaunchTests
 
             clock.Advance(TimeSpan.FromTicks(1));
             Assert.IsTrue(timer.Fired);
-            var exception = await Assert.ThrowsExceptionAsync<TimeoutException>(() => launch);
+            var exception = await Assert.ThrowsExactlyAsync<TimeoutException>(() => launch);
 
             StringAssert.Contains(exception.Message, "Timed out waiting 50ms");
             StringAssert.Contains(exception.Message, "mftlib-broker-");
@@ -269,7 +269,7 @@ public class BrokerProcessLaunchTests
     static async Task<string> CaptureDeclinedLaunchArgumentsAsync()
     {
         string? captured = null;
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             BrokerProcess.LaunchAsync(arguments =>
             {
                 captured = arguments;

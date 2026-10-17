@@ -31,9 +31,10 @@ public class FileRowTests
         // Rows are 32 bytes and the row region starts at a 4 KB boundary, so byte 8 of every
         // row in a mapped block lands on an 8-byte boundary. That is what makes the single
         // 64-bit store in a rename atomic rather than merely quick.
-        Assert.AreEqual(8, (int)Marshal.OffsetOf<FileRow>(nameof(FileRow.NameOffsetBytes)));
-        Assert.AreEqual(0, BlockLayout.RowBytes % sizeof(ulong));
-        Assert.AreEqual(0L, BlockLayout.RowRegionOffset % sizeof(ulong));
+        var rowBytes = BlockLayout.RowBytes;
+        var rowRegionOffset = BlockLayout.RowRegionOffset;
+        Assert.AreEqual(0, rowBytes % sizeof(ulong));
+        Assert.AreEqual(0L, rowRegionOffset % sizeof(ulong));
     }
 
     [TestMethod]

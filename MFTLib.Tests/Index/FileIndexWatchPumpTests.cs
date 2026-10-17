@@ -171,10 +171,10 @@ public class FileIndexWatchPumpTests
         await dispose.WaitAsync(HangGuard);
 
         Assert.AreEqual(1, handle.DisposeCount);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = producedBlock.Header.Generation);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = producedBlock.Header.Generation);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task HandleEndingWithoutAStop_StopReportsFailedResultUnlessFreshStartSupersedesIt(
@@ -265,7 +265,7 @@ public class FileIndexWatchPumpTests
         await harness.Index.DisposeAsync();
 
         Assert.AreEqual(1, harness.Source.WatchFor('T').DisposeCount);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = producedBlock.Header.Generation);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = producedBlock.Header.Generation);
     }
 
     [TestMethod]

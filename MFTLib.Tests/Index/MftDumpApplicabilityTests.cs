@@ -46,7 +46,7 @@ public class MftDumpApplicabilityTests
     {
         var cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-dump-cache-{Guid.NewGuid():N}");
 
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() => FileIndex.OpenAsync(
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => FileIndex.OpenAsync(
             MftDumpIndexes.Options() with { CacheDirectory = cacheDirectory }, CancellationToken.None));
 
         Assert.IsFalse(Directory.Exists(cacheDirectory));
@@ -127,7 +127,7 @@ public class MftDumpApplicabilityTests
 
     static async Task AssertRejectedAsync(FileIndexOptions options, string settingName)
     {
-        var failure = await Assert.ThrowsExceptionAsync<ArgumentException>(
+        var failure = await Assert.ThrowsExactlyAsync<ArgumentException>(
             () => FileIndex.OpenAsync(options, CancellationToken.None));
         Assert.AreEqual("options", failure.ParamName);
         StringAssert.Contains(failure.Message, settingName);
@@ -136,7 +136,7 @@ public class MftDumpApplicabilityTests
     [TestMethod]
     public void Source_ADumpWithAWatchSourceIsRefused()
     {
-        Assert.ThrowsException<ArgumentException>(() => new MftIndexSource(MftDumpIndexes.Produce,
+        Assert.ThrowsExactly<ArgumentException>(() => new MftIndexSource(MftDumpIndexes.Produce,
             new NullWatchSource(), new MftDumpSourceIdentity(MftDumpIndexes.DumpFilePath, 'D')));
     }
 

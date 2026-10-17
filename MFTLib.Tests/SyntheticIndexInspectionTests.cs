@@ -79,12 +79,12 @@ public sealed class SyntheticIndexInspectionTests : IDisposable
 
         Assert.IsNotNull(header);
         Assert.AreEqual(ProducerKind.Enumeration, header.ProducerKind);
-        Assert.ThrowsException<ObjectDisposedException>(() => SyntheticIndexInspection.ReadHeader(index, 'T'));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => SyntheticIndexInspection.ReadHeader(index, 'T'));
     }
 
     [TestMethod]
     public void ReadHeader_OfNoIndex_Throws()
     {
-        Assert.ThrowsException<ArgumentNullException>(() => SyntheticIndexInspection.ReadHeader(null!, 'T'));
+        Assert.ThrowsExactly<ArgumentNullException>(() => SyntheticIndexInspection.ReadHeader(null!, 'T'));
     }
 }

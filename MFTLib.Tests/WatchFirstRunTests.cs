@@ -147,7 +147,7 @@ public sealed class WatchFirstRunTests : IDisposable
         {
             var run = host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { CacheDirectory = Path.Combine(_directory, "cache") }, session, FixtureDrive, cancellation.Token);
 
-            await Assert.ThrowsExceptionAsync<TaskCanceledException>(() => run);
+            await Assert.ThrowsExactlyAsync<TaskCanceledException>(() => run);
         }
         finally
         {
@@ -156,7 +156,7 @@ public sealed class WatchFirstRunTests : IDisposable
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(true, true, DisplayName = "unattended")]
     [DataRow(false, false, DisplayName = "input redirected")]
     public async Task Run_BareLaunch_NobodyAtTheKeyboard_WatchesForTheDefaultSecondsInstead(bool unattended, bool interactive)

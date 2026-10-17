@@ -200,7 +200,7 @@ public class CacheDirectoryInspectionTests
     [TestMethod]
     public void InspectCached_RejectsNullAndEmptyPaths()
     {
-        Assert.ThrowsException<ArgumentNullException>(() => CacheDirectory.InspectCached(null!));
-        Assert.ThrowsException<ArgumentException>(() => CacheDirectory.InspectCached(string.Empty));
+        Assert.ThrowsExactly<ArgumentNullException>(() => CacheDirectory.InspectCached(null!));
+        Assert.ThrowsExactly<ArgumentException>(() => CacheDirectory.InspectCached(string.Empty));
     }
 }

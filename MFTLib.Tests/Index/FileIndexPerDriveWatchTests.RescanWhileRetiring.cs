@@ -1,6 +1,5 @@
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -24,7 +23,7 @@ public partial class FileIndexPerDriveWatchTests
         using var alreadyCancelled = new CancellationTokenSource();
         await alreadyCancelled.CancelAsync().WaitAsync(HangGuard);
         var stopToken = alreadyCancelled.Token;
-        await ThrowsAsync<OperationCanceledException>(
+        await Assert.ThrowsAsync<OperationCanceledException>(
             () => index.StopWatchingAsync(['T'], stopToken)).WaitAsync(HangGuard);
         var producedBefore = harness.ProductionCount('T');
 

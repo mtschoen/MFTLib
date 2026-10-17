@@ -94,7 +94,7 @@ public sealed class FileIndexLifetimeTests : IDisposable
     public async Task RescanAsync_UnknownDrive_Throws()
     {
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        await Assert.ThrowsExceptionAsync<ArgumentException>(
+        await Assert.ThrowsExactlyAsync<ArgumentException>(
             () => index.RescanAsync(['Q'], CancellationToken.None));
     }
 
@@ -131,7 +131,7 @@ public sealed class FileIndexLifetimeTests : IDisposable
         Assert.AreEqual(rowsBefore + 1, index.HeaderOf().RowCount);
 
         await oldSnapshot.ReleaseNowAsync();
-        Assert.ThrowsException<ObjectDisposedException>(() => oldEntry.IsDirectory);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => oldEntry.IsDirectory);
     }
 
     /// <summary>
@@ -151,8 +151,8 @@ public sealed class FileIndexLifetimeTests : IDisposable
 
         Assert.IsTrue(entry.IsValid);
         Assert.IsTrue(entry.IsDisposed);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Name);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.RecordKey);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Path);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.Name);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.RecordKey);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.Path);
     }
 }

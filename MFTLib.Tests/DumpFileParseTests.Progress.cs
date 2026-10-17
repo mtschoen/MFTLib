@@ -64,7 +64,7 @@ public partial class DumpFileParseTests
 
         // The assertion runs the lambda synchronously.
         // ReSharper disable once AccessToDisposedClosure
-        var exception = Assert.ThrowsException<OperationCanceledException>(
+        var exception = Assert.ThrowsExactly<OperationCanceledException>(
             () => StreamFile(cancellationToken: cancellation.Token));
 
         Assert.AreEqual(cancellation.Token, exception.CancellationToken);
@@ -89,14 +89,14 @@ public partial class DumpFileParseTests
 
         // The assertion runs the lambda synchronously.
         // ReSharper disable once AccessToDisposedClosure
-        Assert.ThrowsException<OperationCanceledException>(
+        Assert.ThrowsExactly<OperationCanceledException>(
             () => StreamFile(progress, cancellationToken: cancellation.Token));
 
         Assert.AreEqual(1, reports, "The chunk after the cancelling report is never reported.");
         Assert.IsTrue(uncancelledReports > reports);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(1)]
     [DataRow(2)]
     public void Parse_Allowance_LimitsEveryChunk(int allowedThreads)
@@ -139,7 +139,7 @@ public partial class DumpFileParseTests
                 return;
             }
 
-            innerFailure = Assert.ThrowsException<InvalidOperationException>(() =>
+            innerFailure = Assert.ThrowsExactly<InvalidOperationException>(() =>
             {
                 using var unexpected = StreamFile(parseThreads: allowance);
             });

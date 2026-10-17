@@ -61,7 +61,7 @@ public class BrokerDiagnosticsTests
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task Log_WhenEnabled_AppendsTimestampedLine(bool viaIsolation)
@@ -151,7 +151,7 @@ public class BrokerDiagnosticsTests
         StringAssert.Contains(line, ":test-C-3]");
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("ui")]
     [DataRow("Client-2_test")]
     [DataRow("-")]
@@ -162,7 +162,7 @@ public class BrokerDiagnosticsTests
         Assert.AreEqual(Path.Combine(_temporaryRoot, $"broker-diagnostics.{role}.log"), BrokerDiagnostics.LogPath);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(null)]
     [DataRow("")]
     [DataRow("../ui")]
@@ -175,7 +175,7 @@ public class BrokerDiagnosticsTests
     public void Enable_InvalidRole_RejectsWithoutChangingDiagnostics(string? role)
     {
         var originalPath = BrokerDiagnostics.LogPath;
-        Assert.ThrowsException<ArgumentException>(() => BrokerDiagnostics.Enable(role!, _temporaryRoot));
+        Assert.ThrowsExactly<ArgumentException>(() => BrokerDiagnostics.Enable(role!, _temporaryRoot));
         Assert.IsFalse(BrokerDiagnostics.Enabled);
         Assert.AreEqual(originalPath, BrokerDiagnostics.LogPath);
     }

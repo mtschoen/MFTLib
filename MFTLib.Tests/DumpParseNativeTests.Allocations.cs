@@ -9,7 +9,7 @@ namespace MFTLib.Tests;
 // then each growth of the entry array or the string pool as slices merge, the entry array first.
 public sealed partial class DumpParseNativeTests : IDisposable
 {
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(2)]
     [DataRow(3)]
     public void Parse_ReadBufferAllocationFails_ReturnsTheError(int allocationToFail)
@@ -84,7 +84,7 @@ public sealed partial class DumpParseNativeTests : IDisposable
         Assert.IsTrue(result.UsedRecords < 5000, "Should not have all records");
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(1)]
     [DataRow(2)]
     public void GenerateSyntheticMFT_AllocationFails_ReturnsFalse(int allocationToFail)
@@ -98,7 +98,7 @@ public sealed partial class DumpParseNativeTests : IDisposable
     [TestMethod]
     public void GenerateSyntheticMFT_NullPath_Throws()
     {
-        Assert.ThrowsException<InvalidOperationException>(() => MftVolume.GenerateSyntheticMFT(null!, 10, 256));
+        Assert.ThrowsExactly<InvalidOperationException>(() => MftVolume.GenerateSyntheticMFT(null!, 10, 256));
     }
 
     [TestMethod]

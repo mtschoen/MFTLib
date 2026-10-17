@@ -20,7 +20,7 @@ public class PendingDriveResultTests
     {
         var result = new FileIndex.PendingDriveResult();
 
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => result.RequireFailureMessage('T'));
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() => result.RequireFailureMessage('T'));
 
         StringAssert.Contains(exception.Message, "Drive T");
     }

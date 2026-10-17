@@ -60,7 +60,7 @@ public class BlockWriterDisposalRaceTests
             Assert.IsTrue(disposeTask.Wait(HangGuard * 3),
                 "dispose never finished after the writer left the block");
 
-            Assert.ThrowsException<ObjectDisposedException>(
+            Assert.ThrowsExactly<ObjectDisposedException>(
                 () => writer.TryWriteRow(2, "late.pdf", FileColumns()),
                 "a write that arrives after disposal must fail with a catchable exception");
         }
@@ -81,16 +81,16 @@ public class BlockWriterDisposalRaceTests
         var writer = new BlockWriter(block);
         block.Dispose();
 
-        Assert.ThrowsException<ObjectDisposedException>(() => writer.TryWriteRow(1, "report.pdf", FileColumns()));
-        Assert.ThrowsException<ObjectDisposedException>(() => writer.TryRenameRow(1, "renamed.pdf", 0));
-        Assert.ThrowsException<ObjectDisposedException>(() => writer.MarkTombstone(1));
-        Assert.ThrowsException<ObjectDisposedException>(() => writer.MarkSubtreeSkipped(1));
-        Assert.ThrowsException<ObjectDisposedException>(() => writer.MarkCapacityExhausted());
-        Assert.ThrowsException<ObjectDisposedException>(() => writer.SetJournalCursor(1, 2));
-        Assert.ThrowsException<ObjectDisposedException>(() => writer.SetCacheTag(new CacheTag("TEST", 7)));
-        Assert.ThrowsException<ObjectDisposedException>(() => writer.BumpGeneration());
-        Assert.ThrowsException<ObjectDisposedException>(() => writer.Complete(Moment, null));
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = writer.RowCount);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = writer.CapacityExhausted);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => writer.TryWriteRow(1, "report.pdf", FileColumns()));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => writer.TryRenameRow(1, "renamed.pdf", 0));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => writer.MarkTombstone(1));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => writer.MarkSubtreeSkipped(1));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => writer.MarkCapacityExhausted());
+        Assert.ThrowsExactly<ObjectDisposedException>(() => writer.SetJournalCursor(1, 2));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => writer.SetCacheTag(new CacheTag("TEST", 7)));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => writer.BumpGeneration());
+        Assert.ThrowsExactly<ObjectDisposedException>(() => writer.Complete(Moment, null));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = writer.RowCount);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = writer.CapacityExhausted);
     }
 }

@@ -12,7 +12,7 @@ public class JournalMutatorFreedRowTests
 {
     const uint FreedRow = 28;
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow((uint)UsnReason.DataOverwrite, DisplayName = "modify")]
     [DataRow((uint)(UsnReason.DataOverwrite | UsnReason.Close), DisplayName = "modify and close")]
     [DataRow((uint)UsnReason.RenameNewName, DisplayName = "rename")]
@@ -54,7 +54,7 @@ public class JournalMutatorFreedRowTests
     const uint DocumentsRow = 6;
     const uint NotesRow = 7;
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(true, (ushort)15, (ushort)15, "unrelated-dir", DisplayName = "directory replacement, new sequence")]
     [DataRow(false, (ushort)15, (ushort)15, "next-file.txt", DisplayName = "file replacement, next sequence")]
     public async Task Create_ReusesAFreedRecordsSlotAsALiveRow(bool asDirectory, ushort replacementSequence,
@@ -104,7 +104,7 @@ public class JournalMutatorFreedRowTests
         Assert.AreEqual(2L, fixture.Block.DeletedChildren?.Observations.DescendantsVisited ?? -1L);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false, DisplayName = "no deleted rows in the block")]
     [DataRow(true, DisplayName = "a deleted row under another parent")]
     public async Task Create_OnAFreshSlotVisitsNoDeletedDescendants(bool deleteRowFirst)

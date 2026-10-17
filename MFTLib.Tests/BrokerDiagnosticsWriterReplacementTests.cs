@@ -73,7 +73,7 @@ public class BrokerDiagnosticsWriterReplacementTests
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(1)]
     [DataRow(2)]
     public async Task Log_BeforeAndAfterReplacement_DeliversEachLineExactlyOnce(int replacementCount)

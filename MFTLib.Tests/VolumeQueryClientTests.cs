@@ -20,7 +20,7 @@ public class VolumeQueryClientTests : BrokerBlockTestBase
         }));
 
         var volume = await broker.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard);
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             broker.Process.QueryVolumeAsync('G', CancellationToken.None).WaitAsync(HangGuard));
 
         Assert.AreEqual(8_000_000L, volume.MftRecordCount);
@@ -33,7 +33,7 @@ public class VolumeQueryClientTests : BrokerBlockTestBase
     public async Task QueryVolumeAsync_DefaultDrive_ThrowsArgumentException()
     {
         await using var broker = new ScriptedBroker();
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             broker.Process.QueryVolumeAsync(default, CancellationToken.None));
     }
 
@@ -50,7 +50,7 @@ public class VolumeQueryClientTests : BrokerBlockTestBase
         await broker.CloseControlAsync();
 
         var volume = await first.WaitAsync(HangGuard);
-        var exception = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => second.WaitAsync(HangGuard));
+        var exception = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => second.WaitAsync(HangGuard));
 
         Assert.AreEqual(8_000_000L, volume.MftRecordCount);
         Assert.AreEqual(1024U, volume.BytesPerFileRecordSegment);

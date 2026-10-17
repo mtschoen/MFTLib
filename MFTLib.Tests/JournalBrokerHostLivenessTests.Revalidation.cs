@@ -80,7 +80,7 @@ public partial class JournalBrokerHostLivenessTests
         Assert.AreEqual(0, rest[^1].Entries.Length, "The chunks the catch-up read stay on the host.");
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(0)]
     [DataRow(1)]
     public void Visit_ProcessingWithoutFrames_HeartbeatsUntilProgressLimit(

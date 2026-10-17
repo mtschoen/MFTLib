@@ -21,7 +21,7 @@ public class BrokerFrameWriteLimitTests
     {
         var buffer = new ArrayBufferWriter<byte>();
 
-        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
             BrokerProtocol.WriteArmAndScan(buffer, "section", KeepList(32_700)));
 
         StringAssert.Contains(exception.Message, "frame limit");
@@ -35,7 +35,7 @@ public class BrokerFrameWriteLimitTests
             .Select(index => JournalEntries.Create((ulong)index, index, new string('e', 255))).ToArray();
         var buffer = new ArrayBufferWriter<byte>();
 
-        Assert.ThrowsException<InvalidOperationException>(() =>
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
             BrokerProtocol.WriteJournalBatch(buffer, Armed, entries));
 
         Assert.AreEqual(0, buffer.WrittenCount);
@@ -100,7 +100,7 @@ public class BrokerFrameWriteLimitTests
             RetainedFileNames = KeepList(32_700)
         };
 
-        var exception = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        var exception = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), options, null, CancellationToken.None)
                 .WaitAsync(HangGuard));
 

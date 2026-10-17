@@ -209,7 +209,7 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
         var failure = new InvalidOperationException("Injected journal query failure.");
         using var journal = JournalIsolation.OverrideJournalWindow(_ => throw failure);
 
-        var observed = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
+        var observed = await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () =>
         {
             await using var unexpected = await FileIndex.OpenAsync(_fixture.Options(), CancellationToken.None);
         });

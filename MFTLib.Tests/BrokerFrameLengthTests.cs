@@ -43,7 +43,7 @@ public class BrokerFrameLengthTests
         var buffer = new ArrayBufferWriter<byte>();
 
         Assert.AreEqual(16_777_581L, BrokerProtocol.ArmAndScanFrameLength(sectionName, names));
-        Assert.ThrowsException<InvalidOperationException>(() =>
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
             BrokerProtocol.WriteArmAndScan(buffer, sectionName, names));
         Assert.AreEqual(0, buffer.WrittenCount, "No length prefix is emitted for a frame over the limit.");
     }
@@ -54,7 +54,7 @@ public class BrokerFrameLengthTests
         return Enumerable.Repeat(name, count).ToArray();
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(int.MaxValue)]
     [DataRow(BrokerFrameStream.MaximumFrameLength + 1)]
     public async Task Host_ControlFrameLengthBeyondMaximum_EndsSessionWithInvalidData(int length)
@@ -64,12 +64,12 @@ public class BrokerFrameLengthTests
         {
             await harness.SendControlAsync(writer => WriteLengthPrefix(writer, length));
 
-            var exception = await Assert.ThrowsExceptionAsync<InvalidDataException>(() => harness.Serve.WaitAsync(HangGuard));
+            var exception = await Assert.ThrowsExactlyAsync<InvalidDataException>(() => harness.Serve.WaitAsync(HangGuard));
             StringAssert.Contains(exception.Message, length.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
         finally
         {
-            await Assert.ThrowsExceptionAsync<InvalidDataException>(async () => await harness.DisposeAsync());
+            await Assert.ThrowsExactlyAsync<InvalidDataException>(async () => await harness.DisposeAsync());
         }
     }
 
@@ -100,7 +100,7 @@ public class BrokerFrameLengthTests
 
         await broker.WriteControlAsync(writer => WriteLengthPrefix(writer, int.MaxValue));
 
-        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
         Assert.IsNull(lost.Drive);
         StringAssert.Contains(await ended.WaitAsync(HangGuard), "2147483647");
     }
@@ -117,7 +117,7 @@ public class BrokerFrameLengthTests
 
         await HostChannelHarness.WriteFrameAsync(pipe, writer => WriteLengthPrefix(writer, int.MaxValue));
 
-        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
         Assert.AreEqual('C', lost.Drive);
         Assert.IsInstanceOfType<InvalidDataException>(lost.InnerException);
     }

@@ -260,7 +260,7 @@ public sealed class FileIndexOpenProgressTests : IDisposable
             throw new InvalidOperationException("simulated progress callback failure"));
         var options = Options(drives, throwingProgress);
 
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token));
 
         Assert.AreEqual("simulated progress callback failure", exception.Message);

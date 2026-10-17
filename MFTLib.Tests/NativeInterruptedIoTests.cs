@@ -93,7 +93,7 @@ public sealed class NativeInterruptedIoTests : IDisposable
     {
         NativeTestHooks.NativeSetInterruptedIo(NativeTestHooks.InterruptedIoMode.ZeroWithStaleInterrupt, 0);
 
-        var failure = Assert.ThrowsException<InvalidDataException>(() => MftDumpInput.Open(_path));
+        var failure = Assert.ThrowsExactly<InvalidDataException>(() => MftDumpInput.Open(_path));
 
         Assert.AreEqual(MftDumpInputTests.IncompleteMessage, failure.Message);
         Assert.AreEqual(1, NativeTestHooks.NativeGetInterruptedIoCalls(), "a zero result is never retried");
@@ -106,7 +106,7 @@ public sealed class NativeInterruptedIoTests : IDisposable
     {
         NativeTestHooks.NativeSetInterruptedIo(NativeTestHooks.InterruptedIoMode.GenuineError, 0);
 
-        var failure = Assert.ThrowsException<InvalidDataException>(() => MftDumpInput.Open(_path));
+        var failure = Assert.ThrowsExactly<InvalidDataException>(() => MftDumpInput.Open(_path));
 
         Assert.AreEqual(MftDumpInputTests.IncompleteMessage, failure.Message);
         Assert.AreEqual(1, NativeTestHooks.NativeGetInterruptedIoCalls(), "a genuine error is never retried");

@@ -70,7 +70,7 @@ public sealed class FileIndexConcurrentRescanTests : IDisposable
         Assert.AreEqual('U', index.CurrentSnapshot[ordinalU].Drive);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(true)]
     [DataRow(false)]
     public async Task ConcurrentBlocklessAdoption_OneFailsOneSucceeds_EachKeepsItsOwnStatus(bool failedDriveFirst)

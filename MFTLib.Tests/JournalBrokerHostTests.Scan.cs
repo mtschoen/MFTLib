@@ -57,7 +57,7 @@ public partial class JournalBrokerHostTests
         Assert.AreEqual(2, InUseRowCount(blockWriter));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(new[] { ".git" }, 2, DisplayName = "RetainedFileNameMatch_RetainsTheNamedFile")]
     [DataRow(new[] { ".GIT" }, 2, DisplayName = "RetainedFileNameMatch_IsCaseInsensitive")]
     [DataRow(new[] { "other.txt" }, 1, DisplayName = "NonMatchingFiles_AreDropped")]

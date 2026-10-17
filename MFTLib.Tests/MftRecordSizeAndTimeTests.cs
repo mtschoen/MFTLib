@@ -11,13 +11,15 @@ public class MftRecordSizeAndTimeTests
     [TestMethod]
     public void ExpectedAbiVersion_IsNine()
     {
-        Assert.AreEqual(9u, MFTLibNative.ExpectedMftNativeAbiVersion);
+        var expectedVersion = MFTLibNative.ExpectedMftNativeAbiVersion;
+        Assert.AreEqual(9u, expectedVersion);
     }
 
     [TestMethod]
     public void NativeCompactEntrySize_IsFiftyTwo()
     {
-        Assert.AreEqual(52u, MFTLibNative.NativeCompactEntrySize);
+        var entrySize = MFTLibNative.NativeCompactEntrySize;
+        Assert.AreEqual(52u, entrySize);
     }
 
     [TestMethod]
@@ -27,7 +29,7 @@ public class MftRecordSizeAndTimeTests
         Assert.AreEqual(9u, MFTLibNative.Hooks.GetMftNativeAbiVersion());
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(long.MinValue, DisplayName = "Issue655_MinimumFileTime")]
     [DataRow(-1L, DisplayName = "Issue655_NegativeFileTime")]
     [DataRow(0L, DisplayName = "Issue655_AbsentFileTime")]

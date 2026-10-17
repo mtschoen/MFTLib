@@ -9,7 +9,7 @@ namespace MFTLib.Tests.Index;
 [DoNotParallelize]
 public class WatchFailureObservationTests
 {
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false, false)]
     [DataRow(true, false)]
     [DataRow(false, true)]
@@ -127,7 +127,7 @@ public class WatchFailureObservationTests
         var first = reader.MoveNextAsync().AsTask();
         await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteError(writer, 0, marker));
 
-        var failure = await WatchDeduplicationTestSupport.ThrowsAsync<DriveWatchFaultException>(
+        var failure = await Assert.ThrowsAsync<DriveWatchFaultException>(
             () => first.WaitAsync(HangGuard));
         Assert.IsNull(failure.InnerException);
         Assert.AreEqual(marker, failure.Message);

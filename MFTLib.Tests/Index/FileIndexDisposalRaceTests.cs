@@ -165,7 +165,7 @@ public sealed class FileIndexDisposalRaceTests : IDisposable
         var index = await FileIndex.OpenAsync(Options(progress), CancellationToken.None);
         await index.DisposeAsync();
 
-        await WatchDeduplicationTestSupport.ThrowsAsync<ObjectDisposedException>(
+        await Assert.ThrowsAsync<ObjectDisposedException>(
             () => index.RescanAsync(['T'], CancellationToken.None));
     }
 
@@ -176,7 +176,7 @@ public sealed class FileIndexDisposalRaceTests : IDisposable
         var index = await FileIndex.OpenAsync(Options(progress), CancellationToken.None);
         await index.DisposeAsync();
 
-        Assert.ThrowsException<ObjectDisposedException>(
+        Assert.ThrowsExactly<ObjectDisposedException>(
             () => index.ApplyJournalEntries('T', [], journalIdentifier: 1, nextUsn: 1));
     }
 }

@@ -53,7 +53,7 @@ public partial class BrokerProcessTests
 
         Assert.IsTrue(writeBound.Fired);
         StringAssert.Contains(await ended.WaitAsync(HangGuard), "did not finish writing within 30 seconds");
-        await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => held.WaitAsync(HangGuard));
+        await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => held.WaitAsync(HangGuard));
         await broker.Process.Ended.WaitAsync(HangGuard);
     }
 
@@ -82,10 +82,10 @@ public partial class BrokerProcessTests
         clock.Advance(OneTick);
 
         Assert.IsTrue(connectionBound.Fired);
-        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => open.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => open.WaitAsync(HangGuard));
         Assert.AreEqual('C', lost.Drive);
         StringAssert.Contains(lost.Message, "did not connect within 30 seconds");
-        await Assert.ThrowsExceptionAsync<IOException>(() =>
+        await Assert.ThrowsExactlyAsync<IOException>(() =>
             broker.Pipes.ConnectAsync(request.RequirePipeName(), CancellationToken.None));
         Assert.IsFalse(broker.Process.Ended.IsCompleted, "Only the channel failed.");
     }

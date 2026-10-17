@@ -7,7 +7,7 @@ namespace MFTLib.Tests;
 
 public partial class UsnJournalSyntheticTests
 {
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(true, 1)]
     [DataRow(true, 2)]
     [DataRow(false, 1)]
@@ -62,7 +62,7 @@ public partial class UsnJournalSyntheticTests
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(true)]
     [DataRow(false)]
     public async Task Watch_IdleNativeRead_CancellationCompletes(bool beforeIssue)

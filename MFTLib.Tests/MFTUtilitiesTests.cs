@@ -7,7 +7,7 @@ namespace MFTLib.Tests;
 [TestClass]
 public class MFTUtilitiesTests
 {
-    [DataTestMethod]
+    [TestMethod]
     [DataRow('C', @"\\.\C:")]
     [DataRow('c', @"\\.\C:")]
     [DataRow('D', @"\\.\D:")]
@@ -19,6 +19,6 @@ public class MFTUtilitiesTests
     [TestMethod]
     public void GetVolumePath_DefaultDrive_ThrowsArgumentException()
     {
-        Assert.ThrowsException<ArgumentException>(() => MFTUtilities.GetVolumePath(default));
+        Assert.ThrowsExactly<ArgumentException>(() => MFTUtilities.GetVolumePath(default));
     }
 }

@@ -109,7 +109,7 @@ public class UsnJournalVolumeInteropTests
 
         FailIoControl(UsnJournalVolumeInterop.FsctlQueryUsnJournal, ErrorJournalNotActive);
 
-        var exception = Assert.ThrowsException<Win32Exception>(() => UsnJournalSettingsQuery.Query('C'));
+        var exception = Assert.ThrowsExactly<Win32Exception>(() => UsnJournalSettingsQuery.Query('C'));
         Assert.AreEqual(ErrorJournalNotActive, exception.NativeErrorCode);
     }
 

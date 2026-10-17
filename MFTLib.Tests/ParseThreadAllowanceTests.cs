@@ -17,22 +17,22 @@ public class ParseThreadAllowanceTests
         FileUtilities.Hooks.ResetToDefaults();
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(0)]
     [DataRow(-1)]
     public void Constructor_CountBelowOne_Throws(int count)
     {
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => new ParseThreadAllowance(count));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new ParseThreadAllowance(count));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(0)]
     [DataRow(-1)]
     public void Count_SetBelowOne_Throws(int count)
     {
         var allowance = new ParseThreadAllowance(3);
 
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => allowance.Count = count);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => allowance.Count = count);
         Assert.AreEqual(3, allowance.Count);
     }
 
@@ -107,7 +107,7 @@ public class ParseThreadAllowanceTests
         try
         {
             Assert.AreEqual(4, first.Allowance, "Attaching copies the current count into the control block");
-            Assert.ThrowsException<InvalidOperationException>(() => allowance.Attach(secondField));
+            Assert.ThrowsExactly<InvalidOperationException>(() => allowance.Attach(secondField));
             Assert.AreEqual(0, second.Allowance);
         }
         finally

@@ -110,7 +110,7 @@ public class RowScannerTests
         cancellation.Cancel();
         var token = cancellation.Token;
 
-        Assert.ThrowsException<OperationCanceledException>(() =>
+        Assert.ThrowsExactly<OperationCanceledException>(() =>
         {
             var scanner = new RowScanner(_snapshot[0], token);
             while (scanner.MoveNext())
@@ -133,7 +133,7 @@ public class RowScannerTests
         cancellation.Cancel();
         var token = cancellation.Token;
 
-        Assert.ThrowsException<OperationCanceledException>(() =>
+        Assert.ThrowsExactly<OperationCanceledException>(() =>
         {
             var scanner = new RowScanner(_snapshot[0], startRow: 0, endRowExclusive: 0, token);
             while (scanner.MoveNext())

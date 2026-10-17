@@ -154,7 +154,7 @@ public class MftBlockRowWriterTests
             yield break;
         }
 
-        Assert.ThrowsException<OperationCanceledException>(() =>
+        Assert.ThrowsExactly<OperationCanceledException>(() =>
             MftBlockRowWriter.WriteBatches(writer, Batches(), new MftScanOptions(), null, cancellationToken));
         Assert.AreEqual(0u, block.Header.RowCount);
         Assert.IsFalse(block.Header.IsComplete);
@@ -169,7 +169,7 @@ public class MftBlockRowWriterTests
         var progress = new CancellingProgress(cancellation);
         var cancellationToken = cancellation.Token;
 
-        Assert.ThrowsException<OperationCanceledException>(() => MftBlockRowWriter.WriteBatches(
+        Assert.ThrowsExactly<OperationCanceledException>(() => MftBlockRowWriter.WriteBatches(
             writer, [[Record(5, ".")], [Record(6, "file")]], new MftScanOptions(), progress, cancellationToken));
 
         Assert.AreEqual(6u, block.Header.RowCount);

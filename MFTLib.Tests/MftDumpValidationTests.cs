@@ -204,7 +204,7 @@ public sealed class MftDumpValidationTests : IDisposable
             "invalid.mft");
 
         (await new MftDumpBlockProducer(valid, TimeProvider.System).ProduceAsync(Request(), CancellationToken.None)).Block.Dispose();
-        await Assert.ThrowsExceptionAsync<InvalidDataException>(
+        await Assert.ThrowsExactlyAsync<InvalidDataException>(
             () => new MftDumpBlockProducer(invalid, TimeProvider.System).ProduceAsync(Request(), CancellationToken.None));
 
         foreach (var path in new[] { valid, invalid })
@@ -220,7 +220,7 @@ public sealed class MftDumpValidationTests : IDisposable
         var path = MftDumpFixture.WriteFile(_directory, WithRecords(records => records.Remove(5)));
         var request = Request();
 
-        var failure = await Assert.ThrowsExceptionAsync<InvalidDataException>(
+        var failure = await Assert.ThrowsExactlyAsync<InvalidDataException>(
             () => new MftDumpBlockProducer(path, TimeProvider.System).ProduceAsync(request, CancellationToken.None));
 
         Assert.AreEqual(NoRootMessage, failure.Message);
@@ -235,7 +235,7 @@ public sealed class MftDumpValidationTests : IDisposable
         var path = MftDumpFixture.WriteFile(_directory, Changed(dump => dump[7 * 1024 + 510] ^= 0xFF));
         var request = Request() with { BlockPath = Path.Combine(_directory, "absent", "block.mlix") };
 
-        var failure = await Assert.ThrowsExceptionAsync<InvalidDataException>(
+        var failure = await Assert.ThrowsExactlyAsync<InvalidDataException>(
             () => new MftDumpBlockProducer(path, TimeProvider.System).ProduceAsync(request, CancellationToken.None));
 
         Assert.AreEqual("The dump contains an invalid MFT record fixup.", failure.Message);
@@ -341,7 +341,7 @@ public sealed class MftDumpValidationTests : IDisposable
         cancellation.Cancel();
         var producer = new MftDumpBlockProducer(Path.Combine(_directory, "absent.mft"), TimeProvider.System);
 
-        await Assert.ThrowsExceptionAsync<TaskCanceledException>(
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(
             () => producer.ProduceAsync(Request(), cancellation.Token));
     }
 
@@ -353,7 +353,7 @@ public sealed class MftDumpValidationTests : IDisposable
         var request = Request();
         var producer = new MftDumpBlockProducer(path, TimeProvider.System, CancellingSource(cancellation));
 
-        var cancelled = await Assert.ThrowsExceptionAsync<OperationCanceledException>(
+        var cancelled = await Assert.ThrowsExactlyAsync<OperationCanceledException>(
             () => producer.ProduceAsync(request, cancellation.Token));
 
         Assert.AreEqual(cancellation.Token, cancelled.CancellationToken);
@@ -365,7 +365,7 @@ public sealed class MftDumpValidationTests : IDisposable
     {
         var producer = new MftDumpBlockProducer(Path.Combine(_directory, "absent.mft"), TimeProvider.System);
 
-        await Assert.ThrowsExceptionAsync<ArgumentNullException>(
+        await Assert.ThrowsExactlyAsync<ArgumentNullException>(
             () => producer.ProduceAsync(null!, CancellationToken.None));
     }
 
@@ -374,7 +374,7 @@ public sealed class MftDumpValidationTests : IDisposable
     [DataRow("  ")]
     public void Constructor_BlankPath_Throws(string path)
     {
-        Assert.ThrowsException<ArgumentException>(() => new MftDumpBlockProducer(path, TimeProvider.System), path);
+        Assert.ThrowsExactly<ArgumentException>(() => new MftDumpBlockProducer(path, TimeProvider.System), path);
     }
 
     [TestMethod]
@@ -393,8 +393,8 @@ public sealed class MftDumpValidationTests : IDisposable
 
         var validation = new MftDumpRecordValidation(block);
 
-        Assert.ThrowsException<ArgumentNullException>(() => new MftDumpRecordValidation(null!));
-        Assert.ThrowsException<ArgumentNullException>(() => validation.Validate(null!));
+        Assert.ThrowsExactly<ArgumentNullException>(() => new MftDumpRecordValidation(null!));
+        Assert.ThrowsExactly<ArgumentNullException>(() => validation.Validate(null!));
     }
 
     static MftDumpRecordSource CancellingSource(CancellationTokenSource cancellation) =>
@@ -410,7 +410,7 @@ public sealed class MftDumpValidationTests : IDisposable
     async Task<InvalidDataException> ProduceFailsAsync(params Func<ulong, MftRecordTestValues[]>[] batches)
     {
         var request = Request();
-        var failure = await Assert.ThrowsExceptionAsync<InvalidDataException>(() => Producer(batches)
+        var failure = await Assert.ThrowsExactlyAsync<InvalidDataException>(() => Producer(batches)
             .ProduceAsync(request, CancellationToken.None));
         Assert.IsFalse(File.Exists(request.BlockPath), "a rejected import leaves no block file");
         return failure;

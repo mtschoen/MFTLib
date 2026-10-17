@@ -254,7 +254,7 @@ public class BlockFileTests
             // An existing but empty file with a zero mapping capacity makes
             // MemoryMappedFile.CreateFromFile itself throw, before it is ever assigned, which
             // exercises the branch that disposes the FileStream directly rather than through it.
-            Assert.ThrowsException<ArgumentException>(() =>
+            Assert.ThrowsExactly<ArgumentException>(() =>
                 BlockFile.OpenMapping(path, FileMode.Open, mappingCapacity: 0, viewLength: 0, fileOptions: FileOptions.None));
 
             // If the failed attempt's FileStream were not disposed, this exclusive reopen would
@@ -277,7 +277,7 @@ public class BlockFileTests
         {
             // A view larger than the mapping's own capacity makes CreateViewAccessor throw after
             // the FileStream and MemoryMappedFile already exist, exercising the cleanup path.
-            Assert.ThrowsException<UnauthorizedAccessException>(() =>
+            Assert.ThrowsExactly<UnauthorizedAccessException>(() =>
                 BlockFile.OpenMapping(path, FileMode.Create, mappingCapacity: 4096, viewLength: 8192,
                     fileOptions: FileOptions.None));
 
@@ -387,7 +387,7 @@ public class BlockFileTests
             // exists and the file is on disk, but no BlockFile owns either of them yet.
             view.Dispose();
 
-            Assert.ThrowsException<ObjectDisposedException>(
+            Assert.ThrowsExactly<ObjectDisposedException>(
                 () => BlockFile.BuildAndInitialize(options, length, mappedFile, view));
 
             // Cache mode does not delete on close, so nothing else would ever remove this file:

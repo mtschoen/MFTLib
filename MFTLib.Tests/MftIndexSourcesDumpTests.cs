@@ -16,7 +16,7 @@ public class MftIndexSourcesDumpTests
     [DataRow("\t")]
     public void FromMftDumpFile_BlankPath_ThrowsArgumentExceptionNamingFilePath(string? filePath)
     {
-        var failure = Assert.ThrowsException<ArgumentException>(
+        var failure = Assert.ThrowsExactly<ArgumentException>(
             () => MftIndexSources.FromMftDumpFile(filePath!, 'D'));
 
         Assert.AreEqual("filePath", failure.ParamName);
@@ -35,7 +35,7 @@ public class MftIndexSourcesDumpTests
     [DataRow('\u017F')]
     public void DriveKeyConversion_RejectsNonAsciiLettersBeforeDumpCreation(char driveLetter)
     {
-        var failure = Assert.ThrowsException<ArgumentException>(
+        var failure = Assert.ThrowsExactly<ArgumentException>(
             () => MftIndexSources.FromMftDumpFile("volume.mft", driveLetter));
 
         Assert.AreEqual("letter", failure.ParamName);

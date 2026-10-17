@@ -36,7 +36,7 @@ public class DriveBlockTests
 
         Assert.IsTrue(driveBlock.IsReleased);
         Assert.IsTrue(driveBlock.ReleaseState.IsReleaseComplete);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = block.Rows.Length);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = block.Rows.Length);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -58,7 +58,7 @@ public class DriveBlockTests
         GC.WaitForPendingFinalizers();
 
         Assert.IsTrue(release.IsReleaseComplete);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = block.Rows.Length);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = block.Rows.Length);
     }
 
     [TestMethod]

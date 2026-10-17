@@ -6,15 +6,15 @@ MFTLib.Tests runs eligible test classes in parallel by default. Its
 remain sequential. Classes marked `[DoNotParallelize]` run in the isolated
 nonparallel set.
 
-MSTest runs the parallel set first and the `[DoNotParallelize]` set afterwards,
-one test at a time, so a nonparallel class never overlaps any other class (MSTest
-`TestExecutionManager`: parallel tasks, `Task.WaitAll`, then the nonparallel set;
-[v3.1.1 source](https://github.com/microsoft/testfx/blob/v3.1.1/src/Adapter/MSTest.TestAdapter/Execution/TestExecutionManager.cs),
-and the [Microsoft Learn description](https://learn.microsoft.com/dotnet/core/testing/unit-testing-mstest-writing-tests-controlling-execution)
-of the deferred set). That phase order is an MSTest implementation detail, which is
-why every change to scheduling is re-qualified as below. A class that only reads
-shared state (for example `PlatformBranchTests` resolving a relative path) stays
-parallel because every class that writes that state is nonparallel.
+MSTest 4.5.1 runs the parallel set first and the `[DoNotParallelize]` set
+afterwards, one test at a time, so a nonparallel class never overlaps any other
+class. `TestExecutionManager.ExecuteParallelizedTestsAsync` awaits
+`Task.WhenAll(tasks)` before executing the nonparallel set
+([pinned source](https://github.com/microsoft/testfx/blob/v4.5.1/src/Adapter/MSTestAdapter.PlatformServices/Execution/TestExecutionManager.ParallelExecution.cs)).
+That phase order is an implementation detail, so framework upgrades and
+scheduling changes require the qualification below. A class that only reads
+shared state (for example `PlatformBranchTests` resolving a relative path)
+stays parallel because every class that writes that state is nonparallel.
 
 A test class must carry class-level `[DoNotParallelize]` when any of its code
 (including helpers, nested types and async state machines) does one of these:

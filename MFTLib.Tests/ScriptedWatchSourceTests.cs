@@ -78,8 +78,8 @@ public class ScriptedWatchSourceTests
         var failure = new IOException("drive U is gone");
         var source = new ScriptedWatchSource { StartFailure = letter => letter == 'U' ? failure : null };
 
-        var first = await Assert.ThrowsExceptionAsync<IOException>(() => StartAsync(source, Target('U')));
-        var second = await Assert.ThrowsExceptionAsync<IOException>(() => StartAsync(source, Target('U')));
+        var first = await Assert.ThrowsExactlyAsync<IOException>(() => StartAsync(source, Target('U')));
+        var second = await Assert.ThrowsExactlyAsync<IOException>(() => StartAsync(source, Target('U')));
         await StartAsync(source, Target('T'));
 
         Assert.AreSame(failure, first);
@@ -95,7 +95,7 @@ public class ScriptedWatchSourceTests
         var source = new ScriptedWatchSource();
         source.FailNextStart(new IOException("once"));
 
-        await Assert.ThrowsExceptionAsync<IOException>(() => StartAsync(source, Target('T')));
+        await Assert.ThrowsExactlyAsync<IOException>(() => StartAsync(source, Target('T')));
         var watch = await StartAsync(source, Target('T'));
 
         Assert.IsNotNull(watch);
@@ -109,7 +109,7 @@ public class ScriptedWatchSourceTests
         source.FailNextStartFor('u', new IOException("U only"));
 
         await StartAsync(source, Target('T'));
-        await Assert.ThrowsExceptionAsync<IOException>(() => StartAsync(source, Target('U')));
+        await Assert.ThrowsExactlyAsync<IOException>(() => StartAsync(source, Target('U')));
         await StartAsync(source, Target('U'));
 
         Assert.AreEqual(2, source.Watches.Count);
@@ -168,7 +168,7 @@ public class ScriptedWatchSourceTests
     {
         var source = new ScriptedWatchSource();
         source.FailNextStart(new IOException("refused"));
-        await Assert.ThrowsExceptionAsync<IOException>(() => StartAsync(source, Target('T')));
+        await Assert.ThrowsExactlyAsync<IOException>(() => StartAsync(source, Target('T')));
         var waiting = source.WaitForStartAsync('T', 1, Token);
         Assert.IsFalse(waiting.IsCompleted);
 
@@ -177,14 +177,14 @@ public class ScriptedWatchSourceTests
         Assert.AreSame(started, await waiting.WaitAsync(HangGuard, Token));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(0)]
     [DataRow(-1)]
     public void WaitForStartAsync_AStartNumberBelowOne_IsRejected(int startNumber)
     {
         var source = new ScriptedWatchSource();
 
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => source.WaitForStartAsync('T', startNumber, Token));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => source.WaitForStartAsync('T', startNumber, Token));
     }
 
     [TestMethod]
@@ -196,7 +196,7 @@ public class ScriptedWatchSourceTests
 
         await cancellation.CancelAsync();
 
-        await Assert.ThrowsExceptionAsync<TaskCanceledException>(() => waiting);
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(() => waiting);
     }
 
     [TestMethod]
@@ -205,7 +205,7 @@ public class ScriptedWatchSourceTests
         var source = new ScriptedWatchSource();
         var first = await StartAsync(source, Target('T'));
 
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => StartAsync(source, Target('T')));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => StartAsync(source, Target('T')));
         await StartAsync(source, Target('U'));
         await first.DisposeWatchAsync();
         var second = await StartAsync(source, Target('T'));
@@ -223,7 +223,7 @@ public class ScriptedWatchSourceTests
         await watch.DisposeWatchAsync();
         await watch.Disposed.WaitAsync(HangGuard, Token);
 
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () => await watch.DisposeWatchAsync());
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await watch.DisposeWatchAsync());
         Assert.AreEqual(2, watch.DisposeCount);
     }
 
@@ -253,7 +253,7 @@ public class ScriptedWatchSourceTests
         Assert.IsFalse(queuedCaughtUp.IsCompleted);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("open", false)]
     [DataRow("end", false)]
     [DataRow("fail-drive", false)]
@@ -310,17 +310,17 @@ public class ScriptedWatchSourceTests
 
         if (isMarker)
         {
-            Assert.ThrowsException<InvalidOperationException>(() => watch.QueueCaughtUp());
-            Assert.ThrowsException<InvalidOperationException>(() => watch.PublishCaughtUpAsync());
+            Assert.ThrowsExactly<InvalidOperationException>(() => watch.QueueCaughtUp());
+            Assert.ThrowsExactly<InvalidOperationException>(() => watch.PublishCaughtUpAsync());
         }
         else
         {
-            Assert.ThrowsException<InvalidOperationException>(() => watch.QueueBatchAsync([entry], cursor));
-            Assert.ThrowsException<InvalidOperationException>(() => watch.PublishBatchAsync([entry], cursor));
+            Assert.ThrowsExactly<InvalidOperationException>(() => watch.QueueBatchAsync([entry], cursor));
+            Assert.ThrowsExactly<InvalidOperationException>(() => watch.PublishBatchAsync([entry], cursor));
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("cancel", false)]
     [DataRow("cancel", true)]
     [DataRow("fail-on-cancellation", false)]
@@ -388,7 +388,7 @@ public class ScriptedWatchSourceTests
         Assert.IsTrue(yieldedTask.IsCompletedSuccessfully, "disposal does not settle a receipt again");
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task Teardown_SettlesEveryReceiptWhenDisposalOverlapsTheReader(bool overlapReaderDrain)
@@ -481,10 +481,10 @@ public class ScriptedWatchSourceTests
     {
         var entry = JournalEntries.CreateSynthetic(22, 260, "c.txt");
         var cursor = new SyntheticJournalCursor(7, 400);
-        Assert.ThrowsException<InvalidOperationException>(() => watch.QueueBatchAsync([entry], cursor));
-        Assert.ThrowsException<InvalidOperationException>(() => watch.PublishBatchAsync([entry], cursor));
-        Assert.ThrowsException<InvalidOperationException>(() => watch.QueueCaughtUp());
-        Assert.ThrowsException<InvalidOperationException>(() => watch.PublishCaughtUpAsync());
+        Assert.ThrowsExactly<InvalidOperationException>(() => watch.QueueBatchAsync([entry], cursor));
+        Assert.ThrowsExactly<InvalidOperationException>(() => watch.PublishBatchAsync([entry], cursor));
+        Assert.ThrowsExactly<InvalidOperationException>(() => watch.QueueCaughtUp());
+        Assert.ThrowsExactly<InvalidOperationException>(() => watch.PublishCaughtUpAsync());
     }
 
     async Task EndReadAsync(ScriptedDriveWatch watch, string mode)
@@ -497,7 +497,7 @@ public class ScriptedWatchSourceTests
                 {
                     var pending = enumerator.MoveNextAsync().AsTask();
                     await cancellation.CancelAsync();
-                    await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => pending);
+                    await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => pending);
                     break;
                 }
             case "fail-on-cancellation":
@@ -505,7 +505,7 @@ public class ScriptedWatchSourceTests
                     watch.FailOnCancellation(new IOException("pipe closed under the read"));
                     var pending = enumerator.MoveNextAsync().AsTask();
                     await cancellation.CancelAsync();
-                    await Assert.ThrowsExceptionAsync<IOException>(() => pending);
+                    await Assert.ThrowsExactlyAsync<IOException>(() => pending);
                     break;
                 }
             case "cancel-suspended":
@@ -536,7 +536,7 @@ public class ScriptedWatchSourceTests
         Assert.IsFalse(await watch.ReadEnded.WaitAsync(HangGuard, Token));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task ReadEnded_ReportsTrueWhenCancellationEndedTheRead(bool disposeWhileSuspended)
@@ -557,7 +557,7 @@ public class ScriptedWatchSourceTests
         {
             var pending = enumerator.MoveNextAsync().AsTask();
             await cancellation.CancelAsync();
-            await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => pending);
+            await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => pending);
             await enumerator.DisposeAsync();
         }
 
@@ -577,7 +577,7 @@ public class ScriptedWatchSourceTests
 
         await cancellation.CancelAsync();
 
-        Assert.AreSame(failure, await Assert.ThrowsExceptionAsync<IOException>(() => pending));
+        Assert.AreSame(failure, await Assert.ThrowsExactlyAsync<IOException>(() => pending));
         Assert.IsTrue(await watch.ReadEnded.WaitAsync(HangGuard, Token));
     }
 
@@ -591,13 +591,13 @@ public class ScriptedWatchSourceTests
 
         watch.FailDrive(inner);
 
-        var fault = await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(async () => await enumerator.MoveNextAsync());
+        var fault = await Assert.ThrowsExactlyAsync<DriveWatchFaultException>(async () => await enumerator.MoveNextAsync());
         Assert.AreEqual(inner.Message, fault.Message);
         Assert.AreSame(inner, fault.InnerException);
         Assert.IsFalse(await watch.ReadEnded.WaitAsync(HangGuard, Token));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task LoseChannel_MakesTheReadThrowTheScriptedException(bool isCanceledException)
@@ -617,8 +617,8 @@ public class ScriptedWatchSourceTests
         watch.LoseChannel(failure);
 
         Exception thrown = isCanceledException
-            ? await Assert.ThrowsExceptionAsync<OperationCanceledException>(async () => await enumerator.MoveNextAsync())
-            : await Assert.ThrowsExceptionAsync<IOException>(async () => await enumerator.MoveNextAsync());
+            ? await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () => await enumerator.MoveNextAsync())
+            : await Assert.ThrowsExactlyAsync<IOException>(async () => await enumerator.MoveNextAsync());
         Assert.AreSame(failure, thrown);
         if (isCanceledException)
         {
@@ -631,14 +631,14 @@ public class ScriptedWatchSourceTests
     {
         var source = new ScriptedWatchSource();
 
-        Assert.ThrowsException<InvalidOperationException>(() => source.WatchFor('T'));
+        Assert.ThrowsExactly<InvalidOperationException>(() => source.WatchFor('T'));
     }
 
     [TestMethod]
     public void TestGate_WaitSynchronously_TimesOutWhenTaskDoesNotComplete()
     {
         var pending = new TaskCompletionSource().Task;
-        Assert.ThrowsException<TimeoutException>(() => TestGate.WaitSynchronously(pending, TimeSpan.Zero));
+        Assert.ThrowsExactly<TimeoutException>(() => TestGate.WaitSynchronously(pending, TimeSpan.Zero));
         TestGate.WaitSynchronously(Task.CompletedTask, TimeSpan.Zero);
     }
 }

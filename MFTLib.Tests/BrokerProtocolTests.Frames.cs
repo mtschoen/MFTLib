@@ -143,7 +143,7 @@ public partial class BrokerProtocolTests
         ]);
 
         var buffer = new ArrayBufferWriter<byte>();
-        Assert.ThrowsException<ArgumentException>(() => BrokerProtocol.WriteOpenChannel(buffer, 1, default, "p"));
+        Assert.ThrowsExactly<ArgumentException>(() => BrokerProtocol.WriteOpenChannel(buffer, 1, default, "p"));
         Assert.AreEqual(0, buffer.WrittenCount);
     }
 
@@ -166,7 +166,7 @@ public partial class BrokerProtocolTests
         ]);
 
         var buffer = new ArrayBufferWriter<byte>();
-        Assert.ThrowsException<ArgumentException>(() => BrokerProtocol.WriteQueryVolume(buffer, 2, default));
+        Assert.ThrowsExactly<ArgumentException>(() => BrokerProtocol.WriteQueryVolume(buffer, 2, default));
         Assert.AreEqual(0, buffer.WrittenCount);
     }
 

@@ -71,9 +71,9 @@ public class UsnJournalTests
         var volume = MftVolume.Open('C');
         var journal = volume.Journal;
         volume.Dispose();
-        Assert.ThrowsException<ObjectDisposedException>(() => journal.QueryUsnJournalCursor());
-        Assert.ThrowsException<ObjectDisposedException>(() => journal.QueryUsnJournalSettings());
-        Assert.ThrowsException<ObjectDisposedException>(() => journal.GrowUsnJournal(4096, 1024));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => journal.QueryUsnJournalCursor());
+        Assert.ThrowsExactly<ObjectDisposedException>(() => journal.QueryUsnJournalSettings());
+        Assert.ThrowsExactly<ObjectDisposedException>(() => journal.GrowUsnJournal(4096, 1024));
     }
 
     [TestMethod]
@@ -83,7 +83,7 @@ public class UsnJournalTests
         var volume = MftVolume.Open('C');
         var journal = volume.Journal;
         volume.Dispose();
-        Assert.ThrowsException<ObjectDisposedException>(() => journal.ReadUsnJournalBounded(new UsnJournalCursor(1, 0), 0));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => journal.ReadUsnJournalBounded(new UsnJournalCursor(1, 0), 0));
     }
 
     [TestMethod]
@@ -93,7 +93,7 @@ public class UsnJournalTests
         var volume = MftVolume.Open('C');
         var journal = volume.Journal;
         volume.Dispose();
-        await Assert.ThrowsExceptionAsync<ObjectDisposedException>(async () =>
+        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(async () =>
         {
             await foreach (var _ in journal.WatchUsnJournal(new UsnJournalCursor(1, 0)))
             {

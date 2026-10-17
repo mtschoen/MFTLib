@@ -24,7 +24,7 @@ public partial class JournalBrokerHostChannelTests
         // length 13, OpenChannel, request 31, invalid UTF-16 character '1', pipe name 'p'.
         byte[] frame = [13, 0, 0, 0, 1, 31, 0, 0, 0, (byte)'1', 0, 2, 0, 0, 0, (byte)'p', 0];
         await pair.Client.WriteAsync(frame);
-        await Assert.ThrowsExceptionAsync<InvalidDataException>(() => serve.WaitAsync(HangGuard));
+        await Assert.ThrowsExactlyAsync<InvalidDataException>(() => serve.WaitAsync(HangGuard));
     }
 
     [TestMethod]

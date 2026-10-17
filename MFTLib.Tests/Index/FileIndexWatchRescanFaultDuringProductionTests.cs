@@ -21,7 +21,7 @@ public class FileIndexWatchRescanFaultDuringProductionTests
                 AllocationDelta: 64, MaximumSize: 128L * 1024 * 1024)
             : null);
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task ApplyFailureDuringProduction_RecoversOnlyAfterAFailedScan(bool scanFails)

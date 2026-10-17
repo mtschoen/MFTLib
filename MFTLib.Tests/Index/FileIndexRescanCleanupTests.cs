@@ -67,10 +67,10 @@ public sealed class FileIndexRescanCleanupTests : IDisposable
             await producerReturned.Task.WaitAsync(HangGuard);
             await rescanCancellation.CancelAsync();
 
-            await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => rescan);
+            await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => rescan);
 
             var produced = producedBlocks[1];
-            Assert.ThrowsException<ObjectDisposedException>(() => _ = produced.Header,
+            Assert.ThrowsExactly<ObjectDisposedException>(() => _ = produced.Header,
                 "the unpublished replacement block is disposed by the failed commit");
             Assert.IsTrue(File.Exists(canonicalPath), "the renamed-aside file was moved back");
             Assert.AreEqual(0, Directory.GetFiles(_cacheDirectory, "*.retired-*").Length,
@@ -181,7 +181,7 @@ public sealed class FileIndexRescanCleanupTests : IDisposable
             await rescanCancellation.CancelAsync();
             producerMayReturn.TrySetResult();
 
-            await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => rescan);
+            await Assert.ThrowsAsync<OperationCanceledException>(() => rescan);
 
             var drive = index.Drives.Single();
             Assert.AreEqual(DriveState.Failed, drive.State);

@@ -45,7 +45,7 @@ public class FileIndexWatchCatchUpLinkedWaitTests
 
             await harness.Index.DisposeAsync();
 
-            await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(
+            await Assert.ThrowsAsync<OperationCanceledException>(
                 () => wait.WaitAsync(HangGuard));
         }
         finally

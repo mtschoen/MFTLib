@@ -38,7 +38,7 @@ public sealed class MftDumpBlockProducerTests : IDisposable
         DeleteOnClose = true
     };
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task Produce_NativeParseUsesSharedBudget(bool liveScanRunning)
@@ -63,7 +63,7 @@ public sealed class MftDumpBlockProducerTests : IDisposable
         Assert.AreEqual(liveScanRunning ? 1 : 0, Allocator.RunningScanCount);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task Produce_CancelledScanReleasesRegistrationAndAdmitsWaiter(bool cancelled)
@@ -97,12 +97,12 @@ public sealed class MftDumpBlockProducerTests : IDisposable
             var request = Request();
             if (cancelled)
             {
-                await Assert.ThrowsExceptionAsync<OperationCanceledException>(() =>
+                await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
                     producer.ProduceAsync(request, cancellation.Token));
             }
             else
             {
-                var failure = await Assert.ThrowsExceptionAsync<IOException>(() =>
+                var failure = await Assert.ThrowsExactlyAsync<IOException>(() =>
                     producer.ProduceAsync(request, cancellation.Token));
                 Assert.AreEqual("dump source failed", failure.Message);
             }

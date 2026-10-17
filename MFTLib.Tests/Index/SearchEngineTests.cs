@@ -134,7 +134,7 @@ public class SearchEngineTests
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(true, new[] { "holiday.jpg", "report.pdf" })]
     [DataRow(false, new[] { "Report.docx" })]
     public void Search_LastWriteTimeBoundsAreInclusive(bool isLowerBound, string[] expectedNames)
@@ -166,7 +166,7 @@ public class SearchEngineTests
     public void Search_Under_DefaultAncestor_ThrowsArgumentException()
     {
         var invalidAncestor = default(FileEntry);
-        Assert.ThrowsException<ArgumentException>(
+        Assert.ThrowsExactly<ArgumentException>(
             () => SearchEngine.Search(_snapshot, new SearchQuery(null, Subtree: invalidAncestor)));
     }
 
@@ -178,7 +178,7 @@ public class SearchEngineTests
         cancellation.Cancel();
         var token = cancellation.Token;
 
-        Assert.ThrowsException<OperationCanceledException>(() =>
+        Assert.ThrowsExactly<OperationCanceledException>(() =>
             SearchEngine.Search(_snapshot, new SearchQuery(null, Subtree: invalidAncestor), token));
     }
 
@@ -200,7 +200,7 @@ public class SearchEngineTests
         try
         {
             var ancestor = FileEntry.Create(snapshot[0], root);
-            var exception = Assert.ThrowsException<InvalidDataException>(() =>
+            var exception = Assert.ThrowsExactly<InvalidDataException>(() =>
                 SearchEngine.Search(snapshot, new SearchQuery("needle.txt", Subtree: ancestor)));
             StringAssert.Contains(exception.Message, BlockLayout.MaximumPathDepth.ToString(CultureInfo.InvariantCulture));
         }
@@ -275,7 +275,7 @@ public class SearchEngineTests
         cancellation.Cancel();
         var token = cancellation.Token;
 
-        Assert.ThrowsException<OperationCanceledException>(
+        Assert.ThrowsExactly<OperationCanceledException>(
             () => SearchEngine.Search(_snapshot, new SearchQuery("*.dat", NameMatchMode.Glob), token));
     }
 
@@ -287,7 +287,7 @@ public class SearchEngineTests
         cancellation.Cancel();
         var token = cancellation.Token;
 
-        Assert.ThrowsException<OperationCanceledException>(() =>
+        Assert.ThrowsExactly<OperationCanceledException>(() =>
             SearchEngine.Search(_snapshot, new SearchQuery(null, Subtree: documents), token));
     }
 

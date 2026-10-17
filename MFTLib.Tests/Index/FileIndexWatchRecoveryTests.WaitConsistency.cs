@@ -3,7 +3,7 @@ using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
+using static MFTLib.Tests.TestSupport.CatchUpLossTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -169,7 +169,7 @@ public partial class FileIndexWatchRecoveryTests
 
         AssertWaitFollowsTheReplacement(observation);
         await disposal!.WaitAsync(HangGuard);
-        await ThrowsAsync<TaskCanceledException>(() => observation.Wait!.WaitAsync(HangGuard));
+        await Assert.ThrowsAsync<TaskCanceledException>(() => observation.Wait!.WaitAsync(HangGuard));
         Assert.AreEqual(1, harness.Source.TargetsFor('T').Count, "disposal withdrew the request");
     }
 

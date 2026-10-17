@@ -144,7 +144,7 @@ public class CacheDirectoryTests
         Assert.AreEqual("C-0BADF00D.mlix", CacheDirectory.BlockFileName('c', 0x0BADF00D));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(null, false)]
     [DataRow("", false)]
     [DataRow(" \t", false)]
@@ -153,7 +153,7 @@ public class CacheDirectoryTests
     [DataRow(" \t", true)]
     public async Task OpenAsync_BlankCachedDirectory_RejectsConfiguration(string? directory, bool includeDrive)
     {
-        var exception = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+        var exception = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
         {
             await using var index = await FileIndex.OpenAsync(
                 new FileIndexOptions
@@ -169,7 +169,7 @@ public class CacheDirectoryTests
         Assert.IsFalse(Directory.Exists(_root));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task OpenAsync_DisabledCacheMode_DoesNotCreateAnUnusedCacheDirectory(bool supplyDirectory)

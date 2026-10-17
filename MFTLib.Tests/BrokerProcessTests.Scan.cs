@@ -130,7 +130,7 @@ public partial class BrokerProcessTests
         await using var broker = new InProcessBroker(
             BrokerHostFactory.Create(new() { ReadJournal = (_, _, _) => throw new IOException("catch-up read failed") }));
 
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
                 null, CancellationToken.None).WaitAsync(HangGuard));
 
@@ -352,7 +352,7 @@ public partial class BrokerProcessTests
 
         await broker.CloseControlAsync();
 
-        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
         Assert.AreEqual('C', lost.Drive);
     }
 
@@ -375,7 +375,7 @@ public partial class BrokerProcessTests
     // The host dying mid-frame is a lost channel: a frame that never finishes is not an end of scan.
     // A length prefix claiming ten bytes is followed by EOF partway through the body, or exactly
     // at the frame boundary before any body byte.
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(new byte[] { 10, 0, 0, 0, 1, 2, 3 }, DisplayName = "TruncatedFrame")]
     [DataRow(new byte[] { 10, 0, 0, 0 }, DisplayName = "HeaderOnlyThenEof")]
     public async Task ScanDrive_FrameCutShortByEof_IsChannelLost(byte[] rawBytes)
@@ -401,7 +401,7 @@ public partial class BrokerProcessTests
             Assert.IsNull(request.Value.RetainedFileNames);
         }
 
-        await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
+        await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
         AssertSectionReleased(broker.Sections.Single());
     }
 
@@ -446,7 +446,7 @@ public partial class BrokerProcessTests
             }
         }
 
-        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
         AssertSectionReleased(broker.Sections.Single());
         return lost;
     }

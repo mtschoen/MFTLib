@@ -76,7 +76,7 @@ public partial class SyntheticBlockTests
         SyntheticBlockEditor? kept = null;
         SyntheticBlock.Edit(path, Serial, editor => kept = editor);
 
-        Assert.ThrowsException<InvalidOperationException>(() => kept!.SetProducerKind(ProducerKind.Mft));
+        Assert.ThrowsExactly<InvalidOperationException>(() => kept!.SetProducerKind(ProducerKind.Mft));
     }
 
     [TestMethod]
@@ -106,7 +106,7 @@ public partial class SyntheticBlockTests
         SyntheticBlock.Edit(path, Serial, editor =>
         {
             Assert.AreEqual(0, editor.MarkSizesUnknown(row => row.Name == "absent"));
-            Assert.ThrowsException<ArgumentNullException>(() => editor.MarkSizesUnknown(null!));
+            Assert.ThrowsExactly<ArgumentNullException>(() => editor.MarkSizesUnknown(null!));
         });
     }
 
@@ -118,7 +118,7 @@ public partial class SyntheticBlockTests
         SyntheticBlock.Edit(path, Serial, editor =>
         {
             editor.MarkSizeUnknown(7);
-            Assert.ThrowsException<ArgumentOutOfRangeException>(() => editor.MarkSizeUnknown(3));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => editor.MarkSizeUnknown(3));
         });
 
         Assert.IsNull(SyntheticBlock.ReadRows(path, Serial).Single(row => row.Row == 7).Size);
@@ -131,8 +131,8 @@ public partial class SyntheticBlockTests
         SyntheticBlockEditor? kept = null;
         SyntheticBlock.Edit(path, Serial, editor => kept = editor);
 
-        Assert.ThrowsException<InvalidOperationException>(() => kept!.MarkSizesUnknown(_ => true));
-        Assert.ThrowsException<InvalidOperationException>(() => kept!.MarkSizeUnknown(7));
+        Assert.ThrowsExactly<InvalidOperationException>(() => kept!.MarkSizesUnknown(_ => true));
+        Assert.ThrowsExactly<InvalidOperationException>(() => kept!.MarkSizeUnknown(7));
     }
 
     [TestMethod]
@@ -151,7 +151,7 @@ public partial class SyntheticBlockTests
         Assert.AreEqual(Moment, index.Drives.Single().Block!.ScanTimestamp);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false, false, DisplayName = "cache-tag-edit-mft-foreign")]
     [DataRow(true, false, DisplayName = "cache-tag-edit-enumeration-foreign")]
     [DataRow(false, true, DisplayName = "cache-tag-edit-mft-zero")]

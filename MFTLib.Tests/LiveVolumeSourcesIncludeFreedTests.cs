@@ -36,7 +36,7 @@ public sealed class LiveVolumeSourcesIncludeFreedTests : IDisposable
         _tempDirectory.Dispose();
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public void ScanDriveRecordBatches_KeepsFreedRecordsOnlyWhenAsked(bool includeFreed)

@@ -117,7 +117,10 @@ public sealed class DirectHostTests : IDisposable
         static IEnumerable<FileEntry> Once(IEnumerable<FileEntry> rows, Action entered)
         {
             entered();
-            foreach (var row in rows) yield return row;
+            foreach (var row in rows)
+            {
+                yield return row;
+            }
         }
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
@@ -166,7 +169,7 @@ public sealed class DirectHostTests : IDisposable
         using var output = new StringWriter();
         var host = new SampleHost(output, TextReader.Null, _directory);
 
-        await host.RunSourceAsync(parsed, ScriptedSource(), new IndexedDrive('C', _directory, 4242), CancellationToken.None);
+        await host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('C', _directory, 4242), CancellationToken.None);
 
         StringAssert.Contains(output.ToString(), "C: 2 live files, 2 live directories, 1 retained deleted rows");
     }
@@ -209,7 +212,7 @@ public sealed class DirectHostTests : IDisposable
             new FileStream(path, FileMode.Open, access, FileShare.Read);
 
         Assert.IsTrue(DirectArguments.TryParse(["open", "C", "--path", path], out var parsed, out var error), error);
-        await host.RunSourceAsync(parsed, source, new IndexedDrive('C', _directory, 4242), CancellationToken.None);
+        await host.RunSourceAsync(parsed!, source, new IndexedDrive('C', _directory, 4242), CancellationToken.None);
 
         var report = output.ToString();
         StringAssert.Contains(report, $"{path} ({new IndexRecordKey('C', 7, ProducerKind.Mft)}): record ");
@@ -278,7 +281,7 @@ public sealed class DirectHostTests : IDisposable
         {
             Assert.IsTrue(DirectArguments.TryParse(["search", "C", "--name", "a.txt", "--include-freed"], out var parsed, out var error), error);
             seen = parsed;
-            host.RunSourceAsync(parsed, ScriptedSource(), new IndexedDrive('C', _directory, 4242), CancellationToken.None).GetAwaiter().GetResult();
+            host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('C', _directory, 4242), CancellationToken.None).GetAwaiter().GetResult();
             return 0;
         });
 
@@ -297,7 +300,7 @@ public sealed class DirectHostTests : IDisposable
         using var output = new StringWriter();
         var host = new SampleHost(output, TextReader.Null, _directory);
 
-        await host.RunSourceAsync(parsed, ScriptedSource(), new IndexedDrive('C', _directory, 4242), CancellationToken.None);
+        await host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('C', _directory, 4242), CancellationToken.None);
 
         var report = output.ToString();
         Assert.IsFalse(report.Contains("deleted="), report);
@@ -321,7 +324,7 @@ public sealed class DirectHostTests : IDisposable
             new SyntheticRow(10, "Notes.txt", 5) { Size = 11 }
         ]));
 
-        await elevatedHost.RunSourceAsync(parsed, source, new IndexedDrive('C', _directory, 4242), CancellationToken.None);
+        await elevatedHost.RunSourceAsync(parsed!, source, new IndexedDrive('C', _directory, 4242), CancellationToken.None);
 
         var elevatedLines = elevatedOutput.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
         var matches = elevatedLines.Where(line => line.Contains(".log", StringComparison.Ordinal) && !line.StartsWith("Indexing ", StringComparison.Ordinal)).ToList();
@@ -354,7 +357,7 @@ public sealed class DirectHostTests : IDisposable
         using var output = new StringWriter();
         var host = new SampleHost(output, TextReader.Null, _directory);
 
-        await host.RunSourceAsync(parsed, ScriptedSource(), new IndexedDrive('C', _directory, 4242), CancellationToken.None);
+        await host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('C', _directory, 4242), CancellationToken.None);
 
         StringAssert.Contains(output.ToString(), "a.txt: 2 entries");
     }
@@ -366,8 +369,8 @@ public sealed class DirectHostTests : IDisposable
         using var output = new StringWriter();
         var host = new SampleHost(output, TextReader.Null, _directory);
 
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
-            host.RunSourceAsync(parsed, ScriptedSource(), new IndexedDrive('Q', Path.Combine(_directory, "missing-root"), 4242), CancellationToken.None));
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('Q', Path.Combine(_directory, "missing-root"), 4242), CancellationToken.None));
         StringAssert.Contains(exception.Message, "The drive is offline; nothing was scanned.");
     }
 
@@ -379,8 +382,8 @@ public sealed class DirectHostTests : IDisposable
         var host = new SampleHost(output, TextReader.Null, _directory);
         var source = SyntheticIndexSource.Create(new SyntheticMftProducer(_ => throw new IOException("volume unreadable")));
 
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
-            host.RunSourceAsync(parsed, source, new IndexedDrive('C', _directory, 4242), CancellationToken.None));
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            host.RunSourceAsync(parsed!, source, new IndexedDrive('C', _directory, 4242), CancellationToken.None));
         StringAssert.Contains(exception.Message, "volume unreadable");
     }
 

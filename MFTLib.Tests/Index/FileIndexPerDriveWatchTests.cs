@@ -2,7 +2,6 @@ using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -76,7 +75,7 @@ public partial class FileIndexPerDriveWatchTests
         var start = harness.Index.StartWatchingAsync(['T'], callerCancellation.Token);
         await held.Entered.WaitAsync(HangGuard);
         await callerCancellation.CancelAsync();
-        await ThrowsAsync<OperationCanceledException>(() => start.WaitAsync(HangGuard));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => start.WaitAsync(HangGuard));
 
         await harness.Index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
 

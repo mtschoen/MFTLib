@@ -44,7 +44,7 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(buffer.WrittenCount - 5, consumed, "The reader stops at the end of the first frame.");
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow((byte)0)]
     [DataRow((byte)19)]
     [DataRow((byte)99)]
@@ -55,7 +55,7 @@ public partial class BrokerProtocolTests
         var bytes = buffer.WrittenSpan.ToArray();
         bytes[4] = kind; // a value no BrokerFrameKind defines
 
-        var exception = Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(bytes, out _));
+        var exception = Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(bytes, out _));
         Assert.AreEqual($"Unknown frame kind: {kind}", exception.Message);
     }
 
@@ -75,30 +75,30 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void RequireDrive_NullDrive_ThrowsInvalidDataException()
     {
-        Assert.ThrowsException<InvalidDataException>(() => default(BrokerFrame).RequireDrive());
+        Assert.ThrowsExactly<InvalidDataException>(() => default(BrokerFrame).RequireDrive());
     }
 
     [TestMethod]
     public void RequirePipeName_NullPipeName_ThrowsInvalidDataException()
     {
-        Assert.ThrowsException<InvalidDataException>(() => default(BrokerFrame).RequirePipeName());
+        Assert.ThrowsExactly<InvalidDataException>(() => default(BrokerFrame).RequirePipeName());
     }
 
     [TestMethod]
     public void RequireSectionName_NullSectionName_ThrowsInvalidDataException()
     {
-        Assert.ThrowsException<InvalidDataException>(() => default(BrokerFrame).RequireSectionName());
+        Assert.ThrowsExactly<InvalidDataException>(() => default(BrokerFrame).RequireSectionName());
     }
 
     [TestMethod]
     public void RequireMessage_NullMessage_ThrowsInvalidDataException()
     {
-        Assert.ThrowsException<InvalidDataException>(() => default(BrokerFrame).RequireMessage());
+        Assert.ThrowsExactly<InvalidDataException>(() => default(BrokerFrame).RequireMessage());
     }
 
     [TestMethod]
     public void RequireCatchUpLoss_FrameWithoutLoss_ThrowsInvalidDataException()
     {
-        Assert.ThrowsException<InvalidDataException>(() => default(BrokerFrame).RequireCatchUpLoss('C'));
+        Assert.ThrowsExactly<InvalidDataException>(() => default(BrokerFrame).RequireCatchUpLoss('C'));
     }
 }

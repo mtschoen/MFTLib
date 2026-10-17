@@ -50,10 +50,10 @@ public class DriveKeyLifecycleTests
     {
         using var harness = new WatchHarness('T');
         DriveKey[] requested = ['T', default];
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() => harness.Index.StartWatchingAsync(requested, CancellationToken.None));
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() => harness.Index.StopWatchingAsync(requested, CancellationToken.None));
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() => harness.Index.WaitForCatchUpAsync(requested, CancellationToken.None));
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() => harness.Index.RescanAsync(requested, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => harness.Index.StartWatchingAsync(requested, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => harness.Index.StopWatchingAsync(requested, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => harness.Index.WaitForCatchUpAsync(requested, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => harness.Index.RescanAsync(requested, CancellationToken.None));
         Assert.AreEqual(0, harness.Source.Starts.Count);
         Assert.AreEqual(1, harness.ProductionCount('T'));
     }
@@ -62,24 +62,24 @@ public class DriveKeyLifecycleTests
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     public async Task PublicDriveEntryPoints_RejectDefaultBeforeAccessingResources()
     {
-        Assert.ThrowsException<ArgumentException>(() =>
+        Assert.ThrowsExactly<ArgumentException>(() =>
         {
             using var harness = new WatchHarness('T');
             harness.Index.Root(default);
         });
-        Assert.ThrowsException<ArgumentException>(() =>
+        Assert.ThrowsExactly<ArgumentException>(() =>
         {
             using var harness = new WatchHarness('T');
             harness.Index.QueryUsnJournalSettings(default);
         });
-        await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
         {
             await using var session = BrokerTestHarness.CreateSession(_ => throw new AssertFailedException("the invalid key must not launch a broker"));
             await session.GrowUsnJournalAsync(default, new UsnJournalSettings { MaximumSize = 4096, AllocationDelta = 1024 }, CancellationToken.None);
         });
         var source = new ScriptedWatchSource();
-        Assert.ThrowsException<ArgumentException>(() => source.WatchFor(default));
-        Assert.ThrowsException<ArgumentException>(() => source.WaitForStartAsync(default, 1, CancellationToken.None));
+        Assert.ThrowsExactly<ArgumentException>(() => source.WatchFor(default));
+        Assert.ThrowsExactly<ArgumentException>(() => source.WaitForStartAsync(default, 1, CancellationToken.None));
     }
 
     [TestMethod]

@@ -87,7 +87,7 @@ public class FileEntryDisposalTests
         try
         {
             var entry = FileEntry.Create(snapshot[0], deepest);
-            Assert.ThrowsException<InvalidDataException>(() => entry.Path);
+            Assert.ThrowsExactly<InvalidDataException>(() => entry.Path);
 
             Assert.AreEqual($"deep.txt ({entry.RecordKey})", entry.ToString());
             StringAssert.Contains(new SearchQuery("x", Subtree: entry).ToString(), "deep.txt");
@@ -109,7 +109,7 @@ public class FileEntryDisposalTests
         try
         {
             var entry = FileEntry.Create(snapshot[0], file);
-            Assert.ThrowsException<InvalidOperationException>(() => entry.Path);
+            Assert.ThrowsExactly<InvalidOperationException>(() => entry.Path);
 
             Assert.AreEqual($"rootless.txt ({entry.RecordKey})", entry.ToString());
         }
@@ -156,19 +156,19 @@ public class FileEntryDisposalTests
         await _snapshot.ReleaseNowAsync();
         var entry = _entry;
 
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Name);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Size);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.IsSizeKnown);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.LastWriteTime);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Attributes);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.IsDirectory);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.IsDeleted);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.RecordKey);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Drive);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Path);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Parent);
-        Assert.ThrowsException<ObjectDisposedException>(() => entry.Children());
-        var failure = Assert.ThrowsException<ObjectDisposedException>(() => entry.Open(FileAccess.Read));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.Name);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.Size);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.IsSizeKnown);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.LastWriteTime);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.Attributes);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.IsDirectory);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.IsDeleted);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.RecordKey);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.Drive);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.Path);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.Parent);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => entry.Children());
+        var failure = Assert.ThrowsExactly<ObjectDisposedException>(() => entry.Open(FileAccess.Read));
         StringAssert.Contains(failure.Message, entry.ToString());
     }
 }

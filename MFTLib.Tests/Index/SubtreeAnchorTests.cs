@@ -45,7 +45,7 @@ public class SubtreeAnchorTests
 
     /// <summary>Makes the call and nothing else: a lazy result is never enumerated.</summary>
     static ArgumentException CallRejected(FileIndex index, QueryForm form, SearchQuery query) =>
-        Assert.ThrowsException<ArgumentException>(() =>
+        Assert.ThrowsExactly<ArgumentException>(() =>
         {
             switch (form)
             {
@@ -63,7 +63,7 @@ public class SubtreeAnchorTests
 
     static void Rejected<TException>(FileIndex index, QueryForm form, SearchQuery query, string message = "")
         where TException : Exception =>
-        Assert.ThrowsException<TException>(() => Run(index, form, query), message);
+        Assert.ThrowsExactly<TException>(() => Run(index, form, query), message);
 
     static Task<List<string>> RunOnThreadPool(FileIndex index, QueryForm form, SearchQuery query,
         CancellationToken cancellationToken) =>
@@ -86,7 +86,7 @@ public class SubtreeAnchorTests
             TimestampUtc = new DateTime(2026, 10, 14, 6, 0, 0, DateTimeKind.Utc)
         });
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(QueryForm.Search)]
     [DataRow(QueryForm.Enumerate)]
     [DataRow(QueryForm.EnumerateRows)]
@@ -97,7 +97,7 @@ public class SubtreeAnchorTests
         CollectionAssert.AreEqual(DocumentsSubtree, Run(harness.Index, form, Under(Documents(harness.Index))));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(QueryForm.Search)]
     [DataRow(QueryForm.Enumerate)]
     [DataRow(QueryForm.EnumerateRows)]
@@ -124,7 +124,7 @@ public class SubtreeAnchorTests
         Assert.AreEqual(0, snapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(QueryForm.Search, 'T', 'U', DisplayName = "Search, foreign index with equal ordinals")]
     [DataRow(QueryForm.Enumerate, 'T', 'U', DisplayName = "Enumerate, foreign index with equal ordinals")]
     [DataRow(QueryForm.EnumerateRows, 'T', 'U', DisplayName = "EnumerateRows, foreign index with equal ordinals")]
@@ -152,13 +152,13 @@ public class SubtreeAnchorTests
         var ownRoot = firstIndex.Root('T');
         var foreignRoot = second.Index.Root('T');
 
-        Assert.ThrowsException<ArgumentException>(() =>
+        Assert.ThrowsExactly<ArgumentException>(() =>
             firstIndex.Search(new SearchQuery(null, Subtree: foreignRoot)));
         CollectionAssert.Contains(
             firstIndex.Search(new SearchQuery(null, Subtree: ownRoot)).ToArray(), ownRoot);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(QueryForm.Search)]
     [DataRow(QueryForm.Enumerate)]
     [DataRow(QueryForm.EnumerateRows)]
@@ -176,7 +176,7 @@ public class SubtreeAnchorTests
         Assert.AreEqual(0, queried.Index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(QueryForm.Search)]
     [DataRow(QueryForm.Enumerate)]
     [DataRow(QueryForm.EnumerateRows)]
@@ -193,7 +193,7 @@ public class SubtreeAnchorTests
         CollectionAssert.AreEqual(DocumentsSubtree, Run(harness.Index, form, Under(Documents(harness.Index))));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(QueryForm.Search)]
     [DataRow(QueryForm.Enumerate)]
     [DataRow(QueryForm.EnumerateRows)]
@@ -208,7 +208,7 @@ public class SubtreeAnchorTests
         CollectionAssert.AreEqual(DocumentsSubtree, Run(harness.Index, form, Under(anchor)));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(QueryForm.Search)]
     [DataRow(QueryForm.Enumerate)]
     [DataRow(QueryForm.EnumerateRows)]
@@ -228,7 +228,7 @@ public class SubtreeAnchorTests
             Run(harness.Index, form, Under(Documents(harness.Index, "replacement"))));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(QueryForm.Search)]
     [DataRow(QueryForm.Enumerate)]
     [DataRow(QueryForm.EnumerateRows)]

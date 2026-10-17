@@ -55,7 +55,7 @@ public partial class BrokerProcessTests
         yield break;
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(HandleDisposalEdge.Sequential)]
     [DataRow(HandleDisposalEdge.OverlappingHandle)]
     [DataRow(HandleDisposalEdge.ProcessFirst)]
@@ -109,7 +109,7 @@ public partial class BrokerProcessTests
             await first.WaitAsync(HangGuard);
             await second.WaitAsync(HangGuard);
             await activeProcess.Ended.WaitAsync(HangGuard);
-            await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scanTask);
+            await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scanTask);
         }
         finally
         {
@@ -139,12 +139,12 @@ public partial class BrokerProcessTests
     [TestMethod]
     public void ScriptedVolumes_RejectNullVolumesBeforeStarting()
     {
-        var failure = Assert.ThrowsException<ArgumentNullException>(() => BrokerTestHarness.StartInProcess(null!));
+        var failure = Assert.ThrowsExactly<ArgumentNullException>(() => BrokerTestHarness.StartInProcess(null!));
 
         Assert.AreEqual("volumes", failure.ParamName);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task HostStartupFailure_EndsProcessAndDisposalDoesNotThrow(bool cancelled)
@@ -160,7 +160,7 @@ public partial class BrokerProcessTests
         try
         {
             Assert.IsFalse(handle.Scans.Any(), "Host startup failed before any scan began.");
-            await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
+            await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
                 process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
             await process.DisposeAsync().AsTask().WaitAsync(HangGuard);
             await process.Ended.WaitAsync(HangGuard);
@@ -189,7 +189,7 @@ public partial class BrokerProcessTests
         var reason = await process.Ended.WaitAsync(HangGuard);
         Assert.AreNotEqual("The broker process was disposed.", reason);
         Assert.IsTrue(process.Ended.IsCompleted);
-        await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
+        await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
             process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
     }
 
@@ -198,7 +198,7 @@ public partial class BrokerProcessTests
     {
         await using var handle = BrokerTestHarness.StartInProcess(ScriptedVolumes());
 
-        var failure = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var failure = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             handle.Process.ScanDriveAsync('C', ScanTarget(), new MftScanOptions(), null, CancellationToken.None)
                 .WaitAsync(HangGuard));
 
@@ -214,7 +214,7 @@ public partial class BrokerProcessTests
         FirstCallbackHeld
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(ScanRecordingCase.Success)]
     [DataRow(ScanRecordingCase.SynchronousSourceFailure)]
     [DataRow(ScanRecordingCase.CursorQueryFailure)]
@@ -287,7 +287,7 @@ public partial class BrokerProcessTests
             var expectedMessage = recordingCase == ScanRecordingCase.SynchronousSourceFailure
                 ? "scripted scan failure"
                 : "scripted cursor failure";
-            var failure = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            var failure = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
                 singleHandle.Process.ScanDriveAsync('c', TestBlockSections.Target(), options, null, CancellationToken.None)
                     .WaitAsync(HangGuard));
             StringAssert.Contains(failure.Message, expectedMessage);
@@ -378,7 +378,7 @@ public partial class BrokerProcessTests
         public void Processing(string stepName) => ProcessingSteps++;
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(true, DisplayName = "operation reporter marks processing")]
     [DataRow(false, DisplayName = "#598-scripted-scan-without-operation-reporter")]
     public void ScriptedScan_ReportParsedWithoutAProgressSinkStillMarksProcessing(bool hasReporter)
@@ -433,7 +433,7 @@ public partial class BrokerProcessTests
     {
         await using var handle = BrokerTestHarness.StartInProcess(ScriptedVolumes());
 
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             handle.Process.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None)
                 .WaitAsync(HangGuard));
     }
@@ -515,7 +515,7 @@ public partial class BrokerProcessTests
         var reader = channel.ReadAsync(deadline.Token).GetAsyncEnumerator(deadline.Token);
         await using var readerLifetime = reader;
 
-        var failure = await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(async () =>
+        var failure = await Assert.ThrowsExactlyAsync<DriveWatchFaultException>(async () =>
             await reader.MoveNextAsync());
         StringAssert.Contains(failure.Message, "no watch source");
     }

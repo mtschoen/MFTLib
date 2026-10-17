@@ -72,7 +72,7 @@ public class CacheDirectoryRejectionTests
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("enumerate")]
     [DataRow("inspect")]
     [DataRow("inspect-default-drives", DisplayName = "F20: named callback with default drive selection")]
@@ -114,7 +114,7 @@ public class CacheDirectoryRejectionTests
         Assert.AreEqual(operation != "delete", File.Exists(canonical));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("inspect", false)]
     [DataRow("inspect", true)]
     [DataRow("delete", false)]
@@ -135,7 +135,7 @@ public class CacheDirectoryRejectionTests
         Assert.IsFalse(File.Exists(BlockOwnerLock.LockPathFor(foreign)));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("enumerate")]
     [DataRow("inspect")]
     [DataRow("inspect-default-drives", DisplayName = "F20: named callback with default drive selection")]
@@ -146,7 +146,7 @@ public class CacheDirectoryRejectionTests
         var foreign = WriteFile("t-invalid.mlix");
         var expected = new IOException("observer failed");
 
-        var actual = Assert.ThrowsException<IOException>(() =>
+        var actual = Assert.ThrowsExactly<IOException>(() =>
             ReadPaths(operation, null, _ => throw expected));
 
         Assert.AreSame(expected, actual);
@@ -156,7 +156,7 @@ public class CacheDirectoryRejectionTests
         Assert.IsFalse(File.Exists(BlockOwnerLock.LockPathFor(foreign)));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("enumerate")]
     [DataRow("inspect")]
     [DataRow("inspect-default-drives", DisplayName = "F20: named callback with default drive selection")]

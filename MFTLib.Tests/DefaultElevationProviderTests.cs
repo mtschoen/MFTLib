@@ -24,7 +24,9 @@ public class DefaultElevationProviderTests
     [TestMethod]
     public void DefaultProvider_IsSingleton()
     {
-        Assert.AreSame(ElevationUtilities.DefaultProvider, ElevationUtilities.DefaultProvider);
+        var first = ElevationUtilities.DefaultProvider;
+        var second = ElevationUtilities.DefaultProvider;
+        Assert.AreSame(first, second);
     }
 
     [TestMethod]
@@ -121,7 +123,7 @@ public class DefaultElevationProviderTests
         Assert.IsFalse(provider.TryRunElevated(["--test"], ElevationUtilities.DefaultElevatedTimeout));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(0, true)]
     [DataRow(1, false)]
     public void TryRunElevated_ProcessExit_ReturnsTrueOnlyForZero(int exitCode, bool expected)
@@ -130,7 +132,7 @@ public class DefaultElevationProviderTests
         _process = process;
         var provider = CreateFakeProcessProvider(waitResult: true, exitCode, out var killed, startProcess: _ => process);
         Assert.AreEqual(expected, provider.TryRunElevated(["--test"], ElevationUtilities.DefaultElevatedTimeout));
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = process.StandardInput, "The process wrapper must be disposed before TryRunElevated returns.");
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = process.StandardInput, "The process wrapper must be disposed before TryRunElevated returns.");
         Assert.AreEqual(0, killed.Count, "A process that exited is never killed.");
     }
 
@@ -158,7 +160,7 @@ public class DefaultElevationProviderTests
         Assert.IsTrue(started.UseShellExecute);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(1230000L /* 123 ms */, true, 1, DisplayName = "supported-timeout-waits-and-kills")]
     [DataRow(-10000L /* Timeout.InfiniteTimeSpan.Ticks */, true, 1, DisplayName = "supported-infinite-timeout-waits-and-kills")]
     [DataRow(25920000000000L /* 30 days */, false, 0, DisplayName = "unsupported-thirty-days-never-starts")]
@@ -191,7 +193,7 @@ public class DefaultElevationProviderTests
         Assert.IsFalse(result);
         if (expectStarted)
         {
-            Assert.ThrowsException<ObjectDisposedException>(() => _ = process.StandardInput, "The process wrapper must be disposed after the timeout kill, before returning.");
+            Assert.ThrowsExactly<ObjectDisposedException>(() => _ = process.StandardInput, "The process wrapper must be disposed after the timeout kill, before returning.");
             Assert.AreEqual(1, startedCount, "Supported timeout starts the child process.");
             CollectionAssert.AreEqual(new[] { timeout }, waited);
             Assert.AreEqual(expectedKills, killed.Count, "The process that outlived its timeout is killed once.");
@@ -216,10 +218,10 @@ public class DefaultElevationProviderTests
             startProcess: _ => process,
             killProcess: _ => throw new InvalidOperationException("already exited"));
         Assert.IsFalse(provider.TryRunElevated(["--test"], ElevationUtilities.DefaultElevatedTimeout));
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = process.StandardInput, "The process wrapper must be disposed even when killing it fails.");
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = process.StandardInput, "The process wrapper must be disposed even when killing it fails.");
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(true, DisplayName = "wait-throws")]
     [DataRow(false, DisplayName = "exit-code-throws")]
     public void TryRunElevated_PostStartException_ReturnsFalseAndDisposesProcess(bool throwDuringWait)
@@ -236,7 +238,7 @@ public class DefaultElevationProviderTests
         });
 
         Assert.IsFalse(provider.TryRunElevated(["--test"], ElevationUtilities.DefaultElevatedTimeout));
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = process.StandardInput, "The process wrapper must be disposed when a post-start operation throws.");
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = process.StandardInput, "The process wrapper must be disposed when a post-start operation throws.");
     }
 
     [TestMethod]

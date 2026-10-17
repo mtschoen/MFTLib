@@ -252,7 +252,7 @@ public sealed class FileIndexDriveStatusTests : IDisposable
             }
         };
 
-        Assert.ThrowsException<ObjectDisposedException>(() => index.Drives);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => index.Drives);
         Assert.AreEqual(1, disposals);
     }
 }

@@ -25,7 +25,7 @@ public class UsnJournalSettingsQueryLiveTests
     [SupportedOSPlatform("windows")]
     public void Query_HostIsNotWindows_ThrowsPlatformNotSupported()
     {
-        var exception = Assert.ThrowsException<PlatformNotSupportedException>(
+        var exception = Assert.ThrowsExactly<PlatformNotSupportedException>(
             () => UsnJournalSettingsQuery.Query('C', isWindows: false));
 
         StringAssert.Contains(exception.Message, "FSCTL_QUERY_USN_JOURNAL");
@@ -43,7 +43,7 @@ public class UsnJournalSettingsQueryLiveTests
         UsnJournalSettingsQuery.Dependencies.QueryOverride = _ => overridden;
 
         Assert.AreEqual(overridden, UsnJournalSettingsQuery.Query('C'));
-        Assert.ThrowsException<PlatformNotSupportedException>(
+        Assert.ThrowsExactly<PlatformNotSupportedException>(
             () => UsnJournalSettingsQuery.Query('C', isWindows: false));
     }
 
@@ -75,7 +75,7 @@ public class UsnJournalSettingsQueryLiveTests
             return;
         }
 
-        Assert.ThrowsException<PlatformNotSupportedException>(() => UsnJournalSettingsQuery.Query('C'));
+        Assert.ThrowsExactly<PlatformNotSupportedException>(() => UsnJournalSettingsQuery.Query('C'));
     }
 
     [TestMethod]
@@ -97,7 +97,7 @@ public class UsnJournalSettingsQueryLiveTests
             return;
         }
 
-        var exception = Assert.ThrowsException<IOException>(() => UsnJournalSettingsQuery.Query(missing));
+        var exception = Assert.ThrowsExactly<IOException>(() => UsnJournalSettingsQuery.Query(missing));
 
         StringAssert.Contains(exception.Message, $"{missing}:\\");
     }

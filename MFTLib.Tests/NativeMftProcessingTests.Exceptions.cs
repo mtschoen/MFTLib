@@ -120,7 +120,7 @@ public partial class NativeMftProcessingTests
             using var ordinaryResult = managedInput.Parse();
             Assert.IsTrue(ordinaryResult.UsedRecords > 0);
             NativeTestHooks.NativeSetAllocFailCountdown(-1);
-            var failure = Assert.ThrowsException<InvalidOperationException>(() =>
+            var failure = Assert.ThrowsExactly<InvalidOperationException>(() =>
             {
                 using var failingInput = MftDumpInput.Open(path);
                 using var unexpectedResult = failingInput.Parse();

@@ -32,7 +32,7 @@ public sealed class MftIndexSourceTests : IDisposable
     [TestMethod]
     public void Constructor_WithoutProducer_Throws()
     {
-        Assert.ThrowsException<ArgumentNullException>(() => new MftIndexSource(null!));
+        Assert.ThrowsExactly<ArgumentNullException>(() => new MftIndexSource(null!));
     }
 
     [TestMethod]
@@ -51,13 +51,13 @@ public sealed class MftIndexSourceTests : IDisposable
     [DataRow("   ")]
     public void Unavailable_WithBlankReason_Throws(string reason)
     {
-        Assert.ThrowsException<ArgumentException>(() => MftIndexSources.Unavailable(reason));
+        Assert.ThrowsExactly<ArgumentException>(() => MftIndexSources.Unavailable(reason));
     }
 
     [TestMethod]
     public void Unavailable_WithNullReason_Throws()
     {
-        Assert.ThrowsException<ArgumentNullException>(() => MftIndexSources.Unavailable(null!));
+        Assert.ThrowsExactly<ArgumentNullException>(() => MftIndexSources.Unavailable(null!));
     }
 
     [TestMethod]
@@ -65,7 +65,7 @@ public sealed class MftIndexSourceTests : IDisposable
     {
         var source = MftIndexSources.Unavailable(Reason);
 
-        var thrown = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+        var thrown = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => source.Producer(new MftBlockProduceRequest { Drive = 'T', VolumeSerial = 1, BlockPath = "unused" },
                 Token));
 

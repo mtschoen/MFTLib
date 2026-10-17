@@ -84,11 +84,11 @@ public class ScriptedApplyFaultTests
         await harness.Index.StartWatchingAsync(['T'], Token);
         var watch = harness.Source.WatchFor('T');
 
-        Assert.ThrowsException<ArgumentNullException>(() => watch.FailApply(null!));
+        Assert.ThrowsExactly<ArgumentNullException>(() => watch.FailApply(null!));
         watch.FailApply(new IOException("apply failed"));
         await harness.WaitForFaultAsync(WatchFaultKind.Apply, 'T');
 
-        Assert.ThrowsException<InvalidOperationException>(() => watch.FailApply(new IOException("again")));
+        Assert.ThrowsExactly<InvalidOperationException>(() => watch.FailApply(new IOException("again")));
     }
 
     [TestMethod]
@@ -97,10 +97,10 @@ public class ScriptedApplyFaultTests
         var failure = new IOException("unreadable");
         var list = new FailingEntryList(failure);
 
-        Assert.AreSame(failure, Assert.ThrowsException<IOException>(() => list.Count));
-        Assert.AreSame(failure, Assert.ThrowsException<IOException>(() => list[0]));
-        Assert.AreSame(failure, Assert.ThrowsException<IOException>(() => list.GetEnumerator()));
-        Assert.AreSame(failure, Assert.ThrowsException<IOException>(
+        Assert.AreSame(failure, Assert.ThrowsExactly<IOException>(() => list.Count));
+        Assert.AreSame(failure, Assert.ThrowsExactly<IOException>(() => list[0]));
+        Assert.AreSame(failure, Assert.ThrowsExactly<IOException>(() => list.GetEnumerator()));
+        Assert.AreSame(failure, Assert.ThrowsExactly<IOException>(
             () => ((System.Collections.IEnumerable)list).GetEnumerator()));
     }
 }

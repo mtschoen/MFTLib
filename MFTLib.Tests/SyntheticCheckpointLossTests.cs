@@ -43,7 +43,7 @@ public class SyntheticCheckpointLossTests
     [TestMethod]
     public void WithJournalPositions_MatchesAReportBuiltWithThoseExactPositions()
     {
-        var produced = WatchDeduplicationTestSupport.StandardCatchUpLoss('T');
+        var produced = CatchUpLossTestSupport.StandardCatchUpLoss('T');
         var scripted = SyntheticCheckpointLoss.WithJournalPositions(
             produced with { CheckpointUsn = 0, FirstUsn = 0, NextUsn = 0 },
             produced.CheckpointUsn, produced.FirstUsn, produced.NextUsn);
@@ -59,7 +59,7 @@ public class SyntheticCheckpointLossTests
     [TestMethod]
     public void WithJournalPositions_OfNoReport_Throws()
     {
-        Assert.ThrowsException<ArgumentNullException>(
+        Assert.ThrowsExactly<ArgumentNullException>(
             () => SyntheticCheckpointLoss.WithJournalPositions(null!, 1, 2, 3));
     }
 }

@@ -30,7 +30,7 @@ public class NativeSeamIsolationTests
         Assert.AreEqual(0, violations.Length, string.Join(Environment.NewLine, violations));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(typeof(NativeFieldReferenceFixture), "GetMftNativeAbiVersion")]
     [DataRow(typeof(VolumeFieldReferenceFixture), "GetVolumeHandle")]
     [DataRow(typeof(NativeResetReferenceFixture), "NativeHooks.ResetToDefaults")]
@@ -68,7 +68,7 @@ public class NativeSeamIsolationTests
         StringAssert.Contains(description, member);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(typeof(IsolatedSeamReferenceFixture))]
     [DataRow(typeof(IsolatedExternalAsyncHelperSeamReferenceFixture))]
     [DataRow(typeof(HarmlessReferenceFixture))]

@@ -171,7 +171,7 @@ public class FileIndexWatchFaultTests
 
         await callerCancellation.CancelAsync();
 
-        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => start);
+        await Assert.ThrowsAsync<OperationCanceledException>(() => start);
         Assert.AreEqual(0, harness.Faults.Count);
         Assert.AreEqual(0, harness.Source.Watches.Count);
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
@@ -215,7 +215,7 @@ public class FileIndexWatchFaultTests
 
         using var cancelledStop = new CancellationTokenSource();
         await cancelledStop.CancelAsync();
-        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(
+        await Assert.ThrowsAsync<OperationCanceledException>(
             () => harness.Index.StopWatchingAsync(['T'], cancelledStop.Token));
 
         applying.Release();

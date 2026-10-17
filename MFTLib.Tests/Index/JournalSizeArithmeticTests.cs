@@ -63,9 +63,9 @@ public class JournalSizeArithmeticTests
     public void SizeThatWouldHaveRetained_NegativeUsns_AreRejected()
     {
         // USNs are byte offsets, so a negative one is a corrupt input, not a small one.
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
             JournalSizeArithmetic.SizeThatWouldHaveRetained(checkpointUsn: -1, nextUsn: 1_000, allocationDelta: 64));
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
             JournalSizeArithmetic.SizeThatWouldHaveRetained(checkpointUsn: 0, nextUsn: -1, allocationDelta: 64));
     }
 
@@ -73,9 +73,9 @@ public class JournalSizeArithmeticTests
     public void SizeThatWouldHaveRetained_NonPositiveAllocationDelta_IsRejected()
     {
         // Rounding up to a unit of zero has no answer, and a negative unit has no meaning.
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
             JournalSizeArithmetic.SizeThatWouldHaveRetained(checkpointUsn: 0, nextUsn: 1_000, allocationDelta: 0));
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
             JournalSizeArithmetic.SizeThatWouldHaveRetained(checkpointUsn: 0, nextUsn: 1_000, allocationDelta: -64));
     }
 
@@ -90,7 +90,7 @@ public class JournalSizeArithmeticTests
                 checkpointUsn: 0, nextUsn: largestSpanThatFits, allocationDelta: 64));
 
         // One more byte rounds the span to the largest aligned value, leaving no room for the margin.
-        Assert.ThrowsException<OverflowException>(() =>
+        Assert.ThrowsExactly<OverflowException>(() =>
             JournalSizeArithmetic.SizeThatWouldHaveRetained(
                 checkpointUsn: 0, nextUsn: largestSpanThatFits + 1, allocationDelta: 64));
     }
@@ -107,9 +107,9 @@ public class JournalSizeArithmeticTests
     [TestMethod]
     public void BytesBehind_NegativeUsns_AreRejected()
     {
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
             JournalSizeArithmetic.BytesBehind(checkpointUsn: -1, firstUsn: 1_000));
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
             JournalSizeArithmetic.BytesBehind(checkpointUsn: 0, firstUsn: -1));
     }
 }

@@ -57,8 +57,8 @@ public class LookupEngineTests
         var roundTripped = LookupEngine.Find(_snapshot, report.Path);
 
         Assert.IsTrue(roundTripped.HasValue);
-        Assert.AreEqual(report.Path, roundTripped.Value.Path);
-        Assert.AreEqual(report.RecordKey, roundTripped.Value.RecordKey);
+        Assert.AreEqual(report.Path, roundTripped.GetValueOrDefault().Path);
+        Assert.AreEqual(report.RecordKey, roundTripped.GetValueOrDefault().RecordKey);
     }
 
     [TestMethod]
@@ -76,7 +76,7 @@ public class LookupEngineTests
         var entry = LookupEngine.Find(_snapshot, TestDriveRoot.For('T'));
 
         Assert.IsTrue(entry.HasValue);
-        Assert.AreEqual(TestDriveRoot.For('T'), entry.Value.Path);
+        Assert.AreEqual(TestDriveRoot.For('T'), entry.GetValueOrDefault().Path);
     }
 
     [TestMethod]
@@ -84,8 +84,8 @@ public class LookupEngineTests
     {
         var entry = LookupEngine.Find(_snapshot, Path.Combine(TestDriveRoot.For('T'), "Documents", "report.pdf"));
         Assert.IsTrue(entry.HasValue);
-        Assert.AreEqual("report.pdf", entry.Value.Name);
-        Assert.AreEqual(4096L, entry.Value.Size);
+        Assert.AreEqual("report.pdf", entry.GetValueOrDefault().Name);
+        Assert.AreEqual(4096L, entry.GetValueOrDefault().Size);
     }
 
     [TestMethod]
@@ -122,7 +122,7 @@ public class LookupEngineTests
     [TestMethod]
     public void Root_UnknownDriveThrows()
     {
-        Assert.ThrowsException<ArgumentException>(() => LookupEngine.Root(_snapshot, 'Z'));
+        Assert.ThrowsExactly<ArgumentException>(() => LookupEngine.Root(_snapshot, 'Z'));
     }
 
     [TestMethod]
@@ -149,7 +149,7 @@ public class LookupEngineTests
             Assert.AreEqual(rootRow, LookupEngine.Root(snapshot, 'V').RowIndex);
             var entry = LookupEngine.Find(snapshot, Path.Combine(TestDriveRoot.For('V'), "Documents", "report.pdf"));
             Assert.IsTrue(entry.HasValue);
-            Assert.AreEqual("report.pdf", entry.Value.Name);
+            Assert.AreEqual("report.pdf", entry.GetValueOrDefault().Name);
         }
         finally
         {
@@ -281,7 +281,7 @@ public class LookupEngineTests
         cancellation.Cancel();
         var token = cancellation.Token;
 
-        Assert.ThrowsException<OperationCanceledException>(
+        Assert.ThrowsExactly<OperationCanceledException>(
             () => SearchEngine.Search(_snapshot, new SearchQuery("needle.txt", NameMatchMode.Exact), token));
     }
 

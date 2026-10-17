@@ -70,7 +70,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         });
         var request = Request(Target());
 
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => ProduceAsync(broker.Process, request).WaitAsync(HangGuard));
 
         var expectedMessage = check.StartsWith("cursor ", StringComparison.Ordinal) ? "journal cursor" : check;
@@ -96,7 +96,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         });
         var request = Request(Target()) with { CacheTag = requested };
 
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => ProduceAsync(broker.Process, request).WaitAsync(HangGuard));
 
         StringAssert.Contains(exception.Message, "cache tag");
@@ -118,7 +118,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         }));
         var request = Request(Target());
 
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => ProduceAsync(broker.Process, request).WaitAsync(HangGuard));
 
         // The per-drive error reaches the caller as this exception.
@@ -217,7 +217,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
     [TestMethod]
     public void Constructor_WithoutConnectFunction_Throws()
     {
-        Assert.ThrowsException<ArgumentNullException>(() => new BrokerMftBlockProducer(null!));
+        Assert.ThrowsExactly<ArgumentNullException>(() => new BrokerMftBlockProducer(null!));
     }
 
     [TestMethod]

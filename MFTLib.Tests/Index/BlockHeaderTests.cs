@@ -184,7 +184,8 @@ public class BlockHeaderTests
     [TestMethod]
     public void FormatVersion_IsFour()
     {
-        Assert.AreEqual(4u, BlockLayout.FormatVersion);
+        var formatVersion = BlockLayout.FormatVersion;
+        Assert.AreEqual(4u, formatVersion);
     }
 
     [TestMethod]

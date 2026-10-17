@@ -14,12 +14,12 @@ public class BrokerBlockContractTests : BrokerBlockTestBase
     {
         await using var broker = new ScriptedBroker();
 
-        await Assert.ThrowsExceptionAsync<ArgumentNullException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentNullException>(() =>
             broker.Process.ScanDriveAsync('C', null!, new MftScanOptions(), null, CancellationToken.None).WaitAsync(HangGuard));
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
 
         Assert.AreEqual(0, broker.Sections.All().Count);
-        await Assert.ThrowsExceptionAsync<AssertFailedException>(() => broker.ReadRequestAsync(),
+        await Assert.ThrowsExactlyAsync<AssertFailedException>(() => broker.ReadRequestAsync(),
             "no request may reach the control pipe before the client closed it");
     }
 

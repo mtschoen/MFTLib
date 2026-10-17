@@ -38,7 +38,7 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
     public async Task GrowUsnJournalAsync_DefaultDrive_ThrowsArgumentException()
     {
         await using var broker = new ScriptedBroker();
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             broker.Process.GrowUsnJournalAsync(default, new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None));
     }
 
@@ -54,7 +54,7 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
                                                     "is 64 bytes, and only growth is permitted.")
         }));
 
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             broker.Process.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 32, AllocationDelta = 16 }, CancellationToken.None).WaitAsync(HangGuard));
 
         StringAssert.Contains(exception.Message, "only growth");
@@ -68,7 +68,7 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
         var sent = await broker.ReadRequestAsync();
         await broker.CloseControlAsync();
 
-        var exception = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => request.WaitAsync(HangGuard));
+        var exception = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => request.WaitAsync(HangGuard));
 
         Assert.AreEqual(BrokerFrameKind.GrowUsnJournal, sent.Kind);
         Assert.AreEqual(new DriveKey('C'), sent.RequireDrive());
@@ -95,9 +95,9 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
             }
         }));
 
-        var zero = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var zero = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             broker.Process.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 0, AllocationDelta = 0x01000000 }, CancellationToken.None).WaitAsync(HangGuard));
-        var negative = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var negative = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             broker.Process.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = -1 }, CancellationToken.None).WaitAsync(HangGuard));
 
         StringAssert.Contains(zero.Message, "positive sizes are required");

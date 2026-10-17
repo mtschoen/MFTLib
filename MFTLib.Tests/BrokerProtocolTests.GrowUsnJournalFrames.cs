@@ -52,7 +52,7 @@ public partial class BrokerProtocolTests
         ]);
 
         var buffer = new System.Buffers.ArrayBufferWriter<byte>();
-        Assert.ThrowsException<ArgumentException>(() => BrokerProtocol.WriteGrowUsnJournal(buffer, 5, default, 0x08000000, 0x01000000));
+        Assert.ThrowsExactly<ArgumentException>(() => BrokerProtocol.WriteGrowUsnJournal(buffer, 5, default, 0x08000000, 0x01000000));
         Assert.AreEqual(0, buffer.WrittenCount);
     }
 
