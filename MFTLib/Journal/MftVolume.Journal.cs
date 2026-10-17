@@ -68,7 +68,7 @@ internal sealed partial class MftVolume
     {
         ArgumentOutOfRangeException.ThrowIfNegative(maximumBufferReads);
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var resultPtr = MFTLibNative._readUsnJournal(_volumeHandle, since.NextUsn, since.JournalIdentifier,
+        var resultPtr = MFTLibNative.NativeReadUsnJournal(_volumeHandle, since.NextUsn, since.JournalIdentifier,
             (uint)maximumBufferReads);
         if (resultPtr == IntPtr.Zero)
         {
@@ -89,7 +89,7 @@ internal sealed partial class MftVolume
         }
         finally
         {
-            MFTLibNative._freeUsnJournalResult(resultPtr);
+            MFTLibNative.NativeFreeUsnJournalResult(resultPtr);
         }
     }
 
@@ -179,7 +179,7 @@ internal sealed partial class MftVolume
             }
             finally
             {
-                MFTLibNative._freeUsnJournalResult(resultPtr);
+                MFTLibNative.NativeFreeUsnJournalResult(resultPtr);
             }
 
             if (entries.Length == 0)

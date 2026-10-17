@@ -17,11 +17,11 @@ public partial class UsnJournalSyntheticTests
             Assert.Inconclusive("USN exports are Windows-only.");
         }
 
-        using var handle = FakeHandle();
+        using var handle = FakeVolumeHandle.Create();
         NativeTestHooks.NativeSetAllocFailCountdown(-3);
         var pointer = watch
-            ? MFTLibNative._watchUsnJournalBatchCancelable(handle, 500, 0xABCD, handle)
-            : MFTLibNative._readUsnJournal(handle, 500, 0xABCD, 1);
+            ? MFTLibNative.NativeWatchUsnJournalBatchCancelable(handle, 500, 0xABCD, handle)
+            : MFTLibNative.NativeReadUsnJournal(handle, 500, 0xABCD, 1);
         Assert.AreEqual(IntPtr.Zero, pointer, "No result storage exists when its allocation throws.");
         AssertOrdinaryParseSucceeds();
 
@@ -45,11 +45,11 @@ public partial class UsnJournalSyntheticTests
             Assert.Inconclusive("USN exports are Windows-only.");
         }
 
-        using var handle = FakeHandle();
+        using var handle = FakeVolumeHandle.Create();
         NativeTestHooks.NativeSetAllocFailCountdown(-6);
         var pointer = watch
-            ? MFTLibNative._watchUsnJournalBatchCancelable(handle, 500, 0xABCD, handle)
-            : MFTLibNative._readUsnJournal(handle, 500, 0xABCD, 1);
+            ? MFTLibNative.NativeWatchUsnJournalBatchCancelable(handle, 500, 0xABCD, handle)
+            : MFTLibNative.NativeReadUsnJournal(handle, 500, 0xABCD, 1);
         Assert.AreNotEqual(IntPtr.Zero, pointer);
         try
         {
@@ -61,7 +61,7 @@ public partial class UsnJournalSyntheticTests
         }
         finally
         {
-            MFTLibNative._freeUsnJournalResult(pointer);
+            MFTLibNative.NativeFreeUsnJournalResult(pointer);
         }
 
         AssertOrdinaryParseSucceeds();

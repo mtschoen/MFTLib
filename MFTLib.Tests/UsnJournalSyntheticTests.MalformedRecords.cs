@@ -1,4 +1,5 @@
 using System.Text;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -24,11 +25,11 @@ public partial class UsnJournalSyntheticTests
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream);
         writer.Write(2000L);
-        WriteRecord(writer, 100, 5, 1000, 0x00000100u, "before.txt");
+        UsnReadBuffers.WriteRecord(writer, 100, 5, 1000, 0x00000100u, "before.txt");
         WriteRawRecord(writer, recordLengthField: malformedRecordLength, wireByteCount: 64, recordNumber: 200,
             parentRecordNumber: 5, usn: 1200, reason: 0x00000100u, fileNameOffset: UsnRecordHeaderSize,
             fileNameByteLength: 4, payloadBytes: Encoding.Unicode.GetBytes("ab"));
-        WriteRecord(writer, 300, 5, 1500, 0x00000200u, "after.txt");
+        UsnReadBuffers.WriteRecord(writer, 300, 5, 1500, 0x00000200u, "after.txt");
 
         var (entries, cursor) = await ReadOrWatchBatchAsync(stream.ToArray(), watch);
 
@@ -56,7 +57,7 @@ public partial class UsnJournalSyntheticTests
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream);
         writer.Write(2000L);
-        WriteRecord(writer, 100, 5, 1000, 0x00000100u, "before.txt");
+        UsnReadBuffers.WriteRecord(writer, 100, 5, 1000, 0x00000100u, "before.txt");
         WriteRawRecord(writer, recordLengthField: claimedRecordLength, wireByteCount: remainingBytes,
             recordNumber: 200, parentRecordNumber: 5, usn: 1200, reason: 0x00000100u,
             fileNameOffset: UsnRecordHeaderSize, fileNameByteLength: 0, payloadBytes: []);
@@ -89,11 +90,11 @@ public partial class UsnJournalSyntheticTests
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream);
         writer.Write(2000L);
-        WriteRecord(writer, 100, 5, 1000, 0x00000100u, "before.txt");
+        UsnReadBuffers.WriteRecord(writer, 100, 5, 1000, 0x00000100u, "before.txt");
         WriteRawRecord(writer, recordLengthField: 64, wireByteCount: 64, recordNumber: 200,
             parentRecordNumber: 5, usn: 1200, reason: 0x00000100u, fileNameOffset: fileNameOffset,
             fileNameByteLength: 8, payloadBytes: Encoding.Unicode.GetBytes("ab"));
-        WriteRecord(writer, 300, 5, 1500, 0x00000200u, "after.txt");
+        UsnReadBuffers.WriteRecord(writer, 300, 5, 1500, 0x00000200u, "after.txt");
 
         var (entries, cursor) = await ReadOrWatchBatchAsync(stream.ToArray(), watch);
 
@@ -123,11 +124,11 @@ public partial class UsnJournalSyntheticTests
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream);
         writer.Write(2000L);
-        WriteRecord(writer, 100, 5, 1000, 0x00000100u, "before.txt");
+        UsnReadBuffers.WriteRecord(writer, 100, 5, 1000, 0x00000100u, "before.txt");
         WriteRawRecord(writer, recordLengthField: 64, wireByteCount: 64, recordNumber: 200,
             parentRecordNumber: 5, usn: 1200, reason: 0x00000100u, fileNameOffset: fileNameOffset,
             fileNameByteLength: claimedFileNameByteLength, payloadBytes: Encoding.Unicode.GetBytes("ab"));
-        WriteRecord(writer, 300, 5, 1500, 0x00000200u, "after.txt");
+        UsnReadBuffers.WriteRecord(writer, 300, 5, 1500, 0x00000200u, "after.txt");
 
         var (entries, cursor) = await ReadOrWatchBatchAsync(stream.ToArray(), watch);
 
@@ -140,15 +141,15 @@ public partial class UsnJournalSyntheticTests
         Assert.AreEqual(2000L, cursor.NextUsn);
     }
 
-    async Task<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> ReadOrWatchBatchAsync(byte[] buffer, bool watch)
+    static async Task<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> ReadOrWatchBatchAsync(byte[] buffer, bool watch)
     {
         UseFakeHandle();
-        FileUtilities._getWatchVolumeHandle = _ => FakeHandle();
+        FileUtilities._getWatchVolumeHandle = _ => FakeVolumeHandle.Create();
         QueueSuccess(buffer);
         using var volume = MftVolume.Open("C");
         if (!watch)
         {
-            QueueSuccess(BuildReadBuffer(2000));
+            QueueSuccess(UsnReadBuffers.Build(2000));
             return volume.ReadUsnJournal(Cursor);
         }
 

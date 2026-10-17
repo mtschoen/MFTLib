@@ -2,6 +2,7 @@ using System.Collections;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using MFTLib.Interop;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Win32.SafeHandles;
 
@@ -21,11 +22,6 @@ public class MockVolumeTests
         MFTLibNative.ResetToDefaults();
         FileUtilities.ResetToDefaults();
         Kernel32.ResetToDefaults();
-    }
-
-    static SafeFileHandle FakeHandle()
-    {
-        return new SafeFileHandle(new IntPtr(1), false);
     }
 
     static unsafe IntPtr BuildResult(uint usedRecords, string? errorMessage = null)
@@ -82,7 +78,7 @@ public class MockVolumeTests
 
     static void SetupMocks(uint usedRecords = 3)
     {
-        FileUtilities._getVolumeHandle = _ => FakeHandle();
+        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
         var resultPtr = BuildResult(usedRecords);
         MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _) => resultPtr;
         MFTLibNative._freeMftResult = FreeBuiltResult;
@@ -118,7 +114,7 @@ public class MockVolumeTests
     [TestMethod]
     public void GetVolumeHandle_ValidHandle_ReturnsHandle()
     {
-        Kernel32._createFile = (_, _, _, _, _, _, _) => FakeHandle();
+        Kernel32._createFile = (_, _, _, _, _, _, _) => FakeVolumeHandle.Create();
 
         using var handle = FileUtilities._getVolumeHandle(@"\\.\C:");
         Assert.IsFalse(handle.IsInvalid);
@@ -129,7 +125,7 @@ public class MockVolumeTests
     [TestMethod]
     public void Open_ValidVolume_ReturnsOpenVolume()
     {
-        FileUtilities._getVolumeHandle = _ => FakeHandle();
+        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
 
         using var volume = MftVolume.Open("C");
         Assert.IsNotNull(volume);
@@ -138,7 +134,7 @@ public class MockVolumeTests
     [TestMethod]
     public void Dispose_DisposesHandle()
     {
-        FileUtilities._getVolumeHandle = _ => FakeHandle();
+        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
 
         SafeFileHandle handle;
         using (var volume = MftVolume.Open("C"))
@@ -152,7 +148,7 @@ public class MockVolumeTests
     [TestMethod]
     public void Dispose_CalledTwice_DoesNotThrow()
     {
-        FileUtilities._getVolumeHandle = _ => FakeHandle();
+        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
 
         var volume = MftVolume.Open("C");
         volume.Dispose();
@@ -162,7 +158,7 @@ public class MockVolumeTests
     [TestMethod]
     public void Methods_AfterDispose_ThrowObjectDisposed()
     {
-        FileUtilities._getVolumeHandle = _ => FakeHandle();
+        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
 
         var volume = MftVolume.Open("C");
         volume.Dispose();
@@ -206,7 +202,7 @@ public class MockVolumeTests
     public void StreamRecords_PassesIncludeFreedToTheNativeParser(bool includeFreed)
     {
         bool? requested = null;
-        FileUtilities._getVolumeHandle = _ => FakeHandle();
+        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
         MFTLibNative._parseMftRecordsWithProgress = (_, freed, _, _, _) =>
         {
             requested = freed;
@@ -306,7 +302,7 @@ public class MockVolumeTests
         SafeFileHandle? handle = null;
         try
         {
-            FileUtilities._getVolumeHandle = _ => handle = FakeHandle();
+            FileUtilities._getVolumeHandle = _ => handle = FakeVolumeHandle.Create();
             using var volume = MftVolume.Open("C");
             Assert.AreSame(handle, volume.GetVolumeHandleForTest());
         }
@@ -527,7 +523,7 @@ public class MockVolumeTests
     public void MftVolume_ReadRecordBatches_EarlyEnumerationDisposal_FreesNativeResult()
     {
         var freed = false;
-        FileUtilities._getVolumeHandle = _ => FakeHandle();
+        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
         var resultPtr = BuildResult(10);
         MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _) => resultPtr;
         MFTLibNative._freeMftResult = ptr =>

@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -23,7 +22,7 @@ public partial class JournalBrokerHostRealSeamsTests
         MockFreeMftResult();
 
         using var writer = new RecordingBlockSectionWriter();
-        var frames = await ServeDefaultScanAsync(writer);
+        var frames = await ServeDefaultScanAsync(writer, 5000);
 
         var cursor = frames.Single(frame => frame.Kind == BrokerFrameKind.Cursor).Cursor;
         Assert.AreEqual(0xABCDUL, cursor.JournalIdentifier);
@@ -56,7 +55,7 @@ public partial class JournalBrokerHostRealSeamsTests
         MockFreeMftResult();
 
         using var writer = new RecordingBlockSectionWriter();
-        var frames = await ServeDefaultScanAsync(writer);
+        var frames = await ServeDefaultScanAsync(writer, 100);
         var reports = frames.Where(frame => frame.Kind == BrokerFrameKind.ScanProgress)
             .Select(frame => frame.Progress!.Value).ToArray();
 
@@ -70,34 +69,21 @@ public partial class JournalBrokerHostRealSeamsTests
     }
 
     [TestMethod]
-    public async Task ServeAsync_StartWatch_UsesRealWatchAndDisposeSeam()
+    public async Task ServeAsync_StartWatch_ClosingThePipeCancelsTheNativeWatch()
     {
-        FileUtilities._getVolumeHandle = _ => FakeHandle();
-        FileUtilities._getWatchVolumeHandle = _ => FakeHandle();
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("The native USN watch hooks are Windows-only.");
+        }
+
+        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
         MockWatchJournalTip();
 
-        // The watch's third read blocks like a live kernel wait until the watch is cancelled.
-        var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var callCount = 0;
-        MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalIdentifier, _) =>
-        {
-            switch (Interlocked.Increment(ref callCount))
-            {
-                case 1:
-                    return BuildEmptyWatchResult(journalIdentifier, startUsn);
-                case 2:
-                    return BuildSingleEntryWatchResult(journalIdentifier, startUsn + 100, "watched.txt", 0x100 /* FileCreate */);
-                default:
-                    cancelled.Task.Wait(HangGuard);
-                    return BuildEmptyWatchResult(journalIdentifier, startUsn);
-            }
-        };
-        MFTLibNative._cancelUsnJournalWatch = _ =>
-        {
-            cancelled.TrySetResult();
-            return true;
-        };
-        MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
+        // The watch's first two reads are queued replies; its third parks on the idle pipe like a
+        // live kernel wait until the watch is cancelled.
+        using var idlePipe = await IdleUsnPipe.CreateAsync();
+        QueuedUsnReads.Queue(UsnReadBuffers.Build(100));
+        QueuedUsnReads.Queue(UsnReadBuffers.Build(200, (42, 5, 150, 0x100 /* FileCreate */, "watched.txt")));
         await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
 
         // The cached cursor precedes the queried tip, so the batch must precede CaughtUp.
@@ -110,44 +96,39 @@ public partial class JournalBrokerHostRealSeamsTests
         Assert.AreEqual(BrokerFrameKind.CaughtUp, caughtUp?.Kind);
 
         await pipe.DisposeAsync(); // the client closing its pipe cancels the watch
-        await cancelled.Task.WaitAsync(HangGuard); // closing the pipe cancels the native watch
+        await IdleUsnPipe.AwaitSignalAsync(idlePipe.CancelAttempted); // closing the pipe cancels the native watch
     }
 
     [TestMethod]
     public async Task ServeAsync_StartWatch_CancelledBetweenEmptyBatches_EndsWatchCleanly()
     {
-        FileUtilities._getVolumeHandle = _ => FakeHandle();
-        FileUtilities._getWatchVolumeHandle = _ => FakeHandle();
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("The native USN watch hooks are Windows-only.");
+        }
+
+        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
         MockWatchJournalTip();
 
         // The kernel wait comes back only when the watch is cancelled, with an empty batch while
         // already cancelled. MftVolume.WatchUsnJournal treats that as a clean end, distinct
         // from a cancelled Task.Run throwing OperationCanceledException.
-        var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var watchEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalIdentifier, _) =>
-        {
-            watchEntered.TrySetResult();
-            cancelled.Task.Wait(HangGuard);
-            return BuildEmptyWatchResult(journalIdentifier, startUsn);
-        };
-        MFTLibNative._cancelUsnJournalWatch = _ =>
-        {
-            cancelled.TrySetResult();
-            return true;
-        };
-        MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
+        using var idlePipe = await IdleUsnPipe.CreateAsync(gateReadNumber: 1);
         await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
         var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7, 100));
-        await watchEntered.Task.WaitAsync(HangGuard);
+        await IdleUsnPipe.AwaitSignalAsync(idlePipe.BeforeIssue);
+        idlePipe.ContinueIssue.Set();
+        await IdleUsnPipe.AwaitSignalAsync(idlePipe.Issued);
 
-        // Ending the session cancels the channel while the read is blocked.
+        // Ending the session cancels the channel while the read is pending.
         await harness.CloseControlAsync();
         await harness.Serve.WaitAsync(HangGuard);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
         Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Error),
             "A watch cancelled between empty batches ends without reporting a failure.");
+        var calls = IdleUsnPipe.CallOrder();
+        Assert.IsTrue(calls.Contains('C') && calls.Contains('F'), "The cancelled read is cancelled and freed.");
     }
 
     [TestMethod]
@@ -200,7 +181,7 @@ public partial class JournalBrokerHostRealSeamsTests
         }
 
         using var writer = new RecordingBlockSectionWriter();
-        await ServeDefaultScanAsync(writer);
+        await ServeDefaultScanAsync(writer, 1000);
         Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, writer.Block.Rows[5].Flags);
         Assert.AreEqual(5u, writer.Block.Rows[5].ParentRow);
         Assert.AreEqual(".", NamePool.ReadRowName(writer.Block, 5).ToString());
@@ -209,93 +190,10 @@ public partial class JournalBrokerHostRealSeamsTests
         Assert.AreEqual("Users", NamePool.ReadRowName(writer.Block, 100).ToString());
     }
 
-    /// <summary>
-    ///     Owns the CountdownEvent and per-drive cancellation signals for
-    ///     <see cref="ServeAsync_SessionEnd_AcrossSeveralWatchChannels_SynchronousAbort_EmitsZeroErrorFrames" />.
-    ///     Exposing the seam behavior as instance methods, assigned by method group rather than by an inline
-    ///     lambda, means the native delegates never directly close over the CountdownEvent that method disposes.
-    ///     Production cancels each watched drive's native read independently: <c>MftVolume.Journal.cs</c> opens a
-    ///     dedicated watch handle per drive and its cancellation registration calls
-    ///     <c>MFTLibNative._cancelUsnJournalWatch</c> with that drive's own handle only, never a sibling's. The
-    ///     cancellation signal here is keyed the same way, by the <see cref="SafeHandle" /> instance each drive
-    ///     was watched with (<see cref="FakeHandle" /> returns a distinct instance per call even though every
-    ///     instance wraps the same raw value 1, so reference identity is a valid key). Releasing all three drives
-    ///     off one shared signal let a drive whose own token had not yet flipped
-    ///     <c>CancellationToken.IsCancellationRequested</c> unblock on a sibling's cancel, loop back, and call
-    ///     the watch read a second time after the countdown had already reached zero, throwing
-    ///     <see cref="InvalidOperationException" /> out of the watch loop and surfacing as an
-    ///     Error frame instead of the deliberate stop's normal empty stream end.
-    /// </summary>
-    sealed class SynchronousAbortWatchSeam : IDisposable
-    {
-        readonly CountdownEvent _watchEntered;
-
-        readonly ConcurrentDictionary<SafeHandle, TaskCompletionSource> _cancelSignaledByHandle =
-            new(ReferenceEqualityComparer.Instance);
-
-        volatile bool _timedOut;
-
-        public SynchronousAbortWatchSeam(int driveCount)
-        {
-            _watchEntered = new CountdownEvent(driveCount);
-        }
-
-        public bool CancelUsnJournalWatch(SafeHandle volumeHandle)
-        {
-            GetCancelSignal(volumeHandle).TrySetResult();
-            return true;
-        }
-
-        public IntPtr WatchUsnJournalBatchCancelable(SafeHandle volumeHandle, long startUsn, ulong journalIdentifier,
-            SafeHandle cancellationHandle)
-        {
-            _watchEntered.Signal();
-            // Simulate the kernel wait during live watch until this drive's own cancel arrives.
-            GetCancelSignal(volumeHandle).Task.GetAwaiter().GetResult();
-            // Return the synchronous ERROR_OPERATION_ABORTED result:
-            // an empty result with original cursor untouched and no error message.
-            return BuildEmptyWatchResult(journalIdentifier, startUsn);
-        }
-
-        public void WaitForAllDrivesEntered(CancellationToken token)
-        {
-            _watchEntered.Wait(token);
-        }
-
-        // Safety net for the outer test timeout: releases every drive currently blocked, and
-        // marks future arrivals so a drive that has not called the watch read yet does not block
-        // forever on a signal this method could not have created early.
-        public void CancelOnTimeout()
-        {
-            _timedOut = true;
-            foreach (var signal in _cancelSignaledByHandle.Values)
-            {
-                signal.TrySetCanceled();
-            }
-        }
-
-        TaskCompletionSource GetCancelSignal(SafeHandle volumeHandle)
-        {
-            var signal = _cancelSignaledByHandle.GetOrAdd(volumeHandle,
-                static _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
-            if (_timedOut)
-            {
-                signal.TrySetCanceled();
-            }
-
-            return signal;
-        }
-
-        public void Dispose()
-        {
-            _watchEntered.Dispose();
-        }
-    }
-
     [TestMethod]
     public async Task ServeAsync_GrowUsnJournal_UsesRealMftVolumeSeams()
     {
-        FileUtilities._getVolumeHandle = _ => FakeHandle();
+        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
 
         // The pre-check reports the journal smaller than the request, so the grow is
         // issued; the post-change read returns the grown sizing.
@@ -344,7 +242,7 @@ public partial class JournalBrokerHostRealSeamsTests
             return;
         }
 
-        FileUtilities._getVolumeHandle = _ => FakeHandle();
+        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
         var native = new NtfsVolumeDataBufferNative
         {
             MftValidDataLength = 409_600,
@@ -368,58 +266,78 @@ public partial class JournalBrokerHostRealSeamsTests
     }
 
     [TestMethod]
-    public async Task ServeAsync_SessionEnd_AcrossSeveralWatchChannels_SynchronousAbort_EmitsZeroErrorFrames()
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task ServeAsync_SessionEnd_AcrossSeveralWatchChannels_EmitsZeroErrorFrames(bool cancelDrivesIndividually)
     {
-        FileUtilities._getVolumeHandle = _ => FakeHandle();
-        FileUtilities._getWatchVolumeHandle = _ => FakeHandle();
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("The native USN watch hooks are Windows-only.");
+        }
+
+        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
         MockWatchJournalTip();
 
+        // Every drive's watch reads its own idle pipe; the third read to start is the gate.
         const int driveCount = 3;
-        var seam = new SynchronousAbortWatchSeam(driveCount);
-        try
+        using var pipeC = await IdleUsnPipe.CreateAsync();
+        using var pipeD = await IdleUsnPipe.CreateAsync();
+        using var idlePipe = await IdleUsnPipe.CreateAsync(driveCount);
+        var idlePipes = new Dictionary<string, IdleUsnPipe>
         {
-            MFTLibNative._cancelUsnJournalWatch = seam.CancelUsnJournalWatch;
-            MFTLibNative._watchUsnJournalBatchCancelable = seam.WatchUsnJournalBatchCancelable;
-            MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
+            [@"\\.\C:"] = pipeC,
+            [@"\\.\D:"] = pipeD,
+            [@"\\.\E:"] = idlePipe
+        };
+        FileUtilities._getWatchVolumeHandle = volumePath => idlePipes[volumePath].BorrowHandle();
+        await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
 
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            using var timeoutRegistration = cts.Token.Register(seam.CancelOnTimeout);
-            await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
+        // Watch several drives with cursors at or beyond the journal tip (7:200).
+        var pipes = new List<Stream>
+        {
+            await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7, 200)),
+            await harness.OpenWatchChannelAsync('D', new UsnJournalCursor(7, 200)),
+            await harness.OpenWatchChannelAsync('E', new UsnJournalCursor(7, 300))
+        };
 
-            // Watch several drives with cursors at or beyond the journal tip (7:200).
-            var pipes = new List<Stream>
+        // Verify each drive reaches CaughtUp.
+        foreach (var pipe in pipes)
+        {
+            var frame = await HostChannelHarness.ReadFrameAsync(pipe);
+            Assert.AreEqual(BrokerFrameKind.CaughtUp, frame?.Kind);
+        }
+
+        // Ensure all drives are waiting inside the native watch before the session ends.
+        await IdleUsnPipe.AwaitSignalAsync(idlePipe.BeforeIssue);
+        idlePipe.ContinueIssue.Set();
+        await IdleUsnPipe.AwaitSignalAsync(idlePipe.Issued);
+
+        if (cancelDrivesIndividually)
+        {
+            // Each drive's read stays pending until its own cancel: closing one client pipe cancels only that watch.
+            foreach (var (pipe, own) in new[] { (pipes[0], pipeC), (pipes[1], pipeD) })
             {
-                await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7, 200)),
-                await harness.OpenWatchChannelAsync('D', new UsnJournalCursor(7, 200)),
-                await harness.OpenWatchChannelAsync('E', new UsnJournalCursor(7, 300))
-            };
-
-            // Verify each drive reaches CaughtUp.
-            foreach (var pipe in pipes)
-            {
-                var frame = await HostChannelHarness.ReadFrameAsync(pipe);
-                Assert.AreEqual(BrokerFrameKind.CaughtUp, frame?.Kind);
-            }
-
-            // Ensure all drives are waiting inside the native watch seam before the session ends.
-            seam.WaitForAllDrivesEntered(cts.Token);
-
-            // Ending the session cancels every armed channel at once.
-            await harness.CloseControlAsync();
-            await harness.Serve.WaitAsync(HangGuard);
-
-            foreach (var pipe in pipes)
-            {
-                var frames = await HostChannelHarness.ReadToEndAsync(pipe);
-                var errorPayloads = string.Join("; ",
-                    frames.Where(frame => frame.Kind == BrokerFrameKind.Error).Select(frame => frame.Message));
-                Assert.AreEqual(0, frames.Count,
-                    $"Expected the channel to end without a frame after its watch was stopped. Errors: {errorPayloads}");
+                await pipe.DisposeAsync();
+                await IdleUsnPipe.AwaitSignalAsync(own.CancelAttempted);
+                pipes.Remove(pipe);
+                Assert.AreEqual(driveCount - pipes.Count, IdleUsnPipe.CallOrder().Count(call => call == 'C'));
+                Assert.IsFalse(idlePipe.CancelAttempted.WaitOne(0), "A sibling's cancel must not reach this drive's read.");
             }
         }
-        finally
+
+        // Ending the session cancels every channel still armed.
+        await harness.CloseControlAsync();
+        await harness.Serve.WaitAsync(HangGuard);
+        Assert.IsTrue(idlePipe.CancelAttempted.WaitOne(0));
+        Assert.AreEqual(driveCount, IdleUsnPipe.CallOrder().Count(call => call == 'C'));
+
+        foreach (var pipe in pipes)
         {
-            seam.Dispose();
+            var frames = await HostChannelHarness.ReadToEndAsync(pipe);
+            var errorPayloads = string.Join("; ",
+                frames.Where(frame => frame.Kind == BrokerFrameKind.Error).Select(frame => frame.Message));
+            Assert.AreEqual(0, frames.Count,
+                $"Expected the channel to end without a frame after its watch was stopped. Errors: {errorPayloads}");
         }
     }
 }

@@ -331,6 +331,7 @@ EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, u
 }
 
 EXPORT void FreeUsnJournalResult(const UsnJournalResult* result) {
+    NoteUsnResultFree();
     std::unique_ptr<const UsnJournalResult> owned(result);
     if (owned != nullptr && owned->entries != nullptr) {
         VirtualFree(owned->entries, 0, MEM_RELEASE);
@@ -397,7 +398,11 @@ EXPORT UsnJournalResult* WatchUsnJournalBatchCancelable(HANDLE volumeHandle, int
         startUsn);
 }
 
-EXPORT BOOL CancelUsnJournalWatch(HANDLE volumeHandle) { return CancelIoEx(volumeHandle, nullptr); }
+EXPORT BOOL CancelUsnJournalWatch(HANDLE volumeHandle) {
+    const BOOL foundRequest = CancelIoEx(volumeHandle, nullptr);
+    NoteUsnWatchCancel(volumeHandle, foundRequest);
+    return foundRequest;
+}
 }
 
 #endif  // _WIN32

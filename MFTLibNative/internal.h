@@ -172,4 +172,10 @@ bool UsnIoInjectSuccess(void* outBuffer, unsigned long outBufferSize, unsigned l
 bool UsnIoShouldAbortOverlapped();
 bool TryUsnWatchPipeRead(HANDLE handle, void* buffer, DWORD size, DWORD* bytesReturned, OVERLAPPED* overlapped,
                          BOOL& success);
+// Test seam: reports a CancelUsnJournalWatch on the test watch pipe and whether it found a request to cancel.
+void NoteUsnWatchCancel(HANDLE handle, BOOL foundRequest);
+// Test seam: reports a FreeUsnJournalResult while the test watch pipe is armed.
+void NoteUsnResultFree();
+constexpr int UsnCallCancel = 1;
+constexpr int UsnCallFree = 2;
 #endif

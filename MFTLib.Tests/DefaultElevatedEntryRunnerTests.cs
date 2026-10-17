@@ -1,17 +1,14 @@
 using System.IO.Pipes;
-using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
-using MFTLib.Interop;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib.Tests;
 
 [TestClass]
-[DoNotParallelize] // replaces the process-wide DefaultElevatedEntryRunner._exitProcess seam and the MFTLibNative/FileUtilities delegate seams
+[DoNotParallelize] // replaces the process-wide DefaultElevatedEntryRunner._exitProcess seam, the FileUtilities delegate seams and the native test hooks
 public class DefaultElevatedEntryRunnerTests
 {
     public TestContext TestContext { get; set; } = null!;
@@ -34,7 +31,7 @@ public class DefaultElevatedEntryRunnerTests
         }
 
         BrokerDiagnostics.ResetToDefaults();
-        MFTLibNative.ResetToDefaults();
+        NativeTestHooks.NativeResetTestState();
         FileUtilities.ResetToDefaults();
         JournalQueryFake.Reset();
     }
@@ -85,33 +82,28 @@ public class DefaultElevatedEntryRunnerTests
     [SupportedOSPlatform("windows")]
     public async Task RunBroker_ClientDisconnectsDuringWatch_BrokenPipe_ExitsWithCode0()
     {
-        // RunBroker serves through JournalBrokerHost.CreateDefault(), so mock the native
-        // seams its watch path uses - the test process is not elevated (the same technique
-        // as JournalBrokerHostRealSeamsTests).
-        FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
-        FileUtilities._getWatchVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
-        JournalQueryFake.Serve(journalIdentifier: 7, nextUsn: 200);
-        MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
-        MFTLibNative._cancelUsnJournalWatch = _ => true;
-
-        // The kernel wait stays blocked until the test has taken the client ends away, then
-        // comes back with a journal read failure. The host reports that failure as this
-        // drive's Error frame, and the pipes are already gone by then - so the report write is
-        // the one that lands on the broken pipe, which is what used to kill the child.
-        var watchEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var releaseWatch = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        MFTLibNative._watchUsnJournalBatchCancelable = (_, _, journalIdentifier, _) =>
+        if (!OperatingSystem.IsWindows())
         {
-            watchEntered.TrySetResult();
-            releaseWatch.Task.GetAwaiter().GetResult();
-            return BuildWatchFailureResult(journalIdentifier, "FSCTL_READ_USN_JOURNAL watch failed");
-        };
+            Assert.Inconclusive("The native USN watch hooks are Windows-only.");
+        }
+
+        // RunBroker serves through JournalBrokerHost.CreateDefault(), so fake the volume handle and
+        // serve the watch from an idle native pipe - the test process is not elevated (the same
+        // technique as JournalBrokerHostRealSeamsTests).
+        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
+        JournalQueryFake.Serve(journalIdentifier: 7, nextUsn: 200);
+
+        // The native read stays parked before it is issued until the test has taken the client ends
+        // away, then fails on the broken pipe. The host reports that failure as this drive's Error
+        // frame, and the pipes are already gone by then - so the report write is the one that lands
+        // on the broken pipe, which is what used to kill the child.
+        using var idlePipe = await IdleUsnPipe.CreateAsync(gateReadNumber: 1);
 
         int? exitCode = null;
         DefaultElevatedEntryRunner._exitProcess = code => exitCode = code;
 
         using var cts = new CancellationTokenSource(HangGuard);
-        using var timeoutRelease = cts.Token.Register(() => releaseWatch.TrySetResult()); // never leak the blocked mock
+        using var timeoutRelease = cts.Token.Register(idlePipe.UnblockForCleanup); // never leak the parked read
 
         var (control, drive, runTask) = StartRunnerWithDrivePipe();
         await TestBodyCleanup.RunAsync(async () =>
@@ -128,22 +120,25 @@ public class DefaultElevatedEntryRunnerTests
             // Reach the kernel wait before taking the client ends away. A watch that has not
             // got there yet observes the disconnect as a plain cancellation and never
             // attempts the write this test is about.
-            await watchEntered.Task.WaitAsync(cts.Token);
+            await IdleUsnPipe.AwaitSignalAsync(idlePipe.BeforeIssue);
 
             // The consumer's process has now closed its ends while its watch was armed, so the
             // watch's next attempt to reach it fails on the broken pipe for real.
             await drive.DisposeAsync();
             await control.DisposeAsync();
-            releaseWatch.TrySetResult();
+            idlePipe.Break();
+            idlePipe.ContinueIssue.Set();
 
             await runTask.WaitAsync(cts.Token);
         }, async () =>
         {
-            releaseWatch.TrySetResult();
+            idlePipe.UnblockForCleanup();
             await EnsureRunnerLeavesAsync(runTask, drive, control);
         }, message => TestContext.WriteLine(message));
 
         Assert.AreEqual(0, exitCode);
+        var calls = IdleUsnPipe.CallOrder();
+        Assert.IsTrue(calls.Contains('C') && calls.Contains('F'), "The failed read is cancelled and freed.");
     }
 
     [TestMethod]
@@ -154,7 +149,7 @@ public class DefaultElevatedEntryRunnerTests
         // the scan's cursor arming uses - the test process is not elevated (the same technique
         // as the watch test above). The cursor query is where the host parks: it runs only
         // once the request frame has been read, and the armed-cursor reply is the next write.
-        FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
+        FileUtilities._getVolumeHandle = _ => FakeVolumeHandle.Create();
         var cursorQueried = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseCursorQuery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         JournalQueryFake.Serve(() =>
@@ -163,7 +158,6 @@ public class DefaultElevatedEntryRunnerTests
             releaseCursorQuery.Task.GetAwaiter().GetResult();
             return JournalQueryFake.Describe(journalIdentifier: 7, nextUsn: 200, maximumSize: 0, allocationDelta: 0);
         });
-        MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
 
         int? exitCode = null;
         DefaultElevatedEntryRunner._exitProcess = code => exitCode = code;
@@ -310,21 +304,6 @@ public class DefaultElevatedEntryRunnerTests
             _runnerStillServing = true;
             throw;
         }
-    }
-
-    static IntPtr BuildWatchFailureResult(ulong journalIdentifier, string errorMessage)
-    {
-        var nativeResult = new UsnJournalResultNative
-        {
-            EntryCount = 0,
-            Entries = IntPtr.Zero,
-            NextUsn = 0,
-            JournalIdentifier = journalIdentifier,
-            ErrorMessage = errorMessage
-        };
-        var resultPointer = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
-        Marshal.StructureToPtr(nativeResult, resultPointer, false);
-        return resultPointer;
     }
 
     // A clock that is never advanced and signals when the runner starts its exit flush's bound,

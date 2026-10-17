@@ -12,6 +12,7 @@ internal sealed class IdleUsnPipe : IDisposable
     internal EventWaitHandle BeforeIssue { get; } = new(false, EventResetMode.ManualReset);
     internal EventWaitHandle ContinueIssue { get; } = new(false, EventResetMode.ManualReset);
     internal EventWaitHandle Issued { get; } = new(false, EventResetMode.ManualReset);
+    internal EventWaitHandle CancelAttempted { get; } = new(false, EventResetMode.ManualReset);
     internal SafeFileHandle Handle { get; private set; } = new(IntPtr.Zero, true);
 
     IdleUsnPipe(string name)
@@ -20,7 +21,20 @@ internal sealed class IdleUsnPipe : IDisposable
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
     }
 
-    internal static async Task<IdleUsnPipe> CreateAsync(int gateReadNumber)
+    internal const int NeverGate = int.MaxValue;
+
+    /// <summary>True when the last cancel of the pipe found a pending read, false when it came before one existed.</summary>
+    internal static bool CancelFoundRequest => NativeTestHooks.NativeGetUsnWatchCancelFoundRequest() != 0;
+
+    /// <summary>Native cancels (C) and result frees (F) of the armed pipe in call order, e.g. "FFCF".</summary>
+    internal static string CallOrder()
+    {
+        var calls = new int[16];
+        var count = NativeTestHooks.NativeGetUsnCallLog(calls, calls.Length);
+        return string.Concat(calls.Take(count).Select(call => call == 1 ? 'C' : 'F'));
+    }
+
+    internal static async Task<IdleUsnPipe> CreateAsync(int gateReadNumber = NeverGate)
     {
         var name = $"mftlib-idle-usn-{Guid.NewGuid():N}";
         var pipe = new IdleUsnPipe(name);
@@ -36,7 +50,8 @@ internal sealed class IdleUsnPipe : IDisposable
             }
             await connected.WaitAsync(TimeSpan.FromSeconds(10));
             NativeTestHooks.NativeSetUsnWatchPipe(pipe.Handle, pipe.BeforeIssue.SafeWaitHandle,
-                pipe.ContinueIssue.SafeWaitHandle, pipe.Issued.SafeWaitHandle, gateReadNumber);
+                pipe.ContinueIssue.SafeWaitHandle, pipe.Issued.SafeWaitHandle, pipe.CancelAttempted.SafeWaitHandle,
+                gateReadNumber);
             FileUtilities._getWatchVolumeHandle = pipe.BorrowHandle;
             return pipe;
         }
@@ -49,11 +64,16 @@ internal sealed class IdleUsnPipe : IDisposable
 
     internal SafeFileHandle BorrowHandle(string? _ = null) => new(Handle.DangerousGetHandle(), false);
 
-    internal async Task SendEmptyBatchAsync(long nextUsn)
+    internal async Task SendAsync(byte[] readBuffer)
     {
-        await _writer.WriteAsync(BitConverter.GetBytes(nextUsn));
+        await _writer.WriteAsync(readBuffer);
         await _writer.FlushAsync();
     }
+
+    internal Task SendEmptyBatchAsync(long nextUsn) => SendAsync(BitConverter.GetBytes(nextUsn));
+
+    /// <summary>Closes the writing end, so a read that is pending or issued afterwards fails with a broken pipe.</summary>
+    internal void Break() => _writer.Dispose();
 
     internal static async Task AwaitSignalAsync(EventWaitHandle signal)
     {
@@ -74,6 +94,7 @@ internal sealed class IdleUsnPipe : IDisposable
         BeforeIssue.Dispose();
         ContinueIssue.Dispose();
         Issued.Dispose();
+        CancelAttempted.Dispose();
     }
 
     [DllImport("kernel32.dll", EntryPoint = "CreateFileW", CharSet = CharSet.Unicode,

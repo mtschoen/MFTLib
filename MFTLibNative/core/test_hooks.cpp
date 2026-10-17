@@ -60,11 +60,34 @@ std::array<uint32_t, 8> g_usnIoSize = {};
 int g_usnIoHead = 0;
 int g_usnIoCount = 0;
 int g_usnOverlappedAbort = 0;
-HANDLE g_usnWatchPipe = nullptr;
+// Armed watch pipes (one per drive in multi-drive tests), each with its own cancel-attempted event.
+struct UsnWatchPipeSlot {
+    HANDLE handle;
+    HANDLE cancelAttempted;
+};
+std::array<UsnWatchPipeSlot, 4> g_usnWatchPipes = {};
+size_t g_usnWatchPipeCount = 0;
 HANDLE g_usnBeforeIssue = nullptr;
 HANDLE g_usnContinueIssue = nullptr;
 HANDLE g_usnIssued = nullptr;
-int g_usnGateReadNumber = 0;
+BOOL g_usnCancelFoundRequest = FALSE;
+std::atomic<int> g_usnGateReadNumber{0};
+// Ordered log of watch-pipe cancels (UsnCallCancel) and result frees (UsnCallFree) while the pipe is armed.
+std::array<std::atomic<int>, 16> g_usnCallLog = {};
+std::atomic<int> g_usnCallCount{0};
+
+UsnWatchPipeSlot* FindUsnWatchPipe(HANDLE handle) {
+    const auto end = g_usnWatchPipes.begin() + static_cast<std::ptrdiff_t>(g_usnWatchPipeCount);
+    const auto found = std::find_if(g_usnWatchPipes.begin(), end, [handle](const UsnWatchPipeSlot& slot) { return slot.handle == handle; });
+    return found == end ? nullptr : &*found;
+}
+
+void LogUsnCall(int kind) {
+    const auto index = static_cast<size_t>(g_usnCallCount.fetch_add(1));
+    if (index < g_usnCallLog.size()) {
+        g_usnCallLog[index] = kind;
+    }
+}
 #endif
 }  // namespace
 
@@ -217,7 +240,7 @@ bool UsnIoShouldAbortOverlapped() {
 
 bool TryUsnWatchPipeRead(HANDLE handle, void* buffer, DWORD size, DWORD* bytesReturned, OVERLAPPED* overlapped,
                          BOOL& success) {
-    if (g_usnWatchPipe == nullptr || handle != g_usnWatchPipe || overlapped == nullptr) {
+    if (FindUsnWatchPipe(handle) == nullptr || overlapped == nullptr) {
         return false;
     }
     const bool gate = --g_usnGateReadNumber == 0;
@@ -235,6 +258,22 @@ bool TryUsnWatchPipeRead(HANDLE handle, void* buffer, DWORD size, DWORD* bytesRe
     }
     SetLastError(error);
     return true;
+}
+
+void NoteUsnWatchCancel(HANDLE handle, BOOL foundRequest) {
+    const UsnWatchPipeSlot* const slot = FindUsnWatchPipe(handle);
+    if (slot == nullptr) {
+        return;
+    }
+    g_usnCancelFoundRequest = foundRequest;
+    LogUsnCall(UsnCallCancel);
+    SetEvent(slot->cancelAttempted);
+}
+
+void NoteUsnResultFree() {
+    if (g_usnWatchPipeCount != 0) {
+        LogUsnCall(UsnCallFree);
+    }
 }
 #endif
 
@@ -301,10 +340,25 @@ EXPORT void SetUsnIoSuccess(const uint8_t* data, uint32_t size) {
     }
 }
 
+// Copies the logged cancel/free calls (UsnCallCancel, UsnCallFree) in call order; returns how many were logged.
+EXPORT int GetUsnCallLog(int* out, int capacity) {
+    const int count = (std::min)(g_usnCallCount.load(), (std::min)(capacity, static_cast<int>(g_usnCallLog.size())));
+    for (int index = 0; index < count; ++index) {
+        out[index] = g_usnCallLog[static_cast<size_t>(index)];
+    }
+    return count;
+}
 EXPORT void SetUsnOverlappedAbort() { g_usnOverlappedAbort = 1; }
+// Whether the most recent cancel of the watch pipe found a pending request to cancel.
+EXPORT int GetUsnWatchCancelFoundRequest() { return g_usnCancelFoundRequest != FALSE ? 1 : 0; }
 EXPORT void SetUsnWatchPipe(HANDLE handle, HANDLE beforeIssue, HANDLE continueIssue, HANDLE issued,
-                            int gateReadNumber) {
-    g_usnWatchPipe = handle;
+                            HANDLE cancelAttempted, int gateReadNumber) {
+    UsnWatchPipeSlot* slot = FindUsnWatchPipe(handle);
+    if (slot == nullptr) {
+        slot = &g_usnWatchPipes[(std::min)(g_usnWatchPipeCount, g_usnWatchPipes.size() - 1)];
+        g_usnWatchPipeCount = (std::min)(g_usnWatchPipeCount + 1, g_usnWatchPipes.size());
+    }
+    *slot = {handle, cancelAttempted};
     g_usnBeforeIssue = beforeIssue;
     g_usnContinueIssue = continueIssue;
     g_usnIssued = issued;
@@ -328,11 +382,13 @@ EXPORT void ResetTestState() {
     g_usnIoHead = 0;
     g_usnIoCount = 0;
     g_usnOverlappedAbort = 0;
-    g_usnWatchPipe = nullptr;
+    g_usnWatchPipeCount = 0;
     g_usnBeforeIssue = nullptr;
     g_usnContinueIssue = nullptr;
     g_usnIssued = nullptr;
+    g_usnCancelFoundRequest = FALSE;
     g_usnGateReadNumber = 0;
+    g_usnCallCount = 0;
     }, [](const wchar_t*) {});
 }
 #else

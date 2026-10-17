@@ -18,15 +18,6 @@ public partial class UsnJournalSyntheticTests
         {
             FileUtilities._getVolumeHandle = pipe.BorrowHandle;
             JournalQueryFake.Serve(journalIdentifier: 7, nextUsn: 200);
-            var cancellationAttempted = new TaskCompletionSource<bool>(
-                TaskCreationOptions.RunContinuationsAsynchronously);
-            var nativeCancel = MFTLibNative._cancelUsnJournalWatch;
-            MFTLibNative._cancelUsnJournalWatch = handle =>
-            {
-                var cancelled = nativeCancel(handle);
-                cancellationAttempted.TrySetResult(cancelled);
-                return cancelled;
-            };
 
             // The host's clock never advances, so the session can only end once the watch channel
             // has really stopped: the grace period that would otherwise end it never passes.
@@ -48,10 +39,10 @@ public partial class UsnJournalSyntheticTests
 
                 // Closing the drive pipe is how a client stops a watch.
                 await drivePipe.DisposeAsync();
-                var foundRequest = await cancellationAttempted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                await IdleUsnPipe.AwaitSignalAsync(pipe.CancelAttempted);
                 if (cancelBeforeIssue)
                 {
-                    Assert.IsFalse(foundRequest, "The regression must cancel before a request exists.");
+                    Assert.IsFalse(IdleUsnPipe.CancelFoundRequest, "The regression must cancel before a request exists.");
                 }
                 pipe.ContinueIssue.Set();
                 await harness.CloseControlAsync();

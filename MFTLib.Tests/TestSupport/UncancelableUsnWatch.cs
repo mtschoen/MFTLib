@@ -12,6 +12,6 @@ internal static class UncancelableUsnWatch
     internal static IntPtr Read(SafeHandle volumeHandle, long startUsn, ulong journalIdentifier)
     {
         using var noCancellationEvent = new SafeWaitHandle(IntPtr.Zero, false);
-        return MFTLibNative._watchUsnJournalBatchCancelable(volumeHandle, startUsn, journalIdentifier, noCancellationEvent);
+        return MFTLibNative.NativeWatchUsnJournalBatchCancelable(volumeHandle, startUsn, journalIdentifier, noCancellationEvent);
     }
 }

@@ -14,14 +14,14 @@ sealed class UsnWatchSession(SafeHandle watchHandle) : IDisposable
     public void Cancel()
     {
         _cancellationEvent.Set();
-        MFTLibNative._cancelUsnJournalWatch(watchHandle);
+        MFTLibNative.NativeCancelUsnJournalWatch(watchHandle);
     }
 
     /// <summary>Blocks on a thread-pool thread until the journal has entries at or after the position.</summary>
     public Task<IntPtr> ReadBatchAsync(long currentUsn, ulong journalIdentifier, CancellationToken cancellationToken)
     {
         return Task.Factory.StartNew(
-            () => MFTLibNative._watchUsnJournalBatchCancelable(
+            () => MFTLibNative.NativeWatchUsnJournalBatchCancelable(
                 watchHandle, currentUsn, journalIdentifier, _cancellationEvent.SafeWaitHandle),
             cancellationToken,
             TaskCreationOptions.DenyChildAttach,

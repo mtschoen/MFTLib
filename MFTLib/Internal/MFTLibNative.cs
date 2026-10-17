@@ -26,11 +26,6 @@ static class MFTLibNative
     internal static Action<IntPtr> _freeMftResult = NativeFreeMftResult;
     internal static Func<string, ulong, uint, uint, bool> _generateSyntheticMftSized = NativeGenerateSyntheticMFTSized;
     internal static Func<string, bool> _generateFixtureMft = NativeGenerateFixtureMFT;
-    internal static Func<SafeHandle, long, ulong, uint, IntPtr> _readUsnJournal = NativeReadUsnJournal;
-    internal static Action<IntPtr> _freeUsnJournalResult = NativeFreeUsnJournalResult;
-    internal static Func<SafeHandle, long, ulong, SafeHandle, IntPtr> _watchUsnJournalBatchCancelable =
-        NativeWatchUsnJournalBatchCancelable;
-    internal static Func<SafeHandle, bool> _cancelUsnJournalWatch = NativeCancelUsnJournalWatch;
 
     static IntPtr NativeParseMFTRecordsWithProgressDefault(
         SafeHandle volumeHandle, bool includeFreed, uint bufferSizeRecords, IntPtr control,
@@ -92,19 +87,19 @@ static class MFTLibNative
     internal static extern void CloseMftDumpInput(IntPtr input);
 
     [DllImport(LibraryName, EntryPoint = "ReadUsnJournal", CallingConvention = CallingConvention.Cdecl)]
-    static extern IntPtr NativeReadUsnJournal(SafeHandle volumeHandle, long startUsn, ulong journalIdentifier,
+    internal static extern IntPtr NativeReadUsnJournal(SafeHandle volumeHandle, long startUsn, ulong journalIdentifier,
         uint maximumBufferReads);
 
     [DllImport(LibraryName, EntryPoint = "FreeUsnJournalResult", CallingConvention = CallingConvention.Cdecl)]
-    static extern void NativeFreeUsnJournalResult(IntPtr result);
+    internal static extern void NativeFreeUsnJournalResult(IntPtr result);
 
     [DllImport(LibraryName, EntryPoint = "WatchUsnJournalBatchCancelable", CallingConvention = CallingConvention.Cdecl)]
-    static extern IntPtr NativeWatchUsnJournalBatchCancelable(SafeHandle volumeHandle, long startUsn, ulong journalIdentifier,
+    internal static extern IntPtr NativeWatchUsnJournalBatchCancelable(SafeHandle volumeHandle, long startUsn, ulong journalIdentifier,
         SafeHandle cancellationEvent);
 
     [DllImport(LibraryName, EntryPoint = "CancelUsnJournalWatch", CallingConvention = CallingConvention.Cdecl)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    static extern bool NativeCancelUsnJournalWatch(SafeHandle volumeHandle);
+    internal static extern bool NativeCancelUsnJournalWatch(SafeHandle volumeHandle);
 
     internal static void EnsureCompatibleNativeAbi()
     {
@@ -126,10 +121,6 @@ static class MFTLibNative
         _freeMftResult = NativeFreeMftResult;
         _generateSyntheticMftSized = NativeGenerateSyntheticMFTSized;
         _generateFixtureMft = NativeGenerateFixtureMFT;
-        _readUsnJournal = NativeReadUsnJournal;
-        _freeUsnJournalResult = NativeFreeUsnJournalResult;
-        _watchUsnJournalBatchCancelable = NativeWatchUsnJournalBatchCancelable;
-        _cancelUsnJournalWatch = NativeCancelUsnJournalWatch;
     }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]

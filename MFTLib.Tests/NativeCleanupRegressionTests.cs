@@ -109,7 +109,7 @@ public class NativeCleanupRegressionTests
             using var handle = new SafeFileHandle(new IntPtr(1), false);
             var resultPointer = watch
                 ? UncancelableUsnWatch.Read(handle, 500, 0xABCD)
-                : MFTLibNative._readUsnJournal(handle, 500, 0xABCD, 1);
+                : MFTLibNative.NativeReadUsnJournal(handle, 500, 0xABCD, 1);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -123,7 +123,7 @@ public class NativeCleanupRegressionTests
             }
             finally
             {
-                MFTLibNative._freeUsnJournalResult(resultPointer);
+                MFTLibNative.NativeFreeUsnJournalResult(resultPointer);
             }
         }
     }

@@ -63,7 +63,15 @@ internal static class NativeTestHooks
 
     [DllImport(LibraryName, EntryPoint = "SetUsnWatchPipe", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeSetUsnWatchPipe(SafeHandle handle, SafeHandle beforeIssue,
-        SafeHandle continueIssue, SafeHandle issued, int gateReadNumber);
+        SafeHandle continueIssue, SafeHandle issued, SafeHandle cancelAttempted, int gateReadNumber);
+
+    // Whether the most recent cancel of the watch pipe found a pending read to cancel (1) or not (0).
+    [DllImport(LibraryName, EntryPoint = "GetUsnWatchCancelFoundRequest", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int NativeGetUsnWatchCancelFoundRequest();
+
+    // Copies the cancels (1) and result frees (2) logged while the watch pipe is armed, in call order.
+    [DllImport(LibraryName, EntryPoint = "GetUsnCallLog", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int NativeGetUsnCallLog([Out] int[] calls, int capacity);
 
     [DllImport(LibraryName, EntryPoint = "SetCancelCheckCountdown", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeSetCancelCheckCountdown(int countdown);
