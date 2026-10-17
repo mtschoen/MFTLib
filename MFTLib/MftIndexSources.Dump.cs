@@ -7,13 +7,15 @@ public static partial class MftIndexSources
     /// <summary>
     ///     A source that loads an MFT dump file (a saved copy of a volume's <c>$MFT</c>) as one
     ///     virtual drive. It needs no elevation and no broker, and it works on every platform.
-    ///     Open the index by setting <see cref="FileIndexOptions.MftSource" /> to the result and nothing
-    ///     else about drives or cache: the source supplies its one virtual drive (the normalized
-    ///     upper-case <paramref name="drive" />, root <c>"dump:/" + letter</c>, serial zero, MFT producer),
-    ///     which <see cref="FileIndex.Drives" /> and <see cref="FileIndex.Root" /> then report. Setting
-    ///     <see cref="FileIndexOptions.Drives" />, <see cref="FileIndexOptions.CacheMode" /> (any value),
-    ///     <see cref="FileIndexOptions.CacheDirectory" /> or <see cref="FileIndexOptions.CacheTag" /> makes
-    ///     <see cref="FileIndex.OpenAsync" /> throw <see cref="ArgumentException" />.
+    ///     Supply the result through <see cref="FileIndexOptions.MftSource" />. The source supplies its
+    ///     one virtual drive (the normalized upper-case <paramref name="drive" />,
+    ///     root <c>"dump:/" + letter</c>, serial zero, MFT producer), which
+    ///     <see cref="FileIndex.Drives" /> and <see cref="FileIndex.Root" /> then report.
+    ///     <see cref="FileIndexOptions.Drives" /> must be a non-null empty collection;
+    ///     <see cref="FileIndexOptions.CacheMode" /> and <see cref="FileIndexOptions.CacheDirectory" />
+    ///     must be null, and <see cref="FileIndexOptions.CacheTag" /> must be default.
+    ///     Other values make <see cref="FileIndex.OpenAsync" /> throw <see cref="ArgumentException" />.
+    ///     Every non-null cache mode, including <see cref="CacheMode.Disabled" />, is rejected.
     ///     The dump is scanned in full. A dump drive cannot be watched, has no journal settings, and its
     ///     entries cannot be opened: the letter is a key in the index and names no live volume.
     /// </summary>

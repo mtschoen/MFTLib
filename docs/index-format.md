@@ -235,7 +235,10 @@ journal therefore marks observations unknown instead of replacing them, and a ro
 | Rename, move, close, any other reason | kept, with its flag | kept, with its flag | from the record |
 
 A reason a record repeats from its open cycle never invalidates twice, and a close record that reports nothing new
-only refreshes the attributes. A rescan writes fresh observations and clears both flags. A last-write range
+only refreshes the attributes. A rescan writes the producer's observations and clears an unknown flag only
+for a row and field whose producer obtains a known value. An MFT record with
+no usable size remains size-unknown, and an enumeration root whose metadata
+cannot be read remains last-write-time-unknown. A last-write range
 query excludes every row flagged last-write-unknown, as a size range query excludes size-unknown rows.
 
 A deleted row has the in-use and tombstone flags together, whatever deleted it: a journal delete sets

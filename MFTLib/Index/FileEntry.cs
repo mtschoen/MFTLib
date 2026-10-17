@@ -5,7 +5,7 @@ namespace MFTLib.Index;
 /// <summary>
 ///     A 16-byte value handle onto one file incarnation in one mapped block: an object reference to
 ///     the drive block, which stays mapped while the handle is held, plus a row index and the row's
-///     sequence number when the handle was minted. Property reads are pointer offsets into the mapped
+///     sequence number when the handle was minted. Row-backed property reads access the mapped
 ///     row. Only <see cref="Name" /> and <c>Path</c> allocate. Values are live, not frozen: a journal
 ///     batch that mutates the underlying row changes what this handle reports, and a deleted file
 ///     reads as <see cref="IsDeleted" /> rather than dangling.
@@ -33,9 +33,11 @@ namespace MFTLib.Index;
 ///     The drive block reference keeps that block mapped for as long as the handle is held, so a
 ///     rescan that supersedes the block cannot pull the memory out from under it while the
 ///     owning <see cref="FileIndex" /> lives. It holds no other drive's block. Once index disposal
-///     releases the block, every property read except <see cref="IsValid" /> and
-///     <see cref="IsDisposed" /> throws <see cref="ObjectDisposedException" />. A held handle does
-///     not prevent that release.
+///     releases the block, row-backed reads and access to
+///     <see cref="Drive" /> and <see cref="RecordKey" /> throw <see cref="ObjectDisposedException" />.
+///     Equality and hashing use the stored handle identity and remain available, as do
+///     <see cref="IsValid" /> and <see cref="IsDisposed" />. <see cref="ToString" /> remains safe
+///     and returns a disposed marker. A held handle does not prevent that release.
 /// </remarks>
 public readonly partial record struct FileEntry
 {
@@ -60,9 +62,8 @@ public readonly partial record struct FileEntry
     internal uint RowIndex => _rowIndex;
 
     /// <summary>
-    ///     The drive block this handle reads through. Every public member routes here, which is why
-    ///     the released check lives here and nowhere else: one volatile read per access, on a path
-    ///     that already does a pointer chase.
+    ///     The drive block for release-checked data access. Row-backed reads, Drive and RecordKey
+    ///     use this check; equality, hashing and the handle-state properties use the stored identity.
     /// </summary>
     internal DriveBlock DriveBlock
     {
@@ -134,7 +135,7 @@ public readonly partial record struct FileEntry
     /// <summary>
     ///     Compares the drive block, row index and sequence number. A superseded handle never equals the
     ///     handle of the file that reused its slot, and handles minted by different queries of one block
-    ///     are equal.
+    ///     are equal. Available after the block is released.
     /// </summary>
     /// <param name="other">The handle to compare with.</param>
     /// <returns>true when both name the same file incarnation in the same drive block.</returns>
@@ -142,22 +143,21 @@ public readonly partial record struct FileEntry
         ReferenceEquals(_driveBlock, other._driveBlock) && _rowIndex == other._rowIndex &&
         _sequenceNumber == other._sequenceNumber;
 
-    /// <summary>Hashes the same drive block, row index and sequence number <see cref="Equals(FileEntry)" /> compares.</summary>
+    /// <summary>Hashes the same drive block, row index and sequence number <see cref="Equals(FileEntry)" /> compares. Available after the block is released.</summary>
     /// <returns>The hash code.</returns>
     public override readonly int GetHashCode() =>
         HashCode.Combine(_driveBlock is { } driveBlock ? RuntimeHelpers.GetHashCode(driveBlock) : 0, _rowIndex,
             _sequenceNumber);
 
-    /// <summary>False for the default value, which references no drive block.</summary>
+    /// <summary>False for the default value, which references no drive block. Remains readable and true after that block is released.</summary>
     public bool IsValid => _driveBlock is not null;
 
     /// <summary>
-    ///     True once the drive block behind this handle has been released, which happens when the
-    ///     owning <see cref="FileIndex" /> is disposed. Every read on this handle throws
-    ///     <see cref="ObjectDisposedException" /> from that point on. False for the default value,
-    ///     which references no drive block at all: <see cref="IsValid" /> is the question for that,
-    ///     and <see cref="IsDeleted" /> is the question for a tombstoned row. Three properties,
-    ///     three different questions.
+    ///     True once the drive block behind this handle has been released by index disposal.
+    ///     Row-backed reads, <see cref="Drive" /> and <see cref="RecordKey" /> then throw <see cref="ObjectDisposedException" />; equality,
+    ///     hashing, <see cref="IsValid" />, <see cref="IsDisposed" /> and <see cref="ToString" /> remain available. False for the default value,
+    ///     which references no drive block: <see cref="IsValid" /> identifies that state, while <see cref="IsDeleted" /> identifies
+    ///     a tombstoned or superseded row on an unreleased block.
     /// </summary>
     public bool IsDisposed => _driveBlock is { IsReleased: true };
 

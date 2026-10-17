@@ -5,9 +5,13 @@
       `Root`, and `FileEntry.Children`) each take an optional `CancellationToken`, observed
       before the first row and then at least every 4096 rows from inside `RowScanner`, and each holds a borrow
       on every drive block it reads (the snapshot) for its whole duration. `FileEntry.Children` observes only its caller's token,
-      since a handle holds no index reference; disposal waits that listing out rather than cancelling it. Every
-      other `FileEntry` member takes no borrow and keeps the per-access `IsReleased` check instead;
-      it reads one row, except `Path` (and `ToString`, which can build it), which follows the parent chain for at most 128 hops.
+      since a handle holds no index reference; disposal waits that listing out rather than cancelling it.
+      Row-backed `FileEntry` reads take no borrow and retain the per-access `IsReleased`
+      check; `Drive` and `RecordKey` are also release-checked. Equality, hashing,
+      `IsValid` and `IsDisposed` use stored identity/state and remain available after
+      release. `ToString()` also remains safe and renders a disposed marker after
+      release. Row-column getters access the mapped row; `Path` (and `ToString()`
+      when formatting a live path) follows the parent chain for at most 128 hops.
       Each block's `DriveBlockRelease` counts borrows; `DisposeAsync` cancels a disposal token the five `FileIndex` queries
       and `WaitForCatchUpAsync` waits are linked to, waits for the borrows on the current and retired blocks
       to drop, and only then unmaps. A suspended `Enumerate` enumerator holds its borrow between yields, so
@@ -66,7 +70,7 @@
       pretend otherwise. The journal ignores a delete or other mutation whose record names a different sequence
       number than the live row holds, because it belongs to an earlier incarnation a scan already superseded; a
       stored sequence of zero means the producer recorded none. A create that rewrites a live row with the same
-      number is a refresh of one incarnation. Identity is validated per access: each
+      number is a refresh of one incarnation. Row-backed access validates incarnation: each such
       read checks the handle against the row, and the writer publishes the new sequence before it overwrites the
       columns. A reader that pauses between its identity check and a column read can observe the replacement's
       columns, and no lock is taken on the read path. A caller that needs identity and columns together
@@ -74,7 +78,7 @@
       superseded: `IsDeleted` is true, `Open` throws `FileNotFoundException` before any open-by-id call, `Children`
       returns an empty list, `Subtree` rejects it with `ArgumentException`, and every row column (`Name`, `Path`,
       `Parent`, `Size`, `IsSizeKnown`, `LastWriteTime`, `IsLastWriteTimeKnown`, `Attributes`, `IsDirectory`) throws
-      `InvalidOperationException`, all through one shared check. `Drive` and `RecordKey` stay readable. Equality
+      `InvalidOperationException`, all through one shared check. `Drive` and `RecordKey` stay readable for a superseded handle while its block remains unreleased. Equality
       compares the drive block, row index and sequence number. A rename or move of the
       same file keeps its sequence number, so its handles keep tracking it. A `Deleted` `FileChange` whose slot was
       reused reports `Entry.IsDeleted`; `Path`, `PreviousPath` and `Timestamp` carry the event facts.

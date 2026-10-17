@@ -7,8 +7,10 @@ require a nonblank `FileIndexOptions.CacheDirectory`, even with no drives.
 Missing configuration throws `ArgumentException` before directory creation.
 `CacheMode.Disabled` needs no directory and ignores a supplied path without
 resolving or creating it. Dump sources validate first and supply their own drive:
-`Drives`, `CacheMode` (every value), `CacheDirectory` and `CacheTag` must be unset.
-A conflicting setting throws `ArgumentException` naming it; a dump is never cached.
+`Drives` must be a non-null empty collection, `CacheMode` and `CacheDirectory`
+must be null, and `CacheTag` must be default. Other values throw
+`ArgumentException` naming the option, including every non-null cache mode.
+A dump is never cached.
 
 The application chooses a nonblank, application-owned
 `FileIndexOptions.CacheDirectory`. `CacheDirectory.EnsureCreated(path)` returns
@@ -22,8 +24,8 @@ Cached `FileIndex.OpenAsync` calls `EnsureCreated` automatically before opening
 drives. An application preparing the directory or writing its own sidecar before
 an index open should call it explicitly first. For example, file-wizard's
 `FileWizard/ContentHashSidecar.cs` calls it before using `content-hashes` inside
-the index-cache directory. `CacheMode.Disabled` opens do not create a cache directory, and
-dump sources prohibit cache options. Directory preparation takes no block-slot
+the index-cache directory. `CacheMode.Disabled` opens do not create a cache directory.
+Dump sources require null `CacheMode` and `CacheDirectory` and default `CacheTag`. Directory preparation takes no block-slot
 ownership; block operations still follow the locks described below.
 
 - Index contracts:

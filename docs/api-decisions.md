@@ -46,7 +46,10 @@ flags. `BasicInfoChange` zeroes the last-write column, sets
 `LastWriteTimeUnknown` and keeps the size with its flag. Rename, move, close and every other reason update the
 parent, name and attributes only. The enumeration producer stamps root row 0 with the root directory's real
 attributes and last-write time, or sets `LastWriteTimeUnknown` when the directory cannot be read; it never
-reads the clock. A rescan writes fresh observations and clears the flags.
+reads the clock. A rescan writes the producer's observations and clears an unknown flag only
+for a row and field whose producer obtains a known value. An MFT record with
+no usable size remains size-unknown, and an enumeration root whose metadata
+cannot be read remains last-write-time-unknown.
 
 **Reason:** the owner wants fast read-only queries and explicitly chose honest freshness over hidden reads, plus
 full `IndexRow` column parity so row loops never need `ToEntry()` just to inspect `LastWriteTime`,
@@ -302,11 +305,14 @@ of disabling the cache while requiring an open to use only cached blocks.
 
 ## A dump source describes its own drive and cache
 
-**Decision (API review finding F10):** a dump source is fully self-describing, and there is exactly one
-way to write a dump open: set `FileIndexOptions.MftSource` and nothing else about drives or cache. The source
-supplies its one virtual drive (letter, root, serial zero, `ProducerKind.Mft`), which `FileIndex.OpenAsync` adds
-to the index. `Drives` must be empty, and `CacheMode` (every value, `Disabled` included), `CacheDirectory` and
-`CacheTag` must be unset; setting any of them throws `ArgumentException` naming it.
+**Decision (API review finding F10):** a dump source is fully self-describing.
+The caller supplies `FileIndexOptions.MftSource`; the source supplies its one
+virtual drive (letter, root, serial zero, `ProducerKind.Mft`), which
+`FileIndex.OpenAsync` adds to the index. `Drives` must be a non-null empty
+collection, `CacheMode` and `CacheDirectory` must be null, and `CacheTag` must
+be default. Other values throw `ArgumentException` naming the option; every
+non-null cache mode, including `Disabled`, is rejected. Explicit empty/default
+values are accepted.
 `MftIndexSources.FromLocalVolumes`, `MftIndexSources.FromMftDumpFile` and `MftScanOptions.IncludeFreed`
 are public, sample-reached features.
 

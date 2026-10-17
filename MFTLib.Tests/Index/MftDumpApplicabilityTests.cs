@@ -49,14 +49,29 @@ public class MftDumpApplicabilityTests
     }
 
     [TestMethod]
-    public async Task Open_WithOnlyTheSourceSet_PublishesTheVirtualDrive()
+    [DataRow(false, DisplayName = "DumpSourceOnly")]
+    [DataRow(true, DisplayName = "DumpExplicitEmptyDrivesAndDefaultCache")]
+    public async Task Open_WithDefaultDriveAndCacheValues_PublishesTheVirtualDrive(bool explicitDefaults)
     {
-        await using var index = await MftDumpIndexes.OpenAsync();
+        var options = MftDumpIndexes.Options();
+        if (explicitDefaults)
+        {
+            options = options with
+            {
+                Drives = [],
+                CacheMode = null,
+                CacheDirectory = null,
+                CacheTag = default
+            };
+        }
+
+        await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
         var drive = index.Drives.Single();
         Assert.IsTrue(drive.Drive == MftDumpIndexes.DriveLetter);
         Assert.AreEqual(DriveState.Ready, drive.State);
         Assert.IsNull(drive.Block!.CacheSlot, "a dump block is never backed by a cache slot");
+        Assert.AreEqual(string.Empty, index.CacheDirectoryPath);
         Assert.IsTrue(index.Root(MftDumpIndexes.DriveLetter).IsDirectory);
     }
 

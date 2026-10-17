@@ -96,8 +96,10 @@ foreach (var entry in index.Enumerate(query, cancellationToken).Take(20))
 
 The dump source loads one saved `$MFT` file as a virtual drive, in process, on Windows or
 Linux, with no elevation. You choose the drive letter; entries render paths under `dump:/D`.
-The source supplies its own drive and is never cached, so `MftSource` is the only option to
-set. Setting `Drives`, `CacheMode`, `CacheDirectory` or `CacheTag` throws `ArgumentException`.
+The source supplies its own drive and is never cached. Supply the source through
+`MftSource`; `Drives` must be a non-null empty collection, `CacheMode` and
+`CacheDirectory` must be null, and `CacheTag` must be default. Other values throw
+`ArgumentException`. Explicit empty/default values are accepted.
 
 ```csharp
 using MFTLib;

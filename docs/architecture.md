@@ -30,8 +30,11 @@
       probes and refuses entry opens and journal-settings queries with `InvalidOperationException`.
       Dump watch support is false; start, stop and catch-up report `NotApplicable` with no failure.
       `DriveKind.PrepareOpenOptions` validates and prepares a private options record before any
-      cache directory work. Opening validates the options before any cache path is resolved or created: `Drives`, `CacheMode` (every value,
-      `Disabled` included), `CacheDirectory` and `CacheTag` must all be unset, each rejection an `ArgumentException` naming the setting. The index
+      cache directory work. Opening validates the options before any cache path is resolved or created:
+      `Drives` must be a non-null empty collection, `CacheMode` and `CacheDirectory`
+      must be null, and `CacheTag` must be default. Other values throw
+      `ArgumentException` naming the option; every non-null cache mode, including
+      `Disabled`, is rejected. The index
       then configures the identity's one virtual drive itself (the upper-case letter, root `dump:/{DRIVE}`, `VolumeSerial` zero,
       `ProducerKind.Mft`) and opens it as `CacheMode.Disabled`, so `Drives`, `Root(drive)` and the settle see it; a dump block is never written to or adopted from a cache. `DriveWatchStatus.IsSupported` is false for
       a dump drive and for any drive whose source has no watch source, the same fact a watch start's refusal uses.
@@ -95,7 +98,7 @@
       own sidecars independently of an open; it returns the directory's `DirectoryInfo`.
       See [block ownership](block-ownership.md#preparing-the-cache-directory).
       `CacheMode.Disabled` opens use temporary blocks and ignore supplied cache paths without
-      resolving or creating them. Dump validation runs first and prohibits every cache option. An unset `CacheMode` resolves to `Persistent`, or
+      resolving or creating them. Dump sources require null `CacheMode` and `CacheDirectory` and default `CacheTag`. An unset `CacheMode` resolves to `Persistent`, or
       to `Disabled` for a dump source; `ExistingOnly` and `Persistent` both require the directory.
       Watch defaults to `<user profile>/.MFTLib.Sample.Watch/cache`, retaining policy
       subdirectories for production and cache inventory/deletion. Without a profile,

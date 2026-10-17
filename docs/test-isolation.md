@@ -69,12 +69,14 @@ The retained native substitutions remain for targeted low-level testing:
 - `FileUtilities.Hooks.GetVolumeHandle` and `GetWatchVolumeHandle`: fixture-file scans and cancellable idle-pipe tests using owned handles without privileged live volumes.
 - `Kernel32.Hooks.CreateFile` and `DeviceIoControl`: volume-open flags and error paths in `MockVolumeTests`, plus synthetic geometry and grow buffer injection.
 
-`Persistent` and `ExistingOnly` opens (an unset `FileIndexOptions.CacheMode` is `Persistent`)
+`Persistent` and `ExistingOnly` opens (null `FileIndexOptions.CacheMode` is `Persistent` for non-dump sources)
 require an explicit nonblank `FileIndexOptions.CacheDirectory`,
 including empty-drive opens. Missing configuration throws `ArgumentException`
 before creating a directory. Tests supply temporary directories they own. `Disabled` opens
 require no cache path and ignore supplied paths without resolving or creating
-them. A dump source supplies its own drive: its options validate first and `Drives`, `CacheMode`, `CacheDirectory` and `CacheTag` must be unset.
+them. A dump source supplies its own drive: validation runs first and requires a
+non-null empty `Drives` collection, null `CacheMode` and `CacheDirectory`, and
+default `CacheTag`. Every non-null cache mode, including `Disabled`, is rejected.
 
 MFTLib.Tests activates journal isolation from a module initializer, through
 `MFTLibTestExtensions.JournalIsolation.ForbidLiveJournalReads()`. Consumer test

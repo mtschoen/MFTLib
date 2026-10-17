@@ -1,9 +1,10 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     Byte geometry of a packed index block. One 4 KB header page, a dense row region of
-///     32-byte rows indexed by record number, then an append-only UTF-16 name pool. Every
-///     region boundary is 4 KB aligned so a mapped view can be paged independently.
+///     Byte geometry of a packed index block: one 4 KB header page, a dense region of
+///     32-byte rows indexed by record number, a per-row NTFS sequence-number region,
+///     then an append-only UTF-16 name pool. Every region boundary is 4 KB aligned
+///     so a mapped view can be paged independently.
 /// </summary>
 internal static class BlockLayout
 {

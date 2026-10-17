@@ -46,7 +46,7 @@ internal struct BlockHeader
     /// <summary>
     ///     Monotonically increasing mutation generation, bumped once per journal batch that
     ///     changed at least one row: a reported create, delete, rename, or modification, or a
-    ///     close record that restamped a live row's timestamp and attributes. Header-only writes
+    ///     close record that changed a live row's attributes while preserving its scanned size and last-write observations. Header-only writes
     ///     leave it unchanged: every batch advances the journal checkpoint
     ///     (<see cref="UsnJournalIdentifier" /> and <see cref="UsnNextUsn" />), and a rejection (record
     ///     number past slot capacity, name pool exhausted, or parent record number out of range)

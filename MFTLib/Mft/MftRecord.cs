@@ -107,9 +107,11 @@ internal readonly struct MftRecord
     public bool SizeKnown => (_flags & SizeUnknownFlag) == 0;
 
     /// <summary>
-    ///     Last modification time from <c>$STANDARD_INFORMATION</c>. Zero and negative raw
-    ///     FILETIME values are treated as no timestamp and read as <see cref="DateTime.MinValue" />.
-    ///     Values beyond <see cref="DateTime.MaxValue" /> also read as MinValue to avoid overflow.
+    ///     Last modification time from <c>$STANDARD_INFORMATION</c> when present, otherwise
+    ///     from the selected <c>$FILE_NAME</c> attribute's <c>ModificationTime</c>.
+    ///     Zero and negative raw FILETIME values are treated as no timestamp and read as
+    ///     <see cref="DateTime.MinValue" />. Values beyond <see cref="DateTime.MaxValue" />
+    ///     also read as MinValue to avoid overflow.
     /// </summary>
     public DateTime ModifiedUtc
     {
