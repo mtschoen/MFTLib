@@ -14,7 +14,8 @@ public sealed partial class FileIndex
     public UsnJournalSettings QueryUsnJournalSettings(DriveKey drive)
     {
         var letter = RequireConfiguredDrive(drive);
-        if (IsMftDumpDrive(letter))
+        var configured = _driveConfigurations[letter];
+        if (!DriveKind.For(configured.Producer, _options.MftSource).HasJournalSettings)
         {
             throw new InvalidOperationException(
                 MftIndexSource.FormatUnavailable(letter, MftIndexSource.NoJournalSettingsReason));
@@ -22,10 +23,6 @@ public sealed partial class FileIndex
 
         return UsnJournalSettingsQuery.Query(letter);
     }
-
-    /// <summary>True when the drive's block comes from an MFT dump, whether or not the open produced one.</summary>
-    bool IsMftDumpDrive(DriveKey driveLetter) =>
-        _options.MftSource?.DumpIdentity is { } dump && dump.Drive == driveLetter;
 
     DriveKey RequireConfiguredDrive(DriveKey driveLetter)
     {

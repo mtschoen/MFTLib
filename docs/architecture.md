@@ -17,10 +17,15 @@
     - **MFT dump drives**: a source built with a dump identity (`MftDumpSourceIdentity`) makes its drive a virtual
       inventory with the root `dump:/{DRIVE}` (upper-case letter), rendered with `/` and read with `/` or `\`,
       case-insensitive on every platform; `MftDumpPaths` owns those rules and touches no filesystem. The block
-      carries `DriveBlock.IsMftDump`, and the index never probes the root, opens the entry (`FileEntry.Open` throws
-      `InvalidOperationException`), answers journal settings (`QueryUsnJournalSettings` throws) or watches it:
-       `DriveWatchStatus.IsSupported` is false, and start, stop and catch-up report
-      `NotApplicable` with no failure. Opening validates the options before any cache path is resolved or created: `Drives`, `CacheMode` (every value,
+      carries an internal `DriveKind`, selected from the block's producer and the
+      source identity. Its live-volume, directory-walk and dump policies own root normalization,
+      path syntax, entry-open eligibility, watch eligibility and journal-settings eligibility.
+      Only live-volume kinds permit a watch, which additionally needs a watch source; both
+      host-backed kinds permit the journal-settings query route. The dump policy skips host-root
+      probes and refuses entry opens and journal-settings queries with `InvalidOperationException`.
+      Dump watch support is false; start, stop and catch-up report `NotApplicable` with no failure.
+      `DriveKind.PrepareOpenOptions` validates and prepares a private options record before any
+      cache directory work. Opening validates the options before any cache path is resolved or created: `Drives`, `CacheMode` (every value,
       `Disabled` included), `CacheDirectory` and `CacheTag` must all be unset, each rejection an `ArgumentException` naming the setting. The index
       then configures the identity's one virtual drive itself (the upper-case letter, root `dump:/{DRIVE}`, `VolumeSerial` zero,
       `ProducerKind.Mft`) and opens it as `CacheMode.Disabled`, so `Drives`, `Root(drive)` and the settle see it; a dump block is never written to or adopted from a cache. `DriveWatchStatus.IsSupported` is false for

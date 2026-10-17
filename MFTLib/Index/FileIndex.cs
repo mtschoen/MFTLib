@@ -176,36 +176,20 @@ public sealed partial class FileIndex : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(options);
 
+        options = DriveKind.PrepareOpenOptions(options);
         string cacheDirectoryPath = string.Empty;
-        if (options.MftSource?.DumpIdentity is { } dumpIdentity)
+        if (options.CacheMode != CacheMode.Disabled)
         {
-            // A dump block is never cached, so validation runs first and no cache path is resolved
-            // or created. The source supplies the one virtual drive.
-            MftDumpSourceIdentity.ValidateOptions(options);
-            options = options with { Drives = [dumpIdentity.VirtualDrive], CacheMode = CacheMode.Disabled };
-        }
-        else
-        {
-            var drives = FileIndexOptions.ValidateDrives(options);
-            if (options.CacheMode is { } explicitMode && !Enum.IsDefined(explicitMode))
+            var suppliedCacheDirectory = options.CacheDirectory;
+            if (string.IsNullOrWhiteSpace(suppliedCacheDirectory))
             {
-                throw new ArgumentOutOfRangeException(nameof(options), "Unknown cache mode.");
+                throw new ArgumentException(
+                    "Set FileIndexOptions.CacheDirectory or set FileIndexOptions.CacheMode to Disabled.",
+                    nameof(options));
             }
 
-            options = options with { Drives = drives, CacheMode = options.CacheMode ?? CacheMode.Persistent };
-            if (options.CacheMode != CacheMode.Disabled)
-            {
-                var suppliedCacheDirectory = options.CacheDirectory;
-                if (string.IsNullOrWhiteSpace(suppliedCacheDirectory))
-                {
-                    throw new ArgumentException(
-                        "Set FileIndexOptions.CacheDirectory or set FileIndexOptions.CacheMode to Disabled.",
-                        nameof(options));
-                }
-
-                cacheDirectoryPath = suppliedCacheDirectory;
-                CacheDirectory.EnsureCreated(cacheDirectoryPath);
-            }
+            cacheDirectoryPath = suppliedCacheDirectory;
+            CacheDirectory.EnsureCreated(cacheDirectoryPath);
         }
 
         var index = new FileIndex(options, cacheDirectoryPath);

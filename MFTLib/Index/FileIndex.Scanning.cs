@@ -71,7 +71,8 @@ public sealed partial class FileIndex
     async Task AddDriveAsync(IndexedDrive drive, CancellationToken cancellationToken)
     {
         var driveLetter = drive.Drive;
-        if (!IsMftDumpDrive(driveLetter) && !Directory.Exists(drive.RootDirectory))
+        if (DriveKind.For(drive.Producer, _options.MftSource).RequiresExistingRoot &&
+            !Directory.Exists(drive.RootDirectory))
         {
             RecordOfflineDrive(driveLetter);
             return;

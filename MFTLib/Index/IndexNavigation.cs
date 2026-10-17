@@ -35,12 +35,10 @@ internal static class IndexNavigation
     }
 
     /// <summary>
-    ///     Joins the drive block's real root directory with the collected name chain, one path
-    ///     component at a time, so the host's separator is the only one that appears and the
-    ///     result is a path that can be opened and looked up again. The root is the block's
-    ///     normalised <see cref="DriveBlock.RootDirectoryPath" />, which is what keeps the
-    ///     rendered path and <c>LookupEngine.Find</c> agreeing on where the root ends. The drive
-    ///     key is a display and lookup key for the index, never part of a path.
+    ///     Joins the normalized root and collected name chain using the drive kind's path
+    ///     rules. Host roots use host separators; dump roots use virtual separators.
+    ///     Root normalization and lookup use the same policy so rendered paths round-trip.
+    ///     The drive key identifies the indexed drive and is not a host path.
     /// </summary>
     /// <exception cref="InvalidOperationException">
     ///     The drive block has no configured root directory, so there is nothing to root the name
@@ -68,9 +66,7 @@ internal static class IndexNavigation
             components[index + 1] = segments[segments.Count - 1 - index];
         }
 
-        return driveBlock.IsMftDump
-            ? MftDumpPaths.Join(rootDirectoryPath, components.Skip(1).ToArray())
-            : Path.Combine(components);
+        return driveBlock.Kind.JoinPath(components);
     }
 
     /// <summary>

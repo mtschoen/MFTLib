@@ -91,8 +91,7 @@ public sealed partial class FileIndex
         var upperLetter = driveLetter;
         foreach (var driveBlock in _driveBlocks)
         {
-            if (driveBlock.Drive == upperLetter &&
-                driveBlock.ProducerKind == ProducerKind.Mft && !driveBlock.IsMftDump)
+            if (driveBlock.Drive == upperLetter && driveBlock.Kind.CanWatch)
             {
                 return driveBlock;
             }

@@ -72,7 +72,7 @@ public sealed partial class FileIndex
     DriveWatchStatus DescribeWatchLocked(DriveRuntime runtime, DriveBlock driveBlock) =>
         new()
         {
-            IsSupported = driveBlock.ProducerKind == ProducerKind.Mft && WatchSourceOrNull is not null,
+            IsSupported = driveBlock.Kind.CanWatch && WatchSourceOrNull is not null,
             IsRequested = runtime.WatchRequested,
             State = GetWatchStateLocked(driveBlock.Drive),
             StateVersion = runtime.WatchStateVersion,

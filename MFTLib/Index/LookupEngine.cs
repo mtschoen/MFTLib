@@ -44,8 +44,7 @@ internal static class LookupEngine
         var remainder = nativePath.AsSpan(rootLength);
         var currentRow = driveBlock.Block.Header.RootRow;
         var descent = new PathDescent(driveBlock, IsCaseSensitive(driveBlock), cancellationToken);
-        foreach (var segmentRange in remainder.SplitAny(
-                     driveBlock.IsMftDump || OperatingSystem.IsWindows() ? ['\\', '/'] : ['/']))
+        foreach (var segmentRange in remainder.SplitAny(driveBlock.Kind.Separators))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var segment = remainder[segmentRange];
@@ -73,7 +72,7 @@ internal static class LookupEngine
     internal static bool IsCaseSensitive(DriveBlock driveBlock)
     {
         ArgumentNullException.ThrowIfNull(driveBlock);
-        return driveBlock.ProducerKind == ProducerKind.Enumeration && !OperatingSystem.IsWindows();
+        return driveBlock.Kind.IsCaseSensitive;
     }
 
     /// <summary>
@@ -93,8 +92,7 @@ internal static class LookupEngine
             return null;
         }
 
-        var normalizedPath = OperatingSystem.IsWindows() ? nativePath.Replace('\\', '/') : nativePath;
-        var dumpNormalizedPath = MftDumpPaths.Fold(nativePath);
+        string? foldedPath = null;
         DriveBlock? best = null;
         var bestLength = -1;
         foreach (var candidate in snapshot)
@@ -104,17 +102,15 @@ internal static class LookupEngine
                 continue;
             }
 
-            var comparable = candidate.IsMftDump ? dumpNormalizedPath : normalizedPath;
+            var comparable = candidate.Kind.ComparablePath(nativePath, ref foldedPath);
             if (trimmed.Length > nativePath.Length ||
-                !comparable.AsSpan(0, trimmed.Length).Equals(trimmed, Comparison(candidate)))
+                !comparable.AsSpan(0, trimmed.Length).Equals(trimmed, candidate.Kind.Comparison))
             {
                 continue;
             }
 
             if (nativePath.Length > trimmed.Length &&
-                !(candidate.IsMftDump
-                    ? MftDumpPaths.IsSeparator(nativePath[trimmed.Length])
-                    : IsSeparator(nativePath[trimmed.Length])))
+                !candidate.Kind.IsSeparator(nativePath[trimmed.Length]))
             {
                 continue;
             }
@@ -127,16 +123,6 @@ internal static class LookupEngine
         }
 
         return best is null ? null : (best, bestLength);
-    }
-
-    static StringComparison Comparison(DriveBlock driveBlock)
-    {
-        return IsCaseSensitive(driveBlock) ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
-    }
-
-    static bool IsSeparator(char character)
-    {
-        return character == '/' || (OperatingSystem.IsWindows() && character == '\\');
     }
 
     /// <summary>

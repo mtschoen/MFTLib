@@ -19,7 +19,7 @@ public readonly partial record struct FileEntry
             throw new FileNotFoundException($"{this}: The entry has been deleted.");
         }
 
-        if (driveBlock.IsMftDump)
+        if (!driveBlock.Kind.CanOpen)
         {
             throw new InvalidOperationException($"{this}: Files in an MFT dump cannot be opened through the index.");
         }

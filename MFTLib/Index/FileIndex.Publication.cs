@@ -57,7 +57,7 @@ public sealed partial class FileIndex
     /// </summary>
     DriveBlock BuildDriveBlock(IndexedDrive drive, ushort driveOrdinal, BlockFile block) =>
         new(drive.Drive, driveOrdinal, block, rootDirectoryPath: drive.RootDirectory,
-            isMftDump: IsMftDumpDrive(drive.Drive));
+            mftSource: _options.MftSource);
 
     /// <summary>
     ///     Writes every field of a published result against its ordinal and counts its catch-up:

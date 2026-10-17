@@ -11,8 +11,8 @@ namespace MFTLib.Index;
 /// </summary>
 internal sealed class DriveBlock
 {
-    public DriveBlock(DriveKey driveLetter, ushort driveOrdinal, BlockFile block, string? rootDirectoryPath = null,
-        bool isMftDump = false)
+    public DriveBlock(DriveKey driveLetter, ushort driveOrdinal, BlockFile block,
+        string? rootDirectoryPath = null, MftIndexSource? mftSource = null)
     {
         ArgumentNullException.ThrowIfNull(block);
         Drive = driveLetter.Validated();
@@ -20,12 +20,12 @@ internal sealed class DriveBlock
         Block = block;
         ReleaseState = new DriveBlockRelease(block);
         ProducerKind = block.Header.ProducerKind;
-        IsMftDump = isMftDump;
-        RootDirectoryPath = isMftDump ? rootDirectoryPath : ToRootedDirectoryPath(rootDirectoryPath);
-        MatchableRootDirectoryPath = isMftDump
-            ? MftDumpPaths.ToMatchablePrefix(RootDirectoryPath)
-            : ToMatchablePrefix(RootDirectoryPath);
+        Kind = DriveKind.For(ProducerKind, mftSource);
+        RootDirectoryPath = Kind.NormalizeRoot(rootDirectoryPath);
+        MatchableRootDirectoryPath = Kind.ToMatchablePrefix(RootDirectoryPath);
     }
+
+    internal DriveKind Kind { get; }
 
     /// <summary>
     ///     Releases the block for a caller who simply dropped every handle. The catch is
@@ -53,13 +53,6 @@ internal sealed class DriveBlock
         }
     }
 
-    /// <summary>
-    ///     True when this block describes an MFT dump file. Its root is the opaque virtual root
-    ///     <c>dump:/{driveLetter}</c>, never a host path, so nothing may probe, open or journal it
-    ///     as the live volume that shares its letter.
-    /// </summary>
-    public bool IsMftDump { get; }
-
     public DriveKey Drive { get; }
 
     public ushort DriveOrdinal { get; }
@@ -75,12 +68,11 @@ internal sealed class DriveBlock
     public ProducerKind ProducerKind { get; }
 
     /// <summary>
-    ///     The base of every real filesystem path this block renders through <see cref="FileEntry.Path" />.
-    ///     Required for path rendering and <see cref="FileEntry.Open" /> on both producer kinds.
-    ///     Every production block sets it; synthetic blocks that never render or open paths may
-    ///     leave it null. MFT entries also use it as a path on the target volume to open by file id.
-    ///     Normalised at construction by <see cref="ToRootedDirectoryPath" />, so what is stored is
-    ///     always rooted even when the caller supplied a bare drive specifier.
+    ///     The root used to render this block's entry paths: a host directory for live volumes
+    ///     and directory walks, or an opaque virtual root for dumps. Every production block
+    ///     sets one; synthetic blocks that never render paths may leave it null.
+    ///     Normalized once by <see cref="DriveKind.NormalizeRoot" />. Live MFT entry opening
+    ///     also uses it as a path on the target volume.
     /// </summary>
     public string? RootDirectoryPath { get; }
 
@@ -100,43 +92,4 @@ internal sealed class DriveBlock
     ///     <see cref="JournalMutator" /> for how it is used.
     /// </summary>
     internal ReportedReasonCycles ReportedCycles { get; } = new();
-
-    /// <summary>
-    ///     The single place a caller-supplied root is normalised, so path rendering and path
-    ///     lookup can never disagree about what this block's root is. A bare drive specifier such
-    ///     as <c>C:</c> is drive-relative on Windows: joined with a name chain it yields
-    ///     <c>C:Windows</c>, which resolves against that drive's per-process current directory
-    ///     rather than its root, and which no lookup would then accept because the character after
-    ///     the root is a name character instead of a separator. A separator is appended so the
-    ///     result is rooted. Resolving through <c>Path.GetFullPath</c> would be wrong here, since
-    ///     that resolves against the current process directory rather than the drive's root.
-    /// </summary>
-    static string? ToRootedDirectoryPath(string? rootDirectoryPath)
-    {
-        if (rootDirectoryPath is not { Length: 2 } specifier ||
-            specifier[1] != ':' || !char.IsAsciiLetter(specifier[0]))
-        {
-            return rootDirectoryPath;
-        }
-
-        return specifier + Path.DirectorySeparatorChar;
-    }
-
-    /// <summary>
-    ///     Windows separator spellings are folded to one character and any trailing separator is
-    ///     removed, which is the form a path prefix is compared against. On other platforms a
-    ///     backslash remains a filename character. Null for a block with no root directory, and
-    ///     for an empty one, because neither can ever match a path.
-    /// </summary>
-    static string? ToMatchablePrefix(string? rootDirectoryPath)
-    {
-        if (rootDirectoryPath is not { Length: > 0 } root)
-        {
-            return null;
-        }
-
-        return OperatingSystem.IsWindows()
-            ? root.Replace('\\', '/').TrimEnd('/')
-            : root.TrimEnd(Path.DirectorySeparatorChar);
-    }
 }
