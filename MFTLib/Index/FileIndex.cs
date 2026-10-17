@@ -61,7 +61,7 @@ public sealed partial class FileIndex : IAsyncDisposable
         foreach (var configuredDrive in _options.Drives)
         {
             var drive = configuredDrive.Drive.Validated();
-            _driveRuntimes.Add(drive, new DriveRuntime(configuredDrive));
+            _driveRuntimes.Add(drive, new DriveRuntime(this, configuredDrive));
         }
     }
 
@@ -87,7 +87,7 @@ public sealed partial class FileIndex : IAsyncDisposable
                 var statuses = new List<DriveStatus>(_options.Drives.Count);
                 foreach (var configured in _options.Drives)
                 {
-                    statuses.Add(DescribeDriveLocked(GetDriveRuntime(configured.Drive)));
+                    statuses.Add(GetDriveRuntime(configured.Drive).DescribeLocked());
                 }
 
                 return statuses;

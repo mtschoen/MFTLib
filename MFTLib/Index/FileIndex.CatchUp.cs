@@ -52,7 +52,7 @@ public sealed partial class FileIndex
                 }
 
                 var lost = RecordLostCatchUp(runtime, catchUpLoss, attempt.ConsecutiveLostCatchUps);
-                RaiseWatchFaulted(new WatchFault(WatchFaultKind.CatchUpLost, runtime.Drive, lost));
+                runtime.RaiseWatchFaulted(new WatchFault(WatchFaultKind.CatchUpLost, runtime.Drive, lost));
                 if (lost.IsRecoveryStopped)
                 {
                     throw lost;
@@ -70,10 +70,10 @@ public sealed partial class FileIndex
             {
                 runtime.RetryingLostCatchUp = false;
                 runtime.RetriedLostCatchUp = null;
-                NoteWatchStateLocked(runtime);
+                runtime.NoteWatchStateLocked();
             }
 
-            RaiseWatchStateChanged(runtime);
+            runtime.RaiseWatchStateChanged();
         }
     }
 
@@ -191,10 +191,10 @@ public sealed partial class FileIndex
                 runtime.WatchFailureMessage = lost.Message;
             }
 
-            NoteWatchStateLocked(runtime, new WatchFault(WatchFaultKind.CatchUpLost, drive, lost));
+            runtime.NoteWatchStateLocked(new WatchFault(WatchFaultKind.CatchUpLost, drive, lost));
         }
 
-        RaiseWatchStateChanged(runtime);
+        runtime.RaiseWatchStateChanged();
         return lost;
     }
 

@@ -17,10 +17,10 @@ public sealed partial class FileIndex
             lock (_stateLock)
             {
                 ClearRecoveryLocked(runtime);
-                NoteWatchStateLocked(runtime);
+                runtime.NoteWatchStateLocked();
             }
 
-            RaiseWatchStateChanged(runtime);
+            runtime.RaiseWatchStateChanged();
         }
 
         ScanAttempt outcome;
@@ -65,7 +65,7 @@ public sealed partial class FileIndex
                 if (runtime.WatchRequested)
                 {
                     _ = RecordUnresumableCheckpointWatchFailureLocked(runtime, driveBlock, reason);
-                    NoteWatchStateLocked(runtime);
+                    runtime.NoteWatchStateLocked();
                 }
 
                 return true;
@@ -73,7 +73,7 @@ public sealed partial class FileIndex
         }
         finally
         {
-            RaiseWatchStateChanged(runtime);
+            runtime.RaiseWatchStateChanged();
         }
     }
 
@@ -125,10 +125,10 @@ public sealed partial class FileIndex
 
             runtime.RefusedStartFault = null;
             runtime.WatchFailureMessage = null;
-            NoteWatchStateLocked(runtime);
+            runtime.NoteWatchStateLocked();
         }
 
-        RaiseWatchStateChanged(runtime);
+        runtime.RaiseWatchStateChanged();
     }
 
     /// <summary>
@@ -181,11 +181,11 @@ public sealed partial class FileIndex
             instance.OutstandingFault = failure;
             instance.CatchUp.Fault(failure);
             runtime.WatchFailureMessage = failure.Message;
-            NoteWatchStateLocked(runtime, fault);
+            runtime.NoteWatchStateLocked(fault);
         }
 
         CompleteInstanceDrain(runtime, instance);
-        RaiseWatchFaulted(fault);
+        runtime.RaiseWatchFaulted(fault);
         return true;
     }
 }

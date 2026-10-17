@@ -86,7 +86,7 @@ public sealed partial class FileIndex
         }
         finally
         {
-            RaiseWatchStateChanged(runtime);
+            runtime.RaiseWatchStateChanged();
         }
 
         if (preparation is not { } prepared)
@@ -108,7 +108,7 @@ public sealed partial class FileIndex
         }
 
         var registration = RegisterStartingInstance(runtime, armedBlock, restart, recovery);
-        RaiseWatchStateChanged(runtime);
+        runtime.RaiseWatchStateChanged();
         if (registration is not { } registered)
         {
             return;
@@ -167,7 +167,7 @@ public sealed partial class FileIndex
             finally
             {
                 // Clearing a recovery and every refusal above change the drive's state.
-                NoteWatchStateLocked(runtime);
+                runtime.NoteWatchStateLocked();
             }
         }
     }
@@ -205,7 +205,7 @@ public sealed partial class FileIndex
         }
 
         var published = TryPublishHandle(runtime, instance, handle);
-        RaiseWatchStateChanged(runtime);
+        runtime.RaiseWatchStateChanged();
         if (published)
         {
             return;
@@ -274,7 +274,7 @@ public sealed partial class FileIndex
                 ? RecoveryState.RecoveredAwaitingCatchUp
                 : RecoveryState.None;
             runtime.WatchFailureMessage = null;
-            NoteWatchStateLocked(runtime);
+            runtime.NoteWatchStateLocked();
             return new RegisteredWatchStart(instance, BuildWatchTarget(armedBlock));
         }
     }
@@ -321,11 +321,11 @@ public sealed partial class FileIndex
                     }
                 }
 
-                NoteWatchStateLocked(runtime, cause);
+                runtime.NoteWatchStateLocked(cause);
             }
         }
 
-        RaiseWatchStateChanged(runtime);
+        runtime.RaiseWatchStateChanged();
         CompleteInstanceDrain(runtime, instance);
     }
 
@@ -343,7 +343,7 @@ public sealed partial class FileIndex
             }
 
             instance.State = WatchInstanceState.Running;
-            NoteWatchStateLocked(runtime);
+            runtime.NoteWatchStateLocked();
             runtime.RescanHandoffFault = null;
             if (runtime.Retiring is not null)
             {

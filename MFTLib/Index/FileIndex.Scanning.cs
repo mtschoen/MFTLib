@@ -202,7 +202,7 @@ public sealed partial class FileIndex
     /// <summary>
     ///     Runs the MFT producer for one drive and checks its finished block before anything adopts
     ///     it. The returned header contains the durable pre-scan cursor, independently validated
-    ///     by the producer. <see cref="DescribeDriveLocked" /> derives
+    ///     by the producer. <see cref="DriveRuntime.DescribeLocked" /> derives
     ///     <see cref="DriveBlockStatus.IsCapacityExhausted" /> from the header's own
     ///     <see cref="BlockFlags.CapacityExhausted" /> flag, which the producer sets on the block directly.
     /// </summary>

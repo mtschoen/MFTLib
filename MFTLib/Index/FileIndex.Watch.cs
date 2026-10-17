@@ -1,79 +1,13 @@
-using System.Runtime.ExceptionServices;
-
 namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
-    /// <summary>
-    ///     Raised once per applied change, in the order the journal batch delivered them, to
-    ///     every subscriber, even when an earlier subscriber threw for an earlier change (or for
-    ///     this one). The mutation and the USN cursor are already applied to the mapped block by the time any handler
-    ///     runs: the watch applies the whole batch and releases its drive's
-    ///     write gate before raising this event at all, so a throwing handler never undoes anything
-    ///     and never stops another handler from seeing the rest of the batch. A close record that
-    ///     repeats only reasons its open cycle already reported applies its metadata to the
-    ///     block without raising this event, so within one block a transition raises one change even
-    ///     though NTFS writes at least two journal records for it. A handler exception is reported
-    ///     through <see cref="WatchFaulted" /> as <see cref="WatchFaultKind.Subscriber" />. A rescan
-    ///     can publish before an old change is delivered, and its new watch can repeat that change
-    ///     during catch-up. Queries can lag until that watch is CaughtUp.
-    ///     A handler must not block on a lifecycle call of this index: see
-    ///     <see cref="WatchFaulted" />.
-    /// </summary>
-    public event Action<FileChange>? Changed;
-
-    /// <summary>
-    ///     Raised when a drive's watch first sees a subscriber fault, every time a drive's watch
-    ///     ends with a drive, apply, or channel fault, and after every scan of a drive whose
-    ///     journal catch-up was lost or whose replacement watch could not start. Every fault names
-    ///     its drive. Raised from that drive's pump, or for <see cref="WatchFaultKind.CatchUpLost" />
-    ///     and <see cref="WatchFaultKind.RescanRestart" /> from the scan after publication drained
-    ///     the old pump, so faults of different drives may be raised
-    ///     concurrently while one drive's faults never overlap. The scan operation raises its
-    ///     fault while it still holds the drive's lifecycle gate, so a handler must queue, not
-    ///     wait for, a rescan or start of that drive. Exceptions thrown by fault handlers are
-    ///     discarded.
-    ///     <para>
-    ///         Inside any <see cref="Changed" />, <see cref="WatchFaulted" /> or
-    ///         <see cref="WatchStateChanged" /> handler of this index,
-    ///         whichever drive it concerns, <c>StartWatchingAsync</c>, <c>StopWatchingAsync</c>,
-    ///         <c>RescanAsync</c>, <c>DisposeAsync</c> and a
-    ///         <c>WaitForCatchUpAsync</c> that has not yet settled fail at once with
-    ///         <see cref="InvalidOperationException" />, because each can wait for a pump that is itself
-    ///         blocked in a handler. The rejection also covers work the handler starts and that runs
-    ///         before the handler returns. Queue such a call to run after the handler returns, for
-    ///         example with <see cref="Task.Run(Action)" />. Queries, <see cref="Drives" />, and a wait
-    ///         that has already settled are allowed.
-    ///     </para>
-    /// </summary>
-    public event Action<WatchFault>? WatchFaulted;
-
-    /// <summary>
-    ///     Applies one journal batch to a drive's block in place and raises
-    ///     <see cref="Changed" /> for each applied change. This is the seam the watch pipeline
-    ///     drives; it returns the batch so a caller can act on it without subscribing. A drive's
-    ///     watch pump applies through the same path and raises <see cref="Changed" /> itself, so
-    ///     it can tell an apply failure from a subscriber failure.
-    /// </summary>
-    /// <remarks>
-    ///     The mutation runs under the drive's write gate, the same gate a rescan of that drive
-    ///     holds while it commits the drive's new block, so a commit and a journal batch can never
-    ///     touch the same drive's block at once: a rescan builds an entirely new block file and
-    ///     only publishes it under the gate, and a journal batch takes its snapshot and its
-    ///     <see cref="BlockWriter" /> under the same gate, so it always mutates the drive's block
-    ///     that is current once it is its turn, never one a commit is about to supersede. Only
-    ///     this drive's gate is taken: a batch never waits for another drive's commit or batch. A
-    ///     commit for another drive may retire the snapshot this batch read while it runs, which is
-    ///     safe: this drive's block is the same instance in both snapshots, and the handles in the
-    ///     batch's changes keep the snapshot they came from alive. The gate is released before
-    ///     <see cref="Changed" /> is raised, so a subscriber's handler never runs while a commit
-    ///     is blocked waiting on this call.
-    /// </remarks>
     internal IReadOnlyList<FileChange> ApplyJournalEntries(DriveKey drive,
         IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn)
     {
+        var runtime = GetDriveRuntime(drive);
         var changes = ApplyJournalEntriesCore(drive, instance: null, entries, journalIdentifier, nextUsn);
-        RaiseChanged(changes);
+        runtime.RaiseChanged(changes);
         return changes;
     }
 
@@ -147,54 +81,5 @@ public sealed partial class FileIndex
             return instance.State == WatchInstanceState.Running &&
                    IsCurrentWatchOverItsBlockLocked(_driveRuntimes[drive], instance);
         }
-    }
-
-    /// <summary>
-    ///     Delivers every change to every current subscriber, isolating one handler's failure
-    ///     from another's: a snapshot of the invocation list is taken once, and each handler is
-    ///     invoked for every change even if that handler (or another one) already threw for an
-    ///     earlier change, so one bad subscriber never starves the rest of the batch. Every
-    ///     collected exception is surfaced only after delivery has fully finished, since by then
-    ///     the mutation this batch made is already applied to the mapped block and nothing further depends on this
-    ///     call returning normally.
-    /// </summary>
-    void RaiseChanged(IReadOnlyList<FileChange> changes)
-    {
-        var subscribers = Changed;
-        if (subscribers is null)
-        {
-            return;
-        }
-
-        List<Exception>? handlerExceptions = null;
-        foreach (var change in changes)
-        {
-            foreach (var handler in subscribers.GetInvocationList())
-            {
-                try
-                {
-                    Deliver((Action<FileChange>)handler, change);
-                }
-                catch (Exception exception)
-                {
-                    (handlerExceptions ??= []).Add(exception);
-                }
-            }
-        }
-
-        if (handlerExceptions is not { Count: > 0 })
-        {
-            return;
-        }
-
-        if (handlerExceptions.Count == 1)
-        {
-            // Rethrowing the caught instance directly would overwrite its stack trace with this
-            // throw site inside MFTLib, costing a consumer the frame in their own handler that
-            // actually threw. Capturing preserves it.
-            ExceptionDispatchInfo.Capture(handlerExceptions[0]).Throw();
-        }
-
-        throw new AggregateException(handlerExceptions);
     }
 }

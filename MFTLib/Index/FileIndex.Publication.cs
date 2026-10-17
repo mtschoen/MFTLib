@@ -134,14 +134,14 @@ public sealed partial class FileIndex
                 runtime.Block = driveBlock;
                 RecordPendingResultLocked(runtime, produced, clearsCheckpointLoss);
                 PublishSnapshotLocked();
-                NoteWatchStateLocked(runtime);
+                runtime.NoteWatchStateLocked();
                 return (runtime.ConsecutiveLostCatchUps, handoff);
             }
         }
         finally
         {
             runtime.WriteGate.Release();
-            RaiseWatchStateChanged(runtime);
+            runtime.RaiseWatchStateChanged();
         }
     }
 }

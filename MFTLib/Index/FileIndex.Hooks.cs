@@ -102,7 +102,7 @@ public sealed partial class FileIndex
         internal Action<Action>? PumpFaultSettlementWrapper { get; set; }
 
         /// <summary>
-        ///     Invoked after apply released the write gate, before <see cref="RaiseChanged" />; no lifecycle/write/state lock.
+        ///     Invoked after apply released the write gate, before <see cref="DriveRuntime.RaiseChanged" />; no lifecycle/write/state lock.
         ///     Cannot await a rescan that drains this same pump.
         /// </summary>
         internal Action<DriveKey>? BeforeWatchChanged { get; set; }

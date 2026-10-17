@@ -37,7 +37,7 @@ public sealed partial class FileIndex
         Exception? outstandingFault;
         lock (_stateLock)
         {
-            if (!IsWatchingLocked(runtime))
+            if (!runtime.IsWatchingLocked())
             {
                 throw new InvalidOperationException(
                     $"Drive {runtime.Drive} is not watching, so there is no watch to stop.");
@@ -50,10 +50,10 @@ public sealed partial class FileIndex
             previousDrain = runtime.Retiring?.Drained;
             retired = RetireCurrentLocked(runtime);
             outstandingFault = TakeOutstandingFaultLocked(runtime, retired);
-            NoteWatchStateLocked(runtime);
+            runtime.NoteWatchStateLocked();
         }
 
-        RaiseWatchStateChanged(runtime);
+        runtime.RaiseWatchStateChanged();
         retired?.RequestStop();
         var drain = retired?.Drained is { } retiredDrain && previousDrain is not null
             ? Task.WhenAll(retiredDrain, previousDrain)

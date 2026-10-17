@@ -1,5 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace MFTLib.Index;
 
 public sealed partial class FileIndex
@@ -10,20 +8,6 @@ public sealed partial class FileIndex
     ///     <see cref="_stateLock" />; disposal waits for all of them.
     /// </summary>
     readonly HashSet<Task> _recoveryCompletions = [];
-
-    /// <summary>
-    ///     A test observation: the completion of the drive's current recovery ticket, when it has one.
-    ///     Exposes exact recovery ticket completion identity under the state lock. Complements <see cref="IndexHooks" />.
-    /// </summary>
-    internal bool TryGetRecoveryCompletionForTest(DriveKey drive, [NotNullWhen(true)] out Task? completion)
-    {
-        var runtime = GetDriveRuntime(drive);
-        lock (_stateLock)
-        {
-            completion = runtime.Recovery?.Completion;
-            return completion is not null;
-        }
-    }
 
     /// <summary>
     ///     One queued recovery of a drive (spec 2.6.5): the faulted instance and the block it was
@@ -86,7 +70,7 @@ public sealed partial class FileIndex
             runtime.Recovery = ticket;
             runtime.RecoveryState = RecoveryState.Recovering;
             _recoveryCompletions.Add(ticket.Completion);
-            NoteWatchStateLocked(runtime, fault);
+            runtime.NoteWatchStateLocked(fault);
             return ticket;
         }
     }
@@ -206,16 +190,16 @@ public sealed partial class FileIndex
                 }
 
                 reported = failure is null ? null : new WatchFault(WatchFaultKind.Recovery, runtime.Drive, failure);
-                NoteWatchStateLocked(runtime, reported);
+                runtime.NoteWatchStateLocked(reported);
             }
         }
 
         try
         {
-            RaiseWatchStateChanged(runtime);
+            runtime.RaiseWatchStateChanged();
             if (reported is not null)
             {
-                RaiseWatchFaulted(reported);
+                runtime.RaiseWatchFaulted(reported);
             }
         }
         finally

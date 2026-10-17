@@ -102,7 +102,7 @@ public sealed partial class FileIndex
     {
         lock (_stateLock)
         {
-            return WatchSourceOrNull is not null && FindWatchableDriveBlockLocked(drive) is not null;
+            return GetDriveRuntime(drive).HasWatchableBlockLocked();
         }
     }
 
@@ -110,12 +110,9 @@ public sealed partial class FileIndex
     {
         lock (_stateLock)
         {
-            return IsWatchingLocked(GetDriveRuntime(drive));
+            return GetDriveRuntime(drive).IsWatchingLocked();
         }
     }
-
-    static bool IsWatchingLocked(DriveRuntime runtime) =>
-        runtime.WatchRequested || runtime.Current is not null || runtime.Retiring is not null;
 
     async Task<IReadOnlyList<DriveOperationResult>> RunBatchAsync(IEnumerable<DriveKey> drives,
         Func<DriveKey, bool>? applicable, Func<DriveKey, Task> operation, CancellationToken cancellationToken)

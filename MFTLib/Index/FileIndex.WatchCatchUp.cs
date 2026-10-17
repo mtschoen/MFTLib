@@ -2,38 +2,7 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
-    /// <summary>
-    ///     The drive's <see cref="DriveWatchStatus.State" />, from its watch records:
-    ///     <see cref="WatchState.Recovering" /> while a recovery of the drive is queued or
-    ///     running or a scan of the watched drive retries after a lost catch-up, the current
-    ///     instance's slot while it runs,
-    ///     <see cref="WatchState.Faulted" /> for a faulted instance or a failed or refused
-    ///     start, <see cref="WatchState.CatchingUp" /> while the watch is requested and its
-    ///     replacement has not registered yet, and <see cref="WatchState.NotStarted" />
-    ///     otherwise. The caller holds <see cref="_stateLock" />.
-    /// </summary>
-    WatchState GetWatchStateLocked(DriveKey drive)
-    {
-        var runtime = GetDriveRuntime(drive);
-        if (runtime.RetryingLostCatchUp || runtime.RecoveryState == RecoveryState.Recovering)
-        {
-            return WatchState.Recovering;
-        }
 
-        if (runtime.Current is { } instance)
-        {
-            return instance.State == WatchInstanceState.Faulted
-                ? WatchState.Faulted
-                : instance.CatchUp.State;
-        }
-
-        if (runtime.RefusedStartFault is not null)
-        {
-            return WatchState.Faulted;
-        }
-
-        return runtime.WatchRequested ? WatchState.CatchingUp : WatchState.NotStarted;
-    }
 
     /// <summary>
     ///     The task a wait on the drive follows: the fault of a lost catch-up being retried, the

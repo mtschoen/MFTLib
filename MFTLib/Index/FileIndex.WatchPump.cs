@@ -102,7 +102,7 @@ public sealed partial class FileIndex
         try
         {
             Hooks.BeforeWatchChanged?.Invoke(runtime.Drive);
-            RaiseChanged(changes);
+            runtime.RaiseChanged(changes);
         }
         catch (Exception exception)
         {
@@ -138,7 +138,7 @@ public sealed partial class FileIndex
 
         if (first)
         {
-            RaiseWatchFaulted(new WatchFault(WatchFaultKind.Subscriber, runtime.Drive, exception));
+            runtime.RaiseWatchFaulted(new WatchFault(WatchFaultKind.Subscriber, runtime.Drive, exception));
         }
     }
 
@@ -154,11 +154,11 @@ public sealed partial class FileIndex
                     runtime.RecoveryState = RecoveryState.None;
                 }
 
-                NoteWatchStateLocked(runtime);
+                runtime.NoteWatchStateLocked();
             }
         }
 
-        RaiseWatchStateChanged(runtime);
+        runtime.RaiseWatchStateChanged();
     }
 
     /// <summary>
@@ -206,7 +206,7 @@ public sealed partial class FileIndex
                     }
                 }
 
-                NoteWatchStateLocked(runtime, reported);
+                runtime.NoteWatchStateLocked(reported);
             }
         }
 
@@ -235,37 +235,13 @@ public sealed partial class FileIndex
             WatchCatchUpSlot.ReleaseFault(faultedWaiter, fault.Exception);
 
             // Delivers what the settlement noted even when the checkpoint check threw.
-            RaiseWatchStateChanged(runtime);
+            runtime.RaiseWatchStateChanged();
         }
 
-        RaiseWatchFaulted(reported);
+        runtime.RaiseWatchFaulted(reported);
         if (recovery is not null)
         {
             StartRecovery(runtime, recovery);
-        }
-    }
-
-    void RaiseWatchFaulted(WatchFault fault)
-    {
-        var runtime = GetDriveRuntime(fault.Drive);
-        RaiseWatchStateChanged(runtime);
-        try
-        {
-            if (WatchFaulted is { } subscribers)
-            {
-                lock (runtime.FaultDeliveryLock)
-                {
-                    DeliverToEach(subscribers, fault);
-                }
-            }
-        }
-        catch (Exception exception)
-        {
-            // A fault reporter that throws cannot safely report its own failure. The original
-            // fault remains available through StopWatchingAsync. Discarded through the variable
-            // rather than an empty body, which is this repository's idiom for a deliberate
-            // swallow and what keeps RCS1075 honest here.
-            _ = exception;
         }
     }
 }
