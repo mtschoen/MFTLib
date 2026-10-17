@@ -1,4 +1,4 @@
-using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SampleProgram.Direct;
@@ -8,9 +8,29 @@ namespace MFTLib.Tests;
 // The heads-up dialog before the elevated relaunch (a Direct local scan). The dialog and the clock are scripted:
 // each stubbed dialog answers after a chosen amount of fake time, so no test sleeps or reads the real clock.
 [TestClass]
+[DoNotParallelize]
 public partial class SampleHostElevationNoticeTests
 {
-    const string ProcessPath = @"C:\tools\SampleProgram.Watch.exe";
+    string _directory = null!;
+    string? _previousUnattended;
+
+    [TestInitialize]
+    public void SetUp()
+    {
+        _directory = Directory.CreateTempSubdirectory("notice-tests-").FullName;
+        _previousUnattended = Environment.GetEnvironmentVariable(SampleHost.UnattendedVariableName);
+        Environment.SetEnvironmentVariable(SampleHost.UnattendedVariableName, null);
+    }
+
+    [TestCleanup]
+    public void TearDown()
+    {
+        Environment.SetEnvironmentVariable(SampleHost.UnattendedVariableName, _previousUnattended);
+        Directory.Delete(_directory, true);
+    }
+
+    static int RunElevation(SampleHost scanner, string[]? arguments = null) =>
+        scanner.RunWithElevation(arguments ?? ["scan", "C"], ElevationNeed.SelfElevate, () => 0);
 
     /// <summary>
     ///     Makes the dialog answer with an OK after a deliberate pause, so a scanner that reaches it neither shows
@@ -18,9 +38,7 @@ public partial class SampleHostElevationNoticeTests
     /// </summary>
     internal static void AcknowledgeDeliberately(SampleHost scanner)
     {
-        var clock = new FakeTimeProvider();
-        scanner._timeProvider = clock;
-        scanner._getEnvironmentVariable = _ => null;
+        var clock = (FakeTimeProvider)scanner._timeProvider;
         scanner._messageBeep = _ => true;
         scanner._messageBox = (_, _, _, _) =>
         {
@@ -35,7 +53,7 @@ public partial class SampleHostElevationNoticeTests
         var events = new List<string>();
         var scanner = Scanner(new List<string>(), events, [Answer(SampleHost.MessageBoxResultOk, 2)]);
 
-        var result = scanner.Run(["scan", "C"]);
+        var result = RunElevation(scanner);
 
         Assert.AreEqual(0, result);
         CollectionAssert.AreEqual(new[] { "dialog", "elevate" }, events);
@@ -48,12 +66,12 @@ public partial class SampleHostElevationNoticeTests
         var events = new List<string>();
         var scanner = Scanner(lines, events, [Answer(SampleHost.MessageBoxResultCancel, 2)]);
 
-        var result = scanner.Run(["scan", "C"]);
+        var result = RunElevation(scanner);
 
         Assert.AreEqual(1, result);
         CollectionAssert.AreEqual(new[] { "dialog" }, events);
-        Assert.IsTrue(lines.Any(line => line.Contains("AUTOMATIC ELEVATION FAILED", StringComparison.Ordinal) || line.Contains("AUTOMATIC ELEVATION FAILED")));
-        Assert.IsTrue(lines.Any(line => line.Contains(ProcessPath, StringComparison.Ordinal) || line.Contains(ProcessPath)));
+        Assert.IsTrue(lines.Any(line => line.Contains("AUTOMATIC ELEVATION FAILED", StringComparison.Ordinal)));
+        Assert.IsTrue(lines.Any(line => line.Contains(Environment.ProcessPath!, StringComparison.Ordinal)));
     }
 
     [TestMethod]
@@ -67,7 +85,7 @@ public partial class SampleHostElevationNoticeTests
             [Answer(SampleHost.MessageBoxResultOk, 0.2), Answer(SampleHost.MessageBoxResultOk, 3)],
             messages);
 
-        var result = scanner.Run(["scan", "C"]);
+        var result = RunElevation(scanner);
 
         Assert.AreEqual(0, result);
         CollectionAssert.AreEqual(new[] { "dialog", "dialog", "elevate" }, events);
@@ -84,7 +102,7 @@ public partial class SampleHostElevationNoticeTests
             events,
             [Answer(SampleHost.MessageBoxResultCancel, 0.2), Answer(SampleHost.MessageBoxResultOk, 3)]);
 
-        var result = scanner.Run(["scan", "C"]);
+        var result = RunElevation(scanner);
 
         Assert.AreEqual(0, result);
         CollectionAssert.AreEqual(new[] { "dialog", "dialog", "elevate" }, events);
@@ -97,7 +115,7 @@ public partial class SampleHostElevationNoticeTests
         var scanner = Scanner(
             new List<string>(), events, [Answer(SampleHost.MessageBoxResultOk, SampleHost.AccidentalDismissalInterval.TotalSeconds)]);
 
-        scanner.Run(["scan", "C"]);
+        RunElevation(scanner);
 
         CollectionAssert.AreEqual(new[] { "dialog", "elevate" }, events);
     }
@@ -109,7 +127,7 @@ public partial class SampleHostElevationNoticeTests
         var events = new List<string>();
         var scanner = Scanner(lines, events, [Answer(0, 0)]);
 
-        var result = scanner.Run(["scan", "C"]);
+        var result = RunElevation(scanner);
 
         Assert.AreEqual(1, result);
         CollectionAssert.AreEqual(new[] { "dialog" }, events);
@@ -122,11 +140,8 @@ public partial class SampleHostElevationNoticeTests
         var events = new List<string>();
         var scanner = Scanner(new List<string>(), events, []);
         scanner._isElevated = () => true;
-        scanner._acrtIobFunc = _ => IntPtr.Zero;
-        scanner._wFreopen = (_, _, _) => IntPtr.Zero;
-        scanner._createSource = _ => throw new IOException("no scan in this test");
 
-        scanner.Run(["scan", "T"]);
+        RunElevation(scanner, ["scan", "T"]);
 
         CollectionAssert.AreEqual(Array.Empty<string>(), events);
     }
@@ -138,7 +153,7 @@ public partial class SampleHostElevationNoticeTests
         var scanner = Scanner(new List<string>(), events, []);
         scanner._canSelfElevate = () => false;
 
-        var result = scanner.Run(["scan", "C"]);
+        var result = RunElevation(scanner);
 
         Assert.AreEqual(1, result);
         CollectionAssert.AreEqual(Array.Empty<string>(), events);
@@ -152,16 +167,11 @@ public partial class SampleHostElevationNoticeTests
         uint? type = null;
         uint? beep = null;
         var clock = new FakeTimeProvider();
-        var scanner = new SampleHost
+        var scanner = new SampleHost(TextWriter.Null, TextReader.Null, _directory, clock)
         {
-            _isWindows = () => true,
             _isElevated = () => false,
             _canSelfElevate = () => true,
             _tryRunElevated = (_, _) => true,
-            _getProcessPath = () => ProcessPath,
-            _writeLine = _ => { },
-            _timeProvider = clock,
-            _getEnvironmentVariable = _ => null,
             _messageBeep = sound =>
             {
                 beep = sound;
@@ -177,7 +187,7 @@ public partial class SampleHostElevationNoticeTests
             }
         };
 
-        scanner.Run(["search", "C", "--name", "", "--under", "a b&c"]);
+        RunElevation(scanner, ["search", "C", "--name", "", "--under", "a b&c"]);
 
         Assert.AreEqual(SampleHost.MessageBeepIconExclamation, beep);
         Assert.IsTrue(title!.Contains("SampleProgram", StringComparison.Ordinal));
@@ -186,7 +196,7 @@ public partial class SampleHostElevationNoticeTests
         Assert.AreEqual(expectedFlags, type);
         Assert.IsTrue(text!.Contains("UAC", StringComparison.Ordinal));
         Assert.IsTrue(text.Contains("administrator rights", StringComparison.Ordinal));
-        Assert.IsTrue(text.Contains($"Executable: {ProcessPath}", StringComparison.Ordinal));
+        Assert.IsTrue(text.Contains($"Executable: {Environment.ProcessPath}", StringComparison.Ordinal));
         Assert.IsTrue(text.Contains("Arguments (6)", StringComparison.Ordinal));
         Assert.IsTrue(text.Contains("  search", StringComparison.Ordinal));
         Assert.IsTrue(text.Contains("  <empty>", StringComparison.Ordinal));
@@ -199,9 +209,8 @@ public partial class SampleHostElevationNoticeTests
         var lines = new List<string>();
         var events = new List<string>();
         var scanner = Scanner(lines, events, []);
-        var clock = new FakeTimeProvider();
+        var clock = (FakeTimeProvider)scanner._timeProvider;
         var neverAnswered = new TaskCompletionSource();
-        scanner._timeProvider = clock;
         scanner._messageBox = (_, _, _, _) =>
         {
             events.Add("dialog");
@@ -215,7 +224,7 @@ public partial class SampleHostElevationNoticeTests
         int result;
         try
         {
-            result = scanner.Run(["scan", "C"]);
+            result = RunElevation(scanner);
         }
         finally
         {
@@ -231,12 +240,12 @@ public partial class SampleHostElevationNoticeTests
     [TestMethod]
     public void Run_NotElevated_Unattended_SkipsTheDialogAndElevationAndPrintsTheFallback()
     {
+        Environment.SetEnvironmentVariable(SampleHost.UnattendedVariableName, "1");
         var lines = new List<string>();
         var events = new List<string>();
         var scanner = Scanner(lines, events, []);
-        scanner._getEnvironmentVariable = Unattended;
 
-        var result = scanner.Run(["scan", "C"]);
+        var result = RunElevation(scanner);
 
         Assert.AreEqual(1, result);
         CollectionAssert.AreEqual(Array.Empty<string>(), events);
@@ -248,12 +257,12 @@ public partial class SampleHostElevationNoticeTests
     [TestMethod]
     public void Run_LocalScan_Unattended_NeverScans()
     {
+        Environment.SetEnvironmentVariable(SampleHost.UnattendedVariableName, "1");
         var lines = new List<string>();
         var scanner = Scanner(lines, [], []);
-        scanner._getEnvironmentVariable = Unattended;
-        scanner._createSource = _ => throw new AssertFailedException("An unattended local scan must not run.");
 
-        var result = scanner.Run(["scan", "C"]);
+        var result = scanner.RunWithElevation(["scan", "C"], ElevationNeed.SelfElevate, () =>
+            throw new AssertFailedException("An unattended local scan must not run."));
 
         Assert.AreEqual(1, result);
         Assert.IsTrue(lines.Any(line => line.Contains("Running unattended")));
@@ -266,11 +275,11 @@ public partial class SampleHostElevationNoticeTests
     [DataRow("true")]
     public void Run_NotElevated_SwitchNotSetToOne_ShowsTheDialog(string? value)
     {
+        Environment.SetEnvironmentVariable(SampleHost.UnattendedVariableName, value);
         var events = new List<string>();
         var scanner = Scanner(new List<string>(), events, [Answer(SampleHost.MessageBoxResultOk, 2)]);
-        scanner._getEnvironmentVariable = _ => value;
 
-        scanner.Run(["scan", "C"]);
+        RunElevation(scanner);
 
         CollectionAssert.AreEqual(new[] { "dialog", "elevate" }, events);
     }
@@ -278,46 +287,38 @@ public partial class SampleHostElevationNoticeTests
     [TestMethod]
     public void Run_Elevated_IgnoresTheUnattendedSwitch()
     {
+        Environment.SetEnvironmentVariable(SampleHost.UnattendedVariableName, "1");
         var lines = new List<string>();
         var scanner = Scanner(lines, [], []);
         scanner._isElevated = () => true;
-        scanner._acrtIobFunc = _ => IntPtr.Zero;
-        scanner._wFreopen = (_, _, _) => IntPtr.Zero;
-        scanner._getEnvironmentVariable = Unattended;
-        scanner._createSource = _ => throw new IOException("no scan in this test");
 
-        var result = scanner.Run(["scan", "T"]);
+        var result = scanner.RunWithElevation(["scan", "T"], ElevationNeed.SelfElevate, () =>
+            throw new IOException("the scan was attempted"));
 
         Assert.AreEqual(1, result, "The scan was attempted and failed; the switch changed nothing.");
         Assert.IsFalse(lines.Any(line => line.Contains("Running unattended")));
     }
 
-    static string? Unattended(string name)
-    {
-        return name == SampleHost.UnattendedVariableName ? "1" : null;
-    }
-
     [TestMethod]
     public void Run_LocalScan_UnattendedButAlreadyElevated_ScansAsUsual()
     {
+        Environment.SetEnvironmentVariable(SampleHost.UnattendedVariableName, "1");
         var lines = new List<string>();
         var scanner = Scanner(lines, [], []);
         scanner._isElevated = () => true;
-        scanner._acrtIobFunc = _ => IntPtr.Zero;
-        scanner._wFreopen = (_, _, _) => IntPtr.Zero;
-        scanner._getEnvironmentVariable = Unattended;
-        scanner._createSource = _ => throw new IOException("the scan was attempted");
 
-        var result = scanner.Run(["scan", "C"]);
+        var result = scanner.RunWithElevation(["scan", "C"], ElevationNeed.SelfElevate, () =>
+            throw new IOException("the scan was attempted"));
 
         Assert.AreEqual(1, result);
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Error: ", StringComparison.Ordinal) && line.Contains("the scan was attempted")));
+        var report = File.ReadAllText(scanner.OutputLogPath);
+        Assert.IsTrue(report.Contains("Error: IOException: the scan was attempted"));
         Assert.IsFalse(lines.Any(line => line.Contains("Running unattended")));
     }
 
     static (int Result, double SecondsToAnswer) Answer(int result, double secondsToAnswer) => (result, secondsToAnswer);
 
-    static SampleHost Scanner(
+    SampleHost Scanner(
         List<string> lines,
         List<string> events,
         (int Result, double SecondsToAnswer)[] answers,
@@ -326,16 +327,10 @@ public partial class SampleHostElevationNoticeTests
         var clock = new FakeTimeProvider();
         var next = 0;
         // The scanner of a run that must itself be elevated.
-        return new SampleHost
+        return new SampleHost(new LineCollectingWriter(lines), TextReader.Null, _directory, clock)
         {
-            _isWindows = () => true,
-            _resolveDrive = letter => new IndexedDrive(char.ToUpperInvariant(letter[0]), Path.GetTempPath(), 1),
             _isElevated = () => false,
             _canSelfElevate = () => true,
-            _getProcessPath = () => ProcessPath,
-            _writeLine = lines.Add,
-            _timeProvider = clock,
-            _getEnvironmentVariable = _ => null,
             _messageBeep = _ => true,
             _messageBox = (_, text, _, _) =>
             {

@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
+using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SampleProgram.Watch;
 
@@ -56,21 +57,24 @@ public class WatchVerbTests
         });
         var lines = new List<string>();
         var seen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var host = HostOver(handle, line =>
+        var clock = new AutoAdvanceClock(TimeSpan.FromSeconds(30), seen.Task);
+        var host = HostOver(line =>
         {
             lock (lines)
             {
                 lines.Add(line);
             }
 
-            if (line.StartsWith("  Created:", StringComparison.Ordinal))
+            if (line.StartsWith("  Created: ", StringComparison.Ordinal))
             {
                 seen.TrySetResult();
             }
-        });
-        host._delay = (_, cancellationToken) => seen.Task.WaitAsync(cancellationToken);
+        }, clock);
 
-        var result = host.Run(["watch", "X", "--seconds", "30"]);
+        var sessionLaunch = Task.FromResult(handle);
+        var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
+        var cacheDir = Path.Combine(_directory, "cache");
+        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { CacheDirectory = cacheDir, Seconds = 30 }, session, FixtureDrive, CancellationToken.None);
 
         Assert.AreEqual(0, result);
         Assert.IsTrue(lines.Any(line => line.StartsWith("  watch X: CaughtUp", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
@@ -89,8 +93,12 @@ public class WatchVerbTests
     {
         await using var handle = BrokerTestHarness.StartInProcess(Volumes());
         var lines = new List<string>();
+        var host = HostOver(lines.Add);
+        var sessionLaunch = Task.FromResult(handle);
+        var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
+        var cacheDir = Path.Combine(_directory, "cache");
 
-        var result = HostOver(handle, lines.Add).Run(["rescan", "X"]);
+        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = cacheDir }, session, FixtureDrive, CancellationToken.None);
 
         Assert.AreEqual(0, result);
         Assert.AreEqual(2, lines.Count(line => line.StartsWith("Index holds ", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
@@ -108,8 +116,12 @@ public class WatchVerbTests
             GrowUsnJournal = (_, target) => target
         });
         var lines = new List<string>();
+        var host = HostOver(lines.Add);
+        var sessionLaunch = Task.FromResult(handle);
+        var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
+        var cacheDir = Path.Combine(_directory, "cache");
 
-        var result = HostOver(handle, lines.Add).Run(["journal", "X", "--maximum-size", "9000", "--allocation-delta", "4096"]);
+        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Journal, ["X"]) { CacheDirectory = cacheDir, MaximumSize = 9000, AllocationDelta = 4096 }, session, FixtureDrive, CancellationToken.None);
 
         Assert.AreEqual(0, result);
         Assert.IsTrue(lines.Contains("Journal X: maximum size 9000, allocation delta 4096"), string.Join(Environment.NewLine, lines));
@@ -119,15 +131,18 @@ public class WatchVerbTests
     public async Task Run_CacheAfterACachedOpen_ListsTheBlockAndClearRemovesIt()
     {
         await using var handle = BrokerTestHarness.StartInProcess(Volumes());
-        HostOver(handle, _ => { }).Run(["rescan", "X"]);
         var cacheDirectory = Path.Combine(_directory, "cache");
+        var sessionLaunch = Task.FromResult(handle);
+        var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
+        await HostOver(_ => { }).RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = cacheDirectory }, session, FixtureDrive, CancellationToken.None);
+
         var listing = new List<string>();
         var clearing = new List<string>();
         var afterwards = new List<string>();
 
-        Assert.AreEqual(0, HostOver(handle, listing.Add).Run(["cache", "--cache-directory", cacheDirectory]));
-        Assert.AreEqual(0, HostOver(handle, clearing.Add).Run(["cache", "X", "--cache-directory", cacheDirectory, "--clear"]));
-        Assert.AreEqual(0, HostOver(handle, afterwards.Add).Run(["cache", "--cache-directory", cacheDirectory]));
+        Assert.AreEqual(0, HostOver(listing.Add).Run(["cache", "--cache-directory", cacheDirectory]));
+        Assert.AreEqual(0, HostOver(clearing.Add).Run(["cache", "X", "--cache-directory", cacheDirectory, "--clear"]));
+        Assert.AreEqual(0, HostOver(afterwards.Add).Run(["cache", "--cache-directory", cacheDirectory]));
 
         Assert.AreEqual(1, listing.Count(line => line.StartsWith("X: ", StringComparison.Ordinal)), string.Join(Environment.NewLine, listing));
         Assert.IsTrue(listing.Any(line => line.StartsWith("X: ", StringComparison.Ordinal) && line.Contains(", policy policy-", StringComparison.Ordinal)), "The block lives in its policy folder and the listing names it.");
@@ -143,14 +158,18 @@ public class WatchVerbTests
     {
         await using (var handle = BrokerTestHarness.StartInProcess(Volumes()))
         {
-            Assert.AreEqual(0, HostOver(handle, _ => { }).Run(["rescan", "X"]));
+            var sLaunch = Task.FromResult(handle);
+            var s = BrokerTestHarness.CreateSession(_ => sLaunch);
+            Assert.AreEqual(0, await HostOver(_ => { }).RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = Path.Combine(_directory, "cache") }, s, FixtureDrive, CancellationToken.None));
         }
 
         using var journal = JournalIsolation.OverrideJournalWindow(_ => new SyntheticJournalWindow(8, 0, 2000, 4096, 8192));
         await using var replacement = BrokerTestHarness.StartInProcess(Volumes());
         var lines = new List<string>();
+        var replacementSessionLaunch = Task.FromResult(replacement);
+        var replacementSession = BrokerTestHarness.CreateSession(_ => replacementSessionLaunch);
 
-        Assert.AreEqual(0, HostOver(replacement, lines.Add).Run(["rescan", "X"]));
+        Assert.AreEqual(0, await HostOver(lines.Add).RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = Path.Combine(_directory, "cache") }, replacementSession, FixtureDrive, CancellationToken.None));
 
         Assert.IsTrue(lines.Contains("Journal growth target unavailable: CheckpointNotTrimmed"), string.Join(Environment.NewLine, lines));
     }
@@ -158,38 +177,37 @@ public class WatchVerbTests
     [TestMethod]
     public void Run_ElevationStatus_ReportsTheProcessWithoutLaunchingAnything()
     {
+        using var attended = new UnattendedEnvironmentScope(null);
         var lines = new List<string>();
-        var host = new SampleHost
+        var host = new SampleHost(new LineCollectingWriter(lines), TextReader.Null)
         {
             _isElevated = () => false,
             _canSelfElevate = () => true,
-            _getProcessPath = () => "tool.exe",
-            _getEnvironmentVariable = _ => null,
-            _createBrokerSession = () => throw new AssertFailedException("No broker may launch."),
-            _writeLine = lines.Add
         };
 
         var result = host.Run(["elevation-status"]);
 
         Assert.AreEqual(0, result);
-        Assert.IsTrue(lines.Contains("Process: tool.exe"));
+        Assert.IsTrue(lines.Contains($"Process: {Environment.ProcessPath}"));
         Assert.IsTrue(lines.Contains("Elevated: False; can self-elevate: True; unattended: False"), string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
     public async Task Run_CachedModes_UseTheSampleProfileRootForProductionAndInventory()
     {
+        var root = SampleHost.ResolveCacheDirectory(new WatchArguments(WatchVerb.Rescan, ["X"]), _directory);
+        Assert.AreEqual(Path.Combine(_directory, ".MFTLib.Sample.Watch", "cache"), root);
+
         await using var handle = BrokerTestHarness.StartInProcess(Volumes());
-        var host = HostOver(handle, _ => { });
-        host._cacheDirectory = null;
-        host._getUserProfileDirectory = () => _directory;
-        Assert.AreEqual(0, host.Run(["rescan", "X"]));
         var lines = new List<string>();
-        host._writeLine = lines.Add;
+        var host = HostOver(lines.Add);
+        var sessionLaunch = Task.FromResult(handle);
+        var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
+        Assert.AreEqual(0, await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = root }, session, FixtureDrive, CancellationToken.None));
+        lines.Clear();
 
-        Assert.AreEqual(0, host.Run(["cache", "--clear"]));
+        Assert.AreEqual(0, host.Run(["cache", "--clear", "--cache-directory", root]));
 
-        var root = Path.Combine(_directory, ".MFTLib.Sample.Watch", "cache");
         Assert.IsTrue(Directory.Exists(root));
         Assert.IsTrue(lines.Any(line => line.StartsWith("X: ", StringComparison.Ordinal) && line.Contains(root, StringComparison.Ordinal)));
         Assert.IsTrue(lines.Any(line => line.Trim() == "X: Deleted"));
@@ -200,7 +218,7 @@ public class WatchVerbTests
             "SampleProgram.Watch/SampleHost.Verbs.cs",
             "SampleProgram.Watch/SampleHost.Broker.cs"
         }.Select(RepositoryFiles.Read));
-        Assert.AreEqual(1, Regex.Count(hostSource, @"\bResolveCacheDirectory\(parsed\)"),
+        Assert.AreEqual(1, Regex.Count(hostSource, @"\bResolveCacheDirectory\(parsed, profileDirectory\)"),
             "Run resolves the cache root; cache and broker verbs consume that value.");
     }
 
@@ -210,12 +228,13 @@ public class WatchVerbTests
     [DataRow(" \t")]
     public void Run_CacheWithoutAProfile_RequiresAnExplicitDirectory(string? profile)
     {
-        var lines = new List<string>();
-        var host = new SampleHost { _getUserProfileDirectory = () => profile, _writeLine = lines.Add };
+        var exception = Assert.ThrowsException<ArgumentException>(() =>
+            SampleHost.ResolveCacheDirectory(new WatchArguments(WatchVerb.Cache, []), profile));
+        Assert.IsTrue(exception.Message.Contains("--cache-directory", StringComparison.Ordinal));
 
-        Assert.AreEqual(2, host.Run(["cache"]));
-        Assert.IsTrue(lines.Any(line => line.Contains("--cache-directory", StringComparison.Ordinal)));
-        Assert.AreEqual(0, host.Run(["cache", "--cache-directory", Path.Combine(_directory, "explicit")]));
+        var explicitDir = Path.Combine(_directory, "explicit");
+        var resolved = SampleHost.ResolveCacheDirectory(new WatchArguments(WatchVerb.Cache, []) { CacheDirectory = explicitDir }, profile);
+        Assert.AreEqual(explicitDir, resolved);
     }
 
     [TestMethod]
@@ -228,15 +247,13 @@ public class WatchVerbTests
     }
 
     // The run is attended and unelevated, so the heads-up dialog precedes the broker launch.
-    SampleHost HostOver(InProcessBrokerHandle handle, Action<string> writeLine)
+    IndexedDrive FixtureDrive(string letter) => new(letter[0], _directory, 4242);
+
+    static SampleHost HostOver(Action<string> writeLine, TimeProvider? timeProvider = null)
     {
-        var host = new SampleHost
+        var host = new SampleHost(new LineCollectingWriter([], writeLine), TextReader.Null, timeProvider ?? new FakeTimeProvider())
         {
             _isElevated = () => false,
-            _createBrokerSession = () => BrokerTestHarness.CreateSession(_ => Task.FromResult(handle)),
-            _resolveDrive = letter => new IndexedDrive(char.ToUpperInvariant(letter[0]), _directory, 4242),
-            _cacheDirectory = Path.Combine(_directory, "cache"),
-            _writeLine = writeLine
         };
         WatchNoticeSupport.AcknowledgeDeliberately(host);
         return host;

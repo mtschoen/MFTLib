@@ -24,15 +24,15 @@ partial class SampleHost
     void WriteStatus(DriveStatus status)
     {
         var block = RequireReadyBlock(status);
-        _writeLine($"Index holds {block.LiveRowCount} rows; {block.SkippedRecordCount} records skipped");
-        _writeLine(status.Watch.CheckpointLoss is { } loss
+        _output.WriteLine($"Index holds {block.LiveRowCount} rows; {block.SkippedRecordCount} records skipped");
+        _output.WriteLine(status.Watch.CheckpointLoss is { } loss
             ? $"Catch-up lost: {loss.Cause}"
             : $"Catch-up held; watch supported: {status.Watch.IsSupported}");
     }
 
     // Reports each scan phase when it starts and again each time another ProgressRowInterval rows were written within it,
     // on the reporting thread so the output keeps its order. The interval counts rows, never time.
-    internal sealed class PhaseReporter(Action<string> writeLine) : IProgress<IndexScanProgress>
+    internal sealed class PhaseReporter(TextWriter output) : IProgress<IndexScanProgress>
     {
         internal const uint ProgressRowInterval = 250_000;
 
@@ -49,7 +49,7 @@ partial class SampleHost
 
             _lastPhase = value.Phase;
             _lastReportedRows = value.WrittenRowCount;
-            writeLine($"  {value.Drive}: {value.Phase}: {value.WrittenRowCount} rows{(value.ExpectedRowCount is { } total ? $" of {total}" : string.Empty)}{(value.Outcome is { } outcome ? $" ({outcome})" : string.Empty)}{(value.CurrentDirectory is { } directory ? $" in {directory}" : string.Empty)}");
+            output.WriteLine($"  {value.Drive}: {value.Phase}: {value.WrittenRowCount} rows{(value.ExpectedRowCount is { } total ? $" of {total}" : string.Empty)}{(value.Outcome is { } outcome ? $" ({outcome})" : string.Empty)}{(value.CurrentDirectory is { } directory ? $" in {directory}" : string.Empty)}");
         }
     }
 }

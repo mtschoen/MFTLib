@@ -9,9 +9,7 @@ internal static class WatchNoticeSupport
     /// <summary>Makes the dialog answer with an OK after a deliberate pause, so a Watch run never shows a real window.</summary>
     internal static void AcknowledgeDeliberately(SampleHost host)
     {
-        var clock = new FakeTimeProvider();
-        host._timeProvider = clock;
-        host._getEnvironmentVariable = _ => null;
+        var clock = (FakeTimeProvider)host._timeProvider;
         host._messageBeep = _ => true;
         host._messageBox = (_, _, _, _) =>
         {

@@ -6,13 +6,11 @@ namespace SampleProgram.Watch;
 
 partial class SampleHost
 {
-    internal Func<TimeSpan, CancellationToken, Task> _delay = Task.Delay;
-
     void WriteResults(string operation, IEnumerable<DriveOperationResult> results)
     {
         foreach (var result in results)
         {
-            _writeLine($"  {operation} {result.Drive.ToString()}: {result.Outcome}{(result.Failure is { } failure ? $" ({failure.Message})" : string.Empty)}");
+            _output.WriteLine($"  {operation} {result.Drive.ToString()}: {result.Outcome}{(result.Failure is { } failure ? $" ({failure.Message})" : string.Empty)}");
         }
     }
 
@@ -21,14 +19,14 @@ partial class SampleHost
     {
         WriteStatus(status);
         var block = RequireReadyBlock(status);
-        _writeLine($"Cache {status.Drive}: block {block.Source}, slot {block.CacheSlot?.ToString() ?? "none"}, scanned {block.ScanTimestamp:u}, capacity exhausted {block.IsCapacityExhausted}");
-        _writeLine($"Watch: {status.Watch.State} v{status.Watch.StateVersion}, requested {status.Watch.IsRequested}; recovery stopped {status.Watch.IsRecoveryStopped}; denied subtrees {block.AccessDeniedSubtreeCount}{(status.Watch.FailureMessage is { } failure ? $"; {failure}" : string.Empty)}");
+        _output.WriteLine($"Cache {status.Drive}: block {block.Source}, slot {block.CacheSlot?.ToString() ?? "none"}, scanned {block.ScanTimestamp:u}, capacity exhausted {block.IsCapacityExhausted}");
+        _output.WriteLine($"Watch: {status.Watch.State} v{status.Watch.StateVersion}, requested {status.Watch.IsRequested}; recovery stopped {status.Watch.IsRecoveryStopped}; denied subtrees {block.AccessDeniedSubtreeCount}{(status.Watch.FailureMessage is { } failure ? $"; {failure}" : string.Empty)}");
         if (status.Watch.CheckpointLoss is { } loss)
         {
-            _writeLine($"Checkpoint lost on {loss.Drive}: {loss.Cause} during {loss.DetectedDuring}; {loss.BytesBehind} bytes behind, journal {loss.JournalSettings.MaximumSize}/{loss.JournalSettings.AllocationDelta}, {loss.SizeThatWouldHaveRetained} would have kept it");
+            _output.WriteLine($"Checkpoint lost on {loss.Drive}: {loss.Cause} during {loss.DetectedDuring}; {loss.BytesBehind} bytes behind, journal {loss.JournalSettings.MaximumSize}/{loss.JournalSettings.AllocationDelta}, {loss.SizeThatWouldHaveRetained} would have kept it");
             if (loss.GrowthTargetRefusalReason is { } reason)
             {
-                _writeLine($"Journal growth target unavailable: {reason}");
+                _output.WriteLine($"Journal growth target unavailable: {reason}");
             }
         }
     }
@@ -41,15 +39,14 @@ partial class SampleHost
             ? await session.GrowUsnJournalAsync(letter,
                 new UsnJournalSettings { MaximumSize = maximum, AllocationDelta = delta }, cancellationToken).ConfigureAwait(false)
             : index.QueryUsnJournalSettings(letter);
-        _writeLine($"Journal {letter}: maximum size {settings.MaximumSize}, allocation delta {settings.AllocationDelta}");
+        _output.WriteLine($"Journal {letter}: maximum size {settings.MaximumSize}, allocation delta {settings.AllocationDelta}");
     }
 
     // Lists the cached blocks of the drives named (all when none), and removes them with --clear. Each scan policy keeps its
     // blocks in its own policy-* folder under the cache directory, so the root and every such folder are covered.
     int RunCache(WatchArguments parsed)
     {
-        // aislop-ignore-next-line ai-slop/csharp-null-forgiving -- Run resolves the cache root before entering cached verbs
-        var root = parsed.CacheDirectory!;
+        var root = parsed.CacheDirectory ?? string.Empty;
         var letters = parsed.Drives.Count == 0 ? null : parsed.Drives.Select(drive => new DriveKey(drive[0])).ToArray();
         IEnumerable<string> policies = Directory.Exists(root)
             ? Directory.EnumerateDirectories(root, WatchArguments.PolicyDirectoryPrefix + "*").Order(StringComparer.Ordinal)
@@ -57,16 +54,16 @@ partial class SampleHost
         foreach (var directory in policies.Prepend(root))
         {
             var origin = directory == root ? "root" : Path.GetFileName(directory);
-            foreach (var block in CacheDirectory.InspectCached(directory, letters, rejection => _writeLine($"  rejected {rejection.Path}: {rejection.Reason}")))
+            foreach (var block in CacheDirectory.InspectCached(directory, letters, rejection => _output.WriteLine($"  rejected {rejection.Path}: {rejection.Reason}")))
             {
-                _writeLine($"{block.File.Drive}: {block.File.Path} (serial {block.File.VolumeSerial}, root {block.RootDirectory}), {block.Availability}{(block.Validation is { } reason ? $" ({reason})" : "")}, {block.File.Size} bytes, {block.ProducerKind}, tag {block.CacheTag}, written {block.File.LastWriteTime:u}, policy {origin}");
+                _output.WriteLine($"{block.File.Drive}: {block.File.Path} (serial {block.File.VolumeSerial}, root {block.RootDirectory}), {block.Availability}{(block.Validation is { } reason ? $" ({reason})" : "")}, {block.File.Size} bytes, {block.ProducerKind}, tag {block.CacheTag}, written {block.File.LastWriteTime:u}, policy {origin}");
             }
 
             if (parsed.Clear)
             {
                 foreach (var result in CacheDirectory.DeleteCached(directory, letters))
                 {
-                    _writeLine($"  {result.File.Drive}: {result.Outcome}{(result.FailureReason is { } reason ? $" ({reason})" : string.Empty)}");
+                    _output.WriteLine($"  {result.File.Drive}: {result.Outcome}{(result.FailureReason is { } reason ? $" ({reason})" : string.Empty)}");
                 }
             }
         }
@@ -76,8 +73,8 @@ partial class SampleHost
 
     int WriteElevationStatus()
     {
-        _writeLine($"Process: {_getProcessPath()}");
-        _writeLine($"Elevated: {_isElevated()}; can self-elevate: {_canSelfElevate()}; unattended: {IsUnattended()}");
+        _output.WriteLine($"Process: {Environment.ProcessPath}");
+        _output.WriteLine($"Elevated: {_isElevated()}; can self-elevate: {_canSelfElevate()}; unattended: {IsUnattended()}");
         return 0;
     }
 }

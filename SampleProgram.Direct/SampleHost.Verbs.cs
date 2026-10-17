@@ -5,9 +5,22 @@ namespace SampleProgram.Direct;
 
 partial class SampleHost
 {
-    async Task RunVerbAsync(DirectArguments parsed, CancellationToken cancellationToken)
+    Task RunVerbAsync(DirectArguments parsed, CancellationToken cancellationToken)
     {
-        await using var index = await OpenIndexAsync(parsed, cancellationToken).ConfigureAwait(false);
+        var source = CreateSourceNative(parsed);
+        var drive = parsed.Source is SourceKind.Dump ? null : ResolveDriveNative(parsed.Drive);
+        return RunSourceAsync(parsed, source, drive, cancellationToken);
+    }
+
+    internal async Task RunSourceAsync(DirectArguments parsed, MftIndexSource source,
+        IndexedDrive? drive, CancellationToken cancellationToken)
+    {
+        await using var index = await OpenIndexAsync(source, drive, cancellationToken).ConfigureAwait(false);
+        WriteVerb(index, parsed, cancellationToken);
+    }
+
+    void WriteVerb(FileIndex index, DirectArguments parsed, CancellationToken cancellationToken)
+    {
         var letter = char.ToUpperInvariant(parsed.Drive[0]);
         switch (parsed.Verb)
         {
@@ -20,8 +33,8 @@ partial class SampleHost
                 break;
             case DirectVerb.Tree:
                 var start = parsed.Path is null ? index.Root(letter, cancellationToken) : Resolve(index, parsed.Path, cancellationToken);
-                _writeLine(start.Path);
-                WriteTree(start.RecordKey.RecordNumber, ChildLookup(_enumerateRows(index, cancellationToken)), 1, parsed.Depth);
+                _output.WriteLine(start.Path);
+                WriteTree(start.RecordKey.RecordNumber, ChildLookup(index.Enumerate(new SearchQuery(null), cancellationToken)), 1, parsed.Depth);
                 break;
             case DirectVerb.Open:
                 OpenFile(Resolve(index, parsed.Path, cancellationToken));
@@ -33,7 +46,7 @@ partial class SampleHost
             case DirectVerb.DuplicateNames:
                 foreach (var group in DuplicateNameSieve.Find(index, cancellationToken).Take(parsed.Count))
                 {
-                    _writeLine($"{group.Name}: {group.Entries.Count} entries, first {group.Entries[0].Path}");
+                    _output.WriteLine($"{group.Name}: {group.Entries.Count} entries, first {group.Entries[0].Path}");
                 }
 
                 break;
@@ -74,9 +87,9 @@ partial class SampleHost
         {
             cancellationToken.ThrowIfCancellationRequested();
             counts.TryGetValue(drive.Drive, out var count);
-            _writeLine($"{drive.Drive.Letter}: {count.Files} live files, {count.Directories} live directories, {count.Deleted} retained deleted rows");
+            _output.WriteLine($"{drive.Drive.Letter}: {count.Files} live files, {count.Directories} live directories, {count.Deleted} retained deleted rows");
             freshness.TryGetValue(drive.Drive, out var seen);
-            _writeLine($"{drive.Drive.Letter}: {seen.UnknownSize} files with unknown size, {seen.UnknownLastWrite} with unknown last-write time, {seen.Hidden} hidden, newest known last write {seen.Newest:u}");
+            _output.WriteLine($"{drive.Drive.Letter}: {seen.UnknownSize} files with unknown size, {seen.UnknownLastWrite} with unknown last-write time, {seen.Hidden} hidden, newest known last write {seen.Newest:u}");
         }
     }
 
@@ -114,11 +127,11 @@ partial class SampleHost
         foreach (var entry in entries)
         {
             var size = entry.IsDirectory ? "<dir>" : entry.IsSizeKnown ? entry.Size.ToString(CultureInfo.InvariantCulture) : "?";
-            _writeLine(parsed.IncludeFreed ? $"{entry.Path}  {size}  deleted={entry.IsDeleted}" : $"{entry.Path}  {size}");
+            _output.WriteLine(parsed.IncludeFreed ? $"{entry.Path}  {size}  deleted={entry.IsDeleted}" : $"{entry.Path}  {size}");
             count++;
         }
 
-        _writeLine($"{count} entries");
+        _output.WriteLine($"{count} entries");
     }
 
     /// <summary>Groups every row under its parent's record number in one pass, so a tree never rescans the drive per directory.</summary>
@@ -152,7 +165,7 @@ partial class SampleHost
 
         foreach (var child in children.OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase))
         {
-            _writeLine($"{new string(' ', level * 2)}{child.Name}{(child.IsDirectory ? "/" : string.Empty)}");
+            _output.WriteLine($"{new string(' ', level * 2)}{child.Name}{(child.IsDirectory ? "/" : string.Empty)}");
             if (child.IsDirectory)
             {
                 WriteTree(child.RecordKey.RecordNumber, lookup, level + 1, depth);
@@ -167,10 +180,10 @@ partial class SampleHost
         var lastWriteTime = entry.IsLastWriteTimeKnown
             ? entry.LastWriteTime.ToString("u", CultureInfo.InvariantCulture)
             : "<unknown>";
-        _writeLine($"{entry.ToString()}: record {key.RecordNumber} on {key.Drive} ({key.ProducerKind}), {entry.Attributes}, modified {lastWriteTime}, parent {entry.Parent?.Path}, valid {entry.IsValid}, disposed {entry.IsDisposed}");
+        _output.WriteLine($"{entry.ToString()}: record {key.RecordNumber} on {key.Drive} ({key.ProducerKind}), {entry.Attributes}, modified {lastWriteTime}, parent {entry.Parent?.Path}, valid {entry.IsValid}, disposed {entry.IsDisposed}");
         using var stream = entry.Open(FileAccess.Read);
         var buffer = new byte[16];
         var read = stream.Read(buffer, 0, buffer.Length);
-        _writeLine($"{stream.Length} bytes, first {read}: {Convert.ToHexString(buffer, 0, read)}");
+        _output.WriteLine($"{stream.Length} bytes, first {read}: {Convert.ToHexString(buffer, 0, read)}");
     }
 }

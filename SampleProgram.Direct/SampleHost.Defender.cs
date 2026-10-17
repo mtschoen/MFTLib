@@ -9,6 +9,8 @@ partial class SampleHost
     internal const string ExcludeDefenderVerb = "exclude-defender";
     internal const string DefenderProcessName = "SampleProgram.Direct.exe";
 
+    internal Func<bool> _isWindows = OperatingSystem.IsWindows;
+
     static bool IsExcludeDefender(string[] arguments)
     {
         return arguments is [var verb] && verb.Equals(ExcludeDefenderVerb, StringComparison.OrdinalIgnoreCase);
@@ -25,23 +27,30 @@ partial class SampleHost
     {
         if (_isElevated())
         {
-            RedirectStdout(OutputLogPath);
+            return RunWithOutputLog(() => ApplyDefenderExclusion(arguments));
         }
-        else if (IsUnattended())
+
+        if (IsUnattended())
         {
-            _writeLine($"Running unattended ({UnattendedVariableName}=1): elevation skipped, no prompt shown.");
-            _writeLine($"Run {ExcludeDefenderVerb} from an ELEVATED terminal to add the Windows Defender exclusion.");
-            return 1;
-        }
-        else if (_isWindows() && !ConfirmElevation(arguments, DefenderReason, DefenderNeed))
-        {
-            _writeLine("Cancelled: no elevation was requested and no Windows Defender exclusion was added.");
+            _output.WriteLine($"Running unattended ({UnattendedVariableName}=1): elevation skipped, no prompt shown.");
+            _output.WriteLine($"Run {ExcludeDefenderVerb} from an ELEVATED terminal to add the Windows Defender exclusion.");
             return 1;
         }
 
+        if (_isWindows() && !ConfirmElevation(arguments, DefenderReason, DefenderNeed))
+        {
+            _output.WriteLine("Cancelled: no elevation was requested and no Windows Defender exclusion was added.");
+            return 1;
+        }
+
+        return ApplyDefenderExclusion(arguments);
+    }
+
+    int ApplyDefenderExclusion(string[] arguments)
+    {
         var applied = ElevationUtilities.TryAddDefenderProcessExclusions(
             [DefenderProcessName], arguments, new HostElevationProvider(this));
-        _writeLine(applied
+        _output.WriteLine(applied
             ? $"Windows Defender process exclusion added: {DefenderProcessName}."
             : "The Windows Defender process exclusion was not added.");
         return applied ? 0 : 1;

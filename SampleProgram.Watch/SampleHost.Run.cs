@@ -1,7 +1,21 @@
+using MFTLib;
+
 namespace SampleProgram.Watch;
 
 partial class SampleHost
 {
+    readonly bool? _interactive;
+
+    internal SampleHost(TextWriter output, TextReader input, TimeProvider? timeProvider = null, bool? interactive = null)
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(input);
+        _output = TextWriter.Synchronized(output);
+        _input = input;
+        _timeProvider = timeProvider ?? TimeProvider.System;
+        _interactive = interactive;
+    }
+
     /// <summary>Runs the command line, reports an escaping failure as one readable line, then holds an attended, self-owned console window open until a key press.</summary>
     internal int RunAndPause(string[] arguments)
     {
@@ -16,12 +30,7 @@ partial class SampleHost
             exitCode = 1;
         }
 
-        if (!IsUnattended() && _ownsConsoleWindow())
-        {
-            _writeLine(PausePrompt);
-            _readKey();
-        }
-
+        PauseBeforeExit(OwnsConsoleWindowNative());
         return exitCode;
     }
 
@@ -29,12 +38,12 @@ partial class SampleHost
     {
         if (!WatchArguments.TryParse(arguments, out var parsed, out var error))
         {
-            _writeLine(error);
-            _writeLine(WatchArguments.Usage);
+            _output.WriteLine(error);
+            _output.WriteLine(WatchArguments.Usage);
             return 2;
         }
 
-        if (!TryChooseDrives(ref parsed))
+        if (!TryChooseDrives(ref parsed, EnumerateDrives()))
         {
             return 1;
         }
@@ -43,11 +52,14 @@ partial class SampleHost
         {
             try
             {
-                parsed = parsed with { CacheDirectory = ResolveCacheDirectory(parsed) };
+                var profileDirectory = parsed.CacheDirectory is null
+                    ? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+                    : null;
+                parsed = parsed with { CacheDirectory = ResolveCacheDirectory(parsed, profileDirectory) };
             }
             catch (ArgumentException exception)
             {
-                _writeLine(exception.Message);
+                _output.WriteLine(exception.Message);
                 return 2;
             }
         }
@@ -64,11 +76,22 @@ partial class SampleHost
 
     int RunBroker(WatchArguments parsed)
     {
+        BrokerSession session;
+        try
+        {
+            session = CreateBrokerSessionNative();
+        }
+        catch (Exception exception)
+        {
+            _output.WriteLine($"Error creating broker session: {exception.Message}");
+            return 1;
+        }
+
         // The console entry point has no synchronization context, so blocking here cannot deadlock.
-        var exitCode = RunThroughBrokerAsync(parsed, CancellationToken.None).GetAwaiter().GetResult();
+        var exitCode = RunThroughBrokerAsync(parsed, session, ResolveDriveNative, CancellationToken.None).GetAwaiter().GetResult();
         if (exitCode == 0)
         {
-            _writeLine($"Completed at {_timeProvider.GetUtcNow():u}");
+            _output.WriteLine($"Completed at {_timeProvider.GetUtcNow():u}");
         }
 
         return exitCode;

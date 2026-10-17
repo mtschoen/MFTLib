@@ -1,5 +1,6 @@
-using Microsoft.Extensions.Time.Testing;
+using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
+using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SampleProgram.Direct;
 
@@ -17,40 +18,59 @@ public class DirectExcludeDefenderTests
     sealed class ConsoleLog
     {
         public int KeyReads;
-        public List<string> Redirects { get; } = [];
         public List<string> Dialogs { get; } = [];
     }
 
+    string _directory = null!;
+    string? _previousUnattended;
+
+    [TestInitialize]
+    public void SetUp()
+    {
+        _directory = Directory.CreateTempSubdirectory("defender-tests-").FullName;
+        _previousUnattended = Environment.GetEnvironmentVariable(SampleHost.UnattendedVariableName);
+        Environment.SetEnvironmentVariable(SampleHost.UnattendedVariableName, null);
+    }
+
+    [TestCleanup]
+    public void TearDown()
+    {
+        Environment.SetEnvironmentVariable(SampleHost.UnattendedVariableName, _previousUnattended);
+        Directory.Delete(_directory, true);
+    }
+
+    sealed class CountingReader(ConsoleLog console) : TextReader
+    {
+        public override int Read()
+        {
+            console.KeyReads++;
+            return 'x';
+        }
+    }
+
     // Every seam the verb can reach is scripted: the dialog answers as chosen, the console is owned by this process.
-    static SampleHost Host(List<string> lines, bool elevated, bool canSelfElevate, bool unattended = false,
+    SampleHost Host(List<string> lines, bool elevated, bool canSelfElevate, bool unattended = false,
         Func<IReadOnlyList<string>, TimeSpan, bool>? tryRunElevated = null, int dialogAnswer = SampleHost.MessageBoxResultOk,
         ConsoleLog? console = null, bool isWindows = true)
     {
         console ??= new ConsoleLog();
+        if (unattended)
+        {
+            Environment.SetEnvironmentVariable(SampleHost.UnattendedVariableName, "1");
+        }
         var clock = new FakeTimeProvider();
-        return new SampleHost
+        return new SampleHost(new LineCollectingWriter(lines), new CountingReader(console), _directory, clock)
         {
             _isWindows = () => isWindows,
             _isElevated = () => elevated,
             _canSelfElevate = () => canSelfElevate,
             _tryRunElevated = tryRunElevated ?? ((_, _) => throw new AssertFailedException("No relaunch expected.")),
-            _getEnvironmentVariable = name => unattended && name == SampleHost.UnattendedVariableName ? "1" : null,
-            _writeLine = lines.Add,
-            _timeProvider = clock,
             _messageBeep = _ => true,
             _messageBox = (_, text, _, _) =>
             {
                 console.Dialogs.Add(text);
                 clock.Advance(SampleHost.AccidentalDismissalInterval);
                 return dialogAnswer;
-            },
-            _ownsConsoleWindow = () => true,
-            _readKey = () => console.KeyReads++,
-            _acrtIobFunc = _ => IntPtr.Zero,
-            _wFreopen = (path, _, _) =>
-            {
-                console.Redirects.Add(path);
-                return IntPtr.Zero;
             }
         };
     }
@@ -63,18 +83,19 @@ public class DirectExcludeDefenderTests
 
         var console = new ConsoleLog();
 
-        var result = Host(lines, elevated: true, canSelfElevate: true, console: console).RunAndPause([SampleHost.ExcludeDefenderVerb]);
+        var host = Host(lines, elevated: true, canSelfElevate: true, console: console);
+        var result = host.RunAndPause([SampleHost.ExcludeDefenderVerb]);
 
         Assert.AreEqual(AppliedExitCode, result);
         Assert.AreEqual(0, console.KeyReads, "The elevated child owns a new console and must not wait for a key.");
-        Assert.AreEqual(1, console.Redirects.Count, "The elevated child writes to output.log like every other elevated run.");
         Assert.AreEqual(0, console.Dialogs.Count, "An already elevated run shows no heads-up.");
+        var log = File.ReadAllText(host.OutputLogPath);
         if (OperatingSystem.IsWindows())
         {
             var launch = scripted.Launches.Single();
             Assert.IsFalse(launch.IsElevated);
             Assert.IsTrue(launch.Script.Contains($"'{SampleHost.DefenderProcessName}'", StringComparison.Ordinal), launch.Script);
-            Assert.IsTrue(lines.Contains($"Windows Defender process exclusion added: {SampleHost.DefenderProcessName}."));
+            StringAssert.Contains(log, $"Windows Defender process exclusion added: {SampleHost.DefenderProcessName}.");
         }
         else
         {
@@ -153,6 +174,12 @@ public class DirectExcludeDefenderTests
     [TestMethod]
     public void Run_NotWindows_ShowsNoHeadsUpAndAddsNothing()
     {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Exercises off-Windows behavior.");
+            return;
+        }
+
         var lines = new List<string>();
         var console = new ConsoleLog();
         using var scripted = DefenderExclusionIsolation.ScriptPowerShell();

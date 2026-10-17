@@ -13,13 +13,20 @@ partial class SampleHost
 {
     internal const string PausePrompt = "Press any key to close this window.";
 
-    internal Func<bool> _ownsConsoleWindow = OwnsConsoleWindowNative;
-    internal Action _readKey = ReadKeyNative;
+    TextWriter _output;
+    readonly TextReader _input;
+
+    internal void PauseBeforeExit(bool ownsWindow)
+    {
+        if (IsUnattended() || !ownsWindow) return;
+        _output.WriteLine(PausePrompt);
+        _input.Read();
+    }
 
     // The type and message of the failure and of everything it wraps, one line each; no stack trace.
     void WriteFailure(string prefix, Exception exception)
     {
-        _writeLine($"{prefix}{exception.GetType().Name}: {exception.Message}");
+        _output.WriteLine($"{prefix}{exception.GetType().Name}: {exception.Message}");
         IEnumerable<Exception> inner = exception is AggregateException aggregate ? aggregate.InnerExceptions : exception.InnerException is { } single ? [single] : [];
         foreach (var cause in inner)
         {
@@ -38,8 +45,6 @@ partial class SampleHost
         var attached = new uint[2];
         return GetConsoleProcessList(attached, (uint)attached.Length) == 1;
     }
-
-    static void ReadKeyNative() => Console.ReadKey(true);
 
     [DllImport("kernel32.dll")]
     static extern uint GetConsoleProcessList(uint[] processList, uint processCount);

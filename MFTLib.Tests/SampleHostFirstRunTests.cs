@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using SampleProgram.Direct;
 using DirectHost = SampleProgram.Direct.SampleHost;
 
 namespace MFTLib.Tests;
@@ -10,70 +11,77 @@ namespace MFTLib.Tests;
 [DoNotParallelize]
 public class SampleHostFirstRunTests
 {
-    [TestMethod]
-    public void RunAndPause_DirectWithNoArguments_PrintsUsageThenHoldsTheWindow()
+    string? _previousUnattended;
+
+    [TestInitialize]
+    public void SetUp()
     {
-        var events = new List<string>();
-        var host = new DirectHost
-        {
-            _getEnvironmentVariable = _ => null,
-            _ownsConsoleWindow = () => true,
-            _readKey = () => events.Add("key"),
-            _writeLine = events.Add
-        };
+        _previousUnattended = Environment.GetEnvironmentVariable(DirectHost.UnattendedVariableName);
+        Environment.SetEnvironmentVariable(DirectHost.UnattendedVariableName, null);
+    }
 
-        var result = host.RunAndPause([]);
-
-        Assert.AreEqual(2, result);
-        var usage = events.FindIndex(line => line.StartsWith("Usage:", StringComparison.Ordinal));
-        var prompt = events.IndexOf(DirectHost.PausePrompt);
-        var key = events.IndexOf("key");
-        Assert.IsTrue(usage >= 0 && usage < prompt && prompt < key, string.Join(Environment.NewLine, events));
-        Assert.AreEqual(events.Count - 1, key, "The key read ends the run.");
+    [TestCleanup]
+    public void TearDown()
+    {
+        Environment.SetEnvironmentVariable(DirectHost.UnattendedVariableName, _previousUnattended);
     }
 
     [TestMethod]
-    public void RunAndPause_AShellOwnedConsole_DoesNotWait()
+    public void Run_OutputIsBorrowedAndStreamsControlPausing()
     {
-        var host = new DirectHost
+        using var output = new StringWriter();
+        using var input = new StringReader("xy");
+        var directory = Directory.CreateTempSubdirectory("sample-stream-").FullName;
+        try
         {
-            _getEnvironmentVariable = _ => null,
-            _ownsConsoleWindow = () => false,
-            _readKey = () => throw new AssertFailedException("A shell run must not wait for a key."),
-            _writeLine = _ => { }
-        };
+            var host = new DirectHost(output, input, directory);
+            host.PauseBeforeExit(ownsWindow: true);
+            StringAssert.Contains(output.ToString(), DirectHost.PausePrompt);
+            Assert.AreEqual('y', (char)input.Read());
+            output.WriteLine("borrowed writer remains open");
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
 
-        Assert.AreEqual(2, host.RunAndPause([]));
+    [TestMethod]
+    public void RunAndPause_DirectWithNoArguments_PrintsUsage()
+    {
+        using var output = new StringWriter();
+        var directory = Directory.CreateTempSubdirectory("sample-first-run-").FullName;
+        try
+        {
+            var host = new DirectHost(output, TextReader.Null, directory);
+            var result = host.RunAndPause([]);
+            Assert.AreEqual(2, result);
+            StringAssert.Contains(output.ToString(), "Usage:");
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
     }
 
     [TestMethod]
     public void RunAndPause_Unattended_DoesNotWaitEvenOnAnOwnedWindow()
     {
-        var host = new DirectHost
+        Environment.SetEnvironmentVariable(DirectHost.UnattendedVariableName, "1");
+        var directory = Directory.CreateTempSubdirectory("sample-first-run-").FullName;
+        try
         {
-            _getEnvironmentVariable = name => name == DirectHost.UnattendedVariableName ? "1" : null,
-            _ownsConsoleWindow = () => throw new AssertFailedException("Unattended runs never ask about the window."),
-            _readKey = () => throw new AssertFailedException("An unattended run must not wait for a key."),
-            _writeLine = _ => { }
-        };
-
-        Assert.AreEqual(2, host.RunAndPause([]));
-    }
-
-    [TestMethod]
-    public void RunAndPause_ParseErrorAndSuccess_BothHoldTheWindowSoTheyReadAlike()
-    {
-        var keys = 0;
-        var host = new DirectHost
+            using var output = new StringWriter();
+            using var input = new StringReader("x");
+            var host = new DirectHost(output, input, directory);
+            Assert.AreEqual(2, host.RunAndPause([]));
+            Assert.AreEqual('x', (char)input.Read());
+            Assert.IsFalse(output.ToString().Contains(DirectHost.PausePrompt, StringComparison.Ordinal));
+        }
+        finally
         {
-            _getEnvironmentVariable = _ => null,
-            _ownsConsoleWindow = () => true,
-            _readKey = () => keys++,
-            _writeLine = _ => { }
-        };
-
-        Assert.AreEqual(2, host.RunAndPause(["no-such-verb"]));
-        Assert.AreEqual(1, keys);
+            Directory.Delete(directory, true);
+        }
     }
 
     [DataTestMethod]
@@ -82,83 +90,133 @@ public class SampleHostFirstRunTests
     public void Run_ElevatedRelaunchTookOver_NamesTheOutputLogOnTheUnelevatedConsole(bool childSucceeded)
     {
         string[] arguments = ["scan", "C"];
-        var lines = new List<string>();
-        IReadOnlyList<string>? relaunchedWith = null;
-        var elevationTimeout = TimeSpan.Zero;
-        var host = new DirectHost
+        using var output = new StringWriter();
+        var directory = Directory.CreateTempSubdirectory("sample-first-run-").FullName;
+        try
         {
-            _isWindows = () => true,
-            _isElevated = () => false,
-            _canSelfElevate = () => true,
-            _tryRunElevated = (relaunchArguments, timeout) =>
+            IReadOnlyList<string>? relaunchedWith = null;
+            var elevationTimeout = TimeSpan.Zero;
+            var host = new DirectHost(output, TextReader.Null, directory, new Microsoft.Extensions.Time.Testing.FakeTimeProvider())
             {
-                relaunchedWith = relaunchArguments;
-                elevationTimeout = timeout;
-                return childSucceeded;
-            },
-            _getEnvironmentVariable = _ => null,
-            _writeLine = lines.Add
-        };
-        SampleHostElevationNoticeTests.AcknowledgeDeliberately(host);
+                _isElevated = () => false,
+                _canSelfElevate = () => true,
+                _tryRunElevated = (relaunchArguments, timeout) =>
+                {
+                    relaunchedWith = relaunchArguments;
+                    elevationTimeout = timeout;
+                    return childSucceeded;
+                }
+            };
+            SampleHostElevationNoticeTests.AcknowledgeDeliberately(host);
 
-        var result = host.Run(arguments);
+            var result = host.RunWithElevation(arguments, ElevationNeed.SelfElevate, () => host.Run(arguments));
 
-        Assert.AreEqual(childSucceeded ? 0 : 1, result);
-        CollectionAssert.AreEqual(arguments, relaunchedWith!.ToArray());
-        Assert.AreEqual(Timeout.InfiniteTimeSpan, elevationTimeout);
-        Assert.IsTrue(lines.Contains($"The elevated run writes its output to {Path.Combine(AppContext.BaseDirectory, "output.log")}"), string.Join(Environment.NewLine, lines));
-        if (!childSucceeded)
+            Assert.AreEqual(childSucceeded ? 0 : 1, result);
+            CollectionAssert.AreEqual(arguments, relaunchedWith!.ToArray());
+            Assert.AreEqual(Timeout.InfiniteTimeSpan, elevationTimeout);
+            var report = output.ToString();
+            StringAssert.Contains(report, $"The elevated run writes its output to {Path.Combine(directory, "output.log")}");
+            if (!childSucceeded)
+            {
+                StringAssert.Contains(report, "THE ELEVATED RUN DID NOT COMPLETE SUCCESSFULLY");
+                StringAssert.Contains(report, "output.log");
+                Assert.IsFalse(report.Contains("AUTOMATIC ELEVATION FAILED", StringComparison.Ordinal), report);
+                Assert.IsFalse(report.Contains("requires Administrative privileges", StringComparison.Ordinal), report);
+            }
+        }
+        finally
         {
-            Assert.IsTrue(lines.Exists(line => line.Contains("THE ELEVATED RUN DID NOT COMPLETE SUCCESSFULLY", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
-            Assert.IsTrue(lines.Exists(line => line.Contains("If the elevated run started, its output is in", StringComparison.Ordinal) && line.Contains("output.log", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
-            Assert.IsFalse(lines.Exists(line => line.Contains("AUTOMATIC ELEVATION FAILED", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
-            Assert.IsFalse(lines.Exists(line => line.Contains("requires Administrative privileges", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
+            Directory.Delete(directory, true);
         }
     }
 
     [TestMethod]
     public void Run_NoElevatedRunIsAttempted_DoesNotNameAnOutputLogNothingWrites()
     {
-        var lines = new List<string>();
-        var host = new DirectHost
+        using var output = new StringWriter();
+        var directory = Directory.CreateTempSubdirectory("sample-first-run-").FullName;
+        try
         {
-            _isWindows = () => true,
-            _isElevated = () => false,
-            _canSelfElevate = () => false,
-            _tryRunElevated = (_, _) => throw new AssertFailedException("No elevated run starts when the process cannot self-elevate."),
-            _getEnvironmentVariable = _ => null,
-            _writeLine = lines.Add
-        };
+            var host = new DirectHost(output, TextReader.Null, directory)
+            {
+                _isElevated = () => false,
+                _canSelfElevate = () => false,
+                _tryRunElevated = (_, _) => throw new AssertFailedException("No elevated run starts when the process cannot self-elevate.")
+            };
 
-        Assert.AreEqual(1, host.Run(["scan", "C"]));
-        Assert.IsFalse(lines.Exists(line => line.Contains("output.log")), string.Join(Environment.NewLine, lines));
+            var result = host.RunWithElevation(["scan", "C"], ElevationNeed.SelfElevate, () => host.Run(["scan", "C"]));
+
+            Assert.AreEqual(1, result);
+            Assert.IsFalse(output.ToString().Contains("output.log", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
     }
 
     [TestMethod]
     public void RunAndPause_TheElevatedChildWritingToOutputLog_DoesNotHoldItsOwnWindow()
     {
-        var host = new DirectHost
+        using var output = new StringWriter();
+        using var input = new StringReader("x");
+        var directory = Directory.CreateTempSubdirectory("sample-log-").FullName;
+        try
         {
-            _isElevated = () => true,
-            _acrtIobFunc = _ => IntPtr.Zero,
-            _wFreopen = (_, _, _) => IntPtr.Zero,
-            _isWindows = () => true,
-            _getEnvironmentVariable = _ => null,
-            _ownsConsoleWindow = () => true,
-            _readKey = () => throw new AssertFailedException("The elevated child's window closes at once; the parent holds its own."),
-            _writeLine = _ => { },
-            _resolveDrive = _ => throw new IOException("Mock: no volume"),
-            _createSource = _ => throw new IOException("Mock: no volume")
-        };
+            var host = new DirectHost(output, input, directory) { _isElevated = () => true };
+            Assert.AreEqual(2, host.RunWithElevation([], ElevationNeed.SelfElevate, () => host.Run([])));
+            var path = Path.Combine(directory, "output.log");
+            StringAssert.Contains(File.ReadAllText(path), "Usage:");
+            Assert.AreEqual(string.Empty, output.ToString());
+            Assert.AreEqual('x', (char)input.Read());
+            // The file is closed when the elevated operation returns.
+            using (File.Open(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None)) { }
+            Assert.AreEqual(2, host.Run([]));
+            StringAssert.Contains(output.ToString(), "Usage:");
 
-        Assert.AreEqual(1, host.RunAndPause(["scan", "C"]));
+            // Operation failure writes to the log, returns exit code 1, and leaves borrowed writer untouched.
+            Assert.AreEqual(1, host.RunWithElevation([], ElevationNeed.SelfElevate, () => throw new IOException("operation failed")));
+            StringAssert.Contains(File.ReadAllText(path), "Error: IOException: operation failed");
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [TestMethod]
+    public void RunAndPause_UnwritableLogDirectory_PropagatesToFailureBoundaryAndLeavesWriterAvailable()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Exercises Windows elevation log flow.");
+            return;
+        }
+
+        using var output = new StringWriter();
+        var tempDir = Directory.CreateTempSubdirectory("sample-unwritable-").FullName;
+        try
+        {
+            var filePath = Path.Combine(tempDir, "not-a-directory");
+            File.WriteAllText(filePath, "blocker");
+            var host = new DirectHost(output, TextReader.Null, filePath) { _isElevated = () => true };
+
+            var exitCode = host.RunAndPause(["scan", "C"]);
+
+            Assert.AreEqual(1, exitCode);
+            StringAssert.Contains(output.ToString(), "Error: ");
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
     }
 
     [TestMethod]
     public void PhaseReporter_PrintsAgainEveryIntervalOfRowsWithinAPhaseAndNeverByTime()
     {
-        var lines = new List<string>();
-        var reporter = new DirectHost.PhaseReporter(lines.Add);
+        using var output = new StringWriter();
+        var reporter = new DirectHost.PhaseReporter(output);
         const uint interval = DirectHost.PhaseReporter.ProgressRowInterval;
 
         reporter.Report(new IndexScanProgress('D', IndexScanPhase.ParsingMft, 0) { ExpectedRowCount = 3 * interval });
@@ -167,6 +225,7 @@ public class SampleHostFirstRunTests
         reporter.Report(new IndexScanProgress('D', IndexScanPhase.ParsingMft, interval + 5) { ExpectedRowCount = 3 * interval });
         reporter.Report(new IndexScanProgress('D', IndexScanPhase.ParsingMft, 2 * interval) { ExpectedRowCount = 3 * interval });
 
+        var lines = output.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
         CollectionAssert.AreEqual(
             new[]
             {

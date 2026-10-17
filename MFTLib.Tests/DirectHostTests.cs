@@ -31,12 +31,11 @@ public class DirectHostTests
         MftDumpFixture.DeleteOwnedDirectory(_directory);
     }
 
-    static SampleHost HostOver(List<string> lines)
+    SampleHost HostOver(List<string> lines)
     {
-        return new SampleHost
+        return new SampleHost(new LineCollectingWriter(lines), TextReader.Null, _directory)
         {
-            _isElevated = () => throw new AssertFailedException("A dump run must not ask about elevation."),
-            _writeLine = lines.Add
+            _isElevated = () => throw new AssertFailedException("A dump run must not ask about elevation.")
         };
     }
 
@@ -101,25 +100,36 @@ public class DirectHostTests
     }
 
     [TestMethod]
-    public void Run_TreeOverSeveralDirectories_ReadsTheRowsOnceAndKeepsTheSortedOrder()
+    public async Task Run_TreeOverSeveralDirectories_ReadsTheRowsOnceAndKeepsTheSortedOrder()
     {
         var lines = new List<string>();
-        var scans = 0;
         var host = HostOver(lines);
-        host._enumerateRows = (index, cancellationToken) =>
-        {
-            scans++;
-            return index.Enumerate(new SearchQuery(null), cancellationToken);
-        };
 
         var result = host.Run([.. Dump("tree"), "--depth", "4"]);
 
         Assert.AreEqual(0, result, string.Join(Environment.NewLine, lines));
-        Assert.AreEqual(1, scans);
         var documents = lines.IndexOf("  documents/");
         Assert.IsTrue(documents >= 0, string.Join(Environment.NewLine, lines));
         Assert.IsTrue(lines.Contains("    Notes.txt"), string.Join(Environment.NewLine, lines));
         Assert.IsTrue(lines.IndexOf("    Deep/") > documents && lines.IndexOf("    Deep/") < lines.IndexOf("    Notes.txt"), string.Join(Environment.NewLine, lines));
+
+        static IEnumerable<FileEntry> Once(IEnumerable<FileEntry> rows, Action entered)
+        {
+            entered();
+            foreach (var row in rows) yield return row;
+        }
+
+        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
+        {
+            MftSource = MftIndexSources.FromMftDumpFile(_dumpFile, 'D')
+        }, CancellationToken.None);
+        var enumerations = 0;
+        var lookup = SampleHost.ChildLookup(Once(index.Enumerate(new SearchQuery(null)), () =>
+        {
+            Assert.AreEqual(0, enumerations++);
+        }));
+        Assert.AreEqual(1, enumerations);
+        Assert.IsTrue(lookup.Count > 0);
     }
 
     [TestMethod]
@@ -149,15 +159,15 @@ public class DirectHostTests
     }
 
     [TestMethod]
-    public void Run_ScanOverAScriptedSource_ReportsLiveAndRetainedDeletedCounts()
+    public async Task Run_ScanOverAScriptedSource_ReportsLiveAndRetainedDeletedCounts()
     {
-        var lines = new List<string>();
-        var host = ElevatedHost(lines, _ => ScriptedSource());
+        Assert.IsTrue(DirectArguments.TryParse(["scan", "C", "--include-freed"], out var parsed, out var error), error);
+        using var output = new StringWriter();
+        var host = new SampleHost(output, TextReader.Null, _directory);
 
-        var result = host.Run(["scan", "C", "--include-freed"]);
+        await host.RunSourceAsync(parsed, ScriptedSource(), new IndexedDrive('C', _directory, 4242), CancellationToken.None);
 
-        Assert.AreEqual(0, result, string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(lines.Contains("C: 2 live files, 2 live directories, 1 retained deleted rows"), string.Join(Environment.NewLine, lines));
+        StringAssert.Contains(output.ToString(), "C: 2 live files, 2 live directories, 1 retained deleted rows");
     }
 
     [TestMethod]
@@ -177,13 +187,14 @@ public class DirectHostTests
     [TestMethod]
     [DataRow(false, "2020-01-02 03:04:05Z", DisplayName = "534 known last-write timestamp")]
     [DataRow(true, "<unknown>", DisplayName = "534 unknown last-write timestamp")]
-    public void Run_OpenOfAScriptedEntry_FormatsLastWriteFreshness(
+    public async Task Run_OpenOfAScriptedEntry_FormatsLastWriteFreshness(
         bool isLastWriteTimeUnknown, string expectedLastWriteTime)
     {
         var path = Path.Combine(_directory, "a.txt");
         File.WriteAllBytes(path, [1, 2, 3]);
-        var lines = new List<string>();
-        var host = ElevatedHost(lines, _ => SyntheticIndexSource.Create(new SyntheticMftProducer(_ =>
+        using var output = new StringWriter();
+        var host = new SampleHost(output, TextReader.Null, _directory);
+        var source = SyntheticIndexSource.Create(new SyntheticMftProducer(_ =>
         [
             new SyntheticRow(5, ".", 5) { IsDirectory = true },
             new SyntheticRow(7, "a.txt", 5)
@@ -192,17 +203,17 @@ public class DirectHostTests
                 LastWriteTime = new DateTime(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc),
                 IsLastWriteTimeUnknown = isLastWriteTimeUnknown
             }
-        ])));
+        ]));
         using var restore = FileEntry.OverrideOpenByIdForTest((_, _, _, access) =>
             new FileStream(path, FileMode.Open, access, FileShare.Read));
 
-        var result = host.Run(["open", "C", "--path", path]);
+        Assert.IsTrue(DirectArguments.TryParse(["open", "C", "--path", path], out var parsed, out var error), error);
+        await host.RunSourceAsync(parsed, source, new IndexedDrive('C', _directory, 4242), CancellationToken.None);
 
-        var report = string.Join(Environment.NewLine, lines);
-        Assert.AreEqual(0, result, report);
-        var description = lines.Single(line => line.StartsWith($"{path} ({new IndexRecordKey('C', 7, ProducerKind.Mft)}): record ", StringComparison.Ordinal));
-        StringAssert.Contains(description, $"modified {expectedLastWriteTime}, parent ");
-        Assert.IsTrue(lines.Contains("3 bytes, first 3: 010203"), report);
+        var report = output.ToString();
+        StringAssert.Contains(report, $"{path} ({new IndexRecordKey('C', 7, ProducerKind.Mft)}): record ");
+        StringAssert.Contains(report, $"modified {expectedLastWriteTime}, parent ");
+        StringAssert.Contains(report, "3 bytes, first 3: 010203");
     }
 
     [TestMethod]
@@ -232,7 +243,6 @@ public class DirectHostTests
     {
         var lines = new List<string>();
         var host = HostOver(lines);
-        host._createSource = _ => throw new AssertFailedException("A refused command line must not build a source.");
 
         var result = host.Run([.. Dump("search"), "--include-freed"]);
 
@@ -244,14 +254,13 @@ public class DirectHostTests
     [TestMethod]
     public void Run_LocalSourceNotElevatedAndUnattended_SkipsTheScanAndReturnsOne()
     {
+        using var unattended = new UnattendedEnvironmentScope("1");
         var lines = new List<string>();
         var host = HostOver(lines);
         host._isElevated = () => false;
-        host._isWindows = () => true;
-        host._getEnvironmentVariable = name => name == SampleHost.UnattendedVariableName ? "1" : null;
-        host._createSource = _ => throw new AssertFailedException("An unelevated unattended run must not scan.");
 
-        var result = host.Run(["scan", "C"]);
+        var result = host.RunWithElevation(["scan", "C"], ElevationNeed.SelfElevate, () =>
+            throw new AssertFailedException("An unelevated unattended run must not scan."));
 
         Assert.AreEqual(1, result);
         Assert.IsTrue(lines.Any(line => line.Contains("AUTOMATIC ELEVATION FAILED")));
@@ -260,48 +269,48 @@ public class DirectHostTests
     [TestMethod]
     public void Run_LocalSourceElevated_ScansWhatTheSourceProducesAndRedirectsOutput()
     {
-        var lines = new List<string>();
+        using var output = new StringWriter();
+        var host = new SampleHost(output, TextReader.Null, _directory) { _isElevated = () => true };
         DirectArguments? seen = null;
-        var redirected = false;
-        var host = ElevatedHost(lines, parsed =>
+
+        var result = host.RunWithElevation(["search", "C", "--name", "a.txt", "--include-freed"], ElevationNeed.SelfElevate, () =>
         {
+            Assert.IsTrue(DirectArguments.TryParse(["search", "C", "--name", "a.txt", "--include-freed"], out var parsed, out var error), error);
             seen = parsed;
-            return ScriptedSource();
+            host.RunSourceAsync(parsed, ScriptedSource(), new IndexedDrive('C', _directory, 4242), CancellationToken.None).GetAwaiter().GetResult();
+            return 0;
         });
-        host._wFreopen = (_, _, _) =>
-        {
-            redirected = true;
-            return IntPtr.Zero;
-        };
-
-        var result = host.Run(["search", "C", "--name", "a.txt", "--include-freed"]);
-
-        Assert.AreEqual(0, result, string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(redirected, "An elevated self-elevating run writes to output.log.");
-        Assert.IsTrue(seen!.IncludeFreed);
-        Assert.IsTrue(lines.Any(line => line.EndsWith("a.txt  100  deleted=False", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(lines.Any(line => line.EndsWith("a.txt  7  deleted=True", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
-    }
-
-    [TestMethod]
-    public void Run_LocalSourceWithoutIncludeFreed_HidesTheDeletedRow()
-    {
-        var lines = new List<string>();
-        var host = ElevatedHost(lines, _ => ScriptedSource());
-
-        var result = host.Run(["search", "C", "--name", "a.txt"]);
 
         Assert.AreEqual(0, result);
-        Assert.IsFalse(lines.Any(line => line.Contains("deleted=")), string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(lines.Contains("2 entries"), string.Join(Environment.NewLine, lines));
+        Assert.AreEqual(string.Empty, output.ToString(), "Elevated output goes to output.log.");
+        var log = File.ReadAllText(host.OutputLogPath);
+        Assert.IsTrue(seen!.IncludeFreed);
+        StringAssert.Contains(log, "a.txt  100  deleted=False");
+        StringAssert.Contains(log, "a.txt  7  deleted=True");
     }
 
     [TestMethod]
-    public void Run_DocumentedLocalStreamedSearch_StreamsMatchingFilesAndRefusesUnelevatedUnattended()
+    public async Task Run_LocalSourceWithoutIncludeFreed_HidesTheDeletedRow()
+    {
+        Assert.IsTrue(DirectArguments.TryParse(["search", "C", "--name", "a.txt"], out var parsed, out var error), error);
+        using var output = new StringWriter();
+        var host = new SampleHost(output, TextReader.Null, _directory);
+
+        await host.RunSourceAsync(parsed, ScriptedSource(), new IndexedDrive('C', _directory, 4242), CancellationToken.None);
+
+        var report = output.ToString();
+        Assert.IsFalse(report.Contains("deleted="), report);
+        StringAssert.Contains(report, "2 entries");
+    }
+
+    [TestMethod]
+    public async Task Run_DocumentedLocalStreamedSearch_StreamsMatchingFilesAndRefusesUnelevatedUnattended()
     {
         string[] command = ["search", "C", "--source", "local", "--name", "*.log", "--files", "--stream", "--limit", "20"];
-        var elevatedLines = new List<string>();
-        var elevatedHost = ElevatedHost(elevatedLines, _ => SyntheticIndexSource.Create(new SyntheticMftProducer(_ =>
+        Assert.IsTrue(DirectArguments.TryParse(command, out var parsed, out var error), error);
+        using var elevatedOutput = new StringWriter();
+        var elevatedHost = new SampleHost(elevatedOutput, TextReader.Null, _directory);
+        var source = SyntheticIndexSource.Create(new SyntheticMftProducer(_ =>
         [
             new SyntheticRow(5, ".", 5) { IsDirectory = true },
             new SyntheticRow(6, "logs", 5) { IsDirectory = true },
@@ -309,11 +318,11 @@ public class DirectHostTests
             new SyntheticRow(8, "pending.log", 6) { Size = null },
             new SyntheticRow(9, "archive.log", 5) { IsDirectory = true },
             new SyntheticRow(10, "Notes.txt", 5) { Size = 11 }
-        ])));
+        ]));
 
-        var elevatedResult = elevatedHost.Run(command);
+        await elevatedHost.RunSourceAsync(parsed, source, new IndexedDrive('C', _directory, 4242), CancellationToken.None);
 
-        Assert.AreEqual(0, elevatedResult, string.Join(Environment.NewLine, elevatedLines));
+        var elevatedLines = elevatedOutput.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
         var matches = elevatedLines.Where(line => line.Contains(".log", StringComparison.Ordinal) && !line.StartsWith("Indexing ", StringComparison.Ordinal)).ToList();
         CollectionAssert.AreEquivalent(
             new[]
@@ -322,67 +331,69 @@ public class DirectHostTests
                 $"{Path.Combine(_directory, "logs", "pending.log")}  ?"
             },
             matches,
-            string.Join(Environment.NewLine, elevatedLines));
-        Assert.IsTrue(elevatedLines.Contains("2 entries"), string.Join(Environment.NewLine, elevatedLines));
+            elevatedOutput.ToString());
+        Assert.IsTrue(elevatedLines.Contains("2 entries"), elevatedOutput.ToString());
 
-        var unattendedLines = new List<string>();
-        var unattendedHost = HostOver(unattendedLines);
-        unattendedHost._isElevated = () => false;
-        unattendedHost._isWindows = () => true;
-        unattendedHost._getEnvironmentVariable = name => name == SampleHost.UnattendedVariableName ? "1" : null;
-        unattendedHost._createSource = _ => throw new AssertFailedException("An unelevated unattended run must not scan.");
+        using var unattended = new UnattendedEnvironmentScope("1");
+        using var unattendedOutput = new StringWriter();
+        var unattendedHost = new SampleHost(unattendedOutput, TextReader.Null, _directory) { _isElevated = () => false };
 
-        var unattendedResult = unattendedHost.Run(command);
+        var unattendedResult = unattendedHost.RunWithElevation(command, ElevationNeed.SelfElevate, () =>
+            throw new AssertFailedException("An unelevated unattended run must not scan."));
 
         Assert.AreEqual(1, unattendedResult);
-        Assert.IsTrue(unattendedLines.Contains("Running unattended (MFTLIB_SAMPLE_UNATTENDED=1): elevation skipped, no prompt shown."));
-        Assert.IsTrue(unattendedLines.Any(line => line.Contains("AUTOMATIC ELEVATION FAILED.")));
+        StringAssert.Contains(unattendedOutput.ToString(), "Running unattended (MFTLIB_SAMPLE_UNATTENDED=1): elevation skipped, no prompt shown.");
+        StringAssert.Contains(unattendedOutput.ToString(), "AUTOMATIC ELEVATION FAILED.");
     }
 
     [TestMethod]
-    public void Run_DuplicateNamesOverAScriptedSource_ListsTheGroup()
+    public async Task Run_DuplicateNamesOverAScriptedSource_ListsTheGroup()
     {
-        var lines = new List<string>();
-        var host = ElevatedHost(lines, _ => ScriptedSource());
+        Assert.IsTrue(DirectArguments.TryParse(["duplicate-names", "C"], out var parsed, out var error), error);
+        using var output = new StringWriter();
+        var host = new SampleHost(output, TextReader.Null, _directory);
 
-        var result = host.Run(["duplicate-names", "C"]);
+        await host.RunSourceAsync(parsed, ScriptedSource(), new IndexedDrive('C', _directory, 4242), CancellationToken.None);
 
-        Assert.AreEqual(0, result);
-        Assert.IsTrue(lines.Any(line => line.StartsWith("a.txt: 2 entries", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
+        StringAssert.Contains(output.ToString(), "a.txt: 2 entries");
     }
 
     [TestMethod]
-    public void Run_DriveThatIsOffline_ReportsItAndReturnsOne()
+    public async Task Run_DriveThatIsOffline_ReportsItAndReturnsOne()
     {
-        var lines = new List<string>();
-        var host = ElevatedHost(lines, _ => ScriptedSource());
-        host._resolveDrive = _ => new IndexedDrive('Q', Path.Combine(_directory, "missing-root"), 4242);
+        Assert.IsTrue(DirectArguments.TryParse(["scan", "Q"], out var parsed, out var error), error);
+        using var output = new StringWriter();
+        var host = new SampleHost(output, TextReader.Null, _directory);
 
-        var result = host.Run(["scan", "Q"]);
-
-        Assert.AreEqual(1, result);
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Error: ", StringComparison.Ordinal) && line.Contains("The drive is offline; nothing was scanned.")), string.Join(Environment.NewLine, lines));
+        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            host.RunSourceAsync(parsed, ScriptedSource(), new IndexedDrive('Q', Path.Combine(_directory, "missing-root"), 4242), CancellationToken.None));
+        StringAssert.Contains(exception.Message, "The drive is offline; nothing was scanned.");
     }
 
     [TestMethod]
-    public void Run_ScanThatFails_ReportsTheProducerFailure()
+    public async Task Run_ScanThatFails_ReportsTheProducerFailure()
     {
-        var lines = new List<string>();
-        var host = ElevatedHost(lines, _ => SyntheticIndexSource.Create(new SyntheticMftProducer(_ => throw new IOException("volume unreadable"))));
+        Assert.IsTrue(DirectArguments.TryParse(["scan", "C"], out var parsed, out var error), error);
+        using var output = new StringWriter();
+        var host = new SampleHost(output, TextReader.Null, _directory);
+        var source = SyntheticIndexSource.Create(new SyntheticMftProducer(_ => throw new IOException("volume unreadable")));
 
-        var result = host.Run(["scan", "C"]);
-
-        Assert.AreEqual(1, result);
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Error: ", StringComparison.Ordinal) && line.Contains("volume unreadable")), string.Join(Environment.NewLine, lines));
+        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            host.RunSourceAsync(parsed, source, new IndexedDrive('C', _directory, 4242), CancellationToken.None));
+        StringAssert.Contains(exception.Message, "volume unreadable");
     }
 
     [TestMethod]
     public void Run_LocalSourceOffWindows_SkipsTheElevationFlowAndReportsThePlatform()
     {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Exercises off-Windows behavior.");
+            return;
+        }
+
         var lines = new List<string>();
         var host = HostOver(lines);
-        host._isWindows = () => false;
-        host._resolveDrive = _ => throw new PlatformNotSupportedException("Volume serials are read on Windows only.");
 
         var result = host.Run(["scan", "C"]);
 
@@ -393,35 +404,21 @@ public class DirectHostTests
     [TestMethod]
     public void Run_WrappedFailure_NamesTheTypeAndEveryInnerExceptionWithoutAStackTrace()
     {
-        var lines = new List<string>();
-        var host = HostOver(lines);
-        host._isWindows = () => false;
-        host._resolveDrive = _ => throw new AggregateException("outer failure", new IOException("inner detail", new InvalidOperationException("root cause")));
-
-        var result = host.Run(["scan", "C"]);
-
-        var report = string.Join(Environment.NewLine, lines);
-        Assert.AreEqual(1, result);
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Error: AggregateException: outer failure", StringComparison.Ordinal)), report);
-        Assert.IsTrue(lines.Any(line => line.Contains("caused by IOException: inner detail", StringComparison.Ordinal)), report);
-        Assert.IsTrue(lines.Any(line => line.Contains("caused by InvalidOperationException: root cause", StringComparison.Ordinal)), report);
-        Assert.IsFalse(report.Contains("   at ", StringComparison.Ordinal), report);
-    }
-
-    SampleHost ElevatedHost(List<string> lines, Func<DirectArguments, MftIndexSource> createSource)
-    {
-        Directory.CreateDirectory(_directory);
-        return new SampleHost
+        using var output = new StringWriter();
+        var host = new SampleHost(output, TextReader.Null, _directory)
         {
             _isElevated = () => true,
-            _isWindows = () => true,
-            _acrtIobFunc = _ => IntPtr.Zero,
-            _wFreopen = (_, _, _) => IntPtr.Zero,
-            _createSource = createSource,
-            _resolveDrive = letter => new IndexedDrive(char.ToUpperInvariant(letter[0]), _directory, 4242),
-            _cacheDirectory = Path.Combine(_directory, "cache"),
-            _writeLine = lines.Add
         };
+
+        var result = host.RunWithElevation(["scan", "C"], ElevationNeed.SelfElevate, () =>
+            throw new AggregateException("outer failure", new IOException("inner detail", new InvalidOperationException("root cause"))));
+
+        Assert.AreEqual(1, result);
+        var report = File.ReadAllText(host.OutputLogPath);
+        Assert.IsTrue(report.Contains("Error: AggregateException: outer failure", StringComparison.Ordinal), report);
+        Assert.IsTrue(report.Contains("caused by IOException: inner detail", StringComparison.Ordinal), report);
+        Assert.IsTrue(report.Contains("caused by InvalidOperationException: root cause", StringComparison.Ordinal), report);
+        Assert.IsFalse(report.Contains("   at ", StringComparison.Ordinal), report);
     }
 
     static MftIndexSource ScriptedSource()

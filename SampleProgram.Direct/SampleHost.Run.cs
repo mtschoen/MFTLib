@@ -7,17 +7,24 @@ namespace SampleProgram.Direct;
 // or a saved $MFT file. It never caches, so every verb scans.
 partial class SampleHost
 {
-    internal Func<DirectArguments, MftIndexSource> _createSource = CreateSourceNative;
+    readonly string _outputDirectory;
 
-    // The one row pass a tree is built from; a test counts its calls.
-    internal Func<FileIndex, CancellationToken, IEnumerable<FileEntry>> _enumerateRows = (index, cancellationToken) => index.Enumerate(new SearchQuery(null), cancellationToken);
+    internal SampleHost(TextWriter output, TextReader input, string outputDirectory, TimeProvider? timeProvider = null)
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(input);
+        _output = TextWriter.Synchronized(output);
+        _input = input;
+        _timeProvider = timeProvider ?? TimeProvider.System;
+        _outputDirectory = Path.GetFullPath(outputDirectory);
+    }
 
-    // The elevation flow is Windows only (UAC and its dialog), so elsewhere the verb runs straight into its platform check.
-    internal Func<bool> _isWindows = OperatingSystem.IsWindows;
+    internal string OutputLogPath => Path.Combine(_outputDirectory, "output.log");
 
     /// <summary>Runs the command line, reports an escaping failure as one readable line, then holds an attended, self-owned console window open until a key press.</summary>
     internal int RunAndPause(string[] arguments)
     {
+        _outputRedirectedToFile = false;
         int exitCode;
         try
         {
@@ -29,10 +36,9 @@ partial class SampleHost
             exitCode = 1;
         }
 
-        if (!_outputRedirectedToFile && !IsUnattended() && _ownsConsoleWindow())
+        if (!_outputRedirectedToFile)
         {
-            _writeLine(PausePrompt);
-            _readKey();
+            PauseBeforeExit(OwnsConsoleWindowNative());
         }
 
         return exitCode;
@@ -47,12 +53,12 @@ partial class SampleHost
 
         if (!DirectArguments.TryParse(arguments, out var parsed, out var error))
         {
-            _writeLine(error);
-            _writeLine(DirectArguments.Usage);
+            _output.WriteLine(error);
+            _output.WriteLine(DirectArguments.Usage);
             return 2;
         }
 
-        var need = parsed.RequiresElevation && _isWindows() ? ElevationNeed.SelfElevate : ElevationNeed.None;
+        var need = parsed.RequiresElevation && OperatingSystem.IsWindows() ? ElevationNeed.SelfElevate : ElevationNeed.None;
         return RunWithElevation(arguments, need, () => RunVerb(parsed));
     }
 
@@ -82,22 +88,20 @@ partial class SampleHost
             : MftIndexSources.FromLocalVolumes(ScanOptions(parsed));
     }
 
-    async Task<FileIndex> OpenIndexAsync(DirectArguments parsed, CancellationToken cancellationToken)
+    async Task<FileIndex> OpenIndexAsync(MftIndexSource source, IndexedDrive? drive, CancellationToken cancellationToken)
     {
         var options = new FileIndexOptions
         {
-            MftSource = _createSource(parsed),
-            ScanProgress = new PhaseReporter(_writeLine)
+            MftSource = source,
+            ScanProgress = new PhaseReporter(_output)
         };
-        if (parsed.Source is not SourceKind.Dump)
+        if (drive is not null)
         {
-            var drive = _resolveDrive(parsed.Drive);
-            _writeLine($"Indexing {drive.Drive}: root {drive.RootDirectory}, serial {drive.VolumeSerial}, producer {drive.Producer}.");
+            _output.WriteLine($"Indexing {drive.Drive}: root {drive.RootDirectory}, serial {drive.VolumeSerial}, producer {drive.Producer}.");
             options = options with
             {
                 Drives = [drive],
-                CacheMode = CacheMode.Disabled,
-                CacheDirectory = _cacheDirectory
+                CacheMode = CacheMode.Disabled
             };
         }
 

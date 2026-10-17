@@ -11,16 +11,14 @@ partial class SampleHost
 {
     internal const string UnattendedVariableName = "MFTLIB_SAMPLE_UNATTENDED";
 
-    internal Func<string, string?> _getEnvironmentVariable = Environment.GetEnvironmentVariable;
-
-    bool IsUnattended()
+    static bool IsUnattended()
     {
-        return _getEnvironmentVariable(UnattendedVariableName) == "1";
+        return Environment.GetEnvironmentVariable(UnattendedVariableName) == "1";
     }
 
     int SkipElevationUnattended(string[] arguments)
     {
-        _writeLine($"Running unattended ({UnattendedVariableName}=1): elevation skipped, no prompt shown.");
+        _output.WriteLine($"Running unattended ({UnattendedVariableName}=1): elevation skipped, no prompt shown.");
         PrintElevationFailure(arguments);
         return 1;
     }

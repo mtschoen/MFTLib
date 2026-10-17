@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Runtime.Versioning;
 using Benchmark;
@@ -8,6 +9,9 @@ namespace MFTLib.Tests;
 
 [TestClass]
 [SupportedOSPlatform("windows")]
+[SuppressMessage("Design", "CA1001",
+    Justification = "Cleanup is [TestCleanup], the MSTest-idiomatic disposal path this test project uses " +
+                     "throughout rather than IDisposable on the test class itself.")]
 public class BenchmarkRunnerTests
 {
     [TestMethod]
@@ -26,7 +30,25 @@ public class BenchmarkRunnerTests
     public async Task Run_Index_InvalidArguments_ReportUsage(params string[] arguments)
     {
         Assert.AreEqual(1, await _runner.RunAsync(["index", .. arguments]));
-        StringAssert.Contains(string.Join('\n', _consoleLines), "Usage: Benchmark.exe index");
+        StringAssert.Contains(_output.ToString(), "Usage: Benchmark.exe index");
+    }
+
+    [TestMethod]
+    public void PrintIndexMedian_UsesElapsedQueryTime()
+    {
+        const int iterations = 3;
+        const string expected = "5.000";
+        var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        using var output = new StringWriter();
+        var runner = new BenchmarkRunner(output, clock);
+        var durations = new Queue<double>([9, 1, 5]);
+        runner.PrintIndexMedian("exact-search", () =>
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(durations.Dequeue()));
+            return Array.Empty<FileEntry>();
+        }, iterations, output.WriteLine);
+        StringAssert.Contains(output.ToString(), $"Median: {expected} ms; Matches: 0");
+        Assert.AreEqual(0, durations.Count);
     }
 
     [TestMethod]
@@ -34,36 +56,23 @@ public class BenchmarkRunnerTests
     [DataRow(10, 4)]
     public async Task Run_Index_Synthetic_ReportsGeometryAndControlledMedians(int rows, int iterations)
     {
-        var samples = new Queue<double>(iterations == 3
-            ? [9, 1, 5, 8, 2, 4] : [9, 1, 5, 3, 8, 2, 4, 6]);
-        _runner._getStopwatchElapsedMs = _ => samples.Dequeue();
         Assert.AreEqual(0, await _runner.RunAsync(["INDEX", "--synthetic", rows.ToString(CultureInfo.InvariantCulture), "--iterations", iterations.ToString(CultureInfo.InvariantCulture)]));
-        var output = string.Join('\n', _consoleLines);
+        var output = _output.ToString().Replace("\r\n", "\n", StringComparison.Ordinal);
         StringAssert.Contains(output, $"Rows: {rows}");
         StringAssert.Contains(output, $"Slot capacity: {BlockLayout.ComputeSlotCapacity((uint)rows)}");
         StringAssert.Contains(output, "File bytes:");
         StringAssert.Contains(output, "Name-pool bytes:");
         StringAssert.Contains(output, "Name-pool capacity bytes:");
-        StringAssert.Contains(output, "--- exact-search ---\n  Median: " + (iterations == 3 ? "5.000" : "4.000") + " ms");
-        StringAssert.Contains(output, "--- substring-search ---\n  Median: " + (iterations == 3 ? "4.000" : "5.000") + " ms");
+        StringAssert.Contains(output, "--- exact-search ---");
+        StringAssert.Contains(output, "--- substring-search ---");
         StringAssert.Contains(output, $"Matches: {(rows == 1 ? 0 : 1)}");
-        Assert.AreEqual(0, samples.Count);
     }
 
     [TestMethod]
     public async Task Run_Index_DefaultIterations_ReportsThreeSamples()
     {
-        _runner._getStopwatchElapsedMs = _ => 7;
         Assert.AreEqual(0, await _runner.RunAsync(["index", "--synthetic", "2"]));
-        StringAssert.Contains(string.Join('\n', _consoleLines), "median of 3 runs");
-    }
-
-    [TestMethod]
-    public async Task Run_Index_MeasurementFailure_ReportsError()
-    {
-        _runner._getStopwatchElapsedMs = _ => throw new IOException("measurement failed");
-        Assert.AreEqual(1, await _runner.RunAsync(["index", "--synthetic", "2"]));
-        StringAssert.Contains(string.Join('\n', _consoleLines), "measurement failed");
+        StringAssert.Contains(_output.ToString(), "median of 3 runs");
     }
 
     [TestMethod]
@@ -90,9 +99,8 @@ public class BenchmarkRunnerTests
                 writer.Complete(DateTime.UtcNow, null);
             }
             var originals = Directory.GetFiles(directory, "*.mlix").ToDictionary(path => path, File.ReadAllBytes);
-            _runner._getStopwatchElapsedMs = _ => 12;
             Assert.AreEqual(0, await _runner.RunAsync(["index", "--cache-directory", directory]));
-            var output = string.Join('\n', _consoleLines);
+            var output = _output.ToString();
             StringAssert.Contains(output, "Drive: T");
             StringAssert.Contains(output, "Drive: U");
             StringAssert.Contains(output, "Rows: 2");
@@ -123,7 +131,7 @@ public class BenchmarkRunnerTests
                 await File.WriteAllTextAsync(Path.Combine(directory, "T-00000001.mlix"), "corrupt");
             }
             Assert.AreEqual(1, await _runner.RunAsync(["index", "--cache-directory", directory]));
-            StringAssert.Contains(string.Join('\n', _consoleLines), corrupt ? "Invalid" : "No cache blocks");
+            StringAssert.Contains(_output.ToString(), corrupt ? "Invalid" : "No cache blocks");
         }
         finally { Directory.Delete(directory, true); }
     }
@@ -154,7 +162,7 @@ public class BenchmarkRunnerTests
             }
             using var owner = locked ? BlockOwnerLock.TryAcquire(path) : null;
             Assert.AreEqual(1, await _runner.RunAsync(["index", "--cache-directory", directory]));
-            StringAssert.Contains(string.Join('\n', _consoleLines), locked ? "InUse" : "Offline");
+            StringAssert.Contains(_output.ToString(), locked ? "InUse" : "Offline");
         }
         finally { Directory.Delete(directory, true); }
     }
@@ -188,11 +196,10 @@ public class BenchmarkRunnerTests
                 block.Header.UsnNextUsn = 456;
                 writer.Complete(DateTime.UtcNow, null);
             }
-            _runner._getStopwatchElapsedMs = _ => 1;
             Assert.AreEqual(0, await _runner.RunAsync(["index", "--cache-directory", directory]),
-                string.Join('\n', _consoleLines));
-            StringAssert.Contains(string.Join('\n', _consoleLines), "Rows: 6");
-            StringAssert.Contains(string.Join('\n', _consoleLines), "Name-pool bytes: 0 (0.00% of file)");
+                _output.ToString());
+            StringAssert.Contains(_output.ToString(), "Rows: 6");
+            StringAssert.Contains(_output.ToString(), "Name-pool bytes: 0 (0.00% of file)");
         }
         finally { Directory.Delete(directory, true); }
     }
@@ -201,54 +208,83 @@ public class BenchmarkRunnerTests
     public async Task Run_NoVerb_ReportsUsage()
     {
         Assert.AreEqual(1, await _runner.RunAsync([]));
-        StringAssert.Contains(string.Join('\n', _consoleLines), "Usage: Benchmark.exe <index|compare>");
+        StringAssert.Contains(_output.ToString(), "Usage: Benchmark.exe <index|compare>");
     }
 
     [TestMethod]
     public async Task Run_Index_PrintsSystemInfo()
     {
-        _runner._getStopwatchElapsedMs = _ => 1;
         Assert.AreEqual(0, await _runner.RunAsync(["index", "--synthetic", "2"]));
-        var output = string.Join('\n', _consoleLines);
+        var output = _output.ToString();
         StringAssert.Contains(output, "System Info");
-        StringAssert.Contains(output, "CPU:     MockValue");
-        StringAssert.Contains(output, "Disk:    MockDisk");
+        StringAssert.Contains(output, "CPU:");
+        StringAssert.Contains(output, "Disk:");
     }
 
     [TestMethod]
     public async Task Run_Index_WithoutOut_WritesNoFile()
     {
-        _runner._getStopwatchElapsedMs = _ => 1;
+        var beforeFiles = Directory.GetFiles(_directory);
         Assert.AreEqual(0, await _runner.RunAsync(["index", "--synthetic", "2"]));
-        Assert.AreEqual(0, _writtenFiles.Count);
+        CollectionAssert.AreEqual(beforeFiles, Directory.GetFiles(_directory));
+        Assert.IsFalse(_output.ToString().Contains("Report saved to", StringComparison.Ordinal));
     }
 
     [TestMethod]
     public async Task Run_Index_Failure_WritesNoReport()
     {
-        _runner._getStopwatchElapsedMs = _ => throw new IOException("measurement failed");
-        Assert.AreEqual(1, await _runner.RunAsync(["index", "--synthetic", "2", "--out", "report.txt"]));
-        Assert.AreEqual(0, _writtenFiles.Count);
+        var report = Path.Combine(_directory, "report.txt");
+        await File.WriteAllTextAsync(report, "keep me");
+        var emptyCache = Directory.CreateDirectory(Path.Combine(_directory, "empty-cache")).FullName;
+        Assert.AreEqual(1, await _runner.RunAsync(["index", "--cache-directory", emptyCache, "--out", report]));
+        Assert.AreEqual("keep me", await File.ReadAllTextAsync(report));
+    }
+
+    [TestMethod]
+    public async Task Run_Index_WriteFailure_ReportsError()
+    {
+        Assert.AreEqual(1, await _runner.RunAsync(["index", "--synthetic", "2", "--out", _directory]));
+        StringAssert.Contains(_output.ToString(), "Error:");
+    }
+
+    [TestMethod]
+    public async Task Run_OutputIsBorrowedAndReportsAreRealFiles()
+    {
+        using var output = new StringWriter();
+        var runner = new BenchmarkRunner(output);
+        var path = Path.Combine(_directory, "report with spaces.txt");
+        Assert.AreEqual(0, await runner.RunAsync(["index", "--synthetic", "2", "--out", path]));
+        var saved = await File.ReadAllTextAsync(path);
+        StringAssert.Contains(saved, "--- exact-search ---");
+        StringAssert.Contains(saved, "--- substring-search ---");
+        StringAssert.Contains(output.ToString(), $"Report saved to {Path.GetFullPath(path)}");
+        Assert.AreEqual(0, await runner.RunAsync(["compare", path, path, "exact-search"]));
+        await output.WriteLineAsync("still owned by caller");
+        StringAssert.Contains(output.ToString(), "still owned by caller");
     }
 
     [TestMethod]
     public async Task Compare_IndexReportAgainstItself_Passes_AndGrowthBeyondTheBoundFails()
     {
-        _runner._getStopwatchElapsedMs = _ => 4;
-        Assert.AreEqual(0, await _runner.RunAsync(["index", "--synthetic", "2", "--out", "baseline.txt"]));
-        var baseline = _writtenFiles.Single().Content;
-        _runner._fileExists = _ => true;
-        _runner._readAllText = path => path == "grown.txt"
-            ? baseline.Replace("Median: 4.000 ms", "Median: 5.001 ms", StringComparison.Ordinal)
-            : baseline;
+        var baselinePath = Path.Combine(_directory, "baseline.txt");
+        Assert.AreEqual(0, await _runner.RunAsync(["index", "--synthetic", "2", "--out", baselinePath]));
 
         foreach (var scenario in new[] { "exact-search", "substring-search" })
         {
-            Assert.AreEqual(0, await _runner.RunAsync(["compare", "baseline.txt", "baseline.txt", scenario]));
-            Assert.AreEqual(1, await _runner.RunAsync(["compare", "baseline.txt", "grown.txt", scenario]));
+            Assert.AreEqual(0, await _runner.RunAsync(["compare", baselinePath, baselinePath, scenario]));
         }
 
-        StringAssert.Contains(string.Join('\n', _consoleLines), "FAILED");
+        var literalBaseline = Path.Combine(_directory, "literal-baseline.txt");
+        var grownPath = Path.Combine(_directory, "grown.txt");
+        await File.WriteAllTextAsync(literalBaseline, "--- exact-search ---\n  Median: 4.000 ms; Matches: 1\n--- substring-search ---\n  Median: 4.000 ms; Matches: 1");
+        await File.WriteAllTextAsync(grownPath, "--- exact-search ---\n  Median: 5.001 ms; Matches: 1\n--- substring-search ---\n  Median: 5.001 ms; Matches: 1");
+
+        foreach (var scenario in new[] { "exact-search", "substring-search" })
+        {
+            Assert.AreEqual(1, await _runner.RunAsync(["compare", literalBaseline, grownPath, scenario]));
+        }
+
+        StringAssert.Contains(_output.ToString(), "FAILED");
     }
 
     [TestMethod]
@@ -285,25 +321,26 @@ public class BenchmarkRunnerTests
     public async Task Compare_MissingScenarioOrMedian_ReturnsOne(string afterReport)
     {
         Assert.AreEqual(1, await Compare("--- exact-search ---\n  Median: 1.000 ms", afterReport));
-        StringAssert.Contains(string.Join('\n', _consoleLines), "no median for scenario 'exact-search'");
+        StringAssert.Contains(_output.ToString(), "no median for scenario 'exact-search'");
     }
 
     [TestMethod]
     public async Task Compare_MissingFiles_ReturnsOne()
     {
-        Assert.AreEqual(1, await _runner.RunAsync(["compare", "before.txt", "after.txt", "exact-search"]));
-        StringAssert.Contains(string.Join('\n', _consoleLines), "Baseline before file not found: before.txt");
-        _runner._fileExists = path => path == "before.txt";
-        _runner._readAllText = _ => "--- exact-search ---\n  Median: 1.000 ms";
-        Assert.AreEqual(1, await _runner.RunAsync(["compare", "before.txt", "after.txt", "exact-search"]));
-        StringAssert.Contains(string.Join('\n', _consoleLines), "Benchmark after file not found: after.txt");
+        var before = Path.Combine(_directory, "before.txt");
+        var after = Path.Combine(_directory, "after.txt");
+        Assert.AreEqual(1, await _runner.RunAsync(["compare", before, after, "exact-search"]));
+        StringAssert.Contains(_output.ToString(), $"Baseline before file not found: {before}");
+        await File.WriteAllTextAsync(before, "--- exact-search ---\n  Median: 1.000 ms");
+        Assert.AreEqual(1, await _runner.RunAsync(["compare", before, after, "exact-search"]));
+        StringAssert.Contains(_output.ToString(), $"Benchmark after file not found: {after}");
     }
 
     [TestMethod]
     public async Task Compare_MissingArguments_ReportsUsage()
     {
         Assert.AreEqual(1, await _runner.RunAsync(["compare", "before.txt", "after.txt"]));
-        StringAssert.Contains(string.Join('\n', _consoleLines), "Usage: Benchmark.exe compare");
+        StringAssert.Contains(_output.ToString(), "Usage: Benchmark.exe compare");
     }
 
     [TestMethod]
@@ -323,34 +360,36 @@ public class BenchmarkRunnerTests
         CollectionAssert.AreEqual(Array.Empty<string>(), matches.ToArray());
     }
 
-    Task<int> Compare(string beforeReport, string afterReport, string scenario = "exact-search")
+    async Task<int> Compare(string beforeReport, string afterReport, string scenario = "exact-search")
     {
-        _runner._fileExists = _ => true;
-        _runner._readAllText = path => path == "before.txt" ? beforeReport : afterReport;
-        return _runner.RunAsync(["compare", "before.txt", "after.txt", scenario]);
+        var before = Path.Combine(_directory, "before.txt");
+        var after = Path.Combine(_directory, "after.txt");
+        await File.WriteAllTextAsync(before, beforeReport);
+        await File.WriteAllTextAsync(after, afterReport);
+        return await _runner.RunAsync(["compare", before, after, scenario]);
     }
 
-    List<string> _consoleLines = null!;
+
+    string _directory = null!;
+    StringWriter _output = null!;
     BenchmarkRunner _runner = null!;
-    List<(string Path, string Content)> _writtenFiles = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _consoleLines = [];
-        _writtenFiles = [];
-        _runner = new BenchmarkRunner
+        _directory = Directory.CreateTempSubdirectory("benchmark-host-").FullName;
+        _output = new StringWriter();
+        _runner = new BenchmarkRunner(_output);
+    }
+
+    [TestCleanup]
+    public void Cleanup()
+    {
+        _output.Dispose();
+        if (Directory.Exists(_directory))
         {
-            _systemInfo = new SystemInfo
-            {
-                _getBuildConfiguration = () => "Release",
-                _getWmiValue = (_, _) => "MockValue",
-                _getInstalledMemoryGb = () => 32,
-                _getDiskModel = _ => "MockDisk"
-            },
-            _fileExists = _ => false,
-            _writeAllText = (path, content) => _writtenFiles.Add((path, content)),
-            _writeLineToConsole = line => _consoleLines.Add(line)
-        };
+            Directory.Delete(_directory, true);
+        }
     }
 }
+

@@ -5,10 +5,8 @@ namespace SampleProgram.Watch;
 // The watch mode: every drive's index is opened first and watched together, so one wait covers the whole machine.
 partial class SampleHost
 {
-    internal Func<bool> _isInteractive = () => !Console.IsInputRedirected;
-
     // Returns how many drive operations failed.
-    async Task<int> WatchDrivesAsync(MftIndexSource source, WatchArguments parsed, CancellationToken cancellationToken)
+    async Task<int> WatchDrivesAsync(MftIndexSource source, WatchArguments parsed, Func<string, IndexedDrive> resolveDrive, CancellationToken cancellationToken)
     {
         var openFailures = 0;
         var operations = new List<DriveOperationResult>();
@@ -17,19 +15,19 @@ partial class SampleHost
         {
             foreach (var letter in parsed.Drives)
             {
-                _writeLine($"=== Drive {letter}: ===");
+                _output.WriteLine($"=== Drive {letter}: ===");
                 try
                 {
-                    var index = await OpenDriveAsync(source, parsed, letter, cancellationToken).ConfigureAwait(false);
+                    var index = await OpenDriveAsync(source, parsed, resolveDrive(letter), cancellationToken).ConfigureAwait(false);
                     watched.Add((letter, index, ReportChanges(index)));
                 }
                 catch (Exception exception)
                 {
                     openFailures++;
-                    _writeLine($"Error on drive {letter}: {exception.Message}");
+                    _output.WriteLine($"Error on drive {letter}: {exception.Message}");
                 }
 
-                _writeLine(string.Empty);
+                _output.WriteLine(string.Empty);
             }
 
             foreach (var (_, index, _) in watched)
@@ -44,9 +42,9 @@ partial class SampleHost
             {
                 operations.AddRange(Report("stop", await index.StopWatchingAsync(index.Drives.Select(drive => drive.Drive), cancellationToken).ConfigureAwait(false)));
                 var rows = index.Enumerate(new SearchQuery(null), cancellationToken).Count();
-                _writeLine($"=== Drive {letter}: ===");
-                _writeLine($"Saw {counter.Count} changes {waited}; the index now holds {rows} entries");
-                _writeLine($"=== Drive {letter}: done ===");
+                _output.WriteLine($"=== Drive {letter}: ===");
+                _output.WriteLine($"Saw {counter.Count} changes {waited}; the index now holds {rows} entries");
+                _output.WriteLine($"=== Drive {letter}: done ===");
             }
         }
         finally
@@ -60,6 +58,8 @@ partial class SampleHost
         return openFailures + operations.Count(result => result.Outcome is DriveOperationOutcome.Failed);
     }
 
+    bool IsInteractive => _interactive ?? !Console.IsInputRedirected;
+
     // Waits for --seconds, or for a key press when attended at a console and no length was given; says how it waited.
     async Task<string> WaitWhileWatchingAsync(WatchArguments parsed, IEnumerable<string> letters, CancellationToken cancellationToken)
     {
@@ -69,16 +69,17 @@ partial class SampleHost
             return "with no drive watched";
         }
 
-        var seconds = parsed.Seconds ?? (IsUnattended() || !_isInteractive() ? WatchArguments.DefaultSeconds : null);
+        var seconds = parsed.Seconds ?? (IsUnattended() || !IsInteractive ? WatchArguments.DefaultSeconds : null);
         if (seconds is { } length)
         {
-            _writeLine($"Watching {drives} for {length} seconds.");
-            await _delay(TimeSpan.FromSeconds(length), cancellationToken).ConfigureAwait(false);
+            _output.WriteLine($"Watching {drives} for {length} seconds.");
+            await Task.Delay(TimeSpan.FromSeconds(length), _timeProvider, cancellationToken).ConfigureAwait(false);
             return $"in {length} seconds";
         }
 
-        _writeLine($"Watching {drives}. Press any key to stop.");
-        await Task.Run(_readKey, cancellationToken).ConfigureAwait(false);
+        _output.WriteLine($"Watching {drives}. Press any key to stop.");
+        // A blocked read cannot be cancelled, so cancellation ends the wait and leaves the read behind.
+        await Task.Run(() => _input.Read(), CancellationToken.None).WaitAsync(cancellationToken).ConfigureAwait(false);
         return "until a key was pressed";
     }
 
@@ -109,14 +110,14 @@ partial class SampleHost
     DriveChangeCounter ReportChanges(FileIndex index)
     {
         var counter = new DriveChangeCounter();
-        index.WatchStateChanged += state => _writeLine($"  watch {state.Drive}: {state.Watch.State} (version {state.Watch.StateVersion}){(state.Fault is { } fault ? $", fault {fault.Kind}" : string.Empty)}");
-        index.WatchFaulted += fault => _writeLine($"  watch fault {fault.Drive}: {fault.Kind}: {fault.Exception.Message}{(fault.Exception is JournalCatchUpLostException lost ? $" (recovery stopped: {lost.IsRecoveryStopped})" : string.Empty)}");
+        index.WatchStateChanged += state => _output.WriteLine($"  watch {state.Drive}: {state.Watch.State} (version {state.Watch.StateVersion}){(state.Fault is { } fault ? $", fault {fault.Kind}" : string.Empty)}");
+        index.WatchFaulted += fault => _output.WriteLine($"  watch fault {fault.Drive}: {fault.Kind}: {fault.Exception.Message}{(fault.Exception is JournalCatchUpLostException lost ? $" (recovery stopped: {lost.IsRecoveryStopped})" : string.Empty)}");
         index.Changed += change =>
         {
             var isSameFile = counter.Add(change.Entry);
             // The entry handle is live, so its columns are unreadable once a later change reuses its row slot;
             // the change's own path is the fact of this event.
-            _writeLine($"  {change.Kind}: {change.Path}{(change.PreviousPath is { } previous ? $" (was {previous})" : string.Empty)} at {change.Timestamp:u}{(isSameFile ? ", same file as the previous change" : string.Empty)}, file id {change.Entry.GetHashCode():x8}, drive {change.Entry.Drive}, entry {Path.GetFileName(change.Path)}");
+            _output.WriteLine($"  {change.Kind}: {change.Path}{(change.PreviousPath is { } previous ? $" (was {previous})" : string.Empty)} at {change.Timestamp:u}{(isSameFile ? ", same file as the previous change" : string.Empty)}, file id {change.Entry.GetHashCode():x8}, drive {change.Entry.Drive}, entry {Path.GetFileName(change.Path)}");
         };
         return counter;
     }

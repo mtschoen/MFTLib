@@ -10,9 +10,8 @@ partial class SampleHostElevationNoticeTests
     public void Run_NotElevated_DialogStartedLateThenAnsweredAtOnce_IsAccidentalAndShownAgain()
     {
         var events = new List<string>();
-        var clock = new FakeTimeProvider();
         var scanner = Scanner(new List<string>(), events, []);
-        scanner._timeProvider = clock;
+        var clock = (FakeTimeProvider)scanner._timeProvider;
         // The dialog thread starts ten minutes late, as when the pool is busy. Only the time on screen counts.
         scanner._dialogScheduler = new LateStartScheduler(() => clock.Advance(TimeSpan.FromMinutes(10)));
         var answers = new Queue<(int Result, double Seconds)>([(SampleHost.MessageBoxResultOk, 0), (SampleHost.MessageBoxResultOk, 3)]);
@@ -24,7 +23,7 @@ partial class SampleHostElevationNoticeTests
             return answer.Result;
         };
 
-        var result = scanner.Run(["scan", "C"]);
+        var result = RunElevation(scanner);
 
         Assert.AreEqual(0, result);
         CollectionAssert.AreEqual(new[] { "dialog", "dialog", "elevate" }, events);
@@ -39,9 +38,8 @@ partial class SampleHostElevationNoticeTests
     {
         var events = new List<string>();
         var delayedCaller = new TaskCompletionSource();
-        var clock = new FakeTimeProvider();
         var scanner = Scanner(new List<string>(), events, []);
-        scanner._timeProvider = clock;
+        var clock = (FakeTimeProvider)scanner._timeProvider;
         var beepCount = 0;
         scanner._messageBeep = _ =>
         {
@@ -66,7 +64,7 @@ partial class SampleHostElevationNoticeTests
             return answer.Result;
         };
 
-        var result = scanner.Run(["scan", "C"]);
+        var result = RunElevation(scanner);
 
         Assert.AreEqual(0, result);
         CollectionAssert.AreEqual(new[] { "dialog", "dialog", "elevate" }, events);
@@ -83,9 +81,8 @@ partial class SampleHostElevationNoticeTests
         var callerWaitingOnDelayedCaller = new TaskCompletionSource();
         var secondDialogStarted = new TaskCompletionSource();
         var hookFinishedAdvance = new TaskCompletionSource();
-        var clock = new FakeTimeProvider();
         var scanner = Scanner(new List<string>(), events, []);
-        scanner._timeProvider = clock;
+        var clock = (FakeTimeProvider)scanner._timeProvider;
         var beepCount = 0;
         scanner._messageBeep = _ =>
         {
@@ -121,7 +118,7 @@ partial class SampleHostElevationNoticeTests
             return answer.Result;
         };
 
-        var result = scanner.Run(["scan", "C"]);
+        var result = RunElevation(scanner);
 
         Assert.AreEqual(0, result);
         CollectionAssert.AreEqual(new[] { "dialog", "dialog", "elevate" }, events);
@@ -134,7 +131,7 @@ partial class SampleHostElevationNoticeTests
         var events = new List<string>();
         var scanner = Scanner(lines, events, [Answer(SampleHost.MessageBoxResultOk, SampleHost.ElevationNoticeTimeout.TotalSeconds + 1)]);
 
-        var result = scanner.Run(["scan", "C"]);
+        var result = RunElevation(scanner);
 
         Assert.AreEqual(1, result);
         CollectionAssert.AreEqual(new[] { "dialog" }, events);
@@ -151,8 +148,8 @@ partial class SampleHostElevationNoticeTests
             new List<string>(), earlierEvents,
             [Answer(SampleHost.MessageBoxResultOk, SampleHost.ElevationNoticeTimeout.TotalSeconds - 0.001)]);
 
-        Assert.AreEqual(1, atTimeout.Run(["scan", "C"]));
-        Assert.AreEqual(0, earlier.Run(["scan", "C"]));
+        Assert.AreEqual(1, RunElevation(atTimeout));
+        Assert.AreEqual(0, RunElevation(earlier));
 
         CollectionAssert.AreEqual(new[] { "dialog" }, atTimeoutEvents);
         CollectionAssert.AreEqual(new[] { "dialog", "elevate" }, earlierEvents);

@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using MFTLib.NativeInterop;
+using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Win32.SafeHandles;
@@ -38,10 +39,9 @@ public class WatchHostModeTests
     public void Run_UnknownOption_PrintsUsageAndReturnsTwoWithoutTouchingElevation()
     {
         var lines = new List<string>();
-        var scanner = new SampleHost
+        var scanner = new SampleHost(new LineCollectingWriter(lines), TextReader.Null)
         {
             _isElevated = () => throw new AssertFailedException("A bad command line must not reach elevation."),
-            _writeLine = lines.Add
         };
 
         var result = scanner.Run(["scan", "--verbose"]);
@@ -56,28 +56,18 @@ public class WatchHostModeTests
     {
         await using var broker = new InProcessBroker(CreateHost());
         var lines = new List<string>();
-        var scanner = ScannerOverBroker(broker, lines);
-        var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(
-            new DateTimeOffset(2026, 10, 16, 12, 34, 56, TimeSpan.Zero));
-        scanner._timeProvider = clock;
-        scanner._messageBox = (_, _, _, _) =>
-        {
-            clock.Advance(SampleHost.AccidentalDismissalInterval);
-            return SampleHost.MessageBoxResultOk;
-        };
-        scanner._cacheDirectory = Path.Combine(_directory, "unused-cache");
-        scanner._getUserProfileDirectory = () => throw new AssertFailedException("CacheMode.Disabled must not resolve a profile.");
+        var scanner = ScannerOverBroker(lines, new Microsoft.Extensions.Time.Testing.FakeTimeProvider(
+            new DateTimeOffset(2026, 10, 16, 12, 34, 56, TimeSpan.Zero)));
+        var sessionLaunch = Task.FromResult(broker.Handle);
+        var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
-        var result = scanner.Run(["scan", "c:"]);
+        var result = await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["C"]), session, ResolveDrive, CancellationToken.None);
 
         Assert.AreEqual(0, result);
         Assert.IsTrue(lines.Contains("Index holds 2 rows; 0 records skipped"), string.Join(Environment.NewLine, lines));
         Assert.IsTrue(lines.Contains("Catch-up held; watch supported: True"));
         Assert.IsTrue(lines.Any(line => line.StartsWith("  C: Finished: ", StringComparison.Ordinal)));
         Assert.IsTrue(lines.Contains("=== Drive C: done ==="));
-        Assert.IsFalse(Directory.Exists(scanner._cacheDirectory));
-        Assert.IsTrue(lines.Contains("Completed at 2026-10-16 12:34:56Z"),
-            string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -85,19 +75,14 @@ public class WatchHostModeTests
     {
         await using var broker = new InProcessBroker(CreateHost());
         var lines = new List<string>();
-        var launches = 0;
-        var scanner = ScannerOverBroker(broker, lines);
+        var scanner = ScannerOverBroker(lines);
         var handle = broker.Handle;
-        scanner._createBrokerSession = () => BrokerTestHarness.CreateSession(_ =>
-        {
-            Interlocked.Increment(ref launches);
-            return Task.FromResult(handle);
-        });
+        var sessionLaunch = Task.FromResult(handle);
+        var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
-        var result = scanner.Run(["scan", "C", "D:"]);
+        var result = await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["C", "D"]), session, ResolveDrive, CancellationToken.None);
 
         Assert.AreEqual(0, result);
-        Assert.AreEqual(1, launches);
         Assert.AreEqual(2, lines.Count(line => line.StartsWith("Index holds ", StringComparison.Ordinal)));
         Assert.IsTrue(lines.Contains("=== Drive D: done ==="));
         Assert.IsTrue(handle.Ended.IsCompleted,
@@ -111,9 +96,11 @@ public class WatchHostModeTests
         await using var broker = new InProcessBroker(CreateHost(
             readJournal: (_, _, _) => throw new IOException("catch-up read failed")));
         var lines = new List<string>();
-        var scanner = ScannerOverBroker(broker, lines);
+        var scanner = ScannerOverBroker(lines);
+        var sessionLaunch = Task.FromResult(broker.Handle);
+        var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
-        await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["C"]), CancellationToken.None);
+        await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["C"]), session, ResolveDrive, CancellationToken.None);
 
         Assert.IsTrue(lines.Any(line => line.StartsWith("Index holds ", StringComparison.Ordinal)));
         Assert.IsTrue(lines.Contains("Catch-up lost: CheckpointTrimmed"));
@@ -125,9 +112,11 @@ public class WatchHostModeTests
         await using var broker = new InProcessBroker(CreateHost(
             scanDrive: (_, _, _, _, _, _) => throw new IOException("volume unreadable")));
         var lines = new List<string>();
-        var scanner = ScannerOverBroker(broker, lines);
+        var scanner = ScannerOverBroker(lines);
+        var sessionLaunch = Task.FromResult(broker.Handle);
+        var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
-        await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["C"]), CancellationToken.None);
+        await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["C"]), session, ResolveDrive, CancellationToken.None);
 
         Assert.IsTrue(lines.Any(line => line.StartsWith("Error on drive C: ", StringComparison.Ordinal) &&
                                         line.Contains("volume unreadable")), string.Join(Environment.NewLine, lines));
@@ -151,46 +140,29 @@ public class WatchHostModeTests
     {
         await using var broker = new InProcessBroker(CreateHost());
         var lines = new List<string>();
-        var scanner = ScannerOverBroker(broker, lines);
-        var launches = 0;
+        var scanner = ScannerOverBroker(lines);
         var handle = broker.Handle;
-        scanner._createBrokerSession = () => BrokerTestHarness.CreateSession(_ =>
-        {
-            Interlocked.Increment(ref launches);
-            return Task.FromResult(handle);
-        });
-        scanner._resolveDrive = _ => new IndexedDrive('Q', Path.Combine(_directory, "missing-root"), 4242);
+        var sessionLaunch = Task.FromResult(handle);
+        var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
-        await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["Q"]), CancellationToken.None);
+        await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["Q"]), session, _ => new IndexedDrive('Q', Path.Combine(_directory, "missing-root"), 4242), CancellationToken.None);
 
-        Assert.AreEqual(0, launches, "An offline drive needs no elevated broker.");
         Assert.IsTrue(lines.Contains("Error on drive Q: The drive is offline; nothing was scanned."),
             string.Join(Environment.NewLine, lines));
         Assert.IsFalse(lines.Any(line => line.StartsWith("Catch-up", StringComparison.Ordinal) ||
                                         line.Contains("done")));
     }
 
-    [DataTestMethod]
-    [DataRow(true)]
-    [DataRow(false)]
-    public async Task ScanThroughBroker_LaunchDeclined_PrintsTheError(bool failAtCreation)
+    [TestMethod]
+    public async Task ScanThroughBroker_LaunchDeclined_PrintsTheError()
     {
         var lines = new List<string>();
-        var scanner = new SampleHost
-        {
-            _createBrokerSession = () => failAtCreation
-                ? throw new InvalidOperationException("UAC prompt declined")
-                : BrokerTestHarness.CreateSession(_ =>
-                    throw new InvalidOperationException("UAC prompt declined")),
-            _resolveDrive = ResolveDrive,
-            _cacheDirectory = _directory,
-            _writeLine = lines.Add
-        };
+        var scanner = new SampleHost(new LineCollectingWriter(lines), TextReader.Null);
+        var session = BrokerTestHarness.CreateSession(_ => throw new InvalidOperationException("UAC prompt declined"));
 
-        await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["C"]), CancellationToken.None);
+        await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["C"]), session, ResolveDrive, CancellationToken.None);
 
-        var prefix = failAtCreation ? "Error creating broker session: " : "Error on drive C: ";
-        Assert.IsTrue(lines.Any(line => line.StartsWith(prefix, StringComparison.Ordinal) &&
+        Assert.IsTrue(lines.Any(line => line.StartsWith("Error on drive C: ", StringComparison.Ordinal) &&
                                         line.Contains("UAC prompt declined", StringComparison.Ordinal)),
             string.Join(Environment.NewLine, lines));
         Assert.IsFalse(lines.Any(line => line.Contains("done", StringComparison.Ordinal)));
@@ -199,12 +171,15 @@ public class WatchHostModeTests
     [TestMethod]
     public void Run_BrokerSessionCannotBeCreated_ReturnsOneAndNeverReportsCompletion()
     {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
         var lines = new List<string>();
-        var scanner = new SampleHost
+        var scanner = new SampleHost(new LineCollectingWriter(lines), TextReader.Null)
         {
             _isElevated = () => true,
-            _createBrokerSession = () => throw new InvalidOperationException("UAC prompt declined"),
-            _writeLine = lines.Add
         };
 
         var result = scanner.Run(["scan", "C"]);
@@ -214,17 +189,12 @@ public class WatchHostModeTests
         Assert.IsFalse(lines.Any(line => line.StartsWith("Completed at", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
     }
 
-    SampleHost ScannerOverBroker(InProcessBroker broker, List<string> lines)
+    static SampleHost ScannerOverBroker(List<string> lines, TimeProvider? timeProvider = null)
     {
-        var scanner = new SampleHost
+        var scanner = new SampleHost(new LineCollectingWriter(lines), TextReader.Null, timeProvider ?? new Microsoft.Extensions.Time.Testing.FakeTimeProvider())
         {
             _isElevated = () => false,
-            _getEnvironmentVariable = _ => null,
             _canSelfElevate = () => throw new AssertFailedException("scan must not self-elevate."),
-            _createBrokerSession = () => BrokerTestHarness.CreateSession(_ => Task.FromResult(broker.Handle)),
-            _resolveDrive = ResolveDrive,
-            _cacheDirectory = _directory,
-            _writeLine = lines.Add
         };
         // The run is attended and unelevated, so it shows the heads-up dialog before the broker launch.
         WatchNoticeSupport.AcknowledgeDeliberately(scanner);

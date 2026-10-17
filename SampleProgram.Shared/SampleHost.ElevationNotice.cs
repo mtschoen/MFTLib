@@ -41,7 +41,7 @@ partial class SampleHost
 
     internal Func<IntPtr, string, string, uint, int> _messageBox = MessageBoxNative;
     internal Func<uint, bool> _messageBeep = MessageBeepNative;
-    internal TimeProvider _timeProvider = TimeProvider.System;
+    internal readonly TimeProvider _timeProvider;
     internal TaskScheduler _dialogScheduler = TaskScheduler.Default;
 
     /// <summary>
@@ -64,7 +64,7 @@ partial class SampleHost
             var outcome = ShowElevationNotice(BuildElevationNotice(arguments, reason, previousDismissalTooFast, need));
             if (outcome is not { } answered || answered.AnsweredAt - answered.ShownAt >= ElevationNoticeTimeout)
             {
-                _writeLine("The heads-up dialog was not answered in time; treating it as Cancel.");
+                _output.WriteLine("The heads-up dialog was not answered in time; treating it as Cancel.");
                 return false;
             }
 
@@ -120,7 +120,7 @@ partial class SampleHost
         return dialog.IsCompleted ? dialog.GetAwaiter().GetResult() : null;
     }
 
-    string BuildElevationNotice(string[] arguments, string reason, bool previousDismissalTooFast, string need)
+    static string BuildElevationNotice(string[] arguments, string reason, bool previousDismissalTooFast, string need)
     {
         var text = new StringBuilder();
         if (previousDismissalTooFast)
@@ -132,7 +132,7 @@ partial class SampleHost
         text.AppendLine("A Windows elevation (UAC) prompt will appear after you press OK.");
         text.AppendLine(need + reason);
         text.AppendLine();
-        text.AppendLine("Executable: " + _getProcessPath());
+        text.AppendLine("Executable: " + Environment.ProcessPath);
         text.AppendLine(string.Create(CultureInfo.InvariantCulture, $"Arguments ({arguments.Length}), one per line exactly as received; <empty> marks an empty argument:"));
         foreach (var line in ArgumentLines(arguments))
         {

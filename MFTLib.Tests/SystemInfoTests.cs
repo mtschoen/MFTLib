@@ -34,35 +34,27 @@ public class SystemInfoTests
     [TestMethod]
     public void ComputeInstalledMemoryGB_WithCapacities_ReturnsGB()
     {
-        var systemInfo = new SystemInfo
-        {
-            // Two 16GB DIMMs
-            _queryMemoryCapacities = () => [16L * 1024 * 1024 * 1024, 16L * 1024 * 1024 * 1024]
-        };
-
-        Assert.AreEqual(32, systemInfo._getInstalledMemoryGb());
+        Assert.AreEqual((32, (string?)null), SystemInfo.ComputeInstalledMemoryGB(
+            [16L * 1024 * 1024 * 1024, 16L * 1024 * 1024 * 1024]));
     }
 
     [TestMethod]
     public void ComputeInstalledMemoryGB_WithNoCapacities_ReturnsZero()
     {
-        var systemInfo = new SystemInfo
-        {
-            _queryMemoryCapacities = () => []
-        };
-
-        Assert.AreEqual(0, systemInfo._getInstalledMemoryGb());
+        Assert.AreEqual((0, (string?)null), SystemInfo.ComputeInstalledMemoryGB([]));
     }
 
     [TestMethod]
     public void ComputeInstalledMemoryGB_WhenQueryThrows_ReturnsZero()
     {
-        var systemInfo = new SystemInfo
+        static IEnumerable<long> BrokenCapacities()
         {
-            _queryMemoryCapacities = () => throw new InvalidOperationException("WMI failed")
-        };
-
-        Assert.AreEqual(0, systemInfo._getInstalledMemoryGb());
+            yield return 1024;
+            throw new InvalidOperationException("WMI failed");
+        }
+        var memory = SystemInfo.ComputeInstalledMemoryGB(BrokenCapacities());
+        Assert.AreEqual(0, memory.Gigabytes);
+        Assert.AreEqual("Warning: Failed to query RAM capacity: WMI failed", memory.Warning);
     }
 
     // --- ComputeDiskModel ---
@@ -70,83 +62,41 @@ public class SystemInfoTests
     [TestMethod]
     public void ComputeDiskModel_WithModel_ReturnsModel()
     {
-        var systemInfo = new SystemInfo
-        {
-            _queryPartitionIds = _ => ["Disk #0, Partition #0"],
-            _queryDiskModelForPartition = _ => "Samsung SSD 990 PRO"
-        };
-
-        Assert.AreEqual("Samsung SSD 990 PRO", systemInfo._getDiskModel("C:\\"));
+        Assert.AreEqual("Samsung SSD 990 PRO", SystemInfo.ComputeDiskModel([null, "Samsung SSD 990 PRO"]));
     }
 
     [TestMethod]
     public void ComputeDiskModel_NoPartitions_ReturnsUnknown()
     {
-        var systemInfo = new SystemInfo
-        {
-            _queryPartitionIds = _ => []
-        };
-
-        Assert.AreEqual("Unknown", systemInfo._getDiskModel("C:\\"));
+        Assert.AreEqual("Unknown", SystemInfo.ComputeDiskModel([]));
     }
 
     [TestMethod]
     public void ComputeDiskModel_PartitionWithNoDisk_ReturnsUnknown()
     {
-        var systemInfo = new SystemInfo
-        {
-            _queryPartitionIds = _ => ["Disk #0, Partition #0"],
-            _queryDiskModelForPartition = _ => null
-        };
-
-        Assert.AreEqual("Unknown", systemInfo._getDiskModel("C:\\"));
+        Assert.AreEqual("Unknown", SystemInfo.ComputeDiskModel([null]));
     }
 
     [TestMethod]
     public void ComputeDiskModel_WhenQueryThrows_ReturnsError()
     {
-        var systemInfo = new SystemInfo
+        static IEnumerable<string?> BrokenModels()
         {
-            _queryPartitionIds = _ => throw new InvalidOperationException("WMI failed")
-        };
-
-        var result = systemInfo._getDiskModel("C:\\");
-        Assert.IsTrue(result.StartsWith("Error:", StringComparison.Ordinal));
-        Assert.IsTrue(result.Contains("WMI failed"));
+            yield return null;
+            throw new InvalidOperationException("WMI failed");
+        }
+        Assert.AreEqual("Error: WMI failed", SystemInfo.ComputeDiskModel(BrokenModels()));
     }
 
     [TestMethod]
     public void ComputeDiskModel_EmptyPath_FallsBackToC()
     {
-        var queriedDrive = "";
-        var systemInfo = new SystemInfo
-        {
-            _queryPartitionIds = drive =>
-            {
-                queriedDrive = drive;
-                return [];
-            }
-        };
-
-        systemInfo._getDiskModel("");
-        Assert.AreEqual("C", queriedDrive);
+        Assert.AreEqual("C", SystemInfo.DriveForPath(""));
     }
 
     [TestMethod]
     public void ComputeDiskModel_NullRoot_FallsBackToC()
     {
-        var queriedDrive = "";
-        var systemInfo = new SystemInfo
-        {
-            _queryPartitionIds = drive =>
-            {
-                queriedDrive = drive;
-                return [];
-            }
-        };
-
-        // Relative path: GetPathRoot returns ""
-        systemInfo._getDiskModel("relative/path");
-        Assert.AreEqual("C", queriedDrive);
+        Assert.AreEqual("C", SystemInfo.DriveForPath("relative/path"));
     }
 }

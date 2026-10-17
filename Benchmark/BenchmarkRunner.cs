@@ -1,20 +1,17 @@
-using System.Diagnostics;
 
 namespace Benchmark;
 
 public partial class BenchmarkRunner
 {
-    // File system seams
-    internal Func<string, bool> _fileExists = File.Exists;
-    internal Func<string, string> _readAllText = File.ReadAllText;
-    internal Action<string, string> _writeAllText = File.WriteAllText;
+    readonly TextWriter _output;
+    readonly TimeProvider _timeProvider;
 
-    // Measurement and console seams
-    internal Func<Stopwatch, double> _getStopwatchElapsedMs = stopwatch => stopwatch.Elapsed.TotalMilliseconds;
-    internal Action<string> _writeLineToConsole = Console.WriteLine;
-
-    // System info seam
-    internal SystemInfo _systemInfo = new();
+    public BenchmarkRunner(TextWriter output, TimeProvider? timeProvider = null)
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        _output = TextWriter.Synchronized(output);
+        _timeProvider = timeProvider ?? TimeProvider.System;
+    }
 
     public Task<int> RunAsync(string[] arguments)
     {
@@ -28,7 +25,7 @@ public partial class BenchmarkRunner
             return Task.FromResult(RunCompare(arguments[1..]));
         }
 
-        _writeLineToConsole("Usage: Benchmark.exe <index|compare> ...");
+        _output.WriteLine("Usage: Benchmark.exe <index|compare> ...");
         return Task.FromResult(1);
     }
 }

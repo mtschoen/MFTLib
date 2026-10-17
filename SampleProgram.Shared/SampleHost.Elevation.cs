@@ -14,9 +14,7 @@ partial class SampleHost
     static readonly IElevationProvider Elevation = ElevationUtilities.DefaultProvider;
 
     internal Func<bool> _canSelfElevate = Elevation.CanSelfElevate;
-    internal Func<string?> _getProcessPath = () => Environment.ProcessPath;
     internal Func<bool> _isElevated = Elevation.IsElevated;
-    internal Action<string> _writeLine = Console.WriteLine;
 
     /// <summary>
     ///     Prints the elevation failure notice. The arguments are listed as data, one per line and verbatim, never
@@ -25,16 +23,16 @@ partial class SampleHost
     /// </summary>
     void PrintElevationFailure(string[] arguments)
     {
-        _writeLine("------------------------------------------------------------------");
-        _writeLine("AUTOMATIC ELEVATION FAILED.");
-        _writeLine("This program requires Administrative privileges to read the MFT.");
-        _writeLine($"Run this program from an ELEVATED terminal: {_getProcessPath()}");
-        _writeLine($"Arguments ({arguments.Length}), one per line exactly as received; <empty> marks an empty argument:");
+        _output.WriteLine("------------------------------------------------------------------");
+        _output.WriteLine("AUTOMATIC ELEVATION FAILED.");
+        _output.WriteLine("This program requires Administrative privileges to read the MFT.");
+        _output.WriteLine($"Run this program from an ELEVATED terminal: {Environment.ProcessPath}");
+        _output.WriteLine($"Arguments ({arguments.Length}), one per line exactly as received; <empty> marks an empty argument:");
         foreach (var line in ArgumentLines(arguments))
         {
-            _writeLine(line);
+            _output.WriteLine(line);
         }
 
-        _writeLine("------------------------------------------------------------------");
+        _output.WriteLine("------------------------------------------------------------------");
     }
 }

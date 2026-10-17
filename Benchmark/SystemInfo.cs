@@ -3,24 +3,8 @@ using System.Management;
 
 namespace Benchmark;
 
-class SystemInfo
+static class SystemInfo
 {
-    internal Func<string> _getBuildConfiguration = DefaultGetBuildConfiguration;
-    internal Func<string, string> _getDiskModel;
-    internal Func<int> _getInstalledMemoryGb;
-    internal Func<string, string, string> _getWmiValue = DefaultGetWmiValue;
-    internal Func<string, string?> _queryDiskModelForPartition = DefaultQueryDiskModelForPartition;
-
-    // Injectable WMI query functions used by the default implementations
-    internal Func<IEnumerable<long>> _queryMemoryCapacities = DefaultQueryMemoryCapacities;
-    internal Func<string, IEnumerable<string>> _queryPartitionIds = DefaultQueryPartitionIds;
-
-    internal SystemInfo()
-    {
-        _getInstalledMemoryGb = ComputeInstalledMemoryGB;
-        _getDiskModel = ComputeDiskModel;
-    }
-
     // Coalesce a WMI property value (object, nullable ToString) to a trimmed
     // string. A null value yields "Unknown"; both branches are unit-tested.
     internal static string WmiString(object? value)
@@ -55,40 +39,31 @@ class SystemInfo
 #endif
     }
 
-    int ComputeInstalledMemoryGB()
+    internal static (int Gigabytes, string? Warning) ComputeInstalledMemoryGB(IEnumerable<long> capacities)
     {
         try
         {
             long total = 0;
-            foreach (var capacity in _queryMemoryCapacities())
+            foreach (var capacity in capacities)
             {
                 total += capacity;
             }
 
-            if (total > 0)
-            {
-                return (int)(total / 1024 / 1024 / 1024);
-            }
+            return (total > 0 ? (int)(total / 1024 / 1024 / 1024) : 0, null);
         }
         catch (Exception exception)
         {
-            Console.WriteLine($"Warning: Failed to query RAM capacity: {exception.Message}");
+            return (0, $"Warning: Failed to query RAM capacity: {exception.Message}");
         }
-
-        return 0;
     }
 
-    string ComputeDiskModel(string path)
+    internal static string ComputeDiskModel(IEnumerable<string?> models)
     {
         try
         {
-            var root = Path.GetPathRoot(path);
-            var drive = string.IsNullOrEmpty(root) ? "C" : root[..1];
-
-            foreach (var partitionId in _queryPartitionIds(drive))
+            foreach (var model in models)
             {
-                var model = _queryDiskModelForPartition(partitionId);
-                if (model != null)
+                if (model is not null)
                 {
                     return model;
                 }
@@ -99,6 +74,20 @@ class SystemInfo
         catch (Exception exception)
         {
             return $"Error: {exception.Message}";
+        }
+    }
+
+    internal static string DriveForPath(string path)
+    {
+        var root = Path.GetPathRoot(path);
+        return string.IsNullOrEmpty(root) ? "C" : root[..1];
+    }
+
+    internal static IEnumerable<string?> QueryDiskModels(string path)
+    {
+        foreach (var partition in DefaultQueryPartitionIds(DriveForPath(path)))
+        {
+            yield return DefaultQueryDiskModelForPartition(partition);
         }
     }
 

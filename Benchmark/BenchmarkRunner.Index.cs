@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -23,7 +22,7 @@ public partial class BenchmarkRunner
         if (outputIndex >= 0 && outputPath is null ||
             !TryParseIndexArguments(arguments, out var rows, out var cacheDirectory, out var iterations))
         {
-            _writeLineToConsole(
+            _output.WriteLine(
                 "Usage: Benchmark.exe index <--synthetic N|--cache-directory path> [--iterations K] [--out report.txt]");
             return 1;
         }
@@ -32,7 +31,7 @@ public partial class BenchmarkRunner
         var report = new StringBuilder();
         void Log(string line)
         {
-            _writeLineToConsole(line);
+            _output.WriteLine(line);
             report.AppendLine(line);
         }
 
@@ -45,28 +44,33 @@ public partial class BenchmarkRunner
             if (exitCode == 0 && outputPath is not null)
             {
                 var resolvedOutputPath = Path.GetFullPath(outputPath);
-                _writeAllText(resolvedOutputPath, report.ToString());
-                _writeLineToConsole($"Report saved to {resolvedOutputPath}");
+                await File.WriteAllTextAsync(resolvedOutputPath, report.ToString()).ConfigureAwait(false);
+                _output.WriteLine($"Report saved to {resolvedOutputPath}");
             }
 
             return exitCode;
         }
         catch (Exception exception)
         {
-            _writeLineToConsole($"Error: {exception.Message}");
+            _output.WriteLine($"Error: {exception.Message}");
             return 1;
         }
     }
 
-    void LogSystemInfo(Action<string> log)
+    static void LogSystemInfo(Action<string> log)
     {
         log("System Info");
-        log($"  Build:   {_systemInfo._getBuildConfiguration()}");
-        log($"  OS:      {_systemInfo._getWmiValue("Win32_OperatingSystem", "Caption")} ({Environment.OSVersion.Version})");
-        log($"  CPU:     {_systemInfo._getWmiValue("Win32_Processor", "Name")}");
+        log($"  Build:   {SystemInfo.DefaultGetBuildConfiguration()}");
+        log($"  OS:      {SystemInfo.DefaultGetWmiValue("Win32_OperatingSystem", "Caption")} ({Environment.OSVersion.Version})");
+        log($"  CPU:     {SystemInfo.DefaultGetWmiValue("Win32_Processor", "Name")}");
         log($"  Threads: {Environment.ProcessorCount}");
-        log($"  RAM:     {_systemInfo._getInstalledMemoryGb()} GB");
-        log($"  Disk:    {_systemInfo._getDiskModel(AppContext.BaseDirectory)}");
+        var memory = SystemInfo.ComputeInstalledMemoryGB(SystemInfo.DefaultQueryMemoryCapacities());
+        if (memory.Warning is not null)
+        {
+            log(memory.Warning);
+        }
+        log($"  RAM:     {memory.Gigabytes} GB");
+        log($"  Disk:    {SystemInfo.ComputeDiskModel(SystemInfo.QueryDiskModels(AppContext.BaseDirectory))}");
         log($"  .NET:    {RuntimeInformation.FrameworkDescription}");
     }
 
@@ -193,16 +197,15 @@ public partial class BenchmarkRunner
         PrintIndexMedian("substring-search", () => index.Search(substringQuery), iterations, log);
     }
 
-    void PrintIndexMedian(string label, Func<IReadOnlyList<FileEntry>> query, int iterations, Action<string> log)
+    internal void PrintIndexMedian(string label, Func<IReadOnlyList<FileEntry>> query, int iterations, Action<string> log)
     {
         var samples = new double[iterations];
         var matches = 0;
         for (var iteration = 0; iteration < iterations; iteration++)
         {
-            var stopwatch = Stopwatch.StartNew();
+            var started = _timeProvider.GetTimestamp();
             matches = query().Count;
-            stopwatch.Stop();
-            samples[iteration] = _getStopwatchElapsedMs(stopwatch);
+            samples[iteration] = _timeProvider.GetElapsedTime(started).TotalMilliseconds;
         }
         Array.Sort(samples);
         var middle = iterations / 2;

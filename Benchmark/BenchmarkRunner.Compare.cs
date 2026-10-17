@@ -12,7 +12,7 @@ public partial class BenchmarkRunner
     {
         if (arguments.Length != 3)
         {
-            _writeLineToConsole("Usage: Benchmark.exe compare <before.txt> <after.txt> <scenario>");
+            _output.WriteLine("Usage: Benchmark.exe compare <before.txt> <after.txt> <scenario>");
             return 1;
         }
 
@@ -28,25 +28,25 @@ public partial class BenchmarkRunner
             ? (afterMedian - beforeMedian) / beforeMedian * 100m
             : afterMedian > 0 ? decimal.MaxValue : 0m;
         var passed = growthPercentage <= MaximumGrowthPercentage;
-        _writeLineToConsole(string.Create(CultureInfo.InvariantCulture,
+        _output.WriteLine(string.Create(CultureInfo.InvariantCulture,
             $"{scenario}: {beforeMedian:F3} ms -> {afterMedian:F3} ms ({growthPercentage:F1}% growth, limit {MaximumGrowthPercentage:F1}%) {(passed ? "PASSED" : "FAILED")}"));
         return passed ? 0 : 1;
     }
 
     decimal? ReadScenarioMedian(string path, string scenario, string label)
     {
-        if (!_fileExists(path))
+        if (!File.Exists(path))
         {
-            _writeLineToConsole($"Error: {label} file not found: {path}");
+            _output.WriteLine($"Error: {label} file not found: {path}");
             return null;
         }
 
-        var block = ExtractScenarioBlock(_readAllText(path), scenario);
+        var block = ExtractScenarioBlock(File.ReadAllText(path), scenario);
         var match = block is null ? null : Regex.Match(block, @"Median:\s*([0-9.]+) ms");
         if (match is not { Success: true } || !decimal.TryParse(match.Groups[1].Value, NumberStyles.Float,
                 CultureInfo.InvariantCulture, out var median))
         {
-            _writeLineToConsole($"Error: {label} file has no median for scenario '{scenario}'.");
+            _output.WriteLine($"Error: {label} file has no median for scenario '{scenario}'.");
             return null;
         }
 
