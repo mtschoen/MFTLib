@@ -21,7 +21,7 @@ public partial class BrokerSessionTests
     [TestCleanup]
     public void Cleanup()
     {
-        BrokerLauncher.ResetToDefaults();
+        BrokerLauncher.Dependencies.ResetToDefaults();
     }
 
     [TestMethod]
@@ -698,8 +698,8 @@ public partial class BrokerSessionTests
     public async Task DefaultConstructor_RelaunchesAfterTheUacPromptIsDeclinedAndNeverCachesTheDecline()
     {
         var prompts = 0;
-        BrokerLauncher._getProcessPathFunc = () => @"C:\app\MyApp.exe";
-        BrokerLauncher._startProcess = _ =>
+        BrokerLauncher.Dependencies.GetProcessPath = () => @"C:\app\MyApp.exe";
+        BrokerLauncher.Dependencies.StartProcess = _ =>
         {
             Interlocked.Increment(ref prompts);
             throw new Win32Exception(1223);

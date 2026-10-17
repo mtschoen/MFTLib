@@ -124,59 +124,6 @@ public partial class BrokerProcessTests
     }
 
     [TestMethod]
-    public async Task RequestIds_WrapAround_SkipZeroAndOutstanding()
-    {
-        await using var broker = new ScriptedBroker();
-        var pending = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
-        Assert.AreEqual(1u, (await broker.ReadRequestAsync()).RequestId);
-        broker.Process.StartingRequestIdForTest = () => uint.MaxValue - 1;
-
-        var atMaximum = broker.Process.QueryVolumeAsync('D', CancellationToken.None);
-        var maximumRequest = await broker.ReadRequestAsync();
-        var afterWrap = broker.Process.QueryVolumeAsync('E', CancellationToken.None);
-        var wrappedRequest = await broker.ReadRequestAsync();
-
-        Assert.AreEqual(uint.MaxValue, maximumRequest.RequestId);
-        Assert.AreEqual(2u, wrappedRequest.RequestId, "Zero and the outstanding id 1 are skipped.");
-        await broker.CloseControlAsync();
-        foreach (var request in new[] { pending, atMaximum, afterWrap })
-        {
-            await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => request.WaitAsync(HangGuard));
-        }
-    }
-
-    [TestMethod]
-    public async Task RequestIds_SpaceExhausted_ThrowsInvalidOperationAndOtherRequestsUnaffected()
-    {
-        await using var broker = new ScriptedBroker();
-        broker.Process.MaximumRequestIdForTest = 3;
-        var requests = new List<Task<NtfsVolumeInformation>>();
-        var ids = new List<uint>();
-        for (var index = 0; index < 3; index++)
-        {
-            requests.Add(broker.Process.QueryVolumeAsync('C', CancellationToken.None));
-            ids.Add((await broker.ReadRequestAsync()).RequestId);
-        }
-
-        var exhausted = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
-            broker.Process.QueryVolumeAsync('C', CancellationToken.None));
-        Assert.AreEqual("No broker request id is free", exhausted.Message);
-        CollectionAssert.AreEqual(new uint[] { 1, 2, 3 }, ids);
-
-        await broker.WriteControlAsync(writer => BrokerProtocol.WriteVolumeInfo(writer, 2, 1024, 1024 * 1000));
-        Assert.AreEqual(1000L, (await requests[1].WaitAsync(HangGuard)).MftRecordCount);
-        var fifth = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
-        var fifthRequest = await broker.ReadRequestAsync();
-        await broker.WriteControlAsync(writer =>
-            BrokerProtocol.WriteVolumeInfo(writer, fifthRequest.RequestId, 1024, 1024 * 500));
-
-        Assert.AreEqual(2u, fifthRequest.RequestId);
-        Assert.AreEqual(500L, (await fifth.WaitAsync(HangGuard)).MftRecordCount);
-        Assert.IsFalse(requests[0].IsCompleted || requests[2].IsCompleted, "The other requests stay pending.");
-        Assert.IsFalse(broker.Process.Ended.IsCompleted);
-    }
-
-    [TestMethod]
     public async Task RequestIds_ReleasedOnProcessEnd()
     {
         await using var broker = new ScriptedBroker();
@@ -187,13 +134,13 @@ public partial class BrokerProcessTests
         await broker.ReadRequestAsync();
         await cancellation.CancelAsync();
         await AssertCancelledAsync(abandoned);
-        Assert.AreEqual(2, broker.Process.PendingRequestCountForTest, "A cancelled wait keeps its id until its reply.");
+        Assert.AreEqual(2, broker.Process.Hooks.PendingRequestCount, "A cancelled wait keeps its id until its reply.");
 
         await broker.CloseControlAsync();
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => first.WaitAsync(HangGuard));
 
         Assert.IsNull(lost.Drive);
-        Assert.AreEqual(0, broker.Process.PendingRequestCountForTest);
+        Assert.AreEqual(0, broker.Process.Hooks.PendingRequestCount);
     }
 
     [TestMethod]

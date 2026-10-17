@@ -25,11 +25,19 @@ public static class ElevatedEntryPoint
     /// <returns><c>true</c> when broker mode was handled, including rejected diagnostics arguments.</returns>
     public static bool RunBrokerIfRequested(string[] arguments)
     {
-        return RunBrokerIfRequested(arguments, new DefaultElevatedEntryRunner());
+        return RunBrokerIfRequested(arguments, new DefaultElevatedEntryRunner(), Environment.Exit);
     }
 
-    // The same dispatch with the runner chosen by the caller, so tests substitute it.
-    internal static bool RunBrokerIfRequested(string[] arguments, IElevatedEntryRunner runner)
+    /// <summary>
+    ///     Internal dispatch allowing tests to supply a mock runner and exit handler. The exit action handles
+    ///     rejected diagnostics arguments before runner entry; valid dispatch invokes the supplied runner.
+    /// </summary>
+    /// <param name="arguments">The process arguments.</param>
+    /// <param name="runner">The runner to invoke when arguments are valid.</param>
+    /// <param name="exitProcess">Called with exit code 1 when diagnostics arguments are rejected before runner entry.</param>
+    /// <returns><c>true</c> when broker mode was handled, including rejected diagnostics arguments.</returns>
+    internal static bool RunBrokerIfRequested(string[] arguments, IElevatedEntryRunner runner,
+        Action<int> exitProcess)
     {
         foreach (var arg in arguments)
         {
@@ -50,7 +58,7 @@ public static class ElevatedEntryPoint
                         var logDirectory = DiagnosticsDirectory(clientLogPath);
                         if (logDirectory == null)
                         {
-                            DefaultElevatedEntryRunner._exitProcess(1);
+                            exitProcess(1);
                             return true;
                         }
 

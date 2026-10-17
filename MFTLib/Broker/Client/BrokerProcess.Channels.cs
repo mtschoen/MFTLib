@@ -28,7 +28,6 @@ internal sealed partial class BrokerProcess
                 ForgetChannel, _timeProvider);
             try
             {
-                BeforeChannelTrackedForTest?.Invoke();
                 TrackChannel(channel);
                 await channel.WriteAsync(writeFirstRequest, cancellationToken).ConfigureAwait(false);
             }
@@ -94,9 +93,6 @@ internal sealed partial class BrokerProcess
             TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
     }
-
-    /// <summary>Runs between a channel's connection and its registration, so a test can dispose the process there.</summary>
-    internal Action? BeforeChannelTrackedForTest { get; set; }
 
     // A channel opened while the process is being disposed would miss disposal's sweep, so it
     // fails instead and its caller's cleanup closes it.

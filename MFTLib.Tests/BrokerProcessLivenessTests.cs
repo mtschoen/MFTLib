@@ -207,11 +207,11 @@ public class BrokerProcessLivenessTests
         StringAssert.Contains(timeout.Message, "did not answer request");
         StringAssert.Contains(timeout.Message, "30 seconds");
         Assert.IsFalse(session.Process.Ended.IsCompleted, "Only the request timed out.");
-        Assert.AreEqual(1, session.Process.PendingRequestCountForTest, "The id stays until its reply arrives.");
+        Assert.AreEqual(1, session.Process.Hooks.PendingRequestCount, "The id stays until its reply arrives.");
 
         await session.SendControlAsync(writer => BrokerProtocol.WriteVolumeInfo(writer, slowRequest.RequestId, 1, 111));
         await session.ControlSettledAsync();
-        Assert.AreEqual(0, session.Process.PendingRequestCountForTest, "The late reply is dropped with its id.");
+        Assert.AreEqual(0, session.Process.Hooks.PendingRequestCount, "The late reply is dropped with its id.");
 
         var next = session.Process.QueryVolumeAsync('C', CancellationToken.None);
         var nextRequest = await session.Broker.ReadRequestAsync();

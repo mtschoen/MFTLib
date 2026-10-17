@@ -45,9 +45,11 @@ public class NativeSeamIsolationTests
     [DataRow(typeof(EnvironmentVariableReferenceFixture), "Environment.SetEnvironmentVariable")]
     [DataRow(typeof(CurrentDirectoryReferenceFixture), "Environment.set_CurrentDirectory")]
     [DataRow(typeof(ConsoleRedirectReferenceFixture), "Console.SetOut")]
-    [DataRow(typeof(ProductionStaticFieldReferenceFixture), "BrokerLauncher._startProcess")]
+    [DataRow(typeof(ProductionStaticFieldReferenceFixture), "LaunchDependencies.StartProcess")]
     [DataRow(typeof(ProductionStaticSetterReferenceFixture), "BrokerDiagnostics.set_IncludeSelfEntries")]
-    [DataRow(typeof(ProductionResetReferenceFixture), "BrokerLauncher.ResetToDefaults")]
+    [DataRow(typeof(ProductionResetReferenceFixture), "LaunchDependencies.ResetToDefaults")]
+    [DataRow(typeof(LaunchOwnerReferenceFixture), "BrokerLauncher.Dependencies")]
+    [DataRow(typeof(LaunchMemberReferenceFixture), "LaunchDependencies.StartProcess")]
     public void Detector_ReportsUnmarkedReferences(Type fixture, string member)
     {
         var violations = FindViolations([fixture]);
@@ -64,6 +66,8 @@ public class NativeSeamIsolationTests
     [DataRow(typeof(IsolatedNativeHookReferenceFixture))]
     [DataRow(typeof(IsolatedEnvironmentVariableReferenceFixture))]
     [DataRow(typeof(ReadOnlyEnvironmentReferenceFixture))]
+    [DataRow(typeof(IsolatedLaunchReferenceFixture))]
+    [DataRow(typeof(PerProcessHooksReferenceFixture))]
     public void Detector_AcceptsIsolatedAndUnrelatedTypes(Type fixture)
     {
         Assert.AreEqual(0, FindViolations([fixture]).Length);
@@ -147,10 +151,11 @@ public class NativeSeamIsolationTests
         return methods;
     }
 
-    static bool IsNativeHooksType(Type type) =>
+    static bool IsProcessGlobalHooksType(Type type) =>
         type == typeof(MFTLibNative.NativeHooks) ||
         type == typeof(FileUtilities.VolumeHandleHooks) ||
-        type == typeof(Kernel32.Win32Hooks);
+        type == typeof(Kernel32.Win32Hooks) ||
+        type == typeof(BrokerLauncher.LaunchDependencies);
 
     static bool IsNativeSeam(MemberInfo member)
     {
@@ -164,8 +169,8 @@ public class NativeSeamIsolationTests
             return false;
         }
 
-        if (IsNativeHooksType(declaringType) ||
-            member is FieldInfo hooksField && IsNativeHooksType(hooksField.FieldType))
+        if (IsProcessGlobalHooksType(declaringType) ||
+            member is FieldInfo hooksField && IsProcessGlobalHooksType(hooksField.FieldType))
         {
             return true;
         }

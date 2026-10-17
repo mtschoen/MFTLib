@@ -122,9 +122,17 @@ public partial class BrokerProcessTests
     public async Task ScriptedVolumes_QueryVolumeOverridesTheDefault()
     {
         await using var handle = BrokerTestHarness.StartInProcess(ScriptedVolumes() with { QueryVolume = _ => Volume });
-
+        await using var other = BrokerTestHarness.StartInProcess(ScriptedVolumes());
+        using var cancellation = new CancellationTokenSource();
+        handle.Process.Hooks.AfterControlWriteLockAcquired = cancellation.Cancel;
+        await AssertCancelledAsync(handle.Process.QueryVolumeAsync('C', cancellation.Token));
+        Assert.AreEqual(0, handle.Process.Hooks.PendingRequestCount);
+        using var independentCancellation = new CancellationTokenSource();
+        handle.Process.Hooks.AfterControlWriteLockAcquired = independentCancellation.Cancel;
+        var independent = await other.Process.QueryVolumeAsync('D', independentCancellation.Token).WaitAsync(HangGuard);
+        Assert.AreEqual(256L, independent.MftRecordCount);
+        handle.Process.Hooks.AfterControlWriteLockAcquired = null;
         var volume = await handle.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard);
-
         Assert.AreEqual(Volume.MftRecordCount, volume.MftRecordCount);
     }
 

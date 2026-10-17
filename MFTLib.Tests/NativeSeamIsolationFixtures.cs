@@ -139,7 +139,7 @@ internal static class ConsoleRedirectReferenceFixture
 
 internal static class ProductionStaticFieldReferenceFixture
 {
-    public static void Reference() => BrokerLauncher._startProcess = _ => null;
+    public static void Reference() => BrokerLauncher.Dependencies.StartProcess = _ => null;
 }
 
 internal static class ProductionStaticSetterReferenceFixture
@@ -149,7 +149,30 @@ internal static class ProductionStaticSetterReferenceFixture
 
 internal static class ProductionResetReferenceFixture
 {
-    public static void Reference() => BrokerLauncher.ResetToDefaults();
+    public static void Reference() => BrokerLauncher.Dependencies.ResetToDefaults();
+}
+
+internal static class LaunchOwnerReferenceFixture
+{
+    public static object Reference() => BrokerLauncher.Dependencies;
+}
+
+internal static class LaunchMemberReferenceFixture
+{
+    public static void Reference(BrokerLauncher.LaunchDependencies dependencies) =>
+        dependencies.StartProcess = _ => null;
+}
+
+[DoNotParallelize]
+internal static class IsolatedLaunchReferenceFixture
+{
+    public static void Reference() => BrokerLauncher.Dependencies.ResetToDefaults();
+}
+
+internal static class PerProcessHooksReferenceFixture
+{
+    public static void Reference(BrokerProcess process) =>
+        process.Hooks.AfterControlWriteLockAcquired = null;
 }
 
 internal static class ReadOnlyEnvironmentReferenceFixture

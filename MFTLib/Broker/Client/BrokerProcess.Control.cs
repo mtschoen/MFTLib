@@ -17,25 +17,6 @@ internal sealed partial class BrokerProcess
     // Why the process ended; null while it runs.
     string? _endReason;
 
-    /// <summary>
-    ///     Read once, by the next allocation after it is set, as the id last issued, so a test can
-    ///     move the counter next to <see cref="uint.MaxValue" /> without issuing billions of ids.
-    /// </summary>
-    internal Func<uint>? StartingRequestIdForTest { get; set; }
-
-    /// <summary>The largest id the allocator issues; null is <see cref="uint.MaxValue" />.</summary>
-    internal uint? MaximumRequestIdForTest { get; set; }
-
-    internal int PendingRequestCountForTest
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _pending.Count;
-            }
-        }
-    }
 
     /// <summary>
     ///     The drive's NTFS sizing, as the broker reads it: the fields a block's capacity is
@@ -147,14 +128,8 @@ internal sealed partial class BrokerProcess
     // The next id after the last one issued that is neither zero nor still in the table.
     uint AllocateRequestIdLocked()
     {
-        if (StartingRequestIdForTest is { } start)
-        {
-            _lastRequestId = start();
-            StartingRequestIdForTest = null;
-        }
-
-        var maximum = MaximumRequestIdForTest ?? uint.MaxValue;
-        if (_pending.Count >= maximum)
+        var maximum = uint.MaxValue;
+        if ((uint)_pending.Count >= maximum)
         {
             throw new InvalidOperationException("No broker request id is free");
         }
@@ -189,7 +164,7 @@ internal sealed partial class BrokerProcess
 
         try
         {
-            AfterControlWriteLockAcquiredForTest?.Invoke();
+            Hooks.AfterControlWriteLockAcquired?.Invoke();
             if (cancellationToken.IsCancellationRequested)
             {
                 ReleaseRequest(requestId);
@@ -218,9 +193,6 @@ internal sealed partial class BrokerProcess
             _controlWriteLock.Release();
         }
     }
-
-    /// <summary>Runs once a control request holds the write lock, so a test can cancel its caller there.</summary>
-    internal Action? AfterControlWriteLockAcquiredForTest { get; set; }
 
     void ReleaseRequest(uint requestId)
     {

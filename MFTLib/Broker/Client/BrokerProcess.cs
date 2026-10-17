@@ -58,6 +58,7 @@ internal sealed partial class BrokerProcess : IAsyncDisposable
         _createBlockSection = createBlockSection;
         _timeProvider = timeProvider;
         _controlPipeName = controlPipeName;
+        Hooks = new ProcessHooks(this);
         _controlReader = Task.Run(ReadControlAsync, CancellationToken.None);
     }
 

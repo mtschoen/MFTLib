@@ -16,12 +16,12 @@ public partial class BrokerProcessTests
         await control.Gate.Entered.WaitAsync(HangGuard);
         using var cancellation = new CancellationTokenSource();
         var waiting = broker.Process.QueryVolumeAsync('D', cancellation.Token);
-        Assert.AreEqual(2, broker.Process.PendingRequestCountForTest);
+        Assert.AreEqual(2, broker.Process.Hooks.PendingRequestCount);
 
         await cancellation.CancelAsync();
 
         await AssertCancelledAsync(waiting);
-        Assert.AreEqual(1, broker.Process.PendingRequestCountForTest,
+        Assert.AreEqual(1, broker.Process.Hooks.PendingRequestCount,
             "A request that never started writing keeps no id: nothing was sent, so no reply can come.");
         control.Gate.Release();
         Assert.AreEqual(BrokerFrameKind.QueryVolume, (await broker.ReadRequestAsync()).Kind);
@@ -34,14 +34,14 @@ public partial class BrokerProcessTests
     {
         await using var broker = new ScriptedBroker();
         using var cancellation = new CancellationTokenSource();
-        broker.Process.AfterControlWriteLockAcquiredForTest = cancellation.Cancel;
+        broker.Process.Hooks.AfterControlWriteLockAcquired = cancellation.Cancel;
 
         var cancelled = broker.Process.QueryVolumeAsync('C', cancellation.Token);
 
         await AssertCancelledAsync(cancelled);
-        Assert.AreEqual(0, broker.Process.PendingRequestCountForTest,
+        Assert.AreEqual(0, broker.Process.Hooks.PendingRequestCount,
             "Cancellation before the frame starts writing sends nothing, so the id is released.");
-        broker.Process.AfterControlWriteLockAcquiredForTest = null;
+        broker.Process.Hooks.AfterControlWriteLockAcquired = null;
         var next = broker.Process.QueryVolumeAsync('D', CancellationToken.None);
         var request = await broker.ReadRequestAsync();
         Assert.AreEqual(BrokerFrameKind.QueryVolume, request.Kind, "The first frame on the pipe is the next request's.");

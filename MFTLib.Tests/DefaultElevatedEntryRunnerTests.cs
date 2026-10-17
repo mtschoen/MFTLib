@@ -9,28 +9,16 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 [TestClass]
-[DoNotParallelize] // replaces the process-wide DefaultElevatedEntryRunner._exitProcess seam, the FileUtilities delegate seams and the native test hooks
+[DoNotParallelize] // replaces the FileUtilities delegate seams and the native test hooks
 public class DefaultElevatedEntryRunnerTests
 {
     public TestContext TestContext { get; set; } = null!;
 
-    // Set when a runner thread was still serving after its pipes closed. Restoring the real
-    // Environment.Exit then would let that thread kill the test host, so the fake stays.
-    bool _runnerStillServing;
     Func<Task, Task> _waitForRunnerExit = left => left.WaitAsync(HangGuard);
 
     [TestCleanup]
     public void Cleanup()
     {
-        if (_runnerStillServing)
-        {
-            DefaultElevatedEntryRunner._exitProcess = _ => { };
-        }
-        else
-        {
-            DefaultElevatedEntryRunner.ResetToDefaults();
-        }
-
         BrokerDiagnostics.ResetToDefaults();
         NativeTestHooks.NativeResetTestState();
         FileUtilities.Hooks.ResetToDefaults();
@@ -41,12 +29,15 @@ public class DefaultElevatedEntryRunnerTests
     [SupportedOSPlatform("windows")]
     public void RunBroker_NullPipeName_ExitsWithCode1_WithoutConnecting()
     {
-        int? exitCode = null;
-        DefaultElevatedEntryRunner._exitProcess = code => exitCode = code;
-
-        new DefaultElevatedEntryRunner().RunBroker(null);
-
-        Assert.AreEqual(1, exitCode);
+        var firstExits = new List<int>();
+        var secondExits = new List<int>();
+        var first = new DefaultElevatedEntryRunner(TimeProvider.System, firstExits.Add);
+        var second = new DefaultElevatedEntryRunner(TimeProvider.System, secondExits.Add);
+        first.RunBroker(null);
+        second.RunBroker(null);
+        first.RunBroker(null);
+        CollectionAssert.AreEqual(new[] { 1, 1 }, firstExits);
+        CollectionAssert.AreEqual(new[] { 1 }, secondExits);
     }
 
     [TestMethod]
@@ -56,7 +47,6 @@ public class DefaultElevatedEntryRunnerTests
         var pipeName = "mftlib-runner-test-" + Guid.NewGuid().ToString("N");
 
         int? exitCode = null;
-        DefaultElevatedEntryRunner._exitProcess = code => exitCode = code;
 
         using var cts = new CancellationTokenSource(HangGuard);
 
@@ -65,7 +55,7 @@ public class DefaultElevatedEntryRunnerTests
         // side of the real control pipe. Closing that end is the control EOF that ends the session.
         var server = new NamedPipeServerStream(
             pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-        var runTask = Task.Run(() => new DefaultElevatedEntryRunner().RunBroker(pipeName));
+        var runTask = Task.Run(() => new DefaultElevatedEntryRunner(TimeProvider.System, code => exitCode = code).RunBroker(pipeName));
         await TestBodyCleanup.RunAsync(async () =>
         {
             await server.WaitForConnectionAsync(cts.Token);
@@ -101,12 +91,11 @@ public class DefaultElevatedEntryRunnerTests
         using var idlePipe = await IdleUsnPipe.CreateAsync(gateReadNumber: 1);
 
         int? exitCode = null;
-        DefaultElevatedEntryRunner._exitProcess = code => exitCode = code;
 
         using var cts = new CancellationTokenSource(HangGuard);
         using var timeoutRelease = cts.Token.Register(idlePipe.UnblockForCleanup); // never leak the parked read
 
-        var (control, drive, runTask) = StartRunnerWithDrivePipe();
+        var (control, drive, runTask) = StartRunnerWithDrivePipe(code => exitCode = code);
         await TestBodyCleanup.RunAsync(async () =>
         {
             await AcceptDriveChannelAsync(control, drive, cts.Token);
@@ -161,12 +150,11 @@ public class DefaultElevatedEntryRunnerTests
         });
 
         int? exitCode = null;
-        DefaultElevatedEntryRunner._exitProcess = code => exitCode = code;
 
         using var cts = new CancellationTokenSource(HangGuard);
         using var timeoutRelease = cts.Token.Register(() => releaseCursorQuery.TrySetResult());
 
-        var (control, drive, runTask) = StartRunnerWithDrivePipe();
+        var (control, drive, runTask) = StartRunnerWithDrivePipe(code => exitCode = code);
         await TestBodyCleanup.RunAsync(async () =>
         {
             await AcceptDriveChannelAsync(control, drive, cts.Token);
@@ -202,7 +190,6 @@ public class DefaultElevatedEntryRunnerTests
     {
         var pipeName = "mftlib-runner-test-" + Guid.NewGuid().ToString("N");
         int? exitCode = null;
-        DefaultElevatedEntryRunner._exitProcess = code => exitCode = code;
 
         // The first diagnostics line parks the log writer on a gate, so lines are still queued when
         // the session fails. The clock is never advanced, so the flush's bound cannot end the wait.
@@ -224,7 +211,7 @@ public class DefaultElevatedEntryRunnerTests
         using var cts = new CancellationTokenSource(HangGuard);
         await using var server = new NamedPipeServerStream(
             pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-        var runTask = Task.Run(() => new DefaultElevatedEntryRunner(clock).RunBroker(pipeName));
+        var runTask = Task.Run(() => new DefaultElevatedEntryRunner(clock, code => exitCode = code).RunBroker(pipeName));
         await TestBodyCleanup.RunAsync(async () =>
         {
             await server.WaitForConnectionAsync(cts.Token);
@@ -258,7 +245,7 @@ public class DefaultElevatedEntryRunnerTests
     // while this thread plays the non-elevated caller's side of the real control pipe and of one
     // real drive pipe, both created here the way the caller creates them.
     [SupportedOSPlatform("windows")]
-    (NamedPipeServerStream Control, NamedPipeServerStream Drive, Task RunTask) StartRunnerWithDrivePipe()
+    (NamedPipeServerStream Control, NamedPipeServerStream Drive, Task RunTask) StartRunnerWithDrivePipe(Action<int> exitProcess)
     {
         var controlName = "mftlib-runner-test-" + Guid.NewGuid().ToString("N");
         _drivePipeName = "mftlib-runner-drive-" + Guid.NewGuid().ToString("N");
@@ -266,7 +253,7 @@ public class DefaultElevatedEntryRunnerTests
             controlName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
         var drive = new NamedPipeServerStream(
             _drivePipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-        var runTask = Task.Run(() => new DefaultElevatedEntryRunner().RunBroker(controlName));
+        var runTask = Task.Run(() => new DefaultElevatedEntryRunner(TimeProvider.System, exitProcess).RunBroker(controlName));
         return (control, drive, runTask);
     }
 
@@ -284,9 +271,8 @@ public class DefaultElevatedEntryRunnerTests
     }
 
     // Close the caller's pipe ends and drain runner completion before seam reset.
-    // A timed-out drain retains the fake exit seam. TestBodyCleanup keeps a body
-    // exception primary and reports this cleanup failure as a secondary diagnostic;
-    // without a body failure, the cleanup exception fails the test directly.
+    // TestBodyCleanup keeps a body exception primary and reports this cleanup failure
+    // as a secondary diagnostic; without a body failure, the cleanup exception fails the test directly.
     async Task EnsureRunnerLeavesAsync(Task runTask, params IAsyncDisposable[] pipes)
     {
         foreach (var pipe in pipes)
@@ -296,15 +282,7 @@ public class DefaultElevatedEntryRunnerTests
 
         // A runner that faulted has left; only its failure to leave is a problem here.
         var left = runTask.ContinueWith(static _ => { }, TaskScheduler.Default);
-        try
-        {
-            await _waitForRunnerExit(left);
-        }
-        catch (TimeoutException)
-        {
-            _runnerStillServing = true;
-            throw;
-        }
+        await _waitForRunnerExit(left);
     }
 
     // A clock that is never advanced and signals when the runner starts its exit flush's bound,
@@ -323,9 +301,10 @@ public class DefaultElevatedEntryRunnerTests
     }
 
     [DataTestMethod]
+    [SupportedOSPlatform("windows")]
     [DataRow(false)]
     [DataRow(true)]
-    public async Task CleanupTimeout_PreservesFailureAndProtectsExit(bool bodyFails)
+    public async Task CleanupTimeout_PreservesFailureAndKeepsInjectedExit(bool bodyFails)
     {
         var runner = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var drive = new RecordingCleanupPipe();
@@ -359,15 +338,16 @@ public class DefaultElevatedEntryRunnerTests
                 Assert.AreEqual(0, diagnostics.Count);
             }
 
-            Assert.IsTrue(_runnerStillServing);
+            var exits = new List<int>();
+            var delayedRunner = new DefaultElevatedEntryRunner(TimeProvider.System, exits.Add);
             Cleanup();
-            Assert.AreNotEqual((Action<int>)Environment.Exit, DefaultElevatedEntryRunner._exitProcess);
+            delayedRunner.RunBroker(null);
+            CollectionAssert.AreEqual(new[] { 1 }, exits);
         }
         finally
         {
             // There is no real runner. Complete the synthetic task before normal seam reset.
             runner.TrySetResult();
-            _runnerStillServing = false;
         }
     }
 
@@ -385,7 +365,6 @@ public class DefaultElevatedEntryRunnerTests
         await EnsureRunnerLeavesAsync(runner, pipe);
 
         Assert.IsTrue(pipe.Disposed);
-        Assert.IsFalse(_runnerStillServing);
     }
 
     sealed class RecordingCleanupPipe : IAsyncDisposable

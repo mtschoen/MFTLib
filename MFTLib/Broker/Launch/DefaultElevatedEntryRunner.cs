@@ -14,26 +14,22 @@ internal sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
     static readonly TimeSpan DiagnosticsFlushTimeout = TimeSpan.FromSeconds(2);
 
     readonly TimeProvider _timeProvider;
+    readonly Action<int> _exitProcess;
 
-    /// <summary>
-    ///     Initializes the production runner, using the system clock for block completion and
-    ///     to bound diagnostic flushing when the elevated broker exits.
-    /// </summary>
+    /// <summary>Uses the system clock and terminates the production elevated child on completion.</summary>
     public DefaultElevatedEntryRunner()
-        : this(TimeProvider.System)
+        : this(TimeProvider.System, Environment.Exit)
     {
     }
 
-    /// <summary>A runner whose exit flush and block completion use <paramref name="timeProvider" />, so a test can supply a fake clock.</summary>
+    /// <summary>Captures the clock and exit behavior for this runner's complete lifetime.</summary>
     /// <param name="timeProvider">The clock for block completion and the diagnostics flush bound.</param>
-    internal DefaultElevatedEntryRunner(TimeProvider timeProvider)
+    /// <param name="exitProcess">Called with 1 for a missing pipe and 0 after normal session completion.</param>
+    internal DefaultElevatedEntryRunner(TimeProvider timeProvider, Action<int> exitProcess)
     {
         _timeProvider = timeProvider;
+        _exitProcess = exitProcess;
     }
-
-    // Exiting the process cannot be exercised from an in-process unit test (it would
-    // kill the test host), so tests inject a fake. Production always uses Environment.Exit.
-    internal static Action<int> _exitProcess = Environment.Exit;
 
     /// <summary>
     ///     Connects to the caller-created control pipe and serves one elevated journal-broker
@@ -115,10 +111,5 @@ internal sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
         // aislop-ignore-next-line csharp-sync-over-async -- the wait covers only the diagnostics writer's drain and a timer, neither of which posts to the calling thread's SynchronizationContext
         Task.WhenAny(flush, bound).GetAwaiter().GetResult();
         stopBound.Cancel();
-    }
-
-    internal static void ResetToDefaults()
-    {
-        _exitProcess = Environment.Exit;
     }
 }

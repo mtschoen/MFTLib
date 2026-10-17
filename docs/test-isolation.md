@@ -134,6 +134,37 @@ The single ten-second `TestTimeouts.HangGuard` lives in the test package's
 using. Longer watchdogs are explicit multiples. Protocol timeout assertions and
 fake-clock inputs remain independent scenario data.
 
+## Broker client and launch dependencies
+
+Each BrokerProcess owns one internal ProcessHooks object through Hooks.
+Hooks.PendingRequestCount reads the reservation table under the process state lock.
+Hooks.AfterControlWriteLockAcquired runs with the control write semaphore held,
+outside the process state lock, immediately before caller cancellation is checked.
+It must not throw or wait for another control writer. Configure callbacks before
+starting the operation and keep captured state alive until its work has drained.
+These hooks are instance-local and do not themselves require DoNotParallelize.
+
+The channel-open disposal test uses ScriptedBroker's pipe-factory wrapper and
+TestGate to hold delivery of an already-connected stream. It routes ChannelOpened
+before disposing the process, then releases the connection result and verifies
+that tracking rejects the drive and disposes its pipe before writing a request.
+Release gates in finally blocks and observe the pending open before fixture cleanup.
+
+BrokerLauncher.Dependencies is the process-global LaunchDependencies owner of
+GetProcessPath and StartProcess. Its defaults are Environment.ProcessPath and
+Process.Start. Tests accessing that owner or its members require class-level
+DoNotParallelize and call Dependencies.ResetToDefaults only after their launches
+and sessions have stopped. NativeSeamIsolationTests recognizes the owner type
+and its access field, including access through helpers and generated methods.
+
+DefaultElevatedEntryRunner captures TimeProvider and Action<int> at construction.
+Its production constructor uses TimeProvider.System and Environment.Exit.
+Internal entry dispatch also receives an explicit exit action for rejected
+diagnostics arguments. Tests supply recording actions to both routes; runner
+cleanup cannot change an existing runner's captured exit action. Fixtures that
+also replace native or diagnostic state remain nonparallel and drain that work
+before restoring its defaults.
+
 ## FileIndex component injection
 
 Each FileIndex owns one internal Hooks object of type FileIndex.IndexHooks.

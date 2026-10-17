@@ -191,23 +191,68 @@ public partial class BrokerProcessTests
     [TestMethod]
     public async Task Dispose_DuringChannelOpen_FailsOpenWithChannelLostAndClosesPipe()
     {
-        var tracking = new TestGate();
-        var hostEnd = new TaskCompletionSource<DisposalRecordingStream>(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var broker = new InProcessBroker(BrokerHostFactory.Create(), wrapConnector: RecordHostEnd(hostEnd));
-        broker.Process.BeforeChannelTrackedForTest = () =>
+        var connectionGate = new TestGate();
+        var controlReads = new ReadCounter();
+        DisposalRecordingStream? clientPipe = null;
+        await using var broker = new ScriptedBroker(
+            wrapClientControl: controlReads.Wrap,
+            wrapClientDrivePipe: (_, stream) => RecordClientPipe(stream, pipe => clientPipe = pipe),
+            wrapPipeFactory: pipes => new ConnectedPipeGate(pipes, connectionGate));
+        var firstRequestWritten = false;
+        var open = broker.Process.OpenChannelAsync('C', writer =>
         {
-            tracking.MarkEntered();
-            tracking.WaitForRelease();
-        };
+            firstRequestWritten = true;
+            BrokerProtocol.WriteStartWatch(writer, Armed);
+        }, CancellationToken.None);
+        try
+        {
+            var request = await broker.ReadRequestAsync();
+            Assert.AreEqual(BrokerFrameKind.OpenChannel, request.Kind);
+            await using var hostPipe = await broker.Pipes.ConnectAsync(
+                request.RequirePipeName(), CancellationToken.None).WaitAsync(HangGuard);
+            await connectionGate.Entered.WaitAsync(HangGuard);
+            Assert.IsNotNull(clientPipe);
 
-        var open = broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, Armed),
-            CancellationToken.None);
-        await tracking.Entered.WaitAsync(HangGuard);
-        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
-        tracking.Release();
+            var reply = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteChannelOpened(reply, request.RequestId);
+            await broker.WriteControlAsync(writer => BrokerProtocol.WriteChannelOpened(writer, request.RequestId));
+            await controlReads.WhenReadPendingAfter(reply.WrittenCount).WaitAsync(HangGuard);
+            Assert.AreEqual(0, broker.Process.Hooks.PendingRequestCount,
+                "ChannelOpened has been routed before disposal.");
+            Assert.IsFalse(open.IsCompleted);
 
-        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => open.WaitAsync(HangGuard));
-        Assert.AreEqual('C', lost.Drive);
-        await (await hostEnd.Task.WaitAsync(HangGuard)).Disposed.WaitAsync(HangGuard);
+            await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
+            Assert.IsFalse(clientPipe.Disposed.IsCompleted,
+                "The untracked listener is still owned by the pending open, not the disposal sweep.");
+            connectionGate.Release();
+
+            var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => open.WaitAsync(HangGuard));
+            Assert.AreEqual('C', lost.Drive);
+            StringAssert.Contains(lost.Message, "the broker process was disposed");
+            Assert.IsFalse(firstRequestWritten, "Tracking rejects the channel before its first request is built.");
+            await clientPipe.Disposed.WaitAsync(HangGuard);
+            Assert.IsNull(await HostChannelHarness.ReadFrameAsync(hostPipe).WaitAsync(HangGuard),
+                "The client disposed its connected pipe while the scripted host kept its end open.");
+        }
+        finally
+        {
+            connectionGate.Release();
+            try
+            {
+                var opened = await open.WaitAsync(HangGuard);
+                await opened.DisposeAsync();
+            }
+            catch (BrokerChannelLostException)
+            {
+                // Observe the expected failed open before the fixture releases its resources.
+            }
+        }
+    }
+
+    static DisposalRecordingStream RecordClientPipe(Stream stream, Action<DisposalRecordingStream> record)
+    {
+        var recording = new DisposalRecordingStream(stream);
+        record(recording);
+        return recording;
     }
 }

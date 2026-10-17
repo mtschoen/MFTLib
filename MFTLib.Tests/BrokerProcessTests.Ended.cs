@@ -49,7 +49,7 @@ public partial class BrokerProcessTests
         }
 
         Assert.AreEqual(expectedReason, await beforeEnd.WaitAsync(HangGuard));
-        Assert.AreEqual(0, broker.Process.PendingRequestCountForTest, "pending requests were failed before Ended completed");
+        Assert.AreEqual(0, broker.Process.Hooks.PendingRequestCount, "pending requests were failed before Ended completed");
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
 

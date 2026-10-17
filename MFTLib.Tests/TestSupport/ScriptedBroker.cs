@@ -14,12 +14,14 @@ internal sealed class ScriptedBroker : IAsyncDisposable
     readonly Stream _hostControl;
 
     public ScriptedBroker(TimeProvider? clock = null, Func<Stream, Stream>? wrapClientControl = null,
-        Func<string, Stream, Stream>? wrapClientDrivePipe = null)
+        Func<string, Stream, Stream>? wrapClientDrivePipe = null,
+        Func<IBrokerPipeFactory, IBrokerPipeFactory>? wrapPipeFactory = null)
     {
         var (client, host) = new InMemoryPipePair();
         _hostControl = host;
         Pipes = new InMemoryBrokerPipes(new BrokerTestHarnessOptions(), wrapClientDrivePipe);
-        Process = new BrokerProcess(wrapClientControl?.Invoke(client) ?? client, Pipes, Sections.Create,
+        var processPipes = wrapPipeFactory?.Invoke(Pipes) ?? Pipes;
+        Process = new BrokerProcess(wrapClientControl?.Invoke(client) ?? client, processPipes, Sections.Create,
             clock ?? TimeProvider.System);
     }
 
@@ -71,5 +73,22 @@ internal sealed class ScriptedBroker : IAsyncDisposable
             await _hostControl.DisposeAsync().AsTask().WaitAsync(HangGuard);
             Sections.Dispose();
         }
+    }
+}
+
+internal sealed class ConnectedPipeGate(IBrokerPipeFactory inner, TestGate gate) : IBrokerPipeFactory
+{
+    public BrokerPipeListener Listen(string pipeName)
+    {
+        var listener = inner.Listen(pipeName);
+        return new BrokerPipeListener(listener.PipeName, async cancellationToken =>
+        {
+            var stream = await listener.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);
+            gate.MarkEntered();
+            // The actual connection already completed. Delay delivery, not the physical connection;
+            // disposal cancelling the original connect token must not discard this acquired stream.
+            await gate.WaitForReleaseAsync(CancellationToken.None).WaitAsync(HangGuard, CancellationToken.None).ConfigureAwait(false);
+            return stream;
+        }, listener.DisposeAsync);
     }
 }
