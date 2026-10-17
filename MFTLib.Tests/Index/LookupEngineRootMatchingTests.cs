@@ -29,10 +29,10 @@ public class LookupEngineRootMatchingTests
 
         using var outerBuilder = BuildSingleFileBlock('O', "outer.txt");
         using var innerBuilder = BuildSingleFileBlock('I', "inner.txt");
-        var snapshot = Snapshot.Create([
+        DriveBlock[] snapshot = [
             new DriveBlock('O', 0, outerBuilder.OpenForReading(out _)!, rootDirectoryPath: outerRoot),
             new DriveBlock('I', 1, innerBuilder.OpenForReading(out _)!, rootDirectoryPath: innerRoot)
-        ]);
+        ];
         try
         {
             var inner = LookupEngine.Find(snapshot, Path.Combine(innerRoot, "inner.txt"));
@@ -60,7 +60,7 @@ public class LookupEngineRootMatchingTests
         using var builder = SyntheticBlockBuilder.MftShaped();
         var block = builder.OpenForReading(out _)!;
         var root = TestDriveRoot.For('T');
-        var snapshot = Snapshot.Create([new DriveBlock('T', 0, block, rootDirectoryPath: root)]);
+        DriveBlock[] snapshot = [new DriveBlock('T', 0, block, rootDirectoryPath: root)];
         try
         {
             Assert.IsNotNull(LookupEngine.Find(snapshot,
@@ -79,9 +79,9 @@ public class LookupEngineRootMatchingTests
     {
         var root = Path.Combine(Path.GetTempPath(), "mftlib-case");
         using var builder = BuildSingleFileBlock('E', "Readme.md");
-        var snapshot = Snapshot.Create([
+        DriveBlock[] snapshot = [
             new DriveBlock('E', 0, builder.OpenForReading(out _)!, rootDirectoryPath: root)
-        ]);
+        ];
         try
         {
             Assert.IsNotNull(LookupEngine.Find(snapshot, Path.Combine(root, "Readme.md")));
@@ -112,10 +112,10 @@ public class LookupEngineRootMatchingTests
         var root = TestDriveRoot.For('T');
         using var rootlessBuilder = BuildSingleFileBlock('N', "visible.txt");
         using var rootedBuilder = BuildSingleFileBlock('T', "visible.txt");
-        var snapshot = Snapshot.Create([
+        DriveBlock[] snapshot = [
             new DriveBlock('N', 0, rootlessBuilder.OpenForReading(out _)!),
             new DriveBlock('T', 1, rootedBuilder.OpenForReading(out _)!, rootDirectoryPath: root)
-        ]);
+        ];
         try
         {
             var entry = LookupEngine.Find(snapshot, Path.Combine(root, "visible.txt"));
@@ -133,9 +133,9 @@ public class LookupEngineRootMatchingTests
     {
         var root = Path.Combine(Path.GetTempPath(), "mftlib-mixed", "Users", "test");
         using var builder = BuildSingleFileBlock('E', "file.txt");
-        var snapshot = Snapshot.Create([
+        DriveBlock[] snapshot = [
             new DriveBlock('E', 0, builder.OpenForReading(out _)!, rootDirectoryPath: root)
-        ]);
+        ];
         try
         {
             var mixedPath = root.Replace('\\', '/').Replace("/Users/", @"\Users/") + @"\file.txt";
@@ -174,12 +174,12 @@ public class LookupEngineRootMatchingTests
             sequenceNumber: 0);
         builder.Complete(Moment);
 
-        var snapshot = Snapshot.Create([
+        DriveBlock[] snapshot = [
             new DriveBlock('E', 0, builder.OpenForReading(out _)!, rootDirectoryPath: root)
-        ]);
+        ];
         try
         {
-            var expected = FileEntry.Create(snapshot, 0, backslashFile);
+            var expected = FileEntry.Create(snapshot[0], backslashFile);
             var resolved = LookupEngine.Find(snapshot, expected.Path);
 
             Assert.IsTrue(resolved.HasValue);
@@ -205,11 +205,11 @@ public class LookupEngineRootMatchingTests
         outerBuilder.Complete(Moment);
         using var secondBuilder = BuildSingleFileBlock('I', "file.txt");
         var outerBlock = new DriveBlock('O', 0, outerBuilder.OpenForReading(out _)!, rootDirectoryPath: outerRoot);
-        var snapshot = Snapshot.Create([
+        DriveBlock[] snapshot = [
             outerBlock,
             new DriveBlock('I', 1, secondBuilder.OpenForReading(out _)!, rootDirectoryPath: secondRoot)
-        ]);
-        var outerOnly = Snapshot.Create([outerBlock]);
+        ];
+        DriveBlock[] outerOnly = [outerBlock];
         try
         {
             var entry = LookupEngine.Find(snapshot, Path.Combine(secondRoot, "file.txt"));

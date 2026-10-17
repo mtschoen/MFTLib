@@ -134,7 +134,7 @@ public class FileIndexLifetimeTests
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         var oldSnapshot = index.CurrentSnapshot;
         Assert.IsTrue(index.TryGetDriveOrdinal('T', out var driveOrdinal));
-        var oldEntry = FileEntry.Create(oldSnapshot, driveOrdinal, rowIndex: 0);
+        var oldEntry = FileEntry.Create(oldSnapshot[driveOrdinal], rowIndex: 0);
         var rowsBefore = index.HeaderOf().RowCount;
 
         await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");

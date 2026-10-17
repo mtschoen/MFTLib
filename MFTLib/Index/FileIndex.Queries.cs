@@ -184,9 +184,9 @@ public sealed partial class FileIndex
 
         using (query)
         {
-            query.Snapshot.ReleaseState._readerAdmittedForTest?.Invoke();
+            ReaderAdmittedForTest?.Invoke();
             query.CancellationToken.ThrowIfCancellationRequested();
-            if (query.Snapshot.FindDriveBlock(drive) is null && blocklessDriveState is { } state)
+            if (LookupEngine.FindDriveBlock(query.Snapshot, drive) is null && blocklessDriveState is { } state)
             {
                 throw new ArgumentException($"Drive {drive} has no block (state: {state}).",
                     nameof(drive));
@@ -209,7 +209,7 @@ public sealed partial class FileIndex
         lock (_stateLock)
         {
             var snapshot = _snapshot ?? throw new ObjectDisposedException(nameof(FileIndex));
-            return snapshot.Borrow();
+            return new SnapshotBorrow(snapshot);
         }
     }
 
@@ -221,7 +221,7 @@ public sealed partial class FileIndex
     QueryScope BeginQuery(CancellationToken cancellationToken)
     {
         var scope = AdmitQuery(cancellationToken);
-        scope.Snapshot.ReleaseState._readerAdmittedForTest?.Invoke();
+        ReaderAdmittedForTest?.Invoke();
         return scope;
     }
 
@@ -285,7 +285,7 @@ public sealed partial class FileIndex
             _linkedCancellation = linkedCancellation;
         }
 
-        internal Snapshot Snapshot => _borrow.Snapshot;
+        internal IReadOnlyList<DriveBlock> Snapshot => _borrow.DriveBlocks;
 
         internal bool IsDisposed => _borrow.IsReturned;
 

@@ -16,8 +16,8 @@ internal static class SyntheticIndexInspection
     internal static SyntheticDriveHeader? ReadHeader(FileIndex index, DriveKey drive)
     {
         ArgumentNullException.ThrowIfNull(index);
-        using var borrow = index.CurrentSnapshot.Borrow();
-        return borrow.Snapshot.FindDriveBlock(drive) is { } driveBlock
+        using var borrow = index.BorrowCurrentSnapshot();
+        return LookupEngine.FindDriveBlock(borrow.DriveBlocks, drive) is { } driveBlock
             ? SyntheticDriveHeader.From(driveBlock.Block)
             : null;
     }

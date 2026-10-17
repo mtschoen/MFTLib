@@ -98,7 +98,7 @@ public class FileIndexOwnerLockTests
             Assert.AreEqual(BlockSource.ProducedByScan, status.Block!.Source);
             Assert.AreEqual(CacheSlotState.PrivateFallback, status.Block.CacheSlot);
             Assert.IsTrue(second.TryGetDriveOrdinal('T', out var secondOrdinal));
-            secondBlockPath = second.CurrentSnapshot.GetDriveBlock(secondOrdinal).Block.Path;
+            secondBlockPath = second.CurrentSnapshot[secondOrdinal].Block.Path;
             Assert.IsTrue(File.Exists(secondBlockPath));
             CollectionAssert.AreEqual(canonicalBytes, await SharedFileReader.ReadAllBytesAsync(CanonicalPath),
                 "the owning index's canonical cache is not replaced, truncated, or deleted");
@@ -174,7 +174,7 @@ public class FileIndexOwnerLockTests
             await using (var second = await FileIndex.OpenAsync(Options(), CancellationToken.None))
             {
                 Assert.IsTrue(second.TryGetDriveOrdinal('T', out var secondOrdinal));
-                secondBlockPath = second.CurrentSnapshot.GetDriveBlock(secondOrdinal).Block.Path;
+                secondBlockPath = second.CurrentSnapshot[secondOrdinal].Block.Path;
                 StringAssert.Contains(secondBlockPath, "mftlib-private-");
                 Assert.IsTrue(File.Exists(retiredPaths[0]),
                     "the second opener must not sweep the first index's retired sibling");
@@ -210,14 +210,14 @@ public class FileIndexOwnerLockTests
             var initialStatus = second.Drives.Single();
             Assert.AreEqual(CacheSlotState.PrivateFallback, initialStatus.Block!.CacheSlot);
             Assert.IsTrue(second.TryGetDriveOrdinal('T', out var secondOrdinal));
-            var firstPrivatePath = second.CurrentSnapshot.GetDriveBlock(secondOrdinal).Block.Path;
+            var firstPrivatePath = second.CurrentSnapshot[secondOrdinal].Block.Path;
 
             // While the first index owns the slot, the second index's rescan must not rename the
             // canonical file aside: it scans privately again.
             await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
             await second.RescanAsync(['T'], CancellationToken.None);
 
-            var secondPrivatePath = second.CurrentSnapshot.GetDriveBlock(secondOrdinal).Block.Path;
+            var secondPrivatePath = second.CurrentSnapshot[secondOrdinal].Block.Path;
             Assert.AreEqual(CacheSlotState.PrivateFallback, second.Drives.Single().Block!.CacheSlot);
             Assert.AreNotEqual(firstPrivatePath, secondPrivatePath);
             CollectionAssert.AreEqual(canonicalBytes, await SharedFileReader.ReadAllBytesAsync(CanonicalPath),

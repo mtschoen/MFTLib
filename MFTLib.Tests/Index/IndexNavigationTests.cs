@@ -15,7 +15,7 @@ public partial class IndexNavigationTests
     static readonly DateTime Moment = new(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
 
     SyntheticBlockBuilder _builder = null!;
-    Snapshot _snapshot = null!;
+    DriveBlock[] _snapshot = null!;
     uint _rootRow;
     uint _documentsRow;
     uint _projectsRow;
@@ -34,7 +34,7 @@ public partial class IndexNavigationTests
         _builder.Complete(Moment);
 
         var block = _builder.OpenForReading(out _)!;
-        _snapshot = Snapshot.Create([new DriveBlock('T', 0, block, rootDirectoryPath: TestDriveRoot.For('T'))]);
+        _snapshot = [new DriveBlock('T', 0, block, rootDirectoryPath: TestDriveRoot.For('T'))];
     }
 
     [TestCleanup]
@@ -46,7 +46,7 @@ public partial class IndexNavigationTests
 
     FileEntry Entry(uint rowIndex)
     {
-        return FileEntry.Create(_snapshot, 0, rowIndex);
+        return FileEntry.Create(_snapshot[0], rowIndex);
     }
 
     [TestMethod]
@@ -100,7 +100,7 @@ public partial class IndexNavigationTests
     [TestMethod]
     public void IsUnder_MatchesTransitiveContainmentAndExcludesSiblings()
     {
-        var block = _snapshot.GetDriveBlock(0).Block;
+        var block = _snapshot[0].Block;
         Assert.IsTrue(IndexNavigation.IsUnder(block, _reportRow, _documentsRow));
         Assert.IsTrue(IndexNavigation.IsUnder(block, _reportRow, _projectsRow));
         Assert.IsFalse(IndexNavigation.IsUnder(block, _notesRow, _projectsRow));
@@ -144,7 +144,7 @@ public partial class IndexNavigationTests
 
         builder.Complete(Moment);
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('Z', 0, block, rootDirectoryPath: TestDriveRoot.For('Z'))]);
+        DriveBlock[] snapshot = [new DriveBlock('Z', 0, block, rootDirectoryPath: TestDriveRoot.For('Z'))];
         try
         {
             // The candidate sits exactly MaximumPathDepth hops below the root; the target
@@ -166,10 +166,10 @@ public partial class IndexNavigationTests
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('Y', 0, block, rootDirectoryPath: TestDriveRoot.For('Y'))]);
+        DriveBlock[] snapshot = [new DriveBlock('Y', 0, block, rootDirectoryPath: TestDriveRoot.For('Y'))];
         try
         {
-            var entry = FileEntry.Create(snapshot, 0, deletedRow);
+            var entry = FileEntry.Create(snapshot[0], deletedRow);
             Assert.AreEqual(Path.Combine(TestDriveRoot.For('Y'), "gone.tmp"), entry.Path);
             Assert.IsTrue(entry.IsDeleted);
         }
@@ -190,10 +190,10 @@ public partial class IndexNavigationTests
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('V', 0, block, rootDirectoryPath: TestDriveRoot.For('V'))]);
+        DriveBlock[] snapshot = [new DriveBlock('V', 0, block, rootDirectoryPath: TestDriveRoot.For('V'))];
         try
         {
-            var liveFile = FileEntry.Create(snapshot, 0, liveFileRow);
+            var liveFile = FileEntry.Create(snapshot[0], liveFileRow);
 
             Assert.AreEqual(Path.Combine(TestDriveRoot.For('V'), "Old", "survivor.txt"), liveFile.Path);
             Assert.IsTrue(IndexNavigation.IsUnder(block, liveFileRow, deletedDirectoryRow));
@@ -214,10 +214,10 @@ public partial class IndexNavigationTests
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('U', 0, block, rootDirectoryPath: TestDriveRoot.For('U'))]);
+        DriveBlock[] snapshot = [new DriveBlock('U', 0, block, rootDirectoryPath: TestDriveRoot.For('U'))];
         try
         {
-            var children = FileEntry.Create(snapshot, 0, root).Children();
+            var children = FileEntry.Create(snapshot[0], root).Children();
             Assert.AreEqual(1, children.Count);
             Assert.AreEqual("live.txt", children[0].Name);
             Assert.AreEqual(liveRow, children[0].RowIndex);
@@ -238,11 +238,11 @@ public partial class IndexNavigationTests
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('W', 0, block, rootDirectoryPath: TestDriveRoot.For('W'))]);
+        DriveBlock[] snapshot = [new DriveBlock('W', 0, block, rootDirectoryPath: TestDriveRoot.For('W'))];
         try
         {
             // Rows 1 and 2 point at each other. The walk must stop rather than loop.
-            var path = FileEntry.Create(snapshot, 0, second).Path;
+            var path = FileEntry.Create(snapshot[0], second).Path;
             Assert.IsTrue(path.StartsWith(TestDriveRoot.For('W'), StringComparison.Ordinal));
             Assert.IsTrue(path.Length < 100);
         }
@@ -265,10 +265,10 @@ public partial class IndexNavigationTests
 
         builder.Complete(Moment);
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('X', 0, block, rootDirectoryPath: TestDriveRoot.For('X'))]);
+        DriveBlock[] snapshot = [new DriveBlock('X', 0, block, rootDirectoryPath: TestDriveRoot.For('X'))];
         try
         {
-            var path = FileEntry.Create(snapshot, 0, parent).Path;
+            var path = FileEntry.Create(snapshot[0], parent).Path;
             Assert.IsTrue(path.StartsWith(Path.Combine(TestDriveRoot.For('X'), "d0", "d1"), StringComparison.Ordinal));
             Assert.IsTrue(path.EndsWith($"{Path.DirectorySeparatorChar}d127", StringComparison.Ordinal));
             Assert.AreEqual(BlockLayout.MaximumPathDepth, path[TestDriveRoot.For('X').TrimEnd(Path.DirectorySeparatorChar).Length..]
@@ -293,11 +293,11 @@ public partial class IndexNavigationTests
 
         builder.Complete(Moment);
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('X', 0, block, rootDirectoryPath: TestDriveRoot.For('X'))]);
+        DriveBlock[] snapshot = [new DriveBlock('X', 0, block, rootDirectoryPath: TestDriveRoot.For('X'))];
         try
         {
             var exception = Assert.ThrowsException<InvalidDataException>(
-                () => _ = FileEntry.Create(snapshot, 0, parent).Path);
+                () => _ = FileEntry.Create(snapshot[0], parent).Path);
             StringAssert.Contains(exception.Message, BlockLayout.MaximumPathDepth.ToString(CultureInfo.InvariantCulture));
         }
         finally
@@ -319,7 +319,7 @@ public partial class IndexNavigationTests
 
         builder.Complete(Moment);
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('Z', 0, block, rootDirectoryPath: TestDriveRoot.For('Z'))]);
+        DriveBlock[] snapshot = [new DriveBlock('Z', 0, block, rootDirectoryPath: TestDriveRoot.For('Z'))];
         try
         {
             Assert.IsTrue(IndexNavigation.IsUnder(block, candidate, root));
@@ -341,7 +341,7 @@ public partial class IndexNavigationTests
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('W', 0, block, rootDirectoryPath: TestDriveRoot.For('W'))]);
+        DriveBlock[] snapshot = [new DriveBlock('W', 0, block, rootDirectoryPath: TestDriveRoot.For('W'))];
         try
         {
             // Rows 1 and 2 point at each other. None of these reach root.

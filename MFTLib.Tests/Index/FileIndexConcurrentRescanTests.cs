@@ -81,8 +81,8 @@ public class FileIndexConcurrentRescanTests
         Assert.IsTrue(index.TryGetDriveOrdinal('T', out var ordinalT));
         Assert.IsTrue(index.TryGetDriveOrdinal('U', out var ordinalU));
         Assert.AreNotEqual(ordinalT, ordinalU);
-        Assert.AreEqual('T', index.CurrentSnapshot.GetDriveBlock(ordinalT).Drive);
-        Assert.AreEqual('U', index.CurrentSnapshot.GetDriveBlock(ordinalU).Drive);
+        Assert.AreEqual('T', index.CurrentSnapshot[ordinalT].Drive);
+        Assert.AreEqual('U', index.CurrentSnapshot[ordinalU].Drive);
     }
 
     [DataTestMethod]

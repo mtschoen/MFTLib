@@ -1,19 +1,16 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace MFTLib.Index;
 
 /// <summary>
-///     One mapped block plus a reference count. A rescan writes a new block beside the old one
-///     and drops the old block's reference; the old mapping survives until the last snapshot
-///     holding it is released, which is what lets a handed-out handle stay valid across a
-///     rescan without dangling.
+///     One mapped block of one drive. A <see cref="FileEntry" /> holds its drive block, keeping a
+///     block retired by a rescan mapped while that handle remains reachable, and nothing else: a
+///     rescan of another drive never waits on it. The finalizer releases a retired block once its
+///     handles become unreachable while the index lives; index disposal releases every block
+///     through <see cref="ReleaseState" />, which it retains independently of this object.
 /// </summary>
 internal sealed class DriveBlock
 {
-    readonly Lock _gate = new();
-    int _referenceCount;
-    bool _released;
-    string? _deleteAtPathOverride;
-    Action<string>? _deleteDiagnostics;
-
     public DriveBlock(DriveKey driveLetter, ushort driveOrdinal, BlockFile block, string? rootDirectoryPath = null,
         bool isMftDump = false)
     {
@@ -21,12 +18,39 @@ internal sealed class DriveBlock
         Drive = driveLetter.Validated();
         DriveOrdinal = driveOrdinal;
         Block = block;
+        ReleaseState = new DriveBlockRelease(block);
         ProducerKind = block.Header.ProducerKind;
         IsMftDump = isMftDump;
         RootDirectoryPath = isMftDump ? rootDirectoryPath : ToRootedDirectoryPath(rootDirectoryPath);
         MatchableRootDirectoryPath = isMftDump
             ? MftDumpPaths.ToMatchablePrefix(RootDirectoryPath)
             : ToMatchablePrefix(RootDirectoryPath);
+    }
+
+    /// <summary>
+    ///     Releases the block for a caller who simply dropped every handle. The catch is
+    ///     deliberately unconditional and local to this path: releasing unmaps a view and can
+    ///     delete a retired block file, so a file the operating system will not unlink surfaces as
+    ///     an exception, and an exception leaving a finalizer terminates the process with a stack
+    ///     no consumer can act on. The worst case swallowed here is a leaked mapping or a leftover
+    ///     file, which is what the caller already has. <see cref="DriveBlockRelease.ReleaseAsync" />
+    ///     keeps propagating, because a deterministic teardown failure is worth surfacing.
+    /// </summary>
+    [SuppressMessage("Roslynator", "RCS1075",
+        Justification = "A finalizer is the one place where catching everything and doing nothing is the " +
+                        "correct behaviour: an exception that escapes it terminates the process. There is " +
+                        "nothing to log to and nothing to retry, and the swallowed worst case is a leaked " +
+                        "mapping, which is strictly better than the alternative. Scoped to this method only.")]
+    ~DriveBlock()
+    {
+        try
+        {
+            ReleaseState.Release();
+        }
+        catch (Exception)
+        {
+            // See this finalizer's summary.
+        }
     }
 
     /// <summary>
@@ -41,6 +65,12 @@ internal sealed class DriveBlock
     public ushort DriveOrdinal { get; }
 
     public BlockFile Block { get; }
+
+    /// <summary>The block's mapping and borrows, retained by the index after it retires this block.</summary>
+    internal DriveBlockRelease ReleaseState { get; }
+
+    /// <summary>True from the moment a release begins, before the block is unmapped.</summary>
+    internal bool IsReleased => ReleaseState.IsReleaseStarted;
 
     public ProducerKind ProducerKind { get; }
 
@@ -70,132 +100,6 @@ internal sealed class DriveBlock
     ///     <see cref="JournalMutator" /> for how it is used.
     /// </summary>
     internal ReportedReasonCycles ReportedCycles { get; } = new();
-
-    public int ReferenceCount
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _referenceCount;
-            }
-        }
-    }
-
-    public bool IsReleased
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _released;
-            }
-        }
-    }
-
-    /// <summary>
-    ///     Takes a reference. Returns false once the block has been fully released, so a racing
-    ///     snapshot creation cannot resurrect an unmapped block.
-    /// </summary>
-    public bool TryAddReference()
-    {
-        lock (_gate)
-        {
-            if (_released)
-            {
-                return false;
-            }
-
-            _referenceCount++;
-            return true;
-        }
-    }
-
-    /// <summary>
-    ///     Overrides the path deleted on release. A rescan renames the superseded block's file
-    ///     aside before the replacement takes its canonical name, so <see cref="Block" />'s own
-    ///     <see cref="BlockFile.Path" /> - fixed at construction and never updated by an external
-    ///     rename - no longer names the file that must be removed once this block is done.
-    /// </summary>
-    internal void ScheduleDeleteAt(string path, Action<string>? diagnostics = null)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(path);
-        lock (_gate)
-        {
-            _deleteAtPathOverride = path;
-            _deleteDiagnostics = diagnostics;
-        }
-    }
-
-    /// <summary>
-    ///     Cancels a previously scheduled override. Used when a rescan that renamed this block's
-    ///     file aside then fails: the caller moves the file back to its original name and calls
-    ///     this so a later release neither deletes the restored file nor, having already been
-    ///     moved, silently no-ops on a path that no longer exists.
-    /// </summary>
-    internal void ClearScheduledDelete()
-    {
-        lock (_gate)
-        {
-            _deleteAtPathOverride = null;
-            _deleteDiagnostics = null;
-        }
-    }
-
-    public void Release()
-    {
-        bool shouldUnmap;
-        string? deleteOverride;
-        Action<string>? deleteDiagnostics;
-        lock (_gate)
-        {
-            if (_referenceCount == 0)
-            {
-                throw new InvalidOperationException(
-                    $"Drive block {Drive} was released more times than it was referenced.");
-            }
-
-            _referenceCount--;
-            shouldUnmap = _referenceCount == 0;
-            if (shouldUnmap)
-            {
-                _released = true;
-            }
-
-            deleteOverride = _deleteAtPathOverride;
-            deleteDiagnostics = _deleteDiagnostics;
-        }
-
-        if (!shouldUnmap)
-        {
-            return;
-        }
-
-        var path = deleteOverride ?? Block.Path;
-        Block.Dispose();
-        if (deleteOverride is null)
-        {
-            return;
-        }
-
-        try
-        {
-            File.Delete(path);
-            deleteDiagnostics?.Invoke(
-                $"Deleted block file '{path}': superseded by a completed rescan and fully released.");
-        }
-        catch (IOException)
-        {
-            // The superseded block file is already unreferenced. A sharing violation here
-            // leaves a stale file that the next open discards on serial or timestamp
-            // mismatch, so it must not fail the rescan that triggered the release.
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // Same reasoning as the IOException case above: a permission error on a file
-            // nothing references any more must not fail the release that triggered it.
-        }
-    }
 
     /// <summary>
     ///     The single place a caller-supplied root is normalised, so path rendering and path

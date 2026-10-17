@@ -55,7 +55,7 @@ public partial class FileIndexPerDriveProducerKindTests
             ScanProgress = progress
         };
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
-        var previousBlock = index.CurrentSnapshot.DriveBlocks.Single().Block;
+        var previousBlock = index.CurrentSnapshot.Single().Block;
         var previousStatus = index.Drives.Single().Block;
         var canonicalPath = Path.Combine(_directories.CacheDirectory, CacheDirectory.BlockFileName('T', 123));
         var previousBytes = cacheMode == CacheMode.Persistent ? ReadSharedBlock(canonicalPath) : null;
@@ -65,7 +65,7 @@ public partial class FileIndexPerDriveProducerKindTests
             () => index.RescanAsync(['T'], CancellationToken.None));
 
         Assert.AreSame(failure, reported.InnerException);
-        Assert.AreSame(previousBlock, index.CurrentSnapshot.DriveBlocks.Single().Block);
+        Assert.AreSame(previousBlock, index.CurrentSnapshot.Single().Block);
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.AreEqual(previousStatus, status.Block);

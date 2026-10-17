@@ -134,7 +134,7 @@
       and recovery linearize when the replacement block is committed; disposal linearizes when
       `_disposed` is set and its token is cancelled. A rescan or recovery holds the drive's
       lifecycle gate through production, commit-time retirement, draining, and an eligible restart.
-      Snapshot creation and cancellation/disposal checks precede retirement; a healthy current
+      Cancellation/disposal checks precede retirement; a healthy current
       watch retires in the same state-lock section as block, status, and snapshot publication.
       An already faulted current watch stays until restart registration supersedes it. The first
       publication retires the old watch even when catch-up was lost and the scan must retry.

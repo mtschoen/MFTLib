@@ -55,7 +55,7 @@ public class EnumerationProducerTests
         return (block, new BlockWriter(block));
     }
 
-    Snapshot Produce(out BlockFile block, out EnumerationResult result)
+    DriveBlock[] Produce(out BlockFile block, out EnumerationResult result)
     {
         var created = CreateBlock();
         block = created.Block;
@@ -67,7 +67,7 @@ public class EnumerationProducerTests
 
         result = producer.Produce(created.Writer, progress: null, CancellationToken.None);
         created.Writer.Complete(new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc), null);
-        return Snapshot.Create([new DriveBlock('T', 0, block, rootDirectoryPath: _treeRoot)]);
+        return [new DriveBlock('T', 0, block, rootDirectoryPath: _treeRoot)];
     }
 
     [TestMethod]
@@ -384,12 +384,12 @@ sealed class RecordingProgress : IProgress<IndexScanProgress>
 /// </summary>
 static class EnumerationLookupTestAccess
 {
-    public static FileEntry? FindByPath(Snapshot snapshot, string fullPath)
+    public static FileEntry? FindByPath(DriveBlock[] snapshot, string fullPath)
     {
-        var block = snapshot.GetDriveBlock(0).Block;
+        var block = snapshot[0].Block;
         for (var rowIndex = 0u; rowIndex < block.Header.RowCount; rowIndex++)
         {
-            var entry = FileEntry.Create(snapshot, 0, rowIndex);
+            var entry = FileEntry.Create(snapshot[0], rowIndex);
             if (string.Equals(entry.Path, fullPath, StringComparison.OrdinalIgnoreCase))
             {
                 return entry;

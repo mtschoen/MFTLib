@@ -143,7 +143,8 @@ public sealed partial class FileIndex
             }
 
             var (newlyAdopted, consecutiveLostCatchUps) = AdoptOpenedDrive(drive, block, settled, adopted);
-            ReleaseSupersededOpenedBlock(adopted, retired);
+            // Nothing published the lost block this retry replaced; releasing it deletes its renamed-aside file.
+            adopted?.ReleaseState.Release();
             adopted = newlyAdopted;
             if (settled.CatchUpLoss is not { } catchUpLoss ||
                 RecordLostCatchUp(runtime, catchUpLoss, consecutiveLostCatchUps).IsRecoveryStopped)
@@ -164,19 +165,6 @@ public sealed partial class FileIndex
         else
         {
             RecordFailedDrive(driveLetter, DriveFailureKind.ProducerFailed, failed);
-        }
-    }
-
-    /// <summary>
-    ///     Closes a lost block a retry at open replaced. Nothing published it, so it owns no
-    ///     references and its mapping is closed directly; its renamed-aside file is deleted with it.
-    /// </summary>
-    void ReleaseSupersededOpenedBlock(DriveBlock? superseded, RetiredCanonicalFile? retired)
-    {
-        superseded?.Block.Dispose();
-        if (retired is { } renamed)
-        {
-            TryDeleteBestEffort(renamed.RetiredPath, "a retry at open replaced the block whose catch-up was lost");
         }
     }
 

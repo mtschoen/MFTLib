@@ -139,8 +139,7 @@ public sealed partial class FileIndex
             // it releases the snapshots, so a batch admitted after it set the flag must not start
             // a mutation that disposal would then have to wait for.
             ObjectDisposedException.ThrowIf(_disposed, this);
-            var snapshot = CurrentSnapshot;
-            var driveBlock = snapshot.GetDriveBlock(driveOrdinal);
+            var driveBlock = CurrentSnapshot[driveOrdinal];
             if (driveBlock.ProducerKind != ProducerKind.Mft)
             {
                 throw new InvalidOperationException(
@@ -150,7 +149,7 @@ public sealed partial class FileIndex
             ApplyJournalEntriesInsideWriteGateForTest?.Invoke(validatedDrive);
             var writer = new BlockWriter(driveBlock.Block);
             var mutator = new JournalMutator(writer);
-            return mutator.Apply(snapshot, driveOrdinal, entries, journalIdentifier, nextUsn);
+            return mutator.Apply(driveBlock, entries, journalIdentifier, nextUsn);
         }
         finally
         {

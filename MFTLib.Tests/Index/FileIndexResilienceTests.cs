@@ -279,7 +279,7 @@ public partial class FileIndexResilienceTests
     [MethodImpl(MethodImplOptions.NoInlining)]
     static string GetCurrentBlockPath(FileIndex index, ushort driveOrdinal)
     {
-        return index.CurrentSnapshot.GetDriveBlock(driveOrdinal).Block.Path;
+        return index.CurrentSnapshot[driveOrdinal].Block.Path;
     }
 
     /// <summary>
@@ -297,7 +297,7 @@ public partial class FileIndexResilienceTests
         {
             Assert.IsTrue(index.TryGetDriveOrdinal('T', out var driveOrdinal));
             var firstSnapshot = index.CurrentSnapshot;
-            firstPath = firstSnapshot.GetDriveBlock(driveOrdinal).Block.Path;
+            firstPath = firstSnapshot[driveOrdinal].Block.Path;
             Assert.IsTrue(File.Exists(firstPath));
 
             await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
@@ -349,12 +349,12 @@ public partial class FileIndexResilienceTests
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         Assert.IsTrue(index.TryGetDriveOrdinal('T', out var driveOrdinal));
         var oldSnapshot = index.CurrentSnapshot;
-        var canonicalPath = oldSnapshot.GetDriveBlock(driveOrdinal).Block.Path;
+        var canonicalPath = oldSnapshot[driveOrdinal].Block.Path;
 
         await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
         await index.RescanAsync(['T'], CancellationToken.None);
 
-        var newPath = index.CurrentSnapshot.GetDriveBlock(driveOrdinal).Block.Path;
+        var newPath = index.CurrentSnapshot[driveOrdinal].Block.Path;
         Assert.AreEqual(canonicalPath, newPath, "the new block takes the same canonical cache path");
 
         var retiredPaths = Directory
@@ -455,7 +455,7 @@ public partial class FileIndexResilienceTests
             await using var firstIndex =
                 await FileIndex.OpenAsync(firstFixture.Options(noCache: true), CancellationToken.None);
             Assert.IsTrue(firstIndex.TryGetDriveOrdinal('T', out var firstDriveOrdinal));
-            var firstBlockPath = firstIndex.CurrentSnapshot.GetDriveBlock(firstDriveOrdinal).Block.Path;
+            var firstBlockPath = firstIndex.CurrentSnapshot[firstDriveOrdinal].Block.Path;
             Assert.IsTrue(File.Exists(firstBlockPath));
 
             await using var secondIndex =

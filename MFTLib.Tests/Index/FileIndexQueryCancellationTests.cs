@@ -85,7 +85,7 @@ public class FileIndexQueryCancellationTests
 
         Assert.ThrowsException<OperationCanceledException>(
             () => _index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), token));
-        Assert.AreEqual(0, _index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, _index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
     }
 
     [TestMethod]
@@ -170,7 +170,7 @@ public class FileIndexQueryCancellationTests
     {
         _ = _index.Root('T').Children();
 
-        Assert.AreEqual(0, _index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, _index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
     }
 
     /// <summary>
@@ -182,7 +182,7 @@ public class FileIndexQueryCancellationTests
     {
         _ = _index.Search(new SearchQuery("readme.md", NameMatchMode.Exact));
 
-        Assert.AreEqual(0, _index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, _index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
     }
 
 

@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -17,36 +18,73 @@ public class DriveBlockTests
     }
 
     [TestMethod]
-    public void NewDriveBlock_HasNoReferencesAndIsNotReleased()
+    public void NewDriveBlock_IsNotReleased()
     {
         using var builder = CompletedBuilder();
         var block = builder.OpenForReading(out _)!;
         var driveBlock = new DriveBlock('T', 0, block);
 
-        Assert.AreEqual(0, driveBlock.ReferenceCount);
         Assert.IsFalse(driveBlock.IsReleased);
         Assert.AreEqual('T', driveBlock.Drive);
         Assert.AreEqual(ProducerKind.Enumeration, driveBlock.ProducerKind);
 
-        Assert.IsTrue(driveBlock.TryAddReference());
-        driveBlock.Release();
+        Assert.IsTrue(driveBlock.ReleaseState.Release());
     }
 
     [TestMethod]
-    public void LastRelease_DisposesTheBlock()
+    public void Release_DisposesTheBlockOnce()
     {
         using var builder = CompletedBuilder();
         var block = builder.OpenForReading(out _)!;
         var driveBlock = new DriveBlock('T', 0, block);
 
-        Assert.IsTrue(driveBlock.TryAddReference());
-        Assert.IsTrue(driveBlock.TryAddReference());
-        driveBlock.Release();
-        Assert.IsFalse(driveBlock.IsReleased);
+        Assert.IsTrue(driveBlock.ReleaseState.Release());
+        Assert.IsFalse(driveBlock.ReleaseState.Release());
 
-        driveBlock.Release();
         Assert.IsTrue(driveBlock.IsReleased);
+        Assert.IsTrue(driveBlock.ReleaseState.IsReleaseComplete);
         Assert.ThrowsException<ObjectDisposedException>(() => _ = block.Rows.Length);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static DriveBlockRelease CreateUnrootedDriveBlock(BlockFile block, Action? releaseStarted = null)
+    {
+        var driveBlock = new DriveBlock('T', 0, block);
+        driveBlock.ReleaseState._releaseStartedForTest = releaseStarted;
+        return driveBlock.ReleaseState;
+    }
+
+    [TestMethod]
+    public void Finalizer_ReleasesTheBlockWhenItBecomesUnreachable()
+    {
+        using var builder = CompletedBuilder();
+        var block = builder.OpenForReading(out _)!;
+        var release = CreateUnrootedDriveBlock(block);
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+
+        Assert.IsTrue(release.IsReleaseComplete);
+        Assert.ThrowsException<ObjectDisposedException>(() => _ = block.Rows.Length);
+    }
+
+    [TestMethod]
+    public void Finalizer_WhenTheReleaseThrows_SwallowsItAndLeavesTheBlockMapped()
+    {
+        using var builder = CompletedBuilder();
+        var block = builder.OpenForReading(out _)!;
+        var release = CreateUnrootedDriveBlock(block,
+            () => throw new InvalidOperationException("Simulated release failure."));
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+
+        // An exception escaping a finalizer terminates the process, so reaching this
+        // assertion at all is half of the contract; the other half is that the failed
+        // release ran before the block was unmapped.
+        Assert.IsTrue(release.IsReleaseStarted);
+        Assert.IsTrue(block.Rows.Length > 0, "the block is still mapped");
+        block.Dispose();
     }
 
     [TestMethod]
@@ -58,10 +96,9 @@ public class DriveBlockTests
 
         var renamedPath = builder.BlockPath + ".retired-1";
         File.Move(builder.BlockPath, renamedPath);
-        driveBlock.ScheduleDeleteAt(renamedPath);
+        driveBlock.ReleaseState.ScheduleDeleteAt(renamedPath);
 
-        Assert.IsTrue(driveBlock.TryAddReference());
-        driveBlock.Release();
+        driveBlock.ReleaseState.Release();
 
         Assert.IsFalse(File.Exists(renamedPath));
     }
@@ -75,7 +112,7 @@ public class DriveBlockTests
 
         var renamedPath = builder.BlockPath + ".retired-1";
         File.Move(builder.BlockPath, renamedPath);
-        driveBlock.ScheduleDeleteAt(renamedPath);
+        driveBlock.ReleaseState.ScheduleDeleteAt(renamedPath);
 
         // ReadWrite share matches the block's own still-open handle so this second handle can
         // coexist with it; omitting FileShare.Delete is what makes Windows' delete inside
@@ -84,9 +121,8 @@ public class DriveBlockTests
         // Either way Release must not throw.
         using var lockingHandle =
             new FileStream(renamedPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        Assert.IsTrue(driveBlock.TryAddReference());
 
-        driveBlock.Release();
+        driveBlock.ReleaseState.Release();
     }
 
     [TestMethod]
@@ -99,16 +135,14 @@ public class DriveBlockTests
         var renamedPath = builder.BlockPath + ".retired-1";
         File.Move(builder.BlockPath, renamedPath);
         File.SetAttributes(renamedPath, FileAttributes.ReadOnly);
-        driveBlock.ScheduleDeleteAt(renamedPath);
+        driveBlock.ReleaseState.ScheduleDeleteAt(renamedPath);
 
         try
         {
-            Assert.IsTrue(driveBlock.TryAddReference());
-
             // Windows treats the read-only attribute as delete-denying, swallowed by Release.
             // Unix unlink ignores a file's own permission bits, so the delete there succeeds.
             // Either way Release must not throw.
-            driveBlock.Release();
+            driveBlock.ReleaseState.Release();
         }
         finally
         {
@@ -117,29 +151,5 @@ public class DriveBlockTests
                 File.SetAttributes(renamedPath, FileAttributes.Normal);
             }
         }
-    }
-
-    [TestMethod]
-    public void TryAddReference_AfterRelease_ReturnsFalse()
-    {
-        using var builder = CompletedBuilder();
-        var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock('T', 0, block);
-
-        Assert.IsTrue(driveBlock.TryAddReference());
-        driveBlock.Release();
-
-        Assert.IsFalse(driveBlock.TryAddReference());
-        Assert.AreEqual(0, driveBlock.ReferenceCount);
-    }
-
-    [TestMethod]
-    public void Release_BelowZero_Throws()
-    {
-        using var builder = CompletedBuilder();
-        var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock('T', 0, block);
-
-        Assert.ThrowsException<InvalidOperationException>(driveBlock.Release);
     }
 }

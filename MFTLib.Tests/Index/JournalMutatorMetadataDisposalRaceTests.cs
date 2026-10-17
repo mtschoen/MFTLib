@@ -19,8 +19,8 @@ public class JournalMutatorMetadataDisposalRaceTests
     {
         using var builder = SyntheticBlockBuilder.MftShaped();
         var block = builder.OpenForWriting();
-        var snapshot = Snapshot.Create([new DriveBlock(builder.Drive, 0, block,
-            rootDirectoryPath: TestDriveRoot.For(builder.Drive))]);
+        DriveBlock[] snapshot = [new DriveBlock(builder.Drive, 0, block,
+            rootDirectoryPath: TestDriveRoot.For(builder.Drive))];
         var writer = new BlockWriter(block);
         var mutator = new JournalMutator(writer);
         var rowCaptured = new TestGate();
@@ -39,7 +39,7 @@ public class JournalMutatorMetadataDisposalRaceTests
         };
 
         var timestamp = new DateTime(2026, 9, 2, 6, 0, 0, DateTimeKind.Utc);
-        var applyTask = Task.Run(() => mutator.Apply(snapshot, 0,
+        var applyTask = Task.Run(() => mutator.Apply(snapshot[0],
             [CreateEntry(7, 6, "notes.txt", UsnReason.DataExtend, timestamp)], 7, 2000));
         try
         {
@@ -66,7 +66,7 @@ public class JournalMutatorMetadataDisposalRaceTests
         finally
         {
             releaseWriter.Release();
-            snapshot.ReleaseNowAsync().AsTask().Wait(HandoffTimeout);
+            snapshot.ReleaseNowAsync().Wait(HandoffTimeout);
         }
     }
 }

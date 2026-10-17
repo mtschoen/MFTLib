@@ -4,7 +4,7 @@ namespace MFTLib.Index;
 
 /// <summary>
 ///     A 16-byte value handle onto one file incarnation in one mapped block: an object reference to
-///     the snapshot that keeps the block mapped, plus a drive ordinal, a row index and the row's
+///     the drive block, which stays mapped while the handle is held, plus a row index and the row's
 ///     sequence number when the handle was minted. Property reads are pointer offsets into the mapped
 ///     row. Only <see cref="Name" /> and <c>Path</c> allocate. Values are live, not frozen: a journal
 ///     batch that mutates the underlying row changes what this handle reports, and a deleted file
@@ -27,61 +27,56 @@ namespace MFTLib.Index;
 ///     a column read can observe the replacement's columns; re-check <see cref="IsDeleted" /> after a read that
 ///     must be exact, or read the <see cref="FileChange" /> event fields.
 ///     Handles compare equal when they name the same drive block, row and sequence number, whichever
-///     snapshot minted them.
+///     query minted them.
 /// </remarks>
 /// <remarks>
-///     The snapshot reference keeps the block mapped for as long as the handle is held, so a
+///     The drive block reference keeps that block mapped for as long as the handle is held, so a
 ///     rescan that supersedes the block cannot pull the memory out from under it while the
-///     owning <see cref="FileIndex" /> lives. Once index disposal releases the snapshot, every
-///     property read except <see cref="IsValid" /> and <see cref="IsDisposed" /> throws
-///     <see cref="ObjectDisposedException" />. A held handle does not prevent that release.
+///     owning <see cref="FileIndex" /> lives. It holds no other drive's block. Once index disposal
+///     releases the block, every property read except <see cref="IsValid" /> and
+///     <see cref="IsDisposed" /> throws <see cref="ObjectDisposedException" />. A held handle does
+///     not prevent that release.
 /// </remarks>
 public readonly partial record struct FileEntry
 {
-    readonly Snapshot? _snapshot;
+    readonly DriveBlock? _driveBlock;
     readonly uint _rowIndex;
-    readonly ushort _driveOrdinal;
     readonly ushort _sequenceNumber;
 
-    FileEntry(Snapshot snapshot, ushort driveOrdinal, uint rowIndex)
+    FileEntry(DriveBlock driveBlock, uint rowIndex)
     {
-        _snapshot = snapshot;
-        _driveOrdinal = driveOrdinal;
+        _driveBlock = driveBlock;
         _rowIndex = rowIndex;
-        _sequenceNumber = SequenceNumberOf(snapshot.GetDriveBlock(driveOrdinal), rowIndex);
+        _sequenceNumber = SequenceNumberOf(driveBlock, rowIndex);
     }
 
     /// <summary>Internal factory. Handles are only ever minted by the index and its query engines.</summary>
-    internal static FileEntry Create(Snapshot snapshot, ushort driveOrdinal, uint rowIndex)
+    internal static FileEntry Create(DriveBlock driveBlock, uint rowIndex)
     {
-        ArgumentNullException.ThrowIfNull(snapshot);
-        return new FileEntry(snapshot, driveOrdinal, rowIndex);
+        ArgumentNullException.ThrowIfNull(driveBlock);
+        return new FileEntry(driveBlock, rowIndex);
     }
-
-    /// <summary>
-    ///     The snapshot this handle reads through. Every public member routes here, which is why
-    ///     the released check lives here and nowhere else: one volatile read per access, on a path
-    ///     that already does a pointer chase.
-    /// </summary>
-    internal Snapshot Snapshot
-    {
-        get
-        {
-            var snapshot = _snapshot ?? throw new InvalidOperationException(
-                "<invalid FileEntry> does not reference a snapshot.");
-            if (snapshot.IsReleased)
-            {
-                throw new ObjectDisposedException(typeof(FileEntry).FullName, "<disposed FileEntry> has a released snapshot.");
-            }
-            return snapshot;
-        }
-    }
-
-    internal ushort DriveOrdinal => _driveOrdinal;
 
     internal uint RowIndex => _rowIndex;
 
-    internal DriveBlock DriveBlock => Snapshot.GetDriveBlock(_driveOrdinal);
+    /// <summary>
+    ///     The drive block this handle reads through. Every public member routes here, which is why
+    ///     the released check lives here and nowhere else: one volatile read per access, on a path
+    ///     that already does a pointer chase.
+    /// </summary>
+    internal DriveBlock DriveBlock
+    {
+        get
+        {
+            var driveBlock = _driveBlock ?? throw new InvalidOperationException(
+                "<invalid FileEntry> does not reference a drive block.");
+            if (driveBlock.IsReleased)
+            {
+                throw new ObjectDisposedException(typeof(FileEntry).FullName, "<disposed FileEntry> has a released drive block.");
+            }
+            return driveBlock;
+        }
+    }
 
     /// <summary>
     ///     The row this handle was minted for, refused once a newer file has reused its slot.
@@ -128,46 +123,43 @@ public readonly partial record struct FileEntry
     ///     The drive block this handle names, or null for the default value. Unlike <see cref="DriveBlock" /> it
     ///     never throws, so equality holds for default and released handles.
     /// </summary>
-    internal DriveBlock? NamedDriveBlock => _snapshot?.GetDriveBlock(_driveOrdinal);
-
-    /// <summary>The snapshot that minted this handle, or null for the default value; no released check.</summary>
-    internal Snapshot? OwnerSnapshot => _snapshot;
+    internal DriveBlock? NamedDriveBlock => _driveBlock;
 
     /// <summary>
     ///     <see cref="IsSuperseded" /> without the released check, for a caller that already holds a borrow
-    ///     that keeps the block mapped, or has checked that the owner snapshot is not released.
+    ///     that keeps the block mapped.
     /// </summary>
     internal bool IsSupersededWhileMapped => NamedDriveBlock is { } driveBlock && IsSupersededIn(driveBlock);
 
     /// <summary>
     ///     Compares the drive block, row index and sequence number. A superseded handle never equals the
-    ///     handle of the file that reused its slot, and handles minted by different snapshots of one block
+    ///     handle of the file that reused its slot, and handles minted by different queries of one block
     ///     are equal.
     /// </summary>
     /// <param name="other">The handle to compare with.</param>
     /// <returns>true when both name the same file incarnation in the same drive block.</returns>
     public readonly bool Equals(FileEntry other) =>
-        ReferenceEquals(NamedDriveBlock, other.NamedDriveBlock) && _rowIndex == other._rowIndex &&
+        ReferenceEquals(_driveBlock, other._driveBlock) && _rowIndex == other._rowIndex &&
         _sequenceNumber == other._sequenceNumber;
 
     /// <summary>Hashes the same drive block, row index and sequence number <see cref="Equals(FileEntry)" /> compares.</summary>
     /// <returns>The hash code.</returns>
     public override readonly int GetHashCode() =>
-        HashCode.Combine(NamedDriveBlock is { } driveBlock ? RuntimeHelpers.GetHashCode(driveBlock) : 0, _rowIndex,
+        HashCode.Combine(_driveBlock is { } driveBlock ? RuntimeHelpers.GetHashCode(driveBlock) : 0, _rowIndex,
             _sequenceNumber);
 
-    /// <summary>False for the default value, which references no snapshot.</summary>
-    public bool IsValid => _snapshot is not null;
+    /// <summary>False for the default value, which references no drive block.</summary>
+    public bool IsValid => _driveBlock is not null;
 
     /// <summary>
-    ///     True once the snapshot behind this handle has been released, which happens when the
+    ///     True once the drive block behind this handle has been released, which happens when the
     ///     owning <see cref="FileIndex" /> is disposed. Every read on this handle throws
     ///     <see cref="ObjectDisposedException" /> from that point on. False for the default value,
-    ///     which references no snapshot at all: <see cref="IsValid" /> is the question for that,
+    ///     which references no drive block at all: <see cref="IsValid" /> is the question for that,
     ///     and <see cref="IsDeleted" /> is the question for a tombstoned row. Three properties,
     ///     three different questions.
     /// </summary>
-    public bool IsDisposed => _snapshot is not null && _snapshot.IsReleased;
+    public bool IsDisposed => _driveBlock is { IsReleased: true };
 
     /// <summary>Gets the configured logical drive key, including for virtual dump drives. Equals <see cref="IndexRecordKey.Drive" /> on <see cref="RecordKey" />.</summary>
     /// <exception cref="InvalidOperationException">This is the default entry value.</exception>

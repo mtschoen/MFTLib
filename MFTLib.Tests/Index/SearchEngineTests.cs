@@ -15,7 +15,7 @@ public class SearchEngineTests
     static readonly DateTime Newer = new(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc);
 
     SyntheticBlockBuilder _builder = null!;
-    Snapshot _snapshot = null!;
+    DriveBlock[] _snapshot = null!;
     uint _documentsRow;
     uint _picturesRow;
 
@@ -33,7 +33,7 @@ public class SearchEngineTests
         _builder.Complete(Newer);
 
         var block = _builder.OpenForReading(out _)!;
-        _snapshot = Snapshot.Create([new DriveBlock('T', 0, block)]);
+        _snapshot = [new DriveBlock('T', 0, block)];
     }
 
     [TestCleanup]
@@ -117,7 +117,7 @@ public class SearchEngineTests
         builder.Complete(Newer);
 
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('S', 0, block)]);
+        DriveBlock[] snapshot = [new DriveBlock('S', 0, block)];
         try
         {
             var resultsMin = SearchEngine.Search(snapshot, new SearchQuery(null, SizeMinimum: 0));
@@ -149,7 +149,7 @@ public class SearchEngineTests
     [TestMethod]
     public void Search_SubtreeRestrictsToTheEntryAndBelow()
     {
-        var documents = FileEntry.Create(_snapshot, 0, _documentsRow);
+        var documents = FileEntry.Create(_snapshot[0], _documentsRow);
         var results = SearchEngine.Search(_snapshot, new SearchQuery(null, Subtree: documents));
         CollectionAssert.AreEqual(new[] { "Documents", "Report.docx", "report.pdf" }, NamesOf(results));
     }
@@ -157,7 +157,7 @@ public class SearchEngineTests
     [TestMethod]
     public void Search_UnderADifferentSubtreeExcludesSiblings()
     {
-        var pictures = FileEntry.Create(_snapshot, 0, _picturesRow);
+        var pictures = FileEntry.Create(_snapshot[0], _picturesRow);
         var results = SearchEngine.Search(_snapshot, new SearchQuery("report", Subtree: pictures));
         Assert.AreEqual(0, results.Count);
     }
@@ -196,10 +196,10 @@ public class SearchEngineTests
         builder.AddRow("needle.txt", parent, RowFlags.InUse, 1, Newer, sequenceNumber: 0);
         builder.Complete(Newer);
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('Z', 0, block)]);
+        DriveBlock[] snapshot = [new DriveBlock('Z', 0, block)];
         try
         {
-            var ancestor = FileEntry.Create(snapshot, 0, root);
+            var ancestor = FileEntry.Create(snapshot[0], root);
             var exception = Assert.ThrowsException<InvalidDataException>(() =>
                 SearchEngine.Search(snapshot, new SearchQuery("needle.txt", Subtree: ancestor)));
             StringAssert.Contains(exception.Message, BlockLayout.MaximumPathDepth.ToString(CultureInfo.InvariantCulture));
@@ -224,10 +224,10 @@ public class SearchEngineTests
         builder.Complete(Newer);
 
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('Z', 0, block)]);
+        DriveBlock[] snapshot = [new DriveBlock('Z', 0, block)];
         try
         {
-            var ancestor = FileEntry.Create(snapshot, 0, root);
+            var ancestor = FileEntry.Create(snapshot[0], root);
             var results = SearchEngine.Search(snapshot, new SearchQuery("*.txt", NameMatchMode.Glob, Subtree: ancestor));
             Assert.AreEqual(1, results.Count);
             Assert.AreEqual("valid.txt", results[0].Name);
@@ -252,7 +252,7 @@ public class SearchEngineTests
         builder.Complete(Newer);
 
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('Y', 0, block)]);
+        DriveBlock[] snapshot = [new DriveBlock('Y', 0, block)];
         try
         {
             var results = SearchEngine.Search(snapshot, new SearchQuery("*.dat", NameMatchMode.Glob));
@@ -282,7 +282,7 @@ public class SearchEngineTests
     [TestMethod]
     public void Search_Under_WithCancelledToken_ThrowsOperationCanceled()
     {
-        var documents = FileEntry.Create(_snapshot, 0, _documentsRow);
+        var documents = FileEntry.Create(_snapshot[0], _documentsRow);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         var token = cancellation.Token;
@@ -299,7 +299,7 @@ public class SearchEngineTests
     public async Task Search_OverAnEmptyDriveBlock_ReturnsNoResults()
     {
         using var builder = new SyntheticBlockBuilder('Y');
-        var snapshot = Snapshot.Create([new DriveBlock('Y', 0, builder.OpenForWriting())]);
+        DriveBlock[] snapshot = [new DriveBlock('Y', 0, builder.OpenForWriting())];
         try
         {
             Assert.AreEqual(0u, builder.OpenForWriting().Header.RowCount);

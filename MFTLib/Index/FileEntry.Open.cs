@@ -9,7 +9,7 @@ public readonly partial record struct FileEntry
     ///     only ever open the file it names.
     /// </summary>
     /// <exception cref="FileNotFoundException">A newer file has reused this entry's row slot; nothing is opened. The refusal message includes this entry's <see cref="ToString" /> text.</exception>
-    /// <exception cref="ObjectDisposedException">The owning index has released this handle's snapshot. The message includes this entry's <see cref="ToString" /> text.</exception>
+    /// <exception cref="ObjectDisposedException">The owning index has released this handle's drive block. The message includes this entry's <see cref="ToString" /> text.</exception>
     /// <exception cref="InvalidOperationException">The entry is default, belongs to an MFT dump, or its MFT drive has no configured root directory. The refusal message includes this entry's <see cref="ToString" /> text.</exception>
     public FileStream Open(FileAccess access)
     {

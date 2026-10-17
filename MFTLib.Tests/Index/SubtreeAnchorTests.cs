@@ -111,7 +111,7 @@ public class SubtreeAnchorTests
 
         var admissions = new int[1];
         var snapshot = harness.Index.CurrentSnapshot;
-        snapshot.ReleaseState._readerAdmittedForTest = () => Interlocked.Increment(ref admissions[0]);
+        harness.Index.ReaderAdmittedForTest = () => Interlocked.Increment(ref admissions[0]);
         ArgumentException exception;
         try
         {
@@ -119,12 +119,12 @@ public class SubtreeAnchorTests
         }
         finally
         {
-            snapshot.ReleaseState._readerAdmittedForTest = null;
+            harness.Index.ReaderAdmittedForTest = null;
         }
 
         StringAssert.Contains(exception.Message, "default FileEntry");
         Assert.AreEqual(0, admissions[0], "The call was refused before any query was admitted.");
-        Assert.AreEqual(0, snapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, snapshot[0].ReleaseState.OutstandingBorrowCount);
     }
 
     [DataTestMethod]
@@ -142,7 +142,7 @@ public class SubtreeAnchorTests
 
         Rejected<ArgumentException>(queried.Index, form, Under(anchor));
 
-        Assert.AreEqual(0, queried.Index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, queried.Index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
         Assert.IsTrue(Run(queried.Index, form, new SearchQuery(null)).Count > 0, "The queried index still answers.");
     }
 
@@ -176,7 +176,7 @@ public class SubtreeAnchorTests
 
         Assert.IsTrue(anchor.IsDisposed);
         Rejected<ObjectDisposedException>(queried.Index, form, Under(anchor));
-        Assert.AreEqual(0, queried.Index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, queried.Index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
     }
 
     [DataTestMethod]
@@ -191,7 +191,7 @@ public class SubtreeAnchorTests
         await harness.Index.RescanAsync(['T'], Token).WaitAsync(SlowHangGuard);
 
         Rejected<ArgumentException>(harness.Index, form, Under(anchor));
-        Assert.AreEqual(0, harness.Index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, harness.Index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
         Assert.AreEqual("documents", anchor.Name, "A retained handle stays readable against its original block.");
         CollectionAssert.AreEqual(DocumentsSubtree, Run(harness.Index, form, Under(Documents(harness.Index))));
     }
@@ -226,7 +226,7 @@ public class SubtreeAnchorTests
 
         Assert.IsTrue(anchor.IsDeleted);
         Rejected<ArgumentException>(harness.Index, form, Under(anchor));
-        Assert.AreEqual(0, harness.Index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, harness.Index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
         CollectionAssert.AreEqual(new[] { "replacement", "notes.txt" },
             Run(harness.Index, form, Under(Documents(harness.Index, "replacement"))));
     }
@@ -242,7 +242,7 @@ public class SubtreeAnchorTests
         var snapshot = harness.Index.CurrentSnapshot;
         var admitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var proceed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        snapshot.ReleaseState._readerAdmittedForTest = () =>
+        harness.Index.ReaderAdmittedForTest = () =>
         {
             admitted.TrySetResult();
             proceed.Task.GetAwaiter().GetResult();
@@ -252,7 +252,7 @@ public class SubtreeAnchorTests
         {
             var query = RunOnThreadPool(harness.Index, form, Under(anchor), Token);
             await admitted.Task.WaitAsync(SlowHangGuard);
-            Assert.AreEqual(1, snapshot.ReleaseState.OutstandingBorrowCount);
+            Assert.AreEqual(1, snapshot[0].ReleaseState.OutstandingBorrowCount);
 
             await harness.Index.RescanAsync(['T'], Token).WaitAsync(SlowHangGuard);
             Assert.AreNotSame(snapshot, harness.Index.CurrentSnapshot, "The rescan published a new snapshot.");
@@ -262,7 +262,7 @@ public class SubtreeAnchorTests
         finally
         {
             proceed.TrySetResult();
-            snapshot.ReleaseState._readerAdmittedForTest = null;
+            harness.Index.ReaderAdmittedForTest = null;
         }
 
         CollectionAssert.AreEqual(DocumentsSubtree, names,

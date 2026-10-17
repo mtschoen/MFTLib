@@ -6,17 +6,17 @@ namespace MFTLib.Index;
 /// </summary>
 internal static class LookupEngine
 {
-    internal static FileEntry Root(Snapshot snapshot, DriveKey driveLetter,
+    internal static FileEntry Root(IReadOnlyList<DriveBlock> snapshot, DriveKey driveLetter,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         cancellationToken.ThrowIfCancellationRequested();
-        if (snapshot.FindDriveBlock(driveLetter) is not { } driveBlock)
+        if (FindDriveBlock(snapshot, driveLetter) is not { } driveBlock)
         {
             throw new ArgumentException($"Drive {driveLetter} is not part of this index.", nameof(driveLetter));
         }
 
-        return FileEntry.Create(snapshot, driveBlock.DriveOrdinal, driveBlock.Block.Header.RootRow);
+        return FileEntry.Create(driveBlock, driveBlock.Block.Header.RootRow);
     }
 
     /// <summary>
@@ -24,7 +24,11 @@ internal static class LookupEngine
     ///     directory is the longest prefix of the path wins, so nested indexed roots resolve to
     ///     the inner one, and the remaining segments are walked down from that block's root row.
     /// </summary>
-    internal static FileEntry? Find(Snapshot snapshot, string nativePath,
+    /// <summary>The snapshot's block for this drive, or null when it has none.</summary>
+    internal static DriveBlock? FindDriveBlock(IReadOnlyList<DriveBlock> snapshot, DriveKey driveLetter) =>
+        snapshot.FirstOrDefault(candidate => candidate.Drive == driveLetter.Validated());
+
+    internal static FileEntry? Find(IReadOnlyList<DriveBlock> snapshot, string nativePath,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -39,8 +43,7 @@ internal static class LookupEngine
         var (driveBlock, rootLength) = match;
         var remainder = nativePath.AsSpan(rootLength);
         var currentRow = driveBlock.Block.Header.RootRow;
-        var descent = new PathDescent(snapshot, driveBlock.DriveOrdinal, IsCaseSensitive(driveBlock),
-            cancellationToken);
+        var descent = new PathDescent(driveBlock, IsCaseSensitive(driveBlock), cancellationToken);
         foreach (var segmentRange in remainder.SplitAny(
                      driveBlock.IsMftDump || OperatingSystem.IsWindows() ? ['\\', '/'] : ['/']))
         {
@@ -58,7 +61,7 @@ internal static class LookupEngine
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        return FileEntry.Create(snapshot, driveBlock.DriveOrdinal, currentRow);
+        return FileEntry.Create(driveBlock, currentRow);
     }
 
     /// <summary>
@@ -83,7 +86,7 @@ internal static class LookupEngine
     ///     computed once on the block rather than rebuilt for every candidate on every lookup.
     /// </summary>
     static (DriveBlock DriveBlock, int RootLength)? FindLongestMatchingRoot(
-        Snapshot snapshot, string nativePath)
+        IReadOnlyList<DriveBlock> snapshot, string nativePath)
     {
         if (nativePath.Length == 0)
         {
@@ -94,7 +97,7 @@ internal static class LookupEngine
         var dumpNormalizedPath = MftDumpPaths.Fold(nativePath);
         DriveBlock? best = null;
         var bestLength = -1;
-        foreach (var candidate in snapshot.DriveBlocks)
+        foreach (var candidate in snapshot)
         {
             if (candidate.MatchableRootDirectoryPath is not { } trimmed)
             {
@@ -142,15 +145,14 @@ internal static class LookupEngine
     ///     level's call carries only what actually changes between levels.
     /// </summary>
     readonly record struct PathDescent(
-        Snapshot Snapshot,
-        ushort DriveOrdinal,
+        DriveBlock DriveBlock,
         bool CaseSensitive,
         CancellationToken CancellationToken);
 
     static bool TryFindChild(in PathDescent descent, uint parentRow, ReadOnlySpan<char> segment,
         out uint childRow)
     {
-        var scanner = new RowScanner(descent.Snapshot, descent.DriveOrdinal, descent.CancellationToken);
+        var scanner = new RowScanner(descent.DriveBlock, descent.CancellationToken);
         while (scanner.MoveNext())
         {
             ref readonly var row = ref scanner.Current;

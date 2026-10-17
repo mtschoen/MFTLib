@@ -4,18 +4,23 @@
     - **Query lifetime**: the six entry points that scan rows (`Find`, `Search`, `Enumerate`, `EnumerateRows`,
       `Root`, and `FileEntry.Children`) each take an optional `CancellationToken`, observed
       before the first row and then at least every 4096 rows from inside `RowScanner`, and each holds a borrow
-      on the `Snapshot` it reads for its whole duration. `FileEntry.Children` observes only its caller's token,
+      on every drive block it reads (the snapshot) for its whole duration. `FileEntry.Children` observes only its caller's token,
       since a handle holds no index reference; disposal waits that listing out rather than cancelling it. Every
       other `FileEntry` member takes no borrow and keeps the per-access `IsReleased` check instead;
       it reads one row, except `Path` (and `ToString`, which can build it), which follows the parent chain for at most 128 hops.
-      `SnapshotRelease` counts borrows; `DisposeAsync` cancels a disposal token the five `FileIndex` queries
-      and `WaitForCatchUpAsync` waits are linked to, waits for the borrows on the current and retired snapshots
+      Each block's `DriveBlockRelease` counts borrows; `DisposeAsync` cancels a disposal token the five `FileIndex` queries
+      and `WaitForCatchUpAsync` waits are linked to, waits for the borrows on the current and retired blocks
       to drop, and only then unmaps. A suspended `Enumerate` enumerator holds its borrow between yields, so
       disposal waits until it advances or is disposed, or, if abandoned, until garbage collection and finalization
       return the borrow. Dispose enumerators promptly; collection timing is not guaranteed. The 4096-row checkpoint
       bound applies to active scanning, not time spent suspended. Scanning on one thread while another
-      disposes is therefore safe. The snapshot finalizer path
-      is unaffected: a borrow holds the snapshot, so a borrowed snapshot is never collected.
+      disposes is therefore safe. The drive block finalizer path
+      is unaffected: a borrow holds its blocks, so a borrowed block is never collected.
+
+    - **Handle lifetime**: a retained `FileEntry` holds its own `DriveBlock` and no other drive's, so it keeps
+      only that block mapped. A rescan retires only the rescanned drive's block; once no handle or borrow reaches
+      a retired block its finalizer unmaps it while the index lives, whatever handles other drives hold. Index
+      disposal releases every current and retired block regardless of held handles.
 
     - **Row enumeration**: `FileIndex.EnumerateRows` takes its snapshot borrow when `foreach` begins
       (`GetEnumerator()`), and `foreach` releases it on completion, `break`, an exception or cancellation.
@@ -70,21 +75,20 @@
       returns an empty list, `Subtree` rejects it with `ArgumentException`, and every row column (`Name`, `Path`,
       `Parent`, `Size`, `IsSizeKnown`, `LastWriteTime`, `IsLastWriteTimeKnown`, `Attributes`, `IsDirectory`) throws
       `InvalidOperationException`, all through one shared check. `Drive` and `RecordKey` stay readable. Equality
-      compares the drive block, row index and sequence number, never the snapshot. A rename or move of the
+      compares the drive block, row index and sequence number. A rename or move of the
       same file keeps its sequence number, so its handles keep tracking it. A `Deleted` `FileChange` whose slot was
       reused reports `Entry.IsDeleted`; `Path`, `PreviousPath` and `Timestamp` carry the event facts.
 
-    - **Subtree anchors**: `SearchQuery.Subtree` names a handle's row, and a handle's drive ordinal and row index are
-      coordinates local to the snapshot that minted it, not ownership. `Search`, `Enumerate` and `EnumerateRows`
+    - **Subtree anchors**: `SearchQuery.Subtree` names a handle's row in its drive block. `Search`, `Enumerate` and `EnumerateRows`
       reject `Subtree = default(FileEntry)` with `ArgumentException` on call entry, before any borrow. Each then
       resolves the anchor once, through one shared helper, against the snapshot the query borrowed, so a
       publication that lands after admission cannot turn validation into a check-then-use race. A released anchor
-      throws `ObjectDisposedException`. An anchor whose own `DriveBlock` is not the borrowed snapshot's block
-      for that drive (another index, even one with the same drive key or ordinal, or a block a rescan replaced),
+      throws `ObjectDisposedException`. An anchor whose own `DriveBlock` is not one of the borrowed blocks
+      (another index, even one with the same drive key or ordinal, or a block a rescan replaced),
       or that a newer file has superseded by reusing its row slot, throws `ArgumentException`. For `Enumerate` and
       `EnumerateRows` the borrow is taken at the first `MoveNext` and at `GetEnumerator`, so those rejections
-      surface there, and the borrow is returned when they do. The drive block is compared, never the whole
-      snapshot: rescanning a different drive publishes a new snapshot without invalidating the anchor. A
+      surface there, and the borrow is returned when they do. Rescanning a different drive publishes a new
+      snapshot without invalidating the anchor. A
       retained handle stays readable against its original block, and a caller reacquires an anchor from the
       current index before each query that follows a rescan of the anchor's drive.
 

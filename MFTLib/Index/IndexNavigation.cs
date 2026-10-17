@@ -46,10 +46,8 @@ internal static class IndexNavigation
     ///     The drive block has no configured root directory, so there is nothing to root the name
     ///     chain in. Every production block sets one; a synthetic test block need not.
     /// </exception>
-    internal static string BuildPath(Snapshot snapshot, ushort driveOrdinal, uint rowIndex)
+    internal static string BuildPath(DriveBlock driveBlock, uint rowIndex)
     {
-        var driveBlock = snapshot.GetDriveBlock(driveOrdinal);
-
         // A detached row has no verified ancestor, so a root prefix would invent one.
         if (rowIndex < driveBlock.Block.Header.RowCount && IsDetached(driveBlock.Block, rowIndex))
         {
@@ -79,18 +77,18 @@ internal static class IndexNavigation
     ///     Direct live children only. A tombstoned row is excluded here even though
     ///     <see cref="TryGetParentRow" /> and the path walk still pass through it.
     /// </summary>
-    internal static List<FileEntry> GetChildren(Snapshot snapshot, ushort driveOrdinal, uint rowIndex,
+    internal static List<FileEntry> GetChildren(DriveBlock driveBlock, uint rowIndex,
         CancellationToken cancellationToken = default)
     {
         var children = new List<FileEntry>();
-        var scanner = new RowScanner(snapshot, driveOrdinal, cancellationToken);
+        var scanner = new RowScanner(driveBlock, cancellationToken);
         while (scanner.MoveNext())
         {
             ref readonly var row = ref scanner.Current;
             var candidate = scanner.CurrentRowIndex;
             if (row.IsInUse && !row.IsDeleted && row.ParentRow == rowIndex && candidate != rowIndex)
             {
-                children.Add(FileEntry.Create(snapshot, driveOrdinal, candidate));
+                children.Add(FileEntry.Create(driveBlock, candidate));
             }
         }
 

@@ -46,7 +46,6 @@ public readonly ref struct IndexRowEnumerable
 public ref struct IndexRowEnumerator
 {
     readonly FileIndex.QueryScope _scope;
-    readonly Snapshot _snapshot;
     readonly SearchQuery _query;
     readonly CancellationToken _cancellationToken;
     readonly IReadOnlyList<DriveBlock> _driveBlocks;
@@ -66,10 +65,9 @@ public ref struct IndexRowEnumerator
     internal IndexRowEnumerator(FileIndex.QueryScope scope, SearchQuery query)
     {
         _scope = scope;
-        _snapshot = scope.Snapshot;
         _query = query;
         _cancellationToken = scope.CancellationToken;
-        _driveBlocks = _snapshot.DriveBlocks;
+        _driveBlocks = scope.Snapshot;
 
         // A query with no name, size, date or subtree predicate needs only the row flags, so its loop
         // skips the general predicate and reads no query field per row.
@@ -80,7 +78,7 @@ public ref struct IndexRowEnumerator
         _wantDirectories = query.IsDirectory.GetValueOrDefault();
         try
         {
-            _subtree = SubtreeAnchor.Resolve(_snapshot, query);
+            _subtree = SubtreeAnchor.Resolve(_driveBlocks, query);
         }
         catch
         {
@@ -103,8 +101,7 @@ public ref struct IndexRowEnumerator
         {
             ThrowIfDisposed();
             var driveBlock = _driveBlock ?? throw new InvalidOperationException("The enumerator has no current row.");
-            return new IndexRow(_snapshot, driveBlock.Drive, driveBlock.DriveOrdinal, _scanner.CurrentRowIndex,
-                in _scanner.Current, _scanner.CurrentName);
+            return new IndexRow(driveBlock, _scanner.CurrentRowIndex, in _scanner.Current, _scanner.CurrentName);
         }
     }
 
@@ -185,7 +182,7 @@ public ref struct IndexRowEnumerator
             }
 
             _driveBlock = driveBlock;
-            _scanner = new RowScanner(_snapshot, driveBlock.DriveOrdinal, _cancellationToken);
+            _scanner = new RowScanner(driveBlock, _cancellationToken);
             return true;
         }
 

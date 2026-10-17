@@ -59,7 +59,7 @@ public class FileEntryIncarnationTests
     public async Task RetainedHandle_AfterSlotReuse_ReadsDeletedAndRefusesColumnReads()
     {
         await using var fixture = SeededFixture();
-        var retained = FileEntry.Create(fixture.Snapshot, 0, DirectoryRow);
+        var retained = FileEntry.Create(fixture.Snapshot[0], DirectoryRow);
         Assert.IsFalse(retained.IsDeleted);
 
         ApplyReuseBatch(fixture);
@@ -84,7 +84,7 @@ public class FileEntryIncarnationTests
         }
 
         Assert.AreEqual(DirectoryRow, (uint)retained.RecordKey.RecordNumber);
-        Assert.AreEqual("replacement", FileEntry.Create(fixture.Snapshot, 0, DirectoryRow).Name);
+        Assert.AreEqual("replacement", FileEntry.Create(fixture.Snapshot[0], DirectoryRow).Name);
     }
 
     [TestMethod]
@@ -105,14 +105,14 @@ public class FileEntryIncarnationTests
     public async Task Equality_NeverMatchesTheReplacementThatReusedTheSlot()
     {
         await using var fixture = SeededFixture();
-        var retained = FileEntry.Create(fixture.Snapshot, 0, DirectoryRow);
-        var sameIncarnation = FileEntry.Create(fixture.Snapshot, 0, DirectoryRow);
+        var retained = FileEntry.Create(fixture.Snapshot[0], DirectoryRow);
+        var sameIncarnation = FileEntry.Create(fixture.Snapshot[0], DirectoryRow);
         Assert.IsTrue(retained.Equals(sameIncarnation));
         Assert.IsTrue(retained == sameIncarnation);
         Assert.AreEqual(retained.GetHashCode(), sameIncarnation.GetHashCode());
 
         ApplyReuseBatch(fixture);
-        var replacement = FileEntry.Create(fixture.Snapshot, 0, DirectoryRow);
+        var replacement = FileEntry.Create(fixture.Snapshot[0], DirectoryRow);
 
         Assert.IsFalse(retained.Equals(replacement));
         Assert.IsFalse(retained.Equals((object)replacement));
@@ -126,11 +126,11 @@ public class FileEntryIncarnationTests
     public async Task Equality_ComparesTheDriveBlockNotTheSnapshot()
     {
         await using var fixture = SeededFixture();
-        var first = FileEntry.Create(fixture.Snapshot, 0, DirectoryRow);
-        var secondSnapshot = Snapshot.Create([fixture.Snapshot.GetDriveBlock(0)]);
+        var first = FileEntry.Create(fixture.Snapshot[0], DirectoryRow);
+        DriveBlock[] secondSnapshot = [fixture.Snapshot[0]];
         try
         {
-            var second = FileEntry.Create(secondSnapshot, 0, DirectoryRow);
+            var second = FileEntry.Create(secondSnapshot[0], DirectoryRow);
 
             Assert.AreEqual(first, second);
             Assert.AreEqual(first.GetHashCode(), second.GetHashCode());
@@ -147,7 +147,7 @@ public class FileEntryIncarnationTests
     public async Task Open_OnASupersededHandle_ThrowsWithoutCallingOpenById()
     {
         await using var fixture = SeededFixture();
-        var retained = FileEntry.Create(fixture.Snapshot, 0, DirectoryRow);
+        var retained = FileEntry.Create(fixture.Snapshot[0], DirectoryRow);
         var calls = new List<(uint Record, ushort Sequence)>();
         using var restore = FileEntry.OverrideOpenByIdForTest((_, record, sequence, _) =>
         {
@@ -168,7 +168,7 @@ public class FileEntryIncarnationTests
         Assert.AreEqual($"{retained}: The entry has been deleted.", exception.Message);
         Assert.AreEqual(0, calls.Count);
 
-        var replacement = FileEntry.Create(fixture.Snapshot, 0, DirectoryRow);
+        var replacement = FileEntry.Create(fixture.Snapshot[0], DirectoryRow);
         using (replacement.Open(FileAccess.Read))
         {
         }
@@ -180,13 +180,13 @@ public class FileEntryIncarnationTests
     public async Task Children_OfASupersededDirectory_IsEmptyWhileTheReplacementListsItsOwn()
     {
         await using var fixture = SeededFixture();
-        var retained = FileEntry.Create(fixture.Snapshot, 0, DirectoryRow);
+        var retained = FileEntry.Create(fixture.Snapshot[0], DirectoryRow);
         Assert.AreEqual(1, retained.Children().Count);
 
         ApplyReuseBatch(fixture);
 
         Assert.AreEqual(0, retained.Children().Count);
-        var replacement = FileEntry.Create(fixture.Snapshot, 0, DirectoryRow);
+        var replacement = FileEntry.Create(fixture.Snapshot[0], DirectoryRow);
         Assert.AreEqual("replacement-child.txt", replacement.Children().Single().Name);
     }
 
@@ -194,21 +194,21 @@ public class FileEntryIncarnationTests
     public async Task Rename_OfTheSameIncarnation_KeepsTheRetainedHandleLive()
     {
         await using var fixture = SeededFixture();
-        var retained = FileEntry.Create(fixture.Snapshot, 0, ChildRow);
+        var retained = FileEntry.Create(fixture.Snapshot[0], ChildRow);
 
         fixture.Apply([Record(ChildRow, UsnReason.RenameNewName | UsnReason.Close, "renamed.txt", DirectoryRow,
             ChildSequence)]);
 
         Assert.IsFalse(retained.IsDeleted);
         Assert.AreEqual("renamed.txt", retained.Name);
-        Assert.AreEqual(FileEntry.Create(fixture.Snapshot, 0, ChildRow), retained);
+        Assert.AreEqual(FileEntry.Create(fixture.Snapshot[0], ChildRow), retained);
     }
 
     [TestMethod]
     public async Task DeleteOfTheSameIncarnation_ReadsAsATombstoneWithoutThrowing()
     {
         await using var fixture = SeededFixture();
-        var retained = FileEntry.Create(fixture.Snapshot, 0, ChildRow);
+        var retained = FileEntry.Create(fixture.Snapshot[0], ChildRow);
 
         fixture.Apply([Record(ChildRow, UsnReason.FileDelete | UsnReason.Close, "notes.txt", DirectoryRow,
             ChildSequence)]);
@@ -221,7 +221,7 @@ public class FileEntryIncarnationTests
     public async Task ReplayedCreateOfALiveRow_IsARefreshThatKeepsRetainedHandlesAndTheRealSequence()
     {
         await using var fixture = SeededFixture();
-        var retained = FileEntry.Create(fixture.Snapshot, 0, DirectoryRow);
+        var retained = FileEntry.Create(fixture.Snapshot[0], DirectoryRow);
         var calls = new List<ushort>();
         using var restore = FileEntry.OverrideOpenByIdForTest((_, _, sequence, _) =>
         {
@@ -234,8 +234,8 @@ public class FileEntryIncarnationTests
 
         Assert.IsFalse(retained.IsDeleted);
         Assert.AreEqual("documents", retained.Name);
-        Assert.AreEqual(retained, FileEntry.Create(fixture.Snapshot, 0, DirectoryRow));
-        using (FileEntry.Create(fixture.Snapshot, 0, DirectoryRow).Open(FileAccess.Read))
+        Assert.AreEqual(retained, FileEntry.Create(fixture.Snapshot[0], DirectoryRow));
+        using (FileEntry.Create(fixture.Snapshot[0], DirectoryRow).Open(FileAccess.Read))
         {
         }
 
@@ -246,7 +246,7 @@ public class FileEntryIncarnationTests
     public async Task RepeatedReuseWithRisingSequences_NeverAliasesAnEarlierHandle()
     {
         await using var fixture = SeededFixture();
-        var original = FileEntry.Create(fixture.Snapshot, 0, ChildRow);
+        var original = FileEntry.Create(fixture.Snapshot[0], ChildRow);
         var handles = new List<FileEntry> { original };
         for (var reuse = 0; reuse < 3; reuse++)
         {
@@ -255,7 +255,7 @@ public class FileEntryIncarnationTests
                 Record(ChildRow, UsnReason.FileDelete | UsnReason.Close, "notes.txt", DirectoryRow, next),
                 Record(ChildRow, UsnReason.FileCreate | UsnReason.Close, "again.txt", DirectoryRow, (ushort)(next + 1))
             ]);
-            handles.Add(FileEntry.Create(fixture.Snapshot, 0, ChildRow));
+            handles.Add(FileEntry.Create(fixture.Snapshot[0], ChildRow));
         }
 
         for (var index = 0; index < handles.Count - 1; index++)
@@ -277,7 +277,7 @@ public class FileEntryIncarnationTests
     public async Task RetainedOrdinaryFile_AndItsDeletedNotification_AreSupersededByTheReplacement(bool oneBatch)
     {
         await using var fixture = SeededFixture();
-        var retained = FileEntry.Create(fixture.Snapshot, 0, ChildRow);
+        var retained = FileEntry.Create(fixture.Snapshot[0], ChildRow);
         var delete = Record(ChildRow, UsnReason.FileDelete | UsnReason.Close, "notes.txt", DirectoryRow,
             ChildSequence);
         var create = Record(ChildRow, UsnReason.FileCreate | UsnReason.Close, "replacement.txt", DirectoryRow,
@@ -296,7 +296,7 @@ public class FileEntryIncarnationTests
             fixture.Apply([create]);
         }
 
-        var replacement = FileEntry.Create(fixture.Snapshot, 0, ChildRow);
+        var replacement = FileEntry.Create(fixture.Snapshot[0], ChildRow);
         foreach (var handle in new[] { retained, deleted.Entry })
         {
             Assert.IsTrue(handle.IsDeleted);
@@ -314,7 +314,7 @@ public class FileEntryIncarnationTests
     {
         await using var fixture = SeededFixture();
         fixture.Block.SequenceNumbers[(int)ChildRow] = 11;
-        var retained = FileEntry.Create(fixture.Snapshot, 0, ChildRow);
+        var retained = FileEntry.Create(fixture.Snapshot[0], ChildRow);
         var calls = new List<ushort>();
         using var restore = FileEntry.OverrideOpenByIdForTest((_, _, sequence, _) =>
         {
@@ -329,7 +329,7 @@ public class FileEntryIncarnationTests
 
         Assert.IsFalse(retained.IsDeleted);
         Assert.IsFalse(changes.Any(change => change.Kind == FileChangeKind.Deleted), "The earlier incarnation's delete is ignored.");
-        Assert.AreEqual(retained, FileEntry.Create(fixture.Snapshot, 0, ChildRow));
+        Assert.AreEqual(retained, FileEntry.Create(fixture.Snapshot[0], ChildRow));
         using (retained.Open(FileAccess.Read))
         {
         }
@@ -347,7 +347,7 @@ public class FileEntryIncarnationTests
         fixture.Apply([Record(ChildRow, UsnReason.FileCreate | UsnReason.Close, "next.txt", DirectoryRow,
             ChildSequence + 1)]);
 
-        var live = FileEntry.Create(fixture.Snapshot, 0, ChildRow);
+        var live = FileEntry.Create(fixture.Snapshot[0], ChildRow);
         Assert.AreEqual((ushort)(ChildSequence + 1), fixture.Block.SequenceNumbers[(int)ChildRow]);
         Assert.AreEqual("next.txt", live.Name);
     }
@@ -356,13 +356,13 @@ public class FileEntryIncarnationTests
     public async Task LiveRowReplacedWithAHigherSequence_SupersedesTheRetainedHandle()
     {
         await using var fixture = SeededFixture();
-        var retained = FileEntry.Create(fixture.Snapshot, 0, ChildRow);
+        var retained = FileEntry.Create(fixture.Snapshot[0], ChildRow);
 
         fixture.Apply([Record(ChildRow, UsnReason.FileCreate | UsnReason.Close, "other.txt", DirectoryRow,
             ChildSequence + 1)]);
 
         Assert.IsTrue(retained.IsDeleted);
-        Assert.AreNotEqual(retained, FileEntry.Create(fixture.Snapshot, 0, ChildRow));
+        Assert.AreNotEqual(retained, FileEntry.Create(fixture.Snapshot[0], ChildRow));
     }
 
     [TestMethod]
@@ -376,14 +376,14 @@ public class FileEntryIncarnationTests
             calls.Add(sequence);
             return new MemoryBackedFileStream();
         });
-        var retained = FileEntry.Create(fixture.Snapshot, 0, ChildRow);
+        var retained = FileEntry.Create(fixture.Snapshot[0], ChildRow);
 
         fixture.Apply([
             Record(ChildRow, UsnReason.FileDelete | UsnReason.Close, "notes.txt", DirectoryRow, ushort.MaxValue),
             Record(ChildRow, UsnReason.FileCreate | UsnReason.Close, "wrapped.txt", DirectoryRow, 1)
         ]);
 
-        var replacement = FileEntry.Create(fixture.Snapshot, 0, ChildRow);
+        var replacement = FileEntry.Create(fixture.Snapshot[0], ChildRow);
         using (replacement.Open(FileAccess.Read))
         {
         }

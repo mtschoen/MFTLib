@@ -14,7 +14,7 @@ public class SearchQueryMatchModeTests
     static readonly DateTime Moment = new(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc);
 
     SyntheticBlockBuilder _builder = null!;
-    Snapshot _snapshot = null!;
+    DriveBlock[] _snapshot = null!;
 
     [TestInitialize]
     public void Initialize()
@@ -27,7 +27,7 @@ public class SearchQueryMatchModeTests
         }
 
         _builder.Complete(Moment);
-        _snapshot = Snapshot.Create([new DriveBlock('T', 0, _builder.OpenForReading(out _)!)]);
+        _snapshot = [new DriveBlock('T', 0, _builder.OpenForReading(out _)!)];
     }
 
     [TestCleanup]

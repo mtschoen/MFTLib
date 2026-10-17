@@ -13,7 +13,7 @@ public class RowScannerTests
     static readonly DateTime Moment = new(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
 
     SyntheticBlockBuilder _builder = null!;
-    Snapshot _snapshot = null!;
+    DriveBlock[] _snapshot = null!;
 
     [TestInitialize]
     public void Initialize()
@@ -26,7 +26,7 @@ public class RowScannerTests
         _builder.Complete(Moment);
 
         var block = _builder.OpenForReading(out _)!;
-        _snapshot = Snapshot.Create([new DriveBlock('T', 0, block)]);
+        _snapshot = [new DriveBlock('T', 0, block)];
     }
 
     [TestCleanup]
@@ -40,7 +40,7 @@ public class RowScannerTests
     public void Scanner_VisitsEveryUsedRowInOrder()
     {
         var names = new List<string>();
-        var scanner = new RowScanner(_snapshot, 0);
+        var scanner = new RowScanner(_snapshot[0]);
         while (scanner.MoveNext())
         {
             names.Add(new string(scanner.CurrentName));
@@ -53,7 +53,7 @@ public class RowScannerTests
     public void Scanner_StopsAtRowCountNotSlotCapacity()
     {
         var visited = 0;
-        var scanner = new RowScanner(_snapshot, 0);
+        var scanner = new RowScanner(_snapshot[0]);
         while (scanner.MoveNext())
         {
             visited++;
@@ -65,7 +65,7 @@ public class RowScannerTests
     [TestMethod]
     public void Scanner_ExposesTheRowByReference()
     {
-        var scanner = new RowScanner(_snapshot, 0);
+        var scanner = new RowScanner(_snapshot[0]);
         Assert.IsTrue(scanner.MoveNext());
         Assert.IsTrue(scanner.MoveNext());
 
@@ -77,7 +77,7 @@ public class RowScannerTests
     public void RangeScanner_VisitsOnlyItsPartition()
     {
         var names = new List<string>();
-        var scanner = new RowScanner(_snapshot, 0, startRow: 2, endRowExclusive: 4);
+        var scanner = new RowScanner(_snapshot[0], startRow: 2, endRowExclusive: 4);
         while (scanner.MoveNext())
         {
             names.Add(new string(scanner.CurrentName));
@@ -90,7 +90,7 @@ public class RowScannerTests
     public void RangeScanner_ClampsAnEndPastRowCount()
     {
         var visited = 0;
-        var scanner = new RowScanner(_snapshot, 0, startRow: 3, endRowExclusive: 9999);
+        var scanner = new RowScanner(_snapshot[0], startRow: 3, endRowExclusive: 9999);
         while (scanner.MoveNext())
         {
             visited++;
@@ -112,7 +112,7 @@ public class RowScannerTests
 
         Assert.ThrowsException<OperationCanceledException>(() =>
         {
-            var scanner = new RowScanner(_snapshot, 0, token);
+            var scanner = new RowScanner(_snapshot[0], token);
             while (scanner.MoveNext())
             {
                 // The first MoveNext is expected to throw, so the body is never reached.
@@ -135,7 +135,7 @@ public class RowScannerTests
 
         Assert.ThrowsException<OperationCanceledException>(() =>
         {
-            var scanner = new RowScanner(_snapshot, 0, startRow: 0, endRowExclusive: 0, token);
+            var scanner = new RowScanner(_snapshot[0], startRow: 0, endRowExclusive: 0, token);
             while (scanner.MoveNext())
             {
                 // The range is empty, so the only thing that can end this loop is the token.
@@ -162,7 +162,7 @@ public class RowScannerTests
         }
 
         builder.Complete(Moment);
-        var snapshot = Snapshot.Create([new DriveBlock('U', 0, builder.OpenForReading(out _)!)]);
+        DriveBlock[] snapshot = [new DriveBlock('U', 0, builder.OpenForReading(out _)!)];
         try
         {
             using var cancellation = new CancellationTokenSource();
@@ -174,7 +174,7 @@ public class RowScannerTests
             // what the quality gate refuses.
             try
             {
-                var scanner = new RowScanner(snapshot, 0, cancellation.Token);
+                var scanner = new RowScanner(snapshot[0], cancellation.Token);
                 while (scanner.MoveNext())
                 {
                     visited++;
@@ -203,7 +203,7 @@ public class RowScannerTests
     public void Scanner_WorksInAForeachThroughGetEnumerator()
     {
         var visited = 0;
-        foreach (var _ in new RowScanner(_snapshot, 0))
+        foreach (var _ in new RowScanner(_snapshot[0]))
         {
             visited++;
         }

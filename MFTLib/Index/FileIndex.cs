@@ -32,7 +32,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     readonly Dictionary<ushort, JournalCheckpointLoss> _checkpointLossesByOrdinal = [];
 
     readonly Dictionary<DriveKey, BlockOwnerLock> _canonicalLocksByLetter = [];
-    readonly List<SnapshotRelease> _retiredSnapshots = [];
+    readonly List<DriveBlockRelease> _retiredBlocks = [];
     readonly FileIndexOptions _options;
 
     /// <summary>
@@ -53,15 +53,18 @@ public sealed partial class FileIndex : IAsyncDisposable
 
     /// <summary>
     ///     Guards every drive's watch records and every ordinal-keyed record, and is the one step
-    ///     that publishes a snapshot: a commit of a drive's block, the new
-    ///     <see cref="Snapshot.Create" />, and the retirement of the previous snapshot all happen
-    ///     under it, so a reader (<see cref="Drives" />, <see cref="CurrentSnapshot" />,
+    ///     that publishes a snapshot: a commit of a drive's block, the new snapshot, and the
+    ///     retirement of the replaced block all happen under it, so a reader (<see cref="Drives" />, <see cref="CurrentSnapshot" />,
     ///     <see cref="TryGetDriveOrdinal" />) never observes a partial swap. It is innermost in the
     ///     lock order (see <see cref="DriveRuntime" />) and never held across an <c>await</c>.
     /// </summary>
     readonly Lock _stateLock = new();
 
-    Snapshot? _snapshot;
+    /// <summary>
+    ///     The published drive blocks queries borrow: an immutable copy of <see cref="_driveBlocks" />
+    ///     replaced on every publication, or null once disposal has unpublished it.
+    /// </summary>
+    DriveBlock[]? _snapshot = [];
     bool _disposed;
 
     /// <summary>
@@ -83,7 +86,6 @@ public sealed partial class FileIndex : IAsyncDisposable
         _options = options;
         CacheDirectoryPath = cacheDirectoryPath;
         _enumerateCacheFiles = options.EnumerateCacheFilesForTest ?? Directory.EnumerateFiles;
-        _snapshot = Snapshot.Create([]);
         foreach (var drive in _options.Drives)
         {
             var driveLetter = drive.Drive.Validated();
@@ -125,7 +127,13 @@ public sealed partial class FileIndex : IAsyncDisposable
     /// <summary>A test seam: invoked by a read of <see cref="Drives" /> just before it takes <see cref="_stateLock" />.</summary>
     internal Action? DrivesReadBeforeLockForTest { get; set; }
 
-    internal Snapshot CurrentSnapshot
+    /// <summary>
+    ///     A test seam: invoked by an admitted query once its borrow is counted and before it reads a
+    ///     row, outside every lock. The borrow is already counted when this runs, so it must not throw.
+    /// </summary>
+    internal Action? ReaderAdmittedForTest { get; set; }
+
+    internal IReadOnlyList<DriveBlock> CurrentSnapshot
     {
         get
         {
@@ -357,9 +365,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     /// <summary>
     ///     Unwinds every block already added to <see cref="_driveBlocks" /> when opening fails or
     ///     is cancelled partway through <see cref="FileIndexOptions.Drives" />. These blocks were
-    ///     never handed to <see cref="Snapshot.Create" />, so their reference count is still
-    ///     zero and <see cref="DriveBlock.Release" /> would throw; disposing the underlying
-    ///     <see cref="BlockFile" /> directly is the correct unwind instead. A warm-started block's
+    ///     never published, so no handle holds one, and none has a scheduled delete. A warm-started block's
     ///     file is left on disk (still valid for the next open); a freshly cold-scanned block's
     ///     file is left on disk too when cached, or deleted immediately when it was created with
     ///     delete-on-close for no-cache mode.
@@ -370,7 +376,7 @@ public sealed partial class FileIndex : IAsyncDisposable
         {
             foreach (var driveBlock in _driveBlocks)
             {
-                driveBlock.Block.Dispose();
+                driveBlock.ReleaseState.Release();
             }
 
             _driveBlocks.Clear();

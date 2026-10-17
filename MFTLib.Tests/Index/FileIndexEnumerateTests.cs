@@ -72,7 +72,7 @@ public class FileIndexEnumerateTests
         Assert.AreEqual("query", enumerateFailure.ParamName);
         Assert.AreEqual("query", searchFailure.ParamName);
         StringAssert.StartsWith(enumerateFailure.Message, "Unknown name match mode.");
-        Assert.AreEqual(0, index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
     }
 
     [TestMethod]
@@ -83,7 +83,7 @@ public class FileIndexEnumerateTests
         var count = index.Enumerate(new SearchQuery(null)).Count();
 
         Assert.IsTrue(count > 0);
-        Assert.AreEqual(0, index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
     }
 
     /// <summary>
@@ -94,7 +94,7 @@ public class FileIndexEnumerateTests
     public async Task Enumerate_DisposedPartwayThrough_ReturnsItsBorrow()
     {
         await using var index = await OpenTwoDriveIndexAsync();
-        var release = index.CurrentSnapshot.ReleaseState;
+        var release = index.CurrentSnapshot[0].ReleaseState;
 
         using (var enumerator = index.Enumerate(new SearchQuery(null)).GetEnumerator())
         {
@@ -118,7 +118,7 @@ public class FileIndexEnumerateTests
     public async Task Enumerate_YieldsTheFirstEntryBeforeTheScanHasVisitedEveryRow()
     {
         await using var index = await OpenSyntheticIndexWithDeepCandidateAsync();
-        var release = index.CurrentSnapshot.ReleaseState;
+        var release = index.CurrentSnapshot[0].ReleaseState;
         var query = new SearchQuery("candidate", Subtree: index.Root('T'));
 
         // Search materializes the whole match set and fails because it visits the deep candidate up front.
@@ -181,7 +181,7 @@ public class FileIndexEnumerateTests
             // Expected
         }
 
-        Assert.AreEqual(0, index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
     }
 
     [TestMethod]
@@ -223,7 +223,7 @@ public class FileIndexEnumerateTests
             // Expected
         }
 
-        Assert.AreEqual(0, index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
     }
 
     /// <summary>
@@ -300,7 +300,7 @@ public class FileIndexEnumerateTests
         GC.WaitForPendingFinalizers();
         GC.Collect();
 
-        Assert.AreEqual(0, index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
         await index.DisposeAsync();
     }
 
@@ -312,7 +312,7 @@ public class FileIndexEnumerateTests
         var getEnumerator = typeof(System.Collections.IEnumerable).GetMethod(nameof(System.Collections.IEnumerable.GetEnumerator))!;
         var enumerator = (System.Collections.IEnumerator)getEnumerator.Invoke(enumerable, null)!;
         _ = enumerator.MoveNext();
-        Assert.AreEqual(1, index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(1, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
         GC.KeepAlive(enumerator);
     }
 
@@ -342,7 +342,7 @@ public class FileIndexEnumerateTests
             // Expected
         }
 
-        Assert.AreEqual(0, index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
     }
 
     Task<FileIndex> OpenSyntheticIndexWithDeepCandidateAsync()

@@ -199,7 +199,7 @@ public sealed partial class FileIndex
 
         var retiredPath = $"{target.Path}.retired-{Guid.NewGuid():N}";
         File.Move(target.Path, retiredPath);
-        superseded.ScheduleDeleteAt(retiredPath, _options.Diagnostics);
+        superseded.ReleaseState.ScheduleDeleteAt(retiredPath, _options.Diagnostics);
         return new RetiredCanonicalFile(retiredPath, target.Path, superseded);
     }
 
@@ -304,29 +304,29 @@ public sealed partial class FileIndex
         {
         }
 
-        superseded.ClearScheduledDelete();
+        superseded.ReleaseState.ClearScheduledDelete();
     }
 
     /// <summary>
     ///     Swaps in a new snapshot over the current <see cref="_driveBlocks" /> list, which the
     ///     caller has just committed. The caller holds <see cref="_stateLock" />, which is what
-    ///     orders every publication and every change to <see cref="_retiredSnapshots" />.
+    ///     orders every publication and every change to <see cref="_retiredBlocks" />.
     /// </summary>
     void PublishSnapshotLocked()
     {
-        RetireCurrentSnapshotLocked(Snapshot.Create(_driveBlocks));
+        ObjectDisposedException.ThrowIf(_snapshot is null, this);
+        _snapshot = [.. _driveBlocks];
     }
 
     /// <summary>
-    ///     Makes <paramref name="replacement" /> the current snapshot and keeps the previous one's
-    ///     release state until its release completes. The caller holds <see cref="_stateLock" />.
+    ///     Keeps a replaced block's release state until its release completes, so disposal can
+    ///     release it even after its last handle was collected. The caller holds
+    ///     <see cref="_stateLock" />.
     /// </summary>
-    void RetireCurrentSnapshotLocked(Snapshot replacement)
+    void RetireBlockLocked(DriveBlock replaced)
     {
-        var previous = _snapshot ?? throw new ObjectDisposedException(nameof(FileIndex));
-        _snapshot = replacement;
-        _retiredSnapshots.RemoveAll(retired => retired.IsReleaseComplete);
-        _retiredSnapshots.Add(previous.ReleaseState);
+        _retiredBlocks.RemoveAll(retired => retired.IsReleaseComplete);
+        _retiredBlocks.Add(replaced.ReleaseState);
     }
 
     void ValidateProducedCacheTag(MftBlockProduceResult result, string blockPath)

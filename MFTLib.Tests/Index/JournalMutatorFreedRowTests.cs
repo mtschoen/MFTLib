@@ -76,16 +76,16 @@ public class JournalMutatorFreedRowTests
         Assert.AreEqual(liveRowsBefore + 1, fixture.Block.Header.LiveRowCount);
 
         Assert.AreEqual(BlockLayout.DetachedParentRow, fixture.Block.Rows[(int)DirectChildRow].ParentRow);
-        var directChild = FileEntry.Create(fixture.Snapshot, 0, DirectChildRow);
+        var directChild = FileEntry.Create(fixture.Snapshot[0], DirectChildRow);
         Assert.AreEqual("child-dir", directChild.Path);
         Assert.IsNull(directChild.Parent);
 
         Assert.AreEqual(BlockLayout.DetachedParentRow, fixture.Block.Rows[(int)DeeperChildRow].ParentRow);
-        var deeperChild = FileEntry.Create(fixture.Snapshot, 0, DeeperChildRow);
+        var deeperChild = FileEntry.Create(fixture.Snapshot[0], DeeperChildRow);
         Assert.AreEqual("deeper.txt", deeperChild.Path);
         Assert.IsNull(deeperChild.Parent);
 
-        var replacement = FileEntry.Create(fixture.Snapshot, 0, FreedRow);
+        var replacement = FileEntry.Create(fixture.Snapshot[0], FreedRow);
         var deletedSubtreeSearch = SearchEngine.Search(fixture.Snapshot,
             new SearchQuery(null, Subtree: replacement, IncludeDeleted: true))
             .Where(entry => entry.IsDeleted)

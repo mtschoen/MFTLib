@@ -14,7 +14,7 @@ public class LookupEngineTests
 
     SyntheticBlockBuilder _firstBuilder = null!;
     SyntheticBlockBuilder _secondBuilder = null!;
-    Snapshot _snapshot = null!;
+    DriveBlock[] _snapshot = null!;
 
     [TestInitialize]
     public void Initialize()
@@ -33,10 +33,10 @@ public class LookupEngineTests
 
         var firstBlock = _firstBuilder.OpenForReading(out _)!;
         var secondBlock = _secondBuilder.OpenForReading(out _)!;
-        _snapshot = Snapshot.Create([
+        _snapshot = [
             new DriveBlock('T', 0, firstBlock, rootDirectoryPath: TestDriveRoot.For('T')),
             new DriveBlock('U', 1, secondBlock, rootDirectoryPath: TestDriveRoot.For('U'))
-        ]);
+        ];
     }
 
     [TestCleanup]
@@ -143,7 +143,7 @@ public class LookupEngineTests
 
         var block = builder.OpenForReading(out var validation)!;
         Assert.IsNull(validation);
-        var snapshot = Snapshot.Create([new DriveBlock('V', 0, block, rootDirectoryPath: TestDriveRoot.For('V'))]);
+        DriveBlock[] snapshot = [new DriveBlock('V', 0, block, rootDirectoryPath: TestDriveRoot.For('V'))];
         try
         {
             Assert.AreEqual(rootRow, LookupEngine.Root(snapshot, 'V').RowIndex);
@@ -164,7 +164,7 @@ public class LookupEngineTests
         using var block = builder.OpenForReading(out var validation)!;
         Assert.IsNull(validation);
         var driveBlock = new DriveBlock('T', 0, block, rootDirectoryPath: TestDriveRoot.For('T'));
-        var snapshot = Snapshot.Create([driveBlock]);
+        DriveBlock[] snapshot = [driveBlock];
 
         var root = LookupEngine.Root(snapshot, 'T');
 
@@ -177,7 +177,7 @@ public class LookupEngineTests
         using var builder = SyntheticBlockBuilder.MftShaped();
         using var block = builder.OpenForReading(out _)!;
         var driveBlock = new DriveBlock('T', 0, block, rootDirectoryPath: TestDriveRoot.For('T'));
-        var snapshot = Snapshot.Create([driveBlock]);
+        DriveBlock[] snapshot = [driveBlock];
 
         var found = LookupEngine.Find(snapshot, Path.Combine(TestDriveRoot.For('T'), "documents", "notes.txt"));
 
@@ -190,19 +190,19 @@ public class LookupEngineTests
     ///     The sequential reference the partitioned scan is held to: one drive at a time in
     ///     snapshot order, rows ascending within each drive.
     /// </summary>
-    static List<FileEntry> SequentialExactName(Snapshot snapshot, string name, bool caseSensitive)
+    static List<FileEntry> SequentialExactName(DriveBlock[] snapshot, string name, bool caseSensitive)
     {
         var reference = new List<FileEntry>();
-        foreach (var driveBlock in snapshot.DriveBlocks)
+        foreach (var driveBlock in snapshot)
         {
-            var scanner = new RowScanner(snapshot, driveBlock.DriveOrdinal);
+            var scanner = new RowScanner(driveBlock);
             while (scanner.MoveNext())
             {
                 ref readonly var row = ref scanner.Current;
                 if (row.IsInUse && !row.IsDeleted &&
                     NameMatching.EqualsName(scanner.CurrentName, name, caseSensitive))
                 {
-                    reference.Add(FileEntry.Create(snapshot, driveBlock.DriveOrdinal,
+                    reference.Add(FileEntry.Create(snapshot[driveBlock.DriveOrdinal],
                         scanner.CurrentRowIndex));
                 }
             }
@@ -247,10 +247,10 @@ public class LookupEngineTests
         secondBuilder.Complete(Moment);
         var firstBlock = firstBuilder.OpenForReading(out _)!;
         var secondBlock = secondBuilder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([
+        DriveBlock[] snapshot = [
             new DriveBlock('T', 0, firstBlock),
             new DriveBlock('U', 1, secondBlock)
-        ]);
+        ];
         try
         {
             var partitioned = SearchEngine.Search(snapshot, new SearchQuery("needle.txt", NameMatchMode.Exact));
@@ -294,7 +294,7 @@ public class LookupEngineTests
     public async Task SearchExact_OverAnEmptyDriveBlock_ReturnsNoResults()
     {
         using var builder = new SyntheticBlockBuilder('Y');
-        var snapshot = Snapshot.Create([new DriveBlock('Y', 0, builder.OpenForWriting())]);
+        DriveBlock[] snapshot = [new DriveBlock('Y', 0, builder.OpenForWriting())];
         try
         {
             Assert.AreEqual(0u, builder.OpenForWriting().Header.RowCount);

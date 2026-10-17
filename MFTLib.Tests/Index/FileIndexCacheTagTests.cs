@@ -100,9 +100,9 @@ public class FileIndexCacheTagTests
         await using (var index = await FileIndex.OpenAsync(options, CancellationToken.None))
         {
             Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
-            Assert.AreEqual(OriginalTag, index.CurrentSnapshot.DriveBlocks.Single().Block.Header.CacheTag);
+            Assert.AreEqual(OriginalTag, index.CurrentSnapshot.Single().Block.Header.CacheTag);
             await index.RescanAsync(['T'], CancellationToken.None);
-            Assert.AreEqual(OriginalTag, index.CurrentSnapshot.DriveBlocks.Single().Block.Header.CacheTag);
+            Assert.AreEqual(OriginalTag, index.CurrentSnapshot.Single().Block.Header.CacheTag);
         }
         if (noCache)
         {
@@ -242,7 +242,7 @@ public class FileIndexCacheTagTests
             Options(requested) with { Diagnostics = diagnostics.Add }, CancellationToken.None))
         {
             Assert.AreEqual(BlockSource.ProducedByScan, privateIndex.Drives.Single().Block!.Source);
-            Assert.AreEqual(requested, privateIndex.CurrentSnapshot.DriveBlocks.Single().Block.Header.CacheTag);
+            Assert.AreEqual(requested, privateIndex.CurrentSnapshot.Single().Block.Header.CacheTag);
         }
         Assert.IsFalse(diagnostics.Any(line => line.Contains("Cache tag mismatch")));
         using var original = BlockFile.Open(BlockPath, 123, out _);

@@ -93,7 +93,7 @@ public class DirectLargestFilesTests
     [TestMethod]
     public void Largest_RespectsTheSubtreeRestriction()
     {
-        var documents = FileEntry.Create(_index.CurrentSnapshot, 0, _documentsRow);
+        var documents = FileEntry.Create(_index.CurrentSnapshot[0], _documentsRow);
         var results = LargestFiles.Find(_index, 5, documents, CancellationToken.None);
         CollectionAssert.AreEqual(
             new[] { "huge.bin", "large.bin", "readme.md" },
@@ -142,7 +142,7 @@ public class DirectLargestFilesTests
                 }
             }));
         Assert.AreEqual(cancelAfter, assembled);
-        Assert.AreEqual(0, _index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, _index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
     }
 
     [TestMethod]
@@ -172,7 +172,7 @@ public class DirectLargestFilesTests
     [TestMethod]
     public void Largest_Under_WithCancelledToken_ThrowsOperationCanceled()
     {
-        var documents = FileEntry.Create(_index.CurrentSnapshot, 0, _documentsRow);
+        var documents = FileEntry.Create(_index.CurrentSnapshot[0], _documentsRow);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         var token = cancellation.Token;

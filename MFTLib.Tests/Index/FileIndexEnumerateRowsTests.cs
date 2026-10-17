@@ -147,7 +147,7 @@ public class FileIndexEnumerateRowsTests
     {
         await using var index = await OpenTwoDriveIndexAsync();
         Assert.IsTrue(Collect(index, new SearchQuery(null)).Count > 0);
-        Assert.AreEqual(0, index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
     }
 
     [TestMethod]
@@ -155,7 +155,7 @@ public class FileIndexEnumerateRowsTests
     {
         await using var index = await OpenTwoDriveIndexAsync();
         BreakOnFirstRow(index);
-        Assert.AreEqual(0, index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
     }
 
     static void BreakOnFirstRow(FileIndex index)
@@ -165,7 +165,7 @@ public class FileIndexEnumerateRowsTests
         {
             _ = row.Size;
             seen = true;
-            Assert.AreEqual(1, index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+            Assert.AreEqual(1, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
             break;
         }
 
@@ -177,7 +177,7 @@ public class FileIndexEnumerateRowsTests
     {
         await using var index = await OpenTwoDriveIndexAsync();
         AssertLoopBodyThrows(index);
-        Assert.AreEqual(0, index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
     }
 
     static void AssertLoopBodyThrows(FileIndex index)
@@ -190,7 +190,7 @@ public class FileIndexEnumerateRowsTests
         foreach (var row in index.EnumerateRows(new SearchQuery(null)))
         {
             _ = row.Size;
-            Assert.AreEqual(1, index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+            Assert.AreEqual(1, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
             throw new InvalidOperationException("Loop body failure.");
         }
     }
@@ -201,7 +201,7 @@ public class FileIndexEnumerateRowsTests
         await using var index = await OpenSyntheticIndexAsync(10_000);
         using var source = new CancellationTokenSource();
         CancelInsideLoop(index, source);
-        Assert.AreEqual(0, index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
     }
 
     static void CancelInsideLoop(FileIndex index, CancellationTokenSource source)
@@ -215,7 +215,7 @@ public class FileIndexEnumerateRowsTests
                 seen++;
                 if (seen == 1)
                 {
-                    Assert.AreEqual(1, index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+                    Assert.AreEqual(1, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
                     source.Cancel();
                 }
             }
@@ -234,7 +234,7 @@ public class FileIndexEnumerateRowsTests
     {
         await using var index = await OpenTwoDriveIndexAsync();
         CreateWithoutIteration(index);
-        Assert.AreEqual(0, index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
     }
 
     static void CreateWithoutIteration(FileIndex index)
@@ -283,7 +283,7 @@ public class FileIndexEnumerateRowsTests
     {
         await using var index = await OpenTwoDriveIndexAsync();
         AssertRepeatedDispose(index);
-        Assert.AreEqual(0, index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
     }
 
     static void AssertRepeatedDispose(FileIndex index)
@@ -291,16 +291,16 @@ public class FileIndexEnumerateRowsTests
         using var source = new CancellationTokenSource();
         using var enumerator = index.EnumerateRows(new SearchQuery(null), source.Token).GetEnumerator();
         using var copy = enumerator;
-        Assert.AreEqual(1, index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(1, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
         copy.Dispose();
-        Assert.AreEqual(0, index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
         enumerator.Dispose();
         enumerator.Dispose();
         copy.Dispose();
-        Assert.AreEqual(0, index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
 
         using var later = index.EnumerateRows(new SearchQuery(null)).GetEnumerator();
-        Assert.AreEqual(1, index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        Assert.AreEqual(1, index.CurrentSnapshot[0].ReleaseState.OutstandingBorrowCount);
         Assert.IsTrue(later.MoveNext());
     }
 

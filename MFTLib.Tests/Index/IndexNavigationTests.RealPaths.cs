@@ -17,12 +17,12 @@ public partial class IndexNavigationTests
 
         var rootDirectory = Path.Combine(Path.GetTempPath(), "mftlib-path-root");
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('T', 0, block, rootDirectoryPath: rootDirectory)]);
+        DriveBlock[] snapshot = [new DriveBlock('T', 0, block, rootDirectoryPath: rootDirectory)];
         try
         {
-            Assert.AreEqual(rootDirectory, FileEntry.Create(snapshot, 0, root).Path);
+            Assert.AreEqual(rootDirectory, FileEntry.Create(snapshot[0], root).Path);
             Assert.AreEqual(Path.Combine(rootDirectory, "Documents", "readme.md"),
-                FileEntry.Create(snapshot, 0, readme).Path);
+                FileEntry.Create(snapshot[0], readme).Path);
         }
         finally
         {
@@ -51,12 +51,12 @@ public partial class IndexNavigationTests
         var separator = Path.DirectorySeparatorChar;
         var block = builder.OpenForReading(out _)!;
         var driveBlock = new DriveBlock('C', 0, block, rootDirectoryPath: "C:");
-        var snapshot = Snapshot.Create([driveBlock]);
+        DriveBlock[] snapshot = [driveBlock];
         try
         {
             Assert.AreEqual($"C:{separator}", driveBlock.RootDirectoryPath);
 
-            var path = FileEntry.Create(snapshot, 0, readme).Path;
+            var path = FileEntry.Create(snapshot[0], readme).Path;
             Assert.AreEqual($"C:{separator}Documents{separator}readme.md", path);
             Assert.IsFalse(path.Contains($"{separator}{separator}", StringComparison.Ordinal),
                 "the root and the name chain join with exactly one separator");
@@ -76,11 +76,11 @@ public partial class IndexNavigationTests
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('T', 0, block)]);
+        DriveBlock[] snapshot = [new DriveBlock('T', 0, block)];
         try
         {
             var exception = Assert.ThrowsException<InvalidOperationException>(
-                () => _ = FileEntry.Create(snapshot, 0, orphan).Path);
+                () => _ = FileEntry.Create(snapshot[0], orphan).Path);
             StringAssert.Contains(exception.Message, "root directory");
         }
         finally

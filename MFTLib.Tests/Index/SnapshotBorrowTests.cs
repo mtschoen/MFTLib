@@ -5,8 +5,8 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 /// <summary>
-///     A borrow is the reader gate a query holds for its whole duration. A snapshot hands one
-///     out only while its blocks are still mapped, and a release waits for every outstanding
+///     A borrow is the reader gate a query holds for its whole duration. It is handed out only
+///     while every borrowed block is still mapped, and a release waits for every outstanding
 ///     borrow before it unmaps, so a scan in flight never reads a freed mapping.
 /// </summary>
 [TestClass]
@@ -31,12 +31,12 @@ public class SnapshotBorrowTests
     public async Task Borrow_OnALiveSnapshot_IsHandedOut()
     {
         using var builder = CompletedBuilder();
-        var snapshot = Snapshot.Create([OpenDriveBlock(builder)]);
+        DriveBlock[] snapshot = [OpenDriveBlock(builder)];
         try
         {
-            using var borrow = snapshot.Borrow();
+            using var borrow = new SnapshotBorrow(snapshot);
 
-            Assert.IsFalse(snapshot.IsReleased);
+            Assert.IsFalse(snapshot[0].IsReleased);
         }
         finally
         {
@@ -45,15 +45,23 @@ public class SnapshotBorrowTests
     }
 
     [TestMethod]
-    public async Task Borrow_AfterRelease_Throws()
+    public async Task Borrow_WhenABlockIsReleased_ThrowsAndReturnsTheBorrowsItTook()
     {
-        using var builder = CompletedBuilder();
-        var snapshot = Snapshot.Create([OpenDriveBlock(builder)]);
-        await snapshot.ReleaseNowAsync();
+        using var liveBuilder = CompletedBuilder();
+        using var releasedBuilder = CompletedBuilder('U');
+        DriveBlock[] snapshot = [OpenDriveBlock(liveBuilder), OpenDriveBlock(releasedBuilder)];
+        await snapshot[1].ReleaseState.ReleaseAsync();
+        try
+        {
+            var thrown = Assert.ThrowsException<ObjectDisposedException>(() => new SnapshotBorrow(snapshot));
 
-        var thrown = Assert.ThrowsException<ObjectDisposedException>(() => snapshot.Borrow());
-
-        StringAssert.Contains(thrown.ObjectName, nameof(Snapshot));
+            StringAssert.Contains(thrown.ObjectName, nameof(DriveBlock));
+            Assert.AreEqual(0, snapshot[0].ReleaseState.OutstandingBorrowCount);
+        }
+        finally
+        {
+            await snapshot.ReleaseNowAsync();
+        }
     }
 
     [TestMethod]
@@ -61,26 +69,26 @@ public class SnapshotBorrowTests
     {
         using var builder = CompletedBuilder();
         var driveBlock = OpenDriveBlock(builder);
-        var snapshot = Snapshot.Create([driveBlock]);
-        var borrow = snapshot.Borrow();
+        DriveBlock[] snapshot = [driveBlock];
+        var borrow = new SnapshotBorrow(snapshot);
         try
         {
-            var release = snapshot.ReleaseNowAsync().AsTask();
-            Assert.IsTrue(snapshot.IsReleased);
+            var release = snapshot.ReleaseNowAsync();
+            Assert.IsTrue(snapshot[0].IsReleased);
             RejectABorrow(snapshot);
 
             GC.Collect();
             GC.WaitForPendingFinalizers();
             GC.Collect();
 
-            Assert.AreEqual(1, snapshot.ReleaseState.OutstandingBorrowCount);
+            Assert.AreEqual(1, snapshot[0].ReleaseState.OutstandingBorrowCount);
             Assert.IsFalse(release.IsCompleted);
-            Assert.IsFalse(driveBlock.IsReleased);
+            Assert.IsFalse(driveBlock.ReleaseState.IsReleaseComplete);
 
             borrow.Dispose();
             await release;
-            Assert.AreEqual(0, snapshot.ReleaseState.OutstandingBorrowCount);
-            Assert.IsTrue(driveBlock.IsReleased);
+            Assert.AreEqual(0, snapshot[0].ReleaseState.OutstandingBorrowCount);
+            Assert.IsTrue(driveBlock.ReleaseState.IsReleaseComplete);
         }
         finally
         {
@@ -90,9 +98,9 @@ public class SnapshotBorrowTests
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    static void RejectABorrow(Snapshot snapshot)
+    static void RejectABorrow(DriveBlock[] snapshot)
     {
-        Assert.ThrowsException<ObjectDisposedException>(() => snapshot.Borrow());
+        Assert.ThrowsException<ObjectDisposedException>(() => new SnapshotBorrow(snapshot));
     }
 
     [TestMethod]
@@ -100,22 +108,22 @@ public class SnapshotBorrowTests
     {
         using var builder = CompletedBuilder();
         var driveBlock = OpenDriveBlock(builder);
-        var snapshot = Snapshot.Create([driveBlock]);
-        var borrow = snapshot.Borrow();
+        DriveBlock[] snapshot = [driveBlock];
+        var borrow = new SnapshotBorrow(snapshot);
         try
         {
-            var release = snapshot.ReleaseNowAsync().AsTask();
-            Assert.IsTrue(snapshot.IsReleased,
+            var release = snapshot.ReleaseNowAsync();
+            Assert.IsTrue(snapshot[0].IsReleased,
                 "the release never began, so the borrow was never what held it up");
 
-            Assert.IsFalse(driveBlock.IsReleased,
+            Assert.IsFalse(driveBlock.ReleaseState.IsReleaseComplete,
                 "the block was unmapped while a borrow was outstanding");
             Assert.IsFalse(release.IsCompleted);
 
             borrow.Dispose();
             await release;
 
-            Assert.IsTrue(driveBlock.IsReleased);
+            Assert.IsTrue(driveBlock.ReleaseState.IsReleaseComplete);
         }
         finally
         {
@@ -129,19 +137,19 @@ public class SnapshotBorrowTests
     {
         using var builder = CompletedBuilder();
         var driveBlock = OpenDriveBlock(builder);
-        var snapshot = Snapshot.Create([driveBlock]);
-        var borrow = snapshot.Borrow();
+        DriveBlock[] snapshot = [driveBlock];
+        var borrow = new SnapshotBorrow(snapshot);
         try
         {
-            var release = snapshot.ReleaseState.ReleaseAsync().AsTask();
+            var release = snapshot[0].ReleaseState.ReleaseAsync().AsTask();
 
             Assert.IsFalse(release.IsCompleted, "the release completed with a borrow outstanding");
-            Assert.IsFalse(driveBlock.IsReleased);
+            Assert.IsFalse(driveBlock.ReleaseState.IsReleaseComplete);
 
             borrow.Dispose();
             Assert.IsTrue(await release);
 
-            Assert.IsTrue(driveBlock.IsReleased);
+            Assert.IsTrue(driveBlock.ReleaseState.IsReleaseComplete);
         }
         finally
         {
@@ -160,15 +168,15 @@ public class SnapshotBorrowTests
     {
         using var builder = CompletedBuilder();
         var driveBlock = OpenDriveBlock(builder);
-        var snapshot = Snapshot.Create([driveBlock]);
+        DriveBlock[] snapshot = [driveBlock];
         try
         {
-            var first = snapshot.Borrow();
-            using var second = snapshot.Borrow();
+            var first = new SnapshotBorrow(snapshot);
+            using var second = new SnapshotBorrow(snapshot);
             first.Dispose();
             first.Dispose();
 
-            Assert.AreEqual(1, snapshot.ReleaseState.OutstandingBorrowCount);
+            Assert.AreEqual(1, snapshot[0].ReleaseState.OutstandingBorrowCount);
         }
         finally
         {
@@ -186,7 +194,7 @@ public class SnapshotBorrowTests
     public async Task Borrow_AbandonedWithoutDisposal_IsReturnedWhenCollected()
     {
         using var builder = CompletedBuilder();
-        var snapshot = Snapshot.Create([OpenDriveBlock(builder)]);
+        DriveBlock[] snapshot = [OpenDriveBlock(builder)];
         try
         {
             TakeAndAbandonABorrow(snapshot);
@@ -195,7 +203,7 @@ public class SnapshotBorrowTests
             GC.WaitForPendingFinalizers();
             GC.Collect();
 
-            Assert.AreEqual(0, snapshot.ReleaseState.OutstandingBorrowCount);
+            Assert.AreEqual(0, snapshot[0].ReleaseState.OutstandingBorrowCount);
         }
         finally
         {
@@ -208,11 +216,11 @@ public class SnapshotBorrowTests
     ///     asserted while the borrow is still held, so no collection can return it first.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    static void TakeAndAbandonABorrow(Snapshot snapshot)
+    static void TakeAndAbandonABorrow(DriveBlock[] snapshot)
     {
         // aislop-ignore-next-line dotnet/IDISP001 -- the abandoned, undisposed borrow is the subject: its finalizer must return it
-        var borrow = snapshot.Borrow();
-        Assert.AreEqual(1, snapshot.ReleaseState.OutstandingBorrowCount);
+        var borrow = new SnapshotBorrow(snapshot);
+        Assert.AreEqual(1, snapshot[0].ReleaseState.OutstandingBorrowCount);
         GC.KeepAlive(borrow);
     }
 }

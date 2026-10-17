@@ -159,7 +159,7 @@ public partial class BenchmarkRunner
                     producer)]
             }, CancellationToken.None);
             using var borrow = index.BorrowCurrentSnapshot();
-            var drive = borrow.Snapshot.FindDriveBlock(candidate.File.Drive);
+            var drive = LookupEngine.FindDriveBlock(borrow.DriveBlocks, candidate.File.Drive);
             if (drive is null)
             {
                 log($"Error: Drive {candidate.File.Drive}: {index.Drives[0].State}.");

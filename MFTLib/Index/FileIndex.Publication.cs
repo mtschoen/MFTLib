@@ -52,7 +52,7 @@ public sealed partial class FileIndex
 
     /// <summary>
     ///     The block's ownership passes to the <see cref="DriveBlock" />, which releases it through
-    ///     the reference-counted <see cref="DriveBlock.Release" /> (see its own summary), not through
+    ///     <see cref="DriveBlock.ReleaseState" /> (see its own summary), not through
     ///     <see cref="IDisposable" />.
     /// </summary>
     DriveBlock BuildDriveBlock(IndexedDrive drive, ushort driveOrdinal, BlockFile block) =>
@@ -108,8 +108,7 @@ public sealed partial class FileIndex
     ///     The publish step of a scan operation: under the drive's write gate, then
     ///     <see cref="_stateLock" />, assigns the ordinal, builds the <see cref="DriveBlock" /> over
     ///     <paramref name="block" />, commits it with every field of <paramref name="produced" />, and
-    ///     publishes the snapshot. The new snapshot is created before anything is committed, so a
-    ///     failure leaves every record as it was and the caller closes the block. A batch on the
+    ///     publishes the snapshot. A batch on the
     ///     drive therefore lands on the old block before this or is dropped after it. Retirement
     ///     and publication share the state-lock section. Returns the count of lost catch-ups and
     ///     the handoff to drain after releasing the write gate, outside unpublished-block cleanup.
@@ -134,17 +133,6 @@ public sealed partial class FileIndex
                 }
 
                 var driveBlock = BuildDriveBlock(_driveConfigurations[runtime.Drive], driveOrdinal, block);
-                var blocks = new List<DriveBlock>(_driveBlocks);
-                if (replacesBlock)
-                {
-                    blocks[driveOrdinal] = driveBlock;
-                }
-                else
-                {
-                    blocks.Add(driveBlock);
-                }
-
-                var snapshot = Snapshot.Create(blocks);
                 var handoff = RetireWatchAtCommitLocked(runtime);
                 if (recovery is null)
                 {
@@ -153,6 +141,7 @@ public sealed partial class FileIndex
 
                 if (replacesBlock)
                 {
+                    RetireBlockLocked(_driveBlocks[driveOrdinal]);
                     _driveBlocks[driveOrdinal] = driveBlock;
                 }
                 else
@@ -163,7 +152,7 @@ public sealed partial class FileIndex
                 }
 
                 RecordPendingResultLocked(runtime, driveOrdinal, produced, clearsCheckpointLoss);
-                RetireCurrentSnapshotLocked(snapshot);
+                PublishSnapshotLocked();
                 NoteWatchStateLocked(runtime);
                 return (runtime.ConsecutiveLostCatchUps, handoff);
             }

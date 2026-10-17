@@ -130,11 +130,25 @@ missing or inaccessible subtrees; neither is an operational producer failure by 
 
 **Revisit only if:** a consumer explicitly asks for an all-or-nothing open mode across all drives.
 
+## A retained FileEntry keeps only its own drive block mapped
+
+**Decision:** A `FileEntry` holds its `DriveBlock` directly. A held handle keeps that one block mapped and no
+other drive's: rescanning another drive releases that drive's retired block once nothing else reaches it. The
+16-byte layout holds (`DriveBlock?`, `uint` row index, `ushort` sequence number); the drive ordinal comes from
+the block. Queries borrow every current block they read, and index disposal drains those borrows and releases
+every current and retired block regardless of held handles.
+
+**Reason:** Owner ruling (MFTLib#584): rooting the whole multi-drive snapshot from one handle was a residue of
+the retired drive-bundle design, and the per-drive lifetime deleted the snapshot-wide release state and the
+per-block reference count rather than adding a lease layer.
+
+**Revisit only if:** a consumer needs a handle to pin a consistent multi-drive view.
+
 ## FileEntry handles are bound to the row's sequence number
 
 **Decision:**
-`FileEntry` captures the row's `ushort` sequence number at construction, in the tail padding of its 16-byte
-struct (`Snapshot?`, `uint` row index, `ushort` drive ordinal, `ushort` sequence number; `BlockFile` layout is
+`FileEntry` captures the row's `ushort` sequence number at construction, in its 16-byte struct
+(`DriveBlock?`, `uint` row index, `ushort` sequence number, padded; `BlockFile` layout is
 unchanged, and an enumeration block, which the journal never mutates, captures zero). `BlockWriter.TryWriteRow`
 stores the supplied NTFS sequence number exactly, publishing it before it overwrites the columns. A handle is
 bound to the NTFS file reference (record number plus sequence number) it was created from. Distinct references
@@ -506,13 +520,13 @@ behavior as the entry's other data properties. `FileIndex.Drives` keeps its name
 read `FileEntry.RecordKey.Drive`. Direct access removes that repeated two-hop
 read. The collection remains `Drives` under the owner's no-change ruling.
 The entry's state properties answer different questions: `IsValid` says whether
-the handle references a snapshot, `IsDisposed` says whether that snapshot has
+the handle references a drive block, `IsDisposed` says whether that block has
 been released, and `IsDeleted` identifies a retained tombstone. A disposed handle
 can still be valid; a default handle is neither valid nor disposed.
 
 The Watch sample reads `change.Entry.Drive` when printing each change. The getter
 throws `InvalidOperationException` for a default entry and
-`ObjectDisposedException` after its snapshot is released. Consumer expression
+`ObjectDisposedException` after its drive block is released. Consumer expression
 replacements belong to their pin-bump pull requests.
 
 **Revisit only if:** concrete consumer requirements change drive identity or the

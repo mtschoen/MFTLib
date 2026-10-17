@@ -190,7 +190,7 @@ public class CacheDirectoryDeletionLiveOwnerTests
                 Assert.AreEqual(DriveState.Ready, status.State);
                 Assert.AreEqual(BlockSource.ProducedByScan, status.Block!.Source);
                 Assert.IsTrue(fallbackOpen.TryGetDriveOrdinal('T', out var ordinal));
-                privateBlockPath = fallbackOpen.CurrentSnapshot.GetDriveBlock(ordinal).Block.Path;
+                privateBlockPath = fallbackOpen.CurrentSnapshot[ordinal].Block.Path;
                 StringAssert.Contains(privateBlockPath, "mftlib-private-");
                 Assert.AreNotEqual(CanonicalPath, privateBlockPath);
                 Assert.IsNotNull(fallbackOpen.Find(Path.Combine(_treeRoot, "Documents", "readme.md")));
@@ -214,7 +214,7 @@ public class CacheDirectoryDeletionLiveOwnerTests
         Assert.AreEqual(DriveState.Ready, freshStatus.State);
         Assert.AreEqual(BlockSource.ProducedByScan, freshStatus.Block!.Source);
         Assert.IsTrue(freshOpen.TryGetDriveOrdinal('T', out var freshOrdinal));
-        Assert.AreEqual(CanonicalPath, freshOpen.CurrentSnapshot.GetDriveBlock(freshOrdinal).Block.Path,
+        Assert.AreEqual(CanonicalPath, freshOpen.CurrentSnapshot[freshOrdinal].Block.Path,
             "once the clear has released the lock, a fresh open takes the slot normally");
     }
 }

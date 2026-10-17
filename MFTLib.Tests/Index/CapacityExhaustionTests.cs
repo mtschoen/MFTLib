@@ -30,7 +30,7 @@ public class CapacityExhaustionTests
         }
     }
 
-    (BlockFile Block, BlockWriter Writer, Snapshot Snapshot) BuildTinyDrive(
+    (BlockFile Block, BlockWriter Writer, DriveBlock[] Snapshot) BuildTinyDrive(
         uint slotCapacity, uint namePoolCapacity)
     {
         var block = BlockFile.Create(new BlockFileCreateOptions
@@ -46,7 +46,7 @@ public class CapacityExhaustionTests
         writer.TryWriteRow(0, "", new RowColumns(ParentRow: 0,
             RowFlags.InUse | RowFlags.Directory, Attributes: 16, Size: 0, Moment.Ticks, SequenceNumber: 0));
         writer.Complete(Moment, null);
-        var snapshot = Snapshot.Create([new DriveBlock('T', 0, block, rootDirectoryPath: TestDriveRoot.For('T'))]);
+        DriveBlock[] snapshot = [new DriveBlock('T', 0, block, rootDirectoryPath: TestDriveRoot.For('T'))];
         return (block, writer, snapshot);
     }
 
@@ -71,7 +71,7 @@ public class CapacityExhaustionTests
         try
         {
             var mutator = new JournalMutator(writer);
-            var changes = mutator.Apply(snapshot, 0,
+            var changes = mutator.Apply(snapshot[0],
                 [Create(1, "fits.txt"), Create(400, "does-not-fit.txt"), Create(2, "also-fits.txt")],
                 journalIdentifier: 1, nextUsn: 10);
 
@@ -102,7 +102,7 @@ public class CapacityExhaustionTests
                 entries.Add(Create(recordNumber, $"name-number-{recordNumber}.txt"));
             }
 
-            var changes = mutator.Apply(snapshot, 0, entries, journalIdentifier: 1, nextUsn: 20);
+            var changes = mutator.Apply(snapshot[0], entries, journalIdentifier: 1, nextUsn: 20);
 
             Assert.AreEqual(1, changes.Count);
             Assert.IsTrue(block.Header.IsCapacityExhausted);
@@ -123,7 +123,7 @@ public class CapacityExhaustionTests
         try
         {
             var mutator = new JournalMutator(writer);
-            mutator.Apply(snapshot, 0, [Create(1, "survivor.txt"), Create(900, "lost.txt")],
+            mutator.Apply(snapshot[0], [Create(1, "survivor.txt"), Create(900, "lost.txt")],
                 journalIdentifier: 1, nextUsn: 30);
 
             var results = SearchEngine.Search(snapshot, new SearchQuery("survivor"));

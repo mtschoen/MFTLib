@@ -19,7 +19,7 @@ public class FileEntryDisposalTests
     static readonly DateTime Moment = new(2026, 9, 13, 0, 0, 0, DateTimeKind.Utc);
 
     SyntheticBlockBuilder _builder = null!;
-    Snapshot _snapshot = null!;
+    DriveBlock[] _snapshot = null!;
     FileEntry _entry;
 
     [TestInitialize]
@@ -33,8 +33,8 @@ public class FileEntryDisposalTests
         _builder.Complete(Moment);
 
         var block = _builder.OpenForReading(out _)!;
-        _snapshot = Snapshot.Create([new DriveBlock('T', 0, block, rootDirectoryPath: TestDriveRoot.For('T'))]);
-        _entry = FileEntry.Create(_snapshot, 0, readme);
+        _snapshot = [new DriveBlock('T', 0, block, rootDirectoryPath: TestDriveRoot.For('T'))];
+        _entry = FileEntry.Create(_snapshot[0], readme);
     }
 
     [TestCleanup]
@@ -82,11 +82,11 @@ public class FileEntryDisposalTests
 
         var deepest = builder.AddRow("deep.txt", parent, RowFlags.InUse, 1, Moment, sequenceNumber: 0);
         builder.Complete(Moment);
-        var snapshot = Snapshot.Create([new DriveBlock('T', 0, builder.OpenForReading(out _)!,
-            rootDirectoryPath: TestDriveRoot.For('T'))]);
+        DriveBlock[] snapshot = [new DriveBlock('T', 0, builder.OpenForReading(out _)!,
+            rootDirectoryPath: TestDriveRoot.For('T'))];
         try
         {
-            var entry = FileEntry.Create(snapshot, 0, deepest);
+            var entry = FileEntry.Create(snapshot[0], deepest);
             Assert.ThrowsException<InvalidDataException>(() => entry.Path);
 
             Assert.AreEqual($"deep.txt ({entry.RecordKey})", entry.ToString());
@@ -105,10 +105,10 @@ public class FileEntryDisposalTests
         var root = builder.AddRoot();
         var file = builder.AddRow("rootless.txt", root, RowFlags.InUse, 1, Moment, sequenceNumber: 0);
         builder.Complete(Moment);
-        var snapshot = Snapshot.Create([new DriveBlock('T', 0, builder.OpenForReading(out _)!)]);
+        DriveBlock[] snapshot = [new DriveBlock('T', 0, builder.OpenForReading(out _)!)];
         try
         {
-            var entry = FileEntry.Create(snapshot, 0, file);
+            var entry = FileEntry.Create(snapshot[0], file);
             Assert.ThrowsException<InvalidOperationException>(() => entry.Path);
 
             Assert.AreEqual($"rootless.txt ({entry.RecordKey})", entry.ToString());

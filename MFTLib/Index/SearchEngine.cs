@@ -9,7 +9,7 @@ namespace MFTLib.Index;
 /// </summary>
 internal static class SearchEngine
 {
-    internal static List<FileEntry> Search(Snapshot snapshot, SearchQuery query,
+    internal static List<FileEntry> Search(IReadOnlyList<DriveBlock> snapshot, SearchQuery query,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -19,7 +19,7 @@ internal static class SearchEngine
 
         var subtree = SubtreeAnchor.Resolve(snapshot, query);
         var results = new List<FileEntry>();
-        foreach (var driveBlock in snapshot.DriveBlocks)
+        foreach (var driveBlock in snapshot)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (subtree is { } under && under.DriveOrdinal != driveBlock.DriveOrdinal)
@@ -27,8 +27,7 @@ internal static class SearchEngine
                 continue;
             }
 
-            SearchOneDrive(new DriveScan(snapshot, driveBlock.DriveOrdinal, query, subtree?.RowIndex), results,
-                cancellationToken);
+            SearchOneDrive(new DriveScan(driveBlock, query, subtree?.RowIndex), results, cancellationToken);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -43,7 +42,7 @@ internal static class SearchEngine
     ///     time, and the borrow <see cref="FileIndex.Enumerate" /> takes is what keeps the
     ///     blocks mapped while it does.
     /// </summary>
-    internal static IEnumerable<FileEntry> Enumerate(Snapshot snapshot, SearchQuery query,
+    internal static IEnumerable<FileEntry> Enumerate(IReadOnlyList<DriveBlock> snapshot, SearchQuery query,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -51,7 +50,7 @@ internal static class SearchEngine
         cancellationToken.ThrowIfCancellationRequested();
 
         var subtree = SubtreeAnchor.Resolve(snapshot, query);
-        foreach (var driveBlock in snapshot.DriveBlocks)
+        foreach (var driveBlock in snapshot)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (subtree is { } under && under.DriveOrdinal != driveBlock.DriveOrdinal)
@@ -59,7 +58,7 @@ internal static class SearchEngine
                 continue;
             }
 
-            var scan = new DriveScan(snapshot, driveBlock.DriveOrdinal, query, subtree?.RowIndex);
+            var scan = new DriveScan(driveBlock, query, subtree?.RowIndex);
             foreach (var entry in EnumerateDrive(scan, cancellationToken))
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -131,15 +130,15 @@ internal static class SearchEngine
     }
 
     /// <summary>
-    ///     One drive's share of a query: the borrowed snapshot, the drive in it, the query, and the row the
+    ///     One drive's share of a query: the borrowed drive block, the query, and the row the
     ///     subtree restriction is anchored at, resolved by <see cref="SubtreeAnchor" />. It is null when the
     ///     query has no restriction.
     /// </summary>
-    readonly record struct DriveScan(Snapshot Snapshot, ushort DriveOrdinal, SearchQuery Query, uint? UnderRow);
+    readonly record struct DriveScan(DriveBlock DriveBlock, SearchQuery Query, uint? UnderRow);
 
     static void SearchOneDrive(DriveScan scan, List<FileEntry> results, CancellationToken cancellationToken)
     {
-        var rowCount = scan.Snapshot.GetDriveBlock(scan.DriveOrdinal).Block.Header.RowCount;
+        var rowCount = scan.DriveBlock.Block.Header.RowCount;
         var partitions = ScanPartitioning.Partition(rowCount, ScanPartitioning.DefaultPartitionCount(rowCount));
         if (partitions.Count == 0)
         {
@@ -176,10 +175,9 @@ internal static class SearchEngine
     static void CollectPartition(DriveScan scan, (uint StartRow, uint EndRowExclusive) partition,
         List<FileEntry> destination, CancellationToken cancellationToken)
     {
-        var (snapshot, driveOrdinal, query, underRow) = scan;
+        var (driveBlock, query, underRow) = scan;
         var candidates = new List<uint>();
-        var scanner = new RowScanner(snapshot, driveOrdinal, partition.StartRow, partition.EndRowExclusive,
-            cancellationToken);
+        var scanner = new RowScanner(driveBlock, partition.StartRow, partition.EndRowExclusive, cancellationToken);
         while (scanner.MoveNext())
         {
             if (RowMatches(in scanner.Current, scanner.CurrentName, query))
@@ -190,7 +188,7 @@ internal static class SearchEngine
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        var block = snapshot.GetDriveBlock(driveOrdinal).Block;
+        var block = driveBlock.Block;
         var checkCadence = 0;
 
         foreach (var rowIndex in candidates)
@@ -208,7 +206,7 @@ internal static class SearchEngine
                 cancellationToken.ThrowIfCancellationRequested();
             }
 
-            destination.Add(FileEntry.Create(snapshot, driveOrdinal, rowIndex));
+            destination.Add(FileEntry.Create(driveBlock, rowIndex));
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -224,8 +222,8 @@ internal static class SearchEngine
     /// </summary>
     static IEnumerable<FileEntry> EnumerateDrive(DriveScan scan, CancellationToken cancellationToken)
     {
-        var (snapshot, driveOrdinal, query, underRow) = scan;
-        var block = snapshot.GetDriveBlock(driveOrdinal).Block;
+        var (driveBlock, query, underRow) = scan;
+        var block = driveBlock.Block;
         var rowCount = block.Header.RowCount;
         var rowsUntilCancellationCheck = 1u;
 
@@ -248,7 +246,7 @@ internal static class SearchEngine
                 continue;
             }
 
-            yield return FileEntry.Create(snapshot, driveOrdinal, rowIndex);
+            yield return FileEntry.Create(driveBlock, rowIndex);
         }
     }
 

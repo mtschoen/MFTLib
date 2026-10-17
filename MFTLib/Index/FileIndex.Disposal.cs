@@ -117,19 +117,19 @@ public sealed partial class FileIndex
 
         try
         {
-            SnapshotRelease[] retiredSnapshots;
+            DriveBlockRelease[] retiredBlocks;
             lock (_stateLock)
             {
-                retiredSnapshots = [.. _retiredSnapshots];
-                _retiredSnapshots.Clear();
+                retiredBlocks = [.. _retiredBlocks];
+                _retiredBlocks.Clear();
             }
 
-            foreach (var retired in retiredSnapshots)
+            foreach (var retired in retiredBlocks)
             {
                 await retired.ReleaseAsync().ConfigureAwait(false);
             }
 
-            Snapshot? current;
+            DriveBlock[]? current;
             lock (_stateLock)
             {
                 current = _snapshot;
@@ -143,9 +143,9 @@ public sealed partial class FileIndex
             // Released outside _stateLock because this waits out both a release another caller
             // already started and every query still reading the snapshot, and a reader must not
             // be shut out of the lock for that long.
-            if (current is not null)
+            foreach (var driveBlock in current ?? [])
             {
-                await current.ReleaseNowAsync().ConfigureAwait(false);
+                await driveBlock.ReleaseState.ReleaseAsync().ConfigureAwait(false);
             }
         }
         catch (Exception releaseFailure) when (cancellationFailure is not null)

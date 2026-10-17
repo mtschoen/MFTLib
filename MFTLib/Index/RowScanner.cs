@@ -24,17 +24,16 @@ internal ref struct RowScanner
     uint _currentRowIndex;
     bool _started;
 
-    internal RowScanner(Snapshot snapshot, ushort driveOrdinal,
-        CancellationToken cancellationToken = default)
-        : this(snapshot, driveOrdinal, 0, uint.MaxValue, cancellationToken)
+    internal RowScanner(DriveBlock driveBlock, CancellationToken cancellationToken = default)
+        : this(driveBlock, 0, uint.MaxValue, cancellationToken)
     {
     }
 
-    internal RowScanner(Snapshot snapshot, ushort driveOrdinal, uint startRow, uint endRowExclusive,
+    internal RowScanner(DriveBlock driveBlock, uint startRow, uint endRowExclusive,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(snapshot);
-        var block = snapshot.GetDriveBlock(driveOrdinal).Block;
+        ArgumentNullException.ThrowIfNull(driveBlock);
+        var block = driveBlock.Block;
         _rows = block.Rows;
         _namePool = block.NamePoolCharacters;
         _endRowExclusive = Math.Min(endRowExclusive, block.Header.RowCount);

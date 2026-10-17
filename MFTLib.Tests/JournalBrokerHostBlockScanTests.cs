@@ -213,7 +213,7 @@ public class JournalBrokerHostBlockScanTests
         Assert.AreEqual(31u, block.Header.RowCount);
         Assert.AreEqual(RowFlags.None, block.Rows[21].Flags);
         var rootPath = Path.Combine(Path.GetTempPath(), "scan-oracle");
-        var snapshot = Snapshot.Create([new DriveBlock('C', 0, block, rootPath)]);
+        DriveBlock[] snapshot = [new DriveBlock('C', 0, block, rootPath)];
         try
         {
             (string RelativePath, uint Row, string Name, uint Parent, RowFlags Flags)[] expected =

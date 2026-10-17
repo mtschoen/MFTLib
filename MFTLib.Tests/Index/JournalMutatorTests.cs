@@ -14,7 +14,7 @@ public partial class JournalMutatorTests
     BlockFile _block = null!;
     BlockWriter _writer = null!;
     DriveBlock _driveBlock = null!;
-    Snapshot _snapshot = null!;
+    DriveBlock[] _snapshot = null!;
 
     [TestInitialize]
     public void Initialize()
@@ -40,7 +40,7 @@ public partial class JournalMutatorTests
         _writer.Complete(Moment, null);
 
         _driveBlock = new DriveBlock('T', 0, _block, rootDirectoryPath: TestDriveRoot.For('T'));
-        _snapshot = Snapshot.Create([_driveBlock]);
+        _snapshot = [_driveBlock];
     }
 
     [TestCleanup]
@@ -61,7 +61,7 @@ public partial class JournalMutatorTests
     public void Create_FillsTheRowAtItsRecordNumber()
     {
         var mutator = new JournalMutator(_writer);
-        var changes = mutator.Apply(_snapshot, 0,
+        var changes = mutator.Apply(_snapshot[0],
             [CreateEntry(5, 1, "brand-new.txt", UsnReason.FileCreate | UsnReason.Close, ChangeMoment)],
             journalIdentifier: 7, nextUsn: 2000);
 
@@ -80,7 +80,7 @@ public partial class JournalMutatorTests
     public void Delete_SetsTheTombstoneAndKeepsTheName()
     {
         var mutator = new JournalMutator(_writer);
-        var changes = mutator.Apply(_snapshot, 0,
+        var changes = mutator.Apply(_snapshot[0],
             [CreateEntry(2, 1, "existing.txt", UsnReason.FileDelete | UsnReason.Close, ChangeMoment)],
             journalIdentifier: 7, nextUsn: 2000);
 
@@ -97,7 +97,7 @@ public partial class JournalMutatorTests
         var generationBefore = _block.Header.Generation;
         var nameTooLargeForTheRemainingPool = new string('n', 300);
 
-        var changes = mutator.Apply(_snapshot, 0,
+        var changes = mutator.Apply(_snapshot[0],
         [
             CreateEntry(5, 1, nameTooLargeForTheRemainingPool,
                 UsnReason.FileCreate | UsnReason.Close, ChangeMoment),
@@ -118,7 +118,7 @@ public partial class JournalMutatorTests
     public void Rename_AppendsTheNewNameSwapsTheRowAndReportsThePreviousPath()
     {
         var mutator = new JournalMutator(_writer);
-        var changes = mutator.Apply(_snapshot, 0,
+        var changes = mutator.Apply(_snapshot[0],
             [CreateEntry(2, 1, "renamed.txt", UsnReason.RenameNewName | UsnReason.Close, ChangeMoment)],
             journalIdentifier: 7, nextUsn: 2000);
 
@@ -213,7 +213,7 @@ public partial class JournalMutatorTests
         var mutator = new JournalMutator(_writer);
         var namePoolUsedBefore = _block.Header.NamePoolUsed;
 
-        mutator.Apply(_snapshot, 0,
+        mutator.Apply(_snapshot[0],
             [CreateEntry(2, 0, "existing.txt", UsnReason.RenameNewName | UsnReason.Close, ChangeMoment)],
             journalIdentifier: 7, nextUsn: 2000);
 
@@ -221,7 +221,7 @@ public partial class JournalMutatorTests
         Assert.AreEqual(namePoolUsedBefore, _block.Header.NamePoolUsed);
         var namePoolUsedAfterMove = _block.Header.NamePoolUsed;
 
-        mutator.Apply(_snapshot, 0,
+        mutator.Apply(_snapshot[0],
             [CreateEntry(2, 0, "renamed.txt", UsnReason.RenameNewName | UsnReason.Close, ChangeMoment)],
             journalIdentifier: 7, nextUsn: 2100);
 
@@ -232,7 +232,7 @@ public partial class JournalMutatorTests
     public void RenameOldName_ProducesNoChangeBecauseTheNewNameFrameCarriesTheRename()
     {
         var mutator = new JournalMutator(_writer);
-        var changes = mutator.Apply(_snapshot, 0,
+        var changes = mutator.Apply(_snapshot[0],
             [CreateEntry(2, 1, "existing.txt", UsnReason.RenameOldName, ChangeMoment)],
             journalIdentifier: 7, nextUsn: 2000);
 
@@ -244,7 +244,7 @@ public partial class JournalMutatorTests
     public void DataChange_InvalidatesTheSizeAndLastWriteTimeAndReportsModified()
     {
         var mutator = new JournalMutator(_writer);
-        var changes = mutator.Apply(_snapshot, 0,
+        var changes = mutator.Apply(_snapshot[0],
             [CreateEntry(2, 1, "existing.txt", UsnReason.DataExtend | UsnReason.Close, ChangeMoment)],
             journalIdentifier: 7, nextUsn: 2000);
 
@@ -259,7 +259,7 @@ public partial class JournalMutatorTests
     public void CloseOnly_ProducesNoChange()
     {
         var mutator = new JournalMutator(_writer);
-        var changes = mutator.Apply(_snapshot, 0,
+        var changes = mutator.Apply(_snapshot[0],
             [CreateEntry(2, 1, "existing.txt", UsnReason.Close, ChangeMoment)],
             journalIdentifier: 7, nextUsn: 2000);
 
@@ -270,7 +270,7 @@ public partial class JournalMutatorTests
     public void RecordNumberPastSlotCapacity_SetsCapacityExhaustedAndKeepsApplyingTheRest()
     {
         var mutator = new JournalMutator(_writer);
-        var changes = mutator.Apply(_snapshot, 0,
+        var changes = mutator.Apply(_snapshot[0],
         [
             CreateEntry(9999, 1, "far.txt", UsnReason.FileCreate | UsnReason.Close, ChangeMoment),
             CreateEntry(6, 1, "near.txt", UsnReason.FileCreate | UsnReason.Close, ChangeMoment)
@@ -293,7 +293,7 @@ public partial class JournalMutatorTests
             entries.Add(CreateEntry(recordNumber, 1, longName, UsnReason.FileCreate | UsnReason.Close, ChangeMoment));
         }
 
-        mutator.Apply(_snapshot, 0, entries, journalIdentifier: 7, nextUsn: 2000);
+        mutator.Apply(_snapshot[0], entries, journalIdentifier: 7, nextUsn: 2000);
 
         Assert.IsTrue(mutator.CapacityExhausted);
     }
@@ -302,7 +302,7 @@ public partial class JournalMutatorTests
     public void Create_OfADirectory_SetsTheDirectoryFlagAndLeavesSizeUnknown()
     {
         var mutator = new JournalMutator(_writer);
-        var changes = mutator.Apply(_snapshot, 0,
+        var changes = mutator.Apply(_snapshot[0],
             [CreateEntry(5, 1, "NewFolder", UsnReason.FileCreate | UsnReason.Close, ChangeMoment,
                 fileAttributes: FileAttributes.Directory)],
             journalIdentifier: 7, nextUsn: 2000);
@@ -320,7 +320,7 @@ public partial class JournalMutatorTests
         // never fit regardless of what else has or has not been written yet.
         var hugeName = new string('a', 300);
 
-        var changes = mutator.Apply(_snapshot, 0,
+        var changes = mutator.Apply(_snapshot[0],
             [CreateEntry(2, 1, hugeName, UsnReason.RenameNewName | UsnReason.RenameOldName | UsnReason.Close,
                 ChangeMoment)],
             journalIdentifier: 7, nextUsn: 2000);
@@ -336,7 +336,7 @@ public partial class JournalMutatorTests
         var mutator = new JournalMutator(_writer);
         var generationBefore = _block.Header.Generation;
 
-        mutator.Apply(_snapshot, 0,
+        mutator.Apply(_snapshot[0],
         [
             CreateEntry(5, 1, "one.txt", UsnReason.FileCreate | UsnReason.Close, ChangeMoment),
             CreateEntry(6, 1, "two.txt", UsnReason.FileCreate | UsnReason.Close, ChangeMoment)
@@ -353,7 +353,7 @@ public partial class JournalMutatorTests
         var mutator = new JournalMutator(_writer);
         var generationBefore = _block.Header.Generation;
 
-        var changes = mutator.Apply(_snapshot, 0, [], journalIdentifier: 0xABCD, nextUsn: 4242);
+        var changes = mutator.Apply(_snapshot[0], [], journalIdentifier: 0xABCD, nextUsn: 4242);
 
         Assert.AreEqual(0, changes.Count);
         Assert.AreEqual(generationBefore, _block.Header.Generation);
@@ -367,12 +367,12 @@ public partial class JournalMutatorTests
         ulong parentRecordNumber, string fileName)
     {
         var mutator = new JournalMutator(_writer);
-        mutator.Apply(_snapshot, 0,
+        mutator.Apply(_snapshot[0],
             [CreateEntry(2, 1, "existing.txt", UsnReason.FileDelete | UsnReason.Close, ChangeMoment)],
             journalIdentifier: 7, nextUsn: 2000);
         Assert.IsTrue(_block.Rows[2].IsDeleted);
 
-        var changes = mutator.Apply(_snapshot, 0,
+        var changes = mutator.Apply(_snapshot[0],
             [CreateEntry(2, parentRecordNumber, fileName, UsnReason.FileCreate | UsnReason.Close, ChangeMoment)],
             journalIdentifier: 7, nextUsn: 2100);
 

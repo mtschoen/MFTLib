@@ -15,7 +15,7 @@ public class FileEntryTests
     static readonly DateTime FileMoment = new(2026, 8, 30, 14, 5, 0, DateTimeKind.Utc);
 
     SyntheticBlockBuilder _builder = null!;
-    Snapshot _snapshot = null!;
+    DriveBlock[] _snapshot = null!;
     uint _directoryRow;
     uint _fileRow;
     uint _deletedRow;
@@ -35,7 +35,7 @@ public class FileEntryTests
 
         var block = _builder.OpenForReading(out _)!;
         var driveBlock = new DriveBlock(_builder.Drive, 0, block);
-        _snapshot = Snapshot.Create([driveBlock]);
+        _snapshot = [driveBlock];
     }
 
     [TestCleanup]
@@ -54,7 +54,7 @@ public class FileEntryTests
     [TestMethod]
     public void Properties_ReadStraightFromTheMappedRow()
     {
-        var entry = FileEntry.Create(_snapshot, 0, _fileRow);
+        var entry = FileEntry.Create(_snapshot[0], _fileRow);
 
         Assert.AreEqual("report.pdf", entry.Name);
         Assert.AreEqual(4096L, entry.Size);
@@ -69,7 +69,7 @@ public class FileEntryTests
     [TestMethod]
     public void DirectoryEntry_ReadsAsDirectoryWithZeroSize()
     {
-        var entry = FileEntry.Create(_snapshot, 0, _directoryRow);
+        var entry = FileEntry.Create(_snapshot[0], _directoryRow);
         Assert.AreEqual(entry.RecordKey.Drive, entry.Drive);
         Assert.IsTrue(entry.IsDirectory);
         Assert.AreEqual(0L, entry.Size);
@@ -79,7 +79,7 @@ public class FileEntryTests
     [TestMethod]
     public void TombstonedEntry_ReadsAsDeletedAndKeepsItsName()
     {
-        var entry = FileEntry.Create(_snapshot, 0, _deletedRow);
+        var entry = FileEntry.Create(_snapshot[0], _deletedRow);
         Assert.AreEqual(entry.RecordKey.Drive, entry.Drive);
         Assert.IsTrue(entry.IsDeleted);
         Assert.AreEqual("gone.tmp", entry.Name);
@@ -88,7 +88,7 @@ public class FileEntryTests
     [TestMethod]
     public void Id_CarriesDriveLetterRowNumberAndProducerKind()
     {
-        var entry = FileEntry.Create(_snapshot, 0, _fileRow);
+        var entry = FileEntry.Create(_snapshot[0], _fileRow);
         var id = entry.RecordKey;
 
         Assert.AreEqual(new DriveKey('T'), entry.Drive);
@@ -107,10 +107,10 @@ public class FileEntryTests
         builder.Complete(ScanMoment);
 
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('V', 0, block)]);
+        DriveBlock[] snapshot = [new DriveBlock('V', 0, block)];
         try
         {
-            var entry = FileEntry.Create(snapshot, 0, row);
+            var entry = FileEntry.Create(snapshot[0], row);
             Assert.AreEqual(new DriveKey('V'), entry.Drive);
             Assert.AreEqual(entry.RecordKey.Drive, entry.Drive);
             Assert.IsFalse(entry.IsSizeKnown);
@@ -137,9 +137,9 @@ public class FileEntryTests
     [TestMethod]
     public void Equality_ComparesSnapshotDriveAndRow()
     {
-        var first = FileEntry.Create(_snapshot, 0, _fileRow);
-        var second = FileEntry.Create(_snapshot, 0, _fileRow);
-        var other = FileEntry.Create(_snapshot, 0, _directoryRow);
+        var first = FileEntry.Create(_snapshot[0], _fileRow);
+        var second = FileEntry.Create(_snapshot[0], _fileRow);
+        var other = FileEntry.Create(_snapshot[0], _directoryRow);
 
         Assert.AreEqual(first, second);
         Assert.AreNotEqual(first, other);
@@ -156,10 +156,10 @@ public class FileEntryTests
 
         var block = builder.OpenForReading(out _)!;
         var driveBlock = new DriveBlock(builder.Drive, 0, block);
-        var snapshot = Snapshot.Create([driveBlock]);
+        DriveBlock[] snapshot = [driveBlock];
         try
         {
-            var entry = FileEntry.Create(snapshot, 0, fileRow);
+            var entry = FileEntry.Create(snapshot[0], fileRow);
             var failure = Assert.ThrowsException<InvalidOperationException>(() => entry.Open(FileAccess.Read));
             StringAssert.Contains(failure.Message, entry.ToString());
         }
@@ -174,7 +174,7 @@ public class FileEntryTests
     {
         // Initialize's DriveBlock is built without a rootDirectoryPath, matching the case
         // documented on DriveBlock.RootDirectoryPath: a synthetic block that never calls Open.
-        var entry = FileEntry.Create(_snapshot, 0, _fileRow);
+        var entry = FileEntry.Create(_snapshot[0], _fileRow);
         Assert.ThrowsException<InvalidOperationException>(() => entry.Open(FileAccess.Read));
     }
 }

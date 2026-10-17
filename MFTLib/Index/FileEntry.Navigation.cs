@@ -16,19 +16,19 @@ public readonly partial record struct FileEntry
     ///     The parent chain does not reach the volume root within
     ///     128 parent hops.
     /// </exception>
-    /// <exception cref="ObjectDisposedException">The owning index has been disposed and this handle's snapshot released.</exception>
+    /// <exception cref="ObjectDisposedException">The owning index has been disposed and this handle's drive block released.</exception>
     /// <exception cref="InvalidOperationException">The drive block has no configured root directory, or a newer file has reused this entry's row slot.</exception>
     public string Path
     {
         get
         {
             _ = CurrentBlock();
-            return IndexNavigation.BuildPath(Snapshot, DriveOrdinal, RowIndex);
+            return IndexNavigation.BuildPath(DriveBlock, RowIndex);
         }
     }
 
     /// <summary>The parent directory, or null for the volume root, whose parent is itself.</summary>
-    /// <exception cref="ObjectDisposedException">The owning index has been disposed and this handle's snapshot released.</exception>
+    /// <exception cref="ObjectDisposedException">The owning index has been disposed and this handle's drive block released.</exception>
     /// <exception cref="InvalidOperationException">A newer file has reused this entry's row slot.</exception>
     public FileEntry? Parent
     {
@@ -39,7 +39,7 @@ public readonly partial record struct FileEntry
                 return null;
             }
 
-            return Create(Snapshot, DriveOrdinal, parentRow);
+            return Create(DriveBlock, parentRow);
         }
     }
 
@@ -47,7 +47,7 @@ public readonly partial record struct FileEntry
     ///     Direct children, materialized into an allocated list by scanning the parent column. A
     ///     compressed-sparse-row children table is a measured follow-up, so this is linear in
     ///     the drive's row count. Being a whole-drive scan rather than a single-row read, this holds a borrow on the handle's
-    ///     snapshot for its duration, the same claim a <see cref="FileIndex" /> query takes, so a
+    ///     drive block for its duration, the same claim a <see cref="FileIndex" /> query takes, so a
     ///     release cannot unmap the rows it is walking; a disposal that arrives mid-scan waits
     ///     for it to finish. A superseded handle, whose row slot a newer file has reused, has no children:
     ///     the list is empty rather than the replacement's children.
@@ -58,17 +58,18 @@ public readonly partial record struct FileEntry
     ///     index's disposal waits this scan out rather than cancelling it.
     /// </param>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
-    /// <exception cref="ObjectDisposedException">The owning index has been disposed and this handle's snapshot released.</exception>
+    /// <exception cref="ObjectDisposedException">The owning index has been disposed and this handle's drive block released.</exception>
     public IReadOnlyList<FileEntry> Children(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        using var borrow = Snapshot.Borrow();
-        borrow.Snapshot.ReleaseState._readerAdmittedForTest?.Invoke();
-        if (IsSupersededIn(borrow.Snapshot.GetDriveBlock(DriveOrdinal)))
+        var driveBlock = DriveBlock;
+        using var borrow = new SnapshotBorrow([driveBlock]);
+        driveBlock.ReleaseState._readerAdmittedForTest?.Invoke();
+        if (IsSupersededIn(driveBlock))
         {
             return [];
         }
 
-        return IndexNavigation.GetChildren(borrow.Snapshot, DriveOrdinal, RowIndex, cancellationToken);
+        return IndexNavigation.GetChildren(driveBlock, RowIndex, cancellationToken);
     }
 }
