@@ -93,6 +93,9 @@ public partial class BrokerProcessTests
                 null, CancellationToken.None);
             await scanStarted.Entered.WaitAsync(HangGuard);
 
+            var scan = handleWithScan.Scans.Single();
+            Assert.AreEqual(new DriveKey('C'), scan.Drive);
+
             var first = edge == HandleDisposalEdge.ProcessFirst
                 ? activeProcess.DisposeAsync().AsTask()
                 : handleWithScan.DisposeAsync().AsTask();
@@ -140,15 +143,15 @@ public partial class BrokerProcessTests
     {
         Exception failure = cancelled ? new OperationCanceledException("host cancelled")
             : new InvalidOperationException("host unavailable");
-        using var sections = new TestBlockSections();
-        using var writer = new RecordingBlockSectionWriter(sections.Resolve);
+        // aislop-ignore-next-line dotnet/IDISP001 -- ownership moves to InProcessBrokerHandle on Start
+        var resources = ScriptedBrokerResources.Create();
         var handle = BrokerTestHarness.Start(
-            CreateHost(timeProvider: new UnavailableHostClock(failure)), writer, sections.Create,
+            CreateHost(timeProvider: new UnavailableHostClock(failure)), resources,
             new BrokerTestHarnessOptions(), null, null);
         var process = handle.Process;
         try
         {
-            Assert.AreEqual(0, handle.Scans.Count, "A handle MFTLib's own tests started has no scan log.");
+            Assert.IsFalse(handle.Scans.Any(), "Host startup failed before any scan began.");
             await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
                 process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
             await process.DisposeAsync().AsTask().WaitAsync(HangGuard);
@@ -156,8 +159,10 @@ public partial class BrokerProcessTests
         }
         finally
         {
-            await process.DisposeAsync();
+            await handle.DisposeAsync();
         }
+
+        BlockFileAssertions.IsDisposed(resources.Writer.Block);
     }
 
     static BlockScanTarget ScanTarget() =>
@@ -190,7 +195,7 @@ public partial class BrokerProcessTests
                 .WaitAsync(HangGuard));
 
         StringAssert.Contains(failure.Message, "no scan source");
-        Assert.AreEqual(0, handle.Scans.Count);
+        Assert.AreEqual(new DriveKey('C'), handle.Scans.Single().Drive);
     }
 
     public enum ScanRecordingCase

@@ -35,7 +35,6 @@ public class ScriptedWatchSourceTests
         Assert.AreEqual(new SyntheticJournalCursor(9, 250), source.Starts.Single().Cursor);
         Assert.AreSame(watch, source.Watches.Single());
         Assert.AreSame(watch, source.WatchFor('T'));
-        Assert.AreEqual(new UsnJournalCursor(9, 250), watch.StartCursor);
         Assert.AreEqual('t', watch.Drive);
         Assert.IsFalse(watch.ReadStarted);
     }

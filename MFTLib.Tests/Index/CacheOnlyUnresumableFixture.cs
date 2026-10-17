@@ -9,7 +9,7 @@ namespace MFTLib.Tests.Index;
 ///     Seeds a cache block for drive <c>T</c> while the journal still holds its checkpoint, then
 ///     opens it cache-only after the journal has trimmed that checkpoint away, which is how a
 ///     cache-only open comes to adopt an unresumable block. The journal read is swapped out
-///     through <c>JournalCheckpointCheck.OverrideJournalForTest</c>, a process-wide override, so a
+///     through <c>JournalIsolation.OverrideJournalWindow</c>, a process-wide override, so a
 ///     class using this carries <c>[DoNotParallelize]</c>.
 /// </summary>
 internal sealed class CacheOnlyUnresumableFixture : IDisposable
@@ -58,8 +58,8 @@ internal sealed class CacheOnlyUnresumableFixture : IDisposable
 
     static IDisposable Journal(long firstUsn)
     {
-        return JournalCheckpointCheck.OverrideJournalForTest(_ =>
-            new JournalWindow(CachedJournalIdentifier, firstUsn, CachedNextUsn + 4_000, 64, 128L * 1024 * 1024));
+        return JournalIsolation.OverrideJournalWindow(_ =>
+            new SyntheticJournalWindow(CachedJournalIdentifier, firstUsn, CachedNextUsn + 4_000, 64, 128L * 1024 * 1024));
     }
 
 }

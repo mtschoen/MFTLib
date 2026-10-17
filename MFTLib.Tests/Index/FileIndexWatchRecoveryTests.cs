@@ -10,7 +10,7 @@ namespace MFTLib.Tests.Index;
 ///     <see cref="WatchFaultKind.Apply" /> fault queues a rescan of that drive, which restarts its
 ///     watch from the new block. Faults are injected through scripted handles and the producer is
 ///     the harness's fake, ordered with <see cref="TestGate" />s; no clock is involved. One case
-///     records a live-watch loss through <c>JournalCheckpointCheck.OverrideJournalForTest</c>, a
+///     records a live-watch loss through <c>JournalIsolation.OverrideJournalWindow</c>, a
 ///     process-wide seam, hence <see cref="DoNotParallelizeAttribute" />.
 /// </summary>
 [TestClass]
@@ -29,11 +29,11 @@ public partial class FileIndexWatchRecoveryTests
     [TestMethod]
     public async Task DriveFault_RecoversByRescan_ReachesCaughtUp_LiveWatchLossSurvives()
     {
-        using var harness = new WatchHarness('T', 'U');
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(letter => letter == 'T'
-            ? new JournalWindow(WatchHarness.JournalIdentifier, FirstUsn: 5000, NextUsn: 8000,
+        using var journal = JournalIsolation.OverrideJournalWindow(letter => letter == 'T'
+            ? new SyntheticJournalWindow(WatchHarness.JournalIdentifier, FirstUsn: 5000, NextUsn: 8000,
                 AllocationDelta: 64, MaximumSize: 128L * 1024 * 1024)
             : null);
+        using var harness = new WatchHarness('T', 'U');
         await harness.Index.StartWatchingAsync(['T'], Token);
         var producedBefore = harness.ProductionCount('T');
         harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9500);

@@ -92,7 +92,7 @@ public class WatchHostModeTests
     [TestMethod]
     public async Task ScanThroughBroker_CatchUpLostByTheJournal_ReportsTheLoss()
     {
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => new JournalWindow(7, 5000, 9000, 4096, 32768));
+        using var journal = JournalIsolation.OverrideJournalWindow(_ => new SyntheticJournalWindow(7, 5000, 9000, 4096, 32768));
         await using var broker = new InProcessBroker(CreateHost(
             readJournal: (_, _, _) => throw new IOException("catch-up read failed")));
         var lines = new List<string>();

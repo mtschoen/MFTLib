@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
@@ -9,7 +10,7 @@ namespace MFTLib.Tests.Index;
 ///     A rescan whose scan produces no replacement leaves a drive as its watch left it: a healthy
 ///     drive keeps its running watch, a faulted drive stays faulted with its fault, block and
 ///     checkpoint-loss report intact. The journal read is swapped out through
-///     <c>JournalCheckpointCheck.OverrideJournalForTest</c>, a process-wide seam, hence
+///     <c>JournalIsolation.OverrideJournalWindow</c>, a process-wide seam, hence
 ///     <see cref="DoNotParallelizeAttribute" />.
 /// </summary>
 [TestClass]
@@ -22,8 +23,8 @@ public class FileIndexWatchFailedRescanTests
 
     /// <summary>T's cursor has been trimmed out of its journal.</summary>
     static IDisposable LostCheckpointForT() =>
-        JournalCheckpointCheck.OverrideJournalForTest(letter => letter == 'T'
-            ? new JournalWindow(WatchHarness.JournalIdentifier, FirstUsn: 5000, NextUsn: 8000,
+        JournalIsolation.OverrideJournalWindow(letter => letter == 'T'
+            ? new SyntheticJournalWindow(WatchHarness.JournalIdentifier, FirstUsn: 5000, NextUsn: 8000,
                 AllocationDelta: 64, MaximumSize: 128L * 1024 * 1024)
             : null);
 
@@ -42,9 +43,9 @@ public class FileIndexWatchFailedRescanTests
     [DataRow(true)]
     public async Task FailedRescan_PreservesFaultAndDoesNotRecover(bool thrownSwap)
     {
+        using var journal = LostCheckpointForT();
         using var harness = new WatchHarness('T', 'U');
         harness.Index.HoldEveryRecovery();
-        using var journal = LostCheckpointForT();
         await harness.Index.StartWatchingAsync(['T'], Token);
         await harness.Index.StartWatchingAsync(['U'], Token);
         harness.Source.WatchFor('T').FailDrive(new IOException("T lost its checkpoint"));
@@ -91,9 +92,9 @@ public class FileIndexWatchFailedRescanTests
     [TestMethod]
     public async Task CancelledPublication_PreservesFaultAndDisposesUnpublishedBlock()
     {
+        using var journal = LostCheckpointForT();
         using var harness = new WatchHarness('T', 'U');
         harness.Index.HoldEveryRecovery();
-        using var journal = LostCheckpointForT();
         await harness.Index.StartWatchingAsync(['T'], Token);
         harness.Source.WatchFor('T').FailDrive(new IOException("T lost its checkpoint"));
         var watchFault = await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
@@ -155,9 +156,9 @@ public class FileIndexWatchFailedRescanTests
     [TestMethod]
     public async Task SuccessfulRetry_AfterFailedProduction_ReplacesAndCatchesUp()
     {
+        using var journal = LostCheckpointForT();
         using var harness = new WatchHarness('T', 'U');
         harness.Index.HoldEveryRecovery();
-        using var journal = LostCheckpointForT();
         await harness.Index.StartWatchingAsync(['T'], Token);
         harness.Source.WatchFor('T').FailDrive(new IOException("T lost its checkpoint"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');

@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -290,16 +291,16 @@ public class FileIndexPartialCanonicalBlockTests
         var options = Options((request, _) => failTheScan.Value
             ? throw scanFailure(request)
             : Task.FromResult(CompleteBlock(request)), diagnostics);
-        using (JournalCheckpointCheck.OverrideJournalForTest(
-                   _ => new JournalWindow(7, 0, 4096, 64, 128L * 1024 * 1024)))
+        using (JournalIsolation.OverrideJournalWindow(
+                   _ => new SyntheticJournalWindow(7, 0, 4096, 64, 128L * 1024 * 1024)))
         {
             await using var seeded = await FileIndex.OpenAsync(options, Token);
         }
 
         var seededBytes = await File.ReadAllBytesAsync(_canonicalPath, Token);
         failTheScan.Value = true;
-        using (JournalCheckpointCheck.OverrideJournalForTest(
-                   _ => new JournalWindow(7, 10_000, 20_000, 64, 128L * 1024 * 1024)))
+        using (JournalIsolation.OverrideJournalWindow(
+                   _ => new SyntheticJournalWindow(7, 10_000, 20_000, 64, 128L * 1024 * 1024)))
         {
             await assertOutcome(FileIndex.OpenAsync(options, Token));
         }

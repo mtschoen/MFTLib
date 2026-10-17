@@ -49,7 +49,7 @@ public static class JournalIsolation
     /// </param>
     /// <returns>A process-global scope that restores the previous observation behavior.</returns>
     /// <exception cref="ArgumentNullException">The callback is null.</exception>
-    /// <exception cref="InvalidOperationException">Another public override scope is active.</exception>
+    /// <exception cref="InvalidOperationException">Another journal override scope is active.</exception>
     /// <remarks>
     ///     This does not change the one-way live-read isolation flag. Synthetic observations
     ///     take precedence over that flag, and null never falls back to a live read.
@@ -63,12 +63,14 @@ public static class JournalIsolation
     public static IDisposable OverrideJournalWindow(Func<DriveKey, SyntheticJournalWindow?> journal)
     {
         ArgumentNullException.ThrowIfNull(journal);
-        return ProcessGlobalScope.Acquire(
-            "A synthetic journal-window override",
-            () => JournalCheckpointCheck.OverrideJournalForTest(drive =>
+        return ProcessGlobalScope.Acquire("A synthetic journal-window override", () =>
+        {
+            Volatile.Write(ref JournalCheckpointCheck._journalOverride, drive =>
                 journal(drive) is { } window
-                    ? new JournalWindow(window.JournalIdentifier, window.FirstUsn, window.NextUsn,
-                        window.AllocationDelta, window.MaximumSize)
-                    : null).Dispose);
+                    ? new JournalWindow(window.JournalIdentifier, window.FirstUsn,
+                        window.NextUsn, window.AllocationDelta, window.MaximumSize)
+                    : null);
+            return () => Volatile.Write(ref JournalCheckpointCheck._journalOverride, null);
+        });
     }
 }

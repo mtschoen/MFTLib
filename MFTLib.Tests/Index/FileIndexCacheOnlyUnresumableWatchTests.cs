@@ -15,7 +15,7 @@ namespace MFTLib.Tests.Index;
 ///     a drive and says why, recording the watch as requested the way a start whose source threw
 ///     does. A successful <see cref="FileIndex.RescanAsync" /> writes a
 ///     fresh cursor, clears the refusal, and starts the requested watch. The journal
-///     read is swapped out through <c>JournalCheckpointCheck.OverrideJournalForTest</c>, so these
+///     read is swapped out through <c>JournalIsolation.OverrideJournalWindow</c>, so these
 ///     run on every platform and never touch a real volume.
 /// </summary>
 [TestClass]
@@ -113,7 +113,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         await SeedCacheAsync(driveT, driveU);
 
         var source = new ScriptedWatchSource();
-        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, source.IndexSource, cacheOnly: true, driveT, driveU), Token);
 
@@ -158,7 +158,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         await SeedCacheAsync(driveT, driveU);
 
         var source = new ScriptedWatchSource();
-        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, source.IndexSource, cacheOnly: true, driveT, driveU), Token);
         await index.StartWatchingAsync(['U'], Token);
@@ -208,7 +208,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         }
 
         var source = new ScriptedWatchSource();
-        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(Producer, source.IndexSource, cacheOnly: true, driveT, driveU), Token);
         await index.StartWatchingAsync(['U'], Token);
@@ -253,7 +253,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         var driveT = Drive('T', _firstTreeRoot);
         await SeedCacheAsync(driveT);
         var source = new ScriptedWatchSource();
-        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = HealthyWindow });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
         BlockFile? producedBlock = null;
         var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
@@ -310,7 +310,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         var driveT = Drive('T', _firstTreeRoot);
         await SeedCacheAsync(driveT);
         var source = new ScriptedWatchSource();
-        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = HealthyWindow });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
         BlockFile? producedBlock = null;
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
@@ -362,7 +362,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         await SeedCacheAsync(driveT);
 
         var source = new ScriptedWatchSource();
-        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = TrimmedWindow });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = TrimmedWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, source.IndexSource, cacheOnly: true, driveT), Token);
 

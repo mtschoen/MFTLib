@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -10,6 +11,7 @@ public class FileIndexCacheTagTests
     static readonly CacheTag OriginalTag = new("GITW", 1);
     static readonly DateTime Moment = new(2026, 9, 22, 0, 0, 0, DateTimeKind.Utc);
     string _directory = null!;
+    IDisposable? _journalScope;
     string Root => Path.Combine(_directory, "root");
     string Cache => Path.Combine(_directory, "cache");
     string BlockPath => Path.Combine(Cache, CacheDirectory.BlockFileName('T', 123));
@@ -20,13 +22,15 @@ public class FileIndexCacheTagTests
         _directory = Path.Combine(Path.GetTempPath(), $"mftlib-index-tag-{Guid.NewGuid():N}");
         Directory.CreateDirectory(Root);
         Directory.CreateDirectory(Cache);
-        JournalCheckpointCheck._journalOverride = _ => new JournalWindow(7, 100, 4096, 4096, 65536);
+        _journalScope = JournalIsolation.OverrideJournalWindow(
+            _ => new SyntheticJournalWindow(7, 100, 4096, 4096, 65536));
     }
 
     [TestCleanup]
     public void Cleanup()
     {
-        JournalCheckpointCheck._journalOverride = null;
+        _journalScope?.Dispose();
+        _journalScope = null;
         Directory.Delete(_directory, recursive: true);
     }
 

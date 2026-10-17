@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -9,7 +10,7 @@ namespace MFTLib.Tests.Index;
 ///     checkpoint gone from the journal. That drive needs its own rescan, so the rescan of the
 ///     first leaves it alone rather than starting it from a cursor the journal already said it no
 ///     longer holds. The journal read is swapped out through
-///     <c>JournalCheckpointCheck._journalOverride</c>, a process-wide seam, hence
+///     <c>JournalIsolation.OverrideJournalWindow</c>, a process-wide seam, hence
 ///     <see cref="DoNotParallelizeAttribute" />.
 /// </summary>
 [TestClass]
@@ -27,9 +28,9 @@ public class FileIndexWatchRescanCheckpointLossTests
     public async Task RescanAsync_AfterEveryDriveFaulted_LeavesADriveWhoseLiveWatchLostItsCheckpointOutOfTheRestart()
     {
         // U's cursor has been trimmed out of its journal; T's volume cannot say.
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(driveLetter =>
+        using var journal = JournalIsolation.OverrideJournalWindow(driveLetter =>
             driveLetter == 'U'
-                ? new JournalWindow(WatchHarness.JournalIdentifier, FirstUsn: WatchHarness.NextUsn + 500,
+                ? new SyntheticJournalWindow(WatchHarness.JournalIdentifier, FirstUsn: WatchHarness.NextUsn + 500,
                     NextUsn: WatchHarness.NextUsn + 4_000, AllocationDelta, MaximumSize)
                 : null);
         using var harness = new WatchHarness('T', 'U');

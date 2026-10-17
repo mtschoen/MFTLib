@@ -177,8 +177,8 @@ public class LocalMftBlockProducerTests
     [DataRow(true, DisplayName = "cache-only-reopen-unmoved-journal")]
     public async Task Produce_CachePathBlockSurvivesDisposal(bool cacheOnly)
     {
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(
-            _ => new JournalWindow(99, 1000, 2000, 4096, 32768));
+        using var journal = JournalIsolation.OverrideJournalWindow(
+            _ => new SyntheticJournalWindow(99, 1000, 2000, 4096, 32768));
         var scanCalls = 0;
         var producer = new LocalMftBlockProducer(TimeProvider.System, null, Scripted(scan: (_, _, _, _, _, _) =>
         {

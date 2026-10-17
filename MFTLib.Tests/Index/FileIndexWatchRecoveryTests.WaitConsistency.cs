@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
@@ -65,23 +66,25 @@ public partial class FileIndexWatchRecoveryTests
     [TestMethod]
     public async Task CatchUpWait_FaultsOnlyOnceTheDriveReadsRecoveringWithItsCheckpointLoss()
     {
+        var indexBox = new StrongBox<FileIndex?>();
+        bool? faultVisibleDuringCheckpointCheck = null;
+        using var journal = JournalIsolation.OverrideJournalWindow(_ =>
+        {
+            // Runs after the fault is recorded and before the recovery is queued. A wait issued
+            // here must not have settled yet, or a consumer's fault path could read Faulted.
+            faultVisibleDuringCheckpointCheck ??= indexBox.Value!.WaitForCatchUpAsync(['T'], CancellationToken.None).IsCompleted;
+            return new SyntheticJournalWindow(WatchHarness.JournalIdentifier, FirstUsn: 5000, NextUsn: 8000,
+                AllocationDelta: 64, MaximumSize: 128L * 1024 * 1024);
+        });
         using var harness = new WatchHarness('T');
         var index = harness.Index;
+        indexBox.Value = index;
         await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
         var wait = index.WaitForCatchUpAsync(['T'], Token);
         var observedWhenSettled = wait.ContinueWith(_ => index.Drives.Single(drive => drive.Drive == 'T'),
             CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         var held = harness.HoldNextProduction('T');
-        bool? faultVisibleDuringCheckpointCheck = null;
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ =>
-        {
-            // Runs after the fault is recorded and before the recovery is queued. A wait issued
-            // here must not have settled yet, or a consumer's fault path could read Faulted.
-            faultVisibleDuringCheckpointCheck ??= index.WaitForCatchUpAsync(['T'], CancellationToken.None).IsCompleted;
-            return new JournalWindow(WatchHarness.JournalIdentifier, FirstUsn: 5000, NextUsn: 8000,
-                AllocationDelta: 64, MaximumSize: 128L * 1024 * 1024);
-        });
 
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
         var observed = await observedWhenSettled.WaitAsync(HangGuard);

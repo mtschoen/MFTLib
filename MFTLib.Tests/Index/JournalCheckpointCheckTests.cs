@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -6,7 +7,7 @@ namespace MFTLib.Tests.Index;
 /// <summary>
 ///     Which cached checkpoints <see cref="JournalCheckpointCheck" /> calls unresumable, and
 ///     what it reports about them. The journal read is swapped out through
-///     <c>JournalCheckpointCheck._journalOverride</c>, so these run on every platform.
+///     <c>JournalIsolation.OverrideJournalWindow</c>, so these run on every platform.
 /// </summary>
 [TestClass]
 [DoNotParallelize]
@@ -24,10 +25,10 @@ public class JournalCheckpointCheckTests
         ulong journalIdentifier, long firstUsn, long nextUsn, JournalCheckpointLossCause? expectedCause)
     {
         var reads = 0;
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ =>
+        using var journal = JournalIsolation.OverrideJournalWindow(_ =>
         {
             reads++;
-            return new JournalWindow(journalIdentifier, firstUsn, nextUsn, 64, 32768);
+            return new SyntheticJournalWindow(journalIdentifier, firstUsn, nextUsn, 64, 32768);
         });
         var loss = JournalCheckpointCheck.CheckUnmoved('T', JournalIdentifier, 2000,
             JournalCheckpointLossDetection.DriveOpening);
@@ -54,7 +55,7 @@ public class JournalCheckpointCheckTests
     [TestMethod]
     public void Unmoved_CannotSayAdoptsWithoutLoss()
     {
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => null);
+        using var journal = JournalIsolation.OverrideJournalWindow(_ => null);
         Assert.IsNull(JournalCheckpointCheck.CheckUnmoved('T', JournalIdentifier, 2000,
             JournalCheckpointLossDetection.DriveOpening));
     }
@@ -70,8 +71,8 @@ public class JournalCheckpointCheckTests
     static IDisposable Journal(ulong journalIdentifier = JournalIdentifier, long firstUsn = 1_000, long nextUsn = 5_000,
         long maximumSize = 128L * 1024 * 1024, long allocationDelta = 64)
     {
-        return JournalCheckpointCheck.OverrideJournalForTest(
-            _ => new JournalWindow(journalIdentifier, firstUsn, nextUsn, allocationDelta, maximumSize));
+        return JournalIsolation.OverrideJournalWindow(
+            _ => new SyntheticJournalWindow(journalIdentifier, firstUsn, nextUsn, allocationDelta, maximumSize));
     }
 
     /// <summary>
@@ -176,7 +177,7 @@ public class JournalCheckpointCheckTests
     [TestMethod]
     public void VolumeThatCannotAnswer_ReportsNothing()
     {
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => null);
+        using var journal = JournalIsolation.OverrideJournalWindow(_ => null);
 
         Assert.IsNull(JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 0,
             JournalCheckpointLossDetection.DriveOpening));

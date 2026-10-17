@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -66,11 +67,11 @@ public partial class FileIndexWatchStateChangedTests
     [TestMethod]
     public async Task CheckpointCheckThrowingAfterAFault_StillDeliversTheFaultedState()
     {
+        using var journal = JournalIsolation.OverrideJournalWindow(
+            _ => throw new IOException("the journal query failed"));
         using var harness = new WatchHarness('T');
         var recorder = new WatchStateRecorder(harness.Index);
         await harness.Index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(
-            _ => throw new IOException("the journal query failed"));
 
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
         var faulted = await recorder.WaitForStateAsync('T', state => state.Watch.State == WatchState.Faulted);

@@ -31,6 +31,8 @@ public sealed record ScriptedBrokerVolumes
         IAsyncEnumerable<(IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Cursor)>>? WatchDrive
     { get; init; }
 
+    // BrokerProcessTests.ScriptedVolumes_QueryVolumeOverridesTheDefault uses this
+    // to exercise non-default geometry through the in-process volume query.
     /// <summary>Answers volume sizing queries. Null answers a small fixed volume (256 KiB of 1024-byte records).</summary>
     internal Func<DriveKey, NtfsVolumeInformation>? QueryVolume { get; init; }
 

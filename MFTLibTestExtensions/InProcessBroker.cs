@@ -12,35 +12,27 @@ namespace MFTLibTestExtensions;
 /// </summary>
 internal sealed class InProcessBroker : IAsyncDisposable
 {
+    readonly ScriptedBrokerResources _resources;
+
     public InProcessBroker(JournalBrokerHost host, BrokerTestHarnessOptions? options = null,
         Func<string, Stream, Stream>? wrapClientStream = null,
         Func<BrokerChannelConnector, BrokerChannelConnector>? wrapConnector = null)
     {
-        Writer = new RecordingBlockSectionWriter(Sections.Resolve);
-        Handle = BrokerTestHarness.Start(host, Writer, Sections.Create, options ?? new BrokerTestHarnessOptions(),
-            wrapClientStream, wrapConnector);
+        _resources = ScriptedBrokerResources.Create();
+        Handle = BrokerTestHarness.Start(host, _resources,
+            options ?? new BrokerTestHarnessOptions(), wrapClientStream, wrapConnector);
     }
 
     public InProcessBrokerHandle Handle { get; }
 
     public BrokerProcess Process => Handle.Process;
 
-    public TestBlockSections Sections { get; } = new();
+    public TestBlockSections Sections => _resources.Sections;
 
-    public RecordingBlockSectionWriter Writer { get; }
+    public RecordingBlockSectionWriter Writer => _resources.Writer;
 
-    public async ValueTask DisposeAsync()
-    {
-        try
-        {
-            await Process.DisposeAsync().AsTask().WaitAsync(TestTimeouts.HangGuard);
-        }
-        finally
-        {
-            Writer.Dispose();
-            Sections.Dispose();
-        }
-    }
+    public async ValueTask DisposeAsync() =>
+        await Handle.DisposeAsync().AsTask().WaitAsync(TestTimeouts.HangGuard);
 }
 
 /// <summary>Client block sections over temporary delete-on-close files, each with a lifetime that records its disposal.</summary>

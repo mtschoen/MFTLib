@@ -9,7 +9,7 @@ namespace MFTLib.Tests.Index;
 ///     What a consumer sees when a cached block cannot be resumed because the journal no
 ///     longer holds its checkpoint: the drive is cold-scanned, and its status carries the
 ///     reason and the size a journal would need to be at least to have kept the checkpoint.
-///     The journal read is swapped out through <c>JournalCheckpointCheck._journalOverride</c>,
+///     The journal read is swapped out through <c>JournalIsolation.OverrideJournalWindow</c>,
 ///     so these run on every platform and never touch a real volume.
 /// </summary>
 [TestClass]
@@ -59,8 +59,8 @@ public class FileIndexCheckpointLossTests
 
     static IDisposable Journal(ulong journalIdentifier, long firstUsn, long nextUsn, long allocationDelta = 64)
     {
-        return JournalCheckpointCheck.OverrideJournalForTest(
-            _ => new JournalWindow(journalIdentifier, firstUsn, nextUsn, allocationDelta, 128L * 1024 * 1024));
+        return JournalIsolation.OverrideJournalWindow(
+            _ => new SyntheticJournalWindow(journalIdentifier, firstUsn, nextUsn, allocationDelta, 128L * 1024 * 1024));
     }
 
     /// <summary>Writes the cache block a later open will try to warm-start from.</summary>
@@ -144,7 +144,7 @@ public class FileIndexCheckpointLossTests
     public async Task VolumeThatCannotAnswer_WarmStartsAsBefore()
     {
         await SeedCacheAsync();
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => null);
+        using var journal = JournalIsolation.OverrideJournalWindow(_ => null);
 
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
 
@@ -171,7 +171,7 @@ public class FileIndexCheckpointLossTests
         }
 
         var checkedDrives = 0;
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ =>
+        using var journal = JournalIsolation.OverrideJournalWindow(_ =>
         {
             checkedDrives++;
             return null;
@@ -260,7 +260,7 @@ public class FileIndexCheckpointLossTests
     {
         await SeedCacheAsync();
         var failure = new InvalidOperationException("Injected journal query failure.");
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => throw failure);
+        using var journal = JournalIsolation.OverrideJournalWindow(_ => throw failure);
 
         var observed = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
         {

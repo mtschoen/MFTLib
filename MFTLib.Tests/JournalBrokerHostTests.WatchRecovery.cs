@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -9,8 +10,8 @@ public partial class JournalBrokerHostTests
     [TestMethod]
     public async Task StartWatch_StaleCachedCursor_EndsThatDrivesStreamWithARescanErrorAndTheOtherDriveKeepsStreaming()
     {
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(drive => drive == 'C'
-            ? new JournalWindow(8UL, 0L, 1000L, 64L, 4096L)
+        using var journal = JournalIsolation.OverrideJournalWindow(drive => drive == 'C'
+            ? new SyntheticJournalWindow(8UL, 0L, 1000L, 64L, 4096L)
             : null);
         var queryCallCount = 0;
         (UsnJournalEntry[], UsnJournalCursor)[] batchD = [([WatchEntry()], new UsnJournalCursor(2UL, 210L))];
@@ -57,10 +58,10 @@ public partial class JournalBrokerHostTests
     public async Task StartWatch_MidStreamThrows_EmitsErrorFrame_SessionContinues()
     {
         var queryCount = 0;
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ =>
+        using var journal = JournalIsolation.OverrideJournalWindow(_ =>
         {
             queryCount++;
-            return new JournalWindow(8UL, 200L, 1000L, 64L, 4096L);
+            return new SyntheticJournalWindow(8UL, 200L, 1000L, 64L, 4096L);
         });
         var host = CreateWatchHost(
             queryCursor: _ => default,
@@ -96,8 +97,8 @@ public partial class JournalBrokerHostTests
     [TestMethod]
     public async Task StartWatch_StaleCachedCursor_NeverWatchesFromTheCurrentJournalPosition()
     {
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(drive => drive == 'C'
-            ? new JournalWindow(8UL, 0L, 1000L, 64L, 4096L)
+        using var journal = JournalIsolation.OverrideJournalWindow(drive => drive == 'C'
+            ? new SyntheticJournalWindow(8UL, 0L, 1000L, 64L, 4096L)
             : null);
         var queryCallCount = 0;
         var watchCallCount = 0;
@@ -146,8 +147,8 @@ public partial class JournalBrokerHostTests
     [TestMethod]
     public async Task StartWatch_JournalIdentifierMismatchOnTheCachedCursor_IsAlsoAStaleCursorError()
     {
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(drive => drive == 'C'
-            ? new JournalWindow(8UL, 0L, 1000L, 64L, 4096L)
+        using var journal = JournalIsolation.OverrideJournalWindow(drive => drive == 'C'
+            ? new SyntheticJournalWindow(8UL, 0L, 1000L, 64L, 4096L)
             : null);
         var queryCallCount = 0;
         var host = CreateWatchHost(

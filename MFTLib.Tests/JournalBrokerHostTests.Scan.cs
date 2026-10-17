@@ -120,7 +120,7 @@ public partial class JournalBrokerHostTests
     [TestMethod]
     public async Task CatchUpThrows_EmitsErrorAfterScanReady_OtherDriveUnaffected()
     {
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => null);
+        using var journal = JournalIsolation.OverrideJournalWindow(_ => null);
         var host = ScanHost(
             queryCursor: drive => drive == 'C' ? new UsnJournalCursor(1UL, 100L) : new UsnJournalCursor(2UL, 200L),
             readJournal: (drive, since, _) => drive == 'C'

@@ -13,7 +13,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
 {
     static readonly DateTime Modified = new(2026, 9, 3, 12, 30, 0, DateTimeKind.Utc);
     static readonly UsnJournalCursor RearmedCursor = new(71, 13000);
-    static readonly JournalWindow TrimmedWindow = new(71, 20000, 30000, 4096, 32768);
+    static readonly SyntheticJournalWindow TrimmedWindow = new(71, 20000, 30000, 4096, 32768);
     string _rootDirectory = null!;
     string _cacheDirectory = null!;
 
@@ -188,7 +188,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
     [TestMethod]
     public async Task OpenAsync_CatchUpLossAdoptsCompleteBlockWithTheArmedCursor()
     {
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => TrimmedWindow);
+        using var journal = JournalIsolation.OverrideJournalWindow(_ => TrimmedWindow);
         await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, _, _) => Records(),
             readJournal: (_, _, _) => throw new IOException("journal wrapped during scan")));
         var source = new BrokerMftBlockProducer(Connect(broker.Process)).CreateIndexSource();

@@ -1,3 +1,4 @@
+using MFTLib;
 using MFTLib.Index;
 
 namespace MFTLibTestExtensions;
@@ -10,14 +11,24 @@ internal sealed class ScriptedBrokerResources : IDisposable
 {
     readonly List<InProcessBrokerScan> _scans = [];
 
-    public ScriptedBrokerResources()
+    public ScriptedBrokerResources(TestBlockSections sections,
+        RecordingBlockSectionWriter writer, BrokerBlockSectionFactory createBlockSection)
     {
-        Writer = new RecordingBlockSectionWriter(Sections.Resolve);
+        Sections = sections;
+        Writer = writer;
+        CreateBlockSection = createBlockSection;
     }
 
-    public TestBlockSections Sections { get; } = new();
+    public static ScriptedBrokerResources Create()
+    {
+        var sections = new TestBlockSections();
+        var writer = new RecordingBlockSectionWriter(sections.Resolve);
+        return new ScriptedBrokerResources(sections, writer, sections.Create);
+    }
 
+    public TestBlockSections Sections { get; }
     public RecordingBlockSectionWriter Writer { get; }
+    public BrokerBlockSectionFactory CreateBlockSection { get; }
 
     /// <summary>Every scan the host began, in order.</summary>
     public IReadOnlyList<InProcessBrokerScan> Scans()

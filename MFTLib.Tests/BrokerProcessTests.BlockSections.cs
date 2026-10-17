@@ -166,8 +166,10 @@ public partial class BrokerProcessTests
     public async Task ScanDrive_LifetimeDisposeThrowingAfterScanReady_IsNotRetriedAndBlockIsReleased()
     {
         var sections = new ThrowingLifetimeSections();
-        using var writer = new RecordingBlockSectionWriter(sections.Inner.Resolve);
-        await using var handle = BrokerTestHarness.Start(CreateHost(), writer, sections.Create,
+        var writer = new RecordingBlockSectionWriter(sections.Inner.Resolve);
+        // aislop-ignore-next-line dotnet/IDISP001 -- ownership moves to InProcessBrokerHandle on Start
+        var resources = new ScriptedBrokerResources(sections.Inner, writer, sections.Create);
+        await using var handle = BrokerTestHarness.Start(CreateHost(), resources,
             new BrokerTestHarnessOptions(), null, null);
 
         var exception = await Assert.ThrowsExceptionAsync<IOException>(() => handle.Process.ScanDriveAsync('C',
@@ -176,7 +178,6 @@ public partial class BrokerProcessTests
         Assert.AreEqual("release failed", exception.Message);
         Assert.AreEqual(1, sections.Lifetime.DisposeCount, "the catch must not dispose a lifetime whose release already ran");
         BlockFileAssertions.IsDisposed(sections.Inner.Single().Block);
-        sections.Inner.Dispose();
     }
 
     sealed class ThrowingLifetimeSections

@@ -8,10 +8,10 @@ namespace MFTLib.Tests;
 public partial class BrokerProcessTests
 {
     // Puts the armed cursor (7, 1000) below the journal's first USN: a proven trim.
-    static readonly JournalWindow TrimmedWindow = new(7, 5000, 9000, 4096, 32768);
+    static readonly SyntheticJournalWindow TrimmedWindow = new(7, 5000, 9000, 4096, 32768);
 
     // Still holds the armed cursor: a catch-up failure the journal does not prove.
-    static readonly JournalWindow RetainedWindow = new(7, 500, 9000, 4096, 32768);
+    static readonly SyntheticJournalWindow RetainedWindow = new(7, 500, 9000, 4096, 32768);
 
     [TestMethod]
     public async Task ScanDrive_ReturnsArmedCursorAndBlockAfterCatchUp()
@@ -88,12 +88,14 @@ public partial class BrokerProcessTests
         {
             CollectionAssert.AreEqual(names, broker.Writer.LastScanOptions.RetainedFileNames!.ToArray());
         }
+
+        Assert.AreEqual(new DriveKey('C'), broker.Handle.Scans.Single().Drive);
     }
 
     [TestMethod]
     public async Task ScanDrive_CatchUpLost_ReturnsBlockWithLossAndArmedCursor()
     {
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => TrimmedWindow);
+        using var journal = JournalIsolation.OverrideJournalWindow(_ => TrimmedWindow);
         var hostEnd = new TaskCompletionSource<DisposalRecordingStream>(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var broker = new InProcessBroker(
             CreateHost(readJournal: (_, _, _) => throw new IOException("catch-up read failed")),
@@ -119,7 +121,7 @@ public partial class BrokerProcessTests
     [TestMethod]
     public async Task ScanDrive_ErrorAfterScanReady_DisposesSectionAndReturnsNoBlock()
     {
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => RetainedWindow);
+        using var journal = JournalIsolation.OverrideJournalWindow(_ => RetainedWindow);
         await using var broker = new InProcessBroker(
             CreateHost(readJournal: (_, _, _) => throw new IOException("catch-up read failed")));
 
@@ -202,7 +204,7 @@ public partial class BrokerProcessTests
     [TestMethod]
     public async Task Producer_CatchUpLost_CopiesLossToProduceResult()
     {
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => TrimmedWindow);
+        using var journal = JournalIsolation.OverrideJournalWindow(_ => TrimmedWindow);
         await using var broker = new InProcessBroker(
             CreateHost(readJournal: (_, _, _) => throw new IOException("catch-up read failed")));
         var process = broker.Process;

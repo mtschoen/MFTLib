@@ -12,7 +12,7 @@ namespace MFTLib.Tests.Index;
 ///     once until the count reaches <see cref="FileIndex.LostCatchUpRecoveryLimit" />. The losses are
 ///     scripted on the producer's result, since the index trusts the producer's proof and reads no
 ///     journal for it; no clock is involved. One case records a live-watch loss through
-///     <c>JournalCheckpointCheck.OverrideJournalForTest</c>, a process-wide seam, hence
+///     <c>JournalIsolation.OverrideJournalWindow</c>, a process-wide seam, hence
 ///     <see cref="DoNotParallelizeAttribute" />.
 /// </summary>
 [TestClass]
@@ -294,12 +294,12 @@ public partial class FileIndexCatchUpLossTests
     [TestMethod]
     public async Task CatchUpLost_ScanCatchUpReportReplacesLiveWatchReport()
     {
-        using var harness = new WatchHarness('T');
-        harness.Index.HoldEveryRecovery();
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(letter => letter == 'T'
-            ? new JournalWindow(WatchHarness.JournalIdentifier, FirstUsn: 5000, NextUsn: 8000,
+        using var journal = JournalIsolation.OverrideJournalWindow(letter => letter == 'T'
+            ? new SyntheticJournalWindow(WatchHarness.JournalIdentifier, FirstUsn: 5000, NextUsn: 8000,
                 AllocationDelta: 64, MaximumSize: 128L * 1024 * 1024)
             : null);
+        using var harness = new WatchHarness('T');
+        harness.Index.HoldEveryRecovery();
         await harness.Index.StartWatchingAsync(['T'], Token);
         harness.Source.WatchFor('T').FailDrive(new IOException("T lost its checkpoint"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');

@@ -52,7 +52,7 @@ public partial class JournalBrokerHostChannelTests
     public async Task ScanChannel_CatchUpFailsAndJournalProvesLoss_EmitsScanReadyThenCatchUpLostAndCloses()
     {
         var cursorQueries = 0;
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => new JournalWindow(7, 5000, 9000, 4096, 32768));
+        using var journal = JournalIsolation.OverrideJournalWindow(_ => new SyntheticJournalWindow(7, 5000, 9000, 4096, 32768));
         var frames = await ScanWithFailedCatchUpAsync(new IOException("catch-up read failed"),
             () => Interlocked.Increment(ref cursorQueries));
 
@@ -75,7 +75,7 @@ public partial class JournalBrokerHostChannelTests
     [TestMethod]
     public async Task ScanChannel_CatchUpFailsAndCursorStillRetained_EmitsErrorAfterScanReady()
     {
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => new JournalWindow(7, 500, 9000, 4096, 32768));
+        using var journal = JournalIsolation.OverrideJournalWindow(_ => new SyntheticJournalWindow(7, 500, 9000, 4096, 32768));
         var frames = await ScanWithFailedCatchUpAsync(new IOException("catch-up read failed"));
 
         AssertScanReadyThen(frames, BrokerFrameKind.Error);
@@ -85,7 +85,7 @@ public partial class JournalBrokerHostChannelTests
     [TestMethod]
     public async Task ScanChannel_CatchUpFailsAndJournalCannotAnswer_EmitsErrorAfterScanReady()
     {
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => null);
+        using var journal = JournalIsolation.OverrideJournalWindow(_ => null);
         var frames = await ScanWithFailedCatchUpAsync(new IOException("catch-up read failed"));
 
         AssertScanReadyThen(frames, BrokerFrameKind.Error);
@@ -95,7 +95,7 @@ public partial class JournalBrokerHostChannelTests
     [TestMethod]
     public async Task ScanChannel_CatchUpFailsAndJournalRecreated_CatchUpLostHasNoSize()
     {
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => new JournalWindow(8, 5000, 9000, 4096, 32768));
+        using var journal = JournalIsolation.OverrideJournalWindow(_ => new SyntheticJournalWindow(8, 5000, 9000, 4096, 32768));
         var frames = await ScanWithFailedCatchUpAsync(new IOException("catch-up read failed"));
 
         AssertScanReadyThen(frames, BrokerFrameKind.CatchUpLost);
@@ -108,7 +108,7 @@ public partial class JournalBrokerHostChannelTests
     [TestMethod]
     public async Task ScanChannel_CatchUpCancelled_WritesNoCatchUpLost()
     {
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => new JournalWindow(7, 5000, 9000, 4096, 32768));
+        using var journal = JournalIsolation.OverrideJournalWindow(_ => new SyntheticJournalWindow(7, 5000, 9000, 4096, 32768));
         var frames = await ScanWithFailedCatchUpAsync(new OperationCanceledException());
 
         Assert.AreEqual(BrokerFrameKind.ScanReady, frames[^1].Kind);
@@ -136,7 +136,7 @@ public partial class JournalBrokerHostChannelTests
     [TestMethod]
     public async Task ScanChannel_CatchUpReturnsEntriesWithoutAdvancing_WritesErrorAndNoDuplicateBatch()
     {
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => null);
+        using var journal = JournalIsolation.OverrideJournalWindow(_ => null);
         var tip = new UsnJournalCursor(7, 1500);
         var host = CreateHost(readJournal: (_, _, _) => ([JournalEntries.Create(20, 1200, "file.txt")], tip));
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());

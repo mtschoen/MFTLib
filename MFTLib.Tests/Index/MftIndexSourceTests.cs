@@ -9,7 +9,7 @@ namespace MFTLib.Tests.Index;
 /// <summary>
 ///     <see cref="MftIndexSource" /> carries the block producer and the watch source of an index as
 ///     one object. The journal read is swapped out through
-///     <c>JournalCheckpointCheck.OverrideJournalForTest</c>, so these run on every platform.
+///     <c>JournalIsolation.OverrideJournalWindow</c>, so these run on every platform.
 /// </summary>
 [TestClass]
 [DoNotParallelize]
@@ -63,7 +63,7 @@ public class MftIndexSourceTests
     /// <summary>Writes the drive's cache block while the journal still holds its checkpoint.</summary>
     async Task SeedCacheAsync()
     {
-        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = HealthyWindow });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(Options(new MftIndexSource(ProduceMftShapedBlock)), Token);
         Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().Block!.Source);
     }
@@ -127,7 +127,7 @@ public class MftIndexSourceTests
     public async Task Unavailable_StillOpensTheCachedBlockAndReportsWatchingNotApplicable()
     {
         await SeedCacheAsync();
-        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = HealthyWindow });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(Options(MftIndexSources.Unavailable(Reason)), Token);
 
         var status = index.Drives.Single();
@@ -142,7 +142,7 @@ public class MftIndexSourceTests
     public async Task SourceWithoutWatchSource_ReportsWatchingNotApplicable()
     {
         await SeedCacheAsync();
-        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = HealthyWindow });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(Options(new MftIndexSource(ProduceMftShapedBlock)), Token);
 
         await DriveResultAssertions.NotApplicableAsync(
@@ -156,7 +156,7 @@ public class MftIndexSourceTests
     {
         await SeedCacheAsync();
         var watchSource = new ScriptedWatchSource();
-        using var journals = OverrideJournals(new Dictionary<DriveKey, JournalWindow> { ['T'] = HealthyWindow });
+        using var journals = OverrideJournals(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(new MftIndexSource(ProduceMftShapedBlock, watchSource.IndexSource)), Token);
 

@@ -78,7 +78,7 @@ public partial class JournalBrokerHostLivenessTests
     [TestMethod]
     public async Task CatchUp_SecondBoundedReadFails_WritesCatchUpLostAndNoBatch()
     {
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => new JournalWindow(7, 5000, 9000, 4096, 32768));
+        using var journal = JournalIsolation.OverrideJournalWindow(_ => new SyntheticJournalWindow(7, 5000, 9000, 4096, 32768));
         var liveness = new Liveness();
         var calls = 0;
         var host = liveness.Host(readJournal: (_, since, _) =>

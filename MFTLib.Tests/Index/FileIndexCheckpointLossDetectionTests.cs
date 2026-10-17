@@ -23,12 +23,16 @@ public class FileIndexCheckpointLossDetectionTests
 
     string _treeRoot = null!;
     string _cacheDirectory = null!;
+    SyntheticJournalWindow? _window;
+    IDisposable? _journalScope;
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
     [TestInitialize]
     public void Initialize()
     {
+        // One scope for the test, installed first so it is disposed after every index.
+        _journalScope = JournalIsolation.OverrideJournalWindow(_ => _window);
         _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
         _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
         Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
@@ -38,6 +42,7 @@ public class FileIndexCheckpointLossDetectionTests
     [TestCleanup]
     public void Cleanup()
     {
+        _journalScope?.Dispose();
         foreach (var directory in new[] { _treeRoot, _cacheDirectory })
         {
             try
@@ -64,16 +69,15 @@ public class FileIndexCheckpointLossDetectionTests
         };
     }
 
-    static IDisposable Journal(long firstUsn, long nextUsn)
+    void SetJournal(long firstUsn, long nextUsn)
     {
-        return JournalCheckpointCheck.OverrideJournalForTest(
-            _ => new JournalWindow(CachedJournalIdentifier, firstUsn, nextUsn, AllocationDelta, MaximumSize));
+        _window = new SyntheticJournalWindow(CachedJournalIdentifier, firstUsn, nextUsn, AllocationDelta, MaximumSize);
     }
 
     /// <summary>Writes the cache block a later open will try to warm-start from.</summary>
     async Task SeedCacheAsync(IIndexWatchSource watchSource)
     {
-        using var journal = Journal(firstUsn: 0, nextUsn: CachedNextUsn);
+        SetJournal(firstUsn: 0, nextUsn: CachedNextUsn);
         await using var index = await FileIndex.OpenAsync(Options(watchSource), CancellationToken.None);
         Assert.IsNull(index.Drives.Single().Watch.CheckpointLoss);
     }
@@ -85,7 +89,7 @@ public class FileIndexCheckpointLossDetectionTests
     async Task<FileIndex> OpenWithAnOpenTimeLossAsync(IIndexWatchSource watchSource)
     {
         await SeedCacheAsync(watchSource);
-        using var journal = Journal(firstUsn: CachedNextUsn + 500, nextUsn: CachedNextUsn + 4_000);
+        SetJournal(firstUsn: CachedNextUsn + 500, nextUsn: CachedNextUsn + 4_000);
         var index = await FileIndex.OpenAsync(Options(watchSource), CancellationToken.None);
         try
         {
@@ -118,7 +122,7 @@ public class FileIndexCheckpointLossDetectionTests
 
         // The cold scan wrote a fresh cursor and the journal holds it, so the drive is healthy
         // now. Only the report from the open remains.
-        using var journal = Journal(firstUsn: 0, nextUsn: CachedNextUsn + 4_000);
+        SetJournal(firstUsn: 0, nextUsn: CachedNextUsn + 4_000);
         await index.StartWatchingAsync(['T'], Token);
 
         await FailDriveAndWaitForFaultAsync(index, source,
@@ -152,7 +156,7 @@ public class FileIndexCheckpointLossDetectionTests
         await index.StartWatchingAsync(['T'], Token);
 
         // A window distinct from the open's, so the numbers say which detection produced them.
-        using var journal = Journal(firstUsn: CachedNextUsn + 900, nextUsn: CachedNextUsn + 8_000);
+        SetJournal(firstUsn: CachedNextUsn + 900, nextUsn: CachedNextUsn + 8_000);
         await FailDriveAndWaitForFaultAsync(index, source,
             new IOException("USN journal entries have been deleted; full rescan needed"));
 

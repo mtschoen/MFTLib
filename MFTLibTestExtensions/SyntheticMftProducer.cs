@@ -27,6 +27,8 @@ public sealed class SyntheticMftProducer
     /// <summary>Becomes <see cref="DriveBlockStatus.ScanTimestamp" />, so a test about scan age sets it explicitly.</summary>
     public DateTime ScanTimestamp { get; init; }
 
+    // SyntheticBlockTests.Producer_WritesItsRowsThroughTheRealWriterAndReportsItsSettings
+    // uses this to verify propagation of a producer's skipped-record count.
     /// <summary>Becomes <see cref="DriveBlockStatus.SkippedRecordCount" />; zero means the scan placed every record.</summary>
     internal int SkippedRecordCount { get; init; }
 

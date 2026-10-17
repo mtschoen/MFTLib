@@ -105,19 +105,9 @@ to a live read. The callback is evaluated for each query and may run on any
 drive's pump thread, concurrently for different drives, so mutable per-drive
 observations need synchronization.
 
-The returned IDisposable owns a process-global override. Nested and overlapping
-public scopes throw InvalidOperationException. Disposal restores the previous
-behavior exactly once without resetting the one-way guard, including when a
-using block exits through an exception; it does not clear reports already
-recorded on an index or drain callbacks already in flight. Mark the entire
-consumer fixture nonparallel (class-level [DoNotParallelize] in MSTest), keep
-the scope alive through all awaited work, and stop/dispose indexes and watches
-before disposing it. Do not combine independently installed internal overrides
-with an active public scope. The immutable guard flag itself still needs no
-per-test synchronization and is not part of the native delegate seam family.
-A test whose subject really is a real volume overrides with
-`JournalCheckpointCheck.ReadLiveJournal`, which bypasses the guard; three tests
-in `UsnJournalVolumeInteropTests` do.
+The returned IDisposable owns a process-global override. Nested and overlapping scopes throw InvalidOperationException. Disposal restores the guard-controlled observation behavior exactly once, including when a using block exits through an exception; it does not clear reports already recorded on an index or drain callbacks already in flight. Mark the entire consumer fixture nonparallel (class-level [DoNotParallelize] in MSTest), keep the scope alive through all awaited work, and stop/dispose indexes and watches before disposing it.
+
+MFTLib.Tests calls `JournalIsolation.OverrideJournalWindow` directly for every journal override, sharing the public scope's single-active ownership. The three explicit live-reader cases in `UsnJournalVolumeInteropTests` pass a private `ReadLive`, which converts `JournalCheckpointCheck.ReadLiveJournal` observations into `SyntheticJournalWindow` values. A null observation remains unknown. The one-way guard is never reset.
 
 ## Object lifetime
 

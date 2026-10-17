@@ -12,7 +12,7 @@ namespace MFTLib.Tests.Index;
 ///     of the fault that caused it, with the state lock free. Each case drives the index through the
 ///     harness's scripted producer and handles and reads the order the handlers ran in; no clock is
 ///     involved. One case makes the live-watch checkpoint check throw through
-///     <c>JournalCheckpointCheck.OverrideJournalForTest</c>, a process-wide seam, hence
+///     <c>JournalIsolation.OverrideJournalWindow</c>, a process-wide seam, hence
 ///     <see cref="DoNotParallelizeAttribute" />.
 /// </summary>
 [TestClass]

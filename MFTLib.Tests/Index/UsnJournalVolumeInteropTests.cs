@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using MFTLib.Index;
 using MFTLib.NativeInterop;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Win32.SafeHandles;
 
@@ -80,6 +81,12 @@ public class UsnJournalVolumeInteropTests
         return data;
     }
 
+    static SyntheticJournalWindow? ReadLive(DriveKey drive) =>
+        JournalCheckpointCheck.ReadLiveJournal(drive) is { } window
+            ? new SyntheticJournalWindow(window.JournalIdentifier, window.FirstUsn,
+                window.NextUsn, window.AllocationDelta, window.MaximumSize)
+            : null;
+
     static bool SkipOffWindows()
     {
         if (OperatingSystem.IsWindows())
@@ -149,7 +156,7 @@ public class UsnJournalVolumeInteropTests
         }
 
         FailIoControl(UsnJournalVolumeInterop.FsctlQueryUsnJournal, ErrorJournalNotActive);
-        using var live = JournalCheckpointCheck.OverrideJournalForTest(JournalCheckpointCheck.ReadLiveJournal);
+        using var live = JournalIsolation.OverrideJournalWindow(ReadLive);
 
         Assert.IsNull(JournalCheckpointCheck.Check('C', checkpointJournalIdentifier: 0xABCD, checkpointUsn: 10,
             JournalCheckpointLossDetection.DriveOpening));
@@ -192,7 +199,7 @@ public class UsnJournalVolumeInteropTests
             return;
         }
 
-        using var live = JournalCheckpointCheck.OverrideJournalForTest(JournalCheckpointCheck.ReadLiveJournal);
+        using var live = JournalIsolation.OverrideJournalWindow(ReadLive);
         var loss = JournalCheckpointCheck.Check('C', checkpointJournalIdentifier: 0, checkpointUsn: 0,
             JournalCheckpointLossDetection.DriveOpening);
 
@@ -226,7 +233,7 @@ public class UsnJournalVolumeInteropTests
             JournalCheckpointLossDetection.DriveOpening));
 
         // The real read is still reachable for a test that asks for it.
-        using var live = JournalCheckpointCheck.OverrideJournalForTest(JournalCheckpointCheck.ReadLiveJournal);
+        using var live = JournalIsolation.OverrideJournalWindow(ReadLive);
         Assert.IsNotNull(JournalCheckpointCheck.Check('C', checkpointJournalIdentifier: 0, checkpointUsn: 0,
             JournalCheckpointLossDetection.DriveOpening));
     }

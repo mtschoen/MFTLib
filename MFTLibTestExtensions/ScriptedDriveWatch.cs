@@ -1,6 +1,5 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
-using MFTLib;
 using MFTLib.Index;
 
 namespace MFTLibTestExtensions;
@@ -34,9 +33,6 @@ public sealed class ScriptedDriveWatch
     /// <summary>Identifies the watch the index requested, used by recorded starts and diagnostic messages.</summary>
     public DriveKey Drive => Target.Drive;
 
-    /// <summary>The journal position the index resumed this watch from: the cursor of the block it started on.</summary>
-    internal UsnJournalCursor StartCursor => new(Target.JournalIdentifier, Target.NextUsn);
-
     /// <summary>How many times the index disposed this watch; the index owes exactly one, and a second disposal throws.</summary>
     internal int DisposeCount => Volatile.Read(ref _disposeCount);
 
@@ -54,6 +50,8 @@ public sealed class ScriptedDriveWatch
 
     internal IndexWatchTarget Target { get; }
 
+    // ScriptedWatchSourceTests.ReadEnded_WaitsForADisposalDrainThatDequeuedAnUnreadItem
+    // holds an already-dequeued receipt to verify ReadEnded waits for its settlement.
     /// <summary>Runs on a closing drain after it dequeues an unread item and before it settles it.</summary>
     internal Action? BeforeSettleUnread { get; set; }
 

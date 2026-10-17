@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLibTestExtensions;
 
 namespace MFTLib.Tests.TestSupport;
 
@@ -12,13 +13,14 @@ internal static class CheckpointCacheTestSupport
         MftBlockProduceRequest request, CancellationToken cancellationToken) =>
         SeededBlocks.Produce(request, CachedJournalIdentifier, CachedNextUsn, FixedMoment);
 
-    public static JournalWindow HealthyWindow =>
+    public static SyntheticJournalWindow HealthyWindow =>
         new(CachedJournalIdentifier, 0, CachedNextUsn, 64, 128L * 1024 * 1024);
 
-    public static JournalWindow TrimmedWindow =>
+    public static SyntheticJournalWindow TrimmedWindow =>
         new(CachedJournalIdentifier, CachedNextUsn + 500, CachedNextUsn + 4_000, 64, 128L * 1024 * 1024);
 
-    public static IDisposable OverrideJournals(IReadOnlyDictionary<DriveKey, JournalWindow> byDrive) =>
-        JournalCheckpointCheck.OverrideJournalForTest(
+    public static IDisposable OverrideJournals(
+        IReadOnlyDictionary<DriveKey, SyntheticJournalWindow> byDrive) =>
+        JournalIsolation.OverrideJournalWindow(
             drive => byDrive.TryGetValue(drive, out var window) ? window : null);
 }

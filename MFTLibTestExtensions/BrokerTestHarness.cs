@@ -25,15 +25,8 @@ public static class BrokerTestHarness
     public static InProcessBrokerHandle StartInProcess(ScriptedBrokerVolumes volumes)
     {
         ArgumentNullException.ThrowIfNull(volumes);
-        var host = CreateHost(volumes);
-        // aislop-ignore-next-line IDISP001 -- ownership moves to the returned handle, which disposes it
-        var resources = new ScriptedBrokerResources();
-        if (volumes.ScanDrive is not null)
-        {
-            host.ScanStartingForTest = resources.RecordScan;
-        }
-        return Start(host, resources.Writer, resources.Sections.Create, new BrokerTestHarnessOptions(),
-            null, null).Own(resources);
+        return Start(CreateHost(volumes), ScriptedBrokerResources.Create(),
+            new BrokerTestHarnessOptions(), null, null);
     }
 
     /// <summary>
@@ -116,23 +109,25 @@ public static class BrokerTestHarness
     // The start MFTLib's own tests use: any host, section writer and client section factory, plus the
     // client's clock, per-pipe connection failures and held host writes, a wrapper around each client end
     // by pipe name, and a wrapper around the host's connector.
-    internal static InProcessBrokerHandle Start(JournalBrokerHost host, IBlockSectionWriter? blockSectionWriter,
-        BrokerBlockSectionFactory createBlockSection, BrokerTestHarnessOptions options,
+    internal static InProcessBrokerHandle Start(JournalBrokerHost host, ScriptedBrokerResources resources,
+        BrokerTestHarnessOptions options,
         Func<string, Stream, Stream>? wrapClientStream, Func<BrokerChannelConnector, BrokerChannelConnector>? wrapConnector)
     {
         ArgumentNullException.ThrowIfNull(host);
+        ArgumentNullException.ThrowIfNull(resources);
         ArgumentNullException.ThrowIfNull(options);
 
+        host.ScanStartingForTest = resources.RecordScan;
         var pipes = new InMemoryBrokerPipes(options, wrapClientStream);
         var (clientControl, hostControl) = pipes.CreatePair(InMemoryBrokerPipes.ControlPipeName);
         BrokerChannelConnector connector = pipes.ConnectAsync;
         connector = wrapConnector?.Invoke(connector) ?? connector;
-        var serve = Task.Run(() => host.ServeAsync(hostControl, connector, blockSectionWriter, CancellationToken.None));
+        var serve = Task.Run(() => host.ServeAsync(hostControl, connector, resources.Writer, CancellationToken.None));
         var exited = serve.ContinueWith(ended => ExitHost(ended, pipes), CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-        var process = new BrokerProcess(new HostLifetimeStream(clientControl, exited), pipes, createBlockSection,
+        var process = new BrokerProcess(new HostLifetimeStream(clientControl, exited), pipes, resources.CreateBlockSection,
             options.TimeProvider);
-        return new InProcessBrokerHandle(process, pipes.CloseHostEnds);
+        return new InProcessBrokerHandle(process, pipes.CloseHostEnds, resources);
     }
 
     // What an elevated broker process does when its session ends, for any reason: a failed session

@@ -23,10 +23,7 @@ internal readonly record struct JournalWindow(
 /// </summary>
 static class JournalCheckpointCheck
 {
-    /// <summary>
-    ///     A test seam with no synchronization, which is safe only while the test host runs
-    ///     one test at a time. Mirrors <see cref="UsnJournalSettingsQuery._queryOverride" />.
-    /// </summary>
+    /// <summary>The observation callback owned by the test package's single-active journal scope.</summary>
     internal static Func<DriveKey, JournalWindow?>? _journalOverride;
 
     static int _liveJournalReadsForbidden;
@@ -149,7 +146,7 @@ static class JournalCheckpointCheck
         /// </summary>
         public JournalWindow? Read(DriveKey drive)
         {
-            if (_journalOverride is { } journalOverride)
+            if (Volatile.Read(ref _journalOverride) is { } journalOverride)
             {
                 return journalOverride(drive);
             }
@@ -214,20 +211,5 @@ static class JournalCheckpointCheck
     internal static void ForbidLiveJournalReads()
     {
         Interlocked.Exchange(ref _liveJournalReadsForbidden, 1);
-    }
-
-    internal static IDisposable OverrideJournalForTest(Func<DriveKey, JournalWindow?> journal)
-    {
-        var previous = _journalOverride;
-        _journalOverride = journal;
-        return new RestoreJournal(previous);
-    }
-
-    sealed class RestoreJournal(Func<DriveKey, JournalWindow?>? previous) : IDisposable
-    {
-        public void Dispose()
-        {
-            _journalOverride = previous;
-        }
     }
 }

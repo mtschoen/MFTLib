@@ -9,20 +9,15 @@ namespace MFTLibTestExtensions;
 public sealed class InProcessBrokerHandle : IAsyncDisposable
 {
     readonly Action _crash;
-    ScriptedBrokerResources? _resources;
+    readonly ScriptedBrokerResources _resources;
     int _released;
 
-    internal InProcessBrokerHandle(BrokerProcess process, Action crash)
+    internal InProcessBrokerHandle(BrokerProcess process, Action crash,
+        ScriptedBrokerResources resources)
     {
         Process = process;
         _crash = crash;
-    }
-
-    // Hands the handle the scan log and the resources it releases after the process is disposed.
-    internal InProcessBrokerHandle Own(ScriptedBrokerResources resources)
-    {
         _resources = resources;
-        return this;
     }
 
     /// <summary>The client connected to the in-process host.</summary>
@@ -42,10 +37,10 @@ public sealed class InProcessBrokerHandle : IAsyncDisposable
     public void Crash() => _crash();
 
     /// <summary>
-    ///     Every scan the host served so far, in the order it started, as the client requested it. Empty for a
-    ///     handle MFTLib's own tests started with their own host.
+    ///     Every scan attempt the host began, in start order, recorded before querying its journal cursor.
+    ///     Includes attempts whose cursor query or scan source subsequently fails.
     /// </summary>
-    public IReadOnlyList<InProcessBrokerScan> Scans => _resources?.Scans() ?? [];
+    public IReadOnlyList<InProcessBrokerScan> Scans => _resources.Scans();
 
     readonly Lock _gate = new();
     Task? _disposeTask;
@@ -84,7 +79,7 @@ public sealed class InProcessBrokerHandle : IAsyncDisposable
         {
             if (Interlocked.Exchange(ref _released, 1) == 0)
             {
-                _resources?.Dispose();
+                _resources.Dispose();
             }
         }
     }

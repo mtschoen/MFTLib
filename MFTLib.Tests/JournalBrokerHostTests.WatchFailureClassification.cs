@@ -1,5 +1,5 @@
-using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -22,10 +22,10 @@ public partial class JournalBrokerHostTests
     public async Task StartWatch_RetainedCursor_PreservesMessageDespiteFormerKeywords(string message)
     {
         var queriedDrives = new List<char>();
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(drive =>
+        using var journal = JournalIsolation.OverrideJournalWindow(drive =>
         {
             queriedDrives.Add((drive).Letter);
-            return new JournalWindow(7UL, 100L, 1000L, 64L, 4096L);
+            return new SyntheticJournalWindow(7UL, 100L, 1000L, 64L, 4096L);
         });
 
         Assert.AreEqual(message, await ReadStartupErrorAsync(message, CachedCursor));
@@ -37,8 +37,8 @@ public partial class JournalBrokerHostTests
     [DataRow(8L, 0L)]
     public async Task StartWatch_LostCursor_DecoratesWithoutMessageKeywords(long journalIdentifier, long firstUsn)
     {
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ =>
-            new JournalWindow((ulong)journalIdentifier, firstUsn, 1000L, 64L, 4096L));
+        using var journal = JournalIsolation.OverrideJournalWindow(_ =>
+            new SyntheticJournalWindow((ulong)journalIdentifier, firstUsn, 1000L, 64L, 4096L));
 
         const string message = "Read failed: opaque native diagnostic";
         Assert.AreEqual(
@@ -53,8 +53,8 @@ public partial class JournalBrokerHostTests
     [DataRow(true)]
     public async Task StartWatch_UnknownJournal_PreservesOriginalMessage(bool incoherent)
     {
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => incoherent
-            ? new JournalWindow(8UL, 2000L, 1000L, 64L, 4096L)
+        using var journal = JournalIsolation.OverrideJournalWindow(_ => incoherent
+            ? new SyntheticJournalWindow(8UL, 2000L, 1000L, 64L, 4096L)
             : null);
 
         const string message = "cursor deleted; 1181";
@@ -65,10 +65,10 @@ public partial class JournalBrokerHostTests
     public async Task StartWatch_NoQueryableCachedCursor_DoesNotReadJournal()
     {
         var queryCount = 0;
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ =>
+        using var journal = JournalIsolation.OverrideJournalWindow(_ =>
         {
             queryCount++;
-            return new JournalWindow(8UL, 200L, 1000L, 64L, 4096L);
+            return new SyntheticJournalWindow(8UL, 200L, 1000L, 64L, 4096L);
         });
 
         const string message = "cursor operation failed";

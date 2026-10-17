@@ -16,8 +16,8 @@ public class FileIndexWatchRescanFaultDuringProductionTests
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
     static IDisposable LostCheckpointForT() =>
-        JournalCheckpointCheck.OverrideJournalForTest(letter => letter == 'T'
-            ? new JournalWindow(WatchHarness.JournalIdentifier, FirstUsn: 5000, NextUsn: 8000,
+        JournalIsolation.OverrideJournalWindow(letter => letter == 'T'
+            ? new SyntheticJournalWindow(WatchHarness.JournalIdentifier, FirstUsn: 5000, NextUsn: 8000,
                 AllocationDelta: 64, MaximumSize: 128L * 1024 * 1024)
             : null);
 
@@ -26,8 +26,8 @@ public class FileIndexWatchRescanFaultDuringProductionTests
     [DataRow(true)]
     public async Task ApplyFailureDuringProduction_RecoversOnlyAfterAFailedScan(bool scanFails)
     {
-        using var harness = new WatchHarness('T', 'U');
         using var journal = LostCheckpointForT();
+        using var harness = new WatchHarness('T', 'U');
         await harness.Index.StartWatchingAsync(['T'], Token);
         await harness.Index.StartWatchingAsync(['U'], Token);
         var production = harness.HoldNextProduction('T');

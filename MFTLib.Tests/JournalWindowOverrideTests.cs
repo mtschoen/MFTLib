@@ -56,36 +56,6 @@ public class JournalWindowOverrideTests
     }
 
     [TestMethod]
-    public void Disposal_RestoresPreviousOverrideAndCannotClobberNewOwner()
-    {
-        using var previous = JournalCheckpointCheck.OverrideJournalForTest(
-            _ => new JournalWindow(8, 0, 5_000, 64, 8_192));
-        var first = JournalIsolation.OverrideJournalWindow(_ => Trimmed);
-        try
-        {
-            Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, Check()!.Cause);
-            first.Dispose();
-            Assert.AreEqual(JournalCheckpointLossCause.JournalRecreated, Check()!.Cause);
-            var second = JournalIsolation.OverrideJournalWindow(_ => null);
-            try
-            {
-                first.Dispose();
-                Assert.IsNull(Check());
-                second.Dispose();
-                Assert.AreEqual(JournalCheckpointLossCause.JournalRecreated, Check()!.Cause);
-            }
-            finally
-            {
-                second.Dispose();
-            }
-        }
-        finally
-        {
-            first.Dispose();
-        }
-    }
-
-    [TestMethod]
     public void ExceptionalExit_RestoresGuardAndReleasesOwnership()
     {
         JournalIsolation.ForbidLiveJournalReads();
