@@ -4,63 +4,24 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
 
+/// <summary>
+///     Row-view semantics of <see cref="FileIndex.EnumerateRows" />: row-view field parity with
+///     <see cref="FileEntry" />, zero borrows without iteration, and enumerator reuse or copy disposal.
+/// </summary>
 [TestClass]
 public sealed class FileIndexEnumerateRowsTests : IDisposable
 {
-
-    IndexTreeFixture _fixture = null!;
-    string _treeRoot => _fixture.TreeRoot;
+    TwoDriveQueryFixture _fixture = null!;
 
     [TestInitialize]
-    public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
+    public void Initialize() => _fixture = new TwoDriveQueryFixture();
 
     public void Dispose() => _fixture.Dispose();
-
-    string FirstRoot => Path.Combine(_treeRoot, "first");
-
-    string SecondRoot => Path.Combine(_treeRoot, "second");
-
-    static List<FileEntry> Collect(FileIndex index, SearchQuery query, CancellationToken cancellationToken = default)
-    {
-        var entries = new List<FileEntry>();
-        foreach (var row in index.EnumerateRows(query, cancellationToken))
-        {
-            entries.Add(row.ToEntry());
-        }
-
-        return entries;
-    }
-
-    static void AssertRowsMatchSearch(FileIndex index, SearchQuery query)
-    {
-        var expected = index.Search(query).Select(entry => entry.RecordKey).OrderBy(key => key.ToString()).ToArray();
-        var actual = Collect(index, query).Select(entry => entry.RecordKey).OrderBy(key => key.ToString()).ToArray();
-        CollectionAssert.AreEqual(expected, actual, $"EnumerateRows and Search disagree for {query}.");
-    }
-
-    [TestMethod]
-    public async Task EnumerateRows_MatchesSearchAcrossAMultiDriveIndex()
-    {
-        await using var index = await OpenTwoDriveIndexAsync();
-
-        AssertRowsMatchSearch(index, new SearchQuery(null));
-        AssertRowsMatchSearch(index, new SearchQuery(null, IsDirectory: false));
-        AssertRowsMatchSearch(index, new SearchQuery(null, IsDirectory: true));
-        AssertRowsMatchSearch(index, new SearchQuery("*.md", NameMatchMode.Glob));
-        AssertRowsMatchSearch(index, new SearchQuery("readme"));
-        AssertRowsMatchSearch(index, new SearchQuery("readme.md", NameMatchMode.Exact));
-        AssertRowsMatchSearch(index, new SearchQuery(null, SizeMinimum: 100));
-        AssertRowsMatchSearch(index, new SearchQuery(null, IncludeDeleted: true));
-
-        var documents = index.Find(Path.Combine(FirstRoot, "Documents"))!.Value;
-        AssertRowsMatchSearch(index, new SearchQuery("readme", Subtree: documents));
-        AssertRowsMatchSearch(index, new SearchQuery(null, Subtree: documents));
-    }
 
     [TestMethod]
     public async Task EnumerateRows_RowViewAgreesWithItsEntry()
     {
-        await using var index = await OpenTwoDriveIndexAsync();
+        await using var index = await _fixture.OpenAsync();
         AssertRowViews(index);
     }
 
@@ -83,81 +44,9 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
     }
 
     [TestMethod]
-    public async Task EnumerateRows_UndefinedMatchMode_ThrowsAtCallTime()
-    {
-        await using var index = await OpenTwoDriveIndexAsync();
-        var query = new SearchQuery("readme", (NameMatchMode)99);
-        AssertInvalidMatchMode(index, query);
-    }
-
-    static void AssertInvalidMatchMode(FileIndex index, SearchQuery query)
-    {
-        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => { index.EnumerateRows(query); });
-    }
-
-    [TestMethod]
-    public async Task EnumerateRows_NullQuery_ThrowsAtCallTime()
-    {
-        await using var index = await OpenTwoDriveIndexAsync();
-        AssertNullQuery(index);
-    }
-
-    static void AssertNullQuery(FileIndex index)
-    {
-        Assert.ThrowsExactly<ArgumentNullException>(() => { index.EnumerateRows(null!); });
-    }
-
-
-    [TestMethod]
-    public async Task EnumerateRows_BreakOnFirstRow_ReturnsItsBorrow()
-    {
-        await using var index = await OpenTwoDriveIndexAsync();
-        BreakOnFirstRow(index);
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
-    }
-
-    static void BreakOnFirstRow(FileIndex index)
-    {
-        var seen = false;
-        foreach (var row in index.EnumerateRows(new SearchQuery(null)))
-        {
-            _ = row.Size;
-            seen = true;
-            Assert.AreEqual(1, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
-            break;
-        }
-
-        Assert.IsTrue(seen);
-    }
-
-    [TestMethod]
-    public async Task EnumerateRows_LoopBodyThrows_ReturnsItsBorrow()
-    {
-        await using var index = await OpenTwoDriveIndexAsync();
-        AssertLoopBodyThrows(index);
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
-    }
-
-    static void AssertLoopBodyThrows(FileIndex index)
-    {
-        Assert.ThrowsExactly<InvalidOperationException>(() => ThrowFromLoopBody(index));
-    }
-
-    static void ThrowFromLoopBody(FileIndex index)
-    {
-        foreach (var row in index.EnumerateRows(new SearchQuery(null)))
-        {
-            _ = row.Size;
-            Assert.AreEqual(1, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
-            throw new InvalidOperationException("Loop body failure.");
-        }
-    }
-
-
-    [TestMethod]
     public async Task EnumerateRows_WithoutIteration_TakesNoBorrow()
     {
-        await using var index = await OpenTwoDriveIndexAsync();
+        await using var index = await _fixture.OpenAsync();
         CreateWithoutIteration(index);
         Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
     }
@@ -174,7 +63,7 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
     [DataRow(true, true)]
     public async Task EnumerateRows_AccessAfterSharedBorrowReturned_Throws(bool throughCopy, bool readCurrent)
     {
-        await using var index = await OpenTwoDriveIndexAsync();
+        await using var index = await _fixture.OpenAsync();
         AssertDisposedAccess(index, throughCopy, readCurrent);
     }
 
@@ -206,7 +95,7 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
     [TestMethod]
     public async Task EnumerateRows_RepeatedAndCopiedDispose_ReturnsExactlyOneBorrow()
     {
-        await using var index = await OpenTwoDriveIndexAsync();
+        await using var index = await _fixture.OpenAsync();
         AssertRepeatedDispose(index);
         Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
     }
@@ -228,22 +117,4 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
         Assert.AreEqual(1, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
         Assert.IsTrue(later.MoveNext());
     }
-
-    async Task<FileIndex> OpenTwoDriveIndexAsync()
-    {
-        Directory.CreateDirectory(Path.Combine(FirstRoot, "Documents"));
-        Directory.CreateDirectory(Path.Combine(FirstRoot, "Pictures"));
-        Directory.CreateDirectory(Path.Combine(SecondRoot, "Pictures"));
-        await File.WriteAllTextAsync(Path.Combine(FirstRoot, "Documents", "readme.md"), "hello");
-        await File.WriteAllTextAsync(Path.Combine(FirstRoot, "Documents", "report.pdf"), new string('x', 100));
-        await File.WriteAllTextAsync(Path.Combine(FirstRoot, "Pictures", "holiday.jpg"), new string('y', 5000));
-        await File.WriteAllTextAsync(Path.Combine(SecondRoot, "notes.md"), new string('z', 300));
-        await File.WriteAllTextAsync(Path.Combine(SecondRoot, "Pictures", "readme.md"), "world");
-
-        return await FileIndex.OpenAsync(_fixture.Options() with
-        {
-            Drives = [new IndexedDrive('T', FirstRoot, 1, ProducerKind.Enumeration), new IndexedDrive('U', SecondRoot, 2, ProducerKind.Enumeration)],
-        }, CancellationToken.None);
-    }
-
 }

@@ -167,6 +167,7 @@ public sealed class RowScanningContractTests : IDisposable
 
         using var cancellation = new CancellationTokenSource();
         var token = cancellation.Token;
+        Action cancel = cancellation.Cancel;
         int[]? admittedCounts = null;
         OperationCanceledException? thrown = null;
         try
@@ -176,7 +177,7 @@ public sealed class RowScanningContractTests : IDisposable
                 if (admittedCounts is null)
                 {
                     admittedCounts = blocks.Select(block => block.ReleaseState.Hooks.OutstandingBorrowCount).ToArray();
-                    cancellation.Cancel();
+                    cancel();
                 }
             });
 
@@ -248,6 +249,7 @@ public sealed class RowScanningContractTests : IDisposable
             var checkpoints = new List<uint>();
             using var cancellation = new CancellationTokenSource();
             var token = cancellation.Token;
+            Action cancel = cancellation.Cancel;
             Action<uint> observe = checkpoints.Add;
             foreach (var block in blocks)
             {
@@ -257,7 +259,7 @@ public sealed class RowScanningContractTests : IDisposable
             OperationCanceledException? thrown = null;
             try
             {
-                SetAdmission(index, () => cancellation.Cancel());
+                SetAdmission(index, () => cancel());
                 try
                 {
                     call(index, root, Path.Combine(root.Path, "missing-child.dat"), new SearchQuery("missing"), token);
@@ -320,12 +322,13 @@ public sealed class RowScanningContractTests : IDisposable
         var checkpoints = new List<uint>();
         using var cancellation = new CancellationTokenSource();
         var token = cancellation.Token;
+        Action cancel = cancellation.Cancel;
         Action<uint> observe = row =>
         {
             checkpoints.Add(row);
             if (row == cancelAt)
             {
-                cancellation.Cancel();
+                cancel();
             }
         };
         foreach (var block in blocks)
@@ -359,4 +362,262 @@ public sealed class RowScanningContractTests : IDisposable
             Assert.AreEqual(0, block.ReleaseState.Hooks.OutstandingBorrowCount, api);
         }
     }
+
+    static List<FileEntry> Collect(FileIndex index, SearchQuery query, bool rows)
+    {
+        if (!rows)
+        {
+            return index.Enumerate(query).ToList();
+        }
+
+        var entries = new List<FileEntry>();
+        foreach (var row in index.EnumerateRows(query))
+        {
+            entries.Add(row.ToEntry());
+        }
+
+        return entries;
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task StreamingResults_MatchSearchInOrder(bool rows)
+    {
+        using var tree = new TwoDriveQueryFixture();
+        await using var index = await tree.OpenAsync();
+
+        SearchQuery[] queries =
+        [
+            new(null), new(null, IsDirectory: false), new(null, IsDirectory: true),
+            new("*.md", NameMatchMode.Glob), new("readme"),
+            new("readme.md", NameMatchMode.Exact), new("re*.p?f", NameMatchMode.Glob),
+            new(null, SizeMinimum: 100), new(null, IncludeDeleted: true),
+            new("readme", Subtree: index.Find(Path.Combine(tree.FirstRoot, "Documents"))!.Value),
+            new(null, Subtree: index.Find(Path.Combine(tree.FirstRoot, "Documents"))!.Value),
+            new(null, Subtree: index.Find(Path.Combine(tree.SecondRoot, "Pictures"))!.Value)
+        ];
+        foreach (var query in queries)
+        {
+            CollectionAssert.AreEqual(
+                index.Search(query).Select(entry => entry.RecordKey).ToArray(),
+                Collect(index, query, rows).Select(entry => entry.RecordKey).ToArray(),
+                query.ToString());
+        }
+    }
+
+    [TestMethod]
+    [DataRow("Search")]
+    [DataRow("Enumerate")]
+    [DataRow("EnumerateRows")]
+    public async Task QueryArguments_AreRejectedAtCallTime(string api)
+    {
+        await using var index = await OpenSyntheticIndexAsync();
+
+        void Call(SearchQuery query)
+        {
+            switch (api)
+            {
+                case "Search":
+                    _ = index.Search(query);
+                    break;
+                case "Enumerate":
+                    _ = index.Enumerate(query);
+                    break;
+                case "EnumerateRows":
+                    _ = index.EnumerateRows(query);
+                    break;
+                default:
+                    throw new ArgumentException($"Unknown API: {api}", nameof(api));
+            }
+        }
+
+        ArgumentNullException? nullException = null;
+        try
+        {
+            Call(null!);
+        }
+        catch (ArgumentNullException exception)
+        {
+            nullException = exception;
+        }
+
+        Assert.IsNotNull(nullException);
+        Assert.AreEqual("query", nullException.ParamName);
+
+        ArgumentOutOfRangeException? invalidException = null;
+        try
+        {
+            Call(new SearchQuery("readme", (NameMatchMode)99));
+        }
+        catch (ArgumentOutOfRangeException exception)
+        {
+            invalidException = exception;
+        }
+
+        Assert.IsNotNull(invalidException);
+        Assert.AreEqual("query", invalidException.ParamName);
+        StringAssert.StartsWith(invalidException.Message, "Unknown name match mode.");
+        foreach (var block in index.CurrentSnapshot)
+        {
+            Assert.AreEqual(0, block.ReleaseState.Hooks.OutstandingBorrowCount);
+        }
+    }
+
+    [TestMethod]
+    [DataRow(false, false)]
+    [DataRow(false, true)]
+    [DataRow(true, false)]
+    [DataRow(true, true)]
+    public async Task StreamingExit_ReturnsEveryBorrow(bool rows, bool throwFromBody)
+    {
+        await using var index = await OpenSyntheticIndexAsync();
+        var blocks = index.CurrentSnapshot.OrderBy(block => block.Drive.Letter).ToArray();
+
+        var visitCount = 0;
+        int[]? countsDuringBody = null;
+
+        void Visit()
+        {
+            visitCount++;
+            countsDuringBody = blocks.Select(block => block.ReleaseState.Hooks.OutstandingBorrowCount).ToArray();
+            if (throwFromBody)
+            {
+                throw new InvalidOperationException("Loop body failure.");
+            }
+        }
+
+        if (throwFromBody)
+        {
+            InvalidOperationException? failure = null;
+            try
+            {
+                VisitFirst(index, rows, Visit);
+            }
+            catch (InvalidOperationException exception)
+            {
+                failure = exception;
+            }
+
+            Assert.IsNotNull(failure);
+            Assert.AreEqual("Loop body failure.", failure.Message);
+        }
+        else
+        {
+            VisitFirst(index, rows, Visit);
+        }
+
+        Assert.AreEqual(1, visitCount);
+        CollectionAssert.AreEqual(new[] { 1, 1 }, countsDuringBody);
+        foreach (var block in blocks)
+        {
+            Assert.AreEqual(0, block.ReleaseState.Hooks.OutstandingBorrowCount);
+        }
+    }
+
+    static void VisitFirst(FileIndex index, bool rows, Action visit)
+    {
+        if (rows)
+        {
+            foreach (var row in index.EnumerateRows(new SearchQuery(null)))
+            {
+                _ = row.Size;
+                visit();
+                break;
+            }
+        }
+        else
+        {
+            foreach (var entry in index.Enumerate(new SearchQuery(null)))
+            {
+                _ = entry.Size;
+                visit();
+                break;
+            }
+        }
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task StreamingAdmission_HappensAtItsDocumentedBoundary(bool rows)
+    {
+        var index = await OpenSyntheticIndexAsync();
+        var blocks = index.CurrentSnapshot.OrderBy(block => block.Drive.Letter).ToArray();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var token = cancellation.Token;
+
+        AssertStreamingCancelledTiming(index, rows, token);
+        foreach (var block in blocks)
+        {
+            Assert.AreEqual(0, block.ReleaseState.Hooks.OutstandingBorrowCount);
+        }
+
+        await index.DisposeAsync();
+        AssertStreamingDisposedTiming(index, rows);
+        foreach (var block in blocks)
+        {
+            Assert.AreEqual(0, block.ReleaseState.Hooks.OutstandingBorrowCount);
+        }
+    }
+
+    static void AssertStreamingCancelledTiming(FileIndex index, bool rows, CancellationToken token)
+    {
+        if (rows)
+        {
+            var enumerable = index.EnumerateRows(new SearchQuery(null), token);
+            OperationCanceledException? failure = null;
+            try
+            {
+                using var enumerator = enumerable.GetEnumerator();
+            }
+            catch (OperationCanceledException exception)
+            {
+                failure = exception;
+            }
+
+            Assert.IsNotNull(failure, "EnumerateRows.GetEnumerator with a cancelled token must throw OperationCanceledException.");
+        }
+        else
+        {
+            var enumerable = index.Enumerate(new SearchQuery(null), token);
+            using var enumerator = enumerable.GetEnumerator();
+            OperationCanceledException? failure = null;
+            try
+            {
+                enumerator.MoveNext();
+            }
+            catch (OperationCanceledException exception)
+            {
+                failure = exception;
+            }
+
+            Assert.IsNotNull(failure, "Enumerate.MoveNext with a cancelled token must throw OperationCanceledException.");
+        }
+    }
+
+    static void AssertStreamingDisposedTiming(FileIndex index, bool rows)
+    {
+        if (rows)
+        {
+            var enumerable = index.EnumerateRows(new SearchQuery(null));
+            ObjectDisposedException? failure = null;
+            try
+            {
+                using var enumerator = enumerable.GetEnumerator();
+            }
+            catch (ObjectDisposedException exception)
+            {
+                failure = exception;
+            }
+
+            Assert.IsNotNull(failure, "EnumerateRows.GetEnumerator on a disposed index must throw ObjectDisposedException.");
+        }
+        else
+        {
+            Assert.ThrowsExactly<ObjectDisposedException>(() => index.Enumerate(new SearchQuery(null)));
+        }
+    }
 }
+
