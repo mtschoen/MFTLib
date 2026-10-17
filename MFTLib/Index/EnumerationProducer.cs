@@ -40,7 +40,7 @@ internal sealed class EnumerationProducer
     /// <summary>
     ///     Samples only the root's entries and counts one more root-sized level per root
     ///     directory rather than paying for a full pre-count walk. Under-estimating is absorbed by
-    ///     the block's headroom; true exhaustion sets the compaction-needed flag.
+    ///     the block's headroom; true exhaustion sets the capacity-exhausted flag.
     /// </summary>
     public static uint EstimateRowCount(string rootDirectory)
     {
@@ -79,7 +79,7 @@ internal sealed class EnumerationProducer
     /// <summary>
     ///     Walks the tree breadth first, writing the root as row 0 and every entry after it into
     ///     the writer. It does not call <see cref="BlockWriter.Complete" />; the caller does. The
-    ///     walk stops early once the writer reports compaction needed.
+    ///     walk stops early once the writer reports capacity exhausted.
     /// </summary>
     /// <param name="writer">The block to write rows into.</param>
     /// <param name="progress">Receives one sample after each directory is enumerated, on the calling thread; may be null.</param>
@@ -110,16 +110,16 @@ internal sealed class EnumerationProducer
                 CurrentDirectory = directoryPath
             });
 
-            // Every write below capacity has already failed once compaction is needed, so
+            // Every write below capacity has already failed once capacity is exhausted, so
             // opening further queued directories would only pay I/O for more of the same
             // no-op writes. Stop the walk here instead.
-            if (writer.CompactionNeeded)
+            if (writer.CapacityExhausted)
             {
                 break;
             }
         }
 
-        return new EnumerationResult(writer.RowCount, state.AccessDeniedSubtreeCount, writer.CompactionNeeded);
+        return new EnumerationResult(writer.RowCount, state.AccessDeniedSubtreeCount, writer.CapacityExhausted);
     }
 
     /// <summary>

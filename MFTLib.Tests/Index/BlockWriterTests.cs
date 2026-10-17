@@ -145,19 +145,19 @@ public partial class BlockWriterTests
     }
 
     [TestMethod]
-    public void TryWriteRow_PastSlotCapacity_SetsCompactionNeededAndReturnsFalse()
+    public void TryWriteRow_PastSlotCapacity_SetsCapacityExhaustedAndReturnsFalse()
     {
         using var block = CreateBlock(slotCapacity: 4);
         var writer = new BlockWriter(block);
 
         Assert.IsFalse(writer.TryWriteRow(4, "overflow.txt", FileColumns(0)));
-        Assert.IsTrue(writer.CompactionNeeded);
+        Assert.IsTrue(writer.CapacityExhausted);
         Assert.AreEqual(0u, writer.RowCount);
         Assert.AreEqual(0u, block.Header.LiveRowCount);
     }
 
     [TestMethod]
-    public void TryWriteRow_WithAnExhaustedNamePool_SetsCompactionNeededAndLeavesTheRowUntouched()
+    public void TryWriteRow_WithAnExhaustedNamePool_SetsCapacityExhaustedAndLeavesTheRowUntouched()
     {
         using var block = CreateBlock(namePoolCapacity: 8);
         var writer = new BlockWriter(block);
@@ -165,7 +165,7 @@ public partial class BlockWriterTests
         Assert.IsTrue(writer.TryWriteRow(0, "abcd", FileColumns(0)));
         Assert.IsFalse(writer.TryWriteRow(1, "this name does not fit", FileColumns(0)));
 
-        Assert.IsTrue(writer.CompactionNeeded);
+        Assert.IsTrue(writer.CapacityExhausted);
         Assert.IsFalse(block.Rows[1].IsInUse);
         Assert.AreEqual(1u, block.Header.LiveRowCount);
     }
@@ -180,7 +180,7 @@ public partial class BlockWriterTests
         Assert.IsTrue(writer.TryWriteRow(1, "near.txt", FileColumns(0)));
 
         Assert.AreEqual("near.txt", new string(NamePool.ReadRowName(block, 1)));
-        Assert.IsTrue(writer.CompactionNeeded);
+        Assert.IsTrue(writer.CapacityExhausted);
     }
 
     [TestMethod]
@@ -257,14 +257,14 @@ public partial class BlockWriterTests
     }
 
     [TestMethod]
-    public void MarkSubtreeSkipped_PastSlotCapacity_SetsCompactionNeeded()
+    public void MarkSubtreeSkipped_PastSlotCapacity_SetsCapacityExhausted()
     {
         using var block = CreateBlock(slotCapacity: 4);
         var writer = new BlockWriter(block);
 
         writer.MarkSubtreeSkipped(9);
 
-        Assert.IsTrue(writer.CompactionNeeded);
+        Assert.IsTrue(writer.CapacityExhausted);
     }
 
     [TestMethod]
@@ -315,11 +315,11 @@ public partial class BlockWriterTests
     }
 
     [TestMethod]
-    public void MarkCompactionNeeded_IsVisibleInTheHeaderFlags()
+    public void MarkCapacityExhausted_IsVisibleInTheHeaderFlags()
     {
         using var block = CreateBlock();
         var writer = new BlockWriter(block);
-        writer.MarkCompactionNeeded();
-        Assert.IsTrue(block.Header.IsCompactionNeeded);
+        writer.MarkCapacityExhausted();
+        Assert.IsTrue(block.Header.IsCapacityExhausted);
     }
 }

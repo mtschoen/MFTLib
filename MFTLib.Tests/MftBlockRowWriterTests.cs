@@ -41,7 +41,7 @@ public class MftBlockRowWriterTests
         Assert.AreEqual(block.Header.RowCount, result.RowCount);
         Assert.AreEqual(block.Header.NamePoolUsed, result.NamePoolUsedBytes);
         Assert.AreEqual(0L, result.SkippedRecordCount);
-        Assert.IsFalse(block.Header.IsCompactionNeeded);
+        Assert.IsFalse(block.Header.IsCapacityExhausted);
         Assert.IsFalse(block.Header.IsComplete);
     }
 
@@ -58,7 +58,7 @@ public class MftBlockRowWriterTests
     }
 
     [TestMethod]
-    public void WriteBatches_SlotCapacityOverflowIsCountedAndMarksCompaction()
+    public void WriteBatches_SlotCapacityOverflowIsCountedAndMarksCapacityExhaustion()
     {
         using var block = CreateBlock();
         var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block),
@@ -67,7 +67,7 @@ public class MftBlockRowWriterTests
         Assert.AreEqual(1L, result.SkippedRecordCount);
         Assert.AreEqual(32L, result.RowCount);
         Assert.AreEqual(8L, result.NamePoolUsedBytes);
-        Assert.IsTrue(block.Header.IsCompactionNeeded);
+        Assert.IsTrue(block.Header.IsCapacityExhausted);
     }
 
     [TestMethod]
@@ -83,7 +83,7 @@ public class MftBlockRowWriterTests
         Assert.AreEqual(8L, result.NamePoolUsedBytes);
         Assert.AreEqual(RowFlags.None, block.Rows[0].Flags);
         Assert.AreEqual(RowFlags.None, block.Rows[6].Flags);
-        Assert.IsFalse(block.Header.IsCompactionNeeded);
+        Assert.IsFalse(block.Header.IsCapacityExhausted);
     }
 
     [TestMethod]
@@ -114,7 +114,7 @@ public class MftBlockRowWriterTests
         Assert.AreEqual(8L, result.NamePoolUsedBytes);
         Assert.AreEqual(RowFlags.None, block.Rows[6].Flags);
         Assert.AreEqual("z", NamePool.ReadRowName(block, 7).ToString());
-        Assert.IsTrue(block.Header.IsCompactionNeeded);
+        Assert.IsTrue(block.Header.IsCapacityExhausted);
     }
 
     [TestMethod]
@@ -183,12 +183,12 @@ public class MftBlockRowWriterTests
         using var block = CreateBlock();
         var writer = new BlockWriter(block);
         Assert.IsTrue(writer.TryWriteRow(5, ".", new RowColumns(5, RowFlags.InUse, 0, 0, 0, 0)));
-        writer.MarkCompactionNeeded();
+        writer.MarkCapacityExhausted();
 
         var result = MftBlockRowWriter.WriteBatches(writer, [], MftBlockRowFilter.Full, null, CancellationToken.None);
 
         Assert.AreEqual(new BlockWriteResult(6, 2, 0), result);
-        Assert.IsTrue(block.Header.IsCompactionNeeded);
+        Assert.IsTrue(block.Header.IsCapacityExhausted);
     }
 
     [TestMethod]

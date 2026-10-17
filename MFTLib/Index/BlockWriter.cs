@@ -1,14 +1,10 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     The only type that writes rows and names into a block. Every capacity limit is enforced
-///     here: an out-of-range row index or a name that does not fit sets the compaction-needed
-///     flag and reports failure, so a producer or a journal batch keeps applying what does fit
-///     and the block reports that it needs compaction rather than crashing or silently dropping records.
-///     Every public member holds a <see cref="BlockAccessScope" /> on the block for the member's
-///     whole duration, so a call racing <see cref="BlockFile.Dispose" /> either completes against
-///     mapped memory or, when disposal began first, fails with <see cref="ObjectDisposedException" />
-///     instead of dereferencing an unmapped view.
+///     Writes rows and names; a row or name that cannot fit sets the capacity-exhausted flag and
+///     reports failure, allowing callers to keep what fits and report the need for a rescan.
+///     Each public member holds a <see cref="BlockAccessScope" /> throughout: it either completes
+///     before unmapping or throws <see cref="ObjectDisposedException" /> when disposal began first.
 /// </summary>
 internal sealed partial class BlockWriter
 {
@@ -60,30 +56,27 @@ internal sealed partial class BlockWriter
     }
 
     /// <summary>Determines whether the block has exhausted row or name-pool capacity.</summary>
-    public bool CompactionNeeded
+    public bool CapacityExhausted
     {
         get
         {
             using var access = Block.TakeAccess();
-            return Block.Header.IsCompactionNeeded;
+            return Block.Header.IsCapacityExhausted;
         }
     }
 
-    /// <summary>
-    ///     Fills one slot. Returns false without writing anything when the slot is past capacity
-    ///     or the name does not fit, having first set the compaction-needed flag.
-    /// </summary>
+    /// <summary>Fills one slot, or sets the capacity-exhausted flag and returns false without writing a row when the slot or name cannot fit.</summary>
     /// <param name="rowIndex">Zero-based row slot to populate.</param>
     /// <param name="name">File or directory name to append to the immutable name pool.</param>
     /// <param name="columns">Remaining row values, including parent, attributes, size, and flags.</param>
-    /// <returns>true when the row and name fit; otherwise, false after marking compaction needed.</returns>
+    /// <returns>true when the row and name fit; otherwise, false after marking capacity exhausted.</returns>
     public bool TryWriteRow(uint rowIndex, ReadOnlySpan<char> name, in RowColumns columns)
     {
         using var access = Block.TakeAccess();
         ref var header = ref Block.Header;
         if (rowIndex >= header.SlotCapacity)
         {
-            MarkCompactionNeededCore();
+            MarkCapacityExhaustedCore();
             return false;
         }
 
@@ -147,7 +140,7 @@ internal sealed partial class BlockWriter
     /// <summary>
     ///     A move whose name is unchanged writes only the parent row and leaves the descriptor
     ///     word untouched, so a move-heavy workload does not re-append the same name on every
-    ///     move and burn name-pool space toward an early compaction. A real rename (the name
+    ///     move and burn name-pool space toward an early rescan. A real rename (the name
     ///     differs, including an exact-case-only change) appends the new name, sets the parent,
     ///     and only then publishes the new name offset and length as one atomic descriptor-word
     ///     store. That ordering plus the single store is the format's guarantee that a
@@ -157,13 +150,13 @@ internal sealed partial class BlockWriter
     /// <param name="rowIndex">Zero-based row slot to rename or move.</param>
     /// <param name="name">New name, or the current name for a parent-only move.</param>
     /// <param name="parentRow">New parent-row index.</param>
-    /// <returns>true when the update fits; otherwise, false after marking compaction needed.</returns>
+    /// <returns>true when the update fits; otherwise, false after marking capacity exhausted.</returns>
     public bool TryRenameRow(uint rowIndex, ReadOnlySpan<char> name, uint parentRow)
     {
         using var access = Block.TakeAccess();
         if (rowIndex >= Block.Header.SlotCapacity)
         {
-            MarkCompactionNeededCore();
+            MarkCapacityExhaustedCore();
             return false;
         }
 
@@ -226,7 +219,7 @@ internal sealed partial class BlockWriter
         using var access = Block.TakeAccess();
         if (rowIndex >= Block.Header.SlotCapacity)
         {
-            MarkCompactionNeededCore();
+            MarkCapacityExhaustedCore();
             return;
         }
 
@@ -273,16 +266,16 @@ internal sealed partial class BlockWriter
     }
 
     /// <summary>Marks the block stale because an update could not fit its reserved capacity.</summary>
-    public void MarkCompactionNeeded()
+    public void MarkCapacityExhausted()
     {
         using var access = Block.TakeAccess();
-        MarkCompactionNeededCore();
+        MarkCapacityExhaustedCore();
     }
 
     /// <summary>The unscoped body, for callers already holding an access scope.</summary>
-    void MarkCompactionNeededCore()
+    void MarkCapacityExhaustedCore()
     {
-        Block.Header.Flags |= BlockFlags.CompactionNeeded;
+        Block.Header.Flags |= BlockFlags.CapacityExhausted;
     }
 
     /// <summary>Stores the journal checkpoint from which this completed block can be watched.</summary>
@@ -348,7 +341,7 @@ internal sealed partial class BlockWriter
     {
         if (rowIndex >= Block.Header.SlotCapacity)
         {
-            MarkCompactionNeededCore();
+            MarkCapacityExhaustedCore();
             return;
         }
 
@@ -380,7 +373,7 @@ internal sealed partial class BlockWriter
         if (!NamePool.TryAppend(Block.NamePoolCharacters, ref used, header.NamePoolCapacity, name,
                 out nameOffsetBytes))
         {
-            MarkCompactionNeededCore();
+            MarkCapacityExhaustedCore();
             return false;
         }
 

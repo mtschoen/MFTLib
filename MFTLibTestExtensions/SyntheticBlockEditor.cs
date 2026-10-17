@@ -95,11 +95,11 @@ public sealed class SyntheticBlockEditor
         _writer.MarkTombstone(row);
     }
 
-    /// <summary>Marks the block stale, as when an update did not fit, so the next open rescans it.</summary>
-    public void MarkCompactionNeeded()
+    /// <summary>Marks capacity exhausted as when a write did not fit; the block stays queryable until an explicit rescan replaces it.</summary>
+    public void MarkCapacityExhausted()
     {
         EnsureOpen();
-        _writer.MarkCompactionNeeded();
+        _writer.MarkCapacityExhausted();
     }
 
     /// <summary>Replaces the journal position from which a watch would resume.</summary>

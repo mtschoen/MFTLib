@@ -106,7 +106,7 @@ public partial class JournalMutatorTests
         ], journalIdentifier: 7, nextUsn: 2000);
 
         Assert.AreEqual(0, changes.Count);
-        Assert.IsTrue(mutator.CompactionNeeded);
+        Assert.IsTrue(mutator.CapacityExhausted);
         Assert.IsFalse(_block.Rows[5].IsInUse);
         Assert.IsFalse(_block.Rows[5].IsDeleted);
         Assert.AreEqual(generationBefore, _block.Header.Generation);
@@ -267,7 +267,7 @@ public partial class JournalMutatorTests
     }
 
     [TestMethod]
-    public void RecordNumberPastSlotCapacity_SetsCompactionNeededAndKeepsApplyingTheRest()
+    public void RecordNumberPastSlotCapacity_SetsCapacityExhaustedAndKeepsApplyingTheRest()
     {
         var mutator = new JournalMutator(_writer);
         var changes = mutator.Apply(_snapshot, 0,
@@ -276,14 +276,14 @@ public partial class JournalMutatorTests
             CreateEntry(6, 1, "near.txt", UsnReason.FileCreate | UsnReason.Close, ChangeMoment)
         ], journalIdentifier: 7, nextUsn: 2000);
 
-        Assert.IsTrue(mutator.CompactionNeeded);
-        Assert.IsTrue(_block.Header.IsCompactionNeeded);
+        Assert.IsTrue(mutator.CapacityExhausted);
+        Assert.IsTrue(_block.Header.IsCapacityExhausted);
         Assert.AreEqual(1, changes.Count);
         Assert.AreEqual("near.txt", changes[0].Entry.Name);
     }
 
     [TestMethod]
-    public void ExhaustedNamePool_SetsCompactionNeededAndDoesNotThrow()
+    public void ExhaustedNamePool_SetsCapacityExhaustedAndDoesNotThrow()
     {
         var mutator = new JournalMutator(_writer);
         var longName = new string('n', 300);
@@ -295,7 +295,7 @@ public partial class JournalMutatorTests
 
         mutator.Apply(_snapshot, 0, entries, journalIdentifier: 7, nextUsn: 2000);
 
-        Assert.IsTrue(mutator.CompactionNeeded);
+        Assert.IsTrue(mutator.CapacityExhausted);
     }
 
     [TestMethod]
@@ -313,7 +313,7 @@ public partial class JournalMutatorTests
     }
 
     [TestMethod]
-    public void Rename_NamePoolExhausted_ReturnsNoChangeAndMarksCompactionNeeded()
+    public void Rename_NamePoolExhausted_ReturnsNoChangeAndMarksCapacityExhausted()
     {
         var mutator = new JournalMutator(_writer);
         // Longer than the whole 512-byte name pool, so the append this rename needs can
@@ -326,7 +326,7 @@ public partial class JournalMutatorTests
             journalIdentifier: 7, nextUsn: 2000);
 
         Assert.AreEqual(0, changes.Count);
-        Assert.IsTrue(_block.Header.IsCompactionNeeded);
+        Assert.IsTrue(_block.Header.IsCapacityExhausted);
         Assert.AreEqual("existing.txt", new string(NamePool.ReadRowName(_block, 2)));
     }
 

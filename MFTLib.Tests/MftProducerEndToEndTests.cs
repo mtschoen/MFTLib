@@ -111,7 +111,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
     }
 
     [TestMethod]
-    public async Task OpenAsync_RecordBeyondPlannedCapacityReportsReadyWithCompactionNeeded()
+    public async Task OpenAsync_RecordBeyondPlannedCapacityReportsReadyWithCapacityExhausted()
     {
         await using var broker = new InProcessBroker(CreateHost(
             scanDrive: (_, _, _, _, _, _) => Records().Append([Record(1_000_000, 5, "beyond.txt")]),
@@ -122,8 +122,8 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         var created = broker.Sections.Single().Block;
         Assert.IsTrue(created.Header.SlotCapacity < 1_000_000);
         Assert.IsTrue(created.Header.IsComplete);
-        Assert.IsTrue(created.Header.IsCompactionNeeded);
-        Assert.IsTrue(index.Drives[0].Block!.IsCompactionNeeded);
+        Assert.IsTrue(created.Header.IsCapacityExhausted);
+        Assert.IsTrue(index.Drives[0].Block!.IsCapacityExhausted);
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf('C').ProducerKind);
         Assert.IsNotNull(index.Find(At("documents", "notes.txt")));
@@ -222,7 +222,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf('C').ProducerKind);
         Assert.IsTrue(index.Drives[0].Watch.IsSupported);
-        Assert.IsFalse(index.Drives[0].Block!.IsCompactionNeeded);
+        Assert.IsFalse(index.Drives[0].Block!.IsCapacityExhausted);
         Assert.IsNull(index.Drives[0].Failure);
     }
 

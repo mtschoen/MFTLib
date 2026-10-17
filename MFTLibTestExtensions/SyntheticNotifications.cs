@@ -154,16 +154,16 @@ public static class SyntheticNotifications
     /// </summary>
     /// <param name="blockSource">Where the block came from.</param>
     /// <param name="liveRowCount">The rows a query can return.</param>
-    /// <param name="compactionNeeded">The block header compaction flag.</param>
+    /// <param name="capacityExhausted">The block header capacity-exhausted flag.</param>
     /// <param name="scanTimestamp">When the current block production completed.</param>
     /// <returns>The block status.</returns>
     public static DriveBlockStatus CreateDriveBlockStatus(BlockSource blockSource, uint liveRowCount,
-        bool compactionNeeded, DateTime scanTimestamp) =>
+        bool capacityExhausted, DateTime scanTimestamp) =>
         new()
         {
             Source = blockSource,
             LiveRowCount = liveRowCount,
-            IsCompactionNeeded = compactionNeeded,
+            IsCapacityExhausted = capacityExhausted,
             ScanTimestamp = scanTimestamp
         };
 

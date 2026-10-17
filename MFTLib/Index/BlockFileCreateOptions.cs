@@ -2,7 +2,7 @@ namespace MFTLib.Index;
 
 /// <summary>
 ///     Everything needed to lay out a new block file. Capacities are final: a block never
-///     grows, and exhausting either one sets the compaction-needed flag instead.
+///     grows, and exhausting either one sets the capacity-exhausted flag instead.
 /// </summary>
 internal sealed record BlockFileCreateOptions
 {

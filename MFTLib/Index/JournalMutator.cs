@@ -7,7 +7,7 @@ namespace MFTLib.Index;
 ///     scanned observations when an event cannot have changed them and marks them unknown when
 ///     it can have; every row write goes through <see cref="BlockWriter" />, which holds the
 ///     block's access scope. Capacity exhaustion sets the
-///     compaction-needed flag, keeps applying what fits, and leaves the drive queryable rather
+///     capacity-exhausted flag, keeps applying what fits, and leaves the drive queryable rather
 ///     than crashing or silently dropping a record. NTFS closes every open cycle with a record
 ///     that repeats the cycle's reasons plus <see cref="UsnReason.Close" />; the mutator
 ///     coalesces that close record against the reasons the cycle already reported (tracked per
@@ -31,7 +31,7 @@ internal sealed class JournalMutator
 
     public BlockWriter Writer { get; }
 
-    public bool CompactionNeeded => Writer.CompactionNeeded;
+    public bool CapacityExhausted => Writer.CapacityExhausted;
 
     /// <summary>
     ///     Applies one batch in order, writes the USN cursor into the header, and bumps the
@@ -69,7 +69,7 @@ internal sealed class JournalMutator
         var rowIndex = (uint)entry.RecordNumber;
         if (entry.RecordNumber > uint.MaxValue || rowIndex >= Writer.SlotCapacity)
         {
-            Writer.MarkCompactionNeeded();
+            Writer.MarkCapacityExhausted();
             return null;
         }
 
@@ -321,7 +321,7 @@ internal sealed class JournalMutator
 
         if (entry.ParentRecordNumber > uint.MaxValue)
         {
-            Writer.MarkCompactionNeeded();
+            Writer.MarkCapacityExhausted();
             hydrated = false;
             return false;
         }

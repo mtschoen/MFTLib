@@ -106,7 +106,7 @@ public class MftDumpValidationTests
         Assert.AreEqual(BlockSource.ProducedByScan, drive.Block!.Source);
         Assert.AreEqual(0, drive.Block.SkippedRecordCount);
         Assert.AreEqual(7u, drive.Block.LiveRowCount);
-        Assert.IsFalse(drive.Block.IsCompactionNeeded);
+        Assert.IsFalse(drive.Block.IsCapacityExhausted);
         Assert.IsFalse(drive.Watch.IsSupported);
         Assert.IsNull(drive.Failure);
 
@@ -287,7 +287,7 @@ public class MftDumpValidationTests
 
         using var block = skipped.Block;
         Assert.AreEqual(3, skipped.SkippedRecordCount, "one record above 32 bits and two past the block");
-        Assert.IsTrue(block.Header.IsCompactionNeeded, "a row past the block marks the block as needing compaction");
+        Assert.IsTrue(block.Header.IsCapacityExhausted, "a row past the block marks the block as capacity exhausted");
         Assert.AreEqual(OutsideIndexMessage, rejected.Message);
     }
 

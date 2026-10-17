@@ -38,12 +38,8 @@ public sealed record DriveBlockStatus
     /// </summary>
     public DateTime ScanTimestamp { get; init; }
 
-    /// <summary>
-    ///     The block header's compaction flag: a mutation or a producer write could not fit, so
-    ///     the block is incomplete or stale. The next rescan plans doubled capacities from this
-    ///     block, so repeated rescans converge.
-    /// </summary>
-    public bool IsCompactionNeeded { get; init; }
+    /// <summary>A producer write or mutation could not fit; the inventory is incomplete or stale and only a rescan repairs it.</summary>
+    public bool IsCapacityExhausted { get; init; }
 
     /// <summary>
     ///     The MFT producer's count of records it could not place during the latest scan:

@@ -17,7 +17,7 @@ internal struct BlockHeader
     [FieldOffset(4)] public uint FormatVersion;
     /// <summary>Kind of producer that populated the block.</summary>
     [FieldOffset(8)] public ProducerKind ProducerKind;
-    /// <summary>Completion and compaction state published by the producer.</summary>
+    /// <summary>Completion and capacity exhaustion state published by the producer.</summary>
     [FieldOffset(12)] public BlockFlags Flags;
     /// <summary>NTFS serial number of the volume represented by the block.</summary>
     [FieldOffset(16)] public uint VolumeSerial;
@@ -50,7 +50,7 @@ internal struct BlockHeader
     ///     leave it unchanged: every batch advances the journal checkpoint
     ///     (<see cref="UsnJournalIdentifier" /> and <see cref="UsnNextUsn" />), and a rejection (record
     ///     number past slot capacity, name pool exhausted, or parent record number out of range)
-    ///     sets the compaction-needed flag without bumping the generation. Producer completion
+    ///     sets the capacity-exhausted flag without bumping the generation. Producer completion
     ///     stamps 1 on a block no batch has mutated.
     /// </summary>
     [FieldOffset(64)] public ulong Generation;
@@ -78,7 +78,7 @@ internal struct BlockHeader
     public readonly bool IsComplete => (Flags & BlockFlags.Complete) != 0;
 
     /// <summary>Determines whether a mutation exhausted the block's reserved capacity.</summary>
-    public readonly bool IsCompactionNeeded => (Flags & BlockFlags.CompactionNeeded) != 0;
+    public readonly bool IsCapacityExhausted => (Flags & BlockFlags.CapacityExhausted) != 0;
 
     /// <summary>Converts <see cref="ScanTimestampTicks" /> to a UTC <see cref="DateTime" />.</summary>
     public readonly DateTime ScanTimestampUtc => new(ScanTimestampTicks, DateTimeKind.Utc);

@@ -87,7 +87,7 @@ MFTLibTestExtensions.SyntheticBlock :: property public static MaximumPathDepth {
 MFTLibTestExtensions.SyntheticBlock :: type public static class
 MFTLibTestExtensions.SyntheticBlockEditor :: method public Complete(System.DateTime completed) : void
 MFTLibTestExtensions.SyntheticBlockEditor :: method public CorruptNamePool() : void
-MFTLibTestExtensions.SyntheticBlockEditor :: method public MarkCompactionNeeded() : void
+MFTLibTestExtensions.SyntheticBlockEditor :: method public MarkCapacityExhausted() : void
 MFTLibTestExtensions.SyntheticBlockEditor :: method public MarkSizesUnknown(System.Func<MFTLibTestExtensions.SyntheticRow, bool> matches) : int
 MFTLibTestExtensions.SyntheticBlockEditor :: method public SetAttributes(uint row, System.IO.FileAttributes attributes) : void
 MFTLibTestExtensions.SyntheticBlockEditor :: method public SetCacheTag(MFTLib.Index.CacheTag cacheTag) : void
@@ -191,7 +191,7 @@ MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCached
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockFile(MFTLib.Index.DriveKey drive, uint volumeSerial, string path, long size, System.DateTime lastWriteTime) : MFTLib.Index.CachedBlockFile
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockRejection(string path, string reason) : MFTLib.Index.CachedBlockRejection
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockStatus(MFTLib.Index.CachedBlockFile file, MFTLib.Index.CachedBlockAvailability availability, MFTLib.Index.BlockValidationResult? validation, MFTLib.Index.ProducerKind? producerKind, string? rootDirectory, MFTLib.Index.CacheTag? cacheTag = default) : MFTLib.Index.CachedBlockStatus
-MFTLibTestExtensions.SyntheticNotifications :: method public static CreateDriveBlockStatus(MFTLib.Index.BlockSource blockSource, uint liveRowCount, bool compactionNeeded, System.DateTime scanTimestamp) : MFTLib.Index.DriveBlockStatus
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateDriveBlockStatus(MFTLib.Index.BlockSource blockSource, uint liveRowCount, bool capacityExhausted, System.DateTime scanTimestamp) : MFTLib.Index.DriveBlockStatus
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateDriveFailure(MFTLib.Index.DriveFailureKind kind, string message) : MFTLib.Index.DriveFailure
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateDriveOperationResult(MFTLib.Index.DriveKey drive, MFTLib.Index.DriveOperationOutcome outcome, System.Exception? failure) : MFTLib.Index.DriveOperationResult
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateDriveStatus(MFTLib.Index.DriveKey drive, MFTLib.Index.DriveState state, MFTLib.Index.DriveBlockStatus? block, MFTLib.Index.DriveFailure? failure) : MFTLib.Index.DriveStatus

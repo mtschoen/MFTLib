@@ -1,10 +1,6 @@
 namespace MFTLib.Index;
 
-/// <summary>
-///     Header-level state. <see cref="Complete" /> is written last by the producer; a block
-///     without it was interrupted mid-write and must be discarded and rescanned.
-///     <see cref="CompactionNeeded" /> means a mutation could not fit and the block needs a rescan.
-/// </summary>
+/// <summary>Header state: producers write <see cref="Complete" /> last; absent completion requires discard and rescan. <see cref="CapacityExhausted" /> means a write did not fit and needs a rescan.</summary>
 [Flags]
 internal enum BlockFlags : uint
 {
@@ -12,6 +8,6 @@ internal enum BlockFlags : uint
     None = 0,
     /// <summary>Set by the producer after writing completes and before flushing; a block without it is discarded.</summary>
     Complete = 1,
-    /// <summary>A journal mutation could not fit in the block, so it requires compaction.</summary>
-    CompactionNeeded = 2
+    /// <summary>A producer write or journal mutation could not fit; rescan to rebuild the block.</summary>
+    CapacityExhausted = 2
 }

@@ -31,7 +31,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         Assert.AreEqual(result.JournalIdentifier, block.Header.UsnJournalIdentifier);
         Assert.AreEqual(result.NextUsn, block.Header.UsnNextUsn);
         Assert.AreEqual(0, result.SkippedRecordCount);
-        Assert.IsFalse(result.Block.Header.IsCompactionNeeded);
+        Assert.IsFalse(result.Block.Header.IsCapacityExhausted);
         Assert.AreEqual("file.txt", NamePool.ReadRowName(block, 20).ToString());
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
         Assert.AreEqual(21u, block.Header.RowCount);
@@ -161,18 +161,18 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
 
         Assert.AreEqual(2, result.SkippedRecordCount);
         Assert.AreEqual("file.txt", NamePool.ReadRowName(block, 20).ToString());
-        Assert.IsFalse(block.Header.IsCompactionNeeded);
+        Assert.IsFalse(block.Header.IsCapacityExhausted);
     }
 
     [TestMethod]
-    public async Task Produce_ReportsCompactionFlag()
+    public async Task Produce_ReportsCapacityExhaustionFlag()
     {
-        await using var broker = CreateBrokerChangingBlock(block => block.Header.Flags |= BlockFlags.CompactionNeeded);
+        await using var broker = CreateBrokerChangingBlock(block => block.Header.Flags |= BlockFlags.CapacityExhausted);
 
         var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard);
         using var block = result.Block;
 
-        Assert.IsTrue(result.Block.Header.IsCompactionNeeded);
+        Assert.IsTrue(result.Block.Header.IsCapacityExhausted);
     }
 
     [TestMethod]

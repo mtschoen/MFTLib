@@ -42,10 +42,10 @@ public class FileIndexEnumerationGrowthTests
         };
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
-        Assert.IsTrue(index.Drives.Single().Block!.IsCompactionNeeded);
+        Assert.IsTrue(index.Drives.Single().Block!.IsCapacityExhausted);
 
         await index.RescanAsync(['T'], CancellationToken.None);
-        Assert.IsFalse(index.Drives.Single().Block!.IsCompactionNeeded);
+        Assert.IsFalse(index.Drives.Single().Block!.IsCapacityExhausted);
         Assert.AreEqual((uint)FileCount + 2, index.Drives.Single().Block!.LiveRowCount);
     }
 }

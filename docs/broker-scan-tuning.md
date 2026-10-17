@@ -16,7 +16,7 @@ path, volume serial, delete-on-close choice, and cache tag in the index's
 65,536 when information is absent or smaller. Slot capacity adds 25 percent or
 65,536 rows, whichever is larger. The default name estimate is 48 bytes per
 slot, then name-pool headroom adds 25 percent or one mebibyte, whichever is
-larger. Capacity exhaustion marks the block for compaction and reports skipped
+larger. Capacity exhaustion sets the header flag and reports skipped
 records. Treat that as a reason to rescan.
 
 The broker protocol carries only `MftValidDataLength` and `BytesPerFileRecordSegment`

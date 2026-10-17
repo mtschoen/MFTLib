@@ -94,7 +94,7 @@ MFTLib.Index.DriveBlockStatus :: method public static op_Equality(MFTLib.Index.D
 MFTLib.Index.DriveBlockStatus :: method public static op_Inequality(MFTLib.Index.DriveBlockStatus? left, MFTLib.Index.DriveBlockStatus? right) : bool
 MFTLib.Index.DriveBlockStatus :: property public AccessDeniedSubtreeCount { get; init; } : int
 MFTLib.Index.DriveBlockStatus :: property public CacheSlot { get; init; } : MFTLib.Index.CacheSlotState?
-MFTLib.Index.DriveBlockStatus :: property public IsCompactionNeeded { get; init; } : bool
+MFTLib.Index.DriveBlockStatus :: property public IsCapacityExhausted { get; init; } : bool
 MFTLib.Index.DriveBlockStatus :: property public LiveRowCount { get; init; } : uint
 MFTLib.Index.DriveBlockStatus :: property public ScanTimestamp { get; init; } : System.DateTime
 MFTLib.Index.DriveBlockStatus :: property public SkippedRecordCount { get; init; } : int

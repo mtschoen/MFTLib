@@ -263,21 +263,21 @@ public class FileIndexWatchTests
     }
 
     [TestMethod]
-    public async Task ApplyJournalEntries_ExhaustingCapacityReportsReadyWithCompactionNeeded()
+    public async Task ApplyJournalEntries_ExhaustingCapacityReportsReadyWithCapacityExhausted()
     {
         _index.ApplyJournalEntries('T',
             [Entry(50_000_000, 0, "far.txt", UsnReason.FileCreate | UsnReason.Close)],
             journalIdentifier: 5, nextUsn: 300);
 
         Assert.AreEqual(DriveState.Ready, _index.Drives[0].State);
-        Assert.IsTrue(_index.Drives[0].Block!.IsCompactionNeeded);
+        Assert.IsTrue(_index.Drives[0].Block!.IsCapacityExhausted);
         Assert.IsNotNull(_index.Find(Path.Combine(_treeRoot, "Documents", "readme.md")));
 
         await _index.RescanAsync(['T'], CancellationToken.None);
 
         var replaced = _index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Ready, replaced.State);
-        Assert.IsFalse(replaced.Block!.IsCompactionNeeded);
+        Assert.IsFalse(replaced.Block!.IsCapacityExhausted);
         Assert.IsNotNull(_index.Find(Path.Combine(_treeRoot, "Documents", "readme.md")));
     }
 

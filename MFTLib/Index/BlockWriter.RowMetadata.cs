@@ -39,7 +39,7 @@ internal sealed partial class BlockWriter
         using var access = Block.TakeAccess();
         if (rowIndex >= Block.Header.SlotCapacity)
         {
-            MarkCompactionNeededCore();
+            MarkCapacityExhaustedCore();
             return false;
         }
 

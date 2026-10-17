@@ -273,7 +273,7 @@ public class SyntheticNotificationsTests
                 {
                     Source = BlockSource.WarmStartedFromCache,
                     LiveRowCount = 40,
-                    IsCompactionNeeded = true,
+                    IsCapacityExhausted = true,
                     ScanTimestamp = Moment
                 },
                 Watch = new DriveWatchStatus { IsSupported = true }
@@ -283,7 +283,7 @@ public class SyntheticNotificationsTests
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.AreEqual(BlockSource.WarmStartedFromCache, status.Block!.Source);
         Assert.AreEqual(40u, status.Block.LiveRowCount);
-        Assert.IsTrue(status.Block.IsCompactionNeeded);
+        Assert.IsTrue(status.Block.IsCapacityExhausted);
         Assert.AreEqual(Moment, status.Block.ScanTimestamp);
         Assert.IsTrue(status.Watch.IsSupported);
         Assert.IsNull(status.Failure);

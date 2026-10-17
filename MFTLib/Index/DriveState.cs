@@ -1,8 +1,8 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     Whether a drive has a queryable block. <see cref="Ready" /> includes blocks needing
-///     compaction, reported independently by <see cref="DriveBlockStatus.IsCompactionNeeded" />.
+///     Whether a drive has a queryable block. <see cref="Ready" /> includes blocks with exhausted
+///     capacity, reported independently by <see cref="DriveBlockStatus.IsCapacityExhausted" />.
 ///     <see cref="Offline" /> means the drive was unavailable at open; <see cref="Failed" />
 ///     means its producer failed, a cache-only open found no usable block or a mismatched
 ///     cache tag, or its cache slot was in use, distinguished by <see cref="DriveFailure.Kind" />.

@@ -85,7 +85,7 @@ internal static class MftBlockCapacity
 
         // Widened before the multiply and clamped after: a large volume times a generous
         // average name length overflows 32 bits, and a saturated pool plus the block's own
-        // compaction-needed flag is the right answer there, not a checked-arithmetic throw
+        // capacity-exhausted flag is the right answer there, not a checked-arithmetic throw
         // on a path whose whole job is estimating.
         var estimatedNameBytes = (ulong)slotCapacity * AverageNameBytesPerRow;
         var clamped = estimatedNameBytes > uint.MaxValue / 2 ? uint.MaxValue / 2 : (uint)estimatedNameBytes;

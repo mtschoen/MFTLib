@@ -84,12 +84,12 @@ public class BlockWriterDisposalRaceTests
         Assert.ThrowsException<ObjectDisposedException>(() => writer.TryRenameRow(1, "renamed.pdf", 0));
         Assert.ThrowsException<ObjectDisposedException>(() => writer.MarkTombstone(1));
         Assert.ThrowsException<ObjectDisposedException>(() => writer.MarkSubtreeSkipped(1));
-        Assert.ThrowsException<ObjectDisposedException>(() => writer.MarkCompactionNeeded());
+        Assert.ThrowsException<ObjectDisposedException>(() => writer.MarkCapacityExhausted());
         Assert.ThrowsException<ObjectDisposedException>(() => writer.SetJournalCursor(1, 2));
         Assert.ThrowsException<ObjectDisposedException>(() => writer.SetCacheTag(new CacheTag("TEST", 7)));
         Assert.ThrowsException<ObjectDisposedException>(() => writer.BumpGeneration());
         Assert.ThrowsException<ObjectDisposedException>(() => writer.Complete(Moment, null));
         Assert.ThrowsException<ObjectDisposedException>(() => _ = writer.RowCount);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = writer.CompactionNeeded);
+        Assert.ThrowsException<ObjectDisposedException>(() => _ = writer.CapacityExhausted);
     }
 }

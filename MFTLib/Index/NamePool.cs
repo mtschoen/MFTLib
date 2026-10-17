@@ -42,7 +42,7 @@ internal static class NamePool
     ///     Appends a name and reports where it landed. Returns false when the name does not fit
     ///     or is longer than the 16-bit length field allows, leaving <paramref name="usedBytes" />
     ///     untouched. A false result is the pool-exhaustion path: the caller sets the
-    ///     compaction-needed flag and keeps applying what does fit.
+    ///     capacity-exhausted flag and keeps applying what does fit.
     /// </summary>
     /// <param name="pool">Writable UTF-16 name-pool storage.</param>
     /// <param name="usedBytes">Used pool bytes, updated only after a successful append.</param>

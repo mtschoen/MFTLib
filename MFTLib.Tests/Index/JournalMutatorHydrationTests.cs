@@ -78,7 +78,7 @@ public class JournalMutatorHydrationTests
     [DataRow(22ul, "orphan.cs", (uint)UsnReason.DataOverwrite)]
     [DataRow(25ul, "orphan-delete.cs", (uint)UsnReason.FileDelete)]
     [DataRow(26ul, "orphan-rename.cs", (uint)UsnReason.RenameNewName)]
-    public async Task Hydration_RefusesAnOutOfRangeParentAndMarksCompactionNeeded(
+    public async Task Hydration_RefusesAnOutOfRangeParentAndMarksCapacityExhausted(
         ulong recordNumber, string fileName, uint reasonValue)
     {
         var reason = (UsnReason)reasonValue;
@@ -95,7 +95,7 @@ public class JournalMutatorHydrationTests
         });
 
         Assert.AreEqual(0, fixture.Apply([bad]).Count);
-        Assert.IsTrue(fixture.Block.Header.IsCompactionNeeded);
+        Assert.IsTrue(fixture.Block.Header.IsCapacityExhausted);
     }
 
     [TestMethod]

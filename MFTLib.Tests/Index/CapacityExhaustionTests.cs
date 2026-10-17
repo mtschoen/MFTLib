@@ -65,7 +65,7 @@ public class CapacityExhaustionTests
     }
 
     [TestMethod]
-    public async Task SlotExhaustion_FlagsCompactionKeepsWhatFitsAndNeverThrows()
+    public async Task SlotExhaustion_FlagsCapacityExhaustionKeepsWhatFitsAndNeverThrows()
     {
         var (block, writer, snapshot) = BuildTinyDrive(slotCapacity: 4, namePoolCapacity: 512);
         try
@@ -76,7 +76,7 @@ public class CapacityExhaustionTests
                 journalIdentifier: 1, nextUsn: 10);
 
             Assert.AreEqual(2, changes.Count);
-            Assert.IsTrue(block.Header.IsCompactionNeeded);
+            Assert.IsTrue(block.Header.IsCapacityExhausted);
             Assert.AreEqual("fits.txt", new string(NamePool.ReadRowName(block, 1)));
             Assert.AreEqual("also-fits.txt", new string(NamePool.ReadRowName(block, 2)));
         }
@@ -87,7 +87,7 @@ public class CapacityExhaustionTests
     }
 
     [TestMethod]
-    public async Task NamePoolExhaustion_FlagsCompactionAndNeverThrows()
+    public async Task NamePoolExhaustion_FlagsCapacityExhaustionAndNeverThrows()
     {
         // Capacity for exactly one "name-number-N.txt" name (17 characters, 34 bytes) with no
         // room left for a second one, so the first create survives and every later one is the
@@ -105,7 +105,7 @@ public class CapacityExhaustionTests
             var changes = mutator.Apply(snapshot, 0, entries, journalIdentifier: 1, nextUsn: 20);
 
             Assert.AreEqual(1, changes.Count);
-            Assert.IsTrue(block.Header.IsCompactionNeeded);
+            Assert.IsTrue(block.Header.IsCapacityExhausted);
             Assert.IsTrue(block.Header.NamePoolUsed <= block.Header.NamePoolCapacity);
             Assert.AreEqual("name-number-1.txt", new string(NamePool.ReadRowName(block, 1)));
             Assert.IsFalse(block.Rows[2].IsInUse);

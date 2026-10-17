@@ -80,7 +80,7 @@ public class EnumerationProducerTests
             Assert.AreEqual(7u, result.RowCount);
             Assert.AreEqual(7u, block.Header.RowCount);
             Assert.AreEqual(0, result.AccessDeniedSubtreeCount);
-            Assert.IsFalse(result.CompactionNeeded);
+            Assert.IsFalse(result.CapacityExhausted);
         }
         finally
         {
@@ -233,7 +233,7 @@ public class EnumerationProducerTests
     }
 
     [TestMethod]
-    public void Produce_ExhaustedSlotCapacity_SetsCompactionNeededAndDoesNotThrow()
+    public void Produce_ExhaustedSlotCapacity_SetsCapacityExhaustedAndDoesNotThrow()
     {
         var created = CreateBlock(slotCapacity: 3);
         using var block = created.Block;
@@ -246,12 +246,12 @@ public class EnumerationProducerTests
 
         var result = producer.Produce(created.Writer, progress, CancellationToken.None);
 
-        Assert.IsTrue(result.CompactionNeeded);
-        Assert.IsTrue(created.Writer.CompactionNeeded);
+        Assert.IsTrue(result.CapacityExhausted);
+        Assert.IsTrue(created.Writer.CapacityExhausted);
 
         // Root (Documents, Pictures both fit in the 3-row capacity) is always walked, then
         // exactly one of Documents or Pictures fails to write its first entry and trips
-        // compaction. The walk must stop there instead of also opening the other sibling
+        // capacity exhausted. The walk must stop there instead of also opening the other sibling
         // directory, so at most two directories are ever visited.
         Assert.AreEqual(2, progress.Directories.Count);
     }
@@ -275,7 +275,7 @@ public class EnumerationProducerTests
             // Root, Documents, Projects, Pictures, readme.md, report.pdf, holiday.jpg, RootLink.
             Assert.AreEqual(8u, result.RowCount);
             Assert.AreEqual(8u, block.Header.RowCount);
-            Assert.IsFalse(result.CompactionNeeded);
+            Assert.IsFalse(result.CapacityExhausted);
 
             var link = EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "RootLink"));
             Assert.IsTrue(link.HasValue);

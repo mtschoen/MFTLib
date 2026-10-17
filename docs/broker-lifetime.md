@@ -85,7 +85,7 @@ The internal scan result carries the block, armed cursor and optional `CatchUpLo
 `DriveWatchStatus.CheckpointLoss`. Proven loss still returns the completed block.
 `BlockScanOutcome` carries the block and skipped record count; row count and
 name-pool size are in the header. The section writer returns row count, name-pool
-usage and skipped record count; compaction state is read from the block header.
+usage and skipped record count; capacity exhaustion is read from the block header.
 
 The `FileIndex` adapter keeps the armed cursor and propagates proven `CatchUpLoss`.
 It watches from the cursor armed before scanning so the watch replays the scan

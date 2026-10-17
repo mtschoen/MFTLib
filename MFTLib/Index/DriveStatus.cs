@@ -24,7 +24,7 @@ public sealed record DriveStatus
     /// <summary>Identifies the drive in every per-drive <see cref="FileIndex" /> call; one status exists per configured drive, including failed and offline ones.</summary>
     public DriveKey Drive { get; init => field = value.Validated(); }
 
-    /// <summary>Whether the drive has a queryable block, is offline, or failed without a block. Compaction is reported independently by <see cref="DriveBlockStatus.IsCompactionNeeded" />.</summary>
+    /// <summary>Whether the drive has a queryable block, is offline, or failed without a block. Capacity exhaustion is reported independently by <see cref="DriveBlockStatus.IsCapacityExhausted" />.</summary>
     public DriveState State { get; init; }
 
     /// <summary>

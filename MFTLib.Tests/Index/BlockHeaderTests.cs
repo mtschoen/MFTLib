@@ -160,13 +160,13 @@ public class BlockHeaderTests
     }
 
     [TestMethod]
-    public void CompletionAndCompactionProperties_ReadFlags()
+    public void CompletionAndCapacityExhaustionProperties_ReadFlags()
     {
         var header = ValidHeader();
         Assert.IsTrue(header.IsComplete);
-        Assert.IsFalse(header.IsCompactionNeeded);
-        header.Flags |= BlockFlags.CompactionNeeded;
-        Assert.IsTrue(header.IsCompactionNeeded);
+        Assert.IsFalse(header.IsCapacityExhausted);
+        header.Flags |= BlockFlags.CapacityExhausted;
+        Assert.IsTrue(header.IsCapacityExhausted);
     }
 
     [TestMethod]

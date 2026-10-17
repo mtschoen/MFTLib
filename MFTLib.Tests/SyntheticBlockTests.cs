@@ -211,15 +211,15 @@ public partial class SyntheticBlockTests
     }
 
     [TestMethod]
-    public async Task Edit_MarkCompactionNeeded_ReportsReadyWithCompactionNeeded()
+    public async Task Edit_MarkCapacityExhausted_ReportsReadyWithCapacityExhausted()
     {
         var path = Seed();
-        SyntheticBlock.Edit(path, Serial, editor => editor.MarkCompactionNeeded());
+        SyntheticBlock.Edit(path, Serial, editor => editor.MarkCapacityExhausted());
 
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
         var drive = index.Drives.Single();
-        Assert.IsTrue(drive.Block!.IsCompactionNeeded);
+        Assert.IsTrue(drive.Block!.IsCapacityExhausted);
         Assert.AreEqual(DriveState.Ready, drive.State);
         Assert.AreEqual(1, index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)).Count);
     }

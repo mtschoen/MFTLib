@@ -227,8 +227,8 @@ public sealed partial class FileIndex
     ///     are already durable in the returned <see cref="MftBlockProduceResult.Block" />'s header by
     ///     the time it gets here (the producer stamps them before its own <c>Complete()</c> call, the
     ///     one flush-safe place to do it), so this method does not write them again.
-    ///     <see cref="DescribeOnlineDriveBlock" /> derives <see cref="DriveBlockStatus.IsCompactionNeeded" /> from the
-    ///     header's own <see cref="BlockFlags.CompactionNeeded" /> flag, which the producer sets on
+    ///     <see cref="DescribeOnlineDriveBlock" /> derives <see cref="DriveBlockStatus.IsCapacityExhausted" /> from the
+    ///     header's own <see cref="BlockFlags.CapacityExhausted" /> flag, which the producer sets on
     ///     the block directly. The cursor is instead used for a consistency check: a producer that
     ///     reports one cursor but stamped a different one into the block it built violated its own
     ///     contract, and that must not go unnoticed any more than an on-disk block that fails
@@ -392,7 +392,7 @@ public sealed partial class FileIndex
         lock (_stateLock)
         {
             if (TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal) &&
-                _driveBlocks[driveOrdinal].Block.Header is { IsCompactionNeeded: true } exhausted)
+                _driveBlocks[driveOrdinal].Block.Header is { IsCapacityExhausted: true } exhausted)
             {
                 slotCapacity = Math.Max(slotCapacity, BlockLayout.DoubleCapacity(exhausted.SlotCapacity));
                 namePoolCapacity = Math.Max(namePoolCapacity, BlockLayout.DoubleCapacity(exhausted.NamePoolCapacity));

@@ -68,7 +68,7 @@ public partial class BlockWriterTests
     }
 
     [TestMethod]
-    public void TryRenameRow_RowIndexAtOrPastSlotCapacity_FlagsCompactionAndFails()
+    public void TryRenameRow_RowIndexAtOrPastSlotCapacity_FlagsCapacityExhaustionAndFails()
     {
         using var block = CreateBlock(slotCapacity: 4);
         var writer = new BlockWriter(block);
@@ -76,7 +76,7 @@ public partial class BlockWriterTests
 
         Assert.IsFalse(writer.TryRenameRow(4, "overflow.txt", parentRow: 0));
 
-        Assert.IsTrue(block.Header.IsCompactionNeeded);
+        Assert.IsTrue(block.Header.IsCapacityExhausted);
     }
 
     [TestMethod]

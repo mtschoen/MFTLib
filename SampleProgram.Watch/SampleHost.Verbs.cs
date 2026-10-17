@@ -21,7 +21,7 @@ partial class SampleHost
     {
         WriteStatus(status);
         var block = RequireReadyBlock(status);
-        _writeLine($"Cache {status.Drive}: block {block.Source}, slot {block.CacheSlot?.ToString() ?? "none"}, scanned {block.ScanTimestamp:u}, compaction needed {block.IsCompactionNeeded}");
+        _writeLine($"Cache {status.Drive}: block {block.Source}, slot {block.CacheSlot?.ToString() ?? "none"}, scanned {block.ScanTimestamp:u}, capacity exhausted {block.IsCapacityExhausted}");
         _writeLine($"Watch: {status.Watch.State} v{status.Watch.StateVersion}, requested {status.Watch.IsRequested}; recovery stopped {status.Watch.IsRecoveryStopped}; denied subtrees {block.AccessDeniedSubtreeCount}{(status.Watch.FailureMessage is { } failure ? $"; {failure}" : string.Empty)}");
         if (status.Watch.CheckpointLoss is { } loss)
         {

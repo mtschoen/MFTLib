@@ -239,7 +239,7 @@ var path = SyntheticBlock.WriteCached(cacheDirectory, 'C', volumeSerial: 0x1234,
 SyntheticBlock.Edit(path, 0x1234, editor =>
 {
     editor.MarkSizesUnknown(row => row.Row == 6);
-    editor.MarkCompactionNeeded();
+    editor.MarkCapacityExhausted();
 });
 ```
 
@@ -249,7 +249,7 @@ SyntheticBlock.Edit(path, 0x1234, editor =>
   `ProducerKind = ProducerKind.Enumeration` and `RootRow = 0` for an enumeration block.
 - `Edit` opens an existing block and hands a `SyntheticBlockEditor` to the callback,
   then flushes and closes it. The editor sets attributes, marks sizes unknown
-  (`MarkSizesUnknown` for every matching row, returning how many) or compaction needed,
+  (`MarkSizesUnknown` for every matching row, returning how many) or capacity exhausted,
   and sets the scan timestamp through `Complete`. Read `status.Block!.ScanTimestamp`
   from `index.Drives` to preserve the timestamp for a later edit after disposal.
   `SetProducerKind(ProducerKind.Mft)` turns a block

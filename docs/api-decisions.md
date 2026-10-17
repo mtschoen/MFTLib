@@ -330,7 +330,7 @@ members or a string conversion.
 
 **Decision (API review finding F15, naming half):** a public boolean property that reports state on a
 status or result type takes the `Is`, `Has` or `Can` prefix: `DriveWatchStatus.IsSupported`, `IsRequested` and
-`IsRecoveryStopped`, `JournalCatchUpLostException.IsRecoveryStopped`, `DriveBlockStatus.IsCompactionNeeded` and
+`IsRecoveryStopped`, `JournalCatchUpLostException.IsRecoveryStopped`, `DriveBlockStatus.IsCapacityExhausted` and
 the test package's `PowerShellLaunch.IsElevated`. A boolean option that reads as an instruction takes no prefix
 (`CaseSensitive`, `IncludeDeleted`, `IncludeFreed`, `CatchUpOnStart`). `BooleanNamingTests` enforces the rule
 by reflection over the compiled MFTLib and MFTLibTestExtensions assemblies, with an explicit allowlist of the option types (`MftScanOptions`,
@@ -695,3 +695,11 @@ Free-space and size stay consumer-side.
 owns the policy once. file-wizard migrates in its pin-bump pull request.
 
 **Revisit only if:** a consumer needs a different selectable discovery policy or structured rejection data.
+
+## Capacity exhaustion names the state; rescan is the remedy
+
+**Decision (2026-10-16):** use `CapacityExhausted` for the internal state and `IsCapacityExhausted` for the public boolean; bit 2 and the block format stay unchanged. A write did not fit, and a rescan rebuilds the inventory. **Reason:** state names describe the observed condition and the API names the actual remedy. **Revisit only if:** a consumer needs a distinct capacity-recovery state.
+
+## The public-surface pin stays bespoke
+
+**Decision (2026-10-16):** retain the bespoke public-surface pin; do not add PublicApiGenerator or PublicApiAnalyzers. **Reason:** the caller gate needs the bespoke metadata reader anyway; another library adds a second IL reader and a third-party dependency. **Revisit only if:** the caller gate no longer needs that reader and one replacement can cover both contracts.

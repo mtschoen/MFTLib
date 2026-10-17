@@ -299,7 +299,7 @@ public class JournalMutatorMetadataFreshnessTests
         ]);
 
         Assert.AreEqual(0, changes.Count);
-        Assert.IsTrue(fixture.Block.Header.IsCompactionNeeded);
+        Assert.IsTrue(fixture.Block.Header.IsCapacityExhausted);
         var row = fixture.Block.Rows[(int)FileRowIndex];
         Assert.IsFalse(row.SizeKnown);
         Assert.IsFalse(row.LastWriteTimeKnown);

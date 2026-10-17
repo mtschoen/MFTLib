@@ -23,8 +23,8 @@ All MFT producers saturate this diagnostic at `int.MaxValue` when the scan's cou
 Records excluded by `MftScanOptions.RetainedFileNames` or `MftScanOptions.IncludeFreed` contribute to neither count. These diagnostics describe the
 current block's production: successful rescans replace the counts, failed or cancelled
 rescans retain them with the block, and warm starts report zero because these counts
-are not stored in the block header. `DriveBlockStatus.IsCompactionNeeded` reads the header's
-compaction flag independently of either count.
+are not stored in the block header. `DriveBlockStatus.IsCapacityExhausted` reads the header's
+capacity-exhausted flag independently of either count.
 
 ## File name
 
@@ -77,7 +77,7 @@ Read `FileIndex.Drives` and inspect `DriveBlockStatus.CacheSlot`:
 | `CacheSlotState.PrivateFallback` | This drive's current block was scanned privately because its canonical slot was unavailable when the scan target was selected. |
 | null | The block is not backed by a cache slot: `CacheMode.Disabled` is in effect. A failed or offline drive has no `DriveStatus.Block` to inspect. |
 
-Ready blocks retain their backing classification, including when compaction is needed. This is
+Ready blocks retain their backing classification, including when capacity is exhausted. This is
 separate from `DriveBlockStatus.Source`: a canonical cold scan and a private
 fallback scan both read `ProducedByScan`; a canonical warm start reads
 `WarmStartedFromCache`.
@@ -143,7 +143,7 @@ Little-endian throughout. Every region boundary is 4096-byte aligned.
 | 0 | magic | u32 | `MLIX`, stored as `0x58494C4D` |
 | 4 | format version | u32 | Mismatch means discard and rescan |
 | 8 | producer kind | u32 | 1 = MFT, 2 = enumeration |
-| 12 | flags | u32 | 1 = complete, 2 = compaction needed |
+| 12 | flags | u32 | 1 = complete, 2 = capacity exhausted |
 | 16 | volume serial | u32 | |
 | 20 | root row | u32 | Row index of the indexed root; 0 for enumeration, normally 5 for MFT |
 | 24 | scan timestamp | i64 | UTC ticks |
@@ -299,15 +299,12 @@ other block regions.
 
 ## Capacity
 
-Slot capacity is the estimated row count plus headroom of 25 percent or 65536
-rows, whichever is larger, so journal creates land in place at their record
-number. Name pool capacity uses the same 25 percent ratio with a floor of one
-mebibyte (1048576 bytes). Exhausting either sets the compaction-needed flag; the
-producer or mutator keeps applying what fits and the drive remains Ready and queryable.
+Slot capacity is the estimated row count plus 25 percent or 65536 rows, whichever is larger.
+Name pool capacity uses the same ratio with a floor of one mebibyte (1048576 bytes).
+Exhausting either sets the capacity-exhausted flag; the producer or mutator keeps what fits and the drive remains Ready and queryable.
 A rescan of an exhausted enumeration block plans twice that block's capacity,
-so repeated rescans converge on a complete block. The caller reads `DriveBlockStatus.IsCompactionNeeded` to offer a rescan. The flag
-remains set until a successful rescan publishes a replacement block without it;
-failed or cancelled rescans retain the old block and its flag. Compaction is a rescan.
+so repeated rescans converge on a complete block. Read `DriveBlockStatus.IsCapacityExhausted` to offer a rescan. The flag remains until a successful rescan publishes a replacement without it;
+failed or cancelled rescans retain the old block and its flag.
 
 ## Name pool
 
