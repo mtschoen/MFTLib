@@ -1,5 +1,3 @@
-using System.Runtime.ExceptionServices;
-
 namespace MFTLib.Index;
 
 /// <summary>
@@ -7,14 +5,12 @@ namespace MFTLib.Index;
 ///     drive, warm-starts from a valid block or cold-scans, and publishes a snapshot. A rescan
 ///     writes a new block beside the old one and swaps it in; handles minted from the old
 ///     snapshot keep the old block mapped until they are collected, so a held handle never
-///     dangles across a rescan. Split into partial files by responsibility: this file is
-///     construction and the read surface, <c>FileIndex.Scanning.cs</c> is the cold-scan and
-///     warm-start path used when opening a drive, <c>FileIndex.Rescan.cs</c> is rescanning
-///     and snapshot publication, and <c>FileIndex.Hooks.cs</c> is internal test injection and isolation hooks.
+///     dangles across a rescan. Split into partial files by responsibility: aggregate construction,
+///     admission, and query coordination live on <see cref="FileIndex" />, while drive behavior
+///     lives in <c>FileIndex.DriveRuntime.*.cs</c>.
 /// </summary>
 public sealed partial class FileIndex : IAsyncDisposable
 {
-    readonly List<DriveBlockRelease> _retiredBlocks = [];
     readonly FileIndexOptions _options;
 
     /// <summary>
@@ -50,6 +46,12 @@ public sealed partial class FileIndex : IAsyncDisposable
     bool _disposed;
     ushort _nextDriveOrdinal;
 
+    /// <summary>
+    ///     How many scans of one drive in a row may lose their journal catch-up before a scan
+    ///     operation stops rescanning the drive by itself.
+    /// </summary>
+    internal const int LostCatchUpRecoveryLimit = 3;
+
     ushort AllocateDriveOrdinalLocked() => _nextDriveOrdinal++;
 
 
@@ -61,7 +63,7 @@ public sealed partial class FileIndex : IAsyncDisposable
         foreach (var configuredDrive in _options.Drives)
         {
             var drive = configuredDrive.Drive.Validated();
-            _driveRuntimes.Add(drive, new DriveRuntime(configuredDrive));
+            _driveRuntimes.Add(drive, new DriveRuntime(this, configuredDrive));
         }
     }
 
@@ -87,7 +89,7 @@ public sealed partial class FileIndex : IAsyncDisposable
                 var statuses = new List<DriveStatus>(_options.Drives.Count);
                 foreach (var configured in _options.Drives)
                 {
-                    statuses.Add(DescribeDriveLocked(GetDriveRuntime(configured.Drive)));
+                    statuses.Add(GetDriveRuntime(configured.Drive).DescribeLocked());
                 }
 
                 return statuses;
@@ -208,133 +210,5 @@ public sealed partial class FileIndex : IAsyncDisposable
 
         driveOrdinal = 0;
         return false;
-    }
-
-    /// <summary>
-    ///     Prevents new index operations and cancels every rescan in flight, stops every drive's
-    ///     live watch and waits for each drive's teardown, takes every drive's lifecycle gate and
-    ///     then every drive's write gate in ascending drive-letter order, so no rescan, start,
-    ///     commit, or batch is still running, and releases every snapshot it holds, current and
-    ///     retired. A fault a drive's watch ended with is never thrown from here: it was announced
-    ///     through <see cref="WatchFaulted" /> when it happened.
-    /// </summary>
-    /// <remarks>
-    ///     <para>
-    ///         Disposing while another thread is running a scan is safe, and is what this method
-    ///         being asynchronous buys. Six entry points scan rows, and each holds a borrow on
-    ///         the snapshot it reads for its whole duration: <see cref="Find" />,
-    ///         <see cref="Search" />, <see cref="Enumerate" />, <see cref="EnumerateRows" />
-    ///         and <see cref="Root" /> on this class, and
-    ///         <see cref="FileEntry.Children" /> on a handle. Disposal waits for every one of
-    ///         those borrows, on the current snapshot and on the retired ones, before it unmaps
-    ///         anything.
-    ///     </para>
-    ///     <para>
-    ///         The five queries on this class also observe a token linked to the index's disposal,
-    ///         so disposal cancels them rather than waiting them out: each ends with
-    ///         <see cref="OperationCanceledException" /> or, if it had not started,
-    ///         <see cref="ObjectDisposedException" />, and the wait is as long as they take to
-    ///         reach their next checkpoint, at most 4096 rows of active scanning. A suspended
-    ///         <see cref="Enumerate" /> enumerator holds its borrow between yields: disposal waits
-    ///         until it advances or is disposed, or, if abandoned, until garbage collection and
-    ///         finalization return its borrow. Dispose enumerators promptly rather than relying on
-    ///         collection, whose timing is not guaranteed. <see cref="FileEntry.Children" />
-    ///         is the exception: a handle carries no reference to its index, so there is no
-    ///         disposal token to link and this method waits that listing out instead, which is one
-    ///         pass over the drive's rows unless its caller passes a token of its own.
-    ///     </para>
-    ///     <para>
-    ///         Every other member of <see cref="FileEntry" /> reads in place rather than
-    ///         scanning, and carries no borrow; <see cref="FileEntry.Path" />, and <see cref="FileEntry.ToString" />
-    ///         which can build it, follow the parent chain for at most 128 hops. A read through a handle that is ordered after the
-    ///         disposal throws <see cref="ObjectDisposedException" /> from the per-access check
-    ///         <see cref="FileEntry.IsDisposed" /> describes.
-    ///     </para>
-    /// </remarks>
-    public async ValueTask DisposeAsync()
-    {
-        if (RejectInsideHandler(nameof(DisposeAsync)) is { } rejection)
-        {
-            throw rejection;
-        }
-
-        lock (_stateLock)
-        {
-            if (_disposed)
-            {
-                return;
-            }
-
-            _disposed = true;
-        }
-
-        Hooks.DisposedFlagSet?.Invoke();
-
-        // Before the gates, not after: a query already inside the index holds a borrow that every
-        // release below waits for, so it has to be told to stop before anything starts waiting on
-        // it. A query that has not started yet is turned away by the disposed flag instead. The
-        // same token cancels every drive's watch start and every rescan still in progress.
-        ExceptionDispatchInfo? cancellationFailure = null;
-        try
-        {
-            await _disposalCancellation.CancelAsync().ConfigureAwait(false);
-        }
-        catch (AggregateException exception)
-        {
-            // A callback on this token belongs to someone else, and a throw from one is not a
-            // reason to abandon the mappings: the disposed flag is already set, so the early
-            // return above means no later call would ever finish the job. The release runs, and
-            // the failure is raised after it, with its original stack, or alongside the release's
-            // own failure if the release fails too.
-            cancellationFailure = ExceptionDispatchInfo.Capture(exception);
-        }
-
-        // No token of its own, and none may abandon a pump whose blocks this is about to unmap.
-        await StopEveryWatchForDisposalAsync().ConfigureAwait(false);
-
-        try
-        {
-            await ReleaseSnapshotsForDisposalAsync(cancellationFailure).ConfigureAwait(false);
-        }
-        finally
-        {
-            lock (_stateLock)
-            {
-                foreach (var runtime in _driveRuntimes.Values)
-                {
-                    var owned = runtime.CanonicalLock;
-                    runtime.CanonicalLock = null;
-                    owned?.Dispose();
-                }
-            }
-        }
-
-        cancellationFailure?.Throw();
-    }
-
-    /// <summary>
-    ///     Unwinds every block already added when opening fails or
-    ///     is cancelled partway through <see cref="FileIndexOptions.Drives" />. These blocks were
-    ///     never published, so no handle holds one, and none has a scheduled delete. A warm-started block's
-    ///     file is left on disk (still valid for the next open); a freshly cold-scanned block's
-    ///     file is left on disk too when cached, or deleted immediately when it was created with
-    ///     delete-on-close for no-cache mode.
-    /// </summary>
-    void ReleaseUnpublishedBlocks()
-    {
-        lock (_stateLock)
-        {
-            foreach (var runtime in _driveRuntimes.Values)
-            {
-                var block = runtime.Block;
-                runtime.Block = null;
-                runtime.LastResult = null;
-                block?.ReleaseState.Release();
-
-                var owned = runtime.CanonicalLock;
-                runtime.CanonicalLock = null;
-                owned?.Dispose();
-            }
-        }
     }
 }

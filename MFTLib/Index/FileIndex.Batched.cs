@@ -24,7 +24,7 @@ public sealed partial class FileIndex
         }
 
         return RunBatchAsync(drives, HasWatchableBlock,
-            key => StartDriveWatchingAsync(key, cancellationToken), cancellationToken);
+            key => GetDriveRuntime(key).StartDriveWatchingAsync(cancellationToken), cancellationToken);
     }
 
     /// <summary>
@@ -42,7 +42,7 @@ public sealed partial class FileIndex
         }
 
         return RunBatchAsync(drives, IsWatching,
-            key => StopDriveWatchingAsync(key, cancellationToken), cancellationToken);
+            key => GetDriveRuntime(key).StopDriveWatchingAsync(cancellationToken), cancellationToken);
     }
 
     /// <summary>
@@ -61,7 +61,7 @@ public sealed partial class FileIndex
         }
 
         return RunBatchAsync(drives, applicable: null,
-            key => RescanDriveAsync(key, cancellationToken), cancellationToken);
+            key => GetDriveRuntime(key).RescanDriveAsync(cancellationToken), cancellationToken);
     }
 
     /// <summary>
@@ -80,7 +80,7 @@ public sealed partial class FileIndex
             Task?[] waits;
             lock (_stateLock)
             {
-                waits = [.. keys.Select(key => GetCatchUpWaitLocked(GetDriveRuntime(key)))];
+                waits = [.. keys.Select(key => GetDriveRuntime(key).GetCatchUpWaitLocked())];
             }
 
             if (!cancellationToken.IsCancellationRequested && waits.Any(wait => wait is { IsCompleted: false }) &&
@@ -102,7 +102,7 @@ public sealed partial class FileIndex
     {
         lock (_stateLock)
         {
-            return WatchSourceOrNull is not null && FindWatchableDriveBlockLocked(drive) is not null;
+            return GetDriveRuntime(drive).HasWatchableBlockLocked();
         }
     }
 
@@ -110,12 +110,9 @@ public sealed partial class FileIndex
     {
         lock (_stateLock)
         {
-            return IsWatchingLocked(GetDriveRuntime(drive));
+            return GetDriveRuntime(drive).IsWatchingLocked();
         }
     }
-
-    static bool IsWatchingLocked(DriveRuntime runtime) =>
-        runtime.WatchRequested || runtime.Current is not null || runtime.Retiring is not null;
 
     async Task<IReadOnlyList<DriveOperationResult>> RunBatchAsync(IEnumerable<DriveKey> drives,
         Func<DriveKey, bool>? applicable, Func<DriveKey, Task> operation, CancellationToken cancellationToken)
