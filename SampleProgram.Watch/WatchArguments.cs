@@ -24,6 +24,7 @@ internal sealed partial record WatchArguments(WatchVerb Verb, IReadOnlyList<stri
         "  verbs: " + string.Join(", ", WatchVerbs.Names.Keys) + " (default watch); with no drive, every ready NTFS fixed drive" + Environment.NewLine +
         "  watch [--seconds N] [--cache-directory D]  (without --seconds an attended watch runs until a key press, an unattended elevated one for " + DefaultSeconds + " seconds; an unattended run that is not elevated exits 1 without watching)" + Environment.NewLine +
         "  rescan [--cache-directory D]  journal [--cache-directory D] [--maximum-size B --allocation-delta B]  cache [--cache-directory D] [--clear]" + Environment.NewLine +
+        "  cache exits 0 when listing; --clear attempts every selected block and exits 1 if any is InUse or Failed, otherwise 0" + Environment.NewLine +
         "  (each scan policy caches under D/policy-DIGEST; scan accepts and ignores --cache-directory)";
 
     // The flags each verb reads; any other flag on the command line is a usage error rather than silently ignored.

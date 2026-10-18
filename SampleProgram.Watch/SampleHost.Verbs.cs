@@ -46,6 +46,7 @@ partial class SampleHost
     // blocks in its own policy-* folder under the cache directory, so the root and every such folder are covered.
     int RunCache(WatchArguments parsed)
     {
+        var exitCode = 0;
         var root = parsed.CacheDirectory ?? string.Empty;
         var drives = parsed.Drives.Count == 0 ? null : parsed.Drives.Select(drive => new DriveKey(drive[0])).ToArray();
         IEnumerable<string> policies = Directory.Exists(root)
@@ -64,11 +65,15 @@ partial class SampleHost
                 foreach (var result in CacheDirectory.DeleteCached(directory, drives))
                 {
                     _output.WriteLine($"  {result.File.Drive}: {result.Outcome}{(result.FailureReason is { } reason ? $" ({reason})" : string.Empty)}");
+                    if (result.Outcome != CachedBlockDeletionOutcome.Deleted)
+                    {
+                        exitCode = 1;
+                    }
                 }
             }
         }
 
-        return 0;
+        return exitCode;
     }
 
     int WriteElevationStatus()

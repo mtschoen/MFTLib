@@ -22,7 +22,11 @@ public sealed class WatchVerbTests : IDisposable
     [TestInitialize]
     public void Initialize() => _tempDirectory = new TempDirectory("watchVerbs");
 
-    public void Dispose() => _tempDirectory.Dispose();
+    public void Dispose()
+    {
+        CacheDirectory.Hooks.ResetToDefaults();
+        _tempDirectory.Dispose();
+    }
 
     [TestMethod]
     [Timeout(60000)]
@@ -136,6 +140,82 @@ public sealed class WatchVerbTests : IDisposable
         Assert.IsFalse(clearing.Any(line => line.StartsWith("Deleted block file '", StringComparison.Ordinal)),
             "Cache clearing reports deletion through results only: " + string.Join(Environment.NewLine, clearing));
         Assert.AreEqual(0, afterwards.Count(line => line.StartsWith("X: ", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
+    [DataRow(CachedBlockDeletionOutcome.InUse)]
+    [DataRow(CachedBlockDeletionOutcome.Failed)]
+    public void Run_CacheClearWithAnUnavailableBlock_AttemptsEveryPolicyAndReturnsOne(CachedBlockDeletionOutcome unavailableOutcome)
+    {
+        var root = Path.Combine(_directory, "cache");
+        var unavailable = CreateCacheBlock(root, 'T');
+        var available = new[]
+        {
+            CreateCacheBlock(root, 'U'),
+            CreateCacheBlock(Path.Combine(root, "policy-first"), 'V'),
+            CreateCacheBlock(Path.Combine(root, "policy-second"), 'W')
+        };
+        using var owner = unavailableOutcome == CachedBlockDeletionOutcome.InUse
+            ? BlockOwnerLock.TryAcquire(unavailable)
+            : null;
+        if (unavailableOutcome == CachedBlockDeletionOutcome.InUse)
+        {
+            Assert.IsNotNull(owner);
+        }
+
+        var listing = new List<string>();
+        Assert.AreEqual(0, HostOver(listing.Add).Run(["cache", "--cache-directory", root]));
+        Assert.AreEqual(4, listing.Count(line => line.Contains(" bytes, ", StringComparison.Ordinal)));
+        Assert.IsFalse(listing.Any(line => line.StartsWith("  ", StringComparison.Ordinal)));
+        Assert.IsTrue(available.Append(unavailable).All(File.Exists));
+
+        CacheDirectory.Hooks.BeforeDelete = path =>
+        {
+            if (path == unavailable && unavailableOutcome == CachedBlockDeletionOutcome.Failed)
+            {
+                File.Delete(path);
+                Directory.CreateDirectory(path);
+            }
+        };
+        var clearing = new List<string>();
+
+        var result = HostOver(clearing.Add).Run(["cache", "--clear", "--cache-directory", root]);
+
+        var outcomes = clearing.Where(line => line.StartsWith("  ", StringComparison.Ordinal)).ToArray();
+        Assert.AreEqual(4, outcomes.Length, string.Join(Environment.NewLine, clearing));
+        foreach (var letter in new[] { 'U', 'V', 'W' })
+        {
+            Assert.AreEqual(1, outcomes.Count(line => line == $"  {letter}: Deleted"));
+        }
+        Assert.AreEqual(1, outcomes.Count(line => unavailableOutcome == CachedBlockDeletionOutcome.Failed
+            ? line.StartsWith("  T: Failed (", StringComparison.Ordinal) && line.EndsWith(')')
+            : line == "  T: InUse"));
+        Assert.IsTrue(available.All(path => !File.Exists(path)));
+        Assert.IsTrue(unavailableOutcome == CachedBlockDeletionOutcome.InUse
+            ? File.Exists(unavailable)
+            : Directory.Exists(unavailable));
+        Assert.AreEqual(1, result);
+    }
+
+    [TestMethod]
+    public void Run_CacheClearWithoutBlocks_ReturnsZero()
+    {
+        var root = Path.Combine(_directory, "cache");
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(Path.Combine(root, "policy-empty"));
+        var lines = new List<string>();
+
+        Assert.AreEqual(0, HostOver(lines.Add).Run(["cache", "--clear", "--cache-directory", root]));
+
+        Assert.AreEqual(0, lines.Count);
+    }
+
+    static string CreateCacheBlock(string directory, char letter)
+    {
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, CacheDirectory.BlockFileName(letter, 1));
+        File.WriteAllText(path, "deliberately invalid block content");
+        return path;
     }
 
     [TestMethod]
