@@ -76,17 +76,30 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
     }
 
     [TestMethod]
-    public async Task EnumerationOnly_NullMftSourceScansEveryDrive()
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task EnumerationOnly_IgnoresMftSource(bool configured)
     {
-        await using var index = await FileIndex.OpenAsync(Options(
-            Drive('T', ProducerKind.Enumeration), Drive('U', ProducerKind.Enumeration)) with
+        var invocationCount = 0;
+        var options = Options(Drive('T', ProducerKind.Enumeration), Drive('U', ProducerKind.Enumeration)) with
         {
-            MftSource = null
-        }, CancellationToken.None);
-
+            MftSource = configured ? new MftIndexSource((_, _) =>
+            {
+                Interlocked.Increment(ref invocationCount);
+                throw new InvalidOperationException("the MFT producer must not be called");
+            }) : null
+        };
+        await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         AssertDrive(index, 'T', ProducerKind.Enumeration);
         AssertDrive(index, 'U', ProducerKind.Enumeration);
-        Assert.AreEqual(2, index.Search(new SearchQuery("walked.txt")).Count);
+        foreach (var status in index.Drives)
+        {
+            Assert.IsNull(status.Failure);
+        }
+
+        CollectionAssert.AreEquivalent(new[] { 'T', 'U' },
+            index.Search(new SearchQuery("walked.txt")).Select(entry => entry.Drive.Letter).ToArray());
+        Assert.AreEqual(0, invocationCount);
     }
 
     // A null MftSource is not an admission error: only the drive that needs an MFT scan settles Failed.
@@ -94,7 +107,7 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
     public async Task MixedOpen_NullMftSourceFailsOnlyTheDriveNeedingAScan()
     {
         await using var index = await FileIndex.OpenAsync(Options(
-            Drive('T', ProducerKind.Mft), Drive('U', ProducerKind.Enumeration)) with
+            new IndexedDrive('T', _fixture.TreeRoot, 123), Drive('U', ProducerKind.Enumeration)) with
         {
             MftSource = null
         }, CancellationToken.None);
@@ -103,7 +116,9 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
         Assert.AreEqual(DriveState.Failed, failed.State);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, failed.Failure?.Kind);
         Assert.AreEqual("ProducerKind.Mft requires FileIndexOptions.MftSource to be set.", failed.Failure?.Message);
+        Assert.IsNull(failed.Block);
         AssertDrive(index, 'U', ProducerKind.Enumeration);
+        Assert.AreEqual(new DriveKey('U'), index.Search(new SearchQuery("walked.txt")).Single().Drive);
     }
 
     [TestMethod]

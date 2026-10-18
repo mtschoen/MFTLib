@@ -32,12 +32,15 @@ internal static class SeededBlocks
             journalIdentifier, nextUsn, moment, RootRows(moment));
     }
 
-    /// <summary>Builds a block with <paramref name="rowCount" /> files named by <paramref name="fileNameFactory" /> under the root.</summary>
+    /// <summary>
+    ///     Builds a block with <paramref name="rowCount" /> files named by <paramref name="fileNameFactory" />,
+    ///     each under the parent <paramref name="parentFactory" /> names, or under the root when it is null.
+    /// </summary>
     public static BlockFile Build(MftBlockProduceRequest request, uint rowCount, Func<uint, string> fileNameFactory,
-        DateTime moment)
+        DateTime moment, Func<uint, uint>? parentFactory = null)
     {
         var rows = RootRows(moment).Concat(Enumerable.Range(6, (int)rowCount).Select(index =>
-            new SyntheticRow((uint)index, fileNameFactory((uint)index), 5)
+            new SyntheticRow((uint)index, fileNameFactory((uint)index), parentFactory?.Invoke((uint)index) ?? 5)
             {
                 Size = index,
                 LastWriteTime = moment

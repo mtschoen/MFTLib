@@ -126,23 +126,4 @@ public sealed class MftIndexSourceTests : IDisposable
         Assert.AreEqual(1, watchSource.Starts.Count);
         Assert.AreEqual('T', watchSource.Starts[0].Drive);
     }
-
-    [TestMethod]
-    public async Task NoMftSource_IsAConfigurationErrorWhenAMftDriveNeedsAScan()
-    {
-        await using var index = await FileIndex.OpenAsync(_fixture.Options() with { MftSource = null }, Token);
-        var failed = index.Drives.Single();
-        Assert.AreEqual(DriveState.Failed, failed.State);
-        Assert.AreEqual(DriveFailureKind.ProducerFailed, failed.Failure?.Kind);
-        StringAssert.Contains(failed.Failure?.Message, nameof(FileIndexOptions.MftSource));
-    }
-
-    [TestMethod]
-    public async Task NoMftSource_IsIgnoredByTheEnumerationPolicy()
-    {
-        await using var index = await FileIndex.OpenAsync(
-            _fixture.Options() with { MftSource = null, Drives = [new IndexedDrive('T', _fixture.Drive().RootDirectory, 0x0BADF00D, ProducerKind.Enumeration)] }, Token);
-
-        Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
-    }
 }

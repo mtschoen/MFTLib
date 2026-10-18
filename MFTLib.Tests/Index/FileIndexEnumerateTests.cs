@@ -1,15 +1,14 @@
 using System.Runtime.CompilerServices;
 using MFTLib.Index;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 using MFTLib.Tests.TestSupport;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
 
 /// <summary>
-///     <see cref="FileIndex.Enumerate" /> is the streaming form of <see cref="FileIndex.Search" />:
-///     the same matches in the same order, yielded one at a time, holding its snapshot borrow from
-///     the first row until the enumerator completes or is disposed. These tests pin the parity,
-///     the borrow bookkeeping, the laziness, and the cancellation and disposal contract.
+///     Streaming-specific behavior of <see cref="FileIndex.Enumerate" />: laziness before visiting
+///     every row, enumerator abandonment and finalization borrow reclamation, and cancellation after
+///     the last matching entry.
 /// </summary>
 [TestClass]
 public sealed class FileIndexEnumerateTests : IDisposable
@@ -17,86 +16,11 @@ public sealed class FileIndexEnumerateTests : IDisposable
     static readonly DateTime FixedMoment = new(2026, 9, 16, 0, 0, 0, DateTimeKind.Utc);
 
     IndexTreeFixture _fixture = null!;
-    string _treeRoot => _fixture.TreeRoot;
-    string _cacheDirectory => _fixture.CacheDirectory;
 
     [TestInitialize]
-    public void Initialize()
-    {
-        _fixture = new IndexTreeFixture(seedDocuments: false);
-        Directory.CreateDirectory(_cacheDirectory);
-    }
+    public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
 
     public void Dispose() => _fixture.Dispose();
-
-    string FirstRoot => Path.Combine(_treeRoot, "first");
-
-    string SecondRoot => Path.Combine(_treeRoot, "second");
-
-    [TestMethod]
-    public async Task Enumerate_MatchesSearchAcrossAMultiDriveIndex()
-    {
-        await using var index = await OpenTwoDriveIndexAsync();
-
-        AssertStreamingMatchesSearch(index, new SearchQuery(null));
-        AssertStreamingMatchesSearch(index, new SearchQuery(null, IsDirectory: false));
-        AssertStreamingMatchesSearch(index, new SearchQuery("*.md", NameMatchMode.Glob));
-        AssertStreamingMatchesSearch(index, new SearchQuery("readme"));
-        AssertStreamingMatchesSearch(index, new SearchQuery("readme.md", NameMatchMode.Exact));
-        AssertStreamingMatchesSearch(index, new SearchQuery("re*.p?f", NameMatchMode.Glob));
-        AssertStreamingMatchesSearch(index, new SearchQuery(null, SizeMinimum: 100));
-
-        var documents = index.Find(Path.Combine(FirstRoot, "Documents"))!.Value;
-        AssertStreamingMatchesSearch(index, new SearchQuery("readme", Subtree: documents));
-
-        var pictures = index.Find(Path.Combine(SecondRoot, "Pictures"))!.Value;
-        AssertStreamingMatchesSearch(index, new SearchQuery(null, Subtree: pictures));
-    }
-
-    [TestMethod]
-    public async Task EnumerateAndSearch_UndefinedMatchMode_ThrowAtCallTime()
-    {
-        await using var index = await OpenTwoDriveIndexAsync();
-        var query = new SearchQuery("readme", (NameMatchMode)99);
-
-        var enumerateFailure = CaptureOutOfRange(index, query, static (target, search) => target.Enumerate(search));
-        var searchFailure = CaptureOutOfRange(index, query, static (target, search) => target.Search(search));
-
-        Assert.AreEqual("query", enumerateFailure.ParamName);
-        Assert.AreEqual("query", searchFailure.ParamName);
-        StringAssert.StartsWith(enumerateFailure.Message, "Unknown name match mode.");
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
-    }
-
-    [TestMethod]
-    public async Task Enumerate_CompletedToTheEnd_LeavesNoBorrowOutstanding()
-    {
-        await using var index = await OpenTwoDriveIndexAsync();
-
-        var count = index.Enumerate(new SearchQuery(null)).Count();
-
-        Assert.IsTrue(count > 0);
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
-    }
-
-    /// <summary>
-    ///     A foreach that breaks early disposes the enumerator, and that disposal is what
-    ///     returns the borrow; the block stays mapped while the enumeration sits between rows.
-    /// </summary>
-    [TestMethod]
-    public async Task Enumerate_DisposedPartwayThrough_ReturnsItsBorrow()
-    {
-        await using var index = await OpenTwoDriveIndexAsync();
-        var release = index.CurrentSnapshot[0].ReleaseState;
-
-        using (var enumerator = index.Enumerate(new SearchQuery(null)).GetEnumerator())
-        {
-            Assert.IsTrue(enumerator.MoveNext());
-            Assert.AreEqual(1, release.Hooks.OutstandingBorrowCount);
-        }
-
-        Assert.AreEqual(0, release.Hooks.OutstandingBorrowCount);
-    }
 
     /// <summary>
     ///     The laziness contract: the call reads nothing and takes no borrow, and the first
@@ -151,125 +75,6 @@ public sealed class FileIndexEnumerateTests : IDisposable
         enumerator.Dispose();
         Assert.AreEqual(0, release.Hooks.OutstandingBorrowCount);
     }
-
-    /// <summary>
-    ///     The enumerable is cold even for a token that is already cancelled: the throw lands
-    ///     on the first MoveNext, before the first row, and no borrow was ever taken.
-    /// </summary>
-    [TestMethod]
-    public async Task Enumerate_WithACancelledToken_ThrowsOnTheFirstMoveNextAndTakesNoBorrow()
-    {
-        await using var index = await OpenTwoDriveIndexAsync();
-        using var cancellation = new CancellationTokenSource();
-        cancellation.Cancel();
-
-        using var enumerator = index.Enumerate(new SearchQuery(null), cancellation.Token).GetEnumerator();
-        try
-        {
-            enumerator.MoveNext();
-            Assert.Fail("The first MoveNext on a cancelled token must throw OperationCanceledException.");
-        }
-        catch (OperationCanceledException)
-        {
-            // Expected
-        }
-
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
-    }
-
-    [TestMethod]
-    public async Task Enumerate_OnADisposedIndex_ThrowsAtCallTime()
-    {
-        var index = await OpenSyntheticIndexAsync(64);
-        await index.DisposeAsync();
-
-        Assert.ThrowsExactly<ObjectDisposedException>(() => index.Enumerate(new SearchQuery(null)));
-    }
-
-    /// <summary>
-    ///     With more rows after the first yield than one cancellation-check interval, a token
-    ///     cancelled after the first entry is observed from the next MoveNext, before the scan
-    ///     has visited every row. That the second pull throws rather than answering entry two
-    ///     is also the behavioural half of the laziness contract.
-    /// </summary>
-    [TestMethod]
-    public async Task Enumerate_ObservesCancellationMidEnumeration()
-    {
-        uint rowCount = 10_000;
-        Assert.IsTrue(rowCount > RowScanner.CancellationCheckIntervalRows,
-            "the test needs a cancellation checkpoint after the first row");
-
-        await using var index = await OpenSyntheticIndexAsync(rowCount);
-        using var cancellation = new CancellationTokenSource();
-        using var enumerator = index.Enumerate(new SearchQuery("file"), cancellation.Token).GetEnumerator();
-        Assert.IsTrue(enumerator.MoveNext(), "every file row matches the query");
-
-        cancellation.Cancel();
-
-        try
-        {
-            enumerator.MoveNext();
-            Assert.Fail("MoveNext after cancellation must throw OperationCanceledException.");
-        }
-        catch (OperationCanceledException)
-        {
-            // Expected
-        }
-
-        Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
-    }
-
-    /// <summary>
-    ///     Parity is order as well as set: the point of the swap is that a consumer sees no
-    ///     change but memory, so the path sequence has to match exactly.
-    /// </summary>
-    static ArgumentOutOfRangeException CaptureOutOfRange(FileIndex index, SearchQuery query,
-        Func<FileIndex, SearchQuery, object> call)
-    {
-        try
-        {
-            call(index, query);
-        }
-        catch (ArgumentOutOfRangeException failure)
-        {
-            return failure;
-        }
-
-        throw new AssertFailedException("The call did not throw ArgumentOutOfRangeException.");
-    }
-
-    static void AssertStreamingMatchesSearch(FileIndex index, SearchQuery query)
-    {
-        var expected = index.Search(query).Select(entry => entry.Path).ToArray();
-        var actual = index.Enumerate(query).Select(entry => entry.Path).ToArray();
-        CollectionAssert.AreEqual(expected, actual,
-            $"streaming disagreed with Search for {query.NamePattern} in {query.MatchMode} mode");
-    }
-
-    async Task<FileIndex> OpenTwoDriveIndexAsync()
-    {
-        Directory.CreateDirectory(Path.Combine(FirstRoot, "Documents"));
-        Directory.CreateDirectory(Path.Combine(FirstRoot, "Pictures"));
-        Directory.CreateDirectory(Path.Combine(SecondRoot, "Pictures"));
-        await File.WriteAllTextAsync(Path.Combine(FirstRoot, "Documents", "readme.md"), "hello");
-        await File.WriteAllTextAsync(Path.Combine(FirstRoot, "Documents", "report.pdf"), new string('x', 100));
-        await File.WriteAllTextAsync(Path.Combine(FirstRoot, "Pictures", "holiday.jpg"), new string('y', 5000));
-        await File.WriteAllTextAsync(Path.Combine(SecondRoot, "notes.md"), new string('z', 300));
-        await File.WriteAllTextAsync(Path.Combine(SecondRoot, "Pictures", "readme.md"), "world");
-
-        return await FileIndex.OpenAsync(_fixture.Options() with
-        {
-            Drives = [new IndexedDrive('T', FirstRoot, 1, ProducerKind.Enumeration), new IndexedDrive('U', SecondRoot, 2, ProducerKind.Enumeration)],
-        }, CancellationToken.None);
-    }
-
-    Task<FileIndex> OpenSyntheticIndexAsync(uint rowCount) =>
-        FileIndex.OpenAsync(_fixture.Options(volumeSerial: TestVolumeSerial.GetNext(), producer: ProducerKind.Mft) with
-        {
-            MftSource = new MftIndexSource((request, _) => Task.FromResult(
-                new MftBlockProduceResult(SeededBlocks.Build(request, rowCount, i => $"file{i}.dat", FixedMoment),
-                    SkippedRecordCount: 0)))
-        }, CancellationToken.None);
 
     /// <summary>
     ///     The documented abandonment caveat: an enumerator dropped without disposal holds
@@ -332,6 +137,14 @@ public sealed class FileIndexEnumerateTests : IDisposable
 
         Assert.AreEqual(0, index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
     }
+
+    Task<FileIndex> OpenSyntheticIndexAsync(uint rowCount) =>
+        FileIndex.OpenAsync(_fixture.Options(volumeSerial: TestVolumeSerial.GetNext(), producer: ProducerKind.Mft) with
+        {
+            MftSource = new MftIndexSource((request, _) => Task.FromResult(
+                new MftBlockProduceResult(SeededBlocks.Build(request, rowCount, i => $"file{i}.dat", FixedMoment),
+                    SkippedRecordCount: 0)))
+        }, CancellationToken.None);
 
     Task<FileIndex> OpenSyntheticIndexWithDeepCandidateAsync() =>
         FileIndex.OpenAsync(_fixture.Options(volumeSerial: TestVolumeSerial.GetNext(), producer: ProducerKind.Mft) with

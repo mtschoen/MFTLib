@@ -1,11 +1,7 @@
 # Query and writer lifetime
 
 - Index contracts:
-    - **Query lifetime**: the six entry points that scan rows (`Find`, `Search`, `Enumerate`, `EnumerateRows`,
-      `Root`, and `FileEntry.Children`) each take an optional `CancellationToken`, observed
-      before the first row and then at least every 4096 rows from inside `RowScanner`, and each holds a borrow
-      on every drive block it reads (the snapshot) for its whole duration. `FileEntry.Children` observes only its caller's token,
-      since a handle holds no index reference; disposal waits that listing out rather than cancelling it.
+    - **Query lifetime**: the six query operations (`Find`, `Search`, `Enumerate`, `EnumerateRows`, `Root`, and `FileEntry.Children`) accept an optional CancellationToken and hold a borrow on every block they read for the operation's duration. They observe cancellation before the first row read. Operations that scan rows check at least every 4096 scanned rows, including rejected rows; Root resolves its one root row directly. RowScanner supplies the cadence for Find, Search, EnumerateRows and Children; Enumerate implements the same cadence in its streaming loop. Children observes only its caller's token because a handle holds no index reference; disposal waits for that listing rather than cancelling it.
       Row-backed `FileEntry` reads take no borrow and retain the per-access `IsReleased`
       check; `Drive` and `RecordKey` are also release-checked. Equality, hashing,
       `IsValid` and `IsDisposed` use stored identity/state and remain available after
