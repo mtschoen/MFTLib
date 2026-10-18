@@ -10,54 +10,64 @@ public sealed partial record IndexedDrive
     ///     A drive that vanishes or refuses access mid-read is reported as not ready.
     /// </summary>
     [SupportedOSPlatform("windows")]
-    public static IReadOnlyList<(string RootDirectory, bool IsIndexable, string? Reason)>
-        EnumerateWindowsVolumes() =>
+    public static IReadOnlyList<WindowsVolume> EnumerateWindowsVolumes() =>
         ReadVolumeVerdicts(DriveInfo.GetDrives(), drive => drive.Name,
             drive => drive.DriveType, drive => drive.IsReady, drive => drive.DriveFormat);
 
-    internal static IReadOnlyList<(string RootDirectory, bool IsIndexable, string? Reason)>
-        ReadVolumeVerdicts<T>(IEnumerable<T> drives, Func<T, string> rootDirectory,
-            Func<T, DriveType> driveType, Func<T, bool> isReady, Func<T, string> driveFormat)
+    internal static IReadOnlyList<WindowsVolume> ReadVolumeVerdicts<T>(
+        IEnumerable<T> drives, Func<T, string> rootDirectory, Func<T, DriveType> driveType,
+        Func<T, bool> isReady, Func<T, string> driveFormat)
     {
-        string? Classify(T drive)
+        WindowsVolume Classify(T drive)
         {
+            var root = rootDirectory(drive);
+            var key = new DriveKey(root[0]);
+            var type = DriveType.Unknown;
             try
             {
-                switch (driveType(drive))
+                type = driveType(drive);
+                string? reason;
+                switch (type)
                 {
                     case DriveType.Fixed:
+                        reason = null;
                         break;
                     case DriveType.Network:
-                        return "network";
+                        reason = "network";
+                        break;
                     case DriveType.Removable:
-                        return "removable";
+                        reason = "removable";
+                        break;
                     case DriveType.CDRom:
-                        return "optical";
+                        reason = "optical";
+                        break;
                     case DriveType.NoRootDirectory:
-                        return "not ready";
+                        reason = "not ready";
+                        break;
                     default:
-                        return "other drive type";
+                        reason = "other drive type";
+                        break;
+                }
+                if (type != DriveType.Fixed)
+                {
+                    return new WindowsVolume(key, root, type, false, null, false, reason);
                 }
                 if (!isReady(drive))
                 {
-                    return "not ready";
+                    return new WindowsVolume(key, root, type, false, null, false, "not ready");
                 }
                 var format = driveFormat(drive);
-                return string.Equals(format, "NTFS", StringComparison.OrdinalIgnoreCase)
-                    ? null
-                    : $"not NTFS ({format})";
+                var isNtfs = string.Equals(format, "NTFS", StringComparison.OrdinalIgnoreCase);
+                return new WindowsVolume(key, root, type, true, format, isNtfs,
+                    isNtfs ? null : $"not NTFS ({format})");
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
                                                   or System.Security.SecurityException)
             {
-                return "not ready";
+                return new WindowsVolume(key, root, type, false, null, false, "not ready");
             }
         }
 
-        return [.. drives.Select(drive =>
-        {
-            var reason = Classify(drive);
-            return (rootDirectory(drive), reason is null, reason);
-        })];
+        return [.. drives.Select(Classify)];
     }
 }

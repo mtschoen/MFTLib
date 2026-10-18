@@ -32,9 +32,9 @@ public sealed class WatchFirstRunTests : IDisposable
         _tempDirectory.Dispose();
     }
 
-    static (string RootDirectory, bool IsIndexable, string? Reason)
-        Facts(string rootDirectory, string? reason = null) =>
-        (rootDirectory, reason is null, reason);
+    static WindowsVolume Facts(string rootDirectory, string? reason = null) =>
+        new(new DriveKey(rootDirectory[0]), rootDirectory, DriveType.Fixed, true, reason is null ? "NTFS" : "exFAT",
+            reason is null, reason);
 
     [TestMethod]
     public void TryChooseDrives_NoArguments_CoversEveryChosenDriveAndSaysWhich()
@@ -50,7 +50,7 @@ public sealed class WatchFirstRunTests : IDisposable
         var result = host.TryChooseDrives(ref parsed, available);
 
         Assert.IsTrue(result);
-        CollectionAssert.Contains(lines, @"Skipping drive F:\ (not NTFS (exFAT))");
+        CollectionAssert.Contains(lines, @"Skipping drive F:\ (Fixed, ready, format exFAT: not NTFS (exFAT))");
         Assert.IsTrue(lines.Contains("No drive was named, so this run covers every ready NTFS fixed drive: C, G, H. Name drives to choose others."), string.Join(Environment.NewLine, lines));
         CollectionAssert.AreEqual(new[] { "C", "G", "H" }, parsed.Drives.ToArray());
     }

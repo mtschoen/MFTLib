@@ -318,7 +318,7 @@ MFTLib.Index.IndexedDrive :: method public Equals(MFTLib.Index.IndexedDrive? oth
 MFTLib.Index.IndexedDrive :: method public override Equals(object? obj) : bool
 MFTLib.Index.IndexedDrive :: method public override GetHashCode() : int
 MFTLib.Index.IndexedDrive :: method public override ToString() : string
-MFTLib.Index.IndexedDrive :: method public static EnumerateWindowsVolumes() : System.Collections.Generic.IReadOnlyList<System.ValueTuple<string, bool, string?>>
+MFTLib.Index.IndexedDrive :: method public static EnumerateWindowsVolumes() : System.Collections.Generic.IReadOnlyList<MFTLib.Index.WindowsVolume>
 MFTLib.Index.IndexedDrive :: method public static FromWindowsVolume(MFTLib.Index.DriveKey drive) : MFTLib.Index.IndexedDrive
 MFTLib.Index.IndexedDrive :: method public static op_Equality(MFTLib.Index.IndexedDrive? left, MFTLib.Index.IndexedDrive? right) : bool
 MFTLib.Index.IndexedDrive :: method public static op_Inequality(MFTLib.Index.IndexedDrive? left, MFTLib.Index.IndexedDrive? right) : bool
@@ -424,3 +424,20 @@ MFTLib.Index.WatchStateChange :: property public Drive { get; init; } : MFTLib.I
 MFTLib.Index.WatchStateChange :: property public Fault { get; init; } : MFTLib.Index.WatchFault?
 MFTLib.Index.WatchStateChange :: property public Watch { get; init; } : MFTLib.Index.DriveWatchStatus
 MFTLib.Index.WatchStateChange :: type public sealed class : System.IEquatable<MFTLib.Index.WatchStateChange>
+MFTLib.Index.WindowsVolume :: constructor public (MFTLib.Index.DriveKey Drive, string RootDirectory, System.IO.DriveType DriveType, bool IsReady, string? Format, bool IsIndexable, string? Reason)
+MFTLib.Index.WindowsVolume :: method public <Clone>$() : MFTLib.Index.WindowsVolume
+MFTLib.Index.WindowsVolume :: method public Deconstruct(out MFTLib.Index.DriveKey Drive, out string RootDirectory, out System.IO.DriveType DriveType, out bool IsReady, out string? Format, out bool IsIndexable, out string? Reason) : void
+MFTLib.Index.WindowsVolume :: method public Equals(MFTLib.Index.WindowsVolume? other) : bool
+MFTLib.Index.WindowsVolume :: method public override Equals(object? obj) : bool
+MFTLib.Index.WindowsVolume :: method public override GetHashCode() : int
+MFTLib.Index.WindowsVolume :: method public override ToString() : string
+MFTLib.Index.WindowsVolume :: method public static op_Equality(MFTLib.Index.WindowsVolume? left, MFTLib.Index.WindowsVolume? right) : bool
+MFTLib.Index.WindowsVolume :: method public static op_Inequality(MFTLib.Index.WindowsVolume? left, MFTLib.Index.WindowsVolume? right) : bool
+MFTLib.Index.WindowsVolume :: property public Drive { get; init; } : MFTLib.Index.DriveKey
+MFTLib.Index.WindowsVolume :: property public DriveType { get; init; } : System.IO.DriveType
+MFTLib.Index.WindowsVolume :: property public Format { get; init; } : string?
+MFTLib.Index.WindowsVolume :: property public IsIndexable { get; init; } : bool
+MFTLib.Index.WindowsVolume :: property public IsReady { get; init; } : bool
+MFTLib.Index.WindowsVolume :: property public Reason { get; init; } : string?
+MFTLib.Index.WindowsVolume :: property public RootDirectory { get; init; } : string
+MFTLib.Index.WindowsVolume :: type public sealed class : System.IEquatable<MFTLib.Index.WindowsVolume>

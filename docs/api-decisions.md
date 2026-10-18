@@ -723,18 +723,22 @@ exception informed nobody.
 
 ## Windows volume discovery reports every drive with an MFT verdict
 
-**Decision (owner, 2026-10-16):** `IndexedDrive.EnumerateWindowsVolumes()` returns every root from
-`DriveInfo.GetDrives()` as `(RootDirectory, IsIndexable, Reason)`. Only ready fixed NTFS drives are
-indexable; NTFS compares with `StringComparison.OrdinalIgnoreCase`. Reasons: `not ready`, `network`,
-`removable`, `optical`, `other drive type`, `not NTFS (<format>)`. Non-fixed drives are classified by
-type alone, readiness is read only for fixed drives and format only for ready fixed drives, and a
-per-drive `IOException`, `UnauthorizedAccessException` or `SecurityException` means `not ready`.
+**Decision (owner, 2026-10-16; record 2026-10-18):** `IndexedDrive.EnumerateWindowsVolumes()` returns every
+root from `DriveInfo.GetDrives()` as `IReadOnlyList<WindowsVolume>`. `WindowsVolume` is a public sealed record
+of `DriveKey Drive`, `string RootDirectory`, `DriveType DriveType`, `bool IsReady`, `string? Format`,
+`bool IsIndexable` and `string? Reason`. Only ready fixed NTFS drives are indexable; NTFS compares with
+`StringComparison.OrdinalIgnoreCase`. `Reason` stays for display: `not ready`, `network`, `removable`,
+`optical`, `other drive type`, `not NTFS (<format>)`. Non-fixed drives are classified by type alone, so
+`IsReady` is true only for a fixed drive read as ready, and `Format` is non-null only for a ready fixed drive.
+A per-drive `IOException`, `UnauthorizedAccessException` or `SecurityException` means `not ready`.
 Free-space and size stay consumer-side.
 
 **Reason:** Watch and file-wizard each carried a diverging copy of "ready, fixed, NTFS"; the library
-owns the policy once. file-wizard migrates in its pin-bump pull request.
+owns the policy once. A consumer that wants the ready fixed non-NTFS volumes (the directory-walk candidates)
+branches on `DriveType`, `IsReady` and `Format` instead of parsing the reason text. file-wizard migrates in
+its pin-bump pull request.
 
-**Revisit only if:** a consumer needs a different selectable discovery policy or structured rejection data.
+**Revisit only if:** a consumer needs a different selectable discovery policy.
 
 ## Capacity exhaustion names the state; rescan is the remedy
 

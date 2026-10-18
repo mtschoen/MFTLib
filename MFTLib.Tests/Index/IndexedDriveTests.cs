@@ -96,7 +96,14 @@ public sealed class IndexedDriveTests : IDisposable
             _ => type == DriveType.Fixed && ready ? format
                 : throw new AssertFailedException("Format was read without a ready fixed drive."));
 
-        Assert.AreEqual((@"X:\", reason is null, reason), result.Single());
+        var volume = result.Single();
+        Assert.AreEqual(new DriveKey('X'), volume.Drive);
+        Assert.AreEqual(@"X:\", volume.RootDirectory);
+        Assert.AreEqual(type, volume.DriveType);
+        Assert.AreEqual(type == DriveType.Fixed && ready, volume.IsReady);
+        Assert.AreEqual(type == DriveType.Fixed && ready ? format : null, volume.Format);
+        Assert.AreEqual(reason is null, volume.IsIndexable);
+        Assert.AreEqual(reason, volume.Reason);
     }
 
     [TestMethod]
@@ -107,8 +114,13 @@ public sealed class IndexedDriveTests : IDisposable
             drive => drive == 0 ? throw new IOException("device vanished") : true, _ => "NTFS");
 
         Assert.AreEqual(2, result.Count);
-        Assert.AreEqual((@"Q:\", false, "not ready"), result[0]);
-        Assert.AreEqual((@"C:\", true, (string?)null), result[1]);
+        Assert.AreEqual(new DriveKey('Q'), result[0].Drive);
+        Assert.IsFalse(result[0].IsReady);
+        Assert.IsNull(result[0].Format);
+        Assert.AreEqual("not ready", result[0].Reason);
+        Assert.IsTrue(result[1].IsIndexable);
+        Assert.IsTrue(result[1].IsReady);
+        Assert.AreEqual("NTFS", result[1].Format);
     }
 
     [TestMethod]

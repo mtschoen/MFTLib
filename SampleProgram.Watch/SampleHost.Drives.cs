@@ -4,7 +4,7 @@ namespace SampleProgram.Watch;
 
 partial class SampleHost
 {
-    static IEnumerable<(string RootDirectory, bool IsIndexable, string? Reason)> EnumerateDrives()
+    static IEnumerable<WindowsVolume> EnumerateDrives()
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -19,22 +19,22 @@ partial class SampleHost
 
     internal bool TryChooseDrives(
         ref WatchArguments parsed,
-        IEnumerable<(string RootDirectory, bool IsIndexable, string? Reason)> availableDrives)
+        IEnumerable<WindowsVolume> availableDrives)
     {
         if (!parsed.NeedsDrives || parsed.Drives.Count > 0)
         {
             return true;
         }
 
-        var drives = availableDrives as IReadOnlyList<(string RootDirectory, bool IsIndexable, string? Reason)>
+        var drives = availableDrives as IReadOnlyList<WindowsVolume>
             ?? availableDrives.ToList();
         foreach (var drive in drives.Where(drive => !drive.IsIndexable))
         {
-            _output.WriteLine($"Skipping drive {drive.RootDirectory} ({drive.Reason})");
+            _output.WriteLine($"Skipping drive {drive.RootDirectory} ({drive.DriveType}, {(drive.IsReady ? "ready" : "not ready")}, format {drive.Format ?? "unknown"}: {drive.Reason})");
         }
 
         var chosen = drives.Where(drive => drive.IsIndexable)
-            .Select(drive => new DriveKey(drive.RootDirectory[0]).ToString())
+            .Select(drive => drive.Drive.ToString())
             .Order(StringComparer.Ordinal).ToArray();
         if (chosen.Length == 0)
         {
