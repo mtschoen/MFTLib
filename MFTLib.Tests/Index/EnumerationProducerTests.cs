@@ -43,14 +43,16 @@ public sealed class EnumerationProducerTests : IDisposable
         return (block, new BlockWriter(block));
     }
 
-    DriveBlock[] Produce(out BlockFile block, out EnumerationResult result)
+    DriveBlock[] Produce(out BlockFile block, out EnumerationResult result,
+        IReadOnlyCollection<string>? retainedFileNames = null)
     {
         var created = CreateBlock();
         block = created.Block;
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = _treeRoot,
-            Drive = 'T'
+            Drive = 'T',
+            RetainedFileNames = retainedFileNames
         });
 
         result = producer.Produce(created.Writer, progress: null, CancellationToken.None);
@@ -69,6 +71,77 @@ public sealed class EnumerationProducerTests : IDisposable
             Assert.AreEqual(7u, block.Header.RowCount);
             Assert.AreEqual(0, result.AccessDeniedSubtreeCount);
             Assert.IsFalse(result.CapacityExhausted);
+        }
+        finally
+        {
+            await snapshot.ReleaseNowAsync();
+        }
+    }
+
+    [TestMethod]
+    public async Task Produce_NullRetainedFileNames_WritesEveryFile()
+    {
+        var snapshot = Produce(out _, out var result, retainedFileNames: null);
+        try
+        {
+            Assert.AreEqual(7u, result.RowCount);
+            Assert.IsTrue(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents", "readme.md")).HasValue);
+            Assert.IsTrue(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Pictures", "holiday.jpg")).HasValue);
+        }
+        finally
+        {
+            await snapshot.ReleaseNowAsync();
+        }
+    }
+
+    [TestMethod]
+    public async Task Produce_EmptyRetainedFileNames_WritesDirectoriesOnly()
+    {
+        var snapshot = Produce(out _, out var result, retainedFileNames: []);
+        try
+        {
+            // Root, Documents, Projects, Pictures.
+            Assert.AreEqual(4u, result.RowCount);
+            Assert.IsTrue(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents", "Projects")).HasValue);
+            Assert.IsTrue(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Pictures")).HasValue);
+            Assert.IsFalse(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents", "readme.md")).HasValue);
+            Assert.IsFalse(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents", "Projects", "report.pdf")).HasValue);
+        }
+        finally
+        {
+            await snapshot.ReleaseNowAsync();
+        }
+    }
+
+    [TestMethod]
+    public async Task Produce_NonemptyRetainedFileNames_WritesDirectoriesAndMatchingFilesIgnoringCase()
+    {
+        var snapshot = Produce(out _, out var result, retainedFileNames: ["REPORT.PDF", "no-such-file.txt"]);
+        try
+        {
+            // Root, Documents, Projects, Pictures, report.pdf.
+            Assert.AreEqual(5u, result.RowCount);
+            Assert.IsTrue(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents", "Projects", "report.pdf")).HasValue);
+            Assert.IsFalse(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Pictures", "holiday.jpg")).HasValue);
+            Assert.IsFalse(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents", "readme.md")).HasValue);
+        }
+        finally
+        {
+            await snapshot.ReleaseNowAsync();
+        }
+    }
+
+    [TestMethod]
+    public async Task Produce_RetainedFileNamesNeverMatchADirectory_AndTheRootRowIsAlwaysKept()
+    {
+        // A directory is kept whether or not its name is in the set, so the set naming one changes nothing.
+        var snapshot = Produce(out var block, out var result, retainedFileNames: ["Pictures"]);
+        try
+        {
+            Assert.AreEqual(4u, result.RowCount);
+            Assert.AreEqual(_treeRoot, new string(NamePool.ReadRowName(block, 0)));
+            Assert.IsTrue(block.Rows[0].IsDirectory);
+            Assert.IsTrue(EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents")).HasValue);
         }
         finally
         {

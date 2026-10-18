@@ -70,7 +70,8 @@ public sealed partial class FileIndex
                 DeleteOnClose = deleteOnClose,
                 Progress = Options.ScanProgress,
                 CacheTag = Options.CacheTag,
-                Diagnostics = Options.Diagnostics
+                Diagnostics = Options.Diagnostics,
+                RetainedFileNames = Options.RetainedFileNames
             };
 
             var produceResult = await producer(request, cancellationToken).ConfigureAwait(false);
@@ -137,7 +138,8 @@ public sealed partial class FileIndex
                     var producer = new EnumerationProducer(new EnumerationProducerOptions
                     {
                         RootDirectory = Configuration.RootDirectory,
-                        Drive = Drive
+                        Drive = Drive,
+                        RetainedFileNames = Options.RetainedFileNames
                     });
 
                     var result = producer.Produce(writer, Options.ScanProgress, cancellationToken);

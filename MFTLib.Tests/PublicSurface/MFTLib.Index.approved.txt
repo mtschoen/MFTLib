@@ -245,6 +245,7 @@ MFTLib.Index.FileIndexOptions :: property public Diagnostics { get; init; } : Sy
 MFTLib.Index.FileIndexOptions :: property public DriveOpenProgress { get; init; } : System.IProgress<MFTLib.Index.IndexDriveOpened>?
 MFTLib.Index.FileIndexOptions :: property public Drives { get; init; } : System.Collections.Generic.IReadOnlyList<MFTLib.Index.IndexedDrive>
 MFTLib.Index.FileIndexOptions :: property public MftSource { get; init; } : MFTLib.Index.MftIndexSource?
+MFTLib.Index.FileIndexOptions :: property public RetainedFileNames { get; init; } : System.Collections.Generic.IReadOnlyCollection<string>?
 MFTLib.Index.FileIndexOptions :: property public ScanProgress { get; init; } : System.IProgress<MFTLib.Index.IndexScanProgress>?
 MFTLib.Index.FileIndexOptions :: type public sealed class : System.IEquatable<MFTLib.Index.FileIndexOptions>
 MFTLib.Index.IndexDriveOpened :: method public <Clone>$() : MFTLib.Index.IndexDriveOpened

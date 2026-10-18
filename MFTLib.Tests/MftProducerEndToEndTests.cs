@@ -94,12 +94,10 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
                 return Records();
             }
         }));
-        var source = new BrokerMftBlockProducer(Connect(broker.Process), new MftScanOptions
-        {
-            RetainedFileNames = ["NOTES.TXT"]
-        }).CreateIndexSource();
+        var source = new BrokerMftBlockProducer(Connect(broker.Process)).CreateIndexSource();
         var options = Options(source) with
         {
+            RetainedFileNames = ["NOTES.TXT"],
             ScanProgress = new SynchronousProgress<IndexScanProgress>(value =>
             {
                 progress.Add(value);

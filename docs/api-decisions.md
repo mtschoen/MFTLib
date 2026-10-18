@@ -640,15 +640,33 @@ their history without converting between shapes. Names distinguish the snapshot,
 **Decision (API review finding F4):**
 `MftScanOptions` configures every MFT scan: broker-backed through
 `BrokerSession.CreateIndexSource(scanOptions)` and in-process through `MftIndexSources.FromLocalVolumes(scanOptions)`.
-Its `RetainedFileNames` is null to retain every eligible record, empty to
-retain directories only, or nonempty to retain directories plus files whose names match ordinally, ignoring case.
-The test package's `InProcessBrokerScan.RetainedFileNames` follows the same convention.
+It holds `IncludeFreed`, the one setting that exists only for an MFT scan.
+Row retention is `FileIndexOptions.RetainedFileNames`
+([Retention is an index option applied by every producer](#retention-is-an-index-option-applied-by-every-producer)).
 
-**Reason:** scan options apply independently of the transport, and retention names describe
-the MFT filter rather than a directory walk (`ProducerKind.Enumeration`).
-git-wizard is the production caller of the filter.
+**Reason:** scan options apply independently of the transport, and freed records exist only in the MFT.
 
 **Revisit only if:** a scan setting applies to one transport only.
+
+## Retention is an index option applied by every producer
+
+**Decision:** `FileIndexOptions.RetainedFileNames` is null to retain every eligible row, empty to retain
+directories only, or nonempty to retain directories plus files whose names match ordinally, ignoring case.
+Every producer applies it. The MFT producers filter records, the dump source filters records, and the
+directory walk (`ProducerKind.Enumeration`) does not write a non-directory entry whose name is not retained.
+The root row is always kept. The index hands the set to an MFT producer in the internal produce request, and
+the broker's scan request carries it to the elevated scanner. The walk looks names up by span, so it
+allocates no string per entry. `FileIndex.OpenAsync` copies the set once, rejects a null element, and rejects
+a set too long for one broker request frame with `ArgumentException` before it creates a cache directory or
+starts a scan; the frame check applies when a drive uses the MFT producer. `MftScanOptions` has no retention
+member. The test package's `InProcessBrokerScan.RetainedFileNames` reports what a client requested.
+The retention naming ruling at the end of this document applies.
+
+**Reason:** a set that filters only some producers makes one index hold two policies and forces a consumer
+that walks a tree to write every file it then discards. Retention describes which rows the index keeps, not
+how a producer reads its substrate. This supersedes the F4 sentence that scoped retention to MFT scans.
+
+**Revisit only if:** a producer cannot apply a name filter at the point it reads entries.
 
 ## Search bounds are named for what they compare, and say what they exclude
 

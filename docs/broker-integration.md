@@ -88,10 +88,8 @@ var options = new FileIndexOptions
 {
     Drives = drives,
     CacheDirectory = cacheDirectory,
-    MftSource = session.CreateIndexSource(new MftScanOptions
-    {
-        RetainedFileNames = null // Full scan; [] keeps directories only.
-    })
+    MftSource = session.CreateIndexSource(),
+    RetainedFileNames = null // Keeps every row; [] keeps directories only.
 };
 
 await using var index = await FileIndex.OpenAsync(options, cancellationToken);
@@ -115,10 +113,10 @@ instead. Every scan of an MFT-backed drive then fails with
 and a watch start reports `NotApplicable` without recording a watch
 request. Cached blocks still open.
 
-The optional `MftScanOptions.RetainedFileNames` selects retention: null keeps
-all eligible records, an empty collection keeps directories only, and a nonempty
+The optional `FileIndexOptions.RetainedFileNames` selects retention for every producer: null keeps
+all eligible rows, an empty collection keeps directories only, and a nonempty
 collection keeps directories plus files whose names match ordinally, ignoring case.
-`IncludeFreed` controls freed-record inclusion independently. Scan progress reaches the application as `IndexScanProgress`
+`MftScanOptions.IncludeFreed` controls freed-record inclusion independently. Scan progress reaches the application as `IndexScanProgress`
 through `FileIndexOptions.ScanProgress`. A block that fails validation is disposed
 and its scan fails; a block that passes transfers to the index.
 

@@ -221,10 +221,8 @@ public partial class BrokerProcessTests
     [DataRow(ScanRecordingCase.FirstCallbackHeld)]
     public async Task ScriptedScan_WritesTheBatchesThroughTheRealWriterAndRecordsTheRequest(ScanRecordingCase recordingCase)
     {
-        var options = new MftScanOptions
-        {
-            RetainedFileNames = [".git"]
-        };
+        var options = new MftScanOptions();
+        var target = TestBlockSections.Target() with { RetainedFileNames = [".git"] };
 
         if (recordingCase == ScanRecordingCase.FirstCallbackHeld)
         {
@@ -245,7 +243,7 @@ public partial class BrokerProcessTests
                 }
             });
 
-            var scanC = handle.Process.ScanDriveAsync('c', TestBlockSections.Target(), options, null, CancellationToken.None);
+            var scanC = handle.Process.ScanDriveAsync('c', target, options, null, CancellationToken.None);
             await firstCallbackEntered.Entered.WaitAsync(HangGuard);
 
             var resultD = await handle.Process.ScanDriveAsync('d', TestBlockSections.Target(), options, null, CancellationToken.None).WaitAsync(HangGuard);
@@ -288,7 +286,7 @@ public partial class BrokerProcessTests
                 ? "scripted scan failure"
                 : "scripted cursor failure";
             var failure = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-                singleHandle.Process.ScanDriveAsync('c', TestBlockSections.Target(), options, null, CancellationToken.None)
+                singleHandle.Process.ScanDriveAsync('c', target, options, null, CancellationToken.None)
                     .WaitAsync(HangGuard));
             StringAssert.Contains(failure.Message, expectedMessage);
 
@@ -298,7 +296,7 @@ public partial class BrokerProcessTests
             return;
         }
 
-        var result = await singleHandle.Process.ScanDriveAsync('c', TestBlockSections.Target(), options,
+        var result = await singleHandle.Process.ScanDriveAsync('c', target, options,
             null, CancellationToken.None).WaitAsync(HangGuard);
 
         Assert.AreEqual(new DriveKey('C'), result.Drive);
@@ -320,8 +318,8 @@ public partial class BrokerProcessTests
             QueryJournalCursor = _ => ArmedSynthetic,
             ScanDrive = _ => [[SyntheticRecord(5, ".", 3)]]
         });
-        await handle.Process.ScanDriveAsync('C', TestBlockSections.Target(),
-            new MftScanOptions { RetainedFileNames = names }, null, CancellationToken.None).WaitAsync(HangGuard);
+        await handle.Process.ScanDriveAsync('C', TestBlockSections.Target() with { RetainedFileNames = names },
+            new MftScanOptions(), null, CancellationToken.None).WaitAsync(HangGuard);
         var scan = handle.Scans.Single();
         if (names is null)
         {

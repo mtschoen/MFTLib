@@ -1,7 +1,5 @@
 using System.Buffers;
 using System.Buffers.Binary;
-using MFTLib.Tests.TestSupport;
-using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -12,7 +10,6 @@ namespace MFTLib.Tests;
 public class BrokerFrameWriteLimitTests
 {
     static readonly UsnJournalCursor Armed = new(7, 1000);
-    static readonly NtfsVolumeInformation Volume = new(1024 * 1000, 1024);
 
     static string[] KeepList(int count) => Enumerable.Repeat(new string('n', 255), count).ToArray();
 
@@ -85,29 +82,5 @@ public class BrokerFrameWriteLimitTests
         BrokerProtocol.WriteError(buffer, 3, "journal wrapped");
 
         Assert.AreEqual("journal wrapped", BrokerProtocol.ReadFrame(buffer.WrittenSpan, out _).RequireMessage());
-    }
-
-    [TestMethod]
-    public async Task ScanDriveAsync_KeepListOverTheLimit_ThrowsArgumentExceptionAndTheProcessStaysUsable()
-    {
-        await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
-        {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
-            ProcessorCount = 2
-        }));
-        var options = new MftScanOptions
-        {
-            RetainedFileNames = KeepList(32_700)
-        };
-
-        var exception = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
-            broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), options, null, CancellationToken.None)
-                .WaitAsync(HangGuard));
-
-        Assert.AreEqual("options", exception.ParamName);
-        StringAssert.Contains(exception.Message, "frame limit");
-        var volume = await broker.Process.QueryVolumeAsync('C', CancellationToken.None)
-            .WaitAsync(HangGuard);
-        Assert.AreEqual(Volume.BytesPerFileRecordSegment, volume.BytesPerFileRecordSegment);
     }
 }

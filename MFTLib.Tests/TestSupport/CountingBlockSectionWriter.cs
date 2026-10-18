@@ -7,7 +7,7 @@ namespace MFTLib.Tests.TestSupport;
 internal sealed class CountingBlockSectionWriter : IBlockSectionWriter
 {
     public BlockWriteResult Write(string sectionName, UsnJournalCursor cursor,
-        IEnumerable<IReadOnlyList<MftRecord>> batches, MftScanOptions filter,
+        IEnumerable<IReadOnlyList<MftRecord>> batches, MftRowSelection selection,
         BlockWriteReporting reporting, CancellationToken cancellationToken)
     {
         long rows = 0;

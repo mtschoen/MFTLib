@@ -10,4 +10,7 @@ internal sealed record BlockScanTarget(string Path, uint VolumeSerial, bool Dele
     ///     it into the header before marking this block complete.
     /// </summary>
     public CacheTag CacheTag { get; init; }
+
+    /// <summary>Null keeps every eligible record; empty keeps directories only; otherwise directories plus files with these names.</summary>
+    public IReadOnlyCollection<string>? RetainedFileNames { get; init; }
 }

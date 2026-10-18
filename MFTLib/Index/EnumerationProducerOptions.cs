@@ -12,4 +12,10 @@ internal sealed record EnumerationProducerOptions
 
     /// <summary>Drive letter reported by entries produced by this enumeration.</summary>
     public required DriveKey Drive { get; init; }
+
+    /// <summary>
+    ///     Null writes every entry. Empty writes directories only. A nonempty set also writes files whose
+    ///     names match ordinally, ignoring case. The root row is always written.
+    /// </summary>
+    public IReadOnlyCollection<string>? RetainedFileNames { get; init; }
 }

@@ -93,7 +93,7 @@ internal sealed class EnumerationProducer
         ArgumentNullException.ThrowIfNull(writer);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var state = new WalkState(writer);
+        var state = new WalkState(writer, Options.RetainedFileNames);
         writer.TryWriteRow(0, Options.RootDirectory, ReadRootColumns(Options.RootDirectory));
         state.NextRow = 1;
 
@@ -214,8 +214,15 @@ internal sealed class EnumerationProducer
     ///     Mutable walk state. It exists so the transform delegate can write rows without
     ///     capturing a ref local, which a lambda cannot do.
     /// </summary>
-    sealed class WalkState(BlockWriter writer)
+    sealed class WalkState(BlockWriter writer, IReadOnlyCollection<string>? retainedFileNames)
     {
+        // Null keeps every file. The lookup matches the enumerator's name span directly, so no string is allocated per entry.
+        readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>>? _retainedFileNames =
+            retainedFileNames is null
+                ? null
+                : new HashSet<string>(retainedFileNames, StringComparer.OrdinalIgnoreCase)
+                    .GetAlternateLookup<ReadOnlySpan<char>>();
+
         public BlockWriter Writer { get; } = writer;
 
         public uint NextRow { get; set; }
@@ -234,6 +241,11 @@ internal sealed class EnumerationProducer
             List<(string Path, uint RowIndex)> childDirectories)
         {
             var isDirectory = entry.IsDirectory;
+            if (!isDirectory && _retainedFileNames is { } retained && !retained.Contains(entry.FileName))
+            {
+                return false;
+            }
+
             var isReparsePoint = (entry.Attributes & FileAttributes.ReparsePoint) != 0;
             var rowIndex = NextRow;
             var flags = RowFlags.InUse | (isDirectory ? RowFlags.Directory : RowFlags.None);

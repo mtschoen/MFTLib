@@ -13,12 +13,9 @@ internal sealed partial class BrokerProcess
     /// </summary>
     /// <param name="drive">The drive to scan.</param>
     /// <param name="target">Where the block file is created, and the identity it carries.</param>
-    /// <param name="options">Row filtering for the scan.</param>
+    /// <param name="options">Freed-record inclusion for the scan.</param>
     /// <param name="progress">Destination for transfer and parse progress notifications; null reports none.</param>
     /// <param name="cancellationToken">Closes the channel and releases the section.</param>
-    /// <exception cref="ArgumentException">
-    ///     <see cref="MftScanOptions.RetainedFileNames" /> is too long for one request frame. Nothing is sent.
-    /// </exception>
     /// <exception cref="InvalidOperationException">The broker reported the scan failed.</exception>
     /// <exception cref="BrokerChannelLostException">The channel or the process was lost first.</exception>
     /// <exception cref="TimeoutException">The broker did not answer the volume query or the channel open within the reply timeout.</exception>
@@ -46,7 +43,7 @@ internal sealed partial class BrokerProcess
         var section = new DriveBlockSection(sectionName, block, sectionLifetime);
         try
         {
-            return await ScanOnChannelAsync(drive, section, options, progress, cancellationToken)
+            return await ScanOnChannelAsync(drive, section, options, target.RetainedFileNames, progress, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch
@@ -65,18 +62,11 @@ internal sealed partial class BrokerProcess
     }
 
     async Task<BrokerDriveScanResult> ScanOnChannelAsync(DriveKey drive, DriveBlockSection section,
-        MftScanOptions options, IProgress<BlockWriteProgress>? progress, CancellationToken cancellationToken)
+        MftScanOptions options, IReadOnlyCollection<string>? retainedFileNames, IProgress<BlockWriteProgress>? progress,
+        CancellationToken cancellationToken)
     {
-        var frameLength = BrokerProtocol.ArmAndScanFrameLength(section.SectionName, options.RetainedFileNames);
-        if (frameLength > BrokerFrameStream.MaximumFrameLength)
-        {
-            throw new ArgumentException(FormattableString.Invariant(
-                $"The keep list makes a {frameLength}-byte scan request, over the {BrokerFrameStream.MaximumFrameLength}-byte frame limit."),
-                nameof(options));
-        }
-
         var channel = await OpenChannelAsync(drive, writer => BrokerProtocol.WriteArmAndScan(writer, section.SectionName,
-            options.RetainedFileNames, options.IncludeFreed), cancellationToken).ConfigureAwait(false);
+            retainedFileNames, options.IncludeFreed), cancellationToken).ConfigureAwait(false);
         await using var ownedChannel = channel.ConfigureAwait(false);
         var collector = new ScanFrames(channel, progress);
         var armed = await collector.ReadArmedCursorAsync(cancellationToken).ConfigureAwait(false);

@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using System.Text;
-using MFTLib;
 using MFTLib.Index;
 
 namespace SampleProgram.Watch;
@@ -51,10 +50,6 @@ internal sealed partial record WatchArguments(WatchVerb Verb, IReadOnlyList<stri
 
     // Verbs that open an index launch the broker, which asks for elevation itself; cache and elevation-status touch no volume.
     internal ElevationNeed Need => Verb is WatchVerb.Cache or WatchVerb.ElevationStatus ? ElevationNeed.None : ElevationNeed.BrokerLaunch;
-
-    /// <summary>The scan options the broker source gets; null scans every record, as the library does by default.</summary>
-    internal MftScanOptions? ScanOptions =>
-        RetainedFileNames is null ? null : new MftScanOptions { RetainedFileNames = RetainedFileNames };
 
     /// <summary>A cached block holds what its scan retained, so a different retention policy is a different identity.</summary>
     internal static CacheTag CacheTag => new("SMPW", 2);

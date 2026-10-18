@@ -9,10 +9,10 @@ internal sealed class RealBlockSectionWriter(TimeProvider? timeProvider = null) 
 {
     public BlockWriteResult Write(
         string sectionName, UsnJournalCursor cursor, IEnumerable<IReadOnlyList<MftRecord>> batches,
-        MftScanOptions scanOptions, BlockWriteReporting reporting, CancellationToken cancellationToken)
+        MftRowSelection selection, BlockWriteReporting reporting, CancellationToken cancellationToken)
     {
         using var block = NamedBlockSection.OpenExisting(sectionName);
-        return MftBlockScan.WriteToBlock(block, new BlockStamp(cursor, timeProvider ?? TimeProvider.System), batches, scanOptions,
+        return MftBlockScan.WriteToBlock(block, new BlockStamp(cursor, timeProvider ?? TimeProvider.System), batches, selection,
             reporting, cancellationToken);
     }
 }

@@ -102,19 +102,15 @@ internal sealed partial class JournalBrokerHost
             await channel.Pipe.WriteFrameAsync(writer => BrokerProtocol.WriteCursor(writer, cursor),
                 cancellationToken).ConfigureAwait(false);
 
-            var scanOptions = new MftScanOptions
-            {
-                RetainedFileNames = request.RetainedFileNames,
-                IncludeFreed = request.IncludeFreed
-            };
+            var scanOptions = new MftScanOptions { IncludeFreed = request.IncludeFreed };
             var reporting = new BlockWriteReporting(progressReporter, channel.Pipe);
             long recordsOmitted = 0;
             var batches = PublishEachBatch(
                 _volumeAccess.ScanDriveRecordBatches(channel.Drive, parseThreads, reporting, scanOptions,
                     count => recordsOmitted += count, cancellationToken),
                 channel.Pipe);
-            var result = blockSectionWriter.Write(request.RequireSectionName(), cursor, batches, scanOptions, reporting,
-                cancellationToken);
+            var result = blockSectionWriter.Write(request.RequireSectionName(), cursor, batches,
+                new MftRowSelection(scanOptions, request.RetainedFileNames), reporting, cancellationToken);
             return progressState.Complete(cursor,
                 result with { SkippedRecordCount = result.SkippedRecordCount + recordsOmitted });
         }

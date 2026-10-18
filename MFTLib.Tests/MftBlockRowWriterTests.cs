@@ -222,8 +222,8 @@ public class MftBlockRowWriterTests
         ];
 
         var result = MftBlockRowWriter.WriteBatches(
-            new BlockWriter(block), [records], new MftScanOptions { RetainedFileNames = [] },
-            null, CancellationToken.None);
+            new BlockWriter(block), [records], new MftScanOptions(),
+            null, CancellationToken.None, []);
 
         Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, block.Rows[5].Flags);
         Assert.AreEqual(RowFlags.None, block.Rows[10].Flags);
@@ -243,8 +243,8 @@ public class MftBlockRowWriterTests
         ];
 
         var result = MftBlockRowWriter.WriteBatches(
-            new BlockWriter(block), [records], new MftScanOptions { RetainedFileNames = [".git"] },
-            null, CancellationToken.None);
+            new BlockWriter(block), [records], new MftScanOptions(),
+            null, CancellationToken.None, [".git"]);
 
         Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, block.Rows[5].Flags);
         Assert.AreEqual(RowFlags.InUse, block.Rows[10].Flags);
@@ -266,8 +266,8 @@ public class MftBlockRowWriterTests
         ];
 
         var result = MftBlockRowWriter.WriteBatches(
-            new BlockWriter(block), [records], new MftScanOptions { RetainedFileNames = [] },
-            new SynchronousProgress<BlockWriteProgress>(reports.Add), CancellationToken.None);
+            new BlockWriter(block), [records], new MftScanOptions(),
+            new SynchronousProgress<BlockWriteProgress>(reports.Add), CancellationToken.None, []);
 
         Assert.AreEqual(0L, result.SkippedRecordCount);
         Assert.AreEqual(1, reports.Count);

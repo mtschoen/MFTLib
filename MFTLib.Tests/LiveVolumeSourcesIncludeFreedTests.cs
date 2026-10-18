@@ -94,7 +94,7 @@ public sealed class LiveVolumeSourcesIncludeFreedTests : IDisposable
         var batches = LiveVolumeSources.ScanDriveRecordBatches('C', new ParseThreadAllowance(2),
             new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions { IncludeFreed = true }, _ => { }, CancellationToken.None);
         MftBlockScan.WriteToBlock(block, new BlockStamp(default, TimeProvider.System), batches,
-            new MftScanOptions { IncludeFreed = true }, new BlockWriteReporting(null, null),
+            new MftRowSelection(new MftScanOptions { IncludeFreed = true }), new BlockWriteReporting(null, null),
             CancellationToken.None);
 
         Assert.IsTrue(block.Rows[(int)freedRecord].IsDeleted);

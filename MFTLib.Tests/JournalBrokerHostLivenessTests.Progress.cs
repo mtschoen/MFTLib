@@ -201,13 +201,13 @@ public partial class JournalBrokerHostLivenessTests
         readonly RealBlockSectionWriter _inner = new(clock);
 
         public BlockWriteResult Write(string sectionName, UsnJournalCursor cursor,
-            IEnumerable<IReadOnlyList<MftRecord>> batches, MftScanOptions scanOptions,
+            IEnumerable<IReadOnlyList<MftRecord>> batches, MftRowSelection selection,
             BlockWriteReporting reporting, CancellationToken cancellationToken)
         {
             Assert.IsNotNull(reporting.Operation);
             // Deliberately omit intermediate progress frames: only operation progress
             // may keep this scenario alive while the real block is flushed.
-            return _inner.Write(sectionName, cursor, batches, scanOptions,
+            return _inner.Write(sectionName, cursor, batches, selection,
                 new BlockWriteReporting(null, new GatedFlushReporter(reporting.Operation, ranges)),
                 cancellationToken);
         }

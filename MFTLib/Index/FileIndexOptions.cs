@@ -99,7 +99,45 @@ public sealed record FileIndexOptions
     /// </summary>
     public CacheTag CacheTag { get; init; }
 
+    /// <summary>
+    ///     Which files the index keeps, applied by every producer: the MFT producers filter records and
+    ///     the directory walk filters entries. Null (the default) keeps every eligible row. An empty
+    ///     collection keeps directories only. A nonempty collection also keeps files whose names match
+    ///     ordinally, ignoring case. The root row is always kept. <see cref="FileIndex.OpenAsync" />
+    ///     materializes the collection once and rejects a null element, or a set too long for the
+    ///     source's request, before creating a cache directory or starting a scan. A cached block carries
+    ///     the rows of the scan that produced it, so a consumer that changes this option also changes its
+    ///     <see cref="CacheTag" /> version.
+    /// </summary>
+    public IReadOnlyCollection<string>? RetainedFileNames { get; init; }
+
     internal TimeProvider TimeProvider { get; init; } = TimeProvider.System;
+
+    /// <summary>
+    ///     Copies <see cref="RetainedFileNames" /> once so the index never re-evaluates or shares the
+    ///     caller's collection, and rejects a null element.
+    /// </summary>
+    internal static string[]? ValidateRetainedFileNames(FileIndexOptions options)
+    {
+        if (options.RetainedFileNames is not { } names)
+        {
+            return null;
+        }
+
+        var copy = new List<string>(names.Count);
+        foreach (string? name in names)
+        {
+            if (name is null)
+            {
+                throw new ArgumentException("FileIndexOptions.RetainedFileNames must not contain null entries.",
+                    nameof(options));
+            }
+
+            copy.Add(name);
+        }
+
+        return [.. copy];
+    }
 
     internal static IndexedDrive[] ValidateDrives(FileIndexOptions options)
     {

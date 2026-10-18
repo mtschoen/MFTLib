@@ -73,7 +73,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
         var batches = LiveVolumeSources.ScanDriveRecordBatches('C', new ParseThreadAllowance(2),
             new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions(), count => omitted += count, CancellationToken.None);
         var written = MftBlockScan.WriteToBlock(block, new BlockStamp(default, TimeProvider.System), batches,
-            new MftScanOptions(), new BlockWriteReporting(null, null), CancellationToken.None);
+            new MftRowSelection(new MftScanOptions()), new BlockWriteReporting(null, null), CancellationToken.None);
 
         Assert.AreEqual(1L, omitted);
         Assert.AreEqual(0L, written.SkippedRecordCount, "the source reports the record; the producer adds it");
@@ -125,7 +125,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
         var batches = LiveVolumeSources.ScanDriveRecordBatches('C', new ParseThreadAllowance(1),
             new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions(), count => omitted += count, CancellationToken.None);
         var written = MftBlockScan.WriteToBlock(block, new BlockStamp(default, TimeProvider.System), batches,
-            new MftScanOptions(), new BlockWriteReporting(null, null), CancellationToken.None);
+            new MftRowSelection(new MftScanOptions()), new BlockWriteReporting(null, null), CancellationToken.None);
 
         Assert.AreEqual(0L, omitted);
         Assert.AreEqual(0L, written.SkippedRecordCount);

@@ -5,19 +5,23 @@ namespace MFTLib;
 /// <summary>Maps MFT records to sparse block rows without resolving paths or retaining batches.</summary>
 internal static class MftBlockRowWriter
 {
-    /// <summary>Writes each batch and reports transfer progress; the caller stamps and completes the block.</summary>
+    /// <summary>
+    ///     Writes each batch and reports transfer progress; the caller stamps and completes the block.
+    ///     <paramref name="retainedFileNames" /> is null to keep every eligible record, empty to keep directories only.
+    /// </summary>
     public static BlockWriteResult WriteBatches(
         BlockWriter writer,
         IEnumerable<IReadOnlyList<MftRecord>> batches,
         MftScanOptions scanOptions,
         IProgress<BlockWriteProgress>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyCollection<string>? retainedFileNames = null)
     {
         ArgumentNullException.ThrowIfNull(writer);
         ArgumentNullException.ThrowIfNull(batches);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var retainedFileNames = scanOptions.RetainedFileNames is { } names
+        var retainedNames = retainedFileNames is { } names
             ? new HashSet<string>(names, StringComparer.OrdinalIgnoreCase)
             : null;
         var freedRows = scanOptions.IncludeFreed ? new FreedRowTrust(writer.Block) : null;
@@ -36,7 +40,7 @@ internal static class MftBlockRowWriter
                 }
 
                 freedRows?.Observe(in record);
-                if (!ShouldKeepRecord(record, retainedFileNames))
+                if (!ShouldKeepRecord(record, retainedNames))
                 {
                     continue;
                 }

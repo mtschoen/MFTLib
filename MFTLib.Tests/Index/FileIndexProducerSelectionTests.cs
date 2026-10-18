@@ -57,6 +57,38 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
     }
 
     [TestMethod]
+    public async Task RetainedFileNames_OneSetReachesTheMftProducerAndFiltersTheEnumerationWalk()
+    {
+        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Notes.TXT"), "keep", TestContext.CancellationTokenSource.Token);
+        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "other.bin"), "drop", TestContext.CancellationTokenSource.Token);
+        var seen = new List<IReadOnlyCollection<string>?>();
+        Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request, CancellationToken _)
+        {
+            seen.Add(request.RetainedFileNames);
+            return Task.FromResult(new MftBlockProduceResult(
+                SeededBlocks.Build(request, 7, 4096, FixedMoment), 0));
+        }
+
+        string[] retained = ["notes.txt"];
+        using var mftRoot = new TempDirectory("mftlib-mft-root");
+        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
+        {
+            Drives = [new IndexedDrive('M', mftRoot.Path, 2), new IndexedDrive('T', _treeRoot, 1, ProducerKind.Enumeration)],
+            CacheDirectory = _cacheDirectory,
+            MftSource = new MftIndexSource(Produce),
+            RetainedFileNames = retained
+        }, TestContext.CancellationTokenSource.Token);
+
+        CollectionAssert.AreEqual(retained, seen.Single()!.ToArray());
+        var walked = index.Drives.Single(drive => drive.Drive == 'T');
+        Assert.AreEqual(DriveState.Ready, walked.State);
+        Assert.IsNotNull(index.Find(Path.Combine(_treeRoot, "Notes.TXT")));
+        Assert.IsNull(index.Find(Path.Combine(_treeRoot, "other.bin")));
+        Assert.IsNull(index.Find(Path.Combine(_treeRoot, "Documents", "readme.md")));
+        Assert.IsTrue(index.Find(Path.Combine(_treeRoot, "Documents"))!.Value.IsDirectory);
+    }
+
+    [TestMethod]
     public async Task Mft_MarksTheFailedDriveAndKeepsTheOthers()
     {
         var firstRoot = Path.Combine(_treeRoot, "first");

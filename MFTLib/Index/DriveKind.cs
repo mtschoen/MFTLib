@@ -79,15 +79,31 @@ internal sealed class DriveKind
         if (options.MftSource?.DumpIdentity is { } identity)
         {
             MftDumpSourceIdentity.ValidateOptions(options);
-            return options with { Drives = [identity.VirtualDrive], CacheMode = CacheMode.Disabled };
+            return options with
+            {
+                Drives = [identity.VirtualDrive],
+                CacheMode = CacheMode.Disabled,
+                RetainedFileNames = FileIndexOptions.ValidateRetainedFileNames(options)
+            };
         }
 
         var drives = FileIndexOptions.ValidateDrives(options);
+        var retainedFileNames = FileIndexOptions.ValidateRetainedFileNames(options);
+        if (retainedFileNames is not null && drives.Any(drive => drive.Producer == ProducerKind.Mft))
+        {
+            options.MftSource?.ValidateRetainedFileNames?.Invoke(retainedFileNames);
+        }
+
         if (options.CacheMode is { } mode && !Enum.IsDefined(mode))
         {
             throw new ArgumentOutOfRangeException(nameof(options), "Unknown cache mode.");
         }
 
-        return options with { Drives = drives, CacheMode = options.CacheMode ?? CacheMode.Persistent };
+        return options with
+        {
+            Drives = drives,
+            CacheMode = options.CacheMode ?? CacheMode.Persistent,
+            RetainedFileNames = retainedFileNames
+        };
     }
 }

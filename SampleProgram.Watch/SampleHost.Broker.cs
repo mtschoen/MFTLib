@@ -29,7 +29,7 @@ partial class SampleHost
             session.Connected += () => _output.WriteLine("Broker: connected.");
         }
 
-        var source = session.CreateIndexSource(parsed.ScanOptions);
+        var source = session.CreateIndexSource();
         var failureCount = parsed.Verb is WatchVerb.Watch
             ? await WatchDrivesAsync(source, parsed, resolveDrive, cancellationToken).ConfigureAwait(false)
             : await RunEachDriveAsync(session, source, parsed, resolveDrive, cancellationToken).ConfigureAwait(false);
@@ -82,6 +82,7 @@ partial class SampleHost
             CacheTag = cached ? WatchArguments.CacheTag : default,
             Diagnostics = cached ? _output.WriteLine : null,
             MftSource = source,
+            RetainedFileNames = parsed.RetainedFileNames,
             ScanProgress = new PhaseReporter(_output),
             DriveOpenProgress = new DriveOpenedReporter(_output)
         };

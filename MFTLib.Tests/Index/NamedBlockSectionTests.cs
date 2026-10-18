@@ -24,6 +24,20 @@ public sealed class NamedBlockSectionTests : IDisposable
 
     [TestMethod]
     [SupportedOSPlatform("windows")]
+    public void BuildSectionName_HasTheFixedLengthTheAdmissionCheckAssumes()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Named memory-mapped sections require Windows.");
+            return;
+        }
+
+        Assert.AreEqual(BlockSectionNaming.Length, NamedBlockSection.BuildSectionName('T').Length);
+        Assert.AreEqual(BlockSectionNaming.Length, NamedBlockSection.BuildSectionName('z').Length);
+    }
+
+    [TestMethod]
+    [SupportedOSPlatform("windows")]
     public void CreateThenOpenExisting_SeesTheSameRows()
     {
         if (!OperatingSystem.IsWindows())

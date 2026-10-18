@@ -24,7 +24,8 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 - `DriveStatus` reports each drive's `DriveState`, `DriveFailure`, `DriveBlockStatus` and `DriveWatchStatus`.
 - `DriveWatchStatus.CheckpointLoss` explains a rescan forced by the journal moving past a drive's position, with the journal size that would have retained it. `JournalCheckpointLoss.TryGetGrowthTarget`, `FileIndex.QueryUsnJournalSettings` and `BrokerSession.GrowUsnJournalAsync` support an explicit journal growth.
 - `FileIndexOptions.ScanProgress`, `DriveOpenProgress` and `Diagnostics` report scan progress, open progress and block-file deletions.
-- `MftScanOptions` selects retained file names and can import freed MFT records as deleted rows.
+- `FileIndexOptions.RetainedFileNames` selects which files an index keeps, and every producer applies it: null keeps every row, an empty collection keeps directories only, and a nonempty collection keeps directories plus files with those names, ignoring case. The root row is always kept. A set too long for one broker request frame fails `OpenAsync` with `ArgumentException`.
+- `MftScanOptions.IncludeFreed` imports freed MFT records as deleted rows.
 - `BrokerSession` owns one elevated broker process per consumer session. `ElevatedEntryPoint.RunBrokerIfRequested` dispatches broker mode, and `BrokerDiagnostics.Enable` writes per-role diagnostics logs.
 - `ElevationUtilities.TryAddDefenderProcessExclusions` adds Windows Defender process exclusions, elevating when needed.
 - `MFTLib.TestExtensions`: an in-process broker harness, scripted watches, synthetic cache blocks, synthetic journal records and journal isolation for consumer tests.
@@ -64,6 +65,7 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 - `MftResult.ToArray` and `MftRecord.Materialize` -> `FileIndex.Search`
 - `MftResult.Timings` and `MftParseTimings` -> removed; `FileIndexOptions.ScanProgress` reports scan progress
 - `bufferSizeRecords` parameters -> removed
+- `MftScanOptions.RetainedFileNames` -> `FileIndexOptions.RetainedFileNames`, which the directory walk applies too
 - `MftVolume.GenerateSyntheticMFT` -> `SyntheticBlock` and `SyntheticMftProducer` in `MFTLib.TestExtensions`
 - `ElevationUtilities.IsElevated()` and `CanSelfElevate()` -> `ElevationUtilities.DefaultProvider.IsElevated()` and `CanSelfElevate()`
 - `ElevationUtilities.TryRunElevated(string arguments, int timeoutMs)` -> `ElevationUtilities.DefaultProvider.TryRunElevated(IReadOnlyList<string> arguments, TimeSpan timeout)`

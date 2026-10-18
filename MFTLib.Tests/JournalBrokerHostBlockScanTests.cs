@@ -76,8 +76,8 @@ public class JournalBrokerHostBlockScanTests
         Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Error));
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
         Assert.AreEqual("section-C", blockWriter.LastSectionName);
-        Assert.IsNotNull(blockWriter.LastScanOptions.RetainedFileNames);
-        CollectionAssert.AreEqual(new[] { ".git" }, blockWriter.LastScanOptions.RetainedFileNames.ToArray());
+        Assert.IsNotNull(blockWriter.LastRetainedFileNames);
+        CollectionAssert.AreEqual(new[] { ".git" }, blockWriter.LastRetainedFileNames.ToArray());
         Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, blockWriter.Block.Rows[5].Flags);
         Assert.AreEqual(RowFlags.None, blockWriter.Block.Rows[20].Flags);
     }
@@ -252,7 +252,7 @@ public class JournalBrokerHostBlockScanTests
             DeleteOnClose = true
         });
         var result = MftBlockScan.WriteToBlock(directBlock, new BlockStamp(ArmedCursor, timeProvider), batches,
-            new MftScanOptions(), default, CancellationToken.None);
+            new MftRowSelection(new MftScanOptions()), default, CancellationToken.None);
 
         Assert.AreEqual(skippedByHost, result.SkippedRecordCount);
         Assert.AreEqual(2L, result.SkippedRecordCount);

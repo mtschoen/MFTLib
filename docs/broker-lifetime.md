@@ -91,9 +91,9 @@ Frames are `Cursor`, zero or more `ScanProgress`, `ScanReady` (skipped record co
 The frame length limit is 16 MiB, checked before sending and before allocating a
 received frame. A native-source watch `JournalBatch` is one 64 KiB journal read;
 `Error` and `Stalled` text is truncated to 32,768 UTF-16 units. A
-`MftScanOptions.RetainedFileNames` list making `ArmAndScan` exceed the limit
-(32,640 maximum-length names with the default section name) throws `ArgumentException`
-before sending. An oversized journal batch fails that watch with `Error`, like any
+`FileIndexOptions.RetainedFileNames` list making `ArmAndScan` exceed the limit
+(32,640 maximum-length names with the fixed 47-unit section name) throws `ArgumentException`
+from `FileIndex.OpenAsync` for an index with an MFT-producer drive, before any cache directory is created. An oversized journal batch fails that watch with `Error`, like any
 source failure.
 
 `ArmAndScan` encodes the section name, a 32-bit include-freed flag (0 or 1), then

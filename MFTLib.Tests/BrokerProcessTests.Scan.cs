@@ -76,22 +76,19 @@ public partial class BrokerProcessTests
     public async Task ScanDrive_ForwardsRetainedFileNames(string[]? names)
     {
         await using var broker = new InProcessBroker(BrokerHostFactory.Create());
-        var options = new MftScanOptions
-        {
-            RetainedFileNames = names
-        };
+        var target = TestBlockSections.Target() with { RetainedFileNames = names };
 
-        var result = await broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), options, null, CancellationToken.None)
+        var result = await broker.Process.ScanDriveAsync('C', target, new MftScanOptions(), null, CancellationToken.None)
             .WaitAsync(HangGuard);
         result.Block.Block.Dispose();
 
         if (names is null)
         {
-            Assert.IsNull(broker.Writer.LastScanOptions.RetainedFileNames);
+            Assert.IsNull(broker.Writer.LastRetainedFileNames);
         }
         else
         {
-            CollectionAssert.AreEqual(names, broker.Writer.LastScanOptions.RetainedFileNames!.ToArray());
+            CollectionAssert.AreEqual(names, broker.Writer.LastRetainedFileNames!.ToArray());
         }
 
         Assert.AreEqual(new DriveKey('C'), broker.Handle.Scans.Single().Drive);

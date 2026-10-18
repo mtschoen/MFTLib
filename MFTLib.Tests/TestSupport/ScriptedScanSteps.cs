@@ -25,6 +25,6 @@ internal static class ScriptedScanSteps
                 [new MftRecord(5, 5, new MftRecordFields(3), ".")],
                 [new MftRecord(20, 5, new MftRecordFields(1), "file.txt")]
             ],
-            new MftScanOptions(), default, CancellationToken.None);
+            new MftRowSelection(new MftScanOptions()), default, CancellationToken.None);
     }
 }

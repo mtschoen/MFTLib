@@ -15,7 +15,7 @@ internal sealed class BrokerMftBlockProducer
     /// <param name="connectAsync">
     ///     Yields the process each scan runs on. The caller keeps ownership of what it returns.
     /// </param>
-    /// <param name="scanOptions">Base options for every scan: retention, freed-record inclusion and progress.</param>
+    /// <param name="scanOptions">Base options for every scan: freed-record inclusion and progress.</param>
     internal BrokerMftBlockProducer(
         Func<CancellationToken, Task<BrokerProcess>> connectAsync,
         MftScanOptions? scanOptions = null)
@@ -31,7 +31,25 @@ internal sealed class BrokerMftBlockProducer
     ///     the connect function, and each drive's watch runs on a pipe of its own.
     /// </summary>
     /// <returns>A source whose scans fill the block named by each request through the broker.</returns>
-    internal MftIndexSource CreateIndexSource() => new(ProduceAsync, new BrokerIndexWatchSource(_connectAsync));
+    internal MftIndexSource CreateIndexSource() => new(ProduceAsync, new BrokerIndexWatchSource(_connectAsync),
+        validateRetainedFileNames: ValidateRetainedFileNames);
+
+    /// <summary>
+    ///     Refuses a retained-name set that no scan request frame can carry, so the open fails before any
+    ///     cache directory exists rather than each drive's scan failing later.
+    /// </summary>
+    /// <exception cref="ArgumentException">The set is too long for one request frame.</exception>
+    static void ValidateRetainedFileNames(IReadOnlyCollection<string> retainedFileNames)
+    {
+        var frameLength = BrokerProtocol.ArmAndScanFrameLength(new string('x', BlockSectionNaming.Length),
+            retainedFileNames);
+        if (frameLength > BrokerFrameStream.MaximumFrameLength)
+        {
+            throw new ArgumentException(FormattableString.Invariant(
+                $"FileIndexOptions.RetainedFileNames makes a {frameLength}-byte scan request, over the {BrokerFrameStream.MaximumFrameLength}-byte frame limit."),
+                nameof(retainedFileNames));
+        }
+    }
 
     // A result carrying a proven catch-up loss still transfers its block: the scan is complete,
     // and the loss travels with it so the index can refuse to watch from the block's cursor.
@@ -41,7 +59,8 @@ internal sealed class BrokerMftBlockProducer
         var progress = MftBlockProgressAdapter.Create(request);
         var target = new BlockScanTarget(request.BlockPath, request.VolumeSerial, request.DeleteOnClose)
         {
-            CacheTag = request.CacheTag
+            CacheTag = request.CacheTag,
+            RetainedFileNames = request.RetainedFileNames
         };
         var process = await _connectAsync(cancellationToken).ConfigureAwait(false);
         var result = await process.ScanDriveAsync(request.Drive, target, options, progress, cancellationToken)

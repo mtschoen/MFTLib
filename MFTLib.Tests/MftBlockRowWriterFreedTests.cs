@@ -86,8 +86,8 @@ public class MftBlockRowWriterFreedTests
         ];
 
         MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records],
-            new MftScanOptions { RetainedFileNames = names, IncludeFreed = includeFreed }, null,
-            CancellationToken.None);
+            new MftScanOptions { IncludeFreed = includeFreed }, null,
+            CancellationToken.None, names);
 
         Assert.AreEqual(includeFreed, block.Rows[12].IsDeleted);
         Assert.AreEqual(ignoredFileRetained, block.Rows[13].IsDeleted);

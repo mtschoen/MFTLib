@@ -54,6 +54,12 @@ internal sealed record MftBlockProduceRequest
     ///     returning a differently tagged block is a producer failure.
     /// </summary>
     public CacheTag CacheTag { get; init; }
+
+    /// <summary>
+    ///     The row retention taken from <see cref="FileIndexOptions.RetainedFileNames" />: null keeps every
+    ///     eligible row, empty keeps directories only, and a nonempty set also keeps files with those names.
+    /// </summary>
+    public IReadOnlyCollection<string>? RetainedFileNames { get; init; }
 }
 
 /// <summary>

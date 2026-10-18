@@ -20,7 +20,7 @@ not enter during the scan, including directories that vanished before entry.
 `DriveBlockStatus.SkippedRecordCount` counts records the MFT producer could not place,
 including unsupported record identifiers, empty names and exhausted block capacity.
 All MFT producers saturate this diagnostic at `int.MaxValue` when the scan's count is larger.
-Records excluded by `MftScanOptions.RetainedFileNames` or `MftScanOptions.IncludeFreed` contribute to neither count. These diagnostics describe the
+Records excluded by `FileIndexOptions.RetainedFileNames` or `MftScanOptions.IncludeFreed` contribute to neither count. These diagnostics describe the
 current block's production: successful rescans replace the counts, failed or cancelled
 rescans retain them with the block, and warm starts report zero because these counts
 are not stored in the block header. `DriveBlockStatus.IsCapacityExhausted` reads the header's
@@ -180,8 +180,9 @@ at this header value.
 four ASCII characters and a `uint` version. The all-zero default means
 unspecified, not match-any. Codes are case-sensitive and neither component is
 interpreted by MFTLib. The consumer increments its version whenever its scan
-retention policy changes the rows it stores. `RetainedFileNames` distinguishes
-full retention (null), directories alone (empty), and directories plus matching names.
+retention policy changes the rows it stores. `FileIndexOptions.RetainedFileNames` distinguishes
+full retention (null), directories alone (empty), and directories plus matching names, for the MFT
+producers and the directory walk alike; the root row is always stored.
 Freed-record inclusion also changes the retained rows. For example:
 
     CacheTag = new CacheTag("GITW", 1)

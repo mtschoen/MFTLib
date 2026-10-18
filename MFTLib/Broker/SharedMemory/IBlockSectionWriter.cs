@@ -8,7 +8,7 @@ internal interface IBlockSectionWriter
         string sectionName,
         UsnJournalCursor cursor,
         IEnumerable<IReadOnlyList<MftRecord>> batches,
-        MftScanOptions scanOptions,
+        MftRowSelection selection,
         BlockWriteReporting reporting,
         CancellationToken cancellationToken);
 }
