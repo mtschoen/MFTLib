@@ -108,6 +108,8 @@ public sealed partial class FileIndex
         ///     or cancelled scan never leaves an unreachable mapping, and a no-cache attempt never
         ///     leaves an orphaned temp file, behind. The returned <see cref="BlockFile" /> is the
         ///     caller's to own from here.
+        ///     Exhausted attempts are discarded and retried with geometrically larger capacities,
+        ///     up to the layout's capacity clamp, before a block is completed and returned.
         /// </summary>
         BlockScanResult CreateAndPopulateBlock(string blockPath, bool deleteOnClose,
             CancellationToken cancellationToken)
@@ -115,35 +117,57 @@ public sealed partial class FileIndex
             var (slotCapacity, namePoolCapacity) = PlanCapacities(
                 EnumerationProducer.EstimateRowCount(Configuration.RootDirectory));
 
-            BlockFile? block = BlockFile.Create(new BlockFileCreateOptions
+            while (true)
             {
-                Path = blockPath,
-                VolumeSerial = Configuration.VolumeSerial,
-                ProducerKind = ProducerKind.Enumeration,
-                SlotCapacity = slotCapacity,
-                NamePoolCapacity = namePoolCapacity,
-                DeleteOnClose = deleteOnClose,
-                Diagnostics = Options.Diagnostics,
-                CacheTag = Options.CacheTag
-            });
-            try
-            {
-                var writer = new BlockWriter(block);
-                var producer = new EnumerationProducer(new EnumerationProducerOptions
+                cancellationToken.ThrowIfCancellationRequested();
+                BlockFile? block = BlockFile.Create(new BlockFileCreateOptions
                 {
-                    RootDirectory = Configuration.RootDirectory,
-                    Drive = Drive
+                    Path = blockPath,
+                    VolumeSerial = Configuration.VolumeSerial,
+                    ProducerKind = ProducerKind.Enumeration,
+                    SlotCapacity = slotCapacity,
+                    NamePoolCapacity = namePoolCapacity,
+                    DeleteOnClose = deleteOnClose,
+                    Diagnostics = Options.Diagnostics,
+                    CacheTag = Options.CacheTag
                 });
+                try
+                {
+                    var writer = new BlockWriter(block);
+                    var producer = new EnumerationProducer(new EnumerationProducerOptions
+                    {
+                        RootDirectory = Configuration.RootDirectory,
+                        Drive = Drive
+                    });
 
-                var result = producer.Produce(writer, Options.ScanProgress, cancellationToken);
-                writer.Complete(Options.TimeProvider.GetUtcNow().UtcDateTime, null);
-                var completed = new BlockScanResult(block, result);
-                block = null;
-                return completed;
-            }
-            finally
-            {
-                block?.Dispose();
+                    var result = producer.Produce(writer, Options.ScanProgress, cancellationToken);
+                    var nextSlotCapacity = BlockLayout.DoubleCapacity(slotCapacity);
+                    var nextNamePoolCapacity = BlockLayout.DoubleCapacity(namePoolCapacity);
+                    if (!result.CapacityExhausted ||
+                        (nextSlotCapacity == slotCapacity && nextNamePoolCapacity == namePoolCapacity))
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        writer.Complete(Options.TimeProvider.GetUtcNow().UtcDateTime, null);
+                        var completed = new BlockScanResult(block, result);
+                        block = null;
+                        return completed;
+                    }
+
+                    slotCapacity = nextSlotCapacity;
+                    namePoolCapacity = nextNamePoolCapacity;
+                }
+                finally
+                {
+                    block?.Dispose();
+                }
+
+                // Dispose first: private blocks delete on close; canonical attempts need an
+                // explicit deletion while the caller still holds their cache owner lock.
+                if (!deleteOnClose)
+                {
+                    File.Delete(blockPath);
+                    Options.Diagnostics?.Invoke($"Deleted block file '{blockPath}': enumeration capacity exhausted; retrying with a larger block.");
+                }
             }
         }
 

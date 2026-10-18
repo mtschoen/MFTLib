@@ -39,8 +39,8 @@ internal sealed class EnumerationProducer
 
     /// <summary>
     ///     Samples only the root's entries and counts one more root-sized level per root
-    ///     directory rather than paying for a full pre-count walk. Under-estimating is absorbed by
-    ///     the block's headroom; true exhaustion sets the capacity-exhausted flag.
+    ///     directory rather than paying for a full pre-count walk. FileIndex retries an exhausted
+    ///     attempt with geometrically larger capacities, up to the block layout's capacity clamp.
     /// </summary>
     public static uint EstimateRowCount(string rootDirectory)
     {
@@ -188,6 +188,10 @@ internal sealed class EnumerationProducer
             foreach (var _ in enumerable)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (state.Writer.CapacityExhausted)
+                {
+                    break;
+                }
             }
         }
         catch (Exception exception) when (exception is UnauthorizedAccessException

@@ -304,9 +304,13 @@ other block regions.
 
 Slot capacity is the estimated row count plus 25 percent or 65536 rows, whichever is larger.
 Name pool capacity uses the same ratio with a floor of one mebibyte (1048576 bytes).
-Exhausting either sets the capacity-exhausted flag; the producer or mutator keeps what fits and the drive remains Ready and queryable.
-A rescan of an exhausted enumeration block plans twice that block's capacity,
-so repeated rescans converge on a complete block. Read `DriveBlockStatus.IsCapacityExhausted` to offer a rescan. The flag remains until a successful rescan publishes a replacement without it;
+Exhausting either sets the capacity-exhausted flag. Before publishing an enumeration scan,
+FileIndex disposes and deletes each exhausted attempt and walks again with both capacities
+doubled, capped at the layout's maximum of 2147483647 each. Growth is geometric, so retries
+are bounded; cancellation is observed between attempts as well as during the walk.
+Only an enumeration tree that still cannot fit at that maximum publishes an exhausted block.
+An MFT producer or mutator keeps what fits and the drive remains Ready and queryable.
+Read `DriveBlockStatus.IsCapacityExhausted` to offer a rescan. The flag remains until a successful rescan publishes a replacement without it;
 failed or cancelled rescans retain the old block and its flag.
 
 ## Name pool

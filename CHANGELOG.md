@@ -47,6 +47,7 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 
 ### Fixed
 
+- Directory-walk scans retry with geometrically larger blocks when their initial estimate is too small, rather than publishing a silently truncated index.
 - A native failure inside the parser, including a failed allocation or thread start, fails the scan instead of terminating the host process.
 - A volume scan fails instead of returning a partial inventory when the `$MFT` attribute list or a `$DATA` extension record is unreadable or invalid.
 - The parser validates each record's update sequence array before decoding it, so a record with an invalid fixup is never read as data.
