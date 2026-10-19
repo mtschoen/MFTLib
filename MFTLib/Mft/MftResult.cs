@@ -46,6 +46,9 @@ internal sealed class MftResult : IDisposable
             throw new InvalidOperationException(
                 $"MFTLib managed/native ABI mismatch: managed expects stride {MFTLibNative.NativeCompactEntrySize}, native reports {_result.EntryStride}.");
         }
+
+        Timings = new MftParseTimings(
+            _result.IoTimeMs, _result.FixupTimeMs, _result.ParseTimeMs, _result.TotalTimeMs);
     }
 
     /// <summary>
@@ -67,6 +70,12 @@ internal sealed class MftResult : IDisposable
     public ulong InvalidFixupRecordCount => _result.InvalidFixupRecords;
 
     /// <summary>
+    ///     Native phase timings for the parse pass: disk I/O, fixup, record parsing and the total wall time.
+    ///     Remains readable after <see cref="Dispose" />.
+    /// </summary>
+    public MftParseTimings Timings { get; }
+
+    /// <summary>
     ///     Total bytes occupied by the native compact entry buffer and UTF-16 string pool.
     ///     Cached from the parsed result header and remains readable after <see cref="Dispose" />.
     /// </summary>
@@ -85,8 +94,8 @@ internal sealed class MftResult : IDisposable
     }
 
     /// <summary>
-    ///     Frees the native tables and pools. Safe to call more than once. The count
-    ///     properties stay readable afterward; reading batches throws.
+    ///     Frees the native tables and pools. Safe to call more than once. The count and
+    ///     timing properties stay readable afterward; reading batches throws.
     /// </summary>
     public void Dispose()
     {

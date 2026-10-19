@@ -25,7 +25,12 @@ public partial class BenchmarkRunner
             return Task.FromResult(RunCompare(arguments[1..]));
         }
 
-        _output.WriteLine("Usage: Benchmark.exe <index|compare> ...");
+        if (arguments.Length > 0 && arguments[0].Equals("native-timings", StringComparison.OrdinalIgnoreCase))
+        {
+            return RunNativeTimingsAsync(arguments[1..]);
+        }
+
+        _output.WriteLine("Usage: Benchmark.exe <index|compare|native-timings> ...");
         return Task.FromResult(1);
     }
 }

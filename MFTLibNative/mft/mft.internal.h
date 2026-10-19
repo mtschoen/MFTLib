@@ -189,7 +189,7 @@ bool AppendSlice(CompactOutput& output, const SliceResult& slice, MftMessageChar
 void ProcessRecordSlice(uint8_t* buffer, SliceRange range, uint64_t recordBase, SliceResult* slice,
                         const ScanContext& scan);
 
-using ReadChunkFunction = uint64_t (*)(void* context, uint8_t* targetBuffer);
+using ReadChunkFunction = uint64_t (*)(void* context, uint8_t* targetBuffer, double& ioMs);
 using InputIncompleteFunction = bool (*)(const void* context);
 
 // Where a parse reads its records and how far it trusts them.

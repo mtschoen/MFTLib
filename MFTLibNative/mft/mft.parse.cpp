@@ -101,7 +101,7 @@ struct VolumeReadContext {
 
 // Loads the next batch of whole records. A failed or short read ends the input and is
 // remembered, so the parse reports it instead of taking it for the end of the MFT.
-uint64_t VolumeReadChunk(void* context, uint8_t* targetBuffer) {
+uint64_t VolumeReadChunk(void* context, uint8_t* targetBuffer, double& ioMs) {
     auto* readContext = static_cast<VolumeReadContext*>(context);
     if (readContext->readFailed) {
         return 0;
@@ -122,6 +122,7 @@ uint64_t VolumeReadChunk(void* context, uint8_t* targetBuffer) {
         (std::min)(readContext->filesRemaining, static_cast<uint64_t>(readContext->bufferSizeRecords));
     const auto requestedBytes = static_cast<DWORD>(filesToLoad * readContext->geometry.recordSize);
     DWORD readBytes = 0;
+    auto ioStart = SteadyClock::now();
     if (Read(readContext->volumeHandle, targetBuffer,
              VolumeOffset{(static_cast<uint64_t>(run.clusterOffset) * readContext->bytesPerCluster) +
                           readContext->positionInBlock},
@@ -130,6 +131,7 @@ uint64_t VolumeReadChunk(void* context, uint8_t* targetBuffer) {
         readContext->readFailed = true;
         return 0;
     }
+    ioMs += ElapsedMs(ioStart, SteadyClock::now());
     readContext->positionInBlock += filesToLoad * readContext->geometry.recordSize;
     readContext->filesRemaining -= filesToLoad;
     return filesToLoad;

@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Runtime.Versioning;
+using System.Text.RegularExpressions;
 using Benchmark;
 using MFTLib.Index;
 using MFTLibTestExtensions;
@@ -67,6 +68,52 @@ public partial class BenchmarkRunnerTests
         StringAssert.Contains(output, "--- exact-search ---");
         StringAssert.Contains(output, "--- substring-search ---");
         StringAssert.Contains(output, $"Matches: {(rows == 1 ? 0 : 1)}");
+    }
+
+    [TestMethod]
+    [DataRow("--synthetic", "15")]
+    [DataRow("--synthetic", "invalid")]
+    [DataRow("--synthetic", "10000001")]
+    [DataRow("--dump", "")]
+    [DataRow("--synthetic", "64", "--iterations", "0")]
+    [DataRow("--unknown", "64")]
+    [DataRow()]
+    public async Task Run_NativeTimings_InvalidArguments_ReportUsage(params string[] arguments)
+    {
+        Assert.AreEqual(1, await _runner.RunAsync(["native-timings", .. arguments]));
+        StringAssert.Contains(_output.ToString(), "Usage: Benchmark.exe native-timings");
+    }
+
+    [TestMethod]
+    public async Task Run_NativeTimings_Synthetic_PrintsTheIoFixupParseTotalBreakdown()
+    {
+        Assert.AreEqual(0, await _runner.RunAsync(["native-timings", "--synthetic", "4096", "--iterations", "2"]));
+        var output = _output.ToString();
+        StringAssert.Contains(output, "--- native-parse-timings ---");
+        StringAssert.Contains(output, "Records: 4096 examined");
+        StringAssert.Contains(output, "(median of 2 runs)");
+        var milliseconds = new Dictionary<string, double>();
+        foreach (var label in new[] { "Native I/O", "Native fixup", "Native parse", "Native total" })
+        {
+            var match = Regex.Match(output, Regex.Escape(label) + @":\s+([0-9.]+) ms");
+            Assert.IsTrue(match.Success, $"{label} line is present.");
+            milliseconds[label] = double.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+        }
+        foreach (var label in new[] { "Native I/O", "Native fixup", "Native parse" })
+        {
+            Assert.IsTrue(milliseconds["Native total"] >= milliseconds[label], $"The total bounds {label}.");
+        }
+        StringAssert.Matches(output, new Regex(@"Bound: the (read \(I/O\)|parse \(CPU\)) stage dominates"));
+        StringAssert.Contains(output, "buffered");
+        Assert.IsFalse(output.Contains("disk is the bottleneck"), "The verdict names a stage, not the disk.");
+    }
+
+    [TestMethod]
+    public async Task Run_NativeTimings_MissingDump_ReportsError()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"missing-{Guid.NewGuid():N}.mft");
+        Assert.AreEqual(1, await _runner.RunAsync(["native-timings", "--dump", path]));
+        StringAssert.Contains(_output.ToString(), "Error:");
     }
 
     [TestMethod]
@@ -224,7 +271,7 @@ public partial class BenchmarkRunnerTests
     public async Task Run_NoVerb_ReportsUsage()
     {
         Assert.AreEqual(1, await _runner.RunAsync([]));
-        StringAssert.Contains(_output.ToString(), "Usage: Benchmark.exe <index|compare>");
+        StringAssert.Contains(_output.ToString(), "Usage: Benchmark.exe <index|compare|native-timings>");
     }
 
     [TestMethod]
@@ -369,7 +416,7 @@ public partial class BenchmarkRunnerTests
         }
 
         Assert.IsNotNull(root, "Benchmark sources were not found above the test output directory.");
-        var retired = new System.Text.RegularExpressions.Regex("compat|ToArray", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var retired = new Regex("compat|ToArray", RegexOptions.IgnoreCase);
         var matches = Directory.EnumerateFiles(Path.Combine(root.FullName, "Benchmark"), "*.cs", SearchOption.AllDirectories)
             .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}") && !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
             .SelectMany(path => File.ReadLines(path).Where(line => retired.IsMatch(line)).Select(line => $"{Path.GetFileName(path)}: {line.Trim()}"));

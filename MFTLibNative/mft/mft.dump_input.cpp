@@ -98,17 +98,19 @@ bool ReadExactly(const mftlib::platform::File* file, uint8_t* target, size_t byt
 
 // Loads the next chunk of whole records. A failed or short read ends the input and is
 // remembered, so the parse reports it instead of taking it for the end of the file.
-uint64_t ReadDumpChunk(void* context, uint8_t* targetBuffer) {
+uint64_t ReadDumpChunk(void* context, uint8_t* targetBuffer, double& ioMs) {
     auto* dump = static_cast<DumpReadContext*>(context);
     if (dump->recordsRemaining == 0 || dump->readFailed) {
         return 0;
     }
     const uint64_t recordsToLoad = (std::min)(dump->recordsRemaining, static_cast<uint64_t>(dump->bufferSizeRecords));
     const auto byteCount = static_cast<size_t>(recordsToLoad * dump->input->geometry.recordSize);
+    const auto ioStart = SteadyClock::now();
     if (ShouldFailRead() || !ReadExactly(dump->input->file, targetBuffer, byteCount, dump->fileOffset)) {
         dump->readFailed = true;
         return 0;
     }
+    ioMs += ElapsedMs(ioStart, SteadyClock::now());
     dump->fileOffset += static_cast<int64_t>(byteCount);
     dump->recordsRemaining -= recordsToLoad;
     return recordsToLoad;
