@@ -38,7 +38,7 @@ internal sealed partial class BrokerProcess
 
         var (sectionName, block, lifetime) = _createBlockSection(drive,
             MftBlockCapacity.CreateOptions(volume, target.Path, target.VolumeSerial, target.DeleteOnClose,
-                target.CacheTag));
+                target.CacheTag, target.ScanShape));
         var sectionLifetime = new ReleaseOnce(lifetime);
         var section = new DriveBlockSection(sectionName, block, sectionLifetime);
         try

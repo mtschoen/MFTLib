@@ -4,8 +4,6 @@ public sealed partial class FileIndex
 {
     sealed partial class DriveRuntime
     {
-        readonly record struct BlockScanResult(BlockFile Block, EnumerationResult Result);
-
         /// <summary>
         ///     Picks the producer for one drive's scan and returns what it produced, keyed by nothing:
         ///     the finished block with its access-denied count and its lost catch-up, or no block and
@@ -21,15 +19,14 @@ public sealed partial class FileIndex
                 if (Configuration.Producer == ProducerKind.Enumeration)
                 {
                     using var walkLease = await EnumerationWalkLimit.EnterAsync(cancellationToken).ConfigureAwait(false);
-                    var (scannedBlock, walked) = await Task
+                    var scannedBlock = await Task
                         .Run(() => CreateAndPopulateBlock(blockPath, deleteOnClose, cancellationToken),
                             cancellationToken)
                         .ConfigureAwait(false);
                     return new PendingDriveResult
                     {
                         Block = scannedBlock,
-                        Origin = BlockOrigin.ProducedByScan,
-                        AccessDeniedSubtreeCount = walked.AccessDeniedSubtreeCount
+                        Origin = BlockOrigin.ProducedByScan
                     };
                 }
 
@@ -70,6 +67,7 @@ public sealed partial class FileIndex
                 DeleteOnClose = deleteOnClose,
                 Progress = Options.ScanProgress,
                 CacheTag = Options.CacheTag,
+                ScanShape = ExpectedScanShape,
                 Diagnostics = Options.Diagnostics,
                 RetainedFileNames = Options.RetainedFileNames
             };
@@ -112,7 +110,7 @@ public sealed partial class FileIndex
         ///     Exhausted attempts are discarded and retried with geometrically larger capacities,
         ///     up to the layout's capacity clamp, before a block is completed and returned.
         /// </summary>
-        BlockScanResult CreateAndPopulateBlock(string blockPath, bool deleteOnClose,
+        BlockFile CreateAndPopulateBlock(string blockPath, bool deleteOnClose,
             CancellationToken cancellationToken)
         {
             var (slotCapacity, namePoolCapacity) = PlanCapacities(
@@ -130,7 +128,8 @@ public sealed partial class FileIndex
                     NamePoolCapacity = namePoolCapacity,
                     DeleteOnClose = deleteOnClose,
                     Diagnostics = Options.Diagnostics,
-                    CacheTag = Options.CacheTag
+                    CacheTag = Options.CacheTag,
+                    ScanShape = ExpectedScanShape
                 });
                 try
                 {
@@ -139,7 +138,8 @@ public sealed partial class FileIndex
                     {
                         RootDirectory = Configuration.RootDirectory,
                         Drive = Drive,
-                        RetainedFileNames = Options.RetainedFileNames
+                        RetainedFileNames = Options.RetainedFileNames,
+                        DirectoryWalk = Options.DirectoryWalk
                     });
 
                     var result = producer.Produce(writer, Options.ScanProgress, cancellationToken);
@@ -150,7 +150,7 @@ public sealed partial class FileIndex
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                         writer.Complete(Options.TimeProvider.GetUtcNow().UtcDateTime, null);
-                        var completed = new BlockScanResult(block, result);
+                        var completed = block;
                         block = null;
                         return completed;
                     }
@@ -198,6 +198,12 @@ public sealed partial class FileIndex
                 {
                     throw new InvalidOperationException(
                         $"The MFT producer's block carries cache tag {header.CacheTag}, but the request requires {request.CacheTag}.");
+                }
+
+                if (header.ScanShape != request.ScanShape)
+                {
+                    throw new InvalidOperationException(FormattableString.Invariant(
+                        $"The MFT producer's block carries scan shape {header.ScanShape:X16}, but the request requires {request.ScanShape:X16}."));
                 }
             }
             catch (Exception exception)

@@ -5,7 +5,7 @@ namespace MFTLibTestExtensions;
 /// <summary>
 ///     The MFT block producer of a test index: writes the rows a test names through the real
 ///     block writer and returns a real produce result, copying the
-///     request's cache tag as every custom producer must.
+///     request's cache tag and scan shape as every custom producer must.
 /// </summary>
 public sealed class SyntheticMftProducer
 {
@@ -74,7 +74,8 @@ public sealed class SyntheticMftProducer
             {
                 JournalCursor = cursor,
                 ScanTimestamp = ScanTimestamp,
-                CacheTag = request.CacheTag
+                CacheTag = request.CacheTag,
+                ScanShape = request.ScanShape
             }, _rowsForDrive(request.Drive)), request.Drive);
     }
 

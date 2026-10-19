@@ -114,7 +114,8 @@ public partial class BenchmarkRunner
                 VolumeSerial = 0,
                 ProducerKind = ProducerKind.Enumeration,
                 SlotCapacity = BlockLayout.ComputeSlotCapacity(rows),
-                NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(checked(rows * 30 + (uint)directory.Length * 2))
+                NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(checked(rows * 30 + (uint)directory.Length * 2)),
+                ScanShape = ScanShape.ForEnumeration(null, new DirectoryWalkOptions(), directory)
             }))
             {
                 var writer = new BlockWriter(block);
@@ -147,9 +148,23 @@ public partial class BenchmarkRunner
         foreach (var candidate in cached.OrderBy(candidate => candidate.File.Drive.Letter))
         {
             if (candidate.Availability != CachedBlockAvailability.Available || candidate.RootDirectory is null ||
-                candidate.CacheTag is not { } cacheTag || candidate.ProducerKind is not { } producer)
+                candidate.CacheTag is not { } cacheTag || candidate.ProducerKind is not { } producer ||
+                candidate.ScanShape is not { } storedShape)
             {
                 log($"Error: {candidate.File.Path}: {candidate.Availability}{(candidate.Validation is { } reason ? $" ({reason})" : "")}.");
+                exitCode = 1;
+                continue;
+            }
+
+            // The benchmark queries with default row-shaping options, so it names a block shaped by
+            // any others here. A block replaced after inspection is refused by the cache-only open,
+            // which never deletes a block, and reported as a failed drive below.
+            var benchmarkShape = producer == ProducerKind.Enumeration
+                ? ScanShape.ForEnumeration(null, new DirectoryWalkOptions(), candidate.RootDirectory)
+                : ScanShape.ForMft(null, includeFreed: false);
+            if (storedShape != benchmarkShape)
+            {
+                log($"Error: {candidate.File.Path}: unsupported scan shape (built with other row-shaping options); left intact.");
                 exitCode = 1;
                 continue;
             }

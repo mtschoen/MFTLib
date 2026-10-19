@@ -32,7 +32,7 @@ internal sealed class BrokerMftBlockProducer
     /// </summary>
     /// <returns>A source whose scans fill the block named by each request through the broker.</returns>
     internal MftIndexSource CreateIndexSource() => new(ProduceAsync, new BrokerIndexWatchSource(_connectAsync),
-        validateRetainedFileNames: ValidateRetainedFileNames);
+        validateRetainedFileNames: ValidateRetainedFileNames, includeFreed: _scanOptions?.IncludeFreed ?? false);
 
     /// <summary>
     ///     Refuses a retained-name set that no scan request frame can carry, so the open fails before any
@@ -60,6 +60,7 @@ internal sealed class BrokerMftBlockProducer
         var target = new BlockScanTarget(request.BlockPath, request.VolumeSerial, request.DeleteOnClose)
         {
             CacheTag = request.CacheTag,
+            ScanShape = request.ScanShape,
             RetainedFileNames = request.RetainedFileNames
         };
         var process = await _connectAsync(cancellationToken).ConfigureAwait(false);

@@ -91,11 +91,12 @@ public sealed record FileIndexOptions
     public Action<string>? Diagnostics { get; init; }
 
     /// <summary>
-    ///     An optional consumer cache tag identifying the scan retention shape.
-    ///     The tag is validated on construction: the FourCC must contain exactly four ASCII characters.
-    ///     The default value is all zeros, meaning unspecified. Comparison matches both the FourCC and
-    ///     version exactly. The consumer owns and increments its version whenever its scan shape changes.
-    ///     MFTLib does not interpret the tag or compare scan filters.
+    ///     An optional consumer cache tag carrying meaning only the consumer can see. The tag is validated on
+    ///     construction: the FourCC must contain exactly four ASCII characters. The default value is all zeros,
+    ///     meaning unspecified. Comparison matches both the FourCC and version exactly. MFTLib does not
+    ///     interpret the tag. The options that shape a block's rows (<see cref="RetainedFileNames" />,
+    ///     <see cref="DirectoryWalk" /> and <see cref="MftScanOptions.IncludeFreed" />) are compared by the
+    ///     library itself as the block's scan shape, so the tag need not change with them.
     /// </summary>
     public CacheTag CacheTag { get; init; }
 
@@ -104,12 +105,20 @@ public sealed record FileIndexOptions
     ///     the directory walk filters entries. Null (the default) keeps every eligible row. An empty
     ///     collection keeps directories only. A nonempty collection also keeps files whose names match
     ///     ordinally, ignoring case. The root row is always kept. <see cref="FileIndex.OpenAsync" />
-    ///     materializes the collection once and rejects a null element, or a set too long for the
-    ///     source's request, before creating a cache directory or starting a scan. A cached block carries
-    ///     the rows of the scan that produced it, so a consumer that changes this option also changes its
-    ///     <see cref="CacheTag" /> version.
+    ///     materializes the collection once and rejects a null or malformed UTF-16 element, or a set too long for the
+    ///     source's request, before creating a cache directory or starting a scan. A cached block records
+    ///     the retention that shaped it, so a warm start under another set discards the block and scans again.
     /// </summary>
     public IReadOnlyCollection<string>? RetainedFileNames { get; init; }
+
+    /// <summary>
+    ///     How enumeration drives walk: the directories they record but do not enter. MFT drives ignore it.
+    ///     <see cref="FileIndex.OpenAsync" /> rejects a null value and invalid rules (see
+    ///     <see cref="DirectoryWalkOptions" />) before creating a cache directory or starting a scan. A cached
+    ///     enumeration block records the options that shaped it, counting only pruned paths within its drive's
+    ///     root, so a warm start under other options discards the block and scans again.
+    /// </summary>
+    public DirectoryWalkOptions DirectoryWalk { get; init; } = new();
 
     internal TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 
@@ -130,6 +139,13 @@ public sealed record FileIndexOptions
             if (name is null)
             {
                 throw new ArgumentException("FileIndexOptions.RetainedFileNames must not contain null entries.",
+                    nameof(options));
+            }
+
+            if (!WellFormedText.IsWellFormed(name))
+            {
+                throw new ArgumentException(
+                    "FileIndexOptions.RetainedFileNames must not contain an entry with an unpaired surrogate.",
                     nameof(options));
             }
 

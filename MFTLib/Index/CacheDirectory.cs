@@ -148,7 +148,8 @@ public static class CacheDirectory
         return new CachedBlockStatus(file, CachedBlockAvailability.Available,
             validation, producerKind, rootDirectory)
         {
-            CacheTag = block.Header.CacheTag
+            CacheTag = block.Header.CacheTag,
+            ScanShape = block.Header.ScanShape
         };
     }
 

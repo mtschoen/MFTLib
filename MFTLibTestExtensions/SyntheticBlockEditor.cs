@@ -121,13 +121,15 @@ public sealed class SyntheticBlockEditor
     /// <summary>
     ///     Replaces the producer recorded in the header. A block written by <see cref="ProducerKind.Enumeration" />
     ///     becomes one an index treats as an MFT block: it can be warm-started without a producer and its
-    ///     rows accept journal entries. Only the header changes, so the rows must already suit the new kind.
+    ///     rows accept journal entries. Only the header changes: the producer, and the scan shape an index opened
+    ///     with default row-shaping options requires for it. The rows must already suit the new kind.
     /// </summary>
     /// <param name="producerKind">The producer to record.</param>
     public void SetProducerKind(ProducerKind producerKind)
     {
         EnsureOpen();
         _block.Header.ProducerKind = producerKind;
+        _block.Header.ScanShape = SyntheticScanShape.Default(producerKind);
     }
 
     /// <summary>

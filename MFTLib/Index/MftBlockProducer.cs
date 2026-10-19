@@ -56,6 +56,13 @@ internal sealed record MftBlockProduceRequest
     public CacheTag CacheTag { get; init; }
 
     /// <summary>
+    ///     The scan shape the index computed from the request's row-shaping options. A custom MFT producer must copy
+    ///     this into <see cref="BlockFileCreateOptions.ScanShape" />; returning a block with another shape is a
+    ///     producer failure.
+    /// </summary>
+    public ulong ScanShape { get; init; }
+
+    /// <summary>
     ///     The row retention taken from <see cref="FileIndexOptions.RetainedFileNames" />: null keeps every
     ///     eligible row, empty keeps directories only, and a nonempty set also keeps files with those names.
     /// </summary>

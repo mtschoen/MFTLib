@@ -30,6 +30,8 @@ public partial class FileIndexResilienceTests
         Assert.AreEqual(DriveState.Failed, failed.State);
         Assert.AreEqual(DriveFailureKind.CacheDeclined, failed.Failure?.Kind);
         Assert.IsNull(failed.Block!);
+        CollectionAssert.AreEqual(bytes, await File.ReadAllBytesAsync(blockPath),
+            "a cache-only open leaves the rejected block in place");
     }
 
     [TestMethod]

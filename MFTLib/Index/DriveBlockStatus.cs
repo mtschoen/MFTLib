@@ -51,9 +51,9 @@ public sealed record DriveBlockStatus
     public int SkippedRecordCount { get; init; }
 
     /// <summary>
-    ///     The enumeration producer's count of subtrees it could not enter during the latest
-    ///     scan, including directories that vanished before entry. Zero for an MFT-backed
-    ///     drive and after a warm start, because the count is not stored in the block.
+    ///     The enumeration producer's count of subtrees it could not enter during the scan that
+    ///     built the block, including directories that vanished before entry. The block stores it,
+    ///     so a warm start reports the count of the scan that built it. Zero for an MFT-backed drive.
     /// </summary>
     public int AccessDeniedSubtreeCount { get; init; }
 }

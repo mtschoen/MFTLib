@@ -8,6 +8,7 @@ MFTLib.Index.BlockValidationResult :: field public const WrongCacheTag : MFTLib.
 MFTLib.Index.BlockValidationResult :: field public const WrongFormatVersion : MFTLib.Index.BlockValidationResult = 1
 MFTLib.Index.BlockValidationResult :: field public const WrongMagic : MFTLib.Index.BlockValidationResult = 0
 MFTLib.Index.BlockValidationResult :: field public const WrongRootDirectory : MFTLib.Index.BlockValidationResult = 5
+MFTLib.Index.BlockValidationResult :: field public const WrongScanShape : MFTLib.Index.BlockValidationResult = 8
 MFTLib.Index.BlockValidationResult :: field public const WrongVolumeSerial : MFTLib.Index.BlockValidationResult = 3
 MFTLib.Index.BlockValidationResult :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.Index.CacheDirectory :: method public static DeleteCached(string cacheDirectoryPath, System.Collections.Generic.IEnumerable<MFTLib.Index.DriveKey>? drives = default) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.CachedBlockDeletionResult>
@@ -85,6 +86,19 @@ MFTLib.Index.CachedBlockStatus :: property public ProducerKind { get; init; } : 
 MFTLib.Index.CachedBlockStatus :: property public RootDirectory { get; init; } : string?
 MFTLib.Index.CachedBlockStatus :: property public Validation { get; init; } : MFTLib.Index.BlockValidationResult?
 MFTLib.Index.CachedBlockStatus :: type public sealed class : System.IEquatable<MFTLib.Index.CachedBlockStatus>
+MFTLib.Index.DirectoryWalkOptions :: constructor public ()
+MFTLib.Index.DirectoryWalkOptions :: method public <Clone>$() : MFTLib.Index.DirectoryWalkOptions
+MFTLib.Index.DirectoryWalkOptions :: method public Equals(MFTLib.Index.DirectoryWalkOptions? other) : bool
+MFTLib.Index.DirectoryWalkOptions :: method public override Equals(object? obj) : bool
+MFTLib.Index.DirectoryWalkOptions :: method public override GetHashCode() : int
+MFTLib.Index.DirectoryWalkOptions :: method public override ToString() : string
+MFTLib.Index.DirectoryWalkOptions :: method public static op_Equality(MFTLib.Index.DirectoryWalkOptions? left, MFTLib.Index.DirectoryWalkOptions? right) : bool
+MFTLib.Index.DirectoryWalkOptions :: method public static op_Inequality(MFTLib.Index.DirectoryWalkOptions? left, MFTLib.Index.DirectoryWalkOptions? right) : bool
+MFTLib.Index.DirectoryWalkOptions :: property public PruneDotDirectories { get; init; } : bool
+MFTLib.Index.DirectoryWalkOptions :: property public PrunedDirectoryAttributes { get; init; } : System.IO.FileAttributes
+MFTLib.Index.DirectoryWalkOptions :: property public PrunedDirectoryNames { get; init; } : System.Collections.Generic.IReadOnlyCollection<string>
+MFTLib.Index.DirectoryWalkOptions :: property public PrunedDirectoryPaths { get; init; } : System.Collections.Generic.IReadOnlyCollection<string>
+MFTLib.Index.DirectoryWalkOptions :: type public sealed class : System.IEquatable<MFTLib.Index.DirectoryWalkOptions>
 MFTLib.Index.DriveBlockStatus :: method public <Clone>$() : MFTLib.Index.DriveBlockStatus
 MFTLib.Index.DriveBlockStatus :: method public Equals(MFTLib.Index.DriveBlockStatus? other) : bool
 MFTLib.Index.DriveBlockStatus :: method public override Equals(object? obj) : bool
@@ -111,7 +125,7 @@ MFTLib.Index.DriveFailure :: property public Kind { get; init; } : MFTLib.Index.
 MFTLib.Index.DriveFailure :: property public Message { get; init; } : string
 MFTLib.Index.DriveFailure :: type public sealed class : System.IEquatable<MFTLib.Index.DriveFailure>
 MFTLib.Index.DriveFailureKind :: field public const CacheDeclined : MFTLib.Index.DriveFailureKind = 0
-MFTLib.Index.DriveFailureKind :: field public const CacheTagMismatch : MFTLib.Index.DriveFailureKind = 3
+MFTLib.Index.DriveFailureKind :: field public const CacheIdentityMismatch : MFTLib.Index.DriveFailureKind = 3
 MFTLib.Index.DriveFailureKind :: field public const InUse : MFTLib.Index.DriveFailureKind = 2
 MFTLib.Index.DriveFailureKind :: field public const ProducerFailed : MFTLib.Index.DriveFailureKind = 1
 MFTLib.Index.DriveFailureKind :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
@@ -242,6 +256,7 @@ MFTLib.Index.FileIndexOptions :: property public CacheDirectory { get; init; } :
 MFTLib.Index.FileIndexOptions :: property public CacheMode { get; init; } : MFTLib.Index.CacheMode?
 MFTLib.Index.FileIndexOptions :: property public CacheTag { get; init; } : MFTLib.Index.CacheTag
 MFTLib.Index.FileIndexOptions :: property public Diagnostics { get; init; } : System.Action<string>?
+MFTLib.Index.FileIndexOptions :: property public DirectoryWalk { get; init; } : MFTLib.Index.DirectoryWalkOptions
 MFTLib.Index.FileIndexOptions :: property public DriveOpenProgress { get; init; } : System.IProgress<MFTLib.Index.IndexDriveOpened>?
 MFTLib.Index.FileIndexOptions :: property public Drives { get; init; } : System.Collections.Generic.IReadOnlyList<MFTLib.Index.IndexedDrive>
 MFTLib.Index.FileIndexOptions :: property public MftSource { get; init; } : MFTLib.Index.MftIndexSource?

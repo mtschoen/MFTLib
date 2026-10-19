@@ -69,6 +69,31 @@ public sealed class FileIndexRetainedFileNamesAdmissionTests : IDisposable
     }
 
     [TestMethod]
+    [DataRow(0xD800, true)]
+    [DataRow(0xD801, true)]
+    [DataRow(0xDC00, false)]
+    public async Task OpenAsync_UnpairedSurrogateInTheSet_ThrowsBeforeTheCacheDirectoryIsCreated(int codeUnit, bool trailing)
+    {
+        var options = _fixture.Options() with { RetainedFileNames = ["a", MalformedText.Make(codeUnit, trailing)] };
+
+        var exception = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+            FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token));
+
+        StringAssert.Contains(exception.Message, "unpaired surrogate");
+        Assert.IsFalse(Directory.Exists(_fixture.CacheDirectory));
+    }
+
+    [TestMethod]
+    public async Task OpenAsync_ReplacementCharacterAndValidPairInTheSet_AreAdmitted()
+    {
+        var options = _fixture.Options() with { RetainedFileNames = ["x\uFFFD", "x\uD83D\uDE00"] };
+
+        await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
+
+        Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
+    }
+
+    [TestMethod]
     public async Task OpenAsync_MaterializesTheSetOnceSoLaterEditsDoNotChangeTheWalk()
     {
         await File.WriteAllTextAsync(Path.Combine(_fixture.TreeRoot, "keep.txt"), "x", TestContext.CancellationTokenSource.Token);

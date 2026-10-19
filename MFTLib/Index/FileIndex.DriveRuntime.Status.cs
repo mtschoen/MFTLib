@@ -31,7 +31,7 @@ public sealed partial class FileIndex
                     ScanTimestamp = header.ScanTimestampUtc,
                     IsCapacityExhausted = header.IsCapacityExhausted,
                     SkippedRecordCount = result.SkippedRecordCount,
-                    AccessDeniedSubtreeCount = result.AccessDeniedSubtreeCount
+                    AccessDeniedSubtreeCount = (int)Math.Min(header.AccessDeniedSubtreeCount, int.MaxValue)
                 },
                 Watch = DescribeWatchLocked()
             };

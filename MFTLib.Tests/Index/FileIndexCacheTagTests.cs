@@ -54,7 +54,8 @@ public class FileIndexCacheTagTests
             SlotCapacity = 16,
             NamePoolCapacity = 1024,
             DeleteOnClose = request.DeleteOnClose,
-            CacheTag = request.CacheTag
+            CacheTag = request.CacheTag,
+            ScanShape = request.ScanShape
         });
         try
         {
@@ -85,7 +86,8 @@ public class FileIndexCacheTagTests
             Drive = 'T',
             VolumeSerial = 123,
             BlockPath = BlockPath,
-            CacheTag = tag
+            CacheTag = tag,
+            ScanShape = ScanShape.ForMft(null, includeFreed: false)
         });
     }
 
@@ -183,15 +185,18 @@ public class FileIndexCacheTagTests
         {
             var status = index.Drives.Single();
             Assert.IsTrue(diagnostics.Any(line => line.Contains("cache validation failed: WrongCacheTag")),
-                "the rejected block's deletion names the reason");
+                "the rejected block's deletion or refusal names the reason");
             Assert.IsTrue(diagnostics.Any(line => line.Contains("Cache tag mismatch") &&
                 line.Contains(stored.ToString()) && line.Contains(requested.ToString())));
             if (cacheOnly)
             {
                 Assert.AreEqual(DriveState.Failed, status.State);
-                Assert.AreEqual(DriveFailureKind.CacheTagMismatch, status.Failure?.Kind);
+                Assert.AreEqual(DriveFailureKind.CacheIdentityMismatch, status.Failure?.Kind);
                 Assert.IsNull(status.Block!);
-                Assert.IsFalse(File.Exists(BlockPath));
+                using (var left = BlockFile.Open(BlockPath, 123, out _))
+                {
+                    Assert.AreEqual(stored, left?.Header.CacheTag, "a cache-only open leaves the rejected block in place");
+                }
                 await index.RescanAsync(['T'], CancellationToken.None);
                 Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
                 Assert.IsNull(index.Drives.Single().Failure);

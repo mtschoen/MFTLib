@@ -144,7 +144,7 @@ A drive that settles `DriveState.Failed` has no block, and `DriveStatus.Failure.
 | Kind | Meaning |
 | --- | --- |
 | `CacheDeclined` | `CacheMode.ExistingOnly` found no usable cached block, or one from another producer, and forbade a scan. |
-| `CacheTagMismatch` | `CacheMode.ExistingOnly` found a block whose cache tag differs from `FileIndexOptions.CacheTag`. |
+| `CacheIdentityMismatch` | `CacheMode.ExistingOnly` found a block whose cache tag differs from `FileIndexOptions.CacheTag`. |
 | `InUse` | `CacheMode.ExistingOnly` found the block owned by another live `FileIndex`. |
 | `ProducerFailed` | The scan failed, or an MFT drive needed a scan and had no `MftSource`. |
 

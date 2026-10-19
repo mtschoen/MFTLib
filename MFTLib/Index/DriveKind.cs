@@ -83,12 +83,14 @@ internal sealed class DriveKind
             {
                 Drives = [identity.VirtualDrive],
                 CacheMode = CacheMode.Disabled,
-                RetainedFileNames = FileIndexOptions.ValidateRetainedFileNames(options)
+                RetainedFileNames = FileIndexOptions.ValidateRetainedFileNames(options),
+                DirectoryWalk = DirectoryWalkOptions.Admit(options.DirectoryWalk)
             };
         }
 
         var drives = FileIndexOptions.ValidateDrives(options);
         var retainedFileNames = FileIndexOptions.ValidateRetainedFileNames(options);
+        var directoryWalk = DirectoryWalkOptions.Admit(options.DirectoryWalk);
         if (retainedFileNames is not null && drives.Any(drive => drive.Producer == ProducerKind.Mft))
         {
             options.MftSource?.ValidateRetainedFileNames?.Invoke(retainedFileNames);
@@ -103,7 +105,8 @@ internal sealed class DriveKind
         {
             Drives = drives,
             CacheMode = options.CacheMode ?? CacheMode.Persistent,
-            RetainedFileNames = retainedFileNames
+            RetainedFileNames = retainedFileNames,
+            DirectoryWalk = directoryWalk
         };
     }
 }

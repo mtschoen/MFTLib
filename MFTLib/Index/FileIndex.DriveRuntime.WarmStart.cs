@@ -29,7 +29,7 @@ public sealed partial class FileIndex
                 {
                     var storedProducerKind = block.Header.ProducerKind;
                     block.Dispose();
-                    TryDeleteBestEffort(path,
+                    DiscardRejectedBlock(path,
                         $"cache producer kind mismatch: stored {storedProducerKind}; requested {Configuration.Producer}");
                     return new WarmStartResult(null, null);
                 }
@@ -39,13 +39,18 @@ public sealed partial class FileIndex
                     return RejectCacheTag(block, path);
                 }
 
+                if (block.Header.ScanShape != ExpectedScanShape)
+                {
+                    return RejectScanShape(block, path);
+                }
+
                 if (block.Header.ProducerKind == ProducerKind.Enumeration)
                 {
                     var cachedRoot = NamePool.ReadRowName(block, 0);
                     if (!NameMatching.EqualsName(cachedRoot, Configuration.RootDirectory, caseSensitive: !OperatingSystem.IsWindows()))
                     {
                         block.Dispose();
-                        TryDeleteBestEffort(path, $"cache validation failed: {BlockValidationResult.WrongRootDirectory}");
+                        DiscardRejectedBlock(path, $"cache validation failed: {BlockValidationResult.WrongRootDirectory}");
                         return new WarmStartResult(null, BlockValidationResult.WrongRootDirectory);
                     }
                 }
@@ -55,7 +60,7 @@ public sealed partial class FileIndex
 
             if (validation != BlockValidationResult.WrongMagic || existedBeforeOpen)
             {
-                TryDeleteBestEffort(path, $"cache validation failed: {validation}");
+                DiscardRejectedBlock(path, $"cache validation failed: {validation}");
             }
 
             // A block is only "discarded" when one genuinely existed and was rejected; a first-ever
@@ -127,8 +132,42 @@ public sealed partial class FileIndex
             block.Dispose();
             Options.Diagnostics?.Invoke(
                 $"Cache tag mismatch for '{path}': stored {stored}; requested {Options.CacheTag}.");
-            TryDeleteBestEffort(path, $"cache validation failed: {BlockValidationResult.WrongCacheTag}");
+            DiscardRejectedBlock(path, $"cache validation failed: {BlockValidationResult.WrongCacheTag}");
             return new WarmStartResult(null, BlockValidationResult.WrongCacheTag);
         }
+
+        /// <summary>
+        ///     Deletes a rejected canonical block under the held owner lock, so a writing open's
+        ///     cold scan replaces it. <see cref="CacheMode.ExistingOnly" /> never scans, so it has
+        ///     nothing to replace the block with and never deletes it: the rejection is a refusal
+        ///     and the file stays in place, whatever its contents, for a writing open to judge.
+        /// </summary>
+        void DiscardRejectedBlock(string path, string reason)
+        {
+            if (Options.CacheMode == CacheMode.ExistingOnly)
+            {
+                Options.Diagnostics?.Invoke($"Left block file '{path}' in place for a cache-only open: {reason}.");
+                return;
+            }
+
+            TryDeleteBestEffort(path, reason);
+        }
+
+        /// <summary>
+        ///     Rejects a block built under other row-shaping options. The caller holds the canonical slot's owner
+        ///     lock, so a deletion cannot race another index adopting the file.
+        /// </summary>
+        WarmStartResult RejectScanShape(BlockFile block, string path)
+        {
+            var stored = block.Header.ScanShape;
+            block.Dispose();
+            Options.Diagnostics?.Invoke(FormattableString.Invariant(
+                $"Cache scan shape mismatch for '{path}': stored {stored:X16}; requested {ExpectedScanShape:X16}."));
+            DiscardRejectedBlock(path, $"cache validation failed: {BlockValidationResult.WrongScanShape}");
+            return new WarmStartResult(null, BlockValidationResult.WrongScanShape);
+        }
+
+        /// <summary>The scan shape this drive's block must carry under the index's admitted options.</summary>
+        ulong ExpectedScanShape => ScanShape.For(Configuration, Options);
     }
 }

@@ -16,7 +16,7 @@ internal sealed class LocalMftBlockProducer(TimeProvider timeProvider, MftScanOp
 
 
     /// <summary>The index source over this producer: scans fill the requested block directly, and no watch is offered.</summary>
-    internal MftIndexSource CreateIndexSource() => new(ProduceAsync);
+    internal MftIndexSource CreateIndexSource() => new(ProduceAsync, includeFreed: scanOptions?.IncludeFreed ?? false);
 
     Task<MftBlockProduceResult> ProduceAsync(MftBlockProduceRequest request, CancellationToken cancellationToken) =>
         MftBlockProducerPipeline.RunAsync(request, _allocator,

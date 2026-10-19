@@ -56,6 +56,15 @@ public class BlockHeaderTests
     }
 
     [TestMethod]
+    public void Header_DeclaresOneHundredTwentyEightBytesEndingWithTheScanShapeAndAccessDeniedCount()
+    {
+        Assert.AreEqual(128, Marshal.SizeOf<BlockHeader>());
+        Assert.AreEqual(112, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.ScanShape)));
+        Assert.AreEqual(120, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.AccessDeniedSubtreeCount)));
+        Assert.AreEqual(124, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.Reserved)));
+    }
+
+    [TestMethod]
     public void Header_FieldsFollowSpecOrder()
     {
         Assert.AreEqual(0, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.Magic)));
@@ -182,10 +191,10 @@ public class BlockHeaderTests
     }
 
     [TestMethod]
-    public void FormatVersion_IsFour()
+    public void FormatVersion_IsFive()
     {
         var formatVersion = BlockLayout.FormatVersion;
-        Assert.AreEqual(4u, formatVersion);
+        Assert.AreEqual(5u, formatVersion);
     }
 
     [TestMethod]

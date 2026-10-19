@@ -284,6 +284,14 @@ internal sealed partial class BlockWriter
         header.CacheTagVersion = cacheTag.Version;
     }
 
+    /// <summary>Stores the enumeration producer's count of subtrees it could not enter, so a warm start reports it.</summary>
+    /// <param name="count">The walk's access-denied subtree count.</param>
+    public void SetAccessDeniedSubtreeCount(uint count)
+    {
+        using var access = Block.TakeAccess();
+        Block.Header.AccessDeniedSubtreeCount = count;
+    }
+
     /// <summary>Increments and returns the block's mutation generation.</summary>
     /// <returns>The incremented generation.</returns>
     public ulong BumpGeneration()

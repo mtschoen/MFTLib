@@ -165,7 +165,8 @@ public sealed class FileIndexEnumerateTests : IDisposable
             RootRow = 5,
             SlotCapacity = BlockLayout.ComputeSlotCapacity(totalRows),
             NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(totalRows * 32),
-            DeleteOnClose = request.DeleteOnClose
+            DeleteOnClose = request.DeleteOnClose,
+            ScanShape = request.ScanShape
         };
 
         using (var block = BlockFile.Create(createOptions))

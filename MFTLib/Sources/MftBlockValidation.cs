@@ -4,7 +4,8 @@ namespace MFTLib;
 
 internal static class MftBlockValidation
 {
-    internal static void Validate(BlockFile block, uint volumeSerial, UsnJournalCursor armed, CacheTag requestedCacheTag)
+    internal static void Validate(BlockFile block, uint volumeSerial, UsnJournalCursor armed, CacheTag requestedCacheTag,
+        ulong requestedScanShape)
     {
         var header = block.Header;
         if (header.RowCount == 0)
@@ -35,6 +36,12 @@ internal static class MftBlockValidation
             throw new InvalidOperationException(
                 $"Block cache tag {header.CacheTag} does not match the requested tag {requestedCacheTag}.");
         }
+
+        if (header.ScanShape != requestedScanShape)
+        {
+            throw new InvalidOperationException(FormattableString.Invariant(
+                $"Block scan shape {header.ScanShape:X16} does not match the requested shape {requestedScanShape:X16}."));
+        }
     }
 
     internal static MftBlockProduceResult Finish(MftBlockProduceRequest request, BlockFile block,
@@ -42,7 +49,7 @@ internal static class MftBlockValidation
     {
         try
         {
-            Validate(block, request.VolumeSerial, armed, request.CacheTag);
+            Validate(block, request.VolumeSerial, armed, request.CacheTag, request.ScanShape);
             return new MftBlockProduceResult(block, skippedRecordCount) { CatchUpLoss = catchUpLoss };
         }
         catch (Exception exception)

@@ -27,6 +27,8 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 - `FileIndexOptions.ScanProgress`, `DriveOpenProgress` and `Diagnostics` report scan progress, open progress and block-file deletions.
 - `FileIndexOptions.RetainedFileNames` selects which files an index keeps, and every producer applies it: null keeps every row, an empty collection keeps directories only, and a nonempty collection keeps directories plus files with those names, ignoring case. The root row is always kept. A set too long for one broker request frame fails `OpenAsync` with `ArgumentException`.
 - `MftScanOptions.IncludeFreed` imports freed MFT records as deleted rows.
+- `FileIndexOptions.DirectoryWalk` takes a `DirectoryWalkOptions` with `PrunedDirectoryNames`, `PrunedDirectoryPaths`, `PrunedDirectoryAttributes` and `PruneDotDirectories`. A pruned directory is recorded but not entered, and the root is never pruned. MFT drives ignore it.
+- Block format 5 stores a library-computed scan shape of the retention, walk and freed-record options, so a warm start under other options cold-scans without a cache tag change, and records `BlockValidationResult.WrongScanShape`. It also stores the walk's access-denied subtree count, so a warm start reports it.
 - `BrokerSession` owns one elevated broker process per consumer session. `ElevatedEntryPoint.RunBrokerIfRequested` dispatches broker mode, and `BrokerDiagnostics.Enable` writes per-role diagnostics logs.
 - `ElevationUtilities.TryAddDefenderProcessExclusions` adds Windows Defender process exclusions, elevating when needed.
 - `MFTLib.TestExtensions`: an in-process broker harness, scripted watches, synthetic cache blocks, synthetic journal records and journal isolation for consumer tests.
@@ -67,6 +69,8 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 - `MftResult.Timings` and `MftParseTimings` -> removed; `FileIndexOptions.ScanProgress` reports scan progress
 - `bufferSizeRecords` parameters -> removed
 - `MftScanOptions.RetainedFileNames` -> `FileIndexOptions.RetainedFileNames`, which the directory walk applies too
+- `DriveFailureKind.CacheTagMismatch` -> `DriveFailureKind.CacheIdentityMismatch`, which also covers a scan-shape mismatch
+- A `CacheTag` version bumped for retention or freed-record changes -> no bump; the library compares those options as the scan shape
 - `MftVolume.GenerateSyntheticMFT` -> `SyntheticBlock` and `SyntheticMftProducer` in `MFTLib.TestExtensions`
 - `ElevationUtilities.IsElevated()` and `CanSelfElevate()` -> `ElevationUtilities.DefaultProvider.IsElevated()` and `CanSelfElevate()`
 - `ElevationUtilities.TryRunElevated(string arguments, int timeoutMs)` -> `ElevationUtilities.DefaultProvider.TryRunElevated(IReadOnlyList<string> arguments, TimeSpan timeout)`

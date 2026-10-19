@@ -71,6 +71,16 @@ internal struct BlockHeader
     [FieldOffset(104)] public uint CacheTagFourCc;
     /// <summary>Consumer-defined cache identity version.</summary>
     [FieldOffset(108)] public uint CacheTagVersion;
+    /// <summary>
+    ///     The library's identity for the options that shaped the rows: retention and freed-record inclusion
+    ///     for an MFT block, retention and the directory walk options for an enumeration block. See
+    ///     <see cref="MFTLib.Index.ScanShape" />. A warm start rejects a block whose value differs from the requested one.
+    /// </summary>
+    [FieldOffset(112)] public ulong ScanShape;
+    /// <summary>The enumeration producer's count of subtrees it could not enter; zero for an MFT block.</summary>
+    [FieldOffset(120)] public uint AccessDeniedSubtreeCount;
+    /// <summary>Reserved; written as zero.</summary>
+    [FieldOffset(124)] public uint Reserved;
     /// <summary>Consumer cache identity reconstructed from its on-disk fields.</summary>
     public readonly CacheTag CacheTag => CacheTag.FromStorage(CacheTagFourCc, CacheTagVersion);
 

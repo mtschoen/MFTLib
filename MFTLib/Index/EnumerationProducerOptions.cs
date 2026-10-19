@@ -18,4 +18,7 @@ internal sealed record EnumerationProducerOptions
     ///     names match ordinally, ignoring case. The root row is always written.
     /// </summary>
     public IReadOnlyCollection<string>? RetainedFileNames { get; init; }
+
+    /// <summary>The admitted walk options: which directories are recorded but not entered.</summary>
+    public DirectoryWalkOptions DirectoryWalk { get; init; } = new();
 }

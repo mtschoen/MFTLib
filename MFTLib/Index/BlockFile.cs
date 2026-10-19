@@ -388,5 +388,6 @@ internal sealed unsafe partial class BlockFile : IDisposable
         header.NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(options.SlotCapacity);
         header.CacheTagFourCc = options.CacheTag.PackedFourCc;
         header.CacheTagVersion = options.CacheTag.Version;
+        header.ScanShape = options.ScanShape;
     }
 }

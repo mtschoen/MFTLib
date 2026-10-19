@@ -53,8 +53,9 @@ public sealed partial class FileIndex
 
             if (Options.CacheMode == CacheMode.ExistingOnly)
             {
-                var failureKind = warmStart.DiscardedBlock == BlockValidationResult.WrongCacheTag
-                    ? DriveFailureKind.CacheTagMismatch
+                var failureKind = warmStart.DiscardedBlock is BlockValidationResult.WrongCacheTag
+                    or BlockValidationResult.WrongScanShape
+                    ? DriveFailureKind.CacheIdentityMismatch
                     : DriveFailureKind.CacheDeclined;
                 return RecordFailedDrive(failureKind, opened with
                 {

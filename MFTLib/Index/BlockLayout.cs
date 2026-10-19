@@ -12,13 +12,13 @@ internal static class BlockLayout
     public const uint Magic = 0x58494C4D;
 
     /// <summary>A mismatch means discard the block and rescan. There is no migration path.</summary>
-    public const uint FormatVersion = 4;
+    public const uint FormatVersion = 5;
 
     /// <summary>Alignment, in bytes, of each on-disk block region.</summary>
     public const int PageSize = 4096;
 
     /// <summary>Bytes actually occupied by header fields. The header region is padded to a page.</summary>
-    public const int HeaderFieldBytes = 112;
+    public const int HeaderFieldBytes = 128;
 
     /// <summary>Total header-region size in bytes, including padding.</summary>
     public const int HeaderRegionBytes = PageSize;

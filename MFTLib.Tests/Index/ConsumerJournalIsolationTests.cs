@@ -62,7 +62,8 @@ public class ConsumerJournalIsolationTests
             SlotCapacity = BlockLayout.ComputeSlotCapacity(8),
             NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(256),
             DeleteOnClose = request.DeleteOnClose,
-            CacheTag = request.CacheTag
+            CacheTag = request.CacheTag,
+            ScanShape = request.ScanShape
         }))
         {
             var writer = new BlockWriter(block);

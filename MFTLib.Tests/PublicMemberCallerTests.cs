@@ -50,7 +50,21 @@ public class PublicMemberCallerTests
         ["method MFTLib.MftIndexSources.Unavailable(System.String) : MFTLib.Index.MftIndexSource"] =
             "file-wizard FileWizard/FileIndexHost.cs supplies a source for a host that may not scan",
         ["method MFTLib.Index.JournalCheckpointLoss.TryGetGrowthTarget(MFTLib.UsnJournalSettings&) : System.Boolean"] =
-            "file-wizard file-wizard/JournalCommand.cs and FileWizardMaui.Logic/JournalSettingsPresenter.cs, and git-wizard GitWizardUI/ViewModels/MainViewModel.Journals.cs use the recorded target for explicit journal growth"
+            "file-wizard file-wizard/JournalCommand.cs and FileWizardMaui.Logic/JournalSettingsPresenter.cs, and git-wizard GitWizardUI/ViewModels/MainViewModel.Journals.cs use the recorded target for explicit journal growth",
+        ["type MFTLib.Index.DirectoryWalkOptions"] =
+            "git-wizard GitWizard/MftIndexSession.cs (git-wizard issue 328) builds its index options with the directory walk rules that replace its hand-rolled walk",
+        ["method MFTLib.Index.DirectoryWalkOptions..ctor() : System.Void"] =
+            "git-wizard GitWizard/MftIndexSession.cs (git-wizard issue 328) builds its index options with the directory walk rules that replace its hand-rolled walk",
+        ["property MFTLib.Index.DirectoryWalkOptions.PruneDotDirectories : System.Boolean"] =
+            "git-wizard GitWizard/MftIndexSession.cs (git-wizard issue 328) builds its index options with the directory walk rules that replace its hand-rolled walk",
+        ["property MFTLib.Index.DirectoryWalkOptions.PrunedDirectoryAttributes : System.IO.FileAttributes"] =
+            "git-wizard GitWizard/MftIndexSession.cs (git-wizard issue 328) builds its index options with the directory walk rules that replace its hand-rolled walk",
+        ["property MFTLib.Index.DirectoryWalkOptions.PrunedDirectoryNames : System.Collections.Generic.IReadOnlyCollection`1<System.String>"] =
+            "git-wizard GitWizard/MftIndexSession.cs (git-wizard issue 328) builds its index options with the directory walk rules that replace its hand-rolled walk",
+        ["property MFTLib.Index.DirectoryWalkOptions.PrunedDirectoryPaths : System.Collections.Generic.IReadOnlyCollection`1<System.String>"] =
+            "git-wizard GitWizard/MftIndexSession.cs (git-wizard issue 328) builds its index options with the directory walk rules that replace its hand-rolled walk",
+        ["property MFTLib.Index.FileIndexOptions.DirectoryWalk : MFTLib.Index.DirectoryWalkOptions"] =
+            "git-wizard GitWizard/MftIndexSession.cs (git-wizard issue 328) builds its index options with the directory walk rules that replace its hand-rolled walk"
     };
 
     /// <summary>

@@ -197,7 +197,7 @@ Console.ReadLine();
 ## Failure channels
 
 - **`DriveStatus.Failure`** reports why opening or scanning a drive failed: `CacheDeclined`,
-  `CacheTagMismatch`, `InUse` or `ProducerFailed`. A failed drive accepts `RescanAsync`.
+  `CacheIdentityMismatch`, `InUse` or `ProducerFailed`. A failed drive accepts `RescanAsync`.
 - **`DriveOperationResult.Failure`** carries per-drive failures of the four lifecycle verbs.
   Each verb returns one result per requested drive, in request order, and one failure never
   discards the others. `StopWatchingAsync` returns an outstanding watch fault once as a

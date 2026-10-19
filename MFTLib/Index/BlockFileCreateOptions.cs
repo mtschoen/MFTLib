@@ -45,4 +45,10 @@ internal sealed record BlockFileCreateOptions
     ///     complete.
     /// </summary>
     public CacheTag CacheTag { get; init; }
+
+    /// <summary>
+    ///     The library's identity for the options that shape the rows, from <see cref="MFTLib.Index.ScanShape" />; a
+    ///     mismatch on a later warm-start attempt reports <see cref="BlockValidationResult.WrongScanShape" />.
+    /// </summary>
+    public ulong ScanShape { get; init; }
 }

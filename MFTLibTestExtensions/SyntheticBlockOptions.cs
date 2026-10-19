@@ -19,4 +19,13 @@ public sealed record SyntheticBlockOptions
 
     /// <summary>A warm start adopts the block only when this equals the <see cref="FileIndexOptions.CacheTag" /> the index is opened with.</summary>
     public CacheTag CacheTag { get; init; }
+
+    /// <summary>
+    ///     The scan shape stamped into the header. Null stamps the shape an index opened with default row-shaping
+    ///     options requires for <see cref="ProducerKind" />, so a warm start adopts the block.
+    /// </summary>
+    internal ulong? ScanShape { get; init; }
+
+    /// <summary>The shape stamped into the header: <see cref="ScanShape" />, or the default for the producer kind.</summary>
+    internal ulong ResolveScanShape() => ScanShape ?? SyntheticScanShape.Default(ProducerKind);
 }

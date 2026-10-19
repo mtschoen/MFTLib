@@ -11,6 +11,9 @@ internal sealed record BlockScanTarget(string Path, uint VolumeSerial, bool Dele
     /// </summary>
     public CacheTag CacheTag { get; init; }
 
+    /// <summary>The scan shape the index requires, written into the header when the section is created.</summary>
+    public ulong ScanShape { get; init; }
+
     /// <summary>Null keeps every eligible record; empty keeps directories only; otherwise directories plus files with these names.</summary>
     public IReadOnlyCollection<string>? RetainedFileNames { get; init; }
 }

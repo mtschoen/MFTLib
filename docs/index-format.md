@@ -9,21 +9,25 @@ write blocks through `MFTLibTestExtensions`. A block is rebuildable from the fil
 code: incompatible format, identity, serial, or completeness means reject the
 cache and rescan on a normal open. The stored producer kind must also match
 `IndexedDrive.Producer`: warm adoption rejects a mismatch before cache-tag,
-root and journal checks, closes the mapping and best-effort deletes the file under
+scan-shape, root and journal checks, closes the mapping and best-effort deletes the file under
 the owner lock. A normal open scans with the requested producer; a cache-only open
-reports `DriveState.Failed` with `DriveFailureKind.CacheDeclined`.
+reports `DriveState.Failed` with `DriveFailureKind.CacheDeclined`. A cache-only open never
+scans, so it never deletes a rejected block either: every rejection on a cache-only open
+leaves the file in place for a writing open to rebuild.
 
 ## Scan diagnostics
 
 `DriveBlockStatus.AccessDeniedSubtreeCount` counts subtrees the enumeration producer could
-not enter during the scan, including directories that vanished before entry.
+not enter during the scan that built the block, including directories that vanished before entry.
+The header stores it, so a warm start reports the count of the scan that built the block.
 `DriveBlockStatus.SkippedRecordCount` counts records the MFT producer could not place,
 including unsupported record identifiers, empty names and exhausted block capacity.
 All MFT producers saturate this diagnostic at `int.MaxValue` when the scan's count is larger.
-Records excluded by `FileIndexOptions.RetainedFileNames` or `MftScanOptions.IncludeFreed` contribute to neither count. These diagnostics describe the
-current block's production: successful rescans replace the counts, failed or cancelled
-rescans retain them with the block, and warm starts report zero because these counts
-are not stored in the block header. `DriveBlockStatus.IsCapacityExhausted` reads the header's
+Records excluded by `FileIndexOptions.RetainedFileNames` or `MftScanOptions.IncludeFreed` contribute to neither count,
+and neither does a directory `FileIndexOptions.DirectoryWalk` records without entering. These diagnostics describe the
+current block's production: successful rescans replace the counts, and failed or cancelled
+rescans retain them with the block. A warm start reports zero skipped records, because that
+count is not stored in the block header. `DriveBlockStatus.IsCapacityExhausted` reads the header's
 capacity-exhausted flag independently of either count.
 
 ## File name
@@ -131,7 +135,7 @@ Little-endian throughout. Every region boundary is 4096-byte aligned.
 
 | Region | Offset | Size |
 | --- | --- | --- |
-| Header | 0 | 4096 (112-byte declared header, including alignment padding) |
+| Header | 0 | 4096 (128-byte declared header, including alignment padding) |
 | Rows | 4096 | `slot capacity * 32`, rounded up to a page |
 | Sequence region | after rows | `slot capacity * 2`, rounded up to a page |
 | Name pool | after sequence region | `name pool capacity`, rounded up to a page |
@@ -160,10 +164,13 @@ Little-endian throughout. Every region boundary is 4096-byte aligned.
 | 96 | sequence region offset | u64 | |
 | 104 | consumer FourCC | u32 | Four ASCII bytes in source order; zero means unspecified when version is also zero |
 | 108 | consumer version | u32 | Opaque consumer-owned version; compared exactly |
+| 112 | scan shape | u64 | Library identity of the row-shaping options; see [Scan shape](#scan-shape) |
+| 120 | access-denied subtree count | u32 | Subtrees the enumeration producer could not enter; zero for MFT blocks |
+| 124 | reserved | u32 | Written as zero |
 
-The format version is 4. The declared header ends at byte 112 within a
+The format version is 5. The declared header ends at byte 128 within a
 4096-byte header page. A version mismatch rejects the block: normal opens
-rebuild it, and cache-only opens decline the drive.
+rebuild it, and cache-only opens decline the drive and leave the block in place.
 
 The complete flag is written last. A producer that dies mid-write leaves a block
 without it, which a reader rejects.
@@ -179,11 +186,9 @@ at this header value.
 `FileIndexOptions.CacheTag` is an optional `CacheTag`, constructed from exactly
 four ASCII characters and a `uint` version. The all-zero default means
 unspecified, not match-any. Codes are case-sensitive and neither component is
-interpreted by MFTLib. The consumer increments its version whenever its scan
-retention policy changes the rows it stores. `FileIndexOptions.RetainedFileNames` distinguishes
-full retention (null), directories alone (empty), and directories plus matching names, for the MFT
-producers and the directory walk alike; the root row is always stored.
-Freed-record inclusion also changes the retained rows. For example:
+interpreted by MFTLib. The tag carries only meaning the consumer owns and MFTLib
+cannot see. The options that shape the rows are the library's to compare, as the
+[scan shape](#scan-shape). For example:
 
     CacheTag = new CacheTag("GITW", 1)
 
@@ -198,15 +203,54 @@ After structural validation, warm opening compares both fields to the
 requested tag before adopting the block or checking its journal cursor.
 A mismatch records `BlockValidationResult.WrongCacheTag`, disposes and
 best-effort deletes the rejected cache under its owner lock, then cold-scans.
-With `CacheMode.ExistingOnly`, it instead reports `DriveState.Failed` and
-`DriveFailureKind.CacheTagMismatch`. `RescanAsync` can recover that drive.
+With `CacheMode.ExistingOnly`, it instead leaves the block in place and reports `DriveState.Failed` and
+`DriveFailureKind.CacheIdentityMismatch`. `RescanAsync` can recover that drive.
 Both paths emit a `Diagnostics` line identifying the stored and requested
 tags. ASCII control characters in tag diagnostics are escaped.
 
 `CacheDirectory.InspectCached` returns `CachedBlockStatus.CacheTag` for an
 Available block. Invalid or InUse results have null tags because their headers
 were not safely inspected. Cache filenames still contain only drive and serial.
-The tag does not provide shared-cache multiplexing or validate scan filters.
+The tag does not provide shared-cache multiplexing.
+
+## Scan shape
+
+The header's scan shape at offset 112 identifies the options that shaped the block's
+rows. It is the first eight bytes, read as a little-endian u64, of SHA-256 over a
+canonical byte encoding. Integers are little-endian, a flag is one byte (0 or 1), and
+a string set is a u32 count followed by each string as a u32 UTF-8 byte count and its
+bytes, deduplicated and sorted ordinally after folding. Retention is a flag that is 1
+when `FileIndexOptions.RetainedFileNames` is non-null, followed, when it is, by the
+names folded to upper-invariant, because every producer matches them ignoring case.
+Every string is well-formed UTF-16, so the UTF-8 form is lossless: admission rejects an unpaired
+surrogate in a retained name, a pruned directory name or a pruned path before any cache work.
+
+| Producer | Canonical encoding, in order |
+| --- | --- |
+| MFT | producer kind u32 (1); retention; `MftScanOptions.IncludeFreed` flag |
+| Enumeration | producer kind u32 (2); retention; pruned directory names; pruned directory attributes u32; `PruneDotDirectories` flag; pruned directory paths |
+
+For an enumeration block, pruned names and paths fold to upper-invariant on Windows and
+stay as given elsewhere, matching the drive's path comparison. Paths are normalized with
+`Path.GetFullPath` and `Path.TrimEndingDirectorySeparator`, and only the paths equal to
+or beneath the drive's root are encoded, so editing a pruned path under one drive leaves
+every other drive's block valid. MFT blocks ignore `FileIndexOptions.DirectoryWalk`. The
+MFT `IncludeFreed` value comes from the scan options of `FileIndexOptions.MftSource`; an
+open with no source computes it as false.
+
+The index computes the expected shape for each drive and passes it to the producer in
+`MftBlockProduceRequest.ScanShape`, or writes it itself for an enumeration block. A
+custom `MftBlockProducer` copies the value into `BlockFileCreateOptions.ScanShape`, as it
+copies the cache tag; returning a block with another shape is a producer failure.
+`BrokerMftBlockProducer` forwards it through the client-created block target.
+
+Warm opening compares the scan shape after the cache tag. A mismatch records
+`BlockValidationResult.WrongScanShape`, disposes and best-effort deletes the block under
+its owner lock, and cold-scans. With `CacheMode.ExistingOnly` the block stays in place and the drive fails with
+`DriveFailureKind.CacheIdentityMismatch`, the kind a cache-tag mismatch reports, and
+`RescanAsync` can recover it. Both paths emit a `Diagnostics` line with the stored and
+requested shapes as sixteen hexadecimal digits. The shape has no public accessor, and
+`CacheDirectory.InspectCached` does not report it.
 
 ## Row
 

@@ -30,10 +30,12 @@ public enum DriveFailureKind
     InUse,
 
     /// <summary>
-    ///     A cache-only open found a cached block whose consumer cache tag (FourCC or version)
-    ///     differs from <see cref="FileIndexOptions.CacheTag" />. The block was discarded and
-    ///     best-effort deleted, and the scan that would build a replacement was forbidden.
+    ///     A cache-only open found a cached block built for another identity: its consumer cache tag
+    ///     (FourCC or version) differs from <see cref="FileIndexOptions.CacheTag" />, or its scan shape
+    ///     differs from the one the open's row-shaping options make
+    ///     (<see cref="BlockValidationResult.WrongCacheTag" /> or <see cref="BlockValidationResult.WrongScanShape" />).
+    ///     The block was discarded and best-effort deleted, and the scan that would build a replacement was forbidden.
     ///     <see cref="FileIndex.RescanAsync" /> scans such a drive and clears its failure.
     /// </summary>
-    CacheTagMismatch
+    CacheIdentityMismatch
 }

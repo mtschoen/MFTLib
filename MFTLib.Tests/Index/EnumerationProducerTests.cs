@@ -5,7 +5,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 [TestClass]
-public sealed class EnumerationProducerTests : IDisposable
+public sealed partial class EnumerationProducerTests : IDisposable
 {
     IndexTreeFixture _fixture = null!;
     string _treeRoot = null!;
@@ -44,20 +44,23 @@ public sealed class EnumerationProducerTests : IDisposable
     }
 
     DriveBlock[] Produce(out BlockFile block, out EnumerationResult result,
-        IReadOnlyCollection<string>? retainedFileNames = null)
+        IReadOnlyCollection<string>? retainedFileNames = null, DirectoryWalkOptions? directoryWalk = null,
+        string? rootDirectory = null)
     {
+        var root = rootDirectory ?? _treeRoot;
         var created = CreateBlock();
         block = created.Block;
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
-            RootDirectory = _treeRoot,
+            RootDirectory = root,
             Drive = 'T',
-            RetainedFileNames = retainedFileNames
+            RetainedFileNames = retainedFileNames,
+            DirectoryWalk = DirectoryWalkOptions.Admit(directoryWalk ?? new DirectoryWalkOptions())
         });
 
         result = producer.Produce(created.Writer, progress: null, CancellationToken.None);
         created.Writer.Complete(new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc), null);
-        return [new DriveBlock('T', 0, block, rootDirectoryPath: _treeRoot)];
+        return [new DriveBlock('T', 0, block, rootDirectoryPath: root)];
     }
 
     [TestMethod]

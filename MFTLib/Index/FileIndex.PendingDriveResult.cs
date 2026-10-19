@@ -19,8 +19,6 @@ public sealed partial class FileIndex
 
         public BlockOrigin Origin { get; init; }
 
-        public int AccessDeniedSubtreeCount { get; init; }
-
         public int SkippedRecordCount { get; init; }
 
         /// <summary>The MFT producer's failure when it produced no block.</summary>

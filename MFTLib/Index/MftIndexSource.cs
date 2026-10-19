@@ -25,10 +25,15 @@ public sealed class MftIndexSource
     ///     Throws <see cref="ArgumentException" /> when the producer cannot carry the retained file names to
     ///     its scanner; null accepts every set. <see cref="FileIndex.OpenAsync" /> calls it before any side effect.
     /// </param>
+    /// <param name="includeFreed">
+    ///     Whether the producer writes freed records, taken from its scan options. Part of the scan shape an MFT
+    ///     block must carry.
+    /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="producer" /> is null.</exception>
     /// <exception cref="ArgumentException">A dump source was given a watch source.</exception>
     internal MftIndexSource(MftBlockProducer producer, IIndexWatchSource? watchSource = null,
-        MftDumpSourceIdentity? dumpIdentity = null, Action<IReadOnlyCollection<string>>? validateRetainedFileNames = null)
+        MftDumpSourceIdentity? dumpIdentity = null, Action<IReadOnlyCollection<string>>? validateRetainedFileNames = null,
+        bool includeFreed = false)
     {
         ArgumentNullException.ThrowIfNull(producer);
         if (dumpIdentity is not null && watchSource is not null)
@@ -40,6 +45,7 @@ public sealed class MftIndexSource
         WatchSource = watchSource;
         DumpIdentity = dumpIdentity;
         ValidateRetainedFileNames = validateRetainedFileNames;
+        IncludeFreed = includeFreed;
     }
 
     MftIndexSource(string unavailableReason)
@@ -58,6 +64,9 @@ public sealed class MftIndexSource
     internal MftDumpSourceIdentity? DumpIdentity { get; }
 
     internal Action<IReadOnlyCollection<string>>? ValidateRetainedFileNames { get; }
+
+    /// <summary>Whether the producer writes freed records. Part of an MFT block's scan shape.</summary>
+    internal bool IncludeFreed { get; }
 
     internal const string NoWatchReason = "this source does not support watching";
 

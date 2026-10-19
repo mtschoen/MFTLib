@@ -28,7 +28,15 @@ public enum BlockValidationResult
     ///     ASCII (on-disk bytes are untrusted, so this is checked structurally, independent of
     ///     any requested identity; see <see cref="CacheTag" />'s constructor invariant), or the
     ///     stored cache tag does not match the consumer's
-    ///     requested identity. Either way the cached bytes may reflect a different scan shape.
+    ///     requested identity. Either way the consumer's meaning of the cached bytes may differ.
     /// </summary>
-    WrongCacheTag
+    WrongCacheTag,
+
+    /// <summary>
+    ///     The block was built under other row-shaping options than the open requests: another
+    ///     <see cref="FileIndexOptions.RetainedFileNames" />, <see cref="FileIndexOptions.DirectoryWalk" /> for an
+    ///     enumeration drive, or <see cref="MftScanOptions.IncludeFreed" /> for an MFT drive. The library
+    ///     compares this itself, so the consumer's <see cref="CacheTag" /> need not change with these options.
+    /// </summary>
+    WrongScanShape
 }

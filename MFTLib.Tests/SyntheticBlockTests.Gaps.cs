@@ -191,7 +191,7 @@ public partial class SyntheticBlockTests
             CacheOnly(enumeration) with { CacheTag = originalTag }, Token);
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, drive.State);
-        Assert.AreEqual(DriveFailureKind.CacheTagMismatch, drive.Failure?.Kind);
+        Assert.AreEqual(DriveFailureKind.CacheIdentityMismatch, drive.Failure?.Kind);
         Assert.IsNull(drive.Block!);
     }
 }

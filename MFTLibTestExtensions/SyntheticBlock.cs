@@ -125,7 +125,8 @@ public static class SyntheticBlock
             SlotCapacity = BlockLayout.ComputeSlotCapacity(Math.Max(highestRow, options.RootRow) + 1),
             NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(checked((uint)nameBytes)),
             DeleteOnClose = deleteOnClose,
-            CacheTag = options.CacheTag
+            CacheTag = options.CacheTag,
+            ScanShape = options.ResolveScanShape()
         });
         try
         {

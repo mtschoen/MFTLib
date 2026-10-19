@@ -33,7 +33,7 @@ internal static class MftBlockProducerPipeline
     {
         cancellationToken.ThrowIfCancellationRequested();
         BlockFile? block = BlockFile.Create(MftBlockCapacity.CreateOptions(plan.Volume,
-            request.BlockPath, request.VolumeSerial, request.DeleteOnClose, request.CacheTag));
+            request.BlockPath, request.VolumeSerial, request.DeleteOnClose, request.CacheTag, request.ScanShape));
         try
         {
             long recordsOmitted = 0;

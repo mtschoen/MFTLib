@@ -25,6 +25,7 @@ public class BooleanNamingTests
     static readonly HashSet<string> InstructionOptionTypes = new(StringComparer.Ordinal)
     {
         "MFTLib.MftScanOptions",
+        "MFTLib.Index.DirectoryWalkOptions",
         "MFTLib.Index.SearchQuery",
         "MFTLibTestExtensions.ScriptedWatchSource"
     };

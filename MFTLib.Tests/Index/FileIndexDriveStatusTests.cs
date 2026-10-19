@@ -133,6 +133,25 @@ public sealed class FileIndexDriveStatusTests : IDisposable
     }
 
     [TestMethod]
+    public async Task OpenAsync_WarmStart_ReportsTheAccessDeniedCountOfTheScanThatBuiltTheBlock()
+    {
+        var documentsPath = Path.Combine(_treeRoot, "Documents");
+        var vanishingPath = Path.Combine(documentsPath, "Vanishing");
+        Directory.CreateDirectory(vanishingPath);
+        await File.WriteAllTextAsync(Path.Combine(vanishingPath, "inner.txt"), "gone soon");
+        await using (var scanned = await FileIndex.OpenAsync(
+            Options(progress: new DeleteSubtreeOnReport(documentsPath, vanishingPath)), CancellationToken.None))
+        {
+            Assert.AreEqual(1, scanned.Drives[0].Block!.AccessDeniedSubtreeCount);
+        }
+
+        await using var warm = await FileIndex.OpenAsync(Options(), CancellationToken.None);
+
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, warm.Drives[0].Block!.Origin);
+        Assert.AreEqual(1, warm.Drives[0].Block!.AccessDeniedSubtreeCount);
+    }
+
+    [TestMethod]
     public async Task RescanAsync_ASubtreeVanishesMidScan_UpdatesTheAccessDeniedCountOnDriveStatus()
     {
         var documentsPath = Path.Combine(_treeRoot, "Documents");

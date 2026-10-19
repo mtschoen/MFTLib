@@ -78,8 +78,10 @@ internal sealed class EnumerationProducer
 
     /// <summary>
     ///     Walks the tree breadth first, writing the root as row 0 and every entry after it into
-    ///     the writer. It does not call <see cref="BlockWriter.Complete" />; the caller does. The
-    ///     walk stops early once the writer reports capacity exhausted.
+    ///     the writer. A directory the walk options prune is written but not entered; the root is
+    ///     never pruned. The walk stores its access-denied count in the header but does not call
+    ///     <see cref="BlockWriter.Complete" />; the caller does. The walk stops early once the writer
+    ///     reports capacity exhausted.
     /// </summary>
     /// <param name="writer">The block to write rows into.</param>
     /// <param name="progress">Receives one sample after each directory is enumerated, on the calling thread; may be null.</param>
@@ -93,7 +95,7 @@ internal sealed class EnumerationProducer
         ArgumentNullException.ThrowIfNull(writer);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var state = new WalkState(writer, Options.RetainedFileNames);
+        var state = new WalkState(writer, Options.RetainedFileNames, Options.DirectoryWalk, Options.RootDirectory);
         writer.TryWriteRow(0, Options.RootDirectory, ReadRootColumns(Options.RootDirectory));
         state.NextRow = 1;
 
@@ -119,6 +121,7 @@ internal sealed class EnumerationProducer
             }
         }
 
+        writer.SetAccessDeniedSubtreeCount((uint)state.AccessDeniedSubtreeCount);
         return new EnumerationResult(writer.RowCount, state.AccessDeniedSubtreeCount, writer.CapacityExhausted);
     }
 
@@ -214,7 +217,8 @@ internal sealed class EnumerationProducer
     ///     Mutable walk state. It exists so the transform delegate can write rows without
     ///     capturing a ref local, which a lambda cannot do.
     /// </summary>
-    sealed class WalkState(BlockWriter writer, IReadOnlyCollection<string>? retainedFileNames)
+    sealed class WalkState(BlockWriter writer, IReadOnlyCollection<string>? retainedFileNames,
+        DirectoryWalkOptions walk, string rootDirectory)
     {
         // Null keeps every file. The lookup matches the enumerator's name span directly, so no string is allocated per entry.
         readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>>? _retainedFileNames =
@@ -222,6 +226,17 @@ internal sealed class EnumerationProducer
                 ? null
                 : new HashSet<string>(retainedFileNames, StringComparer.OrdinalIgnoreCase)
                     .GetAlternateLookup<ReadOnlySpan<char>>();
+
+        readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> _prunedNames =
+            new HashSet<string>(walk.PrunedDirectoryNames, DirectoryWalkOptions.PathComparer)
+                .GetAlternateLookup<ReadOnlySpan<char>>();
+
+        // Only paths within the root can ever match, so an empty set skips normalizing each directory's path.
+        readonly HashSet<string> _prunedPaths =
+            new(walk.PathsWithin(rootDirectory), DirectoryWalkOptions.PathComparer);
+
+        readonly FileAttributes _prunedAttributes = walk.PrunedDirectoryAttributes;
+        readonly bool _pruneDotDirectories = walk.PruneDotDirectories;
 
         public BlockWriter Writer { get; } = writer;
 
@@ -260,12 +275,22 @@ internal sealed class EnumerationProducer
             }
 
             NextRow = rowIndex + 1;
-            if (isDirectory && !isReparsePoint)
+            if (isDirectory && !isReparsePoint && !IsPrunedByName(ref entry))
             {
-                childDirectories.Add((entry.ToFullPath(), rowIndex));
+                var fullPath = entry.ToFullPath();
+                if (_prunedPaths.Count == 0 || !_prunedPaths.Contains(DirectoryWalkOptions.NormalizePath(fullPath)))
+                {
+                    childDirectories.Add((fullPath, rowIndex));
+                }
             }
 
             return isDirectory;
         }
+
+        /// <summary>The rules that need no path: attributes, a leading dot, and the pruned names.</summary>
+        bool IsPrunedByName(ref FileSystemEntry entry) =>
+            (entry.Attributes & _prunedAttributes) != 0 ||
+            (_pruneDotDirectories && entry.FileName is ['.', ..]) ||
+            _prunedNames.Contains(entry.FileName);
     }
 }

@@ -106,14 +106,25 @@
       it requires `--cache-directory`. Direct opens `CacheMode.Disabled`.
     - **Consumer cache identity**: `FileIndexOptions.CacheTag` carries an opaque
       four-ASCII-character code plus a `uint` version; default is all zeros and
-      compares exactly, not as a wildcard. Block format 4 stores the two values
-      at offsets 104 and 108 in a 112-byte declared header. Old-format blocks
-      cold-scan once. Consumers bump their own version when their retention policy
-      changes. `FileIndexOptions.RetainedFileNames` is that policy: the index passes it to
-      the MFT producers in the produce request and to the enumeration walk, which skips
-      a non-directory entry whose name is not retained. Mismatches report `WrongCacheTag` and cold-scan; a
-      cache-only open fails with `DriveFailureKind.CacheTagMismatch`. Both emit
-      stored/requested tag diagnostics. `InspectCached` reports tags on available
+      compares exactly, not as a wildcard. The tag carries only meaning the consumer
+      owns. Block format 5 stores the two values at offsets 104 and 108 in a 128-byte
+      declared header. Old-format blocks cold-scan once. Mismatches report `WrongCacheTag` and cold-scan; a
+      cache-only open fails with `DriveFailureKind.CacheIdentityMismatch` and leaves the block in place. Both emit
+      stored/requested tag diagnostics.
+    - **Scan-shape identity**: the library compares the options that shape a block's rows
+      itself. Offset 112 stores a 64-bit scan shape, the first eight bytes of SHA-256 over
+      a canonical encoding: retention and `MftScanOptions.IncludeFreed` for an MFT block
+      (the index reads `IncludeFreed` from an internal flag on the source), retention and
+      `FileIndexOptions.DirectoryWalk` for an enumeration block, counting only the pruned
+      paths within that drive's root. `FileIndexOptions.RetainedFileNames` reaches the MFT
+      producers in the produce request and the enumeration walk directly; the walk skips a
+      non-directory entry whose name is not retained and records but does not enter a pruned
+      directory. Warm start compares the shape after the cache tag: a mismatch reports
+      `WrongScanShape`, deletes the block under its owner lock and cold-scans, and a cache-only
+      open fails with `DriveFailureKind.CacheIdentityMismatch` and leaves the block in place. The index passes the expected
+      shape in the produce request; a producer returning another shape fails the drive. The
+      shape has no public accessor. Offset 120 stores the walk's access-denied subtree count,
+      so a warm start reports it. `InspectCached` reports tags on available
       blocks. Tags are initialized before completion; the internal MFT producers copy
       `request.CacheTag` into creation options, and the built-in broker adapter
       forwards it automatically. `CacheTag` has no public component accessors: consumers
@@ -139,6 +150,8 @@
       Warm adoption compares the header's `ProducerKind` directly with `IndexedDrive.Producer` before
       cache-tag, root and journal checks. A mismatch closes and best-effort deletes the rejected
       block under the owner lock, then cold-scans; cache-only opens report `CacheDeclined`.
+      A cache-only open never scans, so it never deletes a rejected block: every rejection
+      (format, serial, producer kind, root, tag, shape) leaves the file in place for a writing open to rebuild.
       Enumeration drives have no live watch, even when their MFT siblings use a watch-capable source.
     - **MFT source**: `FileIndexOptions.MftSource` is one `MftIndexSource` carrying the block
       producer and the watch source of every MFT-backed drive, so the two cannot come from
@@ -199,7 +212,7 @@
     line reads `IsSizeKnown`, `IsLastWriteTimeKnown`, `Attributes` and `LastWriteTime` from the same rows to report
     unknown-size, unknown-last-write, hidden and newest-known-last-write figures for the live files.
   - **Elevation:** a verb that launches the broker stays unelevated and the broker asks for elevation; a Direct local scan self-elevates through `ElevationUtilities.DefaultProvider`, waiting indefinitely for the elevated child process. Just before either prompt an attended run shows a blocking, system-modal `MessageBoxW` heads-up (with a beep) naming the executable and the exact arguments, so the UAC prompt that follows is expected: OK continues, Cancel prints the manual-elevation fallback and exits 1, a dismissal within 0.75 seconds is treated as an accidental key press and the dialog is shown again, and a dialog nobody answers within five minutes counts as Cancel. With `MFTLIB_SAMPLE_UNATTENDED=1` the samples show no dialog and request no elevation at all (see [Elevation: attended and unattended runs](elevation.md)). The dialog lives in the samples, never in `ElevationUtilities`, so a consumer's runtime flow gains none; it is skipped when already elevated and in an unattended run, and a Direct run that cannot self-elevate (including a session with no interactive desktop) shows none and prints the manual-elevation fallback; a Watch broker launch does not consult self-elevation and shows it in every attended unelevated run. Verbs call the library through `internal Func` seams on `SampleHost` that `MFTLib.Tests` replaces.
-- **Benchmark** (C# Console App) - Measures warm packed-index queries. Run `Benchmark.exe index --synthetic N` to write N rows (including the root) through the internal block writer, or `Benchmark.exe index --cache-directory <path>` to open existing blocks cache-only, without scanning or starting a watch. Each drive reports row count, slot capacity, file bytes, used name-pool bytes and their percentage of the file, and reserved name-pool capacity. Exact and substring `Search` query `file-0000000001`, warm up once, then report the median of K runs (`--iterations K`, default 3), with match counts. Synthetic file names are `file-0000000001` and onward, so this query compares same-length names in a full scan and matches one file when N is greater than one. Cache inspection supplies each block's root and consumer tag; unavailable or offline blocks are reported as errors. Synthetic blocks use production capacity headroom and are deleted after measurement. The report opens with system information, then one `--- exact-search ---` and one `--- substring-search ---` block per drive holding `Median: X ms`; `--out <path>` saves it on success. `Benchmark.exe compare <before> <after> <scenario>` reads that scenario's first block from both files and fails when the median grew by more than 25 percent. Capture a report into `Benchmark/baselines/<date>-<short sha>.txt` at each release and compare the next one against it; the older files there use the retired record-array format and are history only.
+- **Benchmark** (C# Console App) - Measures warm packed-index queries. Run `Benchmark.exe index --synthetic N` to write N rows (including the root) through the internal block writer, or `Benchmark.exe index --cache-directory <path>` to open existing blocks cache-only, without scanning or starting a watch. Each drive reports row count, slot capacity, file bytes, used name-pool bytes and their percentage of the file, and reserved name-pool capacity. Exact and substring `Search` query `file-0000000001`, warm up once, then report the median of K runs (`--iterations K`, default 3), with match counts. Synthetic file names are `file-0000000001` and onward, so this query compares same-length names in a full scan and matches one file when N is greater than one. Cache inspection supplies each block's root, consumer tag and scan shape; unavailable or offline blocks are reported as errors, and a block whose scan shape the benchmark's default row-shaping options do not reproduce (retention, walk pruning or freed-record inclusion) is reported as an unsupported scan shape and left in place rather than opened; a block replaced after inspection fails its drive, and the cache-only open leaves it in place. Synthetic blocks use production capacity headroom and are deleted after measurement. The report opens with system information, then one `--- exact-search ---` and one `--- substring-search ---` block per drive holding `Median: X ms`; `--out <path>` saves it on success. `Benchmark.exe compare <before> <after> <scenario>` reads that scenario's first block from both files and fails when the median grew by more than 25 percent. Capture a report into `Benchmark/baselines/<date>-<short sha>.txt` at each release and compare the next one against it; the older files there use the retired record-array format and are history only.
 - **MFTLib.Tests** (C# MSTest) - Unit tests for record mapping and path resolution.
 - **MFTLibTestExtensions** (C# Library) - Public, consumer-facing `BrokerTestHarness` that runs a
   real broker host in process over in-memory control and drive pipes and returns an `InProcessBrokerHandle`

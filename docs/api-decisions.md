@@ -89,7 +89,7 @@ rescans, defaulting to `ProducerKind.Mft`. The same enum identifies the producer
 `CachedBlockStatus.ProducerKind` and the block header. Its underlying type is `uint`, with `Mft = 1` and
 `Enumeration = 2`. Construction, init setters and `FileIndex.OpenAsync` admission reject the default and every
 undefined value before filesystem side effects. Warm adoption compares the selected value directly with the
-stored value; a mismatch cold-scans, or reports `CacheDeclined` for `CacheMode.ExistingOnly`.
+stored value; a mismatch cold-scans, or reports `CacheDeclined` for `CacheMode.ExistingOnly` and leaves the block in place.
 
 **Reason:** selection and observation describe the same producer. One enum gives consumers one vocabulary and
 lets a cache inspection value select a drive's producer directly, while preserving block bytes and per-drive
@@ -667,6 +667,61 @@ that walks a tree to write every file it then discards. Retention describes whic
 how a producer reads its substrate. This supersedes the F4 sentence that scoped retention to MFT scans.
 
 **Revisit only if:** a producer cannot apply a name filter at the point it reads entries.
+
+## The directory walk prunes declaratively and records pruned directories
+
+**Decision:** `FileIndexOptions.DirectoryWalk` is a `DirectoryWalkOptions` record, defaulting to `new()`, with
+four rules: `PrunedDirectoryNames`, `PrunedDirectoryPaths`, `PrunedDirectoryAttributes` and
+`PruneDotDirectories`. A pruned directory is written as a row, like `find -prune`, but its children are not
+enumerated. The drive's root is never pruned. Names compare with the drive's path comparison (ignoring case on
+Windows, ordinal elsewhere). Paths match a directory whose full path equals them after `Path.GetFullPath` and
+`Path.TrimEndingDirectorySeparator`, so a path outside a drive's root has no effect on it. Hidden and system
+entries stay included unless a rule prunes them, and reparse points stay recorded and never entered. MFT drives
+ignore the record. `FileIndex.OpenAsync` rejects a null record or collection, a blank or separator-containing
+name, a path that is not fully qualified, and `Directory` or `ReparsePoint` in the attribute mask with
+`ArgumentException` before any side effect. `PruneDotDirectories` is an instruction, so `BooleanNamingTests`
+allowlists the type.
+
+**Reason:** a delegate predicate over name, attributes, depth and path was rejected for three reasons. The
+library cannot fingerprint a delegate, so every consumer would hand-version its cache tag again. A delegate
+member breaks the value equality of `FileIndexOptions`, a record. A predicate also invites consumer logic into
+the walk, such as git's bare-repository test, which stays in git-wizard. The four rules are what generic tree
+tools expose (`find -prune`, `fd --exclude`, `rg --hidden`), and recording the pruned directory keeps a marker
+row such as `.git` while skipping its contents.
+
+**Revisit only if:** a consumer needs a pruning rule that none of the four can express.
+
+## The library owns scan-shape identity
+
+**Decision:** block format 5 stores a 64-bit scan shape at header offset 112: the first eight bytes of SHA-256
+over the canonical encoding of the options that shaped the rows, per producer (`docs/index-format.md`). Warm
+start compares it after the cache tag; a mismatch records `BlockValidationResult.WrongScanShape`, deletes the
+block under its owner lock and cold-scans, and a cache-only open leaves the block in place and fails with
+`DriveFailureKind.CacheIdentityMismatch`, the kind both identity mismatches report. `CacheTag` carries only
+meaning the consumer owns. The shape has no public accessor, and `CacheDirectory.InspectCached` does not report
+it. `MftIndexSource` carries its producer's `IncludeFreed` flag internally so the index can compute the MFT shape.
+
+**Reason:** a consumer cannot hand-version a user-editable exclusion list, and both consumers of retention paid
+for hand-versioning (a pinned tag version with a test, and a hashed cache directory name). Every consumer reacts
+to a tag mismatch and a shape mismatch the same way, by rebuilding, so one failure kind covers both.
+
+**Revisit only if:** a consumer must react differently to a shape mismatch than to a tag mismatch.
+
+## A cache-only open never deletes a block
+
+**Decision:** `CacheMode.ExistingOnly` treats every warm-start rejection (format, volume serial, producer
+kind, root directory, cache tag, scan shape) as a refusal: the drive fails with `CacheDeclined` or
+`CacheIdentityMismatch` and the file stays in place, unchanged. Only a writing open (`Persistent`, or a
+`RescanAsync`) deletes or replaces a rejected canonical block, because only it has a scan to put in its place.
+
+**Reason:** a cache-only open has nothing to replace a rejected block with, so deleting it only destroys a
+block another index or a later open under the matching options could still adopt. A reader such as the
+Benchmark, which inspects a slot and opens it later, could otherwise delete a block another process published in
+between. The rule makes the cache-only open itself non-destructive instead of asking each reader to hold the slot
+lock across inspection and adoption.
+
+**Revisit only if:** a consumer needs a cache-only open to clear rejected blocks; `CacheDirectory.DeleteCached`
+already does that explicitly.
 
 ## Search bounds are named for what they compare, and say what they exclude
 

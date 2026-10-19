@@ -40,4 +40,11 @@ public sealed record CachedBlockStatus
 
     /// <summary>The validated block's tag, or null when the block could not be inspected.</summary>
     public CacheTag? CacheTag { get; init; }
+
+    /// <summary>
+    ///     The validated block's scan shape, or null when the block could not be inspected. Internal because the
+    ///     shape's canonical encoding is the library's format detail; in-repo tools such as the Benchmark compare
+    ///     it against the shape their own options would produce before deciding whether opening is safe.
+    /// </summary>
+    internal ulong? ScanShape { get; init; }
 }

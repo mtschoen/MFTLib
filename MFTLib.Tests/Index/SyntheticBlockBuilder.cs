@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLibTestExtensions;
 
 namespace MFTLib.Tests.Index;
 
@@ -29,7 +30,8 @@ internal sealed class SyntheticBlockBuilder : IDisposable
             VolumeSerial = volumeSerial,
             ProducerKind = ProducerKind.Enumeration,
             SlotCapacity = slotCapacity,
-            NamePoolCapacity = namePoolCapacity
+            NamePoolCapacity = namePoolCapacity,
+            ScanShape = SyntheticScanShape.Default(ProducerKind.Enumeration)
         });
     }
 
@@ -118,6 +120,7 @@ internal sealed class SyntheticBlockBuilder : IDisposable
         {
             header.ProducerKind = ProducerKind.Mft;
             header.RootRow = 5;
+            header.ScanShape = SyntheticScanShape.Default(ProducerKind.Mft);
         });
 
         builder.AddRowAt(0, "$MFT", new RowColumns(ParentRow: 0, Flags: RowFlags.InUse, Attributes: 0, Size: 0, ModifiedTicks: moment.Ticks, SequenceNumber: 0));

@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Runtime.Versioning;
 using Benchmark;
 using MFTLib.Index;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -12,7 +13,7 @@ namespace MFTLib.Tests;
 [SuppressMessage("Design", "CA1001",
     Justification = "Cleanup is [TestCleanup], the MSTest-idiomatic disposal path this test project uses " +
                      "throughout rather than IDisposable on the test class itself.")]
-public class BenchmarkRunnerTests
+public partial class BenchmarkRunnerTests
 {
     [TestMethod]
     [DataRow("--synthetic", "0")]
@@ -82,33 +83,46 @@ public class BenchmarkRunnerTests
         Directory.CreateDirectory(directory);
         try
         {
-            foreach (var drive in new[] { 'T', 'U' })
+            void WriteBlock(char drive, ulong scanShape, ProducerKind producer = ProducerKind.Enumeration) =>
+                WriteCacheBlock(directory, directory, drive, scanShape, producer);
+
+            WriteBlock('T', SyntheticScanShape.Default(ProducerKind.Enumeration));
+            WriteBlock('U', SyntheticScanShape.Default(ProducerKind.Enumeration));
+
+            // One block per row-shaping option the benchmark does not supply (issue #678): each must
+            // be declined as an unsupported scan shape and its bytes left intact.
+            var declined = new (char Drive, ulong Shape, ProducerKind Producer)[]
             {
-                using var block = BlockFile.Create(new BlockFileCreateOptions
-                {
-                    Path = Path.Combine(directory, $"{drive}-00000001.mlix"),
-                    VolumeSerial = 1,
-                    ProducerKind = ProducerKind.Enumeration,
-                    SlotCapacity = 8,
-                    NamePoolCapacity = 4096,
-                    CacheTag = new CacheTag("TEST", drive)
-                });
-                var writer = new BlockWriter(block);
-                Assert.IsTrue(writer.TryWriteRow(0, directory, new RowColumns(0, RowFlags.InUse | RowFlags.Directory, 0, 0, 0, 0)));
-                Assert.IsTrue(writer.TryWriteRow(1, "file-0000000001", new RowColumns(0, RowFlags.InUse, 0, 1, 0, 0)));
-                writer.Complete(DateTime.UtcNow, null);
+                ('V', ScanShape.ForEnumeration(["child.txt"], new DirectoryWalkOptions(), directory), ProducerKind.Enumeration),
+                ('W', ScanShape.ForEnumeration([], new DirectoryWalkOptions(), directory), ProducerKind.Enumeration),
+                ('X', ScanShape.ForEnumeration(null, new DirectoryWalkOptions { PrunedDirectoryNames = ["build"] }, directory), ProducerKind.Enumeration),
+                ('Y', ScanShape.ForEnumeration(null, new DirectoryWalkOptions { PrunedDirectoryPaths = [Path.Combine(directory, "build")] }, directory), ProducerKind.Enumeration),
+                ('Z', ScanShape.ForEnumeration(null, new DirectoryWalkOptions { PrunedDirectoryAttributes = FileAttributes.Hidden }, directory), ProducerKind.Enumeration),
+                ('S', ScanShape.ForEnumeration(null, new DirectoryWalkOptions { PruneDotDirectories = true }, directory), ProducerKind.Enumeration),
+                ('M', ScanShape.ForMft(["child.txt"], includeFreed: false), ProducerKind.Mft),
+                ('N', ScanShape.ForMft(null, includeFreed: true), ProducerKind.Mft)
+            };
+            foreach (var (drive, shape, producer) in declined)
+            {
+                WriteBlock(drive, shape, producer);
             }
+
             var originals = Directory.GetFiles(directory, "*.mlix").ToDictionary(path => path, File.ReadAllBytes);
-            Assert.AreEqual(0, await _runner.RunAsync(["index", "--cache-directory", directory]));
+            Assert.AreEqual(2 + declined.Length, originals.Count);
+            Assert.AreEqual(1, await _runner.RunAsync(["index", "--cache-directory", directory]));
             var output = _output.ToString();
             StringAssert.Contains(output, "Drive: T");
             StringAssert.Contains(output, "Drive: U");
             StringAssert.Contains(output, "Rows: 2");
             StringAssert.Contains(output, "Matches: 1");
             var usedNameBytes = (directory.Length + "file-0000000001".Length) * 2;
-            var fileBytes = new FileInfo(originals.Keys.First()).Length;
+            var fileBytes = new FileInfo(Path.Combine(directory, "T-00000001.mlix")).Length;
             StringAssert.Contains(output, string.Create(CultureInfo.InvariantCulture,
                 $"Name-pool bytes: {usedNameBytes} ({100.0 * usedNameBytes / fileBytes:F2}% of file)"));
+            foreach (var (drive, _, _) in declined)
+            {
+                StringAssert.Contains(output, $"{drive}-00000001.mlix: unsupported scan shape");
+            }
             foreach (var original in originals)
             {
                 CollectionAssert.AreEqual(original.Value, await File.ReadAllBytesAsync(original.Key));
@@ -152,7 +166,8 @@ public class BenchmarkRunnerTests
                 VolumeSerial = 1,
                 ProducerKind = ProducerKind.Enumeration,
                 SlotCapacity = 8,
-                NamePoolCapacity = 4096
+                NamePoolCapacity = 4096,
+                ScanShape = SyntheticScanShape.Default(ProducerKind.Enumeration)
             }))
             {
                 var writer = new BlockWriter(block);
@@ -187,7 +202,8 @@ public class BenchmarkRunnerTests
                 ProducerKind = ProducerKind.Mft,
                 RootRow = 5,
                 SlotCapacity = 8,
-                NamePoolCapacity = 4096
+                NamePoolCapacity = 4096,
+                ScanShape = SyntheticScanShape.Default(ProducerKind.Mft)
             }))
             {
                 var writer = new BlockWriter(block);

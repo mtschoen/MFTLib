@@ -258,7 +258,7 @@ SyntheticBlock.Edit(path, 0x1234, editor =>
   `SetCacheTag(new CacheTag("TEST", 7))` replaces only the stored cache identity,
   preserving the scan timestamp, journal cursor, other header fields and every row;
   passing `default` stores the all-zero identity. A cache-only `FileIndex` opened
-  with a different requested tag reports `DriveFailureKind.CacheTagMismatch`.
+  with a different requested tag reports `DriveFailureKind.CacheIdentityMismatch`.
   `CorruptNamePool` makes the next open reject the block with
   `BlockValidationResult.InvalidNameDescriptor`. Using the editor after the edit
   returns throws `InvalidOperationException`.
