@@ -84,7 +84,7 @@ public class DirectExcludeDefenderTests
         var console = new ConsoleLog();
 
         var host = Host(lines, elevated: true, canSelfElevate: true, console: console);
-        var result = host.RunAndPause([SampleHost.ExcludeDefenderVerb]);
+        var result = host.RunAndPause([SampleHost.ExcludeDefenderVerb], ownsWindow: true);
 
         Assert.AreEqual(AppliedExitCode, result);
         Assert.AreEqual(0, console.KeyReads, "The elevated child owns a new console and must not wait for a key.");

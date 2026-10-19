@@ -125,22 +125,27 @@ internal sealed partial class BrokerProcess
         }
     }
 
-    // The next id after the last one issued that is neither zero nor still in the table.
     uint AllocateRequestIdLocked()
     {
-        var maximum = uint.MaxValue;
-        if ((uint)_pending.Count >= maximum)
+        if ((uint)_pending.Count >= uint.MaxValue)
         {
             throw new InvalidOperationException("No broker request id is free");
         }
 
-        var candidate = _lastRequestId;
+        _lastRequestId = NextRequestId(_lastRequestId, _pending);
+        return _lastRequestId;
+    }
+
+    // The next id after the last one issued that is neither zero nor still in the table. The
+    // caller guarantees the table does not hold every id, so the walk ends.
+    internal static uint NextRequestId<TReply>(uint lastIssued, Dictionary<uint, TReply> outstanding)
+    {
+        var candidate = lastIssued;
         do
         {
-            candidate = candidate >= maximum ? 1 : candidate + 1;
-        } while (_pending.ContainsKey(candidate));
+            candidate = candidate == uint.MaxValue ? 1 : candidate + 1;
+        } while (outstanding.ContainsKey(candidate));
 
-        _lastRequestId = candidate;
         return candidate;
     }
 

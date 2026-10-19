@@ -291,6 +291,11 @@ public sealed class DirectHostTests : IDisposable
         Assert.IsTrue(seen!.IncludeFreed);
         StringAssert.Contains(log, "a.txt  100  deleted=False");
         StringAssert.Contains(log, "a.txt  7  deleted=True");
+
+        var followUp = host.Run([]);
+
+        Assert.AreEqual(2, followUp);
+        StringAssert.Contains(output.ToString(), "Usage:", "After the elevated run the original borrowed writer is restored.");
     }
 
     [TestMethod]

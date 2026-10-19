@@ -7,8 +7,8 @@ namespace SampleProgram.Direct;
 #endif
 
 // Console primitives and failure reporting: a key press before the window closes, asked
-// only when this process owns the console window and somebody is attending. Both natives are bare imports behind
-// seams, so every decision below runs in tests.
+// only when this process owns the console window and somebody is attending. The entry point probes the window and
+// passes the answer in, so every decision below runs in tests.
 partial class SampleHost
 {
     internal const string PausePrompt = "Press any key to close this window.";
@@ -38,7 +38,7 @@ partial class SampleHost
     }
 
     // A console window launched from Explorer has this process alone attached; a shell run has the shell attached too.
-    static bool OwnsConsoleWindowNative()
+    internal static bool OwnsConsoleWindowNative()
     {
         if (!OperatingSystem.IsWindows() || Console.IsInputRedirected || Console.IsOutputRedirected)
         {

@@ -21,8 +21,11 @@ partial class SampleHost
 
     internal string OutputLogPath => Path.Combine(_outputDirectory, "output.log");
 
-    /// <summary>Runs the command line, reports an escaping failure as one readable line, then holds an attended, self-owned console window open until a key press.</summary>
-    internal int RunAndPause(string[] arguments)
+    /// <summary>
+    ///     Runs the command line, reports an escaping failure as one readable line, then holds an attended console window
+    ///     open until a key press when <paramref name="ownsWindow" /> says this process alone owns it.
+    /// </summary>
+    internal int RunAndPause(string[] arguments, bool ownsWindow)
     {
         _outputRedirectedToFile = false;
         int exitCode;
@@ -38,7 +41,7 @@ partial class SampleHost
 
         if (!_outputRedirectedToFile)
         {
-            PauseBeforeExit(OwnsConsoleWindowNative());
+            PauseBeforeExit(ownsWindow);
         }
 
         return exitCode;

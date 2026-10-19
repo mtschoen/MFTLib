@@ -1,4 +1,5 @@
 using MFTLib;
+using MFTLib.Index;
 
 namespace SampleProgram.Watch;
 
@@ -16,8 +17,11 @@ partial class SampleHost
         _interactive = interactive;
     }
 
-    /// <summary>Runs the command line, reports an escaping failure as one readable line, then holds an attended, self-owned console window open until a key press.</summary>
-    internal int RunAndPause(string[] arguments)
+    /// <summary>
+    ///     Runs the command line, reports an escaping failure as one readable line, then holds an attended console window
+    ///     open until a key press when <paramref name="ownsWindow" /> says this process alone owns it.
+    /// </summary>
+    internal int RunAndPause(string[] arguments, bool ownsWindow)
     {
         int exitCode;
         try
@@ -30,11 +34,15 @@ partial class SampleHost
             exitCode = 1;
         }
 
-        PauseBeforeExit(OwnsConsoleWindowNative());
+        PauseBeforeExit(ownsWindow);
         return exitCode;
     }
 
-    internal int Run(string[] arguments)
+    internal int Run(string[] arguments) => Run(arguments, EnumerateDrives(), RunVerb);
+
+    // Parse, choose drives, resolve the cache directory, pass the elevation gate, then hand the finished request to
+    // runVerb. The machine's drive list is read only when no drive is named, and runVerb runs only past the gate.
+    internal int Run(string[] arguments, IEnumerable<WindowsVolume> availableDrives, Func<WatchArguments, int> runVerb)
     {
         if (!WatchArguments.TryParse(arguments, out var parsed, out var error))
         {
@@ -43,7 +51,7 @@ partial class SampleHost
             return 2;
         }
 
-        if (!TryChooseDrives(ref parsed, EnumerateDrives()))
+        if (!TryChooseDrives(ref parsed, availableDrives))
         {
             return 1;
         }
@@ -64,7 +72,7 @@ partial class SampleHost
             }
         }
 
-        return RunWithElevation(arguments, parsed.Need, () => RunVerb(parsed));
+        return RunWithElevation(arguments, parsed.Need, () => runVerb(parsed));
     }
 
     int RunVerb(WatchArguments parsed) => parsed.Verb switch

@@ -93,6 +93,98 @@ public sealed class WatchFirstRunTests : IDisposable
         Assert.IsTrue(host.TryChooseDrives(ref elevationParsed, []));
     }
 
+    // What the composed Run hands to execution; Run itself never reaches a broker, a volume or a window.
+    sealed class ExecutionProbe
+    {
+        public List<WatchArguments> Received { get; } = [];
+
+        public int Execute(WatchArguments request)
+        {
+            Received.Add(request);
+            return 0;
+        }
+    }
+
+    // A lazy list: it fails the test only if the host enumerates it.
+    static IEnumerable<WindowsVolume> MachineThatMustNotBeListed() =>
+        Enumerable.Range(0, 1).Select<int, WindowsVolume>(_ =>
+            throw new AssertFailedException("These runs name their drives or touch no volume, so the machine is not listed."));
+
+    [TestMethod]
+    public void Run_NoArguments_ChosenDrivesReachExecutionWithAResolvedCacheDirectory()
+    {
+        var lines = new List<string>();
+        var probe = new ExecutionProbe();
+        var host = HostOver(lines);
+        WindowsVolume[] machine = [Facts(@"G:\"), Facts(@"C:\"), Facts(@"h:\"), Facts(@"F:\", "not NTFS (exFAT)")];
+
+        var result = host.Run([], machine, probe.Execute);
+
+        Assert.AreEqual(0, result);
+        var received = probe.Received.Single();
+        Assert.AreEqual(WatchVerb.Watch, received.Verb);
+        CollectionAssert.AreEqual(new[] { "C", "G", "H" }, received.Drives.ToArray());
+        Assert.IsFalse(string.IsNullOrEmpty(received.CacheDirectory), "A cached verb reaches execution with its cache directory resolved.");
+        Assert.IsTrue(lines.Contains("No drive was named, so this run covers every ready NTFS fixed drive: C, G, H. Name drives to choose others."), string.Join(Environment.NewLine, lines));
+    }
+
+    [TestMethod]
+    public void Run_NamedDrives_ReachExecutionAndTheMachineIsNeverListed()
+    {
+        var probe = new ExecutionProbe();
+
+        var result = HostOver(new List<string>()).Run(["scan", "Z"], MachineThatMustNotBeListed(), probe.Execute);
+
+        Assert.AreEqual(0, result);
+        CollectionAssert.AreEqual(new[] { "Z" }, probe.Received.Single().Drives.ToArray());
+    }
+
+    [TestMethod]
+    public void Run_NoReadyNtfsDrive_ExitsOneBeforeElevationAndExecution()
+    {
+        var lines = new List<string>();
+        var probe = new ExecutionProbe();
+        var host = new SampleHost(new LineCollectingWriter(lines), TextReader.Null, new FakeTimeProvider())
+        {
+            _isElevated = () => throw new AssertFailedException("Nothing to scan must not reach elevation."),
+            _canSelfElevate = () => throw new AssertFailedException("Nothing to scan must not reach elevation.")
+        };
+
+        var result = host.Run([], [Facts(@"D:\", "optical")], probe.Execute);
+
+        Assert.AreEqual(1, result);
+        Assert.AreEqual(0, probe.Received.Count);
+        Assert.IsTrue(lines.Any(line => line.StartsWith("No drive was named and no ready NTFS fixed drive", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
+    public void Run_CacheAndElevationStatusWithNoDrive_ReachExecutionWithoutListingTheMachine()
+    {
+        var probe = new ExecutionProbe();
+        var host = HostOver(new List<string>());
+
+        Assert.AreEqual(0, host.Run(["elevation-status"], MachineThatMustNotBeListed(), probe.Execute));
+        Assert.AreEqual(0, host.Run(["cache", "--cache-directory", Path.Combine(_directory, "none")], MachineThatMustNotBeListed(), probe.Execute));
+
+        CollectionAssert.AreEqual(new[] { WatchVerb.ElevationStatus, WatchVerb.Cache }, probe.Received.Select(request => request.Verb).ToArray());
+    }
+
+    [TestMethod]
+    public void Run_BrokerLaunchNeededButUnattended_NeverReachesExecution()
+    {
+        using var unattended = new UnattendedEnvironmentScope("1");
+        var probe = new ExecutionProbe();
+        var host = new SampleHost(TextWriter.Null, TextReader.Null, new FakeTimeProvider())
+        {
+            _isElevated = () => false,
+        };
+
+        var result = host.Run(["scan", "C"], MachineThatMustNotBeListed(), probe.Execute);
+
+        Assert.AreEqual(1, result);
+        Assert.AreEqual(0, probe.Received.Count, "An unattended run never launches the broker.");
+    }
+
     [TestMethod]
     [Timeout(60000)]
     public async Task Run_BareLaunch_WatchesUntilAKeyIsPressedAndPrintsChangesMeanwhile()
