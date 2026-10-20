@@ -20,6 +20,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Parse every maintained script
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/test-script-syntax.ps1
+
+      - name: Test script syntax gate
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/script-syntax.tests.ps1
+
       # Docs-only and pin-only PRs (.aislop/fork-commit, docs/, or top-level *.md)
       # don't touch anything this job builds or tests.
       # Detect that case and skip the rest of the job's steps (still SUCCESS,
@@ -275,6 +283,11 @@ jobs:
           EVENT_BEFORE: ${{ github.event.before }}
           EVENT_AFTER: ${{ github.event.after }}
         run: bash scripts/ci-changed-files.sh
+
+      - name: Test Linux native acceptance checks
+        if: steps.changed-files.outputs.skip_build != 'true'
+        shell: bash
+        run: bash scripts/check-linux-native.tests.sh
 
       - name: Build the Release library and run the managed Smoke tier
         if: steps.changed-files.outputs.skip_build != 'true'

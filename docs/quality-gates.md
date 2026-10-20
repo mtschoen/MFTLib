@@ -4,8 +4,11 @@
 
 Gitea Actions workflow at `.gitea/workflows/test.yml` defines four jobs on every PR and on push to `main` or to a `pr-crew/merge-train/**` branch (the merge train validates a batch there before landing it): `windows`, `linux`, `docs`, and `linux-package`. The coverage jobs (`windows` and `linux`) run their respective coverage scripts (`scripts/run-coverage.ps1 -NonInteractive` and `scripts/coverage-linux.sh`). Branch protection on `main` requires the `test / windows`, `test / linux`, `test / linux-package` and `aislop / quality-gate` `(pull_request)` checks to pass before merge; the `test / docs (pull_request)` check runs on every pull request but is not a required check.
 
-The `windows`, `linux`, and `linux-package` jobs begin with `id: changed-files`.
-All three call `bash scripts/ci-changed-files.sh`; Windows launches it from
+The Windows job first parses every maintained script and runs the syntax gate's
+offline regression suite. Both steps run before `id: changed-files`, including
+on docs-only changes. Windows, Linux and Linux-package use `id: changed-files`
+to control their build and behavioral steps. All three call
+`bash scripts/ci-changed-files.sh`; Windows launches it from
 PowerShell using runner-provisioned Git Bash. The adapter writes
 `skip_build=true|false` to `GITHUB_OUTPUT`. For a pull request it fetches the
 base branch tip and compares `FETCH_HEAD` directly with `HEAD`, not their
@@ -35,7 +38,14 @@ three jobs finish green with their status checks present. Workflow-level
 `paths` and `paths-ignore` filters are avoided because they leave required
 status checks pending permanently on Gitea (issue 36895).
 
-The `docs` job always runs without an early exit. Running on the configured Linux runner image, it restores `MFTLib.Tests.csproj`, performs a managed-only build (`dotnet build MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-restore`), and executes `AgentInstructionsTests` to verify character budgets, document link integrity, CI input wiring and tracked-content portability. Because `AgentInstructionsTests` requires no native code and `Directory.Build.targets` copies `MFTLibNative` only when present, the job remains fast and cheap while ensuring docs changes are validated.
+The `docs` job always runs without an early exit. Running on the configured Linux runner image, it restores `MFTLib.Tests.csproj`, performs a managed-only build (`dotnet build MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-restore`), and executes `AgentInstructionsTests` to verify character budgets, document link integrity, CI input wiring, maintained-tool inventory completeness and metadata, and tracked-content portability. Because `AgentInstructionsTests` requires no native code and `Directory.Build.targets` copies `MFTLibNative` only when present, the job remains fast and cheap while ensuring docs changes are validated.
+
+The [maintained-tools inventory](maintained-developer-tools.md) names every
+script's purpose, runner role and CI coverage. `scripts/test-script-syntax.ps1`
+parses PowerShell and Bash without executing target bodies, and rejects unknown
+script languages. `scripts/script-syntax.tests.ps1` proves invalid syntax fails,
+new nested scripts are discovered and parse-only checks do not execute tools.
+These steps use the Windows runner's existing PowerShell and Git Bash.
 
 The `linux` job verifies the initialization output before coverage whenever
 `skip_build` is false. It runs `./init.sh --build`, checks for
@@ -78,7 +88,7 @@ bash tools/ci-preflight.sh --all
 bash tools/ci-preflight.sh --only coverage-status
 ```
 
-Scopes: `docs`, `preflight-tests`, `build-script`, `coverage-status`, `release-offline`, `windows`,
+Scopes: `docs`, `scripts`, `preflight-tests`, `build-script`, `coverage-status`, `release-offline`, `windows`,
 `linux`, `linux-package`, `sync`, `aislop`, and `init`. Repeat `--only` to select several.
 Unknown arguments, unknown scopes, missing values and mixed modes exit 2.
 Every selected gate runs in the foreground, even after another gate fails.
@@ -95,12 +105,13 @@ succeed does `preflight_main` call `bash scripts/changed-files.sh` with their
 combined output. The shared rule above decides whether build, coverage, and
 package gates may be skipped. Empty input, inspection failure (including a
 failed untracked-file enumeration with partial output), and classifier
-failure run all selected gates. Docs, the preflight regression suite, and
-aislop remain unfiltered, subject to their existing host availability.
+failure run all selected gates. Docs, script syntax gates, the preflight regression suite, and aislop remain
+unfiltered, subject to their existing host availability.
 
 | Scope/gate | Windows | Linux | Shared CI implementation |
 | --- | --- | --- | --- |
 | `docs` | Run | Run | `scripts/test-agent-instructions.sh`: restore, managed build, AgentInstructionsTests (budgets, links, CI inputs and portability) |
+| `scripts` / `script-syntax`, `script-syntax-tests` | Run | Skip | `scripts/test-script-syntax.ps1` and `scripts/script-syntax.tests.ps1`, unfiltered syntax gate and offline regressions |
 | `preflight-tests` | Run | Run | `scripts/ci-preflight.tests.sh`: dispatcher, shared classifier, CI adapter, and workflow delegation; also run by both Windows and Linux CI jobs |
 | `build-script` / `build-script` | Run | Skip | `scripts/build-windows.tests.ps1` |
 | `build-script` / `aislop-tests` | Run | Skip | `scripts/ci-aislop.tests.ps1`, independent scanner regression gate |
@@ -110,7 +121,7 @@ aislop remain unfiltered, subject to their existing host availability.
 | `init` / `init-windows`, `init-linux` | Windows adapter matrix | Linux adapter matrix | `scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj --adapters`; also selected by the matching platform scope |
 | `windows` | Run | Skip | `scripts/run-coverage.ps1 -NonInteractive`, including native and managed build, followed by `scripts/smoke-package-windows.ps1` |
 | `linux` | Skip | Run | `scripts/coverage-linux.sh`, native and managed coverage |
-| `linux-package` | Skip | Run | `build-linux.sh` (builds, then runs the managed `TestCategory=Smoke` tier), `check-linux-native.sh`, `smoke-package-linux.sh` under `scripts/` |
+| `linux-package` | Skip | Run | `check-linux-native.tests.sh`, `build-linux.sh` (builds, then runs the managed `TestCategory=Smoke` tier), `check-linux-native.sh`, `smoke-package-linux.sh` under `scripts/` |
 | `sync` | Run | Run | `scripts/sync_consumers.tests.sh`, offline transport fixtures |
 | `aislop` | Run | Skip | Windows build plus `scripts/ci-aislop.ps1`, shared with the quality workflow |
 

@@ -38,6 +38,17 @@ for arguments in '' '--unknown' '--only' '--changed-from' '--only missing' '--al
     assert_equal 2 "$status"
 done
 
+run_case --only scripts
+assert_equal 0 "$status"
+assert_contains "$output" 'PASS script-syntax'
+assert_contains "$output" 'PASS script-syntax-tests'
+failing_gate=script-syntax
+run_case --only scripts
+assert_equal 1 "$status"
+assert_contains "$output" 'FAIL script-syntax'
+assert_contains "$output" 'PASS script-syntax-tests'
+failing_gate=''
+
 failing_gate=build-script
 run_case --all
 assert_equal 1 "$status"
@@ -97,6 +108,8 @@ check_path_case() {
         assert_contains "$output" 'PASS windows'
     fi
     assert_contains "$output" 'PASS docs'
+    assert_contains "$output" 'PASS script-syntax'
+    assert_contains "$output" 'PASS script-syntax-tests'
     assert_contains "$output" 'PASS aislop'
 }
 
@@ -133,6 +146,12 @@ assert_contains "$output" 'changed-file inspection failed; running all gates'
 assert_contains "$output" 'PASS windows'
 
 preflight_platform() { printf 'linux'; }
+failing_gate=linux-package-tests
+run_case --only linux-package
+assert_equal 1 "$status"
+assert_contains "$output" 'FAIL linux-package-tests'
+assert_contains "$output" 'PASS linux-package-build'
+failing_gate=''
 failing_gate=linux-package-build
 run_case --all
 assert_equal 1 "$status"
@@ -156,6 +175,11 @@ assert_contains "$output" 'SKIP init-windows: requires windows (host linux)'
 run_case --only linux
 assert_contains "$output" 'PASS init-linux'
 assert_contains "$output" 'PASS linux'
+
+run_case --only scripts
+assert_equal 0 "$status"
+assert_contains "$output" 'SKIP script-syntax: requires windows (host linux)'
+assert_contains "$output" 'SKIP script-syntax-tests: requires windows (host linux)'
 
 for selection in only all; do
     output="$(
@@ -391,6 +415,13 @@ workflow_job() {
         selected { print }
     ' "$root/.gitea/workflows/test.yml"
 }
+block="$(workflow_job windows)"
+prefix="${block%%      - name: Determine changed files*}"
+assert_contains "$prefix" 'run: pwsh -NoProfile -File scripts/test-script-syntax.ps1'
+assert_contains "$prefix" 'run: pwsh -NoProfile -File scripts/script-syntax.tests.ps1'
+assert_equal 0 "$(printf '%s\n' "$prefix" | grep -c 'if:')"
+block="$(workflow_job linux-package)"
+assert_contains "$block" 'run: bash scripts/check-linux-native.tests.sh'
 for job in windows linux linux-package; do
     block="$(workflow_job "$job")"
     assert_equal 1 "$(printf '%s\n' "$block" | grep -c 'id: changed-files')"

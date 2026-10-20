@@ -18,6 +18,8 @@ preflight_changed_paths() {
 
 preflight_execute() {
     case "$1" in
+        script-syntax) pwsh -NoProfile -File scripts/test-script-syntax.ps1 ;;
+        script-syntax-tests) pwsh -NoProfile -File scripts/script-syntax.tests.ps1 ;;
         docs) bash scripts/test-agent-instructions.sh ;;
         preflight-tests) bash scripts/ci-preflight.tests.sh ;;
         build-script) pwsh -NoProfile -File scripts/build-windows.tests.ps1 ;;
@@ -29,6 +31,7 @@ preflight_execute() {
         windows-package-smoke) pwsh -NoProfile -File scripts/smoke-package-windows.ps1 ;;
         linux) bash scripts/coverage-linux.sh ;;
         sync) bash scripts/sync_consumers.tests.sh ;;
+        linux-package-tests) bash scripts/check-linux-native.tests.sh ;;
         linux-package-build) bash scripts/build-linux.sh ;;
         linux-package-check) bash scripts/check-linux-native.sh build/linux/libMFTLibNative.so ;;
         linux-package-smoke) bash scripts/smoke-package-linux.sh build/linux/libMFTLibNative.so ;;
@@ -82,7 +85,7 @@ preflight_main() {
             --only)
                 [[ ( -z "$mode" || "$mode" == only ) && $# -ge 2 ]] || return 2
                 case "$2" in
-                    docs|preflight-tests|build-script|coverage-status|release-offline|windows|linux|sync|linux-package|aislop|init) ;;
+                    docs|scripts|preflight-tests|build-script|coverage-status|release-offline|windows|linux|sync|linux-package|aislop|init) ;;
                     *) printf 'Unknown scope: %s\n' "$2" >&2; return 2 ;;
                 esac
                 mode=only; scopes+=("$2"); shift 2 ;;
@@ -109,6 +112,8 @@ preflight_main() {
             printf 'changed-file inspection failed; running all gates\n'
         fi
     fi
+    preflight_gate scripts script-syntax windows no
+    preflight_gate scripts script-syntax-tests windows no
     preflight_gate preflight-tests preflight-tests any no
     preflight_gate docs docs any no
     preflight_gate build-script build-script windows yes
@@ -130,6 +135,7 @@ preflight_main() {
     preflight_gate windows windows-package-smoke windows yes
     preflight_gate sync sync any yes
     preflight_gate linux linux linux yes
+    preflight_gate linux-package linux-package-tests linux yes
     preflight_gate linux-package linux-package-build linux yes
     preflight_gate linux-package linux-package-check linux yes
     preflight_gate linux-package linux-package-smoke linux yes

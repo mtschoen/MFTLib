@@ -250,6 +250,97 @@ public class AgentInstructionsTests
         Assert.AreEqual(0, failures.Count, string.Join(Environment.NewLine, failures));
     }
 
+    [TestMethod]
+    public void MaintainedTools_ListEveryScript()
+    {
+        var paths = RepositoryFiles.Git("ls-files", "--cached", "--others",
+                "--exclude-standard", "-z", "--", "scripts")
+            .Split('\0', StringSplitOptions.RemoveEmptyEntries)
+            .Distinct(StringComparer.Ordinal).ToArray();
+        var extensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { ".ps1", ".psm1", ".psd1", ".sh", ".bash", ".py", ".cmd", ".bat" };
+        var scripts = paths.Where(path => extensions.Contains(Path.GetExtension(path)) ||
+            RepositoryFiles.Read(path).StartsWith("#!", StringComparison.Ordinal)).ToArray();
+        Assert.IsTrue(scripts.Length > 0, "No scripts found under scripts/.");
+        var required = scripts.Concat(new[]
+        {
+            "SampleProgram.Direct/SampleProgram.Direct.csproj",
+            "SampleProgram.Watch/SampleProgram.Watch.csproj"
+        }).ToArray();
+        var failures = ValidateMaintainedTools(
+            RepositoryFiles.Read("docs/maintained-developer-tools.md"), required,
+            path => File.Exists(Path.Combine(RepositoryFiles.Root, path)));
+        Assert.AreEqual(0, failures.Length, string.Join(Environment.NewLine, failures));
+        StringAssert.Contains(ReadInstructions(), "(docs/maintained-developer-tools.md)");
+    }
+
+    [TestMethod]
+    public void MaintainedTools_RejectInvalidInventory()
+    {
+        const string valid = "| `scripts/fixture.ps1` | Parse fixtures | agent | Syntax gate |\n";
+        var required = new[] { "scripts/fixture.ps1" };
+        Assert.AreEqual(0, ValidateMaintainedTools(valid, required, _ => true).Length);
+        var cases = new[]
+        {
+            (Text: "", Required: required, Exists: true, Error: "Missing maintained tool"),
+            (Text: valid, Required: new[] { "scripts/nested/new.sh" }, Exists: true,
+                Error: "Missing maintained tool: scripts/nested/new.sh"),
+            (Text: valid + valid, Required: required, Exists: true, Error: "Duplicate maintained tool"),
+            (Text: valid.Replace("Parse fixtures", ""), Required: required, Exists: true,
+                Error: "Incomplete maintained tool"),
+            (Text: valid.Replace("agent", ""), Required: required, Exists: true,
+                Error: "Incomplete maintained tool"),
+            (Text: valid.Replace("Syntax gate", ""), Required: required, Exists: true,
+                Error: "Incomplete maintained tool"),
+            (Text: valid, Required: required, Exists: false, Error: "Missing tool path"),
+            (Text: "| `scripts/fixture.ps1` | purpose | agent |\n", Required: required,
+                Exists: true, Error: "Malformed maintained tool row"),
+            (Text: "| `scripts/fixture.ps1 | purpose | agent | Syntax gate |\n", Required: required,
+                Exists: true, Error: "Malformed maintained tool path")
+        };
+        foreach (var item in cases)
+        {
+            var failures = ValidateMaintainedTools(item.Text, item.Required, _ => item.Exists);
+            Assert.IsTrue(failures.Any(message => message.Contains(item.Error, StringComparison.Ordinal)),
+                $"Expected {item.Error}: {string.Join(';', failures)}");
+        }
+    }
+
+    static string[] ValidateMaintainedTools(string text, IEnumerable<string> required,
+        Func<string, bool> exists)
+    {
+        var failures = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var line in text.Split('\n'))
+        {
+            if (!line.StartsWith("| `", StringComparison.Ordinal)) { continue; }
+            var cells = line.Trim().Split('|');
+            if (cells.Length != 6)
+            {
+                failures.Add($"Malformed maintained tool row: {line}");
+                continue;
+            }
+            var name = cells[1].Trim();
+            if (name.Length < 3 || name[0] != '`' || name[^1] != '`')
+            {
+                failures.Add($"Malformed maintained tool path: {name}");
+                continue;
+            }
+            var path = name[1..^1];
+            if (!seen.Add(path)) { failures.Add($"Duplicate maintained tool: {path}"); }
+            if (!exists(path)) { failures.Add($"Missing tool path: {path}"); }
+            if (cells.Skip(2).Take(3).Any(string.IsNullOrWhiteSpace))
+            {
+                failures.Add($"Incomplete maintained tool: {path}");
+            }
+        }
+        foreach (var path in required)
+        {
+            if (!seen.Contains(path)) { failures.Add($"Missing maintained tool: {path}"); }
+        }
+        return failures.ToArray();
+    }
+
     static string ReadInstructions() =>
         new UTF8Encoding(false, true).GetString(File.ReadAllBytes(
             Path.Combine(AppContext.BaseDirectory, "repository-docs", "AGENTS.md")));

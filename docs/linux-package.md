@@ -92,6 +92,15 @@ for an instruction violation. It does not execute that negative DLL.
 The `linux-package` job of `.gitea/workflows/test.yml` runs on every pull request and main push;
 when every changed path is docs-only or the scanner pin, its `skip_build` detection skips the
 steps below and the upload, and the job finishes green ([CI and quality gates](quality-gates.md)).
+
+Before building, the Linux package job runs
+`bash scripts/check-linux-native.tests.sh`. This offline self-test replaces
+readelf, nm and objdump output to exercise architecture, export, instrumentation,
+search-path and version-ordering checks without elevation or a native build.
+It shares the job's skip-build condition and runs first in the local
+linux-package preflight scope. The subsequent real-library check remains the
+integration evidence for the package artifact.
+
 Otherwise it builds the Release library with `scripts/build-linux.sh` (which runs the managed Smoke tier of [SMOKE.md](../SMOKE.md) against it), runs `scripts/check-linux-native.sh`,
 and runs `scripts/smoke-package-linux.sh`. That script packs MFTLib on Linux with the library under
 the version `0.0.0-package-smoke` (never published), restores it from a local feed with an empty

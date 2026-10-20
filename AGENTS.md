@@ -82,6 +82,8 @@ cat .\SampleProgram.Direct\bin\x64\Release\net10.0\output.log
 
 [CI rules](docs/quality-gates.md): `.gitea/workflows/test.yml` runs Windows/Linux coverage and Linux package checks on PRs and main pushes via `scripts/run-coverage.ps1 -NonInteractive` and `scripts/coverage-linux.sh`. The `test / windows`, `test / linux`, `test / linux-package` and `aislop / quality-gate` PR checks must pass before merge. Fix runner PATH/pwsh and `DOTNET_INSTALL_DIR` at the service, never with workflow bootstrap steps.
 
+[Maintained developer tools](docs/maintained-developer-tools.md): only redundant code is deleted. Lack of production or CI callers does not make a developer tool redundant; add CI exercise. Keep every script listed with its purpose, runner role and CI check. Syntax and inventory gates enforce the baseline.
+
 `AgentInstructionsTests` guards tracked-content portability. Stage additions/removals first; `.maintenance.json` is ignored, `.plan` tracked.
 
 [Aislop rules](docs/quality-gates.md): invoke installed `aislop`, never `npx aislop`. Before completion run `aislop scan .` and address findings; before committing run `aislop scan --staged`. `aislop ci .` enforces `.aislop/config.yml`'s `failBelow: 100`; failure is a failing gate.
