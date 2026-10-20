@@ -19,6 +19,40 @@ public readonly record struct DriveKey
         _letter = char.ToUpperInvariant(letter);
     }
 
+    /// <summary>
+    ///     Parses one ASCII drive letter with an optional colon and an optional final slash or backslash,
+    ///     ignoring surrounding whitespace and letter case. Accepts drive specs, not paths beyond a root.
+    /// </summary>
+    /// <param name="text">The drive spec to parse; callers holding a path pass its root.</param>
+    /// <param name="driveKey">The normalized key on success; the invalid default key on failure.</param>
+    /// <returns>True for a valid drive spec; false for null or invalid input.</returns>
+    public static bool TryParse(string? text, out DriveKey driveKey)
+    {
+        driveKey = default;
+        var token = text.AsSpan().Trim();
+        if (token.IsEmpty || !char.IsAsciiLetter(token[0]))
+        {
+            return false;
+        }
+
+        var position = 1;
+        if (position < token.Length && token[position] == ':')
+        {
+            position++;
+        }
+        if (position < token.Length && token[position] is '\\' or '/')
+        {
+            position++;
+        }
+        if (position != token.Length)
+        {
+            return false;
+        }
+
+        driveKey = new DriveKey(token[0]);
+        return true;
+    }
+
     /// <summary>The normalized ASCII letter. Rejects the default key.</summary>
     public char Letter => _letter != '\0'
         ? _letter

@@ -3,7 +3,12 @@
 - **MFTLibNative** (C++ DLL) - Core NTFS MFT parsing logic with multi-threaded parallel fixup+parse and double-buffered I/O. Parses are thread-safe and re-entrant: concurrent parses share no mutable state except the test-hook observation, which each parse replaces once, when it finishes. The test hooks are process-global, so a test reading `GetChunkThreadCounts` or arming a failure injection owns the process while it runs. MFT record geometry (a power-of-two record size from 512 to 65536 bytes, validated in `ntfs.h`) is detected at runtime rather than assumed - `FSCTL_GET_NTFS_VOLUME_DATA` for a live volume, record 0's header for an exported file. Results cross the P/Invoke boundary through compact ABI version 10 (`MFT_NATIVE_ABI_VERSION`): 52-byte `MftCompactEntry` rows with int64 size at offset 32, int64 modified time (FILETIME) at offset 40, uint16 sequence number at offset 48, and uint16 parent sequence number (the sequence the record's name stores in its parent reference) at offset 50, plus separate UTF-16 string pools. Flags bit `0x8000` marks an unknown size. The parser emits each record's own name and parent reference and resolves no paths; `mft_api.h` pins the row layout with static asserts.
 - **MFTLib** (C# Library) - Managed wrapper with P/Invoke interop. The `MFTLib.Index` namespace provides a substrate-neutral columnar block format and query engine; see `docs/index-format.md`.
     - **Drive keys**: `DriveKey` owns an ASCII letter, normalizes it to upper case once, and converts
-      implicitly from `char`, with no string conversion. `Letter` and `ToString()` reject the invalid
+      implicitly from `char`, with no string conversion.
+      `DriveKey.TryParse(string? text, out DriveKey driveKey)` accepts a trimmed ASCII
+      letter, an optional colon, and an optional final slash or backslash, returning
+      a normalized key. Invalid input returns false with the default key. It parses
+      drive specs only; callers holding paths extract their roots first.
+      `Letter` and `ToString()` reject the invalid
       default key, as do index operations, cache selections and key-bearing record initializers.
       Public key members are `Drive`. Each lifecycle verb has one enumerable-key method returning
       ordered per-drive results; callers supply `Drives.Select(status => status.Drive)` for all drives.

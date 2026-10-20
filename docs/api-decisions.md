@@ -348,6 +348,21 @@ members or a string conversion.
 
 **Implementation completion:** drive keys continue through internal volume operations, broker channels and source delegates, and test adapters. Variables carrying identity are named `drive`. The native boundary formats `\\.\C:` from the key. The compiler, existing public-surface pins and behavioral protocol tests enforce the change. **Reason:** repeated character/string normalization obscured an identity that already has one owner; deleting those conversions reduces the implementation. **Revisit only if:** a concrete producer needs a key that the existing ASCII drive-key contract cannot represent.
 
+## DriveKey parses drive specs
+
+**Decision (2026-10-19):** `DriveKey.TryParse(string? text, out DriveKey driveKey)`
+accepts one ASCII letter with an optional colon and an optional final backslash
+or slash, ignoring surrounding whitespace and case. Success returns the normalized
+key. Null, empty, whitespace, UNC roots, multi-letter tokens, and paths beyond the
+root return false and set the out parameter to the invalid default key. Callers
+holding a path pass its root; path resolution belongs to the caller.
+
+**Reason:** file-wizard and git-wizard each hand-rolled the same drive-spec parser
+and compared strings instead of DriveKey values.
+
+**Revisit only if:** a consumer needs path-to-drive resolution MFTLib cannot
+define portably.
+
 ## A boolean that reports state takes the Is prefix
 
 **Decision (API review finding F15, naming half):** a public boolean property that reports state on a

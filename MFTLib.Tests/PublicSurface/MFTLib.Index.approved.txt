@@ -134,6 +134,7 @@ MFTLib.Index.DriveKey :: method public Equals(MFTLib.Index.DriveKey other) : boo
 MFTLib.Index.DriveKey :: method public override Equals(object obj) : bool
 MFTLib.Index.DriveKey :: method public override GetHashCode() : int
 MFTLib.Index.DriveKey :: method public override ToString() : string
+MFTLib.Index.DriveKey :: method public static TryParse(string? text, out MFTLib.Index.DriveKey driveKey) : bool
 MFTLib.Index.DriveKey :: method public static op_Equality(MFTLib.Index.DriveKey left, MFTLib.Index.DriveKey right) : bool
 MFTLib.Index.DriveKey :: method public static op_Implicit(char letter) : MFTLib.Index.DriveKey
 MFTLib.Index.DriveKey :: method public static op_Inequality(MFTLib.Index.DriveKey left, MFTLib.Index.DriveKey right) : bool

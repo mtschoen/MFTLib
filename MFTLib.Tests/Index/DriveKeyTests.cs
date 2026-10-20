@@ -108,4 +108,73 @@ public class DriveKeyTests
         Assert.ThrowsExactly<ArgumentException>(() => scan with { Drive = default });
         Assert.ThrowsExactly<ArgumentException>(() => start with { Drive = default });
     }
+
+    [TestMethod]
+    [DataRow("C", 'C')]
+    [DataRow("c", 'C')]
+    [DataRow("C:", 'C')]
+    [DataRow("c:", 'C')]
+    [DataRow("C:\\", 'C')]
+    [DataRow("c:\\", 'C')]
+    [DataRow("C:/", 'C')]
+    [DataRow("c:/", 'C')]
+    [DataRow("C\\", 'C')]
+    [DataRow("c\\", 'C')]
+    [DataRow("C/", 'C')]
+    [DataRow("c/", 'C')]
+    [DataRow(" \tC\r\n", 'C')]
+    [DataRow(" \tc: \r\n", 'C')]
+    [DataRow(" \tc:\\ \r\n", 'C')]
+    [DataRow("\u00a0c:/\u00a0", 'C')]
+    [DataRow("a", 'A')]
+    [DataRow("Z:/", 'Z')]
+    public void TryParse_AcceptsDriveSpecs(string text, char expectedLetter)
+    {
+        Assert.IsTrue(DriveKey.TryParse(text, out var driveKey));
+        Assert.AreEqual(expectedLetter, driveKey.Letter);
+        Assert.AreEqual(new DriveKey(expectedLetter), driveKey);
+    }
+
+    [TestMethod]
+    [DataRow(null)]
+    [DataRow("")]
+    [DataRow(" \t\r\n")]
+    [DataRow("\\\\server\\share\\")]
+    [DataRow("//server/share/")]
+    [DataRow("\\\\?\\C:\\")]
+    [DataRow("\\\\.\\C:")]
+    [DataRow("CD")]
+    [DataRow("CC:")]
+    [DataRow("C,D")]
+    [DataRow("C:\\folder")]
+    [DataRow("C:/folder")]
+    [DataRow("C:folder")]
+    [DataRow("C/folder")]
+    [DataRow("C\\folder")]
+    [DataRow("C::")]
+    [DataRow("C://")]
+    [DataRow("C:\\\\")]
+    [DataRow("C//")]
+    [DataRow("C/:")]
+    [DataRow("C :")]
+    [DataRow("C: /")]
+    [DataRow("C\t:")]
+    [DataRow("1:")]
+    [DataRow("@")]
+    [DataRow("[")]
+    [DataRow("`")]
+    [DataRow("{")]
+    [DataRow("\u00e9:")]
+    [DataRow("\uff23:")]
+    [DataRow("\0")]
+    [DataRow("C\0")]
+    [DataRow(":")]
+    [DataRow("/")]
+    [DataRow("\\")]
+    public void TryParse_RejectsNonDriveSpecs(string? text)
+    {
+        var driveKey = new DriveKey('Z');
+        Assert.IsFalse(DriveKey.TryParse(text, out driveKey));
+        Assert.AreEqual(default(DriveKey), driveKey);
+    }
 }

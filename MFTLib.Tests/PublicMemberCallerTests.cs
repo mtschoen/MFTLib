@@ -45,6 +45,8 @@ public class PublicMemberCallerTests
             "file-wizard FileWizard/ContentHashSidecar.cs creates the cache directory before it writes beside it",
         ["method MFTLib.Index.CacheTag.ToString() : System.String"] =
             "reached through string interpolation, which emits no member reference; file-wizard file-wizard/BlockCacheCatalog.cs:98 and git-wizard GitWizard/MftIndexCacheStatusFormatter.cs:50 print the stored and requested tags",
+        ["method MFTLib.Index.DriveKey.TryParse(System.String, MFTLib.Index.DriveKey&) : System.Boolean"] =
+            "Owner-approved consumer migrations: file-wizard FileWizard/DriveSelectionParser.cs and FileWizard/FileWizardSettings.cs parse CLI and saved drive specs; git-wizard GitWizard/MftIndexSession.Windows.cs NormalizeVolume parses requested volumes",
         ["method MFTLib.Index.FileEntry.Children(System.Threading.CancellationToken) : System.Collections.Generic.IReadOnlyList`1<MFTLib.Index.FileEntry>"] =
             "git-wizard GitWizard/GitWizardApi.IndexDiscovery.cs lists the children of a directory entry",
         ["method MFTLib.MftIndexSources.Unavailable(System.String) : MFTLib.Index.MftIndexSource"] =
