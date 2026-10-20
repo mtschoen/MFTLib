@@ -70,8 +70,10 @@ public class DefaultElevatedEntryRunnerTests
     }
 
     [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
     [SupportedOSPlatform("windows")]
-    public async Task RunBroker_ClientDisconnectsDuringWatch_BrokenPipe_ExitsWithCode0()
+    public async Task RunBroker_ClientDisconnectsDuringWatch_BrokenPipe_ExitsWithCode0(bool cancelBeforeFailure)
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -84,10 +86,23 @@ public class DefaultElevatedEntryRunnerTests
         FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
         JournalQueryFake.Serve(journalIdentifier: 7, nextUsn: 200);
 
-        // The native read stays parked before it is issued until the test has taken the client ends
-        // away, then fails on the broken pipe. The host reports that failure as this drive's Error
-        // frame, and the pipes are already gone by then - so the report write is the one that lands
-        // on the broken pipe, which is what used to kill the child.
+        // Failure classification runs after the native result is freed and the watch's cancellation
+        // registration is disposed, but before its Error reply. Hold it to force failure-first cleanup.
+        var failure = new TestGate();
+        using var journal = JournalIsolation.OverrideJournalWindow(_ =>
+        {
+            failure.MarkEntered();
+            failure.WaitForReleaseAsync(CancellationToken.None).WaitAsync(HangGuard).GetAwaiter().GetResult();
+            return null;
+        });
+        if (cancelBeforeFailure)
+        {
+            failure.Release();
+        }
+        var diagnostics = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        BrokerDiagnostics.Enable("broker", Path.GetTempPath());
+        BrokerDiagnostics.Dependencies.InstallWriter(new BrokerDiagnosticsWriter(diagnostics.Enqueue));
+
         using var idlePipe = await IdleUsnPipe.CreateAsync(gateReadNumber: 1);
 
         int? exitCode = null;
@@ -107,29 +122,41 @@ public class DefaultElevatedEntryRunnerTests
             var caughtUp = await HostChannelHarness.ReadFrameAsync(drive);
             Assert.AreEqual(BrokerFrameKind.CaughtUp, caughtUp?.Kind);
 
-            // Reach the kernel wait before taking the client ends away. A watch that has not
-            // got there yet observes the disconnect as a plain cancellation and never
-            // attempts the write this test is about.
             await IdleUsnPipe.AwaitSignalAsync(idlePipe.BeforeIssue);
 
-            // The consumer's process has now closed its ends while its watch was armed, so the
-            // watch's next attempt to reach it fails on the broken pipe for real.
+            if (!cancelBeforeFailure)
+            {
+                idlePipe.Break();
+                idlePipe.ContinueIssue.Set();
+                await failure.Entered.WaitAsync(cts.Token);
+            }
+
             await drive.DisposeAsync();
+            if (cancelBeforeFailure)
+            {
+                // Prove the disconnect reached the live registration before failing the read.
+                await IdleUsnPipe.AwaitSignalAsync(idlePipe.CancelAttempted);
+            }
             await control.DisposeAsync();
             idlePipe.Break();
             idlePipe.ContinueIssue.Set();
+            failure.Release();
 
             await runTask.WaitAsync(cts.Token);
         }
         finally
         {
+            failure.Release();
             idlePipe.UnblockForCleanup();
             await EnsureRunnerLeavesAsync(runTask, drive, control);
         }
 
-        Assert.AreEqual(0, exitCode);
         var calls = IdleUsnPipe.CallOrder();
-        Assert.IsTrue(calls.Contains('C') && calls.Contains('F'), "The failed read is cancelled and freed.");
+        var context = $"cancelBeforeFailure={cancelBeforeFailure}; calls={calls}; diagnostics={string.Join(Environment.NewLine, diagnostics)}";
+        Assert.AreEqual(0, exitCode, context);
+        // A failed read frees its result and unregisters cancellation before failure classification.
+        // Only a disconnect delivered before that cleanup must cancel the native handle.
+        Assert.AreEqual(cancelBeforeFailure ? "CF" : "F", calls, context);
     }
 
     [TestMethod]
