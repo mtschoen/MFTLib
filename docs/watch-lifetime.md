@@ -43,10 +43,10 @@
       `StartWatch` is written, the handle is published and its pump is scheduled. It does
       not wait for the backlog; `WaitForCatchUpAsync` follows the drive's caught-up marker.
     - **Watch source**: every drive's watch starts through `FileIndexOptions.MftSource`'s watch
-      source, the same object that produced the drive's block. A source with no watch source
-      (or `MftIndexSources.Unavailable`) makes start `NotApplicable`, without a watch request.
-      A drive with no MFT-backed block has the same result. A watch-capable source's failed start
-      or an unresumable cursor returns `Failed` with its exception.
+      source, the same object that produced the drive's block. A null `MftSource` or a source
+      with no watch capability makes start `NotApplicable`, with no failure exception and
+      without recording a watch request. A drive with no MFT-backed block has the same result.
+      A watch-capable source's failed start or an unresumable cursor returns `Failed` with its exception.
     - **Watch and catch-up lifetime**: each MFT-backed drive has an independent
       internal `IIndexDriveWatch`, pump, stop source, and catch-up slot. `StartWatchingAsync([X], token)` begins at
       `WatchState.CatchingUp`; journal batches through the tip captured at start are applied

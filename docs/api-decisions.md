@@ -411,20 +411,22 @@ file-wizard has no consumer uses outside its MFTLib submodule.
 
 **Revisit only if:** a consumer test needs a block-header observation the public index cannot answer.
 
-## Every way to obtain an index source is on MftIndexSources
+## Source absence is typed; applications own their wording
 
-**Decision (API review finding F19):** `MftIndexSources.Unavailable(reason)` supplies an unavailable
-source. `MftIndexSource` keeps no public factory, so the
-flat `MFTLib` namespace holds every way to obtain a source: `BrokerSession.CreateIndexSource`,
-`MftIndexSources.FromLocalVolumes`, `MftIndexSources.FromMftDumpFile` and `MftIndexSources.Unavailable`.
+**Decision (owner ruling 2026-10-19, API review finding F19):**
+`FileIndexOptions.MftSource` is null when the application has no MFT source.
+An MFT drive that needs a scan reports `DriveFailureKind.MftSourceMissing`
+with a library-owned, user-readable sentence naming the drive. A rescan cannot
+recover it while the source stays null. Warm cache adoption needs no source;
+watch start reports `NotApplicable` without recording a request.
 
-**Reason:** source factories belong together. The unavailable factory carries the
-application's user-facing reason into `DriveFailure.Message`: on every path a
-null source and an unavailable source have the same outcome (the drive fails with `ProducerFailed`, a batched
-watch start reports `NotApplicable`) and only the message differs, so one slot holds either a real source or
-the reason there is none.
+**Reason:** the application already knows why it has no source and chooses its
+own wording where it displays the failure kind. Real sources come from
+`BrokerSession.CreateIndexSource`, `MftIndexSources.FromLocalVolumes`, and
+`MftIndexSources.FromMftDumpFile`.
 
-**Revisit only if:** the index reports a producer-less drive's reason some other way.
+**Revisit only if:** an application needs a structured distinction that the
+missing-source kind and its own configuration cannot express.
 
 ## A method named Try returns quickly
 

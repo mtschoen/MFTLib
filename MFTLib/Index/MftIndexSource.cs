@@ -1,9 +1,10 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     Where an index gets the blocks of its MFT-backed drives and the live watch of each. Obtained
-///     from <see cref="MFTLib.BrokerSession.CreateIndexSource" />, <see cref="MFTLib.MftIndexSources" />, or from
-///     <see cref="MFTLib.MftIndexSources.Unavailable" /> when this process cannot scan.
+///     Where an index gets the blocks of its MFT-backed drives and the live watch of each.
+///     Obtained from <see cref="MFTLib.BrokerSession.CreateIndexSource" /> or
+///     <see cref="MFTLib.MftIndexSources" />. Leave <see cref="FileIndexOptions.MftSource" />
+///     null when no source is available.
 /// </summary>
 public sealed class MftIndexSource
 {
@@ -48,18 +49,11 @@ public sealed class MftIndexSource
         IncludeFreed = includeFreed;
     }
 
-    MftIndexSource(string unavailableReason)
-    {
-        UnavailableReason = unavailableReason;
-        Producer = (request, _) => Task.FromException<MftBlockProduceResult>(
-            new InvalidOperationException(FormatUnavailable(request.Drive, unavailableReason)));
-    }
 
     internal MftBlockProducer Producer { get; }
 
     internal IIndexWatchSource? WatchSource { get; }
 
-    internal string? UnavailableReason { get; }
 
     internal MftDumpSourceIdentity? DumpIdentity { get; }
 
@@ -72,7 +66,6 @@ public sealed class MftIndexSource
 
     internal const string NoJournalSettingsReason = "this source has no live journal settings";
 
-    internal static MftIndexSource CreateUnavailable(string reason) => new(reason);
 
     internal static string FormatUnavailable(DriveKey drive, string reason) => $"Drive {drive}: {reason}.";
 }

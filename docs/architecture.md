@@ -146,11 +146,12 @@
       `FromWindowsVolume` selects Mft. Enumeration starts at that drive's `RootDirectory`;
       an operational producer failure leaves only that drive `Failed` with
       `DriveFailureKind.ProducerFailed`, for MFT and enumeration alike. Healthy siblings stay usable.
-      A failed rescan keeps the previous block and records `DriveStatus.Failure` as `ProducerFailed`;
+      A failed rescan keeps the previous block and records `DriveStatus.Failure` with the scan
+      attempt's kind (`ProducerFailed` or `MftSourceMissing`);
       a successful replacement clears it. Argument validation at admission (null options, undefined
       `CacheMode`, missing cache directory, dump-source option conflicts) throws before any drive is
       produced. A drive that cannot start production, including an MFT drive needing a scan with a null
-      `MftSource`, settles `Failed` / `ProducerFailed` while siblings stay usable. Caller cancellation aborts
+      `MftSource`, settles `Failed` / `DriveFailureKind.MftSourceMissing` while siblings stay usable. Caller cancellation aborts
       the whole operation, and a cancelled open releases its adopted blocks. An MFT failure never selects enumeration.
       Warm adoption compares the header's `ProducerKind` directly with `IndexedDrive.Producer` before
       cache-tag, root and journal checks. A mismatch closes and best-effort deletes the rejected
@@ -161,8 +162,7 @@
     - **MFT source**: `FileIndexOptions.MftSource` is one `MftIndexSource` carrying the block
       producer and the watch source of every MFT-backed drive, so the two cannot come from
       different connections. `BrokerSession.CreateIndexSource()` builds the broker-backed
-      one; `MftIndexSources.Unavailable(reason)` fails every scan with
-      `Drive {letter}: {reason}.`, and a watch start reports `NotApplicable`. `MftIndexSources.FromLocalVolumes(scanOptions)` builds the in-process one for a caller
+      one. `MftIndexSources.FromLocalVolumes(scanOptions)` builds the in-process one for a caller
       that is already elevated: `LocalMftBlockProducer` plans capacity from the volume geometry,
       creates the requested block and fills it through `MftBlockScan.WriteToBlock`, stamping the live
       journal cursor armed before a cached scan, with no broker process or pipe. It has no watch source, so watch start and
@@ -175,12 +175,14 @@
       the cursor query and stamp zero; cached scans fail as `ProducerFailed` without an active journal.
       Dump blocks retain zero cursors and are never cached, so they never reach a cache freshness check. The factory
       opens nothing until the first scan; a process that cannot open the volume fails the drive
-      as `ProducerFailed`. A null `MftSource` is a configuration error for a drive with
-      `IndexedDrive.Producer == ProducerKind.Mft` when a scan or watch is needed:
-      its scan reports `ProducerFailed` with the configuration error message, and a watch start
-      reports `NotApplicable` without recording a request. Warm adoption needs no source. Enumeration drives
-      ignore it, so an all-enumeration open accepts null and a mixed open isolates missing-source
-      scan failures to its MFT drives. The block producer
+      as `ProducerFailed`. A process with no MFT source leaves `FileIndexOptions.MftSource` null. When an
+      MFT drive needs a scan, its failure kind is `DriveFailureKind.MftSourceMissing`
+      and its library message is `Drive {drive}: no MFT source is available to scan this drive.`
+      The application maps the kind to its own display text using its known context.
+      A rescan cannot recover the drive while the source remains null. Usable cached
+      blocks still open, and a failed rescan retains an existing block. Enumeration
+      drives ignore the source. Watch start reports `NotApplicable`, carries no
+      failure exception, and records no watch request. The block producer
       delegate, the watch source and drive watch interfaces and their records are internal;
       only MFTLib implements them, and tests build sources through `MFTLibTestExtensions`.
       `JournalBrokerHost` and `LocalMftBlockProducer` take the internal `IVolumeAccess` contract: cursor query, record-batch scan, bounded journal read, watch, volume information and journal grow. Every operation is a nonnullable method. `LiveVolumeAccess` forwards to `LiveVolumeSources`, which owns native resource lifetime. The internal `ScriptedVolumeAccess` in MFTLibTestExtensions throws for unsupported operations. The local producer receives its TimeProvider independently of volume access and samples completion time after batch enumeration.

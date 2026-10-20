@@ -21,10 +21,13 @@ public sealed partial class FileIndex
 
         public int SkippedRecordCount { get; init; }
 
+        /// <summary>The classification to publish when a scan attempt returns no block.</summary>
+        public DriveFailureKind ScanFailureKind { get; init; } = DriveFailureKind.ProducerFailed;
+
         /// <summary>The MFT producer's failure when it produced no block.</summary>
         public Exception? ProducerFailure { get; init; }
 
-        /// <summary>Why the drive has no block: the producer's failure, or the cache-only refusal.</summary>
+        /// <summary>Why the drive has no block: a producer error, a missing-source sentence, or a cache-only refusal.</summary>
         public string? ProducerFailureMessage { get; init; }
 
         /// <summary>Rejects a blockless result without failure detail instead of publishing a contradictory drive status.</summary>

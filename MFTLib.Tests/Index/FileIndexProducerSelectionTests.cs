@@ -89,7 +89,9 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
     }
 
     [TestMethod]
-    public async Task Mft_MarksTheFailedDriveAndKeepsTheOthers()
+    [DataRow("elevation declined")]
+    [DataRow("Drive T: no MFT source is available to scan this drive.")]
+    public async Task Mft_MarksTheFailedDriveAndKeepsTheOthers(string failureMessage)
     {
         var firstRoot = Path.Combine(_treeRoot, "first");
         var secondRoot = Path.Combine(_treeRoot, "second");
@@ -104,13 +106,13 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
             Drives = [new IndexedDrive('T', firstRoot, 1), new IndexedDrive('U', secondRoot, 2)],
             CacheDirectory = _cacheDirectory,
             MftSource = new MftIndexSource((request, _) => request.Drive == 'T'
-                ? throw new UnauthorizedAccessException("elevation declined")
+                ? throw new UnauthorizedAccessException(failureMessage)
                 : Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, 7, 4096, FixedMoment), 0)))
         }, TestContext.CancellationTokenSource.Token);
 
         var failed = index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Failed, failed.State);
-        Assert.AreEqual("elevation declined", failed.Failure?.Message);
+        Assert.AreEqual(failureMessage, failed.Failure?.Message);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, failed.Failure?.Kind);
         Assert.IsNull(failed.Block);
         var ready = index.Drives.Single(drive => drive.Drive == 'U');

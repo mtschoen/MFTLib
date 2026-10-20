@@ -68,12 +68,11 @@ public class MftIndexSourcesDumpTests
     }
 
     [TestMethod]
-    public void FromMftDumpFile_Source_CannotWatchAndIsNotUnavailable()
+    public void FromMftDumpFile_Source_HasProducerAndCannotWatch()
     {
         var source = MftIndexSources.FromMftDumpFile("volume.mft", 'D');
 
         Assert.IsNull(source.WatchSource);
-        Assert.IsNull(source.UnavailableReason);
         Assert.IsNotNull(source.Producer);
     }
 

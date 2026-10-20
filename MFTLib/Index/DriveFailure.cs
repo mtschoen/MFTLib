@@ -15,9 +15,9 @@ public sealed record DriveFailure
         Message = message;
     }
 
-    /// <summary>Which failure this is; <see cref="DriveFailureKind.CacheDeclined" />, <see cref="DriveFailureKind.CacheIdentityMismatch" /> and <see cref="DriveFailureKind.InUse" /> are cured by a rescan's scan, <see cref="DriveFailureKind.ProducerFailed" /> is the scan itself failing.</summary>
+    /// <summary>Which failure this is; <see cref="DriveFailureKind.CacheDeclined" />, <see cref="DriveFailureKind.CacheIdentityMismatch" /> and <see cref="DriveFailureKind.InUse" /> are cured by a rescan's scan, <see cref="DriveFailureKind.ProducerFailed" /> is the scan itself failing, and <see cref="DriveFailureKind.MftSourceMissing" /> cannot be cured while the source stays null.</summary>
     public DriveFailureKind Kind { get; init; }
 
-    /// <summary>The detail behind <see cref="Kind" />: the MFT producer's error, or the library's sentence for a cache-only refusal. Never null.</summary>
+    /// <summary>The detail behind <see cref="Kind" />: the producer's error, or the library-owned sentence for a cache-only refusal or missing MFT source. Never null.</summary>
     public string Message { get; init; }
 }

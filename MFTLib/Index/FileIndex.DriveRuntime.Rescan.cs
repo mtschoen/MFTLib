@@ -129,14 +129,14 @@ public sealed partial class FileIndex
         }
 
         /// <summary>
-        ///     Records a rescan's producer failure on the drive's runtime, which then reads
-        ///     <see cref="DriveFailureKind.ProducerFailed" />.
+        ///     Records a rescan's scan failure kind on the drive's runtime, retaining the previous
+        ///     block when present.
         /// </summary>
         void RecordRescanProducerFailure(PendingDriveResult failed)
         {
             lock (StateLock)
             {
-                Failure = new DriveFailure(DriveFailureKind.ProducerFailed,
+                Failure = new DriveFailure(failed.ScanFailureKind,
                     failed.RequireFailureMessage(Drive));
                 if (Block is null)
                 {

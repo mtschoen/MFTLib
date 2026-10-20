@@ -49,8 +49,6 @@ public class PublicMemberCallerTests
             "Owner-approved consumer migrations: file-wizard FileWizard/DriveSelectionParser.cs and FileWizard/FileWizardSettings.cs parse CLI and saved drive specs; git-wizard GitWizard/MftIndexSession.Windows.cs NormalizeVolume parses requested volumes",
         ["method MFTLib.Index.FileEntry.Children(System.Threading.CancellationToken) : System.Collections.Generic.IReadOnlyList`1<MFTLib.Index.FileEntry>"] =
             "git-wizard GitWizard/GitWizardApi.IndexDiscovery.cs lists the children of a directory entry",
-        ["method MFTLib.MftIndexSources.Unavailable(System.String) : MFTLib.Index.MftIndexSource"] =
-            "file-wizard FileWizard/FileIndexHost.cs supplies a source for a host that may not scan",
         ["method MFTLib.Index.JournalCheckpointLoss.TryGetGrowthTarget(MFTLib.UsnJournalSettings&) : System.Boolean"] =
             "file-wizard file-wizard/JournalCommand.cs and FileWizardMaui.Logic/JournalSettingsPresenter.cs, and git-wizard GitWizardUI/ViewModels/MainViewModel.Journals.cs use the recorded target for explicit journal growth",
         ["type MFTLib.Index.DirectoryWalkOptions"] =

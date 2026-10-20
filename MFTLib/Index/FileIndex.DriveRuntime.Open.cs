@@ -139,7 +139,7 @@ public sealed partial class FileIndex
                 }
             }
 
-            return RecordFailedDrive(DriveFailureKind.ProducerFailed, failed, settlement);
+            return RecordFailedDrive(failed.ScanFailureKind, failed, settlement);
         }
     }
 }

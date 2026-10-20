@@ -2,9 +2,10 @@ namespace MFTLib.Index;
 
 /// <summary>
 ///     Why a drive failed, as <see cref="DriveFailure.Kind" />. The distinction a consumer
-///     needs to decide whether a scan would recover the drive: a cache-only decline is cured by
-///     the scan <see cref="FileIndex.RescanAsync" /> runs, while a producer failure is the scan
-///     itself failing.
+///     needs to decide whether a scan would recover the drive: cache failures can be recovered
+///     by an available producer (<see cref="FileIndex.RescanAsync" />), <see cref="ProducerFailed" />
+///     means a selected producer (MFT or enumeration) ran and failed, and <see cref="MftSourceMissing" />
+///     means an MFT drive needed a scan but no MFT source is configured.
 /// </summary>
 public enum DriveFailureKind
 {
@@ -37,5 +38,12 @@ public enum DriveFailureKind
     ///     The block was discarded and best-effort deleted, and the scan that would build a replacement was forbidden.
     ///     <see cref="FileIndex.RescanAsync" /> scans such a drive and clears its failure.
     /// </summary>
-    CacheIdentityMismatch
+    CacheIdentityMismatch,
+
+    /// <summary>
+    ///     An MFT drive needs a scan but <see cref="FileIndexOptions.MftSource" /> is null.
+    ///     <see cref="FileIndex.RescanAsync" /> cannot recover the drive while the source remains null.
+    ///     Reopen the index with an MFT source to enable scanning.
+    /// </summary>
+    MftSourceMissing
 }

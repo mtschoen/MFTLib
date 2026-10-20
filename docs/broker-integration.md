@@ -107,11 +107,14 @@ request, and returns the drive's running watch. The watch source, the drive
 watch handle and the block producer are internal to MFTLib; a consumer holds
 only the opaque `MftIndexSource`.
 
-A process that cannot scan assigns `MftIndexSources.Unavailable(reason)`
-instead. Every scan of an MFT-backed drive then fails with
-`Drive {letter}: {reason}.`, reported as `DriveFailureKind.ProducerFailed`,
-and a watch start reports `NotApplicable` without recording a watch
-request. Cached blocks still open.
+A process with no MFT source leaves `FileIndexOptions.MftSource` null. When an
+MFT drive needs a scan, its failure kind is `DriveFailureKind.MftSourceMissing`
+and its library message is `Drive {drive}: no MFT source is available to scan this drive.`
+The application maps the kind to its own display text using its known context.
+A rescan cannot recover the drive while the source remains null. Usable cached
+blocks still open, and a failed rescan retains an existing block. Enumeration
+drives ignore the source. Watch start reports `NotApplicable`, carries no
+failure exception, and records no watch request.
 
 The optional `FileIndexOptions.RetainedFileNames` selects retention for every producer: null keeps
 all eligible rows, an empty collection keeps directories only, and a nonempty
@@ -146,11 +149,10 @@ A drive that settles `DriveState.Failed` has no block, and `DriveStatus.Failure.
 | `CacheDeclined` | `CacheMode.ExistingOnly` found no usable cached block, or one from another producer, and forbade a scan. |
 | `CacheIdentityMismatch` | `CacheMode.ExistingOnly` found a block whose cache tag differs from `FileIndexOptions.CacheTag`. |
 | `InUse` | `CacheMode.ExistingOnly` found the block owned by another live `FileIndex`. |
-| `ProducerFailed` | The scan failed, or an MFT drive needed a scan and had no `MftSource`. |
+| `ProducerFailed` | The selected producer ran and failed. |
+| `MftSourceMissing` | An MFT drive needed a scan but `MftSource` was null. Retrying with the same null source cannot recover it. |
 
-Every kind accepts a per-drive `RescanAsync`, which clears `Failure` on success. A failed
-rescan, or a failed catch-up retry scan during `OpenAsync`, can instead leave a drive `Ready`
-with its previous block and a `ProducerFailed` failure until a later scan succeeds.
+A per-drive `RescanAsync` clears `Failure` only after successful publication. A failed attempt can retain a `Ready` block with `ProducerFailed` or `MftSourceMissing`. `CacheMode.ExistingOnly` opens still report their cache refusal before attempting production.
 
 For implementation details, see [scan protocol](broker-lifetime.md#scan-protocol)
 and [block sizing and parse threads](broker-scan-tuning.md). The concurrent-open
@@ -288,3 +290,28 @@ environment opt-in, role and child-path validation, drop notices and journal sel
   the one process.
 - Observe `Ended`, per-drive start results, watch faults, and lost catch-up.
 - Dispose indexes before disposing the session during application shutdown.
+
+### file-wizard pin-bump checklist
+
+This is consumer work in its pin-bump PR, against the revision that adopts this library change. The inspected consumer snapshot still names another cache kind `CacheTagMismatch`; use the pin-bump branch's current spelling (`CacheIdentityMismatch` for this library) without reverting other migrations.
+
+1. **`FileWizard/FileIndexHost.cs`**: delete `CacheOnlyDeclinedMessage` (the inspected snapshot uses it only in the placeholder), delete the local `source` conditional and both placeholder calls, and assign `MftSource = mftSource` in `indexOptions`. Preserve source selection, cache modes, `CanProduceBlocks`, `IsCacheOnly`, and both host-level rescan guards. Change its comment to explain that `ExistingOnly` controls open-time admission and null prevents later MFT production. `InitialOpenCacheOnly` is not strict `CacheOnly` and continues to carry its real source when one is available.
+2. **`FileWizard/DriveStatusText.cs`**: pass cache-only context to both formatting entry points. Use signatures `Describe(DriveStatus status, bool isCacheOnly = false)` and `Describe(DriveFailureKind kind, string? failureMessage = null, bool isCacheOnly = false)`. The first forwards `isCacheOnly` to the second. Add this switch arm before the unknown-kind rejection:
+
+   ```csharp
+   DriveFailureKind.MftSourceMissing => isCacheOnly
+       ? "Cannot scan because this index host is cache-only."
+       : "MFT scan unavailable without an elevated broker.",
+   ```
+
+   The non-cache-only sentence is the owner's specified wording with sentence punctuation. The cache-only sentence describes the known host policy, including when a valid cached block remains. Do not parse or reuse the library message to infer either condition.
+3. **`FileWizardMaui.Logic/DriveCardPresenter.cs`**, **`FileWizardMaui/MainPage.Drives.cs`**, **`FileWizardMaui/MainPage.LiveUpdates.cs`**: change `DescribeStatus` to accept `bool isCacheOnly = false`, forward it at its `DriveStatusText.Describe` calls, and supply the owning `_indexHost`'s `IsCacheOnly` from the page's existing host-checked paths. A blockless `MftSourceMissing` is not a recoverable cache decline; retain the explicit `CanRescan` allowlist. Test both retained-block rendering and blockless failure rendering so the new enum never falls into the formatter's unknown-kind throw.
+4. **`file-wizard/CacheFreshness.cs`**: this is explicitly a cache-only formatter; pass `isCacheOnly: true` to its shared cause formatter calls. This prevents any missing-source status it receives from being described as a broker failure. `BlockCacheCatalog.cs` and `ClearCacheCommand.cs` format specific cache kinds and need no missing-source branch.
+5. **`FileWizardTests/FileIndexHostTests.cs`**: update `OpenAsync_MftWithoutBrokerReportsFailedDrive` to assert `MftSourceMissing` on the library status and the broker sentence at `DriveStatusText.Describe(status, host.IsCacheOnly)`. Keep `OpenAsync_CacheOnlyWithNoBlockReportsTheDriveFailedRatherThanScanning` asserting `CacheDeclined`. Extend `OpenAsync_CacheOnlyReportsIsCacheOnlyAndRefusesRescan` to call the exposed `host.Index.RescanAsync([status.Drive], token)` directly after checking the host guard: require an operation failure, no block, `MftSourceMissing`, and the cache-only display sentence. This proves removal of the placeholder still prevents bypassing the host guard from scanning an MFT drive.
+6. **`FileWizardTests/DriveStatusTextTests.cs`**: add `MftSourceMissing` to `Describe_FailuresHaveTheSameCauseForStatusesAndCacheOperations`, expecting the broker sentence; extend coverage with true cache-only context for both overloads. Use a deliberately unrelated library message and verify the consumer-owned sentence wins. **`FileWizardTests/Maui/DriveCardPresenterTests.cs`**: cover both source-missing display contexts and the blockless rescan-disabled policy. **`FileWizardTests/CacheFreshnessTests.cs`**: cover a missing-source status with cache-only wording.
+7. **`AGENTS.md`**: update the Drive status and FileIndexHost bullet to say source absence is null, typed as `MftSourceMissing`, and worded by the display formatter; keep the distinction between cache-only admission and scanning. **`docs/architecture.md`**: update the FileIndexHost bullet and the later cache-only construction paragraph with the same contract.
+8. Run `dotnet test FileWizardTests/FileWizardTests.csproj -c Release --filter "FullyQualifiedName~FileIndexHostTests|FullyQualifiedName~DriveStatusTextTests|FullyQualifiedName~DriveCardPresenterTests|FullyQualifiedName~CacheFreshnessTests"`, then the consumer's documented full checks with its updated pin. Build the MAUI target under that repository's normal Windows recipe to validate the context forwarding. Report this migration in the pin-bump PR; do not release a pin with the old unknown-kind formatter.
+
+### git-wizard pin-bump checklist
+
+Reconfirm `GitWizard/MftIndexSession.cs:CreateIndexOptions` supplies a real source and `CollectScanErrors` preserves the library sentence. Recheck `GitWizard/Discovery/RepositoryDiscoveryCoordinator.cs:NeedsScan` and other newly added kind switches at pin bump. The inspected paths need no missing-source API migration; run git-wizard's normal pin-bump build/tests to cover independent changes since the inspected checkout.

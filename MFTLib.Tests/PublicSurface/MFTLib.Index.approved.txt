@@ -127,6 +127,7 @@ MFTLib.Index.DriveFailure :: type public sealed class : System.IEquatable<MFTLib
 MFTLib.Index.DriveFailureKind :: field public const CacheDeclined : MFTLib.Index.DriveFailureKind = 0
 MFTLib.Index.DriveFailureKind :: field public const CacheIdentityMismatch : MFTLib.Index.DriveFailureKind = 3
 MFTLib.Index.DriveFailureKind :: field public const InUse : MFTLib.Index.DriveFailureKind = 2
+MFTLib.Index.DriveFailureKind :: field public const MftSourceMissing : MFTLib.Index.DriveFailureKind = 4
 MFTLib.Index.DriveFailureKind :: field public const ProducerFailed : MFTLib.Index.DriveFailureKind = 1
 MFTLib.Index.DriveFailureKind :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.Index.DriveKey :: constructor public (char letter)

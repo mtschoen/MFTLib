@@ -35,8 +35,7 @@ public sealed partial class FileIndex
         {
             _index.ThrowIfCancelledByDisposal(cancellationToken);
             var source = WatchSourceOrNull ?? throw new InvalidOperationException(
-                MftIndexSource.FormatUnavailable(Drive,
-                    Options.MftSource?.UnavailableReason ?? MftIndexSource.NoWatchReason));
+                MftIndexSource.FormatUnavailable(Drive, MftIndexSource.NoWatchReason));
 
             (DriveBlock ArmedBlock, Task? PreviousDrain)? preparation;
             try

@@ -63,16 +63,24 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
     {
         var options = Options(Drive('T', ProducerKind.Mft), Drive('U', ProducerKind.Enumeration)) with
         {
-            MftSource = MftIndexSources.Unavailable("scan refused")
+            MftSource = null
         };
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
         var failed = index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Failed, failed.State);
-        Assert.AreEqual(DriveFailureKind.ProducerFailed, failed.Failure?.Kind);
+        Assert.AreEqual(DriveFailureKind.MftSourceMissing, failed.Failure?.Kind);
         Assert.IsNull(failed.Block);
         AssertDrive(index, 'U', ProducerKind.Enumeration);
         Assert.AreEqual(new DriveKey('U'), index.Search(new SearchQuery("walked.txt")).Single().RecordKey.Drive);
+
+        var results = await index.RescanAsync(['T', 'U'], CancellationToken.None);
+        Assert.AreEqual(DriveOperationOutcome.Failed, results[0].Outcome);
+        Assert.AreEqual(DriveOperationOutcome.Succeeded, results[1].Outcome);
+        Assert.AreEqual(DriveFailureKind.MftSourceMissing,
+            index.Drives.Single(drive => drive.Drive == 'T').Failure?.Kind);
+        AssertDrive(index, 'U', ProducerKind.Enumeration);
+        Assert.AreEqual(new DriveKey('U'), index.Search(new SearchQuery("walked.txt")).Single().Drive);
     }
 
     [TestMethod]
@@ -114,8 +122,8 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
 
         var failed = index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Failed, failed.State);
-        Assert.AreEqual(DriveFailureKind.ProducerFailed, failed.Failure?.Kind);
-        Assert.AreEqual("ProducerKind.Mft requires FileIndexOptions.MftSource to be set.", failed.Failure?.Message);
+        Assert.AreEqual(DriveFailureKind.MftSourceMissing, failed.Failure?.Kind);
+        Assert.AreEqual("Drive T: no MFT source is available to scan this drive.", failed.Failure?.Message);
         Assert.IsNull(failed.Block);
         AssertDrive(index, 'U', ProducerKind.Enumeration);
         Assert.AreEqual(new DriveKey('U'), index.Search(new SearchQuery("walked.txt")).Single().Drive);

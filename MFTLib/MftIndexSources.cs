@@ -26,20 +26,4 @@ public static partial class MftIndexSources
         return new LocalMftBlockProducer(TimeProvider.System, scanOptions).CreateIndexSource();
     }
 
-    /// <summary>
-    ///     A source that scans nothing and watches nothing. Every scan of a drive fails with
-    ///     <see cref="InvalidOperationException" /> whose message is <c>"Drive {letter}: {reason}."</c>,
-    ///     which the index reports as <see cref="DriveFailureKind.ProducerFailed" /> with that message
-    ///     in <see cref="DriveFailure.Message" />. <see cref="FileIndex.StartWatchingAsync" /> returns
-    ///     a per-drive <see cref="DriveOperationOutcome.NotApplicable" /> result with no failure and
-    ///     records no watch request. Cached blocks still open.
-    /// </summary>
-    /// <param name="reason">Why this process cannot scan, written so that it ends a sentence.</param>
-    /// <returns>The source to assign to <see cref="FileIndexOptions.MftSource" />.</returns>
-    /// <exception cref="ArgumentException"><paramref name="reason" /> is null or white space.</exception>
-    public static MftIndexSource Unavailable(string reason)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
-        return MftIndexSource.CreateUnavailable(reason);
-    }
 }

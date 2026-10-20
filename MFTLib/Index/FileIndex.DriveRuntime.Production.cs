@@ -30,9 +30,16 @@ public sealed partial class FileIndex
                     };
                 }
 
-                var producer = Options.MftSource?.Producer ?? throw new InvalidOperationException(
-                    $"{nameof(ProducerKind)}.{nameof(ProducerKind.Mft)} requires " +
-                    $"{nameof(FileIndexOptions)}.{nameof(FileIndexOptions.MftSource)} to be set.");
+                if (Options.MftSource is not { } source)
+                {
+                    return new PendingDriveResult
+                    {
+                        ScanFailureKind = DriveFailureKind.MftSourceMissing,
+                        ProducerFailureMessage = $"Drive {Drive}: no MFT source is available to scan this drive."
+                    };
+                }
+
+                var producer = source.Producer;
                 var produced = await RunMftProducerAsync(blockPath, deleteOnClose, producer, cancellationToken)
                     .ConfigureAwait(false);
                 return new PendingDriveResult

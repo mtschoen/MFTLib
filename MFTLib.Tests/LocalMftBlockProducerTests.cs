@@ -66,13 +66,12 @@ public sealed class LocalMftBlockProducerTests : IDisposable
         };
 
     [TestMethod]
-    public void Factory_BuildsASourceWithNoWatchDumpOrUnavailableReason()
+    public void Factory_BuildsASourceWithNoWatchOrDump()
     {
         var source = MftIndexSources.FromLocalVolumes(new MftScanOptions());
 
         Assert.IsNull(source.WatchSource);
         Assert.IsNull(source.DumpIdentity);
-        Assert.IsNull(source.UnavailableReason);
     }
 
     [TestMethod]

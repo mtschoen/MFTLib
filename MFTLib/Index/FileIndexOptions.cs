@@ -34,14 +34,13 @@ public sealed record FileIndexOptions
     public string? CacheDirectory { get; init; }
 
     /// <summary>
-    ///     Supplies MFT-derived blocks and each drive's live watch from one place. Null is not an
-    ///     admission error: for a drive whose <see cref="IndexedDrive.Producer" /> is
-    ///     <see cref="ProducerKind.Mft" /> that needs a scan or watch, a missing source fails
-    ///     that drive's scan with <see cref="DriveFailureKind.ProducerFailed" />; enumeration drives
-    ///     ignore it, and warm MFT drives need none until a scan or watch is requested. A rescan of a watched drive
-    ///     stops that drive's watch when the replacement block commits and starts a fresh one from the new
-    ///     block's cursor through the same source; a rescan whose production fails or is cancelled leaves a
-    ///     healthy watch running.
+    ///     Supplies MFT-derived blocks and each drive's live watch from one place. Null is legal at
+    ///     admission and for warm cache adoption. An attempted MFT scan reports
+    ///     <see cref="DriveFailureKind.MftSourceMissing" /> when this is null; watching reports
+    ///     <see cref="DriveOperationOutcome.NotApplicable" /> without recording a watch request;
+    ///     enumeration drives ignore the source. A rescan of a watched drive stops that drive's watch
+    ///     when the replacement block commits and starts a fresh one from the new block's cursor through
+    ///     the same source; a rescan whose production fails or is cancelled leaves a healthy watch running.
     /// </summary>
     public MftIndexSource? MftSource { get; init; }
 
