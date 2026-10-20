@@ -829,3 +829,18 @@ its pin-bump pull request.
 **Decision:** `DriveBlockStatus.Origin` uses `BlockOrigin`; `CacheLocation` uses nullable `CacheLocation`. Synthetic journal records use `Usn`, with `FirstUsn` and `NextUsn` for bounds. Retention uses `RetainedFileNames` and `retainedFileNames`.
 **Reason:** provenance, cache backing, journal position and retained names each need one vocabulary; data-supplier types keep Source/Sources and row positions keep slot terminology.
 **Revisit only if:** a concrete consumer needs a distinct concept these names cannot express.
+
+## Live watch is MFT-only in 0.3.0; walked drives refresh by age
+
+**Decision (2026-10-20):** in MFTLib 0.3.0, live watch is an MFT-only feature. Enumeration (directory-walk)
+drives report `DriveWatchStatus.IsSupported` false. Their refresh contract is rescan-by-age: a consumer
+compares `DriveBlockStatus.ScanTimestamp` with its own maximum age and calls `FileIndex.RescanAsync`
+(file-wizard's `CacheFreshness` does this). Live watch for enumeration drives is deferred to 0.4.0. Issue 675
+stays open for that work.
+
+**Reason:** neither consumer needs it for 0.3.0: file-wizard refreshes by age, and git-wizard keeps its own
+Linux fanotify watch. The draft design (issue comment 129571) also still has an unsolved Windows problem:
+`FileSystemWatcher` cannot prune, so heavy `.git` and `node_modules` activity overflows its buffer and turns
+overflow-then-rescan into a rescan loop.
+
+**Revisit only if:** a consumer needs live updates on a walked drive, or during 0.4.0 planning.

@@ -159,6 +159,8 @@
       A cache-only open never scans, so it never deletes a rejected block: every rejection
       (format, serial, producer kind, root, tag, shape) leaves the file in place for a writing open to rebuild.
       Enumeration drives have no live watch, even when their MFT siblings use a watch-capable source.
+      Their refresh contract is rescan-by-age: a consumer compares `DriveBlockStatus.ScanTimestamp` with its own
+      maximum age and calls `FileIndex.RescanAsync` ([API decisions](api-decisions.md#live-watch-is-mft-only-in-030-walked-drives-refresh-by-age)).
     - **MFT source**: `FileIndexOptions.MftSource` is one `MftIndexSource` carrying the block
       producer and the watch source of every MFT-backed drive, so the two cannot come from
       different connections. `BrokerSession.CreateIndexSource()` builds the broker-backed
