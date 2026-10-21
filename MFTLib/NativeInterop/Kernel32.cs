@@ -44,13 +44,13 @@ static class Kernel32
     internal sealed class Win32Hooks
     {
         internal Func<string, uint, uint, IntPtr, uint, uint, IntPtr, SafeFileHandle>
-            CreateFile = NativeCreateFile;
-        internal DeviceIoControl DeviceIoControl = NativeDeviceIoControl;
+            _createFile = NativeCreateFile;
+        internal DeviceIoControl _deviceIoControl = NativeDeviceIoControl;
 
         internal void ResetToDefaults()
         {
-            CreateFile = NativeCreateFile;
-            DeviceIoControl = NativeDeviceIoControl;
+            _createFile = NativeCreateFile;
+            _deviceIoControl = NativeDeviceIoControl;
         }
     }
 

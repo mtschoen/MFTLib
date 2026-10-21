@@ -64,7 +64,7 @@ public class NativeCleanupRegressionTests
             }
             finally
             {
-                MFTLibNative.Hooks.FreeMftResult(resultPointer);
+                MFTLibNative.Hooks._freeMftResult(resultPointer);
             }
         }
         finally

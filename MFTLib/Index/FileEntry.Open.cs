@@ -9,10 +9,9 @@ public readonly partial record struct FileEntry
     /// <summary>Process-global test dependencies for opening MFT entries by file id.</summary>
     internal sealed class OpenDependencies
     {
-        // aislop-ignore-next-line jb/MemberHidesStaticFromOuterClass
-        internal Func<string, uint, ushort, FileAccess, FileStream> OpenById = DefaultOpenById;
+        internal Func<string, uint, ushort, FileAccess, FileStream> _openById = DefaultOpenById;
 
-        internal void ResetToDefaults() => OpenById = DefaultOpenById;
+        internal void ResetToDefaults() => _openById = DefaultOpenById;
     }
 
     /// <summary>
@@ -48,7 +47,7 @@ public readonly partial record struct FileEntry
                 $"{this}: Drive block {driveBlock.Drive} has no configured root directory to open by file id.");
         }
 
-        return Dependencies.OpenById(anyPathOnVolume, RowIndex, _sequenceNumber, access);
+        return Dependencies._openById(anyPathOnVolume, RowIndex, _sequenceNumber, access);
     }
 
     static FileStream DefaultOpenById(string anyPathOnVolume, uint recordNumber, ushort sequenceNumber,

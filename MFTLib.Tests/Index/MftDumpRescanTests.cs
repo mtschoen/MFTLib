@@ -19,7 +19,7 @@ public sealed class MftDumpRescanTests : IDisposable
     const string InvalidFixupMessage = "The dump contains an invalid MFT record fixup.";
 
     TempDirectory _tempDirectory = null!;
-    string _directory => _tempDirectory.Path;
+    string TemporaryDirectoryPath => _tempDirectory.Path;
 
     [TestInitialize]
     public void Initialize()
@@ -37,7 +37,7 @@ public sealed class MftDumpRescanTests : IDisposable
     [DataRow(4096)]
     public async Task Rescan_AfterThePathIsReplaced_PublishesTheNewFilesRecords(int replacementRecordSize)
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         await using var index = await OpenAsync(MftIndexSources.FromMftDumpFile(path, 'D'));
         Assert.IsNotNull(index.Find(NotesPath));
 
@@ -55,7 +55,7 @@ public sealed class MftDumpRescanTests : IDisposable
     [TestMethod]
     public async Task Rescan_OfARejectedReplacement_FailsWithItsMessageAndKeepsTheOldRecords()
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         await using var index = await OpenAsync(MftIndexSources.FromMftDumpFile(path, 'D'));
         var invalid = MftDumpFixture.Standard();
         invalid[7 * 1024 + 510] ^= 0xFF;
@@ -83,7 +83,7 @@ public sealed class MftDumpRescanTests : IDisposable
     [TestMethod]
     public async Task Rescan_OfADeletedDump_FailsAndKeepsTheOldRecords()
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         await using var index = await OpenAsync(MftIndexSources.FromMftDumpFile(path, 'D'));
 
         File.Delete(path);
@@ -98,7 +98,7 @@ public sealed class MftDumpRescanTests : IDisposable
     [TestMethod]
     public async Task Rescan_Cancelled_KeepsTheOldRecords()
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         await using var index = await OpenAsync(MftIndexSources.FromMftDumpFile(path, 'D'));
         await File.WriteAllBytesAsync(path, Renamed(1024));
         using var cancellation = new CancellationTokenSource();
@@ -114,7 +114,7 @@ public sealed class MftDumpRescanTests : IDisposable
     [TestMethod]
     public async Task Rescan_CancelledWhileItsRecordsAreRead_KeepsTheOldRecordsAndReleasesTheInput()
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         using var cancellation = new CancellationTokenSource();
         var producer = new MftDumpBlockProducer(path, TimeProvider.System, CancelOnTheSecondScan(cancellation));
         await using var index = await OpenAsync(Source(producer, path));
@@ -129,7 +129,7 @@ public sealed class MftDumpRescanTests : IDisposable
     [TestMethod]
     public async Task Open_TwoIndexesFromOneSourceAtOnce_EachScanOpensItsOwnInput()
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         var inputs = new ConcurrentBag<MftDumpInput>();
         using var bothOpened = new CountdownEvent(2);
         var producer = new MftDumpBlockProducer(path, TimeProvider.System, HoldUntilBothOpened(inputs, bothOpened));
@@ -147,8 +147,8 @@ public sealed class MftDumpRescanTests : IDisposable
     [TestMethod]
     public async Task Open_TwoSourcesWithTheSameKey_StayIndependent()
     {
-        var first = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard(), "first.mft");
-        var second = MftDumpFixture.WriteFile(_directory, Renamed(4096), "second.mft");
+        var first = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard(), "first.mft");
+        var second = MftDumpFixture.WriteFile(TemporaryDirectoryPath, Renamed(4096), "second.mft");
         await using var firstIndex = await OpenAsync(MftIndexSources.FromMftDumpFile(first, 'D'));
         await using var secondIndex = await OpenAsync(MftIndexSources.FromMftDumpFile(second, 'd'));
 
@@ -164,7 +164,7 @@ public sealed class MftDumpRescanTests : IDisposable
     [TestMethod]
     public async Task StartWatching_OnAFactoryDumpSource_IsNotApplicable()
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         await using var index = await OpenAsync(MftIndexSources.FromMftDumpFile(path, 'D'));
 
         await DriveResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync(['D'], CancellationToken.None));

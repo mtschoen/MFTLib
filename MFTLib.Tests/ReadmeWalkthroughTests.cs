@@ -19,7 +19,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
     static readonly DateTime ObservedTimestamp = new(2026, 10, 14, 12, 0, 0, DateTimeKind.Utc);
 
     TempDirectory _tempDirectory = null!;
-    string _directory => _tempDirectory.Path;
+    string TemporaryDirectoryPath => _tempDirectory.Path;
     string _dumpFile = null!;
 
     public TestContext TestContext { get; set; } = null!;
@@ -28,7 +28,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
     public void Initialize()
     {
         _tempDirectory = new TempDirectory("mftlib-dump", create: false);
-        _dumpFile = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        _dumpFile = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
     }
 
     public void Dispose()
@@ -81,8 +81,8 @@ public sealed class ReadmeWalkthroughTests : IDisposable
     [TestMethod]
     public async Task DumpWalkthrough_MissingOrEmptyDump_ReportsFailedDriveInsteadOfEmptySuccess()
     {
-        var emptyDumpFile = MftDumpFixture.WriteFile(_directory, [], "empty.mft");
-        var missingDumpFile = Path.Combine(_directory, "missing.mft");
+        var emptyDumpFile = MftDumpFixture.WriteFile(TemporaryDirectoryPath, [], "empty.mft");
+        var missingDumpFile = Path.Combine(TemporaryDirectoryPath, "missing.mft");
 
         foreach (var filePath in new[] { missingDumpFile, emptyDumpFile })
         {
@@ -116,7 +116,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
     [SupportedOSPlatform("windows")]
     public async Task LocalOneShotWalkthrough_CompilesPublicRecipeAndRunsMultipleQueriesOverOneScan()
     {
-        IndexedDrive.Dependencies.VolumeSerialReader = _ => 0x0BADF00Du;
+        IndexedDrive.Dependencies._volumeSerialReader = _ => 0x0BADF00Du;
 
         var cancellationToken = TestContext.CancellationTokenSource.Token;
         var drive = IndexedDrive.FromWindowsVolume('C');
@@ -132,7 +132,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
 
         // The production setup above is compiled as shown; execution swaps in the owned directory so the
         // synthetic scan never depends on a real C:\ root.
-        drive = drive with { RootDirectory = _directory };
+        drive = drive with { RootDirectory = TemporaryDirectoryPath };
 
         var scanCount = 0;
         var syntheticProducer = new SyntheticMftProducer(_ =>
@@ -149,7 +149,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
             ];
         });
 
-        var ignoredCachePath = Path.Combine(_directory, "never-created-cache");
+        var ignoredCachePath = Path.Combine(TemporaryDirectoryPath, "never-created-cache");
         var options = productionOptions with
         {
             Drives = [drive],
@@ -191,8 +191,8 @@ public sealed class ReadmeWalkthroughTests : IDisposable
         CollectionAssert.AreEqual(
             new[]
             {
-                $"{Path.Combine(_directory, "logs", "app.log")} (42 bytes, last write observed 2026-10-14 12:00:00Z)",
-                $"{Path.Combine(_directory, "logs", "pending.log")} (size unknown, last write observed 2026-10-14 12:00:00Z)"
+                $"{Path.Combine(TemporaryDirectoryPath, "logs", "app.log")} (42 bytes, last write observed 2026-10-14 12:00:00Z)",
+                $"{Path.Combine(TemporaryDirectoryPath, "logs", "pending.log")} (size unknown, last write observed 2026-10-14 12:00:00Z)"
             },
             lines);
         Assert.IsTrue(retainedEntry.IsDisposed);
@@ -203,8 +203,8 @@ public sealed class ReadmeWalkthroughTests : IDisposable
     [SupportedOSPlatform("windows")]
     public async Task LocalOneShotWalkthrough_FailedAndCancelledOperations_SurfaceExpectedOutcomes()
     {
-        IndexedDrive.Dependencies.VolumeSerialReader = _ => 0x0BADF00Du;
-        var drive = IndexedDrive.FromWindowsVolume('C') with { RootDirectory = _directory };
+        IndexedDrive.Dependencies._volumeSerialReader = _ => 0x0BADF00Du;
+        var drive = IndexedDrive.FromWindowsVolume('C') with { RootDirectory = TemporaryDirectoryPath };
 
         var failingOptions = new FileIndexOptions
         {

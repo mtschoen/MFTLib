@@ -89,7 +89,7 @@ public sealed partial class DumpParseNativeTests : IDisposable
     [DataRow(2)]
     public void GenerateSyntheticMFT_AllocationFails_ReturnsFalse(int allocationToFail)
     {
-        var path = Path.Combine(_directory, "generated.mft");
+        var path = Path.Combine(TemporaryDirectoryPath, "generated.mft");
         NativeTestHooks.NativeSetAllocFailCountdown(allocationToFail);
 
         Assert.IsFalse(MFTLibNative.GenerateSyntheticMftSized(path, 10, 256, 1024));
@@ -104,7 +104,7 @@ public sealed partial class DumpParseNativeTests : IDisposable
     [TestMethod]
     public void GenerateSyntheticMFT_MissingDirectory_ReturnsFalse()
     {
-        var path = Path.Combine(_directory, "missing", "fixture.mft");
+        var path = Path.Combine(TemporaryDirectoryPath, "missing", "fixture.mft");
 
         Assert.IsFalse(MFTLibNative.GenerateSyntheticMftSized(path, 10, 256, 1024));
     }

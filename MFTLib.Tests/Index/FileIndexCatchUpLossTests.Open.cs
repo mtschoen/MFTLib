@@ -88,7 +88,7 @@ public partial class FileIndexCatchUpLossTests
         const uint VolumeSerial = 0x5EED;
 
         readonly IndexTreeFixture _fixture = new(seedDocuments: false);
-        string _cacheDirectory => _fixture.CacheDirectory;
+        string CacheDirectoryPath => _fixture.CacheDirectory;
 
         public Queue<JournalCheckpointLoss> Losses { get; } = new();
 
@@ -108,7 +108,7 @@ public partial class FileIndexCatchUpLossTests
             };
 
         /// <summary>The cache directory's block files, without their owner-lock siblings.</summary>
-        public string?[] BlockFileNames() => Directory.GetFiles(_cacheDirectory)
+        public string?[] BlockFileNames() => Directory.GetFiles(CacheDirectoryPath)
             .Where(path => !path.EndsWith(".lock", StringComparison.Ordinal))
             .Select(Path.GetFileName).ToArray();
 

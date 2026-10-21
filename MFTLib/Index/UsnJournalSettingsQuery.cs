@@ -16,14 +16,14 @@ static class UsnJournalSettingsQuery
     /// <summary>Process-global test dependencies for querying USN journal settings.</summary>
     internal sealed class QueryDependencies
     {
-        internal Func<DriveKey, UsnJournalSettings>? QueryOverride;
+        internal Func<DriveKey, UsnJournalSettings>? _queryOverride;
 
-        internal void ResetToDefaults() => QueryOverride = null;
+        internal void ResetToDefaults() => _queryOverride = null;
     }
 
     public static UsnJournalSettings Query(DriveKey drive)
     {
-        if (Dependencies.QueryOverride is { } queryOverride)
+        if (Dependencies._queryOverride is { } queryOverride)
         {
             return queryOverride(drive);
         }

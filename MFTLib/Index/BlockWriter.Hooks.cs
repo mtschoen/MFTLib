@@ -7,7 +7,7 @@ internal sealed partial class BlockWriter
     /// <summary>Per-writer test hooks for row capture and racing disposal.</summary>
     internal sealed class WriterHooks
     {
-        internal Action? RowCaptured;
-        internal Action? CompleteAccessTaken;
+        internal Action? _rowCaptured;
+        internal Action? _completeAccessTaken;
     }
 }

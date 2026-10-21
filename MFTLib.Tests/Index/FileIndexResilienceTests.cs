@@ -15,8 +15,8 @@ namespace MFTLib.Tests.Index;
 public sealed partial class FileIndexResilienceTests : IDisposable
 {
     IndexTreeFixture _fixture = null!;
-    string _treeRoot => _fixture.TreeRoot;
-    string _cacheDirectory => _fixture.CacheDirectory;
+    string TreeRoot => _fixture.TreeRoot;
+    string CacheDirectoryPath => _fixture.CacheDirectory;
     uint _volumeSerial;
 
     [TestInitialize]
@@ -77,7 +77,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
 
         await AssertThrowsCancellation(() => FileIndex.OpenAsync(options, cancellationTokenSource.Token));
 
-        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
         if (File.Exists(blockPath))
         {
             // Proves the partial block is not still mapped: File.Delete would succeed even on a
@@ -104,12 +104,12 @@ public sealed partial class FileIndexResilienceTests : IDisposable
         // cancelled only once that drive has reported settling and the second drive's scan is
         // parked inside its first progress report, so the unwind always has an adopted block to
         // release and the second drive is always cancelled mid-scan.
-        var firstDrive = new IndexedDrive('T', _treeRoot, 0x0BADF00D);
+        var firstDrive = new IndexedDrive('T', TreeRoot, 0x0BADF00D);
         var warmingOpen = await FileIndex.OpenAsync(
             new FileIndexOptions
             {
                 Drives = [firstDrive with { Producer = ProducerKind.Enumeration }],
-                CacheDirectory = _cacheDirectory,
+                CacheDirectory = CacheDirectoryPath,
             }, CancellationToken.None).WaitAsync(HangGuard * 3);
         await warmingOpen.DisposeAsync().AsTask().WaitAsync(HangGuard * 3);
 
@@ -119,7 +119,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
         var options = new FileIndexOptions
         {
             Drives = [firstDrive with { Producer = ProducerKind.Enumeration }, new IndexedDrive('U', secondTreeRoot, 0x0BADF00E, ProducerKind.Enumeration)],
-            CacheDirectory = _cacheDirectory,
+            CacheDirectory = CacheDirectoryPath,
             DriveOpenProgress = firstSettled,
             ScanProgress = secondParked
         };
@@ -135,7 +135,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
                 await opening.WaitAsync(HangGuard * 3);
             });
 
-            var firstBlockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+            var firstBlockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 0x0BADF00D));
 
             // If the first drive's already-open mapping were not unwound, this exclusive
             // reopen would fail with a sharing violation instead of succeeding.
@@ -143,7 +143,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
 
             // The second drive's partly written canonical file may remain (a canonical target is
             // not delete-on-close); it must never be adoptable, so a later open cold-scans it.
-            var secondBlockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('U', 0x0BADF00E));
+            var secondBlockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('U', 0x0BADF00E));
             if (File.Exists(secondBlockPath))
             {
                 Assert.IsNull(BlockFile.Open(secondBlockPath, 0x0BADF00E, out _),
@@ -219,7 +219,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
         var rowsBefore = index.HeaderOf().RowCount;
         var timestampBefore = index.Drives[0].Block!.ScanTimestamp;
 
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
         progress.Armed = true;
 
         await AssertThrowsCancellation(() => index.RescanAsync(['T'], cancellationTokenSource.Token));
@@ -242,14 +242,14 @@ public sealed partial class FileIndexResilienceTests : IDisposable
             rowsBefore = index.HeaderOf().RowCount;
             timestampBefore = index.Drives[0].Block!.ScanTimestamp;
 
-            await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
+            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
             progress.Armed = true;
 
             await AssertThrowsCancellation(() => index.RescanAsync(['T'], cancellationTokenSource.Token));
 
-            var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
+            var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
             Assert.IsTrue(File.Exists(blockPath), "the canonical file must be restored, not left renamed aside");
-            Assert.AreEqual(0, Directory.EnumerateFiles(_cacheDirectory,
+            Assert.AreEqual(0, Directory.EnumerateFiles(CacheDirectoryPath,
                 CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*").Count());
         }
 
@@ -284,7 +284,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
             firstPath = firstSnapshot[driveOrdinal].Block.Path;
             Assert.IsTrue(File.Exists(firstPath));
 
-            await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
+            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
             await index.RescanAsync(['T'], CancellationToken.None);
             secondPath = GetCurrentBlockPath(index, driveOrdinal);
 
@@ -311,7 +311,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
             var firstPath = GetCurrentBlockPath(index, driveOrdinal);
             Assert.IsTrue(File.Exists(firstPath));
 
-            await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
+            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
             await index.RescanAsync(['T'], CancellationToken.None);
             Assert.AreNotEqual(firstPath, GetCurrentBlockPath(index, driveOrdinal));
 
@@ -335,14 +335,14 @@ public sealed partial class FileIndexResilienceTests : IDisposable
         var oldSnapshot = index.CurrentSnapshot;
         var canonicalPath = oldSnapshot[driveOrdinal].Block.Path;
 
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
         await index.RescanAsync(['T'], CancellationToken.None);
 
         var newPath = index.CurrentSnapshot[driveOrdinal].Block.Path;
         Assert.AreEqual(canonicalPath, newPath, "the new block takes the same canonical cache path");
 
         var retiredPaths = Directory
-            .EnumerateFiles(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*")
+            .EnumerateFiles(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*")
             .ToList();
         Assert.AreEqual(1, retiredPaths.Count);
         Assert.IsTrue(File.Exists(retiredPaths[0]));
@@ -358,20 +358,20 @@ public sealed partial class FileIndexResilienceTests : IDisposable
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         var firstSnapshot = index.CurrentSnapshot;
 
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
         await index.RescanAsync(['T'], CancellationToken.None);
         var secondSnapshot = index.CurrentSnapshot;
 
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "third.md"), "third");
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "third.md"), "third");
         await index.RescanAsync(['T'], CancellationToken.None);
 
         var retiredPaths = Directory
-            .EnumerateFiles(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*")
+            .EnumerateFiles(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*")
             .ToList();
         Assert.AreEqual(2, retiredPaths.Count, "each rescan should retire a distinctly named file");
         Assert.AreNotEqual(retiredPaths[0], retiredPaths[1]);
         Assert.IsTrue(retiredPaths.All(File.Exists));
-        Assert.AreEqual(1, Directory.GetFiles(_cacheDirectory, "*.mlix").Length, "exactly one canonical block file remains");
+        Assert.AreEqual(1, Directory.GetFiles(CacheDirectoryPath, "*.mlix").Length, "exactly one canonical block file remains");
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
 
         await firstSnapshot.ReleaseNowAsync();
@@ -384,7 +384,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
     public async Task ReadsAfterDispose_ThrowObjectDisposedException()
     {
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        var entry = index.Find(Path.Combine(_treeRoot, "Documents", "readme.md"))!.Value;
+        var entry = index.Find(Path.Combine(TreeRoot, "Documents", "readme.md"))!.Value;
         await index.DisposeAsync();
 
         Assert.ThrowsExactly<ObjectDisposedException>(() => index.Drives);
@@ -411,18 +411,18 @@ public sealed partial class FileIndexResilienceTests : IDisposable
     public async Task RescanAsync_CanonicalCacheFileMissing_StillSucceedsWithoutRenamingAnything()
     {
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        var canonicalPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
+        var canonicalPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
 
         // Simulates a canonical cache file removed out from under the index between opens, so
         // RenameAsideForRescan finds nothing to rename aside. Safe while the block is still
         // mapped: BlockFile opens with FileShare.Delete.
         File.Delete(canonicalPath);
 
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
         await index.RescanAsync(['T'], CancellationToken.None);
 
         Assert.IsTrue(File.Exists(canonicalPath));
-        Assert.AreEqual(0, Directory.EnumerateFiles(_cacheDirectory,
+        Assert.AreEqual(0, Directory.EnumerateFiles(CacheDirectoryPath,
             CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*").Count());
     }
 

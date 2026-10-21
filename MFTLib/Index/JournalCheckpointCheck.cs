@@ -38,8 +38,7 @@ static class JournalCheckpointCheck
 
         internal bool LiveReadsForbidden => Volatile.Read(ref _liveReadsForbidden) != 0;
 
-        // aislop-ignore-next-line jb/MemberHidesStaticFromOuterClass
-        internal void ForbidLiveJournalReads() => Interlocked.Exchange(ref _liveReadsForbidden, 1);
+        internal void DisableLiveReads() => Interlocked.Exchange(ref _liveReadsForbidden, 1);
     }
 
     /// <summary>
@@ -224,6 +223,6 @@ static class JournalCheckpointCheck
     /// </summary>
     internal static void ForbidLiveJournalReads()
     {
-        Hooks.ForbidLiveJournalReads();
+        Hooks.DisableLiveReads();
     }
 }

@@ -43,7 +43,7 @@ public class DriveBlockTests
     static DriveBlockRelease CreateUnrootedDriveBlock(BlockFile block, Action? releaseStarted = null)
     {
         var driveBlock = new DriveBlock('T', 0, block);
-        driveBlock.ReleaseState.Hooks.ReleaseStarted = releaseStarted;
+        driveBlock.ReleaseState.Hooks._releaseStarted = releaseStarted;
         return driveBlock.ReleaseState;
     }
 

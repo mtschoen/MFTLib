@@ -24,10 +24,10 @@ internal sealed class DeletedChildLinks
     internal sealed class LinkObservations
     {
         /// <summary>Deleted rows <see cref="DetachDescendants" /> has visited; the build pass is not counted.</summary>
-        internal long DescendantsVisited;
+        internal long _descendantsVisited;
 
         /// <summary>Sibling entries <see cref="RemoveDeletedRow" /> examines while unlinking a row.</summary>
-        internal long SiblingsExamined;
+        internal long _siblingsExamined;
     }
 
     /// <summary>
@@ -82,7 +82,7 @@ internal sealed class DeletedChildLinks
             return;
         }
 
-        Observations.SiblingsExamined++;
+        Observations._siblingsExamined++;
         if (children.Remove(rowIndex) && children.Count == 0)
         {
             _childrenByParent.Remove(parentRow);
@@ -123,7 +123,7 @@ internal sealed class DeletedChildLinks
                 }
 
                 block.Rows[(int)child].ParentRow = BlockLayout.DetachedParentRow;
-                Observations.DescendantsVisited++;
+                Observations._descendantsVisited++;
                 pending.Push(child);
             }
         }

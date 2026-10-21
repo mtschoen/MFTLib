@@ -122,8 +122,8 @@ public class ParseThreadAllowanceTests
     // empty successful result.
     static unsafe void FakeParse(ControlBlockObserver observe)
     {
-        FileUtilities.Hooks.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
-        MFTLibNative.Hooks.ParseMftRecordsWithProgress = (_, _, _, control, _) =>
+        FileUtilities.Hooks._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
+        MFTLibNative.Hooks._parseMftRecordsWithProgress = (_, _, _, control, _) =>
         {
             observe((MftParseControl*)control);
             var result = new MftParseResult
@@ -134,6 +134,6 @@ public class ParseThreadAllowanceTests
             Marshal.StructureToPtr(result, resultPtr, false);
             return resultPtr;
         };
-        MFTLibNative.Hooks.FreeMftResult = Marshal.FreeHGlobal;
+        MFTLibNative.Hooks._freeMftResult = Marshal.FreeHGlobal;
     }
 }

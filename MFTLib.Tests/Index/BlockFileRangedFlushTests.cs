@@ -50,7 +50,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
         using var block = CreateBlock();
         var rangeBytes = (long)Environment.SystemPageSize;
         Assert.IsTrue(block.Length > 2 * rangeBytes, "The block must span more than two ranges.");
-        block.Hooks.FlushRangeBytes = rangeBytes;
+        block.Hooks._flushRangeBytes = rangeBytes;
         var expected = new List<long>();
         for (var end = rangeBytes; end < block.Length; end += rangeBytes)
         {
@@ -82,7 +82,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
     {
         using (var block = CreateBlock())
         {
-            block.Hooks.FlushRangeBytes = Environment.SystemPageSize;
+            block.Hooks._flushRangeBytes = Environment.SystemPageSize;
             new BlockWriter(block).TryWriteRow(0, "root", RootColumns);
             block.Flush(null);
         }
@@ -122,7 +122,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
     public void Flush_CallbackThrows_PropagatesAndLeavesTheBlockUsable()
     {
         using var block = CreateBlock();
-        block.Hooks.FlushRangeBytes = Environment.SystemPageSize;
+        block.Hooks._flushRangeBytes = Environment.SystemPageSize;
         var thrown = CaptureException(block, _ => throw new InvalidOperationException("callback"));
 
         Assert.IsInstanceOfType<InvalidOperationException>(thrown);
@@ -139,13 +139,13 @@ public sealed class BlockFileRangedFlushTests : IDisposable
         var results = new Queue<int>([33, 33, 0]);
         var attempts = 0;
         var pauses = new List<int>();
-        block.Hooks.FlushViewRange = (_, _) =>
+        block.Hooks._flushViewRange = (_, _) =>
         {
             attempts++;
             return results.Dequeue();
         };
-        block.Hooks.PauseMilliseconds = pauses.Add;
-        block.Hooks.SpinOnce = static (ref _) => { };
+        block.Hooks._pauseMilliseconds = pauses.Add;
+        block.Hooks._spinOnce = static (ref _) => { };
 
         block.FlushViewWithRetry(0, block.Length);
 
@@ -159,12 +159,12 @@ public sealed class BlockFileRangedFlushTests : IDisposable
         using var block = CreateBlock();
         var attempts = 0;
         var pauses = 0;
-        block.Hooks.FlushViewRange = (_, _) =>
+        block.Hooks._flushViewRange = (_, _) =>
         {
             attempts++;
             return 5;
         };
-        block.Hooks.PauseMilliseconds = _ => pauses++;
+        block.Hooks._pauseMilliseconds = _ => pauses++;
 
         var thrown = (Win32Exception)CaptureRetryException(block)!;
 
@@ -179,13 +179,13 @@ public sealed class BlockFileRangedFlushTests : IDisposable
         using var block = CreateBlock();
         var attempts = 0;
         var pauses = new List<int>();
-        block.Hooks.FlushViewRange = (_, _) =>
+        block.Hooks._flushViewRange = (_, _) =>
         {
             attempts++;
             return 33;
         };
-        block.Hooks.PauseMilliseconds = pauses.Add;
-        block.Hooks.SpinOnce = static (ref _) => { };
+        block.Hooks._pauseMilliseconds = pauses.Add;
+        block.Hooks._spinOnce = static (ref _) => { };
 
         var thrown = (Win32Exception)CaptureRetryException(block)!;
 
@@ -201,9 +201,9 @@ public sealed class BlockFileRangedFlushTests : IDisposable
         var results = new Queue<int>([33, 33, 5]);
         var spins = 0;
         var pauses = new List<int>();
-        block.Hooks.FlushViewRange = (_, _) => results.Dequeue();
-        block.Hooks.PauseMilliseconds = pauses.Add;
-        block.Hooks.SpinOnce = (ref _) => spins++;
+        block.Hooks._flushViewRange = (_, _) => results.Dequeue();
+        block.Hooks._pauseMilliseconds = pauses.Add;
+        block.Hooks._spinOnce = (ref _) => spins++;
 
         var thrown = (Win32Exception)CaptureRetryException(block)!;
 
@@ -215,9 +215,9 @@ public sealed class BlockFileRangedFlushTests : IDisposable
     [TestMethod]
     public void ClassifyPlatform_OnlyLinuxAndMacOsAreRecognized()
     {
-        Assert.AreEqual(OSPlatform.Linux, BlockFile.ClassifyPlatform(isLinux: true, isMacOS: false));
-        Assert.AreEqual(OSPlatform.OSX, BlockFile.ClassifyPlatform(isLinux: false, isMacOS: true));
-        var other = BlockFile.ClassifyPlatform(isLinux: false, isMacOS: false);
+        Assert.AreEqual(OSPlatform.Linux, BlockFile.ClassifyPlatform(isLinux: true, isMacOs: false));
+        Assert.AreEqual(OSPlatform.OSX, BlockFile.ClassifyPlatform(isLinux: false, isMacOs: true));
+        var other = BlockFile.ClassifyPlatform(isLinux: false, isMacOs: false);
         Assert.AreNotEqual(OSPlatform.Linux, other);
         Assert.AreNotEqual(OSPlatform.OSX, other);
         Assert.ThrowsExactly<PlatformNotSupportedException>(() => Libc.SelectSynchronousFlag(other));
@@ -241,7 +241,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
         using var block = CreateBlock();
         var pageBytes = Environment.SystemPageSize;
         var calls = new List<(long Start, long End, int Flag)>();
-        block.Hooks.SynchronizeViewRange = (start, end, flag) =>
+        block.Hooks._synchronizeViewRange = (start, end, flag) =>
         {
             calls.Add((start, end, flag));
             return 0;
@@ -256,7 +256,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
     public void SynchronizeRange_CallFails_ThrowsWithTheErrno()
     {
         using var block = CreateBlock();
-        block.Hooks.SynchronizeViewRange = (_, _, _) => 5;
+        block.Hooks._synchronizeViewRange = (_, _, _) => 5;
 
         IOException? thrown = null;
         try

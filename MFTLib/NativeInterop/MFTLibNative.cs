@@ -17,16 +17,16 @@ static class MFTLibNative
 
     internal sealed class NativeHooks
     {
-        internal Func<uint> GetMftNativeAbiVersion = NativeGetMftNativeAbiVersion;
+        internal Func<uint> _getMftNativeAbiVersion = NativeGetMftNativeAbiVersion;
         internal Func<SafeHandle, bool, uint, IntPtr, NativeMftProgressCallback?, IntPtr>
-            ParseMftRecordsWithProgress = NativeParseMFTRecordsWithProgressDefault;
-        internal Action<IntPtr> FreeMftResult = NativeFreeMftResult;
+            _parseMftRecordsWithProgress = NativeParseMFTRecordsWithProgressDefault;
+        internal Action<IntPtr> _freeMftResult = NativeFreeMftResult;
 
         internal void ResetToDefaults()
         {
-            GetMftNativeAbiVersion = NativeGetMftNativeAbiVersion;
-            ParseMftRecordsWithProgress = NativeParseMFTRecordsWithProgressDefault;
-            FreeMftResult = NativeFreeMftResult;
+            _getMftNativeAbiVersion = NativeGetMftNativeAbiVersion;
+            _parseMftRecordsWithProgress = NativeParseMFTRecordsWithProgressDefault;
+            _freeMftResult = NativeFreeMftResult;
         }
     }
 
@@ -97,7 +97,7 @@ static class MFTLibNative
 
     internal static void EnsureCompatibleNativeAbi()
     {
-        var actual = Hooks.GetMftNativeAbiVersion();
+        var actual = Hooks._getMftNativeAbiVersion();
         if (actual != ExpectedMftNativeAbiVersion)
         {
             throw new InvalidOperationException(

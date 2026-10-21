@@ -52,7 +52,7 @@ internal sealed unsafe partial class BlockFile : IDisposable
     ///     journal batch, and per-writer links would be rebuilt for every batch. Null until built;
     ///     once built, every writer mutation keeps the links current.
     /// </summary>
-    internal DeletedChildLinks? DeletedChildren;
+    internal DeletedChildLinks? _deletedChildren;
 
     BlockFile(string path, long length, MemoryMappedFile mappedFile,
         MemoryMappedViewAccessor view)
@@ -293,7 +293,7 @@ internal sealed unsafe partial class BlockFile : IDisposable
             drained = _accessDrained;
         }
 
-        Hooks.DisposeStarted?.Invoke(drained is not null);
+        Hooks._disposeStarted?.Invoke(drained is not null);
 
         // Invariant: blocks synchronously on the ManualResetEventSlim until in-flight writers drain, not on a Task.
         drained?.Wait();

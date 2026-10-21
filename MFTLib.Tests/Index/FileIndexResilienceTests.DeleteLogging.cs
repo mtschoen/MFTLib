@@ -17,7 +17,7 @@ public partial class FileIndexResilienceTests
         {
         }
 
-        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
         var bytes = await File.ReadAllBytesAsync(blockPath);
         bytes[0] = 0xFF;
         await File.WriteAllBytesAsync(blockPath, bytes);
@@ -37,8 +37,8 @@ public partial class FileIndexResilienceTests
     [TestMethod]
     public async Task OpenAsync_WithDiagnostics_LogsTheStaleRetiredSiblingSweep()
     {
-        Directory.CreateDirectory(_cacheDirectory);
-        var staleRetiredPath = Path.Combine(_cacheDirectory,
+        Directory.CreateDirectory(CacheDirectoryPath);
+        var staleRetiredPath = Path.Combine(CacheDirectoryPath,
             CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-" + Guid.NewGuid().ToString("N"));
         await File.WriteAllTextAsync(staleRetiredPath, "leftover from a killed process");
 
@@ -59,7 +59,7 @@ public partial class FileIndexResilienceTests
         {
         }
 
-        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
         var bytes = await File.ReadAllBytesAsync(blockPath);
         bytes[0] = 0xFF;
         await File.WriteAllBytesAsync(blockPath, bytes);
@@ -88,12 +88,12 @@ public partial class FileIndexResilienceTests
             var options = new FileIndexOptions
             {
                 Drives = [new IndexedDrive('T', secondRoot, _volumeSerial, ProducerKind.Enumeration)],
-                CacheDirectory = _cacheDirectory,
+                CacheDirectory = CacheDirectoryPath,
                 Diagnostics = deletions.Add
             };
             await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
-            var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
+            var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
             Assert.AreEqual(BlockOrigin.ProducedByScan, index.Drives[0].Block!.Origin);
             var line = deletions.SingleOrDefault(entry => entry.Contains(blockPath));
             Assert.IsNotNull(line, "the wrong-root discard must be logged with its path");
@@ -113,7 +113,7 @@ public partial class FileIndexResilienceTests
             CancellationToken.None);
         var oldSnapshot = index.CurrentSnapshot;
 
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
         await index.RescanAsync(['T'], CancellationToken.None);
 
         await oldSnapshot.ReleaseNowAsync();
@@ -132,12 +132,12 @@ public partial class FileIndexResilienceTests
         await using var index = await FileIndex.OpenAsync(
             Options(progress: progress, diagnostics: deletions.Add), CancellationToken.None);
 
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
         progress.Armed = true;
 
         await AssertThrowsCancellation(() => index.RescanAsync(['T'], cancellationTokenSource.Token));
 
-        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
         var line = deletions.SingleOrDefault(entry => entry.Contains(blockPath) && entry.Contains("partial"));
         Assert.IsNotNull(line,
             "the delete of the cancelled scan's partial replacement must be logged with its path");

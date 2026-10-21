@@ -63,11 +63,11 @@ do not add new exclusions to hide seam races.
 The shared `MFTLibNative.Hooks` object owns ABI-query, controlled parse and result-free substitutions. `FileUtilities.Hooks` owns ordinary and watch-volume handle substitution. `Kernel32.Hooks` owns CreateFile and DeviceIoControl substitution. These are process-global even though the delegates are instance fields. Tests accessing the objects or their members require class-level DoNotParallelize and restore defaults only after their operations have stopped. `NativeSeamIsolationTests` recognizes the hooks-object types and their access fields, including calls through generated methods and test helpers. Higher-level broker and local-producer tests inject IVolumeAccess instead.
 
 The retained native substitutions remain for targeted low-level testing:
-- `MFTLibNative.Hooks.GetMftNativeAbiVersion`: ABI-mismatch handling in `MftResultTests.Batches.cs` and `MftDumpInputFaultTests.cs`.
-- `MFTLibNative.Hooks.ParseMftRecordsWithProgress`: callback exceptions, NaN progress samples, and synchronous delivery in `MftVolumeTests` and `MftProgressParseFixture`.
-- `MFTLibNative.Hooks.FreeMftResult`: freeing deliberately constructed malformed ABI buffers in `MftResultTests` and `MockVolumeTests`.
-- `FileUtilities.Hooks.GetVolumeHandle` and `GetWatchVolumeHandle`: fixture-file scans and cancellable idle-pipe tests using owned handles without privileged live volumes.
-- `Kernel32.Hooks.CreateFile` and `DeviceIoControl`: volume-open flags and error paths in `MockVolumeTests`, plus synthetic geometry and grow buffer injection.
+- `MFTLibNative.Hooks._getMftNativeAbiVersion`: ABI-mismatch handling in `MftResultTests.Batches.cs` and `MftDumpInputFaultTests.cs`.
+- `MFTLibNative.Hooks._parseMftRecordsWithProgress`: callback exceptions, NaN progress samples, and synchronous delivery in `MftVolumeTests` and `MftProgressParseFixture`.
+- `MFTLibNative.Hooks._freeMftResult`: freeing deliberately constructed malformed ABI buffers in `MftResultTests` and `MockVolumeTests`.
+- `FileUtilities.Hooks._getVolumeHandle` and `_getWatchVolumeHandle`: fixture-file scans and cancellable idle-pipe tests using owned handles without privileged live volumes.
+- `Kernel32.Hooks._createFile` and `_deviceIoControl`: volume-open flags and error paths in `MockVolumeTests`, plus synthetic geometry and grow buffer injection.
 
 `Persistent` and `ExistingOnly` opens (null `FileIndexOptions.CacheMode` is `Persistent` for non-dump sources)
 require an explicit nonblank `FileIndexOptions.CacheDirectory`,
@@ -151,7 +151,7 @@ that tracking rejects the drive and disposes its pipe before writing a request.
 Release gates in finally blocks and observe the pending open before fixture cleanup.
 
 BrokerLauncher.Dependencies is the process-global LaunchDependencies owner of
-GetProcessPath and StartProcess. Its defaults are Environment.ProcessPath and
+_getProcessPath and _startProcess. Its defaults are Environment.ProcessPath and
 Process.Start. Tests accessing that owner or its members require class-level
 DoNotParallelize and call Dependencies.ResetToDefaults only after their launches
 and sessions have stopped. NativeSeamIsolationTests recognizes the owner type
@@ -267,16 +267,16 @@ before disposing the host harness.
 
 | Component owner/members | Lifetime | Tests |
 | --- | --- | --- |
-| `EnumerationWalkLimit.Hooks.WalkQueued` | Process-global; reset after opens drain. | `FileIndexConcurrentOpenTests.Open_EnumerationWalks_NeverExceedTheWalkLimit` |
-| `CacheDirectory.Hooks.BeforeDelete` | Process-global; runs under the owner lock, reset after deletion drains. | `CacheDirectoryDeletionLiveOwnerTests`; `CacheDirectoryDeletionTests` |
-| `IndexedDrive.Dependencies.VolumeSerialReader` | Process-global; null selects the native reader. | `IndexedDriveTests`; `ReadmeWalkthroughTests` |
-| `FileEntry.Dependencies.OpenById` | Process-global; defaults to `DefaultOpenById`. | `FileEntryOpenTests`; `FileEntryIncarnationTests`; `MftDumpPathTests`; `DirectHostTests` |
-| `UsnJournalSettingsQuery.Dependencies.QueryOverride` | Process-global; null selects the platform query. | `FileIndexJournalSettingsTests`; `MftDumpApplicabilityTests`; `UsnJournalSettingsQueryLiveTests` |
+| `EnumerationWalkLimit.Hooks._walkQueued` | Process-global; reset after opens drain. | `FileIndexConcurrentOpenTests.Open_EnumerationWalks_NeverExceedTheWalkLimit` |
+| `CacheDirectory.Hooks._beforeDelete` | Process-global; runs under the owner lock, reset after deletion drains. | `CacheDirectoryDeletionLiveOwnerTests`; `CacheDirectoryDeletionTests` |
+| `IndexedDrive.Dependencies._volumeSerialReader` | Process-global; null selects the native reader. | `IndexedDriveTests`; `ReadmeWalkthroughTests` |
+| `FileEntry.Dependencies._openById` | Process-global; defaults to `DefaultOpenById`. | `FileEntryOpenTests`; `FileEntryIncarnationTests`; `MftDumpPathTests`; `DirectHostTests` |
+| `UsnJournalSettingsQuery.Dependencies._queryOverride` | Process-global; null selects the platform query. | `FileIndexJournalSettingsTests`; `MftDumpApplicabilityTests`; `UsnJournalSettingsQueryLiveTests` |
 | `JournalCheckpointCheck.Hooks.ObservationOverride` and one-way guard | Process-global; exclusive scope only through public `JournalIsolation`, the guard never resets. | `JournalWindowOverrideTests`; `ConsumerJournalIsolationTests`; `UsnJournalVolumeInteropTests` |
-| `BlockWriter.Hooks.RowCaptured`, `CompleteAccessTaken` | Per writer; set before work, no reset. | `BlockWriterDisposalRaceTests`; `BlockWriterCompleteDisposalRaceTests`; `JournalMutatorMetadataDisposalRaceTests` |
-| `BlockFile.Hooks` (`DisposeStarted`, `FlushRangeBytes`, `FlushViewRange`, `SynchronizeViewRange`, `PauseMilliseconds`, `SpinOnce`) | Per block; set before work, ends with the block. | `BlockFileFlushDisposalRaceTests`; `BlockFileRangedFlushTests`; the writer race classes |
-| `DriveBlockRelease.Hooks` (`ReleaseStarted`, `ReaderAdmitted`, `OutstandingBorrowCount`) | Per release object; count read under `_gate`. | `DriveBlockTests`; `FileIndexBlockReleaseTests`; `FileIndexDisposeCancelsQueryTests`; `SnapshotBorrowTests` |
-| `DeletedChildLinks.Observations` (`DescendantsVisited`, `SiblingsExamined`) | Per links object; accumulates, no reset. | `DeletedChildLinksTests`; `JournalMutatorFreedRowTests` |
+| `BlockWriter.Hooks._rowCaptured`, `_completeAccessTaken` | Per writer; set before work, no reset. | `BlockWriterDisposalRaceTests`; `BlockWriterCompleteDisposalRaceTests`; `JournalMutatorMetadataDisposalRaceTests` |
+| `BlockFile.Hooks` (`_disposeStarted`, `_flushRangeBytes`, `_flushViewRange`, `_synchronizeViewRange`, `_pauseMilliseconds`, `_spinOnce`) | Per block; set before work, ends with the block. | `BlockFileFlushDisposalRaceTests`; `BlockFileRangedFlushTests`; the writer race classes |
+| `DriveBlockRelease.Hooks` (`_releaseStarted`, `_readerAdmitted`, `OutstandingBorrowCount`) | Per release object; count read under `_gate`. | `DriveBlockTests`; `FileIndexBlockReleaseTests`; `FileIndexDisposeCancelsQueryTests`; `SnapshotBorrowTests` |
+| `DeletedChildLinks.Observations` (`_descendantsVisited`, `_siblingsExamined`) | Per links object; accumulates, no reset. | `DeletedChildLinksTests`; `JournalMutatorFreedRowTests` |
 
 ## Object lifetime
 

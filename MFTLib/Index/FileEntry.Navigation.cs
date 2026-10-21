@@ -64,7 +64,7 @@ public readonly partial record struct FileEntry
         cancellationToken.ThrowIfCancellationRequested();
         var driveBlock = DriveBlock;
         using var borrow = new SnapshotBorrow([driveBlock]);
-        driveBlock.ReleaseState.Hooks.ReaderAdmitted?.Invoke();
+        driveBlock.ReleaseState.Hooks._readerAdmitted?.Invoke();
         if (IsSupersededIn(driveBlock))
         {
             return [];

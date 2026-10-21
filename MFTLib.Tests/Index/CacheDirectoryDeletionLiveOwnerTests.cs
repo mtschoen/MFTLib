@@ -18,8 +18,8 @@ namespace MFTLib.Tests.Index;
 public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
 {
     IndexTreeFixture _fixture = null!;
-    string _treeRoot => _fixture.TreeRoot;
-    string _cacheDirectory => _fixture.CacheDirectory;
+    string TreeRoot => _fixture.TreeRoot;
+    string CacheDirectoryPath => _fixture.CacheDirectory;
     uint _volumeSerial;
 
     [TestInitialize]
@@ -42,7 +42,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
             ScanProgress = progress
         };
 
-    string CanonicalPath => Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
+    string CanonicalPath => Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
 
     static string CreateDecoyBlock(string cacheDirectory, char letter)
     {
@@ -58,10 +58,10 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
         await using var owner = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         Assert.IsTrue(File.Exists(CanonicalPath), "the live index must have produced its canonical block");
 
-        var unownedFirst = CreateDecoyBlock(_cacheDirectory, 'U');
-        var unownedSecond = CreateDecoyBlock(_cacheDirectory, 'V');
+        var unownedFirst = CreateDecoyBlock(CacheDirectoryPath, 'U');
+        var unownedSecond = CreateDecoyBlock(CacheDirectoryPath, 'V');
 
-        var results = CacheDirectory.DeleteCached(_cacheDirectory);
+        var results = CacheDirectory.DeleteCached(CacheDirectoryPath);
 
         Assert.AreEqual(3, results.Count);
         var ownedResult = results.Single(result => result.File.Path == CanonicalPath);
@@ -83,7 +83,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
             "a lock file created while deleting an unowned block must be preserved");
 
         Assert.AreEqual(DriveState.Ready, owner.Drives.Single().State);
-        Assert.IsNotNull(owner.Find(Path.Combine(_treeRoot, "Documents", "readme.md")),
+        Assert.IsNotNull(owner.Find(Path.Combine(TreeRoot, "Documents", "readme.md")),
             "the live index keeps working after unrelated blocks are cleared out from under it");
     }
 
@@ -94,7 +94,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
         await using var owner = await FileIndex.OpenAsync(Options(progress: progress), CancellationToken.None);
         var canonicalBytesBeforeRescan = await SharedFileReader.ReadAllBytesAsync(CanonicalPath);
 
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
         progress.Armed = true;
 
         // Parks mid-rescan: the canonical file has already been renamed aside and the
@@ -104,7 +104,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
 
         try
         {
-            var results = CacheDirectory.DeleteCached(_cacheDirectory);
+            var results = CacheDirectory.DeleteCached(CacheDirectoryPath);
 
             var result = results.Single();
             Assert.AreEqual(CachedBlockDeletionOutcome.InUse, result.Outcome);
@@ -151,16 +151,16 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
     {
         await using (var seed = await FileIndex.OpenAsync(Options(), CancellationToken.None))
         {
-            Assert.IsTrue(seed.Find(Path.Combine(_treeRoot, "Documents", "readme.md")) is not null);
+            Assert.IsTrue(seed.Find(Path.Combine(TreeRoot, "Documents", "readme.md")) is not null);
         }
         var canonicalBytesBeforeRace = await SharedFileReader.ReadAllBytesAsync(CanonicalPath);
 
         var gate = new DeleteParkGate();
         Task<IReadOnlyList<CachedBlockDeletionResult>> deleteTask;
-        CacheDirectory.Hooks.BeforeDelete = gate.ParkOnce;
+        CacheDirectory.Hooks._beforeDelete = gate.ParkOnce;
         // Runs DeleteCached on a background thread so it can park mid-delete, still holding
         // the candidate block's owner lock, while this thread races opens against it.
-        deleteTask = Task.Run(() => CacheDirectory.DeleteCached(_cacheDirectory));
+        deleteTask = Task.Run(() => CacheDirectory.DeleteCached(CacheDirectoryPath));
         await gate.Parked;
 
         await using (var cacheOnlyOpen = await FileIndex.OpenAsync(Options(cacheOnly: true), CancellationToken.None))
@@ -184,7 +184,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
             privateBlockPath = fallbackOpen.CurrentSnapshot[ordinal].Block.Path;
             StringAssert.Contains(privateBlockPath, "mftlib-private-");
             Assert.AreNotEqual(CanonicalPath, privateBlockPath);
-            Assert.IsNotNull(fallbackOpen.Find(Path.Combine(_treeRoot, "Documents", "readme.md")));
+            Assert.IsNotNull(fallbackOpen.Find(Path.Combine(TreeRoot, "Documents", "readme.md")));
             CollectionAssert.AreEqual(canonicalBytesBeforeRace, await SharedFileReader.ReadAllBytesAsync(CanonicalPath),
                 "a non-cache-only open racing a parked delete must fall back to a private block "
                 + "instead of touching the slot the delete still holds");

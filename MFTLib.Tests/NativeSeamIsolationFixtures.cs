@@ -7,28 +7,28 @@ namespace MFTLib.Tests;
 
 internal static class WalkHooksReferenceFixture
 {
-    public static void Reference() => EnumerationWalkLimit.Hooks.WalkQueued = null;
+    public static void Reference() => EnumerationWalkLimit.Hooks._walkQueued = null;
 }
 
 internal static class DeletionHooksReferenceFixture
 {
-    public static void Reference() => CacheDirectory.Hooks.BeforeDelete = null;
+    public static void Reference() => CacheDirectory.Hooks._beforeDelete = null;
 }
 
 internal static class VolumeDependenciesReferenceFixture
 {
-    public static void Reference() => IndexedDrive.Dependencies.VolumeSerialReader = null;
+    public static void Reference() => IndexedDrive.Dependencies._volumeSerialReader = null;
 }
 
 internal static class OpenDependenciesReferenceFixture
 {
-    public static object Reference() => FileEntry.Dependencies.OpenById;
+    public static object Reference() => FileEntry.Dependencies._openById;
 }
 
 internal static class QueryDependenciesReferenceFixture
 {
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-    public static void Reference() => UsnJournalSettingsQuery.Dependencies.QueryOverride = null;
+    public static void Reference() => UsnJournalSettingsQuery.Dependencies._queryOverride = null;
 }
 
 internal static class JournalHooksReferenceFixture
@@ -38,12 +38,12 @@ internal static class JournalHooksReferenceFixture
 
 internal static class NativeFieldReferenceFixture
 {
-    public static void Reference() => MFTLibNative.Hooks.GetMftNativeAbiVersion = () => 1;
+    public static void Reference() => MFTLibNative.Hooks._getMftNativeAbiVersion = () => 1;
 }
 
 internal static class VolumeFieldReferenceFixture
 {
-    public static object Reference() => FileUtilities.Hooks.GetVolumeHandle;
+    public static object Reference() => FileUtilities.Hooks._getVolumeHandle;
 }
 
 internal class NativeResetReferenceFixture
@@ -58,7 +58,7 @@ internal static class VolumeResetReferenceFixture
 
 internal static class Win32HooksReferenceFixture
 {
-    public static object Reference() => Kernel32.Hooks.DeviceIoControl;
+    public static object Reference() => Kernel32.Hooks._deviceIoControl;
 }
 
 internal static class AsyncSeamReferenceFixture
@@ -171,7 +171,7 @@ internal static class ConsoleRedirectReferenceFixture
 
 internal static class ProductionStaticFieldReferenceFixture
 {
-    public static void Reference() => BrokerLauncher.Dependencies.StartProcess = _ => null;
+    public static void Reference() => BrokerLauncher.Dependencies._startProcess = _ => null;
 }
 
 internal static class ProductionStaticSetterReferenceFixture
@@ -192,7 +192,7 @@ internal static class LaunchOwnerReferenceFixture
 internal static class LaunchMemberReferenceFixture
 {
     public static void Reference(BrokerLauncher.LaunchDependencies dependencies) =>
-        dependencies.StartProcess = _ => null;
+        dependencies._startProcess = _ => null;
 }
 
 [DoNotParallelize]

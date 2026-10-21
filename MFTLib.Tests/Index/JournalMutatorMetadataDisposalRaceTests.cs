@@ -24,13 +24,13 @@ public class JournalMutatorMetadataDisposalRaceTests
         var rowCaptured = new TestGate();
         var releaseWriter = new TestGate();
         var disposeStarted = new TestGate();
-        writer.Hooks.RowCaptured = () =>
+        writer.Hooks._rowCaptured = () =>
         {
             rowCaptured.MarkEntered();
             releaseWriter.WaitForRelease();
         };
         var disposeWillWait = false;
-        block.Hooks.DisposeStarted = willWait =>
+        block.Hooks._disposeStarted = willWait =>
         {
             disposeWillWait = willWait;
             disposeStarted.MarkEntered();

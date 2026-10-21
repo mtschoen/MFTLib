@@ -203,6 +203,20 @@ things to keep in rough sync. Call the installed binary directly - do NOT use
   threshold (`failBelow: 100`) in `.aislop/config.yml`. Treat a failing gate
   like a failing test.
 
+### Independent InspectCode release verification
+
+Before MFTLib 0.3.0 and subsequent releases ship, the whole solution must be verified clean at WARNING severity and above across all projects using JetBrains InspectCode directly:
+
+```powershell
+.\scripts\build-windows.ps1
+jb inspectcode MFTLib.sln --severity=WARNING --no-updates --no-build '--properties=Configuration=Release;Platform=x64' --output=artifacts/inspectcode-report.sarif
+```
+
+- **Pre-build with `build-windows.ps1`**: `MFTLib.sln` contains the native C++ project `MFTLibNative.vcxproj` alongside managed projects. A bare `dotnet build` cannot compile `.vcxproj`, while InspectCode's internal build attempts to invoke MSBuild without the trailing-backslash `SolutionDir` and platform conventions needed by mixed solutions on Windows. Always pre-build with `scripts/build-windows.ps1` and pass `--no-build`.
+- **Properties parameter**: In PowerShell, single-quote the `--properties` argument (`'--properties=Configuration=Release;Platform=x64'`) so semicolons are not parsed as command separators.
+- **Severity threshold**: `--severity=WARNING` reports all WARNING and ERROR findings across both managed C# and native C++ code. The release floor is 0 findings across the solution.
+- **Suppressions**: Any retained suppression directive must use the tool-specific mechanism (`// ReSharper disable once <rule>` or `// ReSharper disable <rule>`) accompanied by a clear, written reason (`-- <reason>`).
+
 ### CI gate (Windows)
 
 `.gitea/workflows/aislop.yml` runs the gate on every PR and on push to `main` or to a `pr-crew/merge-train/**` branch.

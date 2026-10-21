@@ -13,14 +13,14 @@ public sealed partial class FileIndex
     // Every raise site uses Deliver to set an AsyncLocal marker naming this index.
     // The marker flows into awaits and queued work; its Active flag clears when the
     // invocation returns. The outer chain preserves nested deliveries across indexes.
-    static readonly AsyncLocal<DeliveryMarker?> s_delivery = new();
+    static readonly AsyncLocal<DeliveryMarker?> Delivery = new();
 
     /// <summary>Invokes one handler with this index's delivery marker set for the duration of the call.</summary>
     void Deliver<TArgument>(Action<TArgument> handler, TArgument argument)
     {
-        var previous = s_delivery.Value;
+        var previous = Delivery.Value;
         var marker = new DeliveryMarker(this, previous);
-        s_delivery.Value = marker;
+        Delivery.Value = marker;
         try
         {
             handler(argument);
@@ -28,7 +28,7 @@ public sealed partial class FileIndex
         finally
         {
             marker.End();
-            s_delivery.Value = previous;
+            Delivery.Value = previous;
         }
     }
 
@@ -66,7 +66,7 @@ public sealed partial class FileIndex
     /// </summary>
     bool IsInsideHandlerOfThisIndex()
     {
-        for (var marker = s_delivery.Value; marker is not null; marker = marker.Outer)
+        for (var marker = Delivery.Value; marker is not null; marker = marker.Outer)
         {
             if (marker.Active && ReferenceEquals(marker.Owner, this))
             {

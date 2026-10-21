@@ -57,7 +57,7 @@ public partial class NativeMftProcessingTests
             }
             finally
             {
-                MFTLibNative.Hooks.FreeMftResult(pointer);
+                MFTLibNative.Hooks._freeMftResult(pointer);
             }
 
             NativeTestHooks.NativeResetTestState();
@@ -72,7 +72,7 @@ public partial class NativeMftProcessingTests
             }
             finally
             {
-                MFTLibNative.Hooks.FreeMftResult(pointer);
+                MFTLibNative.Hooks._freeMftResult(pointer);
             }
         }
         finally
@@ -112,7 +112,7 @@ public partial class NativeMftProcessingTests
             }
             finally
             {
-                MFTLibNative.Hooks.FreeMftResult(pointer);
+                MFTLibNative.Hooks._freeMftResult(pointer);
             }
 
             NativeTestHooks.NativeResetTestState();

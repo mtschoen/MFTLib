@@ -7,13 +7,12 @@ internal sealed partial class BlockFile
     /// <summary>Per-block test hooks for disposal, view flushing and retry timing.</summary>
     internal sealed class BlockHooks(BlockFile block)
     {
-        internal Action<bool>? DisposeStarted;
+        internal Action<bool>? _disposeStarted;
 
-        // aislop-ignore-next-line jb/MemberHidesStaticFromOuterClass
-        internal long FlushRangeBytes = BlockFile.FlushRangeBytes;
-        internal Func<long, long, int> FlushViewRange = block.FlushViewRangeNatively;
-        internal Func<long, long, int, int> SynchronizeViewRange = block.SynchronizeViewRangeNatively;
-        internal Action<int> PauseMilliseconds = Thread.Sleep;
-        internal SpinStep SpinOnce = static (ref spinWait) => spinWait.SpinOnce();
+        internal long _flushRangeBytes = BlockFile.FlushRangeBytes;
+        internal Func<long, long, int> _flushViewRange = block.FlushViewRangeNatively;
+        internal Func<long, long, int, int> _synchronizeViewRange = block.SynchronizeViewRangeNatively;
+        internal Action<int> _pauseMilliseconds = Thread.Sleep;
+        internal SpinStep _spinOnce = static (ref spinWait) => spinWait.SpinOnce();
     }
 }

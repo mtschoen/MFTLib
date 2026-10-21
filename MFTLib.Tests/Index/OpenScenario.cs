@@ -22,7 +22,7 @@ internal sealed class OpenScenario : IDisposable
     readonly ConcurrentQueue<IndexDriveOpened> _reports = [];
     readonly SemaphoreSlim _reportSignal = new(0);
     readonly IndexTreeFixture _fixture = new(seedDocuments: false);
-    string _treeRoot => _fixture.TreeRoot;
+    string TreeRoot => _fixture.TreeRoot;
     int _activeProducers;
 
     public string CacheDirectory => _fixture.CacheDirectory;
@@ -92,7 +92,7 @@ internal sealed class OpenScenario : IDisposable
 
     public FileIndexOptions Options(string driveLetters, bool cacheOnly = false) => new()
     {
-        Drives = driveLetters.Select(letter => new IndexedDrive(letter, _treeRoot, SerialOf(letter))).ToArray(),
+        Drives = driveLetters.Select(letter => new IndexedDrive(letter, TreeRoot, SerialOf(letter))).ToArray(),
         CacheDirectory = CacheDirectory,
         MftSource = new MftIndexSource(ProduceAsync, Source.IndexSource),
         CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,

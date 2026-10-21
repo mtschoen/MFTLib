@@ -95,7 +95,7 @@ public class MftDumpPathTests
     [TestMethod]
     public async Task Open_AnEntryOfADumpRefusesBeforeAnyByIdOrPathSeam()
     {
-        FileEntry.Dependencies.OpenById = (_, _, _, _) =>
+        FileEntry.Dependencies._openById = (_, _, _, _) =>
             throw new AssertFailedException("A dump entry must not reach the by-id open.");
         await using var index = await MftDumpIndexes.OpenAsync();
 

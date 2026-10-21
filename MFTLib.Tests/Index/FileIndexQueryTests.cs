@@ -9,18 +9,18 @@ namespace MFTLib.Tests.Index;
 public sealed class FileIndexQueryTests : IAsyncDisposable
 {
     IndexTreeFixture _fixture = null!;
-    string _treeRoot => _fixture.TreeRoot;
+    string TreeRoot => _fixture.TreeRoot;
     FileIndex _index = null!;
 
     [TestInitialize]
     public async Task Initialize()
     {
         _fixture = new IndexTreeFixture();
-        Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents", "Projects"));
-        Directory.CreateDirectory(Path.Combine(_treeRoot, "Pictures"));
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "Projects", "report.pdf"), new string('x', 100));
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Pictures", "readme.md"), "world");
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Pictures", "holiday.jpg"), new string('y', 5000));
+        Directory.CreateDirectory(Path.Combine(TreeRoot, "Documents", "Projects"));
+        Directory.CreateDirectory(Path.Combine(TreeRoot, "Pictures"));
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "Projects", "report.pdf"), new string('x', 100));
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Pictures", "readme.md"), "world");
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Pictures", "holiday.jpg"), new string('y', 5000));
 
         _index = await FileIndex.OpenAsync(_fixture.Options(), CancellationToken.None);
     }
@@ -40,7 +40,7 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
     [TestMethod]
     public void Find_ResolvesAPathToItsEntry()
     {
-        var entry = _index.Find(Path.Combine(_treeRoot, "Documents", "Projects", "report.pdf"));
+        var entry = _index.Find(Path.Combine(TreeRoot, "Documents", "Projects", "report.pdf"));
         Assert.IsTrue(entry.HasValue);
         Assert.AreEqual(100L, entry.GetValueOrDefault().Size);
     }
@@ -65,10 +65,10 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
     [TestMethod]
     public void Search_UnderRestrictsToASubtree()
     {
-        var pictures = _index.Find(Path.Combine(_treeRoot, "Pictures"))!.Value;
+        var pictures = _index.Find(Path.Combine(TreeRoot, "Pictures"))!.Value;
         var results = _index.Search(new SearchQuery("readme", Subtree: pictures));
         Assert.AreEqual(1, results.Count);
-        Assert.AreEqual(Path.Combine(_treeRoot, "Pictures", "readme.md"), results[0].Path);
+        Assert.AreEqual(Path.Combine(TreeRoot, "Pictures", "readme.md"), results[0].Path);
     }
 
     [TestMethod]
@@ -81,7 +81,7 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
     [TestMethod]
     public void Root_ReturnsTheDriveRoot()
     {
-        Assert.AreEqual(_treeRoot, _index.Root('T').Path);
+        Assert.AreEqual(TreeRoot, _index.Root('T').Path);
     }
 
     [TestMethod]
@@ -97,9 +97,9 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
         char duplicateLetter, bool blocklessFirst)
     {
         var policy = blocklessState == DriveState.Offline ? ProducerKind.Enumeration : ProducerKind.Mft;
-        var ready = new IndexedDrive('T', _treeRoot, 1, policy);
+        var ready = new IndexedDrive('T', TreeRoot, 1, policy);
         var blockless = new IndexedDrive(duplicateLetter,
-            blocklessState == DriveState.Offline ? Path.Combine(_treeRoot, "absent") : _treeRoot, 2, policy);
+            blocklessState == DriveState.Offline ? Path.Combine(TreeRoot, "absent") : TreeRoot, 2, policy);
         var producerCalls = 0;
         var exception = await Assert.ThrowsExactlyAsync<ArgumentException>(() => FileIndex.OpenAsync(new FileIndexOptions
         {
@@ -140,7 +140,7 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
         };
         var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', state == DriveState.Offline ? Path.Combine(_treeRoot, "absent") : _treeRoot, 1)],
+            Drives = [new IndexedDrive('T', state == DriveState.Offline ? Path.Combine(TreeRoot, "absent") : TreeRoot, 1)],
             CacheMode = CacheMode.Disabled,
             MftSource = SyntheticIndexSource.Create(producer)
         }, CancellationToken.None);
@@ -295,7 +295,7 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
     [TestMethod]
     public void Open_ReadsTheRealFileBehindAnEnumerationEntry()
     {
-        var entry = _index.Find(Path.Combine(_treeRoot, "Documents", "readme.md"))!.Value;
+        var entry = _index.Find(Path.Combine(TreeRoot, "Documents", "readme.md"))!.Value;
         using var stream = entry.Open(FileAccess.Read);
         using var reader = new StreamReader(stream);
         Assert.AreEqual("hello", reader.ReadToEnd());
@@ -304,7 +304,7 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
     [TestMethod]
     public void Search_AfterARescanSeesNewFiles()
     {
-        File.WriteAllText(Path.Combine(_treeRoot, "Documents", "added.md"), "added");
+        File.WriteAllText(Path.Combine(TreeRoot, "Documents", "added.md"), "added");
         _index.RescanAsync(['T'], CancellationToken.None).GetAwaiter().GetResult();
 
         Assert.AreEqual(1, _index.Search(new SearchQuery("added")).Count);
@@ -313,11 +313,11 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
     [TestMethod]
     public void HandleFromAnOldSnapshot_StaysReadableAcrossARescan()
     {
-        var before = _index.Find(Path.Combine(_treeRoot, "Documents", "readme.md"))!.Value;
+        var before = _index.Find(Path.Combine(TreeRoot, "Documents", "readme.md"))!.Value;
         _index.RescanAsync(['T'], CancellationToken.None).GetAwaiter().GetResult();
 
         // The old block stays mapped because this handle still references its snapshot.
         Assert.AreEqual("readme.md", before.Name);
-        Assert.AreEqual(Path.Combine(_treeRoot, "Documents", "readme.md"), before.Path);
+        Assert.AreEqual(Path.Combine(TreeRoot, "Documents", "readme.md"), before.Path);
     }
 }

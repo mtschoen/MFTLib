@@ -16,14 +16,14 @@ public sealed class FileIndexEnumerationGrowthTests : IDisposable
     const int FileCount = 5000;
 
     IndexTreeFixture _fixture = null!;
-    string _treeRoot => _fixture.TreeRoot;
+    string TreeRoot => _fixture.TreeRoot;
 
     [TestInitialize]
     public void Initialize()
     {
         _fixture = new IndexTreeFixture(seedDocuments: false);
-        var crowded1 = Path.Combine(_treeRoot, "crowded1");
-        var crowded2 = Path.Combine(_treeRoot, "crowded2");
+        var crowded1 = Path.Combine(TreeRoot, "crowded1");
+        var crowded2 = Path.Combine(TreeRoot, "crowded2");
         Directory.CreateDirectory(crowded1);
         Directory.CreateDirectory(crowded2);
         var padding = new string('n', 200);
@@ -40,8 +40,8 @@ public sealed class FileIndexEnumerationGrowthTests : IDisposable
     public async Task Open_ATreeBeyondTheFirstCapacityPlanProducesACompleteBlock()
     {
         var observation = new EnumerationReadObservation();
-        EnumerationWalkLimit.Hooks.DirectoryEntered = observation.Enter;
-        EnumerationWalkLimit.Hooks.DirectoryExited = observation.Exit;
+        EnumerationWalkLimit.Hooks._directoryEntered = observation.Enter;
+        EnumerationWalkLimit.Hooks._directoryExited = observation.Exit;
         try
         {
             var retryObserved = false;
@@ -64,8 +64,8 @@ public sealed class FileIndexEnumerationGrowthTests : IDisposable
             Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
             Assert.IsFalse(index.Drives.Single().Block!.IsCapacityExhausted);
             Assert.AreEqual((uint)FileCount + 3, index.Drives.Single().Block!.LiveRowCount);
-            var expectedFiles = Directory.GetFiles(Path.Combine(_treeRoot, "crowded1"))
-                .Concat(Directory.GetFiles(Path.Combine(_treeRoot, "crowded2")))
+            var expectedFiles = Directory.GetFiles(Path.Combine(TreeRoot, "crowded1"))
+                .Concat(Directory.GetFiles(Path.Combine(TreeRoot, "crowded2")))
                 .ToArray();
             CollectionAssert.AreEquivalent(
                 expectedFiles,

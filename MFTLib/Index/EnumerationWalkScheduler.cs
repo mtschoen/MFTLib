@@ -105,14 +105,14 @@ internal sealed class EnumerationWalkScheduler : IDisposable
 
     EnumerationDirectoryBuffer ReadWithHooks(EnumerationDirectoryWork directory, CancellationToken token)
     {
-        EnumerationWalkLimit.Hooks.DirectoryEntered?.Invoke(_drive, directory.Path, token);
+        EnumerationWalkLimit.Hooks._directoryEntered?.Invoke(_drive, directory.Path, token);
         try
         {
             return _reader.Read(directory, token);
         }
         finally
         {
-            EnumerationWalkLimit.Hooks.DirectoryExited?.Invoke(_drive, directory.Path);
+            EnumerationWalkLimit.Hooks._directoryExited?.Invoke(_drive, directory.Path);
         }
     }
 

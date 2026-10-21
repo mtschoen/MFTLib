@@ -16,7 +16,7 @@ public partial class DumpParseNativeTests
     [TestCategory("Smoke")]
     public void Parse_FixtureRowsAndStrings_AreByteIdentical(string fileName)
     {
-        var path = Path.Combine(_directory, fileName);
+        var path = Path.Combine(TemporaryDirectoryPath, fileName);
         MftFixture.Generate(path);
 
         var pointer = ParseNative(path, 256);
@@ -34,7 +34,7 @@ public partial class DumpParseNativeTests
         }
         finally
         {
-            MFTLibNative.Hooks.FreeMftResult(pointer);
+            MFTLibNative.Hooks._freeMftResult(pointer);
         }
     }
 
@@ -42,7 +42,7 @@ public partial class DumpParseNativeTests
     [TestCategory("Smoke")]
     public void GenerateSyntheticMFT_Output_IsByteIdentical()
     {
-        var path = Path.Combine(_directory, "synthetic.mft");
+        var path = Path.Combine(TemporaryDirectoryPath, "synthetic.mft");
         MftVolume.GenerateSyntheticMFT(path, 1024, 256);
 
         Assert.AreEqual("716b83ae4e2fa5b3e67ff07cd948edc97839a7736e95ee3a2d54ae36c8426fbe",

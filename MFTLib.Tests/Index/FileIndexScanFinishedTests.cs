@@ -14,8 +14,8 @@ namespace MFTLib.Tests.Index;
 public sealed class FileIndexScanFinishedTests : IDisposable
 {
     IndexTreeFixture _fixture = null!;
-    string _treeRoot => _fixture.TreeRoot;
-    string _cacheDirectory => _fixture.CacheDirectory;
+    string TreeRoot => _fixture.TreeRoot;
+    string CacheDirectoryPath => _fixture.CacheDirectory;
 
     public TestContext TestContext { get; set; } = null!;
 
@@ -26,7 +26,7 @@ public sealed class FileIndexScanFinishedTests : IDisposable
 
     string CreateDriveRoot(string name)
     {
-        var root = Path.Combine(_treeRoot, name);
+        var root = Path.Combine(TreeRoot, name);
         Directory.CreateDirectory(root);
         File.WriteAllText(Path.Combine(root, "readme.md"), "hello");
         return root;
@@ -38,7 +38,7 @@ public sealed class FileIndexScanFinishedTests : IDisposable
         return new FileIndexOptions
         {
             Drives = drives.Select(drive => drive with { Producer = producer }).ToArray(),
-            CacheDirectory = _cacheDirectory,
+            CacheDirectory = CacheDirectoryPath,
             MftSource = mftProducer is null ? null : new MftIndexSource(mftProducer),
             ScanProgress = new SynchronousProgress<IndexScanProgress>(samples.Enqueue)
         };

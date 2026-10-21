@@ -13,14 +13,14 @@ public sealed partial class EnumerationProducerTests : IDisposable
 {
     IndexTreeFixture _fixture = null!;
     string _treeRoot = null!;
-    string _blockDirectory => _fixture.CacheDirectory;
+    string BlockDirectoryPath => _fixture.CacheDirectory;
 
     [TestInitialize]
     public void Initialize()
     {
         _fixture = new IndexTreeFixture();
         _treeRoot = _fixture.TreeRoot;
-        Directory.CreateDirectory(_blockDirectory);
+        Directory.CreateDirectory(BlockDirectoryPath);
 
         Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents", "Projects"));
         Directory.CreateDirectory(Path.Combine(_treeRoot, "Pictures"));
@@ -39,7 +39,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
     {
         var block = BlockFile.Create(new BlockFileCreateOptions
         {
-            Path = Path.Combine(_blockDirectory, $"T-{Interlocked.Increment(ref _blockId):D8}.mlix"),
+            Path = Path.Combine(BlockDirectoryPath, $"T-{Interlocked.Increment(ref _blockId):D8}.mlix"),
             VolumeSerial = 1,
             ProducerKind = ProducerKind.Enumeration,
             SlotCapacity = slotCapacity,
@@ -587,7 +587,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
             var documentsGate = new TestGate();
             var picturesGate = new TestGate();
 
-            EnumerationWalkLimit.Hooks.DirectoryEntered = (_, path, _) =>
+            EnumerationWalkLimit.Hooks._directoryEntered = (_, path, _) =>
             {
                 if (path.EndsWith("Documents", StringComparison.OrdinalIgnoreCase))
                 {
@@ -665,7 +665,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
             var secondExtraFinished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
 
-            EnumerationWalkLimit.Hooks.DirectoryEntered = (_, path, _) =>
+            EnumerationWalkLimit.Hooks._directoryEntered = (_, path, _) =>
             {
                 if (string.Equals(path, _treeRoot, StringComparison.OrdinalIgnoreCase))
                 {
@@ -694,7 +694,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
                 }
             };
 
-            EnumerationWalkLimit.Hooks.DirectoryExited = (_, path) =>
+            EnumerationWalkLimit.Hooks._directoryExited = (_, path) =>
             {
                 if (secondExtraPath is not null &&
                     string.Equals(path, secondExtraPath, StringComparison.OrdinalIgnoreCase))
@@ -789,7 +789,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
         var exitGate = new TestGate();
         var childEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        EnumerationWalkLimit.Hooks.DirectoryEntered = (drive, path, readerToken) =>
+        EnumerationWalkLimit.Hooks._directoryEntered = (drive, path, readerToken) =>
         {
             observation.Enter(drive, path, readerToken);
             if (!string.Equals(path, _treeRoot, StringComparison.OrdinalIgnoreCase))
@@ -801,7 +801,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
             }
         };
 
-        EnumerationWalkLimit.Hooks.DirectoryExited = (drive, path) =>
+        EnumerationWalkLimit.Hooks._directoryExited = (drive, path) =>
         {
             try
             {
@@ -870,7 +870,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
         var writerThread = 0;
         var extraReaders = 0;
         var observation = new EnumerationReadObservation();
-        EnumerationWalkLimit.Hooks.DirectoryEntered = (drive, path, token) =>
+        EnumerationWalkLimit.Hooks._directoryEntered = (drive, path, token) =>
         {
             observation.Enter(drive, path, token);
             if (path == _treeRoot)
@@ -890,7 +890,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
                 readersGate.WaitForRelease();
             }
         };
-        EnumerationWalkLimit.Hooks.DirectoryExited = observation.Exit;
+        EnumerationWalkLimit.Hooks._directoryExited = observation.Exit;
 
         var progress = new SynchronousProgress<IndexScanProgress>(report =>
         {
@@ -980,8 +980,8 @@ public sealed partial class EnumerationProducerTests : IDisposable
         await File.WriteAllTextAsync(Path.Combine(healthyDir, "healthy.txt"), "h");
 
         var observation = new EnumerationReadObservation();
-        EnumerationWalkLimit.Hooks.DirectoryEntered = observation.Enter;
-        EnumerationWalkLimit.Hooks.DirectoryExited = observation.Exit;
+        EnumerationWalkLimit.Hooks._directoryEntered = observation.Enter;
+        EnumerationWalkLimit.Hooks._directoryExited = observation.Exit;
         var failedDirectories = new List<string>();
 
         var producer = new EnumerationProducer(new EnumerationProducerOptions
@@ -1106,7 +1106,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
         using var block = created.Block;
         if (failInWriter)
         {
-            created.Writer.Hooks.RowCaptured = () =>
+            created.Writer.Hooks._rowCaptured = () =>
             {
                 if (created.Writer.RowCount >= 3)
                 {

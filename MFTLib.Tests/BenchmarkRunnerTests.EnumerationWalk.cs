@@ -35,7 +35,7 @@ public partial class BenchmarkRunnerTests
     {
         var clock = new FakeTimeProvider();
         var visits = new ConcurrentDictionary<string, int>();
-        EnumerationWalkLimit.Hooks.DirectoryEntered = (_, path, _) =>
+        EnumerationWalkLimit.Hooks._directoryEntered = (_, path, _) =>
         {
             visits.AddOrUpdate(path, 1, (_, count) => count + 1);
             clock.Advance(TimeSpan.FromMilliseconds(1));
@@ -90,7 +90,7 @@ public partial class BenchmarkRunnerTests
 
         string? root = null;
         var readerThreads = new List<HashSet<int>>();
-        EnumerationWalkLimit.Hooks.DirectoryEntered = (_, path, _) =>
+        EnumerationWalkLimit.Hooks._directoryEntered = (_, path, _) =>
         {
             lock (readerThreads)
             {
@@ -145,7 +145,7 @@ public partial class BenchmarkRunnerTests
     public async Task Run_EnumerationWalk_IncompleteWalk_ReportsFailureAndCleansUp(bool throwBeforeReading)
     {
         var visits = new ConcurrentBag<string>();
-        EnumerationWalkLimit.Hooks.DirectoryEntered = (_, path, _) =>
+        EnumerationWalkLimit.Hooks._directoryEntered = (_, path, _) =>
         {
             visits.Add(path);
             if (throwBeforeReading)

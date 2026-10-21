@@ -17,7 +17,7 @@ public sealed class NativeParserFixupTests : IDisposable
     const int HostileRecord = 7;
 
     TempDirectory _tempDirectory = null!;
-    string _directory => _tempDirectory.Path;
+    string TemporaryDirectoryPath => _tempDirectory.Path;
 
     [TestInitialize]
     public void Initialize()
@@ -103,7 +103,7 @@ public sealed class NativeParserFixupTests : IDisposable
     {
         var dump = MftDumpFixture.Standard();
         SetArray(Record(dump, 1024, HostileRecord), 0xFFF0, 0xFFFF);
-        var path = MftDumpFixture.WriteFile(_directory, dump);
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, dump);
         using var input = MftDumpInput.Open(path);
 
         var failure = MftDumpInputTests.ParseThrows<InvalidDataException>(input,
@@ -156,7 +156,7 @@ public sealed class NativeParserFixupTests : IDisposable
 
     string[] ParseNames(byte[] dump)
     {
-        var path = MftDumpFixture.WriteFile(_directory, dump, $"{Guid.NewGuid():N}.mft");
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, dump, $"{Guid.NewGuid():N}.mft");
         using var input = MftDumpInput.Open(path);
         using var result = input.Parse();
         return result.ToRecords().Select(record => record.FileName).ToArray();

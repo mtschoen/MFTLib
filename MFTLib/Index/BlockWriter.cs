@@ -76,7 +76,7 @@ internal sealed partial class BlockWriter
         // published together as one atomic store, exactly as a rename publishes them. That
         // ordering holds for a fresh slot too, so there is no separate unpublished-slot case.
         ref var row = ref Block.Rows[(int)rowIndex];
-        Hooks.RowCaptured?.Invoke();
+        Hooks._rowCaptured?.Invoke();
         var previousFlags = FileRow.DescriptorFlags(FileRow.ReadDescriptorWord(in row));
         var previousParentRow = row.ParentRow;
         var wasLive = (previousFlags & RowFlags.InUse) != 0 && (previousFlags & RowFlags.Tombstone) == 0;
@@ -104,7 +104,7 @@ internal sealed partial class BlockWriter
             header.RowCount = rowIndex + 1;
         }
 
-        if (Block.DeletedChildren is { } links)
+        if (Block._deletedChildren is { } links)
         {
             // A create can reuse a deleted row's slot: drop the row's old link before linking its
             // new shape, so the links always mirror the rows as written.
@@ -176,7 +176,7 @@ internal sealed partial class BlockWriter
     /// </summary>
     void RelinkDeletedRow(uint rowIndex, bool wasDeleted, uint previousParentRow, uint parentRow)
     {
-        if (!wasDeleted || previousParentRow == parentRow || Block.DeletedChildren is not { } links)
+        if (!wasDeleted || previousParentRow == parentRow || Block._deletedChildren is not { } links)
         {
             return;
         }
@@ -215,7 +215,7 @@ internal sealed partial class BlockWriter
         {
             // The row's own deleted children stay linked under it: reusing its slot must still
             // find them. Only the link from its old parent is out of reach now.
-            Block.DeletedChildren?.RemoveDeletedRow(rowIndex, previousParentRow);
+            Block._deletedChildren?.RemoveDeletedRow(rowIndex, previousParentRow);
         }
     }
 
@@ -238,7 +238,7 @@ internal sealed partial class BlockWriter
             return;
         }
 
-        var links = Block.DeletedChildren ??= DeletedChildLinks.Build(Block);
+        var links = Block._deletedChildren ??= DeletedChildLinks.Build(Block);
         links.DetachDescendants(Block, ancestorRow);
     }
 
@@ -312,7 +312,7 @@ internal sealed partial class BlockWriter
     public void Complete(DateTime scanTimestampUtc, Action<long>? rangeFlushed)
     {
         using var access = Block.TakeAccess();
-        Hooks.CompleteAccessTaken?.Invoke();
+        Hooks._completeAccessTaken?.Invoke();
         ref var header = ref Block.Header;
         header.ScanTimestampTicks = scanTimestampUtc.Ticks;
         if (header.Generation == 0)
@@ -349,7 +349,7 @@ internal sealed partial class BlockWriter
 
         if (additionalFlags.HasFlag(RowFlags.Tombstone) && (flags & RowFlags.Tombstone) == 0)
         {
-            Block.DeletedChildren?.AddDeletedRow(rowIndex, row.ParentRow);
+            Block._deletedChildren?.AddDeletedRow(rowIndex, row.ParentRow);
         }
 
         FileRow.WriteDescriptorWord(ref row,

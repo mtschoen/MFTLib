@@ -19,7 +19,7 @@ public class UsnJournalTests
     public void VolumeHandleFactories_OnlyWatchRequestsOverlappedIo()
     {
         var flags = new List<uint>();
-        Kernel32.Hooks.CreateFile = (path, access, share, security, disposition, attributes, template) =>
+        Kernel32.Hooks._createFile = (path, access, share, security, disposition, attributes, template) =>
         {
             Assert.AreEqual(@"\\.\C:", path);
             Assert.AreEqual(0x80000000u, access);
@@ -31,8 +31,8 @@ public class UsnJournalTests
             return FakeVolumeHandle.Create();
         };
 
-        using var synchronous = FileUtilities.Hooks.GetVolumeHandle(@"\\.\C:");
-        using var watch = FileUtilities.Hooks.GetWatchVolumeHandle(@"\\.\C:");
+        using var synchronous = FileUtilities.Hooks._getVolumeHandle(@"\\.\C:");
+        using var watch = FileUtilities.Hooks._getWatchVolumeHandle(@"\\.\C:");
 
         CollectionAssert.AreEqual(new uint[] { 0, 0x40000000 }, flags.ToArray());
     }
@@ -67,7 +67,7 @@ public class UsnJournalTests
     [TestMethod]
     public void QueryUsnJournal_Disposed_Throws()
     {
-        FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks._getVolumeHandle = _ => FakeVolumeHandle.Create();
         var volume = MftVolume.Open('C');
         var journal = volume.Journal;
         volume.Dispose();
@@ -79,7 +79,7 @@ public class UsnJournalTests
     [TestMethod]
     public void ReadUsnJournal_Disposed_Throws()
     {
-        FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks._getVolumeHandle = _ => FakeVolumeHandle.Create();
         var volume = MftVolume.Open('C');
         var journal = volume.Journal;
         volume.Dispose();
@@ -89,7 +89,7 @@ public class UsnJournalTests
     [TestMethod]
     public async Task WatchUsnJournal_Disposed_Throws()
     {
-        FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks._getVolumeHandle = _ => FakeVolumeHandle.Create();
         var volume = MftVolume.Open('C');
         var journal = volume.Journal;
         volume.Dispose();

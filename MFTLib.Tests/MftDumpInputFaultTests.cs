@@ -16,14 +16,14 @@ namespace MFTLib.Tests;
 public sealed class MftDumpInputFaultTests : IDisposable
 {
     TempDirectory _tempDirectory = null!;
-    string _directory => _tempDirectory.Path;
+    string TemporaryDirectoryPath => _tempDirectory.Path;
     string _path = null!;
 
     [TestInitialize]
     public void Initialize()
     {
         _tempDirectory = new TempDirectory("mftlib-dump", create: false);
-        _path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        _path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
     }
 
     public void Dispose()
@@ -119,10 +119,10 @@ public sealed class MftDumpInputFaultTests : IDisposable
     [TestMethod]
     public void Open_NativeLibraryOfAnotherAbiVersion_ThrowsBeforeOpeningTheFile()
     {
-        MFTLibNative.Hooks.GetMftNativeAbiVersion = () => MFTLibNative.ExpectedMftNativeAbiVersion - 1;
+        MFTLibNative.Hooks._getMftNativeAbiVersion = () => MFTLibNative.ExpectedMftNativeAbiVersion - 1;
 
         var failure = Assert.ThrowsExactly<InvalidOperationException>(
-            () => MftDumpInput.Open(Path.Combine(_directory, "absent.mft")));
+            () => MftDumpInput.Open(Path.Combine(TemporaryDirectoryPath, "absent.mft")));
 
         StringAssert.Contains(failure.Message, "ABI mismatch");
     }
@@ -140,7 +140,7 @@ public sealed class MftDumpInputFaultTests : IDisposable
         }
         finally
         {
-            MFTLibNative.Hooks.FreeMftResult(resultPointer);
+            MFTLibNative.Hooks._freeMftResult(resultPointer);
         }
     }
 
@@ -185,7 +185,7 @@ public sealed class MftDumpInputFaultTests : IDisposable
             }
             finally
             {
-                MFTLibNative.Hooks.FreeMftResult(resultPointer);
+                MFTLibNative.Hooks._freeMftResult(resultPointer);
             }
         }
         finally

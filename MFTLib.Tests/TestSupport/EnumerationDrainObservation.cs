@@ -15,8 +15,8 @@ internal sealed class EnumerationDrainObservation : IDisposable
     internal EnumerationDrainObservation(string root)
     {
         _root = root;
-        EnumerationWalkLimit.Hooks.DirectoryEntered = Enter;
-        EnumerationWalkLimit.Hooks.DirectoryExited = Exit;
+        EnumerationWalkLimit.Hooks._directoryEntered = Enter;
+        EnumerationWalkLimit.Hooks._directoryExited = Exit;
     }
 
     internal TestGate WorkerExit { get; } = new();

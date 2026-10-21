@@ -9,7 +9,7 @@ namespace MFTLib.Tests.Index;
 public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
 {
     IndexTreeFixture _fixture = null!;
-    string _cacheDirectory => _fixture.CacheDirectory;
+    string CacheDirectoryPath => _fixture.CacheDirectory;
     static readonly DateTime Moment = new(2026, 10, 13, 0, 0, 0, DateTimeKind.Utc);
 
     [TestInitialize]

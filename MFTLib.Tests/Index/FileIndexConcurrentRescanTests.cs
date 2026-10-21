@@ -20,14 +20,14 @@ public sealed class FileIndexConcurrentRescanTests : IDisposable
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
     IndexTreeFixture _fixture = null!;
-    string _treeRoot => _fixture.TreeRoot;
-    string _cacheDirectory => _fixture.CacheDirectory;
+    string TreeRoot => _fixture.TreeRoot;
+    string CacheDirectoryPath => _fixture.CacheDirectory;
 
     [TestInitialize]
     public void Initialize()
     {
         _fixture = new IndexTreeFixture(seedDocuments: false);
-        Directory.CreateDirectory(_cacheDirectory);
+        Directory.CreateDirectory(CacheDirectoryPath);
     }
 
     public void Dispose() => _fixture.Dispose();
@@ -242,8 +242,8 @@ public sealed class FileIndexConcurrentRescanTests : IDisposable
 
         public FileIndexOptions CacheOnlyOptions() => new()
         {
-            Drives = [new IndexedDrive('T', owner._treeRoot, 1), new IndexedDrive('U', owner._treeRoot, 2)],
-            CacheDirectory = owner._cacheDirectory,
+            Drives = [new IndexedDrive('T', owner.TreeRoot, 1), new IndexedDrive('U', owner.TreeRoot, 2)],
+            CacheDirectory = owner.CacheDirectoryPath,
             CacheMode = CacheMode.ExistingOnly,
             MftSource = new MftIndexSource(ProduceAsync)
         };

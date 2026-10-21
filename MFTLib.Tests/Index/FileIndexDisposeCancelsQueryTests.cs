@@ -28,7 +28,7 @@ public sealed class FileIndexDisposeCancelsQueryTests : IDisposable
     const uint DistinctNameCount = 8;
 
     IndexTreeFixture _fixture = null!;
-    string _cacheDirectory => _fixture.CacheDirectory;
+    string CacheDirectoryPath => _fixture.CacheDirectory;
 
     [TestInitialize]
     public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
@@ -177,7 +177,7 @@ public sealed class FileIndexDisposeCancelsQueryTests : IDisposable
                 released.Task.Wait();
             };
             index.Hooks.ReaderAdmitted = holdTheReader;
-            index.CurrentSnapshot[0].ReleaseState.Hooks.ReaderAdmitted = holdTheReader;
+            index.CurrentSnapshot[0].ReleaseState.Hooks._readerAdmitted = holdTheReader;
             index.Hooks.LifecycleGatesTakenForDisposal = () => cancellationDelivered.TrySetResult();
 
             var reader = Task.Run(() => read(index, root));
@@ -193,7 +193,7 @@ public sealed class FileIndexDisposeCancelsQueryTests : IDisposable
             await disposal;
 
             BlockFileHoldAssertions.AssertNotHeld(
-                Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D)));
+                Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 0x0BADF00D)));
             return result;
         }
         finally

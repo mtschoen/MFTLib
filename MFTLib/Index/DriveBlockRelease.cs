@@ -45,10 +45,10 @@ internal sealed class DriveBlockRelease
     internal sealed class ReleaseHooks(DriveBlockRelease owner)
     {
         /// <summary>Invoked after borrows drain, before the block is unmapped, outside <see cref="_gate" />.</summary>
-        internal Action? ReleaseStarted;
+        internal Action? _releaseStarted;
 
         /// <summary>Invoked by <see cref="FileEntry.Children" /> once its borrow is counted, before it reads a row.</summary>
-        internal Action? ReaderAdmitted;
+        internal Action? _readerAdmitted;
 
         /// <summary>How many readers are holding this block open right now, read under the owner's gate.</summary>
         internal int OutstandingBorrowCount
@@ -191,7 +191,7 @@ internal sealed class DriveBlockRelease
     {
         try
         {
-            Hooks.ReleaseStarted?.Invoke();
+            Hooks._releaseStarted?.Invoke();
             Unmap();
         }
         finally

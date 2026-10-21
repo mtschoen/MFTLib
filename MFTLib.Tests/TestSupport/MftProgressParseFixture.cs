@@ -9,8 +9,8 @@ internal static unsafe class MftProgressParseFixture
 {
     public static void ConfigureSingleRecordParse(Action<MFTLibNative.NativeMftProgressCallback?> reportProgress)
     {
-        MFTLibNative.Hooks.GetMftNativeAbiVersion = () => MFTLibNative.ExpectedMftNativeAbiVersion;
-        FileUtilities.Hooks.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
+        MFTLibNative.Hooks._getMftNativeAbiVersion = () => MFTLibNative.ExpectedMftNativeAbiVersion;
+        FileUtilities.Hooks._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
 
         var entryStride = (nuint)MFTLibNative.NativeCompactEntrySize;
         var entryBuffer = Marshal.AllocHGlobal((int)entryStride);
@@ -29,12 +29,12 @@ internal static unsafe class MftProgressParseFixture
         var parseResultPointer = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
         Marshal.StructureToPtr(parseResult, parseResultPointer, false);
 
-        MFTLibNative.Hooks.ParseMftRecordsWithProgress = (_, _, _, _, callback) =>
+        MFTLibNative.Hooks._parseMftRecordsWithProgress = (_, _, _, _, callback) =>
         {
             reportProgress(callback);
             return parseResultPointer;
         };
-        MFTLibNative.Hooks.FreeMftResult = pointer =>
+        MFTLibNative.Hooks._freeMftResult = pointer =>
         {
             Marshal.FreeHGlobal(entryBuffer);
             Marshal.FreeHGlobal(pointer);

@@ -224,44 +224,44 @@ public class PublicMemberCallerTests
             ["MFTLib.Tests.CallerGateFixtures"]);
         var displays = surface.Members.Select(member => member.Display).ToList();
 
-        const string Positional = "MFTLib.Tests.CallerGateFixtures.CallerGatePositionalRecord";
-        const string Replaced = "MFTLib.Tests.CallerGateFixtures.CallerGateReplacedPropertyRecord";
-        const string Copy = "MFTLib.Tests.CallerGateFixtures.CallerGateCopyRecord";
+        const string positional = "MFTLib.Tests.CallerGateFixtures.CallerGatePositionalRecord";
+        const string replaced = "MFTLib.Tests.CallerGateFixtures.CallerGateReplacedPropertyRecord";
+        const string copy = "MFTLib.Tests.CallerGateFixtures.CallerGateCopyRecord";
         string Report() => string.Join("; ", displays);
 
         // Authored members that share a name or shape with a synthesized one are kept.
-        Assert.IsTrue(displays.Any(display => display.StartsWith($"property {Positional}.Extra", StringComparison.Ordinal)), Report());
-        Assert.IsTrue(displays.Contains($"method {Positional}.Deconstruct(System.Int32&) : System.Void"), Report());
-        Assert.IsTrue(displays.Contains($"method {Positional}.ToString() : System.String"), Report());
-        Assert.IsTrue(displays.Contains($"method {Positional}..ctor(System.String, System.String) : System.Void"), Report());
-        Assert.IsTrue(displays.Any(display => display.StartsWith($"property {Replaced}.Alpha", StringComparison.Ordinal)), Report());
-        Assert.IsTrue(displays.Contains($"method {Copy}..ctor({Copy}) : System.Void"), Report());
+        Assert.IsTrue(displays.Any(display => display.StartsWith($"property {positional}.Extra", StringComparison.Ordinal)), Report());
+        Assert.IsTrue(displays.Contains($"method {positional}.Deconstruct(System.Int32&) : System.Void"), Report());
+        Assert.IsTrue(displays.Contains($"method {positional}.ToString() : System.String"), Report());
+        Assert.IsTrue(displays.Contains($"method {positional}..ctor(System.String, System.String) : System.Void"), Report());
+        Assert.IsTrue(displays.Any(display => display.StartsWith($"property {replaced}.Alpha", StringComparison.Ordinal)), Report());
+        Assert.IsTrue(displays.Contains($"method {copy}..ctor({copy}) : System.Void"), Report());
 
         // Every property is listed, whatever its name, type or accessors.
-        const string Sibling = "MFTLib.Tests.CallerGateFixtures.CallerGateCaseSiblingRecord";
-        const string Contract = "MFTLib.Tests.CallerGateFixtures.CallerGateAuthoredContractRecord";
-        const string Mixed = "MFTLib.Tests.CallerGateFixtures.CallerGateMixedAccessorRecord";
-        Assert.IsTrue(displays.Contains($"property {Sibling}.first : System.String"), Report());
-        Assert.IsTrue(displays.Contains($"property {Contract}.EqualityContract : System.Type"), Report());
-        Assert.IsTrue(displays.Contains($"property {Mixed}.First : System.Int32"), Report());
+        const string sibling = "MFTLib.Tests.CallerGateFixtures.CallerGateCaseSiblingRecord";
+        const string contract = "MFTLib.Tests.CallerGateFixtures.CallerGateAuthoredContractRecord";
+        const string mixed = "MFTLib.Tests.CallerGateFixtures.CallerGateMixedAccessorRecord";
+        Assert.IsTrue(displays.Contains($"property {sibling}.first : System.String"), Report());
+        Assert.IsTrue(displays.Contains($"property {contract}.EqualityContract : System.Type"), Report());
+        Assert.IsTrue(displays.Contains($"property {mixed}.First : System.Int32"), Report());
 
-        Assert.IsTrue(displays.Contains($"property {Positional}.First : System.Int32"), Report());
-        Assert.IsTrue(displays.Contains($"property {Positional}.Second : System.Int32"), Report());
-        Assert.IsTrue(displays.Contains($"property {Replaced}.Beta : System.Int32"), Report());
-        Assert.IsTrue(displays.Contains($"property {Sibling}.First : System.Int32"), Report());
+        Assert.IsTrue(displays.Contains($"property {positional}.First : System.Int32"), Report());
+        Assert.IsTrue(displays.Contains($"property {positional}.Second : System.Int32"), Report());
+        Assert.IsTrue(displays.Contains($"property {replaced}.Beta : System.Int32"), Report());
+        Assert.IsTrue(displays.Contains($"property {sibling}.First : System.Int32"), Report());
 
         // Members carrying evidence of synthesis are dropped.
-        Assert.IsFalse(displays.Contains($"method {Positional}..ctor(System.Int32, System.Int32) : System.Void"), Report());
-        Assert.IsFalse(displays.Contains($"method {Positional}.Deconstruct(System.Int32&, System.Int32&) : System.Void"), Report());
-        Assert.IsFalse(displays.Contains($"method {Positional}..ctor({Positional}) : System.Void"), Report());
-        Assert.IsFalse(displays.Contains($"method {Copy}..ctor(System.Int32) : System.Void"), Report());
+        Assert.IsFalse(displays.Contains($"method {positional}..ctor(System.Int32, System.Int32) : System.Void"), Report());
+        Assert.IsFalse(displays.Contains($"method {positional}.Deconstruct(System.Int32&, System.Int32&) : System.Void"), Report());
+        Assert.IsFalse(displays.Contains($"method {positional}..ctor({positional}) : System.Void"), Report());
+        Assert.IsFalse(displays.Contains($"method {copy}..ctor(System.Int32) : System.Void"), Report());
         foreach (var synthesized in new[] { "Equals", "GetHashCode", "PrintMembers", "<Clone>$", "op_Equality", "op_Inequality" })
         {
-            Assert.IsFalse(displays.Any(display => display.StartsWith($"method {Positional}.{synthesized}(", StringComparison.Ordinal)), Report());
+            Assert.IsFalse(displays.Any(display => display.StartsWith($"method {positional}.{synthesized}(", StringComparison.Ordinal)), Report());
         }
 
         Assert.IsFalse(displays.Any(display => display.Contains("EqualityContract", StringComparison.Ordinal) &&
-                                                 !display.Contains(Contract, StringComparison.Ordinal)), Report());
+                                                 !display.Contains(contract, StringComparison.Ordinal)), Report());
     }
 
     /// <summary>
@@ -308,21 +308,21 @@ public class PublicMemberCallerTests
         var displays = surface.Members.Select(member => member.Display).ToList();
         string Report() => string.Join("; ", displays);
 
-        const string Inheritable = "MFTLib.Tests.CallerGateFixtures.CallerGateInheritableRecord";
-        Assert.IsFalse(displays.Any(display => display.StartsWith($"method {Inheritable}..ctor({Inheritable})", StringComparison.Ordinal)), Report());
-        Assert.IsFalse(displays.Any(display => display.StartsWith($"method {Inheritable}.PrintMembers(", StringComparison.Ordinal)), Report());
-        Assert.IsFalse(displays.Contains($"method {Inheritable}..ctor(System.Int32) : System.Void"), Report());
+        const string inheritable = "MFTLib.Tests.CallerGateFixtures.CallerGateInheritableRecord";
+        Assert.IsFalse(displays.Any(display => display.StartsWith($"method {inheritable}..ctor({inheritable})", StringComparison.Ordinal)), Report());
+        Assert.IsFalse(displays.Any(display => display.StartsWith($"method {inheritable}.PrintMembers(", StringComparison.Ordinal)), Report());
+        Assert.IsFalse(displays.Contains($"method {inheritable}..ctor(System.Int32) : System.Void"), Report());
 
-        const string Empty = "MFTLib.Tests.CallerGateFixtures.CallerGateEmptyRecord";
-        Assert.IsTrue(displays.Contains($"method {Empty}..ctor() : System.Void"), Report());
-        Assert.IsFalse(displays.Any(display => display.StartsWith($"method {Empty}..ctor({Empty})", StringComparison.Ordinal)), Report());
+        const string empty = "MFTLib.Tests.CallerGateFixtures.CallerGateEmptyRecord";
+        Assert.IsTrue(displays.Contains($"method {empty}..ctor() : System.Void"), Report());
+        Assert.IsFalse(displays.Any(display => display.StartsWith($"method {empty}..ctor({empty})", StringComparison.Ordinal)), Report());
 
-        const string Authored = "MFTLib.Tests.CallerGateFixtures.CallerGateAuthoredDeconstructRecord";
-        Assert.IsTrue(displays.Contains($"method {Authored}.Deconstruct(System.Int32&, System.Int32&) : System.Void"), Report());
-        Assert.IsTrue(displays.Contains($"method {Authored}..ctor(System.Int32, System.Int32) : System.Void"), Report());
-        Assert.IsTrue(displays.Any(display => display.StartsWith($"property {Authored}.Left", StringComparison.Ordinal)), Report());
-        Assert.IsTrue(displays.Any(display => display.StartsWith($"property {Authored}.Right", StringComparison.Ordinal)), Report());
-        Assert.IsFalse(displays.Any(display => display.StartsWith($"method {Authored}..ctor({Authored})", StringComparison.Ordinal)), Report());
+        const string authored = "MFTLib.Tests.CallerGateFixtures.CallerGateAuthoredDeconstructRecord";
+        Assert.IsTrue(displays.Contains($"method {authored}.Deconstruct(System.Int32&, System.Int32&) : System.Void"), Report());
+        Assert.IsTrue(displays.Contains($"method {authored}..ctor(System.Int32, System.Int32) : System.Void"), Report());
+        Assert.IsTrue(displays.Any(display => display.StartsWith($"property {authored}.Left", StringComparison.Ordinal)), Report());
+        Assert.IsTrue(displays.Any(display => display.StartsWith($"property {authored}.Right", StringComparison.Ordinal)), Report());
+        Assert.IsFalse(displays.Any(display => display.StartsWith($"method {authored}..ctor({authored})", StringComparison.Ordinal)), Report());
     }
 
     /// <summary>

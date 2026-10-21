@@ -14,7 +14,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
     static readonly CacheTag RequestedTag = new("LOCL", 3);
 
     IndexTreeFixture _fixture = null!;
-    string _cacheDirectory => _fixture.CacheDirectory;
+    string CacheDirectoryPath => _fixture.CacheDirectory;
 
     public TestContext TestContext { get; set; } = null!;
 
@@ -22,7 +22,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
     public void Initialize()
     {
         _fixture = new IndexTreeFixture();
-        Directory.CreateDirectory(_cacheDirectory);
+        Directory.CreateDirectory(CacheDirectoryPath);
     }
 
     public void Dispose() => _fixture.Dispose();
@@ -49,7 +49,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
         {
             Drive = drive,
             VolumeSerial = 123,
-            BlockPath = Path.Combine(_cacheDirectory,
+            BlockPath = Path.Combine(CacheDirectoryPath,
             deleteOnClose ? $"{drive}-temporary.mlix" : $"{drive}-canonical.mlix"),
             DeleteOnClose = deleteOnClose,
             Progress = progress,
@@ -195,7 +195,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
             Assert.IsNull(initialDrive.Watch.CheckpointLoss);
         }
 
-        var canonicalPath = Path.Combine(_cacheDirectory,
+        var canonicalPath = Path.Combine(CacheDirectoryPath,
             CacheDirectory.BlockFileName('T', 0x0BADF00D));
         Assert.IsTrue(File.Exists(canonicalPath));
 

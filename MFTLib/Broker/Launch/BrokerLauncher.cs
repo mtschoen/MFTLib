@@ -18,13 +18,13 @@ public static class BrokerLauncher
 
     internal sealed class LaunchDependencies
     {
-        internal Func<string?> GetProcessPath = () => Environment.ProcessPath;
-        internal Func<ProcessStartInfo, Process?> StartProcess = Process.Start;
+        internal Func<string?> _getProcessPath = () => Environment.ProcessPath;
+        internal Func<ProcessStartInfo, Process?> _startProcess = Process.Start;
 
         internal void ResetToDefaults()
         {
-            GetProcessPath = () => Environment.ProcessPath;
-            StartProcess = Process.Start;
+            _getProcessPath = () => Environment.ProcessPath;
+            _startProcess = Process.Start;
         }
     }
 
@@ -38,7 +38,7 @@ public static class BrokerLauncher
     [SupportedOSPlatform("windows")]
     public static bool Launch(string brokerArguments)
     {
-        var exePath = Dependencies.GetProcessPath()
+        var exePath = Dependencies._getProcessPath()
                       ?? throw new InvalidOperationException(
                           "Cannot determine the current executable path to launch the broker");
 
@@ -53,7 +53,7 @@ public static class BrokerLauncher
 
         try
         {
-            using var process = Dependencies.StartProcess(startInfo);
+            using var process = Dependencies._startProcess(startInfo);
             return process != null;
         }
         catch (Win32Exception)

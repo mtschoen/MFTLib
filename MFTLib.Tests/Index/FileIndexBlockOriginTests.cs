@@ -9,8 +9,8 @@ namespace MFTLib.Tests.Index;
 public sealed class FileIndexBlockOriginTests : IDisposable
 {
     IndexTreeFixture _fixture = null!;
-    string _treeRoot => _fixture.TreeRoot;
-    string _cacheDirectory => _fixture.CacheDirectory;
+    string TreeRoot => _fixture.TreeRoot;
+    string CacheDirectoryPath => _fixture.CacheDirectory;
 
     public TestContext TestContext { get; set; } = null!;
 
@@ -65,8 +65,8 @@ public sealed class FileIndexBlockOriginTests : IDisposable
     {
         var options = new FileIndexOptions
         {
-            Drives = [new IndexedDrive('Z', Path.Combine(_treeRoot, "absent"), 1, ProducerKind.Enumeration)],
-            CacheDirectory = _cacheDirectory,
+            Drives = [new IndexedDrive('Z', Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration)],
+            CacheDirectory = CacheDirectoryPath,
         };
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);

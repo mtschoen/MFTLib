@@ -72,7 +72,7 @@ public class MftVolumeAdminTests
     public void GetVolumeHandle_ValidVolume_ReturnsValidHandle()
     {
         RequireElevation();
-        using var handle = FileUtilities.Hooks.GetVolumeHandle(@"\\.\C:");
+        using var handle = FileUtilities.Hooks._getVolumeHandle(@"\\.\C:");
         Assert.IsFalse(handle.IsInvalid);
         Assert.IsFalse(handle.IsClosed);
     }
@@ -81,7 +81,7 @@ public class MftVolumeAdminTests
     public void GetVolumeHandle_InvalidVolume_Throws()
     {
         RequireElevation();
-        Assert.ThrowsExactly<IOException>(() => FileUtilities.Hooks.GetVolumeHandle(@"\\.\Q:"));
+        Assert.ThrowsExactly<IOException>(() => FileUtilities.Hooks._getVolumeHandle(@"\\.\Q:"));
     }
 
     [TestMethod]

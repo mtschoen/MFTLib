@@ -698,8 +698,8 @@ public partial class BrokerSessionTests
     public async Task DefaultConstructor_RelaunchesAfterTheUacPromptIsDeclinedAndNeverCachesTheDecline()
     {
         var prompts = 0;
-        BrokerLauncher.Dependencies.GetProcessPath = () => @"C:\app\MyApp.exe";
-        BrokerLauncher.Dependencies.StartProcess = _ =>
+        BrokerLauncher.Dependencies._getProcessPath = () => @"C:\app\MyApp.exe";
+        BrokerLauncher.Dependencies._startProcess = _ =>
         {
             Interlocked.Increment(ref prompts);
             throw new Win32Exception(1223);

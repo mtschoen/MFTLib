@@ -32,7 +32,7 @@ internal sealed unsafe partial class BlockFile
     /// </summary>
     internal void FlushUnderHeldAccess(Action<long>? rangeFlushed)
     {
-        var rangeBytes = Hooks.FlushRangeBytes;
+        var rangeBytes = Hooks._flushRangeBytes;
         for (long start = 0; start < Length; start += rangeBytes)
         {
             var end = Math.Min(start + rangeBytes, Length);
@@ -70,7 +70,7 @@ internal sealed unsafe partial class BlockFile
         var flag = Libc.SelectSynchronousFlag(platform);
         var pageBytes = Environment.SystemPageSize;
         var alignedStart = start - (start % pageBytes);
-        var error = Hooks.SynchronizeViewRange(alignedStart, end, flag);
+        var error = Hooks._synchronizeViewRange(alignedStart, end, flag);
         if (error != 0)
         {
             throw new IOException($"msync failed with errno {error}.");
@@ -88,14 +88,14 @@ internal sealed unsafe partial class BlockFile
     ///     understands; a platform that is neither Linux nor macOS stays unrecognized so the
     ///     selector refuses it before any native call.
     /// </summary>
-    internal static OSPlatform ClassifyPlatform(bool isLinux, bool isMacOS)
+    internal static OSPlatform ClassifyPlatform(bool isLinux, bool isMacOs)
     {
         if (isLinux)
         {
             return OSPlatform.Linux;
         }
 
-        return isMacOS ? OSPlatform.OSX : OSPlatform.Create("UNRECOGNIZED");
+        return isMacOs ? OSPlatform.OSX : OSPlatform.Create("UNRECOGNIZED");
     }
 
     /// <summary>
@@ -106,7 +106,7 @@ internal sealed unsafe partial class BlockFile
     /// </summary>
     internal void FlushViewWithRetry(long start, long end)
     {
-        var error = Hooks.FlushViewRange(start, end);
+        var error = Hooks._flushViewRange(start, end);
         if (error == 0)
         {
             return;
@@ -115,10 +115,10 @@ internal sealed unsafe partial class BlockFile
         var spinWait = default(SpinWait);
         for (var wait = 0; error == ErrorLockViolation && wait < MaximumFlushWaits; wait++)
         {
-            Hooks.PauseMilliseconds(1 << wait);
+            Hooks._pauseMilliseconds(1 << wait);
             for (var retry = 0; retry < MaximumFlushRetriesPerWait; retry++)
             {
-                error = Hooks.FlushViewRange(start, end);
+                error = Hooks._flushViewRange(start, end);
                 if (error == 0)
                 {
                     return;
@@ -129,7 +129,7 @@ internal sealed unsafe partial class BlockFile
                     break;
                 }
 
-                Hooks.SpinOnce(ref spinWait);
+                Hooks._spinOnce(ref spinWait);
             }
         }
 

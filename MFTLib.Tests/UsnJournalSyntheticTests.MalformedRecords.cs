@@ -145,7 +145,7 @@ public partial class UsnJournalSyntheticTests
     static async Task<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> ReadOrWatchBatchAsync(byte[] buffer, bool watch)
     {
         UseFakeHandle();
-        FileUtilities.Hooks.GetWatchVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks._getWatchVolumeHandle = _ => FakeVolumeHandle.Create();
         QueueSuccess(buffer);
         using var volume = MftVolume.Open('C');
         if (!watch)

@@ -9,7 +9,7 @@ namespace MFTLib.Tests.Index;
 /// <summary>
 ///     <see cref="FileIndex.QueryUsnJournalSettings" />: drive membership validation and
 ///     delegation to the query engine. The engine itself is swapped out through
-///     <c>UsnJournalSettingsQuery.Dependencies.QueryOverride</c>, so these run on every platform
+///     <c>UsnJournalSettingsQuery.Dependencies._queryOverride</c>, so these run on every platform
 ///     (the <see cref="SupportedOSPlatformAttribute" /> on each test satisfies CA1416 and
 ///     is inert at runtime, same as <c>IndexedDriveTests</c>).
 /// </summary>
@@ -45,7 +45,7 @@ public sealed class FileIndexJournalSettingsTests : IDisposable
             MaximumSize = 64L * 1024 * 1024,
             AllocationDelta = 8L * 1024 * 1024
         };
-        UsnJournalSettingsQuery.Dependencies.QueryOverride =
+        UsnJournalSettingsQuery.Dependencies._queryOverride =
             drive => drive == 'T'
                 ? expected
                 : throw new IOException($"Unexpected drive {drive}");
@@ -73,7 +73,7 @@ public sealed class FileIndexJournalSettingsTests : IDisposable
             return;
         }
 
-        FileUtilities.Hooks.GetVolumeHandle = _ => new Microsoft.Win32.SafeHandles.SafeFileHandle(new IntPtr(1), false);
+        FileUtilities.Hooks._getVolumeHandle = _ => new Microsoft.Win32.SafeHandles.SafeFileHandle(new IntPtr(1), false);
         JournalQueryFake.Serve(journalIdentifier: 9, nextUsn: 77, maximumSize: 0x08000000, allocationDelta: 0x01000000);
         await using var index = await FileIndex.OpenAsync(_fixture.Options('C'), CancellationToken.None);
         using var volume = MftVolume.Open('C');

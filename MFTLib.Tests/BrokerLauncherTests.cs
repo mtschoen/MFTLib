@@ -22,8 +22,8 @@ public class BrokerLauncherTests
     [SupportedOSPlatform("windows")]
     public void Launch_NullProcessPath_Throws()
     {
-        BrokerLauncher.Dependencies.GetProcessPath = () => null;
-        BrokerLauncher.Dependencies.StartProcess = _ => throw new AssertFailedException("Missing path must fail before launch.");
+        BrokerLauncher.Dependencies._getProcessPath = () => null;
+        BrokerLauncher.Dependencies._startProcess = _ => throw new AssertFailedException("Missing path must fail before launch.");
         Assert.ThrowsExactly<InvalidOperationException>(() => BrokerLauncher.Launch("--broker"));
     }
 
@@ -35,8 +35,8 @@ public class BrokerLauncherTests
         _process = process;
         var executable = Path.Combine(Path.GetTempPath(), "broker-launch-" + Guid.NewGuid().ToString("N") + ".exe");
         ProcessStartInfo? launched = null;
-        BrokerLauncher.Dependencies.GetProcessPath = () => executable;
-        BrokerLauncher.Dependencies.StartProcess = startInfo =>
+        BrokerLauncher.Dependencies._getProcessPath = () => executable;
+        BrokerLauncher.Dependencies._startProcess = startInfo =>
         {
             launched = startInfo;
             return process;
@@ -56,8 +56,8 @@ public class BrokerLauncherTests
     [SupportedOSPlatform("windows")]
     public void Launch_ProcessReturnsNull_ReturnsFalse()
     {
-        BrokerLauncher.Dependencies.GetProcessPath = () => @"C:\app\MyApp.exe";
-        BrokerLauncher.Dependencies.StartProcess = _ => null;
+        BrokerLauncher.Dependencies._getProcessPath = () => @"C:\app\MyApp.exe";
+        BrokerLauncher.Dependencies._startProcess = _ => null;
 
         Assert.IsFalse(BrokerLauncher.Launch("--broker --pipe p"));
     }
@@ -66,8 +66,8 @@ public class BrokerLauncherTests
     [SupportedOSPlatform("windows")]
     public void Launch_Win32Exception1223_ReturnsFalse()
     {
-        BrokerLauncher.Dependencies.GetProcessPath = () => @"C:\app\MyApp.exe";
-        BrokerLauncher.Dependencies.StartProcess = _ => throw new Win32Exception(1223);
+        BrokerLauncher.Dependencies._getProcessPath = () => @"C:\app\MyApp.exe";
+        BrokerLauncher.Dependencies._startProcess = _ => throw new Win32Exception(1223);
 
         Assert.IsFalse(BrokerLauncher.Launch("--broker --pipe p"));
     }

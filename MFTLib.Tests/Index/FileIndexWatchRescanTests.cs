@@ -18,14 +18,14 @@ public partial class FileIndexWatchRescanTests
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
     IndexTreeFixture _fixture = null!;
-    string _treeRoot => _fixture.TreeRoot;
-    string _cacheDirectory => _fixture.CacheDirectory;
+    string TreeRoot => _fixture.TreeRoot;
+    string CacheDirectoryPath => _fixture.CacheDirectory;
 
     [TestInitialize]
     public void Initialize()
     {
         _fixture = new IndexTreeFixture(seedDocuments: false);
-        Directory.CreateDirectory(_cacheDirectory);
+        Directory.CreateDirectory(CacheDirectoryPath);
     }
 
     public void Dispose() => _fixture.Dispose();
@@ -275,13 +275,13 @@ public partial class FileIndexWatchRescanTests
     /// </summary>
     FileIndexOptions CacheOnlyWatchOptions(ScriptedWatchSource source, bool failDriveT)
     {
-        SeededBlocks.Write(Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('U', 2)),
+        SeededBlocks.Write(Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('U', 2)),
             volumeSerial: 2, journalIdentifier: 22, nextUsn: 8484, moment: SeededBlocks.SeededMoment);
         return new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 1), new IndexedDrive('U', _treeRoot, 2)],
-            CacheDirectory = _cacheDirectory,
-            MftSource = new MftIndexSource((request, _cancellationToken) =>
+            Drives = [new IndexedDrive('T', TreeRoot, 1), new IndexedDrive('U', TreeRoot, 2)],
+            CacheDirectory = CacheDirectoryPath,
+            MftSource = new MftIndexSource((request, cancellationToken) =>
             {
                 if (failDriveT && char.ToUpperInvariant((request.Drive).Letter) == 'T')
                 {

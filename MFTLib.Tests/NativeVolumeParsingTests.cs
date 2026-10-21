@@ -36,7 +36,7 @@ public partial class NativeVolumeParsingTests
         using var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut);
         client.Connect(5000);
 
-        var resultPointer = MFTLibNative.Hooks.ParseMftRecordsWithProgress(
+        var resultPointer = MFTLibNative.Hooks._parseMftRecordsWithProgress(
             client.SafePipeHandle, false, 256, IntPtr.Zero, null);
         Assert.AreNotEqual(IntPtr.Zero, resultPointer);
         try
@@ -48,7 +48,7 @@ public partial class NativeVolumeParsingTests
         }
         finally
         {
-            MFTLibNative.Hooks.FreeMftResult(resultPointer);
+            MFTLibNative.Hooks._freeMftResult(resultPointer);
         }
     }
 
@@ -115,7 +115,7 @@ public partial class NativeVolumeParsingTests
             }
             finally
             {
-                MFTLibNative.Hooks.FreeMftResult(resultPointer);
+                MFTLibNative.Hooks._freeMftResult(resultPointer);
             }
         }
         finally
@@ -149,7 +149,7 @@ public partial class NativeVolumeParsingTests
                 invocations.Add((scanned, total));
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var resultPointer = MFTLibNative.Hooks.ParseMftRecordsWithProgress(
+            var resultPointer = MFTLibNative.Hooks._parseMftRecordsWithProgress(
                 fileStream.SafeFileHandle, false, 64, IntPtr.Zero, callback);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
@@ -163,7 +163,7 @@ public partial class NativeVolumeParsingTests
             }
             finally
             {
-                MFTLibNative.Hooks.FreeMftResult(resultPointer);
+                MFTLibNative.Hooks._freeMftResult(resultPointer);
             }
 
             GC.KeepAlive(callback);
@@ -204,7 +204,7 @@ public partial class NativeVolumeParsingTests
             // Fail the 3rd Read: 1=boot sector, 2=record 0, 3=VolumeReadChunk's
             // first read, so the chunk loop body never executes.
             NativeTestHooks.NativeSetReadFailCountdown(3);
-            var resultPointer = MFTLibNative.Hooks.ParseMftRecordsWithProgress(
+            var resultPointer = MFTLibNative.Hooks._parseMftRecordsWithProgress(
                 fileStream.SafeFileHandle, false, 64, IntPtr.Zero, callback);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
@@ -216,7 +216,7 @@ public partial class NativeVolumeParsingTests
             }
             finally
             {
-                MFTLibNative.Hooks.FreeMftResult(resultPointer);
+                MFTLibNative.Hooks._freeMftResult(resultPointer);
             }
 
             GC.KeepAlive(callback);

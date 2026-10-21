@@ -16,7 +16,7 @@ public sealed class WatchFirstRunTests : IDisposable
     static readonly SyntheticJournalCursor Armed = new(7, 1000);
 
     TempDirectory _tempDirectory = null!;
-    string _directory => _tempDirectory.Path;
+    string TemporaryDirectoryPath => _tempDirectory.Path;
     UnattendedEnvironmentScope _attended = null!;
 
     [TestInitialize]
@@ -164,7 +164,7 @@ public sealed class WatchFirstRunTests : IDisposable
         var host = HostOver(new List<string>());
 
         Assert.AreEqual(0, host.Run(["elevation-status"], MachineThatMustNotBeListed(), probe.Execute));
-        Assert.AreEqual(0, host.Run(["cache", "--cache-directory", Path.Combine(_directory, "none")], MachineThatMustNotBeListed(), probe.Execute));
+        Assert.AreEqual(0, host.Run(["cache", "--cache-directory", Path.Combine(TemporaryDirectoryPath, "none")], MachineThatMustNotBeListed(), probe.Execute));
 
         CollectionAssert.AreEqual(new[] { WatchVerb.ElevationStatus, WatchVerb.Cache }, probe.Received.Select(request => request.Verb).ToArray());
     }
@@ -215,7 +215,7 @@ public sealed class WatchFirstRunTests : IDisposable
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
-        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { CacheDirectory = Path.Combine(_directory, "cache") }, session, FixtureDrive, CancellationToken.None);
+        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, session, FixtureDrive, CancellationToken.None);
 
         Assert.AreEqual(0, result);
         Assert.IsTrue(lines.Contains("Watching X. Press any key to stop."), string.Join(Environment.NewLine, lines));
@@ -237,7 +237,7 @@ public sealed class WatchFirstRunTests : IDisposable
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
         try
         {
-            var run = host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { CacheDirectory = Path.Combine(_directory, "cache") }, session, FixtureDrive, cancellation.Token);
+            var run = host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, session, FixtureDrive, cancellation.Token);
 
             await Assert.ThrowsExactlyAsync<TaskCanceledException>(() => run);
         }
@@ -261,7 +261,7 @@ public sealed class WatchFirstRunTests : IDisposable
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
-        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { CacheDirectory = Path.Combine(_directory, "cache") }, session, FixtureDrive, CancellationToken.None);
+        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, session, FixtureDrive, CancellationToken.None);
 
         Assert.AreEqual(0, result, string.Join(Environment.NewLine, lines));
         Assert.AreEqual(TimeSpan.FromSeconds(WatchArguments.DefaultSeconds), clock.TotalAdvanced);
@@ -277,7 +277,7 @@ public sealed class WatchFirstRunTests : IDisposable
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
-        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { Seconds = 3, CacheDirectory = Path.Combine(_directory, "cache") }, session, FixtureDrive, CancellationToken.None);
+        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { Seconds = 3, CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, session, FixtureDrive, CancellationToken.None);
 
         Assert.AreEqual(0, result);
         Assert.AreEqual(TimeSpan.FromSeconds(3), clock.TotalAdvanced);
@@ -294,7 +294,7 @@ public sealed class WatchFirstRunTests : IDisposable
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
         var result = await host.RunThroughBrokerAsync(
-            new WatchArguments(WatchVerb.Watch, ["X", "Q"]) { CacheDirectory = Path.Combine(_directory, "cache") },
+            new WatchArguments(WatchVerb.Watch, ["X", "Q"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") },
             session,
             FixtureDrive,
             CancellationToken.None);
@@ -315,7 +315,7 @@ public sealed class WatchFirstRunTests : IDisposable
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
         var result = await host.RunThroughBrokerAsync(
-            new WatchArguments(WatchVerb.Watch, ["Q"]) { CacheDirectory = Path.Combine(_directory, "cache") },
+            new WatchArguments(WatchVerb.Watch, ["Q"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") },
             session,
             FixtureDrive,
             CancellationToken.None);
@@ -343,7 +343,7 @@ public sealed class WatchFirstRunTests : IDisposable
 
     // Every drive roots at the fixture directory except Q, whose root is missing, so it is offline.
     IndexedDrive FixtureDrive(string letter) =>
-        new(letter[0], letter == "Q" ? Path.Combine(_directory, "missing-root") : _directory, 4242);
+        new(letter[0], letter == "Q" ? Path.Combine(TemporaryDirectoryPath, "missing-root") : TemporaryDirectoryPath, 4242);
 
     static SampleHost HostOver(List<string> lines, TextReader? input = null, TimeProvider? timeProvider = null, bool? interactive = null) =>
         HostOver(new LineCollectingWriter(lines), input, timeProvider, interactive);

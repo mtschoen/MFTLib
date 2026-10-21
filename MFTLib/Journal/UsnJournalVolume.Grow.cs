@@ -46,7 +46,7 @@ internal sealed partial class UsnJournalVolume
         {
             Marshal.WriteInt64(inBuffer, 0, maximumSize);
             Marshal.WriteInt64(inBuffer, 8, allocationDelta);
-            var succeeded = Kernel32.Hooks.DeviceIoControl(
+            var succeeded = Kernel32.Hooks._deviceIoControl(
                 _volumeHandle, FsctlCreateUsnJournal, inBuffer, 16, IntPtr.Zero, 0, out _, IntPtr.Zero);
             if (!succeeded)
             {

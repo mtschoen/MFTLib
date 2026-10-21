@@ -53,7 +53,7 @@ internal sealed class IdleUsnPipe : IDisposable
             NativeTestHooks.NativeSetUsnWatchPipe(pipe.Handle, pipe.BeforeIssue.SafeWaitHandle,
                 pipe.ContinueIssue.SafeWaitHandle, pipe.Issued.SafeWaitHandle, pipe.CancelAttempted.SafeWaitHandle,
                 gateReadNumber);
-            FileUtilities.Hooks.GetWatchVolumeHandle = pipe.BorrowHandle;
+            FileUtilities.Hooks._getWatchVolumeHandle = pipe.BorrowHandle;
             return pipe;
         }
         catch

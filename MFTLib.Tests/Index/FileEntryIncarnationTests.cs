@@ -152,7 +152,7 @@ public class FileEntryIncarnationTests
         await using var fixture = SeededFixture();
         var retained = FileEntry.Create(fixture.Snapshot[0], DirectoryRow);
         var calls = new List<(uint Record, ushort Sequence)>();
-        FileEntry.Dependencies.OpenById = (_, record, sequence, _) =>
+        FileEntry.Dependencies._openById = (_, record, sequence, _) =>
         {
             calls.Add((record, sequence));
             return new MemoryBackedFileStream();
@@ -226,7 +226,7 @@ public class FileEntryIncarnationTests
         await using var fixture = SeededFixture();
         var retained = FileEntry.Create(fixture.Snapshot[0], DirectoryRow);
         var calls = new List<ushort>();
-        FileEntry.Dependencies.OpenById = (_, _, sequence, _) =>
+        FileEntry.Dependencies._openById = (_, _, sequence, _) =>
         {
             calls.Add(sequence);
             return new MemoryBackedFileStream();
@@ -319,7 +319,7 @@ public class FileEntryIncarnationTests
         fixture.Block.SequenceNumbers[(int)ChildRow] = 11;
         var retained = FileEntry.Create(fixture.Snapshot[0], ChildRow);
         var calls = new List<ushort>();
-        FileEntry.Dependencies.OpenById = (_, _, sequence, _) =>
+        FileEntry.Dependencies._openById = (_, _, sequence, _) =>
         {
             calls.Add(sequence);
             return new MemoryBackedFileStream();
@@ -374,7 +374,7 @@ public class FileEntryIncarnationTests
         await using var fixture = SeededFixture();
         fixture.Block.SequenceNumbers[(int)ChildRow] = ushort.MaxValue;
         var calls = new List<ushort>();
-        FileEntry.Dependencies.OpenById = (_, _, sequence, _) =>
+        FileEntry.Dependencies._openById = (_, _, sequence, _) =>
         {
             calls.Add(sequence);
             return new MemoryBackedFileStream();

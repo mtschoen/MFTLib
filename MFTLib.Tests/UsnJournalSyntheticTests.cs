@@ -21,10 +21,12 @@ namespace MFTLib.Tests;
 public partial class UsnJournalSyntheticTests
 {
     // Win32 error constants (mirror the native error branches).
+    // ReSharper disable InconsistentNaming -- Win32 error code naming convention
     const uint ERROR_HANDLE_EOF = 38;
     const uint ERROR_JOURNAL_DELETE_IN_PROGRESS = 1178;
     const uint ERROR_JOURNAL_NOT_ACTIVE = 1179;
     const uint ERROR_JOURNAL_ENTRY_DELETED = 1181;
+    // ReSharper restore InconsistentNaming
 
     static readonly UsnJournalCursor Cursor = new(0xABCD, 500);
 
@@ -41,7 +43,7 @@ public partial class UsnJournalSyntheticTests
 
     static void UseFakeHandle()
     {
-        FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks._getVolumeHandle = _ => FakeVolumeHandle.Create();
     }
 
     // Queues a synthetic IOCTL success buffer; keeps it alive until cleanup.
@@ -530,7 +532,7 @@ public partial class UsnJournalSyntheticTests
     public async Task WatchUsnJournal_NativeError_ThrowsTheMessage()
     {
         UseFakeHandle();
-        FileUtilities.Hooks.GetWatchVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks._getWatchVolumeHandle = _ => FakeVolumeHandle.Create();
         NativeTestHooks.NativeSetUsnIoFailError(ERROR_JOURNAL_NOT_ACTIVE, 1);
         using var volume = MftVolume.Open('C');
 
@@ -547,7 +549,7 @@ public partial class UsnJournalSyntheticTests
     public async Task WatchUsnJournal_ResultAllocationException_ThrowsNullResult()
     {
         UseFakeHandle();
-        FileUtilities.Hooks.GetWatchVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks._getWatchVolumeHandle = _ => FakeVolumeHandle.Create();
         NativeTestHooks.NativeSetAllocFailCountdown(-3);
         using var volume = MftVolume.Open('C');
 
@@ -564,7 +566,7 @@ public partial class UsnJournalSyntheticTests
     public async Task WatchUsnJournal_EmptyBatchThenEntry_YieldsTheEntryWithItsCursor()
     {
         UseFakeHandle();
-        FileUtilities.Hooks.GetWatchVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks._getWatchVolumeHandle = _ => FakeVolumeHandle.Create();
         QueueSuccess(UsnReadBuffers.Build(Cursor.NextUsn));
         QueueSuccess(UsnReadBuffers.Build(600, ((0xA9UL << 48) | 0x1246A1, 5, 550, 0x00000100u, "created.txt")));
         using var volume = MftVolume.Open('C');
@@ -605,7 +607,7 @@ public partial class UsnJournalSyntheticTests
             return true;
         }
 
-        Kernel32.Hooks.DeviceIoControl = FakeDeviceIoControl;
+        Kernel32.Hooks._deviceIoControl = FakeDeviceIoControl;
         try
         {
             using var volume = MftVolume.Open('C');
@@ -647,7 +649,7 @@ public partial class UsnJournalSyntheticTests
             return true;
         }
 
-        Kernel32.Hooks.DeviceIoControl = FakeDeviceIoControl;
+        Kernel32.Hooks._deviceIoControl = FakeDeviceIoControl;
         using var volume = MftVolume.Open('C');
         var settings = volume.Journal.GrowUsnJournal(0x400000, 0x200000);
         Assert.AreEqual(0x000900E7u, capturedCode);
@@ -676,7 +678,7 @@ public partial class UsnJournalSyntheticTests
             return false;
         }
 
-        Kernel32.Hooks.DeviceIoControl = FakeDeviceIoControl;
+        Kernel32.Hooks._deviceIoControl = FakeDeviceIoControl;
         try
         {
             using var volume = MftVolume.Open('C');

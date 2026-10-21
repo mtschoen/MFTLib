@@ -20,16 +20,16 @@ public sealed class FileIndexPartialCanonicalBlockTests : IDisposable
 
     const uint VolumeSerial = 0x2970;
     IndexTreeFixture _fixture = null!;
-    string _treeRoot => _fixture.TreeRoot;
-    string _cacheDirectory => _fixture.CacheDirectory;
+    string TreeRoot => _fixture.TreeRoot;
+    string CacheDirectoryPath => _fixture.CacheDirectory;
     string _canonicalPath = null!;
 
     [TestInitialize]
     public void Initialize()
     {
         _fixture = new IndexTreeFixture();
-        Directory.CreateDirectory(_cacheDirectory);
-        _canonicalPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', VolumeSerial));
+        Directory.CreateDirectory(CacheDirectoryPath);
+        _canonicalPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', VolumeSerial));
     }
 
     public void Dispose()
@@ -64,14 +64,14 @@ public sealed class FileIndexPartialCanonicalBlockTests : IDisposable
     [TestMethod]
     public async Task OpenAsync_EnumerationScanCancelledMidScan_DeletesThePartialCanonicalBlock()
     {
-        Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "readme.md"), "hello", Token);
+        Directory.CreateDirectory(Path.Combine(TreeRoot, "Documents"));
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "readme.md"), "hello", Token);
         using var cancellation = new CancellationTokenSource();
         var diagnostics = new List<string>();
         var options = new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, VolumeSerial, ProducerKind.Enumeration)],
-            CacheDirectory = _cacheDirectory,
+            Drives = [new IndexedDrive('T', TreeRoot, VolumeSerial, ProducerKind.Enumeration)],
+            CacheDirectory = CacheDirectoryPath,
             ScanProgress = new CancelingProgress(cancellation),
             Diagnostics = diagnostics.Add
         };
@@ -209,7 +209,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IDisposable
         Assert.AreEqual(rowCount, index.HeaderOf().RowCount);
         Assert.IsTrue(new FileInfo(_canonicalPath).Length > 3,
             "the slot holds the complete previous block, not the partial replacement");
-        Assert.AreEqual(0, Directory.GetFiles(_cacheDirectory, "*.retired-*").Length);
+        Assert.AreEqual(0, Directory.GetFiles(CacheDirectoryPath, "*.retired-*").Length);
     }
 
     [TestMethod]

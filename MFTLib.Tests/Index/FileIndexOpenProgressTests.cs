@@ -16,7 +16,7 @@ namespace MFTLib.Tests.Index;
 public sealed class FileIndexOpenProgressTests : IDisposable
 {
     IndexTreeFixture _fixture = null!;
-    string _treeRoot => _fixture.TreeRoot;
+    string TreeRoot => _fixture.TreeRoot;
 
     public TestContext TestContext { get; set; } = null!;
 
@@ -27,7 +27,7 @@ public sealed class FileIndexOpenProgressTests : IDisposable
 
     string CreateDriveRoot(string name)
     {
-        var root = Path.Combine(_treeRoot, name);
+        var root = Path.Combine(TreeRoot, name);
         Directory.CreateDirectory(root);
         File.WriteAllText(Path.Combine(root, "readme.md"), "hello");
         return root;
@@ -147,7 +147,7 @@ public sealed class FileIndexOpenProgressTests : IDisposable
     [TestMethod]
     public async Task OpenAsync_OfflineDrive_ReportsOfflineWithNoBlock()
     {
-        var drives = new[] { new IndexedDrive('Z', Path.Combine(_treeRoot, "absent"), 1) };
+        var drives = new[] { new IndexedDrive('Z', Path.Combine(TreeRoot, "absent"), 1) };
         var reports = new ConcurrentQueue<IndexDriveOpened>();
 
         await using var index = await FileIndex.OpenAsync(
@@ -199,7 +199,7 @@ public sealed class FileIndexOpenProgressTests : IDisposable
     {
         var warmDrive = new IndexedDrive('T', CreateDriveRoot("first"), 1);
         var coldDrive = new IndexedDrive('U', CreateDriveRoot("second"), 2);
-        var offlineDrive = new IndexedDrive('V', Path.Combine(_treeRoot, "absent"), 3);
+        var offlineDrive = new IndexedDrive('V', Path.Combine(TreeRoot, "absent"), 3);
 
         // Pre-create cache for drive T
         await using (await FileIndex.OpenAsync(Options([warmDrive]), TestContext.CancellationTokenSource.Token))

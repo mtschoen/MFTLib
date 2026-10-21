@@ -17,7 +17,7 @@ public sealed class MftDumpInputTests : IDisposable
     const string RecordSizeMessage = "Invalid or unsupported MFT record size.";
 
     TempDirectory _tempDirectory = null!;
-    string _directory => _tempDirectory.Path;
+    string TemporaryDirectoryPath => _tempDirectory.Path;
 
     [TestInitialize]
     public void Initialize()
@@ -35,7 +35,7 @@ public sealed class MftDumpInputTests : IDisposable
     [DataRow(4096)]
     public void Open_ValidDump_ReportsTheFilesOwnLengthAndRecordSize(int recordSize)
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard(recordSize));
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard(recordSize));
 
         using var input = MftDumpInput.Open(path);
 
@@ -51,7 +51,7 @@ public sealed class MftDumpInputTests : IDisposable
     [TestCategory("Smoke")]
     public void Parse_ValidDump_ReturnsEveryAllocatedRecordWithItsColumns(int recordSize)
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard(recordSize));
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard(recordSize));
         using var input = MftDumpInput.Open(path);
 
         using var result = input.Parse();
@@ -100,7 +100,7 @@ public sealed class MftDumpInputTests : IDisposable
     public void Open_RejectedContent_ThrowsInvalidDataWithTheChecksMessage(string description, byte[] content,
         string message)
     {
-        var path = MftDumpFixture.WriteFile(_directory, content);
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, content);
 
         var failure = Assert.ThrowsExactly<InvalidDataException>(() => MftDumpInput.Open(path), description);
 
@@ -110,7 +110,7 @@ public sealed class MftDumpInputTests : IDisposable
     [TestMethod]
     public void Open_RejectedContent_LeavesTheFileUnlocked()
     {
-        var path = MftDumpFixture.WriteFile(_directory, WithDeclaredRecordSize(2048));
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, WithDeclaredRecordSize(2048));
         Assert.ThrowsExactly<InvalidDataException>(() => MftDumpInput.Open(path));
 
         File.Delete(path);
@@ -122,7 +122,7 @@ public sealed class MftDumpInputTests : IDisposable
     public void Open_MissingFile_ThrowsIOExceptionWithThePlatformErrorCode()
     {
         var failure = Assert.ThrowsExactly<IOException>(
-            () => MftDumpInput.Open(Path.Combine(_directory, "absent.mft")));
+            () => MftDumpInput.Open(Path.Combine(TemporaryDirectoryPath, "absent.mft")));
 
         StringAssert.StartsWith(failure.Message, "Failed to open file. Error: ");
     }
@@ -136,7 +136,7 @@ public sealed class MftDumpInputTests : IDisposable
     [TestMethod]
     public void Open_PathWithAnEmbeddedNull_IsRefusedInsteadOfOpeningTheFileBeforeTheNull()
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
 
         var failure = Assert.ThrowsExactly<ArgumentException>(() => MftDumpInput.Open(path + "\0.ignored"));
 
@@ -146,7 +146,7 @@ public sealed class MftDumpInputTests : IDisposable
     [TestMethod]
     public void Open_NonAsciiPath_OpensTheFileItNames()
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard(), "dépôt-日本.mft");
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard(), "dépôt-日本.mft");
 
         using var input = MftDumpInput.Open(path);
 
@@ -156,7 +156,7 @@ public sealed class MftDumpInputTests : IDisposable
     [TestMethod]
     public void Parse_PathRenamedAndReplacedAfterTheOpen_StillReadsTheOpenedFile()
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         using var input = MftDumpInput.Open(path);
         var replacement = MftDumpFixture.StandardRecords();
         replacement[7] = new DumpRecord("Replaced.txt", 6);
@@ -174,7 +174,7 @@ public sealed class MftDumpInputTests : IDisposable
     [TestMethod]
     public void Parse_PathDeletedAfterTheOpen_StillReadsTheOpenedFile()
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         using var input = MftDumpInput.Open(path);
 
         File.Delete(path);
@@ -189,7 +189,7 @@ public sealed class MftDumpInputTests : IDisposable
     public void NativeOpen_MissingFile_ReportsAnOpenErrorWithNoGeometry()
     {
         using var input = MFTLibNative.OpenMftDumpInput(
-            MFTLibNative.NullTerminatedUtf8(Path.Combine(_directory, "absent.mft")), out var info);
+            MFTLibNative.NullTerminatedUtf8(Path.Combine(TemporaryDirectoryPath, "absent.mft")), out var info);
 
         Assert.IsTrue(input.IsInvalid);
         Assert.AreNotEqual(string.Empty, info.ErrorMessage);
@@ -206,7 +206,7 @@ public sealed class MftDumpInputTests : IDisposable
     [DataRow(1024L * 17)]
     public void Parse_FileLengthChangedAfterTheOpen_FailsAsIncomplete(long newLength)
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         using var input = MftDumpInput.Open(path);
         using (var writer = new FileStream(path, FileMode.Open, FileAccess.Write,
                    FileShare.ReadWrite | FileShare.Delete))
@@ -222,7 +222,7 @@ public sealed class MftDumpInputTests : IDisposable
     [TestMethod]
     public void Parse_TokenCancelledBeforeTheParse_ThrowsOperationCanceled()
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         using var input = MftDumpInput.Open(path);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
@@ -236,7 +236,7 @@ public sealed class MftDumpInputTests : IDisposable
     [TestMethod]
     public void Parse_TokenCancelledFromProgress_StopsAsCancelledNotAsIncomplete()
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         using var input = MftDumpInput.Open(path);
         using var cancellation = new CancellationTokenSource();
 
@@ -247,7 +247,7 @@ public sealed class MftDumpInputTests : IDisposable
     [TestMethod]
     public void Parse_Progress_EndsAtTheFilesRecordCount()
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         using var input = MftDumpInput.Open(path);
         var samples = new List<MftScanProgress>();
         var progress = new SynchronousProgress<MftScanProgress>(samples.Add);
@@ -262,7 +262,7 @@ public sealed class MftDumpInputTests : IDisposable
     [TestMethod]
     public void ReadRecordBatches_YieldsMaterializedBatchesOfTheAskedSize()
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         using var input = MftDumpInput.Open(path);
 
         var batches = input.ReadRecordBatches(3, null, CancellationToken.None).ToArray();
@@ -274,7 +274,7 @@ public sealed class MftDumpInputTests : IDisposable
     [TestMethod]
     public void ReadRecordBatches_TokenCancelledBetweenBatches_Throws()
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         using var input = MftDumpInput.Open(path);
         using var cancellation = new CancellationTokenSource();
 
@@ -284,7 +284,7 @@ public sealed class MftDumpInputTests : IDisposable
     [TestMethod]
     public void Parse_TwoParsesOfOneInput_EachReadTheWholeFile()
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         using var input = MftDumpInput.Open(path);
 
         CollectionAssert.AreEqual(Names(input), Names(input));
@@ -293,7 +293,7 @@ public sealed class MftDumpInputTests : IDisposable
     [TestMethod]
     public void Parse_AfterDispose_ThrowsObjectDisposed()
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         var input = MftDumpInput.Open(path);
         input.Dispose();
         input.Dispose();
@@ -304,7 +304,7 @@ public sealed class MftDumpInputTests : IDisposable
     [TestMethod]
     public void Dispose_ReleasesTheFile()
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         MftDumpInput.Open(path).Dispose();
 
         using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);

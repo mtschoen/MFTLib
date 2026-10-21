@@ -13,8 +13,8 @@ namespace MFTLib.Tests.Index;
 public sealed class FileIndexDriveStatusTests : IDisposable
 {
     IndexTreeFixture _fixture = null!;
-    string _treeRoot => _fixture.TreeRoot;
-    string _cacheDirectory => _fixture.CacheDirectory;
+    string TreeRoot => _fixture.TreeRoot;
+    string CacheDirectoryPath => _fixture.CacheDirectory;
 
     public TestContext TestContext { get; set; } = null!;
 
@@ -36,10 +36,10 @@ public sealed class FileIndexDriveStatusTests : IDisposable
         {
             Drives =
             [
-                new IndexedDrive('Z', Path.Combine(_treeRoot, "absent"), 1, ProducerKind.Enumeration),
-                new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerKind.Enumeration)
+                new IndexedDrive('Z', Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration),
+                new IndexedDrive('T', TreeRoot, 0x0BADF00D, ProducerKind.Enumeration)
             ],
-            CacheDirectory = _cacheDirectory,
+            CacheDirectory = CacheDirectoryPath,
         };
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
@@ -58,15 +58,15 @@ public sealed class FileIndexDriveStatusTests : IDisposable
     [TestMethod]
     public async Task DriveStatus_ReportsLiveRowCountFromTheHeader()
     {
-        Directory.Delete(Path.Combine(_treeRoot, "Documents"), recursive: true);
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "one.txt"), "1",
+        Directory.Delete(Path.Combine(TreeRoot, "Documents"), recursive: true);
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "one.txt"), "1",
             TestContext.CancellationTokenSource.Token);
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "two.txt"), "2",
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "two.txt"), "2",
             TestContext.CancellationTokenSource.Token);
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 4242, ProducerKind.Enumeration)],
-            CacheDirectory = _cacheDirectory,
+            Drives = [new IndexedDrive('T', TreeRoot, 4242, ProducerKind.Enumeration)],
+            CacheDirectory = CacheDirectoryPath,
         }, TestContext.CancellationTokenSource.Token);
 
         var status = index.Drives.Single();
@@ -82,10 +82,10 @@ public sealed class FileIndexDriveStatusTests : IDisposable
         {
             Drives =
             [
-                new IndexedDrive('Z', Path.Combine(_treeRoot, "absent"), 1, ProducerKind.Enumeration),
-                new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerKind.Enumeration)
+                new IndexedDrive('Z', Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration),
+                new IndexedDrive('T', TreeRoot, 0x0BADF00D, ProducerKind.Enumeration)
             ],
-            CacheDirectory = _cacheDirectory,
+            CacheDirectory = CacheDirectoryPath,
         };
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
@@ -120,7 +120,7 @@ public sealed class FileIndexDriveStatusTests : IDisposable
     [TestMethod]
     public async Task OpenAsync_ASubtreeVanishesMidScan_CountsItAndSurfacesOnDriveStatus()
     {
-        var documentsPath = Path.Combine(_treeRoot, "Documents");
+        var documentsPath = Path.Combine(TreeRoot, "Documents");
         var vanishingPath = Path.Combine(documentsPath, "Vanishing");
         Directory.CreateDirectory(vanishingPath);
         await File.WriteAllTextAsync(Path.Combine(vanishingPath, "inner.txt"), "gone soon");
@@ -135,7 +135,7 @@ public sealed class FileIndexDriveStatusTests : IDisposable
     [TestMethod]
     public async Task OpenAsync_WarmStart_ReportsTheAccessDeniedCountOfTheScanThatBuiltTheBlock()
     {
-        var documentsPath = Path.Combine(_treeRoot, "Documents");
+        var documentsPath = Path.Combine(TreeRoot, "Documents");
         var vanishingPath = Path.Combine(documentsPath, "Vanishing");
         Directory.CreateDirectory(vanishingPath);
         await File.WriteAllTextAsync(Path.Combine(vanishingPath, "inner.txt"), "gone soon");
@@ -154,7 +154,7 @@ public sealed class FileIndexDriveStatusTests : IDisposable
     [TestMethod]
     public async Task RescanAsync_ASubtreeVanishesMidScan_UpdatesTheAccessDeniedCountOnDriveStatus()
     {
-        var documentsPath = Path.Combine(_treeRoot, "Documents");
+        var documentsPath = Path.Combine(TreeRoot, "Documents");
         var vanishingPath = Path.Combine(documentsPath, "Vanishing");
         var progress = new DeleteSubtreeOnReport(documentsPath, vanishingPath);
 
@@ -173,18 +173,18 @@ public sealed class FileIndexDriveStatusTests : IDisposable
     [TestMethod]
     public async Task Drives_CallerListMutatedAfterOpen_LeavesTheIndexUnchanged()
     {
-        var configured = new List<IndexedDrive> { new('T', _treeRoot, 0x0BADF00D, ProducerKind.Enumeration) };
+        var configured = new List<IndexedDrive> { new('T', TreeRoot, 0x0BADF00D, ProducerKind.Enumeration) };
         var options = new FileIndexOptions
         {
             Drives = configured,
-            CacheDirectory = _cacheDirectory,
+            CacheDirectory = CacheDirectoryPath,
         };
         var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
         try
         {
             var before = index.Drives.Select(drive => drive.Drive).ToArray();
 
-            configured.Add(new IndexedDrive('U', _treeRoot, 0x0BADF00E));
+            configured.Add(new IndexedDrive('U', TreeRoot, 0x0BADF00E));
 
             CollectionAssert.AreEqual(before, index.Drives.Select(drive => drive.Drive).ToArray());
             CollectionAssert.AreEqual(new DriveKey[] { 'T' }, before);
@@ -226,12 +226,12 @@ public sealed class FileIndexDriveStatusTests : IDisposable
     public async Task OpenAsync_CallerDriveListEnumerableOnlyOnce_OpensFromTheFirstEnumeration()
     {
         var configured = new EnumerableOnceDriveList(
-            new IndexedDrive('Z', Path.Combine(_treeRoot, "absent"), 1, ProducerKind.Enumeration),
-            new IndexedDrive('T', _treeRoot, 0x0BADF00D, ProducerKind.Enumeration));
+            new IndexedDrive('Z', Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration),
+            new IndexedDrive('T', TreeRoot, 0x0BADF00D, ProducerKind.Enumeration));
         var options = new FileIndexOptions
         {
             Drives = configured,
-            CacheDirectory = _cacheDirectory,
+            CacheDirectory = CacheDirectoryPath,
         };
 
         var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token)

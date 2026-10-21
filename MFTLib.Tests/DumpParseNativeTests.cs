@@ -16,7 +16,7 @@ namespace MFTLib.Tests;
 public partial class DumpParseNativeTests
 {
     TempDirectory _tempDirectory = null!;
-    string _directory => _tempDirectory.Path;
+    string TemporaryDirectoryPath => _tempDirectory.Path;
 
     [TestInitialize]
     public void Initialize()
@@ -117,7 +117,7 @@ public partial class DumpParseNativeTests
         WriteFileRecord(data, 0);
         data[0x14] = (byte)(firstAttributeOffset & 0xFF);
         data[0x15] = (byte)(firstAttributeOffset >> 8);
-        var path = MftDumpFixture.WriteFile(_directory, data);
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, data);
 
         var result = ParseHeader(path, 256);
 
@@ -139,7 +139,7 @@ public partial class DumpParseNativeTests
         const int recordLength = 966;
         data[attributeOffset + 4] = recordLength & 0xFF;
         data[attributeOffset + 5] = recordLength >> 8;
-        var path = MftDumpFixture.WriteFile(_directory, data);
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, data);
 
         var result = ParseHeader(path, 256);
 
@@ -164,7 +164,7 @@ public partial class DumpParseNativeTests
 
     string WriteSynthetic(ulong recordCount, uint bufferSizeRecords)
     {
-        var path = Path.Combine(_directory, Guid.NewGuid().ToString("N") + ".mft");
+        var path = Path.Combine(TemporaryDirectoryPath, Guid.NewGuid().ToString("N") + ".mft");
         MftVolume.GenerateSyntheticMFT(path, recordCount, bufferSizeRecords);
         return path;
     }
@@ -193,7 +193,7 @@ public partial class DumpParseNativeTests
         }
         finally
         {
-            MFTLibNative.Hooks.FreeMftResult(pointer);
+            MFTLibNative.Hooks._freeMftResult(pointer);
         }
     }
 }

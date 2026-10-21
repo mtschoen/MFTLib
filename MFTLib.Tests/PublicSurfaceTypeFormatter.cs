@@ -174,14 +174,14 @@ internal sealed class NullableFlags
     const string NullableAttributeName = "System.Runtime.CompilerServices.NullableAttribute";
     const string NullableContextAttributeName = "System.Runtime.CompilerServices.NullableContextAttribute";
 
-    readonly byte[]? perPosition;
-    readonly byte uniform;
-    int position;
+    readonly byte[]? _perPosition;
+    readonly byte _uniform;
+    int _position;
 
     NullableFlags(byte[]? perPosition, byte uniform)
     {
-        this.perPosition = perPosition;
-        this.uniform = uniform;
+        _perPosition = perPosition;
+        _uniform = uniform;
     }
 
     public static NullableFlags Oblivious() => new(null, 0);
@@ -196,12 +196,12 @@ internal sealed class NullableFlags
 
     public byte Next()
     {
-        if (perPosition is null)
+        if (_perPosition is null)
         {
-            return uniform;
+            return _uniform;
         }
 
-        return position < perPosition.Length ? perPosition[position++] : (byte)0;
+        return _position < _perPosition.Length ? _perPosition[_position++] : (byte)0;
     }
 
     static NullableFlags From(IEnumerable<CustomAttributeData> own, MemberInfo? scope)

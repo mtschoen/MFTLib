@@ -25,12 +25,12 @@ public class BlockWriterCompleteDisposalRaceTests
         var releaseComplete = new TestGate();
         var disposeStarted = new TestGate();
         var disposeWillWait = false;
-        writer.Hooks.CompleteAccessTaken = () =>
+        writer.Hooks._completeAccessTaken = () =>
         {
             accessTaken.MarkEntered();
             releaseComplete.WaitForRelease();
         };
-        block.Hooks.DisposeStarted = willWait =>
+        block.Hooks._disposeStarted = willWait =>
         {
             disposeWillWait = willWait;
             disposeStarted.MarkEntered();

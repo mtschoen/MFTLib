@@ -65,7 +65,7 @@ internal sealed class MftVolume : IDisposable
     {
         ArgumentOutOfRangeException.ThrowIfZero(bufferSizeRecords);
         var volumePath = MFTUtilities.GetVolumePath(drive);
-        var handle = FileUtilities.Hooks.GetVolumeHandle(volumePath);
+        var handle = FileUtilities.Hooks._getVolumeHandle(volumePath);
 
         return new MftVolume(handle, volumePath, bufferSizeRecords);
     }
@@ -113,7 +113,7 @@ internal sealed class MftVolume : IDisposable
 
         var includeFreed = options?.IncludeFreed ?? false;
         using var result = ParseToResult(
-            (control, callback) => MFTLibNative.Hooks.ParseMftRecordsWithProgress(
+            (control, callback) => MFTLibNative.Hooks._parseMftRecordsWithProgress(
                 _volumeHandle, includeFreed, _bufferSizeRecords, control, callback),
             "ParseMFTRecords", progress, parseThreads, cancellationToken);
         recordsOmitted?.Invoke(checked((long)result.InvalidFixupRecordCount));

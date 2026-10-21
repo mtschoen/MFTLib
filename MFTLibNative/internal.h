@@ -7,6 +7,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstdint>
+// ReSharper disable once CppUnusedIncludeDirective
 // aislop-ignore-next-line CppUnusedIncludeDirective -- std::swprintf below needs this on GCC/Clang
 #include <cwchar>
 
@@ -29,7 +30,7 @@ void SetErrorMessageBuffer(wchar_t* buffer, size_t bufferLength, const wchar_t* 
         return;
     }
 #ifdef _WIN32
-    int written = _snwprintf_s(buffer, bufferLength, _TRUNCATE, format, arguments...);
+    [[maybe_unused]] int written = _snwprintf_s(buffer, bufferLength, _TRUNCATE, format, arguments...);
 #else
     int written = std::swprintf(buffer, bufferLength, format, arguments...);
     if (written < 0 || static_cast<size_t>(written) >= bufferLength) {

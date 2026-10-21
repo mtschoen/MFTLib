@@ -17,7 +17,7 @@ public sealed class WatchVerbTests : IDisposable
     static readonly SyntheticJournalCursor Armed = new(7, 1000);
 
     TempDirectory _tempDirectory = null!;
-    string _directory => _tempDirectory.Path;
+    string TemporaryDirectoryPath => _tempDirectory.Path;
 
     [TestInitialize]
     public void Initialize() => _tempDirectory = new TempDirectory("watchVerbs");
@@ -62,7 +62,7 @@ public sealed class WatchVerbTests : IDisposable
 
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
-        var cacheDir = Path.Combine(_directory, "cache");
+        var cacheDir = Path.Combine(TemporaryDirectoryPath, "cache");
         var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { CacheDirectory = cacheDir, Seconds = 30 }, session, FixtureDrive, CancellationToken.None);
 
         Assert.AreEqual(0, result);
@@ -85,7 +85,7 @@ public sealed class WatchVerbTests : IDisposable
         var host = HostOver(lines.Add);
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
-        var cacheDir = Path.Combine(_directory, "cache");
+        var cacheDir = Path.Combine(TemporaryDirectoryPath, "cache");
 
         var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = cacheDir }, session, FixtureDrive, CancellationToken.None);
 
@@ -108,7 +108,7 @@ public sealed class WatchVerbTests : IDisposable
         var host = HostOver(lines.Add);
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
-        var cacheDir = Path.Combine(_directory, "cache");
+        var cacheDir = Path.Combine(TemporaryDirectoryPath, "cache");
 
         var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Journal, ["X"]) { CacheDirectory = cacheDir, MaximumSize = 9000, AllocationDelta = 4096 }, session, FixtureDrive, CancellationToken.None);
 
@@ -120,7 +120,7 @@ public sealed class WatchVerbTests : IDisposable
     public async Task Run_CacheAfterACachedOpen_ListsTheBlockAndClearRemovesIt()
     {
         await using var handle = BrokerTestHarness.StartInProcess(Volumes());
-        var cacheDirectory = Path.Combine(_directory, "cache");
+        var cacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache");
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
         await HostOver(_ => { }).RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = cacheDirectory }, session, FixtureDrive, CancellationToken.None);
@@ -147,7 +147,7 @@ public sealed class WatchVerbTests : IDisposable
     [DataRow(CachedBlockDeletionOutcome.Failed)]
     public void Run_CacheClearWithAnUnavailableBlock_AttemptsEveryPolicyAndReturnsOne(CachedBlockDeletionOutcome unavailableOutcome)
     {
-        var root = Path.Combine(_directory, "cache");
+        var root = Path.Combine(TemporaryDirectoryPath, "cache");
         var unavailable = CreateCacheBlock(root, 'T');
         var available = new[]
         {
@@ -169,7 +169,7 @@ public sealed class WatchVerbTests : IDisposable
         Assert.IsFalse(listing.Any(line => line.StartsWith("  ", StringComparison.Ordinal)));
         Assert.IsTrue(available.Append(unavailable).All(File.Exists));
 
-        CacheDirectory.Hooks.BeforeDelete = path =>
+        CacheDirectory.Hooks._beforeDelete = path =>
         {
             if (path == unavailable && unavailableOutcome == CachedBlockDeletionOutcome.Failed)
             {
@@ -200,7 +200,7 @@ public sealed class WatchVerbTests : IDisposable
     [TestMethod]
     public void Run_CacheClearWithoutBlocks_ReturnsZero()
     {
-        var root = Path.Combine(_directory, "cache");
+        var root = Path.Combine(TemporaryDirectoryPath, "cache");
         Directory.CreateDirectory(root);
         Directory.CreateDirectory(Path.Combine(root, "policy-empty"));
         var lines = new List<string>();
@@ -225,7 +225,7 @@ public sealed class WatchVerbTests : IDisposable
         {
             var sLaunch = Task.FromResult(handle);
             var s = BrokerTestHarness.CreateSession(_ => sLaunch);
-            Assert.AreEqual(0, await HostOver(_ => { }).RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = Path.Combine(_directory, "cache") }, s, FixtureDrive, CancellationToken.None));
+            Assert.AreEqual(0, await HostOver(_ => { }).RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, s, FixtureDrive, CancellationToken.None));
         }
 
         using var journal = JournalIsolation.OverrideJournalWindow(_ => new SyntheticJournalWindow(8, 0, 2000, 4096, 8192));
@@ -234,7 +234,7 @@ public sealed class WatchVerbTests : IDisposable
         var replacementSessionLaunch = Task.FromResult(replacement);
         var replacementSession = BrokerTestHarness.CreateSession(_ => replacementSessionLaunch);
 
-        Assert.AreEqual(0, await HostOver(lines.Add).RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = Path.Combine(_directory, "cache") }, replacementSession, FixtureDrive, CancellationToken.None));
+        Assert.AreEqual(0, await HostOver(lines.Add).RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, replacementSession, FixtureDrive, CancellationToken.None));
 
         Assert.IsTrue(lines.Contains("Journal growth target unavailable: CheckpointNotTrimmed"), string.Join(Environment.NewLine, lines));
     }
@@ -260,8 +260,8 @@ public sealed class WatchVerbTests : IDisposable
     [TestMethod]
     public async Task Run_CachedModes_UseTheSampleProfileRootForProductionAndInventory()
     {
-        var root = SampleHost.ResolveCacheDirectory(new WatchArguments(WatchVerb.Rescan, ["X"]), _directory);
-        Assert.AreEqual(Path.Combine(_directory, ".MFTLib.Sample.Watch", "cache"), root);
+        var root = SampleHost.ResolveCacheDirectory(new WatchArguments(WatchVerb.Rescan, ["X"]), TemporaryDirectoryPath);
+        Assert.AreEqual(Path.Combine(TemporaryDirectoryPath, ".MFTLib.Sample.Watch", "cache"), root);
 
         await using var handle = BrokerTestHarness.StartInProcess(Volumes());
         var lines = new List<string>();
@@ -297,7 +297,7 @@ public sealed class WatchVerbTests : IDisposable
             SampleHost.ResolveCacheDirectory(new WatchArguments(WatchVerb.Cache, []), profile));
         Assert.IsTrue(exception.Message.Contains("--cache-directory", StringComparison.Ordinal));
 
-        var explicitDir = Path.Combine(_directory, "explicit");
+        var explicitDir = Path.Combine(TemporaryDirectoryPath, "explicit");
         var resolved = SampleHost.ResolveCacheDirectory(new WatchArguments(WatchVerb.Cache, []) { CacheDirectory = explicitDir }, profile);
         Assert.AreEqual(explicitDir, resolved);
     }
@@ -305,14 +305,14 @@ public sealed class WatchVerbTests : IDisposable
     [TestMethod]
     public void SampleCacheDirectory_FromSuppliedProfile_IsPure()
     {
-        var profile = Path.Combine(_directory, "absent-profile");
+        var profile = Path.Combine(TemporaryDirectoryPath, "absent-profile");
 
         Assert.AreEqual(Path.Combine(profile, ".MFTLib.Sample.Watch", "cache"), SampleHost.CacheDirectoryFromProfile(profile));
         Assert.IsFalse(Directory.Exists(profile));
     }
 
     // The run is attended and unelevated, so the heads-up dialog precedes the broker launch.
-    IndexedDrive FixtureDrive(string letter) => new(letter[0], _directory, 4242);
+    IndexedDrive FixtureDrive(string letter) => new(letter[0], TemporaryDirectoryPath, 4242);
 
     static SampleHost HostOver(Action<string> writeLine, TimeProvider? timeProvider = null)
     {

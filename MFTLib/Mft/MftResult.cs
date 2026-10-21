@@ -25,14 +25,14 @@ internal sealed class MftResult : IDisposable
 
         if (_result.Cancelled != 0)
         {
-            MFTLibNative.Hooks.FreeMftResult(resultPtr);
+            MFTLibNative.Hooks._freeMftResult(resultPtr);
             _resultPtr = IntPtr.Zero;
             throw new OperationCanceledException(_result.ErrorMessage, cancellationToken);
         }
 
         if (!string.IsNullOrEmpty(_result.ErrorMessage))
         {
-            MFTLibNative.Hooks.FreeMftResult(resultPtr);
+            MFTLibNative.Hooks._freeMftResult(resultPtr);
             _resultPtr = IntPtr.Zero;
             throw _result.InvalidInput != 0
                 ? new InvalidDataException(_result.ErrorMessage)
@@ -41,7 +41,7 @@ internal sealed class MftResult : IDisposable
 
         if (_result.EntryStride != MFTLibNative.NativeCompactEntrySize)
         {
-            MFTLibNative.Hooks.FreeMftResult(resultPtr);
+            MFTLibNative.Hooks._freeMftResult(resultPtr);
             _resultPtr = IntPtr.Zero;
             throw new InvalidOperationException(
                 $"MFTLib managed/native ABI mismatch: managed expects stride {MFTLibNative.NativeCompactEntrySize}, native reports {_result.EntryStride}.");
@@ -103,7 +103,7 @@ internal sealed class MftResult : IDisposable
         {
             if (_resultPtr != IntPtr.Zero)
             {
-                MFTLibNative.Hooks.FreeMftResult(_resultPtr);
+                MFTLibNative.Hooks._freeMftResult(_resultPtr);
                 _resultPtr = IntPtr.Zero;
             }
 

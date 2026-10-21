@@ -12,8 +12,8 @@ public partial class FileIndexResilienceTests
     [TestMethod]
     public async Task OpenAsync_CacheMode_DeletesAPreExistingRetiredSiblingForTheDrive()
     {
-        Directory.CreateDirectory(_cacheDirectory);
-        var staleRetiredPath = Path.Combine(_cacheDirectory,
+        Directory.CreateDirectory(CacheDirectoryPath);
+        var staleRetiredPath = Path.Combine(CacheDirectoryPath,
             CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-" + Guid.NewGuid().ToString("N"));
         await File.WriteAllTextAsync(staleRetiredPath, "leftover from a killed process");
 
@@ -26,8 +26,8 @@ public partial class FileIndexResilienceTests
     [TestMethod]
     public async Task OpenAsync_CacheMode_LockedRetiredSibling_DoesNotFailTheOpen()
     {
-        Directory.CreateDirectory(_cacheDirectory);
-        var staleRetiredPath = Path.Combine(_cacheDirectory,
+        Directory.CreateDirectory(CacheDirectoryPath);
+        var staleRetiredPath = Path.Combine(CacheDirectoryPath,
             CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-" + Guid.NewGuid().ToString("N"));
         await File.WriteAllTextAsync(staleRetiredPath, "leftover from a killed process");
 
@@ -47,8 +47,8 @@ public partial class FileIndexResilienceTests
     [TestMethod]
     public async Task OpenAsync_CacheMode_ReadOnlyRetiredSibling_DoesNotFailTheOpen()
     {
-        Directory.CreateDirectory(_cacheDirectory);
-        var staleRetiredPath = Path.Combine(_cacheDirectory,
+        Directory.CreateDirectory(CacheDirectoryPath);
+        var staleRetiredPath = Path.Combine(CacheDirectoryPath,
             CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-" + Guid.NewGuid().ToString("N"));
         await File.WriteAllTextAsync(staleRetiredPath, "leftover from a killed process");
         File.SetAttributes(staleRetiredPath, FileAttributes.ReadOnly);
@@ -81,8 +81,8 @@ public partial class FileIndexResilienceTests
     [DataRow(true, DisplayName = "the listing is denied")]
     public async Task OpenAsync_CacheMode_RetiredSiblingListingFails_OpensAndLeavesTheSibling(bool denied)
     {
-        Directory.CreateDirectory(_cacheDirectory);
-        var staleRetiredPath = Path.Combine(_cacheDirectory,
+        Directory.CreateDirectory(CacheDirectoryPath);
+        var staleRetiredPath = Path.Combine(CacheDirectoryPath,
             CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-" + Guid.NewGuid().ToString("N"));
         await File.WriteAllTextAsync(staleRetiredPath, "leftover from a killed process").WaitAsync(HangGuard);
         var listings = new List<string>();

@@ -16,7 +16,7 @@ public sealed class SyntheticIndexInspectionTests : IDisposable
     const uint Serial = 0x2345;
 
     IndexTreeFixture _fixture = null!;
-    string _treeRoot => _fixture.TreeRoot;
+    string TreeRoot => _fixture.TreeRoot;
 
     public TestContext TestContext { get; set; } = null!;
 
@@ -26,7 +26,7 @@ public sealed class SyntheticIndexInspectionTests : IDisposable
     public void Initialize()
     {
         _fixture = new IndexTreeFixture(seedDocuments: false);
-        File.WriteAllText(Path.Combine(_treeRoot, "readme.md"), "hello");
+        File.WriteAllText(Path.Combine(TreeRoot, "readme.md"), "hello");
     }
 
     public void Dispose() => _fixture.Dispose();
@@ -42,7 +42,7 @@ public sealed class SyntheticIndexInspectionTests : IDisposable
     public async Task ReadHeader_OfAReadyDrive_ReportsTheBlockTheIndexHolds()
     {
         var tag = new CacheTag("INSP", 2);
-        await using var index = await FileIndex.OpenAsync(Options(_treeRoot, tag), Token);
+        await using var index = await FileIndex.OpenAsync(Options(TreeRoot, tag), Token);
 
         var header = SyntheticIndexInspection.ReadHeader(index, 't');
 
@@ -56,7 +56,7 @@ public sealed class SyntheticIndexInspectionTests : IDisposable
     public async Task ReadHeader_ForADriveWithNoBlock_IsNull()
     {
         await using var index = await FileIndex.OpenAsync(
-            Options(Path.Combine(_treeRoot, "absent")), Token);
+            Options(Path.Combine(TreeRoot, "absent")), Token);
 
         Assert.AreEqual(DriveState.Offline, index.Drives.Single().State);
         Assert.IsNull(SyntheticIndexInspection.ReadHeader(index, 'T'));
@@ -65,7 +65,7 @@ public sealed class SyntheticIndexInspectionTests : IDisposable
     [TestMethod]
     public async Task ReadHeader_ForAnUnconfiguredDrive_IsNull()
     {
-        await using var index = await FileIndex.OpenAsync(Options(_treeRoot), Token);
+        await using var index = await FileIndex.OpenAsync(Options(TreeRoot), Token);
 
         Assert.IsNull(SyntheticIndexInspection.ReadHeader(index, 'Q'));
     }
@@ -73,7 +73,7 @@ public sealed class SyntheticIndexInspectionTests : IDisposable
     [TestMethod]
     public async Task ReadHeader_IsACopyThatOutlivesTheIndex()
     {
-        FileIndex index = await FileIndex.OpenAsync(Options(_treeRoot), Token);
+        FileIndex index = await FileIndex.OpenAsync(Options(TreeRoot), Token);
         var header = SyntheticIndexInspection.ReadHeader(index, 'T');
         await index.DisposeAsync();
 

@@ -21,7 +21,7 @@ public class WatchHostModeTests
     {
         _directory = Path.Combine(Path.GetTempPath(), $"watchHostModes-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_directory);
-        FileUtilities.Hooks.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
+        FileUtilities.Hooks._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
     }
 
     [TestCleanup]

@@ -8,7 +8,7 @@ namespace MFTLib.Tests.Index;
 public sealed class BlockValidationMatrixTests : IDisposable
 {
     IndexTreeFixture _fixture = null!;
-    string _cacheDirectory => _fixture.CacheDirectory;
+    string CacheDirectoryPath => _fixture.CacheDirectory;
 
     [TestInitialize]
     public void Initialize() => _fixture = new IndexTreeFixture();
@@ -20,7 +20,7 @@ public sealed class BlockValidationMatrixTests : IDisposable
 
     string BlockPath(uint volumeSerial = 0x0BADF00D)
     {
-        return Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', volumeSerial));
+        return Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', volumeSerial));
     }
 
     async Task SeedCacheAsync()
@@ -152,7 +152,7 @@ public sealed class BlockValidationMatrixTests : IDisposable
             var options = new FileIndexOptions
             {
                 Drives = [new IndexedDrive('T', differentTreeRoot, 0x0BADF00D, ProducerKind.Enumeration)],
-                CacheDirectory = _cacheDirectory,
+                CacheDirectory = CacheDirectoryPath,
             };
 
             await AssertColdScansAsync(options, BlockValidationResult.WrongRootDirectory);

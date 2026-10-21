@@ -9,13 +9,13 @@ static class FileUtilities
 
     internal sealed class VolumeHandleHooks
     {
-        internal Func<string, SafeFileHandle> GetVolumeHandle = NativeGetVolumeHandle;
-        internal Func<string, SafeFileHandle> GetWatchVolumeHandle = NativeGetWatchVolumeHandle;
+        internal Func<string, SafeFileHandle> _getVolumeHandle = NativeGetVolumeHandle;
+        internal Func<string, SafeFileHandle> _getWatchVolumeHandle = NativeGetWatchVolumeHandle;
 
         internal void ResetToDefaults()
         {
-            GetVolumeHandle = NativeGetVolumeHandle;
-            GetWatchVolumeHandle = NativeGetWatchVolumeHandle;
+            _getVolumeHandle = NativeGetVolumeHandle;
+            _getWatchVolumeHandle = NativeGetWatchVolumeHandle;
         }
     }
 
@@ -25,7 +25,7 @@ static class FileUtilities
 
     static SafeFileHandle OpenVolumeHandle(string volume, uint flags)
     {
-        var volumeHandle = Kernel32.Hooks.CreateFile(
+        var volumeHandle = Kernel32.Hooks._createFile(
             volume,
             GENERIC_READ,
             FILE_SHARE_READ | FILE_SHARE_WRITE,

@@ -8,8 +8,8 @@ using Microsoft.Win32.SafeHandles;
 namespace MFTLib.Tests;
 
 /// <summary>
-///     <see cref="NtfsVolumeInformation.Query" /> with the <c>FileUtilities.Hooks.GetVolumeHandle</c>
-///     and <c>Kernel32.Hooks.DeviceIoControl</c> seams feeding a synthetic
+///     <see cref="NtfsVolumeInformation.Query" /> with the <c>FileUtilities.Hooks._getVolumeHandle</c>
+///     and <c>Kernel32.Hooks._deviceIoControl</c> seams feeding a synthetic
 ///     <c>FSCTL_GET_NTFS_VOLUME_DATA</c> answer, so the marshaling and error paths run
 ///     unelevated. The live, elevated query is covered by
 ///     <see cref="NtfsVolumeInformationAdminTests" />.
@@ -50,12 +50,12 @@ public class NtfsVolumeInformationQueryTests
         }
 
         string? openedPath = null;
-        FileUtilities.Hooks.GetVolumeHandle = path =>
+        FileUtilities.Hooks._getVolumeHandle = path =>
         {
             openedPath = path;
             return new SafeFileHandle(new IntPtr(1), ownsHandle: false);
         };
-        Kernel32.Hooks.DeviceIoControl = FakeDeviceIoControl;
+        Kernel32.Hooks._deviceIoControl = FakeDeviceIoControl;
 
         var info = NtfsVolumeInformation.Query('c');
 
@@ -64,7 +64,7 @@ public class NtfsVolumeInformationQueryTests
         Assert.AreEqual(1024u, info.BytesPerFileRecordSegment);
         Assert.AreEqual(8_000_000L, info.MftRecordCount);
 
-        FileUtilities.Hooks.GetVolumeHandle = _ => throw new AssertFailedException("Default drive reached volume I/O.");
+        FileUtilities.Hooks._getVolumeHandle = _ => throw new AssertFailedException("Default drive reached volume I/O.");
         Assert.ThrowsExactly<ArgumentException>(() => NtfsVolumeInformation.Query(default, isWindows: true));
     }
 
@@ -85,8 +85,8 @@ public class NtfsVolumeInformationQueryTests
             return false;
         }
 
-        FileUtilities.Hooks.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), ownsHandle: false);
-        Kernel32.Hooks.DeviceIoControl = FakeDeviceIoControl;
+        FileUtilities.Hooks._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), ownsHandle: false);
+        Kernel32.Hooks._deviceIoControl = FakeDeviceIoControl;
 
         Assert.ThrowsExactly<Win32Exception>(() => NtfsVolumeInformation.Query('C'));
     }

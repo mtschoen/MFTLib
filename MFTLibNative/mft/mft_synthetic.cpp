@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include <array>
+// ReSharper disable once CppUnusedIncludeDirective
 // aislop-ignore-next-line CppUnusedIncludeDirective -- memcpy/memset below need this on GCC/Clang
 #include <cstring>
 #include <thread>
@@ -10,6 +11,7 @@
 #include "../internal.h"
 #include "../core/platform.h"
 #include "mft.internal.h"
+// ReSharper disable once CppUnusedIncludeDirective
 // aislop-ignore-next-line CppUnusedIncludeDirective -- constants consumed by the included fixture fragment
 #include "mft_fixture.h"
 

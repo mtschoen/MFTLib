@@ -40,7 +40,7 @@ public class UsnJournalSettingsQueryLiveTests
     public void Query_OverrideInstalled_AnswersThePublicEntryAndNotThePlatformTakingQuery()
     {
         var overridden = new UsnJournalSettings { MaximumSize = 7, AllocationDelta = 3 };
-        UsnJournalSettingsQuery.Dependencies.QueryOverride = _ => overridden;
+        UsnJournalSettingsQuery.Dependencies._queryOverride = _ => overridden;
 
         Assert.AreEqual(overridden, UsnJournalSettingsQuery.Query('C'));
         Assert.ThrowsExactly<PlatformNotSupportedException>(

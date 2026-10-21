@@ -32,7 +32,8 @@ public record CallerGateOverloadRecord(int Seed)
 // The positional and the replaced property are stored from arguments; the constant one is not.
 public record CallerGateInitializedRecord(int First, int Second)
 {
-    // aislop-ignore-next-line jb/RedundantExplicitPositionalPropertyDeclaration
+    // ReSharper disable once RedundantExplicitPositionalPropertyDeclaration
+    // aislop-ignore-next-line jb/RedundantExplicitPositionalPropertyDeclaration -- explicitly authored positional property is required to test constructor-store attribution
     public int First { get; init; } = First;
 
     public int Constant { get; init; } = 42;
@@ -58,9 +59,9 @@ public record CallerGateOtherFieldRecord
 // The constructor with the matching parameter is not public.
 public record CallerGateInternalConstructorRecord
 {
-    internal CallerGateInternalConstructorRecord(int Value)
+    internal CallerGateInternalConstructorRecord(int value)
     {
-        Stored = Value;
+        Stored = value;
     }
 
     public int Stored { get; }
@@ -181,9 +182,9 @@ public record CallerGateGuardedRecord
 // Not a record: a private PrintMembers must not make it one.
 public class CallerGatePlainClass
 {
-    public CallerGatePlainClass(int Value)
+    public CallerGatePlainClass(int value)
     {
-        Stored = Value;
+        Stored = value;
     }
 
     public int Stored { get; }

@@ -13,9 +13,9 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
 
     IndexTreeFixture _fixture = null!;
     TempDirectory _enumerationDir = null!;
-    string _treeRoot => _fixture.TreeRoot;
-    string _enumerationRoot => _enumerationDir.Path;
-    string _cacheDirectory => _fixture.CacheDirectory;
+    string TreeRoot => _fixture.TreeRoot;
+    string EnumerationRoot => _enumerationDir.Path;
+    string CacheDirectoryPath => _fixture.CacheDirectory;
     FileIndex _index = null!;
 
     [TestInitialize]
@@ -25,8 +25,8 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
         _enumerationDir = new TempDirectory("mftlib-enumeration");
 
         // Seed a warm-start MFT block for drive 'T' so journal mutations are supported on it.
-        Directory.CreateDirectory(_cacheDirectory);
-        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+        Directory.CreateDirectory(CacheDirectoryPath);
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 0x0BADF00D));
         using (var block = BlockFile.Create(new BlockFileCreateOptions
         {
             Path = blockPath,
@@ -47,11 +47,11 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
         {
             Drives =
             [
-                new IndexedDrive('T', _treeRoot, 0x0BADF00D),
-                new IndexedDrive('E', _enumerationRoot, 0x0E0E0E0E, ProducerKind.Enumeration),
-                new IndexedDrive('Z', Path.Combine(_treeRoot, "does-not-exist"), 0xDEAD0000, ProducerKind.Enumeration)
+                new IndexedDrive('T', TreeRoot, 0x0BADF00D),
+                new IndexedDrive('E', EnumerationRoot, 0x0E0E0E0E, ProducerKind.Enumeration),
+                new IndexedDrive('Z', Path.Combine(TreeRoot, "does-not-exist"), 0xDEAD0000, ProducerKind.Enumeration)
             ],
-            CacheDirectory = _cacheDirectory,
+            CacheDirectory = CacheDirectoryPath,
             MftSource = SyntheticIndexSource.Create(new SyntheticMftProducer(_ =>
             [
                 new SyntheticRow(5, ".", 5) { IsDirectory = true },
@@ -112,8 +112,8 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('E', _treeRoot, 0x0E0E0E0E, ProducerKind.Enumeration)],
-            CacheDirectory = Path.Combine(_cacheDirectory, "enumeration-only"),
+            Drives = [new IndexedDrive('E', TreeRoot, 0x0E0E0E0E, ProducerKind.Enumeration)],
+            CacheDirectory = Path.Combine(CacheDirectoryPath, "enumeration-only"),
             MftSource = TestMftSources.WatchOnly(source)
         }, CancellationToken.None);
 
@@ -190,7 +190,7 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
     [TestMethod]
     public void ApplyJournalEntries_DeleteMakesTheEntryReadAsDeletedButKeepsItsName()
     {
-        var target = _index.Find(Path.Combine(_treeRoot, "Documents", "readme.md"))!.Value;
+        var target = _index.Find(Path.Combine(TreeRoot, "Documents", "readme.md"))!.Value;
         var recordNumber = target.RecordKey.RecordNumber;
 
         var applied = _index.ApplyJournalEntries('T',
@@ -211,7 +211,7 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
     [TestMethod]
     public async Task ApplyJournalEntries_ConcurrentHeldHandleReaderSeesOnlyCompleteNames()
     {
-        var target = _index.Find(Path.Combine(_treeRoot, "Documents", "readme.md"))!.Value;
+        var target = _index.Find(Path.Combine(TreeRoot, "Documents", "readme.md"))!.Value;
         var recordNumber = target.RecordKey.RecordNumber;
         const string shortName = "x";
         const string longName = "journal-renamed-document.txt";
@@ -266,14 +266,14 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
 
         Assert.AreEqual(DriveState.Ready, _index.Drives[0].State);
         Assert.IsTrue(_index.Drives[0].Block!.IsCapacityExhausted);
-        Assert.IsNotNull(_index.Find(Path.Combine(_treeRoot, "Documents", "readme.md")));
+        Assert.IsNotNull(_index.Find(Path.Combine(TreeRoot, "Documents", "readme.md")));
 
         await _index.RescanAsync(['T'], CancellationToken.None);
 
         var replaced = _index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Ready, replaced.State);
         Assert.IsFalse(replaced.Block!.IsCapacityExhausted);
-        Assert.IsNotNull(_index.Find(Path.Combine(_treeRoot, "Documents", "readme.md")));
+        Assert.IsNotNull(_index.Find(Path.Combine(TreeRoot, "Documents", "readme.md")));
     }
 
     [TestMethod]
@@ -369,7 +369,7 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
     [TestMethod]
     public void ApplyJournalEntries_CloseCarryingAnUnreportedReason_StillRaisesOneChange()
     {
-        var target = _index.Find(Path.Combine(_treeRoot, "Documents", "readme.md"))!.Value;
+        var target = _index.Find(Path.Combine(TreeRoot, "Documents", "readme.md"))!.Value;
         var recordNumber = target.RecordKey.RecordNumber;
         _index.ApplyJournalEntries('T',
             [Entry(recordNumber, 1, "readme.md", UsnReason.DataExtend)], journalIdentifier: 5, nextUsn: 100);

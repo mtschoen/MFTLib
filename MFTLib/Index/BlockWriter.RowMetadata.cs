@@ -44,7 +44,7 @@ internal sealed partial class BlockWriter
         }
 
         ref var row = ref Block.Rows[(int)rowIndex];
-        Hooks.RowCaptured?.Invoke();
+        Hooks._rowCaptured?.Invoke();
         var descriptor = FileRow.ReadDescriptorWord(in row);
         var flags = FileRow.DescriptorFlags(descriptor);
         if ((flags & RowFlags.InUse) == 0 || (flags & RowFlags.Tombstone) != 0)

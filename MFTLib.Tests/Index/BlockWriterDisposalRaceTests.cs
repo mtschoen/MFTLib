@@ -32,12 +32,12 @@ public class BlockWriterDisposalRaceTests
         var rowCaptured = new TestGate();
         var releaseWriter = new TestGate();
         var disposeStarted = new TestGate();
-        writer.Hooks.RowCaptured = () =>
+        writer.Hooks._rowCaptured = () =>
         {
             rowCaptured.MarkEntered();
             releaseWriter.WaitForRelease();
         };
-        block.Hooks.DisposeStarted = _ => disposeStarted.MarkEntered();
+        block.Hooks._disposeStarted = _ => disposeStarted.MarkEntered();
 
         Task? disposeTask = null;
         var writeTask = Task.Run(() => writer.TryWriteRow(1, "report.pdf", FileColumns()));

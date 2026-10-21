@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+// ReSharper disable once CppUnusedIncludeDirective
 // aislop-ignore-next-line CppUnusedIncludeDirective -- memcpy and memcmp below need this on GCC/Clang
 #include <cstring>
 #include <limits>

@@ -222,9 +222,9 @@ public static class CacheDirectory
     internal sealed class DeletionHooks
     {
         /// <summary>Invoked with the owner lock held, before File.Delete.</summary>
-        internal Action<string>? BeforeDelete;
+        internal Action<string>? _beforeDelete;
 
-        internal void ResetToDefaults() => BeforeDelete = null;
+        internal void ResetToDefaults() => _beforeDelete = null;
     }
 
     static CachedBlockDeletionResult DeleteCachedFile(CachedBlockFile file)
@@ -235,7 +235,7 @@ public static class CacheDirectory
             return new CachedBlockDeletionResult(file, CachedBlockDeletionOutcome.InUse, null);
         }
 
-        Hooks.BeforeDelete?.Invoke(file.Path);
+        Hooks._beforeDelete?.Invoke(file.Path);
 
         try
         {

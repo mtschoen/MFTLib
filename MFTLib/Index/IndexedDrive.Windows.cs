@@ -11,9 +11,9 @@ public sealed partial record IndexedDrive
     internal sealed class VolumeDependencies
     {
         /// <summary>Replaces the native volume serial reader when set.</summary>
-        internal Func<string, uint?>? VolumeSerialReader;
+        internal Func<string, uint?>? _volumeSerialReader;
 
-        internal void ResetToDefaults() => VolumeSerialReader = null;
+        internal void ResetToDefaults() => _volumeSerialReader = null;
     }
 
     /// <summary>
@@ -24,7 +24,7 @@ public sealed partial record IndexedDrive
     public static IndexedDrive FromWindowsVolume(DriveKey drive)
     {
         var rootDirectory = drive.Letter + @":\";
-        var reader = Dependencies.VolumeSerialReader ?? ReadVolumeSerial;
+        var reader = Dependencies._volumeSerialReader ?? ReadVolumeSerial;
         var serial = reader(rootDirectory) ?? throw new IOException(
             $"Could not read the volume serial for drive {drive}.");
         return new IndexedDrive(drive, rootDirectory, serial);

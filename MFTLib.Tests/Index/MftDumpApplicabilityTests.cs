@@ -144,7 +144,7 @@ public class MftDumpApplicabilityTests
     [SupportedOSPlatform("windows")]
     public async Task QueryUsnJournalSettings_ADumpDriveRefusesBeforeTheLiveQuery()
     {
-        UsnJournalSettingsQuery.Dependencies.QueryOverride =
+        UsnJournalSettingsQuery.Dependencies._queryOverride =
             drive => throw new AssertFailedException($"The live volume {drive} must not be queried.");
         await using var index = await MftDumpIndexes.OpenAsync();
 
@@ -157,7 +157,7 @@ public class MftDumpApplicabilityTests
     [SupportedOSPlatform("windows")]
     public async Task QueryUsnJournalSettings_AFailedDumpDriveWithNoBlockStillRefuses()
     {
-        UsnJournalSettingsQuery.Dependencies.QueryOverride =
+        UsnJournalSettingsQuery.Dependencies._queryOverride =
             drive => throw new AssertFailedException($"The live volume {drive} must not be queried.");
         await using var index = await MftDumpIndexes.OpenAsync(MftDumpIndexes.Source(MftDumpIndexes.Fail));
 

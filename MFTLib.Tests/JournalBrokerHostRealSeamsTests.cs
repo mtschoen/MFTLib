@@ -39,9 +39,9 @@ public partial class JournalBrokerHostRealSeamsTests
     // A host scan sizes its chunks from FSCTL_GET_NTFS_VOLUME_DATA before it opens the parse.
     static void MockVolumeRecordSize()
     {
-        FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
-        var query = Kernel32.Hooks.DeviceIoControl;
-        Kernel32.Hooks.DeviceIoControl = (device, code, input, inputSize, output, outputSize,
+        FileUtilities.Hooks._getVolumeHandle = _ => FakeVolumeHandle.Create();
+        var query = Kernel32.Hooks._deviceIoControl;
+        Kernel32.Hooks._deviceIoControl = (device, code, input, inputSize, output, outputSize,
             out returned, overlapped) =>
         {
             if (code == UsnJournalVolumeInterop.FsctlQueryUsnJournal)
@@ -61,7 +61,7 @@ public partial class JournalBrokerHostRealSeamsTests
 
     static void MockFreeMftResult()
     {
-        MFTLibNative.Hooks.FreeMftResult = ptr =>
+        MFTLibNative.Hooks._freeMftResult = ptr =>
         {
             var parsed = Marshal.PtrToStructure<MftParseResult>(ptr);
             if (parsed.Entries != IntPtr.Zero)

@@ -35,7 +35,7 @@ public partial class NativeMftProcessingTests
             }
             finally
             {
-                MFTLibNative.Hooks.FreeMftResult(resultPointer);
+                MFTLibNative.Hooks._freeMftResult(resultPointer);
             }
         }
         finally
@@ -76,7 +76,7 @@ public partial class NativeMftProcessingTests
             }
             finally
             {
-                MFTLibNative.Hooks.FreeMftResult(resultPointer);
+                MFTLibNative.Hooks._freeMftResult(resultPointer);
             }
         }
         finally
@@ -110,7 +110,7 @@ public partial class NativeMftProcessingTests
             }
             finally
             {
-                MFTLibNative.Hooks.FreeMftResult(resultPointer);
+                MFTLibNative.Hooks._freeMftResult(resultPointer);
             }
         }
         finally
@@ -159,7 +159,7 @@ public partial class NativeMftProcessingTests
             }
             finally
             {
-                MFTLibNative.Hooks.FreeMftResult(resultPointer);
+                MFTLibNative.Hooks._freeMftResult(resultPointer);
             }
         }
         finally
@@ -209,7 +209,7 @@ public partial class NativeMftProcessingTests
             }
             finally
             {
-                MFTLibNative.Hooks.FreeMftResult(resultPointer);
+                MFTLibNative.Hooks._freeMftResult(resultPointer);
             }
         }
         finally

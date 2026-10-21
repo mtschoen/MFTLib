@@ -19,7 +19,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
     const int RecordSize = 1024;
 
     TempDirectory _tempDirectory = null!;
-    string _directory => _tempDirectory.Path;
+    string TemporaryDirectoryPath => _tempDirectory.Path;
 
     [TestInitialize]
     public void Initialize()
@@ -42,7 +42,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
         var (imagePath, corruptRecord) = WriteImageWithOneCorruptFixup();
         using var image = File.OpenHandle(imagePath);
 
-        var resultPointer = MFTLibNative.Hooks.ParseMftRecordsWithProgress(image, false, 64, IntPtr.Zero,
+        var resultPointer = MFTLibNative.Hooks._parseMftRecordsWithProgress(image, false, 64, IntPtr.Zero,
             null);
         var counted = Marshal.PtrToStructure<MftParseResult>(resultPointer);
         using var result = new MftResult(resultPointer);
@@ -96,7 +96,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
         {
             Drive = 'C',
             VolumeSerial = 0,
-            BlockPath = Path.Combine(_directory, "local.mlix"),
+            BlockPath = Path.Combine(TemporaryDirectoryPath, "local.mlix"),
             DeleteOnClose = true
         };
 
@@ -116,7 +116,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
             return;
         }
 
-        var imagePath = Path.Combine(_directory, "clean.img");
+        var imagePath = Path.Combine(TemporaryDirectoryPath, "clean.img");
         SyntheticNtfsImage.Write(imagePath, 64);
         ServeImageAsVolume(imagePath);
         using var block = CreateBlock();
@@ -139,7 +139,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
     public void VolumeParse_BootstrapRecordWithAnInvalidFixup_FailsWithoutReturningRecords(string caseId,
         bool corruptLayout)
     {
-        var imagePath = Path.Combine(_directory, $"corrupt-bootstrap-{caseId}.img");
+        var imagePath = Path.Combine(TemporaryDirectoryPath, $"corrupt-bootstrap-{caseId}.img");
         SyntheticNtfsImage.Write(imagePath, 64);
         NativeTestHooks.NativeSetVolumeRecordSizeOverride(RecordSize);
 
@@ -156,7 +156,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
         File.WriteAllBytes(imagePath, image);
         using var handle = File.OpenHandle(imagePath);
 
-        var resultPointer = MFTLibNative.Hooks.ParseMftRecordsWithProgress(handle, false, 64, IntPtr.Zero,
+        var resultPointer = MFTLibNative.Hooks._parseMftRecordsWithProgress(handle, false, 64, IntPtr.Zero,
             null);
         try
         {
@@ -167,7 +167,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
         }
         finally
         {
-            MFTLibNative.Hooks.FreeMftResult(resultPointer);
+            MFTLibNative.Hooks._freeMftResult(resultPointer);
         }
     }
 
@@ -175,7 +175,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
     // have rows too, is given a first-sector tail that is not its update sequence number.
     (string ImagePath, ulong CorruptRecord) WriteImageWithOneCorruptFixup()
     {
-        var imagePath = Path.Combine(_directory, "corrupt.img");
+        var imagePath = Path.Combine(TemporaryDirectoryPath, "corrupt.img");
         SyntheticNtfsImage.Write(imagePath, 64);
         NativeTestHooks.NativeSetVolumeRecordSizeOverride(RecordSize);
         var imported = ImportedRecordNumbers(imagePath);
@@ -192,7 +192,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
     {
         using var image = File.OpenHandle(imagePath);
         using var result = new MftResult(
-            MFTLibNative.Hooks.ParseMftRecordsWithProgress(image, false, 64, IntPtr.Zero, null));
+            MFTLibNative.Hooks._parseMftRecordsWithProgress(image, false, 64, IntPtr.Zero, null));
         Assert.AreEqual(0UL, result.InvalidFixupRecordCount, "the untouched image has no invalid fixup");
         return result.ToRecords().Where(record => record.InUse).Select(record => record.RecordNumber).ToHashSet();
     }
@@ -201,8 +201,8 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
     static void ServeImageAsVolume(string imagePath)
     {
         NativeTestHooks.NativeSetVolumeRecordSizeOverride(RecordSize);
-        FileUtilities.Hooks.GetVolumeHandle = _ => File.OpenHandle(imagePath);
-        Kernel32.Hooks.DeviceIoControl = (_, _, _, _, outBuffer, _, out bytesReturned, _) =>
+        FileUtilities.Hooks._getVolumeHandle = _ => File.OpenHandle(imagePath);
+        Kernel32.Hooks._deviceIoControl = (_, _, _, _, outBuffer, _, out bytesReturned, _) =>
         {
             Marshal.StructureToPtr(new NtfsVolumeDataBufferNative
             {
@@ -216,7 +216,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
 
     BlockFile CreateBlock() => BlockFile.Create(new BlockFileCreateOptions
     {
-        Path = Path.Combine(_directory, $"{Guid.NewGuid():N}.mlix"),
+        Path = Path.Combine(TemporaryDirectoryPath, $"{Guid.NewGuid():N}.mlix"),
         VolumeSerial = 0,
         ProducerKind = ProducerKind.Mft,
         RootRow = 5,

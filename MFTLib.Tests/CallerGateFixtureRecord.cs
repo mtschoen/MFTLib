@@ -23,12 +23,12 @@ public sealed record CallerGatePositionalRecord(int First, int Second)
 
 public sealed record CallerGateReplacedPropertyRecord(int Alpha, int Beta)
 {
-    readonly int stored = Alpha;
+    readonly int _stored = Alpha;
 
     public int Alpha
     {
-        get => stored;
-        init => stored = value;
+        get => _stored;
+        init => _stored = value;
     }
 
     public int Combined => Alpha + Beta;
@@ -47,7 +47,8 @@ public record CallerGateInheritableRecord(int Value)
     public int Echo => Value;
 }
 
-// aislop-ignore-next-line jb/EmptyConstructor
+// ReSharper disable once EmptyConstructor
+// aislop-ignore-next-line jb/EmptyConstructor -- zero-argument positional record is the metadata-reader negative control for absent synthesized Deconstruct evidence
 public sealed record CallerGateEmptyRecord();
 
 public sealed record CallerGateAuthoredDeconstructRecord(int Left, int Right)
@@ -62,6 +63,7 @@ public sealed record CallerGateAuthoredDeconstructRecord(int Left, int Right)
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1708", Justification = "The fixture pins that a property differing from a positional one only by case is authored.")]
 public sealed record CallerGateCaseSiblingRecord(int First)
 {
+    // ReSharper disable once InconsistentNaming
     public string first { get; init; } = "authored";
 
     public int Echo => First;

@@ -18,8 +18,8 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
     static readonly DateTime FixedMoment = new(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
 
     IndexTreeFixture _fixture = null!;
-    string _treeRoot => _fixture.TreeRoot;
-    string _cacheDirectory => _fixture.CacheDirectory;
+    string TreeRoot => _fixture.TreeRoot;
+    string CacheDirectoryPath => _fixture.CacheDirectory;
 
     public TestContext TestContext { get; set; } = null!;
 
@@ -59,8 +59,8 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
     [TestMethod]
     public async Task RetainedFileNames_OneSetReachesTheMftProducerAndFiltersTheEnumerationWalk()
     {
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Notes.TXT"), "keep", TestContext.CancellationTokenSource.Token);
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "other.bin"), "drop", TestContext.CancellationTokenSource.Token);
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Notes.TXT"), "keep", TestContext.CancellationTokenSource.Token);
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "other.bin"), "drop", TestContext.CancellationTokenSource.Token);
         var seen = new List<IReadOnlyCollection<string>?>();
         Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request, CancellationToken _)
         {
@@ -73,8 +73,8 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
         using var mftRoot = new TempDirectory("mftlib-mft-root");
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('M', mftRoot.Path, 2), new IndexedDrive('T', _treeRoot, 1, ProducerKind.Enumeration)],
-            CacheDirectory = _cacheDirectory,
+            Drives = [new IndexedDrive('M', mftRoot.Path, 2), new IndexedDrive('T', TreeRoot, 1, ProducerKind.Enumeration)],
+            CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource(Produce),
             RetainedFileNames = retained
         }, TestContext.CancellationTokenSource.Token);
@@ -82,10 +82,10 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
         CollectionAssert.AreEqual(retained, seen.Single()!.ToArray());
         var walked = index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Ready, walked.State);
-        Assert.IsNotNull(index.Find(Path.Combine(_treeRoot, "Notes.TXT")));
-        Assert.IsNull(index.Find(Path.Combine(_treeRoot, "other.bin")));
-        Assert.IsNull(index.Find(Path.Combine(_treeRoot, "Documents", "readme.md")));
-        Assert.IsTrue(index.Find(Path.Combine(_treeRoot, "Documents"))!.Value.IsDirectory);
+        Assert.IsNotNull(index.Find(Path.Combine(TreeRoot, "Notes.TXT")));
+        Assert.IsNull(index.Find(Path.Combine(TreeRoot, "other.bin")));
+        Assert.IsNull(index.Find(Path.Combine(TreeRoot, "Documents", "readme.md")));
+        Assert.IsTrue(index.Find(Path.Combine(TreeRoot, "Documents"))!.Value.IsDirectory);
     }
 
     [TestMethod]
@@ -93,18 +93,18 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
     [DataRow("Drive T: no MFT source is available to scan this drive.")]
     public async Task Mft_MarksTheFailedDriveAndKeepsTheOthers(string failureMessage)
     {
-        var firstRoot = Path.Combine(_treeRoot, "first");
-        var secondRoot = Path.Combine(_treeRoot, "second");
+        var firstRoot = Path.Combine(TreeRoot, "first");
+        var secondRoot = Path.Combine(TreeRoot, "second");
         Directory.CreateDirectory(firstRoot);
         Directory.CreateDirectory(secondRoot);
-        Directory.CreateDirectory(_cacheDirectory);
+        Directory.CreateDirectory(CacheDirectoryPath);
         await File.WriteAllTextAsync(
-            Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 1)), "invalid",
+            Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 1)), "invalid",
             TestContext.CancellationTokenSource.Token);
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
             Drives = [new IndexedDrive('T', firstRoot, 1), new IndexedDrive('U', secondRoot, 2)],
-            CacheDirectory = _cacheDirectory,
+            CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource((request, _) => request.Drive == 'T'
                 ? throw new UnauthorizedAccessException(failureMessage)
                 : Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, 7, 4096, FixedMoment), 0)))
@@ -124,16 +124,16 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
     [TestMethod]
     public async Task Mft_FailedDriveDoesNotLeakItsFailureMessageToAWarmStartedDrive()
     {
-        var firstRoot = Path.Combine(_treeRoot, "first");
-        var secondRoot = Path.Combine(_treeRoot, "second");
+        var firstRoot = Path.Combine(TreeRoot, "first");
+        var secondRoot = Path.Combine(TreeRoot, "second");
         Directory.CreateDirectory(firstRoot);
         Directory.CreateDirectory(secondRoot);
-        Directory.CreateDirectory(_cacheDirectory);
+        Directory.CreateDirectory(CacheDirectoryPath);
         using (SeededBlocks.Build(new MftBlockProduceRequest
         {
             Drive = 'U',
             VolumeSerial = 2,
-            BlockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('U', 2))
+            BlockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('U', 2))
         }, 7, 4096, FixedMoment))
         {
         }
@@ -141,7 +141,7 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
             Drives = [new IndexedDrive('T', firstRoot, 1), new IndexedDrive('U', secondRoot, 2)],
-            CacheDirectory = _cacheDirectory,
+            CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource((_, _) => throw new UnauthorizedAccessException("elevation declined"))
         }, TestContext.CancellationTokenSource.Token);
 
@@ -170,8 +170,8 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 1)],
-            CacheDirectory = _cacheDirectory,
+            Drives = [new IndexedDrive('T', TreeRoot, 1)],
+            CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource(CountingProducer),
             CacheMode = CacheMode.ExistingOnly
         }, TestContext.CancellationTokenSource.Token);
@@ -190,8 +190,8 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
     {
         await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 1)],
-            CacheDirectory = _cacheDirectory,
+            Drives = [new IndexedDrive('T', TreeRoot, 1)],
+            CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource(static (_, token) => throw new OperationCanceledException(token))
         }, TestContext.CancellationTokenSource.Token));
     }
@@ -281,7 +281,7 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
         Assert.IsFalse(index.Drives[0].Watch.IsSupported, "the source offers no watch source");
         Assert.AreEqual(8192L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
         Assert.AreEqual(4096L, previousRoot.DriveBlock.Block.Header.UsnNextUsn);
-        Assert.AreEqual(_treeRoot, previousRoot.Path);
+        Assert.AreEqual(TreeRoot, previousRoot.Path);
     }
 
     [TestMethod]
@@ -334,7 +334,7 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
         Assert.IsNotNull(producedBlock);
         BlockFileAssertions.IsDisposed(producedBlock);
 
-        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 0x0BADF00D));
         Assert.IsFalse(File.Exists(blockPath),
             "a rejected block must not survive to be warm-started by a later open");
 
@@ -441,8 +441,8 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
-            CacheDirectory = _cacheDirectory,
+            Drives = [new IndexedDrive('T', TreeRoot, 0x0BADF00D)],
+            CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource(Producer),
             CacheMode = CacheMode.ExistingOnly
         }, TestContext.CancellationTokenSource.Token);
@@ -468,8 +468,8 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
     {
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
-            CacheDirectory = _cacheDirectory,
+            Drives = [new IndexedDrive('T', TreeRoot, 0x0BADF00D)],
+            CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource((_, _) => throw new UnauthorizedAccessException("elevation declined")),
             CacheMode = CacheMode.ExistingOnly
         }, TestContext.CancellationTokenSource.Token);
@@ -500,8 +500,8 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
-            CacheDirectory = _cacheDirectory,
+            Drives = [new IndexedDrive('T', TreeRoot, 0x0BADF00D)],
+            CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource(Producer)
         }, TestContext.CancellationTokenSource.Token);
         Assert.AreEqual(DriveState.Failed, index.Drives.Single().State);
@@ -533,7 +533,7 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
             TestContext.CancellationTokenSource.Token);
 
         Assert.AreEqual(DriveState.Failed, failedIndex.Drives.Single().State);
-        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 0x0BADF00D));
         var line = deletions.SingleOrDefault(entry => entry.Contains(blockPath));
         Assert.IsNotNull(line, "the rejected producer block's delete must be logged with its path");
         StringAssert.Contains(line, "journal cursor");

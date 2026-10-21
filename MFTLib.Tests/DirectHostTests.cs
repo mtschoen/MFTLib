@@ -15,14 +15,14 @@ public sealed class DirectHostTests : IDisposable
     const string DumpRoot = "dump:/D";
 
     TempDirectory _tempDirectory = null!;
-    string _directory => _tempDirectory.Path;
+    string TemporaryDirectoryPath => _tempDirectory.Path;
     string _dumpFile = null!;
 
     [TestInitialize]
     public void Initialize()
     {
         _tempDirectory = new TempDirectory("mftlib-dump", create: false);
-        _dumpFile = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        _dumpFile = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
     }
 
     public void Dispose()
@@ -34,7 +34,7 @@ public sealed class DirectHostTests : IDisposable
 
     SampleHost HostOver(List<string> lines)
     {
-        return new SampleHost(new LineCollectingWriter(lines), TextReader.Null, _directory)
+        return new SampleHost(new LineCollectingWriter(lines), TextReader.Null, TemporaryDirectoryPath)
         {
             _isElevated = () => throw new AssertFailedException("A dump run must not ask about elevation.")
         };
@@ -167,9 +167,9 @@ public sealed class DirectHostTests : IDisposable
     {
         Assert.IsTrue(DirectArguments.TryParse(["scan", "C", "--include-freed"], out var parsed, out var error), error);
         using var output = new StringWriter();
-        var host = new SampleHost(output, TextReader.Null, _directory);
+        var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
 
-        await host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('C', _directory, 4242), CancellationToken.None);
+        await host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('C', TemporaryDirectoryPath, 4242), CancellationToken.None);
 
         StringAssert.Contains(output.ToString(), "C: 2 live files, 2 live directories, 1 retained deleted rows");
     }
@@ -194,10 +194,10 @@ public sealed class DirectHostTests : IDisposable
     public async Task Run_OpenOfAScriptedEntry_FormatsLastWriteFreshness(
         bool isLastWriteTimeUnknown, string expectedLastWriteTime)
     {
-        var path = Path.Combine(_directory, "a.txt");
+        var path = Path.Combine(TemporaryDirectoryPath, "a.txt");
         File.WriteAllBytes(path, [1, 2, 3]);
         using var output = new StringWriter();
-        var host = new SampleHost(output, TextReader.Null, _directory);
+        var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
         var source = SyntheticIndexSource.Create(new SyntheticMftProducer(_ =>
         [
             new SyntheticRow(5, ".", 5) { IsDirectory = true },
@@ -208,11 +208,11 @@ public sealed class DirectHostTests : IDisposable
                 IsLastWriteTimeUnknown = isLastWriteTimeUnknown
             }
         ]));
-        FileEntry.Dependencies.OpenById = (_, _, _, access) =>
+        FileEntry.Dependencies._openById = (_, _, _, access) =>
             new FileStream(path, FileMode.Open, access, FileShare.Read);
 
         Assert.IsTrue(DirectArguments.TryParse(["open", "C", "--path", path], out var parsed, out var error), error);
-        await host.RunSourceAsync(parsed!, source, new IndexedDrive('C', _directory, 4242), CancellationToken.None);
+        await host.RunSourceAsync(parsed!, source, new IndexedDrive('C', TemporaryDirectoryPath, 4242), CancellationToken.None);
 
         var report = output.ToString();
         StringAssert.Contains(report, $"{path} ({new IndexRecordKey('C', 7, ProducerKind.Mft)}): record ");
@@ -236,7 +236,7 @@ public sealed class DirectHostTests : IDisposable
     {
         var lines = new List<string>();
 
-        var result = HostOver(lines).Run(["scan", "D", "--source", "dump", "--dump-file", Path.Combine(_directory, "absent.mft")]);
+        var result = HostOver(lines).Run(["scan", "D", "--source", "dump", "--dump-file", Path.Combine(TemporaryDirectoryPath, "absent.mft")]);
 
         Assert.AreEqual(1, result);
         Assert.IsTrue(lines.Any(line => line.StartsWith("Error: ", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
@@ -274,14 +274,14 @@ public sealed class DirectHostTests : IDisposable
     public void Run_LocalSourceElevated_ScansWhatTheSourceProducesAndRedirectsOutput()
     {
         using var output = new StringWriter();
-        var host = new SampleHost(output, TextReader.Null, _directory) { _isElevated = () => true };
+        var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath) { _isElevated = () => true };
         DirectArguments? seen = null;
 
         var result = host.RunWithElevation(["search", "C", "--name", "a.txt", "--include-freed"], ElevationNeed.SelfElevate, () =>
         {
             Assert.IsTrue(DirectArguments.TryParse(["search", "C", "--name", "a.txt", "--include-freed"], out var parsed, out var error), error);
             seen = parsed;
-            host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('C', _directory, 4242), CancellationToken.None).GetAwaiter().GetResult();
+            host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('C', TemporaryDirectoryPath, 4242), CancellationToken.None).GetAwaiter().GetResult();
             return 0;
         });
 
@@ -303,9 +303,9 @@ public sealed class DirectHostTests : IDisposable
     {
         Assert.IsTrue(DirectArguments.TryParse(["search", "C", "--name", "a.txt"], out var parsed, out var error), error);
         using var output = new StringWriter();
-        var host = new SampleHost(output, TextReader.Null, _directory);
+        var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
 
-        await host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('C', _directory, 4242), CancellationToken.None);
+        await host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('C', TemporaryDirectoryPath, 4242), CancellationToken.None);
 
         var report = output.ToString();
         Assert.IsFalse(report.Contains("deleted="), report);
@@ -318,7 +318,7 @@ public sealed class DirectHostTests : IDisposable
         string[] command = ["search", "C", "--source", "local", "--name", "*.log", "--files", "--stream", "--limit", "20"];
         Assert.IsTrue(DirectArguments.TryParse(command, out var parsed, out var error), error);
         using var elevatedOutput = new StringWriter();
-        var elevatedHost = new SampleHost(elevatedOutput, TextReader.Null, _directory);
+        var elevatedHost = new SampleHost(elevatedOutput, TextReader.Null, TemporaryDirectoryPath);
         var source = SyntheticIndexSource.Create(new SyntheticMftProducer(_ =>
         [
             new SyntheticRow(5, ".", 5) { IsDirectory = true },
@@ -329,15 +329,15 @@ public sealed class DirectHostTests : IDisposable
             new SyntheticRow(10, "Notes.txt", 5) { Size = 11 }
         ]));
 
-        await elevatedHost.RunSourceAsync(parsed!, source, new IndexedDrive('C', _directory, 4242), CancellationToken.None);
+        await elevatedHost.RunSourceAsync(parsed!, source, new IndexedDrive('C', TemporaryDirectoryPath, 4242), CancellationToken.None);
 
         var elevatedLines = elevatedOutput.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
         var matches = elevatedLines.Where(line => line.Contains(".log", StringComparison.Ordinal) && !line.StartsWith("Indexing ", StringComparison.Ordinal)).ToList();
         CollectionAssert.AreEquivalent(
             new[]
             {
-                $"{Path.Combine(_directory, "logs", "app.log")}  42",
-                $"{Path.Combine(_directory, "logs", "pending.log")}  ?"
+                $"{Path.Combine(TemporaryDirectoryPath, "logs", "app.log")}  42",
+                $"{Path.Combine(TemporaryDirectoryPath, "logs", "pending.log")}  ?"
             },
             matches,
             elevatedOutput.ToString());
@@ -345,7 +345,7 @@ public sealed class DirectHostTests : IDisposable
 
         using var unattended = new UnattendedEnvironmentScope("1");
         using var unattendedOutput = new StringWriter();
-        var unattendedHost = new SampleHost(unattendedOutput, TextReader.Null, _directory) { _isElevated = () => false };
+        var unattendedHost = new SampleHost(unattendedOutput, TextReader.Null, TemporaryDirectoryPath) { _isElevated = () => false };
 
         var unattendedResult = unattendedHost.RunWithElevation(command, ElevationNeed.SelfElevate, () =>
             throw new AssertFailedException("An unelevated unattended run must not scan."));
@@ -360,9 +360,9 @@ public sealed class DirectHostTests : IDisposable
     {
         Assert.IsTrue(DirectArguments.TryParse(["duplicate-names", "C"], out var parsed, out var error), error);
         using var output = new StringWriter();
-        var host = new SampleHost(output, TextReader.Null, _directory);
+        var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
 
-        await host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('C', _directory, 4242), CancellationToken.None);
+        await host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('C', TemporaryDirectoryPath, 4242), CancellationToken.None);
 
         StringAssert.Contains(output.ToString(), "a.txt: 2 entries");
     }
@@ -372,10 +372,10 @@ public sealed class DirectHostTests : IDisposable
     {
         Assert.IsTrue(DirectArguments.TryParse(["scan", "Q"], out var parsed, out var error), error);
         using var output = new StringWriter();
-        var host = new SampleHost(output, TextReader.Null, _directory);
+        var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-            host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('Q', Path.Combine(_directory, "missing-root"), 4242), CancellationToken.None));
+            host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('Q', Path.Combine(TemporaryDirectoryPath, "missing-root"), 4242), CancellationToken.None));
         StringAssert.Contains(exception.Message, "The drive is offline; nothing was scanned.");
     }
 
@@ -384,11 +384,11 @@ public sealed class DirectHostTests : IDisposable
     {
         Assert.IsTrue(DirectArguments.TryParse(["scan", "C"], out var parsed, out var error), error);
         using var output = new StringWriter();
-        var host = new SampleHost(output, TextReader.Null, _directory);
+        var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
         var source = SyntheticIndexSource.Create(new SyntheticMftProducer(_ => throw new IOException("volume unreadable")));
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-            host.RunSourceAsync(parsed!, source, new IndexedDrive('C', _directory, 4242), CancellationToken.None));
+            host.RunSourceAsync(parsed!, source, new IndexedDrive('C', TemporaryDirectoryPath, 4242), CancellationToken.None));
         StringAssert.Contains(exception.Message, "volume unreadable");
     }
 
@@ -414,7 +414,7 @@ public sealed class DirectHostTests : IDisposable
     public void Run_WrappedFailure_NamesTheTypeAndEveryInnerExceptionWithoutAStackTrace()
     {
         using var output = new StringWriter();
-        var host = new SampleHost(output, TextReader.Null, _directory)
+        var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath)
         {
             _isElevated = () => true,
         };

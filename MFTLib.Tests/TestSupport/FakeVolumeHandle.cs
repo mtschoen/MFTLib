@@ -16,7 +16,7 @@ internal static class FakeVolumeHandle
     internal static MftVolume OpenVolume(DriveKey drive, out SafeFileHandle volumeHandle)
     {
         SafeFileHandle capturedHandle = null!;
-        FileUtilities.Hooks.GetVolumeHandle = _ => capturedHandle = Create();
+        FileUtilities.Hooks._getVolumeHandle = _ => capturedHandle = Create();
         var volume = MftVolume.Open(drive);
         volumeHandle = capturedHandle;
         return volume;

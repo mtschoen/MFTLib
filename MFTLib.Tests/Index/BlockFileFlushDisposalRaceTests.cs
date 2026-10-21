@@ -28,7 +28,7 @@ public class BlockFileFlushDisposalRaceTests
     {
         using var builder = new SyntheticBlockBuilder();
         var block = builder.OpenForWriting();
-        block.Hooks.FlushRangeBytes = Environment.SystemPageSize;
+        block.Hooks._flushRangeBytes = Environment.SystemPageSize;
 
         var held = new TestGate();
         var releaseFlush = new TestGate();
@@ -43,7 +43,7 @@ public class BlockFileFlushDisposalRaceTests
             }
         }
 
-        block.Hooks.FlushViewRange = (_, _) =>
+        block.Hooks._flushViewRange = (_, _) =>
         {
             if (holdInsideRangeFlush)
             {
@@ -52,7 +52,7 @@ public class BlockFileFlushDisposalRaceTests
 
             return 0;
         };
-        block.Hooks.SynchronizeViewRange = (_, _, _) =>
+        block.Hooks._synchronizeViewRange = (_, _, _) =>
         {
             if (holdInsideRangeFlush)
             {
@@ -62,7 +62,7 @@ public class BlockFileFlushDisposalRaceTests
             return 0;
         };
         var disposeWillWait = false;
-        block.Hooks.DisposeStarted = willWait =>
+        block.Hooks._disposeStarted = willWait =>
         {
             disposeWillWait = willWait;
             disposeStarted.MarkEntered();

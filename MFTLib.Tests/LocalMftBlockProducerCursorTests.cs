@@ -12,7 +12,7 @@ public sealed class LocalMftBlockProducerCursorTests : IDisposable
 {
     public TestContext TestContext { get; set; } = null!;
     IndexTreeFixture _fixture = null!;
-    string _cacheDirectory => _fixture.CacheDirectory;
+    string CacheDirectoryPath => _fixture.CacheDirectory;
 
     [TestInitialize]
     public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
@@ -22,7 +22,7 @@ public sealed class LocalMftBlockProducerCursorTests : IDisposable
     [TestMethod]
     public async Task CachedScan_ArmsCursorBeforeBatchesAndStampsResult()
     {
-        Directory.CreateDirectory(_cacheDirectory);
+        Directory.CreateDirectory(CacheDirectoryPath);
         var calls = new List<string>();
         var cursor = new UsnJournalCursor(99, 2000);
         var access = new ScriptedVolumeAccess
@@ -45,7 +45,7 @@ public sealed class LocalMftBlockProducerCursorTests : IDisposable
             {
                 Drive = 'T',
                 VolumeSerial = 123,
-                BlockPath = Path.Combine(_cacheDirectory, "cached.mlix")
+                BlockPath = Path.Combine(CacheDirectoryPath, "cached.mlix")
             }, TestContext.CancellationTokenSource.Token);
         using var block = result.Block;
         CollectionAssert.AreEqual(new[] { "cursor", "scan" }, calls);
@@ -58,7 +58,7 @@ public sealed class LocalMftBlockProducerCursorTests : IDisposable
     [DataRow(true)]
     public async Task JournalLessVolume_FailsCachedDriveButSkipsQueryWithoutCache(bool cacheDisabled)
     {
-        Directory.CreateDirectory(_cacheDirectory);
+        Directory.CreateDirectory(CacheDirectoryPath);
         var scans = 0;
         var queries = 0;
         var access = new ScriptedVolumeAccess
@@ -93,7 +93,7 @@ public sealed class LocalMftBlockProducerCursorTests : IDisposable
         if (!cacheDisabled)
         {
             Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind);
-            Assert.AreEqual(0, Directory.GetFiles(_cacheDirectory, "*.mlix").Length);
+            Assert.AreEqual(0, Directory.GetFiles(CacheDirectoryPath, "*.mlix").Length);
         }
     }
 }

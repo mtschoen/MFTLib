@@ -121,7 +121,7 @@ sealed class BrokerDiagnosticsLogFilter
 
         // Desired access 0 still answers GetFileInformationByHandle; ShareAll keeps the
         // process appending to the log undisturbed.
-        using var handle = Kernel32.Hooks.CreateFile(path, 0, ShareAll, IntPtr.Zero, OpenExisting, 0, IntPtr.Zero);
+        using var handle = Kernel32.Hooks._createFile(path, 0, ShareAll, IntPtr.Zero, OpenExisting, 0, IntPtr.Zero);
         if (handle.IsInvalid || !Kernel32.GetFileInformationByHandle(handle, out var info))
         {
             return null;

@@ -8,8 +8,8 @@ namespace MFTLib.Index;
 /// </summary>
 internal static class EnumerationWalkLimit
 {
-    static readonly int s_size = Environment.ProcessorCount;
-    static readonly SemaphoreSlim s_walks = new(s_size, s_size);
+    static readonly int Capacity = Environment.ProcessorCount;
+    static readonly SemaphoreSlim Walks = new(Capacity, Capacity);
 
     internal static readonly WalkHooks Hooks = new();
 
@@ -17,19 +17,19 @@ internal static class EnumerationWalkLimit
     internal sealed class WalkHooks
     {
         /// <summary>Invoked when a walk is about to queue behind the limit.</summary>
-        internal Action? WalkQueued;
+        internal Action? _walkQueued;
 
         /// <summary>Invoked before physical reading begins for a directory.</summary>
-        internal Action<DriveKey, string, CancellationToken>? DirectoryEntered;
+        internal Action<DriveKey, string, CancellationToken>? _directoryEntered;
 
         /// <summary>Invoked after physical reading completes or faults for a directory.</summary>
-        internal Action<DriveKey, string>? DirectoryExited;
+        internal Action<DriveKey, string>? _directoryExited;
 
         internal void ResetToDefaults()
         {
-            WalkQueued = null;
-            DirectoryEntered = null;
-            DirectoryExited = null;
+            _walkQueued = null;
+            _directoryEntered = null;
+            _directoryExited = null;
         }
     }
 
@@ -37,10 +37,10 @@ internal static class EnumerationWalkLimit
     internal static async ValueTask<Lease> EnterAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var entering = s_walks.WaitAsync(cancellationToken);
+        var entering = Walks.WaitAsync(cancellationToken);
         if (!entering.IsCompleted)
         {
-            Hooks.WalkQueued?.Invoke();
+            Hooks._walkQueued?.Invoke();
         }
 
         try
@@ -55,7 +55,7 @@ internal static class EnumerationWalkLimit
         return new Lease();
     }
 
-    internal static Lease? TryEnter() => s_walks.Wait(0) ? new Lease() : null;
+    internal static Lease? TryEnter() => Walks.Wait(0) ? new Lease() : null;
 
     internal sealed class Lease : IDisposable
     {
@@ -68,7 +68,7 @@ internal static class EnumerationWalkLimit
         {
             if (Interlocked.Exchange(ref _released, 1) == 0)
             {
-                s_walks.Release();
+                Walks.Release();
             }
         }
     }

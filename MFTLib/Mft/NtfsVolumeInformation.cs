@@ -46,13 +46,13 @@ internal readonly record struct NtfsVolumeInformation(
         }
 
         var normalizedPath = MFTUtilities.GetVolumePath(drive);
-        using var handle = FileUtilities.Hooks.GetVolumeHandle(normalizedPath);
+        using var handle = FileUtilities.Hooks._getVolumeHandle(normalizedPath);
 
         var bufferSize = Marshal.SizeOf<NtfsVolumeDataBufferNative>();
         var buffer = Marshal.AllocHGlobal(bufferSize);
         try
         {
-            var succeeded = Kernel32.Hooks.DeviceIoControl(
+            var succeeded = Kernel32.Hooks._deviceIoControl(
                 handle, FsctlGetNtfsVolumeData, IntPtr.Zero, 0, buffer, (uint)bufferSize, out _, IntPtr.Zero);
             if (!succeeded)
             {

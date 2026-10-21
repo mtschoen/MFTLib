@@ -15,7 +15,7 @@ namespace MFTLib.Tests;
 public sealed class NativeInterruptedIoTests : IDisposable
 {
     TempDirectory? _tempDirectory;
-    string _directory => _tempDirectory!.Path;
+    string TemporaryDirectoryPath => _tempDirectory!.Path;
     string _path = null!;
 
     [TestInitialize]
@@ -27,7 +27,7 @@ public sealed class NativeInterruptedIoTests : IDisposable
         }
 
         _tempDirectory = new TempDirectory("mftlib-dump", create: false);
-        _path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        _path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
     }
 
     public void Dispose()
@@ -75,8 +75,8 @@ public sealed class NativeInterruptedIoTests : IDisposable
     [TestCategory("Smoke")]
     public void Generate_WriteInterruptedRepeatedly_RetriesAndWritesTheSameBytes()
     {
-        var expectedPath = Path.Combine(_directory, "expected.mft");
-        var interruptedPath = Path.Combine(_directory, "interrupted.mft");
+        var expectedPath = Path.Combine(TemporaryDirectoryPath, "expected.mft");
+        var interruptedPath = Path.Combine(TemporaryDirectoryPath, "interrupted.mft");
         MftVolume.GenerateSyntheticMFT(expectedPath, 100, 256);
         NativeTestHooks.NativeSetInterruptedIo(NativeTestHooks.InterruptedIoMode.InterruptBeforeRealResult, 3);
 
@@ -117,7 +117,7 @@ public sealed class NativeInterruptedIoTests : IDisposable
     [TestCategory("Smoke")]
     public void Generate_GenuineWriteError_FailsOnTheFirstCall()
     {
-        var path = Path.Combine(_directory, "failed.mft");
+        var path = Path.Combine(TemporaryDirectoryPath, "failed.mft");
         NativeTestHooks.NativeSetInterruptedIo(NativeTestHooks.InterruptedIoMode.GenuineError, 0);
 
         Assert.IsFalse(MFTLibNative.GenerateSyntheticMftSized(path, 100, 256, 1024));

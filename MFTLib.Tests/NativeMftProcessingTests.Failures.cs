@@ -47,7 +47,7 @@ public partial class NativeMftProcessingTests
             }
             finally
             {
-                MFTLibNative.Hooks.FreeMftResult(resultPointer);
+                MFTLibNative.Hooks._freeMftResult(resultPointer);
             }
         }
         finally
@@ -92,7 +92,7 @@ public partial class NativeMftProcessingTests
             }
             finally
             {
-                MFTLibNative.Hooks.FreeMftResult(resultPointer);
+                MFTLibNative.Hooks._freeMftResult(resultPointer);
             }
         }
         finally
@@ -160,7 +160,7 @@ public partial class NativeMftProcessingTests
             }
             finally
             {
-                MFTLibNative.Hooks.FreeMftResult(resultPointer);
+                MFTLibNative.Hooks._freeMftResult(resultPointer);
             }
         }
         finally
@@ -177,7 +177,7 @@ public partial class NativeMftProcessingTests
     [TestMethod]
     public void FreeMftResult_NullPointer_DoesNotThrow()
     {
-        MFTLibNative.Hooks.FreeMftResult(IntPtr.Zero);
+        MFTLibNative.Hooks._freeMftResult(IntPtr.Zero);
     }
 
     // --- Platform pread/pwrite failure branches (platform_win32.cpp) ---

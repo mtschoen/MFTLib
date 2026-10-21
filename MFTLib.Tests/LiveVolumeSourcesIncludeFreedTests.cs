@@ -19,7 +19,7 @@ public sealed class LiveVolumeSourcesIncludeFreedTests : IDisposable
     const int RecordFlagsOffset = 0x16;
 
     TempDirectory _tempDirectory = null!;
-    string _directory => _tempDirectory.Path;
+    string TemporaryDirectoryPath => _tempDirectory.Path;
 
     [TestInitialize]
     public void Initialize()
@@ -49,8 +49,8 @@ public sealed class LiveVolumeSourcesIncludeFreedTests : IDisposable
         var (imagePath, freedRecord) = WriteImageWithOneFreedRecord();
         ServeImageAsVolume(imagePath);
         var requests = new List<bool>();
-        var parse = MFTLibNative.Hooks.ParseMftRecordsWithProgress;
-        MFTLibNative.Hooks.ParseMftRecordsWithProgress = (handle, freed, bufferSize, control, callback) =>
+        var parse = MFTLibNative.Hooks._parseMftRecordsWithProgress;
+        MFTLibNative.Hooks._parseMftRecordsWithProgress = (handle, freed, bufferSize, control, callback) =>
         {
             requests.Add(freed);
             return parse(handle, freed, bufferSize, control, callback);
@@ -82,7 +82,7 @@ public sealed class LiveVolumeSourcesIncludeFreedTests : IDisposable
         ServeImageAsVolume(imagePath);
         using var block = BlockFile.Create(new BlockFileCreateOptions
         {
-            Path = Path.Combine(_directory, "freed.mlix"),
+            Path = Path.Combine(TemporaryDirectoryPath, "freed.mlix"),
             VolumeSerial = 0,
             ProducerKind = ProducerKind.Mft,
             RootRow = 5,
@@ -104,7 +104,7 @@ public sealed class LiveVolumeSourcesIncludeFreedTests : IDisposable
     // A 64-record synthetic volume in which one imported record, whose next neighbour is imported too, is freed.
     (string ImagePath, ulong FreedRecord) WriteImageWithOneFreedRecord()
     {
-        var imagePath = Path.Combine(_directory, "freed.img");
+        var imagePath = Path.Combine(TemporaryDirectoryPath, "freed.img");
         SyntheticNtfsImage.Write(imagePath, 64);
         NativeTestHooks.NativeSetVolumeRecordSizeOverride(RecordSize);
         var imported = ImportedRecordNumbers(imagePath);
@@ -121,7 +121,7 @@ public sealed class LiveVolumeSourcesIncludeFreedTests : IDisposable
     {
         using var image = File.OpenHandle(imagePath);
         using var result = new MftResult(
-            MFTLibNative.Hooks.ParseMftRecordsWithProgress(image, false, 64, IntPtr.Zero, null));
+            MFTLibNative.Hooks._parseMftRecordsWithProgress(image, false, 64, IntPtr.Zero, null));
         return result.ToRecords().Where(record => record.InUse).Select(record => record.RecordNumber).ToHashSet();
     }
 
@@ -139,8 +139,8 @@ public sealed class LiveVolumeSourcesIncludeFreedTests : IDisposable
     static void ServeImageAsVolume(string imagePath)
     {
         NativeTestHooks.NativeSetVolumeRecordSizeOverride(RecordSize);
-        FileUtilities.Hooks.GetVolumeHandle = _ => File.OpenHandle(imagePath);
-        Kernel32.Hooks.DeviceIoControl = (_, _, _, _, outBuffer, _, out bytesReturned, _) =>
+        FileUtilities.Hooks._getVolumeHandle = _ => File.OpenHandle(imagePath);
+        Kernel32.Hooks._deviceIoControl = (_, _, _, _, outBuffer, _, out bytesReturned, _) =>
         {
             Marshal.StructureToPtr(new NtfsVolumeDataBufferNative
             {

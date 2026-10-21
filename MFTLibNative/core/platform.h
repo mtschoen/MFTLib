@@ -2,6 +2,7 @@
 // Win32 uses native APIs; POSIX uses open/pread + posix_memalign.
 #pragma once
 
+// ReSharper disable once CppUnusedIncludeDirective
 // aislop-ignore-next-line CppUnusedIncludeDirective -- size_t below needs this on GCC/Clang
 #include <cstddef>
 #include <cstdint>

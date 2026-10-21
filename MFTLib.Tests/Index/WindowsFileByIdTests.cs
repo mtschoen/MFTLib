@@ -121,7 +121,7 @@ public class WindowsFileByIdTests
             "no-such-directory");
 
         var failedHandle = new SafeFileHandle(new IntPtr(-1), false);
-        Kernel32.Hooks.CreateFile = (_, _, _, _, _, _, _) =>
+        Kernel32.Hooks._createFile = (_, _, _, _, _, _, _) =>
         {
             Marshal.SetLastPInvokeError(3);
             return failedHandle;

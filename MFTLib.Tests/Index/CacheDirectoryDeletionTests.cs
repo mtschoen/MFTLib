@@ -91,7 +91,7 @@ public class CacheDirectoryDeletionTests
     {
         var paths = new[] { CreateBlock('T'), CreateBlock('U'), CreateBlock('V') };
         string? replaced = null;
-        CacheDirectory.Hooks.BeforeDelete = path =>
+        CacheDirectory.Hooks._beforeDelete = path =>
         {
             if (replaced is not null)
             {
@@ -123,7 +123,7 @@ public class CacheDirectoryDeletionTests
     public void DeleteCached_AlreadyAbsentInventoryEntryIsAnIdempotentSuccess()
     {
         var paths = new[] { CreateBlock('T'), CreateBlock('U') };
-        CacheDirectory.Hooks.BeforeDelete = File.Delete;
+        CacheDirectory.Hooks._beforeDelete = File.Delete;
 
         var results = CacheDirectory.DeleteCached(_directory);
 

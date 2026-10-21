@@ -18,7 +18,7 @@ namespace MFTLib.Tests.Index;
 public sealed class UnreadableBlockTests : IDisposable
 {
     IndexTreeFixture _fixture = null!;
-    string _cacheDirectory => _fixture.CacheDirectory;
+    string CacheDirectoryPath => _fixture.CacheDirectory;
 
     [TestInitialize]
     public void Initialize() => _fixture = new IndexTreeFixture();
@@ -44,7 +44,7 @@ public sealed class UnreadableBlockTests : IDisposable
         {
         }
 
-        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 0x0BADF00D));
         Assert.IsTrue(File.Exists(blockPath), "the first open must leave a warm-start block behind");
 
         DenyReadForCurrentUser(blockPath);

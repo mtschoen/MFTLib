@@ -24,7 +24,7 @@ public class DeletedChildLinksTests
             links.RemoveDeletedRow(FirstSiblingRow + (uint)offset, ParentRow);
         }
 
-        Assert.AreEqual(SiblingCount * 1L, links.Observations.SiblingsExamined);
+        Assert.AreEqual(SiblingCount * 1L, links.Observations._siblingsExamined);
     }
 
     [TestMethod]
@@ -40,7 +40,7 @@ public class DeletedChildLinksTests
             links.RemoveDeletedRow(cycledRow, ParentRow);
         }
 
-        Assert.AreEqual(cycleCount * 1L, links.Observations.SiblingsExamined);
+        Assert.AreEqual(cycleCount * 1L, links.Observations._siblingsExamined);
     }
 
     [TestMethod]
@@ -51,13 +51,13 @@ public class DeletedChildLinksTests
         links.RemoveDeletedRow(FirstSiblingRow + 50, ParentRow);
         links.RemoveDeletedRow(FirstSiblingRow, 999);
 
-        Assert.AreEqual(1L, links.Observations.SiblingsExamined);
+        Assert.AreEqual(1L, links.Observations._siblingsExamined);
         for (var offset = 0; offset < 3; offset++)
         {
             links.RemoveDeletedRow(FirstSiblingRow + (uint)offset, ParentRow);
         }
 
-        Assert.AreEqual(4L, links.Observations.SiblingsExamined);
+        Assert.AreEqual(4L, links.Observations._siblingsExamined);
     }
 
     static DeletedChildLinks LinkSiblings(int count)

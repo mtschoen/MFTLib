@@ -9,7 +9,7 @@ namespace MFTLib.Tests;
 public sealed class MftDumpBlockProducerTests : IDisposable
 {
     TempDirectory _tempDirectory = null!;
-    string _directory => _tempDirectory.Path;
+    string TemporaryDirectoryPath => _tempDirectory.Path;
     string _path = null!;
 
     public TestContext TestContext { get; set; } = null!;
@@ -20,7 +20,7 @@ public sealed class MftDumpBlockProducerTests : IDisposable
     public void Initialize()
     {
         _tempDirectory = new TempDirectory("mftlib-dump");
-        _path = Path.Combine(_directory, "input.mft");
+        _path = Path.Combine(TemporaryDirectoryPath, "input.mft");
         File.WriteAllBytes(_path, MftDumpFixture.Standard());
     }
 
@@ -34,7 +34,7 @@ public sealed class MftDumpBlockProducerTests : IDisposable
     {
         Drive = 'T',
         VolumeSerial = 0,
-        BlockPath = Path.Combine(_directory, "block.mlix"),
+        BlockPath = Path.Combine(TemporaryDirectoryPath, "block.mlix"),
         DeleteOnClose = true
     };
 

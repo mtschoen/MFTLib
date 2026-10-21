@@ -23,7 +23,7 @@ public sealed class MftDumpValidationTests : IDisposable
     const string OutsideIndexMessage = "The dump contains required record numbers outside the index range.";
 
     TempDirectory _tempDirectory = null!;
-    string _directory => _tempDirectory.Path;
+    string TemporaryDirectoryPath => _tempDirectory.Path;
 
     [TestInitialize]
     public void Initialize()
@@ -71,7 +71,7 @@ public sealed class MftDumpValidationTests : IDisposable
     public async Task Open_RejectedDump_SettlesAsProducerFailedWithTheChecksMessage(string description,
         byte[] dump, string message)
     {
-        var path = MftDumpFixture.WriteFile(_directory, dump);
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, dump);
 
         await using var index = await FileIndex.OpenAsync(Options(path), CancellationToken.None);
 
@@ -85,7 +85,7 @@ public sealed class MftDumpValidationTests : IDisposable
     [TestMethod]
     public async Task Open_MissingDump_SettlesAsProducerFailedWithTheOpenError()
     {
-        await using var index = await FileIndex.OpenAsync(Options(Path.Combine(_directory, "absent.mft")),
+        await using var index = await FileIndex.OpenAsync(Options(Path.Combine(TemporaryDirectoryPath, "absent.mft")),
             CancellationToken.None);
 
         var drive = index.Drives.Single();
@@ -98,7 +98,7 @@ public sealed class MftDumpValidationTests : IDisposable
     [DataRow(4096)]
     public async Task Open_ValidDump_IsReadyWithEveryRecordsNameSizeAndTime(int recordSize)
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard(recordSize));
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard(recordSize));
 
         await using var index = await FileIndex.OpenAsync(Options(path), CancellationToken.None);
 
@@ -125,7 +125,7 @@ public sealed class MftDumpValidationTests : IDisposable
     [TestMethod]
     public async Task Open_RecordWithAMalformedAttribute_IsOmittedAndNotCountedAsSkipped()
     {
-        var path = MftDumpFixture.WriteFile(_directory, Changed(dump => BreakFirstAttribute(dump, 9)));
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, Changed(dump => BreakFirstAttribute(dump, 9)));
 
         await using var index = await FileIndex.OpenAsync(Options(path), CancellationToken.None);
 
@@ -140,11 +140,11 @@ public sealed class MftDumpValidationTests : IDisposable
     [TestMethod]
     public async Task Open_NeverTouchesTheLiveVolumeThatSharesTheLetter()
     {
-        FileUtilities.Hooks.GetVolumeHandle = path => throw new AssertFailedException($"A dump opened the volume {path}.");
+        FileUtilities.Hooks._getVolumeHandle = path => throw new AssertFailedException($"A dump opened the volume {path}.");
         JournalQueryFake.Serve(() => throw new AssertFailedException("A dump queried a live journal."));
-        MFTLibNative.Hooks.ParseMftRecordsWithProgress = (_, _, _, _, _) =>
+        MFTLibNative.Hooks._parseMftRecordsWithProgress = (_, _, _, _, _) =>
             throw new AssertFailedException("A dump parsed a live volume.");
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
 
         await using var index = await FileIndex.OpenAsync(
             Options(path, MftIndexSources.FromMftDumpFile(path, 'c'), 'C'), CancellationToken.None);
@@ -156,7 +156,7 @@ public sealed class MftDumpValidationTests : IDisposable
     [TestMethod]
     public async Task Produce_ValidDump_CompletesABlockWithAZeroCursorAndTheRequestedIdentity()
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         var request = Request() with { CacheTag = new CacheTag("DUMP", 3) };
 
         var result = await new MftDumpBlockProducer(path, TimeProvider.System).ProduceAsync(request, CancellationToken.None);
@@ -178,7 +178,7 @@ public sealed class MftDumpValidationTests : IDisposable
     [TestMethod]
     public async Task Produce_ReportsTheParseTotalThenTheTransferredRows()
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         var samples = new List<IndexScanProgress>();
         var request = Request() with { Progress = new SynchronousProgress<IndexScanProgress>(samples.Add) };
 
@@ -199,8 +199,8 @@ public sealed class MftDumpValidationTests : IDisposable
     [TestMethod]
     public async Task Produce_ReleasesTheDumpFileAfterSuccessAndAfterFailure()
     {
-        var valid = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard(), "valid.mft");
-        var invalid = MftDumpFixture.WriteFile(_directory, Changed(dump => dump[7 * 1024 + 510] ^= 0xFF),
+        var valid = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard(), "valid.mft");
+        var invalid = MftDumpFixture.WriteFile(TemporaryDirectoryPath, Changed(dump => dump[7 * 1024 + 510] ^= 0xFF),
             "invalid.mft");
 
         (await new MftDumpBlockProducer(valid, TimeProvider.System).ProduceAsync(Request(), CancellationToken.None)).Block.Dispose();
@@ -217,7 +217,7 @@ public sealed class MftDumpValidationTests : IDisposable
     [TestMethod]
     public async Task Produce_RejectedDump_LeavesNoBlockFileBehind()
     {
-        var path = MftDumpFixture.WriteFile(_directory, WithRecords(records => records.Remove(5)));
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, WithRecords(records => records.Remove(5)));
         var request = Request();
 
         var failure = await Assert.ThrowsExactlyAsync<InvalidDataException>(
@@ -232,14 +232,14 @@ public sealed class MftDumpValidationTests : IDisposable
     {
         // The block path names a directory that does not exist, so creating the block would fail
         // with another exception: the parser's rejection arriving proves the parse ran first.
-        var path = MftDumpFixture.WriteFile(_directory, Changed(dump => dump[7 * 1024 + 510] ^= 0xFF));
-        var request = Request() with { BlockPath = Path.Combine(_directory, "absent", "block.mlix") };
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, Changed(dump => dump[7 * 1024 + 510] ^= 0xFF));
+        var request = Request() with { BlockPath = Path.Combine(TemporaryDirectoryPath, "absent", "block.mlix") };
 
         var failure = await Assert.ThrowsExactlyAsync<InvalidDataException>(
             () => new MftDumpBlockProducer(path, TimeProvider.System).ProduceAsync(request, CancellationToken.None));
 
         Assert.AreEqual("The dump contains an invalid MFT record fixup.", failure.Message);
-        Assert.IsFalse(Directory.Exists(Path.Combine(_directory, "absent")));
+        Assert.IsFalse(Directory.Exists(Path.Combine(TemporaryDirectoryPath, "absent")));
     }
 
     [TestMethod]
@@ -339,7 +339,7 @@ public sealed class MftDumpValidationTests : IDisposable
     {
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
-        var producer = new MftDumpBlockProducer(Path.Combine(_directory, "absent.mft"), TimeProvider.System);
+        var producer = new MftDumpBlockProducer(Path.Combine(TemporaryDirectoryPath, "absent.mft"), TimeProvider.System);
 
         await Assert.ThrowsExactlyAsync<TaskCanceledException>(
             () => producer.ProduceAsync(Request(), cancellation.Token));
@@ -348,7 +348,7 @@ public sealed class MftDumpValidationTests : IDisposable
     [TestMethod]
     public async Task Produce_TokenCancelledBetweenBatches_IsCancelledAndLeavesNoBlockFile()
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         using var cancellation = new CancellationTokenSource();
         var request = Request();
         var producer = new MftDumpBlockProducer(path, TimeProvider.System, CancellingSource(cancellation));
@@ -363,7 +363,7 @@ public sealed class MftDumpValidationTests : IDisposable
     [TestMethod]
     public async Task Produce_NullRequest_Throws()
     {
-        var producer = new MftDumpBlockProducer(Path.Combine(_directory, "absent.mft"), TimeProvider.System);
+        var producer = new MftDumpBlockProducer(Path.Combine(TemporaryDirectoryPath, "absent.mft"), TimeProvider.System);
 
         await Assert.ThrowsExactlyAsync<ArgumentNullException>(
             () => producer.ProduceAsync(null!, CancellationToken.None));
@@ -382,7 +382,7 @@ public sealed class MftDumpValidationTests : IDisposable
     {
         using var block = BlockFile.Create(new BlockFileCreateOptions
         {
-            Path = Path.Combine(_directory, "validation.mlix"),
+            Path = Path.Combine(TemporaryDirectoryPath, "validation.mlix"),
             VolumeSerial = 0,
             ProducerKind = ProducerKind.Mft,
             RootRow = 5,
@@ -423,7 +423,7 @@ public sealed class MftDumpValidationTests : IDisposable
     // from the slot capacity the producer planned for that dump.
     MftDumpBlockProducer Producer(Func<ulong, MftRecordTestValues[]>[] batches)
     {
-        var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard(), $"{Guid.NewGuid():N}.mft");
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard(), $"{Guid.NewGuid():N}.mft");
         return new MftDumpBlockProducer(path, TimeProvider.System, (input, _, _) =>
         {
             ulong capacity = MftBlockCapacity.Plan(input.VolumeInformation).SlotCapacity;
@@ -436,7 +436,7 @@ public sealed class MftDumpValidationTests : IDisposable
     {
         Drive = 'D',
         VolumeSerial = 0,
-        BlockPath = Path.Combine(_directory, $"{Guid.NewGuid():N}.mlix"),
+        BlockPath = Path.Combine(TemporaryDirectoryPath, $"{Guid.NewGuid():N}.mlix"),
         DeleteOnClose = true
     };
 

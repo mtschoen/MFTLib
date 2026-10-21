@@ -83,7 +83,7 @@ public class DefaultElevatedEntryRunnerTests
         // RunBroker serves through JournalBrokerHost.CreateDefault(), so fake the volume handle and
         // serve the watch from an idle native pipe - the test process is not elevated (the same
         // technique as JournalBrokerHostRealSeamsTests).
-        FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks._getVolumeHandle = _ => FakeVolumeHandle.Create();
         JournalQueryFake.Serve(journalIdentifier: 7, nextUsn: 200);
 
         // Failure classification runs after the native result is freed and the watch's cancellation
@@ -167,7 +167,7 @@ public class DefaultElevatedEntryRunnerTests
         // the scan's cursor arming uses - the test process is not elevated (the same technique
         // as the watch test above). The cursor query is where the host parks: it runs only
         // once the request frame has been read, and the armed-cursor reply is the next write.
-        FileUtilities.Hooks.GetVolumeHandle = _ => FakeVolumeHandle.Create();
+        FileUtilities.Hooks._getVolumeHandle = _ => FakeVolumeHandle.Create();
         var cursorQueried = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseCursorQuery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         JournalQueryFake.Serve(() =>

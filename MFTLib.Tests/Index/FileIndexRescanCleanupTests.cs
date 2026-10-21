@@ -18,14 +18,14 @@ public sealed class FileIndexRescanCleanupTests : IDisposable
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
     IndexTreeFixture _fixture = null!;
-    string _treeRoot => _fixture.TreeRoot;
-    string _cacheDirectory => _fixture.CacheDirectory;
+    string TreeRoot => _fixture.TreeRoot;
+    string CacheDirectoryPath => _fixture.CacheDirectory;
 
     [TestInitialize]
     public void Initialize()
     {
         _fixture = new IndexTreeFixture(seedDocuments: false);
-        Directory.CreateDirectory(_cacheDirectory);
+        Directory.CreateDirectory(CacheDirectoryPath);
     }
 
     public void Dispose() => _fixture.Dispose();
@@ -37,9 +37,9 @@ public sealed class FileIndexRescanCleanupTests : IDisposable
         var producerReturned = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var options = new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 1)],
-            CacheDirectory = _cacheDirectory,
-            MftSource = new MftIndexSource((request, _cancellationToken) =>
+            Drives = [new IndexedDrive('T', TreeRoot, 1)],
+            CacheDirectory = CacheDirectoryPath,
+            MftSource = new MftIndexSource((request, cancellationToken) =>
             {
                 SeededBlocks.Write(request.BlockPath, request.VolumeSerial, journalIdentifier: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment);
                 var block = BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!;
@@ -54,7 +54,7 @@ public sealed class FileIndexRescanCleanupTests : IDisposable
             })
         };
         await using var index = await FileIndex.OpenAsync(options, Token);
-        var canonicalPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 1));
+        var canonicalPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 1));
         Assert.IsTrue(File.Exists(canonicalPath), "the cold scan wrote the canonical cache file");
 
         await index.WaitForDriveWriteGateForTest('T');
@@ -73,7 +73,7 @@ public sealed class FileIndexRescanCleanupTests : IDisposable
             Assert.ThrowsExactly<ObjectDisposedException>(() => _ = produced.Header,
                 "the unpublished replacement block is disposed by the failed commit");
             Assert.IsTrue(File.Exists(canonicalPath), "the renamed-aside file was moved back");
-            Assert.AreEqual(0, Directory.GetFiles(_cacheDirectory, "*.retired-*").Length,
+            Assert.AreEqual(0, Directory.GetFiles(CacheDirectoryPath, "*.retired-*").Length,
                 "no retired sibling is left behind");
             Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
         }
@@ -102,9 +102,9 @@ public sealed class FileIndexRescanCleanupTests : IDisposable
         FileStream? lockedReplacement = null;
         var options = new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 1)],
-            CacheDirectory = _cacheDirectory,
-            MftSource = new MftIndexSource((request, _cancellationToken) =>
+            Drives = [new IndexedDrive('T', TreeRoot, 1)],
+            CacheDirectory = CacheDirectoryPath,
+            MftSource = new MftIndexSource((request, cancellationToken) =>
             {
                 if (failTheScan.Value)
                 {
@@ -121,7 +121,7 @@ public sealed class FileIndexRescanCleanupTests : IDisposable
             })
         };
         await using var index = await FileIndex.OpenAsync(options, Token);
-        var canonicalPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 1));
+        var canonicalPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 1));
         Assert.IsTrue(File.Exists(canonicalPath));
 
         failTheScan.Value = true;
@@ -135,7 +135,7 @@ public sealed class FileIndexRescanCleanupTests : IDisposable
             Assert.AreEqual("the producer lost the volume", drive.Failure?.Message);
             Assert.AreEqual(DriveState.Ready, drive.State,
                 "the drive keeps its previous block when its rescan's producer fails");
-            Assert.AreEqual(1, Directory.GetFiles(_cacheDirectory, "*.retired-*").Length,
+            Assert.AreEqual(1, Directory.GetFiles(CacheDirectoryPath, "*.retired-*").Length,
                 "the restore could not move the renamed-aside file back over the locked replacement");
         }
         finally
@@ -151,10 +151,10 @@ public sealed class FileIndexRescanCleanupTests : IDisposable
         var producerMayReturn = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var options = new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 1)],
-            CacheDirectory = _cacheDirectory,
+            Drives = [new IndexedDrive('T', TreeRoot, 1)],
+            CacheDirectory = CacheDirectoryPath,
             CacheMode = CacheMode.ExistingOnly,
-            MftSource = new MftIndexSource(async (request, _cancellationToken) =>
+            MftSource = new MftIndexSource(async (request, cancellationToken) =>
             {
                 producerEntered.TrySetResult();
                 await producerMayReturn.Task;

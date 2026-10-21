@@ -8,7 +8,7 @@ public partial class MftResultTests
     [TestMethod]
     public void MftVolume_EnsureCompatibleNativeAbi_ThrowsOnMismatch()
     {
-        MFTLibNative.Hooks.GetMftNativeAbiVersion = () => 999;
+        MFTLibNative.Hooks._getMftNativeAbiVersion = () => 999;
 
         var ex = Assert.ThrowsExactly<InvalidOperationException>(MFTLibNative.EnsureCompatibleNativeAbi);
         Assert.IsTrue(ex.Message.Contains("ABI mismatch"));

@@ -55,8 +55,8 @@ public class NativeMockTests
     [TestMethod]
     public void ReadRecordBatches_NullReturn_ThrowsInvalidOperation()
     {
-        FileUtilities.Hooks.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
-        MFTLibNative.Hooks.ParseMftRecordsWithProgress = (_, _, _, _, _) => IntPtr.Zero;
+        FileUtilities.Hooks._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
+        MFTLibNative.Hooks._parseMftRecordsWithProgress = (_, _, _, _, _) => IntPtr.Zero;
 
         using var volume = MftVolume.Open('C');
         // ReSharper disable once AccessToDisposedClosure
@@ -73,7 +73,7 @@ public class NativeMockTests
         // result instead of needing a real, elevated volume handle.
         using var handle = new SafeFileHandle(new IntPtr(-1), false);
 
-        var resultPointer = MFTLibNative.Hooks.ParseMftRecordsWithProgress(
+        var resultPointer = MFTLibNative.Hooks._parseMftRecordsWithProgress(
             handle, false, 256, IntPtr.Zero, null);
 
         Assert.AreNotEqual(IntPtr.Zero, resultPointer);
@@ -89,7 +89,7 @@ public class NativeMockTests
         }
         finally
         {
-            MFTLibNative.Hooks.FreeMftResult(resultPointer);
+            MFTLibNative.Hooks._freeMftResult(resultPointer);
         }
     }
 }

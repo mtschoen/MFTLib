@@ -18,7 +18,7 @@ public sealed class FreedRowsIndexTests : IDisposable
     static readonly DateTime FixedMoment = new(2026, 10, 6, 12, 0, 0, DateTimeKind.Utc);
 
     IndexTreeFixture _fixture = null!;
-    string _treeRoot => _fixture.TreeRoot;
+    string TreeRoot => _fixture.TreeRoot;
 
     [TestInitialize]
     public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
@@ -33,7 +33,7 @@ public sealed class FreedRowsIndexTests : IDisposable
         var entry = index.Search(new SearchQuery("trusted.txt", IncludeDeleted: true)).Single();
 
         Assert.IsTrue(entry.IsDeleted);
-        Assert.AreEqual(Path.Combine(_treeRoot, "docs", "trusted.txt"), entry.Path);
+        Assert.AreEqual(Path.Combine(TreeRoot, "docs", "trusted.txt"), entry.Path);
         Assert.AreEqual("docs", entry.Parent!.Value.Name);
         Assert.AreEqual(100L, entry.Size);
     }
@@ -54,21 +54,21 @@ public sealed class FreedRowsIndexTests : IDisposable
     public async Task UnverifiedFreedRow_IsNobodysChildAndLookupNeverFindsIt()
     {
         await using var index = await OpenAsync(includeFreed: true);
-        var docs = index.Find(Path.Combine(_treeRoot, "docs"))!.Value;
+        var docs = index.Find(Path.Combine(TreeRoot, "docs"))!.Value;
         var root = index.Root('T');
 
         CollectionAssert.AreEqual(new[] { "keep.txt" }, docs.Children().Select(child => child.Name).ToArray());
         CollectionAssert.DoesNotContain(root.Children().Select(child => child.Name).ToArray(), "orphan.txt");
-        Assert.IsNull(index.Find(Path.Combine(_treeRoot, "docs", "orphan.txt")));
-        Assert.IsNull(index.Find(Path.Combine(_treeRoot, "orphan.txt")));
-        Assert.IsNull(index.Find(Path.Combine(_treeRoot, "docs", "trusted.txt")));
+        Assert.IsNull(index.Find(Path.Combine(TreeRoot, "docs", "orphan.txt")));
+        Assert.IsNull(index.Find(Path.Combine(TreeRoot, "orphan.txt")));
+        Assert.IsNull(index.Find(Path.Combine(TreeRoot, "docs", "trusted.txt")));
     }
 
     [TestMethod]
     public async Task UnverifiedFreedRow_IsUnderNoDirectoryButAVerifiedOneIsUnderItsAncestors()
     {
         await using var index = await OpenAsync(includeFreed: true);
-        var docs = index.Find(Path.Combine(_treeRoot, "docs"))!.Value;
+        var docs = index.Find(Path.Combine(TreeRoot, "docs"))!.Value;
         var root = index.Root('T');
 
         string[] Names(FileEntry? under) => index
