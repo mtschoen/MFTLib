@@ -38,11 +38,7 @@ lint:
     jb: true
     roslynator: true
     jbSeverityFloor: WARNING
-    # InconsistentNaming: naming convention differences are handled elsewhere.
-    # CheckNamespace: the project uses a flat 'MFTLib' namespace by design;
-    #   jb inspectcode fires on CI because it resolves default namespace from
-    #   the checkout path differently than the local dev machine.
-    jbExcludeTypes: [InconsistentNaming, CheckNamespace]
+    jbExcludeTypes: []
     jbProjects: "MFTLib;MFTLib.Tests;SampleProgram.Direct;SampleProgram.Watch;Benchmark;MFTLibTestExtensions"
   cpp:
     # The native tree is now scored by this gate (no longer excluded). It runs
