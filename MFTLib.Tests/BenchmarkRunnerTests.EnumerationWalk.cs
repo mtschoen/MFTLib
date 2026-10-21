@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using Benchmark;
 using MFTLib.Index;
+using MFTLibTestExtensions;
 using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -88,37 +89,52 @@ public partial class BenchmarkRunnerTests
             Assert.Inconclusive("Additional enumeration workers require at least two processors.");
         }
 
+        // Two warm-ups, then pairs that alternate their order. Every root starts a new walk;
+        // producer drain guarantees its children finish before the next root is entered.
+        bool[] sequential = [true, false, true, false, false, true];
         string? root = null;
-        var readerThreads = new List<HashSet<int>>();
+        var walks = new List<WalkReads>();
         EnumerationWalkLimit.Hooks._directoryEntered = (_, path, _) =>
         {
-            lock (readerThreads)
+            WalkReads current;
+            lock (walks)
             {
                 root ??= path;
                 if (path == root)
                 {
-                    readerThreads.Add([]);
+                    walks.Add(new WalkReads());
                 }
-                readerThreads[^1].Add(Environment.CurrentManagedThreadId);
+                current = walks[^1];
+            }
+
+            var childOrder = current.Enter(child: path != root);
+            // A parallel walk's first child read waits for a second, so overlap is observed, not raced.
+            if (childOrder == 1 && !sequential[walks.Count - 1])
+            {
+                TestGate.WaitSynchronously(current.SecondChildEntered);
+            }
+        };
+        EnumerationWalkLimit.Hooks._directoryExited = (_, _) =>
+        {
+            lock (walks)
+            {
+                walks[^1].Exit();
             }
         };
         try
         {
             Assert.AreEqual(0, await _runner.RunAsync(["enumeration-walk", "--directories", "9",
                 "--files-per-directory", "0", "--iterations", "2"]), _output.ToString());
-            // Two warm-ups, then pairs that alternate their order. Every root starts a new walk;
-            // producer drain guarantees its children finish before the next root is entered.
-            bool[] sequential = [true, false, true, false, false, true];
-            Assert.AreEqual(sequential.Length, readerThreads.Count);
+            Assert.AreEqual(sequential.Length, walks.Count);
             for (var walk = 0; walk < sequential.Length; walk++)
             {
                 if (sequential[walk])
                 {
-                    Assert.HasCount(1, readerThreads[walk], "Sequential reads use only the base lane.");
+                    Assert.AreEqual(1, walks[walk].Peak, "Sequential reads use only the base permit, one at a time.");
                 }
                 else
                 {
-                    Assert.IsTrue(readerThreads[walk].Count > 1, "Parallel reads use additional shared-budget workers.");
+                    Assert.IsTrue(walks[walk].Peak > 1, "Parallel reads use additional shared-budget readers.");
                 }
             }
         }
@@ -179,5 +195,43 @@ public partial class BenchmarkRunnerTests
     {
         Assert.AreEqual(1, await _runner.RunAsync(["enumeration-walk", "--directories", "1", "--out", _directory]));
         StringAssert.Contains(_output.ToString(), "Error:");
+    }
+
+    /// <summary>Concurrent directory reads observed for one walk.</summary>
+    sealed class WalkReads
+    {
+        readonly TaskCompletionSource _secondChildEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int _active;
+        int _peak;
+        int _children;
+
+        internal Task SecondChildEntered => _secondChildEntered.Task;
+        internal int Peak => Volatile.Read(ref _peak);
+
+        /// <summary>Counts a read as active and returns its order among child reads, or zero for the root.</summary>
+        internal int Enter(bool child)
+        {
+            var active = Interlocked.Increment(ref _active);
+            var peak = Volatile.Read(ref _peak);
+            while (active > peak && Interlocked.CompareExchange(ref _peak, active, peak) != peak)
+            {
+                peak = Volatile.Read(ref _peak);
+            }
+
+            if (!child)
+            {
+                return 0;
+            }
+
+            var order = Interlocked.Increment(ref _children);
+            if (order == 2)
+            {
+                _secondChildEntered.TrySetResult();
+            }
+
+            return order;
+        }
+
+        internal void Exit() => Interlocked.Decrement(ref _active);
     }
 }

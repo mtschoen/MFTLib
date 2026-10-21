@@ -8,10 +8,9 @@ internal static class EnumerationWalkTestSupport
 {
     internal static Task<EnumerationResult> ProduceAsync(EnumerationProducer producer, BlockWriter writer,
         IProgress<IndexScanProgress>? progress, CancellationToken cancellationToken,
-        int maximumWorkers = int.MaxValue, Action? starting = null) => Task.Run(async () =>
+        int maximumWorkers = int.MaxValue) => Task.Run(async () =>
     {
         using var lease = await EnumerationWalkLimit.EnterAsync(cancellationToken);
-        starting?.Invoke();
         return producer.Produce(writer, progress, lease, cancellationToken, maximumWorkers);
     });
 

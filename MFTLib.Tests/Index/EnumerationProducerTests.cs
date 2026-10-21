@@ -634,10 +634,10 @@ public sealed partial class EnumerationProducerTests : IDisposable
     [TestMethod]
     public async Task Produce_ParallelCompletionDoesNotWaitForAnEarlierExtraJob()
     {
-        const int minimumProcessors = 3;
+        const int minimumProcessors = 2;
         if (Environment.ProcessorCount < minimumProcessors)
         {
-            Assert.Inconclusive("Requires at least three processors.");
+            Assert.Inconclusive("Requires at least two processors.");
         }
 
         Directory.CreateDirectory(Path.Combine(_treeRoot, "Sub1"));
@@ -655,10 +655,8 @@ public sealed partial class EnumerationProducerTests : IDisposable
                 leases.Add(await EnumerationWalkLimit.EnterAsync(CancellationToken.None));
             }
 
-            int produceThreadId = -1;
             var firstExtraGate = new TestGate();
             var secondExtraGate = new TestGate();
-            var inlineGate = new TestGate();
             int extraCount = 0;
             var observedSecondWhileFirstHeld = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             string? secondExtraPath = null;
@@ -672,25 +670,17 @@ public sealed partial class EnumerationProducerTests : IDisposable
                     return;
                 }
 
-                if (Environment.CurrentManagedThreadId == produceThreadId)
+                var count = Interlocked.Increment(ref extraCount);
+                if (count == 1)
                 {
-                    inlineGate.MarkEntered();
-                    inlineGate.WaitForRelease();
+                    firstExtraGate.MarkEntered();
+                    firstExtraGate.WaitForRelease();
                 }
-                else
+                else if (count == 2)
                 {
-                    var count = Interlocked.Increment(ref extraCount);
-                    if (count == 1)
-                    {
-                        firstExtraGate.MarkEntered();
-                        firstExtraGate.WaitForRelease();
-                    }
-                    else if (count == 2)
-                    {
-                        secondExtraPath = path;
-                        secondExtraGate.MarkEntered();
-                        secondExtraGate.WaitForRelease();
-                    }
+                    secondExtraPath = path;
+                    secondExtraGate.MarkEntered();
+                    secondExtraGate.WaitForRelease();
                 }
             };
 
@@ -724,24 +714,20 @@ public sealed partial class EnumerationProducerTests : IDisposable
             });
 
             var task = EnumerationWalkTestSupport.ProduceAsync(producer, created.Writer, progress,
-                CancellationToken.None, starting: () => produceThreadId = Environment.CurrentManagedThreadId);
+                CancellationToken.None);
 
             try
             {
                 await firstExtraGate.Entered.WaitAsync(HangGuard);
                 await secondExtraGate.Entered.WaitAsync(HangGuard);
-                await inlineGate.Entered.WaitAsync(HangGuard);
                 secondExtraGate.Release();
                 await secondExtraFinished.Task.WaitAsync(HangGuard);
-                inlineGate.Release();
                 await observedSecondWhileFirstHeld.Task.WaitAsync(HangGuard);
             }
             finally
             {
-
                 firstExtraGate.Release();
                 secondExtraGate.Release();
-                inlineGate.Release();
                 await task.WaitAsync(HangGuard);
             }
         }
@@ -853,120 +839,6 @@ public sealed partial class EnumerationProducerTests : IDisposable
     }
 
     [TestMethod]
-    [DataRow(true)]
-    [DataRow(false)]
-    public async Task Produce_BackpressureCancellation_DrainsPublishersAndLeases(bool cancel)
-    {
-        if (Environment.ProcessorCount < 3)
-        {
-            Assert.Inconclusive("Requires at least 3 processors for backpressure test.");
-        }
-
-        CreateDrainTree(3);
-        var progressGate = new TestGate();
-        var readersGate = new TestGate();
-        var readersEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var handoffWaiting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var writerThread = 0;
-        var extraReaders = 0;
-        var observation = new EnumerationReadObservation();
-        EnumerationWalkLimit.Hooks._directoryEntered = (drive, path, token) =>
-        {
-            observation.Enter(drive, path, token);
-            if (path == _treeRoot)
-            {
-                return;
-            }
-            if (Environment.CurrentManagedThreadId == writerThread)
-            {
-                TestGate.WaitSynchronously(readersEntered.Task);
-            }
-            else
-            {
-                if (Interlocked.Increment(ref extraReaders) == 2)
-                {
-                    readersEntered.TrySetResult();
-                }
-                readersGate.WaitForRelease();
-            }
-        };
-        EnumerationWalkLimit.Hooks._directoryExited = observation.Exit;
-
-        var progress = new SynchronousProgress<IndexScanProgress>(report =>
-        {
-            if (report.CurrentDirectory != _treeRoot && !progressGate.IsReleased)
-            {
-                progressGate.MarkEntered();
-                progressGate.WaitForRelease();
-            }
-        });
-
-        var producer = new EnumerationProducer(new EnumerationProducerOptions
-        {
-            RootDirectory = _treeRoot,
-            Drive = 'T'
-        })
-        {
-            HandoffWaiting = () => handoffWaiting.TrySetResult()
-        };
-
-        var created = CreateBlock();
-        using var block = created.Block;
-        using var cancellation = new CancellationTokenSource();
-
-        Task? produceTask = null;
-        {
-            try
-            {
-                produceTask = EnumerationWalkTestSupport.ProduceAsync(producer, created.Writer, progress,
-                    cancellation.Token, maximumWorkers: 3, starting: () => writerThread = Environment.CurrentManagedThreadId);
-                await progressGate.Entered.WaitAsync(HangGuard);
-                readersGate.Release();
-                await handoffWaiting.Task.WaitAsync(HangGuard);
-                if (cancel)
-                {
-                    cancellation.Cancel();
-                }
-                progressGate.Release();
-                if (cancel)
-                {
-                    var thrown = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => produceTask.WaitAsync(HangGuard));
-                    Assert.AreEqual(cancellation.Token, thrown.CancellationToken);
-                }
-                else
-                {
-                    await produceTask.WaitAsync(HangGuard);
-                    Assert.AreEqual(7u, created.Writer.RowCount);
-                    Assert.IsFalse(created.Writer.CapacityExhausted);
-                }
-                Assert.AreEqual(0, observation.Active);
-            }
-            finally
-            {
-                cancellation.Cancel();
-                readersGate.Release();
-                progressGate.Release();
-                if (produceTask is not null)
-                {
-                    try
-                    {
-                        await produceTask.WaitAsync(HangGuard);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        // Expected cancellation drain
-                    }
-                }
-                EnumerationWalkLimit.Hooks.ResetToDefaults();
-            }
-        }
-
-        using var verifyReservationCts = new CancellationTokenSource(HangGuard);
-        using var verifyAll = await EnumerationWalkTestSupport.ReserveSlotsAsync(0, verifyReservationCts.Token);
-
-    }
-
-    [TestMethod]
     public async Task Produce_PartialReadFailure_RetainsPrefixAndSkipsDescendants()
     {
         var failingDir = Path.Combine(_treeRoot, "failing");
@@ -1038,7 +910,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
             Drive = 'T'
         })
         {
-            BeforeMoveNext = observation.FailWriterRead(sentinel)
+            BeforeMoveNext = observation.FailActiveRead(sentinel)
         };
 
         var created = CreateBlock();
@@ -1047,7 +919,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
         {
             try
             {
-                produceTask = observation.Start(producer, created.Writer, null);
+                produceTask = EnumerationDrainObservation.Start(producer, created.Writer, null);
                 await observation.Stopped.WaitAsync(HangGuard);
                 Assert.IsFalse(produceTask.IsCompleted, "Caller cannot finish before sibling cleanup");
                 observation.WorkerExit.Release();
@@ -1119,7 +991,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
         {
             try
             {
-                produceTask = observation.Start(producer, created.Writer, progress);
+                produceTask = EnumerationDrainObservation.Start(producer, created.Writer, progress);
                 await observation.Stopped.WaitAsync(HangGuard);
                 Assert.IsFalse(produceTask.IsCompleted, "Caller cannot finish before sibling cleanup");
                 observation.WorkerExit.Release();
@@ -1177,7 +1049,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
         {
             try
             {
-                produceTask = observation.Start(producer, created.Writer, progress);
+                produceTask = EnumerationDrainObservation.Start(producer, created.Writer, progress);
                 await observation.Stopped.WaitAsync(HangGuard);
                 Assert.IsFalse(produceTask.IsCompleted, "Exhaustion must drain the held reader");
                 observation.WorkerExit.Release();
@@ -1226,7 +1098,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
     {
         if (Environment.ProcessorCount < 2)
         {
-            Assert.Inconclusive("Requires at least two processors to hold a worker during writer teardown.");
+            Assert.Inconclusive("Requires at least two processors to hold a reader during writer teardown.");
         }
     }
 

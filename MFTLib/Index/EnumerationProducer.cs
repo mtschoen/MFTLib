@@ -38,6 +38,7 @@ internal sealed class EnumerationProducer
     EnumerationProducerOptions Options { get; }
 
     internal Action? HandoffWaiting { get; init; }
+    internal Action<string>? HandoffPublished { get; init; }
     internal Action<string, int>? BeforeMoveNext { get; init; }
 
     /// <summary>
@@ -73,7 +74,7 @@ internal sealed class EnumerationProducer
     /// <summary>Budgets name-pool bytes for a row estimate at a fixed mean of 24 UTF-16 units per name.</summary>
     /// <param name="estimatedRowCount">Row estimate, typically from <see cref="EstimateRowCount" />.</param>
     /// <returns>The estimated name-pool size in bytes.</returns>
-    /// <exception cref="OverflowException">The product exceeds <see cref="UInt32.MaxValue" />.</exception>
+    /// <exception cref="OverflowException">The product exceeds <see cref="uint.MaxValue" />.</exception>
     public static uint EstimateNamePoolBytes(uint estimatedRowCount)
     {
         return checked(estimatedRowCount * EstimatedNameBytesPerRow);
@@ -90,7 +91,7 @@ internal sealed class EnumerationProducer
     /// <param name="progress">Receives one sample after each directory is enumerated, on the calling thread; may be null.</param>
     /// <param name="cancellationToken">Observed before the root row, each directory entry read and each row write.</param>
     /// <param name="baseLease">The base lease for this walk from <see cref="EnumerationWalkLimit" />.</param>
-    /// <param name="maximumWorkers">Maximum concurrency for the walk, including the base lane.</param>
+    /// <param name="maximumWorkers">Maximum concurrent directory readers for the walk, including the one on the base permit.</param>
     /// <returns>The row count, the number of subtrees that could not be entered, and whether the block was too small.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="writer" /> or <paramref name="baseLease" /> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="maximumWorkers" /> is less than 1.</exception>
@@ -121,7 +122,8 @@ internal sealed class EnumerationProducer
 
         using var scheduler = new EnumerationWalkScheduler(reader, Options.Drive, workers, cancellationToken)
         {
-            HandoffWaiting = HandoffWaiting
+            HandoffWaiting = HandoffWaiting,
+            HandoffPublished = HandoffPublished
         };
 
         ExceptionDispatchInfo? productionFailure = null;
@@ -147,41 +149,22 @@ internal sealed class EnumerationProducer
         EnumerationWalkScheduler scheduler, Queue<EnumerationDirectoryWork> pending,
         ref (uint NextRow, int SkippedCount) state, CancellationToken cancellationToken)
     {
-        EnumerationDirectoryBuffer? inlineReady = null;
-        while (inlineReady is not null || pending.Count != 0 || scheduler.OutstandingCount != 0)
+        while (pending.Count != 0 || scheduler.OutstandingCount != 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
             EnumerationDirectoryBuffer completed;
-            if (scheduler.TryTake(out var ready))
+            if (scheduler.IsSequential)
             {
-                completed = ready;
+                completed = scheduler.ReadInline(pending.Dequeue());
             }
-            else if (inlineReady is not null)
+            else
             {
-                completed = inlineReady;
-                inlineReady = null;
-            }
-            else if (pending.Count != 0)
-            {
-                var inline = pending.Dequeue();
+                // Dispatch before every take, so readers keep working while this thread commits.
                 while (pending.Count != 0 && scheduler.TryStart(pending.Peek()))
                 {
                     pending.Dequeue();
                 }
 
-                if (scheduler.TryTake(out ready))
-                {
-                    pending.Enqueue(inline);
-                    completed = ready;
-                }
-                else
-                {
-                    inlineReady = scheduler.ReadInline(inline);
-                    continue;
-                }
-            }
-            else
-            {
                 completed = scheduler.Take();
             }
 

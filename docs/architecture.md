@@ -166,15 +166,21 @@
       progress, writing every parent before scheduling its children. Root is row zero and
       parents itself; row order between directories is unspecified. Every walk holds one
       base permit and borrows only immediately available extra permits from the process-wide
-      processor-sized `EnumerationWalkLimit` budget, shared across indexes and drives. With
-      one available permit the same pipeline is sequential. Extra workers publish through a
-      capacity-one waiting channel, with at most one outstanding job per extra permit; the
-      writer keeps its inline buffer locally. Memory is bounded by in-flight whole-directory
-      payloads plus the directory frontier, not by a fixed byte ceiling. Known filesystem
+      processor-sized `EnumerationWalkLimit` budget, shared across indexes and drives. A walk
+      limited to one reader is sequential: the writer reads each directory itself. Otherwise the
+      writer only commits and dispatches: it lends the base permit to one reader at a time,
+      dispatches before every take, and never reads while it could dispatch. A reader returns
+      its permit as soon as its directory is read, so a slow writer never idles a permit.
+      Completed directories wait in a waiting channel with one slot per reader, and a walk has
+      at most twice its reader count of jobs outstanding, reading or completed. Memory is
+      bounded by those whole-directory payloads plus the directory frontier, not by a fixed
+      byte ceiling. Known filesystem
       failures retain the observed prefix, mark the directory skipped and prevent descent
       beneath it. Readers check cancellation before each enumerator advancement; the writer
       checks before every row. Cancellation, faults and exhaustion cancel publishers and
-      join all workers before releasing permits, retrying production or disposing the block.
+      join all workers before releasing the base permit, retrying production or disposing
+      the block, while extra read permits intentionally return before publication as each
+      directory finishes reading.
       Parallel traversal ships unconditionally in 0.3.0.
     - **MFT source**: `FileIndexOptions.MftSource` is one `MftIndexSource` carrying the block
       producer and the watch source of every MFT-backed drive, so the two cannot come from

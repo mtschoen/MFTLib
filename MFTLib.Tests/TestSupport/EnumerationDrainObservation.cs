@@ -3,14 +3,23 @@ using MFTLibTestExtensions;
 
 namespace MFTLib.Tests.TestSupport;
 
-/// <summary>Holds an extra reader's cleanup until the writer has requested stop.</summary>
+/// <summary>
+///     Holds the first child-directory reader's cleanup until the writer has requested stop, and lets
+///     the second child reader run only once the first is held, so whatever the second reader's
+///     directory triggers (a read fault, a writer fault, exhaustion) happens while a sibling is in flight.
+/// </summary>
 internal sealed class EnumerationDrainObservation : IDisposable
 {
+    /// <summary>Readers needed at once: the held one and the active one.</summary>
+    internal const int MaximumReaders = 2;
+
     readonly string _root;
     readonly EnumerationReadObservation _reads = new();
     readonly TaskCompletionSource _stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    CancellationToken _workerToken;
-    int _writerThread;
+    CancellationToken _heldToken;
+    int _childReadersEntered;
+    string? _heldPath;
+    string? _activePath;
 
     internal EnumerationDrainObservation(string root)
     {
@@ -23,17 +32,16 @@ internal sealed class EnumerationDrainObservation : IDisposable
     internal Task Stopped => _stopped.Task;
     internal int Active => _reads.Active;
     internal IEnumerable<string> Visited => _reads.Visits.Keys;
-    bool IsWriter => Environment.CurrentManagedThreadId == _writerThread;
     internal string? FaultedPath { get; private set; }
 
-    internal Task<EnumerationResult> Start(EnumerationProducer producer, BlockWriter writer,
+    internal static Task<EnumerationResult> Start(EnumerationProducer producer, BlockWriter writer,
         IProgress<IndexScanProgress>? progress) =>
         EnumerationWalkTestSupport.ProduceAsync(producer, writer, progress, CancellationToken.None,
-            maximumWorkers: 2, starting: () => _writerThread = Environment.CurrentManagedThreadId);
+            maximumWorkers: MaximumReaders);
 
-    internal Action<string, int> FailWriterRead(Exception failure) => (path, _) =>
+    internal Action<string, int> FailActiveRead(Exception failure) => (path, _) =>
     {
-        if (path != _root && IsWriter)
+        if (path == Volatile.Read(ref _activePath))
         {
             FaultedPath = path;
             throw failure;
@@ -48,13 +56,15 @@ internal sealed class EnumerationDrainObservation : IDisposable
             return;
         }
 
-        if (IsWriter)
+        if (Interlocked.Increment(ref _childReadersEntered) == 1)
         {
-            TestGate.WaitSynchronously(WorkerExit.Entered);
+            _heldToken = token;
+            Volatile.Write(ref _heldPath, path);
         }
         else
         {
-            _workerToken = token;
+            Volatile.Write(ref _activePath, path);
+            TestGate.WaitSynchronously(WorkerExit.Entered);
         }
     }
 
@@ -62,9 +72,9 @@ internal sealed class EnumerationDrainObservation : IDisposable
     {
         try
         {
-            if (path != _root && !IsWriter)
+            if (path == Volatile.Read(ref _heldPath))
             {
-                using var registration = _workerToken.Register(() => _stopped.TrySetResult());
+                using var registration = _heldToken.Register(() => _stopped.TrySetResult());
                 WorkerExit.MarkEntered();
                 WorkerExit.WaitForRelease();
             }
