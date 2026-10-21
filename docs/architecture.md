@@ -255,7 +255,11 @@
   the `InProcessBrokerHandle.Ended` task, an `IOException` on pending operations, and
   `Error` frames; disposing the process never throws a host fault. `SyntheticBlock`,
   `SyntheticBlockEditor` and `SyntheticMftProducer` seed, edit and read cache blocks and produce MFT
-  blocks through the production block writer, so consumer tests never call the block writer. Ships as the separate
+  blocks through the production block writer, so consumer tests never call the block writer.
+  `SyntheticCacheSlot` holds a slot's production owner lock without touching the block, so a
+  consumer test observes busy-versus-invalid slots through `CacheDirectory.InspectCached` and the
+  cache commands without spelling the lock file name; disposing releases the slot and never unlinks
+  the lock, and `LockPathFor` names the sibling lock for asserting that a command left it. Ships as the separate
   `MFTLib.TestExtensions` NuGet package at publish time; never folded into the `MFTLib` package.
   `ScriptedWatchSource` and `ScriptedDriveWatch` script the live watch an index runs beside its scan,
   without naming the internal `IIndexWatchSource` or `IIndexDriveWatch` (an internal adapter presents them to the index),

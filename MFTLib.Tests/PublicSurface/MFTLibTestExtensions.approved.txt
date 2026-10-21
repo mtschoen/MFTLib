@@ -107,6 +107,12 @@ MFTLibTestExtensions.SyntheticBlockOptions :: property public ProducerKind { get
 MFTLibTestExtensions.SyntheticBlockOptions :: property public RootRow { get; init; } : uint
 MFTLibTestExtensions.SyntheticBlockOptions :: property public ScanTimestamp { get; init; } : System.DateTime
 MFTLibTestExtensions.SyntheticBlockOptions :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticBlockOptions>
+MFTLibTestExtensions.SyntheticCacheSlot :: method public Dispose() : void
+MFTLibTestExtensions.SyntheticCacheSlot :: method public static Acquire(string cacheDirectory, MFTLib.Index.DriveKey drive, uint volumeSerial) : MFTLibTestExtensions.SyntheticCacheSlot
+MFTLibTestExtensions.SyntheticCacheSlot :: method public static LockPathFor(string blockPath) : string
+MFTLibTestExtensions.SyntheticCacheSlot :: property public BlockPath { get; } : string
+MFTLibTestExtensions.SyntheticCacheSlot :: property public LockPath { get; } : string
+MFTLibTestExtensions.SyntheticCacheSlot :: type public sealed class : System.IDisposable
 MFTLibTestExtensions.SyntheticCacheTag :: method public static GetFourCharacterCode(MFTLib.Index.CacheTag tag) : string
 MFTLibTestExtensions.SyntheticCacheTag :: method public static GetVersion(MFTLib.Index.CacheTag tag) : uint
 MFTLibTestExtensions.SyntheticCacheTag :: type public static class
