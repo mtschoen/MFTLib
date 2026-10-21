@@ -129,7 +129,7 @@ struct UsnJournalResult {
     MftMessageChar errorMessage[MFT_ERROR_MESSAGE_UNITS];
 };
 
-static_assert(sizeof(MftParseResult) == 588 + (2 * sizeof(void*)),
+static_assert(sizeof(MftParseResult) == 588 + 2 * sizeof(void*),
               "MftParseResult is the 588 bytes of counters and 256 UTF-16 message units around two pointers");
 static_assert(sizeof(MftDumpInputInfo) == 528,
               "MftDumpInputInfo is a 64-bit length, two 32-bit fields and 256 UTF-16 message units");

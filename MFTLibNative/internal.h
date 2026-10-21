@@ -20,12 +20,12 @@
 using SteadyClock = std::chrono::steady_clock;
 using TimePoint = SteadyClock::time_point;
 
-static inline double ElapsedMs(TimePoint start, TimePoint end) {
+static double ElapsedMs(const TimePoint start, const TimePoint end) {
     return std::chrono::duration<double, std::milli>(end - start).count();
 }
 
 template <typename... Arguments>
-void SetErrorMessageBuffer(wchar_t* buffer, size_t bufferLength, const wchar_t* format, Arguments... arguments) {
+void SetErrorMessageBuffer(wchar_t* buffer, const size_t bufferLength, const wchar_t* format, Arguments... arguments) {
     if (buffer == nullptr || bufferLength == 0) {
         return;
     }
@@ -68,7 +68,7 @@ void SetErrorMessage(Unit (&buffer)[N], const wchar_t* format, Arguments... argu
 // fence keeps later reads from moving ahead of it.
 inline int32_t LoadSharedInt32(const int32_t* field) {
 #ifdef _WIN32
-    int32_t value = *static_cast<const volatile int32_t*>(field);
+    const int32_t value = *static_cast<const volatile int32_t*>(field);
     std::atomic_thread_fence(std::memory_order_acquire);
     return value;
 #else
@@ -107,7 +107,7 @@ class ParseThreadRecording {
     ParseThreadRecording& operator=(ParseThreadRecording&&) = delete;
     ~ParseThreadRecording() noexcept;
 
-    void Record(unsigned threadCount) {
+    void Record(const unsigned threadCount) {
         if (length_ < counts_.size()) {
             counts_[length_++] = threadCount;
         }

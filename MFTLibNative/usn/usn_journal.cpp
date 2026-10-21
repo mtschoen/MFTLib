@@ -13,10 +13,10 @@
 
 namespace {
 template <typename Operation>
-UsnJournalResult* UsnResultBoundary(Operation operation, int64_t startUsn) noexcept {
+UsnJournalResult* UsnResultBoundary(Operation operation, const int64_t startUsn) noexcept {
     UsnJournalResult* result = nullptr;
     return NativeBoundary(
-        [&]() {
+        [&] {
             ThrowInjectedException(ExceptionTestPoint::UsnAllocation);
             result = new UsnJournalResult{};
             return operation(result);
@@ -35,13 +35,14 @@ UsnJournalResult* UsnResultBoundary(Operation operation, int64_t startUsn) noexc
         });
 }
 
-uint8_t* AllocatePages(size_t byteCount) {
+uint8_t* AllocatePages(const size_t byteCount) {
     return ShouldFailAllocation()
                ? nullptr
                : static_cast<uint8_t*>(VirtualAlloc(nullptr, byteCount, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
 }
 
-READ_USN_JOURNAL_DATA_V1 MakeReadRequest(int64_t startUsn, uint64_t journalIdentifier, DWORD bytesToWaitFor) {
+READ_USN_JOURNAL_DATA_V1 MakeReadRequest(const int64_t startUsn, const uint64_t journalIdentifier,
+                                         const DWORD bytesToWaitFor) {
     READ_USN_JOURNAL_DATA_V1 request{};
     request.StartUsn = startUsn;
     request.ReasonMask = 0xFFFFFFFF;
@@ -52,7 +53,7 @@ READ_USN_JOURNAL_DATA_V1 MakeReadRequest(int64_t startUsn, uint64_t journalIdent
     return request;
 }
 
-const wchar_t* DescribeJournalError(DWORD error) {
+const wchar_t* DescribeJournalError(const DWORD error) {
     switch (error) {
         case ERROR_JOURNAL_NOT_ACTIVE:
             return L"USN journal is not active";
@@ -73,18 +74,17 @@ struct IoBuffer {
 
 // Wraps DeviceIoControl with test hook support.
 // When the USN I/O fail countdown fires, returns FALSE with the configured error code.
-BOOL UsnDeviceIoControl(HANDLE handle, DWORD ioControlCode, IoBuffer input, IoBuffer output, LPDWORD bytesReturned,
-                        LPOVERLAPPED overlapped) {
-    DWORD hookError;
-    if (ShouldFailUsnIo(hookError)) {
+BOOL UsnDeviceIoControl(const HANDLE handle, const DWORD ioControlCode, const IoBuffer input, const IoBuffer output,
+                        const LPDWORD bytesReturned, const LPOVERLAPPED overlapped) {
+    if (DWORD hookError; ShouldFailUsnIo(hookError)) {
         SetLastError(hookError);
         return FALSE;
     }
     if (UsnIoInjectSuccess(output.data, output.size, bytesReturned)) {
         return TRUE;
     }
-    BOOL pipeSuccess = FALSE;
-    if (ioControlCode == FSCTL_READ_USN_JOURNAL &&
+    if (BOOL pipeSuccess = FALSE;
+        ioControlCode == FSCTL_READ_USN_JOURNAL &&
         TryUsnWatchPipeRead(handle, output.data, output.size, bytesReturned, overlapped, pipeSuccess)) {
         return pipeSuccess;
     }
@@ -94,7 +94,8 @@ BOOL UsnDeviceIoControl(HANDLE handle, DWORD ioControlCode, IoBuffer input, IoBu
 
 // Wraps GetOverlappedResult so tests can simulate a cancelled (aborted) wait
 // without a real pending IOCTL - pairs with SetUsnIoFailError(ERROR_IO_PENDING).
-BOOL UsnGetOverlappedResult(HANDLE handle, LPOVERLAPPED overlapped, LPDWORD bytesReturned, BOOL wait) {
+BOOL UsnGetOverlappedResult(const HANDLE handle, const LPOVERLAPPED overlapped, const LPDWORD bytesReturned,
+                            const BOOL wait) {
     if (UsnIoShouldAbortOverlapped()) {
         SetLastError(ERROR_OPERATION_ABORTED);
         return FALSE;
@@ -102,7 +103,8 @@ BOOL UsnGetOverlappedResult(HANDLE handle, LPOVERLAPPED overlapped, LPDWORD byte
     return GetOverlappedResult(handle, overlapped, bytesReturned, wait);
 }
 
-BOOL CompleteWatchRead(HANDLE volumeHandle, OVERLAPPED* overlapped, DWORD* bytesReturned, HANDLE cancellationEvent) {
+BOOL CompleteWatchRead(const HANDLE volumeHandle, OVERLAPPED* overlapped, DWORD* bytesReturned,
+                       const HANDLE cancellationEvent) {
     if (cancellationEvent != nullptr) {
         const std::array<HANDLE, 2> events = {cancellationEvent, overlapped->hEvent};
         const DWORD waitResult = WaitForMultipleObjects(2, events.data(), FALSE, INFINITE);
@@ -131,7 +133,7 @@ BOOL CompleteWatchRead(HANDLE volumeHandle, OVERLAPPED* overlapped, DWORD* bytes
 
 // Translates a USN read error into result->errorMessage. ERROR_HANDLE_EOF and
 // ERROR_WRITE_PROTECT are benign end-of-journal conditions and carry no message.
-void ApplyUsnReadError(UsnJournalResult* result, DWORD error, const wchar_t* failContext) {
+void ApplyUsnReadError(UsnJournalResult* result, const DWORD error, const wchar_t* failContext) {
     if (error == ERROR_HANDLE_EOF || error == ERROR_WRITE_PROTECT) {
         return;
     }
@@ -187,7 +189,7 @@ void CopyUsnRecordToEntry(UsnJournalEntry& entry, const USN_RECORD_V2* usnRecord
 // Doubles result's entry array (copying existing entries). On allocation failure sets
 // errorMessage and returns false; the caller must release its read buffer and bail.
 bool GrowUsnEntries(UsnJournalResult* result, uint64_t& capacity) {
-    uint64_t newCapacity = capacity * 2;
+    const uint64_t newCapacity = capacity * 2;
     auto* grown = reinterpret_cast<UsnJournalEntry*>(AllocatePages(newCapacity * sizeof(UsnJournalEntry)));
     if (grown == nullptr) {
         SetErrorMessage(result->errorMessage, L"Failed to grow entry array");
@@ -201,7 +203,7 @@ bool GrowUsnEntries(UsnJournalResult* result, uint64_t& capacity) {
 }
 
 // Counts the USN records packed in [readBuffer + 8, readBuffer + bytesReturned).
-uint64_t CountUsnRecords(const uint8_t* readBuffer, DWORD bytesReturned) {
+uint64_t CountUsnRecords(const uint8_t* readBuffer, const DWORD bytesReturned) {
     uint64_t count = 0;
     const uint8_t* scanPointer = readBuffer + sizeof(int64_t);
     const uint8_t* endPointer = readBuffer + bytesReturned;
@@ -216,14 +218,14 @@ uint64_t CountUsnRecords(const uint8_t* readBuffer, DWORD bytesReturned) {
 // Reads the next-USN cursor and copies the batch's records into result->entries. No-op when the
 // buffer holds no records. When the entry allocation fails the result carries an error and keeps its
 // starting cursor, so the caller does not step past records it never received.
-void PopulateWatchEntries(UsnJournalResult* result, const uint8_t* readBuffer, DWORD bytesReturned) {
+void PopulateWatchEntries(UsnJournalResult* result, const uint8_t* readBuffer, const DWORD bytesReturned) {
     if (bytesReturned < sizeof(int64_t)) {
         return;
     }
     int64_t bufferNextUsn;
     memcpy(&bufferNextUsn, readBuffer, sizeof(int64_t));
 
-    uint64_t count = CountUsnRecords(readBuffer, bytesReturned);
+    const uint64_t count = CountUsnRecords(readBuffer, bytesReturned);
     if (count == 0) {
         result->nextUsn = bufferNextUsn;
         return;
@@ -249,15 +251,15 @@ void PopulateWatchEntries(UsnJournalResult* result, const uint8_t* readBuffer, D
 
 extern "C" {
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters): C-ABI export, fixed C# P/Invoke signature
-EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, uint64_t journalIdentifier,
-                                        uint32_t maximumBufferReads) {
+EXPORT UsnJournalResult* ReadUsnJournal(const HANDLE volumeHandle, const int64_t startUsn,
+                                        const uint64_t journalIdentifier, const uint32_t maximumBufferReads) {
     return UsnResultBoundary(
         [&](UsnJournalResult* result) {
             result->journalIdentifier = journalIdentifier;
 
             constexpr size_t readBufferSize = 64ULL * 1024;
             auto* readBuffer = AllocatePages(readBufferSize);
-            const NativeScopeExit buffer([&]() {
+            const NativeScopeExit buffer([&] {
                 if (readBuffer != nullptr) {
                     VirtualFree(readBuffer, 0, MEM_RELEASE);
                 }
@@ -285,7 +287,7 @@ EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, u
                 readData.StartUsn = nextUsn;
 
                 DWORD bytesReturned = 0;
-                BOOL success = UsnDeviceIoControl(
+                const BOOL success = UsnDeviceIoControl(
                     volumeHandle, FSCTL_READ_USN_JOURNAL, IoBuffer{&readData, static_cast<DWORD>(sizeof(readData))},
                     IoBuffer{readBuffer, static_cast<DWORD>(readBufferSize)}, &bytesReturned, nullptr);
                 if (success == 0) {
@@ -332,15 +334,15 @@ EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, u
 
 EXPORT void FreeUsnJournalResult(const UsnJournalResult* result) {
     NoteUsnResultFree();
-    std::unique_ptr<const UsnJournalResult> owned(result);
-    if (owned != nullptr && owned->entries != nullptr) {
+    if (const std::unique_ptr<const UsnJournalResult> owned(result); owned != nullptr && owned->entries != nullptr) {
         VirtualFree(owned->entries, 0, MEM_RELEASE);
     }
 }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters): C-ABI export, fixed C# P/Invoke signature
-EXPORT UsnJournalResult* WatchUsnJournalBatchCancelable(HANDLE volumeHandle, int64_t startUsn,
-                                                        uint64_t journalIdentifier, HANDLE cancellationEvent) {
+EXPORT UsnJournalResult* WatchUsnJournalBatchCancelable(const HANDLE volumeHandle, const int64_t startUsn,
+                                                        const uint64_t journalIdentifier,
+                                                        const HANDLE cancellationEvent) {
     return UsnResultBoundary(
         [&](UsnJournalResult* result) {
             result->journalIdentifier = journalIdentifier;
@@ -348,7 +350,7 @@ EXPORT UsnJournalResult* WatchUsnJournalBatchCancelable(HANDLE volumeHandle, int
 
             constexpr size_t readBufferSize = 64ULL * 1024;
             auto* readBuffer = AllocatePages(readBufferSize);
-            const NativeScopeExit buffer([&]() {
+            const NativeScopeExit buffer([&] {
                 if (readBuffer != nullptr) {
                     VirtualFree(readBuffer, 0, MEM_RELEASE);
                 }
@@ -362,7 +364,7 @@ EXPORT UsnJournalResult* WatchUsnJournalBatchCancelable(HANDLE volumeHandle, int
 
             OVERLAPPED overlapped{};
             overlapped.hEvent = ShouldFailAllocation() ? nullptr : CreateEventW(nullptr, TRUE, FALSE, nullptr);
-            const NativeScopeExit event([&]() {
+            const NativeScopeExit event([&] {
                 if (overlapped.hEvent != nullptr) {
                     CloseHandle(overlapped.hEvent);
                 }
@@ -398,7 +400,7 @@ EXPORT UsnJournalResult* WatchUsnJournalBatchCancelable(HANDLE volumeHandle, int
         startUsn);
 }
 
-EXPORT BOOL CancelUsnJournalWatch(HANDLE volumeHandle) {
+EXPORT BOOL CancelUsnJournalWatch(const HANDLE volumeHandle) {
     const BOOL foundRequest = CancelIoEx(volumeHandle, nullptr);
     NoteUsnWatchCancel(volumeHandle, foundRequest);
     return foundRequest;

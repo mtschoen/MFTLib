@@ -21,7 +21,7 @@ std::wstring utf8_to_wide(const char* utf8) {
     if (utf8 == nullptr) {
         return {};
     }
-    int wideLength = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, nullptr, 0);
+    const int wideLength = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, nullptr, 0);
     std::wstring wide(static_cast<size_t>((std::max)(wideLength - 1, 0)), L'\0');
     MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wide.data(), wideLength);
     return wide;
@@ -29,9 +29,10 @@ std::wstring utf8_to_wide(const char* utf8) {
 }  // namespace
 
 File* open_read(const char* path_utf8) {
-    auto wide = utf8_to_wide(path_utf8);
-    HANDLE handle = CreateFileW(wide.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                                nullptr, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+    const auto wide = utf8_to_wide(path_utf8);
+    const HANDLE handle =
+        CreateFileW(wide.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                    OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
     if (handle == INVALID_HANDLE_VALUE) {
         return nullptr;
     }
@@ -43,9 +44,9 @@ File* open_read(const char* path_utf8) {
 }
 
 File* open_write(const char* path_utf8) {
-    auto wide = utf8_to_wide(path_utf8);
-    HANDLE handle = CreateFileW(wide.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS,
-                                FILE_ATTRIBUTE_NORMAL, nullptr);
+    const auto wide = utf8_to_wide(path_utf8);
+    const HANDLE handle = CreateFileW(wide.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS,
+                                      FILE_ATTRIBUTE_NORMAL, nullptr);
     if (handle == INVALID_HANDLE_VALUE) {
         return nullptr;
     }
@@ -65,7 +66,7 @@ int64_t size_of(const File* file) {
     return sizeInfo.QuadPart;
 }
 
-int64_t pread_at(const File* file, void* buffer, size_t count, FileOffset offset) {
+int64_t pread_at(const File* file, void* buffer, const size_t count, const FileOffset offset) {
     assert(file != nullptr);
     OVERLAPPED overlapped{};
     overlapped.Offset = static_cast<DWORD>(offset.value & 0xFFFFFFFF);
@@ -77,15 +78,14 @@ int64_t pread_at(const File* file, void* buffer, size_t count, FileOffset offset
         SetLastError(ERROR_ACCESS_DENIED);
     }
     if (readOk == 0) {
-        DWORD errorCode = GetLastError();
-        if (errorCode != ERROR_HANDLE_EOF) {
+        if (const DWORD errorCode = GetLastError(); errorCode != ERROR_HANDLE_EOF) {
             return -1;
         }
     }
     return bytesRead;
 }
 
-int64_t pwrite_at(const File* file, const void* buffer, size_t count, FileOffset offset) {
+int64_t pwrite_at(const File* file, const void* buffer, const size_t count, const FileOffset offset) {
     assert(file != nullptr);
     OVERLAPPED overlapped{};
     overlapped.Offset = static_cast<DWORD>(offset.value & 0xFFFFFFFF);
@@ -105,11 +105,13 @@ void close_file(File* file) {
     if (file == nullptr || file->handle == INVALID_HANDLE_VALUE) {
         return;
     }
-    std::unique_ptr<File> owned(file);
+    const std::unique_ptr<File> owned(file);
     CloseHandle(owned->handle);
 }
 
-void* big_allocate(size_t bytes) { return VirtualAlloc(nullptr, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE); }
+void* big_allocate(const size_t bytes) {
+    return VirtualAlloc(nullptr, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+}
 
 void big_free(void* pointer, size_t /*bytes*/) {
     if (pointer != nullptr) {

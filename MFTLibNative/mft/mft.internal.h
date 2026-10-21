@@ -91,7 +91,7 @@ struct SliceRange {
 
 // Partition records into ordered, nonempty ranges and wait for all workers.
 template <typename Function>
-unsigned ForEachRange(uint64_t total, unsigned threadCount, Function body) {
+unsigned ForEachRange(const uint64_t total, const unsigned threadCount, Function body) {
     if (total == 0) {
         return 0;
     }
@@ -99,11 +99,11 @@ unsigned ForEachRange(uint64_t total, unsigned threadCount, Function body) {
         body(0, SliceRange{0, total});
         return 1;
     }
-    uint64_t perThread = (total + threadCount - 1) / threadCount;
-    std::vector<NativeFailure> failures(threadCount, NativeFailure::None);
+    const uint64_t perThread = (total + threadCount - 1) / threadCount;
+    std::vector failures(threadCount, NativeFailure::None);
     std::vector<std::thread> workers;
     workers.reserve(threadCount);
-    const NativeScopeExit joined([&]() {
+    const NativeScopeExit joined([&] {
         for (auto& worker : workers) {
             if (worker.joinable()) {
                 worker.join();
@@ -117,7 +117,7 @@ unsigned ForEachRange(uint64_t total, unsigned threadCount, Function body) {
         }
         uint64_t end = (std::min)(start + perThread, total);
         workers.push_back(
-            StartNativeThread([&body, index, start, end]() { body(index, SliceRange{start, end}); }, failures[index]));
+            StartNativeThread([&body, index, start, end] { body(index, SliceRange{start, end}); }, failures[index]));
     }
     for (auto& worker : workers) {
         worker.join();
@@ -150,7 +150,7 @@ struct SliceResult {
     uint64_t invalidFixupRecords = 0;
 
     void append(const ParsedEntry& entry) {
-        uint64_t stringOffset = strings.size();
+        const uint64_t stringOffset = strings.size();
         if (entry.nameLength > 0 && entry.name != nullptr) {
             const auto* source = reinterpret_cast<const uint16_t*>(entry.name);
             strings.insert(strings.end(), source, source + entry.nameLength);

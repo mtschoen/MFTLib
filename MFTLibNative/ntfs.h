@@ -48,9 +48,9 @@ struct ParseGeometry {
     uint32_t recordSize = 0;
 };
 
-inline bool IsSupportedRecordSize(uint32_t value) {
-    return value >= MINIMUM_FILE_RECORD_SIZE && value <= MAXIMUM_FILE_RECORD_SIZE && (value % 512U) == 0U &&
-           (value & (value - 1U)) == 0U;
+inline bool IsSupportedRecordSize(const uint32_t value) {
+    return value >= MINIMUM_FILE_RECORD_SIZE && value <= MAXIMUM_FILE_RECORD_SIZE && value % 512U == 0U &&
+           (value & value - 1U) == 0U;
 }
 
 enum ATTRIBUTE_TYPE_CODE : uint32_t {

@@ -35,7 +35,7 @@ class NativeScopeExit {
 // Only failure classification crosses threads, so catching bad_alloc needs no exception copy or allocation.
 enum class NativeFailure : uint8_t { None, OutOfMemory, Exception };
 
-inline void ThrowNativeFailure(NativeFailure failure) {
+inline void ThrowNativeFailure(const NativeFailure failure) {
     if (failure == NativeFailure::OutOfMemory) {
         throw std::bad_alloc{};
     }
@@ -48,7 +48,7 @@ inline void ThrowNativeFailure(NativeFailure failure) {
 template <typename Operation>
 std::thread StartNativeThread(Operation operation, NativeFailure& failure) {
     ThrowInjectedException(ExceptionTestPoint::ThreadStart);
-    return std::thread([operation = std::move(operation), &failure]() {
+    return std::thread([operation = std::move(operation), &failure] {
         try {
             operation();
         } catch (const std::bad_alloc&) {
