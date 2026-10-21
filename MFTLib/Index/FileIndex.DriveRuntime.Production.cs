@@ -19,8 +19,9 @@ public sealed partial class FileIndex
                 if (Configuration.Producer == ProducerKind.Enumeration)
                 {
                     using var walkLease = await EnumerationWalkLimit.EnterAsync(cancellationToken).ConfigureAwait(false);
+                    // ReSharper disable once AccessToDisposedClosure
                     var scannedBlock = await Task
-                        .Run(() => CreateAndPopulateBlock(blockPath, deleteOnClose, cancellationToken),
+                        .Run(() => CreateAndPopulateBlock(blockPath, deleteOnClose, walkLease, cancellationToken),
                             cancellationToken)
                         .ConfigureAwait(false);
                     return new PendingDriveResult
@@ -118,7 +119,7 @@ public sealed partial class FileIndex
         ///     up to the layout's capacity clamp, before a block is completed and returned.
         /// </summary>
         BlockFile CreateAndPopulateBlock(string blockPath, bool deleteOnClose,
-            CancellationToken cancellationToken)
+            EnumerationWalkLimit.Lease walkLease, CancellationToken cancellationToken)
         {
             var (slotCapacity, namePoolCapacity) = PlanCapacities(
                 EnumerationProducer.EstimateRowCount(Configuration.RootDirectory));
@@ -149,7 +150,7 @@ public sealed partial class FileIndex
                         DirectoryWalk = Options.DirectoryWalk
                     });
 
-                    var result = producer.Produce(writer, Options.ScanProgress, cancellationToken);
+                    var result = producer.Produce(writer, Options.ScanProgress, walkLease, cancellationToken);
                     var nextSlotCapacity = BlockLayout.DoubleCapacity(slotCapacity);
                     var nextNamePoolCapacity = BlockLayout.DoubleCapacity(namePoolCapacity);
                     if (!result.CapacityExhausted ||

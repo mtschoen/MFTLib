@@ -1,0 +1,19 @@
+System Info
+  Build:   Release
+  OS:      Microsoft Windows 11 Pro (10.0.26300.0)
+  CPU:     AMD Ryzen 9 7950X3D 16-Core Processor
+  Threads: 32
+  RAM:     64 GB
+  Disk:    Samsung SSD 990 PRO 4TB
+  .NET:    .NET 10.0.12
+Directories: 32768 (including root); fanout: 8
+Files: 32768; files per directory: 1 (empty files)
+Walk: median of 5 runs per mode; alternating sequential/parallel order
+Cache: warm filesystem cache; one untimed warm-up per mode; no OS cache eviction
+Timing: producer traversal and block row writes only; excludes tree generation, block creation and disposal
+Permits: sequential 1 (base only); parallel shared budget up to 32
+--- enumeration-walk-sequential ---
+  Median: 4363.896 ms; Rows: 65536
+--- enumeration-walk-parallel ---
+  Median: 700.020 ms; Rows: 65536
+Speedup (sequential / parallel): 6.234x

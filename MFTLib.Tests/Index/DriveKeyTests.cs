@@ -173,8 +173,7 @@ public class DriveKeyTests
     [DataRow("\\")]
     public void TryParse_RejectsNonDriveSpecs(string? text)
     {
-        var driveKey = new DriveKey('Z');
-        Assert.IsFalse(DriveKey.TryParse(text, out driveKey));
+        Assert.IsFalse(DriveKey.TryParse(text, out var driveKey));
         Assert.AreEqual(default(DriveKey), driveKey);
     }
 }

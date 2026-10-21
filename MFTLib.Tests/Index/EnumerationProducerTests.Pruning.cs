@@ -16,22 +16,25 @@ public sealed partial class EnumerationProducerTests
 
     async Task AssertProduced(DirectoryWalkOptions walk, string[] present, string[] absent, string? rootDirectory = null)
     {
-        var snapshot = Produce(out _, out _, directoryWalk: walk, rootDirectory: rootDirectory);
-        try
+        foreach (var maximumWorkers in new[] { 1, 2 })
         {
-            foreach (var path in present)
+            var snapshot = Produce(out _, out _, directoryWalk: walk, rootDirectory: rootDirectory, maximumWorkers: maximumWorkers);
+            try
             {
-                Assert.IsTrue(EnumerationLookupTestAccess.FindByPath(snapshot, path).HasValue, $"{path} must be a row");
-            }
+                foreach (var path in present)
+                {
+                    Assert.IsTrue(EnumerationLookupTestAccess.FindByPath(snapshot, path).HasValue, $"{path} must be a row");
+                }
 
-            foreach (var path in absent)
-            {
-                Assert.IsFalse(EnumerationLookupTestAccess.FindByPath(snapshot, path).HasValue, $"{path} must not be a row");
+                foreach (var path in absent)
+                {
+                    Assert.IsFalse(EnumerationLookupTestAccess.FindByPath(snapshot, path).HasValue, $"{path} must not be a row");
+                }
             }
-        }
-        finally
-        {
-            await snapshot.ReleaseNowAsync();
+            finally
+            {
+                await snapshot.ReleaseNowAsync();
+            }
         }
     }
 
@@ -44,21 +47,25 @@ public sealed partial class EnumerationProducerTests
     [TestMethod]
     public async Task Produce_PrunedDirectory_IsARowWithNoChildren()
     {
-        var snapshot = Produce(out var block, out var result,
-            directoryWalk: new DirectoryWalkOptions { PrunedDirectoryPaths = [TreePath("Documents")] });
-        try
+        foreach (var maximumWorkers in new[] { 1, 2 })
         {
-            // Root, Documents, Pictures, holiday.jpg.
-            Assert.AreEqual(4u, result.RowCount);
-            var documents = EnumerationLookupTestAccess.FindByPath(snapshot, TreePath("Documents"));
-            Assert.IsTrue(documents.HasValue);
-            Assert.IsTrue(documents.GetValueOrDefault().IsDirectory);
-            Assert.AreEqual(0, documents.GetValueOrDefault().Children(CancellationToken.None).Count);
-            Assert.AreEqual(4u, block.Header.RowCount);
-        }
-        finally
-        {
-            await snapshot.ReleaseNowAsync();
+            var snapshot = Produce(out var block, out var result,
+                directoryWalk: new DirectoryWalkOptions { PrunedDirectoryPaths = [TreePath("Documents")] },
+                maximumWorkers: maximumWorkers);
+            try
+            {
+                // Root, Documents, Pictures, holiday.jpg.
+                Assert.AreEqual(4u, result.RowCount);
+                var documents = EnumerationLookupTestAccess.FindByPath(snapshot, TreePath("Documents"));
+                Assert.IsTrue(documents.HasValue);
+                Assert.IsTrue(documents.GetValueOrDefault().IsDirectory);
+                Assert.AreEqual(0, documents.GetValueOrDefault().Children(CancellationToken.None).Count);
+                Assert.AreEqual(4u, block.Header.RowCount);
+            }
+            finally
+            {
+                await snapshot.ReleaseNowAsync();
+            }
         }
     }
 
@@ -151,7 +158,7 @@ public sealed partial class EnumerationProducerTests
     }
 
     [TestMethod]
-    public void Produce_StoresTheAccessDeniedCountInTheHeader()
+    public async Task Produce_StoresTheAccessDeniedCountInTheHeader()
     {
         var created = CreateBlock();
         using var block = created.Block;
@@ -161,7 +168,8 @@ public sealed partial class EnumerationProducerTests
             Drive = 'T'
         });
 
-        var result = producer.Produce(created.Writer, progress: null, CancellationToken.None);
+        using var lease = await EnumerationWalkLimit.EnterAsync(CancellationToken.None);
+        var result = producer.Produce(created.Writer, progress: null, lease, CancellationToken.None);
 
         Assert.AreEqual(1, result.AccessDeniedSubtreeCount);
         Assert.AreEqual(1u, block.Header.AccessDeniedSubtreeCount);

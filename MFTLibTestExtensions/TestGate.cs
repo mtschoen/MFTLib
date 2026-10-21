@@ -15,6 +15,8 @@ internal sealed class TestGate
 
     public void Release() => _released.TrySetResult();
 
+    internal bool IsReleased => _released.Task.IsCompleted;
+
     internal void MarkEntered() => _entered.TrySetResult();
 
     internal Task WaitForReleaseAsync(CancellationToken cancellationToken)

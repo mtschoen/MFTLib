@@ -1,10 +1,14 @@
+using MFTLibTestExtensions;
+
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
 
+// The partial fixture keeps the producer's content and concurrency contracts together with shared block ownership.
 [TestClass]
+[DoNotParallelize]
 public sealed partial class EnumerationProducerTests : IDisposable
 {
     IndexTreeFixture _fixture = null!;
@@ -29,11 +33,13 @@ public sealed partial class EnumerationProducerTests : IDisposable
         _fixture.Dispose();
     }
 
-    (BlockFile Block, BlockWriter Writer) CreateBlock(uint slotCapacity = 256, uint namePoolCapacity = 4096)
+    int _blockId;
+
+    (BlockFile Block, BlockWriter Writer) CreateBlock(uint slotCapacity = 4096, uint namePoolCapacity = 1048576)
     {
         var block = BlockFile.Create(new BlockFileCreateOptions
         {
-            Path = Path.Combine(_blockDirectory, "T-00000001.mlix"),
+            Path = Path.Combine(_blockDirectory, $"T-{Interlocked.Increment(ref _blockId):D8}.mlix"),
             VolumeSerial = 1,
             ProducerKind = ProducerKind.Enumeration,
             SlotCapacity = slotCapacity,
@@ -45,7 +51,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
 
     DriveBlock[] Produce(out BlockFile block, out EnumerationResult result,
         IReadOnlyCollection<string>? retainedFileNames = null, DirectoryWalkOptions? directoryWalk = null,
-        string? rootDirectory = null)
+        string? rootDirectory = null, int maximumWorkers = int.MaxValue)
     {
         var root = rootDirectory ?? _treeRoot;
         var created = CreateBlock();
@@ -58,7 +64,8 @@ public sealed partial class EnumerationProducerTests : IDisposable
             DirectoryWalk = DirectoryWalkOptions.Admit(directoryWalk ?? new DirectoryWalkOptions())
         });
 
-        result = producer.Produce(created.Writer, progress: null, CancellationToken.None);
+        using var lease = EnumerationWalkLimit.EnterAsync(CancellationToken.None).AsTask().GetAwaiter().GetResult();
+        result = producer.Produce(created.Writer, progress: null, lease, CancellationToken.None, maximumWorkers);
         created.Writer.Complete(new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc), null);
         return [new DriveBlock('T', 0, block, rootDirectoryPath: root)];
     }
@@ -207,6 +214,13 @@ public sealed partial class EnumerationProducerTests : IDisposable
             Assert.IsTrue(block.Rows[0].IsDirectory);
             Assert.AreEqual(_treeRoot.Length, block.Rows[0].NameLengthUnits);
             Assert.AreEqual(_treeRoot, new string(NamePool.ReadRowName(block, 0)));
+
+            for (uint row = 1; row < block.Header.RowCount; row++)
+            {
+                Assert.IsTrue(block.Rows[(int)row].ParentRow < row);
+                Assert.IsTrue(block.Rows[(int)block.Rows[(int)row].ParentRow].IsDirectory);
+                Assert.AreEqual((ushort)0, block.SequenceNumbers[(int)row]);
+            }
         }
         finally
         {
@@ -269,37 +283,43 @@ public sealed partial class EnumerationProducerTests : IDisposable
     }
 
     [TestMethod]
-    public void Produce_ReportsProgress()
+    public async Task Produce_ReportsProgress()
     {
         var created = CreateBlock();
         using var block = created.Block;
 
-        // A direct IProgress<T> implementation, not System.Progress<T>: Progress<T> posts
-        // through a SynchronizationContext and delivers asynchronously, which would make an
-        // assertion on the collected reports racy. Reporting synchronously on the calling
-        // thread is deterministic and lets every report be asserted on.
         var observed = new List<IndexScanProgress>();
+        var reportingThreadIds = new HashSet<int>();
+        var callingThreadId = Environment.CurrentManagedThreadId;
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = _treeRoot,
             Drive = 'T'
         });
 
-        producer.Produce(created.Writer, new SynchronousProgress<IndexScanProgress>(observed.Add),
-            CancellationToken.None);
+        using var lease = await EnumerationWalkLimit.EnterAsync(CancellationToken.None);
+        producer.Produce(created.Writer, new SynchronousProgress<IndexScanProgress>(report =>
+        {
+            reportingThreadIds.Add(Environment.CurrentManagedThreadId);
+            observed.Add(report);
+        }), lease, CancellationToken.None);
 
         Assert.AreEqual(7u, created.Writer.RowCount);
         Assert.IsTrue(observed.Count > 0, "the walk visited at least one directory");
+        Assert.AreEqual(1, reportingThreadIds.Count, "all progress reports came from one thread");
+        Assert.AreEqual(callingThreadId, reportingThreadIds.Single(), "all progress reports came from the calling thread");
         Assert.AreEqual(IndexScanPhase.Enumerating, observed[0].Phase);
         Assert.AreEqual('T', observed[0].Drive);
         CollectionAssert.AllItemsAreUnique(observed.Select(report => report.CurrentDirectory!).ToArray());
-        Assert.IsTrue(observed[^1].WrittenRowCount > observed[0].WrittenRowCount,
-            "later reports reflect more rows written as the walk progresses");
+        for (var i = 1; i < observed.Count; i++)
+        {
+            Assert.IsTrue(observed[i].WrittenRowCount >= observed[i - 1].WrittenRowCount, "counts are nondecreasing");
+        }
         Assert.AreEqual(7u, observed[^1].WrittenRowCount);
     }
 
     [TestMethod]
-    public void Produce_ExhaustedSlotCapacity_SetsCapacityExhaustedAndDoesNotThrow()
+    public async Task Produce_ExhaustedSlotCapacity_SetsCapacityExhaustedAndDoesNotThrow()
     {
         var created = CreateBlock(slotCapacity: 3);
         using var block = created.Block;
@@ -310,7 +330,8 @@ public sealed partial class EnumerationProducerTests : IDisposable
         });
         var progress = new RecordingProgress();
 
-        var result = producer.Produce(created.Writer, progress, CancellationToken.None);
+        using var lease = await EnumerationWalkLimit.EnterAsync(CancellationToken.None);
+        var result = producer.Produce(created.Writer, progress, lease, CancellationToken.None, maximumWorkers: 1);
 
         Assert.IsTrue(result.CapacityExhausted);
         Assert.IsTrue(created.Writer.CapacityExhausted);
@@ -378,7 +399,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
     }
 
     [TestMethod]
-    public void Produce_MissingRootDirectory_CountsAnAccessDeniedSubtreeAndDoesNotThrow()
+    public async Task Produce_MissingRootDirectory_CountsAnAccessDeniedSubtreeAndDoesNotThrow()
     {
         var created = CreateBlock();
         using var block = created.Block;
@@ -388,19 +409,21 @@ public sealed partial class EnumerationProducerTests : IDisposable
             Drive = 'T'
         });
 
-        var result = producer.Produce(created.Writer, progress: null, CancellationToken.None);
+        using var lease = await EnumerationWalkLimit.EnterAsync(CancellationToken.None);
+        var result = producer.Produce(created.Writer, progress: null, lease, CancellationToken.None);
 
         Assert.AreEqual(1u, result.RowCount);
         Assert.AreEqual(1, result.AccessDeniedSubtreeCount);
     }
 
     [TestMethod]
-    public void Produce_HonoursCancellation()
+    public async Task Produce_HonoursCancellation()
     {
         var created = CreateBlock();
         using var block = created.Block;
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
+        var token = cancellation.Token;
 
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
@@ -408,9 +431,328 @@ public sealed partial class EnumerationProducerTests : IDisposable
             Drive = 'T'
         });
 
-        // ReSharper disable once AccessToDisposedClosure
-        Assert.ThrowsExactly<OperationCanceledException>(
-            () => producer.Produce(created.Writer, progress: null, cancellation.Token));
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () =>
+        {
+            using var lease = await EnumerationWalkLimit.EnterAsync(CancellationToken.None);
+            producer.Produce(created.Writer, progress: null, lease, token);
+        });
+    }
+
+    [TestMethod]
+    [DataRow("io")]
+    [DataRow("unauthorized")]
+    [DataRow("notfound")]
+    public void DirectoryRead_FaultAfterOneEntryKeepsItsOwnedPrefix(string exceptionKind)
+    {
+        Exception CreateException() => exceptionKind switch
+        {
+            "io" => new IOException("scripted directory read failure"),
+            "unauthorized" => new UnauthorizedAccessException("scripted directory access denial"),
+            "notfound" => new DirectoryNotFoundException("scripted directory disappearance"),
+            _ => throw new ArgumentOutOfRangeException(nameof(exceptionKind))
+        };
+
+        var observations = new List<int>();
+        var options = new EnumerationProducerOptions { RootDirectory = _treeRoot, Drive = 'T' };
+        var reader = new EnumerationDirectoryReader(options)
+        {
+            BeforeMoveNext = (_, observed) =>
+            {
+                observations.Add(observed);
+                if (observed == 1)
+                {
+                    throw CreateException();
+                }
+            }
+        };
+        var result = reader.Read(new EnumerationDirectoryWork(_treeRoot, 0), CancellationToken.None);
+        Assert.IsTrue(result.SubtreeSkipped);
+        Assert.AreEqual(1, result.Entries.Count);
+        Assert.IsTrue(result.Name(result.Entries[0]).Length > 0);
+        Assert.AreEqual(0u, result.Entries[0].Columns.ParentRow);
+        Assert.AreEqual((ushort)0, result.Entries[0].Columns.SequenceNumber);
+        CollectionAssert.AreEqual(new[] { 0, 1 }, observations);
+    }
+
+    [TestMethod]
+    public void DirectoryRead_UnexpectedExceptionEscapesUnchanged()
+    {
+        var observations = new List<int>();
+        var failure = new InvalidOperationException("unexpected reader fault");
+        var options = new EnumerationProducerOptions { RootDirectory = _treeRoot, Drive = 'T' };
+        var reader = new EnumerationDirectoryReader(options)
+        {
+            BeforeMoveNext = (_, observed) =>
+            {
+                observations.Add(observed);
+                if (observed == 1)
+                {
+                    throw failure;
+                }
+            }
+        };
+        var thrown = Assert.ThrowsExactly<InvalidOperationException>(
+            () => reader.Read(new EnumerationDirectoryWork(_treeRoot, 0), CancellationToken.None));
+        Assert.AreSame(failure, thrown);
+        CollectionAssert.AreEqual(new[] { 0, 1 }, observations);
+    }
+
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(1)]
+    [DataRow(2)]
+    public void DirectoryRead_CancellationAfterOneEntryThrowsOperationCanceledException(int entryCount)
+    {
+        using var cancellation = new CancellationTokenSource();
+        var token = cancellation.Token;
+        Action cancel = cancellation.Cancel;
+        var directory = Directory.CreateDirectory(Path.Combine(_treeRoot, "cancellation"));
+        for (var entry = 0; entry < entryCount; entry++)
+        {
+            File.WriteAllText(Path.Combine(directory.FullName, $"entry-{entry}"), "content");
+        }
+        var options = new EnumerationProducerOptions { RootDirectory = directory.FullName, Drive = 'T' };
+        var reader = new EnumerationDirectoryReader(options)
+        {
+            BeforeMoveNext = (_, observed) =>
+            {
+                if (observed == Math.Min(entryCount, 1))
+                {
+                    cancel();
+                }
+            }
+        };
+        var thrown = Assert.ThrowsExactly<OperationCanceledException>(
+            () => reader.Read(new EnumerationDirectoryWork(directory.FullName, 0), token));
+        Assert.AreEqual(token, thrown.CancellationToken);
+    }
+
+    [TestMethod]
+    public async Task Produce_ParallelAndSequentialHaveEquivalentGeneratedTreeContent()
+    {
+        EnumerationWalkTestSupport.GenerateBranchingTree(_treeRoot, 4, 3, 3);
+        const int fixedYear = 2026;
+        const int fixedHour = 12;
+        var fixedTime = new DateTime(fixedYear, 1, 1, fixedHour, 0, 0, DateTimeKind.Utc);
+        foreach (var dir in Directory.EnumerateDirectories(_treeRoot, "*", SearchOption.AllDirectories))
+        {
+            Directory.SetLastWriteTimeUtc(dir, fixedTime);
+        }
+        foreach (var file in Directory.EnumerateFiles(_treeRoot, "*", SearchOption.AllDirectories))
+        {
+            File.SetLastWriteTimeUtc(file, fixedTime);
+        }
+        var expected = EnumerationWalkTestSupport.FileSystemInventory(_treeRoot).ToHashSet();
+        var sequential = Produce(out _, out var first, maximumWorkers: 1);
+        try
+        {
+            var parallel = Produce(out _, out var second, maximumWorkers: 2);
+            try
+            {
+                Assert.IsFalse(first.CapacityExhausted);
+                Assert.IsFalse(second.CapacityExhausted);
+                Assert.AreEqual(first.AccessDeniedSubtreeCount, second.AccessDeniedSubtreeCount);
+                Assert.IsTrue(EnumerationWalkTestSupport.Inventory(sequential[0])
+                    .SetEquals(EnumerationWalkTestSupport.Inventory(parallel[0])));
+                Assert.IsTrue(expected.SetEquals(EnumerationWalkTestSupport.Inventory(sequential[0])));
+                Assert.IsTrue(expected.SetEquals(EnumerationWalkTestSupport.Inventory(parallel[0])));
+            }
+            finally
+            {
+                await parallel.ReleaseNowAsync();
+            }
+        }
+        finally
+        {
+            await sequential.ReleaseNowAsync();
+        }
+    }
+
+    [TestMethod]
+    public async Task Produce_OverlappingDirectoriesUseTwoAvailableSlots()
+    {
+        if (Environment.ProcessorCount < 2)
+        {
+            Assert.Inconclusive("Requires at least two processors to test overlapping directories.");
+        }
+
+        var leases = new List<EnumerationWalkLimit.Lease>();
+        try
+        {
+            for (var i = 2; i < Environment.ProcessorCount; i++)
+            {
+                leases.Add(await EnumerationWalkLimit.EnterAsync(CancellationToken.None));
+            }
+
+            var documentsGate = new TestGate();
+            var picturesGate = new TestGate();
+
+            EnumerationWalkLimit.Hooks.DirectoryEntered = (_, path, _) =>
+            {
+                if (path.EndsWith("Documents", StringComparison.OrdinalIgnoreCase))
+                {
+                    documentsGate.MarkEntered();
+                    documentsGate.WaitForRelease();
+                }
+                else if (path.EndsWith("Pictures", StringComparison.OrdinalIgnoreCase))
+                {
+                    picturesGate.MarkEntered();
+                    picturesGate.WaitForRelease();
+                }
+            };
+
+            var created = CreateBlock();
+            using var block = created.Block;
+            var producer = new EnumerationProducer(new EnumerationProducerOptions
+            {
+                RootDirectory = _treeRoot,
+                Drive = 'T'
+            });
+
+            var task = EnumerationWalkTestSupport.ProduceAsync(producer, created.Writer, null, CancellationToken.None);
+            try
+            {
+                await Task.WhenAll(documentsGate.Entered, picturesGate.Entered).WaitAsync(HangGuard);
+            }
+            finally
+            {
+                documentsGate.Release();
+                picturesGate.Release();
+                await task.WaitAsync(HangGuard);
+            }
+        }
+        finally
+        {
+            EnumerationWalkLimit.Hooks.ResetToDefaults();
+            foreach (var lease in leases)
+            {
+                lease.Dispose();
+            }
+        }
+    }
+
+    [TestMethod]
+    public async Task Produce_ParallelCompletionDoesNotWaitForAnEarlierExtraJob()
+    {
+        const int minimumProcessors = 3;
+        if (Environment.ProcessorCount < minimumProcessors)
+        {
+            Assert.Inconclusive("Requires at least three processors.");
+        }
+
+        Directory.CreateDirectory(Path.Combine(_treeRoot, "Sub1"));
+        Directory.CreateDirectory(Path.Combine(_treeRoot, "Sub2"));
+        Directory.CreateDirectory(Path.Combine(_treeRoot, "Sub3"));
+        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Sub1", "file1.txt"), "content1");
+        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Sub2", "file2.txt"), "content2");
+        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Sub3", "file3.txt"), "content3");
+
+        var leases = new List<EnumerationWalkLimit.Lease>();
+        try
+        {
+            for (var i = minimumProcessors; i < Environment.ProcessorCount; i++)
+            {
+                leases.Add(await EnumerationWalkLimit.EnterAsync(CancellationToken.None));
+            }
+
+            int produceThreadId = -1;
+            var firstExtraGate = new TestGate();
+            var secondExtraGate = new TestGate();
+            var inlineGate = new TestGate();
+            int extraCount = 0;
+            var observedSecondWhileFirstHeld = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            string? secondExtraPath = null;
+            var secondExtraFinished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+
+            EnumerationWalkLimit.Hooks.DirectoryEntered = (_, path, _) =>
+            {
+                if (string.Equals(path, _treeRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                if (Environment.CurrentManagedThreadId == produceThreadId)
+                {
+                    inlineGate.MarkEntered();
+                    inlineGate.WaitForRelease();
+                }
+                else
+                {
+                    var count = Interlocked.Increment(ref extraCount);
+                    if (count == 1)
+                    {
+                        firstExtraGate.MarkEntered();
+                        firstExtraGate.WaitForRelease();
+                    }
+                    else if (count == 2)
+                    {
+                        secondExtraPath = path;
+                        secondExtraGate.MarkEntered();
+                        secondExtraGate.WaitForRelease();
+                    }
+                }
+            };
+
+            EnumerationWalkLimit.Hooks.DirectoryExited = (_, path) =>
+            {
+                if (secondExtraPath is not null &&
+                    string.Equals(path, secondExtraPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    secondExtraFinished.TrySetResult();
+                }
+            };
+
+            var created = CreateBlock();
+            using var block = created.Block;
+            var producer = new EnumerationProducer(new EnumerationProducerOptions
+            {
+                RootDirectory = _treeRoot,
+                Drive = 'T'
+            });
+
+            var progress = new SynchronousProgress<IndexScanProgress>(report =>
+            {
+                if (secondExtraPath is not null &&
+                    string.Equals(report.CurrentDirectory, secondExtraPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!firstExtraGate.IsReleased)
+                    {
+                        observedSecondWhileFirstHeld.TrySetResult();
+                    }
+                }
+            });
+
+            var task = EnumerationWalkTestSupport.ProduceAsync(producer, created.Writer, progress,
+                CancellationToken.None, starting: () => produceThreadId = Environment.CurrentManagedThreadId);
+
+            try
+            {
+                await firstExtraGate.Entered.WaitAsync(HangGuard);
+                await secondExtraGate.Entered.WaitAsync(HangGuard);
+                await inlineGate.Entered.WaitAsync(HangGuard);
+                secondExtraGate.Release();
+                await secondExtraFinished.Task.WaitAsync(HangGuard);
+                inlineGate.Release();
+                await observedSecondWhileFirstHeld.Task.WaitAsync(HangGuard);
+            }
+            finally
+            {
+
+                firstExtraGate.Release();
+                secondExtraGate.Release();
+                inlineGate.Release();
+                await task.WaitAsync(HangGuard);
+            }
+        }
+        finally
+        {
+            EnumerationWalkLimit.Hooks.ResetToDefaults();
+            foreach (var lease in leases)
+            {
+                lease.Dispose();
+            }
+        }
     }
 
     [TestMethod]
@@ -426,6 +768,468 @@ public sealed partial class EnumerationProducerTests : IDisposable
         Assert.IsTrue(EnumerationProducer.EstimateNamePoolBytes(1000) >
             EnumerationProducer.EstimateNamePoolBytes(100));
     }
+
+    [TestMethod]
+    public async Task Produce_HonoursCancellation_MidWalkDrainsAllWorkers()
+    {
+        EnumerationWalkTestSupport.GenerateBranchingTree(_treeRoot, 3, 2, 2);
+        var created = CreateBlock();
+        using var block = created.Block;
+        using var cancellation = new CancellationTokenSource();
+        var token = cancellation.Token;
+        Action cancel = cancellation.Cancel;
+
+        var producer = new EnumerationProducer(new EnumerationProducerOptions
+        {
+            RootDirectory = _treeRoot,
+            Drive = 'T'
+        });
+
+        var observation = new EnumerationReadObservation();
+        var exitGate = new TestGate();
+        var childEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        EnumerationWalkLimit.Hooks.DirectoryEntered = (drive, path, readerToken) =>
+        {
+            observation.Enter(drive, path, readerToken);
+            if (!string.Equals(path, _treeRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                if (childEntered.TrySetResult())
+                {
+                    cancel();
+                }
+            }
+        };
+
+        EnumerationWalkLimit.Hooks.DirectoryExited = (drive, path) =>
+        {
+            try
+            {
+                if (!string.Equals(path, _treeRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    exitGate.MarkEntered();
+                    exitGate.WaitForRelease();
+                }
+            }
+            finally
+            {
+                observation.Exit(drive, path);
+            }
+        };
+
+        Task? produceTask = null;
+        {
+            try
+            {
+                produceTask = EnumerationWalkTestSupport.ProduceAsync(producer, created.Writer, null, token);
+                await childEntered.Task.WaitAsync(HangGuard);
+                await exitGate.Entered.WaitAsync(HangGuard);
+                Assert.IsFalse(produceTask.IsCompleted, "Produce must wait for workers to drain before completing");
+                exitGate.Release();
+                var thrown = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => produceTask);
+                Assert.AreEqual(cancellation.Token, thrown.CancellationToken);
+                Assert.AreEqual(0, observation.Active);
+            }
+            finally
+            {
+                exitGate.Release();
+                if (produceTask is not null)
+                {
+                    try
+                    {
+                        await produceTask.WaitAsync(HangGuard);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Expected cancellation drain
+                    }
+                }
+                EnumerationWalkLimit.Hooks.ResetToDefaults();
+            }
+        }
+
+        using var verifyReservationCts = new CancellationTokenSource(HangGuard);
+        using var verifyAll = await EnumerationWalkTestSupport.ReserveSlotsAsync(0, verifyReservationCts.Token);
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task Produce_BackpressureCancellation_DrainsPublishersAndLeases(bool cancel)
+    {
+        if (Environment.ProcessorCount < 3)
+        {
+            Assert.Inconclusive("Requires at least 3 processors for backpressure test.");
+        }
+
+        CreateDrainTree(3);
+        var progressGate = new TestGate();
+        var readersGate = new TestGate();
+        var readersEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handoffWaiting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var writerThread = 0;
+        var extraReaders = 0;
+        var observation = new EnumerationReadObservation();
+        EnumerationWalkLimit.Hooks.DirectoryEntered = (drive, path, token) =>
+        {
+            observation.Enter(drive, path, token);
+            if (path == _treeRoot)
+            {
+                return;
+            }
+            if (Environment.CurrentManagedThreadId == writerThread)
+            {
+                TestGate.WaitSynchronously(readersEntered.Task);
+            }
+            else
+            {
+                if (Interlocked.Increment(ref extraReaders) == 2)
+                {
+                    readersEntered.TrySetResult();
+                }
+                readersGate.WaitForRelease();
+            }
+        };
+        EnumerationWalkLimit.Hooks.DirectoryExited = observation.Exit;
+
+        var progress = new SynchronousProgress<IndexScanProgress>(report =>
+        {
+            if (report.CurrentDirectory != _treeRoot && !progressGate.IsReleased)
+            {
+                progressGate.MarkEntered();
+                progressGate.WaitForRelease();
+            }
+        });
+
+        var producer = new EnumerationProducer(new EnumerationProducerOptions
+        {
+            RootDirectory = _treeRoot,
+            Drive = 'T'
+        })
+        {
+            HandoffWaiting = () => handoffWaiting.TrySetResult()
+        };
+
+        var created = CreateBlock();
+        using var block = created.Block;
+        using var cancellation = new CancellationTokenSource();
+
+        Task? produceTask = null;
+        {
+            try
+            {
+                produceTask = EnumerationWalkTestSupport.ProduceAsync(producer, created.Writer, progress,
+                    cancellation.Token, maximumWorkers: 3, starting: () => writerThread = Environment.CurrentManagedThreadId);
+                await progressGate.Entered.WaitAsync(HangGuard);
+                readersGate.Release();
+                await handoffWaiting.Task.WaitAsync(HangGuard);
+                if (cancel)
+                {
+                    cancellation.Cancel();
+                }
+                progressGate.Release();
+                if (cancel)
+                {
+                    var thrown = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => produceTask.WaitAsync(HangGuard));
+                    Assert.AreEqual(cancellation.Token, thrown.CancellationToken);
+                }
+                else
+                {
+                    await produceTask.WaitAsync(HangGuard);
+                    Assert.AreEqual(7u, created.Writer.RowCount);
+                    Assert.IsFalse(created.Writer.CapacityExhausted);
+                }
+                Assert.AreEqual(0, observation.Active);
+            }
+            finally
+            {
+                cancellation.Cancel();
+                readersGate.Release();
+                progressGate.Release();
+                if (produceTask is not null)
+                {
+                    try
+                    {
+                        await produceTask.WaitAsync(HangGuard);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Expected cancellation drain
+                    }
+                }
+                EnumerationWalkLimit.Hooks.ResetToDefaults();
+            }
+        }
+
+        using var verifyReservationCts = new CancellationTokenSource(HangGuard);
+        using var verifyAll = await EnumerationWalkTestSupport.ReserveSlotsAsync(0, verifyReservationCts.Token);
+
+    }
+
+    [TestMethod]
+    public async Task Produce_PartialReadFailure_RetainsPrefixAndSkipsDescendants()
+    {
+        var failingDir = Path.Combine(_treeRoot, "failing");
+        var healthyDir = Path.Combine(_treeRoot, "healthy");
+        var childOfFailing = Path.Combine(failingDir, "child");
+        Directory.CreateDirectory(failingDir);
+        Directory.CreateDirectory(healthyDir);
+        Directory.CreateDirectory(childOfFailing);
+        await File.WriteAllTextAsync(Path.Combine(childOfFailing, "subfile.txt"), "sub");
+        await File.WriteAllTextAsync(Path.Combine(failingDir, "file1.txt"), "1");
+        await File.WriteAllTextAsync(Path.Combine(healthyDir, "healthy.txt"), "h");
+
+        var observation = new EnumerationReadObservation();
+        EnumerationWalkLimit.Hooks.DirectoryEntered = observation.Enter;
+        EnumerationWalkLimit.Hooks.DirectoryExited = observation.Exit;
+        var failedDirectories = new List<string>();
+
+        var producer = new EnumerationProducer(new EnumerationProducerOptions
+        {
+            RootDirectory = _treeRoot,
+            Drive = 'T'
+        })
+        {
+            BeforeMoveNext = (path, observed) =>
+            {
+                if (string.Equals(path, failingDir, StringComparison.OrdinalIgnoreCase) && observed == 2)
+                {
+                    failedDirectories.Add(path);
+                    throw new IOException("partial read failure");
+                }
+            }
+        };
+
+        var created = CreateBlock();
+        using var block = created.Block;
+        try
+        {
+            using var lease = await EnumerationWalkLimit.EnterAsync(CancellationToken.None);
+            var result = producer.Produce(created.Writer, progress: null, lease, CancellationToken.None, maximumWorkers: 2);
+
+            Assert.IsFalse(result.CapacityExhausted);
+            Assert.AreEqual(1, result.AccessDeniedSubtreeCount);
+            CollectionAssert.AreEqual(new[] { failingDir }, failedDirectories);
+            Assert.IsFalse(observation.Visits.ContainsKey(childOfFailing), "Descendant of skipped directory must not be visited");
+            Assert.IsTrue(observation.Visits.ContainsKey(healthyDir), "Healthy sibling directory must be visited");
+
+            var snapshot = new DriveBlock('T', 0, block, rootDirectoryPath: _treeRoot);
+            var healthyEntry = EnumerationLookupTestAccess.FindByPath([snapshot], Path.Combine(healthyDir, "healthy.txt"));
+            Assert.IsNotNull(healthyEntry);
+            Assert.IsNotNull(EnumerationLookupTestAccess.FindByPath([snapshot], childOfFailing));
+            Assert.IsNotNull(EnumerationLookupTestAccess.FindByPath([snapshot], Path.Combine(failingDir, "file1.txt")));
+        }
+        finally
+        {
+            EnumerationWalkLimit.Hooks.ResetToDefaults();
+        }
+    }
+
+    [TestMethod]
+    public async Task Produce_UnexpectedReaderFault_PropagatesSentinelAndDrainsWorkers()
+    {
+        RequireParallelWorkers();
+        CreateDrainTree(2);
+        var sentinel = new InvalidOperationException("sentinel reader fault");
+        using var observation = new EnumerationDrainObservation(_treeRoot);
+        var producer = new EnumerationProducer(new EnumerationProducerOptions
+        {
+            RootDirectory = _treeRoot,
+            Drive = 'T'
+        })
+        {
+            BeforeMoveNext = observation.FailWriterRead(sentinel)
+        };
+
+        var created = CreateBlock();
+        using var block = created.Block;
+        Task? produceTask = null;
+        {
+            try
+            {
+                produceTask = observation.Start(producer, created.Writer, null);
+                await observation.Stopped.WaitAsync(HangGuard);
+                Assert.IsFalse(produceTask.IsCompleted, "Caller cannot finish before sibling cleanup");
+                observation.WorkerExit.Release();
+                var thrown = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => produceTask.WaitAsync(HangGuard));
+                Assert.AreSame(sentinel, thrown);
+                Assert.IsTrue(observation.Visited.Contains(observation.FaultedPath));
+                Assert.AreEqual(0, observation.Active);
+            }
+            finally
+            {
+                observation.WorkerExit.Release();
+                if (produceTask is not null)
+                {
+                    try
+                    {
+                        await produceTask.WaitAsync(HangGuard);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // Expected sentinel fault propagation
+                    }
+                }
+            }
+        }
+
+        using var verifyReservationCts = new CancellationTokenSource(HangGuard);
+        using var verifyAll = await EnumerationWalkTestSupport.ReserveSlotsAsync(0, verifyReservationCts.Token);
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task Produce_WriterAndProgressFaults_PropagateAndDrain(bool failInWriter)
+    {
+        RequireParallelWorkers();
+        CreateDrainTree(2);
+        var sentinel = new IOException("sentinel writer or progress fault");
+        using var observation = new EnumerationDrainObservation(_treeRoot);
+        var failedDirectories = new List<string>();
+        var progress = new SynchronousProgress<IndexScanProgress>(report =>
+        {
+            if (!failInWriter && report.CurrentDirectory != _treeRoot)
+            {
+                failedDirectories.Add(report.CurrentDirectory!);
+                throw sentinel;
+            }
+        });
+
+        var producer = new EnumerationProducer(new EnumerationProducerOptions
+        {
+            RootDirectory = _treeRoot,
+            Drive = 'T'
+        });
+
+        var created = CreateBlock();
+        using var block = created.Block;
+        if (failInWriter)
+        {
+            created.Writer.Hooks.RowCaptured = () =>
+            {
+                if (created.Writer.RowCount >= 3)
+                {
+                    throw sentinel;
+                }
+            };
+        }
+
+        Task? produceTask = null;
+        {
+            try
+            {
+                produceTask = observation.Start(producer, created.Writer, progress);
+                await observation.Stopped.WaitAsync(HangGuard);
+                Assert.IsFalse(produceTask.IsCompleted, "Caller cannot finish before sibling cleanup");
+                observation.WorkerExit.Release();
+                var thrown = await Assert.ThrowsExactlyAsync<IOException>(() => produceTask.WaitAsync(HangGuard));
+                Assert.AreSame(sentinel, thrown);
+                Assert.AreEqual(failInWriter ? 0 : 1, failedDirectories.Count);
+                Assert.AreEqual(0, observation.Active);
+                Assert.AreEqual(0u, created.Block.Header.AccessDeniedSubtreeCount);
+            }
+            finally
+            {
+                observation.WorkerExit.Release();
+                if (produceTask is not null)
+                {
+                    try
+                    {
+                        await produceTask.WaitAsync(HangGuard);
+                    }
+                    catch (IOException)
+                    {
+                        // Expected sentinel fault propagation
+                    }
+                }
+            }
+        }
+
+        using var verifyReservationCts = new CancellationTokenSource(HangGuard);
+        using var verifyAll = await EnumerationWalkTestSupport.ReserveSlotsAsync(0, verifyReservationCts.Token);
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task Produce_CapacityExhaustion_DrainsWorkersAndStopsDescent(bool testSlotCapacity)
+    {
+        RequireParallelWorkers();
+        CreateDrainTree(2);
+        foreach (var directory in Directory.GetDirectories(_treeRoot))
+        {
+            Directory.CreateDirectory(Path.Combine(directory, "deep"));
+        }
+        using var observation = new EnumerationDrainObservation(_treeRoot);
+        var progress = new RecordingProgress();
+        var producer = new EnumerationProducer(new EnumerationProducerOptions
+        {
+            RootDirectory = _treeRoot,
+            Drive = 'T'
+        });
+
+        var created = testSlotCapacity
+            ? CreateBlock(slotCapacity: 3, namePoolCapacity: 1048576)
+            : CreateBlock(slotCapacity: 4096, namePoolCapacity: (uint)(_treeRoot.Length + 2 * "child-0".Length) * sizeof(char));
+        using var block = created.Block;
+        Task<EnumerationResult>? produceTask = null;
+        {
+            try
+            {
+                produceTask = observation.Start(producer, created.Writer, progress);
+                await observation.Stopped.WaitAsync(HangGuard);
+                Assert.IsFalse(produceTask.IsCompleted, "Exhaustion must drain the held reader");
+                observation.WorkerExit.Release();
+                var result = await produceTask.WaitAsync(HangGuard);
+                Assert.IsTrue(result.CapacityExhausted);
+                Assert.IsTrue(created.Writer.CapacityExhausted);
+                Assert.AreEqual(0, result.AccessDeniedSubtreeCount);
+                Assert.AreEqual(0, observation.Active);
+                Assert.AreEqual(3u, result.RowCount);
+                Assert.AreEqual(2, progress.Directories.Count);
+                Assert.IsFalse(observation.Visited.Any(path => Path.GetFileName(path) == "deep"),
+                    "Descendants of unwritten rows must never be scheduled");
+            }
+            finally
+            {
+                observation.WorkerExit.Release();
+                if (produceTask is not null)
+                {
+                    try
+                    {
+                        await produceTask.WaitAsync(HangGuard);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Expected in failure cleanup
+                    }
+                }
+            }
+        }
+
+        using var verifyReservationCts = new CancellationTokenSource(HangGuard);
+        using var verifyAll = await EnumerationWalkTestSupport.ReserveSlotsAsync(0, verifyReservationCts.Token);
+    }
+
+    void CreateDrainTree(int children)
+    {
+        _treeRoot = Path.Combine(_treeRoot, "drain");
+        for (var child = 0; child < children; child++)
+        {
+            var directory = Directory.CreateDirectory(Path.Combine(_treeRoot, $"child-{child}"));
+            File.WriteAllText(Path.Combine(directory.FullName, "file.txt"), "content");
+        }
+    }
+
+    static void RequireParallelWorkers()
+    {
+        if (Environment.ProcessorCount < 2)
+        {
+            Assert.Inconclusive("Requires at least two processors to hold a worker during writer teardown.");
+        }
+    }
+
 }
 
 /// <summary>

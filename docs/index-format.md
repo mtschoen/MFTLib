@@ -368,10 +368,12 @@ name length is 32767 UTF-16 code units.
 
 ## Enumeration blocks
 
-An enumeration producer has no record numbers, so it assigns rows sequentially
-in traversal order with the parent column in the same shape. Nothing downstream
-can tell the difference except the producer kind and the absence of a journal
-cursor, which is why an `IndexRecordKey` from such a block reports `ProducerKind.Enumeration`.
+An enumeration producer has no record numbers. Its single writer assigns dense
+row numbers as directory results arrive, with root row 0 parenting itself and
+every other parent row preceding its children. Row order between directories is
+unspecified and can differ between scans. Parent columns retain the same shape
+as other blocks. Enumeration blocks have no journal cursor and their
+`IndexRecordKey` reports `ProducerKind.Enumeration`.
 
 ## MFT blocks
 

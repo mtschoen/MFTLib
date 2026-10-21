@@ -272,6 +272,29 @@ does not decide whether growth is worth it, and a consumer reads fresh settings 
 **Revisit only if:** the consumers need a different retention calculation or a journal setting not carried by
 `UsnJournalSettings`. The proposed reason names are listed in the implementing pull request for owner review.
 
+## Enumeration fans out across directories with one block writer
+
+**Decision (2026-10-20):** Enumeration scans use concurrent directory readers and
+one block writer. Every walk holds a base permit and borrows only immediately
+available extra permits from the process-wide processor-sized budget. Readers
+copy retained names and metadata into owned directory buffers, handed off through
+a bounded waiting queue. The writer commits parent rows before scheduling their
+children. Row order between directories is unspecified. With one available
+permit the same pipeline runs sequentially. Parallel traversal ships
+unconditionally in 0.3.0.
+
+**Reason:** The [single-core cold walk, issue 676](/schoen/MFTLib/issues/676)
+records 104.1 seconds for uncached enumeration-backed discovery versus 13.5 seconds
+for git-wizard's parallel walk, a 7.7-times difference exceeding the consumer's
+1.5-times bound. Traversal belongs in the producer; git-specific discovery and
+pruning policy belong in git-wizard. Walked drives have no journal or live watch,
+and rescans replace their blocks, so sequential row order serves no contract.
+
+**Revisit only if:** Representative measurements identify the shared budget or
+buffer handoff as the bottleneck, or a concrete consumer requires separately
+specified stable ordering. Revisit with evidence and an explicit owner ruling
+while preserving bounded work, parent links and worker-drain ownership.
+
 ## The enumeration producer is a product feature, chosen per drive
 
 **Decision (API review finding F6):** the directory-walk producer stays public. It is how an index

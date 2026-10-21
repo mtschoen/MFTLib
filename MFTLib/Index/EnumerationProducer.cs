@@ -1,13 +1,13 @@
 using System.IO.Enumeration;
+using System.Runtime.ExceptionServices;
 
 namespace MFTLib.Index;
 
 /// <summary>
-///     The managed, substrate-neutral producer. Walks a directory tree with
-///     <see cref="FileSystemEnumerable{TResult}" /> and writes rows straight into the block as
-///     it goes, so no path or name string is allocated per entry. Recursion is driven here, one
-///     directory level per enumerator, because that is what lets each row know its parent and
-///     lets an access denial skip exactly one subtree instead of aborting the scan.
+///     The managed, substrate-neutral producer. Concurrent directory readers copy retained
+///     names and metadata from <see cref="FileSystemEnumerable{TResult}" /> into owned buffers.
+///     One writer commits completed directories before scheduling their children. File names
+///     stay in character buffers; only the directory frontier needs full path strings.
 /// </summary>
 internal sealed class EnumerationProducer
 {
@@ -36,6 +36,9 @@ internal sealed class EnumerationProducer
 
     /// <summary>The root directory and progress drive letter fixed at construction; they never change during a walk.</summary>
     EnumerationProducerOptions Options { get; }
+
+    internal Action? HandoffWaiting { get; init; }
+    internal Action<string, int>? BeforeMoveNext { get; init; }
 
     /// <summary>
     ///     Samples only the root's entries and counts one more root-sized level per root
@@ -77,7 +80,7 @@ internal sealed class EnumerationProducer
     }
 
     /// <summary>
-    ///     Walks the tree breadth first, writing the root as row 0 and every entry after it into
+    ///     Walks the tree concurrently, writing the root as row 0 and every entry after it into
     ///     the writer. A directory the walk options prune is written but not entered; the root is
     ///     never pruned. The walk stores its access-denied count in the header but does not call
     ///     <see cref="BlockWriter.Complete" />; the caller does. The walk stops early once the writer
@@ -85,44 +88,150 @@ internal sealed class EnumerationProducer
     /// </summary>
     /// <param name="writer">The block to write rows into.</param>
     /// <param name="progress">Receives one sample after each directory is enumerated, on the calling thread; may be null.</param>
-    /// <param name="cancellationToken">Observed before the root row and before each directory.</param>
+    /// <param name="cancellationToken">Observed before the root row, each directory entry read and each row write.</param>
+    /// <param name="baseLease">The base lease for this walk from <see cref="EnumerationWalkLimit" />.</param>
+    /// <param name="maximumWorkers">Maximum concurrency for the walk, including the base lane.</param>
     /// <returns>The row count, the number of subtrees that could not be entered, and whether the block was too small.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="writer" /> is null.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="writer" /> or <paramref name="baseLease" /> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maximumWorkers" /> is less than 1.</exception>
     /// <exception cref="OperationCanceledException">The token was cancelled; the block is left partially written.</exception>
     public EnumerationResult Produce(BlockWriter writer, IProgress<IndexScanProgress>? progress,
-        CancellationToken cancellationToken)
+        EnumerationWalkLimit.Lease baseLease, CancellationToken cancellationToken, int maximumWorkers = int.MaxValue)
     {
         ArgumentNullException.ThrowIfNull(writer);
+        ArgumentNullException.ThrowIfNull(baseLease);
+        baseLease.ThrowIfReleased();
+        ArgumentOutOfRangeException.ThrowIfLessThan(maximumWorkers, 1);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var state = new WalkState(writer, Options.RetainedFileNames, Options.DirectoryWalk, Options.RootDirectory);
-        writer.TryWriteRow(0, Options.RootDirectory, ReadRootColumns(Options.RootDirectory));
-        state.NextRow = 1;
+        var workers = Math.Min(maximumWorkers, Environment.ProcessorCount);
+        if (!writer.TryWriteRow(0, Options.RootDirectory, ReadRootColumns(Options.RootDirectory)))
+        {
+            return new EnumerationResult(writer.RowCount, 0, writer.CapacityExhausted);
+        }
 
-        var pending = new Queue<(string Path, uint RowIndex)>();
-        pending.Enqueue((Options.RootDirectory, 0u));
+        var state = (NextRow: 1u, SkippedCount: 0);
 
-        while (pending.Count > 0)
+        var reader = new EnumerationDirectoryReader(Options)
+        {
+            BeforeMoveNext = BeforeMoveNext
+        };
+        var pending = new Queue<EnumerationDirectoryWork>();
+        pending.Enqueue(new EnumerationDirectoryWork(Options.RootDirectory, 0u));
+
+        using var scheduler = new EnumerationWalkScheduler(reader, Options.Drive, workers, cancellationToken)
+        {
+            HandoffWaiting = HandoffWaiting
+        };
+
+        ExceptionDispatchInfo? productionFailure = null;
+        try
+        {
+            DriveFrontier(writer, progress, scheduler, pending, ref state, cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            productionFailure = ExceptionDispatchInfo.Capture(exception);
+        }
+
+        var drainFailure = scheduler.StopAndDrain();
+        cancellationToken.ThrowIfCancellationRequested();
+        productionFailure?.Throw();
+        drainFailure?.Throw();
+
+        writer.SetAccessDeniedSubtreeCount((uint)state.SkippedCount);
+        return new EnumerationResult(writer.RowCount, state.SkippedCount, writer.CapacityExhausted);
+    }
+
+    void DriveFrontier(BlockWriter writer, IProgress<IndexScanProgress>? progress,
+        EnumerationWalkScheduler scheduler, Queue<EnumerationDirectoryWork> pending,
+        ref (uint NextRow, int SkippedCount) state, CancellationToken cancellationToken)
+    {
+        EnumerationDirectoryBuffer? inlineReady = null;
+        while (inlineReady is not null || pending.Count != 0 || scheduler.OutstandingCount != 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var (directoryPath, directoryRow) = pending.Dequeue();
-            EnumerateOneDirectory(state, directoryPath, directoryRow, pending, cancellationToken);
+            EnumerationDirectoryBuffer completed;
+            if (scheduler.TryTake(out var ready))
+            {
+                completed = ready;
+            }
+            else if (inlineReady is not null)
+            {
+                completed = inlineReady;
+                inlineReady = null;
+            }
+            else if (pending.Count != 0)
+            {
+                var inline = pending.Dequeue();
+                while (pending.Count != 0 && scheduler.TryStart(pending.Peek()))
+                {
+                    pending.Dequeue();
+                }
+
+                if (scheduler.TryTake(out ready))
+                {
+                    pending.Enqueue(inline);
+                    completed = ready;
+                }
+                else
+                {
+                    inlineReady = scheduler.ReadInline(inline);
+                    continue;
+                }
+            }
+            else
+            {
+                completed = scheduler.Take();
+            }
+
+            CommitDirectory(completed, writer, pending, ref state.NextRow, ref state.SkippedCount, cancellationToken);
             progress?.Report(new IndexScanProgress(Options.Drive, IndexScanPhase.Enumerating, state.NextRow)
             {
-                CurrentDirectory = directoryPath
+                CurrentDirectory = completed.Directory.Path
             });
 
-            // Every write below capacity has already failed once capacity is exhausted, so
-            // opening further queued directories would only pay I/O for more of the same
-            // no-op writes. Stop the walk here instead.
             if (writer.CapacityExhausted)
             {
                 break;
             }
         }
+    }
 
-        writer.SetAccessDeniedSubtreeCount((uint)state.AccessDeniedSubtreeCount);
-        return new EnumerationResult(writer.RowCount, state.AccessDeniedSubtreeCount, writer.CapacityExhausted);
+    internal static void CommitDirectory(EnumerationDirectoryBuffer directory, BlockWriter writer,
+        Queue<EnumerationDirectoryWork> pending, ref uint nextRow, ref int skippedCount,
+        CancellationToken cancellationToken)
+    {
+        var children = new List<EnumerationDirectoryWork>();
+        foreach (var entry in directory.Entries)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var rowIndex = nextRow;
+            if (!writer.TryWriteRow(rowIndex, directory.Name(entry), entry.Columns))
+            {
+                break;
+            }
+
+            nextRow = rowIndex + 1;
+            if (entry.CanDescend)
+            {
+                children.Add(new EnumerationDirectoryWork(
+                    Path.Join(directory.Directory.Path, directory.Name(entry).ToString()), rowIndex));
+            }
+        }
+
+        if (directory.SubtreeSkipped)
+        {
+            writer.MarkSubtreeSkipped(directory.Directory.RowIndex);
+            skippedCount++;
+        }
+        else if (!writer.CapacityExhausted)
+        {
+            foreach (var child in children)
+            {
+                pending.Enqueue(child);
+            }
+        }
     }
 
     /// <summary>
@@ -172,125 +281,5 @@ internal sealed class EnumerationProducer
             AttributesToSkip = 0,
             BufferSize = EnumerationBufferSizeBytes
         };
-    }
-
-    static void EnumerateOneDirectory(WalkState state, string directoryPath, uint directoryRow,
-        Queue<(string Path, uint RowIndex)> pending, CancellationToken cancellationToken)
-    {
-        var childDirectories = new List<(string Path, uint RowIndex)>();
-
-        try
-        {
-            // Construction itself opens the directory handle and can throw, so it has to sit
-            // inside the same try as the walk: a missing or denied root directory fails here,
-            // not on the first MoveNext.
-            var enumerable = new FileSystemEnumerable<bool>(directoryPath,
-                (ref entry) => state.WriteRow(ref entry, directoryRow, childDirectories),
-                CreateDirectoryEnumerationOptions());
-
-            foreach (var _ in enumerable)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (state.Writer.CapacityExhausted)
-                {
-                    break;
-                }
-            }
-        }
-        catch (Exception exception) when (exception is UnauthorizedAccessException
-                                              or DirectoryNotFoundException or IOException)
-        {
-            // Spec section 7: mark the row, skip the subtree, count it in the drive's warning,
-            // and keep traversing. A denied or vanished directory is not a failed scan.
-            state.Writer.MarkSubtreeSkipped(directoryRow);
-            state.AccessDeniedSubtreeCount++;
-            return;
-        }
-
-        foreach (var child in childDirectories)
-        {
-            pending.Enqueue(child);
-        }
-    }
-
-    /// <summary>
-    ///     Mutable walk state. It exists so the transform delegate can write rows without
-    ///     capturing a ref local, which a lambda cannot do.
-    /// </summary>
-    sealed class WalkState(BlockWriter writer, IReadOnlyCollection<string>? retainedFileNames,
-        DirectoryWalkOptions walk, string rootDirectory)
-    {
-        // Null keeps every file. The lookup matches the enumerator's name span directly, so no string is allocated per entry.
-        readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>>? _retainedFileNames =
-            retainedFileNames is null
-                ? null
-                : new HashSet<string>(retainedFileNames, StringComparer.OrdinalIgnoreCase)
-                    .GetAlternateLookup<ReadOnlySpan<char>>();
-
-        readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> _prunedNames =
-            new HashSet<string>(walk.PrunedDirectoryNames, DirectoryWalkOptions.PathComparer)
-                .GetAlternateLookup<ReadOnlySpan<char>>();
-
-        // Only paths within the root can ever match, so an empty set skips normalizing each directory's path.
-        readonly HashSet<string> _prunedPaths =
-            new(walk.PathsWithin(rootDirectory), DirectoryWalkOptions.PathComparer);
-
-        readonly FileAttributes _prunedAttributes = walk.PrunedDirectoryAttributes;
-        readonly bool _pruneDotDirectories = walk.PruneDotDirectories;
-
-        public BlockWriter Writer { get; } = writer;
-
-        public uint NextRow { get; set; }
-
-        public int AccessDeniedSubtreeCount { get; set; }
-
-        /// <summary>
-        ///     Writes one entry's row from the enumerator's own buffers. Returns whether the entry
-        ///     was a directory; the enumerable's element type is unused, the write is the point.
-        ///     A reparse point (a directory symbolic link or an NTFS junction) is recorded like
-        ///     any other row but never queued for traversal: an MFT record exists for it too, but
-        ///     path resolution does not cross it, and a directory reparse point can point back up
-        ///     its own tree, so following it here would walk forever.
-        /// </summary>
-        public bool WriteRow(ref FileSystemEntry entry, uint parentRow,
-            List<(string Path, uint RowIndex)> childDirectories)
-        {
-            var isDirectory = entry.IsDirectory;
-            if (!isDirectory && _retainedFileNames is { } retained && !retained.Contains(entry.FileName))
-            {
-                return false;
-            }
-
-            var isReparsePoint = (entry.Attributes & FileAttributes.ReparsePoint) != 0;
-            var rowIndex = NextRow;
-            var flags = RowFlags.InUse | (isDirectory ? RowFlags.Directory : RowFlags.None);
-            var size = isDirectory ? 0 : entry.Length;
-
-            var columns = new RowColumns(parentRow, flags, (uint)entry.Attributes, size,
-                entry.LastWriteTimeUtc.UtcDateTime.Ticks,
-                SequenceNumber: 0); // Enumeration has no NTFS sequence number.
-            if (!Writer.TryWriteRow(rowIndex, entry.FileName, columns))
-            {
-                return isDirectory;
-            }
-
-            NextRow = rowIndex + 1;
-            if (isDirectory && !isReparsePoint && !IsPrunedByName(ref entry))
-            {
-                var fullPath = entry.ToFullPath();
-                if (_prunedPaths.Count == 0 || !_prunedPaths.Contains(DirectoryWalkOptions.NormalizePath(fullPath)))
-                {
-                    childDirectories.Add((fullPath, rowIndex));
-                }
-            }
-
-            return isDirectory;
-        }
-
-        /// <summary>The rules that need no path: attributes, a leading dot, and the pruned names.</summary>
-        bool IsPrunedByName(ref FileSystemEntry entry) =>
-            (entry.Attributes & _prunedAttributes) != 0 ||
-            (_pruneDotDirectories && entry.FileName is ['.', ..]) ||
-            _prunedNames.Contains(entry.FileName);
     }
 }

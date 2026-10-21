@@ -30,7 +30,12 @@ public partial class BenchmarkRunner
             return RunNativeTimingsAsync(arguments[1..]);
         }
 
-        _output.WriteLine("Usage: Benchmark.exe <index|compare|native-timings> ...");
+        if (arguments.Length > 0 && arguments[0].Equals("enumeration-walk", StringComparison.OrdinalIgnoreCase))
+        {
+            return RunEnumerationWalkAsync(arguments[1..]);
+        }
+
+        _output.WriteLine("Usage: Benchmark.exe <index|compare|native-timings|enumeration-walk> ...");
         return Task.FromResult(1);
     }
 }
