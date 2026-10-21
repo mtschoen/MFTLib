@@ -115,8 +115,9 @@ public sealed partial class FileIndex
         ///     or cancelled scan never leaves an unreachable mapping, and a no-cache attempt never
         ///     leaves an orphaned temp file, behind. The returned <see cref="BlockFile" /> is the
         ///     caller's to own from here.
-        ///     Exhausted attempts are discarded and retried with geometrically larger capacities,
-        ///     up to the layout's capacity clamp, before a block is completed and returned.
+        ///     A block that runs out of rows or name pool is grown while the walk continues: its rows
+        ///     are copied out, the block is disposed and deleted, and a block with both capacities
+        ///     doubled, up to the layout's capacity clamp, takes them back. No directory is read twice.
         /// </summary>
         BlockFile CreateAndPopulateBlock(string blockPath, bool deleteOnClose,
             EnumerationWalkLimit.Lease walkLease, CancellationToken cancellationToken)
@@ -124,60 +125,111 @@ public sealed partial class FileIndex
             var (slotCapacity, namePoolCapacity) = PlanCapacities(
                 EnumerationProducer.EstimateRowCount(Configuration.RootDirectory));
 
-            while (true)
+            cancellationToken.ThrowIfCancellationRequested();
+            using var growth = new EnumerationBlockGrowth(this, blockPath, deleteOnClose, slotCapacity, namePoolCapacity);
+            var producer = new EnumerationProducer(new EnumerationProducerOptions
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                BlockFile? block = BlockFile.Create(new BlockFileCreateOptions
-                {
-                    Path = blockPath,
-                    VolumeSerial = Configuration.VolumeSerial,
-                    ProducerKind = ProducerKind.Enumeration,
-                    SlotCapacity = slotCapacity,
-                    NamePoolCapacity = namePoolCapacity,
-                    DeleteOnClose = deleteOnClose,
-                    Diagnostics = Options.Diagnostics,
-                    CacheTag = Options.CacheTag,
-                    ScanShape = ExpectedScanShape
-                });
-                try
-                {
-                    var writer = new BlockWriter(block);
-                    var producer = new EnumerationProducer(new EnumerationProducerOptions
-                    {
-                        RootDirectory = Configuration.RootDirectory,
-                        Drive = Drive,
-                        RetainedFileNames = Options.RetainedFileNames,
-                        DirectoryWalk = Options.DirectoryWalk
-                    });
+                RootDirectory = Configuration.RootDirectory,
+                Drive = Drive,
+                RetainedFileNames = Options.RetainedFileNames,
+                DirectoryWalk = Options.DirectoryWalk
+            })
+            {
+                GrowWriter = growth.Grow
+            };
 
-                    var result = producer.Produce(writer, Options.ScanProgress, walkLease, cancellationToken);
-                    var nextSlotCapacity = BlockLayout.DoubleCapacity(slotCapacity);
-                    var nextNamePoolCapacity = BlockLayout.DoubleCapacity(namePoolCapacity);
-                    if (!result.CapacityExhausted ||
-                        (nextSlotCapacity == slotCapacity && nextNamePoolCapacity == namePoolCapacity))
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        writer.Complete(Options.TimeProvider.GetUtcNow().UtcDateTime, null);
-                        var completed = block;
-                        block = null;
-                        return completed;
-                    }
+            producer.Produce(new BlockWriter(growth.Block), Options.ScanProgress, walkLease, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            new BlockWriter(growth.Block).Complete(Options.TimeProvider.GetUtcNow().UtcDateTime, null);
+            return growth.Release();
+        }
 
-                    slotCapacity = nextSlotCapacity;
-                    namePoolCapacity = nextNamePoolCapacity;
+        BlockFile CreateEnumerationBlock(string blockPath, bool deleteOnClose, uint slotCapacity,
+            uint namePoolCapacity) =>
+            BlockFile.Create(new BlockFileCreateOptions
+            {
+                Path = blockPath,
+                VolumeSerial = Configuration.VolumeSerial,
+                ProducerKind = ProducerKind.Enumeration,
+                SlotCapacity = slotCapacity,
+                NamePoolCapacity = namePoolCapacity,
+                DeleteOnClose = deleteOnClose,
+                Diagnostics = Options.Diagnostics,
+                CacheTag = Options.CacheTag,
+                ScanShape = ExpectedScanShape
+            });
+
+        /// <summary>
+        ///     Owns the enumeration block while a walk fills it. <see cref="Grow" /> replaces an exhausted
+        ///     block with one twice as large holding the same rows; disposal releases whatever block is
+        ///     current unless <see cref="Release" /> handed it to the caller.
+        /// </summary>
+        sealed class EnumerationBlockGrowth : IDisposable
+        {
+            readonly DriveRuntime _runtime;
+            readonly string _blockPath;
+            readonly bool _deleteOnClose;
+            uint _slotCapacity;
+            uint _namePoolCapacity;
+            BlockFile? _block;
+
+            public EnumerationBlockGrowth(DriveRuntime runtime, string blockPath, bool deleteOnClose,
+                uint slotCapacity, uint namePoolCapacity)
+            {
+                _runtime = runtime;
+                _blockPath = blockPath;
+                _deleteOnClose = deleteOnClose;
+                _slotCapacity = slotCapacity;
+                _namePoolCapacity = namePoolCapacity;
+                _block = runtime.CreateEnumerationBlock(blockPath, deleteOnClose, slotCapacity, namePoolCapacity);
+            }
+
+            public BlockFile Block => _block ?? throw new ObjectDisposedException(nameof(EnumerationBlockGrowth));
+
+            /// <summary>
+            ///     Copies the exhausted block's rows out, disposes and deletes it, and restores the rows into a
+            ///     block with both capacities doubled. Null when the layout's capacity clamp allows no growth.
+            /// </summary>
+            public BlockWriter? Grow(BlockWriter exhausted)
+            {
+                var nextSlotCapacity = BlockLayout.DoubleCapacity(_slotCapacity);
+                var nextNamePoolCapacity = BlockLayout.DoubleCapacity(_namePoolCapacity);
+                if (nextSlotCapacity == _slotCapacity && nextNamePoolCapacity == _namePoolCapacity)
+                {
+                    return null;
                 }
-                finally
-                {
-                    block?.Dispose();
-                }
 
-                // Dispose first: private blocks delete on close; canonical attempts need an
+                var snapshot = BlockRowSnapshot.Capture(exhausted.Block);
+                // Dispose first: private blocks delete on close; canonical blocks need an
                 // explicit deletion while the caller still holds their cache owner lock.
-                if (!deleteOnClose)
+                Dispose();
+                if (!_deleteOnClose)
                 {
-                    File.Delete(blockPath);
-                    Options.Diagnostics?.Invoke($"Deleted block file '{blockPath}': enumeration capacity exhausted; retrying with a larger block.");
+                    File.Delete(_blockPath);
                 }
+
+                _slotCapacity = nextSlotCapacity;
+                _namePoolCapacity = nextNamePoolCapacity;
+                _block = _runtime.CreateEnumerationBlock(_blockPath, _deleteOnClose, _slotCapacity, _namePoolCapacity);
+                snapshot.RestoreInto(_block);
+                _runtime.Options.Diagnostics?.Invoke(
+                    $"Grew block file '{_blockPath}': enumeration capacity exhausted at {snapshot.RowCount} rows; " +
+                    $"the walk continues with {_slotCapacity} slots and {_namePoolCapacity} name-pool bytes.");
+                return new BlockWriter(_block);
+            }
+
+            /// <summary>Hands the current block to the caller, who owns it from here.</summary>
+            public BlockFile Release()
+            {
+                var released = Block;
+                _block = null;
+                return released;
+            }
+
+            public void Dispose()
+            {
+                _block?.Dispose();
+                _block = null;
             }
         }
 

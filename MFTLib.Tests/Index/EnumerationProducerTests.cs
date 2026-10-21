@@ -164,7 +164,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
     {
         var options = EnumerationProducer.CreateDirectoryEnumerationOptions();
 
-        Assert.AreEqual(64 * 1024, options.BufferSize);
+        Assert.AreEqual(0, options.BufferSize);
     }
 
     [TestMethod]

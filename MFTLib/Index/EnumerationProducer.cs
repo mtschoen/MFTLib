@@ -18,12 +18,12 @@ internal sealed class EnumerationProducer
     const uint EstimatedNameBytesPerRow = 48;
 
     /// <summary>
-    ///     Bytes the OS fills per directory fetch, sized up so a network share pays one round
-    ///     trip per buffer. Never worse than the framework default on local NTFS or a network
-    ///     share and 44% faster on local NTFS; 1 MB regresses badly on directory-heavy trees.
+    ///     Bytes the OS fills per directory fetch; zero keeps the framework default. On a local NTFS
+    ///     tree of mostly small directories a 64 KB buffer cost about 10% wall time and 15% CPU
+    ///     against the default, because every directory open pays for the larger fetch.
     ///     Docs: https://learn.microsoft.com/en-us/dotnet/api/system.io.enumerationoptions.buffersize
     /// </summary>
-    internal const int EnumerationBufferSizeBytes = 64 * 1024;
+    internal const int EnumerationBufferSizeBytes = 0;
 
     /// <summary>Creates a producer that walks the tree named by the options.</summary>
     /// <param name="options">The root directory to walk and the drive letter to report progress under.</param>
@@ -37,14 +37,22 @@ internal sealed class EnumerationProducer
     /// <summary>The root directory and progress drive letter fixed at construction; they never change during a walk.</summary>
     EnumerationProducerOptions Options { get; }
 
+    /// <summary>
+    ///     Replaces an exhausted writer with one over a larger block that already holds every row written so
+    ///     far, so the walk continues where it stopped instead of starting again. Null, or a null result,
+    ///     stops the walk with the block marked capacity exhausted.
+    /// </summary>
+    internal Func<BlockWriter, BlockWriter?>? GrowWriter { get; init; }
+
     internal Action? HandoffWaiting { get; init; }
     internal Action<string>? HandoffPublished { get; init; }
     internal Action<string, int>? BeforeMoveNext { get; init; }
 
     /// <summary>
     ///     Samples only the root's entries and counts one more root-sized level per root
-    ///     directory rather than paying for a full pre-count walk. FileIndex retries an exhausted
-    ///     attempt with geometrically larger capacities, up to the block layout's capacity clamp.
+    ///     directory rather than paying for a full pre-count walk. An underestimate costs a block
+    ///     copy, not a second walk: FileIndex grows an exhausted block geometrically while the walk
+    ///     continues, up to the block layout's capacity clamp.
     /// </summary>
     public static uint EstimateRowCount(string rootDirectory)
     {
@@ -84,8 +92,9 @@ internal sealed class EnumerationProducer
     ///     Walks the tree concurrently, writing the root as row 0 and every entry after it into
     ///     the writer. A directory the walk options prune is written but not entered; the root is
     ///     never pruned. The walk stores its access-denied count in the header but does not call
-    ///     <see cref="BlockWriter.Complete" />; the caller does. The walk stops early once the writer
-    ///     reports capacity exhausted.
+    ///     <see cref="BlockWriter.Complete" />; the caller does. A row that does not fit asks
+    ///     <see cref="GrowWriter" /> for a larger block and continues in it; the walk stops early only
+    ///     when no larger block is available.
     /// </summary>
     /// <param name="writer">The block to write rows into.</param>
     /// <param name="progress">Receives one sample after each directory is enumerated, on the calling thread; may be null.</param>
@@ -106,7 +115,7 @@ internal sealed class EnumerationProducer
         cancellationToken.ThrowIfCancellationRequested();
 
         var workers = Math.Min(maximumWorkers, Environment.ProcessorCount);
-        if (!writer.TryWriteRow(0, Options.RootDirectory, ReadRootColumns(Options.RootDirectory)))
+        if (!TryWriteRowGrowing(ref writer, 0, Options.RootDirectory, ReadRootColumns(Options.RootDirectory)))
         {
             return new EnumerationResult(writer.RowCount, 0, writer.CapacityExhausted);
         }
@@ -129,7 +138,7 @@ internal sealed class EnumerationProducer
         ExceptionDispatchInfo? productionFailure = null;
         try
         {
-            DriveFrontier(writer, progress, scheduler, pending, ref state, cancellationToken);
+            DriveFrontier(ref writer, progress, scheduler, pending, ref state, cancellationToken);
         }
         catch (Exception exception)
         {
@@ -145,7 +154,7 @@ internal sealed class EnumerationProducer
         return new EnumerationResult(writer.RowCount, state.SkippedCount, writer.CapacityExhausted);
     }
 
-    void DriveFrontier(BlockWriter writer, IProgress<IndexScanProgress>? progress,
+    void DriveFrontier(ref BlockWriter writer, IProgress<IndexScanProgress>? progress,
         EnumerationWalkScheduler scheduler, Queue<EnumerationDirectoryWork> pending,
         ref (uint NextRow, int SkippedCount) state, CancellationToken cancellationToken)
     {
@@ -168,7 +177,7 @@ internal sealed class EnumerationProducer
                 completed = scheduler.Take();
             }
 
-            CommitDirectory(completed, writer, pending, ref state.NextRow, ref state.SkippedCount, cancellationToken);
+            CommitDirectory(completed, ref writer, pending, ref state.NextRow, ref state.SkippedCount, cancellationToken);
             progress?.Report(new IndexScanProgress(Options.Drive, IndexScanPhase.Enumerating, state.NextRow)
             {
                 CurrentDirectory = completed.Directory.Path
@@ -181,7 +190,7 @@ internal sealed class EnumerationProducer
         }
     }
 
-    internal static void CommitDirectory(EnumerationDirectoryBuffer directory, BlockWriter writer,
+    void CommitDirectory(EnumerationDirectoryBuffer directory, ref BlockWriter writer,
         Queue<EnumerationDirectoryWork> pending, ref uint nextRow, ref int skippedCount,
         CancellationToken cancellationToken)
     {
@@ -190,7 +199,7 @@ internal sealed class EnumerationProducer
         {
             cancellationToken.ThrowIfCancellationRequested();
             var rowIndex = nextRow;
-            if (!writer.TryWriteRow(rowIndex, directory.Name(entry), entry.Columns))
+            if (!TryWriteRowGrowing(ref writer, rowIndex, directory.Name(entry), entry.Columns))
             {
                 break;
             }
@@ -215,6 +224,22 @@ internal sealed class EnumerationProducer
                 pending.Enqueue(child);
             }
         }
+    }
+
+    /// <summary>Writes one row, growing the block through <see cref="GrowWriter" /> for as long as it does not fit.</summary>
+    bool TryWriteRowGrowing(ref BlockWriter writer, uint rowIndex, ReadOnlySpan<char> name, in RowColumns columns)
+    {
+        while (!writer.TryWriteRow(rowIndex, name, columns))
+        {
+            if (GrowWriter?.Invoke(writer) is not { } grown)
+            {
+                return false;
+            }
+
+            writer = grown;
+        }
+
+        return true;
     }
 
     /// <summary>

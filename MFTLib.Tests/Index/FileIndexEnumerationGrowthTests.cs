@@ -4,7 +4,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
 
-/// <summary>An enumeration scan grows its block until the whole tree fits.</summary>
+/// <summary>An enumeration scan grows its block while the walk continues, until the whole tree fits.</summary>
 [TestClass]
 [DoNotParallelize]
 public sealed class FileIndexEnumerationGrowthTests : IDisposable
@@ -37,30 +37,20 @@ public sealed class FileIndexEnumerationGrowthTests : IDisposable
     public void Dispose() => _fixture.Dispose();
 
     [TestMethod]
-    public async Task Open_ATreeBeyondTheFirstCapacityPlanProducesACompleteBlock()
+    public async Task Open_ATreeBeyondTheFirstCapacityPlanProducesACompleteBlockReadingEachDirectoryOnce()
     {
         var observation = new EnumerationReadObservation();
         EnumerationWalkLimit.Hooks._directoryEntered = observation.Enter;
         EnumerationWalkLimit.Hooks._directoryExited = observation.Exit;
         try
         {
-            var retryObserved = false;
             var diagnostics = new List<string>();
-            var options = _fixture.Options() with
-            {
-                Diagnostics = line =>
-                {
-                    diagnostics.Add(line);
-                    if (line.Contains("capacity exhausted", StringComparison.OrdinalIgnoreCase))
-                    {
-                        Assert.AreEqual(0, observation.Active);
-                        retryObserved = true;
-                    }
-                }
-            };
+            var options = _fixture.Options() with { Diagnostics = diagnostics.Add };
 
             await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
-            Assert.IsTrue(retryObserved);
+            Assert.IsTrue(diagnostics.Any(line => line.Contains("capacity exhausted", StringComparison.OrdinalIgnoreCase)));
+            Assert.IsTrue(observation.Visits.Values.All(visits => visits == 1),
+                "Growing the block must not read any directory a second time.");
             Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
             Assert.IsFalse(index.Drives.Single().Block!.IsCapacityExhausted);
             Assert.AreEqual((uint)FileCount + 3, index.Drives.Single().Block!.LiveRowCount);
