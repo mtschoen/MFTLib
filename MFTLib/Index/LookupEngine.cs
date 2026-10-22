@@ -69,7 +69,7 @@ internal static class LookupEngine
     ///     inherits the host's rule, which is the same decision
     ///     <c>FileIndex.TryOpenExistingBlock</c> already makes when it compares a cached root.
     /// </summary>
-    internal static bool IsCaseSensitive(DriveBlock driveBlock)
+    static bool IsCaseSensitive(DriveBlock driveBlock)
     {
         ArgumentNullException.ThrowIfNull(driveBlock);
         return driveBlock.Kind.IsCaseSensitive;

@@ -15,7 +15,7 @@ partial class SampleHost
         {
             foreach (var letter in parsed.Drives)
             {
-                _output.WriteLine($"=== Drive {letter}: ===");
+                await _output.WriteLineAsync($"=== Drive {letter}: ===").ConfigureAwait(false);
                 try
                 {
                     var index = await OpenDriveAsync(source, parsed, resolveDrive(letter), cancellationToken).ConfigureAwait(false);
@@ -24,10 +24,10 @@ partial class SampleHost
                 catch (Exception exception)
                 {
                     openFailures++;
-                    _output.WriteLine($"Error on drive {letter}: {exception.Message}");
+                    await _output.WriteLineAsync($"Error on drive {letter}: {exception.Message}").ConfigureAwait(false);
                 }
 
-                _output.WriteLine(string.Empty);
+                await _output.WriteLineAsync(string.Empty).ConfigureAwait(false);
             }
 
             foreach (var (_, index, _) in watched)
@@ -42,9 +42,9 @@ partial class SampleHost
             {
                 operations.AddRange(Report("stop", await index.StopWatchingAsync(index.Drives.Select(drive => drive.Drive), cancellationToken).ConfigureAwait(false)));
                 var rows = index.Enumerate(new SearchQuery(null), cancellationToken).Count();
-                _output.WriteLine($"=== Drive {letter}: ===");
-                _output.WriteLine($"Saw {counter.Count} changes {waited}; the index now holds {rows} entries");
-                _output.WriteLine($"=== Drive {letter}: done ===");
+                await _output.WriteLineAsync($"=== Drive {letter}: ===").ConfigureAwait(false);
+                await _output.WriteLineAsync($"Saw {counter.Count} changes {waited}; the index now holds {rows} entries").ConfigureAwait(false);
+                await _output.WriteLineAsync($"=== Drive {letter}: done ===").ConfigureAwait(false);
             }
         }
         finally
@@ -72,12 +72,12 @@ partial class SampleHost
         var seconds = parsed.Seconds ?? (IsUnattended() || !IsInteractive ? WatchArguments.DefaultSeconds : null);
         if (seconds is { } length)
         {
-            _output.WriteLine($"Watching {drives} for {length} seconds.");
+            await _output.WriteLineAsync($"Watching {drives} for {length} seconds.").ConfigureAwait(false);
             await Task.Delay(TimeSpan.FromSeconds(length), _timeProvider, cancellationToken).ConfigureAwait(false);
             return $"in {length} seconds";
         }
 
-        _output.WriteLine($"Watching {drives}. Press any key to stop.");
+        await _output.WriteLineAsync($"Watching {drives}. Press any key to stop.").ConfigureAwait(false);
         // A blocked read cannot be cancelled, so cancellation ends the wait and leaves the read behind.
         await Task.Run(() => _input.Read(), CancellationToken.None).WaitAsync(cancellationToken).ConfigureAwait(false);
         return "until a key was pressed";

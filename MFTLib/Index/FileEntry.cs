@@ -41,14 +41,12 @@ namespace MFTLib.Index;
 /// </remarks>
 public readonly partial record struct FileEntry
 {
-    readonly DriveBlock? _driveBlock;
-    readonly uint _rowIndex;
     readonly ushort _sequenceNumber;
 
     FileEntry(DriveBlock driveBlock, uint rowIndex)
     {
-        _driveBlock = driveBlock;
-        _rowIndex = rowIndex;
+        NamedDriveBlock = driveBlock;
+        RowIndex = rowIndex;
         _sequenceNumber = SequenceNumberOf(driveBlock, rowIndex);
     }
 
@@ -59,7 +57,7 @@ public readonly partial record struct FileEntry
         return new FileEntry(driveBlock, rowIndex);
     }
 
-    internal uint RowIndex => _rowIndex;
+    internal uint RowIndex { get; }
 
     /// <summary>
     ///     The drive block for release-checked data access. Row-backed reads, Drive and RecordKey
@@ -69,7 +67,7 @@ public readonly partial record struct FileEntry
     {
         get
         {
-            var driveBlock = _driveBlock ?? throw new InvalidOperationException(
+            var driveBlock = NamedDriveBlock ?? throw new InvalidOperationException(
                 "<invalid FileEntry> does not reference a drive block.");
             if (driveBlock.IsReleased)
             {
@@ -83,7 +81,7 @@ public readonly partial record struct FileEntry
     ///     The row this handle was minted for, refused once a newer file has reused its slot.
     /// </summary>
     internal ref readonly FileRow Row =>
-        ref Unsafe.AsRef(in CurrentBlock().Rows[(int)_rowIndex]);
+        ref Unsafe.AsRef(in CurrentBlock().Rows[(int)RowIndex]);
 
     /// <summary>
     ///     The sequence number the drive block holds for a row: the incarnation of the file there. Only an
@@ -99,9 +97,9 @@ public readonly partial record struct FileEntry
     /// </summary>
     /// <exception cref="InvalidOperationException">This is the default entry value.</exception>
     /// <exception cref="ObjectDisposedException">The owning <see cref="FileIndex" /> has been disposed.</exception>
-    internal bool IsSuperseded => IsSupersededIn(DriveBlock);
+    bool IsSuperseded => IsSupersededIn(DriveBlock);
 
-    bool IsSupersededIn(DriveBlock driveBlock) => _sequenceNumber != SequenceNumberOf(driveBlock, _rowIndex);
+    bool IsSupersededIn(DriveBlock driveBlock) => _sequenceNumber != SequenceNumberOf(driveBlock, RowIndex);
 
     /// <summary>
     ///     The one place a column read learns its slot was reused. Every row-backed getter reads through
@@ -124,7 +122,7 @@ public readonly partial record struct FileEntry
     ///     The drive block this handle names, or null for the default value. Unlike <see cref="DriveBlock" /> it
     ///     never throws, so equality holds for default and released handles.
     /// </summary>
-    internal DriveBlock? NamedDriveBlock => _driveBlock;
+    internal DriveBlock? NamedDriveBlock { get; }
 
     /// <summary>
     ///     <see cref="IsSuperseded" /> without the released check, for a caller that already holds a borrow
@@ -140,17 +138,17 @@ public readonly partial record struct FileEntry
     /// <param name="other">The handle to compare with.</param>
     /// <returns>true when both name the same file incarnation in the same drive block.</returns>
     public readonly bool Equals(FileEntry other) =>
-        ReferenceEquals(_driveBlock, other._driveBlock) && _rowIndex == other._rowIndex &&
+        ReferenceEquals(NamedDriveBlock, other.NamedDriveBlock) && RowIndex == other.RowIndex &&
         _sequenceNumber == other._sequenceNumber;
 
     /// <summary>Hashes the same drive block, row index and sequence number <see cref="Equals(FileEntry)" /> compares. Available after the block is released.</summary>
     /// <returns>The hash code.</returns>
     public override readonly int GetHashCode() =>
-        HashCode.Combine(_driveBlock is { } driveBlock ? RuntimeHelpers.GetHashCode(driveBlock) : 0, _rowIndex,
+        HashCode.Combine(NamedDriveBlock is { } driveBlock ? RuntimeHelpers.GetHashCode(driveBlock) : 0, RowIndex,
             _sequenceNumber);
 
     /// <summary>False for the default value, which references no drive block. Remains readable and true after that block is released.</summary>
-    public bool IsValid => _driveBlock is not null;
+    public bool IsValid => NamedDriveBlock is not null;
 
     /// <summary>
     ///     True once the drive block behind this handle has been released by index disposal.
@@ -159,7 +157,7 @@ public readonly partial record struct FileEntry
     ///     which references no drive block: <see cref="IsValid" /> identifies that state, while <see cref="IsDeleted" /> identifies
     ///     a tombstoned or superseded row on an unreleased block.
     /// </summary>
-    public bool IsDisposed => _driveBlock is { IsReleased: true };
+    public bool IsDisposed => NamedDriveBlock is { IsReleased: true };
 
     /// <summary>Gets the configured logical drive key, including for virtual dump drives. Equals <see cref="IndexRecordKey.Drive" /> on <see cref="RecordKey" />.</summary>
     /// <exception cref="InvalidOperationException">This is the default entry value.</exception>
@@ -174,14 +172,14 @@ public readonly partial record struct FileEntry
         get
         {
             var driveBlock = DriveBlock;
-            return new IndexRecordKey(driveBlock.Drive, _rowIndex, driveBlock.ProducerKind);
+            return new IndexRecordKey(driveBlock.Drive, RowIndex, driveBlock.ProducerKind);
         }
     }
 
     /// <summary>Gets the current file or directory name. This allocates a managed string.</summary>
     /// <exception cref="InvalidOperationException">This is the default entry value.</exception>
     /// <exception cref="ObjectDisposedException">The owning <see cref="FileIndex" /> has been disposed.</exception>
-    public string Name => new(NamePool.ReadRowName(CurrentBlock(), _rowIndex));
+    public string Name => new(NamePool.ReadRowName(CurrentBlock(), RowIndex));
 
     /// <summary>
     ///     Gets the file length in bytes, or zero for directories and unknown sizes. This is the length the
@@ -221,7 +219,7 @@ public readonly partial record struct FileEntry
         get
         {
             var driveBlock = DriveBlock;
-            return IsSupersededIn(driveBlock) || driveBlock.Block.Rows[(int)_rowIndex].IsDeleted;
+            return IsSupersededIn(driveBlock) || driveBlock.Block.Rows[(int)RowIndex].IsDeleted;
         }
     }
 

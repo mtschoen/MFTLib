@@ -37,7 +37,7 @@ struct ByHandleFileInformation
     public uint FileIndexLow;
 }
 
-static class Kernel32
+static partial class Kernel32
 {
     internal static readonly Win32Hooks Hooks = new();
 
@@ -54,9 +54,9 @@ static class Kernel32
         }
     }
 
-    [DllImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true,
-        CharSet = CharSet.Unicode, ExactSpelling = true)]
-    static extern SafeFileHandle NativeCreateFile(
+    [LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true,
+        StringMarshalling = StringMarshalling.Utf16)]
+    private static partial SafeFileHandle NativeCreateFile(
         string lpFileName,
         uint dwDesiredAccess,
         uint dwShareMode,
@@ -65,8 +65,9 @@ static class Kernel32
         uint dwFlagsAndAttributes,
         IntPtr hTemplateFile);
 
-    [DllImport("kernel32.dll", EntryPoint = "DeviceIoControl", SetLastError = true)]
-    static extern bool NativeDeviceIoControl(
+    [LibraryImport("kernel32.dll", EntryPoint = "DeviceIoControl", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool NativeDeviceIoControl(
         SafeFileHandle hDevice,
         uint dwIoControlCode,
         IntPtr lpInBuffer,
@@ -76,18 +77,21 @@ static class Kernel32
         out uint lpBytesReturned,
         IntPtr lpOverlapped);
 
-    [DllImport("kernel32.dll", EntryPoint = "GetFileInformationByHandle", SetLastError = true)]
-    internal static extern bool GetFileInformationByHandle(
+    [LibraryImport("kernel32.dll", EntryPoint = "GetFileInformationByHandle", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetFileInformationByHandle(
         SafeFileHandle hFile,
         out ByHandleFileInformation lpFileInformation);
 
-    [DllImport("kernel32.dll", EntryPoint = "FlushViewOfFile", SetLastError = true)]
-    internal static extern unsafe bool FlushViewOfFile(byte* baseAddress, nuint numberOfBytesToFlush);
+    [LibraryImport("kernel32.dll", EntryPoint = "FlushViewOfFile", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static unsafe partial bool FlushViewOfFile(byte* baseAddress, nuint numberOfBytesToFlush);
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-    [DllImport("kernel32.dll", EntryPoint = "GetVolumeInformationW", SetLastError = true,
-        CharSet = CharSet.Unicode, ExactSpelling = true)]
-    internal static extern bool GetVolumeInformationW(
+    [LibraryImport("kernel32.dll", EntryPoint = "GetVolumeInformationW", SetLastError = true,
+        StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetVolumeInformationW(
         string rootPathName, IntPtr volumeNameBuffer, uint volumeNameSize,
         out uint volumeSerialNumber, out uint maximumComponentLength, out uint fileSystemFlags,
         IntPtr fileSystemNameBuffer, uint fileSystemNameSize);

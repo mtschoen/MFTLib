@@ -23,7 +23,7 @@ internal sealed class EnumerationProducer
     ///     against the default, because every directory open pays for the larger fetch.
     ///     Docs: https://learn.microsoft.com/en-us/dotnet/api/system.io.enumerationoptions.buffersize
     /// </summary>
-    internal const int EnumerationBufferSizeBytes = 0;
+    const int EnumerationBufferSizeBytes = 0;
 
     /// <summary>Creates a producer that walks the tree named by the options.</summary>
     /// <param name="options">The root directory to walk and the drive letter to report progress under.</param>

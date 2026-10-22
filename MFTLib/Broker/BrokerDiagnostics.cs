@@ -36,7 +36,7 @@ public static class BrokerDiagnostics
 
     internal static string LogFileName => $"{LogFilePrefix}{_role}{LogFileSuffix}";
 
-    internal static bool IsValidRole(string? role) =>
+    static bool IsValidRole(string? role) =>
         !string.IsNullOrEmpty(role) && role.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
 
     internal static bool IsValidLogFileName(string fileName) =>

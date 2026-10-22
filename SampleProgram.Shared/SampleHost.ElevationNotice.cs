@@ -62,14 +62,13 @@ partial class SampleHost
         {
             _messageBeep(MessageBeepIconExclamation);
             var outcome = ShowElevationNotice(BuildElevationNotice(arguments, reason, previousDismissalTooFast, need));
-            if (outcome is not { } answered || answered.AnsweredAt - answered.ShownAt >= ElevationNoticeTimeout)
+            if (outcome is not (var result, var shownAt, var answeredAt) || answeredAt - shownAt >= ElevationNoticeTimeout)
             {
                 _output.WriteLine("The heads-up dialog was not answered in time; treating it as Cancel.");
                 return false;
             }
 
-            var result = answered.Button;
-            var onScreen = answered.AnsweredAt - answered.ShownAt;
+            var onScreen = answeredAt - shownAt;
 
             // A result that is neither button means the dialog failed, so asking again would never end.
             if (result != MessageBoxResultOk && result != MessageBoxResultCancel)
@@ -153,9 +152,10 @@ partial class SampleHost
         return arguments.Select(argument => argument.Length == 0 ? "  <empty>" : $"  {argument}");
     }
 
-    [DllImport("user32.dll", EntryPoint = "MessageBoxW", CharSet = CharSet.Unicode)]
-    static extern int MessageBoxNative(IntPtr window, string text, string caption, uint type);
+    [LibraryImport("user32.dll", EntryPoint = "MessageBoxW", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int MessageBoxNative(IntPtr window, string text, string caption, uint type);
 
-    [DllImport("user32.dll", EntryPoint = "MessageBeep")]
-    static extern bool MessageBeepNative(uint type);
+    [LibraryImport("user32.dll", EntryPoint = "MessageBeep")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool MessageBeepNative(uint type);
 }

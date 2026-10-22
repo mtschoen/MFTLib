@@ -11,7 +11,6 @@ internal sealed class BlockRowSnapshot
     readonly FileRow[] _rows;
     readonly ushort[] _sequenceNumbers;
     readonly char[] _names;
-    readonly uint _namePoolUsed;
     readonly uint _liveRowCount;
 
     BlockRowSnapshot(FileRow[] rows, ushort[] sequenceNumbers, char[] names, uint namePoolUsed, uint liveRowCount)
@@ -19,7 +18,7 @@ internal sealed class BlockRowSnapshot
         _rows = rows;
         _sequenceNumbers = sequenceNumbers;
         _names = names;
-        _namePoolUsed = namePoolUsed;
+        NamePoolUsed = namePoolUsed;
         _liveRowCount = liveRowCount;
     }
 
@@ -27,7 +26,7 @@ internal sealed class BlockRowSnapshot
     public uint RowCount => (uint)_rows.Length;
 
     /// <summary>Name-pool bytes the snapshot holds; the target block needs at least this name-pool capacity.</summary>
-    public uint NamePoolUsed => _namePoolUsed;
+    uint NamePoolUsed { get; }
 
     /// <summary>Copies the used regions and counts of <paramref name="block" />.</summary>
     /// <exception cref="ArgumentNullException"><paramref name="block" /> is null.</exception>
@@ -59,7 +58,7 @@ internal sealed class BlockRowSnapshot
             throw new ArgumentException("A snapshot restores only into an empty block.", nameof(target));
         }
 
-        if (header.SlotCapacity < RowCount || header.NamePoolCapacity < _namePoolUsed)
+        if (header.SlotCapacity < RowCount || header.NamePoolCapacity < NamePoolUsed)
         {
             throw new ArgumentException("The target block is smaller than the snapshot.", nameof(target));
         }
@@ -67,7 +66,7 @@ internal sealed class BlockRowSnapshot
         _rows.CopyTo(target.Rows);
         _sequenceNumbers.CopyTo(target.SequenceNumbers);
         _names.CopyTo(target.NamePoolCharacters);
-        header.NamePoolUsed = _namePoolUsed;
+        header.NamePoolUsed = NamePoolUsed;
         header.LiveRowCount = _liveRowCount;
         header.RowCount = RowCount;
     }

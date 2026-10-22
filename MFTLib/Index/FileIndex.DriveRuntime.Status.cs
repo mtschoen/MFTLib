@@ -47,7 +47,7 @@ public sealed partial class FileIndex
         ///     replacement has not registered yet, and <see cref="WatchState.NotStarted" />
         ///     otherwise. The caller holds <see cref="FileIndex._stateLock" />.
         /// </summary>
-        public WatchState GetWatchStateLocked()
+        WatchState GetWatchStateLocked()
         {
             if (RetryingLostCatchUp || RecoveryState == RecoveryState.Recovering)
             {
@@ -75,7 +75,7 @@ public sealed partial class FileIndex
         ///     only ever noted for a drive with a block: a watch is requested only against a block,
         ///     and blocks are never removed. The caller holds <see cref="FileIndex._stateLock" />.
         /// </summary>
-        public DriveWatchStatus DescribeWatchLocked()
+        DriveWatchStatus DescribeWatchLocked()
         {
             var driveBlock = Block ?? throw new InvalidOperationException($"Drive {Drive} has no block.");
             return new DriveWatchStatus

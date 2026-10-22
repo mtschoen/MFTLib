@@ -100,7 +100,7 @@ partial class SampleHost
         };
         if (drive is not null)
         {
-            _output.WriteLine($"Indexing {drive.Drive}: root {drive.RootDirectory}, serial {drive.VolumeSerial}, producer {drive.Producer}.");
+            await _output.WriteLineAsync($"Indexing {drive.Drive}: root {drive.RootDirectory}, serial {drive.VolumeSerial}, producer {drive.Producer}.").ConfigureAwait(false);
             options = options with
             {
                 Drives = [drive],

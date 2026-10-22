@@ -49,6 +49,6 @@ partial class SampleHost
         return GetConsoleProcessList(attached, (uint)attached.Length) == 1;
     }
 
-    [DllImport("kernel32.dll")]
-    static extern uint GetConsoleProcessList(uint[] processList, uint processCount);
+    [LibraryImport("kernel32.dll")]
+    private static partial uint GetConsoleProcessList(uint[] processList, uint processCount);
 }

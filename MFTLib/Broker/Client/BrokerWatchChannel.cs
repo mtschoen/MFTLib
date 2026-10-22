@@ -10,7 +10,7 @@ namespace MFTLib;
 /// </summary>
 internal sealed class BrokerWatchChannel(BrokerDriveChannel channel) : IIndexDriveWatch
 {
-    public DriveKey Drive { get; } = channel.Drive;
+    DriveKey Drive { get; } = channel.Drive;
 
     /// <summary>
     ///     Yields the drive's batches and its caught-up marker. The host's <c>Error</c> frame throws

@@ -27,7 +27,7 @@ internal static partial class BrokerProtocol
             return this;
         }
 
-        public PayloadWriter UInt64(ulong value)
+        PayloadWriter UInt64(ulong value)
         {
             BinaryPrimitives.WriteUInt64LittleEndian(_payload.GetSpan(8), value);
             _payload.Advance(8);
@@ -156,7 +156,7 @@ internal static partial class BrokerProtocol
 
         // A count of items that each take at least minimumItemBytes; a count the remaining bytes
         // cannot hold is malformed, so a garbled count never sizes an allocation.
-        public int Count(int minimumItemBytes)
+        int Count(int minimumItemBytes)
         {
             var count = Int32();
             if (count < 0 || count > Remaining / minimumItemBytes)

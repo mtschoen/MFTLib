@@ -28,7 +28,7 @@ internal sealed partial class JournalBrokerHost
 
         // A closed pipe cancels the wait and takes the scan out of the queue; its source never runs.
         channel.Pipe.Queued();
-        var registration = await _parseThreads.AdmitAsync(cancellationToken).ConfigureAwait(false);
+        var registration = await ParseThreads.AdmitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             ScanOutput output;

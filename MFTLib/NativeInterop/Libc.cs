@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace MFTLib.NativeInterop;
 
-static class Libc
+static partial class Libc
 {
     /// <summary>
     ///     The native <c>MS_SYNC | MS_INVALIDATE</c> flags for <see cref="msync" />:
@@ -24,6 +24,6 @@ static class Libc
         throw new PlatformNotSupportedException($"No msync flag is known for platform {platform}.");
     }
 
-    [DllImport("libc", SetLastError = true)]
-    internal static extern unsafe int msync(byte* address, nuint length, int flags);
+    [LibraryImport("libc", SetLastError = true)]
+    internal static unsafe partial int msync(byte* address, nuint length, int flags);
 }

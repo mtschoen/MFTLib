@@ -21,7 +21,7 @@ internal static class MftBlockCapacity
     ///     Ceiling for an estimated row count, leaving room for the slot headroom that
     ///     <see cref="BlockLayout.ComputeSlotCapacity" /> adds on top of it.
     /// </summary>
-    public const uint MaximumEstimatedRowCount = uint.MaxValue / 2;
+    const uint MaximumEstimatedRowCount = uint.MaxValue / 2;
 
     /// <summary>
     ///     Estimates the row count from NTFS volume information, falling back to

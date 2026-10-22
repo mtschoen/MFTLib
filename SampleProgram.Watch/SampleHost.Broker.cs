@@ -36,12 +36,12 @@ partial class SampleHost
 
         if (session.Ended.IsCompleted)
         {
-            _output.WriteLine($"Broker ended: {await session.Ended.ConfigureAwait(false)}");
+            await _output.WriteLineAsync($"Broker ended: {await session.Ended.ConfigureAwait(false)}").ConfigureAwait(false);
         }
 
         if (failureCount > 0)
         {
-            _output.WriteLine($"{failureCount} drive operation(s) failed.");
+            await _output.WriteLineAsync($"{failureCount} drive operation(s) failed.").ConfigureAwait(false);
         }
 
         return failureCount > 0 ? 1 : 0;
@@ -110,7 +110,7 @@ partial class SampleHost
         Func<string, IndexedDrive> resolveDrive,
         CancellationToken cancellationToken)
     {
-        _output.WriteLine($"=== Drive {letter}: ===");
+        await _output.WriteLineAsync($"=== Drive {letter}: ===").ConfigureAwait(false);
         var succeeded = true;
         try
         {
@@ -129,15 +129,15 @@ partial class SampleHost
                     break;
             }
 
-            _output.WriteLine($"=== Drive {letter}: done ===");
+            await _output.WriteLineAsync($"=== Drive {letter}: done ===").ConfigureAwait(false);
         }
         catch (Exception exception)
         {
             succeeded = false;
-            _output.WriteLine($"Error on drive {letter}: {exception.Message}");
+            await _output.WriteLineAsync($"Error on drive {letter}: {exception.Message}").ConfigureAwait(false);
         }
 
-        _output.WriteLine(string.Empty);
+        await _output.WriteLineAsync(string.Empty).ConfigureAwait(false);
         return succeeded;
     }
 
@@ -145,7 +145,7 @@ partial class SampleHost
     // threads and can overlap or arrive out of order, so the line carries its own count and the write is serialized.
     internal sealed class DriveOpenedReporter(TextWriter output) : IProgress<IndexDriveOpened>
     {
-        readonly object _gate = new();
+        readonly Lock _gate = new();
 
         public void Report(IndexDriveOpened value)
         {

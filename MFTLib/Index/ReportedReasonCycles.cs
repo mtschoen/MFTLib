@@ -23,7 +23,7 @@ namespace MFTLib.Index;
 /// </summary>
 internal sealed class ReportedReasonCycles
 {
-    internal const UsnReason ModificationReasons = UsnReason.DataOverwrite
+    const UsnReason ModificationReasons = UsnReason.DataOverwrite
         | UsnReason.DataExtend
         | UsnReason.DataTruncation
         | UsnReason.NamedDataOverwrite

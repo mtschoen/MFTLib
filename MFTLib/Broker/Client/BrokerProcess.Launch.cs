@@ -76,7 +76,10 @@ internal sealed partial class BrokerProcess
         }
         finally
         {
-            server?.Dispose();
+            if (server is not null)
+            {
+                await server.DisposeAsync().ConfigureAwait(false);
+            }
         }
     }
 

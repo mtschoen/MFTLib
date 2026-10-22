@@ -11,11 +11,11 @@ namespace MFTLib;
 /// </summary>
 internal sealed class MftDumpRecordValidation
 {
-    internal const string NoRootMessage = "The dump has no valid allocated root record.";
+    const string NoRootMessage = "The dump has no valid allocated root record.";
 
-    internal const string DuplicateRecordMessage = "The dump contains duplicate base record numbers.";
+    const string DuplicateRecordMessage = "The dump contains duplicate base record numbers.";
 
-    internal const string RecordOutsideIndexMessage =
+    const string RecordOutsideIndexMessage =
         "The dump contains required record numbers outside the index range.";
 
     const uint RootRow = 5;

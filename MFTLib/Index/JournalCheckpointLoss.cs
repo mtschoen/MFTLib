@@ -199,11 +199,7 @@ public sealed record JournalCheckpointLoss
             return false;
         }
 
-        target = new UsnJournalSettings
-        {
-            MaximumSize = maximumSize,
-            AllocationDelta = JournalSettings.AllocationDelta
-        };
+        target = JournalSettings with { MaximumSize = maximumSize };
         return true;
     }
 }

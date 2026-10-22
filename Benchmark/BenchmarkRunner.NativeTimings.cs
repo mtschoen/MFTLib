@@ -12,7 +12,7 @@ public partial class BenchmarkRunner
     {
         if (!TryParseNativeTimingsArguments(arguments, out var records, out var dumpPath, out var iterations))
         {
-            _output.WriteLine(NativeTimingsUsage);
+            await _output.WriteLineAsync(NativeTimingsUsage).ConfigureAwait(false);
             return 1;
         }
 
@@ -34,7 +34,7 @@ public partial class BenchmarkRunner
         catch (Exception exception) when (exception is IOException or InvalidDataException or ArgumentException
                                               or InvalidOperationException or UnauthorizedAccessException)
         {
-            _output.WriteLine($"Error: {exception.Message}");
+            await _output.WriteLineAsync($"Error: {exception.Message}").ConfigureAwait(false);
             return 1;
         }
         finally
@@ -77,7 +77,7 @@ public partial class BenchmarkRunner
 
     // The native parse reads the next chunk while it fixes up and parses the current one, so the phases overlap:
     // the total bounds each phase and is shorter than their sum.
-    internal static void PrintNativeTimings(string dumpPath, int iterations, Action<string> log)
+    static void PrintNativeTimings(string dumpPath, int iterations, Action<string> log)
     {
         using var input = MftDumpInput.Open(dumpPath);
         var samples = new List<MftParseTimings>(iterations);

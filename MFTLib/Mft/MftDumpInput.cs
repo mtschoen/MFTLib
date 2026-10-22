@@ -28,7 +28,7 @@ internal sealed class MftDumpInputHandle : SafeHandleZeroOrMinusOneIsInvalid
 /// </summary>
 internal sealed class MftDumpInput : IDisposable
 {
-    internal const string UnsupportedRecordSizeMessage = "Invalid or unsupported MFT record size.";
+    const string UnsupportedRecordSizeMessage = "Invalid or unsupported MFT record size.";
 
     readonly MftDumpInputHandle _handle;
 

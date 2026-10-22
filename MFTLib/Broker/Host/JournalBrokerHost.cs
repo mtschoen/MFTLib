@@ -25,7 +25,6 @@ internal sealed partial class JournalBrokerHost
 
     readonly IVolumeAccess _volumeAccess;
     readonly TimeProvider _timeProvider;
-    readonly ParseThreadAllocator _parseThreads;
     readonly Func<BrokerDiagnosticsLogFilter?> _createLogFilter;
 
     /// <summary>Builds a host over injected volume access, so it runs without real elevation in tests.</summary>
@@ -41,12 +40,12 @@ internal sealed partial class JournalBrokerHost
     {
         _volumeAccess = volumeAccess;
         _timeProvider = timeProvider ?? TimeProvider.System;
-        _parseThreads = new ParseThreadAllocator(processorCount ?? Environment.ProcessorCount);
+        ParseThreads = new ParseThreadAllocator(processorCount ?? Environment.ProcessorCount);
         _createLogFilter = createLogFilter ?? (() => BrokerDiagnostics.CreateLogFilter());
     }
 
     /// <summary>The parse-thread budget every scan on this host is admitted to.</summary>
-    internal ParseThreadAllocator ParseThreads => _parseThreads;
+    internal ParseThreadAllocator ParseThreads { get; }
 
     // One watch channel: stream this drive's journal from the requested cursor until the
     // channel is cancelled (its pipe closed or the session ended) or the watch fails. The loop

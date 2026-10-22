@@ -48,7 +48,7 @@ public sealed class ScriptedDriveWatch
     /// </summary>
     public Task<bool> ReadEnded => _readEnded.Task;
 
-    internal IndexWatchTarget Target { get; }
+    IndexWatchTarget Target { get; }
 
     // ScriptedWatchSourceTests.ReadEnded_WaitsForADisposalDrainThatDequeuedAnUnreadItem
     // holds an already-dequeued receipt to verify ReadEnded waits for its settlement.
@@ -199,7 +199,7 @@ public sealed class ScriptedDriveWatch
         finally
         {
             var isCancelled = cancelled || cancellationToken.IsCancellationRequested;
-            Close(readFault ?? _completionFault, isCancelled ? cancellationToken : default);
+            Close(readFault ?? _completionFault, isCancelled ? cancellationToken : CancellationToken.None);
             lock (_drainLock)
             {
                 _readEndedCancelled = isCancelled;

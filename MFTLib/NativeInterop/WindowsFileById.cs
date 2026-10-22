@@ -11,7 +11,7 @@ namespace MFTLib.NativeInterop;
 ///     specifically the volume root, despite the Win32 parameter's <c>hVolumeHint</c> name.
 /// </summary>
 [SupportedOSPlatform("windows")]
-internal static class WindowsFileById
+internal static partial class WindowsFileById
 {
     const uint FileReadAttributes = 0x80;
     const uint GenericRead = 0x80000000;
@@ -68,8 +68,8 @@ internal static class WindowsFileById
         };
     }
 
-    [DllImport("kernel32.dll", EntryPoint = "OpenFileById", SetLastError = true)]
-    static extern SafeFileHandle OpenFileById(
+    [LibraryImport("kernel32.dll", EntryPoint = "OpenFileById", SetLastError = true)]
+    private static partial SafeFileHandle OpenFileById(
         SafeFileHandle volumeHint,
         ref FileIdDescriptor fileId,
         uint desiredAccess,

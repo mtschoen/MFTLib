@@ -11,7 +11,7 @@ internal sealed partial class JournalBrokerHost
 
     sealed class ScanProgressState
     {
-        readonly object _progressLock = new();
+        readonly Lock _progressLock = new();
         long _maximumParsingRecordsProcessed;
         long _maximumTransferringRecordsProcessed;
         long? _totalRecordsKnown;

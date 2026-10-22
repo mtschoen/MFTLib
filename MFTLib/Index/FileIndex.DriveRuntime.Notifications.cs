@@ -18,7 +18,7 @@ public sealed partial class FileIndex
         ///     before it releases the lock; a call that finds no change does nothing. The caller holds
         ///     <see cref="FileIndex._stateLock" />.
         /// </summary>
-        public void NoteWatchStateLocked(WatchFault? cause = null)
+        void NoteWatchStateLocked(WatchFault? cause = null)
         {
             var state = GetWatchStateLocked();
             if (state == NotedWatchState)
@@ -89,7 +89,7 @@ public sealed partial class FileIndex
             }
         }
 
-        public void RaiseWatchFaulted(WatchFault fault)
+        void RaiseWatchFaulted(WatchFault fault)
         {
             RaiseWatchStateChanged();
             try

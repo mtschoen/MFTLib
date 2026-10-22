@@ -10,7 +10,7 @@ namespace MFTLibTestExtensions;
 public sealed class SyntheticMftProducer
 {
     readonly Func<DriveKey, IEnumerable<SyntheticRow>> _rowsForDrive;
-    readonly object _gate = new();
+    readonly Lock _gate = new();
     readonly List<DriveKey> _producedDrives = [];
 
     /// <summary>Creates a producer.</summary>

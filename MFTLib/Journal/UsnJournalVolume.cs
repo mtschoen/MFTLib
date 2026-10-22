@@ -14,7 +14,7 @@ internal sealed partial class UsnJournalVolume
     //   recordNumber(8) + parentRecordNumber(8) + usn(8) + timestamp(8) +
     //   reason(4) + fileAttributes(4) + fileNameLength(2) + fileName(260*2=520) +
     //   sequenceNumber(2) = 564 bytes
-    internal const int NativeUsnEntrySize = 564;
+    const int NativeUsnEntrySize = 564;
 
     readonly SafeFileHandle _volumeHandle;
     readonly string _volumePath;

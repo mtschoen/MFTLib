@@ -4,7 +4,7 @@ namespace MFTLib;
 
 internal static class MftBlockValidation
 {
-    internal static void Validate(BlockFile block, uint volumeSerial, UsnJournalCursor armed, CacheTag requestedCacheTag,
+    static void Validate(BlockFile block, uint volumeSerial, UsnJournalCursor armed, CacheTag requestedCacheTag,
         ulong requestedScanShape)
     {
         var header = block.Header;

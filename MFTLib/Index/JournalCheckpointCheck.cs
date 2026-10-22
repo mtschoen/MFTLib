@@ -27,13 +27,12 @@ static class JournalCheckpointCheck
 
     internal sealed class JournalHooks
     {
-        Func<DriveKey, JournalWindow?>? _observationOverride;
         int _liveReadsForbidden;
 
         internal Func<DriveKey, JournalWindow?>? ObservationOverride
         {
-            get => Volatile.Read(ref _observationOverride);
-            set => Volatile.Write(ref _observationOverride, value);
+            get => Volatile.Read(ref field);
+            set => Volatile.Write(ref field, value);
         }
 
         internal bool LiveReadsForbidden => Volatile.Read(ref _liveReadsForbidden) != 0;
@@ -72,23 +71,20 @@ static class JournalCheckpointCheck
     static JournalCheckpointLoss? CheckObservation(DriveKey drive, ulong checkpointJournalIdentifier, long checkpointUsn,
         JournalCheckpointLossDetection detectedDuring, bool requireUnmoved)
     {
-        if (ProcessJournal.Read(drive) is not { } journal)
+        if (ProcessJournal.Read(drive) is not (var journalIdentifier, var firstUsn, var nextUsn, var allocationDelta, var maximumSize))
         {
             return null;
         }
 
-        var firstUsn = journal.FirstUsn;
-        var nextUsn = journal.NextUsn;
-        var allocationDelta = journal.AllocationDelta;
         if (firstUsn < 0 || nextUsn < firstUsn || checkpointUsn < 0 || allocationDelta <= 0)
         {
             // Nothing coherent to report, and no reason to refuse the warm start over it.
             return null;
         }
 
-        var journalSettings = new UsnJournalSettings { AllocationDelta = allocationDelta, MaximumSize = journal.MaximumSize };
+        var journalSettings = new UsnJournalSettings { AllocationDelta = allocationDelta, MaximumSize = maximumSize };
 
-        if (journal.JournalIdentifier != checkpointJournalIdentifier)
+        if (journalIdentifier != checkpointJournalIdentifier)
         {
             return new JournalCheckpointLoss(drive, detectedDuring, JournalCheckpointLossCause.JournalRecreated,
                 journalSettings)

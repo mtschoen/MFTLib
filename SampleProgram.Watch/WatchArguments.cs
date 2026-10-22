@@ -17,7 +17,7 @@ internal sealed partial record WatchArguments(WatchVerb Verb, IReadOnlyList<stri
     internal const int DefaultSeconds = 10;
 
     // Task.Delay takes at most int.MaxValue milliseconds.
-    internal const int MaximumSeconds = int.MaxValue / 1000;
+    const int MaximumSeconds = int.MaxValue / 1000;
 
     internal static string Usage =>
         "Usage: SampleProgram.Watch [verb] [drive ...] [--directories-only | --keep-name A,B]" + Environment.NewLine +
@@ -38,13 +38,13 @@ internal sealed partial record WatchArguments(WatchVerb Verb, IReadOnlyList<stri
         [WatchVerb.ElevationStatus] = []
     };
 
-    internal IReadOnlyList<string>? RetainedFileNames { get; init; }
+    internal IReadOnlyList<string>? RetainedFileNames { get; private init; }
     /// <summary>The <c>--seconds</c> a watch runs for; null waits for a key press when attended.</summary>
     internal int? Seconds { get; init; }
     internal long? MaximumSize { get; init; }
     internal long? AllocationDelta { get; init; }
     internal string? CacheDirectory { get; init; }
-    internal bool Clear { get; init; }
+    internal bool Clear { get; private init; }
 
     /// <summary>Whether the verb opens an index, so it needs the drives it works on.</summary>
     internal bool NeedsDrives => Verb is not (WatchVerb.Cache or WatchVerb.ElevationStatus);

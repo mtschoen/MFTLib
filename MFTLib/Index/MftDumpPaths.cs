@@ -9,7 +9,7 @@ namespace MFTLib.Index;
 /// </summary>
 internal static class MftDumpPaths
 {
-    internal const char Separator = '/';
+    const char Separator = '/';
 
     const char Backslash = (char)0x5C;
 

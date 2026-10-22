@@ -9,12 +9,11 @@ namespace MFTLib.Index;
 /// </summary>
 internal sealed class SnapshotBorrow : IDisposable
 {
-    readonly IReadOnlyList<DriveBlock> _driveBlocks;
     int _acquired;
 
     internal SnapshotBorrow(IReadOnlyList<DriveBlock> driveBlocks)
     {
-        _driveBlocks = driveBlocks;
+        DriveBlocks = driveBlocks;
         for (var taken = 0; taken < driveBlocks.Count; taken++)
         {
             if (driveBlocks[taken].ReleaseState.TryTakeBorrow())
@@ -32,7 +31,7 @@ internal sealed class SnapshotBorrow : IDisposable
     }
 
     /// <summary>The blocks this borrow keeps mapped, for the query that took it to read through.</summary>
-    internal IReadOnlyList<DriveBlock> DriveBlocks => _driveBlocks;
+    internal IReadOnlyList<DriveBlock> DriveBlocks { get; }
 
     /// <summary>Shared by value-type scope copies; independent of a block's release starting.</summary>
     internal bool IsReturned => _acquired == 0;
@@ -46,7 +45,7 @@ internal sealed class SnapshotBorrow : IDisposable
     {
         if (Interlocked.Exchange(ref _acquired, 0) != 0)
         {
-            ReturnBorrows(_driveBlocks.Count);
+            ReturnBorrows(DriveBlocks.Count);
             GC.SuppressFinalize(this);
         }
     }
@@ -55,7 +54,7 @@ internal sealed class SnapshotBorrow : IDisposable
     {
         for (var index = 0; index < count; index++)
         {
-            _driveBlocks[index].ReleaseState.ReturnBorrow();
+            DriveBlocks[index].ReleaseState.ReturnBorrow();
         }
     }
 

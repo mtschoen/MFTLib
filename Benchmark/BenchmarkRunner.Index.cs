@@ -22,8 +22,8 @@ public partial class BenchmarkRunner
         if (outputIndex >= 0 && outputPath is null ||
             !TryParseIndexArguments(arguments, out var rows, out var cacheDirectory, out var iterations))
         {
-            _output.WriteLine(
-                "Usage: Benchmark.exe index <--synthetic N|--cache-directory path> [--iterations K] [--out report.txt]");
+            await _output.WriteLineAsync(
+                "Usage: Benchmark.exe index <--synthetic N|--cache-directory path> [--iterations K] [--out report.txt]").ConfigureAwait(false);
             return 1;
         }
 
@@ -45,14 +45,14 @@ public partial class BenchmarkRunner
             {
                 var resolvedOutputPath = Path.GetFullPath(outputPath);
                 await File.WriteAllTextAsync(resolvedOutputPath, report.ToString()).ConfigureAwait(false);
-                _output.WriteLine($"Report saved to {resolvedOutputPath}");
+                await _output.WriteLineAsync($"Report saved to {resolvedOutputPath}").ConfigureAwait(false);
             }
 
             return exitCode;
         }
         catch (Exception exception)
         {
-            _output.WriteLine($"Error: {exception.Message}");
+            await _output.WriteLineAsync($"Error: {exception.Message}").ConfigureAwait(false);
             return 1;
         }
     }

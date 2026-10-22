@@ -27,10 +27,10 @@ internal static class BlockLayout
     public const int RowBytes = 32;
 
     /// <summary>Headroom is 25 percent of the estimate or this many rows, whichever is larger.</summary>
-    internal const int MinimumSlotHeadroomRows = 65536;
+    const int MinimumSlotHeadroomRows = 65536;
 
     /// <summary>Name pool headroom is 25 percent of the estimate or this many bytes, whichever is larger.</summary>
-    internal const int MinimumNamePoolHeadroomBytes = 1048576;
+    const int MinimumNamePoolHeadroomBytes = 1048576;
 
     /// <summary>Mirrors the native resolver's cap so a corrupt parent column cannot loop forever.</summary>
     public const int MaximumPathDepth = 128;
@@ -43,7 +43,7 @@ internal static class BlockLayout
     internal const uint DetachedParentRow = uint.MaxValue;
 
     /// <summary>Size, in bytes, of one stored NTFS sequence number.</summary>
-    internal const int SequenceBytes = 2;
+    const int SequenceBytes = 2;
 
     /// <summary>
     ///     Fixed, not computed: the header region is exactly one page, so this can never be

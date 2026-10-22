@@ -13,7 +13,7 @@ public partial class BenchmarkRunner
         if (!TryParseEnumerationWalkArguments(arguments, out var directories, out var filesPerDirectory,
                 out var iterations, out var outputPath))
         {
-            _output.WriteLine("Usage: Benchmark.exe enumeration-walk [--directories N] [--files-per-directory N] [--iterations K] [--out report.txt]");
+            await _output.WriteLineAsync("Usage: Benchmark.exe enumeration-walk [--directories N] [--files-per-directory N] [--iterations K] [--out report.txt]").ConfigureAwait(false);
             return 1;
         }
 
@@ -32,14 +32,14 @@ public partial class BenchmarkRunner
             {
                 var resolvedPath = Path.GetFullPath(outputPath);
                 await File.WriteAllTextAsync(resolvedPath, report.ToString()).ConfigureAwait(false);
-                _output.WriteLine($"Report saved to {resolvedPath}");
+                await _output.WriteLineAsync($"Report saved to {resolvedPath}").ConfigureAwait(false);
             }
             return 0;
         }
         catch (Exception exception) when (exception is IOException or ArgumentException
                                               or InvalidOperationException or UnauthorizedAccessException)
         {
-            _output.WriteLine($"Error: {exception.Message}");
+            await _output.WriteLineAsync($"Error: {exception.Message}").ConfigureAwait(false);
             return 1;
         }
     }

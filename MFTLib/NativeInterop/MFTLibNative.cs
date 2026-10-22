@@ -1,9 +1,10 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
 namespace MFTLib.NativeInterop;
 
-static class MFTLibNative
+static partial class MFTLibNative
 {
     // .NET's DllImport resolver adds the right platform suffix:
     //   Windows -> MFTLibNative.dll
@@ -52,19 +53,22 @@ static class MFTLibNative
     }
 
     // P/Invoke declarations (private - all access goes through the Func fields)
-    [DllImport(LibraryName, EntryPoint = "GetMftNativeAbiVersion", CallingConvention = CallingConvention.Cdecl)]
-    static extern uint NativeGetMftNativeAbiVersion();
+    [LibraryImport(LibraryName, EntryPoint = "GetMftNativeAbiVersion")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial uint NativeGetMftNativeAbiVersion();
 
     [DllImport(LibraryName, EntryPoint = "ParseMFTRecordsWithProgress", CallingConvention = CallingConvention.Cdecl)]
     static extern IntPtr NativeParseMFTRecordsWithProgress(SafeHandle volumeHandle, uint includeFreed,
         uint bufferSizeRecords, IntPtr control, NativeMftProgressCallback? callback);
 
-    [DllImport(LibraryName, EntryPoint = "FreeMftResult", CallingConvention = CallingConvention.Cdecl)]
-    static extern void NativeFreeMftResult(IntPtr result);
+    [LibraryImport(LibraryName, EntryPoint = "FreeMftResult")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial void NativeFreeMftResult(IntPtr result);
 
-    [DllImport(LibraryName, EntryPoint = "GenerateSyntheticMFTSizedUtf8", CallingConvention = CallingConvention.Cdecl)]
+    [LibraryImport(LibraryName, EntryPoint = "GenerateSyntheticMFTSizedUtf8")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     [return: MarshalAs(UnmanagedType.I1)]
-    static extern bool NativeGenerateSyntheticMFTSizedUtf8(byte[] filePathUtf8, ulong recordCount,
+    private static partial bool NativeGenerateSyntheticMFTSizedUtf8(byte[] filePathUtf8, ulong recordCount,
         uint bufferSizeRecords, uint recordSize);
 
     // The dump input exports exist on every platform and take the path as null-terminated UTF-8
@@ -77,23 +81,28 @@ static class MFTLibNative
     internal static extern IntPtr ParseMftDumpInput(MftDumpInputHandle input, uint bufferSizeRecords, IntPtr control,
         NativeMftProgressCallback? callback);
 
-    [DllImport(LibraryName, EntryPoint = "CloseMftDumpInput", CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void CloseMftDumpInput(IntPtr input);
+    [LibraryImport(LibraryName, EntryPoint = "CloseMftDumpInput")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial void CloseMftDumpInput(IntPtr input);
 
-    [DllImport(LibraryName, EntryPoint = "ReadUsnJournal", CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr NativeReadUsnJournal(SafeHandle volumeHandle, long startUsn, ulong journalIdentifier,
+    [LibraryImport(LibraryName, EntryPoint = "ReadUsnJournal")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial IntPtr NativeReadUsnJournal(SafeHandle volumeHandle, long startUsn, ulong journalIdentifier,
         uint maximumBufferReads);
 
-    [DllImport(LibraryName, EntryPoint = "FreeUsnJournalResult", CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void NativeFreeUsnJournalResult(IntPtr result);
+    [LibraryImport(LibraryName, EntryPoint = "FreeUsnJournalResult")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial void NativeFreeUsnJournalResult(IntPtr result);
 
-    [DllImport(LibraryName, EntryPoint = "WatchUsnJournalBatchCancelable", CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr NativeWatchUsnJournalBatchCancelable(SafeHandle volumeHandle, long startUsn, ulong journalIdentifier,
+    [LibraryImport(LibraryName, EntryPoint = "WatchUsnJournalBatchCancelable")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial IntPtr NativeWatchUsnJournalBatchCancelable(SafeHandle volumeHandle, long startUsn, ulong journalIdentifier,
         SafeHandle cancellationEvent);
 
-    [DllImport(LibraryName, EntryPoint = "CancelUsnJournalWatch", CallingConvention = CallingConvention.Cdecl)]
+    [LibraryImport(LibraryName, EntryPoint = "CancelUsnJournalWatch")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool NativeCancelUsnJournalWatch(SafeHandle volumeHandle);
+    internal static partial bool NativeCancelUsnJournalWatch(SafeHandle volumeHandle);
 
     internal static void EnsureCompatibleNativeAbi()
     {

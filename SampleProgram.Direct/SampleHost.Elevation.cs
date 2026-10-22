@@ -11,7 +11,7 @@ partial class SampleHost
     // An elevated relaunch writes to output.log and its window closes at once; the unelevated parent holds the window.
     bool _outputRedirectedToFile;
 
-    internal int RunWithOutputLog(Func<int> run)
+    int RunWithOutputLog(Func<int> run)
     {
         var previous = _output;
         using var log = new StreamWriter(OutputLogPath, append: false);

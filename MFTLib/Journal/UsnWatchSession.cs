@@ -29,7 +29,7 @@ sealed class UsnWatchSession(SafeHandle watchHandle) : IDisposable
             TaskScheduler.Default);
     }
 
-    internal void Dispose()
+    void Dispose()
     {
         _cancellationEvent.Dispose();
         watchHandle.Dispose();

@@ -8,7 +8,7 @@ namespace MFTLib.Index;
 /// </summary>
 internal static class IndexNavigation
 {
-    internal static bool IsRootRow(BlockFile block, uint rowIndex)
+    static bool IsRootRow(BlockFile block, uint rowIndex)
     {
         return block.Rows[(int)rowIndex].ParentRow == rowIndex;
     }
@@ -17,7 +17,7 @@ internal static class IndexNavigation
     ///     True for a deleted row whose parent chain could not be verified or whose ancestor slot was reused;
     ///     see <see cref="BlockLayout.DetachedParentRow" />.
     /// </summary>
-    internal static bool IsDetached(BlockFile block, uint rowIndex)
+    static bool IsDetached(BlockFile block, uint rowIndex)
     {
         return block.Rows[(int)rowIndex].ParentRow == BlockLayout.DetachedParentRow;
     }

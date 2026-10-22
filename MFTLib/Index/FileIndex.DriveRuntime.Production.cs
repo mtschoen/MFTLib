@@ -164,25 +164,15 @@ public sealed partial class FileIndex
         ///     block with one twice as large holding the same rows; disposal releases whatever block is
         ///     current unless <see cref="Release" /> handed it to the caller.
         /// </summary>
-        sealed class EnumerationBlockGrowth : IDisposable
+        sealed class EnumerationBlockGrowth(DriveRuntime runtime, string blockPath, bool deleteOnClose,
+            uint slotCapacity, uint namePoolCapacity) : IDisposable
         {
-            readonly DriveRuntime _runtime;
-            readonly string _blockPath;
-            readonly bool _deleteOnClose;
-            uint _slotCapacity;
-            uint _namePoolCapacity;
-            BlockFile? _block;
-
-            public EnumerationBlockGrowth(DriveRuntime runtime, string blockPath, bool deleteOnClose,
-                uint slotCapacity, uint namePoolCapacity)
-            {
-                _runtime = runtime;
-                _blockPath = blockPath;
-                _deleteOnClose = deleteOnClose;
-                _slotCapacity = slotCapacity;
-                _namePoolCapacity = namePoolCapacity;
-                _block = runtime.CreateEnumerationBlock(blockPath, deleteOnClose, slotCapacity, namePoolCapacity);
-            }
+            readonly DriveRuntime _runtime = runtime;
+            readonly string _blockPath = blockPath;
+            readonly bool _deleteOnClose = deleteOnClose;
+            uint _slotCapacity = slotCapacity;
+            uint _namePoolCapacity = namePoolCapacity;
+            BlockFile? _block = runtime.CreateEnumerationBlock(blockPath, deleteOnClose, slotCapacity, namePoolCapacity);
 
             public BlockFile Block => _block ?? throw new ObjectDisposedException(nameof(EnumerationBlockGrowth));
 

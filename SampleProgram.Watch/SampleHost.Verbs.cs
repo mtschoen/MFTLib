@@ -39,7 +39,7 @@ partial class SampleHost
             ? await session.GrowUsnJournalAsync(drive,
                 new UsnJournalSettings { MaximumSize = maximum, AllocationDelta = delta }, cancellationToken).ConfigureAwait(false)
             : index.QueryUsnJournalSettings(drive);
-        _output.WriteLine($"Journal {drive}: maximum size {settings.MaximumSize}, allocation delta {settings.AllocationDelta}");
+        await _output.WriteLineAsync($"Journal {drive}: maximum size {settings.MaximumSize}, allocation delta {settings.AllocationDelta}").ConfigureAwait(false);
     }
 
     // Lists the cached blocks of the drives named (all when none), and removes them with --clear. Each scan policy keeps its
