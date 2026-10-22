@@ -117,9 +117,11 @@ jobs:
         # Cloned into the job-private, gitignored workspace directory, so aislop does not scan the fork's own source.
         # From Gitea (canonical, always current), not the github.com mirror (can lag
         # behind by many commits, so a freshly bumped pin can be absent there).
-        # The fork is a pnpm workspace (packageManager pnpm@10.28.0 + pnpm-lock.yaml);
+        # The fork is a pnpm workspace (its package.json packageManager field + pnpm-lock.yaml);
         # npm chokes on it on some npm versions, so install via pnpm through npx -y
-        # (hermetic - no corepack or preinstalled pnpm needed).
+        # (hermetic - no corepack or preinstalled pnpm needed). The pnpm version is read
+        # from the checkout's own packageManager field, so a pin bump that changes the
+        # fork's pnpm needs no edit here.
         shell: pwsh
         run: |
           $aislopDir = $env:AISLOP_FORK_DIRECTORY
@@ -130,7 +132,13 @@ jobs:
           git -C $aislopDir checkout "$env:AISLOP_FORK_COMMIT"
           if ($LASTEXITCODE -ne 0) { Write-Error "git checkout failed"; exit 1 }
           Push-Location $aislopDir
-          npx -y pnpm@10.28.0 install --frozen-lockfile
+          $packageManager = (Get-Content -Raw -LiteralPath (Join-Path $aislopDir 'package.json') | ConvertFrom-Json).packageManager
+          if ($packageManager -notmatch '^pnpm@\d+\.\d+\.\d+$') {
+            Pop-Location
+            Write-Error "aislop fork package.json packageManager is missing or not pnpm@x.y.z: '$packageManager'"
+            exit 1
+          }
+          npx -y $packageManager install --frozen-lockfile
           $installExit = $LASTEXITCODE
           Pop-Location
           if ($installExit -ne 0) { Write-Error "pnpm install failed"; exit 1 }

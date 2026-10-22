@@ -3,6 +3,7 @@
 // NamespaceBoundaryTests can prove the boundary rule reports a violation when one is present. A
 // green boundary rule with no negative control proves nothing, which is why MFTLib#118 makes this
 // fixture mandatory. Nothing in production references it and nothing should.
+// ReSharper disable once CheckNamespace -- the negative control must sit in MFTLib.Index, which cannot match its test-project folder
 namespace MFTLib.Index;
 
 static class NamespaceBoundaryViolationFixture

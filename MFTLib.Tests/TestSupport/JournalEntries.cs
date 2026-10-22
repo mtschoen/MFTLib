@@ -1,6 +1,6 @@
 using MFTLibTestExtensions;
 
-namespace MFTLib.Tests;
+namespace MFTLib.Tests.TestSupport;
 
 /// <summary>The terse form most tests want: a journal entry under the root directory.</summary>
 static class JournalEntries

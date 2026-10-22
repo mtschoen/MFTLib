@@ -1,4 +1,4 @@
-namespace MFTLib.Tests;
+namespace MFTLib.Tests.TestSupport;
 
 /// <summary>
 ///     Test-side array views of the two scan entry points. The library yields batches of records;
