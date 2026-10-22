@@ -257,7 +257,7 @@ public partial class WatchArgumentsTests
     {
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", "a.txt"], out var parsed, out _));
 
-        StringAssert.Matches(parsed!.PolicyDirectoryName, MyRegex());
+        Assert.MatchesRegex(MyRegex(), parsed!.PolicyDirectoryName);
     }
 
     [TestMethod]

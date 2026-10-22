@@ -103,7 +103,7 @@ public partial class BenchmarkRunnerTests
         {
             Assert.IsGreaterThanOrEqualTo(milliseconds[label], milliseconds["Native total"], $"The total bounds {label}.");
         }
-        StringAssert.Matches(output, MyRegex());
+        Assert.MatchesRegex(MyRegex(), output);
         Assert.Contains("buffered", output);
         Assert.DoesNotContain("disk is the bottleneck", output, "The verdict names a stage, not the disk.");
     }

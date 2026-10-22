@@ -22,7 +22,7 @@ static class DriveResultAssertions
     static TException RequireFailure<TException>(IReadOnlyList<DriveOperationResult> results, string? message = null)
         where TException : Exception
     {
-        Assert.AreEqual(1, results.Count, message);
+        Assert.HasCount(1, results, message);
         Assert.AreEqual(DriveOperationOutcome.Failed, results[0].Outcome, message);
         Assert.IsInstanceOfType<TException>(results[0].Failure, message);
         return (TException)results[0].Failure!;
@@ -32,7 +32,7 @@ static class DriveResultAssertions
         Func<Task<IReadOnlyList<DriveOperationResult>>> operation, string? message = null)
     {
         var results = await operation();
-        Assert.AreEqual(1, results.Count, message);
+        Assert.HasCount(1, results, message);
         Assert.AreEqual(DriveOperationOutcome.NotApplicable, results[0].Outcome, message);
         Assert.IsNull(results[0].Failure, message);
         return results[0];

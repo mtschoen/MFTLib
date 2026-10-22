@@ -129,7 +129,7 @@ public class BrokerDiagnosticsWriterReplacementTests
             for (var index = 0; index < writers.Count; index++)
             {
                 Assert.HasCount(1, outputs[index]);
-                StringAssert.EndsWith(outputs[index].Single(), $":control]  writer-{index}");
+                Assert.EndsWith($":control]  writer-{index}", outputs[index].Single());
             }
             foreach (var retired in writers.Take(replacementCount))
             {

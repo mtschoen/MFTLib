@@ -75,7 +75,7 @@ public sealed class NativeParserFixupTests : IDisposable
 
         var names = ParseNames(dump);
 
-        CollectionAssert.DoesNotContain(names, "Notes.txt", description);
+        Assert.DoesNotContain("Notes.txt", names, description);
         Assert.Contains("leaf.txt", names, description);
     }
 

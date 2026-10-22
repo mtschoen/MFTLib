@@ -58,7 +58,7 @@ public sealed class FreedRowsIndexTests : IDisposable
         var root = index.Root('T', TestContext.CancellationToken);
 
         Assert.AreSequenceEqual(["keep.txt"], [.. docs.Children(TestContext.CancellationToken).Select(child => child.Name)]);
-        CollectionAssert.DoesNotContain(root.Children(TestContext.CancellationToken).Select(child => child.Name).ToArray(), "orphan.txt");
+        Assert.DoesNotContain("orphan.txt", root.Children(TestContext.CancellationToken).Select(child => child.Name).ToArray());
         Assert.IsNull(index.Find(Path.Combine(TreeRoot, "docs", "orphan.txt"), TestContext.CancellationToken));
         Assert.IsNull(index.Find(Path.Combine(TreeRoot, "orphan.txt"), TestContext.CancellationToken));
         Assert.IsNull(index.Find(Path.Combine(TreeRoot, "docs", "trusted.txt"), TestContext.CancellationToken));
@@ -127,8 +127,8 @@ public sealed class FreedRowsIndexTests : IDisposable
             names.Add(row.Name.ToString());
         }
 
-        CollectionAssert.DoesNotContain(names, "orphan.txt");
-        CollectionAssert.DoesNotContain(names, "trusted.txt");
+        Assert.DoesNotContain("orphan.txt", names);
+        Assert.DoesNotContain("trusted.txt", names);
         Assert.ContainsSingle(name => name == "dup.txt", names);
 
         var deletedNames = new List<string>();

@@ -131,10 +131,10 @@ public partial class AgentInstructionsTests
         }
 
         Assert.IsEmpty(failures, string.Join(Environment.NewLine, failures));
-        CollectionAssert.DoesNotContain(paths, ".maintenance.json", "Maintenance state must be local.");
+        Assert.DoesNotContain(".maintenance.json", paths, "Maintenance state must be local.");
         Assert.AreEqual(".maintenance.json",
             RepositoryFiles.Git("check-ignore", "--no-index", ".maintenance.json").Trim());
-        CollectionAssert.DoesNotContain(paths, "TEST-REPORT.md",
+        Assert.DoesNotContain("TEST-REPORT.md", paths,
             "Per-run measurements belong in coverage artifacts.");
         Assert.AreEqual("TEST-REPORT.md",
             RepositoryFiles.Git("check-ignore", "--no-index", "TEST-REPORT.md").Trim());

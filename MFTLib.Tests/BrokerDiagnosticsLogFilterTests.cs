@@ -159,7 +159,7 @@ public class BrokerDiagnosticsLogFilterTests
             BrokerDiagnostics.Enable("client", "logs");
             var path = BrokerDiagnostics.LogPath;
             Assert.IsTrue(Path.IsPathRooted(path));
-            StringAssert.EndsWith(path, Path.Combine("logs", BrokerDiagnostics.LogFileName));
+            Assert.EndsWith(Path.Combine("logs", BrokerDiagnostics.LogFileName), path);
         }
         finally
         {

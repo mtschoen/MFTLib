@@ -48,7 +48,7 @@ public sealed class FileIndexEnumerationGrowthTests : IDisposable
             var options = _fixture.Options() with { Diagnostics = diagnostics.Add };
 
             await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
-            Assert.IsTrue(diagnostics.Any(line => line.Contains("capacity exhausted", StringComparison.OrdinalIgnoreCase)));
+            Assert.Contains(line => line.Contains("capacity exhausted", StringComparison.OrdinalIgnoreCase), diagnostics);
             Assert.IsTrue(observation.Visits.Values.All(visits => visits == 1),
                 "Growing the block must not read any directory a second time.");
             Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);

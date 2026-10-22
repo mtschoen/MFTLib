@@ -130,7 +130,7 @@ public class SampleHostFirstRunTests
 
                 Assert.AreEqual(expectedExit, host.RunAndPause(arguments, ownsWindow: true), output.ToString());
 
-                StringAssert.EndsWith(output.ToString().TrimEnd(), DirectHost.PausePrompt, string.Join(' ', arguments));
+                Assert.EndsWith(DirectHost.PausePrompt, output.ToString().TrimEnd(), string.Join(' ', arguments));
                 Assert.AreEqual('y', (char)input.Read(), $"{string.Join(' ', arguments)}: one key was consumed.");
             }
         }

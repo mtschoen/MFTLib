@@ -41,7 +41,7 @@ public partial class SyntheticBlockTests
 
         SyntheticBlock.Edit(path, Serial, editor => editor.WriteRow(editor.ReadRow(7) with { IsFree = true }));
 
-        CollectionAssert.DoesNotContain(SyntheticBlock.ReadRows(path, Serial).Select(row => row.Row).ToArray(), 7u);
+        Assert.DoesNotContain(7u, SyntheticBlock.ReadRows(path, Serial).Select(row => row.Row).ToArray());
     }
 
     [TestMethod]

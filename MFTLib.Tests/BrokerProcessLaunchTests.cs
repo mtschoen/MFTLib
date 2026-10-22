@@ -102,7 +102,7 @@ public class BrokerProcessLaunchTests
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG_INCLUDE_SELF", "1");
         try
         {
-            StringAssert.EndsWith(await CaptureDeclinedLaunchArgumentsAsync(), "--diag-include-self");
+            Assert.EndsWith("--diag-include-self", await CaptureDeclinedLaunchArgumentsAsync());
         }
         finally
         {
@@ -125,7 +125,7 @@ public class BrokerProcessLaunchTests
         BrokerDiagnostics.IncludeSelfEntries = true;
         try
         {
-            StringAssert.EndsWith(await CaptureDeclinedLaunchArgumentsAsync(), "--diag-include-self");
+            Assert.EndsWith("--diag-include-self", await CaptureDeclinedLaunchArgumentsAsync());
         }
         finally
         {

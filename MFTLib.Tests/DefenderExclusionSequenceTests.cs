@@ -135,6 +135,18 @@ public class DefenderExclusionSequenceTests
     }
 
     [TestMethod]
+    public void BuildScript_ImportsTheSystemModuleByAbsolutePathAndNeverCallsABareMpCmdlet()
+    {
+        var script = DefenderExclusionSequence.BuildScript(["git.exe", "app.exe"]);
+
+        Assert.StartsWith("Import-Module -Name (Join-Path $env:SystemRoot ", script);
+        Assert.Contains("System32\\WindowsPowerShell\\v1.0\\Modules\\Defender\\Defender.psd1", script);
+        Assert.Contains("-ErrorAction Stop", script);
+        Assert.AreEqual(2, System.Text.RegularExpressions.Regex.Count(script, @"Defender\\Add-MpPreference"));
+        Assert.IsEmpty(System.Text.RegularExpressions.Regex.Matches(script, @"(?<!Defender\\)Add-MpPreference"));
+    }
+
+    [TestMethod]
     public void BuildScript_SeveralNames_JoinsOneCommandPerNameInOrder()
     {
         Assert.AreEqual(

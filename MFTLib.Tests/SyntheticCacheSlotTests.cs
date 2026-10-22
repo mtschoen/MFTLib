@@ -47,7 +47,7 @@ public sealed class SyntheticCacheSlotTests
 
         Assert.AreEqual(CachedBlockAvailability.Invalid,
             CacheDirectory.InspectCached(_cacheDirectory).Single().Availability);
-        CollectionAssert.AreEqual(before, File.ReadAllBytes(blockPath));
+        Assert.AreSequenceEqual(before, File.ReadAllBytes(blockPath));
     }
 
     [TestMethod]

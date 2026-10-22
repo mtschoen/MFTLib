@@ -52,7 +52,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
         Assert.AreEqual(0u, counted.InvalidInput, "a live scan never fails on the record");
         Assert.AreEqual(1UL, counted.InvalidFixupRecords);
         Assert.AreEqual(1UL, result.InvalidFixupRecordCount);
-        CollectionAssert.DoesNotContain(recordNumbers, corruptRecord);
+        Assert.DoesNotContain(corruptRecord, recordNumbers);
         Assert.Contains(corruptRecord - 1, recordNumbers);
         Assert.Contains(corruptRecord + 1, recordNumbers);
     }

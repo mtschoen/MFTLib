@@ -53,7 +53,7 @@ public partial class BrokerDiagnosticsTests
             Assert.AreEqual(Path.Combine(Path.GetTempPath(), "broker-diagnostics.client.log"), BrokerDiagnostics.LogPath);
             Assert.IsFalse(writer.TryEnqueue("after-reset"));
             Assert.HasCount(1, lines);
-            StringAssert.EndsWith(lines[0], ":control]  before-reset");
+            Assert.EndsWith(":control]  before-reset", lines[0]);
         }
         finally
         {
