@@ -16,6 +16,9 @@ namespace MFTLib.Tests;
 public class DefenderExclusionSequenceTests
 {
     static readonly string[] OneName = ["app.exe"];
+
+    const string ImportPrefix =
+        "Import-Module -Name (Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\Modules\\Defender\\Defender.psd1') -ErrorAction Stop; ";
     static readonly string[] Relaunch = ["--elevated-defender"];
 
     sealed class FakeElevation(bool elevated, bool canSelfElevate, bool relaunchResult = true) : IElevationProvider
@@ -56,7 +59,7 @@ public class DefenderExclusionSequenceTests
 
         Assert.IsTrue(result);
         Assert.IsEmpty(elevation.Relaunches);
-        Assert.AreEqual(("Add-MpPreference -ExclusionProcess 'app.exe' -ErrorAction Stop", false), runner.Launches.Single());
+        Assert.AreEqual((ImportPrefix + "Defender\\Add-MpPreference -ExclusionProcess 'app.exe' -ErrorAction Stop", false), runner.Launches.Single());
     }
 
     [TestMethod]
@@ -127,16 +130,28 @@ public class DefenderExclusionSequenceTests
     public void BuildScript_OneName_IsOneAddMpPreferenceCommand()
     {
         Assert.AreEqual(
-            "Add-MpPreference -ExclusionProcess 'git.exe' -ErrorAction Stop",
+            ImportPrefix + "Defender\\Add-MpPreference -ExclusionProcess 'git.exe' -ErrorAction Stop",
             DefenderExclusionSequence.BuildScript(["git.exe"]));
+    }
+
+    [TestMethod]
+    public void BuildScript_ImportsTheSystemModuleByAbsolutePathAndNeverCallsABareMpCmdlet()
+    {
+        var script = DefenderExclusionSequence.BuildScript(["git.exe", "app.exe"]);
+
+        StringAssert.StartsWith(script, "Import-Module -Name (Join-Path $env:SystemRoot ");
+        StringAssert.Contains(script, "System32\\WindowsPowerShell\\v1.0\\Modules\\Defender\\Defender.psd1");
+        StringAssert.Contains(script, "-ErrorAction Stop");
+        Assert.AreEqual(2, System.Text.RegularExpressions.Regex.Matches(script, @"Defender\\Add-MpPreference").Count);
+        Assert.IsEmpty(System.Text.RegularExpressions.Regex.Matches(script, @"(?<!Defender\\)Add-MpPreference"));
     }
 
     [TestMethod]
     public void BuildScript_SeveralNames_JoinsOneCommandPerNameInOrder()
     {
         Assert.AreEqual(
-            "Add-MpPreference -ExclusionProcess 'git.exe' -ErrorAction Stop; "
-            + "Add-MpPreference -ExclusionProcess 'My App-1_2+x.exe' -ErrorAction Stop",
+            ImportPrefix + "Defender\\Add-MpPreference -ExclusionProcess 'git.exe' -ErrorAction Stop; "
+            + "Defender\\Add-MpPreference -ExclusionProcess 'My App-1_2+x.exe' -ErrorAction Stop",
             DefenderExclusionSequence.BuildScript(["git.exe", "My App-1_2+x.exe"]));
     }
 
@@ -611,7 +626,7 @@ public class DefenderExclusionSequenceTests
 
             Assert.IsFalse(result);
             var launch = failing.Launches.Single();
-            Assert.AreEqual("Add-MpPreference -ExclusionProcess 'app.exe' -ErrorAction Stop", launch.Script);
+            Assert.AreEqual(ImportPrefix + "Defender\\Add-MpPreference -ExclusionProcess 'app.exe' -ErrorAction Stop", launch.Script);
             Assert.IsTrue(launch.IsElevated);
         }
 

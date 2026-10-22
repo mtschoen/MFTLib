@@ -78,7 +78,15 @@ sealed class DefenderExclusionSequence
             : runPowerShell(script, true);
     }
 
-    /// <summary>One <c>Add-MpPreference -ExclusionProcess</c> per name, each name a single-quoted literal.</summary>
+    // The system Defender module, imported by absolute path so a module planted in a per-user PSModulePath
+    // directory cannot be autoloaded into the elevated session.
+    internal const string ImportSystemDefenderModule =
+        "Import-Module -Name (Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\Modules\\Defender\\Defender.psd1') -ErrorAction Stop";
+
+    /// <summary>
+    ///     The absolute-path import of the system Defender module, then one module-qualified
+    ///     <c>Defender\Add-MpPreference -ExclusionProcess</c> per name, each name a single-quoted literal.
+    /// </summary>
     internal static string BuildScript(IReadOnlyList<string> processNames)
     {
         ArgumentNullException.ThrowIfNull(processNames);
@@ -92,8 +100,9 @@ sealed class DefenderExclusionSequence
             RequirePlainFileName(name, nameof(processNames));
         }
 
-        return string.Join("; ", processNames.Select(
-            name => $"Add-MpPreference -ExclusionProcess '{name}' -ErrorAction Stop"));
+        return string.Join("; ", processNames
+            .Select(name => $"Defender\\Add-MpPreference -ExclusionProcess '{name}' -ErrorAction Stop")
+            .Prepend(ImportSystemDefenderModule));
     }
 
     // An allow-list, so no character that PowerShell treats specially can reach the script, on any platform.

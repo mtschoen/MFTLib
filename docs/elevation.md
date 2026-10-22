@@ -70,8 +70,11 @@ before it kills the process; the self-elevated child gets 60 seconds, so the out
 
 Each name must be a plain file name: letters, digits, `.`, `-`, `_`, `+` and inner spaces, with at least one letter or
 digit. Anything else (empty, whitespace-only, quotes, semicolons, backticks, dollar signs, pipes, path separators)
-throws `ArgumentException` before anything runs, even off Windows. The script is one single-quoted
-`Add-MpPreference -ExclusionProcess` literal per name, so a name cannot inject a command. PowerShell runs it from a
+throws `ArgumentException` before anything runs, even off Windows. The script first imports the system
+Defender module by absolute path (`Import-Module` of `$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules\Defender\Defender.psd1`,
+`-ErrorAction Stop`), so a module planted in a per-user `PSModulePath` directory is never autoloaded into the
+elevated session, then runs one single-quoted module-qualified `Defender\Add-MpPreference -ExclusionProcess`
+literal per name, so a name cannot inject a command. PowerShell runs it from a
 script file: a uniquely named temporary `.ps1` (UTF-8 with a byte order mark) started with
 `-NoProfile -NonInteractive -ExecutionPolicy Bypass -File`. The file is held open read-only, refusing write and delete
 sharing, until the child exits (or is killed on timeout). The held file must be the very file written (same volume
