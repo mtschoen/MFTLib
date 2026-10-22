@@ -27,12 +27,12 @@ public class TestExtensionsPipeTests
         await first.DisposeAsync();
         await using var host = await pipes.ConnectAsync("drive", CancellationToken.None);
         await using var client = await replacement.WaitForConnectionAsync(CancellationToken.None);
-        await host.WriteAsync(new byte[] { 9 }.AsMemory());
+        await host.WriteAsync(new byte[] { 9 }.AsMemory(), TestContext.CancellationToken);
         var bytes = new byte[1];
-        Assert.AreEqual(1, await client.ReadAsync(bytes.AsMemory()));
+        Assert.AreEqual(1, await client.ReadAsync(bytes.AsMemory(), TestContext.CancellationToken));
         Assert.AreEqual((byte)9, bytes[0]);
         await replacement.DisposeAsync();
-        Assert.AreEqual(0, await host.ReadAsync(bytes.AsMemory()));
+        Assert.AreEqual(0, await host.ReadAsync(bytes.AsMemory(), TestContext.CancellationToken));
         pipes.CloseHostEnds();
     }
 
@@ -52,7 +52,7 @@ public class TestExtensionsPipeTests
         await using var host = await pipes.ConnectAsync("drive", CancellationToken.None);
         await using var client = await listener.WaitForConnectionAsync(CancellationToken.None);
         pipes.CloseHostEnds();
-        Assert.AreEqual(0, await client.ReadAsync(new byte[1].AsMemory()));
+        Assert.AreEqual(0, await client.ReadAsync(new byte[1].AsMemory(), TestContext.CancellationToken));
         await Assert.ThrowsExactlyAsync<IOException>(() => pipes.ConnectAsync("later", CancellationToken.None));
     }
 
@@ -77,7 +77,7 @@ public class TestExtensionsPipeTests
         await released!;
         Assert.IsNotNull(createdClient);
         await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() =>
-            createdClient.ReadAsync(new byte[1].AsMemory()).AsTask());
+            createdClient.ReadAsync(new byte[1].AsMemory(), TestContext.CancellationToken).AsTask());
         pipes.CloseHostEnds();
     }
 
@@ -97,4 +97,6 @@ public class TestExtensionsPipeTests
         Assert.IsFalse(second.CanRead);
         ends.CloseAll();
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

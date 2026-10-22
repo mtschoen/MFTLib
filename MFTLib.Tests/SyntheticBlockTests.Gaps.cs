@@ -30,7 +30,7 @@ public partial class SyntheticBlockTests
         Assert.AreEqual(11u, SyntheticBlock.ReadHeader(path, Serial).RowCount, "a free slot below the highest row still counts");
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
-        Assert.IsEmpty(index.Search(new SearchQuery("stale.bin", NameMatchMode.Exact)));
+        Assert.IsEmpty(index.Search(new SearchQuery("stale.bin", NameMatchMode.Exact), TestContext.CancellationToken));
         Assert.AreEqual(5u, index.Drives.Single().Block!.LiveRowCount, "the tombstone and the free slot are not live");
     }
 
@@ -52,7 +52,7 @@ public partial class SyntheticBlockTests
         Assert.AreEqual(ProducerKind.Mft, SyntheticBlock.ReadHeader(path, Serial).ProducerKind);
 
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
-        var zebra = index.Search(new SearchQuery("zebra.txt", NameMatchMode.Exact)).Single();
+        var zebra = index.Search(new SearchQuery("zebra.txt", NameMatchMode.Exact), TestContext.CancellationToken).Single();
         FileIndexTestAccess.ApplyJournalEntries(index, 'T',
             [new SyntheticJournalRecord
             {
@@ -65,8 +65,8 @@ public partial class SyntheticBlockTests
 
         Assert.IsFalse(index.Drives.Single().Watch.IsSupported, "a cache-only open has no watch source");
         Assert.IsTrue(zebra.IsDeleted);
-        Assert.IsEmpty(index.Search(new SearchQuery("zebra.txt", NameMatchMode.Exact)));
-        Assert.HasCount(1, index.Search(new SearchQuery("keep.txt", NameMatchMode.Exact)));
+        Assert.IsEmpty(index.Search(new SearchQuery("zebra.txt", NameMatchMode.Exact), TestContext.CancellationToken));
+        Assert.HasCount(1, index.Search(new SearchQuery("keep.txt", NameMatchMode.Exact), TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -93,9 +93,9 @@ public partial class SyntheticBlockTests
         Assert.AreEqual(Moment.AddHours(1), rows["report.txt"].LastWriteTime, "only the size changes");
         Assert.AreEqual(FileAttributes.ReadOnly | FileAttributes.Archive, rows["report.txt"].Attributes);
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
-        Assert.IsFalse(index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)).Single().IsSizeKnown);
-        Assert.AreEqual(0, index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)).Single().Size);
-        Assert.IsTrue(index.Search(new SearchQuery("$MFT", NameMatchMode.Exact)).Single().IsSizeKnown);
+        Assert.IsFalse(index.Search(new SearchQuery("report.txt", NameMatchMode.Exact), TestContext.CancellationToken).Single().IsSizeKnown);
+        Assert.AreEqual(0, index.Search(new SearchQuery("report.txt", NameMatchMode.Exact), TestContext.CancellationToken).Single().Size);
+        Assert.IsTrue(index.Search(new SearchQuery("$MFT", NameMatchMode.Exact), TestContext.CancellationToken).Single().IsSizeKnown);
     }
 
     [TestMethod]

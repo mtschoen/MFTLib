@@ -58,7 +58,7 @@ public class BrokerIndexWatchSourceTests
 
         await firstReader.DisposeAsync();
         await first.DisposeAsync();
-        await firstRun.Cancelled.WaitAsync(HangGuard);
+        await firstRun.Cancelled.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         // The process is the caller's: closing one drive's watch leaves it serving the next.
         await using var second = await source.StartAsync(new IndexWatchTarget('C', 7, 110), token);
@@ -85,7 +85,7 @@ public class BrokerIndexWatchSourceTests
 
         await cancellation.CancelAsync();
 
-        await Assert.ThrowsAsync<OperationCanceledException>(() => pending.WaitAsync(HangGuard));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => pending.WaitAsync(HangGuard, TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -100,7 +100,7 @@ public class BrokerIndexWatchSourceTests
         Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(cancelledReader));
         var pending = cancelledReader.MoveNextAsync().AsTask();
         await cancellation.CancelAsync();
-        await Assert.ThrowsAsync<OperationCanceledException>(() => pending.WaitAsync(HangGuard));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => pending.WaitAsync(HangGuard, TestContext.CancellationToken));
         await cancelledReader.DisposeAsync();
         await cancelled.DisposeAsync();
 
@@ -174,7 +174,7 @@ public class BrokerIndexWatchSourceTests
 
         // The index's pump cancels its read first and disposes the handle only afterwards.
         await pumpStop.CancelAsync();
-        await Assert.ThrowsAsync<OperationCanceledException>(() => pending.WaitAsync(HangGuard));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => pending.WaitAsync(HangGuard, TestContext.CancellationToken));
         await reader.DisposeAsync();
 
         Assert.IsFalse(run.Cancelled.IsCompleted, "cancelling a read must leave the drive's pipe open");
@@ -196,21 +196,21 @@ public class BrokerIndexWatchSourceTests
         broker.Watch('T').IgnoreCancellationInNextRun();
         await index.StartWatchingAsync(['T'], token);
         var first = await broker.Watch('T').RunAsync(1);
-        await first.Entered.WaitAsync(HangGuard);
+        await first.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         // The first watch's teardown is held at the handle's disposal, so the stop's wait for it
         // really runs out: the token is cancelled once the stop is waiting on that teardown.
         using var stopTimeout = new CancellationTokenSource();
         var stop = index.StopWatchingAsync(['T'], stopTimeout.Token);
-        await teardown.Entered.WaitAsync(HangGuard);
+        await teardown.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.IsFalse(stop.IsCompleted, "the stop waits for the held teardown");
         await stopTimeout.CancelAsync();
-        await Assert.ThrowsAsync<OperationCanceledException>(() => stop.WaitAsync(HangGuard));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => stop.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.IsFalse(first.Cancelled.IsCompleted, "the held teardown has not closed the pipe yet");
 
         // The teardown carries on after the stop gave up, and closes the pipe.
         teardown.Release();
-        await first.Cancelled.WaitAsync(HangGuard);
+        await first.Cancelled.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         await index.StartWatchingAsync(['T'], token);
         var second = await broker.Watch('T').RunAsync(2);
@@ -221,7 +221,7 @@ public class BrokerIndexWatchSourceTests
         // The first host watch is still alive and now yields what it held; its pipe is gone.
         first.Push(10, "stale.txt", 400);
         first.Release();
-        await first.Finished.WaitAsync(HangGuard);
+        await first.Finished.WaitAsync(HangGuard, TestContext.CancellationToken);
         var afterApplied = ChangeSignal.WhenApplied(index, "after.txt");
         second.Push(11, "after.txt", 500);
         await afterApplied;
@@ -256,4 +256,6 @@ public class BrokerIndexWatchSourceTests
             await inner.DisposeAsync();
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

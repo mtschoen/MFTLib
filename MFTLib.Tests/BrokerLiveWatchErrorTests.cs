@@ -43,7 +43,7 @@ public class BrokerLiveWatchErrorTests
 
         // The host's watch has failed and returned before anything reads the handle.
         run.Fail(new IOException("journal wrapped"));
-        await run.Finished.WaitAsync(HangGuard);
+        await run.Finished.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var reader = handle.ReadAsync(token).GetAsyncEnumerator(token);
         await using var _ = reader.ConfigureAwait(false);
@@ -64,9 +64,9 @@ public class BrokerLiveWatchErrorTests
         var (handleD, hostD) = await StartAsync(source, broker, 'D');
         await using var ___ = handleD.ConfigureAwait(false);
         await using var ____ = hostD.ConfigureAwait(false);
-        var readerC = handleC.ReadAsync(CancellationToken.None).GetAsyncEnumerator();
+        var readerC = handleC.ReadAsync(CancellationToken.None).GetAsyncEnumerator(TestContext.CancellationToken);
         await using var _____ = readerC.ConfigureAwait(false);
-        var readerD = handleD.ReadAsync(CancellationToken.None).GetAsyncEnumerator();
+        var readerD = handleD.ReadAsync(CancellationToken.None).GetAsyncEnumerator(TestContext.CancellationToken);
         await using var ______ = readerD.ConfigureAwait(false);
 
         await HostChannelHarness.WriteFrameAsync(hostC, writer => BrokerProtocol.WriteCursor(writer, new UsnJournalCursor(7, 1)));
@@ -87,7 +87,7 @@ public class BrokerLiveWatchErrorTests
         var (handle, host) = await StartAsync(source, broker, 'C');
         await using var _ = handle.ConfigureAwait(false);
         await using var __ = host.ConfigureAwait(false);
-        var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator();
+        var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator(TestContext.CancellationToken);
         await using var ___ = reader.ConfigureAwait(false);
 
         await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteStalled(writer, "the volume stopped answering"));
@@ -106,7 +106,7 @@ public class BrokerLiveWatchErrorTests
         var (handle, host) = await StartAsync(source, broker, 'C');
         await using var _ = handle.ConfigureAwait(false);
         await using var __ = host.ConfigureAwait(false);
-        var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator();
+        var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator(TestContext.CancellationToken);
         await using var ___ = reader.ConfigureAwait(false);
 
         await HostChannelHarness.WriteFrameAsync(host, BrokerProtocol.WriteHeartbeat);
@@ -128,14 +128,14 @@ public class BrokerLiveWatchErrorTests
         var (handle, host) = await StartAsync(source, broker, 'C');
         await using var _ = handle.ConfigureAwait(false);
         await using var __ = host.ConfigureAwait(false);
-        var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator();
+        var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator(TestContext.CancellationToken);
         await using var ___ = reader.ConfigureAwait(false);
         await HostChannelHarness.WriteFrameAsync(host, BrokerProtocol.WriteCaughtUp);
         Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
 
         // A length prefix claiming ten bytes, three body bytes, then the pipe closes: the host died mid-frame.
-        await host.WriteAsync(new byte[] { 10, 0, 0, 0, 1, 2, 3 }).AsTask().WaitAsync(HangGuard);
-        await host.FlushAsync().WaitAsync(HangGuard);
+        await host.WriteAsync(new byte[] { 10, 0, 0, 0, 1, 2, 3 }, TestContext.CancellationToken).AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
+        await host.FlushAsync(TestContext.CancellationToken).WaitAsync(HangGuard, TestContext.CancellationToken);
         await host.DisposeAsync();
 
         var lost = await WatchReads.ThrowsNextAsync<BrokerChannelLostException>(reader);
@@ -156,4 +156,6 @@ public class BrokerLiveWatchErrorTests
         Assert.AreEqual(new UsnJournalCursor(7, 100), request?.Cursor);
         return (await starting.WaitAsync(HangGuard), host);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

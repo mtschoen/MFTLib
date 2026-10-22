@@ -33,15 +33,15 @@ public partial class BrokerProcessTests
 
         var open = broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, Armed),
             cancellation.Token);
-        await connecting.Entered.WaitAsync(HangGuard);
+        await connecting.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         await cancellation.CancelAsync();
         await AssertCancelledAsync(open);
         connecting.Release();
 
-        var connected = await connection.Task.WaitAsync(HangGuard);
-        await Assert.ThrowsExactlyAsync<IOException>(() => connected.WaitAsync(HangGuard),
+        var connected = await connection.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
+        await Assert.ThrowsExactlyAsync<IOException>(() => connected.WaitAsync(HangGuard, TestContext.CancellationToken),
             "The pipe the client released has nothing listening.");
-        await broker.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard);
+        await broker.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(0, watchStarts, "No channel ran on the host.");
         Assert.IsFalse(broker.Process.Ended.IsCompleted);
     }
@@ -59,12 +59,12 @@ public partial class BrokerProcessTests
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, Armed),
-                CancellationToken.None).WaitAsync(HangGuard));
+                CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.Contains("refused after connecting", exception.Message);
-        await using var stream = await hostEnd.Task.WaitAsync(HangGuard);
+        await using var stream = await hostEnd.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
         var buffer = new byte[16];
-        Assert.AreEqual(0, await stream.ReadAsync(buffer).AsTask().WaitAsync(HangGuard),
+        Assert.AreEqual(0, await stream.ReadAsync(buffer, TestContext.CancellationToken).AsTask().WaitAsync(HangGuard, TestContext.CancellationToken),
             "The client closed its end, so the host's end reads EOF.");
     }
 
@@ -80,7 +80,7 @@ public partial class BrokerProcessTests
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, Armed),
-                CancellationToken.None).WaitAsync(HangGuard));
+                CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.Contains("no pipe for drive C", exception.Message);
         Assert.IsFalse(broker.Process.Ended.IsCompleted);
@@ -98,11 +98,11 @@ public partial class BrokerProcessTests
 
         var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
             broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, Armed),
-                CancellationToken.None).WaitAsync(HangGuard));
+                CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.AreEqual('C', lost.Drive);
-        await clientEnd.Disposed.WaitAsync(HangGuard);
-        await (await hostEnd.Task.WaitAsync(HangGuard)).Disposed.WaitAsync(HangGuard);
+        await clientEnd.Disposed.WaitAsync(HangGuard, TestContext.CancellationToken);
+        await (await hostEnd.Task.WaitAsync(HangGuard, TestContext.CancellationToken)).Disposed.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.IsFalse(broker.Process.Ended.IsCompleted, "A lost drive channel leaves the process running.");
     }
 }

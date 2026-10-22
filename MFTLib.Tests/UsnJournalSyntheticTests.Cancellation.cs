@@ -47,7 +47,7 @@ public partial class UsnJournalSyntheticTests
                 }
                 pipe.ContinueIssue.Set();
                 await harness.CloseControlAsync();
-                await harness.Serve.WaitAsync(HangGuard);
+                await harness.Serve.WaitAsync(HangGuard, TestContext.CancellationToken);
             }
             finally
             {
@@ -84,7 +84,7 @@ public partial class UsnJournalSyntheticTests
                 }
                 await cancellation.CancelAsync();
                 pipe.ContinueIssue.Set();
-                await watch.WaitAsync(HangGuard);
+                await watch.WaitAsync(HangGuard, TestContext.CancellationToken);
             }
             finally
             {
@@ -120,4 +120,6 @@ public partial class UsnJournalSyntheticTests
         {
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

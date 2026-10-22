@@ -23,7 +23,7 @@ public partial class JournalBrokerHostLivenessTests
             return [];
         }), sectionWriter);
         var pipe = await harness.OpenScanChannelAsync('C');
-        await entered.Entered.WaitAsync(HangGuard);
+        await entered.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         // Six 5 second intervals reach the 30 second limit and Stalled is written; the operation ignores the
         // cancellation that follows, so the pipe stays visited for the intervals after it.
@@ -75,7 +75,7 @@ public partial class JournalBrokerHostLivenessTests
             try
             {
                 var pipe = await harness.OpenScanChannelAsync('C');
-                await entered.Entered.WaitAsync(HangGuard);
+                await entered.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
                 // The Stalled write starts on the sixth interval (30 second limit, six 5 second visits);
                 // the bound only makes a missing write fail the test instead of looping.
                 for (var interval = 0; !stalledWrite.Started.IsCompleted; interval++)
@@ -89,7 +89,7 @@ public partial class JournalBrokerHostLivenessTests
                 // and queues its next frame behind that write; once the write lets go, the frame finds
                 // the pipe stalled and is not written.
                 release.Release();
-                await laterFrame.Task.WaitAsync(HangGuard);
+                await laterFrame.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
                 stalledWrite.Finish();
                 var frames = await HostChannelHarness.ReadToEndAsync(pipe, includeHeartbeats: true);
 
@@ -104,8 +104,14 @@ public partial class JournalBrokerHostLivenessTests
         }
         finally
         {
-            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
-            BrokerDiagnostics.Dependencies.ResetToDefaults();
+            try
+            {
+                await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            }
+            finally
+            {
+                BrokerDiagnostics.Dependencies.ResetToDefaults();
+            }
         }
     }
 

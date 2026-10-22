@@ -15,7 +15,7 @@ public class DefaultElevatedEntryRunnerConnectTests
         try
         {
             await DefaultElevatedEntryRunner.ConnectDrivePipeAsync(pipeName, cancellation.Token)
-                .WaitAsync(HangGuard);
+                .WaitAsync(HangGuard, TestContext.CancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -24,4 +24,6 @@ public class DefaultElevatedEntryRunnerConnectTests
 
         Assert.Fail("Expected the cancelled connect to throw.");
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

@@ -27,7 +27,7 @@ public class BrokerDiagnosticsWriterFlushTests
         try
         {
             Assert.IsTrue(writer.TryEnqueue("held record"));
-            await gate.Entered.WaitAsync(HangGuard);
+            await gate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
             for (var index = 0; index < BrokerDiagnosticsWriter.Capacity; index++)
             {
                 Assert.IsTrue(writer.TryEnqueue("queued record"));
@@ -35,10 +35,10 @@ public class BrokerDiagnosticsWriterFlushTests
 
             Assert.IsFalse(writer.TryEnqueue("queue overflow"));
             gate.Release();
-            await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
             offline.Value = false;
             Assert.IsTrue(writer.TryEnqueue("recovered record"));
-            await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
 
             Assert.HasCount(2, lines);
             Assert.Contains($"{BrokerDiagnosticsWriter.Capacity + 2} records dropped: queue full (1); append failed ({BrokerDiagnosticsWriter.Capacity + 1}): IOException: sink unavailable", lines[0]);
@@ -48,7 +48,7 @@ public class BrokerDiagnosticsWriterFlushTests
         {
             gate.Release();
             writer.Complete();
-            await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
         }
     }
 
@@ -76,7 +76,7 @@ public class BrokerDiagnosticsWriterFlushTests
         try
         {
             Assert.IsTrue(writer.TryEnqueue("parks the sink"));
-            await firstAppend.Entered.WaitAsync(HangGuard);
+            await firstAppend.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
             for (var index = 0; index < BrokerDiagnosticsWriter.Capacity; index++)
             {
                 Assert.IsTrue(writer.TryEnqueue($"fill {index}"));
@@ -85,10 +85,10 @@ public class BrokerDiagnosticsWriterFlushTests
             var flush = writer.FlushAsync(CancellationToken.None);
             Assert.IsFalse(flush.IsCompleted);
             firstAppend.Release();
-            await lastAppend.Entered.WaitAsync(HangGuard);
+            await lastAppend.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
             Assert.IsFalse(flush.IsCompleted);
             lastAppend.Release();
-            await flush.WaitAsync(HangGuard);
+            await flush.WaitAsync(HangGuard, TestContext.CancellationToken);
             Assert.HasCount(BrokerDiagnosticsWriter.Capacity + 2, lines);
             Assert.ContainsSingle(line =>
                 line.Contains("1 records dropped: queue full", StringComparison.Ordinal), lines);
@@ -105,7 +105,7 @@ public class BrokerDiagnosticsWriterFlushTests
             firstAppend.Release();
             lastAppend.Release();
             writer.Complete();
-            await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
         }
     }
 
@@ -117,8 +117,10 @@ public class BrokerDiagnosticsWriterFlushTests
         writer.Complete();
 
         Assert.IsFalse(writer.TryEnqueue("late"));
-        await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+        await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsEmpty(lines);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

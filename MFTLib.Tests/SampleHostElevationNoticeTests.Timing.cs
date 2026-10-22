@@ -45,16 +45,23 @@ partial class SampleHostElevationNoticeTests
         {
             if (++beepCount > 1)
             {
-                delayedCaller.Task.Wait();
+                delayedCaller.Task.Wait(TestContext.CancellationToken);
             }
 
             return true;
         };
-        scanner._dialogScheduler = new AfterRunScheduler(() =>
+        var scheduler = new AfterRunScheduler(() =>
         {
-            clock.Advance(TimeSpan.FromMinutes(10));
-            delayedCaller.TrySetResult();
+            try
+            {
+                clock.Advance(TimeSpan.FromMinutes(10));
+            }
+            finally
+            {
+                delayedCaller.TrySetResult();
+            }
         });
+        scanner._dialogScheduler = scheduler;
         var answers = new Queue<(int Result, double Seconds)>([(button, 0), (SampleHost.MessageBoxResultOk, 3)]);
         scanner._messageBox = (_, _, _, _) =>
         {
@@ -65,6 +72,7 @@ partial class SampleHostElevationNoticeTests
         };
 
         var result = RunElevation(scanner);
+        scheduler.CheckForFailure();
 
         Assert.AreEqual(0, result);
         Assert.AreSequenceEqual(["dialog", "dialog", "elevate"], events);
@@ -90,19 +98,26 @@ partial class SampleHostElevationNoticeTests
             {
                 callerReachedNextBeep.TrySetResult();
                 callerWaitingOnDelayedCaller.TrySetResult();
-                delayedCaller.Task.Wait();
+                delayedCaller.Task.Wait(TestContext.CancellationToken);
             }
 
             return true;
         };
-        scanner._dialogScheduler = new AfterRunScheduler(() =>
+        var scheduler = new AfterRunScheduler(() =>
         {
-            callerReachedNextBeep.Task.Wait();
-            Task.WaitAny(callerWaitingOnDelayedCaller.Task, secondDialogStarted.Task);
-            clock.Advance(TimeSpan.FromMinutes(10));
-            delayedCaller.TrySetResult();
-            hookFinishedAdvance.TrySetResult();
+            try
+            {
+                callerReachedNextBeep.Task.Wait(TestContext.CancellationToken);
+                Task.WaitAny([callerWaitingOnDelayedCaller.Task, secondDialogStarted.Task], TestContext.CancellationToken);
+                clock.Advance(TimeSpan.FromMinutes(10));
+            }
+            finally
+            {
+                delayedCaller.TrySetResult();
+                hookFinishedAdvance.TrySetResult();
+            }
         });
+        scanner._dialogScheduler = scheduler;
         var answers = new Queue<(int Result, double Seconds)>([(button, 0), (SampleHost.MessageBoxResultOk, 3)]);
         scanner._messageBox = (_, _, _, _) =>
         {
@@ -110,7 +125,7 @@ partial class SampleHostElevationNoticeTests
             if (events.Count == 2)
             {
                 secondDialogStarted.TrySetResult();
-                hookFinishedAdvance.Task.Wait();
+                hookFinishedAdvance.Task.Wait(TestContext.CancellationToken);
             }
 
             var answer = answers.Dequeue();
@@ -119,6 +134,7 @@ partial class SampleHostElevationNoticeTests
         };
 
         var result = RunElevation(scanner);
+        scheduler.CheckForFailure();
 
         Assert.AreEqual(0, result);
         Assert.AreSequenceEqual(["dialog", "dialog", "elevate"], events);
@@ -158,13 +174,53 @@ partial class SampleHostElevationNoticeTests
     // Runs each queued task on a new thread, then a hook once the task has completed.
     sealed class AfterRunScheduler(Action afterRun) : TaskScheduler
     {
+        readonly List<Thread> _threads = [];
+        Exception? _failure;
+
+        public void CheckForFailure()
+        {
+            lock (_threads)
+            {
+                foreach (var thread in _threads)
+                {
+                    thread.Join(TimeSpan.FromSeconds(5));
+                }
+            }
+
+            if (_failure is not null)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(_failure).Throw();
+            }
+        }
+
         protected override void QueueTask(Task task)
         {
-            new Thread(() =>
+            var thread = new Thread(() =>
             {
-                TryExecuteTask(task);
-                afterRun();
-            }).Start();
+                try
+                {
+                    TryExecuteTask(task);
+                    afterRun();
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected cancellation at the scheduler thread boundary.
+                }
+                catch (AggregateException exception) when (exception.InnerExceptions.All(e => e is OperationCanceledException))
+                {
+                    // Expected cancellation when waiting on tasks.
+                }
+                catch (Exception exception)
+                {
+                    _failure = exception;
+                }
+            });
+            lock (_threads)
+            {
+                _threads.Add(thread);
+            }
+
+            thread.Start();
         }
 
         protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued) => false;

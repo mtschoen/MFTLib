@@ -38,12 +38,12 @@ public partial class BrokerProcessTests
         var ended = broker.Process.Ended;
         // The control reader's stall limit is the first timer due after 30 seconds; the request's
         // write bound is the second.
-        await clock.TimerCreated(BrokerLiveness.StallLimit).WaitAsync(HangGuard);
+        await clock.TimerCreated(BrokerLiveness.StallLimit).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var held = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
-        await control.Gate.Entered.WaitAsync(HangGuard);
+        await control.Gate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         var writeBound = await clock.TimerCreated(BrokerLiveness.ControlReplyTimeout, occurrence: 2)
-            .WaitAsync(HangGuard);
+            .WaitAsync(HangGuard, TestContext.CancellationToken);
         await KeepControlAliveAsync(broker, clock, controlReads);
 
         clock.Advance(BrokerLiveness.ControlReplyTimeout - HeartbeatAfter - OneTick);
@@ -52,9 +52,9 @@ public partial class BrokerProcessTests
         clock.Advance(OneTick);
 
         Assert.IsTrue(writeBound.Fired);
-        Assert.Contains("did not finish writing within 30 seconds", await ended.WaitAsync(HangGuard));
-        await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => held.WaitAsync(HangGuard));
-        await broker.Process.Ended.WaitAsync(HangGuard);
+        Assert.Contains("did not finish writing within 30 seconds", await ended.WaitAsync(HangGuard, TestContext.CancellationToken));
+        await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => held.WaitAsync(HangGuard, TestContext.CancellationToken));
+        await broker.Process.Ended.WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 
     [TestMethod]
@@ -63,17 +63,17 @@ public partial class BrokerProcessTests
         var clock = new TimerSignalingClock();
         var controlReads = new ReadCounter();
         await using var broker = new ScriptedBroker(clock, controlReads.Wrap);
-        await clock.TimerCreated(BrokerLiveness.StallLimit).WaitAsync(HangGuard);
+        await clock.TimerCreated(BrokerLiveness.StallLimit).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var open = broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, Armed),
             CancellationToken.None);
         var request = await broker.ReadRequestAsync();
         // The 30 second timers so far: the control reader's stall limit, the request's write bound,
         // and its reply timeout (created after the write). The connection bound follows the reply.
-        await clock.TimerCreated(BrokerLiveness.ControlReplyTimeout, occurrence: 3).WaitAsync(HangGuard);
+        await clock.TimerCreated(BrokerLiveness.ControlReplyTimeout, occurrence: 3).WaitAsync(HangGuard, TestContext.CancellationToken);
         await broker.WriteControlAsync(writer => BrokerProtocol.WriteChannelOpened(writer, request.RequestId));
         var connectionBound = await clock.TimerCreated(BrokerLiveness.ControlReplyTimeout, occurrence: 4)
-            .WaitAsync(HangGuard);
+            .WaitAsync(HangGuard, TestContext.CancellationToken);
         await KeepControlAliveAsync(broker, clock, controlReads);
 
         clock.Advance(BrokerLiveness.ControlReplyTimeout - HeartbeatAfter - OneTick);
@@ -82,7 +82,7 @@ public partial class BrokerProcessTests
         clock.Advance(OneTick);
 
         Assert.IsTrue(connectionBound.Fired);
-        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => open.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => open.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual('C', lost.Drive);
         Assert.Contains("did not connect within 30 seconds", lost.Message);
         await Assert.ThrowsExactlyAsync<IOException>(() =>

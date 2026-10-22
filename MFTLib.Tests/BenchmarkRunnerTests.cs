@@ -172,7 +172,7 @@ public partial class BenchmarkRunnerTests
             }
             foreach (var original in originals)
             {
-                Assert.AreSequenceEqual(original.Value, await File.ReadAllBytesAsync(original.Key));
+                Assert.AreSequenceEqual(original.Value, await File.ReadAllBytesAsync(original.Key, TestContext.CancellationToken));
             }
         }
         finally { Directory.Delete(directory, true); }
@@ -189,7 +189,7 @@ public partial class BenchmarkRunnerTests
         {
             if (corrupt)
             {
-                await File.WriteAllTextAsync(Path.Combine(directory, "T-00000001.mlix"), "corrupt");
+                await File.WriteAllTextAsync(Path.Combine(directory, "T-00000001.mlix"), "corrupt", TestContext.CancellationToken);
             }
             Assert.AreEqual(1, await _runner.RunAsync(["index", "--cache-directory", directory]));
             Assert.Contains(corrupt ? "Invalid" : "No cache blocks", _output.ToString());
@@ -297,10 +297,10 @@ public partial class BenchmarkRunnerTests
     public async Task Run_Index_Failure_WritesNoReport()
     {
         var report = Path.Combine(_directory, "report.txt");
-        await File.WriteAllTextAsync(report, "keep me");
+        await File.WriteAllTextAsync(report, "keep me", TestContext.CancellationToken);
         var emptyCache = Directory.CreateDirectory(Path.Combine(_directory, "empty-cache")).FullName;
         Assert.AreEqual(1, await _runner.RunAsync(["index", "--cache-directory", emptyCache, "--out", report]));
-        Assert.AreEqual("keep me", await File.ReadAllTextAsync(report));
+        Assert.AreEqual("keep me", await File.ReadAllTextAsync(report, TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -317,7 +317,7 @@ public partial class BenchmarkRunnerTests
         var runner = new BenchmarkRunner(output);
         var path = Path.Combine(_directory, "report with spaces.txt");
         Assert.AreEqual(0, await runner.RunAsync(["index", "--synthetic", "2", "--out", path]));
-        var saved = await File.ReadAllTextAsync(path);
+        var saved = await File.ReadAllTextAsync(path, TestContext.CancellationToken);
         Assert.Contains("--- exact-search ---", saved);
         Assert.Contains("--- substring-search ---", saved);
         Assert.Contains($"Report saved to {Path.GetFullPath(path)}", output.ToString());
@@ -339,8 +339,8 @@ public partial class BenchmarkRunnerTests
 
         var literalBaseline = Path.Combine(_directory, "literal-baseline.txt");
         var grownPath = Path.Combine(_directory, "grown.txt");
-        await File.WriteAllTextAsync(literalBaseline, "--- exact-search ---\n  Median: 4.000 ms; Matches: 1\n--- substring-search ---\n  Median: 4.000 ms; Matches: 1");
-        await File.WriteAllTextAsync(grownPath, "--- exact-search ---\n  Median: 5.001 ms; Matches: 1\n--- substring-search ---\n  Median: 5.001 ms; Matches: 1");
+        await File.WriteAllTextAsync(literalBaseline, "--- exact-search ---\n  Median: 4.000 ms; Matches: 1\n--- substring-search ---\n  Median: 4.000 ms; Matches: 1", TestContext.CancellationToken);
+        await File.WriteAllTextAsync(grownPath, "--- exact-search ---\n  Median: 5.001 ms; Matches: 1\n--- substring-search ---\n  Median: 5.001 ms; Matches: 1", TestContext.CancellationToken);
 
         foreach (var scenario in new[] { "exact-search", "substring-search" })
         {
@@ -394,7 +394,7 @@ public partial class BenchmarkRunnerTests
         var after = Path.Combine(_directory, "after.txt");
         Assert.AreEqual(1, await _runner.RunAsync(["compare", before, after, "exact-search"]));
         Assert.Contains($"Baseline before file not found: {before}", _output.ToString());
-        await File.WriteAllTextAsync(before, "--- exact-search ---\n  Median: 1.000 ms");
+        await File.WriteAllTextAsync(before, "--- exact-search ---\n  Median: 1.000 ms", TestContext.CancellationToken);
         Assert.AreEqual(1, await _runner.RunAsync(["compare", before, after, "exact-search"]));
         Assert.Contains($"Benchmark after file not found: {after}", _output.ToString());
     }
@@ -427,8 +427,8 @@ public partial class BenchmarkRunnerTests
     {
         var before = Path.Combine(_directory, "before.txt");
         var after = Path.Combine(_directory, "after.txt");
-        await File.WriteAllTextAsync(before, beforeReport);
-        await File.WriteAllTextAsync(after, afterReport);
+        await File.WriteAllTextAsync(before, beforeReport, TestContext.CancellationToken);
+        await File.WriteAllTextAsync(after, afterReport, TestContext.CancellationToken);
         return await _runner.RunAsync(["compare", before, after, scenario]);
     }
 

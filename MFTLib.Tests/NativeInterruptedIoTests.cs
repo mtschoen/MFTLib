@@ -1,3 +1,4 @@
+#pragma warning disable MSTEST0045 // Noncooperative timeout required for noncancellable native scenarios to guard against infinite retry hangs
 using MFTLib.NativeInterop;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -17,6 +18,8 @@ public sealed class NativeInterruptedIoTests : IDisposable
     TempDirectory? _tempDirectory;
     string TemporaryDirectoryPath => _tempDirectory!.Path;
     string _path = null!;
+
+    public TestContext TestContext { get; set; } = null!;
 
     [TestInitialize]
     public void Initialize()

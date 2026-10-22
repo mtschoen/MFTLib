@@ -104,7 +104,8 @@ public class UsnJournalLiveTests
         var batches = new List<UsnJournalEntry[]>();
         var watchTask = Task.Run(async () =>
         {
-            using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+            cancellationTokenSource.CancelAfter(TimeSpan.FromSeconds(10));
             // ReSharper disable once AccessToDisposedClosure
             // volume is captured from outer scope; watchTask is awaited before volume's using exits.
             await foreach (var (batch, _) in volume.Journal.WatchUsnJournal(cursor, cancellationTokenSource.Token))
@@ -115,7 +116,7 @@ public class UsnJournalLiveTests
                     break;
                 }
             }
-        });
+        }, TestContext.CancellationToken);
 
         await File.WriteAllTextAsync(tempPath, "watch test", CancellationToken.None);
 
@@ -123,7 +124,7 @@ public class UsnJournalLiveTests
         {
             await watchTask;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (!TestContext.CancellationToken.IsCancellationRequested)
         {
             // Timeout is acceptable
         }
@@ -175,4 +176,6 @@ public class UsnJournalLiveTests
             Assert.Contains("only growth", exception.Message);
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

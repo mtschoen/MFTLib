@@ -52,7 +52,7 @@ public partial class BenchmarkRunnerTests
                 "--iterations", iterations.ToString(CultureInfo.InvariantCulture), "--out", reportPath]),
                 output.ToString());
 
-            var report = await File.ReadAllTextAsync(reportPath);
+            var report = await File.ReadAllTextAsync(reportPath, TestContext.CancellationToken);
             Assert.StartsWith(report, output.ToString());
             Assert.Contains($"Directories: {directories} (including root)", report);
             Assert.Contains($"Files: {directories * filesPerDirectory}", report);
@@ -173,11 +173,11 @@ public partial class BenchmarkRunnerTests
         try
         {
             var report = Path.Combine(_directory, "report.txt");
-            await File.WriteAllTextAsync(report, "keep me");
+            await File.WriteAllTextAsync(report, "keep me", TestContext.CancellationToken);
             Assert.AreEqual(1, await _runner.RunAsync(["enumeration-walk", "--directories", "2", "--out", report]));
             Assert.Contains("Error:", _output.ToString());
             Assert.Contains(throwBeforeReading ? "injected read failure" : "Incomplete enumeration:", _output.ToString());
-            Assert.AreEqual("keep me", await File.ReadAllTextAsync(report));
+            Assert.AreEqual("keep me", await File.ReadAllTextAsync(report, TestContext.CancellationToken));
             Assert.IsNotEmpty(visits);
             foreach (var path in visits)
             {

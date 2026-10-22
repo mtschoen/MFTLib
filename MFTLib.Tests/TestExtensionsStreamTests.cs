@@ -32,13 +32,13 @@ public class TestExtensionsStreamTests
             Assert.IsFalse(stream.CanSeek);
             AssertNonSeekingContract(stream);
             stream.Write([1, 2], 0, 2);
-            await stream.WriteAsync(new byte[] { 3, 4 }.AsMemory());
+            await stream.WriteAsync(new byte[] { 3, 4 }.AsMemory(), TestContext.CancellationToken);
             stream.Flush();
             await stream.FlushAsync(CancellationToken.None);
             inner.Position = 0;
             var bytes = new byte[4];
             Assert.AreEqual(2, stream.Read(bytes, 0, 2));
-            Assert.AreEqual(2, await stream.ReadAsync(bytes.AsMemory(2)));
+            Assert.AreEqual(2, await stream.ReadAsync(bytes.AsMemory(2), TestContext.CancellationToken));
             Assert.AreSequenceEqual(new byte[] { 1, 2, 3, 4 }, bytes);
             stream.ReleaseUnmanagedResources();
             Assert.IsTrue(inner.CanRead, "Dispose(false) leaves managed resources alone.");
@@ -74,10 +74,10 @@ public class TestExtensionsStreamTests
             Assert.IsTrue(stream.CanWrite);
             var bytes = new byte[2];
             Assert.AreEqual(1, stream.Read(bytes, 0, 1));
-            Assert.AreEqual(1, await stream.ReadAsync(bytes.AsMemory(1)));
+            Assert.AreEqual(1, await stream.ReadAsync(bytes.AsMemory(1), TestContext.CancellationToken));
             Assert.AreSequenceEqual(new byte[] { 1, 2 }, bytes);
             stream.Write(bytes, 0, 1);
-            await stream.WriteAsync(bytes.AsMemory(1));
+            await stream.WriteAsync(bytes.AsMemory(1), TestContext.CancellationToken);
             stream.Flush();
             await stream.FlushAsync(CancellationToken.None);
             Assert.AreSequenceEqual(bytes, output.ToArray());
@@ -117,7 +117,7 @@ public class TestExtensionsStreamTests
         var stream = new InMemoryDuplexStream(input, output);
         try
         {
-            var read = stream.ReadAsync(new byte[1].AsMemory()).AsTask();
+            var read = stream.ReadAsync(new byte[1].AsMemory(), TestContext.CancellationToken).AsTask();
             if (close)
             {
                 stream.Dispose();
@@ -199,7 +199,9 @@ public class TestExtensionsStreamTests
             exited.TrySetResult();
         }
 
-        await disposal.WaitAsync(HangGuard);
+        await disposal.WaitAsync(HangGuard, TestContext.CancellationToken);
         await stream.DisposeAsync();
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

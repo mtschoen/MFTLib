@@ -392,7 +392,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
             Options(source, new DirectProgress<IndexScanProgress>(reports.Add)),
             TestContext.CancellationToken);
 
-        var names = index.Search(new SearchQuery("file.txt")).Select(entry => entry.Name).ToArray();
+        var names = index.Search(new SearchQuery("file.txt"), TestContext.CancellationToken).Select(entry => entry.Name).ToArray();
         Assert.AreSequenceEqual(["file.txt"], names);
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);

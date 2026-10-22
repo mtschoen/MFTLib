@@ -39,9 +39,11 @@ public class ParseThreadAllocatorTests
         }, (allocator, running));
         await cancellation.CancelAsync();
 
-        using var admitted = await waiting.WaitAsync(HangGuard);
+        using var admitted = await waiting.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(1, allocator.RunningScanCount);
         Assert.AreEqual(0, allocator.QueuedScanCount);
         Assert.AreEqual(1, admitted.Allowance.Count);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

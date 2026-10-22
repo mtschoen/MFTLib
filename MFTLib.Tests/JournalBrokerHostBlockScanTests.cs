@@ -210,10 +210,10 @@ frames.Single(frame => frame.Kind == BrokerFrameKind.Error).Message!);
         });
         await using var harness = new HostChannelHarness(host, blockWriter);
         var pipe = await harness.OpenScanChannelAsync('C', "section-C");
-        await scanParked.Entered.WaitAsync(HangGuard);
+        await scanParked.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         await harness.CloseControlAsync();
-        await harness.Serve.WaitAsync(HangGuard);
+        await harness.Serve.WaitAsync(HangGuard, TestContext.CancellationToken);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
         Assert.AreEqual(6u, blockWriter.Block.Header.RowCount);
@@ -315,4 +315,6 @@ frames.Single(frame => frame.Kind == BrokerFrameKind.Error).Message!);
         var pipe = await harness.OpenScanChannelAsync('C', "section-C", retainedFileNames);
         return await HostChannelHarness.ReadToEndAsync(pipe);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

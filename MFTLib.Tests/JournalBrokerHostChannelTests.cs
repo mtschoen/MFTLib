@@ -92,7 +92,7 @@ public partial class JournalBrokerHostChannelTests
                 if (drive.Letter == 'C')
                 {
                     gate.MarkEntered();
-                    gate.WaitForReleaseAsync(CancellationToken.None).Wait(HangGuard);
+                    gate.WaitForReleaseAsync(CancellationToken.None).Wait(HangGuard, TestContext.CancellationToken);
                 }
 
                 return Volume;
@@ -101,7 +101,7 @@ public partial class JournalBrokerHostChannelTests
         await using var harness = new HostChannelHarness(host);
 
         await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 1, 'C'));
-        await gate.Entered.WaitAsync(HangGuard);
+        await gate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 2, 'D'));
 
         var first = await harness.ReadControlAsync();
@@ -128,7 +128,7 @@ public partial class JournalBrokerHostChannelTests
             connectChannel: DefaultElevatedEntryRunner.ConnectDrivePipeAsync);
 
         await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 5, 'C', pipeName));
-        await server.WaitForConnectionAsync().WaitAsync(HangGuard);
+        await server.WaitForConnectionAsync(TestContext.CancellationToken).WaitAsync(HangGuard, TestContext.CancellationToken);
         var reply = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.ChannelOpened, reply.Kind);

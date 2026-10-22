@@ -29,7 +29,7 @@ public class BrokerDiagnosticsWriterReplacementTests
             BrokerDiagnostics.Dependencies.InstallWriter(writer);
             BrokerDiagnostics.Enable("broker", Path.GetTempPath());
             BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "hello");
-            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
 
             Assert.HasCount(1, lines);
             Assert.Contains(":control]  hello", lines[0]);
@@ -37,8 +37,14 @@ public class BrokerDiagnosticsWriterReplacementTests
         finally
         {
             writer.Complete();
-            await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
-            BrokerDiagnostics.Dependencies.ResetToDefaults();
+            try
+            {
+                await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            }
+            finally
+            {
+                BrokerDiagnostics.Dependencies.ResetToDefaults();
+            }
         }
     }
 
@@ -57,7 +63,7 @@ public class BrokerDiagnosticsWriterReplacementTests
 
             BrokerDiagnostics.Dependencies.InstallWriter(secondWriter);
             BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "after");
-            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
 
             Assert.HasCount(1, second);
             Assert.Contains(":control]  after", second[0]);
@@ -67,9 +73,15 @@ public class BrokerDiagnosticsWriterReplacementTests
         {
             firstWriter.Complete();
             secondWriter.Complete();
-            await Task.WhenAll(firstWriter.FlushAsync(CancellationToken.None), secondWriter.FlushAsync(CancellationToken.None))
-                .WaitAsync(HangGuard);
-            BrokerDiagnostics.Dependencies.ResetToDefaults();
+            try
+            {
+                await Task.WhenAll(firstWriter.FlushAsync(CancellationToken.None), secondWriter.FlushAsync(CancellationToken.None))
+                    .WaitAsync(HangGuard);
+            }
+            finally
+            {
+                BrokerDiagnostics.Dependencies.ResetToDefaults();
+            }
         }
     }
 
@@ -101,19 +113,19 @@ public class BrokerDiagnosticsWriterReplacementTests
                 });
                 writers.Add(writer);
                 outputs.Add(output);
-                installation = Task.Run(() => BrokerDiagnostics.Dependencies.InstallWriter(writer));
-                await installation.WaitAsync(HangGuard);
+                installation = Task.Run(() => BrokerDiagnostics.Dependencies.InstallWriter(writer), TestContext.CancellationToken);
+                await installation.WaitAsync(HangGuard, TestContext.CancellationToken);
                 BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, $"writer-{index}");
                 if (index == 0)
                 {
-                    await gate.Entered.WaitAsync(HangGuard);
+                    await gate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
                 }
             }
-            await writers[^1].FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            await writers[^1].FlushAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
             Assert.IsEmpty(outputs[0]);
             gate.Release();
             await Task.WhenAll(writers.Select(writer => writer.FlushAsync(CancellationToken.None)))
-                .WaitAsync(HangGuard);
+                .WaitAsync(HangGuard, TestContext.CancellationToken);
             for (var index = 0; index < writers.Count; index++)
             {
                 Assert.HasCount(1, outputs[index]);
@@ -127,14 +139,32 @@ public class BrokerDiagnosticsWriterReplacementTests
         finally
         {
             gate.Release();
-            await installation.WaitAsync(HangGuard);
             foreach (var writer in writers)
             {
                 writer.Complete();
             }
-            await Task.WhenAll(writers.Select(writer => writer.FlushAsync(CancellationToken.None)))
-                .WaitAsync(HangGuard);
-            BrokerDiagnostics.Dependencies.ResetToDefaults();
+            try
+            {
+                await installation.WaitAsync(HangGuard);
+            }
+            catch
+            {
+                // Ensure writer completion and dependency reset proceed even if installation was cancelled or faulted.
+            }
+            finally
+            {
+                try
+                {
+                    await Task.WhenAll(writers.Select(writer => writer.FlushAsync(CancellationToken.None)))
+                        .WaitAsync(HangGuard);
+                }
+                finally
+                {
+                    BrokerDiagnostics.Dependencies.ResetToDefaults();
+                }
+            }
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

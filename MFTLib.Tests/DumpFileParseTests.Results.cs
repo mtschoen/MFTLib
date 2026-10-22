@@ -37,7 +37,7 @@ public partial class DumpFileParseTests
     [TestMethod]
     public void ReadBatches_DefaultBatchSize_BatchesHaveExpectedLengthsAndOrder()
     {
-        using var result = StreamFile();
+        using var result = StreamFile(cancellationToken: TestContext.CancellationToken);
 
         var expectedRecordNumbers = result.ToRecords().Select(record => record.RecordNumber).ToArray();
         var batches = result.ReadBatches(4096).ToList();
@@ -49,7 +49,7 @@ public partial class DumpFileParseTests
     [TestMethod]
     public void ReadBatches_CustomBatchSize_BatchesMatchRecordsInOrder()
     {
-        using var result = StreamFile();
+        using var result = StreamFile(cancellationToken: TestContext.CancellationToken);
         const int batchSize = 64;
 
         var batches = result.ReadBatches(batchSize).ToList();
@@ -63,7 +63,7 @@ public partial class DumpFileParseTests
     [TestMethod]
     public void ReadBatches_RecordsStayValidAfterNextBatch()
     {
-        using var result = StreamFile();
+        using var result = StreamFile(cancellationToken: TestContext.CancellationToken);
 
         using var enumerator = result.ReadBatches(10).GetEnumerator();
         Assert.IsTrue(enumerator.MoveNext());

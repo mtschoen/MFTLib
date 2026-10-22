@@ -23,8 +23,8 @@ public partial class JournalBrokerHostChannelTests
             null, CancellationToken.None);
         // length 13, OpenChannel, request 31, invalid UTF-16 character '1', pipe name 'p'.
         byte[] frame = [13, 0, 0, 0, 1, 31, 0, 0, 0, (byte)'1', 0, 2, 0, 0, 0, (byte)'p', 0];
-        await pair.Client.WriteAsync(frame);
-        await Assert.ThrowsExactlyAsync<InvalidDataException>(() => serve.WaitAsync(HangGuard));
+        await pair.Client.WriteAsync(frame, TestContext.CancellationToken);
+        await Assert.ThrowsExactlyAsync<InvalidDataException>(() => serve.WaitAsync(HangGuard, TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -83,8 +83,8 @@ breakableControl: true);
 
         await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 8, 'C', "pipe"));
 
-        await connected.Disposed.WaitAsync(HangGuard);
-        await harness.Serve.WaitAsync(HangGuard);
+        await connected.Disposed.WaitAsync(HangGuard, TestContext.CancellationToken);
+        await harness.Serve.WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 
     [TestMethod]
@@ -106,12 +106,12 @@ breakableControl: true);
         await using var lateStream = new DisposalRecordingStream(late.Host);
 
         await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 9, 'C', "slow"));
-        await connecting.Entered.WaitAsync(HangGuard);
+        await connecting.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         await harness.CloseControlAsync();
-        await harness.Serve.WaitAsync(HangGuard);
+        await harness.Serve.WaitAsync(HangGuard, TestContext.CancellationToken);
         connection.SetResult(lateStream);
 
-        await lateStream.Disposed.WaitAsync(HangGuard);
+        await lateStream.Disposed.WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 
     [TestMethod]
@@ -161,7 +161,7 @@ breakableControl: true);
         // The client's end is gone the way a broken named pipe reports it: the read throws.
         readBreaker.BreakReads();
 
-        await watchStopped.Task.WaitAsync(HangGuard);
+        await watchStopped.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.IsNull(await HostChannelHarness.ReadFrameAsync(pipe), "The host closes the channel.");
         Assert.IsFalse(harness.Serve.IsCompleted, "One channel's broken pipe does not end the session.");
     }
@@ -186,20 +186,20 @@ breakableControl: true);
 
         // The ChannelOpened reply passed the session's end check and is held mid-write.
         await HostChannelHarness.WriteFrameAsync(client, writer => BrokerProtocol.WriteOpenChannel(writer, 3, 'C', "late"));
-        await heldReply.Started.WaitAsync(HangGuard);
+        await heldReply.Started.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         // The client goes away: the session ends and its drain starts (the drain's grace timer is
         // the second 5 second timer after the heartbeat sender's), holding only the request's task.
         await client.DisposeAsync();
-        await clock.TimerCreated(JournalBrokerHost.ControlClosedGracePeriod, 2).WaitAsync(HangGuard);
+        await clock.TimerCreated(JournalBrokerHost.ControlClosedGracePeriod, 2).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         // The reply completes, so the request tracks its channel task, which cannot finish while its
         // pipe is held open: the drain must take a second snapshot and wait for that task as well.
         heldReply.Finish();
-        await connected.DisposalStarted.WaitAsync(HangGuard);
+        await connected.DisposalStarted.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.IsFalse(serve.IsCompleted, "The session cannot return while a channel it tracked is still running.");
         connected.FinishDisposal();
-        await serve.WaitAsync(HangGuard);
+        await serve.WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 
     static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> ParkedUntilCancelled(

@@ -12,7 +12,7 @@ static class EnumerationWalkTestSupport
     {
         using var lease = await EnumerationWalkLimit.EnterAsync(cancellationToken);
         return producer.Produce(writer, progress, lease, cancellationToken, maximumWorkers);
-    });
+    }, cancellationToken);
 
     internal static void GenerateBranchingTree(string root, int branches, int depth, int filesPerDirectory)
     {

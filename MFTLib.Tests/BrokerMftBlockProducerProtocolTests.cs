@@ -15,7 +15,7 @@ public class BrokerMftBlockProducerProtocolTests : BrokerBlockTestBase
         var resultTask = ProduceAsync(broker.Process, Request(Target()));
 
         await SendCompleteScanAsync(broker, skippedRecordCount);
-        var result = await resultTask.WaitAsync(HangGuard);
+        var result = await resultTask.WaitAsync(HangGuard, TestContext.CancellationToken);
         result.Block.Dispose();
 
         Assert.AreEqual(int.MaxValue, result.SkippedRecordCount);
@@ -41,7 +41,7 @@ public class BrokerMftBlockProducerProtocolTests : BrokerBlockTestBase
 
         await CompleteScanAsync(broker, pipe, section.SectionName, 0);
         await pipe.DisposeAsync();
-        var result = await resultTask.WaitAsync(HangGuard);
+        var result = await resultTask.WaitAsync(HangGuard, TestContext.CancellationToken);
         using var block = result.Block;
 
         Assert.AreSame(section.Block, block);
@@ -61,7 +61,7 @@ public class BrokerMftBlockProducerProtocolTests : BrokerBlockTestBase
         Assert.AreEqual(BrokerFrameKind.QueryVolume, query.Kind);
         await broker.WriteControlAsync(writer => BrokerProtocol.WriteError(writer, query.RequestId, "query failed"));
 
-        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => resultTask.WaitAsync(HangGuard));
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => resultTask.WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.AreEqual("query failed", exception.Message);
         Assert.IsEmpty(broker.Sections.All());
@@ -88,7 +88,7 @@ public class BrokerMftBlockProducerProtocolTests : BrokerBlockTestBase
             }
         }
 
-        await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => resultTask.WaitAsync(HangGuard));
+        await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => resultTask.WaitAsync(HangGuard, TestContext.CancellationToken));
         var section = broker.Sections.Single();
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
         BlockFileAssertions.IsDisposed(section.Block);
@@ -137,11 +137,11 @@ public class BrokerMftBlockProducerProtocolTests : BrokerBlockTestBase
         Exception exception;
         if (fault == "ErrorAfterReady")
         {
-            exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => resultTask.WaitAsync(HangGuard));
+            exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => resultTask.WaitAsync(HangGuard, TestContext.CancellationToken));
         }
         else
         {
-            exception = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => resultTask.WaitAsync(HangGuard));
+            exception = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => resultTask.WaitAsync(HangGuard, TestContext.CancellationToken));
         }
 
         Assert.Contains(message, exception.Message);
@@ -164,4 +164,6 @@ public class BrokerMftBlockProducerProtocolTests : BrokerBlockTestBase
         await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, skippedRecordCount));
         await HostChannelHarness.WriteFrameAsync(pipe, BrokerProtocol.WriteScanCompleted);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

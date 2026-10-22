@@ -31,7 +31,7 @@ public sealed class BrokerFileIndexRescanTests
         var scanning = scenario.HoldSecondScanOfT();
 
         var rescan = index.RescanAsync(['T'], token);
-        await scanning.Entered.WaitAsync(HangGuard);
+        await scanning.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         try
         {
@@ -50,8 +50,8 @@ public sealed class BrokerFileIndexRescanTests
         {
             scanning.Release();
         }
-        await rescan.WaitAsync(HangGuard);
-        await firstT.Cancelled.WaitAsync(HangGuard);
+        await rescan.WaitAsync(HangGuard, TestContext.CancellationToken);
+        await firstT.Cancelled.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var secondT = await harness.Watch('T').RunAsync(2);
         Assert.AreEqual(2, harness.Watch('T').StartedCount);
@@ -87,11 +87,11 @@ public sealed class BrokerFileIndexRescanTests
             await using var index = await scenario.OpenIndexAsync(producer.CreateIndexSource().Producer, source, token);
 
             var start = index.StartWatchingAsync(['T'], token);
-            await connectGate.Entered.WaitAsync(HangGuard);
+            await connectGate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
             Assert.IsFalse(start.IsCompleted, "StartWatchingAsync completed before the broker connected.");
 
             connectGate.Release();
-            await start.WaitAsync(HangGuard);
+            await start.WaitAsync(HangGuard, TestContext.CancellationToken);
             await index.RescanAsync(['U'], token);
 
             Assert.IsTrue(index.Drives.All(drive => drive.Watch.FailureMessage == null));
@@ -155,10 +155,10 @@ public sealed class BrokerFileIndexRescanTests
             using var startCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
 
             var start = index.StartWatchingAsync(['T'], startCancellation.Token);
-            await connectGate.Entered.WaitAsync(HangGuard);
+            await connectGate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
             await startCancellation.CancelAsync();
 
-            await Assert.ThrowsAsync<OperationCanceledException>(() => start.WaitAsync(HangGuard));
+            await Assert.ThrowsAsync<OperationCanceledException>(() => start.WaitAsync(HangGuard, TestContext.CancellationToken));
             await index.StartWatchingAsync(['T'], token);
             await index.RescanAsync(['T'], token);
             Assert.IsTrue(index.Drives.All(drive => drive.Watch.FailureMessage == null));
@@ -221,4 +221,6 @@ public sealed class BrokerFileIndexRescanTests
                 new MftRecord(20, 5, new MftRecordFields(1), $"scan-{scanNumber}.txt")];
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

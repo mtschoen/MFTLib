@@ -30,7 +30,7 @@ public sealed class FreedRowsIndexTests : IDisposable
     {
         await using var index = await OpenAsync(includeFreed: true);
 
-        var entry = index.Search(new SearchQuery("trusted.txt", IncludeDeleted: true)).Single();
+        var entry = index.Search(new SearchQuery("trusted.txt", IncludeDeleted: true), TestContext.CancellationToken).Single();
 
         Assert.IsTrue(entry.IsDeleted);
         Assert.AreEqual(Path.Combine(TreeRoot, "docs", "trusted.txt"), entry.Path);
@@ -43,7 +43,7 @@ public sealed class FreedRowsIndexTests : IDisposable
     {
         await using var index = await OpenAsync(includeFreed: true);
 
-        var entry = index.Search(new SearchQuery("orphan.txt", IncludeDeleted: true)).Single();
+        var entry = index.Search(new SearchQuery("orphan.txt", IncludeDeleted: true), TestContext.CancellationToken).Single();
 
         Assert.IsTrue(entry.IsDeleted);
         Assert.AreEqual("orphan.txt", entry.Path);
@@ -54,25 +54,25 @@ public sealed class FreedRowsIndexTests : IDisposable
     public async Task UnverifiedFreedRow_IsNobodysChildAndLookupNeverFindsIt()
     {
         await using var index = await OpenAsync(includeFreed: true);
-        var docs = index.Find(Path.Combine(TreeRoot, "docs"))!.Value;
-        var root = index.Root('T');
+        var docs = index.Find(Path.Combine(TreeRoot, "docs"), TestContext.CancellationToken)!.Value;
+        var root = index.Root('T', TestContext.CancellationToken);
 
-        Assert.AreSequenceEqual(["keep.txt"], [.. docs.Children().Select(child => child.Name)]);
-        CollectionAssert.DoesNotContain(root.Children().Select(child => child.Name).ToArray(), "orphan.txt");
-        Assert.IsNull(index.Find(Path.Combine(TreeRoot, "docs", "orphan.txt")));
-        Assert.IsNull(index.Find(Path.Combine(TreeRoot, "orphan.txt")));
-        Assert.IsNull(index.Find(Path.Combine(TreeRoot, "docs", "trusted.txt")));
+        Assert.AreSequenceEqual(["keep.txt"], [.. docs.Children(TestContext.CancellationToken).Select(child => child.Name)]);
+        CollectionAssert.DoesNotContain(root.Children(TestContext.CancellationToken).Select(child => child.Name).ToArray(), "orphan.txt");
+        Assert.IsNull(index.Find(Path.Combine(TreeRoot, "docs", "orphan.txt"), TestContext.CancellationToken));
+        Assert.IsNull(index.Find(Path.Combine(TreeRoot, "orphan.txt"), TestContext.CancellationToken));
+        Assert.IsNull(index.Find(Path.Combine(TreeRoot, "docs", "trusted.txt"), TestContext.CancellationToken));
     }
 
     [TestMethod]
     public async Task UnverifiedFreedRow_IsUnderNoDirectoryButAVerifiedOneIsUnderItsAncestors()
     {
         await using var index = await OpenAsync(includeFreed: true);
-        var docs = index.Find(Path.Combine(TreeRoot, "docs"))!.Value;
-        var root = index.Root('T');
+        var docs = index.Find(Path.Combine(TreeRoot, "docs"), TestContext.CancellationToken)!.Value;
+        var root = index.Root('T', TestContext.CancellationToken);
 
         string[] Names(FileEntry? under) => [.. index
-            .Search(new SearchQuery(".txt", Subtree: under, IncludeDeleted: true)).Select(entry => entry.Name)
+            .Search(new SearchQuery(".txt", Subtree: under, IncludeDeleted: true), TestContext.CancellationToken).Select(entry => entry.Name)
             .Order()];
 
         Assert.AreSequenceEqual(["keep.txt", "trusted.txt"], Names(docs));
@@ -85,10 +85,10 @@ public sealed class FreedRowsIndexTests : IDisposable
     {
         await using var index = await OpenAsync(includeFreed: true);
 
-        string[] Search(bool includeDeleted) => [.. index.Search(new SearchQuery(".txt", IncludeDeleted: includeDeleted))
+        string[] Search(bool includeDeleted) => [.. index.Search(new SearchQuery(".txt", IncludeDeleted: includeDeleted), TestContext.CancellationToken)
             .Select(entry => entry.Name).Order()];
         string[] Enumerate(bool includeDeleted) => [.. index
-            .Enumerate(new SearchQuery(".txt", IncludeDeleted: includeDeleted)).Select(entry => entry.Name)
+            .Enumerate(new SearchQuery(".txt", IncludeDeleted: includeDeleted), TestContext.CancellationToken).Select(entry => entry.Name)
             .Order()];
 
         Assert.AreSequenceEqual(["dup.txt", "keep.txt"], Search(includeDeleted: false));
@@ -102,8 +102,8 @@ public sealed class FreedRowsIndexTests : IDisposable
     {
         await using var index = await OpenAsync(includeFreed: true);
 
-        var largeDeleted = index.Search(new SearchQuery(null, SizeMinimum: 150, IncludeDeleted: true));
-        var deletedDirectories = index.Search(new SearchQuery(null, IsDirectory: true, IncludeDeleted: true));
+        var largeDeleted = index.Search(new SearchQuery(null, SizeMinimum: 150, IncludeDeleted: true), TestContext.CancellationToken);
+        var deletedDirectories = index.Search(new SearchQuery(null, IsDirectory: true, IncludeDeleted: true), TestContext.CancellationToken);
 
         Assert.AreSequenceEqual(["orphan.txt"], [.. largeDeleted.Select(entry => entry.Name)]);
         var goneDirectory = deletedDirectories.Single(entry => entry.IsDeleted);
@@ -148,10 +148,10 @@ public sealed class FreedRowsIndexTests : IDisposable
     {
         await using var index = await OpenAsync(includeFreed: false);
 
-        Assert.AreEqual(0, index.Search(new SearchQuery(null, IncludeDeleted: true))
+        Assert.AreEqual(0, index.Search(new SearchQuery(null, IncludeDeleted: true), TestContext.CancellationToken)
             .Count(entry => entry.IsDeleted));
-        Assert.HasCount(index.Search(new SearchQuery(null)).Count,
-            index.Search(new SearchQuery(null, IncludeDeleted: true)));
+        Assert.HasCount(index.Search(new SearchQuery(null), TestContext.CancellationToken).Count,
+            index.Search(new SearchQuery(null, IncludeDeleted: true), TestContext.CancellationToken));
     }
 
     // The scripted source behaves like the live one: freed records are yielded only when the scan asks for them.
@@ -200,4 +200,6 @@ public sealed class FreedRowsIndexTests : IDisposable
             MftSource = producer.CreateIndexSource()
         }, CancellationToken.None);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

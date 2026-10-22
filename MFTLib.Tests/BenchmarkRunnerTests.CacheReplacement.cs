@@ -53,7 +53,7 @@ output.ToString());
         Assert.IsEmpty(deleted, $"deleted: {string.Join(", ", deleted)}");
         foreach (var (path, bytes) in replacements)
         {
-            Assert.AreSequenceEqual(bytes, await File.ReadAllBytesAsync(path), path);
+            Assert.AreSequenceEqual(bytes, await File.ReadAllBytesAsync(path, TestContext.CancellationToken), path);
         }
     }
 
@@ -97,4 +97,6 @@ output.ToString());
             }
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

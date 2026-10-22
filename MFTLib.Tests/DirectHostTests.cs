@@ -125,7 +125,7 @@ public sealed class DirectHostTests : IDisposable
             MftSource = MftIndexSources.FromMftDumpFile(_dumpFile, 'D')
         }, CancellationToken.None);
         var enumerations = 0;
-        var lookup = SampleHost.ChildLookup(Once(index.Enumerate(new SearchQuery(null)), () => Assert.AreEqual(0, enumerations++)));
+        var lookup = SampleHost.ChildLookup(Once(index.Enumerate(new SearchQuery(null), TestContext.CancellationToken), () => Assert.AreEqual(0, enumerations++)));
         Assert.AreEqual(1, enumerations);
         Assert.IsNotEmpty(lookup);
     }
@@ -432,4 +432,6 @@ public sealed class DirectHostTests : IDisposable
             new SyntheticRow(9, "a.txt", 5) { Size = 7, IsTombstone = true }
         ]));
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

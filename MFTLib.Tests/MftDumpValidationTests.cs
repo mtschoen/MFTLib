@@ -111,14 +111,14 @@ public sealed class MftDumpValidationTests : IDisposable
         Assert.IsFalse(drive.Watch.IsSupported);
         Assert.IsNull(drive.Failure);
 
-        var notes = index.Find("dump:/D/documents/Notes.txt")!.Value;
+        var notes = index.Find("dump:/D/documents/Notes.txt", TestContext.CancellationToken)!.Value;
         Assert.AreEqual(11L, notes.Size);
         Assert.IsTrue(notes.IsSizeKnown);
         Assert.AreEqual(DateTime.FromFileTimeUtc(MftDumpFixture.BaseFileTime + 10_000_000), notes.LastWriteTime);
-        Assert.AreEqual(22L, index.Find("dump:/D/documents/Deep/leaf.txt")!.Value.Size);
-        Assert.IsFalse(index.Find("dump:/D/sizeless.bin")!.Value.IsSizeKnown);
-        Assert.IsTrue(index.Find("dump:/D/documents")!.Value.IsDirectory);
-        Assert.AreSequenceEqual(["$MFT", "documents", "sizeless.bin"], [.. index.Root('D').Children().Select(child => child.Name)], SequenceOrder.InAnyOrder);
+        Assert.AreEqual(22L, index.Find("dump:/D/documents/Deep/leaf.txt", TestContext.CancellationToken)!.Value.Size);
+        Assert.IsFalse(index.Find("dump:/D/sizeless.bin", TestContext.CancellationToken)!.Value.IsSizeKnown);
+        Assert.IsTrue(index.Find("dump:/D/documents", TestContext.CancellationToken)!.Value.IsDirectory);
+        Assert.AreSequenceEqual(["$MFT", "documents", "sizeless.bin"], [.. index.Root('D', TestContext.CancellationToken).Children(TestContext.CancellationToken).Select(child => child.Name)], SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]
@@ -132,8 +132,8 @@ public sealed class MftDumpValidationTests : IDisposable
         Assert.AreEqual(DriveState.Ready, drive.State);
         Assert.AreEqual(0, drive.Block!.SkippedRecordCount);
         Assert.AreEqual(6u, drive.Block.LiveRowCount);
-        Assert.IsNull(index.Find("dump:/D/documents/Deep/leaf.txt"));
-        Assert.IsNotNull(index.Find("dump:/D/documents/Deep"));
+        Assert.IsNull(index.Find("dump:/D/documents/Deep/leaf.txt", TestContext.CancellationToken));
+        Assert.IsNotNull(index.Find("dump:/D/documents/Deep", TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -149,7 +149,7 @@ public sealed class MftDumpValidationTests : IDisposable
             Options(path, MftIndexSources.FromMftDumpFile(path, 'c'), 'C'), CancellationToken.None);
 
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
-        Assert.AreEqual("dump:/C/documents/Notes.txt", index.Find("dump:/C/documents/Notes.txt")!.Value.Path);
+        Assert.AreEqual("dump:/C/documents/Notes.txt", index.Find("dump:/C/documents/Notes.txt", TestContext.CancellationToken)!.Value.Path);
     }
 
     [TestMethod]
@@ -483,4 +483,6 @@ public sealed class MftDumpValidationTests : IDisposable
         var record = dump.AsSpan(recordNumber * 1024, 1024);
         BinaryPrimitives.WriteUInt32LittleEndian(record[(MftDumpFixture.FirstAttributeOffset(record) + 4)..], 0x7FFF_FFF0);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

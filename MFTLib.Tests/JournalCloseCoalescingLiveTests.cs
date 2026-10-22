@@ -37,7 +37,8 @@ public class JournalCloseCoalescingLiveTests
         var batches = new List<UsnJournalEntry[]>();
         var watchTask = Task.Run(async () =>
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(15));
             // ReSharper disable once AccessToDisposedClosure
             // volume is captured from outer scope; watchTask is awaited before volume's using exits.
             await foreach (var (batch, _) in volume.Journal.WatchUsnJournal(cursor, timeout.Token))
@@ -49,7 +50,7 @@ public class JournalCloseCoalescingLiveTests
                     break;
                 }
             }
-        });
+        }, TestContext.CancellationToken);
 
         await File.WriteAllTextAsync(tempPath, "create", CancellationToken.None);
         await File.AppendAllTextAsync(tempPath, "modify", CancellationToken.None);
@@ -59,7 +60,7 @@ public class JournalCloseCoalescingLiveTests
         {
             await watchTask;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (!TestContext.CancellationToken.IsCancellationRequested)
         {
             Assert.Fail($"Timed out waiting for the delete-close record of {tempFileName}.");
         }
@@ -124,4 +125,6 @@ changes, "One real delete must raise exactly one Deleted change.");
         Assert.IsFalse(fixture.Block.Rows[20].LastWriteTimeKnown,
             "The create-write cycle invalidated the last-write observation and no scan restored it.");
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

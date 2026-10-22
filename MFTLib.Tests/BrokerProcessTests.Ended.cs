@@ -45,27 +45,27 @@ public partial class BrokerProcessTests
         }
         else
         {
-            await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
+            await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
         }
 
-        Assert.AreEqual(expectedReason, await beforeEnd.WaitAsync(HangGuard));
+        Assert.AreEqual(expectedReason, await beforeEnd.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual(0, broker.Process.Hooks.PendingRequestCount, "pending requests were failed before Ended completed");
-        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
-        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
+        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
+        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreSame(beforeEnd, broker.Process.Ended, "the same task is returned each time");
-        Assert.AreEqual(expectedReason, await broker.Process.Ended.WaitAsync(HangGuard),
+        Assert.AreEqual(expectedReason, await broker.Process.Ended.WaitAsync(HangGuard, TestContext.CancellationToken),
             "a caller that looks after the end still gets the reason");
         foreach (var request in new[] { first, second })
         {
             var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(
-                () => request.WaitAsync(HangGuard));
+                () => request.WaitAsync(HangGuard, TestContext.CancellationToken));
             Assert.IsNull(lost.Drive);
             Assert.AreEqual(expectedReason, lost.Message);
         }
 
         var rejected = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(
-            () => broker.Process.QueryVolumeAsync('E', CancellationToken.None).WaitAsync(HangGuard));
+            () => broker.Process.QueryVolumeAsync('E', CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual(expectedReason, rejected.Message);
         Assert.IsNull(rejected.Drive, "the control pipe is what was lost");
     }
@@ -75,7 +75,7 @@ public partial class BrokerProcessTests
     {
         await using var broker = new ScriptedBroker(wrapClientControl: stream => new ThrowOnAsyncDisposeStream(stream));
 
-        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
+        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsTrue(broker.Process.Ended.IsCompletedSuccessfully);
         Assert.AreEqual("The broker process was disposed.", await broker.Process.Ended);
@@ -90,9 +90,9 @@ public partial class BrokerProcessTests
 
         await broker.CloseControlAsync();
 
-        Assert.AreEqual("The broker closed its control pipe.", await broker.Process.Ended.WaitAsync(HangGuard));
-        await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
-        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
+        Assert.AreEqual("The broker closed its control pipe.", await broker.Process.Ended.WaitAsync(HangGuard, TestContext.CancellationToken));
+        await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard, TestContext.CancellationToken));
+        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 
     [TestMethod]
@@ -104,8 +104,8 @@ public partial class BrokerProcessTests
 
         await broker.CloseControlAsync();
 
-        Assert.AreEqual("The broker closed its control pipe.", await broker.Process.Ended.WaitAsync(HangGuard));
-        await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
-        await Assert.ThrowsExactlyAsync<IOException>(() => broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard));
+        Assert.AreEqual("The broker closed its control pipe.", await broker.Process.Ended.WaitAsync(HangGuard, TestContext.CancellationToken));
+        await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard, TestContext.CancellationToken));
+        await Assert.ThrowsExactlyAsync<IOException>(() => broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken));
     }
 }

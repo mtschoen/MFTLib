@@ -538,7 +538,7 @@ public partial class UsnJournalSyntheticTests
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () =>
         {
-            await foreach (var _ in volume.Journal.WatchUsnJournal(Cursor))
+            await foreach (var _ in volume.Journal.WatchUsnJournal(Cursor, TestContext.CancellationToken))
             {
             }
         });
@@ -555,7 +555,7 @@ public partial class UsnJournalSyntheticTests
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () =>
         {
-            await foreach (var _ in volume.Journal.WatchUsnJournal(Cursor))
+            await foreach (var _ in volume.Journal.WatchUsnJournal(Cursor, TestContext.CancellationToken))
             {
             }
         });
@@ -571,7 +571,7 @@ public partial class UsnJournalSyntheticTests
         QueueSuccess(UsnReadBuffers.Build(600, ((0xA9UL << 48) | 0x1246A1, 5, 550, 0x00000100u, "created.txt")));
         using var volume = MftVolume.Open('C');
 
-        await using var enumerator = volume.Journal.WatchUsnJournal(Cursor).GetAsyncEnumerator();
+        await using var enumerator = volume.Journal.WatchUsnJournal(Cursor, TestContext.CancellationToken).GetAsyncEnumerator(TestContext.CancellationToken);
         Assert.IsTrue(await enumerator.MoveNextAsync());
 
         var (entries, cursor) = enumerator.Current;

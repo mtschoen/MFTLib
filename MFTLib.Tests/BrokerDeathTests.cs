@@ -22,15 +22,15 @@ public class BrokerDeathTests
         var source = new BrokerIndexWatchSource(_ => Task.FromResult(process));
         var (handle, host) = await StartAsync(source, broker, 'C');
         await using var _ = handle.ConfigureAwait(false);
-        var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator();
+        var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator(TestContext.CancellationToken);
         await using var __ = reader.ConfigureAwait(false);
         var pending = reader.MoveNextAsync().AsTask();
 
         await EndHostAsync(broker, host);
 
-        var lost = await Assert.ThrowsAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual('C', lost.Drive);
-        await broker.Process.Ended.WaitAsync(HangGuard);
+        await broker.Process.Ended.WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 
     [TestMethod]
@@ -45,9 +45,9 @@ public class BrokerDeathTests
         await using var _ = handle.ConfigureAwait(false);
 
         await EndHostAsync(broker, host);
-        await broker.Process.Ended.WaitAsync(HangGuard);
+        await broker.Process.Ended.WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator();
+        var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator(TestContext.CancellationToken);
         await using var __ = reader.ConfigureAwait(false);
         var late = await WatchReads.ThrowsNextAsync<BrokerChannelLostException>(reader);
         Assert.AreEqual('C', late.Drive);
@@ -72,7 +72,7 @@ public class BrokerDeathTests
 
         var faultT = await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
         var faultU = await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'U');
-        await broker.Process.Ended.WaitAsync(HangGuard);
+        await broker.Process.Ended.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual('T', ((BrokerChannelLostException)faultT.Exception).Drive);
         Assert.AreEqual('U', ((BrokerChannelLostException)faultU.Exception).Drive);
         Assert.AreSequenceEqual(['T', 'U'], [.. harness.Faults.Select(fault => fault.Drive)], SequenceOrder.InAnyOrder);
@@ -98,4 +98,6 @@ public class BrokerDeathTests
         Assert.AreEqual(BrokerFrameKind.StartWatch, (await HostChannelHarness.ReadFrameAsync(host))?.Kind);
         return (await starting.WaitAsync(HangGuard), host);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

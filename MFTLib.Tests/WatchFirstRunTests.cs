@@ -19,6 +19,8 @@ public sealed class WatchFirstRunTests : IDisposable
     string TemporaryDirectoryPath => _tempDirectory.Path;
     UnattendedEnvironmentScope _attended = null!;
 
+    public TestContext TestContext { get; set; } = null!;
+
     [TestInitialize]
     public void Initialize()
     {
@@ -186,7 +188,7 @@ public sealed class WatchFirstRunTests : IDisposable
     }
 
     [TestMethod]
-    [Timeout(60000)]
+    [Timeout(60000, CooperativeCancellation = true)]
     public async Task Run_BareLaunch_WatchesUntilAKeyIsPressedAndPrintsChangesMeanwhile()
     {
         var created = new SyntheticJournalRecord
@@ -215,7 +217,7 @@ public sealed class WatchFirstRunTests : IDisposable
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
-        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, session, FixtureDrive, CancellationToken.None);
+        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, session, FixtureDrive, TestContext.CancellationToken);
 
         Assert.AreEqual(0, result);
         Assert.Contains("Watching X. Press any key to stop.", lines, string.Join(Environment.NewLine, lines));
@@ -224,11 +226,11 @@ public sealed class WatchFirstRunTests : IDisposable
     }
 
     [TestMethod]
-    [Timeout(60000)]
+    [Timeout(60000, CooperativeCancellation = true)]
     public async Task Run_CancelledWhileWaitingForAKey_StopsWithoutTheKey()
     {
         await using var handle = BrokerTestHarness.StartInProcess(Volumes());
-        using var cancellation = new CancellationTokenSource();
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
         var neverPressed = new TaskCompletionSource();
         // The cancellation lands while the read is blocked, the way a stopped run meets a console nobody touches.
         using var keyReader = new GateKeyReader(neverPressed.Task, cancellation.Cancel);
@@ -261,7 +263,7 @@ public sealed class WatchFirstRunTests : IDisposable
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
 
-        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, session, FixtureDrive, CancellationToken.None);
+        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, session, FixtureDrive, TestContext.CancellationToken);
 
         Assert.AreEqual(0, result, string.Join(Environment.NewLine, lines));
         Assert.AreEqual(TimeSpan.FromSeconds(WatchArguments.DefaultSeconds), clock.TotalAdvanced);

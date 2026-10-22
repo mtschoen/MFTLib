@@ -90,7 +90,7 @@ public class BrokerIndexWatchSourceFaultTests
         await index.StartWatchingAsync(['U'], token);
         var runT = await broker.Watch('T').RunAsync(1);
         var runU = await broker.Watch('U').RunAsync(1);
-        await index.WaitForCatchUpAsync(['U'], token).WaitAsync(HangGuard);
+        await index.WaitForCatchUpAsync(['U'], token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         // The host closes T's pipe: its watch ends without a word.
         runT.End();
@@ -132,4 +132,6 @@ public class BrokerIndexWatchSourceFaultTests
         await appliedOnU;
         Assert.IsTrue(harness.Faults.All(raised => raised.Drive == 'T'), "only T raised a fault");
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

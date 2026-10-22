@@ -14,7 +14,7 @@ public partial class DumpFileParseTests
     {
         var reports = new List<MftScanProgress>();
 
-        using var result = StreamFile(new SynchronousProgress<MftScanProgress>(reports.Add));
+        using var result = StreamFile(new SynchronousProgress<MftScanProgress>(reports.Add), cancellationToken: TestContext.CancellationToken);
 
         Assert.IsGreaterThan(1, reports.Count, "A 1000-record image read 256 records at a time reports more than once.");
         Assert.IsTrue(reports.All(report => report.TotalRecords == 1000));
@@ -50,7 +50,7 @@ public partial class DumpFileParseTests
     public void Parse_ThrowingProgress_DoesNotAbortTheParse()
     {
         using var result = StreamFile(new SynchronousProgress<MftScanProgress>(
-            _ => throw new InvalidOperationException("consumer failure")));
+            _ => throw new InvalidOperationException("consumer failure")), cancellationToken: TestContext.CancellationToken);
 
         Assert.AreEqual(1000UL, result.TotalRecords);
     }
@@ -73,7 +73,7 @@ public partial class DumpFileParseTests
     public void Parse_TokenCancelledFromProgress_StopsAfterThatChunk()
     {
         var uncancelledReports = 0;
-        using (StreamFile(new SynchronousProgress<MftScanProgress>(_ => uncancelledReports++)))
+        using (StreamFile(new SynchronousProgress<MftScanProgress>(_ => uncancelledReports++), cancellationToken: TestContext.CancellationToken))
         {
         }
 
@@ -102,7 +102,7 @@ public partial class DumpFileParseTests
     {
         var allowance = new ParseThreadAllowance(allowedThreads);
 
-        using (StreamFile(parseThreads: allowance))
+        using (StreamFile(parseThreads: allowance, cancellationToken: TestContext.CancellationToken))
         {
         }
 
@@ -117,11 +117,11 @@ public partial class DumpFileParseTests
     {
         var allowance = new ParseThreadAllowance(2);
 
-        using (StreamFile(parseThreads: allowance))
+        using (StreamFile(parseThreads: allowance, cancellationToken: TestContext.CancellationToken))
         {
         }
 
-        using (StreamFile(parseThreads: allowance))
+        using (StreamFile(parseThreads: allowance, cancellationToken: TestContext.CancellationToken))
         {
         }
     }
@@ -140,11 +140,11 @@ public partial class DumpFileParseTests
 
             innerFailure = Assert.ThrowsExactly<InvalidOperationException>(() =>
             {
-                using var unexpected = StreamFile(parseThreads: allowance);
+                using var unexpected = StreamFile(parseThreads: allowance, cancellationToken: TestContext.CancellationToken);
             });
         });
 
-        using (StreamFile(progress, allowance))
+        using (StreamFile(progress, allowance, TestContext.CancellationToken))
         {
         }
 
@@ -156,9 +156,11 @@ public partial class DumpFileParseTests
     [TestMethod]
     public void Parse_ReturnsEveryAllocatedRecordOfTheFile()
     {
-        using var result = StreamFile();
+        using var result = StreamFile(cancellationToken: TestContext.CancellationToken);
 
         Assert.AreEqual(1000UL, result.TotalRecords);
         Assert.AreEqual(result.UsedRecords, (ulong)result.ToRecords().Length);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

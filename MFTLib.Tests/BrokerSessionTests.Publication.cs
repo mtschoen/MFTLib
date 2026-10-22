@@ -25,13 +25,13 @@ public partial class BrokerSessionTests
             if (endedBeforeDisposal)
             {
                 handle.Crash();
-                await handle.Ended.WaitAsync(HangGuard);
+                await handle.Ended.WaitAsync(HangGuard, TestContext.CancellationToken);
             }
 
             var disposal = StartDisposalBeforePublication(session, launch, handle, endedBeforeDisposal);
             await Assert.ThrowsAsync<OperationCanceledException>(() => connecting)
-                .WaitAsync(HangGuard);
-            await disposal.WaitAsync(HangGuard);
+                .WaitAsync(HangGuard, TestContext.CancellationToken);
+            await disposal.WaitAsync(HangGuard, TestContext.CancellationToken);
             await session.DisposeAsync();
 
             Assert.AreEqual(endedBeforeDisposal, session.Ended.IsCompleted,

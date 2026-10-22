@@ -67,12 +67,12 @@ public partial class BrokerProcessTests
             var process = handle.Process;
             try
             {
-                var volume = await process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard);
+                var volume = await process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
                 Assert.AreEqual(256 * 1024, volume.MftValidDataLength);
                 Assert.AreEqual(1024u, volume.BytesPerFileRecordSegment);
                 Assert.AreEqual(256, volume.MftRecordCount);
-                await handle.DisposeAsync().AsTask().WaitAsync(HangGuard);
-                await process.Ended.WaitAsync(HangGuard);
+                await handle.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
+                await process.Ended.WaitAsync(HangGuard, TestContext.CancellationToken);
             }
             finally
             {
@@ -91,7 +91,7 @@ public partial class BrokerProcessTests
         {
             var scanTask = activeProcess.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
                 null, CancellationToken.None);
-            await scanStarted.Entered.WaitAsync(HangGuard);
+            await scanStarted.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
             var scan = handleWithScan.Scans.Single();
             Assert.AreEqual(new DriveKey('C'), scan.Drive);
@@ -99,16 +99,16 @@ public partial class BrokerProcessTests
             var first = edge == HandleDisposalEdge.ProcessFirst
                 ? activeProcess.DisposeAsync().AsTask()
                 : handleWithScan.DisposeAsync().AsTask();
-            await cleanupGate.Entered.WaitAsync(HangGuard);
+            await cleanupGate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
             var second = handleWithScan.DisposeAsync().AsTask();
             Assert.IsFalse(first.IsCompleted);
             Assert.IsFalse(second.IsCompleted);
 
             cleanupGate.Release();
-            await first.WaitAsync(HangGuard);
-            await second.WaitAsync(HangGuard);
-            await activeProcess.Ended.WaitAsync(HangGuard);
+            await first.WaitAsync(HangGuard, TestContext.CancellationToken);
+            await second.WaitAsync(HangGuard, TestContext.CancellationToken);
+            await activeProcess.Ended.WaitAsync(HangGuard, TestContext.CancellationToken);
             await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scanTask);
         }
         finally
@@ -129,10 +129,10 @@ public partial class BrokerProcessTests
         Assert.AreEqual(0, handle.Process.Hooks.PendingRequestCount);
         using var independentCancellation = new CancellationTokenSource();
         handle.Process.Hooks.AfterControlWriteLockAcquired = independentCancellation.Cancel;
-        var independent = await other.Process.QueryVolumeAsync('D', independentCancellation.Token).WaitAsync(HangGuard);
+        var independent = await other.Process.QueryVolumeAsync('D', independentCancellation.Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(256L, independent.MftRecordCount);
         handle.Process.Hooks.AfterControlWriteLockAcquired = null;
-        var volume = await handle.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard);
+        var volume = await handle.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(Volume.MftRecordCount, volume.MftRecordCount);
     }
 
@@ -161,9 +161,9 @@ public partial class BrokerProcessTests
         {
             Assert.IsEmpty(handle.Scans, "Host startup failed before any scan began.");
             await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
-                process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
-            await process.DisposeAsync().AsTask().WaitAsync(HangGuard);
-            await process.Ended.WaitAsync(HangGuard);
+                process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
+            await process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
+            await process.Ended.WaitAsync(HangGuard, TestContext.CancellationToken);
         }
         finally
         {
@@ -181,16 +181,16 @@ public partial class BrokerProcessTests
     {
         await using var handle = BrokerTestHarness.StartInProcess(ScriptedVolumes());
         var process = handle.Process;
-        await process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard);
+        await process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         handle.Crash();
         handle.Crash();
 
-        var reason = await process.Ended.WaitAsync(HangGuard);
+        var reason = await process.Ended.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreNotEqual("The broker process was disposed.", reason);
         Assert.IsTrue(process.Ended.IsCompleted);
         await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
-            process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
+            process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -200,7 +200,7 @@ public partial class BrokerProcessTests
 
         var failure = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             handle.Process.ScanDriveAsync('C', ScanTarget(), new MftScanOptions(), null, CancellationToken.None)
-                .WaitAsync(HangGuard));
+                .WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.Contains("no scan source", failure.Message);
         Assert.AreEqual(new DriveKey('C'), handle.Scans.Single().Drive);
@@ -244,9 +244,9 @@ public partial class BrokerProcessTests
             });
 
             var scanC = handle.Process.ScanDriveAsync('c', target, options, null, CancellationToken.None);
-            await firstCallbackEntered.Entered.WaitAsync(HangGuard);
+            await firstCallbackEntered.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
-            var resultD = await handle.Process.ScanDriveAsync('d', TestBlockSections.Target(), options, null, CancellationToken.None).WaitAsync(HangGuard);
+            var resultD = await handle.Process.ScanDriveAsync('d', TestBlockSections.Target(), options, null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
             Assert.AreEqual(new DriveKey('D'), resultD.Drive);
 
             Assert.HasCount(2, handle.Scans);
@@ -254,7 +254,7 @@ public partial class BrokerProcessTests
             Assert.AreEqual('D', handle.Scans[1].Drive);
 
             firstCallbackRelease.Release();
-            var resultC = await scanC.WaitAsync(HangGuard);
+            var resultC = await scanC.WaitAsync(HangGuard, TestContext.CancellationToken);
             Assert.AreEqual(new DriveKey('C'), resultC.Drive);
             Assert.HasCount(2, handle.Scans);
             Assert.AreEqual('C', handle.Scans[0].Drive);
@@ -287,7 +287,7 @@ public partial class BrokerProcessTests
                 : "scripted cursor failure";
             var failure = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
                 singleHandle.Process.ScanDriveAsync('c', target, options, null, CancellationToken.None)
-                    .WaitAsync(HangGuard));
+                    .WaitAsync(HangGuard, TestContext.CancellationToken));
             Assert.Contains(expectedMessage, failure.Message);
 
             var recorded = singleHandle.Scans.Single();
@@ -297,7 +297,7 @@ public partial class BrokerProcessTests
         }
 
         var result = await singleHandle.Process.ScanDriveAsync('c', target, options,
-            null, CancellationToken.None).WaitAsync(HangGuard);
+            null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreEqual(new DriveKey('C'), result.Drive);
         Assert.AreEqual(Armed, result.ArmedCursor);
@@ -319,7 +319,7 @@ public partial class BrokerProcessTests
             ScanDrive = _ => [[SyntheticRecord(5, ".", 3)]]
         });
         await handle.Process.ScanDriveAsync('C', TestBlockSections.Target() with { RetainedFileNames = names },
-            new MftScanOptions(), null, CancellationToken.None).WaitAsync(HangGuard);
+            new MftScanOptions(), null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
         var scan = handle.Scans.Single();
         if (names is null)
         {
@@ -343,7 +343,7 @@ public partial class BrokerProcessTests
         {
             seen.Add((scan.Drive, scan.ParseThreads.Count, scan.CancellationToken.IsCancellationRequested));
             scan.ReportParsed(2, 2);
-            parsedSeen.Task.Wait(HangGuard);
+            parsedSeen.Task.Wait(HangGuard, TestContext.CancellationToken);
             return [[SyntheticRecord(5, ".", 3)], [SyntheticRecord(20, "file.txt")]];
         }));
         var progressSink = new SynchronousProgress<BlockWriteProgress>(report =>
@@ -355,7 +355,7 @@ public partial class BrokerProcessTests
         });
 
         await handle.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(), progressSink, CancellationToken.None)
-            .WaitAsync(HangGuard);
+            .WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.HasCount(1, seen);
         Assert.AreEqual('C', seen[0].Drive);
@@ -415,9 +415,9 @@ public partial class BrokerProcessTests
         await using var handle = BrokerTestHarness.StartInProcess(volumes);
 
         var scan = await handle.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
-            null, CancellationToken.None).WaitAsync(HangGuard);
+            null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
         var settings = await handle.Process.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None)
-            .WaitAsync(HangGuard);
+            .WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreSequenceEqual([ArmedSynthetic, advanced], [.. readCursors]);
         Assert.AreEqual(Armed, scan.ArmedCursor);
@@ -433,7 +433,7 @@ public partial class BrokerProcessTests
 
         await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             handle.Process.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None)
-                .WaitAsync(HangGuard));
+                .WaitAsync(HangGuard, TestContext.CancellationToken));
     }
 
     static async IAsyncEnumerable<(IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Cursor)> OneBatchThenEnd(
@@ -499,7 +499,7 @@ public partial class BrokerProcessTests
         await using var channel = await handle.Process.OpenWatchChannelAsync(new IndexWatchTarget('C', 7, 1000),
             deadline.Token);
 
-        await ended.Task.WaitAsync(HangGuard);
+        await ended.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 
     [TestMethod]

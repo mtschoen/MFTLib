@@ -19,7 +19,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         }));
         var request = Request(Target());
 
-        var result = await ProduceAsync(broker.Process, request).WaitAsync(HangGuard);
+        var result = await ProduceAsync(broker.Process, request).WaitAsync(HangGuard, TestContext.CancellationToken);
         var block = result.Block;
 
         var section = broker.Sections.Single();
@@ -39,7 +39,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         Assert.AreEqual(21u, block.Header.RowCount);
         Assert.AreEqual(18u, block.Header.NamePoolUsed);
 
-        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
+        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
         Assert.IsTrue(block.Header.IsComplete);
         var path = block.Path;
@@ -71,7 +71,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         var request = Request(Target());
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-            () => ProduceAsync(broker.Process, request).WaitAsync(HangGuard));
+            () => ProduceAsync(broker.Process, request).WaitAsync(HangGuard, TestContext.CancellationToken));
 
         var expectedMessage = check.StartsWith("cursor ", StringComparison.Ordinal) ? "journal cursor" : check;
         Assert.Contains(expectedMessage, exception.Message);
@@ -97,7 +97,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         var request = Request(Target()) with { CacheTag = requested };
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-            () => ProduceAsync(broker.Process, request).WaitAsync(HangGuard));
+            () => ProduceAsync(broker.Process, request).WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.Contains("cache tag", exception.Message);
         var section = broker.Sections.Single();
@@ -119,7 +119,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         var request = Request(Target());
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-            () => ProduceAsync(broker.Process, request).WaitAsync(HangGuard));
+            () => ProduceAsync(broker.Process, request).WaitAsync(HangGuard, TestContext.CancellationToken));
 
         // The per-drive error reaches the caller as this exception.
         Assert.Contains("batch failed", exception.Message);
@@ -139,7 +139,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         var samples = new List<IndexScanProgress>();
         var request = Request(Target()) with { Progress = new SynchronousProgress<IndexScanProgress>(samples.Add) };
 
-        var result = await ProduceAsync(broker.Process, request).WaitAsync(HangGuard);
+        var result = await ProduceAsync(broker.Process, request).WaitAsync(HangGuard, TestContext.CancellationToken);
         result.Block.Dispose();
 
         Assert.IsNotEmpty(samples, "the broker reported no progress to the index channel");
@@ -158,7 +158,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
             QueryVolumeInformation = _ => VolumeInformation
         }));
 
-        var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard);
+        var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard, TestContext.CancellationToken);
         using var block = result.Block;
 
         Assert.IsTrue(block.Header.IsComplete);
@@ -176,7 +176,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
                 [[BrokerHostFactory.Record(5, ".", 3), BrokerHostFactory.Record(20, "file.txt"), BrokerHostFactory.Record(21, ""), BrokerHostFactory.Record((ulong)uint.MaxValue + 1, "overflow")]]
         }));
 
-        var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard);
+        var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard, TestContext.CancellationToken);
         using var block = result.Block;
 
         Assert.AreEqual(2, result.SkippedRecordCount);
@@ -189,7 +189,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
     {
         await using var broker = CreateBrokerChangingBlock(block => block.Header.Flags |= BlockFlags.CapacityExhausted);
 
-        var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard);
+        var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard, TestContext.CancellationToken);
         using var block = result.Block;
 
         Assert.IsTrue(result.Block.Header.IsCapacityExhausted);
@@ -205,7 +205,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         }));
         var tag = new CacheTag("GITW", 7);
 
-        var result = await ProduceAsync(broker.Process, Request(Target()) with { CacheTag = tag }).WaitAsync(HangGuard);
+        var result = await ProduceAsync(broker.Process, Request(Target()) with { CacheTag = tag }).WaitAsync(HangGuard, TestContext.CancellationToken);
         using var block = result.Block;
 
         Assert.AreEqual(tag, block.Header.CacheTag);
@@ -231,8 +231,10 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
 
         var source = new BrokerMftBlockProducer(Connect(broker.Process)).CreateIndexSource();
         Assert.IsNotNull(source.WatchSource);
-        var result = await source.Producer(Request(Target()), CancellationToken.None).WaitAsync(HangGuard);
+        var result = await source.Producer(Request(Target()), CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
         using var block = result.Block;
         Assert.IsTrue(block.Header.IsComplete);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

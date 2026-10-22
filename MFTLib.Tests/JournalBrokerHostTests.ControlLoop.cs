@@ -19,7 +19,7 @@ public partial class JournalBrokerHostTests
         var serve = host.ServeAsync(control.Host, (_, _) => throw new InvalidOperationException("unexpected connect"),
             null, cancellation.Token);
 
-        await serve.WaitAsync(HangGuard);
+        await serve.WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 
     [TestMethod]
@@ -32,7 +32,7 @@ public partial class JournalBrokerHostTests
         Assert.AreEqual(BrokerFrameKind.VolumeInfo, (await harness.ReadControlAsync()).Kind);
         await harness.CloseControlAsync(); // the host's next read hits clean EOF
 
-        await harness.Serve.WaitAsync(HangGuard);
+        await harness.Serve.WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 
     // A length prefix claims a 10-byte frame; the pipe closes after three body bytes (EOF partway
@@ -57,4 +57,6 @@ public partial class JournalBrokerHostTests
         // The session's fault surfaces from its serve task, which disposing the harness awaits.
         await Assert.ThrowsExactlyAsync<EndOfStreamException>(async () => await harness.DisposeAsync());
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

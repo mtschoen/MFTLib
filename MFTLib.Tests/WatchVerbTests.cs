@@ -19,6 +19,8 @@ public sealed partial class WatchVerbTests : IDisposable
     TempDirectory _tempDirectory = null!;
     string TemporaryDirectoryPath => _tempDirectory.Path;
 
+    public TestContext TestContext { get; set; } = null!;
+
     [TestInitialize]
     public void Initialize() => _tempDirectory = new TempDirectory("watchVerbs");
 
@@ -29,7 +31,7 @@ public sealed partial class WatchVerbTests : IDisposable
     }
 
     [TestMethod]
-    [Timeout(60000)]
+    [Timeout(60000, CooperativeCancellation = true)]
     public async Task Run_Watch_PrintsStateChangesAndEachChangeWithItsKind()
     {
         var created = new SyntheticJournalRecord
@@ -63,7 +65,7 @@ public sealed partial class WatchVerbTests : IDisposable
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
         var cacheDir = Path.Combine(TemporaryDirectoryPath, "cache");
-        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { CacheDirectory = cacheDir, Seconds = 30 }, session, FixtureDrive, CancellationToken.None);
+        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { CacheDirectory = cacheDir, Seconds = 30 }, session, FixtureDrive, TestContext.CancellationToken);
 
         Assert.AreEqual(0, result);
         Assert.Contains(line => line.StartsWith("  watch X: CaughtUp", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));

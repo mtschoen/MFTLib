@@ -41,7 +41,7 @@ public partial class JournalBrokerHostTests
             Assert.AreEqual(10L,
                 (await HostChannelHarness.ReadFrameAsync(immediatePipe))?.Progress?.RecordsProcessed);
             throttledFirst.Release();
-            await throttledSecond.Entered.WaitAsync(HangGuard);
+            await throttledSecond.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
             immediateSecond.Release();
             throttledSecond.Release();
 
@@ -249,10 +249,10 @@ public partial class JournalBrokerHostTests
         });
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipe = await harness.OpenScanChannelAsync('C');
-        await scanStarted.Entered.WaitAsync(HangGuard);
+        await scanStarted.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         await harness.CloseControlAsync();
-        await harness.Serve.WaitAsync(HangGuard);
+        await harness.Serve.WaitAsync(HangGuard, TestContext.CancellationToken);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
         Assert.DoesNotContain(f => f.Kind == BrokerFrameKind.Error, frames,

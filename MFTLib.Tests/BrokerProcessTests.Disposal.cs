@@ -19,12 +19,12 @@ public partial class BrokerProcessTests
 
         var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
             null, CancellationToken.None);
-        await scanning.Entered.WaitAsync(HangGuard);
-        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
+        await scanning.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
+        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual('C', lost.Drive);
-        await sourceCancelled.Task.WaitAsync(HangGuard);
+        await sourceCancelled.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
         var section = broker.Sections.Single();
         AssertSectionReleased(section);
         Assert.AreEqual(1, section.Lifetime.DisposeCount, "a lifetime left over from an in-flight scan is disposed exactly once");
@@ -52,15 +52,15 @@ public partial class BrokerProcessTests
         {
             var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
                 null, CancellationToken.None);
-            await scanning.Entered.WaitAsync(HangGuard);
+            await scanning.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
             var dispose = broker.Process.DisposeAsync().AsTask();
             // The first host timer with this due time is the heartbeat sender's, created when the
             // session started; the second is the grace period the session's end starts.
-            await hostClock.TimerCreated(JournalBrokerHost.ControlClosedGracePeriod, occurrence: 2).WaitAsync(HangGuard);
+            await hostClock.TimerCreated(JournalBrokerHost.ControlClosedGracePeriod, occurrence: 2).WaitAsync(HangGuard, TestContext.CancellationToken);
             hostClock.Advance(JournalBrokerHost.ControlClosedGracePeriod);
-            await dispose.WaitAsync(HangGuard);
+            await dispose.WaitAsync(HangGuard, TestContext.CancellationToken);
 
-            var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
+            var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard, TestContext.CancellationToken));
             Assert.AreEqual('C', lost.Drive);
             AssertSectionReleased(broker.Sections.Single());
         }
@@ -81,9 +81,9 @@ public partial class BrokerProcessTests
             CancellationToken.None);
         await using var hostEnd = await broker.AcceptChannelAsync();
         Assert.AreEqual(BrokerFrameKind.StartWatch, (await HostChannelHarness.ReadFrameAsync(hostEnd))?.Kind);
-        await open.WaitAsync(HangGuard);
+        await open.WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
+        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsTrue(ended.IsCompleted, "The control reader was joined.");
         Assert.IsNull(await HostChannelHarness.ReadFrameAsync(hostEnd), "The drive channel was closed first.");
@@ -99,8 +99,8 @@ public partial class BrokerProcessTests
         await using var hostEnd = host;
         await client.DisposeAsync();
 
-        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => client.ReadAsync(new byte[4]).AsTask());
-        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => client.WriteAsync(new byte[4]).AsTask());
+        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => client.ReadAsync(new byte[4], TestContext.CancellationToken).AsTask());
+        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => client.WriteAsync(new byte[4], TestContext.CancellationToken).AsTask());
     }
 
     // The scripted host keeps its end of the scan's pipe open and silent, and the client is already
@@ -119,13 +119,13 @@ public partial class BrokerProcessTests
         Assert.AreEqual(BrokerFrameKind.ArmAndScan, (await HostChannelHarness.ReadFrameAsync(hostEnd))?.Kind);
         var cursor = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteCursor(cursor, Armed);
-        await hostEnd.WriteAsync(cursor.WrittenMemory).AsTask().WaitAsync(HangGuard);
-        await hostEnd.FlushAsync().WaitAsync(HangGuard);
-        await clientReads.WhenReadPendingAfter(cursor.WrittenCount).WaitAsync(HangGuard);
+        await hostEnd.WriteAsync(cursor.WrittenMemory, TestContext.CancellationToken).AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
+        await hostEnd.FlushAsync(TestContext.CancellationToken).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await clientReads.WhenReadPendingAfter(cursor.WrittenCount).WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
+        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual('C', lost.Drive);
         AssertSectionReleased(broker.Sections.Single());
     }
@@ -146,13 +146,13 @@ public partial class BrokerProcessTests
         BrokerProtocol.WriteCursor(frames, Armed);
         BrokerProtocol.WriteScanReady(frames, 0);
         BrokerProtocol.WriteScanCompleted(frames);
-        await hostEnd.WriteAsync(frames.WrittenMemory).AsTask().WaitAsync(HangGuard);
-        await hostEnd.FlushAsync().WaitAsync(HangGuard);
-        await clientReads.WhenRead(frames.WrittenCount).WaitAsync(HangGuard);
+        await hostEnd.WriteAsync(frames.WrittenMemory, TestContext.CancellationToken).AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
+        await hostEnd.FlushAsync(TestContext.CancellationToken).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await clientReads.WhenRead(frames.WrittenCount).WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
+        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        var result = await scan.WaitAsync(HangGuard);
+        var result = await scan.WaitAsync(HangGuard, TestContext.CancellationToken);
         using var block = result.Block.Block;
         Assert.IsNull(result.CatchUpLoss);
         Assert.AreEqual(Armed, result.ArmedCursor);
@@ -177,13 +177,13 @@ public partial class BrokerProcessTests
         BrokerProtocol.WriteScanCompleted(frames);
         byte[] partialLengthPrefix = [10, 0];
         frames.Write(partialLengthPrefix);
-        await hostEnd.WriteAsync(frames.WrittenMemory).AsTask().WaitAsync(HangGuard);
-        await hostEnd.FlushAsync().WaitAsync(HangGuard);
-        await clientReads.WhenReadPendingAfter(frames.WrittenCount).WaitAsync(HangGuard);
+        await hostEnd.WriteAsync(frames.WrittenMemory, TestContext.CancellationToken).AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
+        await hostEnd.FlushAsync(TestContext.CancellationToken).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await clientReads.WhenReadPendingAfter(frames.WrittenCount).WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
+        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual('C', lost.Drive);
         AssertSectionReleased(broker.Sections.Single());
     }
@@ -209,29 +209,29 @@ public partial class BrokerProcessTests
             var request = await broker.ReadRequestAsync();
             Assert.AreEqual(BrokerFrameKind.OpenChannel, request.Kind);
             await using var hostPipe = await broker.Pipes.ConnectAsync(
-                request.RequirePipeName(), CancellationToken.None).WaitAsync(HangGuard);
-            await connectionGate.Entered.WaitAsync(HangGuard);
+                request.RequirePipeName(), CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
+            await connectionGate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
             Assert.IsNotNull(clientPipe);
 
             var reply = new ArrayBufferWriter<byte>();
             BrokerProtocol.WriteChannelOpened(reply, request.RequestId);
             await broker.WriteControlAsync(writer => BrokerProtocol.WriteChannelOpened(writer, request.RequestId));
-            await controlReads.WhenReadPendingAfter(reply.WrittenCount).WaitAsync(HangGuard);
+            await controlReads.WhenReadPendingAfter(reply.WrittenCount).WaitAsync(HangGuard, TestContext.CancellationToken);
             Assert.AreEqual(0, broker.Process.Hooks.PendingRequestCount,
                 "ChannelOpened has been routed before disposal.");
             Assert.IsFalse(open.IsCompleted);
 
-            await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
+            await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
             Assert.IsFalse(clientPipe.Disposed.IsCompleted,
                 "The untracked listener is still owned by the pending open, not the disposal sweep.");
             connectionGate.Release();
 
-            var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => open.WaitAsync(HangGuard));
+            var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => open.WaitAsync(HangGuard, TestContext.CancellationToken));
             Assert.AreEqual('C', lost.Drive);
             Assert.Contains("the broker process was disposed", lost.Message);
             Assert.IsFalse(firstRequestWritten, "Tracking rejects the channel before its first request is built.");
-            await clientPipe.Disposed.WaitAsync(HangGuard);
-            Assert.IsNull(await HostChannelHarness.ReadFrameAsync(hostPipe).WaitAsync(HangGuard),
+            await clientPipe.Disposed.WaitAsync(HangGuard, TestContext.CancellationToken);
+            Assert.IsNull(await HostChannelHarness.ReadFrameAsync(hostPipe).WaitAsync(HangGuard, TestContext.CancellationToken),
                 "The client disposed its connected pipe while the scripted host kept its end open.");
         }
         finally
@@ -239,7 +239,7 @@ public partial class BrokerProcessTests
             connectionGate.Release();
             try
             {
-                var opened = await open.WaitAsync(HangGuard);
+                var opened = await open.WaitAsync(HangGuard, TestContext.CancellationToken);
                 await opened.DisposeAsync();
             }
             catch (BrokerChannelLostException)

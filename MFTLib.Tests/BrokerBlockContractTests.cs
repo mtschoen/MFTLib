@@ -15,8 +15,8 @@ public class BrokerBlockContractTests : BrokerBlockTestBase
         await using var broker = new ScriptedBroker();
 
         await Assert.ThrowsExactlyAsync<ArgumentNullException>(() =>
-            broker.Process.ScanDriveAsync('C', null!, new MftScanOptions(), null, CancellationToken.None).WaitAsync(HangGuard));
-        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
+            broker.Process.ScanDriveAsync('C', null!, new MftScanOptions(), null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
+        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsEmpty(broker.Sections.All());
         await Assert.ThrowsExactlyAsync<AssertFailedException>(broker.ReadRequestAsync,
@@ -38,7 +38,7 @@ public class BrokerBlockContractTests : BrokerBlockTestBase
         }));
 
         var result = await broker.Process.ScanDriveAsync('c', Target(), new MftScanOptions(), null, CancellationToken.None)
-            .WaitAsync(HangGuard);
+            .WaitAsync(HangGuard, TestContext.CancellationToken);
         result.Block.Block.Dispose();
 
         Assert.AreEqual(new DriveKey('C'), result.Drive);
@@ -78,9 +78,11 @@ public class BrokerBlockContractTests : BrokerBlockTestBase
             ]
         }));
 
-        var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard);
+        var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard, TestContext.CancellationToken);
         using var block = result.Block;
 
         Assert.AreEqual(1, result.SkippedRecordCount);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

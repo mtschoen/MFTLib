@@ -54,7 +54,7 @@ public class DefaultElevatedEntryRunnerTests
         // side of the real control pipe. Closing that end is the control EOF that ends the session.
         var server = new NamedPipeServerStream(
             pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-        var runTask = Task.Run(() => new DefaultElevatedEntryRunner(TimeProvider.System, code => exitCode = code).RunBroker(pipeName));
+        var runTask = Task.Run(() => new DefaultElevatedEntryRunner(TimeProvider.System, code => exitCode = code).RunBroker(pipeName), TestContext.CancellationToken);
         try
         {
             await server.WaitForConnectionAsync(cts.Token);
@@ -92,7 +92,7 @@ public class DefaultElevatedEntryRunnerTests
         using var journal = JournalIsolation.OverrideJournalWindow(_ =>
         {
             failure.MarkEntered();
-            failure.WaitForReleaseAsync(CancellationToken.None).WaitAsync(HangGuard).GetAwaiter().GetResult();
+            failure.WaitForReleaseAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken).GetAwaiter().GetResult();
             return null;
         });
         if (cancelBeforeFailure)
@@ -240,7 +240,7 @@ public class DefaultElevatedEntryRunnerTests
         using var cts = new CancellationTokenSource(HangGuard);
         await using var server = new NamedPipeServerStream(
             pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-        var runTask = Task.Run(() => new DefaultElevatedEntryRunner(clock, code => exitCode = code).RunBroker(pipeName));
+        var runTask = Task.Run(() => new DefaultElevatedEntryRunner(clock, code => exitCode = code).RunBroker(pipeName), TestContext.CancellationToken);
         try
         {
             await server.WaitForConnectionAsync(cts.Token);
@@ -283,7 +283,7 @@ public class DefaultElevatedEntryRunnerTests
             controlName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
         var drive = new NamedPipeServerStream(
             _drivePipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-        var runTask = Task.Run(() => new DefaultElevatedEntryRunner(TimeProvider.System, exitProcess).RunBroker(controlName));
+        var runTask = Task.Run(() => new DefaultElevatedEntryRunner(TimeProvider.System, exitProcess).RunBroker(controlName), TestContext.CancellationToken);
         return (control, drive, runTask);
     }
 
@@ -387,4 +387,6 @@ public class DefaultElevatedEntryRunnerTests
             return ValueTask.CompletedTask;
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

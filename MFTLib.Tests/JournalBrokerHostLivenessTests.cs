@@ -30,7 +30,7 @@ public partial class JournalBrokerHostLivenessTests
         await using var harness = new HostChannelHarness(liveness.Host(
             watchDrive: (_, _, _, token) => QuietWatchAsync(entered, token)));
         var pipe = await harness.OpenWatchChannelAsync('C', BehindTip);
-        await entered.Entered.WaitAsync(HangGuard);
+        await entered.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         for (var interval = 0; interval < 24; interval++)
         {
@@ -59,7 +59,7 @@ public partial class JournalBrokerHostLivenessTests
             return [];
         }), sectionWriter);
         var pipe = await harness.OpenScanChannelAsync('C');
-        await entered.Entered.WaitAsync(HangGuard);
+        await entered.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         for (var interval = 0; interval < 6; interval++)
         {
@@ -98,7 +98,7 @@ public partial class JournalBrokerHostLivenessTests
         // Progress every 10 seconds for 120 seconds: each step is published, then two intervals pass.
         foreach (var step in steps)
         {
-            await step.Entered.WaitAsync(HangGuard);
+            await step.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
             await liveness.AdvanceOneIntervalAsync();
             await liveness.AdvanceOneIntervalAsync();
             step.Release();
@@ -136,7 +136,7 @@ public partial class JournalBrokerHostLivenessTests
         using var sectionWriter = new RecordingBlockSectionWriter();
         await using var harness = new HostChannelHarness(host, sectionWriter);
         await harness.OpenScanChannelAsync('C');
-        await admitted.Entered.WaitAsync(HangGuard);
+        await admitted.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         var queued = await harness.OpenScanChannelAsync('D');
         await WaitForQueuedScanAsync(host);
 
@@ -252,4 +252,6 @@ public partial class JournalBrokerHostLivenessTests
             return _visits.Reader.ReadAsync().AsTask().WaitAsync(HangGuard);
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

@@ -122,7 +122,7 @@ public partial class JournalBrokerHostRealSeamsTests
 
         // Ending the session cancels the channel while the read is pending.
         await harness.CloseControlAsync();
-        await harness.Serve.WaitAsync(HangGuard);
+        await harness.Serve.WaitAsync(HangGuard, TestContext.CancellationToken);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
         Assert.DoesNotContain(frame => frame.Kind == BrokerFrameKind.Error, frames,
@@ -333,7 +333,7 @@ public partial class JournalBrokerHostRealSeamsTests
 
         // Ending the session cancels every channel still armed.
         await harness.CloseControlAsync();
-        await harness.Serve.WaitAsync(HangGuard);
+        await harness.Serve.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.IsTrue(idlePipe.CancelAttempted.WaitOne(0));
         Assert.AreEqual(driveCount, IdleUsnPipe.CallOrder().Count(call => call == 'C'));
 
@@ -346,4 +346,6 @@ public partial class JournalBrokerHostRealSeamsTests
                 $"Expected the channel to end without a frame after its watch was stopped. Errors: {errorPayloads}");
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

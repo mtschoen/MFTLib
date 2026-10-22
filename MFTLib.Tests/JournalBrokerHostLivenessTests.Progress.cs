@@ -21,7 +21,7 @@ public partial class JournalBrokerHostLivenessTests
         await using var harness = HarnessHoldingWritesTo('X', host, held);
         var blocked = await harness.OpenWatchChannelAsync('X', BehindTip);
         var healthy = await harness.OpenWatchChannelAsync('Y', BehindTip);
-        await Task.WhenAll(enteredX.Entered, enteredY.Entered).WaitAsync(HangGuard);
+        await Task.WhenAll(enteredX.Entered, enteredY.Entered).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         // Well past the client's 30-second stall limit.
         for (var interval = 0; interval < 10; interval++)
@@ -67,11 +67,11 @@ public partial class JournalBrokerHostLivenessTests
             {
                 Assert.AreEqual(expected, await ReadIncludingHeartbeatsAsync(pipe));
             }
-            await calls[0].Entered.WaitAsync(HangGuard);
+            await calls[0].Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
             await liveness.AdvanceOneIntervalAsync(); // Consume the operation-frame skip.
             foreach (var call in calls)
             {
-                await call.Entered.WaitAsync(HangGuard);
+                await call.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
                 for (var interval = 0; interval < 4; interval++)
                 {
                     await liveness.AdvanceOneIntervalAsync();
@@ -162,11 +162,11 @@ public partial class JournalBrokerHostLivenessTests
             {
                 var pipe = await harness.OpenScanChannelAsync('C', sectionName);
                 Assert.AreEqual(BrokerFrameKind.Cursor, await ReadIncludingHeartbeatsAsync(pipe));
-                await flushes[0].Entered.WaitAsync(HangGuard);
+                await flushes[0].Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
                 await liveness.AdvanceOneIntervalAsync(); // Cursor accounts for the first visit.
                 foreach (var flush in flushes)
                 {
-                    await flush.Entered.WaitAsync(HangGuard);
+                    await flush.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
                     for (var interval = 0; interval < 4; interval++)
                     {
                         await liveness.AdvanceOneIntervalAsync();

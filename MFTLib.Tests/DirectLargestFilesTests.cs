@@ -100,7 +100,7 @@ public class DirectLargestFilesTests
     [TestMethod]
     public void Largest_SubtreeIncludesTheAncestorFile()
     {
-        var file = _index.Search(new SearchQuery("huge.bin", NameMatchMode.Exact)).Single();
+        var file = _index.Search(new SearchQuery("huge.bin", NameMatchMode.Exact), TestContext.CancellationToken).Single();
         var results = LargestFiles.Find(_index, 5, file, CancellationToken.None);
         Assert.AreSequenceEqual([file.RecordKey], [.. results.Select(entry => entry.RecordKey)]);
     }
@@ -214,4 +214,6 @@ public class DirectLargestFilesTests
         Assert.AreSequenceEqual(
             [.. Enumerable.Range(0, 5).Select(offset => $"file{LargeRowCount - offset}.bin")], [.. results.Select(entry => entry.Name)]);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

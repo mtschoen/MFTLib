@@ -13,7 +13,7 @@ public partial class BrokerProcessTests
         var control = new SplitFrameWrite(splitWriteNumber: 1);
         await using var broker = new ScriptedBroker(wrapClientControl: control.Wrap);
         var holding = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
-        await control.Gate.Entered.WaitAsync(HangGuard);
+        await control.Gate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         using var cancellation = new CancellationTokenSource();
         var waiting = broker.Process.QueryVolumeAsync('D', cancellation.Token);
         Assert.AreEqual(2, broker.Process.Hooks.PendingRequestCount);
@@ -26,7 +26,7 @@ public partial class BrokerProcessTests
         control.Gate.Release();
         Assert.AreEqual(BrokerFrameKind.QueryVolume, (await broker.ReadRequestAsync()).Kind);
         await broker.CloseControlAsync();
-        await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => holding.WaitAsync(HangGuard));
+        await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => holding.WaitAsync(HangGuard, TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -45,8 +45,8 @@ public partial class BrokerProcessTests
         var next = broker.Process.QueryVolumeAsync('D', CancellationToken.None);
         var request = await broker.ReadRequestAsync();
         Assert.AreEqual(BrokerFrameKind.QueryVolume, request.Kind, "The first frame on the pipe is the next request's.");
-        await broker.CloseControlAsync().AsTask().WaitAsync(HangGuard);
-        await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => next.WaitAsync(HangGuard));
+        await broker.CloseControlAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
+        await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => next.WaitAsync(HangGuard, TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -59,10 +59,10 @@ public partial class BrokerProcessTests
 
         await broker.WriteControlAsync(writer => BrokerProtocol.WriteStalled(writer, "the broker stopped answering"));
 
-        Assert.AreEqual("the broker stopped answering", await ended.WaitAsync(HangGuard));
-        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
+        Assert.AreEqual("the broker stopped answering", await ended.WaitAsync(HangGuard, TestContext.CancellationToken));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual("the broker stopped answering", lost.Message);
-        await broker.Process.Ended.WaitAsync(HangGuard);
+        await broker.Process.Ended.WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 
     [TestMethod]
@@ -79,17 +79,17 @@ public partial class BrokerProcessTests
             BrokerProtocol.WriteUsnJournalSettings(writer, request.RequestId, 65536, 4096));
 
         var wrongReply = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
-            answered.WaitAsync(HangGuard));
+            answered.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.IsNull(wrongReply.Drive);
         Assert.Contains("UsnJournalSettings instead of VolumeInfo", wrongReply.Message);
-        Assert.AreEqual(wrongReply.Message, await ended.WaitAsync(HangGuard),
+        Assert.AreEqual(wrongReply.Message, await ended.WaitAsync(HangGuard, TestContext.CancellationToken),
             "The process ends with the mismatch as its reason.");
-        await broker.Process.Ended.WaitAsync(HangGuard);
-        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
+        await broker.Process.Ended.WaitAsync(HangGuard, TestContext.CancellationToken);
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual(wrongReply.Message, lost.Message);
         await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
-            broker.Process.QueryVolumeAsync('E', CancellationToken.None).WaitAsync(HangGuard));
-        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
+            broker.Process.QueryVolumeAsync('E', CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
+        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 
     [TestMethod]
@@ -105,7 +105,7 @@ public partial class BrokerProcessTests
         await broker.WriteControlAsync(writer => BrokerProtocol.WriteChannelOpened(writer, request.RequestId));
         await broker.CloseControlAsync();
 
-        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => open.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => open.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual('C', lost.Drive);
         Assert.Contains("the broker process ended", lost.Message);
     }

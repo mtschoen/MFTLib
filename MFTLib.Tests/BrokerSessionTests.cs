@@ -44,7 +44,7 @@ public partial class BrokerSessionTests
             callers.Add(session.ConnectAsync(CancellationToken.None));
         }
 
-        var processes = await Task.WhenAll(callers).WaitAsync(HangGuard);
+        var processes = await Task.WhenAll(callers).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsTrue(processes.All(process => ReferenceEquals(process, brokerProcess)));
         Assert.AreEqual(1, launches);
@@ -80,7 +80,7 @@ public partial class BrokerSessionTests
         using var cancellation = new CancellationTokenSource();
         var cancelled = session.ConnectAsync(cancellation.Token);
         var patient = session.ConnectAsync(CancellationToken.None);
-        await launch.Entered.WaitAsync(HangGuard);
+        await launch.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         await cancellation.CancelAsync();
         await Assert.ThrowsAsync<OperationCanceledException>(() => cancelled);
@@ -88,9 +88,9 @@ public partial class BrokerSessionTests
         Assert.IsFalse(patient.IsCompleted);
 
         launch.Complete(brokerProcess);
-        var later = await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard);
+        var later = await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        Assert.AreSame(brokerProcess, await patient.WaitAsync(HangGuard));
+        Assert.AreSame(brokerProcess, await patient.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreSame(brokerProcess, later);
         Assert.AreEqual(1, launch.Count);
     }
@@ -116,7 +116,7 @@ public partial class BrokerSessionTests
         Assert.AreEqual(1, connecting);
         Assert.AreEqual(0, connected);
 
-        var process = await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard);
+        var process = await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreSame(brokerProcess, process);
         Assert.AreEqual(2, launches);
@@ -131,7 +131,7 @@ public partial class BrokerSessionTests
         await using var session = CreateSession(launch.LaunchAsync);
         var first = session.ConnectAsync(CancellationToken.None);
         var second = session.ConnectAsync(CancellationToken.None);
-        await launch.Entered.WaitAsync(HangGuard);
+        await launch.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         launch.Fail(new IOException("launch failed"));
 
@@ -170,8 +170,8 @@ public partial class BrokerSessionTests
             }
         };
 
-        await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard);
-        await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard);
+        await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreSequenceEqual(["connecting", "launch", "connected"], order);
     }
@@ -192,25 +192,25 @@ public partial class BrokerSessionTests
         session.Connecting += () =>
         {
             connectingEntered.TrySetResult();
-            releaseConnecting.Task.Wait(HangGuard);
+            releaseConnecting.Task.Wait(HangGuard, TestContext.CancellationToken);
         };
         session.Connected += () =>
         {
             connectedEntered.TrySetResult();
-            releaseConnected.Task.Wait(HangGuard);
+            releaseConnected.Task.Wait(HangGuard, TestContext.CancellationToken);
         };
         var connecting = session.ConnectAsync(CancellationToken.None);
 
-        await connectingEntered.Task.WaitAsync(HangGuard);
+        await connectingEntered.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
         await ReachEveryGatedMemberAsync(session);
         releaseConnecting.SetResult();
-        await launch.Entered.WaitAsync(HangGuard);
+        await launch.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         launch.Complete(brokerProcess);
-        await connectedEntered.Task.WaitAsync(HangGuard);
+        await connectedEntered.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
         await ReachEveryGatedMemberAsync(session);
         releaseConnected.SetResult();
 
-        Assert.AreSame(brokerProcess, await connecting.WaitAsync(HangGuard));
+        Assert.AreSame(brokerProcess, await connecting.WaitAsync(HangGuard, TestContext.CancellationToken));
         await session.DisposeAsync();
     }
 
@@ -230,9 +230,9 @@ public partial class BrokerSessionTests
         session.Connecting += () => connectingContext = SynchronizationContext.Current;
 
         var connecting = await userInterface.RunAsync(() => session.ConnectAsync(CancellationToken.None))
-            .WaitAsync(HangGuard);
+            .WaitAsync(HangGuard, TestContext.CancellationToken);
         await Assert.ThrowsAsync<InvalidOperationException>(() => connecting)
-            .WaitAsync(HangGuard);
+            .WaitAsync(HangGuard, TestContext.CancellationToken);
         await session.DisposeAsync();
 
         Assert.AreNotEqual(userInterface.ThreadId, launcherThread, "the blocking launcher ran on the caller's thread");
@@ -253,8 +253,8 @@ public partial class BrokerSessionTests
         session.Connecting += () => disposal = session.DisposeAsync().AsTask();
 
         var failure = await Assert.ThrowsAsync<Exception>(() =>
-            session.ConnectAsync(CancellationToken.None)).WaitAsync(HangGuard);
-        await disposal!.WaitAsync(HangGuard);
+            session.ConnectAsync(CancellationToken.None)).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await disposal!.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsFalse(session.Ended.IsCompleted, "disposal is not a broker end");
         Assert.AreEqual(0, launches, "the launcher ran after a Connecting subscriber disposed the session");
@@ -285,7 +285,7 @@ public partial class BrokerSessionTests
             session.ConnectAsync(CancellationToken.None));
         Assert.AreEqual(0, launches);
 
-        Assert.AreSame(brokerProcess, await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard));
+        Assert.AreSame(brokerProcess, await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual(1, launches);
     }
 
@@ -308,7 +308,7 @@ public partial class BrokerSessionTests
             session.ConnectAsync(CancellationToken.None));
 
         Assert.AreEqual(1, later, "a throwing subscriber must not hide the event from the others");
-        Assert.AreSame(brokerProcess, await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard));
+        Assert.AreSame(brokerProcess, await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual(1, launches);
         await session.DisposeAsync();
         Assert.IsTrue(brokerProcess.Ended.IsCompleted, "the process the failed attempt launched is still owned");
@@ -325,16 +325,16 @@ public partial class BrokerSessionTests
             Interlocked.Increment(ref launches);
             return Task.FromResult(brokerProcess);
         });
-        var first = await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard);
+        var first = await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.IsFalse(session.Ended.IsCompleted);
 
         handle.Crash();
-        var reason = await first.Ended.WaitAsync(HangGuard);
+        var reason = await first.Ended.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var refusal = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             session.ConnectAsync(CancellationToken.None));
         Assert.Contains(reason, refusal.Message);
-        Assert.AreEqual(reason, await session.Ended.WaitAsync(HangGuard));
+        Assert.AreEqual(reason, await session.Ended.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual(1, launches);
     }
 
@@ -358,8 +358,8 @@ public partial class BrokerSessionTests
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             session.ConnectAsync(CancellationToken.None));
 
-        var expected = await brokerProcess.Ended.WaitAsync(HangGuard);
-        Assert.AreEqual(expected, await session.Ended.WaitAsync(HangGuard));
+        var expected = await brokerProcess.Ended.WaitAsync(HangGuard, TestContext.CancellationToken);
+        Assert.AreEqual(expected, await session.Ended.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual(1, launches);
     }
 
@@ -369,13 +369,13 @@ public partial class BrokerSessionTests
         await using var handle = StartBroker();
         var brokerProcess = handle.Process;
         var session = CreateSession(_ => Task.FromResult(brokerProcess));
-        var process = await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard);
+        var process = await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
         handle.Crash();
-        var reason = await process.Ended.WaitAsync(HangGuard);
+        var reason = await process.Ended.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         await session.DisposeAsync();
 
-        Assert.AreEqual(reason, await session.Ended.WaitAsync(HangGuard));
+        Assert.AreEqual(reason, await session.Ended.WaitAsync(HangGuard, TestContext.CancellationToken));
         await Assert.ThrowsAsync<ObjectDisposedException>(() =>
             session.ConnectAsync(CancellationToken.None));
     }
@@ -386,14 +386,14 @@ public partial class BrokerSessionTests
         await using var handle = StartBroker();
         var brokerProcess = handle.Process;
         await using var session = CreateSession(_ => Task.FromResult(brokerProcess));
-        await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard);
+        await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
         var callback = CallBackIntoSessionOnEndedAsync(session);
 
         handle.Crash();
-        var (beforeDispose, afterDispose) = await callback.WaitAsync(HangGuard);
+        var (beforeDispose, afterDispose) = await callback.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreEqual(typeof(InvalidOperationException), beforeDispose.GetType());
-        Assert.Contains(await brokerProcess.Ended.WaitAsync(HangGuard), beforeDispose.Message);
+        Assert.Contains(await brokerProcess.Ended.WaitAsync(HangGuard, TestContext.CancellationToken), beforeDispose.Message);
         Assert.IsInstanceOfType<ObjectDisposedException>(afterDispose);
     }
 
@@ -403,7 +403,7 @@ public partial class BrokerSessionTests
         await using var handle = StartBroker();
         var brokerProcess = handle.Process;
         var session = CreateSession(_ => Task.FromResult(brokerProcess));
-        await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard);
+        await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         await session.DisposeAsync();
 
@@ -446,7 +446,7 @@ public partial class BrokerSessionTests
         await using var handle = StartBroker();
         var brokerProcess = handle.Process;
         var session = CreateSession(_ => Task.FromResult(brokerProcess));
-        var process = await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard);
+        var process = await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.IsFalse(session.Ended.IsCompleted);
 
         await session.DisposeAsync();
@@ -489,7 +489,7 @@ public partial class BrokerSessionTests
         var session = CreateSession(launch.LaunchAsync);
         using var cancellation = new CancellationTokenSource();
         var connecting = session.ConnectAsync(cancellation.Token);
-        await launch.Entered.WaitAsync(HangGuard);
+        await launch.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         if (callerCancelled)
         {
             await cancellation.CancelAsync();
@@ -497,14 +497,14 @@ public partial class BrokerSessionTests
 
         var first = session.DisposeAsync().AsTask();
         var second = session.DisposeAsync().AsTask();
-        await launch.StopRequested.WaitAsync(HangGuard);
+        await launch.StopRequested.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.IsFalse(first.IsCompleted, "disposal waits for the in-flight launch so no process leaks");
 
         // The launcher returns despite cancellation, as one that already started a process does.
         launch.Complete(brokerProcess);
 
         await Assert.ThrowsAsync<OperationCanceledException>(() => connecting);
-        await Task.WhenAll(first, second).WaitAsync(HangGuard);
+        await Task.WhenAll(first, second).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.IsTrue(brokerProcess.Ended.IsCompleted);
         Assert.IsFalse(session.Ended.IsCompleted, "reclaiming a late process is not a broker end");
         Assert.AreEqual(1, launch.Count);
@@ -516,13 +516,13 @@ public partial class BrokerSessionTests
         var launch = new LaunchGate();
         var session = CreateSession(launch.LaunchAsync);
         var connecting = session.ConnectAsync(CancellationToken.None);
-        await launch.Entered.WaitAsync(HangGuard);
+        await launch.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var disposal = session.DisposeAsync().AsTask();
-        await launch.StopRequested.WaitAsync(HangGuard);
+        await launch.StopRequested.WaitAsync(HangGuard, TestContext.CancellationToken);
         launch.Fail(new IOException("launch failed"));
 
-        await disposal.WaitAsync(HangGuard);
+        await disposal.WaitAsync(HangGuard, TestContext.CancellationToken);
         await Assert.ThrowsAsync<IOException>(() => connecting);
     }
 
@@ -542,11 +542,11 @@ public partial class BrokerSessionTests
 
         // A use immediately followed by disposal, both from the user interface thread, before the launch starts.
         var (use, disposal) = await userInterface.RunAsync(() =>
-            (session.ConnectAsync(CancellationToken.None), session.DisposeAsync().AsTask())).WaitAsync(HangGuard);
+            (session.ConnectAsync(CancellationToken.None), session.DisposeAsync().AsTask())).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.IsFalse(session.Ended.IsCompleted, "disposal is not a broker end");
         launchScheduler.RunPending();
-        await disposal.WaitAsync(HangGuard);
-        var failure = await Assert.ThrowsAsync<Exception>(() => use).WaitAsync(HangGuard);
+        await disposal.WaitAsync(HangGuard, TestContext.CancellationToken);
+        var failure = await Assert.ThrowsAsync<Exception>(() => use).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreEqual(0, launches, "the launcher ran after disposal ended the session");
         Assert.AreEqual(0, connectingRaised, "Connecting was raised after disposal ended the session");
@@ -561,14 +561,14 @@ public partial class BrokerSessionTests
         var launch = new LaunchGate();
         await using var session = CreateSession(launch.LaunchAsync);
         var connecting = session.ConnectAsync(CancellationToken.None);
-        await launch.Entered.WaitAsync(HangGuard);
+        await launch.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsFalse(session.Ended.IsCompleted);
         Assert.IsFalse(session.Ended.IsCompleted);
         Assert.IsFalse(connecting.IsCompleted);
 
         launch.Complete(brokerProcess);
-        Assert.AreSame(brokerProcess, await connecting.WaitAsync(HangGuard));
+        Assert.AreSame(brokerProcess, await connecting.WaitAsync(HangGuard, TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -589,7 +589,7 @@ public partial class BrokerSessionTests
         });
 
         var settings = await session.GrowUsnJournalAsync('c', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None)
-            .WaitAsync(HangGuard);
+            .WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreEqual(0x08000000L, settings.MaximumSize);
         Assert.AreEqual(0x01000000L, settings.AllocationDelta);
@@ -621,9 +621,9 @@ public partial class BrokerSessionTests
         await using var handle = StartBroker();
         var brokerProcess = handle.Process;
         await using var session = CreateSession(_ => Task.FromResult(brokerProcess));
-        var process = await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard);
+        var process = await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
         handle.Crash();
-        await process.Ended.WaitAsync(HangGuard);
+        await process.Ended.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             session.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None));
@@ -680,7 +680,7 @@ public partial class BrokerSessionTests
                 CacheDirectory = cacheDirectory,
                 CacheMode = CacheMode.Disabled,
                 MftSource = session.CreateIndexSource()
-            }, CancellationToken.None).WaitAsync(HangGuard);
+            }, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
 
             Assert.AreEqual(1, launches);
             Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
@@ -802,4 +802,6 @@ public partial class BrokerSessionTests
 
         public void Fail(Exception exception) => _result.TrySetException(exception);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

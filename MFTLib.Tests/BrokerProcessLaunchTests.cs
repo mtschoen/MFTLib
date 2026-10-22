@@ -32,8 +32,14 @@ public class BrokerProcessLaunchTests
         }
         finally
         {
-            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
-            Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", null);
+            try
+            {
+                await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", null);
+            }
         }
     }
 
@@ -53,8 +59,14 @@ public class BrokerProcessLaunchTests
         }
         finally
         {
-            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
-            BrokerDiagnostics.Dependencies.ResetToDefaults();
+            try
+            {
+                await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            }
+            finally
+            {
+                BrokerDiagnostics.Dependencies.ResetToDefaults();
+            }
         }
     }
 
@@ -72,8 +84,14 @@ public class BrokerProcessLaunchTests
         }
         finally
         {
-            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
-            BrokerDiagnostics.Dependencies.ResetToDefaults();
+            try
+            {
+                await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            }
+            finally
+            {
+                BrokerDiagnostics.Dependencies.ResetToDefaults();
+            }
         }
     }
 
@@ -88,9 +106,15 @@ public class BrokerProcessLaunchTests
         }
         finally
         {
-            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
-            Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", null);
-            Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG_INCLUDE_SELF", null);
+            try
+            {
+                await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", null);
+                Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG_INCLUDE_SELF", null);
+            }
         }
     }
 
@@ -105,8 +129,14 @@ public class BrokerProcessLaunchTests
         }
         finally
         {
-            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
-            BrokerDiagnostics.Dependencies.ResetToDefaults();
+            try
+            {
+                await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+            }
+            finally
+            {
+                BrokerDiagnostics.Dependencies.ResetToDefaults();
+            }
         }
     }
 
@@ -151,7 +181,7 @@ public class BrokerProcessLaunchTests
                 });
                 await host.ServeAsync(pipe, DefaultElevatedEntryRunner.ConnectDrivePipeAsync,
                     new RealBlockSectionWriter(TimeProvider.System), CancellationToken.None);
-            });
+            }, TestContext.CancellationToken);
             return true;
         });
 
@@ -255,7 +285,7 @@ public class BrokerProcessLaunchTests
         var process = CreateProcess(clientSide);
         await clientSide.DisposeAsync();
 
-        await process.DisposeAsync().AsTask().WaitAsync(HangGuard);
+        await process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 
     // No scan runs on these processes, so their section factory is never called.
@@ -279,4 +309,6 @@ public class BrokerProcessLaunchTests
         Assert.IsNotNull(captured);
         return captured;
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

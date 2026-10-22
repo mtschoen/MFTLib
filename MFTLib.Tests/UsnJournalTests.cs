@@ -95,7 +95,7 @@ public class UsnJournalTests
         volume.Dispose();
         await Assert.ThrowsExactlyAsync<ObjectDisposedException>(async () =>
         {
-            await foreach (var _ in journal.WatchUsnJournal(new UsnJournalCursor(1, 0)))
+            await foreach (var _ in journal.WatchUsnJournal(new UsnJournalCursor(1, 0), TestContext.CancellationToken))
             {
             }
         });
@@ -174,4 +174,6 @@ public class UsnJournalTests
         Assert.AreEqual(0xDEADBEEFUL, cursor.JournalIdentifier);
         Assert.AreEqual(12345L, cursor.NextUsn);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

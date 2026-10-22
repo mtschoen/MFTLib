@@ -31,8 +31,8 @@ public class BrokerProcessLivenessTests
         var clock = new TimerSignalingClock();
         await using var session = new LivenessSession(clock);
         var ended = session.Process.Ended;
-        await session.ControlReads.WhenReadPendingAfter(0).WaitAsync(HangGuard);
-        var stallTimer = await clock.TimerCreated(StallLimit).WaitAsync(HangGuard);
+        await session.ControlReads.WhenReadPendingAfter(0).WaitAsync(HangGuard, TestContext.CancellationToken);
+        var stallTimer = await clock.TimerCreated(StallLimit).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         clock.Advance(StallLimit - OneTick);
         Assert.IsFalse(stallTimer.Fired, "The stall limit must not fire before the limit.");
@@ -41,10 +41,10 @@ public class BrokerProcessLivenessTests
         clock.Advance(OneTick);
 
         Assert.IsTrue(stallTimer.Fired);
-        Assert.AreEqual(StallMessage, await ended.WaitAsync(HangGuard));
-        await session.Process.Ended.WaitAsync(HangGuard);
+        Assert.AreEqual(StallMessage, await ended.WaitAsync(HangGuard, TestContext.CancellationToken));
+        await session.Process.Ended.WaitAsync(HangGuard, TestContext.CancellationToken);
         var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
-            session.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
+            session.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.IsNull(lost.Drive);
         Assert.AreEqual(StallMessage, lost.Message);
     }
@@ -54,7 +54,7 @@ public class BrokerProcessLivenessTests
     {
         var clock = new FakeTimeProvider();
         await using var session = new LivenessSession(clock);
-        await session.ControlReads.WhenReadPendingAfter(0).WaitAsync(HangGuard);
+        await session.ControlReads.WhenReadPendingAfter(0).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         for (var heartbeat = 0; heartbeat < 4; heartbeat++)
         {
@@ -67,7 +67,7 @@ public class BrokerProcessLivenessTests
             "Four intervals of 20 seconds pass the 30 second limit; heartbeats reset it.");
         var query = session.Process.QueryVolumeAsync('C', CancellationToken.None);
         await session.AnswerQueryVolumeAsync(Volume);
-        Assert.AreEqual(Volume.MftValidDataLength, (await query.WaitAsync(HangGuard)).MftValidDataLength);
+        Assert.AreEqual(Volume.MftValidDataLength, (await query.WaitAsync(HangGuard, TestContext.CancellationToken)).MftValidDataLength);
     }
 
     [TestMethod]
@@ -89,15 +89,15 @@ public class BrokerProcessLivenessTests
         clock.Advance(OneTick);
 
         var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
-            silent.Scan.WaitAsync(HangGuard));
+            silent.Scan.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual('C', lost.Drive);
         Assert.AreEqual(StallMessage, lost.Message);
-        Assert.IsNull(await HostChannelHarness.ReadFrameAsync(silent.HostPipe).WaitAsync(HangGuard),
+        Assert.IsNull(await HostChannelHarness.ReadFrameAsync(silent.HostPipe).WaitAsync(HangGuard, TestContext.CancellationToken),
             "The client closes the silent pipe, which the host reads as EOF.");
         Assert.IsFalse(session.Process.Ended.IsCompleted, "Only the silent channel failed.");
         Assert.IsFalse(healthy.Scan.IsCompleted);
         await healthy.FinishAsync();
-        var result = await healthy.Scan.WaitAsync(HangGuard);
+        var result = await healthy.Scan.WaitAsync(HangGuard, TestContext.CancellationToken);
         result.Block.Block.Dispose();
         Assert.AreEqual(new DriveKey('D'), result.Drive);
     }
@@ -131,7 +131,7 @@ public class BrokerProcessLivenessTests
         Assert.AreEqual(4, reports);
         Assert.IsFalse(scan.Scan.IsCompleted, "The scan is running, not failed.");
         await scan.FinishAsync();
-        (await scan.Scan.WaitAsync(HangGuard)).Block.Block.Dispose();
+        (await scan.Scan.WaitAsync(HangGuard, TestContext.CancellationToken)).Block.Block.Dispose();
     }
 
     [TestMethod]
@@ -152,7 +152,7 @@ public class BrokerProcessLivenessTests
 
         // The host never closed the channel after its terminal frame. The stall is the peer's
         // silence, not this scan closing its own channel, so the complete result is not returned.
-        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.Scan.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.Scan.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual('C', lost.Drive);
         Assert.AreEqual(StallMessage, lost.Message);
     }
@@ -169,13 +169,13 @@ public class BrokerProcessLivenessTests
         await stalled.SendAsync(writer => BrokerProtocol.WriteStalled(writer, hostMessage));
 
         var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
-            stalled.Scan.WaitAsync(HangGuard));
+            stalled.Scan.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual('C', lost.Drive);
         Assert.AreEqual(hostMessage, lost.Message);
         Assert.IsFalse(session.Process.Ended.IsCompleted);
         Assert.IsFalse(other.Scan.IsCompleted);
         await other.FinishAsync();
-        (await other.Scan.WaitAsync(HangGuard)).Block.Block.Dispose();
+        (await other.Scan.WaitAsync(HangGuard, TestContext.CancellationToken)).Block.Block.Dispose();
     }
 
     [TestMethod]
@@ -184,15 +184,15 @@ public class BrokerProcessLivenessTests
         Assert.AreEqual(TimeSpan.FromSeconds(30), BrokerLiveness.ControlReplyTimeout);
         var clock = new TimerSignalingClock();
         await using var session = new LivenessSession(clock);
-        await session.ControlReads.WhenReadPendingAfter(0).WaitAsync(HangGuard);
-        await clock.TimerCreated(StallLimit).WaitAsync(HangGuard);
+        await session.ControlReads.WhenReadPendingAfter(0).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await clock.TimerCreated(StallLimit).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var slow = session.Process.QueryVolumeAsync('C', CancellationToken.None);
         var slowRequest = await session.Broker.ReadRequestAsync();
         // The 30 second timers so far are the control reader's stall limit, the request's write
         // bound (created before the write) and its reply timeout (created after it).
         var replyTimeout = await clock.TimerCreated(BrokerLiveness.ControlReplyTimeout, occurrence: 3)
-            .WaitAsync(HangGuard);
+            .WaitAsync(HangGuard, TestContext.CancellationToken);
         clock.Advance(HalfWindow);
         await session.SendControlAsync(BrokerProtocol.WriteHeartbeat);
         await session.ControlSettledAsync();
@@ -203,7 +203,7 @@ public class BrokerProcessLivenessTests
         clock.Advance(OneTick);
 
         Assert.IsTrue(replyTimeout.Fired);
-        var timeout = await Assert.ThrowsExactlyAsync<TimeoutException>(() => slow.WaitAsync(HangGuard));
+        var timeout = await Assert.ThrowsExactlyAsync<TimeoutException>(() => slow.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.Contains("did not answer request", timeout.Message);
         Assert.Contains("30 seconds", timeout.Message);
         Assert.IsFalse(session.Process.Ended.IsCompleted, "Only the request timed out.");
@@ -218,7 +218,7 @@ public class BrokerProcessLivenessTests
         Assert.AreNotEqual(slowRequest.RequestId, nextRequest.RequestId);
         await session.SendControlAsync(writer => BrokerProtocol.WriteVolumeInfo(writer, nextRequest.RequestId,
             Volume.BytesPerFileRecordSegment, 222));
-        Assert.AreEqual(222L, (await next.WaitAsync(HangGuard)).MftValidDataLength);
+        Assert.AreEqual(222L, (await next.WaitAsync(HangGuard, TestContext.CancellationToken)).MftValidDataLength);
     }
 
     [TestMethod]
@@ -230,7 +230,7 @@ public class BrokerProcessLivenessTests
         await using var reader = new BrokerFrameReader(client, 'C', "test", clock);
 
         var read = reader.ReadAsync(CancellationToken.None).AsTask();
-        var stallTimer = await clock.TimerCreated(StallLimit).WaitAsync(HangGuard);
+        var stallTimer = await clock.TimerCreated(StallLimit).WaitAsync(HangGuard, TestContext.CancellationToken);
         clock.Advance(StallLimit - OneTick);
 
         Assert.IsFalse(stallTimer.Fired, "The stall limit must not fire before the limit.");
@@ -238,10 +238,10 @@ public class BrokerProcessLivenessTests
         clock.Advance(OneTick);
 
         Assert.IsTrue(stallTimer.Fired);
-        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => read.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => read.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual('C', lost.Drive);
         Assert.AreEqual(StallMessage, lost.Message);
-        Assert.IsNull(await HostChannelHarness.ReadFrameAsync(hostPipe).WaitAsync(HangGuard));
+        Assert.IsNull(await HostChannelHarness.ReadFrameAsync(hostPipe).WaitAsync(HangGuard, TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -253,15 +253,15 @@ public class BrokerProcessLivenessTests
         await using var reader = new BrokerFrameReader(client, 'C', "test", clock);
         var first = reader.ReadAsync(CancellationToken.None).AsTask();
         clock.Advance(SendInterval);
-        await HostChannelHarness.WriteFrameAsync(hostPipe, BrokerProtocol.WriteHeartbeat).WaitAsync(HangGuard);
-        Assert.AreEqual(BrokerFrameKind.Heartbeat, (await first.WaitAsync(HangGuard))?.Kind);
+        await HostChannelHarness.WriteFrameAsync(hostPipe, BrokerProtocol.WriteHeartbeat).WaitAsync(HangGuard, TestContext.CancellationToken);
+        Assert.AreEqual(BrokerFrameKind.Heartbeat, (await first.WaitAsync(HangGuard, TestContext.CancellationToken))?.Kind);
 
         var second = reader.ReadAsync(CancellationToken.None).AsTask();
         clock.Advance(StallLimit - OneTick);
         Assert.IsFalse(second.IsCompleted, "The window restarted at the second read, 20 seconds in.");
         clock.Advance(SendInterval);
 
-        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => second.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => second.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual(StallMessage, lost.Message);
     }
 
@@ -273,15 +273,15 @@ public class BrokerProcessLivenessTests
         await using var hostPipe = host;
         var gate = new TestGate();
         await using var reader = new BrokerFrameReader(new IgnoreCancellationStream(client, gate), 'C', "test", clock);
-        await HostChannelHarness.WriteFrameAsync(hostPipe, BrokerProtocol.WriteHeartbeat).WaitAsync(HangGuard);
+        await HostChannelHarness.WriteFrameAsync(hostPipe, BrokerProtocol.WriteHeartbeat).WaitAsync(HangGuard, TestContext.CancellationToken);
         var read = reader.ReadAsync(CancellationToken.None).AsTask();
-        await gate.Entered.WaitAsync(HangGuard);
+        await gate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         // The stall claims the read; the stream ignores the cancellation, so its frame lands after.
         clock.Advance(StallLimit);
         gate.Release();
 
-        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => read.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => read.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual(StallMessage, lost.Message);
     }
 
@@ -292,19 +292,19 @@ public class BrokerProcessLivenessTests
         var (client, hostPipe) = new InMemoryPipePair();
         var reader = new BrokerFrameReader(client, 'C', "test", clock);
         var read = reader.ReadAsync(CancellationToken.None).AsTask();
-        await clock.TimerCreated.WaitAsync(HangGuard);
-        var advance = Task.Run(() => clock.Advance(StallLimit));
-        await clock.CallbackEntered.Entered.WaitAsync(HangGuard);
+        await clock.TimerCreated.WaitAsync(HangGuard, TestContext.CancellationToken);
+        var advance = Task.Run(() => clock.Advance(StallLimit), TestContext.CancellationToken);
+        await clock.CallbackEntered.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var dispose = reader.DisposeAsync().AsTask();
-        await clock.DisposeEntered.Entered.WaitAsync(HangGuard);
+        await clock.DisposeEntered.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.IsFalse(dispose.IsCompleted, "Disposal must wait while the stall callback is running.");
         clock.CallbackEntered.Release();
-        await dispose.WaitAsync(HangGuard);
-        await advance.WaitAsync(HangGuard);
+        await dispose.WaitAsync(HangGuard, TestContext.CancellationToken);
+        await advance.WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        await hostPipe.DisposeAsync().AsTask().WaitAsync(HangGuard);
-        Assert.IsNull(await read.WaitAsync(HangGuard), "The disposed timer's late callback stalled nothing.");
+        await hostPipe.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
+        Assert.IsNull(await read.WaitAsync(HangGuard, TestContext.CancellationToken), "The disposed timer's late callback stalled nothing.");
     }
 
     [TestMethod]
@@ -313,21 +313,21 @@ public class BrokerProcessLivenessTests
         var clock = new CallbackDrainingClock();
         await using var session = new LivenessSession(clock);
         var ended = session.Process.Ended;
-        await session.ControlReads.WhenReadPendingAfter(0).WaitAsync(HangGuard);
-        await clock.TimerCreated.WaitAsync(HangGuard);
-        var advance = Task.Run(() => clock.Advance(StallLimit - OneTick));
-        await advance.WaitAsync(HangGuard);
-        advance = Task.Run(() => clock.Advance(OneTick));
-        await clock.CallbackEntered.Entered.WaitAsync(HangGuard);
+        await session.ControlReads.WhenReadPendingAfter(0).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await clock.TimerCreated.WaitAsync(HangGuard, TestContext.CancellationToken);
+        var advance = Task.Run(() => clock.Advance(StallLimit - OneTick), TestContext.CancellationToken);
+        await advance.WaitAsync(HangGuard, TestContext.CancellationToken);
+        advance = Task.Run(() => clock.Advance(OneTick), TestContext.CancellationToken);
+        await clock.CallbackEntered.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        await session.Broker.CloseControlAsync().AsTask().WaitAsync(HangGuard);
-        await clock.DisposeEntered.Entered.WaitAsync(HangGuard);
+        await session.Broker.CloseControlAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
+        await clock.DisposeEntered.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsFalse(ended.IsCompleted, "Ended must not be raised while the stall timer is draining.");
         Assert.IsFalse(session.Process.Ended.IsCompleted);
         clock.CallbackEntered.Release();
-        await advance.WaitAsync(HangGuard);
-        Assert.Contains("closed its control pipe", await ended.WaitAsync(HangGuard));
+        await advance.WaitAsync(HangGuard, TestContext.CancellationToken);
+        Assert.Contains("closed its control pipe", await ended.WaitAsync(HangGuard, TestContext.CancellationToken));
     }
 
     static int FrameLength(Action<IBufferWriter<byte>> write)
@@ -508,4 +508,6 @@ public class BrokerProcessLivenessTests
             await _idle.Task.WaitAsync(HangGuard);
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

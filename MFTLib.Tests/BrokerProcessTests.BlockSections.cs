@@ -21,7 +21,7 @@ public partial class BrokerProcessTests
         broker.WriteSection(sectionC.SectionName, armedC);
         await HostChannelHarness.WriteFrameAsync(channelC, writer => BrokerProtocol.WriteCursor(writer, armedC));
         await HostChannelHarness.WriteFrameAsync(channelC, writer => BrokerProtocol.WriteScanReady(writer, 0));
-        await sectionC.Lifetime.Disposed.WaitAsync(HangGuard);
+        await sectionC.Lifetime.Disposed.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         // C's section is released after its ScanReady while its scan still waits for catch-up.
         var scanD = broker.Process.ScanDriveAsync('D', TestBlockSections.Target(), new MftScanOptions(), null, CancellationToken.None);
@@ -35,7 +35,7 @@ public partial class BrokerProcessTests
 
         await HostChannelHarness.WriteFrameAsync(channelC, BrokerProtocol.WriteScanCompleted);
         await channelC.DisposeAsync();
-        var resultC = await scanC.WaitAsync(HangGuard);
+        var resultC = await scanC.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(0, sectionD.Lifetime.DisposeCount, "Drive C completing must not release drive D's section");
 
         broker.WriteSection(sectionD.SectionName, armedD);
@@ -43,7 +43,7 @@ public partial class BrokerProcessTests
         await HostChannelHarness.WriteFrameAsync(channelD, writer => BrokerProtocol.WriteScanReady(writer, 0));
         await HostChannelHarness.WriteFrameAsync(channelD, BrokerProtocol.WriteScanCompleted);
         await channelD.DisposeAsync();
-        var resultD = await scanD.WaitAsync(HangGuard);
+        var resultD = await scanD.WaitAsync(HangGuard, TestContext.CancellationToken);
         using var blockC = resultC.Block.Block;
         using var blockD = resultD.Block.Block;
 
@@ -67,7 +67,7 @@ public partial class BrokerProcessTests
         }));
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => broker.Process.ScanDriveAsync('C',
-            TestBlockSections.Target(), new MftScanOptions(), null, CancellationToken.None).WaitAsync(HangGuard));
+            TestBlockSections.Target(), new MftScanOptions(), null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
 
         var section = broker.Sections.Single();
         Assert.AreEqual("drive failed", exception.Message);
@@ -108,7 +108,7 @@ public partial class BrokerProcessTests
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanReady(writer, 0));
         await HostChannelHarness.WriteFrameAsync(channel, BrokerProtocol.WriteScanCompleted);
         await channel.DisposeAsync();
-        var result = await scan.WaitAsync(HangGuard);
+        var result = await scan.WaitAsync(HangGuard, TestContext.CancellationToken);
         result.Block.Block.Dispose();
 
         Assert.HasCount(2, reports);
@@ -146,7 +146,7 @@ public partial class BrokerProcessTests
                 TotalRecords = 100,
                 TotalBytes = 2000
             }));
-        await progressReceived.Task.WaitAsync(HangGuard);
+        await progressReceived.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsFalse(scan.IsCompleted, "a ScanProgress frame must not complete the drive");
         Assert.AreEqual(0, section.Lifetime.DisposeCount, "the section is released by ScanReady, not by progress");
@@ -155,7 +155,7 @@ public partial class BrokerProcessTests
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanReady(writer, 0));
         await HostChannelHarness.WriteFrameAsync(channel, BrokerProtocol.WriteScanCompleted);
         await channel.DisposeAsync();
-        var result = await scan.WaitAsync(HangGuard);
+        var result = await scan.WaitAsync(HangGuard, TestContext.CancellationToken);
         result.Block.Block.Dispose();
 
         Assert.HasCount(1, reports);
@@ -176,7 +176,7 @@ public partial class BrokerProcessTests
             new BrokerTestHarnessOptions(), null, null);
 
         var exception = await Assert.ThrowsExactlyAsync<IOException>(() => handle.Process.ScanDriveAsync('C',
-            TestBlockSections.Target(), new MftScanOptions(), null, CancellationToken.None).WaitAsync(HangGuard));
+            TestBlockSections.Target(), new MftScanOptions(), null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.AreEqual("release failed", exception.Message);
         Assert.AreEqual(1, sections.Lifetime.DisposeCount, "the catch must not dispose a lifetime whose release already ran");
@@ -207,4 +207,6 @@ public partial class BrokerProcessTests
             throw new IOException("release failed");
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

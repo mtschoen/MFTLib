@@ -217,7 +217,7 @@ public partial class SampleHostElevationNoticeTests
             // The abandoned dialog is still open when the wait runs out: advance the fake clock past it and hang.
             clock.Advance(SampleHost.ElevationNoticeTimeout);
             // Runs on the dialog's own pool thread, which exists only to block here until the test releases it.
-            neverAnswered.Task.Wait();
+            neverAnswered.Task.Wait(TestContext.CancellationToken);
             return SampleHost.MessageBoxResultOk;
         };
 
@@ -347,4 +347,6 @@ public partial class SampleHostElevationNoticeTests
             }
         };
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

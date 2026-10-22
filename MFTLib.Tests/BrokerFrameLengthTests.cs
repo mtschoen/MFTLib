@@ -64,7 +64,7 @@ public class BrokerFrameLengthTests
         {
             await harness.SendControlAsync(writer => WriteLengthPrefix(writer, length));
 
-            var exception = await Assert.ThrowsExactlyAsync<InvalidDataException>(() => harness.Serve.WaitAsync(HangGuard));
+            var exception = await Assert.ThrowsExactlyAsync<InvalidDataException>(() => harness.Serve.WaitAsync(HangGuard, TestContext.CancellationToken));
             Assert.Contains(length.ToString(System.Globalization.CultureInfo.InvariantCulture), exception.Message);
         }
         finally
@@ -100,9 +100,9 @@ public class BrokerFrameLengthTests
 
         await broker.WriteControlAsync(writer => WriteLengthPrefix(writer, int.MaxValue));
 
-        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.IsNull(lost.Drive);
-        Assert.Contains("2147483647", await ended.WaitAsync(HangGuard));
+        Assert.Contains("2147483647", await ended.WaitAsync(HangGuard, TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -117,7 +117,7 @@ public class BrokerFrameLengthTests
 
         await HostChannelHarness.WriteFrameAsync(pipe, writer => WriteLengthPrefix(writer, int.MaxValue));
 
-        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
+        var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual('C', lost.Drive);
         Assert.IsInstanceOfType<InvalidDataException>(lost.InnerException);
     }
@@ -127,4 +127,6 @@ public class BrokerFrameLengthTests
         BinaryPrimitives.WriteInt32LittleEndian(writer.GetSpan(4), length);
         writer.Advance(4);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

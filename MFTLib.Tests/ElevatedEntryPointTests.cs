@@ -101,17 +101,29 @@ public class ElevatedEntryPointTests
             Assert.AreEqual(suppliedPath, BrokerDiagnostics.ClientLogPath);
             BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "diag-enabled-check");
             await BrokerDiagnostics.FlushAsync(CancellationToken.None);
-            var artifact = await File.ReadAllTextAsync(brokerPath);
+            var artifact = await File.ReadAllTextAsync(brokerPath, TestContext.CancellationToken);
             Assert.Contains("[broker:", artifact);
             Assert.IsFalse(artifact.Contains("client-enabled-check", StringComparison.Ordinal));
-            Assert.Contains("client-enabled-check", await File.ReadAllTextAsync(suppliedPath));
+            Assert.Contains("client-enabled-check", await File.ReadAllTextAsync(suppliedPath, TestContext.CancellationToken));
             Assert.Contains("diag-enabled-check", artifact);
         }
         finally
         {
-            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
-            BrokerDiagnostics.Dependencies.ResetToDefaults();
-            Directory.Delete(cleanupDirectory, true);
+            try
+            {
+                try
+                {
+                    await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+                }
+                finally
+                {
+                    BrokerDiagnostics.Dependencies.ResetToDefaults();
+                }
+            }
+            finally
+            {
+                Directory.Delete(cleanupDirectory, true);
+            }
         }
     }
 
@@ -258,4 +270,6 @@ public class ElevatedEntryPointTests
             BrokerPipe = controlPipeName;
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

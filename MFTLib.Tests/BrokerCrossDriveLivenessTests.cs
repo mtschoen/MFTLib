@@ -48,7 +48,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         var backlogApplied = ChangeSignal.WhenApplied(index, "backlog.txt");
         runOfU.Push(40, "backlog.txt", tipOfU.NextUsn);
         await backlogApplied;
-        await index.WaitForCatchUpAsync(['U'], token).WaitAsync(HangGuard);
+        await index.WaitForCatchUpAsync(['U'], token).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(WatchState.CaughtUp, scenario.DriveOf('U').Watch.State);
 
         // One tick less than the limit on the client's clock: T has heard nothing for 25 seconds.
@@ -86,7 +86,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         Assert.IsFalse(runOfU.Cancelled.IsCompleted, "U's host watch was never cancelled");
         Assert.AreEqual(1, scenario.Broker.Watch('U').StartedCount);
         Assert.IsFalse(scenario.Broker.Process.Ended.IsCompleted, "only T's channel was lost");
-        await runOfT.Cancelled.WaitAsync(HangGuard);
+        await runOfT.Cancelled.WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 
     /// <summary>
@@ -110,7 +110,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
             await index.StartWatchingAsync(['U'], token);
             await index.WaitForCatchUpAsync(['T'], token);
             await index.WaitForCatchUpAsync(['U'], token);
-            await wedged.Entered.WaitAsync(HangGuard);
+            await wedged.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
             var runOfU = await scenario.Broker.Watch('U').RunAsync(1);
             scenario.BeginCadence('T', 'U');
             var intervalsWithinLimit = (int)(BrokerLiveness.ProcessingLimit / BrokerLiveness.HeartbeatInterval);
@@ -206,7 +206,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         Assert.IsFalse(scenario.Broker.Process.Ended.IsCompleted);
         Assert.IsFalse(ended.IsCompleted, "Ended is never raised");
         var volume = await scenario.Broker.Process.QueryVolumeAsync('C', CancellationToken.None)
-            .WaitAsync(HangGuard);
+            .WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(1024L * 100, volume.MftValidDataLength);
     }
 

@@ -30,7 +30,7 @@ public class BrokerIncludeFreedTests : BrokerBlockTestBase
         }));
 
         var result = await ProduceAsync(broker.Process, Request(Target()),
-            new MftScanOptions { IncludeFreed = includeFreed }).WaitAsync(HangGuard);
+            new MftScanOptions { IncludeFreed = includeFreed }).WaitAsync(HangGuard, TestContext.CancellationToken);
         var block = result.Block;
 
         Assert.AreSequenceEqual([includeFreed], seen);
@@ -55,7 +55,7 @@ public class BrokerIncludeFreedTests : BrokerBlockTestBase
             }
         }));
 
-        var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard);
+        var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreSequenceEqual([false], seen);
         Assert.AreEqual(RowFlags.None, result.Block.Rows[21].Flags);
@@ -73,7 +73,7 @@ public class BrokerIncludeFreedTests : BrokerBlockTestBase
                 Batches(new MftScanOptions { IncludeFreed = true })
         }));
 
-        var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard);
+        var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreEqual(RowFlags.None, result.Block.Rows[21].Flags,
             "The row filter, not only the source, keeps freed records out of a scan that did not ask.");
@@ -96,4 +96,6 @@ public class BrokerIncludeFreedTests : BrokerBlockTestBase
             ];
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

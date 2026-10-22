@@ -138,7 +138,7 @@ public class DirectDuplicateNameSieveTests
         await using var index = await OpenIndexAsync(first, second);
         var groups = DuplicateNameSieve.Find(index, CancellationToken.None, 64);
         Assert.HasCount(1, groups);
-        var expected = index.Enumerate(new SearchQuery(null, IsDirectory: false)).Select(entry => entry.RecordKey).ToArray();
+        var expected = index.Enumerate(new SearchQuery(null, IsDirectory: false), TestContext.CancellationToken).Select(entry => entry.RecordKey).ToArray();
         Assert.AreSequenceEqual(expected, [.. groups[0].Entries.Select(entry => entry.RecordKey)]);
     }
 
@@ -312,4 +312,6 @@ public class DirectDuplicateNameSieveTests
     {
         Assert.AreEqual(expected, DuplicateNameSieve.ShouldStopRefining(candidates, previous, buckets, pass));
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

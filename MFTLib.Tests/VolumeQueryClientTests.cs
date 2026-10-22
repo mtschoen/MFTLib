@@ -19,9 +19,9 @@ public class VolumeQueryClientTests : BrokerBlockTestBase
                 : throw new UnauthorizedAccessException("access denied")
         }));
 
-        var volume = await broker.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard);
+        var volume = await broker.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-            broker.Process.QueryVolumeAsync('G', CancellationToken.None).WaitAsync(HangGuard));
+            broker.Process.QueryVolumeAsync('G', CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.AreEqual(8_000_000L, volume.MftRecordCount);
         Assert.AreEqual(1024U, volume.BytesPerFileRecordSegment);
@@ -49,12 +49,14 @@ public class VolumeQueryClientTests : BrokerBlockTestBase
             1024, 8_192_000_000));
         await broker.CloseControlAsync();
 
-        var volume = await first.WaitAsync(HangGuard);
-        var exception = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => second.WaitAsync(HangGuard));
+        var volume = await first.WaitAsync(HangGuard, TestContext.CancellationToken);
+        var exception = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => second.WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.AreEqual(8_000_000L, volume.MftRecordCount);
         Assert.AreEqual(1024U, volume.BytesPerFileRecordSegment);
         Assert.AreEqual(8_192_000_000L, volume.MftValidDataLength);
         Assert.IsNull(exception.Drive);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

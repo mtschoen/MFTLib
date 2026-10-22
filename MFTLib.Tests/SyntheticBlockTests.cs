@@ -120,10 +120,10 @@ public sealed partial class SyntheticBlockTests : IDisposable
         Assert.AreEqual(Moment, drive.Block.ScanTimestamp);
         Assert.AreEqual(10u, index.HeaderOf().RowCount);
         Assert.AreEqual(5u, drive.Block.LiveRowCount);
-        var report = index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)).Single();
+        var report = index.Search(new SearchQuery("report.txt", NameMatchMode.Exact), TestContext.CancellationToken).Single();
         Assert.AreEqual(1234, report.Size);
         Assert.AreEqual(FileAttributes.ReadOnly | FileAttributes.Archive, report.Attributes);
-        Assert.IsFalse(index.Search(new SearchQuery("unsized.bin", NameMatchMode.Exact)).Single().IsSizeKnown);
+        Assert.IsFalse(index.Search(new SearchQuery("unsized.bin", NameMatchMode.Exact), TestContext.CancellationToken).Single().IsSizeKnown);
     }
 
     [TestMethod]
@@ -181,10 +181,10 @@ public sealed partial class SyntheticBlockTests : IDisposable
 
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
-        Assert.IsEmpty(index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)));
-        Assert.AreEqual(77, index.Search(new SearchQuery("renamed.txt", NameMatchMode.Exact)).Single().Size);
-        Assert.AreEqual(1, index.Search(new SearchQuery("added.txt", NameMatchMode.Exact)).Single().Size);
-        Assert.AreEqual(FileAttributes.Hidden | FileAttributes.Directory, index.Search(new SearchQuery("docs", NameMatchMode.Exact)).Single().Attributes);
+        Assert.IsEmpty(index.Search(new SearchQuery("report.txt", NameMatchMode.Exact), TestContext.CancellationToken));
+        Assert.AreEqual(77, index.Search(new SearchQuery("renamed.txt", NameMatchMode.Exact), TestContext.CancellationToken).Single().Size);
+        Assert.AreEqual(1, index.Search(new SearchQuery("added.txt", NameMatchMode.Exact), TestContext.CancellationToken).Single().Size);
+        Assert.AreEqual(FileAttributes.Hidden | FileAttributes.Directory, index.Search(new SearchQuery("docs", NameMatchMode.Exact), TestContext.CancellationToken).Single().Attributes);
     }
 
     [TestMethod]
@@ -210,7 +210,7 @@ public sealed partial class SyntheticBlockTests : IDisposable
         var drive = index.Drives.Single();
         Assert.IsTrue(drive.Block!.IsCapacityExhausted);
         Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.HasCount(1, index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)));
+        Assert.HasCount(1, index.Search(new SearchQuery("report.txt", NameMatchMode.Exact), TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -350,7 +350,7 @@ public sealed partial class SyntheticBlockTests : IDisposable
             Assert.AreEqual(BlockOrigin.ProducedByScan, drive.Block!.Origin);
             Assert.AreEqual(3, drive.Block.SkippedRecordCount);
             Assert.AreEqual(Moment, drive.Block.ScanTimestamp);
-            Assert.AreEqual(1234, index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)).Single().Size);
+            Assert.AreEqual(1234, index.Search(new SearchQuery("report.txt", NameMatchMode.Exact), TestContext.CancellationToken).Single().Size);
         }
 
         var status = CacheDirectory.InspectCached(CacheDirectoryPath).Single();
