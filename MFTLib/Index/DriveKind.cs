@@ -1,7 +1,7 @@
 namespace MFTLib.Index;
 
 /// <summary>Path and capability policy for live volumes, directory walks and dump inventories.</summary>
-internal sealed class DriveKind
+sealed class DriveKind
 {
     enum Kind { LiveVolume, DirectoryWalk, Dump }
 
@@ -39,8 +39,8 @@ internal sealed class DriveKind
     /// </summary>
     internal string? NormalizeRoot(string? rootDirectoryPath)
     {
-        if (_kind == Kind.Dump || rootDirectoryPath is not { Length: 2 } specifier ||
-            specifier[1] != ':' || !char.IsAsciiLetter(specifier[0]))
+        if (_kind == Kind.Dump || rootDirectoryPath is not [_, ':'] specifier ||
+            !char.IsAsciiLetter(specifier[0]))
         {
             return rootDirectoryPath;
         }

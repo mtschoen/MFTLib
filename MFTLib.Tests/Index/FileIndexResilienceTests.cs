@@ -109,7 +109,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
             new FileIndexOptions
             {
                 Drives = [firstDrive with { Producer = ProducerKind.Enumeration }],
-                CacheDirectory = CacheDirectoryPath,
+                CacheDirectory = CacheDirectoryPath
             }, CancellationToken.None).WaitAsync(HangGuard * 3);
         await warmingOpen.DisposeAsync().AsTask().WaitAsync(HangGuard * 3);
 
@@ -390,7 +390,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
         Assert.ThrowsExactly<ObjectDisposedException>(() => index.Drives);
         Assert.ThrowsExactly<ObjectDisposedException>(() => index.CurrentSnapshot);
         Assert.ThrowsExactly<ObjectDisposedException>(() => index.TryGetDriveOrdinal('T', out _));
-        Assert.ThrowsExactly<ObjectDisposedException>(() => index.BorrowCurrentSnapshot());
+        Assert.ThrowsExactly<ObjectDisposedException>(index.BorrowCurrentSnapshot);
         Assert.IsTrue(entry.IsDisposed);
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.Name);
     }

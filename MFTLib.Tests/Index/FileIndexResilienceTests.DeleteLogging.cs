@@ -29,7 +29,7 @@ public partial class FileIndexResilienceTests
         var failed = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, failed.State);
         Assert.AreEqual(DriveFailureKind.CacheDeclined, failed.Failure?.Kind);
-        Assert.IsNull(failed.Block!);
+        Assert.IsNull(failed.Block);
         Assert.AreSequenceEqual(bytes, await File.ReadAllBytesAsync(blockPath), "a cache-only open leaves the rejected block in place");
     }
 

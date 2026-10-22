@@ -73,8 +73,8 @@ public class SyntheticConversionTests
             JournalEntries.CreateSynthetic(21, 101, "second.txt")
         }.ToProduction();
 
-        Assert.AreSequenceEqual(new[] { "first.txt", "second.txt" }, entries.Select(entry => entry.FileName).ToArray());
-        Assert.AreSequenceEqual(new[] { 100L, 101L }, entries.Select(entry => entry.Usn).ToArray());
+        Assert.AreSequenceEqual(["first.txt", "second.txt"], [.. entries.Select(entry => entry.FileName)]);
+        Assert.AreSequenceEqual([100L, 101L], [.. entries.Select(entry => entry.Usn)]);
     }
 
     [TestMethod]

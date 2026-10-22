@@ -51,12 +51,12 @@ public partial class SampleHostElevationNoticeTests
     public void Run_NotElevated_DeliberateOk_ElevatesExactlyOnceAfterTheDialog()
     {
         var events = new List<string>();
-        var scanner = Scanner(new List<string>(), events, [Answer(SampleHost.MessageBoxResultOk, 2)]);
+        var scanner = Scanner([], events, [Answer(SampleHost.MessageBoxResultOk, 2)]);
 
         var result = RunElevation(scanner);
 
         Assert.AreEqual(0, result);
-        Assert.AreSequenceEqual(new[] { "dialog", "elevate" }, events);
+        Assert.AreSequenceEqual(["dialog", "elevate"], events);
     }
 
     [TestMethod]
@@ -69,7 +69,7 @@ public partial class SampleHostElevationNoticeTests
         var result = RunElevation(scanner);
 
         Assert.AreEqual(1, result);
-        Assert.AreSequenceEqual(new[] { "dialog" }, events);
+        Assert.AreSequenceEqual(["dialog"], events);
         Assert.Contains(line => line.Contains("AUTOMATIC ELEVATION FAILED", StringComparison.Ordinal), lines);
         Assert.Contains(line => line.Contains(Environment.ProcessPath!, StringComparison.Ordinal), lines);
     }
@@ -80,7 +80,7 @@ public partial class SampleHostElevationNoticeTests
         var events = new List<string>();
         var messages = new List<string>();
         var scanner = Scanner(
-            new List<string>(),
+            [],
             events,
             [Answer(SampleHost.MessageBoxResultOk, 0.2), Answer(SampleHost.MessageBoxResultOk, 3)],
             messages);
@@ -88,7 +88,7 @@ public partial class SampleHostElevationNoticeTests
         var result = RunElevation(scanner);
 
         Assert.AreEqual(0, result);
-        Assert.AreSequenceEqual(new[] { "dialog", "dialog", "elevate" }, events);
+        Assert.AreSequenceEqual(["dialog", "dialog", "elevate"], events);
         Assert.IsFalse(messages[0].Contains("too fast", StringComparison.Ordinal));
         Assert.IsTrue(messages[1].Contains("too fast", StringComparison.Ordinal));
     }
@@ -98,14 +98,14 @@ public partial class SampleHostElevationNoticeTests
     {
         var events = new List<string>();
         var scanner = Scanner(
-            new List<string>(),
+            [],
             events,
             [Answer(SampleHost.MessageBoxResultCancel, 0.2), Answer(SampleHost.MessageBoxResultOk, 3)]);
 
         var result = RunElevation(scanner);
 
         Assert.AreEqual(0, result);
-        Assert.AreSequenceEqual(new[] { "dialog", "dialog", "elevate" }, events);
+        Assert.AreSequenceEqual(["dialog", "dialog", "elevate"], events);
     }
 
     [TestMethod]
@@ -113,11 +113,11 @@ public partial class SampleHostElevationNoticeTests
     {
         var events = new List<string>();
         var scanner = Scanner(
-            new List<string>(), events, [Answer(SampleHost.MessageBoxResultOk, SampleHost.AccidentalDismissalInterval.TotalSeconds)]);
+            [], events, [Answer(SampleHost.MessageBoxResultOk, SampleHost.AccidentalDismissalInterval.TotalSeconds)]);
 
         RunElevation(scanner);
 
-        Assert.AreSequenceEqual(new[] { "dialog", "elevate" }, events);
+        Assert.AreSequenceEqual(["dialog", "elevate"], events);
     }
 
     [TestMethod]
@@ -130,7 +130,7 @@ public partial class SampleHostElevationNoticeTests
         var result = RunElevation(scanner);
 
         Assert.AreEqual(1, result);
-        Assert.AreSequenceEqual(new[] { "dialog" }, events);
+        Assert.AreSequenceEqual(["dialog"], events);
         Assert.Contains(line => line.Contains("AUTOMATIC ELEVATION FAILED"), lines);
     }
 
@@ -138,25 +138,25 @@ public partial class SampleHostElevationNoticeTests
     public void Run_Elevated_ShowsNoDialog()
     {
         var events = new List<string>();
-        var scanner = Scanner(new List<string>(), events, []);
+        var scanner = Scanner([], events, []);
         scanner._isElevated = () => true;
 
         RunElevation(scanner, ["scan", "T"]);
 
-        Assert.AreSequenceEqual(Array.Empty<string>(), events);
+        Assert.AreSequenceEqual([], events);
     }
 
     [TestMethod]
     public void Run_NotElevated_CannotSelfElevate_ShowsNoDialog()
     {
         var events = new List<string>();
-        var scanner = Scanner(new List<string>(), events, []);
+        var scanner = Scanner([], events, []);
         scanner._canSelfElevate = () => false;
 
         var result = RunElevation(scanner);
 
         Assert.AreEqual(1, result);
-        Assert.AreSequenceEqual(Array.Empty<string>(), events);
+        Assert.AreSequenceEqual([], events);
     }
 
     [TestMethod]
@@ -232,7 +232,7 @@ public partial class SampleHostElevationNoticeTests
         }
 
         Assert.AreEqual(1, result);
-        Assert.AreSequenceEqual(new[] { "dialog" }, events);
+        Assert.AreSequenceEqual(["dialog"], events);
         Assert.Contains(line => line.Contains("not answered in time", StringComparison.Ordinal) || line.Contains("not answered in time"), lines);
         Assert.Contains(line => line.Contains("AUTOMATIC ELEVATION FAILED", StringComparison.Ordinal) || line.Contains("AUTOMATIC ELEVATION FAILED"), lines);
     }
@@ -248,7 +248,7 @@ public partial class SampleHostElevationNoticeTests
         var result = RunElevation(scanner);
 
         Assert.AreEqual(1, result);
-        Assert.AreSequenceEqual(Array.Empty<string>(), events);
+        Assert.AreSequenceEqual([], events);
         Assert.Contains(line => line.Contains("Running unattended (MFTLIB_SAMPLE_UNATTENDED=1): elevation skipped"), lines);
         Assert.Contains(line => line.Contains("AUTOMATIC ELEVATION FAILED"), lines);
         Assert.Contains("  scan", lines);
@@ -277,11 +277,11 @@ public partial class SampleHostElevationNoticeTests
     {
         Environment.SetEnvironmentVariable(SampleHost.UnattendedVariableName, value);
         var events = new List<string>();
-        var scanner = Scanner(new List<string>(), events, [Answer(SampleHost.MessageBoxResultOk, 2)]);
+        var scanner = Scanner([], events, [Answer(SampleHost.MessageBoxResultOk, 2)]);
 
         RunElevation(scanner);
 
-        Assert.AreSequenceEqual(new[] { "dialog", "elevate" }, events);
+        Assert.AreSequenceEqual(["dialog", "elevate"], events);
     }
 
     [TestMethod]

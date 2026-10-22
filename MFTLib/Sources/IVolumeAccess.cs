@@ -8,7 +8,7 @@ namespace MFTLib;
 /// the scan preserves the mutable allowance/options/cancellation token, and bounded
 /// journal reads preserve their maximum-buffer-read contract.
 /// </summary>
-internal interface IVolumeAccess
+interface IVolumeAccess
 {
     UsnJournalCursor QueryCursor(DriveKey drive);
     IEnumerable<IReadOnlyList<MftRecord>> ScanDriveRecordBatches(

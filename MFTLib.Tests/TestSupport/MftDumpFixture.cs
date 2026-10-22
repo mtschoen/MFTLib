@@ -4,7 +4,7 @@ using System.Text;
 namespace MFTLib.Tests.TestSupport;
 
 /// <summary>One FILE record of a synthetic dump. The record number is its position in the file.</summary>
-internal sealed record DumpRecord(string Name, ulong Parent)
+sealed record DumpRecord(string Name, ulong Parent)
 {
     public bool InUse { get; init; } = true;
 
@@ -23,7 +23,7 @@ internal sealed record DumpRecord(string Name, ulong Parent)
 ///     and Linux and a test can then corrupt exactly the field it is about. Every record carries
 ///     a valid update sequence array unless a test rewrites it.
 /// </summary>
-internal static class MftDumpFixture
+static class MftDumpFixture
 {
     internal const long BaseFileTime = 132000000000000000L;
 
@@ -79,7 +79,7 @@ internal static class MftDumpFixture
     {
         record.Clear();
         var sectorCount = record.Length / SectorSize;
-        var firstAttributeOffset = (UpdateSequenceArrayOffset + (sectorCount + 1) * 2 + 7) & ~7;
+        var firstAttributeOffset = (UpdateSequenceArrayOffset + ((sectorCount + 1) * 2) + 7) & ~7;
         "FILE"u8.CopyTo(record);
         BinaryPrimitives.WriteUInt16LittleEndian(record[4..], UpdateSequenceArrayOffset);
         BinaryPrimitives.WriteUInt16LittleEndian(record[6..], (ushort)(sectorCount + 1));
@@ -112,7 +112,7 @@ internal static class MftDumpFixture
         BinaryPrimitives.WriteUInt16LittleEndian(array, updateSequenceNumber);
         for (var sector = 1; sector <= record.Length / SectorSize; sector++)
         {
-            var tail = record.Slice(sector * SectorSize - 2, 2);
+            var tail = record.Slice((sector * SectorSize) - 2, 2);
             tail.CopyTo(array[(sector * 2)..]);
             BinaryPrimitives.WriteUInt16LittleEndian(tail, updateSequenceNumber);
         }

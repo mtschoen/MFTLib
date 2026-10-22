@@ -3,7 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace SampleProgram.Direct;
 
 // The command-line parser: the verb, the drive and the verb's flags.
-internal sealed partial record DirectArguments
+sealed partial record DirectArguments
 {
     internal static bool TryParse(string[] arguments, [NotNullWhen(true)] out DirectArguments? parsed,
         [NotNullWhen(false)] out string? error)

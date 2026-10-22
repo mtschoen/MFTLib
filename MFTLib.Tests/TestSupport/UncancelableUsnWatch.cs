@@ -4,7 +4,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib.Tests.TestSupport;
 
-internal static class UncancelableUsnWatch
+static class UncancelableUsnWatch
 {
     /// <summary>
     ///     Calls the cancelable native watch with a zero-valued event handle, which the native side treats as no

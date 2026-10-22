@@ -9,7 +9,7 @@ namespace MFTLib.Index;
 ///     handles become unreachable while the index lives; index disposal releases every block
 ///     through <see cref="ReleaseState" />, which its drive owner retains independently of this object.
 /// </summary>
-internal sealed class DriveBlock
+sealed class DriveBlock
 {
     public DriveBlock(DriveKey drive, ushort driveOrdinal, BlockFile block,
         string? rootDirectoryPath = null, MftIndexSource? mftSource = null)

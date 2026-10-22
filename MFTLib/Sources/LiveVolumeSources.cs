@@ -4,7 +4,7 @@ using MFTLib.Index;
 namespace MFTLib;
 
 /// <summary>The production volume operations: the native scan, journal and volume calls a broker host and a direct producer share through <see cref="LiveVolumeAccess" />.</summary>
-internal static class LiveVolumeSources
+static class LiveVolumeSources
 {
     /// <summary>The MFT bytes a host scan reads per chunk, so a progress callback lands at least this often.</summary>
     internal const long HostScanChunkBytes = 64L * 1024 * 1024;

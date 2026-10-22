@@ -183,7 +183,7 @@ public partial class NativeMftProcessingTests
             var data = BuildBootSector();
             WriteFileRecord(data, 4096);
 
-            var a1 = 4096 + 0x38;
+            const int a1 = 4096 + 0x38;
             var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
 
             // Resident AttributeList with empty value (no extension records)

@@ -7,7 +7,7 @@ namespace MFTLib.Index;
 /// </summary>
 /// <param name="DriveOrdinal">The anchor's drive ordinal.</param>
 /// <param name="RowIndex">The anchor's row in that drive's block.</param>
-internal readonly record struct ResolvedSubtree(ushort DriveOrdinal, uint RowIndex);
+readonly record struct ResolvedSubtree(ushort DriveOrdinal, uint RowIndex);
 
 /// <summary>
 ///     The one place a subtree anchor is validated. Another index can use the same ordinals, and a rescan
@@ -16,7 +16,7 @@ internal readonly record struct ResolvedSubtree(ushort DriveOrdinal, uint RowInd
 ///     borrowed and its row slot still holds the incarnation it was minted for, so republishing any other
 ///     drive never rejects it.
 /// </summary>
-internal static class SubtreeAnchor
+static class SubtreeAnchor
 {
     /// <summary>Rejects <c>Subtree = default(FileEntry)</c> eagerly, on call entry, before any borrow is taken.</summary>
     /// <param name="query">The query to check.</param>
@@ -63,7 +63,7 @@ internal static class SubtreeAnchor
         {
             ObjectDisposedException.ThrowIf(anchorBlock.IsReleased, typeof(FileEntry));
             throw new ArgumentException(
-                $"SearchQuery.Subtree does not belong to the queried index's current block for drive " +
+                "SearchQuery.Subtree does not belong to the queried index's current block for drive " +
                 $"{anchorBlock.Drive}: it came from another index or from a block a rescan replaced. " +
                 "Take a new anchor from the index being queried.", nameof(query));
         }

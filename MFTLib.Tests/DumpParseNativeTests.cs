@@ -60,8 +60,8 @@ public partial class DumpParseNativeTests
     {
         var path = WriteSynthetic(20, 256);
         var data = File.ReadAllBytes(path);
-        data[10 * 1024 + 0x16] = 0;
-        data[10 * 1024 + 0x17] = 0;
+        data[(10 * 1024) + 0x16] = 0;
+        data[(10 * 1024) + 0x17] = 0;
         File.WriteAllBytes(path, data);
 
         var records = DirectParse.ParseFile(path, out _);
@@ -79,7 +79,7 @@ public partial class DumpParseNativeTests
         var data = File.ReadAllBytes(path);
         // Record 6: StandardInformation ends at 0x38 + 0x60 = 0x98, so FileName starts at 0x98.
         // FileNameLength lives at ValueOffset + 64 bytes into the attribute value.
-        const int fileNameAttributeOffset = 6 * 1024 + 0x98;
+        const int fileNameAttributeOffset = (6 * 1024) + 0x98;
         var valueOffset = data[fileNameAttributeOffset + 0x14];
         data[fileNameAttributeOffset + valueOffset + 64] = 200;
         File.WriteAllBytes(path, data);
@@ -97,8 +97,8 @@ public partial class DumpParseNativeTests
     {
         var path = WriteSynthetic(20, 256);
         var data = File.ReadAllBytes(path);
-        data[6 * 1024 + attributeOffset + 0x14] = 0x60;
-        data[6 * 1024 + attributeOffset + 0x15] = 0xEA;
+        data[(6 * 1024) + attributeOffset + 0x14] = 0x60;
+        data[(6 * 1024) + attributeOffset + 0x15] = 0xEA;
         File.WriteAllBytes(path, data);
 
         var records = DirectParse.ParseFile(path, out _);

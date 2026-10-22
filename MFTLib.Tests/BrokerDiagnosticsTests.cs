@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -5,7 +6,7 @@ namespace MFTLib.Tests;
 
 [TestClass]
 [DoNotParallelize]
-public class BrokerDiagnosticsTests
+public partial class BrokerDiagnosticsTests
 {
     string _temporaryRoot = null!;
 
@@ -228,8 +229,8 @@ public class BrokerDiagnosticsTests
             var clientLines = await File.ReadAllLinesAsync(clientPath);
             Assert.Contains($"1 records dropped: append failed: {failure.GetType().Name}: {failure.Message}", clientLines[0]);
             Assert.IsFalse(clientLines[0].Contains("buffer full", StringComparison.Ordinal));
-            Assert.AreSequenceEqual(new[] { "client-recovered" }, clientLines.Skip(1).ToArray());
-            Assert.AreSequenceEqual(Enumerable.Range(0, 20).Select(index => $"broker-record-{index}").ToArray(), await File.ReadAllLinesAsync(brokerPath));
+            Assert.AreSequenceEqual(["client-recovered"], [.. clientLines.Skip(1)]);
+            Assert.AreSequenceEqual([.. Enumerable.Range(0, 20).Select(index => $"broker-record-{index}")], await File.ReadAllLinesAsync(brokerPath));
         }
         finally
         {
@@ -257,10 +258,9 @@ public class BrokerDiagnosticsTests
                 (await channel.ReadAsync(CancellationToken.None).AsTask().WaitAsync(HangGuard * 3))?.Kind);
             await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard * 3);
             var traces = lines.Where(line => line.Contains($" kind={(byte)BrokerFrameKind.StartWatch} ", StringComparison.Ordinal))
-                .Select(line => System.Text.RegularExpressions.Regex.Match(line,
-                    @"^\d{4}-\d\d-\d\dT[\d:.]+Z  \[broker:\d+:(?<tag>[^\]]+)\]  frame (?<direction>read|write) kind=\d+ len=17 t=\d+$"))
+                .Select(line => MyRegex().Match(line))
                 .ToArray();
-            Assert.AreSequenceEqual(new[] { "read", "write" }, traces.Select(trace => trace.Groups["direction"].Value).ToArray(), SequenceOrder.InAnyOrder);
+            Assert.AreSequenceEqual(["read", "write"], [.. traces.Select(trace => trace.Groups["direction"].Value)], SequenceOrder.InAnyOrder);
             var tag = traces[0].Groups["tag"].Value;
             Assert.AreEqual(tag, traces[1].Groups["tag"].Value, $"Client and host tags differ for drive {drive}.");
             Assert.IsTrue(seenTags.Add(tag), "Each channel must have its own identity, including repeated drives.");
@@ -310,12 +310,12 @@ public class BrokerDiagnosticsTests
             lines.Add(line);
         }));
 
-        Task callerTask = Task.CompletedTask;
+        var callerTask = Task.CompletedTask;
         try
         {
             BrokerDiagnostics.Log("test-C-1", "parks the sink");
             await gate.Entered.WaitAsync(HangGuard * 3);
-            var otherChannel = "test-D-1";
+            const string otherChannel = "test-D-1";
             callerTask = Task.Run(() =>
             {
                 for (var index = 0; index < 100; index++)
@@ -397,4 +397,7 @@ public class BrokerDiagnosticsTests
         Assert.Contains("2 records dropped: append failed: IOException: sink offline", lines[0]);
         Assert.Contains("third", lines[1]);
     }
+
+    [GeneratedRegex(@"^\d{4}-\d\d-\d\dT[\d:.]+Z  \[broker:\d+:(?<tag>[^\]]+)\]  frame (?<direction>read|write) kind=\d+ len=17 t=\d+$")]
+    private static partial Regex MyRegex();
 }

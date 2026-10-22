@@ -289,7 +289,7 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
     {
         var names = _index.Root('T').Children().Select(child => child.Name)
             .OrderBy(name => name, StringComparer.Ordinal).ToArray();
-        Assert.AreSequenceEqual(new[] { "Documents", "Pictures" }, names);
+        Assert.AreSequenceEqual(["Documents", "Pictures"], names);
     }
 
     [TestMethod]

@@ -10,7 +10,7 @@ namespace MFTLib.Tests.Index;
 ///     Rows: 5 is the root, 6 <c>documents</c>, 7 <c>Notes.txt</c> and 8 <c>Deep</c> under 6, and 9
 ///     <c>leaf.txt</c> under 8.
 /// </summary>
-internal static class MftDumpIndexes
+static class MftDumpIndexes
 {
     internal const char DriveLetter = 'D';
 

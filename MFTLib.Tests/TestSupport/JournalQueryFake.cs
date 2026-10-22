@@ -10,7 +10,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     <c>FileIndex.QueryUsnJournalSettings</c> both issue. Classes that install a fake must
 ///     call <see cref="Reset" /> in their cleanup.
 /// </summary>
-internal static class JournalQueryFake
+static class JournalQueryFake
 {
     internal static DeviceIoControl Create(Func<UsnJournalVolumeInterop.UsnJournalDataV0> reply)
     {

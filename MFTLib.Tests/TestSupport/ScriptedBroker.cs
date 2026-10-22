@@ -9,7 +9,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     control request and writes whatever frames it wants on the control pipe and on each drive
 ///     pipe, including orders and replies a real host never produces.
 /// </summary>
-internal sealed class ScriptedBroker : IAsyncDisposable
+sealed class ScriptedBroker : IAsyncDisposable
 {
     readonly Stream _hostControl;
 
@@ -76,7 +76,7 @@ internal sealed class ScriptedBroker : IAsyncDisposable
     }
 }
 
-internal sealed class ConnectedPipeGate(IBrokerPipeFactory inner, TestGate gate) : IBrokerPipeFactory
+sealed class ConnectedPipeGate(IBrokerPipeFactory inner, TestGate gate) : IBrokerPipeFactory
 {
     public BrokerPipeListener Listen(string pipeName)
     {

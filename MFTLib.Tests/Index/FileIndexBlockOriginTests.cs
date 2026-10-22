@@ -66,13 +66,13 @@ public sealed class FileIndexBlockOriginTests : IDisposable
         var options = new FileIndexOptions
         {
             Drives = [new IndexedDrive('Z', Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration)],
-            CacheDirectory = CacheDirectoryPath,
+            CacheDirectory = CacheDirectoryPath
         };
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
         Assert.AreEqual(DriveState.Offline, index.Drives.Single().State);
-        Assert.IsNull(index.Drives.Single().Block!);
+        Assert.IsNull(index.Drives.Single().Block);
     }
 
     /// <summary>

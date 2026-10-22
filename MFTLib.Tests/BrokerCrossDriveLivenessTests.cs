@@ -67,7 +67,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         Assert.AreEqual(StallMessage, lost.Message);
         Assert.AreEqual(WatchState.Faulted, scenario.DriveOf('T').Watch.State);
         Assert.IsNotNull(scenario.DriveOf('T').Watch.FailureMessage);
-        Assert.AreSequenceEqual(new[] { WatchFaultKind.Channel }, scenario.FaultsOf('T').Select(other => other.Kind).ToArray(), "the lost channel starts no recovery");
+        Assert.AreSequenceEqual([WatchFaultKind.Channel], [.. scenario.FaultsOf('T').Select(other => other.Kind)], "the lost channel starts no recovery");
         Assert.AreEqual(1, scenario.ScansOf('T'), "no recovery scan");
 
         // U is untouched: no fault, its host run is not cancelled, and its channel keeps heartbeating
@@ -131,7 +131,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
             Assert.Contains("wedged loop", lost.Message);
             Assert.Contains("made no progress for 30 seconds", lost.Message);
             Assert.AreEqual(WatchState.Faulted, scenario.DriveOf('T').Watch.State);
-            Assert.AreSequenceEqual(new[] { WatchFaultKind.Channel }, scenario.FaultsOf('T').Select(other => other.Kind).ToArray(), "no recovery starts");
+            Assert.AreSequenceEqual([WatchFaultKind.Channel], [.. scenario.FaultsOf('T').Select(other => other.Kind)], "no recovery starts");
             Assert.AreEqual(1, scenario.ScansOf('T'), "no recovery scan");
 
             // U is untouched.
@@ -243,7 +243,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
 
         Assert.AreEqual(WatchState.CaughtUp, scenario.DriveOf('T').Watch.State);
         Assert.IsNull(scenario.DriveOf('T').Watch.FailureMessage);
-        Assert.AreSequenceEqual(new[] { WatchFaultKind.Drive }, scenario.FaultsOf('T').Select(other => other.Kind).ToArray(), "recovered: no Recovery fault");
+        Assert.AreSequenceEqual([WatchFaultKind.Drive], [.. scenario.FaultsOf('T').Select(other => other.Kind)], "recovered: no Recovery fault");
         Assert.HasCount(1, index.Search(new SearchQuery("scan-T-2.txt", NameMatchMode.Exact), token), "T's block is the recovery's");
         Assert.IsEmpty(index.Search(new SearchQuery("scan-T-1.txt", NameMatchMode.Exact), token));
         Assert.AreEqual(1, scenario.ScansOf('U'), "U was not rescanned");

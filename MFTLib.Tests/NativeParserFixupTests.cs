@@ -88,7 +88,7 @@ public sealed class NativeParserFixupTests : IDisposable
     public void Parse_SectorTailThatIsNotTheUpdateSequenceNumber_IsRejected(int recordSize, int sector)
     {
         var dump = MftDumpFixture.Standard(recordSize);
-        var tail = Record(dump, recordSize, HostileRecord).Slice(sector * 512 - 2, 2);
+        var tail = Record(dump, recordSize, HostileRecord).Slice((sector * 512) - 2, 2);
         tail[0] ^= 0xFF;
 
         var failure = Assert.ThrowsExactly<InvalidDataException>(() => ParseNames(dump));
@@ -159,7 +159,7 @@ public sealed class NativeParserFixupTests : IDisposable
         var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, dump, $"{Guid.NewGuid():N}.mft");
         using var input = MftDumpInput.Open(path);
         using var result = input.Parse();
-        return result.ToRecords().Select(record => record.FileName).ToArray();
+        return [.. result.ToRecords().Select(record => record.FileName)];
     }
 
     static Span<byte> Record(byte[] dump, int recordSize, int recordNumber) =>
@@ -177,7 +177,7 @@ public sealed class NativeParserFixupTests : IDisposable
         var array = record[MftDumpFixture.UpdateSequenceArrayOffset..];
         for (var sector = 1; sector <= record.Length / 512; sector++)
         {
-            array.Slice(sector * 2, 2).CopyTo(record[(sector * 512 - 2)..]);
+            array.Slice(sector * 2, 2).CopyTo(record[((sector * 512) - 2)..]);
         }
     }
 
@@ -187,7 +187,7 @@ public sealed class NativeParserFixupTests : IDisposable
         BinaryPrimitives.WriteUInt16LittleEndian(array, updateSequenceNumber);
         for (var sector = 1; sector <= record.Length / 512; sector++)
         {
-            var tail = record.Slice(sector * 512 - 2, 2);
+            var tail = record.Slice((sector * 512) - 2, 2);
             tail.CopyTo(array[(sector * 2)..]);
             BinaryPrimitives.WriteUInt16LittleEndian(tail, updateSequenceNumber);
         }

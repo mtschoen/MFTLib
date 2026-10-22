@@ -18,7 +18,7 @@ namespace MFTLib;
 ///     that claims a read first wins even if the frame lands afterwards, and neither leaves state
 ///     for the next read.
 /// </remarks>
-internal sealed class BrokerFrameReader : IAsyncDisposable
+sealed class BrokerFrameReader : IAsyncDisposable
 {
     readonly Stream _stream;
     readonly DriveKey? _drive;

@@ -101,7 +101,7 @@ public class LookupEngineTests
     {
         var results = SearchEngine.Search(_snapshot, new SearchQuery("readme.md", NameMatchMode.Exact));
         Assert.HasCount(2, results);
-        Assert.AreSequenceEqual(new[] { 'T', 'U' }, results.Select(entry => entry.RecordKey.Drive.Letter).ToArray(), SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(['T', 'U'], [.. results.Select(entry => entry.RecordKey.Drive.Letter)], SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]
@@ -258,9 +258,9 @@ public class LookupEngineTests
 
             Assert.HasCount(5, partitioned);
             Assert.AreSequenceEqual(
-                new[] { ('T', 100u), ('T', 16000u), ('T', 33000u), ('U', 42u), ('U', 20000u) }, partitioned.Select(entry => (entry.RecordKey.Drive.Letter, entry.RowIndex)).ToArray());
+                [('T', 100u), ('T', 16000u), ('T', 33000u), ('U', 42u), ('U', 20000u)], [.. partitioned.Select(entry => (entry.RecordKey.Drive.Letter, entry.RowIndex))]);
             Assert.AreSequenceEqual(
-                reference.Select(entry => (entry.RecordKey.Drive, entry.RowIndex)).ToArray(), partitioned.Select(entry => (entry.RecordKey.Drive, entry.RowIndex)).ToArray());
+                [.. reference.Select(entry => (entry.RecordKey.Drive, entry.RowIndex))], [.. partitioned.Select(entry => (entry.RecordKey.Drive, entry.RowIndex))]);
         }
         finally
         {

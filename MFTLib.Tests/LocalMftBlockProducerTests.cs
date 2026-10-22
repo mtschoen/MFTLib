@@ -123,7 +123,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
         var result = await ProducerOf(producer)(request, TestContext.CancellationToken);
         var block = result.Block;
 
-        Assert.AreSequenceEqual(new[] { new DriveKey('T') }, queried);
+        Assert.AreSequenceEqual([new DriveKey('T')], queried);
         Assert.AreEqual(request.BlockPath, block.Path);
         Assert.AreEqual(RequestedTag, block.Header.CacheTag);
         Assert.AreEqual(123u, block.Header.VolumeSerial);
@@ -357,7 +357,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
     [TestMethod]
     public async Task Produce_ScanFailureDisposesTheBlockAndPropagates()
     {
-        const string message = "Unable to open volume \\\\.\\T:";
+        const string message = @"Unable to open volume \\.\T:";
         var request = Request();
         var producer = new LocalMftBlockProducer(TimeProvider.System, null,
             Scripted(scan: (_, _, _, _, _, _) => throw new IOException(message)));
@@ -393,7 +393,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
             TestContext.CancellationToken);
 
         var names = index.Search(new SearchQuery("file.txt")).Select(entry => entry.Name).ToArray();
-        Assert.AreSequenceEqual(new[] { "file.txt" }, names);
+        Assert.AreSequenceEqual(["file.txt"], names);
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.AreEqual(BlockOrigin.ProducedByScan, status.Block!.Origin);

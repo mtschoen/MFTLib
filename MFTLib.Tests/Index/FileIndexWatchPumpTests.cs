@@ -25,7 +25,7 @@ public class FileIndexWatchPumpTests
         await harness.Index.StartWatchingAsync(['U'], Token);
 
         Assert.AreSequenceEqual(
-            new[] { new IndexWatchTarget('T', 11, 4242), new IndexWatchTarget('U', 22, 8484) }, harness.Source.Targets.ToArray());
+            [new IndexWatchTarget('T', 11, 4242), new IndexWatchTarget('U', 22, 8484)], [.. harness.Source.Targets]);
         await harness.Index.StopWatchingAsync(['T'], Token);
         await harness.Index.StopWatchingAsync(['U'], Token);
     }

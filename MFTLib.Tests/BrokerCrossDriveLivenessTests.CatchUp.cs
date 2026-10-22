@@ -46,11 +46,11 @@ public sealed partial class BrokerCrossDriveLivenessTests
         Assert.AreEqual(3, scenario.ChannelsOpenedFor('T') - channelsBefore, "T opens exactly three scan channels");
         Assert.AreEqual(4, scenario.ScansOf('T'), "the open's scan and three lost ones");
         var faults = scenario.FaultsOf('T');
-        Assert.AreSequenceEqual(Enumerable.Repeat(WatchFaultKind.CatchUpLost, 3).ToArray(), faults.Select(fault => fault.Kind).ToArray(), "three CatchUpLost faults and no Recovery");
+        Assert.AreSequenceEqual([.. Enumerable.Repeat(WatchFaultKind.CatchUpLost, 3)], [.. faults.Select(fault => fault.Kind)], "three CatchUpLost faults and no Recovery");
         var losses = faults.Select(fault => (JournalCatchUpLostException)fault.Exception).ToArray();
         var statusesAtLoss = scenario.CatchUpLossStatuses('T');
-        Assert.AreSequenceEqual(new[] { 1, 2, 3 }, statusesAtLoss.Select(status => status.Watch.ConsecutiveLostCatchUps).ToArray());
-        Assert.AreSequenceEqual(new[] { false, false, true }, losses.Select(loss => loss.IsRecoveryStopped).ToArray());
+        Assert.AreSequenceEqual([1, 2, 3], [.. statusesAtLoss.Select(status => status.Watch.ConsecutiveLostCatchUps)]);
+        Assert.AreSequenceEqual([false, false, true], [.. losses.Select(loss => loss.IsRecoveryStopped)]);
         Assert.AreSame(losses[2], failure, "the rescan reports the loss that stopped it");
 
         var drive = scenario.DriveOf('T');

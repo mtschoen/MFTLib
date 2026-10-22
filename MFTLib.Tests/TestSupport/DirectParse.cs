@@ -5,7 +5,7 @@ namespace MFTLib.Tests;
 ///     most tests want the records as values and sometimes the
 ///     count of records examined.
 /// </summary>
-internal static class DirectParse
+static class DirectParse
 {
     // Opens the dump, parses it at bufferSizeRecords per chunk and closes it again.
     internal static MftRecord[] ParseFile(string path, out ulong totalRecords,
@@ -19,13 +19,13 @@ internal static class DirectParse
 
     internal static MftRecord[] ReadAll(this MftVolume volume, bool includeFreed = false)
     {
-        return volume.ReadRecordBatches(4096, null, null, CancellationToken.None,
-            new MftScanOptions { IncludeFreed = includeFreed }).SelectMany(batch => batch).ToArray();
+        return [.. volume.ReadRecordBatches(4096, null, null, CancellationToken.None,
+            new MftScanOptions { IncludeFreed = includeFreed }).SelectMany(batch => batch)];
     }
 
     /// <summary>Copies every record of the result, which stay valid after it is disposed.</summary>
     internal static MftRecord[] ToRecords(this MftResult result)
     {
-        return result.ReadBatches(4096).SelectMany(batch => batch).ToArray();
+        return [.. result.ReadBatches(4096).SelectMany(batch => batch)];
     }
 }

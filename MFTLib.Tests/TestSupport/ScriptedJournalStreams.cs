@@ -3,7 +3,7 @@ using MFTLibTestExtensions;
 
 namespace MFTLib.Tests.TestSupport;
 
-internal static class ScriptedJournalStreams
+static class ScriptedJournalStreams
 {
     public static async IAsyncEnumerable<(
         IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Cursor)> OneBatchThenQuiet(

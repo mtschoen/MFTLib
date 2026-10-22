@@ -1,14 +1,14 @@
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
-using System.Reflection.Emit;
 
 namespace MFTLib.Tests;
 
 // Builds a small assembly whose static methods call fixture members in chosen ways, so the reader controls collect
 // real IL that references the fixture types by assembly reference, exactly as a sample references the library.
 // Each case becomes a static class named after it with one static method, Run.
-internal static class CallerGateGeneratedAssembly
+static class CallerGateGeneratedAssembly
 {
     // The assembly the fixture types live in, which the reader is told to treat as the library.
     public static readonly string FixtureAssemblyName = typeof(CallerGateGeneratedAssembly).Assembly.GetName().Name!;

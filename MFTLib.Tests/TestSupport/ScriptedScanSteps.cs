@@ -3,7 +3,7 @@ using MFTLibTestExtensions;
 namespace MFTLib.Tests.TestSupport;
 
 /// <summary>Host-side steps of a scan that a test scripts on a <see cref="ScriptedBroker" />.</summary>
-internal static class ScriptedScanSteps
+static class ScriptedScanSteps
 {
     /// <summary>Answers a scan's volume query, accepts its drive channel, and reads its ArmAndScan order.</summary>
     public static async Task<(Stream Pipe, BrokerFrame Order)> AcceptScanAsync(this ScriptedBroker broker,

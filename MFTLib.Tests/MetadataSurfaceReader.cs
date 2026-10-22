@@ -11,7 +11,7 @@ namespace MFTLib.Tests;
 ///     assembly names in its IL. Both sides key a member by declaring type full name, member name and a
 ///     signature decoded by the same <see cref="SignatureProvider" />, so overloads stay apart.
 /// </summary>
-internal static partial class MetadataSurfaceReader
+static partial class MetadataSurfaceReader
 {
     public const string LibraryAssemblyName = "MFTLib";
 
@@ -353,7 +353,7 @@ internal static partial class MetadataSurfaceReader
             if (present.Any(accessor => IsExposed(reader.GetMethodDefinition(accessor).Attributes)))
             {
                 members.Add(new SurfaceMember($"event {typeName}.{reader.GetString(definition.Name)}",
-                    present.Select(accessor => MethodKey(reader, provider, typeName, accessor)).ToList()));
+                    [.. present.Select(accessor => MethodKey(reader, provider, typeName, accessor))]));
             }
         }
     }

@@ -125,7 +125,7 @@ public sealed partial class EnumerationProducerTests
                 else
                 {
                     await produceTask.WaitAsync(HangGuard);
-                    var expectedRowCount = 1u + (2u * HandoffChildren) +
+                    const uint expectedRowCount = 1u + (2u * HandoffChildren) +
                                            (2u * HandoffChildren * HandoffGrandchildrenPerChild);
                     Assert.AreEqual(expectedRowCount, created.Writer.RowCount);
                     Assert.IsFalse(created.Writer.CapacityExhausted);

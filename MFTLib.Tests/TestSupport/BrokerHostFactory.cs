@@ -3,7 +3,7 @@ using MFTLibTestExtensions;
 
 namespace MFTLib.Tests.TestSupport;
 
-internal sealed record BrokerHostOptions
+sealed record BrokerHostOptions
 {
     public Func<DriveKey, UsnJournalCursor>? QueryCursor { get; init; }
     public MftRecordBatchSource? ScanDrive { get; init; }
@@ -19,7 +19,7 @@ internal sealed record BrokerHostOptions
     public TimeProvider? TimeProvider { get; init; }
 }
 
-internal static class BrokerHostFactory
+static class BrokerHostFactory
 {
     public static JournalBrokerHost Create(BrokerHostOptions? options = null)
     {
@@ -29,7 +29,7 @@ internal static class BrokerHostFactory
             CursorQuery = options.QueryCursor ?? (_ => new UsnJournalCursor(7, 1000)),
             RecordBatches = options.ScanDrive ?? ((_, _, _, _, _, _) =>
                 [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
-            JournalRead = options.ReadJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
+            JournalRead = options.ReadJournal ?? ((_, since, _) => ([], since)),
             JournalWatch = options.WatchDrive ?? ScriptedVolumeAccess.UnsupportedWatch,
             VolumeInformation = options.QueryVolumeInformation ?? (_ => new NtfsVolumeInformation(1024 * 1000, 1024)),
             JournalGrow = options.GrowUsnJournal ?? ScriptedVolumeAccess.UnsupportedGrow

@@ -11,7 +11,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     and a <see cref="ScriptedWatchSource" />, and tears it down again. It collects every
 ///     <see cref="FileIndex.Changed" /> change and every <see cref="FileIndex.WatchFaulted" /> fault.
 /// </summary>
-internal sealed class WatchHarness : IDisposable
+sealed class WatchHarness : IDisposable
 {
     public const ulong JournalIdentifier = 7;
     public const long NextUsn = 100;
@@ -378,7 +378,7 @@ internal sealed class WatchHarness : IDisposable
 ///     whose catch-up <paramref name="CatchUpLoss" /> says was lost, or held when it is null. A
 ///     hold gate should come from <see cref="WatchHarness.TrackGate" />, so teardown releases it.
 /// </summary>
-internal sealed record WatchHarnessScan(
+sealed record WatchHarnessScan(
     JournalCheckpointLoss? CatchUpLoss = null,
     Exception? Failure = null,
     TestGate? Hold = null);

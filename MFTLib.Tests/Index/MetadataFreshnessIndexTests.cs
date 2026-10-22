@@ -84,10 +84,10 @@ public sealed class MetadataFreshnessIndexTests : IDisposable
 
         var farFuture = new DateTime(2100, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         var upper = index.Search(new SearchQuery(null, IsDirectory: false, LastWriteTimeMaximum: farFuture));
-        Assert.AreSequenceEqual(new[] { "report.txt", "other.txt" }, upper.Select(entry => entry.Name).ToArray(), SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(["report.txt", "other.txt"], [.. upper.Select(entry => entry.Name)], SequenceOrder.InAnyOrder);
 
         var lower = index.Search(new SearchQuery(null, IsDirectory: false, LastWriteTimeMinimum: DateTime.MinValue));
-        Assert.AreSequenceEqual(new[] { "report.txt", "other.txt" }, lower.Select(entry => entry.Name).ToArray(), SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(["report.txt", "other.txt"], [.. lower.Select(entry => entry.Name)], SequenceOrder.InAnyOrder);
 
         var unbounded = index.Search(new SearchQuery(null, IsDirectory: false));
         Assert.HasCount(3, unbounded, "Without a last-write bound the unknown row is an ordinary row.");

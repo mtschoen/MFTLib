@@ -35,7 +35,7 @@ public class MftFixtureTests
         var records = DirectParse.ParseFile(_fixturePath, out _);
         Assert.HasCount(8, records);
         Assert.AreSequenceEqual(
-            new ulong[] { 0, 5, 6, 7, 8, 9, 10, 11 }, records.Select(record => record.RecordNumber).ToArray(), SequenceOrder.InAnyOrder);
+            new ulong[] { 0, 5, 6, 7, 8, 9, 10, 11 }, [.. records.Select(record => record.RecordNumber)], SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]
@@ -59,7 +59,7 @@ public class MftFixtureTests
         foreach (var (recordNumber, record) in records)
         {
             var expected = DateTime.FromFileTimeUtc(
-                ModifiedBaseFileTime + (long)recordNumber * ModifiedStepFileTime);
+                ModifiedBaseFileTime + ((long)recordNumber * ModifiedStepFileTime));
             Assert.AreEqual(expected, record.ModifiedUtc, $"record {recordNumber}");
         }
     }

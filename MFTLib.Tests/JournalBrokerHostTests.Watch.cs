@@ -52,7 +52,7 @@ public partial class JournalBrokerHostTests
         var pipe = await harness.OpenWatchChannelAsync('C', default);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.AreSequenceEqual(new[] { BrokerFrameKind.CaughtUp, BrokerFrameKind.JournalBatch }, frames.Select(frame => frame.Kind).ToArray());
+        Assert.AreSequenceEqual([BrokerFrameKind.CaughtUp, BrokerFrameKind.JournalBatch], [.. frames.Select(frame => frame.Kind)]);
         Assert.AreEqual(new UsnJournalCursor(9UL, 500L), watchedFrom);
     }
 
@@ -87,7 +87,7 @@ public partial class JournalBrokerHostTests
         var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.AreSequenceEqual(new[] { BrokerFrameKind.JournalBatch }, frames.Select(frame => frame.Kind).ToArray(), "Natural completion is not a fault: no Error frame is sent before the channel closes.");
+        Assert.AreSequenceEqual([BrokerFrameKind.JournalBatch], [.. frames.Select(frame => frame.Kind)], "Natural completion is not a fault: no Error frame is sent before the channel closes.");
         await AssertControlStillServesAsync(harness);
     }
 

@@ -20,7 +20,7 @@ public sealed class FileIndexRetainedFileNamesAdmissionTests : IDisposable
 
     public void Dispose() => _fixture.Dispose();
 
-    static string[] KeepList(int count) => Enumerable.Repeat(new string('n', 255), count).ToArray();
+    static string[] KeepList(int count) => [.. Enumerable.Repeat(new string('n', 255), count)];
 
     static MftIndexSource BrokerSource() =>
         new BrokerMftBlockProducer(_ => throw new InvalidOperationException("no broker is reachable in this test"))

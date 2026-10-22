@@ -4,7 +4,7 @@ namespace MFTLibTestExtensions;
 ///     A process-global seam override that only one holder may own at a time per seam description.
 ///     Disposal restores the seam and is idempotent.
 /// </summary>
-internal sealed class ProcessGlobalScope : IDisposable
+sealed class ProcessGlobalScope : IDisposable
 {
     static readonly Lock OwnershipLock = new();
     static readonly HashSet<string> ActiveSeams = [];

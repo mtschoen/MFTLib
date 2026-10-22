@@ -48,7 +48,7 @@ public sealed class LocalMftBlockProducerCursorTests : IDisposable
                 BlockPath = Path.Combine(CacheDirectoryPath, "cached.mlix")
             }, TestContext.CancellationToken);
         using var block = result.Block;
-        Assert.AreSequenceEqual(new[] { "cursor", "scan" }, calls);
+        Assert.AreSequenceEqual(["cursor", "scan"], calls);
         Assert.AreEqual(cursor.JournalIdentifier, block.Header.UsnJournalIdentifier);
         Assert.AreEqual(cursor.NextUsn, block.Header.UsnNextUsn);
     }

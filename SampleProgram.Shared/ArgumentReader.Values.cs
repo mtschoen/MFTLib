@@ -7,7 +7,7 @@ namespace SampleProgram.Direct;
 #endif
 
 // The typed readers of the option reader: whole numbers, drive letters and positional arguments.
-internal sealed partial class ArgumentReader
+sealed partial class ArgumentReader
 {
     internal long? Number(string name)
     {

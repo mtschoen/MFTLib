@@ -2,7 +2,7 @@
 namespace MFTLib;
 
 /// <summary>Grows one drive's USN journal in place.</summary>
-internal sealed partial class JournalBrokerHost
+sealed partial class JournalBrokerHost
 {
     // Exactly one reply per request, carrying its id: UsnJournalSettings on success, Error
     // carrying the refusal (grow only) or OS failure otherwise.

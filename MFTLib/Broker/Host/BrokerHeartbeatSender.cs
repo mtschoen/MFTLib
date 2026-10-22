@@ -8,7 +8,7 @@ namespace MFTLib;
 ///     writes (<see cref="HostPipeWriter.Visit" />); it never waits for one, so a pipe whose write is
 ///     blocked delays no other pipe's heartbeat.
 /// </summary>
-internal sealed class BrokerHeartbeatSender : IDisposable
+sealed class BrokerHeartbeatSender : IDisposable
 {
     readonly TimeProvider _timeProvider;
     readonly Action? _visited;
@@ -64,7 +64,7 @@ internal sealed class BrokerHeartbeatSender : IDisposable
             HostPipeWriter[] pipes;
             lock (_gate)
             {
-                pipes = _pipes.ToArray();
+                pipes = [.. _pipes];
             }
 
             var now = _timeProvider.GetUtcNow();

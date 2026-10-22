@@ -8,7 +8,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     every other record keeps its bytes. The caller resets the native test hooks, since the parse
 ///     sets the volume record size override.
 /// </summary>
-internal static class FixtureVolume
+static class FixtureVolume
 {
     internal static MftResult Parse(string imagePath, byte[] mft, bool includeFreed)
     {

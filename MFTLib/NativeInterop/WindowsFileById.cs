@@ -11,7 +11,7 @@ namespace MFTLib.NativeInterop;
 ///     specifically the volume root, despite the Win32 parameter's <c>hVolumeHint</c> name.
 /// </summary>
 [SupportedOSPlatform("windows")]
-internal static partial class WindowsFileById
+static partial class WindowsFileById
 {
     const uint FileReadAttributes = 0x80;
     const uint GenericRead = 0x80000000;

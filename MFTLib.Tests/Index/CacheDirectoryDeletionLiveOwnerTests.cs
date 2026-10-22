@@ -156,11 +156,10 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
         var canonicalBytesBeforeRace = await SharedFileReader.ReadAllBytesAsync(CanonicalPath);
 
         var gate = new DeleteParkGate();
-        Task<IReadOnlyList<CachedBlockDeletionResult>> deleteTask;
         CacheDirectory.Hooks._beforeDelete = gate.ParkOnce;
         // Runs DeleteCached on a background thread so it can park mid-delete, still holding
         // the candidate block's owner lock, while this thread races opens against it.
-        deleteTask = Task.Run(() => CacheDirectory.DeleteCached(CacheDirectoryPath));
+        var deleteTask = Task.Run(() => CacheDirectory.DeleteCached(CacheDirectoryPath));
         await gate.Parked;
 
         await using (var cacheOnlyOpen = await FileIndex.OpenAsync(Options(cacheOnly: true), CancellationToken.None))

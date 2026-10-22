@@ -1,6 +1,6 @@
 namespace SampleProgram.Watch;
 
-internal enum ElevationNeed { None, BrokerLaunch }
+enum ElevationNeed { None, BrokerLaunch }
 
 partial class SampleHost
 {

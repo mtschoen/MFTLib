@@ -92,6 +92,6 @@ public sealed record WatchFault
     /// </summary>
     public bool IsRecovering =>
         Kind is WatchFaultKind.Drive or WatchFaultKind.Apply ||
-        Kind == WatchFaultKind.CatchUpLost &&
-        Exception is JournalCatchUpLostException { IsRecoveryStopped: false };
+        (Kind == WatchFaultKind.CatchUpLost &&
+        Exception is JournalCatchUpLostException { IsRecoveryStopped: false });
 }

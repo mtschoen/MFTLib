@@ -78,7 +78,7 @@ public partial class FileIndexWatchRescanTests
         Assert.HasCount(1, harness.Source.TargetsFor('U'));
         Assert.AreEqual(0, otherHandle.DisposeCount);
         Assert.AreEqual(250L, harness.BlockFor('U').Header.UsnNextUsn);
-        Assert.AreSequenceEqual(new[] { "before.txt", "after.txt" }, harness.Changes.Select(change => change.Entry.Name).ToArray());
+        Assert.AreSequenceEqual(["before.txt", "after.txt"], [.. harness.Changes.Select(change => change.Entry.Name)]);
         await harness.Index.StopWatchingAsync(['T'], Token);
         await harness.Index.StopWatchingAsync(['U'], Token);
     }

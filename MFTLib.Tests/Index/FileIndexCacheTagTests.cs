@@ -192,7 +192,7 @@ public class FileIndexCacheTagTests
             {
                 Assert.AreEqual(DriveState.Failed, status.State);
                 Assert.AreEqual(DriveFailureKind.CacheIdentityMismatch, status.Failure?.Kind);
-                Assert.IsNull(status.Block!);
+                Assert.IsNull(status.Block);
                 using (var left = BlockFile.Open(BlockPath, 123, out _))
                 {
                     Assert.AreEqual(stored, left?.Header.CacheTag, "a cache-only open leaves the rejected block in place");

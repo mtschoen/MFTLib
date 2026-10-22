@@ -5,7 +5,7 @@ namespace MFTLib.Index;
 ///     record carries neither value, so an event that can have changed one invalidates it instead of replacing it
 ///     with the record's own time.
 /// </summary>
-internal enum RowFreshness
+enum RowFreshness
 {
     /// <summary>The event cannot have changed size or last-write time: both observations are kept.</summary>
     Unchanged,

@@ -14,7 +14,7 @@ namespace MFTLib;
 ///     issued against a limited-access volume handle fails with
 ///     <c>ERROR_INVALID_FUNCTION</c> instead of returning a value.
 /// </summary>
-internal readonly record struct NtfsVolumeInformation(
+readonly record struct NtfsVolumeInformation(
     long MftValidDataLength,
     uint BytesPerFileRecordSegment)
 {

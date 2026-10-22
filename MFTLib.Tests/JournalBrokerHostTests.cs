@@ -36,7 +36,7 @@ public partial class JournalBrokerHostTests
             {
                 CursorQuery = queryCursor ?? (_ => ScanArmedCursor),
                 RecordBatches = scanDrive ?? ((_, _, _, _, _, _) => [[ScanRecord(5, ".", 3)]]),
-                JournalRead = readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
+                JournalRead = readJournal ?? ((_, since, _) => ([], since)),
                 JournalWatch = watchDrive ?? ScriptedVolumeAccess.UnsupportedWatch,
                 VolumeInformation = queryVolumeInfo ??
                     (_ => throw new NotSupportedException("Broker has no volume information source")),

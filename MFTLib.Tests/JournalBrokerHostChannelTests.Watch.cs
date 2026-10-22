@@ -31,7 +31,7 @@ public partial class JournalBrokerHostChannelTests
         Assert.AreEqual(new DriveKey('C'), watchedDrive);
         Assert.AreEqual(since, watchedSince);
         Assert.AreSequenceEqual(
-            new[] { BrokerFrameKind.JournalBatch, BrokerFrameKind.JournalBatch, BrokerFrameKind.CaughtUp }, frames.Select(frame => frame.Kind).ToArray());
+            [BrokerFrameKind.JournalBatch, BrokerFrameKind.JournalBatch, BrokerFrameKind.CaughtUp], [.. frames.Select(frame => frame.Kind)]);
         Assert.AreEqual(200L, frames[0].Cursor.NextUsn);
         Assert.AreEqual("a.txt", frames[0].Entries.Single().FileName);
         Assert.AreEqual(Tip, frames[1].Cursor);
@@ -66,7 +66,7 @@ public partial class JournalBrokerHostChannelTests
         var pipe = await harness.OpenWatchChannelAsync('C', default);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.AreSequenceEqual(new[] { BrokerFrameKind.CaughtUp, BrokerFrameKind.Error }, frames.Select(frame => frame.Kind).ToArray());
+        Assert.AreSequenceEqual([BrokerFrameKind.CaughtUp, BrokerFrameKind.Error], [.. frames.Select(frame => frame.Kind)]);
         Assert.AreEqual("journal read failed", frames[1].Message);
         return;
 

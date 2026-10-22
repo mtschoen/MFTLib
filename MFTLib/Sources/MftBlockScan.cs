@@ -6,7 +6,7 @@ namespace MFTLib;
 ///     The one implementation that turns MFT record batches into a completed index block. The broker host
 ///     and every direct producer call it; none of them carry a pipe, a frame writer or a journal query into it.
 /// </summary>
-internal static class MftBlockScan
+static class MftBlockScan
 {
     // The processing step each flushed range of the completed block publishes.
     internal const string FlushStep = "block flush";
@@ -41,4 +41,4 @@ internal static class MftBlockScan
 /// <summary>What a completed block records about when and where in the journal it was written.</summary>
 /// <param name="Cursor">The journal cursor armed before the scan; zero for a dump or uncached local scan.</param>
 /// <param name="TimeProvider">Read once, after the last batch is written, for the completion time stamped into the block header.</param>
-internal readonly record struct BlockStamp(UsnJournalCursor Cursor, TimeProvider TimeProvider);
+readonly record struct BlockStamp(UsnJournalCursor Cursor, TimeProvider TimeProvider);

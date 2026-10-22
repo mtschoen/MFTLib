@@ -2,7 +2,7 @@ using System.IO.Enumeration;
 
 namespace MFTLib.Index;
 
-internal sealed class EnumerationDirectoryReader
+sealed class EnumerationDirectoryReader
 {
     readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>>? _retainedFileNames;
     readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> _prunedNames;

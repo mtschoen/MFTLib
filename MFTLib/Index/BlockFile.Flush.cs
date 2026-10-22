@@ -4,7 +4,7 @@ using MFTLib.NativeInterop;
 
 namespace MFTLib.Index;
 
-internal sealed unsafe partial class BlockFile
+sealed unsafe partial class BlockFile
 {
     internal delegate void SpinStep(ref SpinWait spinWait);
 

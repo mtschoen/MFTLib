@@ -56,7 +56,7 @@ public class WatchHostTests
         var lines = new List<string>();
         var scanner = new SampleHost(new LineCollectingWriter(lines), TextReader.Null, new FakeTimeProvider())
         {
-            _isElevated = () => false,
+            _isElevated = () => false
         };
         WatchNoticeSupport.AcknowledgeDeliberately(scanner);
 

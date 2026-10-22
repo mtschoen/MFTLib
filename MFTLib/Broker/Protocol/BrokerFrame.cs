@@ -10,7 +10,7 @@ namespace MFTLib;
 ///     (<see cref="ArmAndScan" /> or <see cref="StartWatch" />) and every frame after it flows
 ///     from the host.
 /// </summary>
-internal enum BrokerFrameKind : byte
+enum BrokerFrameKind : byte
 {
     OpenChannel = 1,
     ChannelOpened = 2,
@@ -37,7 +37,7 @@ internal enum BrokerFrameKind : byte
 ///     the <see cref="JournalCheckpointLoss" /> the host proved against the live journal. The drive
 ///     is the channel's, so the wire carries neither the drive nor which check produced the loss.
 /// </summary>
-internal readonly record struct BrokerCatchUpLoss(
+readonly record struct BrokerCatchUpLoss(
     JournalCheckpointLossCause Cause,
     long CheckpointUsn,
     long FirstUsn,
@@ -47,7 +47,7 @@ internal readonly record struct BrokerCatchUpLoss(
     long? BytesBehind,
     long? SizeThatWouldHaveRetained);
 
-internal readonly record struct BrokerFrame
+readonly record struct BrokerFrame
 {
     public BrokerFrameKind Kind { get; private init; }
 
@@ -234,7 +234,7 @@ internal readonly record struct BrokerFrame
         {
             Kind = kind,
             RequestId = requestId,
-            Entries = Array.Empty<UsnJournalEntry>()
+            Entries = []
         };
     }
 }

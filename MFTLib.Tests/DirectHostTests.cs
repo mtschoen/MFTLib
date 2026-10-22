@@ -64,14 +64,13 @@ public sealed class DirectHostTests : IDisposable
 
         Assert.AreEqual(0, result, string.Join(Environment.NewLine, lines));
         Assert.AreSequenceEqual(
-            new[]
-            {
+            [
                 "  D: ParsingMft: 16 rows of 16",
                 "  D: Transferring: 7 rows",
                 "  D: Finished: 11 rows (Succeeded)",
                 $"{DumpRoot}/documents/Notes.txt  11",
                 "1 entries"
-            }, lines, string.Join(Environment.NewLine, lines));
+            ], lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -126,10 +125,7 @@ public sealed class DirectHostTests : IDisposable
             MftSource = MftIndexSources.FromMftDumpFile(_dumpFile, 'D')
         }, CancellationToken.None);
         var enumerations = 0;
-        var lookup = SampleHost.ChildLookup(Once(index.Enumerate(new SearchQuery(null)), () =>
-        {
-            Assert.AreEqual(0, enumerations++);
-        }));
+        var lookup = SampleHost.ChildLookup(Once(index.Enumerate(new SearchQuery(null)), () => Assert.AreEqual(0, enumerations++)));
         Assert.AreEqual(1, enumerations);
         Assert.IsNotEmpty(lookup);
     }
@@ -332,11 +328,10 @@ public sealed class DirectHostTests : IDisposable
         var elevatedLines = elevatedOutput.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
         var matches = elevatedLines.Where(line => line.Contains(".log", StringComparison.Ordinal) && !line.StartsWith("Indexing ", StringComparison.Ordinal)).ToList();
         Assert.AreSequenceEqual(
-            new[]
-            {
+            [
                 $"{Path.Combine(TemporaryDirectoryPath, "logs", "app.log")}  42",
                 $"{Path.Combine(TemporaryDirectoryPath, "logs", "pending.log")}  ?"
-            }, matches, SequenceOrder.InAnyOrder, elevatedOutput.ToString());
+            ], matches, SequenceOrder.InAnyOrder, elevatedOutput.ToString());
         Assert.IsTrue(elevatedLines.Contains("2 entries"), elevatedOutput.ToString());
 
         using var unattended = new UnattendedEnvironmentScope("1");
@@ -412,7 +407,7 @@ public sealed class DirectHostTests : IDisposable
         using var output = new StringWriter();
         var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath)
         {
-            _isElevated = () => true,
+            _isElevated = () => true
         };
 
         var result = host.RunWithElevation(["scan", "C"], ElevationNeed.SelfElevate, () =>

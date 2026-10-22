@@ -11,7 +11,7 @@ using System.Threading.Channels;
 ///     directories wait in a channel holding one per reader slot; outstanding jobs, reading or
 ///     completed, are capped at twice the slot count, and a publisher that finds the channel full waits.
 /// </summary>
-internal sealed class EnumerationWalkScheduler : IDisposable
+sealed class EnumerationWalkScheduler : IDisposable
 {
     readonly EnumerationDirectoryReader _reader;
     readonly DriveKey _drive;

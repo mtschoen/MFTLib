@@ -10,7 +10,7 @@ partial class SampleHostElevationNoticeTests
     public void Run_NotElevated_DialogStartedLateThenAnsweredAtOnce_IsAccidentalAndShownAgain()
     {
         var events = new List<string>();
-        var scanner = Scanner(new List<string>(), events, []);
+        var scanner = Scanner([], events, []);
         var clock = (FakeTimeProvider)scanner._timeProvider;
         // The dialog thread starts ten minutes late, as when the pool is busy. Only the time on screen counts.
         scanner._dialogScheduler = new LateStartScheduler(() => clock.Advance(TimeSpan.FromMinutes(10)));
@@ -26,7 +26,7 @@ partial class SampleHostElevationNoticeTests
         var result = RunElevation(scanner);
 
         Assert.AreEqual(0, result);
-        Assert.AreSequenceEqual(new[] { "dialog", "dialog", "elevate" }, events);
+        Assert.AreSequenceEqual(["dialog", "dialog", "elevate"], events);
     }
 
     // The caller resumes only after the dialog thread is done, so an immediate answer followed by a long delay before
@@ -38,7 +38,7 @@ partial class SampleHostElevationNoticeTests
     {
         var events = new List<string>();
         var delayedCaller = new TaskCompletionSource();
-        var scanner = Scanner(new List<string>(), events, []);
+        var scanner = Scanner([], events, []);
         var clock = (FakeTimeProvider)scanner._timeProvider;
         var beepCount = 0;
         scanner._messageBeep = _ =>
@@ -67,7 +67,7 @@ partial class SampleHostElevationNoticeTests
         var result = RunElevation(scanner);
 
         Assert.AreEqual(0, result);
-        Assert.AreSequenceEqual(new[] { "dialog", "dialog", "elevate" }, events);
+        Assert.AreSequenceEqual(["dialog", "dialog", "elevate"], events);
     }
 
     [TestMethod]
@@ -81,7 +81,7 @@ partial class SampleHostElevationNoticeTests
         var callerWaitingOnDelayedCaller = new TaskCompletionSource();
         var secondDialogStarted = new TaskCompletionSource();
         var hookFinishedAdvance = new TaskCompletionSource();
-        var scanner = Scanner(new List<string>(), events, []);
+        var scanner = Scanner([], events, []);
         var clock = (FakeTimeProvider)scanner._timeProvider;
         var beepCount = 0;
         scanner._messageBeep = _ =>
@@ -121,7 +121,7 @@ partial class SampleHostElevationNoticeTests
         var result = RunElevation(scanner);
 
         Assert.AreEqual(0, result);
-        Assert.AreSequenceEqual(new[] { "dialog", "dialog", "elevate" }, events);
+        Assert.AreSequenceEqual(["dialog", "dialog", "elevate"], events);
     }
 
     [TestMethod]
@@ -134,7 +134,7 @@ partial class SampleHostElevationNoticeTests
         var result = RunElevation(scanner);
 
         Assert.AreEqual(1, result);
-        Assert.AreSequenceEqual(new[] { "dialog" }, events);
+        Assert.AreSequenceEqual(["dialog"], events);
         Assert.Contains(line => line.Contains("not answered in time"), lines);
     }
 
@@ -142,17 +142,17 @@ partial class SampleHostElevationNoticeTests
     public void Run_NotElevated_AnswerExactlyAtTheTimeout_TimesOutAndOneTickEarlierStands()
     {
         var atTimeoutEvents = new List<string>();
-        var atTimeout = Scanner(new List<string>(), atTimeoutEvents, [Answer(SampleHost.MessageBoxResultOk, SampleHost.ElevationNoticeTimeout.TotalSeconds)]);
+        var atTimeout = Scanner([], atTimeoutEvents, [Answer(SampleHost.MessageBoxResultOk, SampleHost.ElevationNoticeTimeout.TotalSeconds)]);
         var earlierEvents = new List<string>();
         var earlier = Scanner(
-            new List<string>(), earlierEvents,
+            [], earlierEvents,
             [Answer(SampleHost.MessageBoxResultOk, SampleHost.ElevationNoticeTimeout.TotalSeconds - 0.001)]);
 
         Assert.AreEqual(1, RunElevation(atTimeout));
         Assert.AreEqual(0, RunElevation(earlier));
 
-        Assert.AreSequenceEqual(new[] { "dialog" }, atTimeoutEvents);
-        Assert.AreSequenceEqual(new[] { "dialog", "elevate" }, earlierEvents);
+        Assert.AreSequenceEqual(["dialog"], atTimeoutEvents);
+        Assert.AreSequenceEqual(["dialog", "elevate"], earlierEvents);
     }
 
     // Runs each queued task on a new thread, then a hook once the task has completed.

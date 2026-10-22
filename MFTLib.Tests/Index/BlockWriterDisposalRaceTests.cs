@@ -46,7 +46,7 @@ public class BlockWriterDisposalRaceTests
             Assert.IsTrue(rowCaptured.Entered.Wait(HangGuard * 3),
                 "the writer never reached the row capture, so the race was never set up");
 
-            disposeTask = Task.Run(() => block.Dispose());
+            disposeTask = Task.Run(block.Dispose);
             Assert.IsTrue(disposeStarted.Entered.Wait(HangGuard * 3),
                 "dispose never began, so the race was never set up");
             Assert.IsFalse(disposeTask.IsCompleted,
@@ -85,7 +85,7 @@ public class BlockWriterDisposalRaceTests
         Assert.ThrowsExactly<ObjectDisposedException>(() => writer.TryRenameRow(1, "renamed.pdf", 0));
         Assert.ThrowsExactly<ObjectDisposedException>(() => writer.MarkTombstone(1));
         Assert.ThrowsExactly<ObjectDisposedException>(() => writer.MarkSubtreeSkipped(1));
-        Assert.ThrowsExactly<ObjectDisposedException>(() => writer.MarkCapacityExhausted());
+        Assert.ThrowsExactly<ObjectDisposedException>(writer.MarkCapacityExhausted);
         Assert.ThrowsExactly<ObjectDisposedException>(() => writer.SetJournalCursor(1, 2));
         Assert.ThrowsExactly<ObjectDisposedException>(() => writer.SetCacheTag(new CacheTag("TEST", 7)));
         Assert.ThrowsExactly<ObjectDisposedException>(() => writer.BumpGeneration());

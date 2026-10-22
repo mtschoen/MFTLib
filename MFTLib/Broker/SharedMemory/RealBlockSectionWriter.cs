@@ -5,7 +5,7 @@ namespace MFTLib;
 
 /// <summary>Opens a client-created named block section and completes the broker's cold scan in it.</summary>
 [SupportedOSPlatform("windows")]
-internal sealed class RealBlockSectionWriter(TimeProvider? timeProvider = null) : IBlockSectionWriter
+sealed class RealBlockSectionWriter(TimeProvider? timeProvider = null) : IBlockSectionWriter
 {
     public BlockWriteResult Write(
         string sectionName, UsnJournalCursor cursor, IEnumerable<IReadOnlyList<MftRecord>> batches,

@@ -15,7 +15,7 @@ namespace MFTLib;
     Justification = "The write lock is never disposed: after the pipe's owner has ended, the heartbeat " +
                     "sender may still try it and a write in flight still releases it. SemaphoreSlim holds " +
                     "no kernel handle unless its AvailableWaitHandle is read, which nothing here does.")]
-internal sealed class HostPipeWriter : ISourceOperationReporter
+sealed class HostPipeWriter : ISourceOperationReporter
 {
     readonly Stream _stream;
     readonly TimeProvider _timeProvider;

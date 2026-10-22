@@ -38,7 +38,7 @@ public class WatchHostModeTests
         var lines = new List<string>();
         var scanner = new SampleHost(new LineCollectingWriter(lines), TextReader.Null)
         {
-            _isElevated = () => throw new AssertFailedException("A bad command line must not reach elevation."),
+            _isElevated = () => throw new AssertFailedException("A bad command line must not reach elevation.")
         };
 
         var result = scanner.Run(["scan", "--verbose"]);
@@ -180,7 +180,7 @@ public class WatchHostModeTests
         var lines = new List<string>();
         var scanner = new SampleHost(new LineCollectingWriter(lines), TextReader.Null)
         {
-            _isElevated = () => true,
+            _isElevated = () => true
         };
 
         var result = scanner.Run(["scan", "C"]);
@@ -195,7 +195,7 @@ public class WatchHostModeTests
         var scanner = new SampleHost(new LineCollectingWriter(lines), TextReader.Null, timeProvider ?? new Microsoft.Extensions.Time.Testing.FakeTimeProvider())
         {
             _isElevated = () => false,
-            _canSelfElevate = () => throw new AssertFailedException("scan must not self-elevate."),
+            _canSelfElevate = () => throw new AssertFailedException("scan must not self-elevate.")
         };
         // The run is attended and unelevated, so it shows the heads-up dialog before the broker launch.
         WatchNoticeSupport.AcknowledgeDeliberately(scanner);

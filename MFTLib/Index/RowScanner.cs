@@ -7,7 +7,7 @@ namespace MFTLib.Index;
 ///     <see cref="FileIndex.EnumerateRows" />. Their engines use this scanner. The range constructor partitions
 ///     one drive across threads.
 /// </summary>
-internal ref struct RowScanner
+ref struct RowScanner
 {
     /// <summary>
     ///     How many rows a scan may read between two reads of its cancellation token. Small

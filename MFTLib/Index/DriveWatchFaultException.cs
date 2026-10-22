@@ -13,5 +13,5 @@ namespace MFTLib.Index;
     Justification = "This internal classification marker requires the source's failure message. " +
                     "Its two creation sites use the message and optional inner exception; " +
                     "additional standard constructors have no distinct caller.")]
-internal sealed class DriveWatchFaultException(string message, Exception? innerException = null)
+sealed class DriveWatchFaultException(string message, Exception? innerException = null)
     : Exception(message, innerException);

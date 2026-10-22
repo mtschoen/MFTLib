@@ -1,5 +1,5 @@
-using MFTLib.Tests.TestSupport;
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -171,7 +171,7 @@ public sealed class FileIndexDisposeCancelsQueryTests : IDisposable
             var root = index.Root('T');
             var admitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var cancellationDelivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            Action holdTheReader = () =>
+            var holdTheReader = () =>
             {
                 admitted.TrySetResult();
                 released.Task.Wait();

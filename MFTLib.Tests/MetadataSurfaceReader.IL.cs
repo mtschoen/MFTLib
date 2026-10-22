@@ -7,7 +7,7 @@ using System.Reflection.Metadata.Ecma335;
 namespace MFTLib.Tests;
 
 // The IL walker and the signature decoder of the metadata reader, split out to keep each file small.
-internal static partial class MetadataSurfaceReader
+static partial class MetadataSurfaceReader
 {
     static readonly Dictionary<short, OperandType> OperandTypes = typeof(OpCodes)
         .GetFields(BindingFlags.Public | BindingFlags.Static).Select(field => (OpCode)field.GetValue(null)!)
@@ -68,7 +68,7 @@ internal static partial class MetadataSurfaceReader
                 OperandType.ShortInlineBrTarget or OperandType.ShortInlineI or OperandType.ShortInlineVar => 1,
                 OperandType.InlineVar => 2,
                 OperandType.InlineI8 or OperandType.InlineR => 8,
-                OperandType.InlineSwitch => 4 + 4 * BitConverter.ToInt32(il, position),
+                OperandType.InlineSwitch => 4 + (4 * BitConverter.ToInt32(il, position)),
                 _ => 4
             };
         }

@@ -73,7 +73,7 @@ public class FileIndexBatchedWaitTests
 
         var results = await harness.Index.WaitForCatchUpAsync(harness.Index.Drives.Select(drive => drive.Drive), Token).WaitAsync(HangGuard);
 
-        Assert.AreSequenceEqual(new[] { 'T', 'U' }, results.Select(result => result.Drive.Letter).ToArray());
+        Assert.AreSequenceEqual(['T', 'U'], [.. results.Select(result => result.Drive.Letter)]);
         Assert.IsTrue(results.All(result => result.Outcome == DriveOperationOutcome.NotApplicable));
     }
 

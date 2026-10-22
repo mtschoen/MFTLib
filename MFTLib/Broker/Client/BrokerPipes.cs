@@ -3,7 +3,7 @@ using System.IO.Pipes;
 namespace MFTLib;
 
 /// <summary>Creates the server end of each drive pipe a <see cref="BrokerProcess" /> opens.</summary>
-internal interface IBrokerPipeFactory
+interface IBrokerPipeFactory
 {
     /// <summary>Starts listening on a new pipe named <paramref name="pipeName" />.</summary>
     BrokerPipeListener Listen(string pipeName);
@@ -14,7 +14,7 @@ internal interface IBrokerPipeFactory
 ///     reads EOF on whatever end it holds; the stream <see cref="WaitForConnectionAsync" /> returns
 ///     is the pipe itself and needs no separate disposal. Disposal is idempotent.
 /// </summary>
-internal sealed class BrokerPipeListener(
+sealed class BrokerPipeListener(
     string pipeName,
     Func<CancellationToken, Task<Stream>> waitForConnection,
     Func<ValueTask> release) : IAsyncDisposable
@@ -40,7 +40,7 @@ internal sealed class BrokerPipeListener(
 ///     unelevated client creates every pipe server and the elevated broker connects as the client,
 ///     the only safe direction across integrity levels.
 /// </summary>
-internal sealed class NamedPipeBrokerPipeFactory : IBrokerPipeFactory
+sealed class NamedPipeBrokerPipeFactory : IBrokerPipeFactory
 {
     public BrokerPipeListener Listen(string pipeName)
     {

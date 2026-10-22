@@ -16,7 +16,7 @@ namespace MFTLib.Tests;
 ///     because <c>SearchQuery</c> and <c>ScriptedWatchSource</c> do not end in Options.
 /// </summary>
 [TestClass]
-public class BooleanNamingTests
+public partial class BooleanNamingTests
 {
     const BindingFlags DeclaredPublicProperties =
         BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
@@ -78,8 +78,8 @@ public class BooleanNamingTests
 
         var offenders = BareStateFlags(fixtures, new HashSet<string>(StringComparer.Ordinal));
 
-        Assert.AreSequenceEqual(new[]
-        {
+        Assert.AreSequenceEqual(
+        [
             "MFTLib.Tests.BooleanNamingTests+PlainFixture.Ready",
             "MFTLib.Tests.BooleanNamingTests+PlainFixture.Maybe",
             "MFTLib.Tests.BooleanNamingTests+RequiredFixture.Pending",
@@ -91,16 +91,15 @@ public class BooleanNamingTests
             "MFTLib.Tests.BooleanNamingTests+GenericFixture`2.Both",
             "MFTLib.Tests.BooleanNamingTests+IndexerFixture.Item",
             "MFTLib.Tests.BooleanNamingTests+FlowFixture.Flowed"
-        }, offenders, SequenceOrder.InAnyOrder);
+        ], offenders, SequenceOrder.InAnyOrder);
     }
 
     static string[] BareStateFlags(IEnumerable<Type> types, HashSet<string> allowedTypeNames) =>
-        types
+        [.. types
             .Where(type => !allowedTypeNames.Contains(type.FullName!))
             .SelectMany(BooleanProperties)
             .Where(property => !HasStatePrefix(property.Name))
-            .Select(property => $"{property.DeclaringType!.FullName}.{property.Name}")
-            .ToArray();
+            .Select(property => $"{property.DeclaringType!.FullName}.{property.Name}")];
 
     static IEnumerable<PropertyInfo> BooleanProperties(Type type) =>
         type.GetProperties(DeclaredPublicProperties).Where(property => IsBoolean(property.PropertyType));
@@ -111,7 +110,7 @@ public class BooleanNamingTests
         return (Nullable.GetUnderlyingType(underlying) ?? underlying) == typeof(bool);
     }
 
-    static bool HasStatePrefix(string name) => Regex.IsMatch(name, "^(Is|Has|Can)[A-Z]");
+    static bool HasStatePrefix(string name) => MyRegex().IsMatch(name);
 
     public sealed class PlainFixture
     {
@@ -179,4 +178,7 @@ public class BooleanNamingTests
 
         public bool CanGrow { get; init; }
     }
+
+    [GeneratedRegex("^(Is|Has|Can)[A-Z]")]
+    private static partial Regex MyRegex();
 }

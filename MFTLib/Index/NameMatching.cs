@@ -5,7 +5,7 @@ namespace MFTLib.Index;
 ///     folds with invariant upper-casing, which is what NTFS does for the ASCII range and is
 ///     stable across cultures, unlike the current culture's casing rules.
 /// </summary>
-internal static class NameMatching
+static class NameMatching
 {
     const string UnknownModeMessage = "Unknown name match mode.";
 
@@ -34,7 +34,7 @@ internal static class NameMatching
             NameMatchMode.Exact => EqualsName(name, pattern, caseSensitive),
             NameMatchMode.Substring => ContainsSubstring(name, pattern, caseSensitive),
             NameMatchMode.Glob => MatchesGlob(name, pattern, caseSensitive),
-            _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, UnknownModeMessage),
+            _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, UnknownModeMessage)
         };
     }
 

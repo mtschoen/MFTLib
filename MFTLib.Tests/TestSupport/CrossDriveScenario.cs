@@ -18,7 +18,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     proves the client consumed every heartbeat the host wrote before it moves the client's
 ///     clock, so a pipe's stall limit measures only what the host really did not send.
 /// </summary>
-internal sealed class CrossDriveScenario : IAsyncDisposable
+sealed class CrossDriveScenario : IAsyncDisposable
 {
     const string ControlPipeName = "control";
     static readonly int HeartbeatLength = MeasureHeartbeat();

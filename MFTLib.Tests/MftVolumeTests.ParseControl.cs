@@ -23,7 +23,7 @@ public partial class MftVolumeTests
             var counts = ParseControlBlock.ChunkThreadCounts();
             Assert.HasCount(16, counts);
             Assert.AreEqual(nativeHardwareThreadCount, counts[0]);
-            Assert.AreSequenceEqual(Enumerable.Repeat(1u, 15).ToArray(), counts[1..]);
+            Assert.AreSequenceEqual([.. Enumerable.Repeat(1u, 15)], counts[1..]);
         });
     }
 
@@ -96,10 +96,8 @@ public partial class MftVolumeTests
             SyntheticNtfsImage.Write(path, 1024);
             NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
             FileUtilities.Hooks._getVolumeHandle = _ => File.OpenHandle(path);
-            using (var volume = MftVolume.Open('C', 64))
-            {
-                test(volume);
-            }
+            using var volume = MftVolume.Open('C', 64);
+            test(volume);
         }
         finally
         {

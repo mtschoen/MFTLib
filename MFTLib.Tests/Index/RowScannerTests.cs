@@ -46,7 +46,7 @@ public class RowScannerTests
             names.Add(new string(scanner.CurrentName));
         }
 
-        Assert.AreSequenceEqual(new[] { "", "alpha.txt", "beta.txt", "gamma.txt" }, names);
+        Assert.AreSequenceEqual(["", "alpha.txt", "beta.txt", "gamma.txt"], names);
     }
 
     [TestMethod]
@@ -83,7 +83,7 @@ public class RowScannerTests
             names.Add(new string(scanner.CurrentName));
         }
 
-        Assert.AreSequenceEqual(new[] { "beta.txt", "gamma.txt" }, names);
+        Assert.AreSequenceEqual(["beta.txt", "gamma.txt"], names);
     }
 
     [TestMethod]

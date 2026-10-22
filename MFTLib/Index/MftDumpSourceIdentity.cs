@@ -5,7 +5,7 @@ namespace MFTLib.Index;
 ///     key the index assigns it. The index treats a block from such a source as a virtual
 ///     inventory and never as the live volume that happens to share the letter.
 /// </summary>
-internal sealed record MftDumpSourceIdentity
+sealed record MftDumpSourceIdentity
 {
     internal MftDumpSourceIdentity(string dumpFilePath, DriveKey drive)
     {

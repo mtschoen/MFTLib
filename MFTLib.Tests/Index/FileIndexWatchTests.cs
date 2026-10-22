@@ -316,7 +316,7 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
 
         Assert.AreEqual("boom", thrown.Message);
         Assert.HasCount(2, secondSubscriberChanges);
-        Assert.AreSequenceEqual(new[] { "first.txt", "second.txt" }, secondSubscriberChanges.Select(change => change.Entry.Name).ToArray(), SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(["first.txt", "second.txt"], [.. secondSubscriberChanges.Select(change => change.Entry.Name)], SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]
@@ -330,7 +330,7 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
             journalIdentifier: 5, nextUsn: 100));
 
         Assert.HasCount(2, thrown.InnerExceptions);
-        Assert.AreSequenceEqual(new[] { "first boom", "second boom" }, thrown.InnerExceptions.Select(exception => exception.Message).ToArray(), SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(["first boom", "second boom"], [.. thrown.InnerExceptions.Select(exception => exception.Message)], SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]

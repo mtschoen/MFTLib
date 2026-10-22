@@ -34,7 +34,7 @@ public class FileIndexBatchedOperationTests
 
         var results = await harness.Index.StartWatchingAsync(['T', 'U', 'V'], Token).WaitAsync(HangGuard);
 
-        Assert.AreSequenceEqual(new[] { 'T', 'U', 'V' }, Letters(results));
+        Assert.AreSequenceEqual(['T', 'U', 'V'], Letters(results));
         Assert.AreEqual(DriveOperationOutcome.Succeeded, results[0].Outcome);
         Assert.IsNull(results[0].Failure);
         Assert.AreEqual(DriveOperationOutcome.Failed, results[1].Outcome);

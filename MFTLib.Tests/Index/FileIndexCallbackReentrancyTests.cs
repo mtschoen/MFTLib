@@ -211,7 +211,7 @@ public class FileIndexCallbackReentrancyTests
             ("WaitForCatchUpAsync", () => index.WaitForCatchUpAsync(['U'], token)),
             ("WaitForCatchUpAsync", () => index.WaitForCatchUpAsync(['U'], token)),
             ("WaitForCatchUpAsync", () => index.WaitForCatchUpAsync(index.Drives.Select(drive => drive.Drive),token)),
-            ("DisposeAsync", () => index.DisposeAsync().AsTask()),
+            ("DisposeAsync", () => index.DisposeAsync().AsTask())
         };
         var outcome = NewSignal<Exception?[]>();
         OnChanged(harness, "t.txt", () => outcome.TrySetResult([.. calls.Select(call => BlockOn(call.Call))]));
@@ -317,7 +317,7 @@ public class FileIndexCallbackReentrancyTests
             {
                 CursorQuery = _ => new UsnJournalCursor(7, 1000),
                 RecordBatches = (_, _, _, _, _, _) => [],
-                JournalRead = (_, since, _) => (Array.Empty<UsnJournalEntry>(), since),
+                JournalRead = (_, since, _) => ([], since),
                 VolumeInformation = _ => new NtfsVolumeInformation(1024 * 1000, 1024),
                 JournalGrow = (_, maximumSize, allocationDelta) =>
                     new UsnJournalSettings { MaximumSize = maximumSize * 2, AllocationDelta = allocationDelta }

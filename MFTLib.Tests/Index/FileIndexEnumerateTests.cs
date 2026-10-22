@@ -156,7 +156,7 @@ public sealed class FileIndexEnumerateTests : IDisposable
 
     static BlockFile BuildSyntheticBlockWithDeepCandidate(MftBlockProduceRequest request)
     {
-        var totalRows = BlockLayout.MaximumPathDepth + 16u;
+        const uint totalRows = BlockLayout.MaximumPathDepth + 16u;
         var createOptions = new BlockFileCreateOptions
         {
             Path = request.BlockPath,
@@ -196,7 +196,7 @@ public sealed class FileIndexEnumerateTests : IDisposable
             }
 
             // Candidate row whose parent chain exceeds MaximumPathDepth hops.
-            var deepRow = 7u + BlockLayout.MaximumPathDepth;
+            const uint deepRow = 7u + BlockLayout.MaximumPathDepth;
             writer.TryWriteRow(deepRow, "candidate-deep.dat",
                 new RowColumns(ParentRow: parent, Flags: RowFlags.InUse, Attributes: 0, Size: 2,
                     ModifiedTicks: FixedMoment.Ticks, SequenceNumber: 0));

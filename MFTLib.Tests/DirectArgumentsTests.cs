@@ -68,13 +68,13 @@ public class DirectArgumentsTests
     public void TryParse_TreeOpenLargestDuplicateNamesAndScan_ReadTheirFlags()
     {
         var tree = Parse("tree", "C", "--path", "C:\\a", "--depth", "4");
-        var open = Parse("open", "C", "--path", "C:\\a\\b.txt");
+        var open = Parse("open", "C", "--path", @"C:\a\b.txt");
         var largest = Parse("largest", "C", "--count", "3", "--under", "C:\\a");
         var duplicates = Parse("duplicate-names", "C", "--count", "5");
         var scan = Parse("scan", "C");
 
         Assert.AreEqual(("C:\\a", 4), (tree.Path, tree.Depth));
-        Assert.AreEqual("C:\\a\\b.txt", open.Path);
+        Assert.AreEqual(@"C:\a\b.txt", open.Path);
         Assert.AreEqual((3, "C:\\a"), (largest.Count, largest.Under));
         Assert.AreEqual(5, duplicates.Count);
         Assert.AreEqual(DirectVerb.Scan, scan.Verb);

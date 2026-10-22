@@ -9,7 +9,7 @@ namespace MFTLib;
 ///     parent a record names fits the block. A record whose own number does not fit is not checked
 ///     here: the row writer skips and counts it, as it does for a live scan.
 /// </summary>
-internal sealed class MftDumpRecordValidation
+sealed class MftDumpRecordValidation
 {
     const string NoRootMessage = "The dump has no valid allocated root record.";
 

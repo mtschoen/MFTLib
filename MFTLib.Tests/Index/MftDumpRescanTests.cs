@@ -58,7 +58,7 @@ public sealed class MftDumpRescanTests : IDisposable
         var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         await using var index = await OpenAsync(MftIndexSources.FromMftDumpFile(path, 'D'));
         var invalid = MftDumpFixture.Standard();
-        invalid[7 * 1024 + 510] ^= 0xFF;
+        invalid[(7 * 1024) + 510] ^= 0xFF;
 
         await File.WriteAllBytesAsync(path, invalid);
         var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(

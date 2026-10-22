@@ -9,7 +9,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     <see cref="Client" /> is the client closing its pipe: the host's reads reach EOF. A test
 ///     that needs only the two streams deconstructs the pair.
 /// </summary>
-internal sealed class InMemoryPipePair : IAsyncDisposable
+sealed class InMemoryPipePair : IAsyncDisposable
 {
     public InMemoryPipePair()
     {

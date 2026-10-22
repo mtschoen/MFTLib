@@ -3,7 +3,7 @@ using System.Buffers.Binary;
 namespace MFTLib;
 
 /// <summary>Reads whole frames off one broker pipe; the host and the client share it.</summary>
-internal static class BrokerFrameStream
+static class BrokerFrameStream
 {
     // The limit on a frame's kind byte plus payload, enforced by the writer before a prefix is
     // emitted and by the reader before a buffer is allocated. The largest frames the library

@@ -100,7 +100,7 @@ public static class ElevatedEntryPoint
                 .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             return components.Any(component => component is "." or ".." ||
                        component.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ||
-                       restrictReservedNames && IsReservedDirectoryName(component))
+                       (restrictReservedNames && IsReservedDirectoryName(component)))
                 ? null
                 : Path.GetDirectoryName(path);
         }
@@ -120,10 +120,10 @@ public static class ElevatedEntryPoint
                name.Equals("NUL", StringComparison.OrdinalIgnoreCase) ||
                name.Equals("CONIN$", StringComparison.OrdinalIgnoreCase) ||
                name.Equals("CONOUT$", StringComparison.OrdinalIgnoreCase) ||
-               name.Length == 4 &&
+               (name.Length == 4 &&
                (name.StartsWith("COM", StringComparison.OrdinalIgnoreCase) ||
                 name.StartsWith("LPT", StringComparison.OrdinalIgnoreCase)) &&
-               (name[3] is >= '1' and <= '9' or '\u00b9' or '\u00b2' or '\u00b3');
+               (name[3] is >= '1' and <= '9' or '\u00b9' or '\u00b2' or '\u00b3'));
     }
 
     // Return the value following the first occurrence of name, or null if absent / last.

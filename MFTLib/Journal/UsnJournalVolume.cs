@@ -8,7 +8,7 @@ namespace MFTLib;
 /// <summary>
 ///     USN change journal read, cursor, and query operations over a borrowed volume handle.
 /// </summary>
-internal sealed partial class UsnJournalVolume
+sealed partial class UsnJournalVolume
 {
     // Native UsnJournalEntry layout (pack 1):
     //   recordNumber(8) + parentRecordNumber(8) + usn(8) + timestamp(8) +
@@ -108,7 +108,7 @@ internal sealed partial class UsnJournalVolume
 
         for (var i = 0; i < count; i++)
         {
-            var ptr = basePtr + i * NativeUsnEntrySize;
+            var ptr = basePtr + (i * NativeUsnEntrySize);
             var recordNumber = *(ulong*)ptr;
             var parentRecordNumber = *(ulong*)(ptr + 8);
             var usn = *(long*)(ptr + 16);

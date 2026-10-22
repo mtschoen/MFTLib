@@ -19,7 +19,7 @@ public class BrokerBlockContractTests : BrokerBlockTestBase
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
 
         Assert.IsEmpty(broker.Sections.All());
-        await Assert.ThrowsExactlyAsync<AssertFailedException>(() => broker.ReadRequestAsync(),
+        await Assert.ThrowsExactlyAsync<AssertFailedException>(broker.ReadRequestAsync,
             "no request may reach the control pipe before the client closed it");
     }
 
@@ -42,7 +42,7 @@ public class BrokerBlockContractTests : BrokerBlockTestBase
         result.Block.Block.Dispose();
 
         Assert.AreEqual(new DriveKey('C'), result.Drive);
-        Assert.AreSequenceEqual(new[] { new DriveKey('C') }, drives);
+        Assert.AreSequenceEqual([new DriveKey('C')], drives);
         Assert.StartsWith("section-C-", broker.Sections.Single().SectionName);
     }
 
@@ -62,7 +62,7 @@ public class BrokerBlockContractTests : BrokerBlockTestBase
     [TestMethod]
     public void ScanPhases_ContainOnlyParsingAndTransferring()
     {
-        Assert.AreSequenceEqual(new[] { BrokerScanPhase.Parsing, BrokerScanPhase.Transferring }, Enum.GetValues<BrokerScanPhase>());
+        Assert.AreSequenceEqual([BrokerScanPhase.Parsing, BrokerScanPhase.Transferring], Enum.GetValues<BrokerScanPhase>());
     }
 
     [TestMethod]

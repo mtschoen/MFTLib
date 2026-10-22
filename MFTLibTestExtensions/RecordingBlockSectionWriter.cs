@@ -7,7 +7,7 @@ namespace MFTLibTestExtensions;
 ///     Writes each scan through the production row writer into the section the client created, and
 ///     remembers the last section and retained file names.
 /// </summary>
-internal sealed class RecordingBlockSectionWriter(Func<string, BlockFile?>? resolveSection = null,
+sealed class RecordingBlockSectionWriter(Func<string, BlockFile?>? resolveSection = null,
     TimeProvider? timeProvider = null) : IBlockSectionWriter, IDisposable
 {
     public BlockFile Block { get; } = BlockFile.Create(new BlockFileCreateOptions

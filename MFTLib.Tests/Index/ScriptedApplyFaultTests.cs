@@ -99,7 +99,7 @@ public class ScriptedApplyFaultTests
 
         Assert.AreSame(failure, Assert.ThrowsExactly<IOException>(() => list.Count));
         Assert.AreSame(failure, Assert.ThrowsExactly<IOException>(() => list[0]));
-        Assert.AreSame(failure, Assert.ThrowsExactly<IOException>(() => list.GetEnumerator()));
+        Assert.AreSame(failure, Assert.ThrowsExactly<IOException>(list.GetEnumerator));
         Assert.AreSame(failure, Assert.ThrowsExactly<IOException>(
             () => ((System.Collections.IEnumerable)list).GetEnumerator()));
     }

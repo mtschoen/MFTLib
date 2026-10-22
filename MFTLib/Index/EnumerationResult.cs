@@ -1,7 +1,7 @@
 namespace MFTLib.Index;
 
 /// <summary>Walk totals: <paramref name="AccessDeniedSubtreeCount" /> supplies the drive's warning; <paramref name="CapacityExhausted" /> means the block was too small and needs a rescan.</summary>
-internal sealed record EnumerationResult(
+sealed record EnumerationResult(
     uint RowCount,
     int AccessDeniedSubtreeCount,
     bool CapacityExhausted);

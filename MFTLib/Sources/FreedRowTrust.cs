@@ -11,7 +11,7 @@ namespace MFTLib;
 ///     <see cref="BlockLayout.MaximumPathDepth" /> components, never revisits a record and rebuilds to a path of at
 ///     most <see cref="MaximumPathUnits" /> UTF-16 units. A freed row that fails the rule is detached.
 /// </summary>
-internal sealed class FreedRowTrust
+sealed class FreedRowTrust
 {
     // The longest path NTFS can name, in UTF-16 code units.
     internal const int MaximumPathUnits = 32767;

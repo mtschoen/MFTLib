@@ -5,7 +5,7 @@ namespace MFTLib;
 /// <summary>
 ///     Calculates slot and name pool capacities for packed index blocks from NTFS volume information.
 /// </summary>
-internal static class MftBlockCapacity
+static class MftBlockCapacity
 {
     /// <summary>
     ///     Default estimated bytes per name entry in the block name pool.

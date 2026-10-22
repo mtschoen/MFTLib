@@ -2,7 +2,7 @@ using System.IO.MemoryMappedFiles;
 
 namespace MFTLib.Index;
 
-internal sealed partial class BlockFile
+sealed partial class BlockFile
 {
     /// <summary>
     ///     Opens the backing file and builds the memory mapping and view together, so a failure at

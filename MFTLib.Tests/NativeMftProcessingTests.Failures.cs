@@ -20,7 +20,7 @@ public partial class NativeMftProcessingTests
             var data = BuildBootSector();
             WriteFileRecord(data, 4096);
 
-            var a1 = 4096 + 0x38;
+            const int a1 = 4096 + 0x38;
             var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
 
             var a2 = a1 + a1Len;
@@ -28,7 +28,7 @@ public partial class NativeMftProcessingTests
 
             WriteEndMarker(data, a2 + a2Len);
             WriteFileRecord(data, 5120, 0x0002);
-            var ext1 = 5120 + 0x38;
+            const int ext1 = 5120 + 0x38;
             WriteEndMarker(data, ext1); // Just end marker  -  no Data attribute on extension record
 
             File.WriteAllBytes(path, data);
@@ -72,7 +72,7 @@ public partial class NativeMftProcessingTests
             WriteFileRecord(data, 4096);
 
             // Just a Data attribute, no AttributeList â†’ straight to VolumeReadChunk
-            var a1 = 4096 + 0x38;
+            const int a1 = 4096 + 0x38;
             WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
             WriteEndMarker(data, a1 + 0x48);
 
@@ -117,7 +117,7 @@ public partial class NativeMftProcessingTests
             WriteFileRecord(data, 4096);
 
             // Attribute 1: Data (non-resident) â†’ clusters 1..256
-            var a1 = 4096 + 0x38;
+            const int a1 = 4096 + 0x38;
             var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
 
             // Attribute 2: Non-resident AttributeList (FormCode=1)
@@ -221,7 +221,7 @@ public partial class NativeMftProcessingTests
         for (var index = 0; index < segmentNumbers.Length; index++)
         {
             var segmentNumber = segmentNumbers[index];
-            var entry = offset + valueOffset + index * entrySize;
+            var entry = offset + valueOffset + (index * entrySize);
             data[entry] = 0x80;
             data[entry + 4] = entrySize;
             data[entry + 5] = 0;

@@ -57,7 +57,7 @@ public sealed class FreedRowsIndexTests : IDisposable
         var docs = index.Find(Path.Combine(TreeRoot, "docs"))!.Value;
         var root = index.Root('T');
 
-        Assert.AreSequenceEqual(new[] { "keep.txt" }, docs.Children().Select(child => child.Name).ToArray());
+        Assert.AreSequenceEqual(["keep.txt"], [.. docs.Children().Select(child => child.Name)]);
         CollectionAssert.DoesNotContain(root.Children().Select(child => child.Name).ToArray(), "orphan.txt");
         Assert.IsNull(index.Find(Path.Combine(TreeRoot, "docs", "orphan.txt")));
         Assert.IsNull(index.Find(Path.Combine(TreeRoot, "orphan.txt")));
@@ -71,13 +71,13 @@ public sealed class FreedRowsIndexTests : IDisposable
         var docs = index.Find(Path.Combine(TreeRoot, "docs"))!.Value;
         var root = index.Root('T');
 
-        string[] Names(FileEntry? under) => index
+        string[] Names(FileEntry? under) => [.. index
             .Search(new SearchQuery(".txt", Subtree: under, IncludeDeleted: true)).Select(entry => entry.Name)
-            .Order().ToArray();
+            .Order()];
 
-        Assert.AreSequenceEqual(new[] { "keep.txt", "trusted.txt" }, Names(docs));
-        Assert.AreSequenceEqual(new[] { "dup.txt", "dup.txt", "keep.txt", "trusted.txt" }, Names(root));
-        Assert.AreSequenceEqual(new[] { "dup.txt", "dup.txt", "keep.txt", "orphan.txt", "trusted.txt" }, Names(null));
+        Assert.AreSequenceEqual(["keep.txt", "trusted.txt"], Names(docs));
+        Assert.AreSequenceEqual(["dup.txt", "dup.txt", "keep.txt", "trusted.txt"], Names(root));
+        Assert.AreSequenceEqual(["dup.txt", "dup.txt", "keep.txt", "orphan.txt", "trusted.txt"], Names(null));
     }
 
     [TestMethod]
@@ -85,14 +85,14 @@ public sealed class FreedRowsIndexTests : IDisposable
     {
         await using var index = await OpenAsync(includeFreed: true);
 
-        string[] Search(bool includeDeleted) => index.Search(new SearchQuery(".txt", IncludeDeleted: includeDeleted))
-            .Select(entry => entry.Name).Order().ToArray();
-        string[] Enumerate(bool includeDeleted) => index
+        string[] Search(bool includeDeleted) => [.. index.Search(new SearchQuery(".txt", IncludeDeleted: includeDeleted))
+            .Select(entry => entry.Name).Order()];
+        string[] Enumerate(bool includeDeleted) => [.. index
             .Enumerate(new SearchQuery(".txt", IncludeDeleted: includeDeleted)).Select(entry => entry.Name)
-            .Order().ToArray();
+            .Order()];
 
-        Assert.AreSequenceEqual(new[] { "dup.txt", "keep.txt" }, Search(includeDeleted: false));
-        Assert.AreSequenceEqual(new[] { "dup.txt", "dup.txt", "keep.txt", "orphan.txt", "trusted.txt" }, Search(includeDeleted: true));
+        Assert.AreSequenceEqual(["dup.txt", "keep.txt"], Search(includeDeleted: false));
+        Assert.AreSequenceEqual(["dup.txt", "dup.txt", "keep.txt", "orphan.txt", "trusted.txt"], Search(includeDeleted: true));
         Assert.AreSequenceEqual(Search(false), Enumerate(false));
         Assert.AreSequenceEqual(Search(true), Enumerate(true));
     }
@@ -105,7 +105,7 @@ public sealed class FreedRowsIndexTests : IDisposable
         var largeDeleted = index.Search(new SearchQuery(null, SizeMinimum: 150, IncludeDeleted: true));
         var deletedDirectories = index.Search(new SearchQuery(null, IsDirectory: true, IncludeDeleted: true));
 
-        Assert.AreSequenceEqual(new[] { "orphan.txt" }, largeDeleted.Select(entry => entry.Name).ToArray());
+        Assert.AreSequenceEqual(["orphan.txt"], [.. largeDeleted.Select(entry => entry.Name)]);
         var goneDirectory = deletedDirectories.Single(entry => entry.IsDeleted);
         Assert.AreEqual("gone-dir", goneDirectory.Name);
         Assert.IsTrue(goneDirectory.IsDirectory);
@@ -140,7 +140,7 @@ public sealed class FreedRowsIndexTests : IDisposable
             }
         }
 
-        Assert.AreSequenceEqual(new[] { "orphan.txt", "trusted.txt", "dup.txt" }, deletedNames, SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(["orphan.txt", "trusted.txt", "dup.txt"], deletedNames, SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]

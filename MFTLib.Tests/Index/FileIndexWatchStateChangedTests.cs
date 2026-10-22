@@ -54,7 +54,7 @@ public partial class FileIndexWatchStateChangedTests
         for (var position = 0; position < events.Count; position++)
         {
             if (events[position] is not WatchFault fault || fault.Kind == WatchFaultKind.Subscriber ||
-                fault.Kind == WatchFaultKind.CatchUpLost && fault.IsRecovering)
+                (fault.Kind == WatchFaultKind.CatchUpLost && fault.IsRecovering))
             {
                 continue;
             }

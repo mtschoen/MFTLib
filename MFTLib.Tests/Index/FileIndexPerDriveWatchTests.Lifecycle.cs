@@ -217,7 +217,7 @@ public partial class FileIndexPerDriveWatchTests
         await rescan.WaitAsync(HangGuard);
         await start.WaitAsync(HangGuard);
 
-        Assert.AreSequenceEqual(new[] { new IndexWatchTarget('T', 13, 9000) }, harness.Source.Targets.ToArray());
+        Assert.AreSequenceEqual([new IndexWatchTarget('T', 13, 9000)], [.. harness.Source.Targets]);
         Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
         await harness.Index.StopWatchingAsync(['T'], Token);

@@ -4,7 +4,7 @@ using MFTLibTestExtensions;
 
 namespace MFTLib.Tests.TestSupport;
 
-internal static class EnumerationWalkTestSupport
+static class EnumerationWalkTestSupport
 {
     internal static Task<EnumerationResult> ProduceAsync(EnumerationProducer producer, BlockWriter writer,
         IProgress<IndexScanProgress>? progress, CancellationToken cancellationToken,
@@ -135,7 +135,7 @@ internal static class EnumerationWalkTestSupport
     }
 }
 
-internal sealed class EnumerationReadObservation
+sealed class EnumerationReadObservation
 {
     int _active;
     int _peak;

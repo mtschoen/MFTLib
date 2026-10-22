@@ -1,5 +1,5 @@
-using Microsoft.Extensions.Time.Testing;
 using MFTLibTestExtensions;
+using Microsoft.Extensions.Time.Testing;
 
 namespace MFTLib.Tests.TestSupport;
 
@@ -8,7 +8,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     the rest waits on <see cref="Gate" /> or, with <c>failAfterPrefix</c>, the write throws
 ///     <see cref="IOException" />. Writes before and after the chosen one pass through.
 /// </summary>
-internal sealed class SplitFrameWrite(int splitWriteNumber, bool failAfterPrefix = false)
+sealed class SplitFrameWrite(int splitWriteNumber, bool failAfterPrefix = false)
 {
     int _writes;
 
@@ -48,7 +48,7 @@ internal sealed class SplitFrameWrite(int splitWriteNumber, bool failAfterPrefix
 ///     Streams it wraps start every write and never finish it, as a pipe whose reader stopped
 ///     reading does; each write waits until its token is cancelled. Counts the writes started.
 /// </summary>
-internal sealed class HeldWrites
+sealed class HeldWrites
 {
     int _attempts;
 
@@ -67,7 +67,7 @@ internal sealed class HeldWrites
 }
 
 /// <summary>Streams it wraps throw <see cref="IOException" /> on every write; their disposal is recorded.</summary>
-internal sealed class FailingWrites
+sealed class FailingWrites
 {
     readonly TaskCompletionSource _disposed = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -90,7 +90,7 @@ internal sealed class FailingWrites
 }
 
 /// <summary>Passes everything through and records disposal.</summary>
-internal sealed class DisposalRecordingStream(Stream inner) : DelegatingStream(inner)
+sealed class DisposalRecordingStream(Stream inner) : DelegatingStream(inner)
 {
     readonly TaskCompletionSource _disposed = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -104,7 +104,7 @@ internal sealed class DisposalRecordingStream(Stream inner) : DelegatingStream(i
 }
 
 /// <summary>Closes its inner stream, then throws from <see cref="DisposeAsync" />, as a close that reports a failure does.</summary>
-internal sealed class ThrowOnAsyncDisposeStream(Stream inner) : DelegatingStream(inner)
+sealed class ThrowOnAsyncDisposeStream(Stream inner) : DelegatingStream(inner)
 {
     public override async ValueTask DisposeAsync()
     {
@@ -114,7 +114,7 @@ internal sealed class ThrowOnAsyncDisposeStream(Stream inner) : DelegatingStream
 }
 
 /// <summary>Closes its inner stream, then throws from <see cref="Dispose(bool)" />, as a synchronous close that reports a failure does.</summary>
-internal sealed class ThrowOnDisposeStream(Stream inner) : DelegatingStream(inner)
+sealed class ThrowOnDisposeStream(Stream inner) : DelegatingStream(inner)
 {
     protected override void Dispose(bool disposing)
     {
@@ -124,7 +124,7 @@ internal sealed class ThrowOnDisposeStream(Stream inner) : DelegatingStream(inne
 }
 
 /// <summary>A clock whose timers fail when disposed, as a stall timer that cannot drain does.</summary>
-internal sealed class ThrowOnTimerDisposeClock : FakeTimeProvider
+sealed class ThrowOnTimerDisposeClock : FakeTimeProvider
 {
     public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period) =>
         new ThrowOnDisposeTimer(base.CreateTimer(callback, state, dueTime, period));
@@ -147,7 +147,7 @@ internal sealed class ThrowOnTimerDisposeClock : FakeTimeProvider
 ///     Corrupts one chosen write by replacing its frame kind byte with one no frame has, so the host
 ///     reading it ends its session with <see cref="InvalidDataException" />: a host session fault.
 /// </summary>
-internal sealed class CorruptFrameWrite(int corruptWriteNumber)
+sealed class CorruptFrameWrite(int corruptWriteNumber)
 {
     const byte UnknownKind = 200;
     int _writes;
@@ -178,7 +178,7 @@ internal sealed class CorruptFrameWrite(int corruptWriteNumber)
 ///     frame it wrote has been consumed, not merely sent, and whether the reader is now blocked in a
 ///     read of the wrapped stream.
 /// </summary>
-internal sealed class ReadCounter
+sealed class ReadCounter
 {
     readonly Lock _gate = new();
     readonly List<(long Bytes, TaskCompletionSource Reached)> _readWaiters = [];

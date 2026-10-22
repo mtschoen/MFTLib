@@ -102,6 +102,6 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
 
         Assert.Contains("positive sizes are required", zero.Message);
         Assert.Contains("positive sizes are required", negative.Message);
-        Assert.AreSequenceEqual(new[] { (0L, 0x01000000L), (0x08000000L, -1L) }, received);
+        Assert.AreSequenceEqual([(0L, 0x01000000L), (0x08000000L, -1L)], received);
     }
 }

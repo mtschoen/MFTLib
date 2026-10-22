@@ -29,7 +29,7 @@ public class JournalBrokerHostBlockScanTests
                 Assert.IsTrue(capturedBlockWriter.Block.Header.IsComplete);
                 Assert.AreEqual(BrokerLiveness.CatchUpBufferReadsPerCall, maximumBufferReads);
                 return cursor == ArmedCursor
-                    ? (Array.Empty<UsnJournalEntry>(), new UsnJournalCursor(cursor.JournalIdentifier, 12500))
+                    ? ([], new UsnJournalCursor(cursor.JournalIdentifier, 12500))
                     : (Array.Empty<UsnJournalEntry>(), cursor);
             },
             RecordBatches = (drive, _, _, _, _, _) =>
@@ -77,7 +77,7 @@ public class JournalBrokerHostBlockScanTests
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
         Assert.AreEqual("section-C", blockWriter.LastSectionName);
         Assert.IsNotNull(blockWriter.LastRetainedFileNames);
-        Assert.AreSequenceEqual(new[] { ".git" }, blockWriter.LastRetainedFileNames.ToArray());
+        Assert.AreSequenceEqual([".git"], [.. blockWriter.LastRetainedFileNames]);
         Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, blockWriter.Block.Rows[5].Flags);
         Assert.AreEqual(RowFlags.None, blockWriter.Block.Rows[20].Flags);
     }
@@ -144,7 +144,7 @@ frames.Single(frame => frame.Kind == BrokerFrameKind.Error).Message!);
         Assert.AreEqual(6u, blockWriter.Block.Header.RowCount);
         Assert.IsFalse(blockWriter.Block.Header.IsComplete);
         Assert.AreEqual(0UL, blockWriter.Block.Header.UsnJournalIdentifier);
-        Assert.AreEqual("record batch failed", frames.Single(frame => frame.Kind == BrokerFrameKind.Error).Message!);
+        Assert.AreEqual("record batch failed", frames.Single(frame => frame.Kind == BrokerFrameKind.Error).Message);
         Assert.DoesNotContain(frame => frame.Kind == BrokerFrameKind.ScanReady, frames);
     }
 

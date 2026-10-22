@@ -1,6 +1,6 @@
 namespace MFTLib.Index;
 
-internal sealed partial class BlockFile
+sealed partial class BlockFile
 {
     internal BlockHooks Hooks { get; }
 
@@ -9,7 +9,7 @@ internal sealed partial class BlockFile
     {
         internal Action<bool>? _disposeStarted;
 
-        internal long _flushRangeBytes = BlockFile.FlushRangeBytes;
+        internal long _flushRangeBytes = FlushRangeBytes;
         internal Func<long, long, int> _flushViewRange = block.FlushViewRangeNatively;
         internal Func<long, long, int, int> _synchronizeViewRange = block.SynchronizeViewRangeNatively;
         internal Action<int> _pauseMilliseconds = Thread.Sleep;

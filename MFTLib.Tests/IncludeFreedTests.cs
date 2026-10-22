@@ -51,7 +51,7 @@ public class IncludeFreedTests
             (21, "deleted-under-freed-file.txt", 13, 22),
             (22, "deleted-under-live-file.txt", 6, 23)
         };
-        Assert.AreSequenceEqual(expected.Select(row => row.Number).ToArray(), freed.Select(record => record.RecordNumber).ToArray());
+        Assert.AreSequenceEqual([.. expected.Select(row => row.Number)], [.. freed.Select(record => record.RecordNumber)]);
         foreach (var row in expected)
         {
             var record = freed.Single(candidate => candidate.RecordNumber == row.Number);
@@ -62,10 +62,10 @@ public class IncludeFreedTests
             Assert.AreEqual(row.Number == 12 ? 0L : 37L, record.Size);
             Assert.IsTrue(record.SizeKnown);
             Assert.AreEqual(DateTime.FromFileTimeUtc(MftFixtureTests.ModifiedBaseFileTime +
-                (long)row.Number * MftFixtureTests.ModifiedStepFileTime), record.ModifiedUtc);
+                ((long)row.Number * MftFixtureTests.ModifiedStepFileTime)), record.ModifiedUtc);
         }
 
-        AssertRowsEqual(ordinary, records.Where(record => record.InUse).ToArray());
+        AssertRowsEqual(ordinary, [.. records.Where(record => record.InUse)]);
         Assert.DoesNotContain(record => record.RecordNumber is 18 or 19 or 20 or 23, records);
     }
 
@@ -78,7 +78,7 @@ public class IncludeFreedTests
         var ordinary = Parse(fixture, false, out _);
         var includingFreed = Parse(fixture, true, out _);
 
-        AssertRowsEqual(ordinary, includingFreed.Where(record => record.InUse).ToArray());
+        AssertRowsEqual(ordinary, [.. includingFreed.Where(record => record.InUse)]);
         Assert.AreEqual(12UL, includingFreed.Single(record => record.RecordNumber == 9).ParentRecordNumber);
     }
 

@@ -139,7 +139,7 @@ public class NativeSeamIsolationTests
             }
         }
 
-        return violations.ToArray();
+        return [.. violations];
     }
 
     static IEnumerable<MethodBase> MethodsIn(Type type)
@@ -187,7 +187,7 @@ public class NativeSeamIsolationTests
         }
 
         if (IsProcessGlobalHooksType(declaringType) ||
-            member is FieldInfo hooksField && IsProcessGlobalHooksType(hooksField.FieldType))
+            (member is FieldInfo hooksField && IsProcessGlobalHooksType(hooksField.FieldType)))
         {
             return true;
         }
@@ -195,9 +195,9 @@ public class NativeSeamIsolationTests
         if (IsRepositoryAssembly(declaringType.Assembly))
         {
             return member is FieldInfo { IsStatic: true, IsInitOnly: false, IsLiteral: false } ||
-                   member is MethodInfo { IsStatic: true, IsSpecialName: true } setter &&
-                   setter.Name.StartsWith("set_", StringComparison.Ordinal) ||
-                   member is MethodInfo { IsStatic: true } method && ProductionMutators.Contains(method.Name);
+                   (member is MethodInfo { IsStatic: true, IsSpecialName: true } setter &&
+                   setter.Name.StartsWith("set_", StringComparison.Ordinal)) ||
+                   (member is MethodInfo { IsStatic: true } method && ProductionMutators.Contains(method.Name));
         }
 
         return member is MethodInfo { IsStatic: true } call &&
@@ -261,7 +261,7 @@ public class NativeSeamIsolationTests
                     OperandType.ShortInlineVar => 1,
                 OperandType.InlineVar => 2,
                 OperandType.InlineI8 or OperandType.InlineR => 8,
-                OperandType.InlineSwitch => 4 + 4 * BitConverter.ToInt32(bytes, offset),
+                OperandType.InlineSwitch => 4 + (4 * BitConverter.ToInt32(bytes, offset)),
                 OperandType.InlineBrTarget or OperandType.InlineField or OperandType.InlineI or
                     OperandType.InlineMethod or OperandType.InlineSig or OperandType.InlineString or
                     OperandType.InlineTok or OperandType.InlineType or OperandType.ShortInlineR => 4,

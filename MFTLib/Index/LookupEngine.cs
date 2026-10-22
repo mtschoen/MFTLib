@@ -4,7 +4,7 @@ namespace MFTLib.Index;
 ///     Point lookups. <see cref="Find" /> resolves a native path by matching the longest indexed
 ///     root, then walks one name per level.
 /// </summary>
-internal static class LookupEngine
+static class LookupEngine
 {
     internal static FileEntry Root(IReadOnlyList<DriveBlock> snapshot, DriveKey drive,
         CancellationToken cancellationToken = default)

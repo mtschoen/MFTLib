@@ -1,7 +1,7 @@
 namespace MFTLib;
 
 /// <summary>What one pipe's operation is doing, as its loop and its source last published it.</summary>
-internal enum ChannelOperationKind
+enum ChannelOperationKind
 {
     /// <summary>Nothing is in flight: on the control pipe, the loop awaits a client request. Heartbeats on the control pipe.</summary>
     Idle,
@@ -27,4 +27,4 @@ internal enum ChannelOperationKind
 /// <param name="Kind">What the operation is doing.</param>
 /// <param name="Step">The step a <see cref="ChannelOperationKind.Processing" /> operation works on; empty otherwise.</param>
 /// <param name="Since">When the progress clock last restarted.</param>
-internal readonly record struct ChannelOperationState(ChannelOperationKind Kind, string Step, DateTimeOffset Since);
+readonly record struct ChannelOperationState(ChannelOperationKind Kind, string Step, DateTimeOffset Since);

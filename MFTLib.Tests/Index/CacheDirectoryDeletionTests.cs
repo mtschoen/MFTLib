@@ -46,7 +46,7 @@ public class CacheDirectoryDeletionTests
         var results = CacheDirectory.DeleteCached(_directory,
             new HashSet<char> { 'T' }.Select(letter => new DriveKey(letter)));
 
-        Assert.AreSequenceEqual(selected, results.Select(result => result.File.Path).ToArray(), SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(selected, [.. results.Select(result => result.File.Path)], SequenceOrder.InAnyOrder);
         foreach (var result in results)
         {
             Assert.AreEqual(CachedBlockDeletionOutcome.Deleted, result.Outcome);
@@ -127,7 +127,7 @@ public class CacheDirectoryDeletionTests
 
         var results = CacheDirectory.DeleteCached(_directory);
 
-        Assert.AreSequenceEqual(paths, results.Select(result => result.File.Path).ToArray(), SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(paths, [.. results.Select(result => result.File.Path)], SequenceOrder.InAnyOrder);
         foreach (var result in results)
         {
             Assert.AreEqual(CachedBlockDeletionOutcome.Deleted, result.Outcome);

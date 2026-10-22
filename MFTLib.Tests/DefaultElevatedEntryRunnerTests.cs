@@ -35,8 +35,8 @@ public class DefaultElevatedEntryRunnerTests
         first.RunBroker(null);
         second.RunBroker(null);
         first.RunBroker(null);
-        Assert.AreSequenceEqual(new[] { 1, 1 }, firstExits);
-        Assert.AreSequenceEqual(new[] { 1 }, secondExits);
+        Assert.AreSequenceEqual([1, 1], firstExits);
+        Assert.AreSequenceEqual([1], secondExits);
     }
 
     [TestMethod]
@@ -353,7 +353,7 @@ public class DefaultElevatedEntryRunnerTests
             var delayedRunner = new DefaultElevatedEntryRunner(TimeProvider.System, exits.Add);
             await Cleanup();
             delayedRunner.RunBroker(null);
-            Assert.AreSequenceEqual(new[] { 1 }, exits);
+            Assert.AreSequenceEqual([1], exits);
         }
         finally
         {

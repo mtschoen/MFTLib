@@ -14,5 +14,5 @@ namespace MFTLib;
                     "thrown only by the host's frame write, caught only by the host's channel and " +
                     "request handlers, and never crosses an assembly or serialization boundary. The " +
                     "parameterless and message overloads the standard set would add have no caller.")]
-internal sealed class ClientDisconnectedException(IOException innerException)
+sealed class ClientDisconnectedException(IOException innerException)
     : Exception("The client closed its end of the broker pipe.", innerException);

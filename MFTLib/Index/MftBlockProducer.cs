@@ -6,7 +6,7 @@ namespace MFTLib.Index;
 ///     elevated broker that supplies it, which is the namespace boundary the library keeps.
 ///     A caller closes over its own broker launcher inside the delegate.
 /// </summary>
-internal delegate Task<MftBlockProduceResult> MftBlockProducer(
+delegate Task<MftBlockProduceResult> MftBlockProducer(
     MftBlockProduceRequest request, CancellationToken cancellationToken);
 
 /// <summary>
@@ -15,7 +15,7 @@ internal delegate Task<MftBlockProduceResult> MftBlockProducer(
 ///     in-use canonical slot falls back to are already resolved by the time this request is
 ///     built, and <see cref="DeleteOnClose" /> says which one it was.
 /// </summary>
-internal sealed record MftBlockProduceRequest
+sealed record MftBlockProduceRequest
 {
     /// <summary>The drive to scan: its MFT is read, and the block that results is filed under this letter in the index.</summary>
     public required DriveKey Drive { get; init; }
@@ -73,7 +73,7 @@ internal sealed record MftBlockProduceRequest
 ///     One finished block. <paramref name="SkippedRecordCount" /> counts records the producer could
 ///     not place, reported as <see cref="DriveBlockStatus.SkippedRecordCount" />.
 /// </summary>
-internal sealed record MftBlockProduceResult(BlockFile Block, int SkippedRecordCount)
+sealed record MftBlockProduceResult(BlockFile Block, int SkippedRecordCount)
 {
     /// <summary>
     ///     Set only when the journal proved that catch-up after the scan lost the armed cursor: the

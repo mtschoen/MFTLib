@@ -26,5 +26,5 @@ public enum IndexScanPhase
     ///     or MFT-backed, is covered. A rescan, and a retry after a lost catch-up, are each a
     ///     scan of their own and each report one, so track finished drives as a set.
     /// </summary>
-    Finished,
+    Finished
 }

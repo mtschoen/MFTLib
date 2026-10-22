@@ -119,7 +119,7 @@ public class NativeCleanupRegressionTests
                 Assert.AreEqual(copiedLength, (ushort)Marshal.ReadInt16(result.Entries, 40));
                 Assert.AreEqual(new string('x', copiedLength),
                     Marshal.PtrToStringUni(result.Entries + 42, copiedLength));
-                Assert.AreEqual((short)0, Marshal.ReadInt16(result.Entries, 42 + copiedLength * sizeof(char)));
+                Assert.AreEqual((short)0, Marshal.ReadInt16(result.Entries, 42 + (copiedLength * sizeof(char))));
             }
             finally
             {

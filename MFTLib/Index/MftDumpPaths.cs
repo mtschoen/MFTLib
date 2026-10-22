@@ -7,7 +7,7 @@ namespace MFTLib.Index;
 ///     host's separator rules, which keeps a rendered path and a lookup of it agreeing on every
 ///     operating system.
 /// </summary>
-internal static class MftDumpPaths
+static class MftDumpPaths
 {
     const char Separator = '/';
 

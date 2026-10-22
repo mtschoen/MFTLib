@@ -240,7 +240,7 @@ public class LookupEngineRootMatchingTests
                 await using var index = await FileIndex.OpenAsync(new FileIndexOptions
                 {
                     Drives = [new IndexedDrive('E', indexedRoot, TestVolumeSerial.GetNext(), ProducerKind.Enumeration)],
-                    CacheDirectory = cacheDirectory,
+                    CacheDirectory = cacheDirectory
                 }, CancellationToken.None);
 
                 var entry = index.Find(Path.Combine(root, "file.txt"));

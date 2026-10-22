@@ -137,13 +137,13 @@ public readonly partial record struct FileEntry
     /// </summary>
     /// <param name="other">The handle to compare with.</param>
     /// <returns>true when both name the same file incarnation in the same drive block.</returns>
-    public readonly bool Equals(FileEntry other) =>
+    public bool Equals(FileEntry other) =>
         ReferenceEquals(NamedDriveBlock, other.NamedDriveBlock) && RowIndex == other.RowIndex &&
         _sequenceNumber == other._sequenceNumber;
 
     /// <summary>Hashes the same drive block, row index and sequence number <see cref="Equals(FileEntry)" /> compares. Available after the block is released.</summary>
     /// <returns>The hash code.</returns>
-    public override readonly int GetHashCode() =>
+    public override int GetHashCode() =>
         HashCode.Combine(NamedDriveBlock is { } driveBlock ? RuntimeHelpers.GetHashCode(driveBlock) : 0, RowIndex,
             _sequenceNumber);
 

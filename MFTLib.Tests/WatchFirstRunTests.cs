@@ -52,7 +52,7 @@ public sealed class WatchFirstRunTests : IDisposable
         Assert.IsTrue(result);
         Assert.Contains(@"Skipping drive F:\ (Fixed, ready, format exFAT: not NTFS (exFAT))", lines);
         Assert.Contains("No drive was named, so this run covers every ready NTFS fixed drive: C, G, H. Name drives to choose others.", lines, string.Join(Environment.NewLine, lines));
-        Assert.AreSequenceEqual(new[] { "C", "G", "H" }, parsed.Drives.ToArray());
+        Assert.AreSequenceEqual(["C", "G", "H"], [.. parsed.Drives]);
     }
 
     [TestMethod]
@@ -66,7 +66,7 @@ public sealed class WatchFirstRunTests : IDisposable
 
         Assert.IsTrue(result);
         Assert.DoesNotContain(line => line.StartsWith("No drive was named", StringComparison.Ordinal), lines);
-        Assert.AreSequenceEqual(new[] { "Z" }, parsed.Drives.ToArray());
+        Assert.AreSequenceEqual(["Z"], [.. parsed.Drives]);
     }
 
     [TestMethod]
@@ -123,7 +123,7 @@ public sealed class WatchFirstRunTests : IDisposable
         Assert.AreEqual(0, result);
         var received = probe.Received.Single();
         Assert.AreEqual(WatchVerb.Watch, received.Verb);
-        Assert.AreSequenceEqual(new[] { "C", "G", "H" }, received.Drives.ToArray());
+        Assert.AreSequenceEqual(["C", "G", "H"], [.. received.Drives]);
         Assert.IsFalse(string.IsNullOrEmpty(received.CacheDirectory), "A cached verb reaches execution with its cache directory resolved.");
         Assert.Contains("No drive was named, so this run covers every ready NTFS fixed drive: C, G, H. Name drives to choose others.", lines, string.Join(Environment.NewLine, lines));
     }
@@ -133,10 +133,10 @@ public sealed class WatchFirstRunTests : IDisposable
     {
         var probe = new ExecutionProbe();
 
-        var result = HostOver(new List<string>()).Run(["scan", "Z"], MachineThatMustNotBeListed(), probe.Execute);
+        var result = HostOver([]).Run(["scan", "Z"], MachineThatMustNotBeListed(), probe.Execute);
 
         Assert.AreEqual(0, result);
-        Assert.AreSequenceEqual(new[] { "Z" }, probe.Received.Single().Drives.ToArray());
+        Assert.AreSequenceEqual(["Z"], [.. probe.Received.Single().Drives]);
     }
 
     [TestMethod]
@@ -161,12 +161,12 @@ public sealed class WatchFirstRunTests : IDisposable
     public void Run_CacheAndElevationStatusWithNoDrive_ReachExecutionWithoutListingTheMachine()
     {
         var probe = new ExecutionProbe();
-        var host = HostOver(new List<string>());
+        var host = HostOver([]);
 
         Assert.AreEqual(0, host.Run(["elevation-status"], MachineThatMustNotBeListed(), probe.Execute));
         Assert.AreEqual(0, host.Run(["cache", "--cache-directory", Path.Combine(TemporaryDirectoryPath, "none")], MachineThatMustNotBeListed(), probe.Execute));
 
-        Assert.AreSequenceEqual(new[] { WatchVerb.ElevationStatus, WatchVerb.Cache }, probe.Received.Select(request => request.Verb).ToArray());
+        Assert.AreSequenceEqual([WatchVerb.ElevationStatus, WatchVerb.Cache], [.. probe.Received.Select(request => request.Verb)]);
     }
 
     [TestMethod]
@@ -176,7 +176,7 @@ public sealed class WatchFirstRunTests : IDisposable
         var probe = new ExecutionProbe();
         var host = new SampleHost(TextWriter.Null, TextReader.Null, new FakeTimeProvider())
         {
-            _isElevated = () => false,
+            _isElevated = () => false
         };
 
         var result = host.Run(["scan", "C"], MachineThatMustNotBeListed(), probe.Execute);
@@ -356,7 +356,7 @@ public sealed class WatchFirstRunTests : IDisposable
     {
         var host = new SampleHost(output, input ?? TextReader.Null, timeProvider ?? new FakeTimeProvider(), interactive)
         {
-            _isElevated = () => false,
+            _isElevated = () => false
         };
         WatchNoticeSupport.AcknowledgeDeliberately(host);
         return host;

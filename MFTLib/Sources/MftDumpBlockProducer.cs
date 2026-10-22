@@ -6,7 +6,7 @@ namespace MFTLib;
 ///     Reads the records of one opened dump in materialized batches. The producer's own source
 ///     parses the input; a test substitutes batches no file can hold.
 /// </summary>
-internal delegate IEnumerable<IReadOnlyList<MftRecord>> MftDumpRecordSource(MftDumpInput input,
+delegate IEnumerable<IReadOnlyList<MftRecord>> MftDumpRecordSource(MftDumpInput input,
     IProgress<MftScanProgress>? progress, CancellationToken cancellationToken);
 
 /// <summary>
@@ -18,7 +18,7 @@ internal delegate IEnumerable<IReadOnlyList<MftRecord>> MftDumpRecordSource(MftD
 ///     Dump and local-volume scans share the process's parse-thread allocator; cancellation,
 ///     failure and completion release each request's registration.
 /// </summary>
-internal sealed class MftDumpBlockProducer
+sealed class MftDumpBlockProducer
 {
     const int RecordBatchSize = 4096;
 

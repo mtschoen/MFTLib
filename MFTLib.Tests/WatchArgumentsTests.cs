@@ -1,10 +1,11 @@
+using System.Text.RegularExpressions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SampleProgram.Watch;
 
 namespace MFTLib.Tests;
 
 [TestClass]
-public class WatchArgumentsTests
+public partial class WatchArgumentsTests
 {
     [TestMethod]
     public void TryParse_NoArguments_WatchesAndLeavesTheDrivesToTheHost()
@@ -24,7 +25,7 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse(["C", "D:"], out var parsed, out _));
 
         Assert.AreEqual(WatchVerb.Watch, parsed!.Verb);
-        Assert.AreSequenceEqual(new[] { "C", "D" }, parsed.Drives.ToArray());
+        Assert.AreSequenceEqual(["C", "D"], [.. parsed.Drives]);
     }
 
     [TestMethod]
@@ -35,7 +36,7 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse([name, "C", "E"], out var parsed, out _));
 
         Assert.AreEqual(WatchVerb.Scan, parsed!.Verb);
-        Assert.AreSequenceEqual(new[] { "C", "E" }, parsed.Drives.ToArray());
+        Assert.AreSequenceEqual(["C", "E"], [.. parsed.Drives]);
     }
 
     [TestMethod]
@@ -179,7 +180,7 @@ public class WatchArgumentsTests
     {
         Assert.IsTrue(WatchArguments.TryParse(["cache", "c:", "d"], out var parsed, out _));
 
-        Assert.AreSequenceEqual(new[] { "C", "D" }, parsed!.Drives.ToArray());
+        Assert.AreSequenceEqual(["C", "D"], [.. parsed!.Drives]);
     }
 
     [TestMethod]
@@ -234,7 +235,7 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse([verb, "C", "--keep-name", "a.txt", "--cache-directory", "folder"], out var parsed, out var error), error);
 
         Assert.AreEqual("folder", parsed!.CacheDirectory);
-        Assert.AreSequenceEqual(new[] { "a.txt" }, parsed.RetainedFileNames!.ToArray());
+        Assert.AreSequenceEqual(["a.txt"], [.. parsed.RetainedFileNames!]);
     }
 
     [TestMethod]
@@ -256,7 +257,7 @@ public class WatchArgumentsTests
     {
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", "a.txt"], out var parsed, out _));
 
-        StringAssert.Matches(parsed!.PolicyDirectoryName, new System.Text.RegularExpressions.Regex("^policy-[0-9a-f]{64}$"));
+        StringAssert.Matches(parsed!.PolicyDirectoryName, MyRegex());
     }
 
     [TestMethod]
@@ -288,7 +289,7 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C"], out var plain, out _));
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--directories-only"], out var directories, out _));
 
-        Assert.AreSequenceEqual(new[] { "desktop.ini", ".gitignore" }, parsed!.RetainedFileNames!.ToArray());
+        Assert.AreSequenceEqual(["desktop.ini", ".gitignore"], [.. parsed!.RetainedFileNames!]);
         Assert.IsEmpty(directories!.RetainedFileNames!);
         Assert.AreNotEqual(plain!.PolicyDirectoryName, directories.PolicyDirectoryName);
         Assert.AreNotEqual(parsed.PolicyDirectoryName, directories.PolicyDirectoryName);
@@ -296,4 +297,7 @@ public class WatchArgumentsTests
         Assert.IsNull(plain.RetainedFileNames);
         Assert.AreNotEqual(plain.PolicyDirectoryName, parsed.PolicyDirectoryName, "A different retention policy is a different cache directory.");
     }
+
+    [GeneratedRegex("^policy-[0-9a-f]{64}$")]
+    private static partial Regex MyRegex();
 }

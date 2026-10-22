@@ -42,7 +42,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
                 new IndexedDrive('T', TreeRoot, _volumeSerial, ProducerKind.Enumeration),
                 new IndexedDrive('U', secondTreeRoot, secondVolumeSerial, ProducerKind.Enumeration)
             ],
-            CacheDirectory = CacheDirectoryPath,
+            CacheDirectory = CacheDirectoryPath
         };
     }
 
@@ -324,7 +324,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
         // above, so this asserts membership rather than position.
         var leaves = thrown.Flatten().InnerExceptions.Select(failure => failure.Message).ToArray();
         Assert.AreSequenceEqual(
-            new[] { "a cancellation callback of someone else's", "the release itself" }, leaves, SequenceOrder.InAnyOrder);
+            ["a cancellation callback of someone else's", "the release itself"], leaves, SequenceOrder.InAnyOrder);
     }
 
     /// <summary>

@@ -7,7 +7,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     and raw-handle parser coverage. Failure-injection and fixture exports are test-only
 ///     and unsupported; raw parser bindings exercise production exports.
 /// </summary>
-internal static class NativeTestHooks
+static class NativeTestHooks
 {
     const string LibraryName = "MFTLibNative";
 

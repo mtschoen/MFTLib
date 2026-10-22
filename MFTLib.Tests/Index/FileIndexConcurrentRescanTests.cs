@@ -193,7 +193,7 @@ public sealed class FileIndexConcurrentRescanTests : IDisposable
         bool? otherGatesFree = null;
         index.Hooks.ApplyJournalEntriesInsideWriteGate = driveLetter =>
         {
-            ownGateFree = index.AreDriveGatesFreeForTest((driveLetter).Letter);
+            ownGateFree = index.AreDriveGatesFreeForTest(driveLetter.Letter);
             otherGatesFree = index.AreDriveGatesFreeForTest('U');
         };
 

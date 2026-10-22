@@ -131,7 +131,7 @@ public sealed class RowScanningContractTests
     static void RecordVisit(FileIndex index, bool throwFromBody, BodyRecord record)
     {
         record.Visits++;
-        record.Borrows = index.CurrentSnapshot.Select(block => block.ReleaseState.Hooks.OutstandingBorrowCount).ToArray();
+        record.Borrows = [.. index.CurrentSnapshot.Select(block => block.ReleaseState.Hooks.OutstandingBorrowCount)];
         if (throwFromBody)
         {
             throw new InvalidOperationException(BodyFailureMessage);
@@ -210,7 +210,7 @@ public sealed class RowScanningContractTests
         foreach (var query in queries)
         {
             var expected = index.Search(query).Select(entry => entry.RecordKey).ToArray();
-            Assert.AreSequenceEqual(expected, index.Enumerate(query).Select(entry => entry.RecordKey).ToArray(), query.ToString());
+            Assert.AreSequenceEqual(expected, [.. index.Enumerate(query).Select(entry => entry.RecordKey)], query.ToString());
             var rows = new List<IndexRecordKey>();
             foreach (var row in index.EnumerateRows(query))
             {
@@ -333,7 +333,7 @@ public sealed class RowScanningContractTests
         Assert.AreEqual(throwFromBody, failed);
         Assert.AreEqual(1, record.Visits);
         Assert.HasCount(index.CurrentSnapshot.Count, record.Borrows);
-        Assert.AreSequenceEqual(Enumerable.Repeat(1, record.Borrows.Length).ToArray(), record.Borrows);
+        Assert.AreSequenceEqual([.. Enumerable.Repeat(1, record.Borrows.Length)], record.Borrows);
         Assert.IsTrue(index.CurrentSnapshot.All(block => block.ReleaseState.Hooks.OutstandingBorrowCount == 0));
     }
 

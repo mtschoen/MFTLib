@@ -43,7 +43,7 @@ public class DirectLargestFilesTests
         {
             Drives = [new IndexedDrive(builder.Drive, builder.DirectoryPath, builder.VolumeSerial, ProducerKind.Enumeration)],
             CacheDirectory = builder.DirectoryPath,
-            CacheMode = CacheMode.ExistingOnly,
+            CacheMode = CacheMode.ExistingOnly
         }, CancellationToken.None);
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State, index.Drives.Single().Failure?.Message);
         return index;
@@ -61,7 +61,7 @@ public class DirectLargestFilesTests
     {
         var results = LargestFiles.Find(_index, 3, under: null, CancellationToken.None);
         Assert.AreSequenceEqual(
-            new[] { "huge.bin", "large.bin", "medium.bin" }, results.Select(entry => entry.Name).ToArray());
+            ["huge.bin", "large.bin", "medium.bin"], [.. results.Select(entry => entry.Name)]);
     }
 
     [TestMethod]
@@ -85,7 +85,7 @@ public class DirectLargestFilesTests
         await using var index = await OpenIndexAsync(builder);
         var results = LargestFiles.Find(index, 10, under: null, CancellationToken.None);
         Assert.AreSequenceEqual(
-            new[] { "known-big.txt", "known-small.txt" }, results.Select(entry => entry.Name).ToArray());
+            ["known-big.txt", "known-small.txt"], [.. results.Select(entry => entry.Name)]);
     }
 
     [TestMethod]
@@ -94,7 +94,7 @@ public class DirectLargestFilesTests
         var documents = FileEntry.Create(_index.CurrentSnapshot[0], _documentsRow);
         var results = LargestFiles.Find(_index, 5, documents, CancellationToken.None);
         Assert.AreSequenceEqual(
-            new[] { "huge.bin", "large.bin", "readme.md" }, results.Select(entry => entry.Name).ToArray());
+            ["huge.bin", "large.bin", "readme.md"], [.. results.Select(entry => entry.Name)]);
     }
 
     [TestMethod]
@@ -102,7 +102,7 @@ public class DirectLargestFilesTests
     {
         var file = _index.Search(new SearchQuery("huge.bin", NameMatchMode.Exact)).Single();
         var results = LargestFiles.Find(_index, 5, file, CancellationToken.None);
-        Assert.AreSequenceEqual(new[] { file.RecordKey }, results.Select(entry => entry.RecordKey).ToArray());
+        Assert.AreSequenceEqual([file.RecordKey], [.. results.Select(entry => entry.RecordKey)]);
     }
 
     [TestMethod]
@@ -116,7 +116,7 @@ public class DirectLargestFilesTests
     public void Largest_MaximumCountOverSmallIndex_ReturnsOnlyTheAvailableFiles()
     {
         var results = LargestFiles.Find(_index, int.MaxValue, under: null, CancellationToken.None);
-        Assert.AreSequenceEqual(new long[] { 9_000_000, 5_000_000, 3_000_000, 1_000, 20, 10 }, results.Select(entry => entry.Size).ToArray());
+        Assert.AreSequenceEqual([9_000_000, 5_000_000, 3_000_000, 1_000, 20, 10], [.. results.Select(entry => entry.Size)]);
     }
 
     [TestMethod]
@@ -212,6 +212,6 @@ public class DirectLargestFilesTests
         await using var index = await OpenIndexAsync(builder);
         var results = LargestFiles.Find(index, 5, under: null, CancellationToken.None);
         Assert.AreSequenceEqual(
-            Enumerable.Range(0, 5).Select(offset => $"file{LargeRowCount - offset}.bin").ToArray(), results.Select(entry => entry.Name).ToArray());
+            [.. Enumerable.Range(0, 5).Select(offset => $"file{LargeRowCount - offset}.bin")], [.. results.Select(entry => entry.Name)]);
     }
 }

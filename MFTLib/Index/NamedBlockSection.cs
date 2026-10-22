@@ -10,7 +10,7 @@ namespace MFTLib.Index;
 ///     are one act. Section names are unqualified and session-local.
 /// </summary>
 [SupportedOSPlatform("windows")]
-internal static class NamedBlockSection
+static class NamedBlockSection
 {
     /// <summary>Creates an initialized block and the lifetime of its published section name.</summary>
     /// <remarks>
@@ -92,7 +92,7 @@ internal static class NamedBlockSection
         ArgumentException.ThrowIfNullOrEmpty(sectionName);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(expectedLength);
 
-        MemoryMappedFile? mappedFile = MemoryMappedFile.OpenExisting(sectionName, MemoryMappedFileRights.ReadWrite);
+        var mappedFile = MemoryMappedFile.OpenExisting(sectionName, MemoryMappedFileRights.ReadWrite);
         MemoryMappedViewAccessor? view = null;
         try
         {

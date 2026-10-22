@@ -7,7 +7,7 @@ namespace MFTLibTestExtensions;
 ///     What a scripted in-process broker owns beside its process: the client's block sections, the host's
 ///     section writer, and the log of scans the host began.
 /// </summary>
-internal sealed class ScriptedBrokerResources : IDisposable
+sealed class ScriptedBrokerResources : IDisposable
 {
     readonly List<InProcessBrokerScan> _scans = [];
 

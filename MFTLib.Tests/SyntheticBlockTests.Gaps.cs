@@ -176,7 +176,7 @@ public partial class SyntheticBlockTests
 
         Assert.AreEqual(headerBefore with { CacheTag = replacementTag },
             SyntheticBlock.ReadHeader(path, Serial));
-        Assert.AreSequenceEqual(rowsBefore, SyntheticBlock.ReadRows(path, Serial).ToArray());
+        Assert.AreSequenceEqual(rowsBefore, [.. SyntheticBlock.ReadRows(path, Serial)]);
         var bytesAfter = await File.ReadAllBytesAsync(path, Token);
         Assert.HasCount(bytesBefore.Length, bytesAfter);
         var tagStart = Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.CacheTagFourCc)).ToInt32();
@@ -190,6 +190,6 @@ public partial class SyntheticBlockTests
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, drive.State);
         Assert.AreEqual(DriveFailureKind.CacheIdentityMismatch, drive.Failure?.Kind);
-        Assert.IsNull(drive.Block!);
+        Assert.IsNull(drive.Block);
     }
 }

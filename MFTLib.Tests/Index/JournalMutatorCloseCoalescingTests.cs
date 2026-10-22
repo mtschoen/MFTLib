@@ -89,7 +89,7 @@ public class JournalMutatorCloseCoalescingTests
                 closeMoment, sequenceNumber: 3)
         ]);
 
-        Assert.AreSequenceEqual(new[] { FileChangeKind.Created }, changes.Select(change => change.Kind).ToArray());
+        Assert.AreSequenceEqual([FileChangeKind.Created], [.. changes.Select(change => change.Kind)]);
         Assert.IsFalse(fixture.Block.Rows[9].LastWriteTimeKnown);
         Assert.AreEqual(0L, fixture.Block.Rows[9].ModifiedTicks);
     }

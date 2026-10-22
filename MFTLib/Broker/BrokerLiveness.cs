@@ -5,7 +5,7 @@ namespace MFTLib;
 ///     timers are the backstop for the ones nothing reports. Every limit is measured on an
 ///     injected <see cref="TimeProvider" />, so tests advance a fake clock.
 /// </summary>
-internal static class BrokerLiveness
+static class BrokerLiveness
 {
     /// <summary>
     ///     How often the host's heartbeat sender visits each pipe that wrote nothing since its last

@@ -65,7 +65,7 @@ public partial class JournalBrokerHostRealSeamsTests
         Assert.AreEqual(300L, reports[^1].TotalRecords);
         Assert.AreEqual(BrokerScanPhase.Transferring, reports[^1].Phase);
         Assert.IsTrue(writer.Block.Header.IsComplete);
-        Assert.AreSequenceEqual(new[] { false }, freedRequests, "The default scan asks for no freed rows.");
+        Assert.AreSequenceEqual([false], freedRequests, "The default scan asks for no freed rows.");
     }
 
     [TestMethod]
@@ -136,13 +136,13 @@ public partial class JournalBrokerHostRealSeamsTests
     {
         JournalQueryFake.Serve(journalIdentifier: 0x1234, nextUsn: 1000);
 
-        var stride = (nuint)MFTLibNative.NativeCompactEntrySize;
+        const nuint stride = MFTLibNative.NativeCompactEntrySize;
         var entryBuf = Marshal.AllocHGlobal((int)stride * 2);
         unsafe
         {
             new Span<byte>((void*)entryBuf, (int)stride * 2).Clear();
 
-            var childName = "Users";
+            const string childName = "Users";
             var stringBuf = Marshal.AllocHGlobal(childName.Length * sizeof(char));
             childName.AsSpan().CopyTo(new Span<char>((void*)stringBuf, childName.Length));
 

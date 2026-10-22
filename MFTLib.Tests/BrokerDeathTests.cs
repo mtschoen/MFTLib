@@ -75,7 +75,7 @@ public class BrokerDeathTests
         await broker.Process.Ended.WaitAsync(HangGuard);
         Assert.AreEqual('T', ((BrokerChannelLostException)faultT.Exception).Drive);
         Assert.AreEqual('U', ((BrokerChannelLostException)faultU.Exception).Drive);
-        Assert.AreSequenceEqual(new DriveKey[] { 'T', 'U' }, harness.Faults.Select(fault => fault.Drive).ToArray(), SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(['T', 'U'], [.. harness.Faults.Select(fault => fault.Drive)], SequenceOrder.InAnyOrder);
         Assert.IsTrue(harness.Faults.All(fault => fault.Kind == WatchFaultKind.Channel));
         Assert.IsNotNull(harness.DriveFor('T').Watch.FailureMessage);
         Assert.IsNotNull(harness.DriveFor('U').Watch.FailureMessage);

@@ -49,8 +49,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.AreEqual(4096L, notes.Size);
         Assert.IsTrue(notes.IsSizeKnown);
         Assert.AreEqual(Modified, notes.LastWriteTime);
-        Assert.AreSequenceEqual(new ulong[] { 20, 22 }, index.Search(new SearchQuery("notes.txt"))
-            .Select(entry => entry.RecordKey.RecordNumber).ToArray(), SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(new ulong[] { 20, 22 }, [.. index.Search(new SearchQuery("notes.txt")).Select(entry => entry.RecordKey.RecordNumber)], SequenceOrder.InAnyOrder);
         var duplicates = CollectFileRows(index).GroupBy(row => row.Name, StringComparer.OrdinalIgnoreCase)
             .Single(group => group.Count() > 1);
         Assert.AreEqual("notes.txt", duplicates.Key);
@@ -64,7 +63,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
 
         var changes = index.ApplyJournalEntries('C', CatchUpEntries(), AdvancedCursor.JournalIdentifier, AdvancedCursor.NextUsn);
 
-        Assert.AreSequenceEqual(new[] { FileChangeKind.Created, FileChangeKind.Deleted, FileChangeKind.Renamed }, changes.Select(change => change.Kind).ToArray());
+        Assert.AreSequenceEqual([FileChangeKind.Created, FileChangeKind.Deleted, FileChangeKind.Renamed], [.. changes.Select(change => change.Kind)]);
         Assert.AreEqual(30UL, index.Find(At("documents", "created.txt"))!.Value.RecordKey.RecordNumber);
         Assert.IsTrue(deleted.IsDeleted);
         Assert.IsTrue(block.Rows[21].IsDeleted);
@@ -163,7 +162,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
             ScanDrive = (_, _, _, _, _, _) => Interlocked.Increment(ref scanCount.Value) == 1
                 ? Records()
                 : [[Record(5, 5, ".", directory: true), Record(40, 5, "replacement.txt")]],
-            ReadJournal = (_, since, _) => (Array.Empty<UsnJournalEntry>(), Volatile.Read(ref rearmed.Value) == 0 ? AdvancedCursor : since)
+            ReadJournal = (_, since, _) => ([], Volatile.Read(ref rearmed.Value) == 0 ? AdvancedCursor : since)
         }));
         var producer = new BrokerMftBlockProducer(Connect(broker.Process)).CreateIndexSource().Producer;
         await using var index = await FileIndex.OpenAsync(Options(new MftIndexSource(producer, watchSource.IndexSource)),

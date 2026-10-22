@@ -139,7 +139,7 @@ public partial class NativeVolumeParsingTests
 
             AssertCancelled(result);
             Assert.AreEqual(0, progressCalls, "The parse must stop before reporting the chunk");
-            Assert.AreSequenceEqual(new[] { 1u }, ParseControlBlock.ChunkThreadCounts());
+            Assert.AreSequenceEqual([1u], ParseControlBlock.ChunkThreadCounts());
         });
     }
 
@@ -165,7 +165,7 @@ public partial class NativeVolumeParsingTests
 
             AssertCancelled(result);
             Assert.AreEqual(0, progressCalls);
-            Assert.AreSequenceEqual(new[] { 2u }, ParseControlBlock.ChunkThreadCounts());
+            Assert.AreSequenceEqual([2u], ParseControlBlock.ChunkThreadCounts());
         });
     }
 
@@ -197,14 +197,14 @@ public partial class NativeVolumeParsingTests
             Assert.HasCount(ImageChunkCount, counts);
             Assert.AreEqual((uint)initialAllowance, counts[0], "The chunk the callback followed keeps its count");
             Assert.AreSequenceEqual(
-                Enumerable.Repeat((uint)laterAllowance, ImageChunkCount - 1).ToArray(), counts[1..]);
+                [.. Enumerable.Repeat((uint)laterAllowance, ImageChunkCount - 1)], counts[1..]);
         });
     }
 
     static void AssertEveryChunkUsed(uint expected)
     {
         Assert.AreSequenceEqual(
-            Enumerable.Repeat(expected, ImageChunkCount).ToArray(), ParseControlBlock.ChunkThreadCounts());
+            [.. Enumerable.Repeat(expected, ImageChunkCount)], ParseControlBlock.ChunkThreadCounts());
     }
 
     static void AssertCancelled(MftParseResult result)

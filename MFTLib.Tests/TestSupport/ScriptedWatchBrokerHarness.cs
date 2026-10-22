@@ -14,7 +14,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     here mocks the client, and a host fault reaches a test only through what the process and its
 ///     channels surface.
 /// </summary>
-internal sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
+sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
 {
     /// <summary>The journal tip every watch is measured against; a watch from it starts caught up.</summary>
     public static readonly UsnJournalCursor DefaultTip = new(WatchHarness.JournalIdentifier, WatchHarness.NextUsn);
@@ -45,8 +45,10 @@ internal sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
                 VolumeInformation = _ => new NtfsVolumeInformation(1024 * 100, 1024)
             },
             processorCount: 4,
-            timeProvider: seams.HostClock);
-        host.Hooks.HeartbeatVisited = seams.HeartbeatVisited;
+            timeProvider: seams.HostClock)
+        {
+            Hooks = { HeartbeatVisited = seams.HeartbeatVisited }
+        };
         _broker = new InProcessBroker(host, seams.ClientOptions,
             wrapClientStream: (name, stream) =>
             {
@@ -130,7 +132,7 @@ internal sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
 }
 
 /// <summary>The seams of a <see cref="ScriptedWatchBrokerHarness" /> beyond its scan source; every one is optional.</summary>
-internal sealed record ScriptedBrokerSeams
+sealed record ScriptedBrokerSeams
 {
     /// <summary>The host's journal catch-up source; the default reads nothing and stays at the cursor it is given.</summary>
     public Func<DriveKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? ReadJournal { get; init; }
@@ -152,7 +154,7 @@ internal sealed record ScriptedBrokerSeams
 ///     The host-side watches of one drive, one <see cref="ScriptedWatchRun" /> per watch the host
 ///     starts, numbered from one in the order the host starts them.
 /// </summary>
-internal sealed class ScriptedHostWatch
+sealed class ScriptedHostWatch
 {
     readonly ConcurrentDictionary<int, TaskCompletionSource<ScriptedWatchRun>> _runs = new();
     readonly ConcurrentQueue<ScriptedWatchRun> _started = new();
@@ -207,7 +209,7 @@ internal sealed class ScriptedHostWatch
 ///     ends when told to, and reports when it entered, when the host cancelled it (its pipe closed
 ///     or its session ended) and when it returned.
 /// </summary>
-internal sealed class ScriptedWatchRun
+sealed class ScriptedWatchRun
 {
     readonly TaskCompletionSource _entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
     readonly TaskCompletionSource _cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -296,7 +298,7 @@ internal sealed class ScriptedWatchRun
 }
 
 /// <summary>Completes when a <see cref="FileIndex" /> raises <see cref="FileIndex.Changed" /> for a named file.</summary>
-internal static class ChangeSignal
+static class ChangeSignal
 {
     public static Task WhenApplied(FileIndex index, string fileName)
     {
@@ -313,7 +315,7 @@ internal static class ChangeSignal
 }
 
 /// <summary>Bounded reads of a drive's watch handle, so a hang fails a test instead of wedging it.</summary>
-internal static class WatchReads
+static class WatchReads
 {
     public static async Task<WatchStreamItem> NextAsync(IAsyncEnumerator<WatchStreamItem> reader)
     {

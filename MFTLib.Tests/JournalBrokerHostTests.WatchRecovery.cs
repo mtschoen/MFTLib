@@ -71,7 +71,7 @@ public partial class JournalBrokerHostTests
         var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.AreSequenceEqual(new[] { BrokerFrameKind.JournalBatch, BrokerFrameKind.Error }, frames.Select(frame => frame.Kind).ToArray());
+        Assert.AreSequenceEqual([BrokerFrameKind.JournalBatch, BrokerFrameKind.Error], [.. frames.Select(frame => frame.Kind)]);
         Assert.AreEqual("journal wrapped mid-stream", frames[1].Message);
         await AssertControlStillServesAsync(harness);
         Assert.AreEqual(0, queryCount);
@@ -138,7 +138,7 @@ public partial class JournalBrokerHostTests
         var pipe = await harness.OpenWatchChannelAsync('C', default);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.AreSequenceEqual(new[] { BrokerFrameKind.Error }, frames.Select(frame => frame.Kind).ToArray());
+        Assert.AreSequenceEqual([BrokerFrameKind.Error], [.. frames.Select(frame => frame.Kind)]);
         Assert.AreEqual(failureMessage, frames[0].Message);
     }
 

@@ -13,7 +13,7 @@ namespace MFTLib;
     Justification = "Every instance says which pipe was lost, a drive's channel or the control pipe, which is " +
                     "how a consumer attributes the failure; the standard overloads would construct one that " +
                     "does not say.")]
-internal sealed class BrokerChannelLostException : IOException
+sealed class BrokerChannelLostException : IOException
 {
     /// <summary>Records which pipe was lost.</summary>
     /// <param name="drive">The drive whose channel was lost, or null for the control pipe.</param>

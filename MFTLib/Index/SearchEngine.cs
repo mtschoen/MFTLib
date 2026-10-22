@@ -7,7 +7,7 @@ namespace MFTLib.Index;
 ///     so a search reads the name, flags, size, and modified columns of every live row on every
 ///     current drive block and materializes the whole match set. Callers page by slicing.
 /// </summary>
-internal static class SearchEngine
+static class SearchEngine
 {
     internal static List<FileEntry> Search(IReadOnlyList<DriveBlock> snapshot, SearchQuery query,
         CancellationToken cancellationToken = default)

@@ -11,7 +11,7 @@ namespace MFTLibTestExtensions;
 /// <param name="RowCount">The block's highest used slot plus one, free slots and deleted files included.</param>
 /// <param name="CacheTag">The consumer cache identity stored in the header.</param>
 /// <param name="ScanTimestamp">The scan timestamp stored in the header, which <see cref="SyntheticBlockEditor.Complete" /> can write back unchanged.</param>
-internal sealed record SyntheticDriveHeader(ProducerKind ProducerKind, uint RowCount, CacheTag CacheTag,
+sealed record SyntheticDriveHeader(ProducerKind ProducerKind, uint RowCount, CacheTag CacheTag,
     DateTime ScanTimestamp)
 {
     internal static SyntheticDriveHeader From(BlockFile block)

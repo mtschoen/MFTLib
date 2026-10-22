@@ -7,7 +7,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib.Tests.TestSupport;
 
-internal sealed class IdleUsnPipe : IDisposable
+sealed class IdleUsnPipe : IDisposable
 {
     readonly NamedPipeServerStream _writer;
     internal EventWaitHandle BeforeIssue { get; } = new(false, EventResetMode.ManualReset);

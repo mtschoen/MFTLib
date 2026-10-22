@@ -6,7 +6,7 @@ namespace MFTLib.Index;
 ///     is bounded by the broker's parse-thread allocator; an enumeration walk never reaches the
 ///     broker, so this limit is what keeps the bound on scans true wherever drives are scanned.
 /// </summary>
-internal static class EnumerationWalkLimit
+static class EnumerationWalkLimit
 {
     static readonly int Capacity = Environment.ProcessorCount;
     static readonly SemaphoreSlim Walks = new(Capacity, Capacity);

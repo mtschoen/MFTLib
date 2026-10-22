@@ -6,7 +6,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 [TestClass]
-public class AgentInstructionsTests
+public partial class AgentInstructionsTests
 {
     public TestContext TestContext { get; set; } = null!;
 
@@ -29,7 +29,7 @@ public class AgentInstructionsTests
     [TestMethod]
     public void EveryBlock_RemainsBelowCharacterBudget()
     {
-        var blocks = Regex.Split(ReadInstructions(), @"\r?\n[\t ]*\r?\n");
+        var blocks = MyRegex().Split(ReadInstructions());
         var longest = blocks.Max(CountCharacters);
         Assert.IsLessThan(3000, longest,
             $"AGENTS.md has a {longest}-character block; each must stay below 3000. " +
@@ -39,7 +39,7 @@ public class AgentInstructionsTests
     [TestMethod]
     public void EveryLinkedDocsPage_Exists()
     {
-        var links = Regex.Matches(ReadInstructions(), @"\]\((docs/[A-Za-z0-9_.-]+\.md)\)")
+        var links = LinkedDocsRegex().Matches(ReadInstructions())
             .Select(match => match.Groups[1].Value)
             .Distinct()
             .ToList();
@@ -58,17 +58,14 @@ public class AgentInstructionsTests
         foreach (var name in new[] { "linux", "docs", "linux-package" })
         {
             var job = Regex.Match(workflow,
-                @"(?ms)^  " + Regex.Escape(name) + @":\r?\n(?<body>.*?)(?=^  [\w-]+:\r?$|\z)");
+                "(?ms)^  " + Regex.Escape(name) + @":\r?\n(?<body>.*?)(?=^  [\w-]+:\r?$|\z)");
             Assert.IsTrue(job.Success, $"Missing job {name}.");
-            var container = Regex.Match(job.Groups["body"].Value,
-                @"(?ms)^    container:\r?\n(?<body>(?:^      [^\r\n]*\r?\n)+)");
+            var container = ContainerBlockRegex().Match(job.Groups["body"].Value);
             Assert.IsTrue(container.Success, $"Missing container for {name}.");
             var body = container.Groups["body"].Value;
-            Assert.IsTrue(Regex.IsMatch(body,
-                @"(?m)^      image: \$\{\{ vars\.MFTLIB_CI_IMAGE \}\}\r?$"),
+            Assert.IsTrue(ProvisionedImageRegex().IsMatch(body),
                 $"{name} must consume the provisioned image variable.");
-            Assert.IsTrue(Regex.IsMatch(body,
-                @"(?m)^      options: --ulimit nofile=65536:65536\r?$"),
+            Assert.IsTrue(NofileUlimitRegex().IsMatch(body),
                 $"{name} must retain the open-file limit.");
         }
     }
@@ -93,9 +90,9 @@ public class AgentInstructionsTests
     // Assemble detector signatures so the guard can scan its own source without exemptions.
     static string[] PrivateContentPatterns() =>
     [
-        @"(?i)[a-z]:[\\/]+" + @"Users(?:[\\/]|\b)",
-        @"(?i)/mnt/[a-z]/" + @"Users(?:/|\b)",
-        @"(?i)" + Regex.Escape(string.Join('.', "fleet", "sticktoitive", "net")),
+        @"(?i)[a-z]:[\\/]+Users(?:[\\/]|\b)",
+        @"(?i)/mnt/[a-z]/Users(?:/|\b)",
+        "(?i)" + Regex.Escape(string.Join('.', "fleet", "sticktoitive", "net")),
         @"(?i)\b" + "chon" + @"kers\b",
         @"(?i)\b" + "llama" + @"box\b",
         Regex.Escape("~/" + "schoen-lab/")
@@ -115,12 +112,12 @@ public class AgentInstructionsTests
             var text = RepositoryFiles.Read(path);
             if (path.StartsWith("MFTLib/", StringComparison.Ordinal))
             {
-                Assert.IsFalse(Regex.IsMatch(text, @"Func<DateTime>|=> DateTime\.UtcNow"),
+                Assert.IsFalse(LegacyDateTimeRegex().IsMatch(text),
                     $"{path}: block completion must use TimeProvider.");
             }
 
             if (path.EndsWith(".md", StringComparison.OrdinalIgnoreCase) &&
-                Regex.IsMatch(text, @"(?i)no library " + "default|default-cache " + "guard"))
+                LegacyCacheGuardRegex().IsMatch(text))
             {
                 failures.Add($"{path}: describe explicit cache ownership using the current contract");
             }
@@ -180,7 +177,7 @@ public class AgentInstructionsTests
             .Split('\0', StringSplitOptions.RemoveEmptyEntries)
             .Where(path => path.EndsWith(".cs", StringComparison.Ordinal)).ToArray();
         var sources = paths.ToDictionary(path => path,
-            path => Regex.Replace(RepositoryFiles.Read(path), @"//[^\r\n]*|/\*[\s\S]*?\*/", ""));
+            path => CommentRegex().Replace(RepositoryFiles.Read(path), ""));
         var shared = sources.Where(pair => pair.Key.StartsWith("SampleProgram.Shared/", StringComparison.Ordinal)).ToArray();
         Assert.IsNotEmpty(shared, "The shared source set must not be empty.");
         var sharedText = string.Join("\n", shared.Select(pair => pair.Value));
@@ -200,7 +197,7 @@ public class AgentInstructionsTests
         }
 
         // Shared uses four-space member declarations; nested types are ownership units.
-        var declaration = new Regex(@"(?m)^    (?:[\w<>,?\[\].]+[ \t]+)+(?<name>\w+)[ \t]*(?:\(|=>|[=;{])");
+        var declaration = SharedMemberDeclarationRegex();
         var members = new Dictionary<string, (string Path, string Body)>();
         foreach (var (path, text) in shared)
         {
@@ -218,7 +215,7 @@ public class AgentInstructionsTests
         {
             var local = sources.Where(pair => pair.Key.StartsWith($"SampleProgram.{sample}/", StringComparison.Ordinal)).ToArray();
             Assert.IsNotEmpty(local, $"No source found for {sample}.");
-            var identifiers = Regex.Matches(string.Join("\n", local.Select(pair => pair.Value)), @"\b[A-Za-z_]\w*\b")
+            var identifiers = IdentifierTokenRegex().Matches(string.Join("\n", local.Select(pair => pair.Value)))
                 .Select(match => match.Value).ToHashSet(StringComparer.Ordinal);
             var pending = new Queue<string>(members.Keys.Where(identifiers.Contains));
             var reached = new HashSet<string>(StringComparer.Ordinal);
@@ -229,7 +226,7 @@ public class AgentInstructionsTests
                     continue;
                 }
 
-                foreach (Match token in Regex.Matches(members[name].Body, @"\b[A-Za-z_]\w*\b"))
+                foreach (Match token in IdentifierTokenRegex().Matches(members[name].Body))
                 {
                     if (members.ContainsKey(token.Value))
                     {
@@ -283,7 +280,7 @@ public class AgentInstructionsTests
         var cases = new[]
         {
             (Text: "", Required: required, Exists: true, Error: "Missing maintained tool"),
-            (Text: valid, Required: new[] { "scripts/nested/new.sh" }, Exists: true,
+            (Text: valid, Required: ["scripts/nested/new.sh"], Exists: true,
                 Error: "Missing maintained tool: scripts/nested/new.sh"),
             (Text: valid + valid, Required: required, Exists: true, Error: "Duplicate maintained tool"),
             (Text: valid.Replace("Parse fixtures", ""), Required: required, Exists: true,
@@ -338,7 +335,7 @@ public class AgentInstructionsTests
         {
             if (!seen.Contains(path)) { failures.Add($"Missing maintained tool: {path}"); }
         }
-        return failures.ToArray();
+        return [.. failures];
     }
 
     static string ReadInstructions() =>
@@ -355,4 +352,34 @@ public class AgentInstructionsTests
 
         return count;
     }
+
+    [GeneratedRegex(@"\r?\n[\t ]*\r?\n")]
+    private static partial Regex MyRegex();
+
+    [GeneratedRegex(@"\]\((docs/[A-Za-z0-9_.-]+\.md)\)")]
+    private static partial Regex LinkedDocsRegex();
+
+    [GeneratedRegex(@"(?ms)^    container:\r?\n(?<body>(?:^      [^\r\n]*\r?\n)+)")]
+    private static partial Regex ContainerBlockRegex();
+
+    [GeneratedRegex(@"(?m)^      image: \$\{\{ vars\.MFTLIB_CI_IMAGE \}\}\r?$")]
+    private static partial Regex ProvisionedImageRegex();
+
+    [GeneratedRegex(@"(?m)^      options: --ulimit nofile=65536:65536\r?$")]
+    private static partial Regex NofileUlimitRegex();
+
+    [GeneratedRegex(@"Func<DateTime>|=> DateTime\.UtcNow")]
+    private static partial Regex LegacyDateTimeRegex();
+
+    [GeneratedRegex("(?i)no library default|default-cache guard")]
+    private static partial Regex LegacyCacheGuardRegex();
+
+    [GeneratedRegex(@"//[^\r\n]*|/\*[\s\S]*?\*/")]
+    private static partial Regex CommentRegex();
+
+    [GeneratedRegex(@"(?m)^    (?:[\w<>,?\[\].]+[ \t]+)+(?<name>\w+)[ \t]*(?:\(|=>|[=;{])")]
+    private static partial Regex SharedMemberDeclarationRegex();
+
+    [GeneratedRegex(@"\b[A-Za-z_]\w*\b")]
+    private static partial Regex IdentifierTokenRegex();
 }

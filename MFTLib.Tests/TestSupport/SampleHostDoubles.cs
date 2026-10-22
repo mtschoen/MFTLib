@@ -4,7 +4,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.TestSupport;
 
 /// <summary>Collects each written line, then hands it to <paramref name="onLine" />; safe for overlapping writers.</summary>
-internal sealed class LineCollectingWriter(List<string> lines, Action<string>? onLine = null) : TextWriter
+sealed class LineCollectingWriter(List<string> lines, Action<string>? onLine = null) : TextWriter
 {
     public override System.Text.Encoding Encoding => System.Text.Encoding.UTF8;
 
@@ -21,7 +21,7 @@ internal sealed class LineCollectingWriter(List<string> lines, Action<string>? o
 }
 
 /// <summary>A key reader that fails the test when read: the code under test must not wait for a key.</summary>
-internal sealed class FailingReader(string message) : TextReader
+sealed class FailingReader(string message) : TextReader
 {
     public override int Read() => throw new AssertFailedException(message);
 }
@@ -30,7 +30,7 @@ internal sealed class FailingReader(string message) : TextReader
 ///     A fake clock that jumps ahead by a fixed amount once a timer is created and <paramref name="advanceAfter" />
 ///     (when given) has completed, so a delay ends without waiting on real time.
 /// </summary>
-internal sealed class AutoAdvanceClock(TimeSpan advanceBy, Task? advanceAfter = null) : FakeTimeProvider
+sealed class AutoAdvanceClock(TimeSpan advanceBy, Task? advanceAfter = null) : FakeTimeProvider
 {
     public TimeSpan TotalAdvanced { get; private set; }
 

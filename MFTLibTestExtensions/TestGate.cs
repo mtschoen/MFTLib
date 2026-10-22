@@ -5,7 +5,7 @@ namespace MFTLibTestExtensions;
 ///     and the step stays parked until <see cref="Release" />. A test uses the pair to order
 ///     another thread's work against the held step without sleeping.
 /// </summary>
-internal sealed class TestGate
+sealed class TestGate
 {
     readonly TaskCompletionSource _entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
     readonly TaskCompletionSource _released = new(TaskCreationOptions.RunContinuationsAsynchronously);

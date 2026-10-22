@@ -7,7 +7,7 @@ namespace MFTLib.Tests;
 public class MftRecordTests
 {
     // A non-null string-pool pointer paired with a zero length: MftRecord must never dereference it.
-    static readonly IntPtr NonNullEmptyPoolPointer = 1;
+    const nint NonNullEmptyPoolPointer = 1;
 
     [TestMethod]
     public void Constructor_InUseFlag_SetsProperty()

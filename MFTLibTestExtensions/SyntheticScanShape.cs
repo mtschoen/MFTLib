@@ -3,7 +3,7 @@ using MFTLib.Index;
 namespace MFTLibTestExtensions;
 
 /// <summary>The scan shapes a test block carries so an index opened with default row-shaping options adopts it.</summary>
-internal static class SyntheticScanShape
+static class SyntheticScanShape
 {
     /// <summary>
     ///     The shape an index with null retention, default walk options and default MFT scan options requires. An

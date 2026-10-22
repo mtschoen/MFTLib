@@ -280,12 +280,12 @@ public sealed class IndexedDriveTests : IDisposable
         }, CancellationToken.None);
 
         Assert.AreEqual(1, sequence.EnumerationCount);
-        Assert.AreSequenceEqual(new DriveKey[] { 'T', 'U' }, index.Drives.Select(status => status.Drive).ToArray());
+        Assert.AreSequenceEqual(['T', 'U'], [.. index.Drives.Select(status => status.Drive)]);
         Assert.IsTrue(index.Drives.All(status => status.State == DriveState.Ready));
 
         var rescanResults = await index.RescanAsync(
             index.Drives.Select(status => status.Drive), CancellationToken.None);
-        Assert.AreSequenceEqual(new DriveKey[] { 'T', 'U' }, rescanResults.Select(result => result.Drive).ToArray());
+        Assert.AreSequenceEqual(['T', 'U'], [.. rescanResults.Select(result => result.Drive)]);
         Assert.IsTrue(rescanResults.All(result => result.Outcome == DriveOperationOutcome.Succeeded));
     }
 
@@ -331,10 +331,9 @@ public sealed class IndexedDriveTests : IDisposable
             : File.GetUnixFileMode(directory).ToString();
 
     static string[] SnapshotDirectory(string directory) =>
-        Directory.EnumerateFileSystemEntries(directory, "*", SearchOption.AllDirectories)
+        [.. Directory.EnumerateFileSystemEntries(directory, "*", SearchOption.AllDirectories)
             .Select(entry => $"{Path.GetRelativePath(directory, entry)}|{(File.Exists(entry) ? new FileInfo(entry).Length : -1)}")
-            .Order(StringComparer.Ordinal)
-            .ToArray();
+            .Order(StringComparer.Ordinal)];
 
     async Task<TException> AssertInvalidOpenCreatesNothingAsync<TException>(
         Func<FileIndexOptions, FileIndexOptions> configure)

@@ -10,7 +10,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     <see cref="InMemoryPipePair" /> cannot produce this failure: disposing one side completes
 ///     the peer's reader but never makes this side's writes throw <see cref="IOException" />.
 /// </summary>
-internal sealed class BrokenPipeStream(Stream inner) : DelegatingStream(inner)
+sealed class BrokenPipeStream(Stream inner) : DelegatingStream(inner)
 {
     readonly TaskCompletionSource _writeFailureObserved = new(TaskCreationOptions.RunContinuationsAsynchronously);
     volatile bool _broken;

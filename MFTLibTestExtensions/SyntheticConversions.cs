@@ -6,7 +6,7 @@ namespace MFTLibTestExtensions;
 ///     Turns the public synthetic descriptions into the internal production values immediately before production
 ///     code runs. This is data translation only: filtering, path building and mutation stay in production.
 /// </summary>
-internal static class SyntheticConversions
+static class SyntheticConversions
 {
     public static UsnJournalCursor ToProduction(this SyntheticJournalCursor cursor) =>
         new(cursor.JournalIdentifier, cursor.NextUsn);

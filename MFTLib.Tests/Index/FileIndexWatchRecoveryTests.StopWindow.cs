@@ -36,7 +36,7 @@ public partial class FileIndexWatchRecoveryTests
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore, "the recovery committed its block");
         Assert.HasCount(1, harness.Source.TargetsFor('T'), "no watch starts after the stop returned");
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
-        Assert.AreSequenceEqual(new[] { WatchFaultKind.Drive }, FaultKinds(harness, 'T'));
+        Assert.AreSequenceEqual([WatchFaultKind.Drive], FaultKinds(harness, 'T'));
         await DriveResultAssertions.NotApplicableAsync(
             () => harness.Index.StopWatchingAsync(['T'], Token), "the stop's cleared request stands");
     }

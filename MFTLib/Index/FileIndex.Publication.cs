@@ -10,10 +10,9 @@ public sealed partial class FileIndex
     void PublishSnapshotLocked()
     {
         ObjectDisposedException.ThrowIf(_snapshot is null, this);
-        _snapshot = _driveRuntimes.Values
+        _snapshot = [.. _driveRuntimes.Values
             .Select(runtime => runtime.Block)
             .OfType<DriveBlock>()
-            .OrderBy(block => block.DriveOrdinal)
-            .ToArray();
+            .OrderBy(block => block.DriveOrdinal)];
     }
 }

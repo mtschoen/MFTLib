@@ -1,6 +1,6 @@
 namespace MFTLib.Tests.TestSupport;
 
-internal sealed class TempDirectory : IDisposable
+sealed class TempDirectory : IDisposable
 {
     public string Path { get; }
 

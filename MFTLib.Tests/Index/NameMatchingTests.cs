@@ -24,7 +24,7 @@ public class NameMatchingTests
     [TestMethod]
     public void ContainsSubstring_EmptyNeedleMatchesEverything()
     {
-        Assert.IsTrue(NameMatching.ContainsSubstring("anything", ReadOnlySpan<char>.Empty, caseSensitive: false));
+        Assert.IsTrue(NameMatching.ContainsSubstring("anything", [], caseSensitive: false));
     }
 
     [TestMethod]

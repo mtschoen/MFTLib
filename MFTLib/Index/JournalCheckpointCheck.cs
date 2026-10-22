@@ -6,7 +6,7 @@ namespace MFTLib.Index;
 ///     The journal facts a checkpoint decision rests on, lifted out of the platform's
 ///     <c>USN_JOURNAL_DATA</c> so the decision and its tests do not depend on Windows.
 /// </summary>
-internal readonly record struct JournalWindow(
+readonly record struct JournalWindow(
     ulong JournalIdentifier, long FirstUsn, long NextUsn, long AllocationDelta, long MaximumSize);
 
 /// <summary>

@@ -3,7 +3,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.TestSupport;
 
-internal static class DriveResultAssertions
+static class DriveResultAssertions
 {
     public static TException Failure<TException>(Func<IReadOnlyList<DriveOperationResult>> operation)
         where TException : Exception

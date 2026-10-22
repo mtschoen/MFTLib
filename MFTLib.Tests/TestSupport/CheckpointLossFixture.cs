@@ -4,7 +4,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.TestSupport;
 
-internal sealed class CheckpointLossFixture : IDisposable
+sealed class CheckpointLossFixture : IDisposable
 {
     public const ulong CachedJournalIdentifier = 0xABCD;
     public const long CachedNextUsn = 1_000_000;

@@ -6,7 +6,7 @@ namespace SampleProgram.Direct;
 
 // The option plumbing both samples share: it reads "--name value" pairs and bare flags out of a command line and
 // leaves the positional arguments. The first problem it meets is the one it reports.
-internal sealed partial class ArgumentReader(IEnumerable<string> arguments)
+sealed partial class ArgumentReader(IEnumerable<string> arguments)
 {
     readonly List<string> _remaining = [.. arguments];
     readonly List<string> _supplied = [];

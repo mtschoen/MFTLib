@@ -169,7 +169,7 @@ public class FileIndexMidSessionCheckpointLossTests
         var queriedDrives = new ConcurrentQueue<char>();
         using var journal = JournalIsolation.OverrideJournalWindow(driveLetter =>
         {
-            queriedDrives.Enqueue(char.ToUpperInvariant((driveLetter).Letter));
+            queriedDrives.Enqueue(char.ToUpperInvariant(driveLetter.Letter));
             return new SyntheticJournalWindow(WatchedJournalIdentifier, ArmedUsn - 50, ArmedUsn + 4_000,
                 AllocationDelta, MaximumSize);
         });
@@ -180,7 +180,7 @@ public class FileIndexMidSessionCheckpointLossTests
         var drive = harness.DriveFor('T');
         Assert.IsNotNull(drive.Watch.FailureMessage);
         Assert.IsNull(drive.Watch.CheckpointLoss, "a fault unrelated to the journal reports no checkpoint loss");
-        Assert.AreSequenceEqual(new[] { 'T' }, queriedDrives.ToArray(), "the journal is asked once, and its answer is what decides");
+        Assert.AreSequenceEqual(['T'], [.. queriedDrives], "the journal is asked once, and its answer is what decides");
 
         await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
             () => harness.Index.StopWatchingAsync(['T'], Token));

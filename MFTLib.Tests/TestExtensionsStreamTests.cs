@@ -31,7 +31,7 @@ public class TestExtensionsStreamTests
             Assert.IsTrue(stream.CanWrite);
             Assert.IsFalse(stream.CanSeek);
             AssertNonSeekingContract(stream);
-            stream.Write(new byte[] { 1, 2 }, 0, 2);
+            stream.Write([1, 2], 0, 2);
             await stream.WriteAsync(new byte[] { 3, 4 }.AsMemory());
             stream.Flush();
             await stream.FlushAsync(CancellationToken.None);
@@ -66,7 +66,7 @@ public class TestExtensionsStreamTests
     [TestMethod]
     public async Task Duplex_UsesDifferentReadAndWriteStreamsAndClosesBoth()
     {
-        using var input = new MemoryStream(new byte[] { 1, 2 });
+        using var input = new MemoryStream([1, 2]);
         using var output = new MemoryStream();
         var stream = new InMemoryDuplexStream(input, output);
         try

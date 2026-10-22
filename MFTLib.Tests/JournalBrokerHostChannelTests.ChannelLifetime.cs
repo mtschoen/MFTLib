@@ -1,5 +1,5 @@
-using MFTLibTestExtensions;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -75,8 +75,8 @@ public partial class JournalBrokerHostChannelTests
             ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
         });
-        await using var harness = new HostChannelHarness(host, breakableControl: true,
-            connectChannel: (_, _) => Task.FromResult<Stream>(connected));
+        await using var harness = new HostChannelHarness(host, connectChannel: (_, _) => Task.FromResult<Stream>(connected),
+breakableControl: true);
         // The client is gone when its request arrives, so the ChannelOpened reply is the first
         // frame to land on the dead control pipe, after the host connected the drive pipe.
         harness.BreakableControl!.BreakPipe();

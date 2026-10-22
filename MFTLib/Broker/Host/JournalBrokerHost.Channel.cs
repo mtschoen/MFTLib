@@ -4,7 +4,7 @@ using MFTLib.Index;
 namespace MFTLib;
 
 /// <summary>Opens one drive pipe and serves its one operation.</summary>
-internal sealed partial class JournalBrokerHost
+sealed partial class JournalBrokerHost
 {
     // One drive pipe and what its operation needs to write to it. The pipe writer's lock keeps a
     // scan's progress pump, its operation and the heartbeat sender from interleaving frames on

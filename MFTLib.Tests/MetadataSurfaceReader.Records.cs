@@ -6,7 +6,7 @@ using System.Reflection.PortableExecutable;
 namespace MFTLib.Tests;
 
 // The record-synthesis evidence and the constructor-credit rules of the metadata reader, split out to keep each file small.
-internal static partial class MetadataSurfaceReader
+static partial class MetadataSurfaceReader
 {
     // Roslyn synthesizes op_Equality for every record class and record struct and marks it CompilerGenerated, and an
     // author cannot declare it; the mark survives an authored ToString, Equals, GetHashCode or PrintMembers.
@@ -44,7 +44,7 @@ internal static partial class MetadataSurfaceReader
             var automatic = exposed.All(accessor =>
                 IsCompilerGenerated(reader, reader.GetMethodDefinition(accessor).GetCustomAttributes()));
             members.Add(new SurfaceMember(display,
-                exposed.Select(accessor => MethodKey(reader, provider, typeName, accessor)).ToList())
+                [.. exposed.Select(accessor => MethodKey(reader, provider, typeName, accessor))])
             {
                 ConstructorKeys = isRecord && automatic && !pair.Getter.IsNil
                     ? ConstructorsStoring(peReader, reader, provider, type, typeName, pair.Getter)
@@ -67,7 +67,7 @@ internal static partial class MetadataSurfaceReader
             return [];
         }
 
-        return type.GetMethods()
+        return [.. type.GetMethods()
             .Where(handle =>
             {
                 var method = reader.GetMethodDefinition(handle);
@@ -75,7 +75,7 @@ internal static partial class MetadataSurfaceReader
                        (method.Attributes & MethodAttributes.MemberAccessMask) == MethodAttributes.Public &&
                        StoresArgumentInto(peReader, reader, erasing, typeName, method, backing);
             })
-            .Select(handle => MethodKey(reader, provider, typeName, handle)).ToList();
+            .Select(handle => MethodKey(reader, provider, typeName, handle))];
     }
 
     // An automatic getter is exactly `ldarg.0; ldfld field; ret`; the field is read from that IL, never from its name.
@@ -166,13 +166,13 @@ internal static partial class MetadataSurfaceReader
         bool trimByReference)
     {
         var types = method.DecodeSignature(provider, null).ParameterTypes;
-        var names = method.GetParameters().Select(handle => reader.GetParameter(handle))
+        var names = method.GetParameters().Select(reader.GetParameter)
             .Where(parameter => parameter.SequenceNumber > 0).OrderBy(parameter => parameter.SequenceNumber)
             .Select(parameter => reader.GetString(parameter.Name)).ToList();
         return names.Count != types.Length
             ? []
-            : names.Select((name, index) => new PrimaryParameter(name,
-                trimByReference ? types[index].TrimEnd('&') : types[index])).ToList();
+            : [.. names.Select((name, index) => new PrimaryParameter(name,
+                trimByReference ? types[index].TrimEnd('&') : types[index]))];
     }
 
     static bool IsPrimaryConstructor(MetadataReader reader, SignatureProvider provider, MethodDefinition method, string name,

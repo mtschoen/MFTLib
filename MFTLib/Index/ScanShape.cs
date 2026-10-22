@@ -11,7 +11,7 @@ namespace MFTLib.Index;
 ///     canonical encoding that depends on the producer; <c>docs/index-format.md</c> specifies both forms.
 ///     Every integer is little-endian, and every string is its UTF-8 byte count as a u32 followed by the bytes.
 /// </summary>
-internal static class ScanShape
+static class ScanShape
 {
     /// <summary>The shape a drive's block must carry under the given admitted options.</summary>
     /// <param name="drive">The drive's configuration, which names its producer and root.</param>

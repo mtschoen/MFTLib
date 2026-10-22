@@ -7,7 +7,7 @@ namespace MFTLib;
 /// <summary>
 ///     USN change journal resizing operations over a borrowed volume handle.
 /// </summary>
-internal sealed partial class UsnJournalVolume
+sealed partial class UsnJournalVolume
 {
     /// <summary>
     ///     Grows this volume's USN change journal in place via

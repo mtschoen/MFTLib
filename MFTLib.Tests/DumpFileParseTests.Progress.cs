@@ -19,7 +19,7 @@ public partial class DumpFileParseTests
         Assert.IsGreaterThan(1, reports.Count, "A 1000-record image read 256 records at a time reports more than once.");
         Assert.IsTrue(reports.All(report => report.TotalRecords == 1000));
         Assert.AreEqual(1000L, reports[^1].RecordsScanned);
-        Assert.AreSequenceEqual(reports.Select(report => report.RecordsScanned).OrderBy(scanned => scanned).ToArray(), reports.Select(report => report.RecordsScanned).ToArray(), "Records scanned never goes backwards.");
+        Assert.AreSequenceEqual([.. reports.Select(report => report.RecordsScanned).Order()], [.. reports.Select(report => report.RecordsScanned)], "Records scanned never goes backwards.");
     }
 
     [TestMethod]

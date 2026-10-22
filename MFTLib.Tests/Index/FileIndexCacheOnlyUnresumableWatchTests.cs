@@ -203,13 +203,7 @@ public sealed class FileIndexCacheOnlyUnresumableWatchTests : IDisposable
             producedBlock = result.Block;
             return result;
         }, source.IndexSource, drives: [driveT]), Token);
-        index.Hooks.PublishInsideWriteGate = _ =>
-        {
-            if (producedBlock is not null)
-            {
-                producedBlock.Header.ProducerKind = ProducerKind.Enumeration;
-            }
-        };
+        index.Hooks.PublishInsideWriteGate = _ => producedBlock?.Header.ProducerKind = ProducerKind.Enumeration;
         try
         {
             Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind, "the cached MFT block warm-started");
@@ -255,13 +249,7 @@ public sealed class FileIndexCacheOnlyUnresumableWatchTests : IDisposable
             producedBlock = result.Block;
             return result;
         }, source.IndexSource, drives: [driveT]), Token);
-        index.Hooks.PublishInsideWriteGate = _ =>
-        {
-            if (producedBlock is not null)
-            {
-                producedBlock.Header.ProducerKind = ProducerKind.Enumeration;
-            }
-        };
+        index.Hooks.PublishInsideWriteGate = _ => producedBlock?.Header.ProducerKind = ProducerKind.Enumeration;
         var channelFaulted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         index.WatchFaulted += fault =>
         {

@@ -3,7 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace SampleProgram.Watch;
 
 // The command-line parser: the verb name, then the drives and the verb's flags.
-internal sealed partial record WatchArguments
+sealed partial record WatchArguments
 {
     internal static bool TryParse(string[] arguments, [NotNullWhen(true)] out WatchArguments? parsed,
         [NotNullWhen(false)] out string? error)

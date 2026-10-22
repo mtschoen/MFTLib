@@ -8,7 +8,7 @@ namespace MFTLib;
 ///     Cached blocks carry the journal cursor armed before scanning; uncached blocks carry zero.
 ///     Concurrent scans divide the process's parse threads through a shared <see cref="ParseThreadAllocator" />.
 /// </summary>
-internal sealed class LocalMftBlockProducer(TimeProvider timeProvider, MftScanOptions? scanOptions = null,
+sealed class LocalMftBlockProducer(TimeProvider timeProvider, MftScanOptions? scanOptions = null,
     IVolumeAccess? volumeAccess = null, ParseThreadAllocator? allocator = null)
 {
     readonly IVolumeAccess _volumeAccess = volumeAccess ?? LiveVolumeAccess.Instance;

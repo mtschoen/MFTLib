@@ -3,7 +3,7 @@ using MFTLib.Index;
 namespace MFTLibTestExtensions;
 
 /// <summary>Presents a <see cref="ScriptedWatchSource" /> to the index as an <see cref="IIndexWatchSource" />.</summary>
-internal sealed class ScriptedWatchSourceAdapter(ScriptedWatchSource source) : IIndexWatchSource
+sealed class ScriptedWatchSourceAdapter(ScriptedWatchSource source) : IIndexWatchSource
 {
     public async Task<IIndexDriveWatch> StartAsync(IndexWatchTarget target, CancellationToken cancellationToken)
     {
@@ -13,7 +13,7 @@ internal sealed class ScriptedWatchSourceAdapter(ScriptedWatchSource source) : I
 }
 
 /// <summary>Presents a <see cref="ScriptedDriveWatch" /> to the index as an <see cref="IIndexDriveWatch" />.</summary>
-internal sealed class ScriptedDriveWatchAdapter(ScriptedDriveWatch watch) : IIndexDriveWatch
+sealed class ScriptedDriveWatchAdapter(ScriptedDriveWatch watch) : IIndexDriveWatch
 {
     public IAsyncEnumerable<WatchStreamItem> ReadAsync(CancellationToken cancellationToken) =>
         watch.ReadAsync(cancellationToken);

@@ -193,7 +193,7 @@ public class WindowsFileByIdTests
 ///     pass it through from the index's own columns.
 /// </summary>
 [SupportedOSPlatform("windows")]
-internal static class FileReferenceProbe
+static class FileReferenceProbe
 {
     const uint FileReadAttributes = 0x80;
     const uint ShareAll = 0x7; // FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE

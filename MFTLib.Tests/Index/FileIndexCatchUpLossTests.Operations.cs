@@ -68,7 +68,7 @@ public partial class FileIndexCatchUpLossTests
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
         GC.WaitForPendingFinalizers();
 
-        Assert.AreSequenceEqual(new[] { LossScriptedCache.CanonicalBlockName }, cache.BlockFileNames(), "each superseded block's file is gone once its snapshot is released");
+        Assert.AreSequenceEqual([LossScriptedCache.CanonicalBlockName], cache.BlockFileNames(), "each superseded block's file is gone once its snapshot is released");
     }
 
     [TestMethod]

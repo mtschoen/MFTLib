@@ -15,7 +15,7 @@ namespace MFTLib.Index;
 ///     guarantee: their check-then-use pattern protects a single owner, and readers are expected
 ///     to hold a snapshot borrow instead.
 /// </summary>
-internal sealed unsafe partial class BlockFile : IDisposable
+sealed unsafe partial class BlockFile : IDisposable
 {
     readonly MemoryMappedFile _mappedFile;
     readonly MemoryMappedViewAccessor _view;
@@ -322,11 +322,7 @@ internal sealed unsafe partial class BlockFile : IDisposable
             var (mappedFile, view) = OpenMapping(path, FileMode.Open, mappingCapacity: 0, viewLength: length,
                 fileOptions: FileOptions.None);
             block = new BlockFile(path, length, mappedFile, view);
-            validation = BlockHeader.Validate(in block.Header, expectedVolumeSerial, length);
-            if (validation is null)
-            {
-                validation = block.ValidateNameDescriptors();
-            }
+            validation = BlockHeader.Validate(in block.Header, expectedVolumeSerial, length) ?? block.ValidateNameDescriptors();
 
             if (validation is null)
             {

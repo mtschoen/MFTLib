@@ -10,5 +10,5 @@ public enum IndexScanOutcome
     Failed,
 
     /// <summary>The caller's token cancelled the scan before the producer finished.</summary>
-    Cancelled,
+    Cancelled
 }

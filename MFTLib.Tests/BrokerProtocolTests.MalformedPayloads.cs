@@ -37,7 +37,7 @@ public partial class BrokerProtocolTests
                 FileName = fileName
             })
         ]);
-        return buffer.WrittenSpan.ToArray();
+        return [.. buffer.WrittenSpan];
     }
 
     [TestMethod]
@@ -93,7 +93,7 @@ public partial class BrokerProtocolTests
     public void ReadFrame_ControlDriveRejectsMalformedPayload(int kindValue)
     {
         var kind = (BrokerFrameKind)kindValue;
-        byte[] suffix = kind switch
+        var suffix = kind switch
         {
             BrokerFrameKind.OpenChannel => [2, 0, 0, 0, (byte)'p', 0],
             BrokerFrameKind.GrowUsnJournal => new byte[16],

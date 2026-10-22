@@ -9,7 +9,7 @@ namespace MFTLib;
 ///     until disposed. <see cref="ReadBatches" /> copies the records into managed memory one batch at a
 ///     time, so a caller holds at most one batch of managed strings while the native result stays alive.
 /// </summary>
-internal sealed class MftResult : IDisposable
+sealed class MftResult : IDisposable
 {
     readonly MftParseResult _result;
     bool _disposed;

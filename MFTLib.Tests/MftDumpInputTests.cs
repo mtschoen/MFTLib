@@ -57,7 +57,7 @@ public sealed class MftDumpInputTests : IDisposable
         using var result = input.Parse();
         var records = result.ToRecords().ToDictionary(record => record.RecordNumber);
 
-        Assert.AreSequenceEqual(new ulong[] { 0, 5, 6, 7, 8, 9, 10 }, records.Keys.ToArray(), SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(new ulong[] { 0, 5, 6, 7, 8, 9, 10 }, [.. records.Keys], SequenceOrder.InAnyOrder);
         Assert.AreEqual(16UL, result.TotalRecords);
         Assert.IsTrue(records[5].IsDirectory);
         Assert.AreEqual(5UL, records[5].ParentRecordNumber);
@@ -90,7 +90,7 @@ public sealed class MftDumpInputTests : IDisposable
         ["partial final record", MftDumpFixture.Standard()[..^1], "File size is not a whole multiple of record size."],
         ["one extra byte", (byte[])[.. MftDumpFixture.Standard(), 0],
             "File size is not a whole multiple of record size."],
-        ["4096-byte records cut at a 1024-byte boundary", MftDumpFixture.Standard(4096)[..(4096 * 3 + 1024)],
+        ["4096-byte records cut at a 1024-byte boundary", MftDumpFixture.Standard(4096)[..((4096 * 3) + 1024)],
             "File size is not a whole multiple of record size."]
     ];
 
@@ -202,7 +202,7 @@ public sealed class MftDumpInputTests : IDisposable
     [DataRow(0L)]
     [DataRow(1024L)]
     [DataRow(1024L * 8)]
-    [DataRow(1024L * 15 + 1)]
+    [DataRow((1024L * 15) + 1)]
     [DataRow(1024L * 17)]
     public void Parse_FileLengthChangedAfterTheOpen_FailsAsIncomplete(long newLength)
     {
@@ -267,7 +267,7 @@ public sealed class MftDumpInputTests : IDisposable
 
         var batches = input.ReadRecordBatches(3, null, CancellationToken.None).ToArray();
 
-        Assert.AreSequenceEqual(new[] { 3, 3, 1 }, batches.Select(batch => batch.Length).ToArray());
+        Assert.AreSequenceEqual([3, 3, 1], [.. batches.Select(batch => batch.Length)]);
         Assert.AreEqual("$MFT", batches[0][0].FileName);
     }
 
@@ -333,7 +333,7 @@ public sealed class MftDumpInputTests : IDisposable
     static string[] Names(MftDumpInput input)
     {
         using var result = input.Parse();
-        return result.ToRecords().Select(record => record.FileName).ToArray();
+        return [.. result.ToRecords().Select(record => record.FileName)];
     }
 
     static byte[] Header(int recordSize) => MftDumpFixture.Standard(recordSize)[..32];

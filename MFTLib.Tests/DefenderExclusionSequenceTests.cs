@@ -80,7 +80,7 @@ public class DefenderExclusionSequenceTests
         Assert.AreEqual(relaunchResult, result);
         Assert.IsEmpty(runner.Launches);
         var (arguments, timeout) = elevation.Relaunches.Single();
-        Assert.AreSequenceEqual(Relaunch, arguments.ToArray());
+        Assert.AreSequenceEqual(Relaunch, [.. arguments]);
         Assert.AreEqual(DefenderExclusionSequence.ElevatedTimeout, timeout);
     }
 
@@ -260,7 +260,7 @@ public class DefenderExclusionSequenceTests
         Assert.IsTrue(started.UseShellExecute);
         Assert.AreEqual(string.Empty, started.Arguments);
         Assert.AreSequenceEqual(
-            new[] { "-NoProfile", "-NonInteractive", "-EncodedCommand" }, started.ArgumentList.Take(3).ToArray());
+            ["-NoProfile", "-NonInteractive", "-EncodedCommand"], [.. started.ArgumentList.Take(3)]);
         Assert.HasCount(4, started.ArgumentList);
         Assert.AreEqual(script, Encoding.Unicode.GetString(Convert.FromBase64String(started.ArgumentList[3])));
     }
@@ -289,7 +289,7 @@ public class DefenderExclusionSequenceTests
     public void RunPowerShell_Exit_IsAppliedOnlyForZeroAndNeverKills(int exitCode, bool expected)
     {
         var killed = new List<Process>();
-        var sequence = SequenceOver(exitCode: exitCode, killProcess: killed.Add);
+        var sequence = SequenceOver(killProcess: killed.Add, exitCode: exitCode);
 
         Assert.AreEqual(expected, sequence.RunPowerShell("script", false));
         Assert.IsEmpty(killed);
@@ -338,7 +338,7 @@ public class DefenderExclusionSequenceTests
             killProcess: killed.Add);
 
         Assert.IsFalse(sequence.RunPowerShell("script", true));
-        Assert.AreSequenceEqual(new[] { DefenderExclusionSequence.PowerShellTimeout }, waited);
+        Assert.AreSequenceEqual([DefenderExclusionSequence.PowerShellTimeout], waited);
         Assert.HasCount(1, killed);
     }
 

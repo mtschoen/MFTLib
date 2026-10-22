@@ -2,7 +2,7 @@ using MFTLib.Index;
 
 namespace MFTLib;
 
-internal static class MftBlockProducerPipeline
+static class MftBlockProducerPipeline
 {
     internal static readonly ParseThreadAllocator SharedAllocator = new(Environment.ProcessorCount);
 
@@ -32,7 +32,7 @@ internal static class MftBlockProducerPipeline
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        BlockFile? block = BlockFile.Create(MftBlockCapacity.CreateOptions(plan.Volume,
+        var block = BlockFile.Create(MftBlockCapacity.CreateOptions(plan.Volume,
             request.BlockPath, request.VolumeSerial, request.DeleteOnClose, request.CacheTag, request.ScanShape));
         try
         {

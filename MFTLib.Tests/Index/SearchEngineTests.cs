@@ -45,28 +45,28 @@ public class SearchEngineTests
 
     static string[] NamesOf(IReadOnlyList<FileEntry> entries)
     {
-        return entries.Select(entry => entry.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray();
+        return [.. entries.Select(entry => entry.Name).OrderBy(name => name, StringComparer.Ordinal)];
     }
 
     [TestMethod]
     public void Search_SubstringIsCaseInsensitiveByDefault()
     {
         var results = SearchEngine.Search(_snapshot, new SearchQuery("report"));
-        Assert.AreSequenceEqual(new[] { "Report.docx", "report.pdf" }, NamesOf(results));
+        Assert.AreSequenceEqual(["Report.docx", "report.pdf"], NamesOf(results));
     }
 
     [TestMethod]
     public void Search_CaseSensitiveNarrowsTheResult()
     {
         var results = SearchEngine.Search(_snapshot, new SearchQuery("report", CaseSensitive: true));
-        Assert.AreSequenceEqual(new[] { "report.pdf" }, NamesOf(results));
+        Assert.AreSequenceEqual(["report.pdf"], NamesOf(results));
     }
 
     [TestMethod]
     public void Search_GlobPatternMatchesTheWholeName()
     {
         var results = SearchEngine.Search(_snapshot, new SearchQuery("*.pdf", NameMatchMode.Glob));
-        Assert.AreSequenceEqual(new[] { "report.pdf" }, NamesOf(results));
+        Assert.AreSequenceEqual(["report.pdf"], NamesOf(results));
     }
 
     [TestMethod]
@@ -95,7 +95,7 @@ public class SearchEngineTests
     public void Search_DirectoriesFalseReturnsOnlyFiles()
     {
         var results = SearchEngine.Search(_snapshot, new SearchQuery(null, IsDirectory: false));
-        Assert.AreSequenceEqual(new[] { "Report.docx", "holiday.jpg", "report.pdf" }, NamesOf(results));
+        Assert.AreSequenceEqual(["Report.docx", "holiday.jpg", "report.pdf"], NamesOf(results));
     }
 
     [TestMethod]
@@ -103,7 +103,7 @@ public class SearchEngineTests
     {
         var results = SearchEngine.Search(_snapshot,
             new SearchQuery(null, IsDirectory: false, SizeMinimum: 100, SizeMaximum: 4096));
-        Assert.AreSequenceEqual(new[] { "Report.docx", "report.pdf" }, NamesOf(results));
+        Assert.AreSequenceEqual(["Report.docx", "report.pdf"], NamesOf(results));
     }
 
     [TestMethod]
@@ -151,7 +151,7 @@ public class SearchEngineTests
     {
         var documents = FileEntry.Create(_snapshot[0], _documentsRow);
         var results = SearchEngine.Search(_snapshot, new SearchQuery(null, Subtree: documents));
-        Assert.AreSequenceEqual(new[] { "Documents", "Report.docx", "report.pdf" }, NamesOf(results));
+        Assert.AreSequenceEqual(["Documents", "Report.docx", "report.pdf"], NamesOf(results));
     }
 
     [TestMethod]

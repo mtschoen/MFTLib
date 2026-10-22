@@ -20,7 +20,7 @@ public class PhaseReporterTests
 
         var lines = output.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
         Assert.AreSequenceEqual(
-            new[] { @"  D: Enumerating: 7 rows in D:\data", "  D: ParsingMft: 9 rows" }, lines);
+            [@"  D: Enumerating: 7 rows in D:\data", "  D: ParsingMft: 9 rows"], lines);
     }
 
     [TestMethod]
@@ -33,6 +33,6 @@ public class PhaseReporterTests
         reporter.Report(new IndexDriveOpened('C', 1, 3));
 
         var lines = output.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
-        Assert.AreSequenceEqual(new[] { "D: opened (2 of 3 drives)", "C: opened (1 of 3 drives)" }, lines);
+        Assert.AreSequenceEqual(["D: opened (2 of 3 drives)", "C: opened (1 of 3 drives)"], lines);
     }
 }

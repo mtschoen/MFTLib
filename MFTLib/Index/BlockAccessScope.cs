@@ -9,7 +9,7 @@ namespace MFTLib.Index;
 ///     out. Unlike <see cref="SnapshotBorrow" /> this carries no finalizer: scopes are created and
 ///     disposed inside a single writer method and are never handed to a caller.
 /// </summary>
-internal sealed class BlockAccessScope : IDisposable
+sealed class BlockAccessScope : IDisposable
 {
     readonly BlockFile _block;
     int _acquired;

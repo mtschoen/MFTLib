@@ -4,14 +4,14 @@ using MFTLib.Index;
 
 namespace SampleProgram.Watch;
 
-internal enum WatchVerb { Scan, Watch, Rescan, Journal, Cache, ElevationStatus }
+enum WatchVerb { Scan, Watch, Rescan, Journal, Cache, ElevationStatus }
 
 /// <summary>
 ///     The parsed command line: an optional verb name, then drive letters and the verb's flags. A first argument
 ///     that names no verb is a drive letter and selects <see cref="WatchVerb.Watch" />. An index verb that names
 ///     no drive leaves <see cref="Drives" /> empty for the host to fill from the machine.
 /// </summary>
-internal sealed partial record WatchArguments(WatchVerb Verb, IReadOnlyList<string> Drives)
+sealed partial record WatchArguments(WatchVerb Verb, IReadOnlyList<string> Drives)
 {
     /// <summary>How long an unattended watch runs when <c>--seconds</c> is not given; an attended one runs until a key press.</summary>
     internal const int DefaultSeconds = 10;
@@ -73,7 +73,7 @@ internal sealed partial record WatchArguments(WatchVerb Verb, IReadOnlyList<stri
     }
 }
 
-internal static class WatchVerbs
+static class WatchVerbs
 {
     internal static readonly Dictionary<string, WatchVerb> Names = new(StringComparer.OrdinalIgnoreCase)
     {

@@ -8,7 +8,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     longer carries the drive's count or report, and a status read after the fact reflects a
 ///     later retry.
 /// </summary>
-internal sealed class FaultStatusLog
+sealed class FaultStatusLog
 {
     readonly Lock _gate = new();
     readonly List<DriveStatus> _catchUpLossStatuses = [];

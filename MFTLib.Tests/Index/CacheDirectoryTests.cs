@@ -134,7 +134,7 @@ public class CacheDirectoryTests
     [SupportedOSPlatform("windows")]
     static bool AreAccessRulesProtected(string path)
     {
-        return FileSystemAclExtensions.GetAccessControl(new DirectoryInfo(path)).AreAccessRulesProtected;
+        return new DirectoryInfo(path).GetAccessControl().AreAccessRulesProtected;
     }
 
     [TestMethod]

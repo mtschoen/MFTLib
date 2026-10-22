@@ -43,7 +43,7 @@ public class FileIndexWatchRescanFaultHandoffTests
         var production = faultDuringProduction ? harness.HoldNextProduction('T') : null;
         var delivery = faultAfterRetirement ? harness.TrackGate() : null;
         var faultAnnounced = delayedOverlappingStop ? harness.TrackGate() : null;
-        Task<IReadOnlyList<DriveOperationResult>> rescan = Task.FromResult<IReadOnlyList<DriveOperationResult>>([]);
+        var rescan = Task.FromResult<IReadOnlyList<DriveOperationResult>>([]);
         if (delayedOverlappingStop)
         {
             index.Hooks.BeforeWatchChanged = _ => HoldSynchronously(delivery!);

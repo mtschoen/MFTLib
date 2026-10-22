@@ -176,7 +176,7 @@ public class SyntheticNotificationsTests
         var watch = SyntheticNotifications.CreateDriveStatus('T', DriveState.Offline, null, null).Watch
             with
         { State = WatchState.Faulted, StateVersion = 7, FailureMessage = "watch failed" };
-        WatchFault? fault = includeFault
+        var fault = includeFault
             ? SyntheticNotifications.CreateWatchFault(WatchFaultKind.Channel, 'T', new IOException("pipe closed"))
             : null;
 

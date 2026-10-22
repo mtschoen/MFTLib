@@ -12,7 +12,7 @@ namespace MFTLib.Tests;
 // plus the elevation report that touches no volume.
 [TestClass]
 [DoNotParallelize]
-public sealed class WatchVerbTests : IDisposable
+public sealed partial class WatchVerbTests : IDisposable
 {
     static readonly SyntheticJournalCursor Armed = new(7, 1000);
 
@@ -247,7 +247,7 @@ clearing, string.Join(Environment.NewLine, clearing));
         var host = new SampleHost(new LineCollectingWriter(lines), TextReader.Null)
         {
             _isElevated = () => false,
-            _canSelfElevate = () => true,
+            _canSelfElevate = () => true
         };
 
         var result = host.Run(["elevation-status"]);
@@ -283,7 +283,7 @@ clearing, string.Join(Environment.NewLine, clearing));
             "SampleProgram.Watch/SampleHost.Verbs.cs",
             "SampleProgram.Watch/SampleHost.Broker.cs"
         }.Select(RepositoryFiles.Read));
-        Assert.AreEqual(1, Regex.Count(hostSource, @"\bResolveCacheDirectory\(parsed, profileDirectory\)"),
+        Assert.AreEqual(1, MyRegex().Count(hostSource),
             "Run resolves the cache root; cache and broker verbs consume that value.");
     }
 
@@ -318,7 +318,7 @@ clearing, string.Join(Environment.NewLine, clearing));
     {
         var host = new SampleHost(new LineCollectingWriter([], writeLine), TextReader.Null, timeProvider ?? new FakeTimeProvider())
         {
-            _isElevated = () => false,
+            _isElevated = () => false
         };
         WatchNoticeSupport.AcknowledgeDeliberately(host);
         return host;
@@ -338,4 +338,7 @@ clearing, string.Join(Environment.NewLine, clearing));
             ]
         };
     }
+
+    [GeneratedRegex(@"\bResolveCacheDirectory\(parsed, profileDirectory\)")]
+    private static partial Regex MyRegex();
 }

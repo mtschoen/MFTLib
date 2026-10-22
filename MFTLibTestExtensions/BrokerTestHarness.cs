@@ -71,7 +71,7 @@ public static class BrokerTestHarness
             JournalWatch = watch is null ? ScriptedVolumeAccess.UnsupportedWatch :
                 (drive, since, _, cancellationToken) => ConvertWatch(
                     watch(drive, since.ToSynthetic(), cancellationToken), cancellationToken),
-            VolumeInformation = drive => queryVolume(drive),
+            VolumeInformation = queryVolume,
             JournalGrow = grow is null ? ScriptedVolumeAccess.UnsupportedGrow :
                 (drive, maximumSize, allocationDelta) => grow(drive,
                     new UsnJournalSettings { MaximumSize = maximumSize, AllocationDelta = allocationDelta })

@@ -12,7 +12,7 @@ namespace MFTLib.Tests.Index;
 ///     loss attached. Every report <see cref="FileIndexOptions.DriveOpenProgress" /> delivers is kept
 ///     and signalled, so a test orders itself against a drive settling without sleeping.
 /// </summary>
-internal sealed class OpenScenario : IDisposable
+sealed class OpenScenario : IDisposable
 {
     readonly ConcurrentDictionary<char, TestGate> _gates = [];
     readonly ConcurrentDictionary<char, int> _productionsBeforeHold = [];
@@ -81,9 +81,9 @@ internal sealed class OpenScenario : IDisposable
     /// <summary>The names of the cache directory's block files, without their owner-lock siblings.</summary>
     public string[] BlockFileNames() => !Directory.Exists(CacheDirectory)
         ? []
-        : Directory.GetFiles(CacheDirectory)
+        : [.. Directory.GetFiles(CacheDirectory)
             .Where(path => !path.EndsWith(".lock", StringComparison.Ordinal))
-            .Select(path => Path.GetFileName(path)).Order(StringComparer.Ordinal).ToArray();
+            .Select(path => Path.GetFileName(path)).Order(StringComparer.Ordinal)];
 
     public static string CanonicalBlockName(char driveLetter) =>
         MFTLib.Index.CacheDirectory.BlockFileName(driveLetter, SerialOf(driveLetter));

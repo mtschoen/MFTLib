@@ -3,7 +3,7 @@ using MFTLib.Index;
 namespace SampleProgram.Direct;
 
 /// <summary>The largest files in an index: one pass over the rows with a bounded heap, building no name or path.</summary>
-internal static class LargestFiles
+static class LargestFiles
 {
     internal static IReadOnlyList<FileEntry> Find(FileIndex index, int count, FileEntry? under,
         CancellationToken cancellationToken, Action<int>? resultAssembledForTest = null)

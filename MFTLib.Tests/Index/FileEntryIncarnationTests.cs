@@ -242,7 +242,7 @@ public class FileEntryIncarnationTests
         {
         }
 
-        Assert.AreSequenceEqual(new[] { DirectorySequence }, calls);
+        Assert.AreSequenceEqual([DirectorySequence], calls);
     }
 
     [TestMethod]

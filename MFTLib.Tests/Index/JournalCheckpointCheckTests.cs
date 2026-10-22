@@ -217,12 +217,12 @@ public class JournalCheckpointCheckTests
         const long megabyte = 1024 * 1024;
         using var journal = Journal(
             firstUsn: 1_000_000_000,
-            nextUsn: 1_000_000_000 + 300 * megabyte,
+            nextUsn: 1_000_000_000 + (300 * megabyte),
             maximumSize: 128 * megabyte,
             allocationDelta: 64 * megabyte);
 
         // The 320 MB span plus one 64 MB trimming margin yields an at-least size of 384 MB.
-        var loss = JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 1_000_000_000 - 20 * megabyte,
+        var loss = JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 1_000_000_000 - (20 * megabyte),
             JournalCheckpointLossDetection.DriveOpening);
 
         Assert.IsNotNull(loss);

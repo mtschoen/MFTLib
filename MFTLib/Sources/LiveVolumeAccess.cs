@@ -2,10 +2,10 @@ using MFTLib.Index;
 
 namespace MFTLib;
 
-internal sealed class LiveVolumeAccess : IVolumeAccess
+sealed class LiveVolumeAccess : IVolumeAccess
 {
     internal static LiveVolumeAccess Instance { get; } = new();
-    private LiveVolumeAccess() { }
+    LiveVolumeAccess() { }
 
     public UsnJournalCursor QueryCursor(DriveKey drive) => LiveVolumeSources.QueryCursor(drive);
     public IEnumerable<IReadOnlyList<MftRecord>> ScanDriveRecordBatches(

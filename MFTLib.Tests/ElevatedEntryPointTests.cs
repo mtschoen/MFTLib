@@ -53,7 +53,7 @@ public class ElevatedEntryPointTests
         var runner = new RecordingRunner();
 
         Assert.IsFalse(ElevatedEntryPoint.RunBrokerIfRequested(ScanOnlyArgs, runner, runner.RecordExit));
-        Assert.IsFalse(ElevatedEntryPoint.RunBrokerIfRequested(Array.Empty<string>(), runner, runner.RecordExit));
+        Assert.IsFalse(ElevatedEntryPoint.RunBrokerIfRequested([], runner, runner.RecordExit));
         Assert.AreEqual(0, runner.TotalCalls);
     }
 
@@ -138,7 +138,7 @@ public class ElevatedEntryPointTests
         {
             Assert.IsTrue(ElevatedEntryPoint.RunBrokerIfRequested(arguments, runner, runner.RecordExit));
             Assert.AreEqual(0, runner.TotalCalls);
-            Assert.AreSequenceEqual(new[] { 1 }, runner.ExitCodes);
+            Assert.AreSequenceEqual([1], runner.ExitCodes);
         }
         finally
         {
@@ -178,7 +178,7 @@ public class ElevatedEntryPointTests
                 yield return [new[] { "--broker", "--diag", "--diag-log", Path.Combine(InvalidDiagnosticsDirectory, reservedName, BrokerDiagnostics.LogFileName) }];
             }
 
-            yield return [new[] { "--broker", "--diag", "--diag-log", @"C:relative.log" }];
+            yield return [new[] { "--broker", "--diag", "--diag-log", "C:relative.log" }];
             yield return [new[] { "--broker", "--diag", "--diag-log", Path.Combine(Path.GetTempPath(), "bad|name.log") }];
             yield return [new[] { "--broker", "--diag", "--diag-log", Path.Combine(Path.GetTempPath(), "bad?directory", "broker-diagnostics.ui.log") }];
         }

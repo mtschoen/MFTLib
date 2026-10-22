@@ -21,7 +21,7 @@ namespace MFTLib.Index;
 ///     of a drive's block is already serialized by that drive's write gate
 ///     (<see cref="FileIndex.ApplyJournalEntries" />), and tests drive it single-threaded.
 /// </summary>
-internal sealed class ReportedReasonCycles
+sealed class ReportedReasonCycles
 {
     const UsnReason ModificationReasons = UsnReason.DataOverwrite
         | UsnReason.DataExtend

@@ -3,7 +3,7 @@ using MFTLib.Index;
 namespace SampleProgram.Direct;
 
 /// <summary>A file name and every live file that carries it, compared without regard to case.</summary>
-internal sealed record DuplicateNameGroup(string Name, IReadOnlyList<FileEntry> Entries);
+sealed record DuplicateNameGroup(string Name, IReadOnlyList<FileEntry> Entries);
 
 /// <summary>
 ///     Up to four seeded hash passes narrow candidates before names and entries are materialized.
@@ -11,7 +11,7 @@ internal sealed record DuplicateNameGroup(string Name, IReadOnlyList<FileEntry> 
 ///     takes its own snapshot, so concurrent changes can add or drop candidates. Final grouping by
 ///     real names prevents false groups from hash collisions. Entries keep enumeration order.
 /// </summary>
-internal static class DuplicateNameSieve
+static class DuplicateNameSieve
 {
     const int MaximumRefinementPassCount = 3;
     const int CandidateThresholdDivisor = 256;

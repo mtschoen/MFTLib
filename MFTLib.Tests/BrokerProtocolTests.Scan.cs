@@ -40,7 +40,7 @@ public partial class BrokerProtocolTests
             writer, "s", RetainedFileNamesGitAndNonAscii, includeFreed));
 
         Assert.AreEqual(includeFreed, frame.IncludeFreed);
-        Assert.AreSequenceEqual(RetainedFileNamesGitAndNonAscii, frame.RetainedFileNames!.ToArray());
+        Assert.AreSequenceEqual(RetainedFileNamesGitAndNonAscii, [.. frame.RetainedFileNames!]);
     }
 
     [TestMethod]
@@ -63,7 +63,7 @@ public partial class BrokerProtocolTests
         var frame = RoundTrip(writer => BrokerProtocol.WriteArmAndScan(
             writer, "s", RetainedFileNamesGitAndNonAscii)); // non-ASCII to prove UTF-16
 
-        Assert.AreSequenceEqual(RetainedFileNamesGitAndNonAscii, frame.RetainedFileNames!.ToArray());
+        Assert.AreSequenceEqual(RetainedFileNamesGitAndNonAscii, [.. frame.RetainedFileNames!]);
     }
 
     [TestMethod]
@@ -261,7 +261,7 @@ public partial class BrokerProtocolTests
     public void JournalBatchFrame_EmptyEntries_RoundTrips()
     {
         var frame = RoundTrip(writer => BrokerProtocol.WriteJournalBatch(
-            writer, new UsnJournalCursor(1UL, 0L), Array.Empty<UsnJournalEntry>()));
+            writer, new UsnJournalCursor(1UL, 0L), []));
 
         Assert.AreEqual(BrokerFrameKind.JournalBatch, frame.Kind);
         Assert.IsEmpty(frame.Entries);
@@ -416,7 +416,7 @@ public partial class BrokerProtocolTests
     public void WireBytes_Golden_JournalBatchFrame()
     {
         AssertWireBytes(
-            w => BrokerProtocol.WriteJournalBatch(w, new UsnJournalCursor(1UL, 2L), Array.Empty<UsnJournalEntry>()),
+            w => BrokerProtocol.WriteJournalBatch(w, new UsnJournalCursor(1UL, 2L), []),
             [
                 0x15, 0x00, 0x00, 0x00, // totalLength = 21
                 0x0F, // kind = JournalBatch

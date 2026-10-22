@@ -72,7 +72,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
             }
         }
 
-        Assert.AreSequenceEqual(new[] { "dump:/D/documents/Notes.txt  11" }, lines);
+        Assert.AreSequenceEqual(["dump:/D/documents/Notes.txt  11"], lines);
         Assert.IsTrue(retainedEntry.IsValid);
         Assert.IsTrue(retainedEntry.IsDisposed);
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = retainedEntry.Path);
@@ -189,11 +189,10 @@ public sealed class ReadmeWalkthroughTests : IDisposable
 
         Assert.AreEqual(1, scanCount);
         Assert.AreSequenceEqual(
-            new[]
-            {
+            [
                 $"{Path.Combine(TemporaryDirectoryPath, "logs", "app.log")} (42 bytes, last write observed 2026-10-14 12:00:00Z)",
                 $"{Path.Combine(TemporaryDirectoryPath, "logs", "pending.log")} (size unknown, last write observed 2026-10-14 12:00:00Z)"
-            }, lines);
+            ], lines);
         Assert.IsTrue(retainedEntry.IsDisposed);
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = retainedEntry.Size);
     }

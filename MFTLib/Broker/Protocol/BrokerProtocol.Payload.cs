@@ -7,7 +7,7 @@ namespace MFTLib;
 
 // Payload primitives shared by every frame's write and read. A payload is built in its own
 // buffer so its length is known before the length prefix is written.
-internal static partial class BrokerProtocol
+static partial class BrokerProtocol
 {
     sealed class PayloadWriter
     {

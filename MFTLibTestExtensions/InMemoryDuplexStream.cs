@@ -5,7 +5,7 @@ namespace MFTLibTestExtensions;
 ///     both directions, so the peer's reads reach EOF, and a later read or write on this end throws
 ///     <see cref="ObjectDisposedException" />, as a closed named pipe does.
 /// </summary>
-internal sealed class InMemoryDuplexStream(Stream read, Stream write) : DelegatingStream(read)
+sealed class InMemoryDuplexStream(Stream read, Stream write) : DelegatingStream(read)
 {
     volatile bool _closed;
 
@@ -40,7 +40,7 @@ internal sealed class InMemoryDuplexStream(Stream read, Stream write) : Delegati
         // misuse; a closed pipe reports a read cut off by its own close as ObjectDisposedException.
         catch (InvalidOperationException) when (_closed)
         {
-            throw new ObjectDisposedException(GetType().Name);
+            throw new ObjectDisposedException(nameof(InMemoryDuplexStream));
         }
     }
 
@@ -69,7 +69,7 @@ internal sealed class InMemoryDuplexStream(Stream read, Stream write) : Delegati
 }
 
 /// <summary>Every write waits on the task <c>hold</c> returns before any byte of it is written.</summary>
-internal sealed class HeldWriteStream(Stream inner, Func<Task> hold) : DelegatingStream(inner)
+sealed class HeldWriteStream(Stream inner, Func<Task> hold) : DelegatingStream(inner)
 {
     public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
     {
@@ -83,7 +83,7 @@ internal sealed class HeldWriteStream(Stream inner, Func<Task> hold) : Delegatin
 ///     it asynchronously also waits until the host has exited, which never faults: a failed host
 ///     session reaches the client only as its pipes closing.
 /// </summary>
-internal sealed class HostLifetimeStream(Stream client, Task hostExited) : DelegatingStream(client)
+sealed class HostLifetimeStream(Stream client, Task hostExited) : DelegatingStream(client)
 {
     public override async ValueTask DisposeAsync()
     {

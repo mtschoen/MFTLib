@@ -61,7 +61,7 @@ public partial class JournalBrokerHostTests
 
             // No JournalBatch for the filtered-empty first batch, but the CaughtUp marker still
             // fires because its cursor (7,150) passed the arm-time tip (7,140).
-            Assert.AreSequenceEqual(new[] { BrokerFrameKind.CaughtUp, BrokerFrameKind.JournalBatch }, frames.Select(frame => frame.Kind).ToArray());
+            Assert.AreSequenceEqual([BrokerFrameKind.CaughtUp, BrokerFrameKind.JournalBatch], [.. frames.Select(frame => frame.Kind)]);
             Assert.HasCount(1, frames[1].Entries);
             Assert.AreEqual("real.txt", frames[1].Entries[0].FileName);
         }

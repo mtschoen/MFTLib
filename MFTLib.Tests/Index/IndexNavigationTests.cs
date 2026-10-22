@@ -78,9 +78,9 @@ public partial class IndexNavigationTests
     public void Children_ReturnsDirectChildrenOnly()
     {
         var children = Entry(_documentsRow).Children();
-        var names = children.Select(child => child.Name).OrderBy(name => name).ToArray();
+        var names = children.Select(child => child.Name).Order().ToArray();
 
-        Assert.AreSequenceEqual(new[] { "notes.txt", "Projects" }, names);
+        Assert.AreSequenceEqual(["notes.txt", "Projects"], names);
     }
 
     [TestMethod]

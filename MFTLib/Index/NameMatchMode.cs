@@ -13,5 +13,5 @@ public enum NameMatchMode
     ///     The pattern must match the entire name, where <c>*</c> stands for any run of characters,
     ///     including none, and <c>?</c> for exactly one character.
     /// </summary>
-    Glob,
+    Glob
 }

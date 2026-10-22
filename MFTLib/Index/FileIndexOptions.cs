@@ -133,7 +133,7 @@ public sealed record FileIndexOptions
         }
 
         var copy = new List<string>(names.Count);
-        foreach (string? name in names)
+        foreach (var name in names)
         {
             if (name is null)
             {

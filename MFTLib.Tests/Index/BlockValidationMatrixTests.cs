@@ -100,7 +100,7 @@ public sealed class BlockValidationMatrixTests : IDisposable
     {
         await SeedCacheAsync();
         var bytes = await File.ReadAllBytesAsync(BlockPath());
-        await File.WriteAllBytesAsync(BlockPath(), bytes.AsSpan(0, BlockLayout.PageSize).ToArray());
+        await File.WriteAllBytesAsync(BlockPath(), [.. bytes.AsSpan(0, BlockLayout.PageSize)]);
 
         await AssertColdScansAsync(Options(), BlockValidationResult.InconsistentRegions);
     }
@@ -110,7 +110,7 @@ public sealed class BlockValidationMatrixTests : IDisposable
     {
         await SeedCacheAsync();
         var bytes = await File.ReadAllBytesAsync(BlockPath());
-        var rowOneNameOffset = BlockLayout.RowRegionOffset + BlockLayout.RowBytes + 8;
+        const long rowOneNameOffset = BlockLayout.RowRegionOffset + BlockLayout.RowBytes + 8;
         BitConverter.GetBytes(uint.MaxValue - 1).CopyTo(bytes, rowOneNameOffset);
         await File.WriteAllBytesAsync(BlockPath(), bytes);
 
@@ -152,7 +152,7 @@ public sealed class BlockValidationMatrixTests : IDisposable
             var options = new FileIndexOptions
             {
                 Drives = [new IndexedDrive('T', differentTreeRoot, 0x0BADF00D, ProducerKind.Enumeration)],
-                CacheDirectory = CacheDirectoryPath,
+                CacheDirectory = CacheDirectoryPath
             };
 
             await AssertColdScansAsync(options, BlockValidationResult.WrongRootDirectory);

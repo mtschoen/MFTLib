@@ -2,7 +2,7 @@ using MFTLib.Tests.Index;
 
 namespace MFTLib.Tests.TestSupport;
 
-internal static class CompletedBlocks
+static class CompletedBlocks
 {
     public static SyntheticBlockBuilder Create(DateTime scanMoment, char driveLetter = 'T')
     {

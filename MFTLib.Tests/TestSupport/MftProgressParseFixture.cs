@@ -5,14 +5,14 @@ using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib.Tests.TestSupport;
 
-internal static unsafe class MftProgressParseFixture
+static unsafe class MftProgressParseFixture
 {
     public static void ConfigureSingleRecordParse(Action<MFTLibNative.NativeMftProgressCallback?> reportProgress)
     {
         MFTLibNative.Hooks._getMftNativeAbiVersion = () => MFTLibNative.ExpectedMftNativeAbiVersion;
         FileUtilities.Hooks._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
 
-        var entryStride = (nuint)MFTLibNative.NativeCompactEntrySize;
+        const nuint entryStride = MFTLibNative.NativeCompactEntrySize;
         var entryBuffer = Marshal.AllocHGlobal((int)entryStride);
         new Span<byte>((void*)entryBuffer, (int)entryStride).Clear();
         Unsafe.WriteUnaligned((byte*)entryBuffer, 100UL);

@@ -7,7 +7,7 @@ public sealed partial class FileIndex
         /// <summary>Starts this drive for an admitted consumer request; readiness is handle publication.</summary>
         public Task StartDriveWatchingAsync(CancellationToken cancellationToken)
         {
-            if (_index.RejectedTask(nameof(FileIndex.StartWatchingAsync)) is { } rejected)
+            if (_index.RejectedTask(nameof(StartWatchingAsync)) is { } rejected)
             {
                 return rejected;
             }
@@ -57,7 +57,7 @@ public sealed partial class FileIndex
             {
                 // The lifecycle gate keeps any other start or rescan out while this waits, and nothing
                 // is registered yet, so a retiring pump's last batch can never reach this start's watch.
-                await FileIndex.AwaitQueuedAsync(previousDrain, cancellationToken, CancellationToken.None).ConfigureAwait(false);
+                await AwaitQueuedAsync(previousDrain, cancellationToken, CancellationToken.None).ConfigureAwait(false);
             }
 
             if (restart && Hooks.RestartBeforeRegistration is { } beforeRegistration)
@@ -261,10 +261,7 @@ public sealed partial class FileIndex
                 instance.State = WatchInstanceState.Running;
                 NoteWatchStateLocked();
                 RescanHandoffFault = null;
-                if (Retiring is not null)
-                {
-                    Retiring.OutstandingFault = null;
-                }
+                Retiring?.OutstandingFault = null;
 
                 // Queued rather than run inline, so no source code runs while this lock is held. The
                 // pump's own exit path completes the instance's drain, which is what every waiter

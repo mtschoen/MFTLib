@@ -3,7 +3,7 @@ using System.Text;
 namespace MFTLib.Tests.TestSupport;
 
 /// <summary>Builds FSCTL_READ_USN_JOURNAL output buffers for the native USN test hooks.</summary>
-internal static class UsnReadBuffers
+static class UsnReadBuffers
 {
     // A FSCTL_READ_USN_JOURNAL output buffer: leading int64 nextUsn, then packed
     // USN_RECORD_V2 records.

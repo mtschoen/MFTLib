@@ -43,7 +43,7 @@ public partial class DumpFileParseTests
         var batches = result.ReadBatches(4096).ToList();
 
         Assert.IsTrue(batches.All(batch => batch.Length is > 0 and <= 4096));
-        Assert.AreSequenceEqual(expectedRecordNumbers, batches.SelectMany(batch => batch).Select(record => record.RecordNumber).ToArray());
+        Assert.AreSequenceEqual(expectedRecordNumbers, [.. batches.SelectMany(batch => batch).Select(record => record.RecordNumber)]);
     }
 
     [TestMethod]
@@ -57,7 +57,7 @@ public partial class DumpFileParseTests
         Assert.IsGreaterThan(1, batches.Count);
         Assert.IsTrue(batches[..^1].All(batch => batch.Length == batchSize));
         Assert.IsLessThanOrEqualTo(batchSize, batches[^1].Length);
-        Assert.AreSequenceEqual(result.ToRecords().Select(record => record.RecordNumber).ToArray(), batches.SelectMany(batch => batch).Select(record => record.RecordNumber).ToArray());
+        Assert.AreSequenceEqual([.. result.ToRecords().Select(record => record.RecordNumber)], [.. batches.SelectMany(batch => batch).Select(record => record.RecordNumber)]);
     }
 
     [TestMethod]
@@ -72,6 +72,6 @@ public partial class DumpFileParseTests
         Assert.IsTrue(enumerator.MoveNext());
         Assert.IsNotEmpty(enumerator.Current);
 
-        Assert.AreSequenceEqual(firstBatchNames, firstBatch.Select(record => record.FileName).ToArray());
+        Assert.AreSequenceEqual(firstBatchNames, [.. firstBatch.Select(record => record.FileName)]);
     }
 }

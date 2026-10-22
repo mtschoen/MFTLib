@@ -126,7 +126,7 @@ public sealed class FileIndexDisposalRaceTests : IDisposable
                 "the first rescan never reached its progress callback, so it never took the gate");
             var queuedRescan = index.RescanAsync(['T'], CancellationToken.None);
             var settledInTheWindow = false;
-            Action releaseTheScan = progress.Release;
+            var releaseTheScan = progress.Release;
             index.Hooks.DisposedFlagSet = () =>
             {
                 releaseTheScan();

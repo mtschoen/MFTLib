@@ -60,7 +60,7 @@ public sealed class LiveVolumeSourcesIncludeFreedTests : IDisposable
                 new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions { IncludeFreed = includeFreed }, _ => { }, CancellationToken.None)
             .SelectMany(batch => batch).ToArray();
 
-        Assert.AreSequenceEqual(new[] { includeFreed }, requests);
+        Assert.AreSequenceEqual([includeFreed], requests);
         var freed = records.Where(record => !record.InUse).ToArray();
         Assert.HasCount(includeFreed ? 1 : 0, freed);
         if (includeFreed)
@@ -122,7 +122,7 @@ public sealed class LiveVolumeSourcesIncludeFreedTests : IDisposable
         using var image = File.OpenHandle(imagePath);
         using var result = new MftResult(
             MFTLibNative.Hooks._parseMftRecordsWithProgress(image, false, 64, IntPtr.Zero, null));
-        return result.ToRecords().Where(record => record.InUse).Select(record => record.RecordNumber).ToHashSet();
+        return [.. result.ToRecords().Where(record => record.InUse).Select(record => record.RecordNumber)];
     }
 
     sealed class QuietReporter : ISourceOperationReporter

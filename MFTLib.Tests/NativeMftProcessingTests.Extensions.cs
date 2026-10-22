@@ -23,7 +23,7 @@ public partial class NativeMftProcessingTests
             WriteFileRecord(data, 4096);
 
             // Attribute 1: Data (non-resident) â†’ clusters 1..256 (1MB)
-            var a1 = 4096 + 0x38;
+            const int a1 = 4096 + 0x38;
             var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
 
             // Attribute 2: Non-resident AttributeList with data at cluster 260
@@ -95,7 +95,7 @@ public partial class NativeMftProcessingTests
         {
             var data = BuildBootSector();
             WriteFileRecord(data, 4096);
-            var dataAttribute = 4096 + 0x38;
+            const int dataAttribute = 4096 + 0x38;
             var dataLength = WriteNonResidentDataAttribute(
                 data, dataAttribute, 1024L * 1024, 1, 256);
             var attributeList = dataAttribute + dataLength;
@@ -144,7 +144,7 @@ public partial class NativeMftProcessingTests
         {
             var data = BuildBootSector();
             WriteFileRecord(data, 4096);
-            var dataAttribute = 4096 + 0x38;
+            const int dataAttribute = 4096 + 0x38;
             var dataLength = WriteNonResidentDataAttribute(
                 data, dataAttribute, 1024L * 1024, 1, 256);
             var attributeList = dataAttribute + dataLength;
@@ -155,7 +155,7 @@ public partial class NativeMftProcessingTests
             if (malformedKind != 0)
             {
                 WriteFileRecord(data, extensionRecord, 2);
-                var extensionAttribute = extensionRecord + 0x38;
+                const int extensionAttribute = extensionRecord + 0x38;
                 data[extensionAttribute] = 0x80;
                 if (malformedKind == 2)
                 {
@@ -226,24 +226,24 @@ public partial class NativeMftProcessingTests
             WriteFileRecord(data, 4096);
 
             // The base run covers records 0..63.
-            var a1 = 4096 + 0x38;
+            const int a1 = 4096 + 0x38;
             var a1Len = WriteNonResidentDataAttribute(data, a1, 64L * 1024, 1, 16);
 
             // Use the existing list writer, then give each entry its type and lowest VCN.
             var a2 = a1 + a1Len;
-            uint secondDataRecord = uncoveredData ? 9999U : 64U;
-            uint metadataRecord = namedData ? 9999U : 65U;
+            var secondDataRecord = uncoveredData ? 9999U : 64U;
+            var metadataRecord = namedData ? 9999U : 65U;
             var references = reverseDataOrder
                 ? metadataFirst
                     ? new[] { metadataRecord, secondDataRecord, 1U, 0U }
-                    : new[] { secondDataRecord, 1U, metadataRecord, 0U }
+                    : [secondDataRecord, 1U, metadataRecord, 0U]
                 : metadataFirst
-                    ? new[] { metadataRecord, 1U, 0U }
-                    : new[] { 1U, metadataRecord, 0U };
+                    ? [metadataRecord, 1U, 0U]
+                    : [1U, metadataRecord, 0U];
             var a2Len = WriteResidentAttributeList(data, a2, references);
             for (var index = 0; index < references.Length; index++)
             {
-                var entry = a2 + 0x18 + index * 28;
+                var entry = a2 + 0x18 + (index * 28);
                 if (references[index] == metadataRecord)
                 {
                     data[entry] = namedData ? (byte)0x80 : (byte)0x30;
@@ -265,18 +265,18 @@ public partial class NativeMftProcessingTests
             WriteFileRecord(data, 5120, 0x0002);
 
             // Extension record Data attribute at cluster 100 adds four records.
-            var ext1 = 5120 + 0x38;
+            const int ext1 = 5120 + 0x38;
             var ext1Len = WriteNonResidentDataAttribute(data, ext1, 4096, 100, 1);
             WriteEndMarker(data, ext1 + ext1Len);
 
             WriteFileRecord(data, 100 * 4096, 0x0002);
-            var secondAttribute = 100 * 4096 + 0x38;
+            const int secondAttribute = (100 * 4096) + 0x38;
             var secondLength = reverseDataOrder
                 ? WriteNonResidentDataAttribute(data, secondAttribute, 4096, 101, 1)
                 : 0;
             WriteEndMarker(data, secondAttribute + secondLength);
-            WriteFileRecord(data, 100 * 4096 + 1024, 0x0002);
-            WriteEndMarker(data, 100 * 4096 + 1024 + 0x38);
+            WriteFileRecord(data, (100 * 4096) + 1024, 0x0002);
+            WriteEndMarker(data, (100 * 4096) + 1024 + 0x38);
 
             File.WriteAllBytes(path, data);
 
@@ -325,7 +325,7 @@ public partial class NativeMftProcessingTests
             var data = BuildBootSector();
             WriteFileRecord(data, 4096);
 
-            var a1 = 4096 + 0x38;
+            const int a1 = 4096 + 0x38;
             var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
 
             var a2 = a1 + a1Len;

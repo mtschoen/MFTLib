@@ -74,7 +74,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
 
         block.Flush(reported.Add);
 
-        Assert.AreSequenceEqual(new[] { block.Length }, reported);
+        Assert.AreSequenceEqual([block.Length], reported);
     }
 
     [TestMethod]
@@ -150,7 +150,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
         block.FlushViewWithRetry(0, block.Length);
 
         Assert.AreEqual(3, attempts);
-        Assert.AreSequenceEqual(new[] { 1 }, pauses);
+        Assert.AreSequenceEqual([1], pauses);
     }
 
     [TestMethod]
@@ -190,8 +190,8 @@ public sealed class BlockFileRangedFlushTests : IDisposable
         var thrown = (Win32Exception)CaptureRetryException(block)!;
 
         Assert.AreEqual(33, thrown.NativeErrorCode);
-        Assert.AreEqual(1 + 15 * 20, attempts);
-        Assert.AreSequenceEqual(Enumerable.Range(0, 15).Select(wait => 1 << wait).ToArray(), pauses);
+        Assert.AreEqual(1 + (15 * 20), attempts);
+        Assert.AreSequenceEqual([.. Enumerable.Range(0, 15).Select(wait => 1 << wait)], pauses);
     }
 
     [TestMethod]
@@ -209,7 +209,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
 
         Assert.AreEqual(5, thrown.NativeErrorCode);
         Assert.AreEqual(1, spins, "One spin follows the retry that still failed with 33, none follows the 5.");
-        Assert.AreSequenceEqual(new[] { 1 }, pauses);
+        Assert.AreSequenceEqual([1], pauses);
     }
 
     [TestMethod]
@@ -249,7 +249,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
 
         block.SynchronizeRange(pageBytes + 7, pageBytes + 100, OSPlatform.Create(platform));
 
-        Assert.AreSequenceEqual(new[] { ((long)pageBytes, (long)pageBytes + 100, expectedFlag) }, calls);
+        Assert.AreSequenceEqual([((long)pageBytes, (long)pageBytes + 100, expectedFlag)], calls);
     }
 
     [TestMethod]

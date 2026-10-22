@@ -33,7 +33,7 @@ public partial class FileIndexPerDriveWatchTests
         await harness.Index.StartWatchingAsync(['T'], Token);
 
         Assert.AreSequenceEqual(
-            new[] { new IndexWatchTarget('T', WatchHarness.JournalIdentifier, WatchHarness.NextUsn) }, harness.Source.Targets.ToArray());
+            [new IndexWatchTarget('T', WatchHarness.JournalIdentifier, WatchHarness.NextUsn)], [.. harness.Source.Targets]);
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('U').Watch.State);
     }

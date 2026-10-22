@@ -32,17 +32,11 @@ namespace MFTLib.Tests
         {
         }
 
-        public class NestedPublic
-        {
-        }
+        public class NestedPublic;
 
-        protected class NestedProtected
-        {
-        }
+        protected class NestedProtected;
 
-        internal sealed class NestedInternal
-        {
-        }
+        internal sealed class NestedInternal;
     }
 
     /// <summary>Negative-control fixture: sealed positional record with public synthesized members.</summary>

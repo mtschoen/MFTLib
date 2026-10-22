@@ -2,7 +2,7 @@ using MFTLib.Index;
 
 namespace MFTLib;
 
-internal static class MftBlockValidation
+static class MftBlockValidation
 {
     static void Validate(BlockFile block, uint volumeSerial, UsnJournalCursor armed, CacheTag requestedCacheTag,
         ulong requestedScanShape)

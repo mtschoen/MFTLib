@@ -8,7 +8,7 @@ namespace MFTLib;
 ///     diagnostics tag; disposing it closes the pipe, which the host reads as the operation's
 ///     cancellation.
 /// </summary>
-internal sealed class BrokerDriveChannel : IAsyncDisposable
+sealed class BrokerDriveChannel : IAsyncDisposable
 {
     readonly BrokerPipeListener _pipe;
     readonly Stream _stream;

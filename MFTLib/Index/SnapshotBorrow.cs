@@ -7,7 +7,7 @@ namespace MFTLib.Index;
 ///     also what keeps them reachable, which is why the finalizer path needs no borrow check of its
 ///     own: a borrowed block cannot be collected.
 /// </summary>
-internal sealed class SnapshotBorrow : IDisposable
+sealed class SnapshotBorrow : IDisposable
 {
     int _acquired;
 

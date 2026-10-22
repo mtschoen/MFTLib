@@ -27,7 +27,7 @@ public partial class JournalBrokerHostChannelTests
         using var a = await three.AdmitAsync(CancellationToken.None);
         using var b = await three.AdmitAsync(CancellationToken.None);
         using var c = await three.AdmitAsync(CancellationToken.None);
-        Assert.AreSequenceEqual(new[] { 3, 3, 2 }, new[] { a.Allowance.Count, b.Allowance.Count, c.Allowance.Count }, "The remainder goes to the earliest admissions.");
+        Assert.AreSequenceEqual([3, 3, 2], [a.Allowance.Count, b.Allowance.Count, c.Allowance.Count], "The remainder goes to the earliest admissions.");
     }
 
     [TestMethod]
@@ -181,8 +181,10 @@ public partial class JournalBrokerHostChannelTests
     [TestMethod]
     public async Task ScanChannel_PipeClosed_ShareReturnsOnlyAfterSourceReturns()
     {
-        var scans = new HeldScans();
-        scans['C'].HonorCancellation = false;
+        var scans = new HeldScans
+        {
+            ['C'] = { HonorCancellation = false }
+        };
         var host = BrokerHostFactory.Create(new()
         {
             ProcessorCount = 2,

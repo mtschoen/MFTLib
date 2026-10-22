@@ -10,7 +10,7 @@ namespace MFTLib;
 ///     running scan's <see cref="ParseThreadAllowance" />, which the native parser reads at its
 ///     next chunk. Nothing computes a share anywhere else.
 /// </summary>
-internal sealed class ParseThreadAllocator
+sealed class ParseThreadAllocator
 {
     readonly Lock _gate = new();
     readonly int _processorCount;
@@ -147,7 +147,7 @@ internal sealed class ParseThreadAllocator
 }
 
 /// <summary>One running scan's place in the <see cref="ParseThreadAllocator" />.</summary>
-internal sealed class ParseThreadRegistration : IDisposable
+sealed class ParseThreadRegistration : IDisposable
 {
     readonly ParseThreadAllocator _allocator;
     int _disposed;

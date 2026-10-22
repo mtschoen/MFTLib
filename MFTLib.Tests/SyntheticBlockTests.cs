@@ -93,7 +93,7 @@ public sealed partial class SyntheticBlockTests : IDisposable
         var path = Seed();
 
         Assert.AreEqual(SyntheticBlock.CachedPath(CacheDirectoryPath, 'T', Serial), path);
-        Assert.AreSequenceEqual(SampleRows(), SyntheticBlock.ReadRows(path, Serial).ToArray());
+        Assert.AreSequenceEqual(SampleRows(), [.. SyntheticBlock.ReadRows(path, Serial)]);
     }
 
     [TestMethod]
@@ -365,11 +365,11 @@ public sealed partial class SyntheticBlockTests : IDisposable
     {
         var producer = SampleProducer();
         await using var index = await FileIndex.OpenAsync(Scanning(producer), Token);
-        Assert.AreSequenceEqual(new DriveKey[] { 'T' }, producer.ProducedDrives.ToArray());
+        Assert.AreSequenceEqual(['T'], [.. producer.ProducedDrives]);
 
         await index.RescanAsync(['T'], Token);
 
-        Assert.AreSequenceEqual(new DriveKey[] { 'T', 'T' }, producer.ProducedDrives.ToArray());
+        Assert.AreSequenceEqual(['T', 'T'], [.. producer.ProducedDrives]);
     }
 
     [TestMethod]

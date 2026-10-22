@@ -4,7 +4,7 @@ using MFTLib.NativeInterop;
 
 namespace MFTLib;
 
-internal sealed partial class UsnJournalVolume
+sealed partial class UsnJournalVolume
 {
     /// <summary>
     ///     Yields batches of USN journal entries and their post-batch cursors as filesystem changes arrive.

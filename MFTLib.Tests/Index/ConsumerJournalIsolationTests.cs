@@ -93,10 +93,12 @@ public class ConsumerJournalIsolationTests
     [DataRow(true, true)]
     public async Task LostWindow_ReachesRealOpenAndCacheOnlyRefusal(bool recreated, bool cacheOnly)
     {
-        var windows = new ConcurrentDictionary<char, SyntheticJournalWindow>();
-        windows['T'] = Healthy;
+        var windows = new ConcurrentDictionary<char, SyntheticJournalWindow>
+        {
+            ['T'] = Healthy
+        };
         using var scope = JournalIsolation.OverrideJournalWindow(
-            drive => windows.TryGetValue((drive).Letter, out var window) ? window : null);
+            drive => windows.TryGetValue(drive.Letter, out var window) ? window : null);
         await SeedAsync();
         windows['T'] = Lost(recreated);
         var source = new ScriptedWatchSource();
@@ -152,10 +154,12 @@ public class ConsumerJournalIsolationTests
     [DataRow(2)]
     public async Task WatchFault_UsesLatestSyntheticWindowAndAppliedCursor(int observation)
     {
-        var windows = new ConcurrentDictionary<char, SyntheticJournalWindow>();
-        windows['T'] = Healthy;
+        var windows = new ConcurrentDictionary<char, SyntheticJournalWindow>
+        {
+            ['T'] = Healthy
+        };
         using var scope = JournalIsolation.OverrideJournalWindow(
-            drive => windows.TryGetValue((drive).Letter, out var window) ? window : null);
+            drive => windows.TryGetValue(drive.Letter, out var window) ? window : null);
         await SeedAsync();
         var source = new ScriptedWatchSource();
         await using var index = await FileIndex.OpenAsync(Options(false, source.IndexSource), Token);

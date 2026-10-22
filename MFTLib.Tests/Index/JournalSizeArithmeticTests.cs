@@ -36,7 +36,7 @@ public class JournalSizeArithmeticTests
         const long megabyte = 1024 * 1024;
         Assert.AreEqual(384 * megabyte,
             JournalSizeArithmetic.SizeThatWouldHaveRetained(
-                checkpointUsn: 1_000_000_000, nextUsn: 1_000_000_000 + 300 * megabyte,
+                checkpointUsn: 1_000_000_000, nextUsn: 1_000_000_000 + (300 * megabyte),
                 allocationDelta: 64 * megabyte));
     }
 

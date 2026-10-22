@@ -70,12 +70,12 @@ static class SyntheticNtfsImage
         data[offset + 1] = 0x49;
         data[offset + 2] = 0x4C;
         data[offset + 3] = 0x45;
-        var usaSize = (ushort)(recordSize / 512 + 1);
+        var usaSize = (ushort)((recordSize / 512) + 1);
         data[offset + 4] = 0x30;
         data[offset + 5] = 0x00;
         data[offset + 6] = (byte)(usaSize & 0xFF);
         data[offset + 7] = (byte)(usaSize >> 8);
-        var firstAttrOffset = (ushort)((48 + usaSize * 2 + 7) & ~7);
+        var firstAttrOffset = (ushort)((48 + (usaSize * 2) + 7) & ~7);
         data[offset + 0x14] = (byte)(firstAttrOffset & 0xFF);
         data[offset + 0x15] = (byte)(firstAttrOffset >> 8);
         data[offset + 0x16] = 0x01;
@@ -85,9 +85,9 @@ static class SyntheticNtfsImage
         var sectorCount = (int)(recordSize / 512);
         for (var i = 0; i < sectorCount; i++)
         {
-            data[offset + 50 + i * 2] = 0x00;
-            data[offset + 51 + i * 2] = 0x00;
-            var sectorEnd = (i + 1) * 512 - 2;
+            data[offset + 50 + (i * 2)] = 0x00;
+            data[offset + 51 + (i * 2)] = 0x00;
+            var sectorEnd = ((i + 1) * 512) - 2;
             data[offset + sectorEnd] = (byte)(usn & 0xFF);
             data[offset + sectorEnd + 1] = (byte)(usn >> 8);
         }

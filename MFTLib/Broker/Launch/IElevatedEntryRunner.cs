@@ -6,7 +6,7 @@ namespace MFTLib;
 ///     a real elevated process, opening a real pipe, or running a real scan. The
 ///     production implementation is <see cref="DefaultElevatedEntryRunner" />.
 /// </summary>
-internal interface IElevatedEntryRunner
+interface IElevatedEntryRunner
 {
     /// <summary>
     ///     Serve the journal broker over the control pipe <paramref name="controlPipeName" /> the

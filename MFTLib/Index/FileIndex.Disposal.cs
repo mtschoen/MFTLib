@@ -118,7 +118,7 @@ public sealed partial class FileIndex
         List<WatchHandoff> handoffs;
         lock (_stateLock)
         {
-            handoffs = _driveRuntimes.Values.Select(runtime => runtime.PrepareDisposalLocked()).ToList();
+            handoffs = [.. _driveRuntimes.Values.Select(runtime => runtime.PrepareDisposalLocked())];
         }
 
         foreach (var runtime in _driveRuntimes.Values)

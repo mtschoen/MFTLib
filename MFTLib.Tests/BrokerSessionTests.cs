@@ -173,7 +173,7 @@ public partial class BrokerSessionTests
         await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard);
         await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard);
 
-        Assert.AreSequenceEqual(new[] { "connecting", "launch", "connected" }, order);
+        Assert.AreSequenceEqual(["connecting", "launch", "connected"], order);
     }
 
     [TestMethod]
@@ -344,7 +344,7 @@ public partial class BrokerSessionTests
         await using var handle = StartBroker();
         var brokerProcess = handle.Process;
         var launches = 0;
-        Action crash = handle.Crash;
+        var crash = handle.Crash;
         await using var session = CreateSession(async cancellationToken =>
         {
             Interlocked.Increment(ref launches);

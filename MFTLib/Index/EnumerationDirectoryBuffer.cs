@@ -1,12 +1,12 @@
 namespace MFTLib.Index;
 
-internal readonly record struct EnumerationDirectoryWork(string Path, uint RowIndex);
+readonly record struct EnumerationDirectoryWork(string Path, uint RowIndex);
 
-internal readonly record struct EnumerationBufferedEntry(
+readonly record struct EnumerationBufferedEntry(
     int NameOffset, int NameLength, RowColumns Columns, bool CanDescend);
 
 // The result owns its List and ArrayBufferWriter; neither escapes before Read returns.
-internal sealed class EnumerationDirectoryBuffer(EnumerationDirectoryWork directory)
+sealed class EnumerationDirectoryBuffer(EnumerationDirectoryWork directory)
 {
     internal EnumerationDirectoryWork Directory { get; } = directory;
     internal List<EnumerationBufferedEntry> Entries { get; } = [];

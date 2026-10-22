@@ -10,7 +10,7 @@ namespace MFTLibTestExtensions;
 ///     test can see which were released. The host's section writer writes into the section the
 ///     client created for the scan.
 /// </summary>
-internal sealed class InProcessBroker : IAsyncDisposable
+sealed class InProcessBroker : IAsyncDisposable
 {
     readonly ScriptedBrokerResources _resources;
 
@@ -36,7 +36,7 @@ internal sealed class InProcessBroker : IAsyncDisposable
 }
 
 /// <summary>Client block sections over temporary delete-on-close files, each with a lifetime that records its disposal.</summary>
-internal sealed class TestBlockSections : IDisposable
+sealed class TestBlockSections : IDisposable
 {
     readonly ConcurrentDictionary<string, (BlockFile Block, RecordingLifetime Lifetime)> _sections =
         new(StringComparer.Ordinal);
@@ -86,7 +86,7 @@ internal sealed class TestBlockSections : IDisposable
             DeleteOnClose: true);
 }
 
-internal sealed class RecordingLifetime : IDisposable
+sealed class RecordingLifetime : IDisposable
 {
     readonly TaskCompletionSource _disposed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     int _disposeCount;

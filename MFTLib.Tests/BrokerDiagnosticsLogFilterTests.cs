@@ -52,10 +52,10 @@ public class BrokerDiagnosticsLogFilterTests
 
         var kept = filter.Filter(driveChar, entries);
 
-        Assert.AreSequenceEqual(new[] { "unrelated.txt" }, kept.Select(entry => entry.FileName).ToArray());
+        Assert.AreSequenceEqual(["unrelated.txt"], [.. kept.Select(entry => entry.FileName)]);
         Assert.AreSequenceEqual(
-            new[] { "broker-diagnostics.broker.log", "broker-diagnostics.ui.log" }, otherFilter.Filter(driveChar, entries).Select(entry => entry.FileName).ToArray());
-        Assert.AreSequenceEqual(new[] { "unrelated.txt" }, filter.Filter(driveChar, entries).Select(entry => entry.FileName).ToArray());
+            ["broker-diagnostics.broker.log", "broker-diagnostics.ui.log"], [.. otherFilter.Filter(driveChar, entries).Select(entry => entry.FileName)]);
+        Assert.AreSequenceEqual(["unrelated.txt"], [.. filter.Filter(driveChar, entries).Select(entry => entry.FileName)]);
     }
 
     [TestMethod]
@@ -138,7 +138,7 @@ public class BrokerDiagnosticsLogFilterTests
             Entry(initialReference, "broker-diagnostics.broker.log"),
             Entry(recycledReference, "recycled.txt")
         };
-        Assert.AreSequenceEqual(new[] { "recycled.txt" }, filter.Filter('C', first).Select(entry => entry.FileName).ToArray());
+        Assert.AreSequenceEqual(["recycled.txt"], [.. filter.Filter('C', first).Select(entry => entry.FileName)]);
         currentReference.Value = replacementReference;
         var replaced = new[]
         {
@@ -147,8 +147,8 @@ public class BrokerDiagnosticsLogFilterTests
             Entry(recycledReference, "recycled.txt"),
             Entry(4242, "unrelated.txt")
         };
-        Assert.AreSequenceEqual(new[] { "recycled.txt", "unrelated.txt" }, filter.Filter('C', replaced).Select(entry => entry.FileName).ToArray());
-        Assert.AreSequenceEqual(new[] { "recycled.txt", "unrelated.txt" }, filter.Filter('C', replaced).Select(entry => entry.FileName).ToArray());
+        Assert.AreSequenceEqual(["recycled.txt", "unrelated.txt"], [.. filter.Filter('C', replaced).Select(entry => entry.FileName)]);
+        Assert.AreSequenceEqual(["recycled.txt", "unrelated.txt"], [.. filter.Filter('C', replaced).Select(entry => entry.FileName)]);
     }
 
     [TestMethod]
@@ -176,7 +176,7 @@ public class BrokerDiagnosticsLogFilterTests
         Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDrive(@"c:\logs\diag.log", out var drive2));
         Assert.AreEqual(new DriveKey('C'), drive2);
 
-        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDrive(@"D:/logs/diag.log", out var drive3));
+        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDrive("D:/logs/diag.log", out var drive3));
         Assert.AreEqual(new DriveKey('D'), drive3);
 
         Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDrive(@"\\?\E:\logs\diag.log", out var drive4));
@@ -286,7 +286,7 @@ public class BrokerDiagnosticsLogFilterTests
             var unrelated = Entry(4242, "unrelated.txt");
             var drive = Path.GetPathRoot(logPath)![0];
 
-            var kept = filter.Filter(drive, new[] { matching, unrelated });
+            var kept = filter.Filter(drive, [matching, unrelated]);
 
             Assert.HasCount(1, kept);
             Assert.AreEqual("unrelated.txt", kept[0].FileName);

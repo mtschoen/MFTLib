@@ -49,8 +49,8 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
         AssertDrive(index, 'T', ProducerKind.Mft);
         AssertDrive(index, 'U', ProducerKind.Enumeration);
         var rows = index.Search(new SearchQuery(".txt"));
-        Assert.AreSequenceEqual(new[] { "scanned.txt", "walked.txt" }, rows.Select(row => row.Name).ToArray(), SequenceOrder.InAnyOrder);
-        Assert.AreSequenceEqual(new[] { 'T', 'U' }, rows.Select(row => row.RecordKey.Drive.Letter).ToArray(), SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(["scanned.txt", "walked.txt"], [.. rows.Select(row => row.Name)], SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(['T', 'U'], [.. rows.Select(row => row.RecordKey.Drive.Letter)], SequenceOrder.InAnyOrder);
 
         await index.RescanAsync(['T'], CancellationToken.None);
         await index.RescanAsync(['U'], CancellationToken.None);
@@ -105,7 +105,7 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
             Assert.IsNull(status.Failure);
         }
 
-        Assert.AreSequenceEqual(new[] { 'T', 'U' }, index.Search(new SearchQuery("walked.txt")).Select(entry => entry.Drive.Letter).ToArray(), SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(['T', 'U'], [.. index.Search(new SearchQuery("walked.txt")).Select(entry => entry.Drive.Letter)], SequenceOrder.InAnyOrder);
         Assert.AreEqual(0, invocationCount);
     }
 

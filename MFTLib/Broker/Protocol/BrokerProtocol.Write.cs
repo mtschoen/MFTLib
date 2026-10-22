@@ -5,7 +5,7 @@ namespace MFTLib;
 
 // Frame write methods for BrokerProtocol, in BrokerFrameKind order. See BrokerProtocol.cs for
 // the entry codec and ReadFrame dispatch, and BrokerProtocol.Payload.cs for the primitives.
-internal static partial class BrokerProtocol
+static partial class BrokerProtocol
 {
     // Control pipe
 
@@ -89,10 +89,10 @@ internal static partial class BrokerProtocol
     // the frame limit cannot carry before anything is sent.
     public static long ArmAndScanFrameLength(string sectionName, IReadOnlyCollection<string>? retainedFileNames)
     {
-        var length = 1L + 4 + 2L * sectionName.Length + 4 + 4;
+        var length = 1L + 4 + (2L * sectionName.Length) + 4 + 4;
         foreach (var name in retainedFileNames ?? [])
         {
-            length += 4 + 2L * name.Length;
+            length += 4 + (2L * name.Length);
         }
 
         return length;

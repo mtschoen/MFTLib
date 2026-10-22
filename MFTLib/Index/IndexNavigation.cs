@@ -6,7 +6,7 @@ namespace MFTLib.Index;
 ///     never revisits a row already seen on this walk, so a cyclic parent column yields a
 ///     truncated path instead of a hang while depth exhaustion throws <see cref="InvalidDataException" />.
 /// </summary>
-internal static class IndexNavigation
+static class IndexNavigation
 {
     static bool IsRootRow(BlockFile block, uint rowIndex)
     {

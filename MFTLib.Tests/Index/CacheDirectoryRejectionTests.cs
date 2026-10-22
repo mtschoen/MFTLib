@@ -51,8 +51,7 @@ public class CacheDirectoryRejectionTests
         switch (operation)
         {
             case "enumerate":
-                return CacheDirectory.EnumerateCached(_directory, rejectedFile)
-                    .Select(file => file.Path).ToArray();
+                return [.. CacheDirectory.EnumerateCached(_directory, rejectedFile).Select(file => file.Path)];
             case "inspect":
             case "inspect-default-drives":
                 var statuses = operation == "inspect-default-drives"
@@ -61,12 +60,12 @@ public class CacheDirectoryRejectionTests
                         drives?.Select(letter => new DriveKey(letter)), rejectedFile);
                 Assert.IsTrue(statuses.All(status =>
                     status.Availability == CachedBlockAvailability.Available));
-                return statuses.Select(status => status.File.Path).ToArray();
+                return [.. statuses.Select(status => status.File.Path)];
             case "delete":
                 var results = CacheDirectory.DeleteCached(_directory,
                     drives?.Select(letter => new DriveKey(letter)), rejectedFile);
                 Assert.IsTrue(results.All(result => result.Outcome == CachedBlockDeletionOutcome.Deleted));
-                return results.Select(result => result.File.Path).ToArray();
+                return [.. results.Select(result => result.File.Path)];
             default:
                 throw new ArgumentOutOfRangeException(nameof(operation));
         }
@@ -102,8 +101,8 @@ public class CacheDirectoryRejectionTests
 
         var paths = ReadPaths(operation, null, rejected.Add);
 
-        Assert.AreSequenceEqual(new[] { canonical }, paths);
-        Assert.AreSequenceEqual(foreign, rejected.Select(entry => entry.Path).ToArray(), SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual([canonical], paths);
+        Assert.AreSequenceEqual(foreign, [.. rejected.Select(entry => entry.Path)], SequenceOrder.InAnyOrder);
         Assert.IsTrue(rejected.All(entry => entry.Reason == "Invalid block filename."));
         foreach (var path in foreign.Concat(ignored))
         {

@@ -8,7 +8,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     fired. A test waits for the timer under test to exist, then advances the clock to either side
 ///     of its due time, instead of stepping the clock in a loop.
 /// </summary>
-internal sealed class TimerSignalingClock : FakeTimeProvider
+sealed class TimerSignalingClock : FakeTimeProvider
 {
     readonly Lock _gate = new();
     readonly Dictionary<(TimeSpan DueTime, int Occurrence), TaskCompletionSource<CreatedTimer>> _created = [];

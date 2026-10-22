@@ -13,7 +13,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     test reads the client end of the same name. Reads skip <see cref="BrokerFrameKind.Heartbeat" />
 ///     frames, as the client does, unless a test asks for them.
 /// </summary>
-internal sealed class HostChannelHarness : IAsyncDisposable
+sealed class HostChannelHarness : IAsyncDisposable
 {
     readonly ConcurrentDictionary<string, InMemoryPipePair> _pipes = new(StringComparer.Ordinal);
     readonly InMemoryPipePair _control = new();
@@ -64,7 +64,7 @@ internal sealed class HostChannelHarness : IAsyncDisposable
             await _connectionsReleased.WaitAsync(cancellationToken);
         }
 
-        Stream hostEnd = Pipe(pipeName).Host;
+        var hostEnd = Pipe(pipeName).Host;
         return _wrapDrivePipe?.Invoke(pipeName, hostEnd) ?? hostEnd;
     }
 

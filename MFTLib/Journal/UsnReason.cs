@@ -2,7 +2,7 @@ namespace MFTLib;
 
 /// <summary>Flags reported by Windows in a <c>USN_REASON_*</c> change-journal record.</summary>
 [Flags]
-internal enum UsnReason : uint
+enum UsnReason : uint
 {
     /// <summary>No change reason is reported.</summary>
     None = 0,

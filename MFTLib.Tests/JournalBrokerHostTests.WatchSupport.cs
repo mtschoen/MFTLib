@@ -25,7 +25,7 @@ public partial class JournalBrokerHostTests
             {
                 CursorQuery = queryCursor ?? (_ => new UsnJournalCursor(7, 1000)),
                 RecordBatches = scanDrive ?? ((_, _, _, _, _, _) => [[WatchRecord(5, ".", 3)]]),
-                JournalRead = readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
+                JournalRead = readJournal ?? ((_, since, _) => ([], since)),
                 JournalWatch = watchDrive ?? ScriptedVolumeAccess.UnsupportedWatch,
                 VolumeInformation = _ => WatchVolume
             },

@@ -5,7 +5,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     <see cref="Progress{T}" />, which posts through a synchronization context and so cannot
 ///     be asserted on deterministically right after the call that triggered it.
 /// </summary>
-internal sealed class SynchronousProgress<T>(Action<T> callback) : IProgress<T>
+sealed class SynchronousProgress<T>(Action<T> callback) : IProgress<T>
 {
     public void Report(T value)
     {

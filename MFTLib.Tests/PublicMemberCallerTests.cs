@@ -97,10 +97,9 @@ public class PublicMemberCallerTests
     /// <summary>The surface members that none of the referenced identities reach, in a stable order.</summary>
     static List<SurfaceMember> FindUnreferenced(Surface surface, IReadOnlySet<string> references,
         Dictionary<string, string> exempt) =>
-        surface.Members
+        [.. surface.Members
             .Where(member => !exempt.ContainsKey(member.Display) && !member.IsReferencedBy(references))
-            .OrderBy(member => member.Display, StringComparer.Ordinal)
-            .ToList();
+            .OrderBy(member => member.Display, StringComparer.Ordinal)];
 
     /// <summary>
     ///     The sample assemblies the full gate reads. Off Windows the Watch sample is not built, so the gate is

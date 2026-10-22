@@ -6,7 +6,7 @@ namespace MFTLib.Index;
 ///     Each public member holds a <see cref="BlockAccessScope" /> throughout: it either completes
 ///     before unmapping or throws <see cref="ObjectDisposedException" /> when disposal began first.
 /// </summary>
-internal sealed partial class BlockWriter
+sealed partial class BlockWriter
 {
     /// <summary>Initializes a writer for one mapped block.</summary>
     /// <param name="block">Block that receives rows, names, and header updates.</param>

@@ -11,7 +11,7 @@ public class BrokerFrameWriteLimitTests
 {
     static readonly UsnJournalCursor Armed = new(7, 1000);
 
-    static string[] KeepList(int count) => Enumerable.Repeat(new string('n', 255), count).ToArray();
+    static string[] KeepList(int count) => [.. Enumerable.Repeat(new string('n', 255), count)];
 
     [TestMethod]
     public void WriteArmAndScan_KeepListOverTheLimit_ThrowsBeforeWritingAnything()

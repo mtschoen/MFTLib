@@ -30,7 +30,7 @@ public partial class FileIndexCatchUpLossTests
         Assert.IsFalse(drive.Watch.IsRecoveryStopped);
         Assert.AreEqual(StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss, "the retry keeps the report the loss produced");
         Assert.AreEqual(WatchState.NotStarted, drive.Watch.State);
-        Assert.AreSequenceEqual(new[] { LossScriptedCache.CanonicalBlockName }, cache.BlockFileNames());
+        Assert.AreSequenceEqual([LossScriptedCache.CanonicalBlockName], cache.BlockFileNames());
         await index.StartWatchingAsync(['T'], Token);
         Assert.HasCount(1, cache.Source.TargetsFor('T'), "the retried block is resumable");
     }
@@ -53,7 +53,7 @@ public partial class FileIndexCatchUpLossTests
         Assert.AreEqual(StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss);
         Assert.AreEqual(WatchState.Faulted, drive.Watch.State);
         Assert.Contains("12288", drive.Watch.FailureMessage!);
-        Assert.AreSequenceEqual(new[] { LossScriptedCache.CanonicalBlockName }, cache.BlockFileNames());
+        Assert.AreSequenceEqual([LossScriptedCache.CanonicalBlockName], cache.BlockFileNames());
         var refusal = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.StartWatchingAsync(['T'], Token));
         Assert.Contains("RescanAsync", refusal.Message);
     }
@@ -74,7 +74,7 @@ public partial class FileIndexCatchUpLossTests
         Assert.IsFalse(drive.Watch.IsRecoveryStopped);
         Assert.AreEqual(StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss);
         Assert.AreEqual("the retry scan failed", drive.Failure?.Message);
-        Assert.AreSequenceEqual(new[] { LossScriptedCache.CanonicalBlockName }, cache.BlockFileNames());
+        Assert.AreSequenceEqual([LossScriptedCache.CanonicalBlockName], cache.BlockFileNames());
         var refusal = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.StartWatchingAsync(['T'], Token));
         Assert.Contains("RescanAsync", refusal.Message);
     }
@@ -108,9 +108,9 @@ public partial class FileIndexCatchUpLossTests
             };
 
         /// <summary>The cache directory's block files, without their owner-lock siblings.</summary>
-        public string?[] BlockFileNames() => Directory.GetFiles(CacheDirectoryPath)
+        public string?[] BlockFileNames() => [.. Directory.GetFiles(CacheDirectoryPath)
             .Where(path => !path.EndsWith(".lock", StringComparison.Ordinal))
-            .Select(Path.GetFileName).ToArray();
+            .Select(Path.GetFileName)];
 
         public void Dispose() => _fixture.Dispose();
 

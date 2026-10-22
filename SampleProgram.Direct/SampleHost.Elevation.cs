@@ -1,6 +1,6 @@
 namespace SampleProgram.Direct;
 
-internal enum ElevationNeed { None, SelfElevate }
+enum ElevationNeed { None, SelfElevate }
 
 partial class SampleHost
 {

@@ -139,18 +139,18 @@ public sealed class UnreadableBlockTests : IDisposable
     static void AddWindowsDenyReadRule(string path)
     {
         var info = new FileInfo(path);
-        var security = FileSystemAclExtensions.GetAccessControl(info);
+        var security = info.GetAccessControl();
         security.AddAccessRule(CurrentUserDenyReadRule());
-        FileSystemAclExtensions.SetAccessControl(info, security);
+        info.SetAccessControl(security);
     }
 
     [SupportedOSPlatform("windows")]
     static void RemoveWindowsDenyReadRule(string path)
     {
         var info = new FileInfo(path);
-        var security = FileSystemAclExtensions.GetAccessControl(info);
+        var security = info.GetAccessControl();
         security.RemoveAccessRule(CurrentUserDenyReadRule());
-        FileSystemAclExtensions.SetAccessControl(info, security);
+        info.SetAccessControl(security);
     }
 
     [SupportedOSPlatform("windows")]

@@ -1,6 +1,6 @@
 namespace MFTLib;
 
-internal sealed partial class BrokerProcess
+sealed partial class BrokerProcess
 {
     /// <summary>Observations and substitutions owned by this process alone.</summary>
     internal ProcessHooks Hooks { get; }

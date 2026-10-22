@@ -292,7 +292,7 @@ public partial class BrokerProcessTests
 
             var recorded = singleHandle.Scans.Single();
             Assert.AreEqual('C', recorded.Drive);
-            Assert.AreSequenceEqual(new[] { ".git" }, recorded.RetainedFileNames!.ToArray());
+            Assert.AreSequenceEqual([".git"], [.. recorded.RetainedFileNames!]);
             return;
         }
 
@@ -305,12 +305,12 @@ public partial class BrokerProcessTests
         Assert.IsGreaterThan(0u, result.Block.Block.Header.RowCount);
         var scan = singleHandle.Scans.Single();
         Assert.AreEqual('C', scan.Drive);
-        Assert.AreSequenceEqual(new[] { ".git" }, scan.RetainedFileNames!.ToArray());
+        Assert.AreSequenceEqual([".git"], [.. scan.RetainedFileNames!]);
     }
 
     [TestMethod]
     [DataRow(null)]
-    [DataRow(new string[0])]
+    [DataRow([])]
     public async Task ScriptedScan_RecordsNullVersusEmptyRetention(string[]? names)
     {
         await using var handle = BrokerTestHarness.StartInProcess(new ScriptedBrokerVolumes
@@ -419,7 +419,7 @@ public partial class BrokerProcessTests
         var settings = await handle.Process.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None)
             .WaitAsync(HangGuard);
 
-        Assert.AreSequenceEqual(new[] { ArmedSynthetic, advanced }, readCursors.ToArray());
+        Assert.AreSequenceEqual([ArmedSynthetic, advanced], [.. readCursors]);
         Assert.AreEqual(Armed, scan.ArmedCursor);
         Assert.IsNull(scan.CatchUpLoss);
         Assert.AreEqual(0x08000000L, settings.MaximumSize);

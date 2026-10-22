@@ -8,7 +8,7 @@ namespace MFTLib.Index;
 ///     unreachable, or by index disposal, which drains borrows first. A released block rejects
 ///     subsequent handle reads.
 /// </summary>
-internal sealed class DriveBlockRelease
+sealed class DriveBlockRelease
 {
     readonly BlockFile _block;
 

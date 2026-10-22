@@ -57,7 +57,7 @@ public partial class NativeMftProcessingTests
 
             var data = BuildBootSector();
             WriteFileRecord(data, 4096, recordSize: 1024);
-            var dataAttribute = 4096 + 0x38;
+            const int dataAttribute = 4096 + 0x38;
             var dataLength = WriteNonResidentDataAttribute(
                 data, dataAttribute, 1024L * 1024, 1, 256);
             WriteEndMarker(data, dataAttribute + dataLength);
@@ -98,7 +98,7 @@ public partial class NativeMftProcessingTests
 
             var data = BuildBootSector();
             WriteFileRecord(data, 4096, 0x0001, 4096);
-            var dataAttribute = 4096 + 0x48;
+            const int dataAttribute = 4096 + 0x48;
             var dataLength = WriteNonResidentDataAttribute(
                 data, dataAttribute, 1024L * 1024, 1, 256);
             WriteEndMarker(data, dataAttribute + dataLength);
@@ -140,7 +140,7 @@ public partial class NativeMftProcessingTests
 
             var data = BuildBootSector();
             WriteFileRecord(data, 4096, recordSize: 1024);
-            var dataAttribute = 4096 + 0x38;
+            const int dataAttribute = 4096 + 0x38;
             var dataLength = WriteNonResidentDataAttribute(
                 data, dataAttribute, 1024L * 1024, 1, 256);
             WriteEndMarker(data, dataAttribute + dataLength);
@@ -188,7 +188,7 @@ public partial class NativeMftProcessingTests
             var data = BuildBootSector();
             data[0x40] = clustersPerFileRecord;
             WriteFileRecord(data, 4096, recordSize: 1024);
-            var dataAttribute = 4096 + 0x38;
+            const int dataAttribute = 4096 + 0x38;
             var dataLength = WriteNonResidentDataAttribute(
                 data, dataAttribute, 1024L * 1024, 1, 256);
             WriteEndMarker(data, dataAttribute + dataLength);

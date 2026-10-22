@@ -3,7 +3,7 @@ namespace MFTLib;
 /// <summary>
 ///     Progress sample emitted during an elevated broker drive scan.
 /// </summary>
-internal readonly record struct BrokerScanProgress
+readonly record struct BrokerScanProgress
 {
     /// <summary>Whether the broker is still parsing records off the volume or already transferring them into the shared block.</summary>
     public BrokerScanPhase Phase { get; init; }

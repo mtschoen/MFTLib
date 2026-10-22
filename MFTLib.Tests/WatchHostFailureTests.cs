@@ -13,7 +13,7 @@ public class WatchHostFailureTests
     {
         return new SampleHost(new LineCollectingWriter(lines), input)
         {
-            _isElevated = () => throw new InvalidOperationException("drive listing failed", new IOException("device gone")),
+            _isElevated = () => throw new InvalidOperationException("drive listing failed", new IOException("device gone"))
         };
     }
 

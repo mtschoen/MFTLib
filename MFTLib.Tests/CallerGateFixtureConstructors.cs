@@ -133,7 +133,7 @@ public record CallerGateMutatedRecord
 {
     public CallerGateMutatedRecord(int value)
     {
-        value += 1;
+        value++;
         Value = value;
     }
 
@@ -235,7 +235,7 @@ public readonly record struct CallerGateAuthoredEverythingStruct(int Id)
 }
 
 // Reads every property the fixtures declare only to be constructed, so no unused-accessor warning hides in them.
-internal static class CallerGateFixtureConstructorReads
+static class CallerGateFixtureConstructorReads
 {
     internal static object Read(CallerGateIgnoredRecord ignored, CallerGateOverloadRecord overload,
         CallerGateInternalConstructorRecord internalConstructor, CallerGateSetterRecord setter,

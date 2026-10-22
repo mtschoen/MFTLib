@@ -7,15 +7,15 @@ namespace MFTLib.Tests;
 // reading outside the buffers the parser owns.
 public partial class NativeMftProcessingTests
 {
-    private const int BaseMftRecords = 1024;
-    private const int ExtensionRecordOffset = MftRunOffset + 2 * 1024; // segment 2
-    private const int ExtensionAddedRecords = 4; // one 4096-byte cluster of 1024-byte records
-    private const int AttributeListSegmentTwo = 2;
-    private const ulong RunLengthThatWrapsTheByteCount = 1UL << 52; // times 4096 bytes per cluster is 2^64
+    const int BaseMftRecords = 1024;
+    const int ExtensionRecordOffset = MftRunOffset + (2 * 1024); // segment 2
+    const int ExtensionAddedRecords = 4; // one 4096-byte cluster of 1024-byte records
+    const int AttributeListSegmentTwo = 2;
+    const ulong RunLengthThatWrapsTheByteCount = 1UL << 52; // times 4096 bytes per cluster is 2^64
 
-    private readonly record struct ForgedRun(ulong ClusterCount, long ClusterDelta, int CountBytes, int DeltaBytes);
+    readonly record struct ForgedRun(ulong ClusterCount, long ClusterDelta, int CountBytes, int DeltaBytes);
 
-    private static byte[] EncodeRuns(params ForgedRun[] runs)
+    static byte[] EncodeRuns(params ForgedRun[] runs)
     {
         var bytes = new List<byte>();
         foreach (var run in runs)
@@ -36,7 +36,7 @@ public partial class NativeMftProcessingTests
         return [.. bytes];
     }
 
-    private static int WriteNonResidentAttribute(byte[] data, int offset, byte typeCode, long fileSize,
+    static int WriteNonResidentAttribute(byte[] data, int offset, byte typeCode, long fileSize,
         byte[] mappingPairs)
     {
         var length = (0x40 + mappingPairs.Length + 7) & ~7;
@@ -53,11 +53,11 @@ public partial class NativeMftProcessingTests
     }
 
     // Record 0 holding a 1 MiB $MFT data attribute at cluster 1; nextAttribute is where the caller continues.
-    private static byte[] BuildRecordZeroImage(out int nextAttribute, byte[]? mappingPairs = null)
+    static byte[] BuildRecordZeroImage(out int nextAttribute, byte[]? mappingPairs = null)
     {
         var data = BuildBootSector();
         WriteFileRecord(data, MftRunOffset);
-        var first = MftRunOffset + 0x38;
+        const int first = MftRunOffset + 0x38;
         var length = WriteNonResidentAttribute(data, first, 0x80, 1024L * 1024,
             mappingPairs ?? EncodeRuns(new ForgedRun(256, 1, 2, 1)));
         nextAttribute = first + length;
@@ -66,24 +66,24 @@ public partial class NativeMftProcessingTests
 
     // An attribute-list entry at listOffset naming segment two, and segment two itself: an extension record
     // whose data attribute adds one cluster, four records, to the $MFT.
-    private static void WriteExtensionSegmentTwo(byte[] data, int listOffset)
+    static void WriteExtensionSegmentTwo(byte[] data, int listOffset)
     {
         data[listOffset] = 0x80;
         data[listOffset + 4] = 28;
         BitConverter.GetBytes((uint)AttributeListSegmentTwo).CopyTo(data, listOffset + 16);
         WriteFileRecord(data, ExtensionRecordOffset, 3);
-        var attribute = ExtensionRecordOffset + 0x38;
+        const int attribute = ExtensionRecordOffset + 0x38;
         WriteEndMarker(data, attribute + WriteNonResidentDataAttribute(data, attribute, 4096, 300, 1));
     }
 
-    private static void AssertParsedAs(byte[] image, ulong expectedRecords, string because)
+    static void AssertParsedAs(byte[] image, ulong expectedRecords, string because)
     {
         var outcome = ParseImage(image, image.Length);
         Assert.AreEqual(string.Empty, outcome.ErrorMessage, because);
         Assert.AreEqual(expectedRecords, outcome.TotalRecords, because);
     }
 
-    private static void AssertRejected(byte[] image, string because, int failingRead = 0)
+    static void AssertRejected(byte[] image, string because, int failingRead = 0)
     {
         var outcome = ParseImage(image, image.Length, failingRead);
         Assert.IsFalse(string.IsNullOrEmpty(outcome.ErrorMessage), because);
@@ -92,7 +92,7 @@ public partial class NativeMftProcessingTests
     }
 
     // The non-resident attribute list at AttributeListOffset, with the given runs and size.
-    private static byte[] BuildImageWithNonResidentList(long listFileSize, params ForgedRun[] listRuns)
+    static byte[] BuildImageWithNonResidentList(long listFileSize, params ForgedRun[] listRuns)
     {
         var data = BuildRecordZeroImage(out var next);
         var length = WriteNonResidentAttribute(data, next, 0x20, listFileSize, EncodeRuns(listRuns));
@@ -160,7 +160,7 @@ public partial class NativeMftProcessingTests
     public void ParseMFTRecords_MftRunsWhoseSumsOverflow_FailsTheParse(int shape)
     {
         var runs = shape == 1
-            ? new[] { new ForgedRun(RunLengthThatWrapsTheByteCount - 1, 1, 7, 1) }
+            ? [new ForgedRun(RunLengthThatWrapsTheByteCount - 1, 1, 7, 1)]
             : Enumerable.Repeat(new ForgedRun(1UL << 50, 0, 7, 1), 4).ToArray();
         var data = BuildRecordZeroImage(out var next, EncodeRuns(runs));
         WriteEndMarker(data, next);
@@ -236,7 +236,7 @@ public partial class NativeMftProcessingTests
     public void ParseMFTRecords_RunFieldCutOffByTheAttributeEnd_FailsTheParse()
     {
         var data = BuildRecordZeroImage(out var next);
-        var attribute = MftRunOffset + 0x38;
+        const int attribute = MftRunOffset + 0x38;
         data[attribute + 0x20] = 0x44; // the run header sits four bytes before the attribute's end
         data[attribute + 0x44] = 0x18; // an eight-byte length with only three bytes left
         data[attribute + 0x45] = 0x01;
@@ -282,8 +282,8 @@ public partial class NativeMftProcessingTests
     {
         var runs = shape switch
         {
-            0 => new[] { new ForgedRun(RunLengthThatWrapsTheByteCount, 1, 7, 1) },
-            1 => new[] { new ForgedRun(3, -1, 1, 1) },
+            0 => [new ForgedRun(RunLengthThatWrapsTheByteCount, 1, 7, 1)],
+            1 => [new ForgedRun(3, -1, 1, 1)],
             _ => Enumerable.Repeat(new ForgedRun(1UL << 50, 0, 7, 1), 4).ToArray()
         };
         var data = BuildRecordZeroImage(out var next);
@@ -291,7 +291,7 @@ public partial class NativeMftProcessingTests
         next += WriteResidentAttributeList(data, next, AttributeListSegmentTwo, 1032);
         WriteEndMarker(data, next);
         WriteFileRecord(data, ExtensionRecordOffset, 3);
-        var attribute = ExtensionRecordOffset + 0x38;
+        const int attribute = ExtensionRecordOffset + 0x38;
         var length = WriteNonResidentAttribute(data, attribute, 0x80, 4096, EncodeRuns(runs));
         WriteEndMarker(data, attribute + length);
 
@@ -311,7 +311,7 @@ public partial class NativeMftProcessingTests
         next += WriteResidentAttributeList(data, next, AttributeListSegmentTwo);
         WriteEndMarker(data, next);
         WriteFileRecord(data, ExtensionRecordOffset, 3);
-        var attribute = ExtensionRecordOffset + 0x38;
+        const int attribute = ExtensionRecordOffset + 0x38;
         WriteNonResidentDataAttribute(data, attribute, 4096, 300, 1);
         BitConverter.GetBytes(0x2000).CopyTo(data, attribute + 4);
         AssertInvalidExtensionInput(data, "MFT extension record has a malformed attribute");
@@ -334,10 +334,10 @@ public partial class NativeMftProcessingTests
         AssertInvalidExtensionInput(data, "MFT extension record has a malformed attribute");
     }
 
-    private static void AssertIncompleteExtensionInput(byte[] image) =>
+    static void AssertIncompleteExtensionInput(byte[] image) =>
         AssertInvalidExtensionInput(image, "The volume could not be read completely.");
 
-    private static void AssertInvalidExtensionInput(byte[] image, string message)
+    static void AssertInvalidExtensionInput(byte[] image, string message)
     {
         var outcome = ParseImage(image, image.Length);
         AssertParseFailedWithNoOutput(outcome);

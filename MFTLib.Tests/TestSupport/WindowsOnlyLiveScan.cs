@@ -8,7 +8,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     with <see cref="PlatformNotSupportedException" />. A test of that pipeline marks itself inconclusive
 ///     there and returns early; the volume parse it ends in runs on every platform.
 /// </summary>
-internal static class WindowsOnlyLiveScan
+static class WindowsOnlyLiveScan
 {
     internal static bool Skip()
     {

@@ -62,7 +62,7 @@ public sealed class FileIndexOpenProgressTests : IDisposable
     static IndexDriveOpened ReportOf(ConcurrentQueue<IndexDriveOpened> reports, char driveLetter)
     {
         var settledCounts = reports.Select(report => report.SettledDriveCount).Order().ToArray();
-        Assert.AreSequenceEqual(Enumerable.Range(1, reports.Count).ToArray(), settledCounts, "every settle takes the next count once");
+        Assert.AreSequenceEqual([.. Enumerable.Range(1, reports.Count)], settledCounts, "every settle takes the next count once");
         return reports.Single(report => report.Drive == driveLetter);
     }
 
@@ -223,7 +223,7 @@ public sealed class FileIndexOpenProgressTests : IDisposable
         Assert.AreEqual(DriveState.Ready, index.Drives[1].State);
         Assert.AreEqual(BlockOrigin.ProducedByScan, index.Drives[1].Block!.Origin);
         Assert.AreEqual(DriveState.Offline, index.Drives[2].State);
-        Assert.IsNull(index.Drives[2].Block!);
+        Assert.IsNull(index.Drives[2].Block);
     }
 
     [TestMethod]

@@ -3,7 +3,7 @@ using MFTLib;
 namespace MFTLibTestExtensions;
 
 /// <summary>Test-package values for constructing a materialized MFT record, including raw FILETIME.</summary>
-internal sealed record MftRecordTestValues
+sealed record MftRecordTestValues
 {
     public required ulong RecordNumber { get; init; }
     public required ulong ParentRecordNumber { get; init; }
@@ -19,7 +19,7 @@ internal sealed record MftRecordTestValues
 }
 
 /// <summary>Constructs test records through MFTLib's materialized-record constructor.</summary>
-internal static class MftRecordFactory
+static class MftRecordFactory
 {
     internal static MftRecord Create(MftRecordTestValues values)
     {

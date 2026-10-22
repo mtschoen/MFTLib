@@ -155,7 +155,7 @@ public class FileIndexAdmittedOperationDisposalTests
         await recovery.WaitAsync(HangGuard);
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore, "the recovery scanned once");
         Assert.HasCount(1, harness.Source.TargetsFor('T'), "the recovery restarted nothing");
-        Assert.AreSequenceEqual(new[] { WatchFaultKind.Drive }, harness.Faults.Where(fault => fault.Drive == 'T').Select(fault => fault.Kind).ToArray());
+        Assert.AreSequenceEqual([WatchFaultKind.Drive], [.. harness.Faults.Where(fault => fault.Drive == 'T').Select(fault => fault.Kind)]);
     }
 
     [TestMethod]

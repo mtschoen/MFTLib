@@ -34,7 +34,7 @@ public class UsnJournalTests
         using var synchronous = FileUtilities.Hooks._getVolumeHandle(@"\\.\C:");
         using var watch = FileUtilities.Hooks._getWatchVolumeHandle(@"\\.\C:");
 
-        Assert.AreSequenceEqual(new uint[] { 0, 0x40000000 }, flags.ToArray());
+        Assert.AreSequenceEqual(new uint[] { 0, 0x40000000 }, [.. flags]);
     }
 
     [TestMethod]

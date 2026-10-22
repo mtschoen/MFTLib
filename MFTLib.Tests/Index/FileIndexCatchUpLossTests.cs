@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
@@ -59,17 +60,17 @@ public partial class FileIndexCatchUpLossTests
 
         Assert.IsTrue(retiredAtFirstLoss, "the first publication drained the old watch before reporting the loss");
         Assert.AreEqual(2, harness.ProductionCount('T') - producedBefore);
-        var lost = CatchUpLossTestSupport.CatchUpLosses(harness, 'T').Single();
+        var lost = CatchUpLosses(harness, 'T').Single();
         var atLoss = harness.CatchUpLossStatuses('T').Single();
         Assert.AreEqual(1, atLoss.Watch.ConsecutiveLostCatchUps);
         Assert.IsFalse(atLoss.Watch.IsRecoveryStopped);
         Assert.IsFalse(lost.IsRecoveryStopped);
-        Assert.AreEqual(CatchUpLossTestSupport.StandardCatchUpLoss('T'), atLoss.Watch.CheckpointLoss);
+        Assert.AreEqual(StandardCatchUpLoss('T'), atLoss.Watch.CheckpointLoss);
         Assert.AreEqual(WatchState.Recovering, stateSeenByHandler,
             "Recovering is published before the fault is raised");
         var drive = harness.DriveFor('T');
         Assert.AreEqual(0, drive.Watch.ConsecutiveLostCatchUps);
-        Assert.AreEqual(CatchUpLossTestSupport.StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss, "the retry keeps the report the loss produced");
+        Assert.AreEqual(StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss, "the retry keeps the report the loss produced");
         Assert.AreEqual(WatchState.CatchingUp, drive.Watch.State);
         Assert.AreSame(harness.BlockFor('T'), index.Root('T').DriveBlock.Block, "the second block is published");
         Assert.AreEqual(new IndexWatchTarget('T', 13, 9500), harness.Source.TargetsFor('T')[^1],
@@ -88,14 +89,14 @@ public partial class FileIndexCatchUpLossTests
             () => harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard));
 
         Assert.AreEqual(3, harness.ProductionCount('T') - producedBefore);
-        var losses = CatchUpLossTestSupport.CatchUpLosses(harness, 'T');
+        var losses = CatchUpLosses(harness, 'T');
         var statusesAtLoss = harness.CatchUpLossStatuses('T');
-        Assert.AreSequenceEqual(new[] { 1, 2, 3 }, statusesAtLoss.Select(status => status.Watch.ConsecutiveLostCatchUps).ToArray());
-        Assert.AreSequenceEqual(new[] { false, false, true }, losses.Select(loss => loss.IsRecoveryStopped).ToArray());
-        Assert.AreSequenceEqual(new[] { false, false, true }, statusesAtLoss.Select(status => status.Watch.IsRecoveryStopped).ToArray());
+        Assert.AreSequenceEqual([1, 2, 3], [.. statusesAtLoss.Select(status => status.Watch.ConsecutiveLostCatchUps)]);
+        Assert.AreSequenceEqual([false, false, true], [.. losses.Select(loss => loss.IsRecoveryStopped)]);
+        Assert.AreSequenceEqual([false, false, true], [.. statusesAtLoss.Select(status => status.Watch.IsRecoveryStopped)]);
         Assert.AreEqual(3, harness.DriveFor('T').Watch.ConsecutiveLostCatchUps);
         Assert.IsTrue(failure.IsRecoveryStopped);
-        Assert.AreEqual(CatchUpLossTestSupport.StandardCatchUpLoss('T'), statusesAtLoss[^1].Watch.CheckpointLoss);
+        Assert.AreEqual(StandardCatchUpLoss('T'), statusesAtLoss[^1].Watch.CheckpointLoss);
 
         Assert.AreSame(harness.BlockFor('T'), harness.Index.Root('T').DriveBlock.Block,
             "the drive keeps its third block, queryable");
@@ -108,7 +109,7 @@ public partial class FileIndexCatchUpLossTests
         Assert.Contains("12288", drive.Watch.FailureMessage!);
         Assert.Contains("BrokerSession.GrowUsnJournalAsync", failure.Message);
         Assert.IsFalse(failure.Message.Contains("BrokerProcess.GrowUsnJournalAsync", StringComparison.Ordinal));
-        Assert.AreEqual(CatchUpLossTestSupport.StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss);
+        Assert.AreEqual(StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss);
         Assert.AreEqual(3, drive.Watch.ConsecutiveLostCatchUps);
 
         var refusal = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
@@ -129,7 +130,7 @@ public partial class FileIndexCatchUpLossTests
         await harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard);
 
         Assert.AreEqual(2, harness.ProductionCount('T') - producedBefore, "a later single loss retries");
-        var latest = CatchUpLossTestSupport.CatchUpLosses(harness, 'T')[^1];
+        var latest = CatchUpLosses(harness, 'T')[^1];
         Assert.AreEqual(1, harness.CatchUpLossStatuses('T')[^1].Watch.ConsecutiveLostCatchUps);
         Assert.IsFalse(latest.IsRecoveryStopped);
         Assert.AreEqual(0, harness.DriveFor('T').Watch.ConsecutiveLostCatchUps);
@@ -190,7 +191,7 @@ public partial class FileIndexCatchUpLossTests
     public async Task CatchUpLost_JournalRecreated_ReportHasNoSuggestion()
     {
         using var harness = new WatchHarness('T');
-        var recreated = CatchUpLossTestSupport.StandardCatchUpLoss('T') with
+        var recreated = StandardCatchUpLoss('T') with
         {
             Cause = JournalCheckpointLossCause.JournalRecreated,
             BytesBehind = null,
@@ -204,9 +205,9 @@ public partial class FileIndexCatchUpLossTests
         Assert.AreEqual(recreated, harness.CatchUpLossStatuses('T')[^1].Watch.CheckpointLoss);
         Assert.IsTrue(failure.IsRecoveryStopped);
         Assert.AreEqual(recreated, harness.DriveFor('T').Watch.CheckpointLoss);
-        foreach (var message in CatchUpLossTestSupport.CatchUpLosses(harness, 'T').Select(loss => loss.Message))
+        foreach (var message in CatchUpLosses(harness, 'T').Select(loss => loss.Message))
         {
-            Assert.DoesNotMatchRegex(new System.Text.RegularExpressions.Regex("bytes|[Gg]row"), message);
+            Assert.DoesNotMatchRegex(MyRegex(), message);
         }
     }
 
@@ -226,7 +227,7 @@ public partial class FileIndexCatchUpLossTests
         Assert.AreEqual(producerFailure.Message, drive.Failure?.Message);
         Assert.AreEqual(0, drive.Watch.ConsecutiveLostCatchUps);
         Assert.IsNull(drive.Watch.CheckpointLoss);
-        Assert.IsEmpty(CatchUpLossTestSupport.CatchUpLosses(harness, 'T'));
+        Assert.IsEmpty(CatchUpLosses(harness, 'T'));
         Assert.AreSame(original, harness.Index.Root('T').DriveBlock);
     }
 
@@ -245,7 +246,7 @@ public partial class FileIndexCatchUpLossTests
         Assert.IsTrue(harness.DriveFor('T').Watch.IsRecoveryStopped);
         await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => harness.Index.RescanAsync(['T'], Token));
         Assert.AreEqual(3, harness.DriveFor('T').Watch.ConsecutiveLostCatchUps);
-        Assert.HasCount(3, CatchUpLossTestSupport.CatchUpLosses(harness, 'T'), "no CatchUpLost fault for a producer failure");
+        Assert.HasCount(3, CatchUpLosses(harness, 'T'), "no CatchUpLost fault for a producer failure");
         Assert.IsTrue(harness.DriveFor('T').Watch.IsRecoveryStopped);
         harness.ScriptScans('T', new WatchHarnessScan(Failure: new IOException("no block")));
         await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => harness.Index.RescanAsync(['T'], Token));
@@ -304,7 +305,7 @@ public partial class FileIndexCatchUpLossTests
         harness.ScriptScans('T', Lost('T'), Held);
         await harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard);
 
-        Assert.AreEqual(CatchUpLossTestSupport.StandardCatchUpLoss('T'), harness.DriveFor('T').Watch.CheckpointLoss);
+        Assert.AreEqual(StandardCatchUpLoss('T'), harness.DriveFor('T').Watch.CheckpointLoss);
     }
 
     /// <summary>
@@ -330,6 +331,9 @@ public partial class FileIndexCatchUpLossTests
         Assert.AreEqual(WatchState.Faulted, drive.Watch.State);
         Assert.IsFalse(drive.Watch.IsRecoveryStopped, "an unresumable refusal is not exhaustion");
         Assert.Contains("RescanAsync", drive.Watch.FailureMessage!);
-        Assert.AreEqual(CatchUpLossTestSupport.StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss);
+        Assert.AreEqual(StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss);
     }
+
+    [GeneratedRegex("bytes|[Gg]row")]
+    private static partial Regex MyRegex();
 }

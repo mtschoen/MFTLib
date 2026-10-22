@@ -2,7 +2,7 @@ using MFTLib.Index;
 
 namespace MFTLib.Tests.TestSupport;
 
-internal sealed class IndexTreeFixture : IDisposable
+sealed class IndexTreeFixture : IDisposable
 {
     readonly TempDirectory _tree;
     readonly TempDirectory _cache;

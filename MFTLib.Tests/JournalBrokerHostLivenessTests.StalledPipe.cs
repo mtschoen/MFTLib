@@ -37,7 +37,7 @@ public partial class JournalBrokerHostLivenessTests
         var frames = await HostChannelHarness.ReadToEndAsync(pipe, includeHeartbeats: true);
 
         var kinds = frames.Where(frame => frame.Kind != BrokerFrameKind.Heartbeat).Select(frame => frame.Kind).ToArray();
-        Assert.AreSequenceEqual(new[] { BrokerFrameKind.Cursor, BrokerFrameKind.Stalled }, kinds, "Stalled is the last frame the pipe carries; the finished operation's frames are not written.");
+        Assert.AreSequenceEqual([BrokerFrameKind.Cursor, BrokerFrameKind.Stalled], kinds, "Stalled is the last frame the pipe carries; the finished operation's frames are not written.");
         Assert.AreEqual(BrokerFrameKind.Stalled, frames[^1].Kind);
     }
 
@@ -94,7 +94,7 @@ public partial class JournalBrokerHostLivenessTests
                 var frames = await HostChannelHarness.ReadToEndAsync(pipe, includeHeartbeats: true);
 
                 var kinds = frames.Where(frame => frame.Kind != BrokerFrameKind.Heartbeat).Select(frame => frame.Kind).ToArray();
-                Assert.AreSequenceEqual(new[] { BrokerFrameKind.Cursor, BrokerFrameKind.Stalled }, kinds);
+                Assert.AreSequenceEqual([BrokerFrameKind.Cursor, BrokerFrameKind.Stalled], kinds);
             }
             finally
             {
@@ -111,7 +111,7 @@ public partial class JournalBrokerHostLivenessTests
 
     const int MaximumIntervalsBeforeStalled = 20;
 
-    static readonly Regex FrameWrite = new(@":harness-C-1\]  frame write kind=(?<kind>\d+)", RegexOptions.CultureInvariant);
+    static readonly Regex FrameWrite = MyRegex();
 
     // Lets every write through except one whose frame is Stalled: that write reports it started and
     // then waits until Finish, the way a write to a pipe whose reader is slow does.
@@ -141,4 +141,7 @@ public partial class JournalBrokerHostLivenessTests
             }
         }
     }
+
+    [GeneratedRegex(@":harness-C-1\]  frame write kind=(?<kind>\d+)", RegexOptions.CultureInvariant)]
+    private static partial Regex MyRegex();
 }

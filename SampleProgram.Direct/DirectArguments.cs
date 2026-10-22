@@ -1,12 +1,12 @@
 namespace SampleProgram.Direct;
 
-internal enum DirectVerb { Scan, Search, Tree, Open, Largest, DuplicateNames }
+enum DirectVerb { Scan, Search, Tree, Open, Largest, DuplicateNames }
 
 /// <summary>Where the index gets its MFT: the live volume of this elevated process, or a saved MFT file.</summary>
-internal enum SourceKind { Local, Dump }
+enum SourceKind { Local, Dump }
 
 /// <summary>The parsed command line: a verb, one drive letter, the source and the verb's flags.</summary>
-internal sealed partial record DirectArguments(DirectVerb Verb, string Drive)
+sealed partial record DirectArguments(DirectVerb Verb, string Drive)
 {
     internal const int DefaultLimit = 50;
     const int DefaultCount = 10;

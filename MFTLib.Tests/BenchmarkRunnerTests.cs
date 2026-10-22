@@ -28,7 +28,7 @@ public partial class BenchmarkRunnerTests
     [DataRow("--synthetic", "10", "--cache-directory", "other")]
     [DataRow("--cache-directory", "")]
     [DataRow("--synthetic")]
-    [DataRow()]
+    [DataRow]
     public async Task Run_Index_InvalidArguments_ReportUsage(params string[] arguments)
     {
         Assert.AreEqual(1, await _runner.RunAsync(["index", .. arguments]));
@@ -77,7 +77,7 @@ public partial class BenchmarkRunnerTests
     [DataRow("--dump", "")]
     [DataRow("--synthetic", "64", "--iterations", "0")]
     [DataRow("--unknown", "64")]
-    [DataRow()]
+    [DataRow]
     public async Task Run_NativeTimings_InvalidArguments_ReportUsage(params string[] arguments)
     {
         Assert.AreEqual(1, await _runner.RunAsync(["native-timings", .. arguments]));
@@ -103,7 +103,7 @@ public partial class BenchmarkRunnerTests
         {
             Assert.IsGreaterThanOrEqualTo(milliseconds[label], milliseconds["Native total"], $"The total bounds {label}.");
         }
-        StringAssert.Matches(output, new Regex(@"Bound: the (read \(I/O\)|parse \(CPU\)) stage dominates"));
+        StringAssert.Matches(output, MyRegex());
         Assert.Contains("buffered", output);
         Assert.DoesNotContain("disk is the bottleneck", output, "The verdict names a stage, not the disk.");
     }
@@ -416,11 +416,11 @@ public partial class BenchmarkRunnerTests
         }
 
         Assert.IsNotNull(root, "Benchmark sources were not found above the test output directory.");
-        var retired = new Regex("compat|ToArray", RegexOptions.IgnoreCase);
+        var retired = RetiredScenarioRegex();
         var matches = Directory.EnumerateFiles(Path.Combine(root.FullName, "Benchmark"), "*.cs", SearchOption.AllDirectories)
             .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}") && !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
             .SelectMany(path => File.ReadLines(path).Where(line => retired.IsMatch(line)).Select(line => $"{Path.GetFileName(path)}: {line.Trim()}"));
-        Assert.AreSequenceEqual(Array.Empty<string>(), matches.ToArray());
+        Assert.AreSequenceEqual([], [.. matches]);
     }
 
     async Task<int> Compare(string beforeReport, string afterReport, string scenario = "exact-search")
@@ -454,4 +454,10 @@ public partial class BenchmarkRunnerTests
             Directory.Delete(_directory, true);
         }
     }
+
+    [GeneratedRegex(@"Bound: the (read \(I/O\)|parse \(CPU\)) stage dominates")]
+    private static partial Regex MyRegex();
+
+    [GeneratedRegex("compat|ToArray", RegexOptions.IgnoreCase)]
+    private static partial Regex RetiredScenarioRegex();
 }

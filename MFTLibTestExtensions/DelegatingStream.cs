@@ -1,7 +1,7 @@
 namespace MFTLibTestExtensions;
 
 /// <summary>A stream that forwards every operation to <see cref="Inner" />; subclasses override what they change.</summary>
-internal abstract class DelegatingStream(Stream inner) : Stream
+abstract class DelegatingStream(Stream inner) : Stream
 {
     protected Stream Inner { get; } = inner;
 

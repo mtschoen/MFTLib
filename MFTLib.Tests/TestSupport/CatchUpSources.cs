@@ -3,7 +3,7 @@ using MFTLib.Index;
 namespace MFTLib.Tests.TestSupport;
 
 /// <summary>Fake catch-up sources that honor the bounded-read contract of <see cref="IVolumeAccess.ReadJournal" />.</summary>
-internal static class CatchUpSources
+static class CatchUpSources
 {
     /// <summary>
     ///     Returns <paramref name="entries" /> and advances to <paramref name="tip" /> from any other

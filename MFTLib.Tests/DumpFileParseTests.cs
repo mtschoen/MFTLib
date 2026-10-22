@@ -129,7 +129,7 @@ public partial class DumpFileParseTests
             const ulong recordCount = 500;
             MftVolume.GenerateSyntheticMFT(path, recordCount, 256);
             // Each MFT record is 1024 bytes
-            var expectedSize = (long)recordCount * 1024;
+            const long expectedSize = (long)recordCount * 1024;
             Assert.AreEqual(expectedSize, new FileInfo(path).Length);
         }
         finally

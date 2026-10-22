@@ -4,7 +4,7 @@ namespace MFTLibTestExtensions;
 ///     Every pipe end the in-process host was handed, so the host's exit can close them all the way
 ///     a broker process's exit closes its handles. An end handed out after the exit is closed at once.
 /// </summary>
-internal sealed class HostPipeEnds
+sealed class HostPipeEnds
 {
     readonly Lock _gate = new();
     readonly List<Stream> _ends = [];
@@ -42,7 +42,7 @@ internal sealed class HostPipeEnds
         lock (_gate)
         {
             _exited = true;
-            ends = _ends.ToArray();
+            ends = [.. _ends];
             _ends.Clear();
         }
 

@@ -6,7 +6,7 @@ namespace MFTLib;
 ///     Scans and watches drives through a broker. The process returned by the connect callback
 ///     remains owned by the caller, which decides whether to share it across drives.
 /// </summary>
-internal sealed class BrokerMftBlockProducer
+sealed class BrokerMftBlockProducer
 {
     readonly Func<CancellationToken, Task<BrokerProcess>> _connectAsync;
     readonly MftScanOptions? _scanOptions;

@@ -37,6 +37,6 @@ public partial class JournalMutatorTests
         Assert.HasCount(3, changes,
             "Total changes must be exactly three: one Created, one Modified, one Deleted.");
         Assert.AreSequenceEqual(
-            new[] { FileChangeKind.Created, FileChangeKind.Modified, FileChangeKind.Deleted }, changes.Select(change => change.Kind).ToArray());
+            [FileChangeKind.Created, FileChangeKind.Modified, FileChangeKind.Deleted], [.. changes.Select(change => change.Kind)]);
     }
 }

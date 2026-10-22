@@ -6,7 +6,7 @@ namespace SampleProgram.Direct;
 ///     One duplicate-name sieve pass: two bits per bucket record first and repeated sightings.
 ///     Bucket collisions admit extra candidates but never discard a truly repeated hash.
 /// </summary>
-internal sealed class SieveBitmap
+sealed class SieveBitmap
 {
     internal const int MinimumBucketCount = 1 << 16;
     internal const int MaximumBucketCount = 1 << 27;

@@ -43,17 +43,15 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
                 SeededBlocks.Build(request, 7, 4096, FixedMoment), skippedRecordCount[0]));
 
         var options = Options(ProducerKind.Mft, Produce);
-        await using (var index = await FileIndex.OpenAsync(options, CancellationToken.None))
-        {
-            Assert.AreEqual(3, index.Drives.Single().Block!.SkippedRecordCount);
-            Assert.AreEqual(0, index.Drives.Single().Block!.AccessDeniedSubtreeCount);
+        await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
+        Assert.AreEqual(3, index.Drives.Single().Block!.SkippedRecordCount);
+        Assert.AreEqual(0, index.Drives.Single().Block!.AccessDeniedSubtreeCount);
 
-            skippedRecordCount[0] = 0;
-            await index.RescanAsync(['T'], CancellationToken.None);
+        skippedRecordCount[0] = 0;
+        await index.RescanAsync(['T'], CancellationToken.None);
 
-            Assert.AreEqual(0, index.Drives.Single().Block!.SkippedRecordCount);
-            Assert.AreEqual(0, index.Drives.Single().Block!.AccessDeniedSubtreeCount);
-        }
+        Assert.AreEqual(0, index.Drives.Single().Block!.SkippedRecordCount);
+        Assert.AreEqual(0, index.Drives.Single().Block!.AccessDeniedSubtreeCount);
     }
 
     [TestMethod]
@@ -79,7 +77,7 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
             RetainedFileNames = retained
         }, TestContext.CancellationToken);
 
-        Assert.AreSequenceEqual(retained, seen.Single()!.ToArray());
+        Assert.AreSequenceEqual(retained, [.. seen.Single()!]);
         var walked = index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Ready, walked.State);
         Assert.IsNotNull(index.Find(Path.Combine(TreeRoot, "Notes.TXT")));

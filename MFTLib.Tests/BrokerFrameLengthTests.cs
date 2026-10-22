@@ -51,7 +51,7 @@ public class BrokerFrameLengthTests
     static string[] MaximumLengthNames(int count)
     {
         var name = new string('n', 255);
-        return Enumerable.Repeat(name, count).ToArray();
+        return [.. Enumerable.Repeat(name, count)];
     }
 
     [TestMethod]

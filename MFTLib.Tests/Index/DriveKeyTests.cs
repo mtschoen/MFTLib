@@ -96,7 +96,7 @@ public class DriveKeyTests
         Assert.AreSame(retainedFileNames, scan.RetainedFileNames);
         Assert.IsNull(new InProcessBrokerScan('c', null).RetainedFileNames);
         Assert.IsEmpty(new InProcessBrokerScan('c', Array.Empty<string>()).RetainedFileNames!);
-        Assert.AreSequenceEqual(new[] { "marker" }, (scan with { RetainedFileNames = new[] { "marker" } }).RetainedFileNames!.ToArray());
+        Assert.AreSequenceEqual(["marker"], [.. (scan with { RetainedFileNames = new[] { "marker" } }).RetainedFileNames!]);
         var start = new ScriptedWatchStart('c', default);
         Assert.AreEqual('C', scan.Drive);
         Assert.AreEqual('C', start.Drive);
@@ -138,10 +138,10 @@ public class DriveKeyTests
     [DataRow(null)]
     [DataRow("")]
     [DataRow(" \t\r\n")]
-    [DataRow("\\\\server\\share\\")]
+    [DataRow(@"\\server\share\")]
     [DataRow("//server/share/")]
-    [DataRow("\\\\?\\C:\\")]
-    [DataRow("\\\\.\\C:")]
+    [DataRow(@"\\?\C:\")]
+    [DataRow(@"\\.\C:")]
     [DataRow("CD")]
     [DataRow("CC:")]
     [DataRow("C,D")]
@@ -152,7 +152,7 @@ public class DriveKeyTests
     [DataRow("C\\folder")]
     [DataRow("C::")]
     [DataRow("C://")]
-    [DataRow("C:\\\\")]
+    [DataRow(@"C:\\")]
     [DataRow("C//")]
     [DataRow("C/:")]
     [DataRow("C :")]

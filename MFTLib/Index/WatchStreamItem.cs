@@ -5,7 +5,7 @@ namespace MFTLib.Index;
 ///     apply, or the <see cref="DriveCaughtUp" /> marker. The handle belongs to one drive, so no
 ///     item names one. A failure is not an item: the handle's read throws instead.
 /// </summary>
-internal abstract record WatchStreamItem
+abstract record WatchStreamItem
 {
     private protected WatchStreamItem()
     {
@@ -17,4 +17,4 @@ internal abstract record WatchStreamItem
 ///     every batch after this marker is a live entry. A handle yields it once, immediately when
 ///     there is no backlog.
 /// </summary>
-internal sealed record DriveCaughtUp : WatchStreamItem;
+sealed record DriveCaughtUp : WatchStreamItem;

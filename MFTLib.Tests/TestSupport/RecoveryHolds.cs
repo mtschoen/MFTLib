@@ -7,7 +7,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     queues (spec 2.6.5): the drive's recovery stays queued, so the drive keeps its faulted
 ///     instance and reads <see cref="WatchState.Recovering" />.
 /// </summary>
-internal static class RecoveryHolds
+static class RecoveryHolds
 {
     /// <summary>
     ///     Parks every recovery of <paramref name="index" /> before it takes its drive's lifecycle

@@ -11,7 +11,7 @@ namespace MFTLib.Tests;
 ///     metadata marks a position annotated, including generic parameters and generic arguments.
 ///     Formatting is invariant so the output is identical on every platform.
 /// </summary>
-internal static class PublicSurfaceTypeFormatter
+static class PublicSurfaceTypeFormatter
 {
     const byte Annotated = 2;
 
@@ -121,7 +121,7 @@ internal static class PublicSurfaceTypeFormatter
                     own.Add(Format(arguments[position], flags));
                 }
 
-                name.Append('<').Append(string.Join(", ", own)).Append('>');
+                name.Append('<').AppendJoin(", ", own).Append('>');
                 consumed = cumulative;
             }
         }
@@ -152,7 +152,7 @@ internal static class PublicSurfaceTypeFormatter
     public static string Literal(object? value) => value switch
     {
         null => "default",
-        string text => "\"" + text.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"",
+        string text => "\"" + text.Replace(@"\", @"\\").Replace("\"", "\\\"") + "\"",
         char character => "'" + character + "'",
         bool boolean => boolean ? "true" : "false",
         IReadOnlyCollection<CustomAttributeTypedArgument> items =>
@@ -169,7 +169,7 @@ internal static class PublicSurfaceTypeFormatter
 ///     <c>NullableAttribute</c> (one byte for every position, or one byte per position in
 ///     pre-order), else the nearest enclosing <c>NullableContextAttribute</c>, else oblivious.
 /// </summary>
-internal sealed class NullableFlags
+sealed class NullableFlags
 {
     const string NullableAttributeName = "System.Runtime.CompilerServices.NullableAttribute";
     const string NullableContextAttributeName = "System.Runtime.CompilerServices.NullableContextAttribute";
@@ -213,7 +213,7 @@ internal sealed class NullableFlags
             {
                 byte single => new NullableFlags(null, single),
                 IReadOnlyCollection<CustomAttributeTypedArgument> many =>
-                    new NullableFlags(many.Select(item => (byte)item.Value!).ToArray(), 0),
+                    new NullableFlags([.. many.Select(item => (byte)item.Value!)], 0),
                 _ => Oblivious()
             };
         }

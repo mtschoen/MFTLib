@@ -9,7 +9,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     cursor, timestamp and cache tag a rescan or cache test seeds. Every caller supplies its own
 ///     cursor and timestamp; nothing here is shared mutable state.
 /// </summary>
-internal static class SeededBlocks
+static class SeededBlocks
 {
     /// <summary>The completion and row timestamp of blocks seeded straight onto disk by rescan and cache tests.</summary>
     public static readonly DateTime SeededMoment = new(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);

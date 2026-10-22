@@ -71,8 +71,8 @@ public partial class BrokerProcessTests
 
     [TestMethod]
     [DataRow(null)]
-    [DataRow(new string[0])]
-    [DataRow(new[] { ".git" })]
+    [DataRow([])]
+    [DataRow([".git"])]
     public async Task ScanDrive_ForwardsRetainedFileNames(string[]? names)
     {
         await using var broker = new InProcessBroker(BrokerHostFactory.Create());
@@ -88,7 +88,7 @@ public partial class BrokerProcessTests
         }
         else
         {
-            Assert.AreSequenceEqual(names, broker.Writer.LastRetainedFileNames!.ToArray());
+            Assert.AreSequenceEqual(names, [.. broker.Writer.LastRetainedFileNames!]);
         }
 
         Assert.AreEqual(new DriveKey('C'), broker.Handle.Scans.Single().Drive);
@@ -309,7 +309,7 @@ public partial class BrokerProcessTests
             Assert.IsGreaterThan(0u, block.Header.RowCount);
         }
 
-        Assert.AreSequenceEqual(new DriveKey[] { 'C', 'D' }, results.Select(result => result.Drive).ToArray());
+        Assert.AreSequenceEqual(['C', 'D'], [.. results.Select(result => result.Drive)]);
     }
 
     [TestMethod]

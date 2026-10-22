@@ -80,7 +80,7 @@ public class BlockFileFlushDisposalRaceTests
         {
             Assert.IsTrue(held.Entered.Wait(HangGuard * 3), "the flush never reached the hold point, so the race was never set up");
 
-            disposeTask = Task.Run(() => block.Dispose());
+            disposeTask = Task.Run(block.Dispose);
             Assert.IsTrue(disposeStarted.Entered.Wait(HangGuard * 3), "dispose never began, so the race was never set up");
             Assert.IsTrue(disposeWillWait,
                 "dispose found no in-flight access to wait for, so a flush was not holding the block");

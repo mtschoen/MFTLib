@@ -112,7 +112,7 @@ public static class CacheDirectory
         var statuses = new List<CachedBlockStatus>();
         foreach (var file in EnumerateCached(cacheDirectoryPath, rejectedFile))
         {
-            if (selected is not null && !selected.Contains(file.Drive))
+            if (selected?.Contains(file.Drive) == false)
             {
                 continue;
             }
@@ -205,7 +205,7 @@ public static class CacheDirectory
         var results = new List<CachedBlockDeletionResult>();
         foreach (var file in EnumerateCached(cacheDirectoryPath, rejectedFile))
         {
-            if (selected is not null && !selected.Contains(file.Drive))
+            if (selected?.Contains(file.Drive) == false)
             {
                 continue;
             }
@@ -331,7 +331,7 @@ public static class CacheDirectory
             return BuildProtectedSecurity().CreateDirectory(info.FullName);
         }
 
-        FileSystemAclExtensions.SetAccessControl(info, BuildProtectedSecurity());
+        info.SetAccessControl(BuildProtectedSecurity());
         return info;
     }
 
@@ -344,7 +344,7 @@ public static class CacheDirectory
         // otherwise let any local administrator read the whole volume's file metadata.
         security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
 
-        var inheritance = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+        const InheritanceFlags inheritance = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
         foreach (var identity in OwnerAndSystem())
         {
             security.AddAccessRule(new FileSystemAccessRule(identity, FileSystemRights.FullControl,

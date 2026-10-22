@@ -33,7 +33,7 @@ public class BrokerIncludeFreedTests : BrokerBlockTestBase
             new MftScanOptions { IncludeFreed = includeFreed }).WaitAsync(HangGuard);
         var block = result.Block;
 
-        Assert.AreSequenceEqual(new[] { includeFreed }, seen);
+        Assert.AreSequenceEqual([includeFreed], seen);
         Assert.AreEqual(includeFreed ? RowFlags.InUse | RowFlags.Tombstone : RowFlags.None, block.Rows[21].Flags);
         Assert.AreEqual(includeFreed ? 6u : 0u, block.Rows[21].ParentRow);
         Assert.AreEqual(2u, block.Header.LiveRowCount, "Only the root and its directory are live.");
@@ -57,7 +57,7 @@ public class BrokerIncludeFreedTests : BrokerBlockTestBase
 
         var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard);
 
-        Assert.AreSequenceEqual(new[] { false }, seen);
+        Assert.AreSequenceEqual([false], seen);
         Assert.AreEqual(RowFlags.None, result.Block.Rows[21].Flags);
         result.Block.Dispose();
     }

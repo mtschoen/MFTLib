@@ -2,7 +2,7 @@ using MFTLib.Index;
 
 namespace MFTLib;
 
-internal sealed partial class JournalBrokerHost
+sealed partial class JournalBrokerHost
 {
     /// <summary>Instance-local controls and observations configured before serving.</summary>
     internal HostHooks Hooks { get; } = new();

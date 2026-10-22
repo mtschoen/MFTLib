@@ -1,6 +1,6 @@
 namespace MFTLib.Index;
 
-internal sealed partial class BlockWriter
+sealed partial class BlockWriter
 {
     internal WriterHooks Hooks { get; } = new();
 

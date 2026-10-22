@@ -8,29 +8,29 @@ namespace MFTLib.Tests;
 
 public partial class NativeMftProcessingTests
 {
-    private const int MftRunOffset = 4096;
-    private const int BatchBytes = 256 * 1024; // 256 records of 1024 bytes
-    private const int AttributeListOffset = 0x80 * 4096;
+    const int MftRunOffset = 4096;
+    const int BatchBytes = 256 * 1024; // 256 records of 1024 bytes
+    const int AttributeListOffset = 0x80 * 4096;
 
-    private readonly record struct ParseOutcome(ulong TotalRecords, ulong UsedRecords, IntPtr Entries, string ErrorMessage);
+    readonly record struct ParseOutcome(ulong TotalRecords, ulong UsedRecords, IntPtr Entries, string ErrorMessage);
 
     // An image whose $MFT is one 1 MiB run at cluster 1, which the parser reads in four 256-record batches.
-    private static byte[] BuildMultiBatchImage()
+    static byte[] BuildMultiBatchImage()
     {
         var data = BuildBootSector();
         WriteFileRecord(data, MftRunOffset);
-        var attribute = MftRunOffset + 0x38;
+        const int attribute = MftRunOffset + 0x38;
         WriteNonResidentDataAttribute(data, attribute, 1024L * 1024, 1, 256);
         WriteEndMarker(data, attribute + 0x48);
         return data;
     }
 
     // A one-cluster $MFT whose non-resident attribute list sits at AttributeListOffset.
-    private static byte[] BuildNonResidentAttributeListImage()
+    static byte[] BuildNonResidentAttributeListImage()
     {
         var data = BuildBootSector();
         WriteFileRecord(data, MftRunOffset);
-        var dataAttribute = MftRunOffset + 0x38;
+        const int dataAttribute = MftRunOffset + 0x38;
         var dataLength = WriteNonResidentDataAttribute(data, dataAttribute, 4096, 1, 1);
         var listAttribute = dataAttribute + dataLength;
         data[listAttribute] = 0x20; // AttributeList
@@ -50,7 +50,7 @@ public partial class NativeMftProcessingTests
     }
 
     // Parses the image as a volume with 1024-byte records; failingRead is the 1-based read to fail, 0 for none.
-    private static ParseOutcome ParseImage(byte[] image, int length, int failingRead = 0, uint bufferSizeRecords = 256)
+    static ParseOutcome ParseImage(byte[] image, int length, int failingRead = 0, uint bufferSizeRecords = 256)
     {
         var path = Path.GetTempFileName();
         try
@@ -82,7 +82,7 @@ public partial class NativeMftProcessingTests
         }
     }
 
-    private static void AssertParseFailedWithNoOutput(ParseOutcome outcome)
+    static void AssertParseFailedWithNoOutput(ParseOutcome outcome)
     {
         Assert.IsFalse(string.IsNullOrEmpty(outcome.ErrorMessage), "an unreadable batch must fail the parse");
         Assert.AreEqual(0UL, outcome.UsedRecords);
@@ -134,7 +134,7 @@ public partial class NativeMftProcessingTests
     public void ParseMFTRecords_ExtensionRecordReadEndsEarly_FailsTheParse(int length)
     {
         var image = BuildMultiBatchImage();
-        var list = MftRunOffset + 0x38 + 0x48;
+        const int list = MftRunOffset + 0x38 + 0x48;
         Array.Clear(image, list, sizeof(uint)); // replace the existing end marker's complete type code
         WriteEndMarker(image, list + WriteResidentAttributeList(image, list, 1));
         WriteFileRecord(image, 5120, 2);

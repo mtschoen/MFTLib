@@ -2,7 +2,7 @@ using System.Diagnostics;
 
 namespace MFTLib.Tests.TestSupport;
 
-internal static class RepositoryFiles
+static class RepositoryFiles
 {
     internal static string Root { get; } = FindRoot();
 

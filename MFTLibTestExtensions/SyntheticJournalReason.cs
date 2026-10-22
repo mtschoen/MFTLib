@@ -77,5 +77,5 @@ public enum SyntheticJournalReason : uint
     IntegrityChange = 0x00800000,
 
     /// <summary>The file-handle operation closed.</summary>
-    Close = 0x80000000,
+    Close = 0x80000000
 }

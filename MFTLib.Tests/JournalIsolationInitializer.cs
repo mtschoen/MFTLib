@@ -3,7 +3,7 @@ using MFTLibTestExtensions;
 
 namespace MFTLib.Tests;
 
-internal static class JournalIsolationInitializer
+static class JournalIsolationInitializer
 {
     [ModuleInitializer]
     internal static void Initialize()

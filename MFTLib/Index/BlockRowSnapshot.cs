@@ -6,7 +6,7 @@ namespace MFTLib.Index;
 ///     every row index, parent link and name valid. An enumeration walk uses it to grow its block in
 ///     place of starting the walk again.
 /// </summary>
-internal sealed class BlockRowSnapshot
+sealed class BlockRowSnapshot
 {
     readonly FileRow[] _rows;
     readonly ushort[] _sequenceNumbers;
@@ -38,9 +38,9 @@ internal sealed class BlockRowSnapshot
         var rowCount = (int)header.RowCount;
         var nameCharacters = (int)(header.NamePoolUsed / sizeof(char));
         return new BlockRowSnapshot(
-            block.Rows[..rowCount].ToArray(),
-            block.SequenceNumbers[..rowCount].ToArray(),
-            block.NamePoolCharacters[..nameCharacters].ToArray(),
+            [.. block.Rows[..rowCount]],
+            [.. block.SequenceNumbers[..rowCount]],
+            [.. block.NamePoolCharacters[..nameCharacters]],
             header.NamePoolUsed,
             header.LiveRowCount);
     }

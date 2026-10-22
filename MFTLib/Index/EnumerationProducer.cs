@@ -9,7 +9,7 @@ namespace MFTLib.Index;
 ///     One writer commits completed directories before scheduling their children. File names
 ///     stay in character buffers; only the directory frontier needs full path strings.
 /// </summary>
-internal sealed class EnumerationProducer
+sealed class EnumerationProducer
 {
     /// <summary>A drive is never sized below this, so a tiny sample cannot starve the block.</summary>
     const uint MinimumEstimatedRowCount = 4096;

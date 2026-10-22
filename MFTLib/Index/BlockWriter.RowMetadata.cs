@@ -4,7 +4,7 @@ namespace MFTLib.Index;
 ///     The row-metadata members of <see cref="BlockWriter" />: the journal's reads and updates of an existing row's
 ///     flags, attributes and scanned observations, each holding the block's access scope.
 /// </summary>
-internal sealed partial class BlockWriter
+sealed partial class BlockWriter
 {
     /// <summary>
     ///     Reads a row's state flags as part of the atomic descriptor word, inside an access scope.

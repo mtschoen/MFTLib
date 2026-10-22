@@ -3,7 +3,7 @@ using System.Globalization;
 namespace MFTLib;
 
 /// <summary>Native timing breakdown for one MFT parse operation.</summary>
-internal readonly struct MftParseTimings
+readonly struct MftParseTimings
 {
     /// <summary>Native disk I/O duration.</summary>
     public TimeSpan NativeIo { get; }

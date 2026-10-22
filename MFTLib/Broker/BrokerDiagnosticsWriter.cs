@@ -8,7 +8,7 @@ namespace MFTLib;
 ///     separately; before its next append the writer reports their counts and the latest append
 ///     exception's type and message, so a gap in the log names its cause.
 /// </summary>
-internal sealed class BrokerDiagnosticsWriter
+sealed class BrokerDiagnosticsWriter
 {
     /// <summary>Sized so a burst of frame traces from every drive fits while a slow disk catches up.</summary>
     public const int Capacity = 8192;
@@ -42,7 +42,7 @@ internal sealed class BrokerDiagnosticsWriter
             // TryWrite on a full Wait-mode channel returns false instead of blocking.
             FullMode = BoundedChannelFullMode.Wait,
             SingleReader = true,
-            SingleWriter = false,
+            SingleWriter = false
         });
         _appendLine = appendLine;
         _roleProvider = roleProvider ?? (() => "client");

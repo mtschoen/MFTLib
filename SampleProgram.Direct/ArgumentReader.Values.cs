@@ -2,7 +2,7 @@ using System.Globalization;
 
 namespace SampleProgram.Direct;
 
-internal sealed partial class ArgumentReader
+sealed partial class ArgumentReader
 {
     internal int? Integer(string name)
     {

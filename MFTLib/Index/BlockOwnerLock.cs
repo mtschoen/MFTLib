@@ -11,7 +11,7 @@ namespace MFTLib.Index;
 ///     release races another opener creating and locking a fresh file, which would give two
 ///     indexes the same slot, and a leftover lock file matches no block-file pattern.
 /// </summary>
-internal sealed class BlockOwnerLock : IDisposable
+sealed class BlockOwnerLock : IDisposable
 {
     readonly FileStream _stream;
 

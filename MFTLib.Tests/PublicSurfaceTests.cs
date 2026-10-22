@@ -80,8 +80,8 @@ public class PublicSurfaceTests
     [TestMethod]
     public void PublicSurface_NegativeControl()
     {
-        Assert.AreSequenceEqual(new[]
-        {
+        Assert.AreSequenceEqual(
+        [
             "MFTLib.Tests.PublicSurfaceFixture :: constructor public ()",
             "MFTLib.Tests.PublicSurfaceFixture :: method protected internal static ProtectedInternalMethod() : void",
             "MFTLib.Tests.PublicSurfaceFixture :: method protected static ProtectedMethod() : void",
@@ -92,7 +92,7 @@ public class PublicSurfaceTests
             "MFTLib.Tests.PublicSurfaceFixture.NestedProtected :: type protected class",
             "MFTLib.Tests.PublicSurfaceFixture.NestedPublic :: constructor public ()",
             "MFTLib.Tests.PublicSurfaceFixture.NestedPublic :: type public class"
-        }, Surface(typeof(PublicSurfaceFixture)));
+        ], Surface(typeof(PublicSurfaceFixture)));
 
         const string sealedRecord = "MFTLib.Tests.PublicSurfaceRecordFixture";
         AssertContains(Surface(typeof(PublicSurfaceRecordFixture)),
@@ -134,7 +134,7 @@ public class PublicSurfaceTests
             "MFTLib.Tests.UnconstrainedSurfaceRecord<T> :: type public sealed class : " +
             "System.IEquatable<MFTLib.Tests.UnconstrainedSurfaceRecord<T>>");
 
-        Assert.Contains(typeof(SurfaceProbeExtensions), PublicSurfaceEnumerator.TopLevelTypes(typeof(PublicSurfaceFixture).Assembly).ToArray());
+        Assert.Contains(typeof(SurfaceProbeExtensions), [.. PublicSurfaceEnumerator.TopLevelTypes(typeof(PublicSurfaceFixture).Assembly)]);
         AssertContains(Surface(typeof(SurfaceProbeExtensions)),
             "System.IO.SurfaceProbeExtensions :: method public static ProbeExtension(this string value) : void",
             "System.IO.SurfaceProbeExtensions :: type public static class");
@@ -166,7 +166,7 @@ public class PublicSurfaceTests
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.AreSequenceEqual(new[] { "Benchmark", "MFTLib.Tests", "MFTLibTestExtensions" }, names);
+        Assert.AreSequenceEqual(["Benchmark", "MFTLib.Tests", "MFTLibTestExtensions"], names);
     }
 
     /// <summary>

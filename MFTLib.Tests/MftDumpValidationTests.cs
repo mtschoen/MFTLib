@@ -49,7 +49,7 @@ public sealed class MftDumpValidationTests : IDisposable
         ["2048-byte records", Changed(dump => DeclareRecordSize(dump, 2048)), RecordSizeMessage],
         ["8192-byte records", Changed(dump => DeclareRecordSize(dump, 8192)), RecordSizeMessage],
         ["partial final record", MftDumpFixture.Standard()[..^100], PartialRecordMessage],
-        ["invalid fixup", Changed(dump => dump[7 * 1024 + 510] ^= 0xFF),
+        ["invalid fixup", Changed(dump => dump[(7 * 1024) + 510] ^= 0xFF),
             "The dump contains an invalid MFT record fixup."],
         ["no root record", WithRecords(records => records.Remove(5)), NoRootMessage],
         ["freed root", WithRecords(records => records[5] = records[5] with { InUse = false }), NoRootMessage],
@@ -118,7 +118,7 @@ public sealed class MftDumpValidationTests : IDisposable
         Assert.AreEqual(22L, index.Find("dump:/D/documents/Deep/leaf.txt")!.Value.Size);
         Assert.IsFalse(index.Find("dump:/D/sizeless.bin")!.Value.IsSizeKnown);
         Assert.IsTrue(index.Find("dump:/D/documents")!.Value.IsDirectory);
-        Assert.AreSequenceEqual(new[] { "$MFT", "documents", "sizeless.bin" }, index.Root('D').Children().Select(child => child.Name).ToArray(), SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(["$MFT", "documents", "sizeless.bin"], [.. index.Root('D').Children().Select(child => child.Name)], SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]
@@ -199,7 +199,7 @@ public sealed class MftDumpValidationTests : IDisposable
     public async Task Produce_ReleasesTheDumpFileAfterSuccessAndAfterFailure()
     {
         var valid = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard(), "valid.mft");
-        var invalid = MftDumpFixture.WriteFile(TemporaryDirectoryPath, Changed(dump => dump[7 * 1024 + 510] ^= 0xFF),
+        var invalid = MftDumpFixture.WriteFile(TemporaryDirectoryPath, Changed(dump => dump[(7 * 1024) + 510] ^= 0xFF),
             "invalid.mft");
 
         (await new MftDumpBlockProducer(valid, TimeProvider.System).ProduceAsync(Request(), CancellationToken.None)).Block.Dispose();
@@ -231,7 +231,7 @@ public sealed class MftDumpValidationTests : IDisposable
     {
         // The block path names a directory that does not exist, so creating the block would fail
         // with another exception: the parser's rejection arriving proves the parse ran first.
-        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, Changed(dump => dump[7 * 1024 + 510] ^= 0xFF));
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, Changed(dump => dump[(7 * 1024) + 510] ^= 0xFF));
         var request = Request() with { BlockPath = Path.Combine(TemporaryDirectoryPath, "absent", "block.mlix") };
 
         var failure = await Assert.ThrowsExactlyAsync<InvalidDataException>(

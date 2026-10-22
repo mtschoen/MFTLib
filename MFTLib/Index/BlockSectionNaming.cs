@@ -1,7 +1,7 @@
 namespace MFTLib.Index;
 
 /// <summary>The shape of a named block section's name, known on every platform so a request can be sized before a section exists.</summary>
-internal static class BlockSectionNaming
+static class BlockSectionNaming
 {
     internal const string Prefix = "mftlib-block-";
 

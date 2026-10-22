@@ -146,7 +146,7 @@ public class BrokerProcessLaunchTests
                 {
                     CursorQuery = _ => new UsnJournalCursor(7UL, 0L),
                     RecordBatches = (_, _, _, _, _, _) => [[new MftRecord(5, 5, new MftRecordFields(3), ".")]],
-                    JournalRead = (_, cursor, _) => (Array.Empty<UsnJournalEntry>(), cursor),
+                    JournalRead = (_, cursor, _) => ([], cursor),
                     VolumeInformation = _ => new NtfsVolumeInformation(1024 * 1000, 1024)
                 });
                 await host.ServeAsync(pipe, DefaultElevatedEntryRunner.ConnectDrivePipeAsync,

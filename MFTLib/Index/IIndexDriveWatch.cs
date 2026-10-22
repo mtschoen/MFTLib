@@ -8,7 +8,7 @@ namespace MFTLib.Index;
 ///     <see cref="IAsyncDisposable.DisposeAsync" /> idempotent, and it completes once nothing
 ///     further for the drive can be read.
 /// </summary>
-internal interface IIndexDriveWatch : IAsyncDisposable
+interface IIndexDriveWatch : IAsyncDisposable
 {
     /// <summary>
     ///     Yields the drive's <see cref="JournalBatch" /> items, and one <see cref="DriveCaughtUp" />

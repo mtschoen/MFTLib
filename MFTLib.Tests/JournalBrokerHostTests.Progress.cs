@@ -49,10 +49,10 @@ public partial class JournalBrokerHostTests
             var throttledRest = await HostChannelHarness.ReadToEndAsync(throttledPipe);
             foreach (var frames in new[] { immediateRest, throttledRest })
             {
-                Assert.AreSequenceEqual(new long[] { 19 }, frames
+                Assert.AreSequenceEqual([19], [.. frames
                     .Where(frame => frame.Kind == BrokerFrameKind.ScanProgress &&
                         frame.Progress!.Value.Phase == BrokerScanPhase.Parsing)
-                    .Select(frame => frame.Progress!.Value.RecordsProcessed).ToArray());
+                    .Select(frame => frame.Progress!.Value.RecordsProcessed)]);
                 Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
             }
         }
@@ -65,7 +65,7 @@ public partial class JournalBrokerHostTests
         }
 
         static JournalBrokerHost CreateProgressHost(TestGate first, TestGate second) =>
-            ScanHost(timeProvider: new FakeTimeProvider(), scanDrive: (_, _, reporting, _, _, _) =>
+            ScanHost(scanDrive: (_, _, reporting, _, _, _) =>
             {
                 reporting.Progress!.Report(new BlockWriteProgress(5, 0, 20, null, BlockScanPhase.Parsing));
                 first.WaitForRelease();
@@ -74,7 +74,7 @@ public partial class JournalBrokerHostTests
                 second.WaitForRelease();
                 reporting.Progress.Report(new BlockWriteProgress(19, 0, 20, null, BlockScanPhase.Parsing));
                 return [];
-            });
+            }, timeProvider: new FakeTimeProvider());
     }
 
     [TestMethod]

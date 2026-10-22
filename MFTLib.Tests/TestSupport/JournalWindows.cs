@@ -3,7 +3,7 @@ using MFTLibTestExtensions;
 
 namespace MFTLib.Tests.TestSupport;
 
-internal static class JournalWindows
+static class JournalWindows
 {
     public static SyntheticJournalWindow Window(ulong journalIdentifier, long firstUsn, long nextUsn,
         long allocationDelta = 64, long maximumSize = 128L * 1024 * 1024) =>

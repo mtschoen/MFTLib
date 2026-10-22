@@ -1,7 +1,7 @@
 namespace MFTLib;
 
 /// <summary>The production volume access <see cref="CreateDefault()" /> wires.</summary>
-internal sealed partial class JournalBrokerHost
+sealed partial class JournalBrokerHost
 {
     /// <summary>Creates the host that scans, reads and watches real volumes through the live volume access of MFTLib itself.</summary>
     /// <returns>A host whose volume access needs the elevation that raw volume handles require.</returns>

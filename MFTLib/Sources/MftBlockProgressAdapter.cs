@@ -2,7 +2,7 @@ using MFTLib.Index;
 
 namespace MFTLib;
 
-internal static class MftBlockProgressAdapter
+static class MftBlockProgressAdapter
 {
     internal static DirectProgress<BlockWriteProgress>? Create(MftBlockProduceRequest request)
     {

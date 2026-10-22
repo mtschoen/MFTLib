@@ -41,7 +41,7 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void OpenChannelFrame_RoundTrips_RequestIdDriveAndPipeName()
     {
-        var frame = RoundTrip(writer => BrokerProtocol.WriteOpenChannel(writer, 0xDEADBEEF, 'C', @"mftlib-drive-C-1"));
+        var frame = RoundTrip(writer => BrokerProtocol.WriteOpenChannel(writer, 0xDEADBEEF, 'C', "mftlib-drive-C-1"));
 
         Assert.AreEqual(BrokerFrameKind.OpenChannel, frame.Kind);
         Assert.AreEqual(0xDEADBEEF, frame.RequestId);

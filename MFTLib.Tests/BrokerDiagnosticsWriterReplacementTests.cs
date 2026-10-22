@@ -82,7 +82,7 @@ public class BrokerDiagnosticsWriterReplacementTests
         var gate = new TestGate();
         var writers = new List<BrokerDiagnosticsWriter>();
         var outputs = new List<ConcurrentQueue<string>>();
-        Task installation = Task.CompletedTask;
+        var installation = Task.CompletedTask;
         BrokerDiagnostics.Enable("broker", Path.GetTempPath());
         try
         {

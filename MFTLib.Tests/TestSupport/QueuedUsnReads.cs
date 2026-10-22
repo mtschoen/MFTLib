@@ -7,7 +7,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     released. The hook is process-wide, so users are nonparallel and call <see cref="Release" /> and
 ///     <c>NativeTestHooks.NativeResetTestState</c> in their cleanup.
 /// </summary>
-internal static class QueuedUsnReads
+static class QueuedUsnReads
 {
     static readonly List<IntPtr> Buffers = [];
 

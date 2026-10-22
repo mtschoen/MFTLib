@@ -18,7 +18,7 @@ public partial class BrokerProtocolTests
             ? [21, 0, 0, 0, 10, 2, 0, 0, 0, 67, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 97, 0]
             : [15, 0, 0, 0, 10, 2, 0, 0, 0, 67, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         BinaryPrimitives.WriteInt32LittleEndian(expected.AsSpan(15), count);
-        Assert.AreSequenceEqual(expected, buffer.WrittenSpan.ToArray());
+        Assert.AreSequenceEqual(expected, [.. buffer.WrittenSpan]);
         Assert.AreEqual((long)buffer.WrittenCount - 4, BrokerProtocol.ArmAndScanFrameLength("C", names));
         var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out _);
         if (names is null)
@@ -27,7 +27,7 @@ public partial class BrokerProtocolTests
         }
         else
         {
-            Assert.AreSequenceEqual(names, frame.RetainedFileNames!.ToArray());
+            Assert.AreSequenceEqual(names, [.. frame.RetainedFileNames!]);
         }
     }
 
@@ -41,7 +41,7 @@ public partial class BrokerProtocolTests
     [DataRow(0, 0, 4)]
     public void ArmAndScan_MalformedRetentionPayload_IsRejected(int count, int freedFlag, int trailingBytes)
     {
-        byte[] bytes = new byte[19 + trailingBytes];
+        var bytes = new byte[19 + trailingBytes];
         BinaryPrimitives.WriteInt32LittleEndian(bytes, bytes.Length - 4);
         bytes[4] = 10;
         BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(5), 2);

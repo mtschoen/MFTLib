@@ -45,7 +45,7 @@ public abstract class BrokerBlockTestBase
             ReadJournal = (_, since, _) =>
             {
                 change(created.Value!.Sections.Single().Block);
-                return (Array.Empty<UsnJournalEntry>(), since);
+                return ([], since);
             }
         }));
         return created.Value;

@@ -3,14 +3,14 @@ using MFTLibTestExtensions;
 
 namespace MFTLib.Tests.Index;
 
-internal delegate void HeaderMutation(ref BlockHeader header);
+delegate void HeaderMutation(ref BlockHeader header);
 
 /// <summary>
 ///     Builds a small, complete block in a fresh temp directory by writing rows and names
 ///     directly through the mapped spans. Deliberately independent of the production
 ///     BlockWriter and enumeration producer so a failure points at one component.
 /// </summary>
-internal sealed class SyntheticBlockBuilder : IDisposable
+sealed class SyntheticBlockBuilder : IDisposable
 {
     readonly BlockFile _block;
     uint _nextRow;

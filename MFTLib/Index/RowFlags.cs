@@ -4,7 +4,7 @@ namespace MFTLib.Index;
 ///     Per-row state packed into the 16-bit row flags field.
 /// </summary>
 [Flags]
-internal enum RowFlags : ushort
+enum RowFlags : ushort
 {
     /// <summary>No per-row state is set.</summary>
     None = 0,

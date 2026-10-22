@@ -42,12 +42,12 @@ public class MockVolumeTests
         var currentOffset = 0UL;
         var stringSpan = stringBuf != IntPtr.Zero
             ? new Span<char>((void*)stringBuf, totalStringUnits)
-            : Span<char>.Empty;
+            : [];
 
         for (uint i = 0; i < usedRecords; i++)
         {
             var str = strings[(int)i];
-            var ptr = (byte*)entryBuf + i * MFTLibNative.NativeCompactEntrySize;
+            var ptr = (byte*)entryBuf + (i * MFTLibNative.NativeCompactEntrySize);
             Unsafe.WriteUnaligned(ptr, (ulong)i); // recordNumber
             Unsafe.WriteUnaligned(ptr + 8, 5UL); // parentRecordNumber
             Unsafe.WriteUnaligned(ptr + 16, currentOffset); // stringOffset

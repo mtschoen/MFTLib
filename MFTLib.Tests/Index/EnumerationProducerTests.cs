@@ -1,7 +1,6 @@
-using MFTLibTestExtensions;
-
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -471,7 +470,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
         Assert.IsGreaterThan(0, result.Name(result.Entries[0]).Length);
         Assert.AreEqual(0u, result.Entries[0].Columns.ParentRow);
         Assert.AreEqual((ushort)0, result.Entries[0].Columns.SequenceNumber);
-        Assert.AreSequenceEqual(new[] { 0, 1 }, observations);
+        Assert.AreSequenceEqual([0, 1], observations);
     }
 
     [TestMethod]
@@ -494,7 +493,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
         var thrown = Assert.ThrowsExactly<InvalidOperationException>(
             () => reader.Read(new EnumerationDirectoryWork(_treeRoot, 0), CancellationToken.None));
         Assert.AreSame(failure, thrown);
-        Assert.AreSequenceEqual(new[] { 0, 1 }, observations);
+        Assert.AreSequenceEqual([0, 1], observations);
     }
 
     [TestMethod]
@@ -657,7 +656,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
 
             var firstExtraGate = new TestGate();
             var secondExtraGate = new TestGate();
-            int extraCount = 0;
+            var extraCount = 0;
             var observedSecondWhileFirstHeld = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             string? secondExtraPath = null;
             var secondExtraFinished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -880,7 +879,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
 
             Assert.IsFalse(result.CapacityExhausted);
             Assert.AreEqual(1, result.AccessDeniedSubtreeCount);
-            Assert.AreSequenceEqual(new[] { failingDir }, failedDirectories);
+            Assert.AreSequenceEqual([failingDir], failedDirectories);
             Assert.IsFalse(observation.Visits.ContainsKey(childOfFailing), "Descendant of skipped directory must not be visited");
             Assert.IsTrue(observation.Visits.ContainsKey(healthyDir), "Healthy sibling directory must be visited");
 
@@ -1042,7 +1041,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
 
         var created = testSlotCapacity
             ? CreateBlock(slotCapacity: 3, namePoolCapacity: 1048576)
-            : CreateBlock(slotCapacity: 4096, namePoolCapacity: (uint)(_treeRoot.Length + 2 * "child-0".Length) * sizeof(char));
+            : CreateBlock(slotCapacity: 4096, namePoolCapacity: (uint)(_treeRoot.Length + (2 * "child-0".Length)) * sizeof(char));
         using var block = created.Block;
         Task<EnumerationResult>? produceTask = null;
         {

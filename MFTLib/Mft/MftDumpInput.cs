@@ -4,7 +4,7 @@ using Microsoft.Win32.SafeHandles;
 namespace MFTLib;
 
 /// <summary>The native dump input, closed exactly once however the owner is released.</summary>
-internal sealed class MftDumpInputHandle : SafeHandleZeroOrMinusOneIsInvalid
+sealed class MftDumpInputHandle : SafeHandleZeroOrMinusOneIsInvalid
 {
     /// <summary>Creates the empty handle the native open fills in.</summary>
     public MftDumpInputHandle() : base(true)
@@ -26,7 +26,7 @@ internal sealed class MftDumpInputHandle : SafeHandleZeroOrMinusOneIsInvalid
 ///     open file protects against a replaced path, not against a writer changing the file in
 ///     place: a parse that finds the file shorter or longer than it was fails.
 /// </summary>
-internal sealed class MftDumpInput : IDisposable
+sealed class MftDumpInput : IDisposable
 {
     const string UnsupportedRecordSizeMessage = "Invalid or unsupported MFT record size.";
 
@@ -122,7 +122,7 @@ internal sealed class MftDumpInput : IDisposable
         CancellationToken cancellationToken, ParseThreadAllowance? parseThreads = null)
     {
         using var result = Parse(new MftFileScanOptions(progress, ParseThreads: parseThreads,
-            CancellationToken: cancellationToken, BufferSizeRecords: 0));
+BufferSizeRecords: 0, CancellationToken: cancellationToken));
         foreach (var batch in result.ReadBatches(batchSize))
         {
             cancellationToken.ThrowIfCancellationRequested();

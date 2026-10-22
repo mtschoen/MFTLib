@@ -6,7 +6,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     MFTLib.Tests support for the native deterministic metadata and freed-record fixture:
 ///     24 hand-authored 1024-byte records with sizes, raw timestamps and attribute shapes.
 /// </summary>
-internal static class MftFixture
+static class MftFixture
 {
     internal static void Generate(string filePath)
     {

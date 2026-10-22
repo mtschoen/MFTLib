@@ -42,7 +42,7 @@ public partial class BenchmarkRunner
         }
 
         var block = ExtractScenarioBlock(File.ReadAllText(path), scenario);
-        var match = block is null ? null : Regex.Match(block, @"Median:\s*([0-9.]+) ms");
+        var match = block is null ? null : MyRegex().Match(block);
         if (match is not { Success: true } || !decimal.TryParse(match.Groups[1].Value, NumberStyles.Float,
                 CultureInfo.InvariantCulture, out var median))
         {
@@ -60,4 +60,7 @@ public partial class BenchmarkRunner
             $@"(?:^|\r?\n)--- {Regex.Escape(scenarioName)} ---\r?\n([\s\S]*?)(?=\r?\n--- |\z)");
         return match.Success ? match.Groups[1].Value : null;
     }
+
+    [GeneratedRegex(@"Median:\s*([0-9.]+) ms")]
+    private static partial Regex MyRegex();
 }

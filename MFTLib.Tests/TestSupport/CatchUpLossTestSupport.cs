@@ -3,7 +3,7 @@ using MFTLibTestExtensions;
 
 namespace MFTLib.Tests.TestSupport;
 
-internal static class CatchUpLossTestSupport
+static class CatchUpLossTestSupport
 {
     public static JournalCheckpointLoss StandardCatchUpLoss(char driveLetter) => new JournalCheckpointLoss(driveLetter, JournalCheckpointLossDetection.ScanCatchUp, JournalCheckpointLossCause.CheckpointTrimmed,
         new UsnJournalSettings { AllocationDelta = 4096, MaximumSize = 32768 })
@@ -19,6 +19,5 @@ internal static class CatchUpLossTestSupport
         new(StandardCatchUpLoss(driveLetter), Hold: hold);
 
     public static JournalCatchUpLostException[] CatchUpLosses(WatchHarness harness, char driveLetter) =>
-        harness.Faults.Where(fault => fault.Kind == WatchFaultKind.CatchUpLost && fault.Drive == driveLetter)
-            .Select(fault => (JournalCatchUpLostException)fault.Exception).ToArray();
+        [.. harness.Faults.Where(fault => fault.Kind == WatchFaultKind.CatchUpLost && fault.Drive == driveLetter).Select(fault => (JournalCatchUpLostException)fault.Exception)];
 }

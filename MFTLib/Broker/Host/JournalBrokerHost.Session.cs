@@ -3,7 +3,7 @@ using System.Buffers;
 namespace MFTLib;
 
 /// <summary>The control pipe: reads requests, runs each on its own task, and ends the session.</summary>
-internal sealed partial class JournalBrokerHost
+sealed partial class JournalBrokerHost
 {
     /// <summary>
     ///     Serve a broker session. Reads request frames from <paramref name="control" /> and runs

@@ -50,7 +50,7 @@ public class DirectDuplicateNameSieveTests
         var groups = DuplicateNameSieve.Find(index, CancellationToken.None);
         Assert.HasCount(1, groups);
         Assert.AreEqual("readme.txt", groups[0].Name);
-        Assert.AreSequenceEqual(new long[] { 1, 2, 3 }, groups[0].Entries.Select(entry => entry.Size).ToArray(), SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual([1, 2, 3], [.. groups[0].Entries.Select(entry => entry.Size)], SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]
@@ -97,8 +97,8 @@ public class DirectDuplicateNameSieveTests
         var groups = DuplicateNameSieve.Find(index, CancellationToken.None, bucketCount);
         Assert.HasCount(2, groups);
         var byName = groups.ToDictionary(group => group.Name);
-        Assert.AreSequenceEqual(new long[] { 1, 2 }, byName["dup-a.bin"].Entries.Select(entry => entry.Size).ToArray(), SequenceOrder.InAnyOrder);
-        Assert.AreSequenceEqual(new long[] { 3, 4, 5 }, byName["dup-b.bin"].Entries.Select(entry => entry.Size).ToArray(), SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual([1, 2], [.. byName["dup-a.bin"].Entries.Select(entry => entry.Size)], SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual([3, 4, 5], [.. byName["dup-b.bin"].Entries.Select(entry => entry.Size)], SequenceOrder.InAnyOrder);
     }
 
     static SyntheticBlockBuilder BuildLargeBlock(bool includeDuplicates)
@@ -139,7 +139,7 @@ public class DirectDuplicateNameSieveTests
         var groups = DuplicateNameSieve.Find(index, CancellationToken.None, 64);
         Assert.HasCount(1, groups);
         var expected = index.Enumerate(new SearchQuery(null, IsDirectory: false)).Select(entry => entry.RecordKey).ToArray();
-        Assert.AreSequenceEqual(expected, groups[0].Entries.Select(entry => entry.RecordKey).ToArray());
+        Assert.AreSequenceEqual(expected, [.. groups[0].Entries.Select(entry => entry.RecordKey)]);
     }
 
     [TestMethod]

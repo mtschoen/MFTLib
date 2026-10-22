@@ -151,10 +151,10 @@ public class DefaultElevationProviderTests
             });
 
         Assert.IsTrue(provider.TryRunElevated(
-            ["Program Files", "say \"hi\"", "C:\\spaced dir\\"], ElevationUtilities.DefaultElevatedTimeout));
+            ["Program Files", "say \"hi\"", @"C:\spaced dir\"], ElevationUtilities.DefaultElevatedTimeout));
 
         Assert.IsNotNull(started);
-        Assert.AreSequenceEqual(new[] { "Program Files", "say \"hi\"", "C:\\spaced dir\\" }, started.ArgumentList.ToArray());
+        Assert.AreSequenceEqual(["Program Files", "say \"hi\"", @"C:\spaced dir\"], [.. started.ArgumentList]);
         Assert.AreEqual(string.Empty, started.Arguments, "ArgumentList and Arguments are mutually exclusive.");
         Assert.AreEqual("runas", started.Verb);
         Assert.IsTrue(started.UseShellExecute);
@@ -195,7 +195,7 @@ public class DefaultElevationProviderTests
         {
             Assert.ThrowsExactly<ObjectDisposedException>(() => _ = process.StandardInput, "The process wrapper must be disposed after the timeout kill, before returning.");
             Assert.AreEqual(1, startedCount, "Supported timeout starts the child process.");
-            Assert.AreSequenceEqual(new[] { timeout }, waited);
+            Assert.AreSequenceEqual([timeout], waited);
             Assert.HasCount(expectedKills, killed, "The process that outlived its timeout is killed once.");
         }
         else

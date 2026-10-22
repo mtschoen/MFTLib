@@ -29,9 +29,9 @@ public class SubtreeAnchorTests
         switch (form)
         {
             case QueryForm.Search:
-                return index.Search(query).Select(entry => entry.Name).ToList();
+                return [.. index.Search(query).Select(entry => entry.Name)];
             case QueryForm.Enumerate:
-                return index.Enumerate(query).Select(entry => entry.Name).ToList();
+                return [.. index.Enumerate(query).Select(entry => entry.Name)];
             default:
                 var names = new List<string>();
                 foreach (var row in index.EnumerateRows(query))
@@ -155,7 +155,7 @@ public class SubtreeAnchorTests
         Assert.ThrowsExactly<ArgumentException>(() =>
             firstIndex.Search(new SearchQuery(null, Subtree: foreignRoot)));
         Assert.Contains(ownRoot,
-            firstIndex.Search(new SearchQuery(null, Subtree: ownRoot)).ToArray());
+            [.. firstIndex.Search(new SearchQuery(null, Subtree: ownRoot))]);
     }
 
     [TestMethod]
@@ -224,7 +224,7 @@ public class SubtreeAnchorTests
         Assert.IsTrue(anchor.IsDeleted);
         Rejected<ArgumentException>(harness.Index, form, Under(anchor));
         Assert.AreEqual(0, harness.Index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
-        Assert.AreSequenceEqual(new[] { "replacement", "notes.txt" }, Run(harness.Index, form, Under(Documents(harness.Index, "replacement"))));
+        Assert.AreSequenceEqual(["replacement", "notes.txt"], Run(harness.Index, form, Under(Documents(harness.Index, "replacement"))));
     }
 
     [TestMethod]

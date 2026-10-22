@@ -7,7 +7,7 @@ namespace MFTLib.Tests.Index;
 ///     <see cref="DriveBlock" />/<see cref="BlockWriter" /> pair so a test can apply journal
 ///     entries directly through a <see cref="JournalMutator" /> without repeating the setup.
 /// </summary>
-internal sealed class MutatorFixture : IAsyncDisposable
+sealed class MutatorFixture : IAsyncDisposable
 {
     readonly SyntheticBlockBuilder _builder;
     readonly DriveBlock[] _snapshot;

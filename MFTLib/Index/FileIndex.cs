@@ -148,7 +148,7 @@ public sealed partial class FileIndex : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(options);
 
         options = DriveKind.PrepareOpenOptions(options);
-        string cacheDirectoryPath = string.Empty;
+        var cacheDirectoryPath = string.Empty;
         if (options.CacheMode != CacheMode.Disabled)
         {
             var suppliedCacheDirectory = options.CacheDirectory;

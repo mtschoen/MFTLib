@@ -1,6 +1,6 @@
 namespace MFTLib.Tests.TestSupport;
 
-internal static class SharedFileReader
+static class SharedFileReader
 {
     public static async Task<byte[]> ReadAllBytesAsync(string path)
     {

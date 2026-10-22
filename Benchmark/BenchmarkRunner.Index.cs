@@ -19,7 +19,7 @@ public partial class BenchmarkRunner
             arguments = [.. arguments[..outputIndex], .. arguments[(outputIndex + 2)..]];
         }
 
-        if (outputIndex >= 0 && outputPath is null ||
+        if ((outputIndex >= 0 && outputPath is null) ||
             !TryParseIndexArguments(arguments, out var rows, out var cacheDirectory, out var iterations))
         {
             await _output.WriteLineAsync(
@@ -114,7 +114,7 @@ public partial class BenchmarkRunner
                 VolumeSerial = 0,
                 ProducerKind = ProducerKind.Enumeration,
                 SlotCapacity = BlockLayout.ComputeSlotCapacity(rows),
-                NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(checked(rows * 30 + (uint)directory.Length * 2)),
+                NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(checked((rows * 30) + ((uint)directory.Length * 2))),
                 ScanShape = ScanShape.ForEnumeration(null, new DirectoryWalkOptions(), directory)
             }))
             {

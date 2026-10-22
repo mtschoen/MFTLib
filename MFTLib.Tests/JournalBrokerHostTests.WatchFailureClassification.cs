@@ -24,12 +24,12 @@ public partial class JournalBrokerHostTests
         var queriedDrives = new List<char>();
         using var journal = JournalIsolation.OverrideJournalWindow(drive =>
         {
-            queriedDrives.Add((drive).Letter);
+            queriedDrives.Add(drive.Letter);
             return new SyntheticJournalWindow(7UL, 100L, 1000L, 64L, 4096L);
         });
 
         Assert.AreEqual(message, await ReadStartupErrorAsync(message, CachedCursor));
-        Assert.AreSequenceEqual(new[] { 'C' }, queriedDrives);
+        Assert.AreSequenceEqual(['C'], queriedDrives);
     }
 
     [TestMethod]

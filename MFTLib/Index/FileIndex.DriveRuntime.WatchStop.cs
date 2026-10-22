@@ -9,7 +9,7 @@ public sealed partial class FileIndex
         /// <summary>Withdraws this drive's request and drains its watch without taking the lifecycle gate.</summary>
         public async Task StopDriveWatchingAsync(CancellationToken cancellationToken)
         {
-            if (_index.RejectInsideHandler(nameof(FileIndex.StopWatchingAsync)) is { } rejection)
+            if (_index.RejectInsideHandler(nameof(StopWatchingAsync)) is { } rejection)
             {
                 throw rejection;
             }
@@ -43,7 +43,7 @@ public sealed partial class FileIndex
                 : retired?.Drained ?? previousDrain;
             if (drain is not null)
             {
-                await FileIndex.AwaitQueuedAsync(drain, cancellationToken, CancellationToken.None).ConfigureAwait(false);
+                await AwaitQueuedAsync(drain, cancellationToken, CancellationToken.None).ConfigureAwait(false);
             }
 
             lock (StateLock)
@@ -65,15 +65,8 @@ public sealed partial class FileIndex
                 return null;
             }
 
-            if (retired is not null)
-            {
-                retired.OutstandingFault = null;
-            }
-
-            if (Retiring is not null)
-            {
-                Retiring.OutstandingFault = null;
-            }
+            retired?.OutstandingFault = null;
+            Retiring?.OutstandingFault = null;
 
             RescanHandoffFault = null;
             return fault;

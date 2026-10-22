@@ -10,7 +10,7 @@ namespace MFTLibTestExtensions;
 ///     <see cref="ConnectAsync" />, the host's <see cref="BrokerChannelConnector" />. Closing either
 ///     end is EOF to the other, as with a named pipe.
 /// </summary>
-internal sealed class InMemoryBrokerPipes(BrokerTestHarnessOptions options, Func<string, Stream, Stream>? wrapClientStream)
+sealed class InMemoryBrokerPipes(BrokerTestHarnessOptions options, Func<string, Stream, Stream>? wrapClientStream)
     : IBrokerPipeFactory
 {
     /// <summary>The name <see cref="BrokerTestHarnessOptions" /> seams use for the control pipe.</summary>

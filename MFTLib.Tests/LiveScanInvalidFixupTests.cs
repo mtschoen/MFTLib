@@ -183,7 +183,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
             number > 16 && imported.Contains(number - 1) && imported.Contains(number + 1));
 
         var image = File.ReadAllBytes(imagePath);
-        image[ClusterSize + (int)corruptRecord * RecordSize + 510] ^= 0xFF;
+        image[ClusterSize + ((int)corruptRecord * RecordSize) + 510] ^= 0xFF;
         File.WriteAllBytes(imagePath, image);
         return (imagePath, corruptRecord);
     }
@@ -194,7 +194,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
         using var result = new MftResult(
             MFTLibNative.Hooks._parseMftRecordsWithProgress(image, false, 64, IntPtr.Zero, null));
         Assert.AreEqual(0UL, result.InvalidFixupRecordCount, "the untouched image has no invalid fixup");
-        return result.ToRecords().Where(record => record.InUse).Select(record => record.RecordNumber).ToHashSet();
+        return [.. result.ToRecords().Where(record => record.InUse).Select(record => record.RecordNumber)];
     }
 
     // Every volume open reads the image, and the volume query reports its record size.

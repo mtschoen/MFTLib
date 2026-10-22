@@ -3,7 +3,7 @@ using MFTLib.Index;
 
 namespace MFTLibTestExtensions;
 
-internal sealed class ScriptedVolumeAccess : IVolumeAccess
+sealed class ScriptedVolumeAccess : IVolumeAccess
 {
     internal Func<DriveKey, UsnJournalCursor> CursorQuery { get; init; } =
         _ => throw new NotSupportedException("Broker has no cursor source");

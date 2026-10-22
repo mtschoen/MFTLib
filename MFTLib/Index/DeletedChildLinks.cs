@@ -14,7 +14,7 @@ namespace MFTLib.Index;
 ///     <see cref="BlockFile" /> rather than on a writer because a watch creates a fresh writer per
 ///     journal batch, and per-writer links would be rebuilt for every batch.
 /// </summary>
-internal sealed class DeletedChildLinks
+sealed class DeletedChildLinks
 {
     readonly Dictionary<uint, HashSet<uint>> _childrenByParent = [];
 

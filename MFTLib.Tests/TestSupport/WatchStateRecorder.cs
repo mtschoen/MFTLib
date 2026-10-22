@@ -9,7 +9,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     are settled by this recorder's own handlers, so a completed wait proves the recorder has
 ///     seen the event, never by polling.
 /// </summary>
-internal sealed class WatchStateRecorder
+sealed class WatchStateRecorder
 {
     readonly Lock _gate = new();
     readonly List<object> _events = [];

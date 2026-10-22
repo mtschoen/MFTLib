@@ -73,7 +73,7 @@ public sealed class SyntheticIndexInspectionTests : IDisposable
     [TestMethod]
     public async Task ReadHeader_IsACopyThatOutlivesTheIndex()
     {
-        FileIndex index = await FileIndex.OpenAsync(Options(TreeRoot), Token);
+        var index = await FileIndex.OpenAsync(Options(TreeRoot), Token);
         var header = SyntheticIndexInspection.ReadHeader(index, 'T');
         await index.DisposeAsync();
 

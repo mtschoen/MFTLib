@@ -4,7 +4,7 @@ namespace MFTLibTestExtensions;
 ///     Seams of an in-process broker started by <see cref="BrokerTestHarness" />. The host's own
 ///     clock and processor count go through the <c>JournalBrokerHost</c> constructor instead.
 /// </summary>
-internal sealed record BrokerTestHarnessOptions
+sealed record BrokerTestHarnessOptions
 {
     /// <summary>The client's clock, which measures its write and reply timeouts.</summary>
     public TimeProvider TimeProvider { get; init; } = TimeProvider.System;

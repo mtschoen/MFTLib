@@ -31,7 +31,7 @@ public class SyntheticIndexSourceTests
         using var block = result.Block;
 
         Assert.AreSame(watches.IndexSource, source.WatchSource);
-        Assert.AreSequenceEqual(new DriveKey[] { 'T' }, producer.ProducedDrives.ToArray());
+        Assert.AreSequenceEqual(['T'], [.. producer.ProducedDrives]);
         Assert.IsGreaterThan(0u, block.Header.RowCount);
     }
 

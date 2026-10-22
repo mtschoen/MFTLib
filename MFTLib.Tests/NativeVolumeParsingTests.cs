@@ -74,7 +74,7 @@ public partial class NativeVolumeParsingTests
             var data = BuildBootSector();
             WriteFileRecord(data, 4096);
 
-            var a1 = 4096 + 0x38;
+            const int a1 = 4096 + 0x38;
             var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
 
             var a2 = a1 + a1Len;
@@ -138,7 +138,7 @@ public partial class NativeVolumeParsingTests
             var data = BuildBootSector();
             WriteFileRecord(data, 4096);
 
-            var a1 = 4096 + 0x38;
+            const int a1 = 4096 + 0x38;
             var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
             WriteEndMarker(data, a1 + a1Len);
 
@@ -190,7 +190,7 @@ public partial class NativeVolumeParsingTests
             var data = BuildBootSector();
             WriteFileRecord(data, 4096);
 
-            var a1 = 4096 + 0x38;
+            const int a1 = 4096 + 0x38;
             WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
             WriteEndMarker(data, a1 + 0x48);
 

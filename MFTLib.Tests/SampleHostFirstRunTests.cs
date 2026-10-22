@@ -121,7 +121,7 @@ public class SampleHostFirstRunTests
             foreach (var (arguments, expectedExit) in new[]
                      {
                          (new[] { "no-such-verb" }, 2),
-                         (new[] { "search", "D", "--source", "dump", "--dump-file", dumpFile, "--name", "notes" }, 0)
+                         (["search", "D", "--source", "dump", "--dump-file", dumpFile, "--name", "notes"], 0)
                      })
             {
                 using var output = new StringWriter();
@@ -168,7 +168,7 @@ public class SampleHostFirstRunTests
             var result = host.RunWithElevation(arguments, ElevationNeed.SelfElevate, () => host.Run(arguments));
 
             Assert.AreEqual(childSucceeded ? 0 : 1, result);
-            Assert.AreSequenceEqual(arguments, relaunchedWith!.ToArray());
+            Assert.AreSequenceEqual(arguments, [.. relaunchedWith!]);
             Assert.AreEqual(Timeout.InfiniteTimeSpan, elevationTimeout);
             var report = output.ToString();
             Assert.Contains($"The elevated run writes its output to {Path.Combine(directory, "output.log")}", report);
@@ -291,11 +291,10 @@ public class SampleHostFirstRunTests
 
         var lines = output.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
         Assert.AreSequenceEqual(
-            new[]
-            {
+            [
                 $"  D: ParsingMft: 0 rows of {3 * interval}",
                 $"  D: ParsingMft: {interval} rows of {3 * interval}",
                 $"  D: ParsingMft: {2 * interval} rows of {3 * interval}"
-            }, lines);
+            ], lines);
     }
 }

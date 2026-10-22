@@ -84,7 +84,7 @@ public class ScriptedWatchSourceTests
 
         Assert.AreSame(failure, first);
         Assert.AreSame(failure, second);
-        Assert.AreSequenceEqual(new DriveKey[] { 'U', 'U', 'T' }, source.Starts.Select(start => start.Drive).ToArray(), "failed starts are still recorded");
+        Assert.AreSequenceEqual(['U', 'U', 'T'], [.. source.Starts.Select(start => start.Drive)], "failed starts are still recorded");
         Assert.HasCount(1, source.Watches, "only the successful start handed out a watch");
     }
 
@@ -309,8 +309,8 @@ public class ScriptedWatchSourceTests
 
         if (isMarker)
         {
-            Assert.ThrowsExactly<InvalidOperationException>(() => watch.QueueCaughtUp());
-            Assert.ThrowsExactly<InvalidOperationException>(() => watch.PublishCaughtUpAsync());
+            Assert.ThrowsExactly<InvalidOperationException>(watch.QueueCaughtUp);
+            Assert.ThrowsExactly<InvalidOperationException>(watch.PublishCaughtUpAsync);
         }
         else
         {
@@ -482,8 +482,8 @@ public class ScriptedWatchSourceTests
         var cursor = new SyntheticJournalCursor(7, 400);
         Assert.ThrowsExactly<InvalidOperationException>(() => watch.QueueBatchAsync([entry], cursor));
         Assert.ThrowsExactly<InvalidOperationException>(() => watch.PublishBatchAsync([entry], cursor));
-        Assert.ThrowsExactly<InvalidOperationException>(() => watch.QueueCaughtUp());
-        Assert.ThrowsExactly<InvalidOperationException>(() => watch.PublishCaughtUpAsync());
+        Assert.ThrowsExactly<InvalidOperationException>(watch.QueueCaughtUp);
+        Assert.ThrowsExactly<InvalidOperationException>(watch.PublishCaughtUpAsync);
     }
 
     async Task EndReadAsync(ScriptedDriveWatch watch, string mode)

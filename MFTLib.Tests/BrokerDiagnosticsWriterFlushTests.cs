@@ -94,8 +94,11 @@ public class BrokerDiagnosticsWriterFlushTests
                 line.Contains("1 records dropped: queue full", StringComparison.Ordinal), lines);
             Assert.DoesNotContain("dropped", lines);
             Assert.AreSequenceEqual(
-                new[] { "parks the sink" }.Concat(Enumerable.Range(0, BrokerDiagnosticsWriter.Capacity)
-                    .Select(index => $"fill {index}")).ToArray(), lines.Where(line => !line.Contains("records dropped:", StringComparison.Ordinal)).ToArray());
+                [
+                    "parks the sink",
+                    .. Enumerable.Range(0, BrokerDiagnosticsWriter.Capacity)
+                            .Select(index => $"fill {index}")
+                ], [.. lines.Where(line => !line.Contains("records dropped:", StringComparison.Ordinal))]);
         }
         finally
         {

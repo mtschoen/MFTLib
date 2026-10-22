@@ -3,7 +3,7 @@ using MFTLib.Index;
 namespace MFTLib;
 
 /// <summary>Maps MFT records to sparse block rows without resolving paths or retaining batches.</summary>
-internal static class MftBlockRowWriter
+static class MftBlockRowWriter
 {
     /// <summary>
     ///     Writes each batch and reports transfer progress; the caller stamps and completes the block.

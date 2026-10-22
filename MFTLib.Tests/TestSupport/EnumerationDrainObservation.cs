@@ -8,7 +8,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     the second child reader run only once the first is held, so whatever the second reader's
 ///     directory triggers (a read fault, a writer fault, exhaustion) happens while a sibling is in flight.
 /// </summary>
-internal sealed class EnumerationDrainObservation : IDisposable
+sealed class EnumerationDrainObservation : IDisposable
 {
     /// <summary>Readers needed at once: the held one and the active one.</summary>
     internal const int MaximumReaders = 2;

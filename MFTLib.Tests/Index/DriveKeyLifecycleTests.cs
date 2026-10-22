@@ -18,7 +18,7 @@ public class DriveKeyLifecycleTests
     {
         var methods = typeof(FileIndex).GetMethods().Where(method => method.Name == name).ToArray();
         Assert.HasCount(1, methods);
-        Assert.AreSequenceEqual(new[] { typeof(IEnumerable<DriveKey>), typeof(CancellationToken) }, methods[0].GetParameters().Select(parameter => parameter.ParameterType).ToArray());
+        Assert.AreSequenceEqual([typeof(IEnumerable<DriveKey>), typeof(CancellationToken)], [.. methods[0].GetParameters().Select(parameter => parameter.ParameterType)]);
         Assert.AreEqual(typeof(Task<IReadOnlyList<DriveOperationResult>>), methods[0].ReturnType);
     }
 
@@ -40,7 +40,7 @@ public class DriveKeyLifecycleTests
         AssertResults(await waiting, requested);
         AssertResults(await harness.Index.RescanAsync(requested, token), requested);
         AssertResults(await harness.Index.StopWatchingAsync(requested, token), requested);
-        Assert.AreSequenceEqual(new DriveKey[] { 'T', 'U' }, harness.Index.Drives.Select(status => status.Drive).ToArray());
+        Assert.AreSequenceEqual(['T', 'U'], [.. harness.Index.Drives.Select(status => status.Drive)]);
     }
 
     [TestMethod]
@@ -127,7 +127,7 @@ public class DriveKeyLifecycleTests
 
     static void AssertResults(IReadOnlyList<DriveOperationResult> results, DriveKey[] requested)
     {
-        Assert.AreSequenceEqual(requested, results.Select(result => result.Drive).ToArray());
+        Assert.AreSequenceEqual(requested, [.. results.Select(result => result.Drive)]);
         Assert.IsTrue(results.All(result => result.Outcome == DriveOperationOutcome.Succeeded));
     }
 }

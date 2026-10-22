@@ -1,6 +1,6 @@
 namespace MFTLib;
 
-internal readonly struct MftRecordFields(
+readonly struct MftRecordFields(
     ushort flags, FileAttributes fileAttributes = 0, long size = 0, long modifiedFileTime = 0,
     ushort sequenceNumber = 0, ushort parentSequenceNumber = 0)
 {
@@ -18,7 +18,7 @@ internal readonly struct MftRecordFields(
 ///     <see cref="Materialize" /> to keep one longer. Records from the batch and array APIs are
 ///     already materialized.
 /// </summary>
-internal readonly struct MftRecord
+readonly struct MftRecord
 {
     readonly ushort _flags;
     readonly ushort _nameLength;

@@ -29,7 +29,7 @@ public class NamePoolTests
     {
         var pool = new char[8];
         var used = 4u;
-        Assert.IsTrue(NamePool.TryAppend(pool, ref used, 16, ReadOnlySpan<char>.Empty, out var offset));
+        Assert.IsTrue(NamePool.TryAppend(pool, ref used, 16, [], out var offset));
         Assert.AreEqual(4u, offset);
         Assert.AreEqual(4u, used);
     }

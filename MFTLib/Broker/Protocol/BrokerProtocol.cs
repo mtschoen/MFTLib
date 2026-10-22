@@ -14,7 +14,7 @@ namespace MFTLib;
 ///     This file holds the entry codec and the read side; the write methods live in
 ///     BrokerProtocol.Write.cs and the payload primitives in BrokerProtocol.Payload.cs.
 /// </summary>
-internal static partial class BrokerProtocol
+static partial class BrokerProtocol
 {
     // Journal entry serialization
 
@@ -159,7 +159,7 @@ internal static partial class BrokerProtocol
             entries.Add(payload.Entry());
         }
 
-        return BrokerFrame.JournalBatch(cursor, entries.ToArray());
+        return BrokerFrame.JournalBatch(cursor, [.. entries]);
     }
 
     static BrokerFrame ReadCatchUpLostFrame(ref PayloadReader payload)

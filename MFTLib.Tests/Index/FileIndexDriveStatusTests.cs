@@ -39,7 +39,7 @@ public sealed class FileIndexDriveStatusTests : IDisposable
                 new IndexedDrive('Z', Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration),
                 new IndexedDrive('T', TreeRoot, 0x0BADF00D, ProducerKind.Enumeration)
             ],
-            CacheDirectory = CacheDirectoryPath,
+            CacheDirectory = CacheDirectoryPath
         };
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
@@ -66,7 +66,7 @@ public sealed class FileIndexDriveStatusTests : IDisposable
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
             Drives = [new IndexedDrive('T', TreeRoot, 4242, ProducerKind.Enumeration)],
-            CacheDirectory = CacheDirectoryPath,
+            CacheDirectory = CacheDirectoryPath
         }, TestContext.CancellationToken);
 
         var status = index.Drives.Single();
@@ -85,7 +85,7 @@ public sealed class FileIndexDriveStatusTests : IDisposable
                 new IndexedDrive('Z', Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration),
                 new IndexedDrive('T', TreeRoot, 0x0BADF00D, ProducerKind.Enumeration)
             ],
-            CacheDirectory = CacheDirectoryPath,
+            CacheDirectory = CacheDirectoryPath
         };
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
@@ -177,7 +177,7 @@ public sealed class FileIndexDriveStatusTests : IDisposable
         var options = new FileIndexOptions
         {
             Drives = configured,
-            CacheDirectory = CacheDirectoryPath,
+            CacheDirectory = CacheDirectoryPath
         };
         var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
         try
@@ -186,8 +186,8 @@ public sealed class FileIndexDriveStatusTests : IDisposable
 
             configured.Add(new IndexedDrive('U', TreeRoot, 0x0BADF00E));
 
-            Assert.AreSequenceEqual(before, index.Drives.Select(drive => drive.Drive).ToArray());
-            Assert.AreSequenceEqual(new DriveKey[] { 'T' }, before);
+            Assert.AreSequenceEqual(before, [.. index.Drives.Select(drive => drive.Drive)]);
+            Assert.AreSequenceEqual(['T'], before);
         }
         finally
         {
@@ -231,7 +231,7 @@ public sealed class FileIndexDriveStatusTests : IDisposable
         var options = new FileIndexOptions
         {
             Drives = configured,
-            CacheDirectory = CacheDirectoryPath,
+            CacheDirectory = CacheDirectoryPath
         };
 
         var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken)
@@ -241,7 +241,7 @@ public sealed class FileIndexDriveStatusTests : IDisposable
             var statuses = index.Drives;
 
             Assert.AreEqual(1, configured.EnumerationCount);
-            Assert.AreSequenceEqual(new[] { 'Z', 'T' }, statuses.Select(drive => drive.Drive.Letter).ToArray());
+            Assert.AreSequenceEqual(['Z', 'T'], [.. statuses.Select(drive => drive.Drive.Letter)]);
             Assert.AreEqual(DriveState.Offline, statuses[0].State);
             Assert.AreEqual(DriveState.Ready, statuses[1].State);
         }

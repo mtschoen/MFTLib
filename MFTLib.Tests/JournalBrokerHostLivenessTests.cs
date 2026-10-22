@@ -71,7 +71,7 @@ public partial class JournalBrokerHostLivenessTests
         // Within the limit the processing pipe heartbeats; past it, Stalled is the last frame and the
         // host closes the pipe.
         Assert.AreEqual(BrokerFrameKind.Stalled, frames[^1].Kind, "Stalled is the last frame, then EOF.");
-        Assert.AreSequenceEqual(new[] { BrokerFrameKind.Cursor, BrokerFrameKind.Stalled }, frames.Where(frame => frame.Kind != BrokerFrameKind.Heartbeat).Select(frame => frame.Kind).ToArray());
+        Assert.AreSequenceEqual([BrokerFrameKind.Cursor, BrokerFrameKind.Stalled], [.. frames.Where(frame => frame.Kind != BrokerFrameKind.Heartbeat).Select(frame => frame.Kind)]);
         Assert.Contains("wedged step", frames[^1].Message!);
         Assert.Contains("30 seconds", frames[^1].Message!);
     }
@@ -116,7 +116,7 @@ public partial class JournalBrokerHostLivenessTests
         var liveness = new Liveness();
         var admitted = new TestGate();
         var queuedSourceEntered = new TestGate();
-        var host = liveness.Host(processorCount: 1, scanDrive: (drive, _, reporting, _, _, token) =>
+        var host = liveness.Host(scanDrive: (drive, _, reporting, _, _, token) =>
         {
             if (drive == 'C')
             {
@@ -132,7 +132,7 @@ public partial class JournalBrokerHostLivenessTests
             }
 
             return [];
-        });
+        }, processorCount: 1);
         using var sectionWriter = new RecordingBlockSectionWriter();
         await using var harness = new HostChannelHarness(host, sectionWriter);
         await harness.OpenScanChannelAsync('C');
@@ -229,12 +229,17 @@ public partial class JournalBrokerHostLivenessTests
                     JournalWatch = watchDrive ?? ScriptedVolumeAccess.UnsupportedWatch
                 },
                 processorCount: processorCount,
-                timeProvider: Clock);
-            host.Hooks.HeartbeatVisited = () =>
+                timeProvider: Clock)
             {
-                SenderIsThreadPoolThread = Thread.CurrentThread.IsThreadPoolThread;
-                SenderIsBackground = Thread.CurrentThread.IsBackground;
-                _visits.Writer.TryWrite(true);
+                Hooks =
+                {
+                    HeartbeatVisited = () =>
+                    {
+                        SenderIsThreadPoolThread = Thread.CurrentThread.IsThreadPoolThread;
+                        SenderIsBackground = Thread.CurrentThread.IsBackground;
+                        _visits.Writer.TryWrite(true);
+                    }
+                }
             };
             return host;
         }

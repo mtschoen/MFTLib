@@ -79,9 +79,7 @@ public sealed record DirectoryWalkOptions
         var root = NormalizePath(rootDirectory);
         var rootWithSeparator = Path.EndsInDirectorySeparator(root) ? root : root + Path.DirectorySeparatorChar;
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        return PrunedDirectoryPaths
-            .Where(path => string.Equals(path, root, comparison) || path.StartsWith(rootWithSeparator, comparison))
-            .ToArray();
+        return [.. PrunedDirectoryPaths.Where(path => string.Equals(path, root, comparison) || path.StartsWith(rootWithSeparator, comparison))];
     }
 
     /// <summary>

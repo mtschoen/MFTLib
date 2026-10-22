@@ -9,7 +9,7 @@ namespace Benchmark;
 ///     <c>$MFT</c>, record 5 is the root, and every later record is a file named after its number under the root.
 ///     Every record carries a valid update sequence array, so the fixup phase has real work to do.
 /// </summary>
-internal static class SyntheticMftDump
+static class SyntheticMftDump
 {
     /// <summary>The fewest records a dump holds, so that record 0 and the root exist.</summary>
     internal const uint MinimumRecords = 16;
@@ -30,7 +30,7 @@ internal static class SyntheticMftDump
         for (uint number = 0; number < recordCount; number++)
         {
             Array.Clear(record);
-            if (number == 0 || number >= RootRecordNumber)
+            if (number is 0 or >= RootRecordNumber)
             {
                 var name = number == 0 ? "$MFT" :
                     number == RootRecordNumber ? "." :

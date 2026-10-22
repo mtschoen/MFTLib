@@ -8,7 +8,7 @@ namespace MFTLib;
 ///     time straight off the pipe, with no queue between them, so a drive that is not being read
 ///     holds back only its own pipe. The index reads it from one pump and disposes it once.
 /// </summary>
-internal sealed class BrokerWatchChannel(BrokerDriveChannel channel) : IIndexDriveWatch
+sealed class BrokerWatchChannel(BrokerDriveChannel channel) : IIndexDriveWatch
 {
     DriveKey Drive { get; } = channel.Drive;
 

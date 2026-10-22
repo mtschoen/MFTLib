@@ -81,17 +81,17 @@ public partial class JournalBrokerHostRealSeamsTests
     // Native filename entries include an in-use file, an unused file, and an empty name.
     static unsafe IntPtr BuildThreeNameRecordsResult()
     {
-        var stride = (nuint)MFTLibNative.NativeCompactEntrySize;
+        const nuint stride = MFTLibNative.NativeCompactEntrySize;
         var entryBuf = Marshal.AllocHGlobal((int)stride * 3);
         new Span<byte>((void*)entryBuf, (int)stride * 3).Clear();
 
-        var keptName = "file0.txt";
-        var skippedName = "skip.txt";
+        const string keptName = "file0.txt";
+        const string skippedName = "skip.txt";
         var totalUnits = keptName.Length + skippedName.Length;
         var stringBuf = Marshal.AllocHGlobal(totalUnits * sizeof(char));
         var stringSpan = new Span<char>((void*)stringBuf, totalUnits);
         keptName.AsSpan().CopyTo(stringSpan);
-        skippedName.AsSpan().CopyTo(stringSpan.Slice(keptName.Length));
+        skippedName.AsSpan().CopyTo(stringSpan[keptName.Length..]);
 
         var kept = (byte*)entryBuf;
         Unsafe.WriteUnaligned(kept, 100UL);
@@ -109,7 +109,7 @@ public partial class JournalBrokerHostRealSeamsTests
         Unsafe.WriteUnaligned(notInUse + 28, (ushort)0); // not in use
         Unsafe.WriteUnaligned(notInUse + 30, (ushort)skippedName.Length);
 
-        var emptyName = (byte*)entryBuf + 2 * stride;
+        var emptyName = (byte*)entryBuf + (2 * stride);
         Unsafe.WriteUnaligned(emptyName, 102UL);
         Unsafe.WriteUnaligned(emptyName + 8, 5UL);
         Unsafe.WriteUnaligned(emptyName + 16, (ulong)totalUnits); // stringOffset

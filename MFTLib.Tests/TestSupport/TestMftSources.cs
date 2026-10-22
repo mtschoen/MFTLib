@@ -1,10 +1,10 @@
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 using MFTLib.Index;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.TestSupport;
 
 /// <summary>Builds <see cref="MftIndexSource" /> values for tests that exercise only one half of one.</summary>
-internal static class TestMftSources
+static class TestMftSources
 {
     /// <summary>A source whose watch is <paramref name="watchSource" /> and whose scan fails the test if reached.</summary>
     internal static MftIndexSource WatchOnly(IIndexWatchSource watchSource) => new(

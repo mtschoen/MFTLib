@@ -5,7 +5,7 @@ namespace MFTLib.Index;
 ///     drives get a single partition: below the threshold, starting tasks costs more than the
 ///     scan itself.
 /// </summary>
-internal static class ScanPartitioning
+static class ScanPartitioning
 {
     /// <summary>Below this many rows a scan stays on the calling thread.</summary>
     internal const uint SingleThreadedRowThreshold = 32768;

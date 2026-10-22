@@ -133,7 +133,7 @@ public class DirectExcludeDefenderTests
         if (OperatingSystem.IsWindows())
         {
             var (arguments, timeout) = relaunches.Single();
-            Assert.AreSequenceEqual(new[] { SampleHost.ExcludeDefenderVerb }, arguments.ToArray());
+            Assert.AreSequenceEqual([SampleHost.ExcludeDefenderVerb], [.. arguments]);
             Assert.AreEqual(TimeSpan.FromSeconds(60), timeout);
         }
     }
@@ -184,7 +184,7 @@ public class DirectExcludeDefenderTests
         var console = new ConsoleLog();
         using var scripted = DefenderExclusionIsolation.ScriptPowerShell();
 
-        var result = Host(lines, elevated: false, canSelfElevate: true, console: console, isWindows: false, tryRunElevated: (_, _) => false).Run([SampleHost.ExcludeDefenderVerb]);
+        var result = Host(lines, elevated: false, canSelfElevate: true, tryRunElevated: (_, _) => false, console: console, isWindows: false).Run([SampleHost.ExcludeDefenderVerb]);
 
         Assert.AreEqual(1, result);
         Assert.IsEmpty(console.Dialogs);

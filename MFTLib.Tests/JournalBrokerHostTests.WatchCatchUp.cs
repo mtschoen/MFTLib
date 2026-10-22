@@ -16,7 +16,7 @@ public partial class JournalBrokerHostTests
         var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.AreSequenceEqual(new[] { BrokerFrameKind.CaughtUp, BrokerFrameKind.JournalBatch }, frames.Select(frame => frame.Kind).ToArray());
+        Assert.AreSequenceEqual([BrokerFrameKind.CaughtUp, BrokerFrameKind.JournalBatch], [.. frames.Select(frame => frame.Kind)]);
     }
 
     [TestMethod]
@@ -35,7 +35,7 @@ public partial class JournalBrokerHostTests
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
         Assert.AreSequenceEqual(
-            new[] { BrokerFrameKind.JournalBatch, BrokerFrameKind.JournalBatch, BrokerFrameKind.CaughtUp }, frames.Select(frame => frame.Kind).ToArray());
+            [BrokerFrameKind.JournalBatch, BrokerFrameKind.JournalBatch, BrokerFrameKind.CaughtUp], [.. frames.Select(frame => frame.Kind)]);
         Assert.AreEqual(new UsnJournalCursor(7UL, 140L), frames[0].Cursor);
         Assert.AreEqual(new UsnJournalCursor(7UL, 160L), frames[1].Cursor);
     }
@@ -52,7 +52,7 @@ public partial class JournalBrokerHostTests
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
         // The channel closes after its one batch, which proves no CaughtUp followed it.
-        Assert.AreSequenceEqual(new[] { BrokerFrameKind.JournalBatch }, frames.Select(frame => frame.Kind).ToArray());
+        Assert.AreSequenceEqual([BrokerFrameKind.JournalBatch], [.. frames.Select(frame => frame.Kind)]);
     }
 
     [TestMethod]
@@ -66,7 +66,7 @@ public partial class JournalBrokerHostTests
         var pipe = await harness.OpenWatchChannelAsync('C', default);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.AreSequenceEqual(new[] { BrokerFrameKind.CaughtUp }, frames.Select(frame => frame.Kind).ToArray());
+        Assert.AreSequenceEqual([BrokerFrameKind.CaughtUp], [.. frames.Select(frame => frame.Kind)]);
     }
 
     [TestMethod]

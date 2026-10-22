@@ -13,7 +13,7 @@ namespace MFTLib.Tests;
 ///     the kind, modifiers, name, parameters and type, formatted by
 ///     <see cref="PublicSurfaceTypeFormatter" />. Lines are sorted ordinally.
 /// </summary>
-internal static class PublicSurfaceEnumerator
+static class PublicSurfaceEnumerator
 {
     const BindingFlags DeclaredMembers = BindingFlags.DeclaredOnly | BindingFlags.Public |
                                          BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
@@ -34,7 +34,7 @@ internal static class PublicSurfaceEnumerator
             AddType(lines, type);
         }
 
-        return lines.OrderBy(line => line, StringComparer.Ordinal).ToArray();
+        return [.. lines.OrderBy(line => line, StringComparer.Ordinal)];
     }
 
     static void AddType(List<string> lines, Type type)
@@ -194,7 +194,7 @@ internal static class PublicSurfaceEnumerator
         declaration.Append(' ').Append(kind);
         if (bases.Count > 0)
         {
-            declaration.Append(" : ").Append(string.Join(", ", bases));
+            declaration.Append(" : ").AppendJoin(", ", bases);
         }
 
         var inherited = type.DeclaringType?.GetGenericArguments().Length ?? 0;
@@ -354,7 +354,7 @@ internal static class PublicSurfaceEnumerator
             var constraints = ConstraintList(parameter);
             if (constraints.Count > 0)
             {
-                clauses.Append(" where ").Append(parameter.Name).Append(" : ").Append(string.Join(", ", constraints));
+                clauses.Append(" where ").Append(parameter.Name).Append(" : ").AppendJoin(", ", constraints);
             }
         }
 
