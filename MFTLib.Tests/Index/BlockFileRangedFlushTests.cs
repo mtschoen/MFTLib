@@ -49,7 +49,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
     {
         using var block = CreateBlock();
         var rangeBytes = (long)Environment.SystemPageSize;
-        Assert.IsTrue(block.Length > 2 * rangeBytes, "The block must span more than two ranges.");
+        Assert.IsGreaterThan(2 * rangeBytes, block.Length, "The block must span more than two ranges.");
         block.Hooks._flushRangeBytes = rangeBytes;
         var expected = new List<long>();
         for (var end = rangeBytes; end < block.Length; end += rangeBytes)
@@ -62,7 +62,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
 
         block.Flush(reported.Add);
 
-        CollectionAssert.AreEqual(expected, reported);
+        Assert.AreSequenceEqual(expected, reported);
         Assert.AreEqual(block.Length, reported[^1]);
     }
 
@@ -74,7 +74,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
 
         block.Flush(reported.Add);
 
-        CollectionAssert.AreEqual(new[] { block.Length }, reported);
+        Assert.AreSequenceEqual(new[] { block.Length }, reported);
     }
 
     [TestMethod]
@@ -150,7 +150,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
         block.FlushViewWithRetry(0, block.Length);
 
         Assert.AreEqual(3, attempts);
-        CollectionAssert.AreEqual(new[] { 1 }, pauses);
+        Assert.AreSequenceEqual(new[] { 1 }, pauses);
     }
 
     [TestMethod]
@@ -191,7 +191,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
 
         Assert.AreEqual(33, thrown.NativeErrorCode);
         Assert.AreEqual(1 + 15 * 20, attempts);
-        CollectionAssert.AreEqual(Enumerable.Range(0, 15).Select(wait => 1 << wait).ToArray(), pauses);
+        Assert.AreSequenceEqual(Enumerable.Range(0, 15).Select(wait => 1 << wait).ToArray(), pauses);
     }
 
     [TestMethod]
@@ -209,7 +209,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
 
         Assert.AreEqual(5, thrown.NativeErrorCode);
         Assert.AreEqual(1, spins, "One spin follows the retry that still failed with 33, none follows the 5.");
-        CollectionAssert.AreEqual(new[] { 1 }, pauses);
+        Assert.AreSequenceEqual(new[] { 1 }, pauses);
     }
 
     [TestMethod]
@@ -249,7 +249,7 @@ public sealed class BlockFileRangedFlushTests : IDisposable
 
         block.SynchronizeRange(pageBytes + 7, pageBytes + 100, OSPlatform.Create(platform));
 
-        CollectionAssert.AreEqual(new[] { ((long)pageBytes, (long)pageBytes + 100, expectedFlag) }, calls);
+        Assert.AreSequenceEqual(new[] { ((long)pageBytes, (long)pageBytes + 100, expectedFlag) }, calls);
     }
 
     [TestMethod]

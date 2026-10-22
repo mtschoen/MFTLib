@@ -27,7 +27,7 @@ public class JournalMutatorFreedRowTests
 
         var changes = fixture.Apply([Entry((UsnReason)reason, "renamed-away.txt", parent: 7)]);
 
-        Assert.AreEqual(0, changes.Count);
+        Assert.IsEmpty(changes);
         ref var row = ref fixture.Block.Rows[(int)FreedRow];
         Assert.AreEqual(RowFlags.InUse | RowFlags.Tombstone, row.Flags);
         Assert.AreEqual("freed.txt", NamePool.ReadRowName(fixture.Block, FreedRow).ToString());
@@ -44,7 +44,7 @@ public class JournalMutatorFreedRowTests
 
         var changes = fixture.Apply([Entry(UsnReason.RenameNewName, "elsewhere.txt", parent: 6)]);
 
-        Assert.AreEqual(0, changes.Count);
+        Assert.IsEmpty(changes);
         Assert.AreEqual(BlockLayout.DetachedParentRow, fixture.Block.Rows[(int)FreedRow].ParentRow);
         Assert.AreEqual("freed.txt", NamePool.ReadRowName(fixture.Block, FreedRow).ToString());
     }
@@ -90,13 +90,13 @@ public class JournalMutatorFreedRowTests
             new SearchQuery(null, Subtree: replacement, IncludeDeleted: true))
             .Where(entry => entry.IsDeleted)
             .ToList();
-        Assert.AreEqual(0, deletedSubtreeSearch.Count);
+        Assert.IsEmpty(deletedSubtreeSearch);
 
         var deletedSubtreeEnumerate = SearchEngine.Enumerate(fixture.Snapshot,
             new SearchQuery(null, Subtree: replacement, IncludeDeleted: true))
             .Where(entry => entry.IsDeleted)
             .ToList();
-        Assert.AreEqual(0, deletedSubtreeEnumerate.Count);
+        Assert.IsEmpty(deletedSubtreeEnumerate);
 
         // The invalidation visits exactly the reused slot's deleted descendants (child-dir and
         // deeper.txt), never the whole block: work scales with the affected subtree, not with the

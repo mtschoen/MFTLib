@@ -15,7 +15,7 @@ public partial class FileIndexWatchRescanTests
 {
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     IndexTreeFixture _fixture = null!;
     string TreeRoot => _fixture.TreeRoot;
@@ -46,9 +46,9 @@ public partial class FileIndexWatchRescanTests
         await harness.Index.RescanAsync(['T'], Token);
 
         var starts = harness.Source.TargetsFor('T');
-        Assert.AreEqual(2, starts.Count);
+        Assert.HasCount(2, starts);
         Assert.AreEqual(new IndexWatchTarget('T', 13, 9000), starts[1]);
-        Assert.AreEqual(1, harness.Source.TargetsFor('U').Count);
+        Assert.HasCount(1, harness.Source.TargetsFor('U'));
         Assert.AreEqual(0, unrescannedHandle.DisposeCount);
         Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
@@ -75,11 +75,10 @@ public partial class FileIndexWatchRescanTests
 
         await otherHandle.Publish(WatchHarness.Batch(10, "after.txt", nextUsn: 250));
 
-        Assert.AreEqual(1, harness.Source.TargetsFor('U').Count);
+        Assert.HasCount(1, harness.Source.TargetsFor('U'));
         Assert.AreEqual(0, otherHandle.DisposeCount);
         Assert.AreEqual(250L, harness.BlockFor('U').Header.UsnNextUsn);
-        CollectionAssert.AreEqual(new[] { "before.txt", "after.txt" },
-            harness.Changes.Select(change => change.Entry.Name).ToArray());
+        Assert.AreSequenceEqual(new[] { "before.txt", "after.txt" }, harness.Changes.Select(change => change.Entry.Name).ToArray());
         await harness.Index.StopWatchingAsync(['T'], Token);
         await harness.Index.StopWatchingAsync(['U'], Token);
     }
@@ -98,7 +97,7 @@ public partial class FileIndexWatchRescanTests
         await otherHandle.Publish(WatchHarness.Batch(10, "u.txt", nextUsn: 555));
 
         Assert.IsFalse(rescan.IsCompleted, "T's producer is still gated");
-        Assert.IsTrue(harness.Changes.Any(change => change.Entry.Name == "u.txt"), "U applied while T's scan ran");
+        Assert.Contains(change => change.Entry.Name == "u.txt", harness.Changes, "U applied while T's scan ran");
         Assert.AreEqual(555L, harness.BlockFor('U').Header.UsnNextUsn);
         Assert.AreEqual(0, otherHandle.DisposeCount);
         producing.Release();
@@ -125,9 +124,9 @@ public partial class FileIndexWatchRescanTests
         production.Release();
         await rescan.WaitAsync(HangGuard);
 
-        Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
+        Assert.HasCount(2, harness.Source.TargetsFor('T'));
         Assert.AreEqual(new IndexWatchTarget('T', 13, 9000), harness.Source.TargetsFor('T')[1]);
-        Assert.AreEqual(1, harness.Source.TargetsFor('U').Count);
+        Assert.HasCount(1, harness.Source.TargetsFor('U'));
         Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
         Assert.AreEqual("U's channel was lost", harness.DriveFor('U').Watch.FailureMessage);
@@ -159,7 +158,7 @@ public partial class FileIndexWatchRescanTests
 
         // The pump had already read the batch, so no source-side rule can reach it: the scoping
         // rule drops it because its instance is no longer the drive's current one.
-        Assert.AreEqual(0, harness.Changes.Count);
+        Assert.IsEmpty(harness.Changes);
         Assert.AreEqual(13ul, harness.BlockFor('T').Header.UsnJournalIdentifier);
         Assert.AreEqual(9000L, harness.BlockFor('T').Header.UsnNextUsn);
         await harness.Index.StopWatchingAsync(['T'], Token);
@@ -181,9 +180,9 @@ public partial class FileIndexWatchRescanTests
         await harness.Index.RescanAsync(['T'], Token);
 
         var starts = harness.Source.TargetsFor('T');
-        Assert.AreEqual(2, starts.Count);
+        Assert.HasCount(2, starts);
         Assert.AreEqual(new IndexWatchTarget('T', 13, 9000), starts[1]);
-        Assert.AreEqual(1, harness.Source.TargetsFor('U').Count, "U's own failure still stands, so it needs its own rescan.");
+        Assert.HasCount(1, harness.Source.TargetsFor('U'), "U's own failure still stands, so it needs its own rescan.");
         Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
         Assert.AreEqual(uFault.Exception.Message, harness.DriveFor('U').Watch.FailureMessage);
         Assert.AreEqual(WatchState.Recovering, harness.DriveFor('U').Watch.State, "U's recovery is still held");
@@ -205,7 +204,7 @@ public partial class FileIndexWatchRescanTests
         harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
         await harness.Index.RescanAsync(['T'], Token);
 
-        Assert.AreEqual(0, harness.Source.Starts.Count);
+        Assert.IsEmpty(harness.Source.Starts);
         var drive = harness.DriveFor('T');
         Assert.IsFalse(drive.Watch.IsRequested);
         Assert.AreEqual(WatchState.NotStarted, drive.Watch.State);
@@ -229,7 +228,7 @@ public partial class FileIndexWatchRescanTests
 
         // The block was never swapped, so the original watch keeps its cursor and catch-up.
         var starts = harness.Source.TargetsFor('T');
-        Assert.AreEqual(1, starts.Count);
+        Assert.HasCount(1, starts);
         Assert.AreEqual(new IndexWatchTarget('T', WatchHarness.JournalIdentifier, WatchHarness.NextUsn), starts[0]);
         Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
 
@@ -260,7 +259,7 @@ public partial class FileIndexWatchRescanTests
 
             Assert.ThrowsExactly<ObjectDisposedException>(() => _ = producedBlock.Header);
             Assert.AreSame(initialBlock, harness.Index.Root('T').DriveBlock);
-            Assert.AreEqual(0, Directory.GetFiles(harness.CacheDirectory, "*.retired-*").Length);
+            Assert.IsEmpty(Directory.GetFiles(harness.CacheDirectory, "*.retired-*"));
         }
         finally
         {
@@ -310,7 +309,7 @@ public partial class FileIndexWatchRescanTests
         await index.RescanAsync(['T'], Token);
 
         // 'T' never asked to be watched, so its adoption starts nothing.
-        Assert.AreEqual(0, source.TargetsFor('T').Count);
+        Assert.IsEmpty(source.TargetsFor('T'));
         var recovered = index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Ready, recovered.State);
         Assert.IsNull(recovered.Failure);
@@ -342,12 +341,12 @@ public partial class FileIndexWatchRescanTests
 
         var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.RescanAsync(['T'], Token));
 
-        StringAssert.Contains(failure.Message, "elevation declined");
+        Assert.Contains("elevation declined", failure.Message);
         var status = index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Failed, status.State);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind);
         Assert.AreEqual("elevation declined", status.Failure?.Message);
-        Assert.AreEqual(0, source.TargetsFor('T').Count, "a still-blockless drive is never watched");
+        Assert.IsEmpty(source.TargetsFor('T'), "a still-blockless drive is never watched");
 
         // The other drive never noticed.
         Assert.AreEqual(0, source.WatchFor('U').DisposeCount);
@@ -371,7 +370,7 @@ public partial class FileIndexWatchRescanTests
         // again afterwards.
         await index.RescanAsync(['T'], Token);
 
-        Assert.AreEqual(2, source.TargetsFor('T').Count);
+        Assert.HasCount(2, source.TargetsFor('T'));
         Assert.AreEqual(1, firstHandle.DisposeCount);
         await source.WatchFor('T').Publish(new JournalBatch([WatchHarness.Create(10, "second.txt")], 7, 6000));
         Assert.AreEqual(6000L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
@@ -416,7 +415,7 @@ public partial class FileIndexWatchRescanTests
         source.WatchFor('T').End();
 
         var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => catchUpTask.WaitAsync(HangGuard));
-        StringAssert.Contains(failure.Message, "ended without being stopped");
+        Assert.Contains("ended without being stopped", failure.Message);
         Assert.AreEqual(WatchState.Faulted,
             index.Drives.Single(drive => drive.Drive == 'T').Watch.State);
     }

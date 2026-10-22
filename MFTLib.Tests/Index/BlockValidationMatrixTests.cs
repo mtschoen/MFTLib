@@ -37,11 +37,11 @@ public sealed class BlockValidationMatrixTests : IDisposable
         var diagnostics = new List<string>();
         await using var index = await FileIndex.OpenAsync(options with { Diagnostics = diagnostics.Add },
             CancellationToken.None);
-        Assert.IsTrue(diagnostics.Any(line => line.Contains($"cache validation failed: {expectedRejection}")),
+        Assert.Contains(line => line.Contains($"cache validation failed: {expectedRejection}"), diagnostics,
             $"the rejection reason {expectedRejection} is logged");
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
         Assert.AreEqual(BlockOrigin.ProducedByScan, index.Drives[0].Block!.Origin);
-        Assert.IsTrue(index.HeaderOf().RowCount >= 3);
+        Assert.IsGreaterThanOrEqualTo(3u, index.HeaderOf().RowCount);
     }
 
     [TestMethod]

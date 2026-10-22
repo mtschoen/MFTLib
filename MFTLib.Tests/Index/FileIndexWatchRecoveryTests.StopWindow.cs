@@ -34,9 +34,9 @@ public partial class FileIndexWatchRecoveryTests
         await harness.WaitForRecoveryAsync('T');
 
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore, "the recovery committed its block");
-        Assert.AreEqual(1, harness.Source.TargetsFor('T').Count, "no watch starts after the stop returned");
+        Assert.HasCount(1, harness.Source.TargetsFor('T'), "no watch starts after the stop returned");
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
-        CollectionAssert.AreEqual(new[] { WatchFaultKind.Drive }, FaultKinds(harness, 'T'));
+        Assert.AreSequenceEqual(new[] { WatchFaultKind.Drive }, FaultKinds(harness, 'T'));
         await DriveResultAssertions.NotApplicableAsync(
             () => harness.Index.StopWatchingAsync(['T'], Token), "the stop's cleared request stands");
     }
@@ -64,7 +64,7 @@ public partial class FileIndexWatchRecoveryTests
         beforeRegistration.Release();
         await rescan.WaitAsync(HangGuard);
 
-        Assert.AreEqual(1, harness.Source.TargetsFor('T').Count, "no watch starts after the stop returned");
+        Assert.HasCount(1, harness.Source.TargetsFor('T'), "no watch starts after the stop returned");
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
         await DriveResultAssertions.NotApplicableAsync(
             () => harness.Index.StopWatchingAsync(['T'], Token), "the stop's cleared request stands");
@@ -84,7 +84,7 @@ public partial class FileIndexWatchRecoveryTests
         beforeRegistration.Release();
         await rescan.WaitAsync(HangGuard);
 
-        Assert.AreEqual(1, harness.Source.TargetsFor('T').Count, "no watch starts after the stop returned");
+        Assert.HasCount(1, harness.Source.TargetsFor('T'), "no watch starts after the stop returned");
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
         await DriveResultAssertions.NotApplicableAsync(
             () => harness.Index.StopWatchingAsync(['T'], Token), "the stop's cleared request stands");

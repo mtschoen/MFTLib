@@ -53,7 +53,7 @@ public class CacheDirectoryInspectionTests
         using var owner = BlockOwnerLock.TryAcquire(path);
         Assert.IsNotNull(owner, "inspection must release the slot");
         using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-        Assert.IsTrue(exclusive.Length > 0, "inspection must release the mapped block handle");
+        Assert.IsGreaterThan(0, exclusive.Length, "inspection must release the mapped block handle");
     }
 
     [TestMethod]
@@ -80,7 +80,7 @@ public class CacheDirectoryInspectionTests
         Assert.IsNull(invalid.ProducerKind);
         Assert.IsNull(invalid.RootDirectory);
         AssertReleased(path);
-        CollectionAssert.AreEqual(before, File.ReadAllBytes(path));
+        Assert.AreSequenceEqual(before, File.ReadAllBytes(path));
         Assert.IsTrue(File.Exists(BlockOwnerLock.LockPathFor(path)));
     }
 
@@ -97,7 +97,7 @@ public class CacheDirectoryInspectionTests
         Assert.AreEqual(included, result.Single().File.Path);
         Assert.IsTrue(File.Exists(BlockOwnerLock.LockPathFor(included)));
         Assert.IsFalse(File.Exists(BlockOwnerLock.LockPathFor(excluded)));
-        Assert.AreEqual(0, CacheDirectory.InspectCached(_cacheDirectory, new HashSet<char>().Select(letter => new DriveKey(letter))).Count);
+        Assert.IsEmpty(CacheDirectory.InspectCached(_cacheDirectory, new HashSet<char>().Select(letter => new DriveKey(letter))));
         Assert.IsFalse(File.Exists(BlockOwnerLock.LockPathFor(excluded)));
         AssertReleased(included);
     }
@@ -110,7 +110,7 @@ public class CacheDirectoryInspectionTests
         var statuses = CacheDirectory.InspectCached(_cacheDirectory)
             .OrderBy(status => status.File.Drive.Letter).ToArray();
 
-        Assert.AreEqual(2, statuses.Length);
+        Assert.HasCount(2, statuses);
         Assert.AreEqual(_cacheDirectory, statuses[0].RootDirectory);
         Assert.AreEqual("D:\\", statuses[1].RootDirectory);
         Assert.AreEqual(ProducerKind.Enumeration, statuses[0].ProducerKind);
@@ -139,7 +139,7 @@ public class CacheDirectoryInspectionTests
         var statuses = CacheDirectory.InspectCached(_cacheDirectory)
             .OrderBy(status => status.File.Drive.Letter).ToArray();
 
-        Assert.AreEqual(2, statuses.Length);
+        Assert.HasCount(2, statuses);
         Assert.AreEqual(CachedBlockAvailability.InUse, statuses[0].Availability);
         Assert.IsNull(statuses[0].Validation);
         Assert.IsNull(statuses[0].ProducerKind);
@@ -160,7 +160,7 @@ public class CacheDirectoryInspectionTests
         var statuses = CacheDirectory.InspectCached(_cacheDirectory)
             .OrderBy(status => status.File.Drive.Letter).ToArray();
 
-        Assert.AreEqual(4, statuses.Length);
+        Assert.HasCount(4, statuses);
         var reasons = new[] { BlockValidationResult.WrongVolumeSerial,
             BlockValidationResult.InconsistentRegions, BlockValidationResult.WrongMagic };
         for (var index = 0; index < reasons.Length; index++)
@@ -189,11 +189,11 @@ public class CacheDirectoryInspectionTests
     [TestMethod]
     public void InspectCached_MissingEmptyAndUnrecognizedListingsAreEmpty()
     {
-        Assert.AreEqual(0, CacheDirectory.InspectCached(Path.Combine(_cacheDirectory, "missing")).Count);
-        Assert.AreEqual(0, CacheDirectory.InspectCached(_cacheDirectory).Count);
+        Assert.IsEmpty(CacheDirectory.InspectCached(Path.Combine(_cacheDirectory, "missing")));
+        Assert.IsEmpty(CacheDirectory.InspectCached(_cacheDirectory));
         var unrelated = Path.Combine(_cacheDirectory, "notes.mlix");
         File.WriteAllText(unrelated, "not a cache name");
-        Assert.AreEqual(0, CacheDirectory.InspectCached(_cacheDirectory).Count);
+        Assert.IsEmpty(CacheDirectory.InspectCached(_cacheDirectory));
         Assert.IsFalse(File.Exists(BlockOwnerLock.LockPathFor(unrelated)));
     }
 

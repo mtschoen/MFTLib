@@ -89,7 +89,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
 
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         Assert.AreEqual(DriveState.Ready, reopened.Drives[0].State);
-        Assert.IsTrue(reopened.HeaderOf().RowCount >= 3);
+        Assert.IsGreaterThanOrEqualTo(3u, reopened.HeaderOf().RowCount);
     }
 
     [TestMethod]
@@ -206,8 +206,8 @@ public sealed partial class FileIndexResilienceTests : IDisposable
 
         await AssertThrowsCancellation(() => FileIndex.OpenAsync(options, cancellationTokenSource.Token));
 
-        Assert.AreEqual(0, Directory.EnumerateFiles(Path.GetTempPath(),
-            $"mftlib-cache-disabled-*-{CacheDirectory.BlockFileName('T', _volumeSerial)}").Count());
+        Assert.IsEmpty(Directory.EnumerateFiles(Path.GetTempPath(),
+            $"mftlib-cache-disabled-*-{CacheDirectory.BlockFileName('T', _volumeSerial)}"));
     }
 
     [TestMethod]
@@ -249,8 +249,8 @@ public sealed partial class FileIndexResilienceTests : IDisposable
 
             var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
             Assert.IsTrue(File.Exists(blockPath), "the canonical file must be restored, not left renamed aside");
-            Assert.AreEqual(0, Directory.EnumerateFiles(CacheDirectoryPath,
-                CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*").Count());
+            Assert.IsEmpty(Directory.EnumerateFiles(CacheDirectoryPath,
+                CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*"));
         }
 
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
@@ -344,7 +344,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
         var retiredPaths = Directory
             .EnumerateFiles(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*")
             .ToList();
-        Assert.AreEqual(1, retiredPaths.Count);
+        Assert.HasCount(1, retiredPaths);
         Assert.IsTrue(File.Exists(retiredPaths[0]));
 
         await oldSnapshot.ReleaseNowAsync();
@@ -368,10 +368,10 @@ public sealed partial class FileIndexResilienceTests : IDisposable
         var retiredPaths = Directory
             .EnumerateFiles(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*")
             .ToList();
-        Assert.AreEqual(2, retiredPaths.Count, "each rescan should retire a distinctly named file");
+        Assert.HasCount(2, retiredPaths, "each rescan should retire a distinctly named file");
         Assert.AreNotEqual(retiredPaths[0], retiredPaths[1]);
         Assert.IsTrue(retiredPaths.All(File.Exists));
-        Assert.AreEqual(1, Directory.GetFiles(CacheDirectoryPath, "*.mlix").Length, "exactly one canonical block file remains");
+        Assert.HasCount(1, Directory.GetFiles(CacheDirectoryPath, "*.mlix"), "exactly one canonical block file remains");
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
 
         await firstSnapshot.ReleaseNowAsync();
@@ -422,8 +422,8 @@ public sealed partial class FileIndexResilienceTests : IDisposable
         await index.RescanAsync(['T'], CancellationToken.None);
 
         Assert.IsTrue(File.Exists(canonicalPath));
-        Assert.AreEqual(0, Directory.EnumerateFiles(CacheDirectoryPath,
-            CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*").Count());
+        Assert.IsEmpty(Directory.EnumerateFiles(CacheDirectoryPath,
+            CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*"));
     }
 
     [TestMethod]

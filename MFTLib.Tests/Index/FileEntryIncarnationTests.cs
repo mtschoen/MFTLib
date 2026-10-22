@@ -83,7 +83,7 @@ public class FileEntryIncarnationTests
         foreach (var (column, read) in reads)
         {
             var exception = Assert.ThrowsExactly<InvalidOperationException>(() => read(), column);
-            StringAssert.Contains(exception.Message, "reused after deletion", column);
+            Assert.Contains("reused after deletion", exception.Message, column);
         }
 
         Assert.AreEqual(DirectoryRow, (uint)retained.RecordKey.RecordNumber);
@@ -100,7 +100,7 @@ public class FileEntryIncarnationTests
         var deleted = changes.Single(change => change.Kind == FileChangeKind.Deleted &&
                                                change.Entry.RecordKey.RecordNumber == DirectoryRow);
         Assert.IsTrue(deleted.Entry.IsDeleted);
-        StringAssert.EndsWith(deleted.Path, "documents");
+        Assert.EndsWith("documents", deleted.Path);
         Assert.ThrowsExactly<InvalidOperationException>(() => deleted.Entry.Name);
     }
 
@@ -169,7 +169,7 @@ public class FileEntryIncarnationTests
 
         var exception = Assert.ThrowsExactly<FileNotFoundException>(() => retained.Open(FileAccess.Read));
         Assert.AreEqual($"{retained}: The entry has been deleted.", exception.Message);
-        Assert.AreEqual(0, calls.Count);
+        Assert.IsEmpty(calls);
 
         var replacement = FileEntry.Create(fixture.Snapshot[0], DirectoryRow);
         using (replacement.Open(FileAccess.Read))
@@ -184,11 +184,11 @@ public class FileEntryIncarnationTests
     {
         await using var fixture = SeededFixture();
         var retained = FileEntry.Create(fixture.Snapshot[0], DirectoryRow);
-        Assert.AreEqual(1, retained.Children().Count);
+        Assert.HasCount(1, retained.Children());
 
         ApplyReuseBatch(fixture);
 
-        Assert.AreEqual(0, retained.Children().Count);
+        Assert.IsEmpty(retained.Children());
         var replacement = FileEntry.Create(fixture.Snapshot[0], DirectoryRow);
         Assert.AreEqual("replacement-child.txt", replacement.Children().Single().Name);
     }
@@ -242,7 +242,7 @@ public class FileEntryIncarnationTests
         {
         }
 
-        CollectionAssert.AreEqual(new[] { DirectorySequence }, calls);
+        Assert.AreSequenceEqual(new[] { DirectorySequence }, calls);
     }
 
     [TestMethod]
@@ -271,7 +271,7 @@ public class FileEntryIncarnationTests
 
         Assert.IsFalse(handles[^1].IsDeleted);
         Assert.AreEqual("again.txt", handles[^1].Name);
-        Assert.AreEqual(handles.Count, handles.Distinct().Count());
+        Assert.HasCount(handles.Count, handles.Distinct());
     }
 
     [TestMethod]
@@ -305,10 +305,10 @@ public class FileEntryIncarnationTests
             Assert.IsTrue(handle.IsDeleted);
             Assert.AreNotEqual(replacement, handle);
             Assert.ThrowsExactly<InvalidOperationException>(() => handle.Size);
-            Assert.AreEqual(0, handle.Children().Count);
+            Assert.IsEmpty(handle.Children());
         }
 
-        StringAssert.EndsWith(deleted.Path, "notes.txt");
+        Assert.EndsWith("notes.txt", deleted.Path);
         Assert.AreEqual("replacement.txt", replacement.Name);
     }
 
@@ -331,13 +331,13 @@ public class FileEntryIncarnationTests
         ]);
 
         Assert.IsFalse(retained.IsDeleted);
-        Assert.IsFalse(changes.Any(change => change.Kind == FileChangeKind.Deleted), "The earlier incarnation's delete is ignored.");
+        Assert.DoesNotContain(change => change.Kind == FileChangeKind.Deleted, changes, "The earlier incarnation's delete is ignored.");
         Assert.AreEqual(retained, FileEntry.Create(fixture.Snapshot[0], ChildRow));
         using (retained.Open(FileAccess.Read))
         {
         }
 
-        CollectionAssert.AreEqual(new ushort[] { 11 }, calls);
+        Assert.AreSequenceEqual(new ushort[] { 11 }, calls);
     }
 
     [TestMethod]
@@ -392,6 +392,6 @@ public class FileEntryIncarnationTests
         }
 
         Assert.IsTrue(retained.IsDeleted);
-        CollectionAssert.AreEqual(new ushort[] { 1 }, calls);
+        Assert.AreSequenceEqual(new ushort[] { 1 }, calls);
     }
 }

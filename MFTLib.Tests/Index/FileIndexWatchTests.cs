@@ -129,7 +129,7 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
         var exception = Assert.ThrowsExactly<InvalidOperationException>(
             () => _index.ApplyJournalEntries('E', [Entry(20, 0, "injected.txt", UsnReason.FileCreate | UsnReason.Close)], 5, 100));
 
-        StringAssert.Contains(exception.Message, "enumeration producer");
+        Assert.Contains("enumeration producer", exception.Message);
     }
 
     [TestMethod]
@@ -159,15 +159,15 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
                 new SyntheticJournalCursor(5, 100))
             : _index.ApplyJournalEntries('T', entries, journalIdentifier: 5, nextUsn: 100);
 
-        Assert.AreEqual(1, applied.Count);
-        Assert.AreEqual(1, observed.Count);
+        Assert.HasCount(1, applied);
+        Assert.HasCount(1, observed);
         Assert.AreEqual(FileChangeKind.Created, observed[0].Kind);
         Assert.AreEqual("injected.txt", observed[0].Entry.Name);
         Assert.AreEqual(observed[0], applied[0]);
         var root = _index.Root('T');
         Assert.AreEqual(5UL, root.DriveBlock.Block.Header.UsnJournalIdentifier);
         Assert.AreEqual(100L, root.DriveBlock.Block.Header.UsnNextUsn);
-        Assert.AreEqual(1, _index.Search(new SearchQuery("injected")).Count);
+        Assert.HasCount(1, _index.Search(new SearchQuery("injected")));
     }
 
     [TestMethod]
@@ -184,7 +184,7 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
             [Entry(20, 0, "injected.txt", UsnReason.FileCreate | UsnReason.Close)],
             journalIdentifier: 5, nextUsn: 100);
 
-        Assert.AreEqual(1, _index.Search(new SearchQuery("injected")).Count);
+        Assert.HasCount(1, _index.Search(new SearchQuery("injected")));
     }
 
     [TestMethod]
@@ -252,7 +252,7 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
 
         await reader;
 
-        Assert.AreEqual(0, unexpectedNames.Count,
+        Assert.IsEmpty(unexpectedNames,
             $"Reader observed torn names: {string.Join(", ", unexpectedNames)}");
         Assert.AreEqual(longName, target.Name);
     }
@@ -288,7 +288,7 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
         var exception = Assert.ThrowsExactly<InvalidOperationException>(
             () => _index.ApplyJournalEntries('Z', [], 0, 0));
 
-        StringAssert.Contains(exception.Message, "offline");
+        Assert.Contains("offline", exception.Message);
     }
 
     [TestMethod]
@@ -315,9 +315,8 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
             journalIdentifier: 5, nextUsn: 100));
 
         Assert.AreEqual("boom", thrown.Message);
-        Assert.AreEqual(2, secondSubscriberChanges.Count);
-        CollectionAssert.AreEquivalent(new[] { "first.txt", "second.txt" },
-            secondSubscriberChanges.Select(change => change.Entry.Name).ToArray());
+        Assert.HasCount(2, secondSubscriberChanges);
+        Assert.AreSequenceEqual(new[] { "first.txt", "second.txt" }, secondSubscriberChanges.Select(change => change.Entry.Name).ToArray(), SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]
@@ -330,9 +329,8 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
             [Entry(20, 0, "first.txt", UsnReason.FileCreate | UsnReason.Close)],
             journalIdentifier: 5, nextUsn: 100));
 
-        Assert.AreEqual(2, thrown.InnerExceptions.Count);
-        CollectionAssert.AreEquivalent(new[] { "first boom", "second boom" },
-            thrown.InnerExceptions.Select(exception => exception.Message).ToArray());
+        Assert.HasCount(2, thrown.InnerExceptions);
+        Assert.AreSequenceEqual(new[] { "first boom", "second boom" }, thrown.InnerExceptions.Select(exception => exception.Message).ToArray(), SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]
@@ -346,7 +344,7 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
 
         // Rethrowing the caught instance directly would replace this frame with the throw site
         // inside MFTLib, leaving a consumer no way to find the handler that actually failed.
-        StringAssert.Contains(thrown.StackTrace ?? string.Empty, nameof(ThrowingSubscriber));
+        Assert.Contains(nameof(ThrowingSubscriber), thrown.StackTrace ?? string.Empty);
     }
 
     [TestMethod]
@@ -360,9 +358,9 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
         var second = _index.ApplyJournalEntries('T',
             [Entry(20, 0, "injected.txt", UsnReason.FileCreate | UsnReason.Close)], journalIdentifier: 5, nextUsn: 101);
 
-        Assert.AreEqual(1, first.Count);
-        Assert.AreEqual(0, second.Count);
-        Assert.AreEqual(1, observed.Count);
+        Assert.HasCount(1, first);
+        Assert.IsEmpty(second);
+        Assert.HasCount(1, observed);
         Assert.AreEqual(FileChangeKind.Created, observed[0].Kind);
     }
 
@@ -378,7 +376,7 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
             [Entry(recordNumber, 1, "readme.md", UsnReason.DataExtend | UsnReason.DataTruncation | UsnReason.Close)],
             journalIdentifier: 5, nextUsn: 101);
 
-        Assert.AreEqual(1, second.Count);
+        Assert.HasCount(1, second);
         Assert.AreEqual(FileChangeKind.Modified, second[0].Kind);
     }
 

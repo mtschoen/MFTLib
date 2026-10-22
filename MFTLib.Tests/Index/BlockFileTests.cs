@@ -215,7 +215,7 @@ public class BlockFileTests
         builder.Complete(ScanMoment);
 
         using var block = builder.OpenForReading(out _);
-        Assert.AreEqual(256, block!.Rows.Length);
+        Assert.HasCount(256, block!.Rows);
     }
 
     [TestMethod]
@@ -395,7 +395,7 @@ public class BlockFileTests
             Assert.IsFalse(File.Exists(path), "a failed create must not leave a header-less file behind");
 
             // A surviving mapping would keep the deleted file alive and fail this outright.
-            Assert.AreEqual(0, Directory.EnumerateFileSystemEntries(directory).Count());
+            Assert.IsEmpty(Directory.EnumerateFileSystemEntries(directory));
         }
         finally
         {

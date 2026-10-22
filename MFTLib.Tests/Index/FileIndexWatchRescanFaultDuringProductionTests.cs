@@ -13,7 +13,7 @@ public class FileIndexWatchRescanFaultDuringProductionTests
 {
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     static IDisposable LostCheckpointForT() =>
         JournalIsolation.OverrideJournalWindow(letter => letter == 'T'
@@ -62,10 +62,10 @@ public class FileIndexWatchRescanFaultDuringProductionTests
         await consumed.WaitAsync(HangGuard);
         await harness.WaitForRecoveryAsync('T');
         Assert.AreEqual(scanFails ? 3 : 2, harness.ProductionCount('T'));
-        Assert.AreEqual(1, harness.Faults.Count(item => item.Kind == WatchFaultKind.Apply));
+        Assert.ContainsSingle(item => item.Kind == WatchFaultKind.Apply, harness.Faults);
         Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
-        Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
+        Assert.HasCount(2, harness.Source.TargetsFor('T'));
         await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(9, "after.txt", nextUsn: 4500));
         Assert.AreEqual(4500L, harness.BlockFor('T').Header.UsnNextUsn);
         await harness.Source.WatchFor('U').Publish(WatchHarness.Batch(9, "sibling.txt"));

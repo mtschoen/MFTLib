@@ -40,7 +40,7 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
             seen++;
         }
 
-        Assert.IsTrue(seen > 0, "The two-drive fixture has rows.");
+        Assert.IsGreaterThan(0, seen, "The two-drive fixture has rows.");
     }
 
     [TestMethod]

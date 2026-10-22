@@ -31,10 +31,10 @@ public sealed class FileIndexLifetimeTests : IDisposable
     {
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
 
-        Assert.AreEqual(1, index.Drives.Count);
+        Assert.HasCount(1, index.Drives);
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
         Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
-        Assert.IsTrue(index.HeaderOf().RowCount >= 3);
+        Assert.IsGreaterThanOrEqualTo(3u, index.HeaderOf().RowCount);
         Assert.IsFalse(index.Drives[0].Watch.IsSupported);
         Assert.IsTrue(File.Exists(Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial))));
     }
@@ -87,7 +87,7 @@ public sealed class FileIndexLifetimeTests : IDisposable
     {
         var options = new FileIndexOptions { CacheDirectory = CacheDirectoryPath };
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
-        Assert.AreEqual(0, index.Drives.Count);
+        Assert.IsEmpty(index.Drives);
     }
 
     [TestMethod]

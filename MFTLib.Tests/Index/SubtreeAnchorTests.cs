@@ -20,7 +20,7 @@ public class SubtreeAnchorTests
 
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     static readonly string[] DocumentsSubtree = ["documents", "notes.txt"];
 
@@ -94,7 +94,7 @@ public class SubtreeAnchorTests
     {
         using var harness = new WatchHarness('T');
 
-        CollectionAssert.AreEqual(DocumentsSubtree, Run(harness.Index, form, Under(Documents(harness.Index))));
+        Assert.AreSequenceEqual(DocumentsSubtree, Run(harness.Index, form, Under(Documents(harness.Index))));
     }
 
     [TestMethod]
@@ -119,7 +119,7 @@ public class SubtreeAnchorTests
             harness.Index.Hooks.ReaderAdmitted = null;
         }
 
-        StringAssert.Contains(exception.Message, "default FileEntry");
+        Assert.Contains("default FileEntry", exception.Message);
         Assert.AreEqual(0, admissions[0], "The call was refused before any query was admitted.");
         Assert.AreEqual(0, snapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
     }
@@ -140,7 +140,7 @@ public class SubtreeAnchorTests
         Rejected<ArgumentException>(queried.Index, form, Under(anchor));
 
         Assert.AreEqual(0, queried.Index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
-        Assert.IsTrue(Run(queried.Index, form, new SearchQuery(null)).Count > 0, "The queried index still answers.");
+        Assert.IsNotEmpty(Run(queried.Index, form, new SearchQuery(null)), "The queried index still answers.");
     }
 
     [TestMethod]
@@ -154,8 +154,8 @@ public class SubtreeAnchorTests
 
         Assert.ThrowsExactly<ArgumentException>(() =>
             firstIndex.Search(new SearchQuery(null, Subtree: foreignRoot)));
-        CollectionAssert.Contains(
-            firstIndex.Search(new SearchQuery(null, Subtree: ownRoot)).ToArray(), ownRoot);
+        Assert.Contains(ownRoot,
+            firstIndex.Search(new SearchQuery(null, Subtree: ownRoot)).ToArray());
     }
 
     [TestMethod]
@@ -190,7 +190,7 @@ public class SubtreeAnchorTests
         Rejected<ArgumentException>(harness.Index, form, Under(anchor));
         Assert.AreEqual(0, harness.Index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
         Assert.AreEqual("documents", anchor.Name, "A retained handle stays readable against its original block.");
-        CollectionAssert.AreEqual(DocumentsSubtree, Run(harness.Index, form, Under(Documents(harness.Index))));
+        Assert.AreSequenceEqual(DocumentsSubtree, Run(harness.Index, form, Under(Documents(harness.Index))));
     }
 
     [TestMethod]
@@ -205,7 +205,7 @@ public class SubtreeAnchorTests
 
         await harness.Index.RescanAsync(['U'], Token).WaitAsync(HangGuard * 3);
 
-        CollectionAssert.AreEqual(DocumentsSubtree, Run(harness.Index, form, Under(anchor)));
+        Assert.AreSequenceEqual(DocumentsSubtree, Run(harness.Index, form, Under(anchor)));
     }
 
     [TestMethod]
@@ -224,8 +224,7 @@ public class SubtreeAnchorTests
         Assert.IsTrue(anchor.IsDeleted);
         Rejected<ArgumentException>(harness.Index, form, Under(anchor));
         Assert.AreEqual(0, harness.Index.CurrentSnapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
-        CollectionAssert.AreEqual(new[] { "replacement", "notes.txt" },
-            Run(harness.Index, form, Under(Documents(harness.Index, "replacement"))));
+        Assert.AreSequenceEqual(new[] { "replacement", "notes.txt" }, Run(harness.Index, form, Under(Documents(harness.Index, "replacement"))));
     }
 
     [TestMethod]
@@ -262,8 +261,7 @@ public class SubtreeAnchorTests
             harness.Index.Hooks.ReaderAdmitted = null;
         }
 
-        CollectionAssert.AreEqual(DocumentsSubtree, names,
-            "The anchor is validated against the snapshot the query borrowed, where its block is still current.");
+        Assert.AreSequenceEqual(DocumentsSubtree, names, "The anchor is validated against the snapshot the query borrowed, where its block is still current.");
         Rejected<ArgumentException>(harness.Index, form, Under(anchor),
             "A query admitted after the rescan sees the replacement block and rejects the old anchor.");
     }

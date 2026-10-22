@@ -65,8 +65,8 @@ public class FileEntryDisposalTests
     {
         var text = _entry.ToString();
 
-        StringAssert.Contains(text, "readme.md");
-        StringAssert.Contains(text, _entry.RecordKey.ToString());
+        Assert.Contains("readme.md", text);
+        Assert.Contains(_entry.RecordKey.ToString(), text);
     }
 
     [TestMethod]
@@ -90,7 +90,7 @@ public class FileEntryDisposalTests
             Assert.ThrowsExactly<InvalidDataException>(() => entry.Path);
 
             Assert.AreEqual($"deep.txt ({entry.RecordKey})", entry.ToString());
-            StringAssert.Contains(new SearchQuery("x", Subtree: entry).ToString(), "deep.txt");
+            Assert.Contains("deep.txt", new SearchQuery("x", Subtree: entry).ToString());
         }
         finally
         {
@@ -138,7 +138,7 @@ public class FileEntryDisposalTests
     {
         var query = new SearchQuery("readme", Subtree: default(FileEntry));
 
-        StringAssert.Contains(query.ToString(), "<invalid FileEntry>");
+        Assert.Contains("<invalid FileEntry>", query.ToString());
     }
 
     [TestMethod]
@@ -169,6 +169,6 @@ public class FileEntryDisposalTests
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.Parent);
         Assert.ThrowsExactly<ObjectDisposedException>(() => entry.Children());
         var failure = Assert.ThrowsExactly<ObjectDisposedException>(() => entry.Open(FileAccess.Read));
-        StringAssert.Contains(failure.Message, entry.ToString());
+        Assert.Contains(entry.ToString(), failure.Message);
     }
 }

@@ -100,16 +100,16 @@ public class LookupEngineTests
     public void SearchExact_SpansEveryDriveInTheSnapshot()
     {
         var results = SearchEngine.Search(_snapshot, new SearchQuery("readme.md", NameMatchMode.Exact));
-        Assert.AreEqual(2, results.Count);
-        CollectionAssert.AreEquivalent(new[] { 'T', 'U' }, results.Select(entry => entry.RecordKey.Drive.Letter).ToArray());
+        Assert.HasCount(2, results);
+        Assert.AreSequenceEqual(new[] { 'T', 'U' }, results.Select(entry => entry.RecordKey.Drive.Letter).ToArray(), SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]
     public void SearchExact_IsAnExactNameMatchNotASubstring()
     {
-        Assert.AreEqual(0, SearchEngine.Search(_snapshot, new SearchQuery("readme", NameMatchMode.Exact)).Count);
-        Assert.AreEqual(2, SearchEngine.Search(_snapshot, new SearchQuery("README.MD", NameMatchMode.Exact)).Count);
-        Assert.AreEqual(0, SearchEngine.Search(_snapshot, new SearchQuery("README.MD", NameMatchMode.Exact, CaseSensitive: true)).Count);
+        Assert.IsEmpty(SearchEngine.Search(_snapshot, new SearchQuery("readme", NameMatchMode.Exact)));
+        Assert.HasCount(2, SearchEngine.Search(_snapshot, new SearchQuery("README.MD", NameMatchMode.Exact)));
+        Assert.IsEmpty(SearchEngine.Search(_snapshot, new SearchQuery("README.MD", NameMatchMode.Exact, CaseSensitive: true)));
     }
 
     [TestMethod]
@@ -256,13 +256,11 @@ public class LookupEngineTests
             var partitioned = SearchEngine.Search(snapshot, new SearchQuery("needle.txt", NameMatchMode.Exact));
             var reference = SequentialExactName(snapshot, "needle.txt", caseSensitive: false);
 
-            Assert.AreEqual(5, partitioned.Count);
-            CollectionAssert.AreEqual(
-                new[] { ('T', 100u), ('T', 16000u), ('T', 33000u), ('U', 42u), ('U', 20000u) },
-                partitioned.Select(entry => (entry.RecordKey.Drive.Letter, entry.RowIndex)).ToArray());
-            CollectionAssert.AreEqual(
-                reference.Select(entry => (entry.RecordKey.Drive, entry.RowIndex)).ToArray(),
-                partitioned.Select(entry => (entry.RecordKey.Drive, entry.RowIndex)).ToArray());
+            Assert.HasCount(5, partitioned);
+            Assert.AreSequenceEqual(
+                new[] { ('T', 100u), ('T', 16000u), ('T', 33000u), ('U', 42u), ('U', 20000u) }, partitioned.Select(entry => (entry.RecordKey.Drive.Letter, entry.RowIndex)).ToArray());
+            Assert.AreSequenceEqual(
+                reference.Select(entry => (entry.RecordKey.Drive, entry.RowIndex)).ToArray(), partitioned.Select(entry => (entry.RecordKey.Drive, entry.RowIndex)).ToArray());
         }
         finally
         {
@@ -298,8 +296,7 @@ public class LookupEngineTests
         try
         {
             Assert.AreEqual(0u, builder.OpenForWriting().Header.RowCount);
-            Assert.AreEqual(0,
-                SearchEngine.Search(snapshot, new SearchQuery("needle.txt", NameMatchMode.Exact)).Count);
+            Assert.IsEmpty(SearchEngine.Search(snapshot, new SearchQuery("needle.txt", NameMatchMode.Exact)));
         }
         finally
         {

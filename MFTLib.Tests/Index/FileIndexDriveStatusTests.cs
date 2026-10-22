@@ -44,7 +44,7 @@ public sealed class FileIndexDriveStatusTests : IDisposable
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
-        Assert.AreEqual(2, index.Drives.Count);
+        Assert.HasCount(2, index.Drives);
         Assert.AreEqual('Z', index.Drives[0].Drive);
         Assert.AreEqual(DriveState.Offline, index.Drives[0].State);
         Assert.IsNull(index.Drives[0].Block);
@@ -60,18 +60,18 @@ public sealed class FileIndexDriveStatusTests : IDisposable
     {
         Directory.Delete(Path.Combine(TreeRoot, "Documents"), recursive: true);
         await File.WriteAllTextAsync(Path.Combine(TreeRoot, "one.txt"), "1",
-            TestContext.CancellationTokenSource.Token);
+            TestContext.CancellationToken);
         await File.WriteAllTextAsync(Path.Combine(TreeRoot, "two.txt"), "2",
-            TestContext.CancellationTokenSource.Token);
+            TestContext.CancellationToken);
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
             Drives = [new IndexedDrive('T', TreeRoot, 4242, ProducerKind.Enumeration)],
             CacheDirectory = CacheDirectoryPath,
-        }, TestContext.CancellationTokenSource.Token);
+        }, TestContext.CancellationToken);
 
         var status = index.Drives.Single();
         Assert.AreEqual(3u, status.Block!.LiveRowCount);
-        Assert.IsTrue(status.Block.LiveRowCount <= index.HeaderOf().RowCount);
+        Assert.IsLessThanOrEqualTo(index.HeaderOf().RowCount, status.Block.LiveRowCount);
         Assert.IsNull(status.Failure);
     }
 
@@ -92,7 +92,7 @@ public sealed class FileIndexDriveStatusTests : IDisposable
 
         var exception = await DriveResultAssertions.FailureAsync<ArgumentException>(
             () => index.RescanAsync(['Z'], CancellationToken.None));
-        StringAssert.Contains(exception.Message, "has no block");
+        Assert.Contains("has no block", exception.Message);
     }
 
     /// <summary>
@@ -179,15 +179,15 @@ public sealed class FileIndexDriveStatusTests : IDisposable
             Drives = configured,
             CacheDirectory = CacheDirectoryPath,
         };
-        var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
+        var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
         try
         {
             var before = index.Drives.Select(drive => drive.Drive).ToArray();
 
             configured.Add(new IndexedDrive('U', TreeRoot, 0x0BADF00E));
 
-            CollectionAssert.AreEqual(before, index.Drives.Select(drive => drive.Drive).ToArray());
-            CollectionAssert.AreEqual(new DriveKey[] { 'T' }, before);
+            Assert.AreSequenceEqual(before, index.Drives.Select(drive => drive.Drive).ToArray());
+            Assert.AreSequenceEqual(new DriveKey[] { 'T' }, before);
         }
         finally
         {
@@ -234,15 +234,14 @@ public sealed class FileIndexDriveStatusTests : IDisposable
             CacheDirectory = CacheDirectoryPath,
         };
 
-        var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token)
+        var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken)
             .WaitAsync(HangGuard * 3);
         try
         {
             var statuses = index.Drives;
 
             Assert.AreEqual(1, configured.EnumerationCount);
-            CollectionAssert.AreEqual(new[] { 'Z', 'T' },
-                statuses.Select(drive => drive.Drive.Letter).ToArray());
+            Assert.AreSequenceEqual(new[] { 'Z', 'T' }, statuses.Select(drive => drive.Drive.Letter).ToArray());
             Assert.AreEqual(DriveState.Offline, statuses[0].State);
             Assert.AreEqual(DriveState.Ready, statuses[1].State);
         }
@@ -260,7 +259,7 @@ public sealed class FileIndexDriveStatusTests : IDisposable
     [TestMethod]
     public async Task Drives_DisposalCompletesBeforeTheReadTakesTheStateLock_ThrowsObjectDisposed()
     {
-        var index = await FileIndex.OpenAsync(Options(), TestContext.CancellationTokenSource.Token)
+        var index = await FileIndex.OpenAsync(Options(), TestContext.CancellationToken)
             .WaitAsync(HangGuard * 3);
         var disposals = 0;
         index.Hooks.DrivesReadBeforeLock = () =>

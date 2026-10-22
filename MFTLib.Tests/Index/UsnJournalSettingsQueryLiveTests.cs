@@ -28,7 +28,7 @@ public class UsnJournalSettingsQueryLiveTests
         var exception = Assert.ThrowsExactly<PlatformNotSupportedException>(
             () => UsnJournalSettingsQuery.Query('C', isWindows: false));
 
-        StringAssert.Contains(exception.Message, "FSCTL_QUERY_USN_JOURNAL");
+        Assert.Contains("FSCTL_QUERY_USN_JOURNAL", exception.Message);
     }
 
     /// <summary>
@@ -59,9 +59,9 @@ public class UsnJournalSettingsQueryLiveTests
 
         var settings = UsnJournalSettingsQuery.Query('C');
 
-        Assert.IsTrue(settings.MaximumSize > 0, "MaximumSize should be positive");
-        Assert.IsTrue(settings.AllocationDelta > 0, "AllocationDelta should be positive");
-        Assert.IsTrue(settings.MaximumSize >= settings.AllocationDelta,
+        Assert.IsGreaterThan(0, settings.MaximumSize, "MaximumSize should be positive");
+        Assert.IsGreaterThan(0, settings.AllocationDelta, "AllocationDelta should be positive");
+        Assert.IsGreaterThanOrEqualTo(settings.AllocationDelta, settings.MaximumSize,
             "The maximum should be at least one allocation delta");
     }
 
@@ -99,6 +99,6 @@ public class UsnJournalSettingsQueryLiveTests
 
         var exception = Assert.ThrowsExactly<IOException>(() => UsnJournalSettingsQuery.Query(missing));
 
-        StringAssert.Contains(exception.Message, $"{missing}:\\");
+        Assert.Contains($"{missing}:\\", exception.Message);
     }
 }

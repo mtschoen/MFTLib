@@ -99,7 +99,7 @@ public sealed class FileIndexJournalSettingsTests : IDisposable
         }
         catch (ArgumentException exception)
         {
-            StringAssert.Contains(exception.Message, "Q");
+            Assert.Contains("Q", exception.Message);
         }
     }
 }

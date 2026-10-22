@@ -279,7 +279,7 @@ public class JournalMutatorMetadataFreshnessTests
                 fileAttributes: FileAttributes.ReadOnly)
         ]);
 
-        Assert.AreEqual(0, changes.Count);
+        Assert.IsEmpty(changes);
         var row = fixture.Block.Rows[(int)FileRowIndex];
         AssertScanObservationsKept(row);
         Assert.AreEqual((uint)FileAttributes.ReadOnly, row.Attributes);
@@ -298,7 +298,7 @@ public class JournalMutatorMetadataFreshnessTests
                 fixture.Timestamp, sequenceNumber: 1)
         ]);
 
-        Assert.AreEqual(0, changes.Count);
+        Assert.IsEmpty(changes);
         Assert.IsTrue(fixture.Block.Header.IsCapacityExhausted);
         var row = fixture.Block.Rows[(int)FileRowIndex];
         Assert.IsFalse(row.SizeKnown);

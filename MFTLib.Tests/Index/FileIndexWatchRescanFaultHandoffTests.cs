@@ -10,7 +10,7 @@ public class FileIndexWatchRescanFaultHandoffTests
 {
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     [TestMethod]
     [DataRow("production", false, false, false)]
@@ -142,7 +142,7 @@ public class FileIndexWatchRescanFaultHandoffTests
             var stoppingFault = await CaptureFailureAsync(stopping);
             var overlappingFault = await CaptureFailureAsync(overlappingStop);
             var failures = new[] { stoppingFault, overlappingFault }.Where(item => item is not null).ToArray();
-            Assert.AreEqual(1, failures.Length, "delayed fault must be consumed exactly once across overlapping stops");
+            Assert.HasCount(1, failures, "delayed fault must be consumed exactly once across overlapping stops");
             Assert.AreSame(subscriberFailure, failures[0]);
         }
         else

@@ -49,7 +49,7 @@ public class CacheDirectoryEnumerationTests
         var cached = CacheDirectory.EnumerateCached(_cacheDirectory)
             .OrderBy(entry => entry.Drive.Letter).ToArray();
 
-        Assert.AreEqual(2, cached.Length);
+        Assert.HasCount(2, cached);
         Assert.AreEqual('C', cached[0].Drive);
         Assert.AreEqual(0x0BADF00Du, cached[0].VolumeSerial);
         Assert.AreEqual(first, cached[0].Path);
@@ -75,7 +75,7 @@ public class CacheDirectoryEnumerationTests
         var cached = CacheDirectory.EnumerateCached(_cacheDirectory)
             .Select(entry => (entry.Drive.Letter, entry.VolumeSerial)).ToArray();
 
-        CollectionAssert.AreEquivalent(expected, cached);
+        Assert.AreSequenceEqual(expected, cached, SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]
@@ -88,7 +88,7 @@ public class CacheDirectoryEnumerationTests
         {
             var path = WriteFile(fileName, "block");
 
-            Assert.AreEqual(0, CacheDirectory.EnumerateCached(_cacheDirectory).Count, fileName);
+            Assert.IsEmpty(CacheDirectory.EnumerateCached(_cacheDirectory), fileName);
 
             File.Delete(path);
         }
@@ -100,7 +100,7 @@ public class CacheDirectoryEnumerationTests
         WriteFile("1-0BADF00D.mlix", "digit");
         WriteFile("_-0BADF00D.mlix", "symbol");
 
-        Assert.AreEqual(0, CacheDirectory.EnumerateCached(_cacheDirectory).Count);
+        Assert.IsEmpty(CacheDirectory.EnumerateCached(_cacheDirectory));
     }
 
     [TestMethod]
@@ -110,12 +110,12 @@ public class CacheDirectoryEnumerationTests
 
         var cached = CacheDirectory.EnumerateCached(absent);
 
-        Assert.AreEqual(0, cached.Count);
+        Assert.IsEmpty(cached);
     }
 
     [TestMethod]
     public void EnumerateCached_AnEmptyDirectoryReturnsEmpty()
     {
-        Assert.AreEqual(0, CacheDirectory.EnumerateCached(_cacheDirectory).Count);
+        Assert.IsEmpty(CacheDirectory.EnumerateCached(_cacheDirectory));
     }
 }

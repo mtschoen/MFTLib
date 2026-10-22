@@ -26,7 +26,7 @@ public class JournalMutatorHydrationTests
 
         Assert.AreEqual(FileChangeKind.Modified, change.Kind);
         Assert.AreEqual(Path.Combine(TestDriveRoot.For('T'), "documents", "source.cs"), change.Path);
-        Assert.IsTrue(change.Entry.IsSizeKnown == false);
+        Assert.IsFalse(change.Entry.IsSizeKnown);
         Assert.AreEqual((ushort)3, fixture.Block.SequenceNumbers[20]);
     }
 
@@ -94,7 +94,7 @@ public class JournalMutatorHydrationTests
             TimestampUtc = fixture.Timestamp
         });
 
-        Assert.AreEqual(0, fixture.Apply([bad]).Count);
+        Assert.IsEmpty(fixture.Apply([bad]));
         Assert.IsTrue(fixture.Block.Header.IsCapacityExhausted);
     }
 

@@ -25,9 +25,9 @@ public sealed class FileIndexDirectoryWalkAdmissionTests : IDisposable
         var options = _fixture.Options() with { DirectoryWalk = walk! };
 
         var exception = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
-            FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token));
+            FileIndex.OpenAsync(options, TestContext.CancellationToken));
 
-        StringAssert.Contains(exception.Message, expectedText);
+        Assert.Contains(expectedText, exception.Message);
         Assert.IsFalse(Directory.Exists(_fixture.CacheDirectory));
     }
 
@@ -66,7 +66,7 @@ public sealed class FileIndexDirectoryWalkAdmissionTests : IDisposable
             DirectoryWalk = new DirectoryWalkOptions { PrunedDirectoryNames = ["x\uFFFD", "x\uD83D\uDE00"] }
         };
 
-        await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
+        await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
 
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
     }
@@ -110,7 +110,7 @@ public sealed class FileIndexDirectoryWalkAdmissionTests : IDisposable
         };
 
         await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
-            FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token));
+            FileIndex.OpenAsync(options, TestContext.CancellationToken));
         Assert.IsFalse(Directory.Exists(_fixture.CacheDirectory));
     }
 
@@ -120,7 +120,7 @@ public sealed class FileIndexDirectoryWalkAdmissionTests : IDisposable
         var names = new List<string> { "Documents" };
         var options = _fixture.Options() with { DirectoryWalk = new DirectoryWalkOptions { PrunedDirectoryNames = names } };
 
-        await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
+        await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
         names.Clear();
 
         Assert.IsNotNull(index.Find(Path.Combine(_fixture.TreeRoot, "Documents")));
@@ -132,8 +132,8 @@ public sealed class FileIndexDirectoryWalkAdmissionTests : IDisposable
     {
         var walk = new FileIndexOptions().DirectoryWalk;
 
-        Assert.AreEqual(0, walk.PrunedDirectoryNames.Count);
-        Assert.AreEqual(0, walk.PrunedDirectoryPaths.Count);
+        Assert.IsEmpty(walk.PrunedDirectoryNames);
+        Assert.IsEmpty(walk.PrunedDirectoryPaths);
         Assert.AreEqual(default, walk.PrunedDirectoryAttributes);
         Assert.IsFalse(walk.PruneDotDirectories);
     }

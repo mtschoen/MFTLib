@@ -130,7 +130,7 @@ public class MftDumpApplicabilityTests
         var failure = await Assert.ThrowsExactlyAsync<ArgumentException>(
             () => FileIndex.OpenAsync(options, CancellationToken.None));
         Assert.AreEqual("options", failure.ParamName);
-        StringAssert.Contains(failure.Message, settingName);
+        Assert.Contains(settingName, failure.Message);
     }
 
     [TestMethod]

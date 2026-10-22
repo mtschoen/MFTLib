@@ -102,8 +102,8 @@ public class CacheDirectoryRejectionTests
 
         var paths = ReadPaths(operation, null, rejected.Add);
 
-        CollectionAssert.AreEqual(new[] { canonical }, paths);
-        CollectionAssert.AreEquivalent(foreign, rejected.Select(entry => entry.Path).ToArray());
+        Assert.AreSequenceEqual(new[] { canonical }, paths);
+        Assert.AreSequenceEqual(foreign, rejected.Select(entry => entry.Path).ToArray(), SequenceOrder.InAnyOrder);
         Assert.IsTrue(rejected.All(entry => entry.Reason == "Invalid block filename."));
         foreach (var path in foreign.Concat(ignored))
         {
@@ -126,7 +126,7 @@ public class CacheDirectoryRejectionTests
         IReadOnlySet<char> drives = empty ? new HashSet<char>() : new HashSet<char> { 'U' };
         var rejected = new List<CachedBlockRejection>();
 
-        Assert.AreEqual(0, ReadPaths(operation, drives, rejected.Add).Length);
+        Assert.IsEmpty(ReadPaths(operation, drives, rejected.Add));
 
         Assert.AreEqual(foreign, rejected.Single().Path);
         Assert.IsTrue(File.Exists(canonical));
@@ -164,13 +164,13 @@ public class CacheDirectoryRejectionTests
     public void Reporting_IsOptionalAndEmptyDirectoriesDoNotNotify(string operation)
     {
         var rejected = new List<CachedBlockRejection>();
-        Assert.AreEqual(0, ReadPaths(operation, null, rejected.Add).Length);
+        Assert.IsEmpty(ReadPaths(operation, null, rejected.Add));
         Directory.Delete(_directory);
-        Assert.AreEqual(0, ReadPaths(operation, null, rejected.Add).Length);
-        Assert.AreEqual(0, rejected.Count);
+        Assert.IsEmpty(ReadPaths(operation, null, rejected.Add));
+        Assert.IsEmpty(rejected);
         Directory.CreateDirectory(_directory);
         var foreign = WriteFile("t-invalid.mlix");
-        Assert.AreEqual(0, ReadPaths(operation, null, null).Length);
+        Assert.IsEmpty(ReadPaths(operation, null, null));
         Assert.AreEqual("foreign content", File.ReadAllText(foreign));
     }
 }

@@ -14,7 +14,7 @@ public class ScriptedApplyFaultTests
 {
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     [TestMethod]
     public async Task FailApply_IsReportedAsAnApplyFaultCarryingTheScriptedException()
@@ -30,7 +30,7 @@ public class ScriptedApplyFaultTests
         await harness.Source.WatchFor('U').Publish(WatchHarness.Batch(10, "u.txt", nextUsn: 9000));
 
         Assert.AreSame(failure, fault.Exception);
-        Assert.AreEqual(1, harness.Faults.Count);
+        Assert.HasCount(1, harness.Faults);
         Assert.AreEqual("the batch cannot be applied", harness.DriveFor('T').Watch.FailureMessage);
         Assert.AreEqual(9000L, harness.BlockFor('U').Header.UsnNextUsn, "the other drive keeps watching");
     }
@@ -71,9 +71,9 @@ public class ScriptedApplyFaultTests
         await restarted.Publish(WatchHarness.Batch(10, "later.txt", nextUsn: 7000));
 
         Assert.AreNotSame(faulted, restarted);
-        Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
+        Assert.HasCount(2, harness.Source.TargetsFor('T'));
         Assert.AreEqual(7000L, harness.BlockFor('T').Header.UsnNextUsn);
-        Assert.AreEqual(1, harness.Faults.Count);
+        Assert.HasCount(1, harness.Faults);
     }
 
     [TestMethod]

@@ -83,7 +83,7 @@ public class BlockLayoutTests
     {
         var total = BlockLayout.TotalBlockBytes(100, 1000);
         Assert.AreEqual(0L, total % BlockLayout.PageSize);
-        Assert.IsTrue(total >= BlockLayout.NamePoolOffset(100) + 1000);
+        Assert.IsGreaterThanOrEqualTo(BlockLayout.NamePoolOffset(100) + 1000, total);
     }
 
     [TestMethod]

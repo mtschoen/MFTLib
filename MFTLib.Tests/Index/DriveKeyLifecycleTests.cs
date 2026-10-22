@@ -17,9 +17,8 @@ public class DriveKeyLifecycleTests
     public void LifecycleVerb_HasOneEnumerableMethod(string name)
     {
         var methods = typeof(FileIndex).GetMethods().Where(method => method.Name == name).ToArray();
-        Assert.AreEqual(1, methods.Length);
-        CollectionAssert.AreEqual(new[] { typeof(IEnumerable<DriveKey>), typeof(CancellationToken) },
-            methods[0].GetParameters().Select(parameter => parameter.ParameterType).ToArray());
+        Assert.HasCount(1, methods);
+        Assert.AreSequenceEqual(new[] { typeof(IEnumerable<DriveKey>), typeof(CancellationToken) }, methods[0].GetParameters().Select(parameter => parameter.ParameterType).ToArray());
         Assert.AreEqual(typeof(Task<IReadOnlyList<DriveOperationResult>>), methods[0].ReturnType);
     }
 
@@ -41,8 +40,7 @@ public class DriveKeyLifecycleTests
         AssertResults(await waiting, requested);
         AssertResults(await harness.Index.RescanAsync(requested, token), requested);
         AssertResults(await harness.Index.StopWatchingAsync(requested, token), requested);
-        CollectionAssert.AreEqual(new DriveKey[] { 'T', 'U' },
-            harness.Index.Drives.Select(status => status.Drive).ToArray());
+        Assert.AreSequenceEqual(new DriveKey[] { 'T', 'U' }, harness.Index.Drives.Select(status => status.Drive).ToArray());
     }
 
     [TestMethod]
@@ -54,7 +52,7 @@ public class DriveKeyLifecycleTests
         await Assert.ThrowsExactlyAsync<ArgumentException>(() => harness.Index.StopWatchingAsync(requested, CancellationToken.None));
         await Assert.ThrowsExactlyAsync<ArgumentException>(() => harness.Index.WaitForCatchUpAsync(requested, CancellationToken.None));
         await Assert.ThrowsExactlyAsync<ArgumentException>(() => harness.Index.RescanAsync(requested, CancellationToken.None));
-        Assert.AreEqual(0, harness.Source.Starts.Count);
+        Assert.IsEmpty(harness.Source.Starts);
         Assert.AreEqual(1, harness.ProductionCount('T'));
     }
 
@@ -107,10 +105,10 @@ public class DriveKeyLifecycleTests
         AssertResults(await harness.Index.WaitForCatchUpAsync(new SingleUseSequence('t'), CancellationToken.None), ['T']);
         AssertResults(await harness.Index.RescanAsync(new SingleUseSequence('t'), CancellationToken.None), ['T']);
         AssertResults(await harness.Index.StopWatchingAsync(new SingleUseSequence('t'), CancellationToken.None), ['T']);
-        Assert.AreEqual(0, (await harness.Index.StartWatchingAsync([], CancellationToken.None)).Count);
-        Assert.AreEqual(0, (await harness.Index.WaitForCatchUpAsync([], CancellationToken.None)).Count);
-        Assert.AreEqual(0, (await harness.Index.RescanAsync([], CancellationToken.None)).Count);
-        Assert.AreEqual(0, (await harness.Index.StopWatchingAsync([], CancellationToken.None)).Count);
+        Assert.IsEmpty(await harness.Index.StartWatchingAsync([], CancellationToken.None));
+        Assert.IsEmpty(await harness.Index.WaitForCatchUpAsync([], CancellationToken.None));
+        Assert.IsEmpty(await harness.Index.RescanAsync([], CancellationToken.None));
+        Assert.IsEmpty(await harness.Index.StopWatchingAsync([], CancellationToken.None));
     }
 
     sealed class SingleUseSequence(DriveKey drive) : IEnumerable<DriveKey>
@@ -129,7 +127,7 @@ public class DriveKeyLifecycleTests
 
     static void AssertResults(IReadOnlyList<DriveOperationResult> results, DriveKey[] requested)
     {
-        CollectionAssert.AreEqual(requested, results.Select(result => result.Drive).ToArray());
+        Assert.AreSequenceEqual(requested, results.Select(result => result.Drive).ToArray());
         Assert.IsTrue(results.All(result => result.Outcome == DriveOperationOutcome.Succeeded));
     }
 }

@@ -28,16 +28,15 @@ public partial class JournalMutatorTests
             changes.AddRange(mutator.Apply(_snapshot[0], batch, journalIdentifier: 7, nextUsn: 1000 + start + batch.Length));
         }
 
-        Assert.AreEqual(1, changes.Count(change => change.Kind == FileChangeKind.Created),
-            "One real create cycle must report exactly one Created change.");
-        Assert.AreEqual(1, changes.Count(change => change.Kind == FileChangeKind.Modified),
-            "One real append cycle must report exactly one Modified change.");
-        Assert.AreEqual(1, changes.Count(change => change.Kind == FileChangeKind.Deleted),
-            "One real delete must report exactly one Deleted change.");
-        Assert.AreEqual(3, changes.Count,
+        Assert.ContainsSingle(change => change.Kind == FileChangeKind.Created,
+            changes, "One real create cycle must report exactly one Created change.");
+        Assert.ContainsSingle(change => change.Kind == FileChangeKind.Modified,
+            changes, "One real append cycle must report exactly one Modified change.");
+        Assert.ContainsSingle(change => change.Kind == FileChangeKind.Deleted,
+            changes, "One real delete must report exactly one Deleted change.");
+        Assert.HasCount(3, changes,
             "Total changes must be exactly three: one Created, one Modified, one Deleted.");
-        CollectionAssert.AreEqual(
-            new[] { FileChangeKind.Created, FileChangeKind.Modified, FileChangeKind.Deleted },
-            changes.Select(change => change.Kind).ToArray());
+        Assert.AreSequenceEqual(
+            new[] { FileChangeKind.Created, FileChangeKind.Modified, FileChangeKind.Deleted }, changes.Select(change => change.Kind).ToArray());
     }
 }

@@ -76,8 +76,8 @@ public partial class FileIndexPerDriveProducerKindTests
         Assert.AreEqual("walked.txt", index.Search(new SearchQuery("walked.txt")).Single().Name);
         if (previousBytes is not null)
         {
-            CollectionAssert.AreEqual(previousBytes, ReadSharedBlock(canonicalPath));
-            Assert.AreEqual(0, Directory.GetFiles(CacheDirectoryPath, "*.retired-*").Length);
+            Assert.AreSequenceEqual(previousBytes, ReadSharedBlock(canonicalPath));
+            Assert.IsEmpty(Directory.GetFiles(CacheDirectoryPath, "*.retired-*"));
         }
 
         progress.Failure = null;

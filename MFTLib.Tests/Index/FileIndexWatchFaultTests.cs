@@ -13,7 +13,7 @@ public class FileIndexWatchFaultTests
 {
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     [TestMethod]
     public async Task ApplyFailure_IsReportedAsAnApplyFaultAndIsolatesTheDrive()
@@ -28,17 +28,17 @@ public class FileIndexWatchFaultTests
         await harness.Source.WatchFor('U').Publish(WatchHarness.Batch(10, "u.txt", nextUsn: 9000));
         await harness.WaitForRecoveryAsync('T');
 
-        Assert.AreEqual(1, harness.Faults.Count);
+        Assert.HasCount(1, harness.Faults);
         Assert.IsInstanceOfType<ArgumentNullException>(fault.Exception);
         Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage, "the recovery replaced the faulted watch");
         Assert.AreEqual(DriveState.Ready, harness.DriveFor('T').State);
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
-        Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
-        Assert.AreEqual(1, harness.Source.TargetsFor('U').Count);
+        Assert.HasCount(2, harness.Source.TargetsFor('T'));
+        Assert.HasCount(1, harness.Source.TargetsFor('U'));
         Assert.IsNull(harness.DriveFor('U').Watch.FailureMessage);
         Assert.AreEqual(frozenCursor, harness.BlockFor('T').Header.UsnNextUsn, "the rejected batch advanced nothing");
         Assert.AreEqual(9000L, harness.BlockFor('U').Header.UsnNextUsn);
-        Assert.AreEqual(1, harness.Changes.Count);
+        Assert.HasCount(1, harness.Changes);
         Assert.AreEqual("u.txt", harness.Changes.Single().Entry.Name);
 
         await harness.Index.StopWatchingAsync(['T'], Token);
@@ -58,7 +58,7 @@ public class FileIndexWatchFaultTests
         var fault = await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
         await harness.Source.WatchFor('U').Publish(WatchHarness.Batch(10, "u.txt", nextUsn: 9000));
 
-        Assert.AreEqual(1, harness.Faults.Count);
+        Assert.HasCount(1, harness.Faults);
         Assert.AreEqual('T', fault.Drive);
         var driveFault = (DriveWatchFaultException)fault.Exception;
         Assert.AreSame(wrapped, driveFault.InnerException);
@@ -84,7 +84,7 @@ public class FileIndexWatchFaultTests
         var fault = await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
         await harness.Source.WatchFor('U').Publish(WatchHarness.Batch(10, "u.txt", nextUsn: 9000));
 
-        Assert.AreEqual(1, harness.Faults.Count);
+        Assert.HasCount(1, harness.Faults);
         Assert.AreEqual('T', fault.Drive);
         Assert.AreSame(lost, fault.Exception);
         Assert.AreEqual("the broker died", harness.DriveFor('T').Watch.FailureMessage);
@@ -150,7 +150,7 @@ public class FileIndexWatchFaultTests
         await handle.Publish(WatchHarness.Batch(recordNumber: 9, "one.txt", nextUsn: 200));
         await handle.Publish(WatchHarness.Batch(recordNumber: 10, "two.txt", nextUsn: 300));
 
-        Assert.AreEqual(1, harness.Faults.Count);
+        Assert.HasCount(1, harness.Faults);
         Assert.AreEqual(WatchFaultKind.Subscriber, harness.Faults[0].Kind);
         Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
         Assert.AreEqual(300L, harness.BlockFor('T').Header.UsnNextUsn);
@@ -172,8 +172,8 @@ public class FileIndexWatchFaultTests
         await callerCancellation.CancelAsync();
 
         await Assert.ThrowsAsync<OperationCanceledException>(() => start);
-        Assert.AreEqual(0, harness.Faults.Count);
-        Assert.AreEqual(0, harness.Source.Watches.Count);
+        Assert.IsEmpty(harness.Faults);
+        Assert.IsEmpty(harness.Source.Watches);
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
         Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
         await DriveResultAssertions.NotApplicableAsync(
@@ -192,7 +192,7 @@ public class FileIndexWatchFaultTests
         await callerCancellation.CancelAsync();
         await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(recordNumber: 10, "two.txt", nextUsn: 300));
 
-        Assert.AreEqual(0, harness.Faults.Count);
+        Assert.IsEmpty(harness.Faults);
         Assert.AreEqual(300L, harness.BlockFor('T').Header.UsnNextUsn);
         Assert.AreEqual(0, harness.Source.Watches.Single().DisposeCount);
         await harness.Index.StopWatchingAsync(['T'], Token);
@@ -221,7 +221,7 @@ public class FileIndexWatchFaultTests
         applying.Release();
         await harness.Index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
         Assert.AreEqual(1, firstHandle.DisposeCount);
-        Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
+        Assert.HasCount(2, harness.Source.TargetsFor('T'));
         await harness.Index.StopWatchingAsync(['T'], Token);
     }
 
@@ -249,7 +249,7 @@ public class FileIndexWatchFaultTests
             await harness.Index.StopWatchingAsync(['T'], Token);
         }
 
-        Assert.AreEqual(22, harness.Source.Watches.Count);
+        Assert.HasCount(22, harness.Source.Watches);
         foreach (var handle in harness.Source.Watches)
         {
             Assert.AreEqual(1, handle.DisposeCount, "every started handle was disposed exactly once");

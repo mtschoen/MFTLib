@@ -18,7 +18,7 @@ public class FileIndexWatchRescanCacheTests
         var directory = Directory.CreateTempSubdirectory("mftlib-rescan-restore-");
         var production = new TestGate();
         var rescanRequested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var token = TestContext.CancellationTokenSource.Token;
+        var token = TestContext.CancellationToken;
         try
         {
             var source = new ScriptedWatchSource();
@@ -50,7 +50,7 @@ public class FileIndexWatchRescanCacheTests
                 var rescan = index.RescanAsync(['T'], cancellation.Token);
                 await production.Entered.WaitAsync(HangGuard);
                 Assert.AreEqual(0, handle.DisposeCount);
-                Assert.AreEqual(1, Directory.GetFiles(directory.FullName, "*.retired-*").Length);
+                Assert.HasCount(1, Directory.GetFiles(directory.FullName, "*.retired-*"));
                 await handle.Publish(WatchHarness.Batch(9, "during.txt", 700));
                 if (cancel)
                 {
@@ -65,10 +65,10 @@ public class FileIndexWatchRescanCacheTests
 
                 Assert.AreSame(original, index.Root('T').DriveBlock);
                 Assert.AreSame(handle, source.WatchFor('T'));
-                Assert.AreEqual(1, source.TargetsFor('T').Count);
+                Assert.HasCount(1, source.TargetsFor('T'));
                 Assert.IsFalse(catchUp.IsCompleted);
-                Assert.AreEqual(1, index.Search(new SearchQuery("during.txt", NameMatchMode.Exact), token).Count);
-                Assert.AreEqual(0, Directory.GetFiles(directory.FullName, "*.retired-*").Length);
+                Assert.HasCount(1, index.Search(new SearchQuery("during.txt", NameMatchMode.Exact), token));
+                Assert.IsEmpty(Directory.GetFiles(directory.FullName, "*.retired-*"));
                 using var restored = BlockFile.Open(original.Block.Path, 1, out var validation);
                 Assert.IsNotNull(restored, validation.ToString());
                 Assert.AreEqual(700L, restored.Header.UsnNextUsn);

@@ -41,8 +41,7 @@ public class SearchQueryMatchModeTests
     {
         var results = SearchEngine.Search(_snapshot, new SearchQuery(pattern, mode, caseSensitive));
         var streamed = SearchEngine.Enumerate(_snapshot, new SearchQuery(pattern, mode, caseSensitive)).ToList();
-        CollectionAssert.AreEqual(results.Select(entry => entry.Name).ToArray(),
-            streamed.Select(entry => entry.Name).ToArray(), "Search and Enumerate must share one predicate.");
+        Assert.AreSequenceEqual(results.Select(entry => entry.Name).ToArray(), streamed.Select(entry => entry.Name).ToArray(), "Search and Enumerate must share one predicate.");
         return results.Select(entry => entry.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray();
     }
 
@@ -55,37 +54,35 @@ public class SearchQueryMatchModeTests
     [TestMethod]
     public void Exact_ComparesTheWholeBasename()
     {
-        CollectionAssert.AreEqual(new[] { "report.pdf" }, Names("report.pdf", NameMatchMode.Exact));
-        CollectionAssert.AreEqual(new[] { "report.pdf" }, Names("REPORT.PDF", NameMatchMode.Exact));
-        Assert.AreEqual(0, Names("REPORT.PDF", NameMatchMode.Exact, caseSensitive: true).Length);
-        Assert.AreEqual(0, Names("report", NameMatchMode.Exact).Length);
+        Assert.AreSequenceEqual(new[] { "report.pdf" }, Names("report.pdf", NameMatchMode.Exact));
+        Assert.AreSequenceEqual(new[] { "report.pdf" }, Names("REPORT.PDF", NameMatchMode.Exact));
+        Assert.IsEmpty(Names("REPORT.PDF", NameMatchMode.Exact, caseSensitive: true));
+        Assert.IsEmpty(Names("report", NameMatchMode.Exact));
     }
 
     [TestMethod]
     public void Exact_TreatsWildcardsAsOrdinaryCharacters()
     {
-        CollectionAssert.AreEqual(new[] { "a*b.txt" }, Names("a*b.txt", NameMatchMode.Exact));
-        CollectionAssert.AreEqual(new[] { "a?c.txt" }, Names("a?c.txt", NameMatchMode.Exact));
+        Assert.AreSequenceEqual(new[] { "a*b.txt" }, Names("a*b.txt", NameMatchMode.Exact));
+        Assert.AreSequenceEqual(new[] { "a?c.txt" }, Names("a?c.txt", NameMatchMode.Exact));
     }
 
     [TestMethod]
     public void Substring_TreatsWildcardsAsOrdinaryCharacters()
     {
-        CollectionAssert.AreEqual(new[] { "a*b", "a*b.txt" }, Names("a*b", NameMatchMode.Substring));
-        CollectionAssert.AreEqual(new[] { "a?c.txt" }, Names("a?c", NameMatchMode.Substring));
-        Assert.AreEqual(0, Names("*.pdf", NameMatchMode.Substring).Length);
+        Assert.AreSequenceEqual(new[] { "a*b", "a*b.txt" }, Names("a*b", NameMatchMode.Substring));
+        Assert.AreSequenceEqual(new[] { "a?c.txt" }, Names("a?c", NameMatchMode.Substring));
+        Assert.IsEmpty(Names("*.pdf", NameMatchMode.Substring));
     }
 
     [TestMethod]
     public void Glob_InterpretsWildcardsAgainstTheWholeName()
     {
-        CollectionAssert.AreEqual(new[] { "report.pdf" }, Names("*.pdf", NameMatchMode.Glob));
-        CollectionAssert.AreEqual(new[] { "a*b.txt", "a?c.txt", "abc.txt", "axxb.txt" },
-            Names("a*.txt", NameMatchMode.Glob));
-        CollectionAssert.AreEqual(new[] { "a?c.txt", "abc.txt" }, Names("a?c*", NameMatchMode.Glob));
-        CollectionAssert.AreEqual(new[] { "a*b", "a*b.txt", "a?c.txt", "abc.txt", "axxb.txt" },
-            Names("a?*", NameMatchMode.Glob));
-        Assert.AreEqual(0, Names("report", NameMatchMode.Glob).Length, "a glob matches the whole name, not a part of it");
+        Assert.AreSequenceEqual(new[] { "report.pdf" }, Names("*.pdf", NameMatchMode.Glob));
+        Assert.AreSequenceEqual(new[] { "a*b.txt", "a?c.txt", "abc.txt", "axxb.txt" }, Names("a*.txt", NameMatchMode.Glob));
+        Assert.AreSequenceEqual(new[] { "a?c.txt", "abc.txt" }, Names("a?c*", NameMatchMode.Glob));
+        Assert.AreSequenceEqual(new[] { "a*b", "a*b.txt", "a?c.txt", "abc.txt", "axxb.txt" }, Names("a?*", NameMatchMode.Glob));
+        Assert.IsEmpty(Names("report", NameMatchMode.Glob), "a glob matches the whole name, not a part of it");
     }
 
     [TestMethod]
@@ -93,17 +90,17 @@ public class SearchQueryMatchModeTests
     {
         var expected = Names(null, NameMatchMode.Substring);
 
-        Assert.AreEqual(8, expected.Length, "the seven files and the root directory");
-        CollectionAssert.AreEqual(expected, Names(null, NameMatchMode.Exact));
-        CollectionAssert.AreEqual(expected, Names(null, NameMatchMode.Glob));
+        Assert.HasCount(8, expected, "the seven files and the root directory");
+        Assert.AreSequenceEqual(expected, Names(null, NameMatchMode.Exact));
+        Assert.AreSequenceEqual(expected, Names(null, NameMatchMode.Glob));
     }
 
     [TestMethod]
     public void EmptyPattern_MatchesEveryNameWhenSubstringAndOnlyAnEmptyNameOtherwise()
     {
-        Assert.AreEqual(8, Names(string.Empty, NameMatchMode.Substring).Length);
-        CollectionAssert.AreEqual(new[] { string.Empty }, Names(string.Empty, NameMatchMode.Exact));
-        CollectionAssert.AreEqual(new[] { string.Empty }, Names(string.Empty, NameMatchMode.Glob));
+        Assert.HasCount(8, Names(string.Empty, NameMatchMode.Substring));
+        Assert.AreSequenceEqual(new[] { string.Empty }, Names(string.Empty, NameMatchMode.Exact));
+        Assert.AreSequenceEqual(new[] { string.Empty }, Names(string.Empty, NameMatchMode.Glob));
     }
 
     [TestMethod]
@@ -115,6 +112,6 @@ public class SearchQueryMatchModeTests
             () => SearchEngine.Search(_snapshot, query));
 
         Assert.AreEqual("query", searchFailure.ParamName);
-        StringAssert.StartsWith(searchFailure.Message, "Unknown name match mode.");
+        Assert.StartsWith("Unknown name match mode.", searchFailure.Message);
     }
 }

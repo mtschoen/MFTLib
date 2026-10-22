@@ -63,7 +63,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
 
         var results = CacheDirectory.DeleteCached(CacheDirectoryPath);
 
-        Assert.AreEqual(3, results.Count);
+        Assert.HasCount(3, results);
         var ownedResult = results.Single(result => result.File.Path == CanonicalPath);
         Assert.AreEqual(CachedBlockDeletionOutcome.InUse, ownedResult.Outcome);
         Assert.IsNull(ownedResult.FailureReason);
@@ -120,7 +120,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
 
         Assert.AreEqual(DriveState.Ready, owner.Drives.Single().State);
         var canonicalBytesAfterRescan = await SharedFileReader.ReadAllBytesAsync(CanonicalPath);
-        CollectionAssert.AreNotEqual(canonicalBytesBeforeRescan, canonicalBytesAfterRescan,
+        Assert.AreNotSequenceEqual(canonicalBytesBeforeRescan, canonicalBytesAfterRescan,
             "the rescan completed normally once the clear backed off from the held lock");
     }
 
@@ -151,7 +151,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
     {
         await using (var seed = await FileIndex.OpenAsync(Options(), CancellationToken.None))
         {
-            Assert.IsTrue(seed.Find(Path.Combine(TreeRoot, "Documents", "readme.md")) is not null);
+            Assert.IsNotNull(seed.Find(Path.Combine(TreeRoot, "Documents", "readme.md")));
         }
         var canonicalBytesBeforeRace = await SharedFileReader.ReadAllBytesAsync(CanonicalPath);
 
@@ -170,8 +170,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
             Assert.AreEqual(DriveFailureKind.InUse, status.Failure?.Kind);
             Assert.IsTrue(File.Exists(CanonicalPath),
                 "a cache-only open racing a parked delete must not delete or adopt the slot");
-            CollectionAssert.AreEqual(canonicalBytesBeforeRace, await SharedFileReader.ReadAllBytesAsync(CanonicalPath),
-                "the slot must be byte-identical while the delete still holds it");
+            Assert.AreSequenceEqual(canonicalBytesBeforeRace, await SharedFileReader.ReadAllBytesAsync(CanonicalPath), "the slot must be byte-identical while the delete still holds it");
         }
 
         string privateBlockPath;
@@ -182,11 +181,10 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
             Assert.AreEqual(BlockOrigin.ProducedByScan, status.Block!.Origin);
             Assert.IsTrue(fallbackOpen.TryGetDriveOrdinal('T', out var ordinal));
             privateBlockPath = fallbackOpen.CurrentSnapshot[ordinal].Block.Path;
-            StringAssert.Contains(privateBlockPath, "mftlib-private-");
+            Assert.Contains("mftlib-private-", privateBlockPath);
             Assert.AreNotEqual(CanonicalPath, privateBlockPath);
             Assert.IsNotNull(fallbackOpen.Find(Path.Combine(TreeRoot, "Documents", "readme.md")));
-            CollectionAssert.AreEqual(canonicalBytesBeforeRace, await SharedFileReader.ReadAllBytesAsync(CanonicalPath),
-                "a non-cache-only open racing a parked delete must fall back to a private block "
+            Assert.AreSequenceEqual(canonicalBytesBeforeRace, await SharedFileReader.ReadAllBytesAsync(CanonicalPath), "a non-cache-only open racing a parked delete must fall back to a private block "
                 + "instead of touching the slot the delete still holds");
         }
         Assert.IsFalse(File.Exists(privateBlockPath), "the fallback's private block is delete-on-close");

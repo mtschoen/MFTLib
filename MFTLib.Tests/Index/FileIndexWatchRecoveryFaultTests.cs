@@ -14,7 +14,7 @@ public class FileIndexWatchRecoveryFaultTests
 {
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     [TestMethod]
     [DataRow(false)]
@@ -39,8 +39,8 @@ public class FileIndexWatchRecoveryFaultTests
         await harness.WaitForRecoveryAsync('C');
         Assert.IsNull(harness.DriveFor('C').Watch.FailureMessage);
         Assert.AreEqual(new IndexWatchTarget('C', 13, 9000), harness.Source.TargetsFor('C')[^1]);
-        Assert.AreEqual(2, harness.Source.TargetsFor('C').Count);
-        Assert.AreEqual(1, harness.Source.TargetsFor('D').Count);
+        Assert.HasCount(2, harness.Source.TargetsFor('C'));
+        Assert.HasCount(1, harness.Source.TargetsFor('D'));
         await harness.Source.WatchFor('D').Publish(WatchHarness.Batch(9, "still-watching.txt", nextUsn: 9500));
         Assert.AreEqual(9500L, harness.BlockFor('D').Header.UsnNextUsn);
         await harness.Index.StopWatchingAsync(['C'], Token);
@@ -85,8 +85,8 @@ public class FileIndexWatchRecoveryFaultTests
         Assert.AreSame(remainingFailure, failure);
         var recoveredFailure = await DriveResultAssertions.FailureAsync<IOException>(() => harness.Index.StopWatchingAsync(['C'], Token));
         Assert.AreSame(newFailure, recoveredFailure);
-        Assert.AreEqual(1, harness.Source.TargetsFor('D').Count);
-        Assert.AreEqual(1, harness.Source.TargetsFor('E').Count);
+        Assert.HasCount(1, harness.Source.TargetsFor('D'));
+        Assert.HasCount(1, harness.Source.TargetsFor('E'));
         await harness.Index.StopWatchingAsync(['E'], Token);
     }
 
@@ -105,7 +105,7 @@ public class FileIndexWatchRecoveryFaultTests
 
         var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => harness.Index.StopWatchingAsync(['D'], Token));
         Assert.AreSame(subscriberFailure, failure);
-        Assert.AreEqual(1, harness.Faults.Count(fault => fault.Kind == WatchFaultKind.Subscriber));
+        Assert.ContainsSingle(fault => fault.Kind == WatchFaultKind.Subscriber, harness.Faults);
         await harness.Index.StopWatchingAsync(['C'], Token);
     }
 

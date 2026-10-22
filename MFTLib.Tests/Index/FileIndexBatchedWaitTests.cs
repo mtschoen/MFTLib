@@ -20,7 +20,7 @@ public class FileIndexBatchedWaitTests
 {
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     [TestMethod]
     public async Task WaitForCatchUpAsync_AllDrives_WaitsForTheSlowestDrive()
@@ -73,7 +73,7 @@ public class FileIndexBatchedWaitTests
 
         var results = await harness.Index.WaitForCatchUpAsync(harness.Index.Drives.Select(drive => drive.Drive), Token).WaitAsync(HangGuard);
 
-        CollectionAssert.AreEqual(new[] { 'T', 'U' }, results.Select(result => result.Drive.Letter).ToArray());
+        Assert.AreSequenceEqual(new[] { 'T', 'U' }, results.Select(result => result.Drive.Letter).ToArray());
         Assert.IsTrue(results.All(result => result.Outcome == DriveOperationOutcome.NotApplicable));
     }
 

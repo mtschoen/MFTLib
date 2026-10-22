@@ -37,10 +37,9 @@ public class JournalMutatorChangeTimestampTests
                 closeMoment, sequenceNumber: 1)
         ]);
 
-        Assert.AreEqual(3, changes.Count, "The suppressed close record emits no change.");
-        CollectionAssert.AreEqual(
-            new[] { FileChangeKind.Modified, FileChangeKind.Modified, FileChangeKind.Deleted },
-            changes.Select(change => change.Kind).ToArray());
+        Assert.HasCount(3, changes, "The suppressed close record emits no change.");
+        Assert.AreSequenceEqual(
+            new[] { FileChangeKind.Modified, FileChangeKind.Modified, FileChangeKind.Deleted }, changes.Select(change => change.Kind).ToArray());
 
         // Each change reports the time of its own record, not the batch's final row value.
         Assert.AreEqual(extendMoment, changes[0].Timestamp);
@@ -69,7 +68,7 @@ public class JournalMutatorChangeTimestampTests
             CreateEntry(9, 6, "renamed.txt", UsnReason.RenameNewName, renameMoment, sequenceNumber: 1)
         ]);
 
-        Assert.AreEqual(2, changes.Count);
+        Assert.HasCount(2, changes);
         Assert.AreEqual(FileChangeKind.Created, changes[0].Kind);
         Assert.AreEqual(createMoment, changes[0].Timestamp);
         Assert.AreEqual(FileChangeKind.Renamed, changes[1].Kind);

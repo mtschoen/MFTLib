@@ -51,7 +51,7 @@ public sealed class IndexedDriveTests : IDisposable
 
         var failure = Assert.ThrowsExactly<IOException>(() => IndexedDrive.FromWindowsVolume('Q'));
 
-        StringAssert.Contains(failure.Message, "Q");
+        Assert.Contains("Q", failure.Message);
     }
 
     [TestMethod]
@@ -113,7 +113,7 @@ public sealed class IndexedDriveTests : IDisposable
             drive => drive == 0 ? @"Q:\" : @"C:\", _ => DriveType.Fixed,
             drive => drive == 0 ? throw new IOException("device vanished") : true, _ => "NTFS");
 
-        Assert.AreEqual(2, result.Count);
+        Assert.HasCount(2, result);
         Assert.AreEqual(new DriveKey('Q'), result[0].Drive);
         Assert.IsFalse(result[0].IsReady);
         Assert.IsNull(result[0].Format);
@@ -191,7 +191,7 @@ public sealed class IndexedDriveTests : IDisposable
             options => options with { Drives = [first, second] });
 
         Assert.AreEqual("options", failure.ParamName);
-        StringAssert.Contains(failure.Message, "Drive T is listed more than once.");
+        Assert.Contains("Drive T is listed more than once.", failure.Message);
     }
 
     [TestMethod]
@@ -201,7 +201,7 @@ public sealed class IndexedDriveTests : IDisposable
             options => options with { Drives = null! });
 
         Assert.AreEqual("options", failure.ParamName);
-        StringAssert.Contains(failure.Message, "FileIndexOptions.Drives");
+        Assert.Contains("FileIndexOptions.Drives", failure.Message);
     }
 
     [TestMethod]
@@ -280,14 +280,12 @@ public sealed class IndexedDriveTests : IDisposable
         }, CancellationToken.None);
 
         Assert.AreEqual(1, sequence.EnumerationCount);
-        CollectionAssert.AreEqual(new DriveKey[] { 'T', 'U' },
-            index.Drives.Select(status => status.Drive).ToArray());
+        Assert.AreSequenceEqual(new DriveKey[] { 'T', 'U' }, index.Drives.Select(status => status.Drive).ToArray());
         Assert.IsTrue(index.Drives.All(status => status.State == DriveState.Ready));
 
         var rescanResults = await index.RescanAsync(
             index.Drives.Select(status => status.Drive), CancellationToken.None);
-        CollectionAssert.AreEqual(new DriveKey[] { 'T', 'U' },
-            rescanResults.Select(result => result.Drive).ToArray());
+        Assert.AreSequenceEqual(new DriveKey[] { 'T', 'U' }, rescanResults.Select(result => result.Drive).ToArray());
         Assert.IsTrue(rescanResults.All(result => result.Outcome == DriveOperationOutcome.Succeeded));
     }
 
@@ -321,8 +319,7 @@ public sealed class IndexedDriveTests : IDisposable
 
         Assert.AreEqual(0, producerCalls);
         Assert.AreEqual(0, progressCalls);
-        CollectionAssert.AreEqual(contentsBefore, SnapshotDirectory(CacheDirectoryPath),
-            "no block slot, lock file or other entry may appear or vanish");
+        Assert.AreSequenceEqual(contentsBefore, SnapshotDirectory(CacheDirectoryPath), "no block slot, lock file or other entry may appear or vanish");
         Assert.AreEqual("keep", await File.ReadAllTextAsync(existingFile));
         Assert.AreEqual(protectionBefore, ReadProtection(CacheDirectoryPath));
     }

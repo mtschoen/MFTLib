@@ -98,7 +98,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
         var unchangedBlockPath = Path.Combine(CacheDirectoryPath,
             CacheDirectory.BlockFileName('U', secondVolumeSerial));
         BlockFileHoldAssertions.AssertNotHeld(unchangedBlockPath);
-        Assert.AreEqual(0, Directory.GetFiles(CacheDirectoryPath, "*.retired-*").Length);
+        Assert.IsEmpty(Directory.GetFiles(CacheDirectoryPath, "*.retired-*"));
     }
 
     /// <summary>
@@ -123,8 +123,8 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
         GC.WaitForPendingFinalizers();
 
         Assert.IsTrue(retiredRelease.IsReleaseComplete, "a handle on drive T kept drive U's retired block mapped");
-        Assert.AreEqual(0, Directory.GetFiles(CacheDirectoryPath,
-            CacheDirectory.BlockFileName('U', secondVolumeSerial) + ".retired-*").Length);
+        Assert.IsEmpty(Directory.GetFiles(CacheDirectoryPath,
+            CacheDirectory.BlockFileName('U', secondVolumeSerial) + ".retired-*"));
         Assert.AreEqual("readme.md", held.Name);
         await index.DisposeAsync();
     }
@@ -205,7 +205,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
                 CacheDirectory.BlockFileName('U', secondVolumeSerial)));
             BlockFileHoldAssertions.AssertNotHeld(Path.Combine(CacheDirectoryPath,
                 CacheDirectory.BlockFileName('T', _volumeSerial)));
-            Assert.AreEqual(0, Directory.GetFiles(CacheDirectoryPath, "*.retired-*").Length);
+            Assert.IsEmpty(Directory.GetFiles(CacheDirectoryPath, "*.retired-*"));
         }
         finally
         {
@@ -261,7 +261,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
         var token = cancellation.Token;
         cancellation.Dispose();
 
-        Assert.AreEqual(1, index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), token).Count);
+        Assert.HasCount(1, index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), token));
 
         // Asserted before the disposal below, which is what a stranded borrow would hang forever.
         Assert.AreEqual(0, release.Hooks.OutstandingBorrowCount,
@@ -312,7 +312,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
         var thrown = await Assert.ThrowsExactlyAsync<AggregateException>(
             async () => await index.DisposeAsync());
 
-        Assert.AreEqual(2, thrown.InnerExceptions.Count, "one of the two failures was dropped");
+        Assert.HasCount(2, thrown.InnerExceptions, "one of the two failures was dropped");
         var cancellationFailure = (AggregateException)thrown.InnerExceptions[0];
         Assert.AreEqual("a cancellation callback of someone else's",
             cancellationFailure.InnerExceptions.Single().Message,
@@ -323,8 +323,8 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
         // AggregateException that CancelAsync itself raised. It does not preserve the order
         // above, so this asserts membership rather than position.
         var leaves = thrown.Flatten().InnerExceptions.Select(failure => failure.Message).ToArray();
-        CollectionAssert.AreEquivalent(
-            new[] { "a cancellation callback of someone else's", "the release itself" }, leaves);
+        Assert.AreSequenceEqual(
+            new[] { "a cancellation callback of someone else's", "the release itself" }, leaves, SequenceOrder.InAnyOrder);
     }
 
     /// <summary>
@@ -376,7 +376,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
 
             BlockFileHoldAssertions.AssertNotHeld(Path.Combine(CacheDirectoryPath,
                 CacheDirectory.BlockFileName('T', _volumeSerial)));
-            Assert.AreEqual(0, Directory.GetFiles(CacheDirectoryPath, "*.retired-*").Length);
+            Assert.IsEmpty(Directory.GetFiles(CacheDirectoryPath, "*.retired-*"));
         }
         finally
         {
@@ -427,7 +427,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
 
             BlockFileHoldAssertions.AssertNotHeld(Path.Combine(CacheDirectoryPath,
                 CacheDirectory.BlockFileName('T', _volumeSerial)));
-            Assert.AreEqual(0, Directory.GetFiles(CacheDirectoryPath, "*.retired-*").Length);
+            Assert.IsEmpty(Directory.GetFiles(CacheDirectoryPath, "*.retired-*"));
         }
         finally
         {

@@ -35,6 +35,6 @@ public partial class FileIndexPerDriveWatchTests
         await rescan.WaitAsync(HangGuard);
         Assert.AreEqual(producedBefore + 1, harness.ProductionCount('T'));
         Assert.AreEqual(1, oldHandle.DisposeCount, "the retiring pump disposed its handle");
-        Assert.AreEqual(1, harness.Source.TargetsFor('T').Count, "the stopped watch is not restarted");
+        Assert.HasCount(1, harness.Source.TargetsFor('T'), "the stopped watch is not restarted");
     }
 }

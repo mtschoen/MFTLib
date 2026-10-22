@@ -9,7 +9,7 @@ public class FileIndexWatchCatchUpTests
 {
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     [TestMethod]
     public async Task DriveFailure_FaultsTheDrivesCatchUp()
@@ -233,7 +233,7 @@ public class FileIndexWatchCatchUpTests
         await handle.Publish(new DriveCaughtUp());
 
         Assert.AreEqual(WatchState.CaughtUp, harness.DriveFor('T').Watch.State);
-        Assert.AreEqual(0, harness.Faults.Count);
+        Assert.IsEmpty(harness.Faults);
         await harness.Index.WaitForCatchUpAsync(['T'], Token).WaitAsync(HangGuard);
     }
 

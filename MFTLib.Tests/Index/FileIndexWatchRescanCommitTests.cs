@@ -9,7 +9,7 @@ public class FileIndexWatchRescanCommitTests
 {
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     [TestMethod]
     public async Task BatchedRescan_ReportsScanSuccessWhenARestartFails()
@@ -21,7 +21,7 @@ public class FileIndexWatchRescanCommitTests
 
         var results = await harness.Index.RescanAsync(['T', 'U'], Token);
 
-        Assert.AreEqual(2, results.Count);
+        Assert.HasCount(2, results);
         Assert.IsTrue(results.All(result => result.Outcome == DriveOperationOutcome.Succeeded));
         var fault = harness.Faults.Single();
         Assert.AreEqual(WatchFaultKind.RescanRestart, fault.Kind);
@@ -50,7 +50,7 @@ public class FileIndexWatchRescanCommitTests
 
         await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescan);
         await stopping.WaitAsync(HangGuard);
-        Assert.AreEqual(0, harness.Faults.Count);
+        Assert.IsEmpty(harness.Faults);
     }
 
     [TestMethod]
@@ -89,7 +89,7 @@ public class FileIndexWatchRescanCommitTests
 
         Assert.AreSame(original, harness.Index.Root('T').DriveBlock);
         Assert.AreSame(handle, harness.Source.WatchFor('T'));
-        Assert.AreEqual(1, harness.Source.TargetsFor('T').Count);
+        Assert.HasCount(1, harness.Source.TargetsFor('T'));
         Assert.IsFalse(caughtUp.IsCompleted);
         await handle.Publish(new DriveCaughtUp());
         await caughtUp.WaitAsync(HangGuard);
@@ -119,8 +119,8 @@ public class FileIndexWatchRescanCommitTests
         Assert.AreNotSame(original, harness.Index.Root('T').DriveBlock);
         var fault = harness.Faults.Single(item => item.Kind == WatchFaultKind.RescanRestart);
         Assert.AreSame(failure, fault.Exception.InnerException);
-        StringAssert.Contains(fault.Exception.Message, "rescan replaced");
-        StringAssert.Contains(fault.Exception.Message, "watch could not be started");
+        Assert.Contains("rescan replaced", fault.Exception.Message);
+        Assert.Contains("watch could not be started", fault.Exception.Message);
         Assert.AreEqual(fault.Exception.Message, harness.DriveFor('T').Watch.FailureMessage);
         Assert.AreEqual(WatchState.Faulted, harness.DriveFor('T').Watch.State);
         Assert.AreEqual(0, harness.RecoveryCount('T'));

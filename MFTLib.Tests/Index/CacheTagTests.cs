@@ -45,7 +45,7 @@ public class CacheTagTests
         Assert.AreEqual("A\n\0\u007f", tag.FourCc);
         Assert.IsFalse(tag.ToString().Contains('\n'));
         Assert.IsFalse(tag.ToString().Contains('\0'));
-        StringAssert.Contains(new CacheTag("GITW", 1).ToString(), "GITW");
-        StringAssert.Contains(new CacheTag("GITW", 1).ToString(), "v1");
+        Assert.Contains("GITW", new CacheTag("GITW", 1).ToString());
+        Assert.Contains("v1", new CacheTag("GITW", 1).ToString());
     }
 }

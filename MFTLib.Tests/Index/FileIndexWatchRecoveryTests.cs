@@ -21,7 +21,7 @@ public partial class FileIndexWatchRecoveryTests
 
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     static WatchFaultKind[] FaultKinds(WatchHarness harness, char driveLetter) =>
         harness.Faults.Where(fault => fault.Drive == driveLetter).Select(fault => fault.Kind).ToArray();
@@ -45,7 +45,7 @@ public partial class FileIndexWatchRecoveryTests
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore);
         Assert.AreEqual(new IndexWatchTarget('T', 13, 9500), harness.Source.TargetsFor('T')[^1],
             "the watch restarts from the recovered block's cursor");
-        Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
+        Assert.HasCount(2, harness.Source.TargetsFor('T'));
         var drive = harness.DriveFor('T');
         Assert.AreEqual(WatchState.CatchingUp, drive.Watch.State);
         Assert.IsNull(drive.Watch.FailureMessage);
@@ -54,7 +54,7 @@ public partial class FileIndexWatchRecoveryTests
 
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         Assert.AreEqual(WatchState.CaughtUp, harness.DriveFor('T').Watch.State);
-        CollectionAssert.AreEqual(new[] { WatchFaultKind.Drive }, FaultKinds(harness, 'T'));
+        Assert.AreSequenceEqual(new[] { WatchFaultKind.Drive }, FaultKinds(harness, 'T'));
         await harness.Index.StopWatchingAsync(['T'], Token);
     }
 
@@ -70,7 +70,7 @@ public partial class FileIndexWatchRecoveryTests
         await harness.WaitForRecoveryAsync('T');
 
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore);
-        Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
+        Assert.HasCount(2, harness.Source.TargetsFor('T'));
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
         Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
         await harness.Index.StopWatchingAsync(['T'], Token);
@@ -92,11 +92,11 @@ public partial class FileIndexWatchRecoveryTests
         var recoveryFault = await harness.WaitForFaultAsync(WatchFaultKind.Recovery, 'T');
 
         Assert.AreSame(second, recoveryFault.Exception.InnerException);
-        CollectionAssert.AreEqual(new[] { WatchFaultKind.Drive, WatchFaultKind.Recovery }, FaultKinds(harness, 'T'));
+        Assert.AreSequenceEqual(new[] { WatchFaultKind.Drive, WatchFaultKind.Recovery }, FaultKinds(harness, 'T'));
         Assert.IsFalse(harness.Index.TryGetRecoveryCompletionForTest('T', out _), "no second recovery is queued");
         Assert.AreEqual(1, harness.RecoveryCount('T'));
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore);
-        Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
+        Assert.HasCount(2, harness.Source.TargetsFor('T'));
         Assert.AreEqual(WatchState.Faulted, harness.DriveFor('T').Watch.State);
         var failure = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => harness.Index.StopWatchingAsync(['T'], Token));
         Assert.AreSame(second, failure.InnerException);
@@ -116,11 +116,11 @@ public partial class FileIndexWatchRecoveryTests
 
         Assert.IsInstanceOfType<InvalidOperationException>(recoveryFault.Exception);
         Assert.AreSame(producerFailure, recoveryFault.Exception.InnerException);
-        CollectionAssert.AreEqual(new[] { WatchFaultKind.Drive, WatchFaultKind.Recovery }, FaultKinds(harness, 'T'));
+        Assert.AreSequenceEqual(new[] { WatchFaultKind.Drive, WatchFaultKind.Recovery }, FaultKinds(harness, 'T'));
         var drive = harness.DriveFor('T');
         Assert.AreEqual(WatchState.Faulted, drive.Watch.State);
         Assert.IsNotNull(drive.Watch.FailureMessage);
-        Assert.AreEqual(1, harness.Source.TargetsFor('T').Count);
+        Assert.HasCount(1, harness.Source.TargetsFor('T'));
         Assert.AreEqual(1, harness.RecoveryCount('T'), "no further automatic recovery");
     }
 
@@ -170,9 +170,9 @@ public partial class FileIndexWatchRecoveryTests
 
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore);
         Assert.AreNotSame(original, harness.Index.Root('T').DriveBlock, "the recovery committed its block");
-        Assert.AreEqual(1, harness.Source.TargetsFor('T').Count, "the stopped watch is not restarted");
+        Assert.HasCount(1, harness.Source.TargetsFor('T'), "the stopped watch is not restarted");
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
-        CollectionAssert.AreEqual(new[] { WatchFaultKind.Drive }, FaultKinds(harness, 'T'));
+        Assert.AreSequenceEqual(new[] { WatchFaultKind.Drive }, FaultKinds(harness, 'T'));
     }
 
     [TestMethod]
@@ -190,7 +190,7 @@ public partial class FileIndexWatchRecoveryTests
 
         Assert.IsTrue(recovery.IsCompleted, "disposal cancels the recovery and waits for it");
         await recovery;
-        CollectionAssert.AreEqual(new[] { WatchFaultKind.Drive }, FaultKinds(harness, 'T'));
+        Assert.AreSequenceEqual(new[] { WatchFaultKind.Drive }, FaultKinds(harness, 'T'));
     }
 
     [TestMethod]
@@ -205,7 +205,7 @@ public partial class FileIndexWatchRecoveryTests
 
         await harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard);
 
-        Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
+        Assert.HasCount(2, harness.Source.TargetsFor('T'));
         var drive = harness.DriveFor('T');
         Assert.AreEqual(WatchState.CatchingUp, drive.Watch.State);
         Assert.IsNull(drive.Watch.FailureMessage);
@@ -269,9 +269,9 @@ public partial class FileIndexWatchRecoveryTests
         await harness.WaitForRecoveryAsync('T');
 
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore, "the superseded recovery does not scan");
-        Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
+        Assert.HasCount(2, harness.Source.TargetsFor('T'));
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
-        CollectionAssert.AreEqual(new[] { WatchFaultKind.Drive }, FaultKinds(harness, 'T'));
+        Assert.AreSequenceEqual(new[] { WatchFaultKind.Drive }, FaultKinds(harness, 'T'));
     }
 
     [TestMethod]
@@ -290,7 +290,7 @@ public partial class FileIndexWatchRecoveryTests
         await harness.WaitForRecoveryAsync('T');
 
         Assert.AreEqual(0, harness.ProductionCount('T') - producedBefore);
-        Assert.AreEqual(1, harness.Source.TargetsFor('T').Count);
+        Assert.HasCount(1, harness.Source.TargetsFor('T'));
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
     }
 
@@ -310,9 +310,9 @@ public partial class FileIndexWatchRecoveryTests
         await harness.WaitForRecoveryAsync('T');
 
         Assert.AreEqual(0, harness.ProductionCount('T') - producedBefore);
-        Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
+        Assert.HasCount(2, harness.Source.TargetsFor('T'));
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
-        CollectionAssert.AreEqual(new[] { WatchFaultKind.Drive }, FaultKinds(harness, 'T'));
+        Assert.AreSequenceEqual(new[] { WatchFaultKind.Drive }, FaultKinds(harness, 'T'));
     }
 
     [TestMethod]
@@ -332,11 +332,11 @@ public partial class FileIndexWatchRecoveryTests
         await newerStart.WaitAsync(HangGuard);
         await harness.WaitForRecoveryAsync('T');
 
-        CollectionAssert.AreEqual(new[] { WatchFaultKind.Drive }, FaultKinds(harness, 'T'));
+        Assert.AreSequenceEqual(new[] { WatchFaultKind.Drive }, FaultKinds(harness, 'T'));
         var drive = harness.DriveFor('T');
         Assert.AreEqual(WatchState.CatchingUp, drive.Watch.State);
         Assert.IsNull(drive.Watch.FailureMessage);
-        Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
+        Assert.HasCount(2, harness.Source.TargetsFor('T'));
         await harness.Index.StopWatchingAsync(['T'], Token);
     }
 
@@ -360,7 +360,7 @@ public partial class FileIndexWatchRecoveryTests
         foreach (var driveLetter in new[] { 'T', 'U' })
         {
             Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor(driveLetter).Watch.State);
-            Assert.AreEqual(2, harness.Source.TargetsFor(driveLetter).Count);
+            Assert.HasCount(2, harness.Source.TargetsFor(driveLetter));
         }
     }
 

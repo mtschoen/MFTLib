@@ -130,7 +130,7 @@ public class WindowsFileByIdTests
         var failure = Assert.ThrowsExactly<IOException>(
             () => WindowsFileById.Open(missingPath, recordNumber: 5, sequenceNumber: 1, FileAccess.Read));
 
-        StringAssert.Contains(failure.Message, missingPath);
+        Assert.Contains(missingPath, failure.Message);
     }
 
     [TestMethod]
@@ -177,7 +177,7 @@ public class WindowsFileByIdTests
             var failure = Assert.ThrowsExactly<IOException>(
                 () => WindowsFileById.Open(volumeRoot, recordNumber, (ushort)(sequenceNumber + 1), FileAccess.Read));
 
-            StringAssert.Contains(failure.Message, recordNumber.ToString(CultureInfo.InvariantCulture));
+            Assert.Contains(recordNumber.ToString(CultureInfo.InvariantCulture), failure.Message);
         }
         finally
         {

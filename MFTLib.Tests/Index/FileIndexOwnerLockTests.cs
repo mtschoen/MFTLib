@@ -88,8 +88,7 @@ public sealed class FileIndexOwnerLockTests : IDisposable
             Assert.IsTrue(second.TryGetDriveOrdinal('T', out var secondOrdinal));
             secondBlockPath = second.CurrentSnapshot[secondOrdinal].Block.Path;
             Assert.IsTrue(File.Exists(secondBlockPath));
-            CollectionAssert.AreEqual(canonicalBytes, await SharedFileReader.ReadAllBytesAsync(CanonicalPath),
-                "the owning index's canonical cache is not replaced, truncated, or deleted");
+            Assert.AreSequenceEqual(canonicalBytes, await SharedFileReader.ReadAllBytesAsync(CanonicalPath), "the owning index's canonical cache is not replaced, truncated, or deleted");
             Assert.IsNotNull(second.Find(Path.Combine(TreeRoot, "Documents", "readme.md")));
         }
 
@@ -130,8 +129,8 @@ public sealed class FileIndexOwnerLockTests : IDisposable
             await AssertThrowsCancellation(() => rescan);
 
             Assert.IsTrue(File.Exists(CanonicalPath), "the canonical file must be restored");
-            Assert.AreEqual(0, Directory.EnumerateFiles(CacheDirectoryPath,
-                CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*").Count());
+            Assert.IsEmpty(Directory.EnumerateFiles(CacheDirectoryPath,
+                CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*"));
         }
 
         await using var third = await FileIndex.OpenAsync(Options(), CancellationToken.None);
@@ -156,14 +155,14 @@ public sealed class FileIndexOwnerLockTests : IDisposable
             var retiredPaths = Directory
                 .EnumerateFiles(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*")
                 .ToList();
-            Assert.AreEqual(1, retiredPaths.Count);
+            Assert.HasCount(1, retiredPaths);
 
             string secondBlockPath;
             await using (var second = await FileIndex.OpenAsync(Options(), CancellationToken.None))
             {
                 Assert.IsTrue(second.TryGetDriveOrdinal('T', out var secondOrdinal));
                 secondBlockPath = second.CurrentSnapshot[secondOrdinal].Block.Path;
-                StringAssert.Contains(secondBlockPath, "mftlib-private-");
+                Assert.Contains("mftlib-private-", secondBlockPath);
                 Assert.IsTrue(File.Exists(retiredPaths[0]),
                     "the second opener must not sweep the first index's retired sibling");
 
@@ -176,7 +175,7 @@ public sealed class FileIndexOwnerLockTests : IDisposable
                 Assert.IsNotNull(second.Find(Path.Combine(TreeRoot, "Documents", "readme.md")));
             }
 
-            Assert.IsTrue(deletions.Any(entry => entry.Contains(".retired-") && entry.Contains("superseded")),
+            Assert.Contains(entry => entry.Contains(".retired-") && entry.Contains("superseded"), deletions,
                 "the owning index logged its retired file's delete at release");
             GC.KeepAlive(oldSnapshot);
         }
@@ -208,10 +207,9 @@ public sealed class FileIndexOwnerLockTests : IDisposable
             var secondPrivatePath = second.CurrentSnapshot[secondOrdinal].Block.Path;
             Assert.AreEqual(CacheLocation.PrivateFallback, second.Drives.Single().Block!.CacheLocation);
             Assert.AreNotEqual(firstPrivatePath, secondPrivatePath);
-            CollectionAssert.AreEqual(canonicalBytes, await SharedFileReader.ReadAllBytesAsync(CanonicalPath),
-                "the canonical cache still belongs to the first index, untouched by the rescan");
-            Assert.AreEqual(0, Directory.EnumerateFiles(CacheDirectoryPath,
-                CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*").Count());
+            Assert.AreSequenceEqual(canonicalBytes, await SharedFileReader.ReadAllBytesAsync(CanonicalPath), "the canonical cache still belongs to the first index, untouched by the rescan");
+            Assert.IsEmpty(Directory.EnumerateFiles(CacheDirectoryPath,
+                CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*"));
             Assert.AreEqual(DriveState.Ready, first.Drives.Single().State);
 
             // Once the owner is gone, the second index's next rescan takes the slot: the leftover
@@ -250,7 +248,7 @@ public sealed class FileIndexOwnerLockTests : IDisposable
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.IsNull(status.Failure);
         Assert.AreEqual(CacheLocation.PrivateFallback, status.Block!.CacheLocation);
-        CollectionAssert.AreEqual(canonicalBytes, await SharedFileReader.ReadAllBytesAsync(CanonicalPath));
+        Assert.AreSequenceEqual(canonicalBytes, await SharedFileReader.ReadAllBytesAsync(CanonicalPath));
     }
 
     [TestMethod]

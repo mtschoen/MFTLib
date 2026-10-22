@@ -165,7 +165,7 @@ public class CacheDirectoryTests
         });
 
         Assert.AreEqual("options", exception.ParamName);
-        StringAssert.Contains(exception.Message, "Set FileIndexOptions.CacheDirectory or set FileIndexOptions.CacheMode to Disabled.");
+        Assert.Contains("Set FileIndexOptions.CacheDirectory or set FileIndexOptions.CacheMode to Disabled.", exception.Message);
         Assert.IsFalse(Directory.Exists(_root));
     }
 
@@ -192,6 +192,6 @@ public class CacheDirectoryTests
 
         Assert.AreEqual(_root, index.CacheDirectoryPath);
         Assert.IsTrue(Directory.Exists(_root));
-        Assert.AreEqual(0, index.Drives.Count);
+        Assert.IsEmpty(index.Drives);
     }
 }

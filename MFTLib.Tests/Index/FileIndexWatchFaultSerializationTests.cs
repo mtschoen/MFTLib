@@ -9,7 +9,7 @@ namespace MFTLib.Tests.Index;
 public class FileIndexWatchFaultSerializationTests
 {
     public TestContext TestContext { get; set; } = null!;
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     [TestMethod]
     public async Task SuccessorFaultDuringRecoveryFaultHandler_DoesNotOverlapIt()

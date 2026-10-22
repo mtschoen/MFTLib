@@ -16,7 +16,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IDisposable
 {
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     const uint VolumeSerial = 0x2970;
     IndexTreeFixture _fixture = null!;
@@ -207,9 +207,9 @@ public sealed class FileIndexPartialCanonicalBlockTests : IDisposable
 
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
         Assert.AreEqual(rowCount, index.HeaderOf().RowCount);
-        Assert.IsTrue(new FileInfo(_canonicalPath).Length > 3,
+        Assert.IsGreaterThan(3, new FileInfo(_canonicalPath).Length,
             "the slot holds the complete previous block, not the partial replacement");
-        Assert.AreEqual(0, Directory.GetFiles(CacheDirectoryPath, "*.retired-*").Length);
+        Assert.IsEmpty(Directory.GetFiles(CacheDirectoryPath, "*.retired-*"));
     }
 
     [TestMethod]
@@ -313,8 +313,7 @@ public sealed class FileIndexPartialCanonicalBlockTests : IDisposable
                 Assert.AreEqual(DriveState.Failed, index.Drives.Single().State);
             });
 
-        CollectionAssert.AreEqual(seededBytes, await File.ReadAllBytesAsync(_canonicalPath, Token),
-            "a scan that never wrote leaves the cached block it did not touch");
+        Assert.AreSequenceEqual(seededBytes, await File.ReadAllBytesAsync(_canonicalPath, Token), "a scan that never wrote leaves the cached block it did not touch");
         Assert.AreEqual(0, diagnostics.Count(entry => entry.Contains("partial")));
     }
 

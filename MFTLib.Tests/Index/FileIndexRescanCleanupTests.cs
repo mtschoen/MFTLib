@@ -15,7 +15,7 @@ public sealed class FileIndexRescanCleanupTests : IDisposable
 {
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     IndexTreeFixture _fixture = null!;
     string TreeRoot => _fixture.TreeRoot;
@@ -73,7 +73,7 @@ public sealed class FileIndexRescanCleanupTests : IDisposable
             Assert.ThrowsExactly<ObjectDisposedException>(() => _ = produced.Header,
                 "the unpublished replacement block is disposed by the failed commit");
             Assert.IsTrue(File.Exists(canonicalPath), "the renamed-aside file was moved back");
-            Assert.AreEqual(0, Directory.GetFiles(CacheDirectoryPath, "*.retired-*").Length,
+            Assert.IsEmpty(Directory.GetFiles(CacheDirectoryPath, "*.retired-*"),
                 "no retired sibling is left behind");
             Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
         }
@@ -135,7 +135,7 @@ public sealed class FileIndexRescanCleanupTests : IDisposable
             Assert.AreEqual("the producer lost the volume", drive.Failure?.Message);
             Assert.AreEqual(DriveState.Ready, drive.State,
                 "the drive keeps its previous block when its rescan's producer fails");
-            Assert.AreEqual(1, Directory.GetFiles(CacheDirectoryPath, "*.retired-*").Length,
+            Assert.HasCount(1, Directory.GetFiles(CacheDirectoryPath, "*.retired-*"),
                 "the restore could not move the renamed-aside file back over the locked replacement");
         }
         finally

@@ -49,8 +49,8 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
         AssertDrive(index, 'T', ProducerKind.Mft);
         AssertDrive(index, 'U', ProducerKind.Enumeration);
         var rows = index.Search(new SearchQuery(".txt"));
-        CollectionAssert.AreEquivalent(new[] { "scanned.txt", "walked.txt" }, rows.Select(row => row.Name).ToArray());
-        CollectionAssert.AreEquivalent(new[] { 'T', 'U' }, rows.Select(row => row.RecordKey.Drive.Letter).ToArray());
+        Assert.AreSequenceEqual(new[] { "scanned.txt", "walked.txt" }, rows.Select(row => row.Name).ToArray(), SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(new[] { 'T', 'U' }, rows.Select(row => row.RecordKey.Drive.Letter).ToArray(), SequenceOrder.InAnyOrder);
 
         await index.RescanAsync(['T'], CancellationToken.None);
         await index.RescanAsync(['U'], CancellationToken.None);
@@ -105,8 +105,7 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
             Assert.IsNull(status.Failure);
         }
 
-        CollectionAssert.AreEquivalent(new[] { 'T', 'U' },
-            index.Search(new SearchQuery("walked.txt")).Select(entry => entry.Drive.Letter).ToArray());
+        Assert.AreSequenceEqual(new[] { 'T', 'U' }, index.Search(new SearchQuery("walked.txt")).Select(entry => entry.Drive.Letter).ToArray(), SequenceOrder.InAnyOrder);
         Assert.AreEqual(0, invocationCount);
     }
 
@@ -174,7 +173,7 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
             Assert.AreEqual(DriveState.Failed, failed.State);
             Assert.AreEqual(DriveFailureKind.CacheDeclined, failed.Failure?.Kind);
             Assert.IsNull(failed.Block);
-            Assert.AreEqual(0, index.Search(new SearchQuery(null)).Count);
+            Assert.IsEmpty(index.Search(new SearchQuery(null)));
         }
         else
         {
@@ -186,10 +185,10 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
             Assert.AreEqual(requested, entry.RecordKey.ProducerKind);
             Assert.AreEqual(requested,
                 index.Search(new SearchQuery(expectedName)).Single().RecordKey.ProducerKind);
-            Assert.AreEqual(0, index.Search(new SearchQuery(rejectedName)).Count);
+            Assert.IsEmpty(index.Search(new SearchQuery(rejectedName)));
         }
 
-        Assert.IsTrue(diagnostics.Any(line => line.Contains("producer kind mismatch", StringComparison.Ordinal)));
+        Assert.Contains(line => line.Contains("producer kind mismatch", StringComparison.Ordinal), diagnostics);
     }
 
     [TestMethod]

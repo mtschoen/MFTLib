@@ -36,9 +36,9 @@ public sealed class FileIndexRetainedFileNamesAdmissionTests : IDisposable
         };
 
         var exception = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
-            FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token));
+            FileIndex.OpenAsync(options, TestContext.CancellationToken));
 
-        StringAssert.Contains(exception.Message, "frame limit");
+        Assert.Contains("frame limit", exception.Message);
         Assert.IsFalse(Directory.Exists(_fixture.CacheDirectory));
     }
 
@@ -51,7 +51,7 @@ public sealed class FileIndexRetainedFileNamesAdmissionTests : IDisposable
             RetainedFileNames = KeepList(32_700)
         };
 
-        await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
+        await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
 
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
     }
@@ -62,9 +62,9 @@ public sealed class FileIndexRetainedFileNamesAdmissionTests : IDisposable
         var options = _fixture.Options() with { RetainedFileNames = ["a", null!] };
 
         var exception = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
-            FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token));
+            FileIndex.OpenAsync(options, TestContext.CancellationToken));
 
-        StringAssert.Contains(exception.Message, "RetainedFileNames");
+        Assert.Contains("RetainedFileNames", exception.Message);
         Assert.IsFalse(Directory.Exists(_fixture.CacheDirectory));
     }
 
@@ -77,9 +77,9 @@ public sealed class FileIndexRetainedFileNamesAdmissionTests : IDisposable
         var options = _fixture.Options() with { RetainedFileNames = ["a", MalformedText.Make(codeUnit, trailing)] };
 
         var exception = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
-            FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token));
+            FileIndex.OpenAsync(options, TestContext.CancellationToken));
 
-        StringAssert.Contains(exception.Message, "unpaired surrogate");
+        Assert.Contains("unpaired surrogate", exception.Message);
         Assert.IsFalse(Directory.Exists(_fixture.CacheDirectory));
     }
 
@@ -88,7 +88,7 @@ public sealed class FileIndexRetainedFileNamesAdmissionTests : IDisposable
     {
         var options = _fixture.Options() with { RetainedFileNames = ["x\uFFFD", "x\uD83D\uDE00"] };
 
-        await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
+        await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
 
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
     }
@@ -96,11 +96,11 @@ public sealed class FileIndexRetainedFileNamesAdmissionTests : IDisposable
     [TestMethod]
     public async Task OpenAsync_MaterializesTheSetOnceSoLaterEditsDoNotChangeTheWalk()
     {
-        await File.WriteAllTextAsync(Path.Combine(_fixture.TreeRoot, "keep.txt"), "x", TestContext.CancellationTokenSource.Token);
+        await File.WriteAllTextAsync(Path.Combine(_fixture.TreeRoot, "keep.txt"), "x", TestContext.CancellationToken);
         var retained = new List<string> { "keep.txt" };
         var options = _fixture.Options() with { RetainedFileNames = retained };
 
-        await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
+        await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
         retained.Clear();
 
         Assert.IsNotNull(index.Find(Path.Combine(_fixture.TreeRoot, "keep.txt")));

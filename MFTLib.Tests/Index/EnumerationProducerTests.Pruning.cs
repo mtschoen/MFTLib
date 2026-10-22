@@ -59,7 +59,7 @@ public sealed partial class EnumerationProducerTests
                 var documents = EnumerationLookupTestAccess.FindByPath(snapshot, TreePath("Documents"));
                 Assert.IsTrue(documents.HasValue);
                 Assert.IsTrue(documents.GetValueOrDefault().IsDirectory);
-                Assert.AreEqual(0, documents.GetValueOrDefault().Children(CancellationToken.None).Count);
+                Assert.IsEmpty(documents.GetValueOrDefault().Children(CancellationToken.None));
                 Assert.AreEqual(4u, block.Header.RowCount);
             }
             finally

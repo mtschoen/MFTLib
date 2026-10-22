@@ -20,7 +20,7 @@ public partial class FileIndexWatchStateChangedTests
 {
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     /// <summary>
     ///     The drive's recorded history in one line per event: a state as
@@ -39,8 +39,7 @@ public partial class FileIndexWatchStateChangedTests
 
     static void AssertHistory(WatchStateRecorder recorder, char driveLetter, params string[] expected)
     {
-        CollectionAssert.AreEqual(expected, History(recorder, driveLetter),
-            $"history of {driveLetter}: {string.Join(", ", History(recorder, driveLetter))}");
+        Assert.AreSequenceEqual(expected, History(recorder, driveLetter), $"history of {driveLetter}: {string.Join(", ", History(recorder, driveLetter))}");
         AssertEveryStateChangingFaultFollowsItsState(recorder, driveLetter);
     }
 
@@ -60,7 +59,7 @@ public partial class FileIndexWatchStateChangedTests
                 continue;
             }
 
-            Assert.IsTrue(events.Take(position).OfType<WatchStateChange>().Any(state => Equals(state.Fault, fault)),
+            Assert.Contains(state => Equals(state.Fault, fault), events.Take(position).OfType<WatchStateChange>(),
                 $"{fault.Kind} of {driveLetter} was reported before any state change carrying it: " +
                 string.Join(", ", History(recorder, driveLetter)));
         }
@@ -380,7 +379,7 @@ public partial class FileIndexWatchStateChangedTests
         await harness.Index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         Assert.AreEqual(0, harness.DriveFor('U').Watch.StateVersion);
-        Assert.AreEqual(0, recorder.StatesFor('U').Count);
+        Assert.IsEmpty(recorder.StatesFor('U'));
         await harness.Index.StartWatchingAsync(['U'], Token).WaitAsync(HangGuard);
 
         AssertHistory(recorder, 'T', "CatchingUp:1", "CaughtUp:2");
@@ -487,11 +486,11 @@ public partial class FileIndexWatchStateChangedTests
                 var read = await reader.WaitAsync(HangGuard);
                 Assert.IsFalse(exited[position].Task.IsCompleted,
                     "the second-thread read completed while the subscriber was held");
-                Assert.IsTrue(observation.VisibleVersion >= observation.Change.Watch.StateVersion);
-                Assert.IsTrue(read.Watch.StateVersion >= observation.Change.Watch.StateVersion);
+                Assert.IsGreaterThanOrEqualTo(observation.Change.Watch.StateVersion, observation.VisibleVersion);
+                Assert.IsGreaterThanOrEqualTo(observation.Change.Watch.StateVersion, read.Watch.StateVersion);
                 var rejection = await Assert.ThrowsAsync<InvalidOperationException>(
                     () => observation.RejectedStop.WaitAsync(HangGuard));
-                StringAssert.Contains(rejection.Message, "WatchStateChanged");
+                Assert.Contains("WatchStateChanged", rejection.Message);
             }
             finally
             {
@@ -537,7 +536,7 @@ public partial class FileIndexWatchStateChangedTests
         await index.StopWatchingAsync(['T'], Token).WaitAsync(HangGuard);
 
         AssertHistory(recorder, 'T', "CatchingUp:1", "CaughtUp:2", "NotStarted:3");
-        Assert.AreEqual(0, harness.Faults.Count);
+        Assert.IsEmpty(harness.Faults);
     }
 
     [TestMethod]

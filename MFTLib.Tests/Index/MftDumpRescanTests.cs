@@ -91,7 +91,7 @@ public sealed class MftDumpRescanTests : IDisposable
             () => index.RescanAsync(['D'], CancellationToken.None));
 
         Assert.IsInstanceOfType<IOException>(failure.InnerException);
-        StringAssert.StartsWith(failure.InnerException.Message, "Failed to open file. Error: ");
+        Assert.StartsWith("Failed to open file. Error: ", failure.InnerException.Message);
         Assert.IsNotNull(index.Find(NotesPath));
     }
 
@@ -123,7 +123,7 @@ public sealed class MftDumpRescanTests : IDisposable
             () => index.RescanAsync(['D'], cancellation.Token));
         Assert.IsNotNull(index.Find(NotesPath));
         using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-        Assert.IsTrue(exclusive.Length > 0, "the cancelled scan closed its input");
+        Assert.IsGreaterThan(0, exclusive.Length, "the cancelled scan closed its input");
     }
 
     [TestMethod]
@@ -137,7 +137,7 @@ public sealed class MftDumpRescanTests : IDisposable
 
         var indexes = await Task.WhenAll(OpenAsync(source), OpenAsync(source));
 
-        Assert.AreEqual(2, inputs.Distinct().Count());
+        Assert.HasCount(2, inputs.Distinct());
         await indexes[0].DisposeAsync();
         await using var remaining = indexes[1];
         Assert.AreEqual(DriveState.Ready, remaining.Drives.Single().State);

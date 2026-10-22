@@ -13,7 +13,7 @@ public class FileIndexDisposalOrderTests
 {
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     [TestMethod]
     public async Task Dispose_DuringGatedRescans_CancelsThemAwaitsPumpsReleasesGates()
@@ -80,7 +80,7 @@ public class FileIndexDisposalOrderTests
         Assert.IsFalse(disposal.IsCompleted, "disposal waits for the batch that holds T's write gate");
         batch.Release();
         var changes = await apply.WaitAsync(HangGuard);
-        Assert.AreEqual(1, changes.Count, "the batch finished against a block that was still mapped");
+        Assert.HasCount(1, changes, "the batch finished against a block that was still mapped");
         await disposal.WaitAsync(HangGuard);
     }
 }

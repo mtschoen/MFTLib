@@ -81,7 +81,7 @@ public partial class IndexNavigationTests
         {
             var exception = Assert.ThrowsExactly<InvalidOperationException>(
                 () => _ = FileEntry.Create(snapshot[0], orphan).Path);
-            StringAssert.Contains(exception.Message, "root directory");
+            Assert.Contains("root directory", exception.Message);
         }
         finally
         {

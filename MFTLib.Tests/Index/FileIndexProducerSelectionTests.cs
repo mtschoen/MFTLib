@@ -59,8 +59,8 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
     [TestMethod]
     public async Task RetainedFileNames_OneSetReachesTheMftProducerAndFiltersTheEnumerationWalk()
     {
-        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Notes.TXT"), "keep", TestContext.CancellationTokenSource.Token);
-        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "other.bin"), "drop", TestContext.CancellationTokenSource.Token);
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Notes.TXT"), "keep", TestContext.CancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "other.bin"), "drop", TestContext.CancellationToken);
         var seen = new List<IReadOnlyCollection<string>?>();
         Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request, CancellationToken _)
         {
@@ -77,9 +77,9 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource(Produce),
             RetainedFileNames = retained
-        }, TestContext.CancellationTokenSource.Token);
+        }, TestContext.CancellationToken);
 
-        CollectionAssert.AreEqual(retained, seen.Single()!.ToArray());
+        Assert.AreSequenceEqual(retained, seen.Single()!.ToArray());
         var walked = index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Ready, walked.State);
         Assert.IsNotNull(index.Find(Path.Combine(TreeRoot, "Notes.TXT")));
@@ -100,7 +100,7 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
         Directory.CreateDirectory(CacheDirectoryPath);
         await File.WriteAllTextAsync(
             Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 1)), "invalid",
-            TestContext.CancellationTokenSource.Token);
+            TestContext.CancellationToken);
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
             Drives = [new IndexedDrive('T', firstRoot, 1), new IndexedDrive('U', secondRoot, 2)],
@@ -108,7 +108,7 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
             MftSource = new MftIndexSource((request, _) => request.Drive == 'T'
                 ? throw new UnauthorizedAccessException(failureMessage)
                 : Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, 7, 4096, FixedMoment), 0)))
-        }, TestContext.CancellationTokenSource.Token);
+        }, TestContext.CancellationToken);
 
         var failed = index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Failed, failed.State);
@@ -143,7 +143,7 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
             Drives = [new IndexedDrive('T', firstRoot, 1), new IndexedDrive('U', secondRoot, 2)],
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource((_, _) => throw new UnauthorizedAccessException("elevation declined"))
-        }, TestContext.CancellationTokenSource.Token);
+        }, TestContext.CancellationToken);
 
         Assert.AreEqual("elevation declined",
             index.Drives.Single(drive => drive.Drive == 'T').Failure?.Message);
@@ -174,7 +174,7 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource(CountingProducer),
             CacheMode = CacheMode.ExistingOnly
-        }, TestContext.CancellationTokenSource.Token);
+        }, TestContext.CancellationToken);
 
         Assert.AreEqual(0, invocationCount, "a cache-only open must never attempt a scan");
         var failed = index.Drives.Single();
@@ -193,7 +193,7 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
             Drives = [new IndexedDrive('T', TreeRoot, 1)],
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource(static (_, token) => throw new OperationCanceledException(token))
-        }, TestContext.CancellationTokenSource.Token));
+        }, TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -328,7 +328,7 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
             var failedDrive = failedIndex.Drives.Single();
             Assert.AreEqual(DriveState.Failed, failedDrive.State);
             Assert.AreEqual(DriveFailureKind.ProducerFailed, failedDrive.Failure?.Kind);
-            StringAssert.Contains(failedDrive.Failure?.Message, check);
+            Assert.Contains(check, failedDrive.Failure?.Message!);
         }
 
         Assert.IsNotNull(producedBlock);
@@ -370,7 +370,7 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
         }
 
         await using var index = await FileIndex.OpenAsync(Options(ProducerKind.Mft, Produce),
-            TestContext.CancellationTokenSource.Token);
+            TestContext.CancellationToken);
         var created = UsnJournalEntry.Create(new UsnJournalEntryOptions
         {
             RecordNumber = 20,
@@ -414,18 +414,18 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
         });
 
         // Prove coalescing works within an unreplaced block's open cycle.
-        Assert.AreEqual(1, index.ApplyJournalEntries('T', [controlCreated], 7, 5002).Count);
-        Assert.AreEqual(0, index.ApplyJournalEntries('T', [controlClosed], 7, 5003).Count);
+        Assert.HasCount(1, index.ApplyJournalEntries('T', [controlCreated], 7, 5002));
+        Assert.IsEmpty(index.ApplyJournalEntries('T', [controlClosed], 7, 5003));
 
         // Record 20's create leaves its cycle open in ReportedReasonCycles leading up to rescan.
-        Assert.AreEqual(1, index.ApplyJournalEntries('T', [created], 7, 5004).Count);
+        Assert.HasCount(1, index.ApplyJournalEntries('T', [created], 7, 5004));
 
-        await index.RescanAsync(['T'], TestContext.CancellationTokenSource.Token);
+        await index.RescanAsync(['T'], TestContext.CancellationToken);
 
         // On the replaced block, the open cycle was discarded with the old DriveBlock;
         // the close record is treated as a first-sighted create rather than coalesced.
         var afterRescan = index.ApplyJournalEntries('T', [closed], 7, 8193);
-        Assert.AreEqual(1, afterRescan.Count);
+        Assert.HasCount(1, afterRescan);
         Assert.AreEqual(FileChangeKind.Created, afterRescan[0].Kind);
     }
 
@@ -445,12 +445,12 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource(Producer),
             CacheMode = CacheMode.ExistingOnly
-        }, TestContext.CancellationTokenSource.Token);
+        }, TestContext.CancellationToken);
         Assert.AreEqual(0, invocationCount, "a cache-only open must never attempt a scan");
         Assert.AreEqual(DriveState.Failed, index.Drives.Single().State);
         Assert.AreEqual(DriveFailureKind.CacheDeclined, index.Drives.Single().Failure?.Kind);
 
-        await index.RescanAsync(['T'], TestContext.CancellationTokenSource.Token);
+        await index.RescanAsync(['T'], TestContext.CancellationToken);
 
         Assert.AreEqual(1, invocationCount);
         var status = index.Drives.Single();
@@ -472,11 +472,11 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource((_, _) => throw new UnauthorizedAccessException("elevation declined")),
             CacheMode = CacheMode.ExistingOnly
-        }, TestContext.CancellationTokenSource.Token);
+        }, TestContext.CancellationToken);
         Assert.AreEqual(DriveFailureKind.CacheDeclined, index.Drives.Single().Failure?.Kind);
 
         await DriveResultAssertions.FailureAsync<InvalidOperationException>(
-            () => index.RescanAsync(['T'], TestContext.CancellationTokenSource.Token));
+            () => index.RescanAsync(['T'], TestContext.CancellationToken));
 
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, status.State);
@@ -503,11 +503,11 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
             Drives = [new IndexedDrive('T', TreeRoot, 0x0BADF00D)],
             CacheDirectory = CacheDirectoryPath,
             MftSource = new MftIndexSource(Producer)
-        }, TestContext.CancellationTokenSource.Token);
+        }, TestContext.CancellationToken);
         Assert.AreEqual(DriveState.Failed, index.Drives.Single().State);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, index.Drives.Single().Failure?.Kind);
 
-        await index.RescanAsync(['T'], TestContext.CancellationTokenSource.Token);
+        await index.RescanAsync(['T'], TestContext.CancellationToken);
 
         Assert.AreEqual(2, invocationCount);
         var status = index.Drives.Single();
@@ -530,12 +530,12 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
         var deletions = new List<string>();
         var options = Options(ProducerKind.Mft, MismatchedProducer) with { Diagnostics = deletions.Add };
         await using var failedIndex = await FileIndex.OpenAsync(options,
-            TestContext.CancellationTokenSource.Token);
+            TestContext.CancellationToken);
 
         Assert.AreEqual(DriveState.Failed, failedIndex.Drives.Single().State);
         var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 0x0BADF00D));
         var line = deletions.SingleOrDefault(entry => entry.Contains(blockPath));
         Assert.IsNotNull(line, "the rejected producer block's delete must be logged with its path");
-        StringAssert.Contains(line, "journal cursor");
+        Assert.Contains("journal cursor", line);
     }
 }

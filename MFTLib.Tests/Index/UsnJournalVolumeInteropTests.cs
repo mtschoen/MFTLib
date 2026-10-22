@@ -206,9 +206,9 @@ public class UsnJournalVolumeInteropTests
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.JournalRecreated, loss.Cause);
         Assert.AreEqual('C', loss.Drive);
-        Assert.IsTrue(loss.NextUsn >= loss.FirstUsn, "the journal window should not run backwards");
-        Assert.IsTrue(loss.JournalSettings.AllocationDelta > 0);
-        Assert.IsTrue(loss.JournalSettings.MaximumSize > 0);
+        Assert.IsGreaterThanOrEqualTo(loss.FirstUsn, loss.NextUsn, "the journal window should not run backwards");
+        Assert.IsGreaterThan(0, loss.JournalSettings.AllocationDelta);
+        Assert.IsGreaterThan(0, loss.JournalSettings.MaximumSize);
         Assert.IsNull(loss.SizeThatWouldHaveRetained,
             "different journal instances have no comparable span for the size arithmetic");
         Assert.IsNull(loss.BytesBehind);
@@ -257,7 +257,7 @@ public class UsnJournalVolumeInteropTests
 
         Assert.IsNotNull(journal, "C: has a journal the unelevated handle can read");
         Assert.AreNotEqual(0UL, journal.Value.JournalIdentifier);
-        Assert.IsTrue(journal.Value.AllocationDelta > 0);
+        Assert.IsGreaterThan(0, journal.Value.AllocationDelta);
     }
 
     [TestMethod]
@@ -273,6 +273,6 @@ public class UsnJournalVolumeInteropTests
         Kernel32.Hooks.ResetToDefaults();
 
         // Back on the real IOCTL, C: answers its settings again.
-        Assert.IsTrue(UsnJournalSettingsQuery.Query('C').MaximumSize > 0);
+        Assert.IsGreaterThan(0, UsnJournalSettingsQuery.Query('C').MaximumSize);
     }
 }

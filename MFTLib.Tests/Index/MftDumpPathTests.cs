@@ -27,7 +27,7 @@ public class MftDumpPathTests
         Assert.AreEqual("dump:/D", root.Path);
         Assert.AreEqual("dump:/D/documents", documents.Path);
         Assert.AreEqual(root, documents.Parent);
-        CollectionAssert.AreEquivalent(new[] { "Deep", "Notes.txt" }, documents.Children().Select(c => c.Name).ToArray());
+        Assert.AreSequenceEqual(new[] { "Deep", "Notes.txt" }, documents.Children().Select(c => c.Name).ToArray(), SequenceOrder.InAnyOrder);
         var subtree = index.Search(new SearchQuery("leaf", Subtree: documents));
         Assert.AreEqual("dump:/D/documents/Deep/leaf.txt", subtree.Single().Path);
     }

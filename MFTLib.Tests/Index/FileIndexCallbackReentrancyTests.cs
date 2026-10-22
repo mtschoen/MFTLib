@@ -23,7 +23,7 @@ public class FileIndexCallbackReentrancyTests
 
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     [TestMethod]
     public async Task ChangedHandlerOnX_CallsStopOnY_ThrowsImmediately_YKeepsWatching()
@@ -41,7 +41,7 @@ public class FileIndexCallbackReentrancyTests
         AssertRejected(failure, "StopWatchingAsync");
         Assert.AreEqual(0, harness.Source.WatchFor('U').DisposeCount, "Y's watch was not stopped");
         await harness.Source.WatchFor('U').Publish(WatchHarness.Batch(10, "u.txt", nextUsn: 300));
-        Assert.IsTrue(harness.Changes.Any(change => change.Entry.Name == "u.txt"), "Y still applies batches");
+        Assert.Contains(change => change.Entry.Name == "u.txt", harness.Changes, "Y still applies batches");
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('U').Watch.State);
     }
 
@@ -60,7 +60,7 @@ public class FileIndexCallbackReentrancyTests
 
         AssertRejected(failure, "StopWatchingAsync");
         await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(10, "t2.txt", nextUsn: 400));
-        Assert.IsTrue(harness.Changes.Any(change => change.Entry.Name == "t2.txt"), "X's pump is still running");
+        Assert.Contains(change => change.Entry.Name == "t2.txt", harness.Changes, "X's pump is still running");
     }
 
     [TestMethod]
@@ -102,8 +102,8 @@ public class FileIndexCallbackReentrancyTests
         await uConsumed.WaitAsync(HangGuard);
         await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(11, "t2.txt", nextUsn: 400));
         await harness.Source.WatchFor('U').Publish(WatchHarness.Batch(12, "u2.txt", nextUsn: 400));
-        Assert.IsTrue(harness.Changes.Any(change => change.Entry.Name == "t2.txt"), "both pumps continue");
-        Assert.IsTrue(harness.Changes.Any(change => change.Entry.Name == "u2.txt"), "both pumps continue");
+        Assert.Contains(change => change.Entry.Name == "t2.txt", harness.Changes, "both pumps continue");
+        Assert.Contains(change => change.Entry.Name == "u2.txt", harness.Changes, "both pumps continue");
     }
 
     [TestMethod]
@@ -134,7 +134,7 @@ public class FileIndexCallbackReentrancyTests
         harness.Source.WatchFor('T').FailDrive(new IOException("the volume went away"));
 
         AssertRejected(await outcome.Task.WaitAsync(HangGuard), "StartWatchingAsync");
-        Assert.AreEqual(0, harness.Source.TargetsFor('U').Count, "the rejected start never reached the source");
+        Assert.IsEmpty(harness.Source.TargetsFor('U'), "the rejected start never reached the source");
     }
 
     [TestMethod]
@@ -151,7 +151,7 @@ public class FileIndexCallbackReentrancyTests
         AssertRejected(await outcome.Task.WaitAsync(HangGuard), "DisposeAsync");
         await consumed.WaitAsync(HangGuard);
         await harness.Source.WatchFor('U').Publish(WatchHarness.Batch(10, "u.txt", nextUsn: 300));
-        Assert.IsTrue(harness.Changes.Any(change => change.Entry.Name == "u.txt"), "the index was not disposed");
+        Assert.Contains(change => change.Entry.Name == "u.txt", harness.Changes, "the index was not disposed");
     }
 
     [TestMethod]
@@ -303,7 +303,7 @@ public class FileIndexCallbackReentrancyTests
         await handlerRan.Task.WaitAsync(HangGuard);
         await harness.WaitForRecoveryAsync('T');
 
-        Assert.AreEqual(2, harness.Source.TargetsFor('T').Count, "the recovery restarted the watch");
+        Assert.HasCount(2, harness.Source.TargetsFor('T'), "the recovery restarted the watch");
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
     }
 

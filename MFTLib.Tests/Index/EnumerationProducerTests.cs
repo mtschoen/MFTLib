@@ -217,7 +217,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
 
             for (uint row = 1; row < block.Header.RowCount; row++)
             {
-                Assert.IsTrue(block.Rows[(int)row].ParentRow < row);
+                Assert.IsLessThan(row, block.Rows[(int)row].ParentRow);
                 Assert.IsTrue(block.Rows[(int)block.Rows[(int)row].ParentRow].IsDirectory);
                 Assert.AreEqual((ushort)0, block.SequenceNumbers[(int)row]);
             }
@@ -305,15 +305,15 @@ public sealed partial class EnumerationProducerTests : IDisposable
         }), lease, CancellationToken.None);
 
         Assert.AreEqual(7u, created.Writer.RowCount);
-        Assert.IsTrue(observed.Count > 0, "the walk visited at least one directory");
-        Assert.AreEqual(1, reportingThreadIds.Count, "all progress reports came from one thread");
+        Assert.IsNotEmpty(observed, "the walk visited at least one directory");
+        Assert.HasCount(1, reportingThreadIds, "all progress reports came from one thread");
         Assert.AreEqual(callingThreadId, reportingThreadIds.Single(), "all progress reports came from the calling thread");
         Assert.AreEqual(IndexScanPhase.Enumerating, observed[0].Phase);
         Assert.AreEqual('T', observed[0].Drive);
-        CollectionAssert.AllItemsAreUnique(observed.Select(report => report.CurrentDirectory!).ToArray());
+        Assert.AreAllDistinct(observed.Select(report => report.CurrentDirectory!).ToArray());
         for (var i = 1; i < observed.Count; i++)
         {
-            Assert.IsTrue(observed[i].WrittenRowCount >= observed[i - 1].WrittenRowCount, "counts are nondecreasing");
+            Assert.IsGreaterThanOrEqualTo(observed[i - 1].WrittenRowCount, observed[i].WrittenRowCount, "counts are nondecreasing");
         }
         Assert.AreEqual(7u, observed[^1].WrittenRowCount);
     }
@@ -340,7 +340,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
         // exactly one of Documents or Pictures fails to write its first entry and trips
         // capacity exhausted. The walk must stop there instead of also opening the other sibling
         // directory, so at most two directories are ever visited.
-        Assert.AreEqual(2, progress.Directories.Count);
+        Assert.HasCount(2, progress.Directories);
     }
 
     [TestMethod]
@@ -467,11 +467,11 @@ public sealed partial class EnumerationProducerTests : IDisposable
         };
         var result = reader.Read(new EnumerationDirectoryWork(_treeRoot, 0), CancellationToken.None);
         Assert.IsTrue(result.SubtreeSkipped);
-        Assert.AreEqual(1, result.Entries.Count);
-        Assert.IsTrue(result.Name(result.Entries[0]).Length > 0);
+        Assert.HasCount(1, result.Entries);
+        Assert.IsGreaterThan(0, result.Name(result.Entries[0]).Length);
         Assert.AreEqual(0u, result.Entries[0].Columns.ParentRow);
         Assert.AreEqual((ushort)0, result.Entries[0].Columns.SequenceNumber);
-        CollectionAssert.AreEqual(new[] { 0, 1 }, observations);
+        Assert.AreSequenceEqual(new[] { 0, 1 }, observations);
     }
 
     [TestMethod]
@@ -494,7 +494,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
         var thrown = Assert.ThrowsExactly<InvalidOperationException>(
             () => reader.Read(new EnumerationDirectoryWork(_treeRoot, 0), CancellationToken.None));
         Assert.AreSame(failure, thrown);
-        CollectionAssert.AreEqual(new[] { 0, 1 }, observations);
+        Assert.AreSequenceEqual(new[] { 0, 1 }, observations);
     }
 
     [TestMethod]
@@ -744,15 +744,14 @@ public sealed partial class EnumerationProducerTests : IDisposable
     [TestMethod]
     public void EstimateRowCount_IsAtLeastTheMinimumAndDoesNotThrowOnAMissingDirectory()
     {
-        Assert.IsTrue(EnumerationProducer.EstimateRowCount(_treeRoot) > 0);
-        Assert.IsTrue(EnumerationProducer.EstimateRowCount(Path.Combine(_treeRoot, "nope")) > 0);
+        Assert.IsGreaterThan(0u, EnumerationProducer.EstimateRowCount(_treeRoot));
+        Assert.IsGreaterThan(0u, EnumerationProducer.EstimateRowCount(Path.Combine(_treeRoot, "nope")));
     }
 
     [TestMethod]
     public void EstimateNamePoolBytes_ScalesWithRowCount()
     {
-        Assert.IsTrue(EnumerationProducer.EstimateNamePoolBytes(1000) >
-            EnumerationProducer.EstimateNamePoolBytes(100));
+        Assert.IsGreaterThan(EnumerationProducer.EstimateNamePoolBytes(100), EnumerationProducer.EstimateNamePoolBytes(1000));
     }
 
     [TestMethod]
@@ -881,7 +880,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
 
             Assert.IsFalse(result.CapacityExhausted);
             Assert.AreEqual(1, result.AccessDeniedSubtreeCount);
-            CollectionAssert.AreEqual(new[] { failingDir }, failedDirectories);
+            Assert.AreSequenceEqual(new[] { failingDir }, failedDirectories);
             Assert.IsFalse(observation.Visits.ContainsKey(childOfFailing), "Descendant of skipped directory must not be visited");
             Assert.IsTrue(observation.Visits.ContainsKey(healthyDir), "Healthy sibling directory must be visited");
 
@@ -925,7 +924,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
                 observation.WorkerExit.Release();
                 var thrown = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => produceTask.WaitAsync(HangGuard));
                 Assert.AreSame(sentinel, thrown);
-                Assert.IsTrue(observation.Visited.Contains(observation.FaultedPath));
+                Assert.Contains(observation.FaultedPath, observation.Visited);
                 Assert.AreEqual(0, observation.Active);
             }
             finally
@@ -997,7 +996,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
                 observation.WorkerExit.Release();
                 var thrown = await Assert.ThrowsExactlyAsync<IOException>(() => produceTask.WaitAsync(HangGuard));
                 Assert.AreSame(sentinel, thrown);
-                Assert.AreEqual(failInWriter ? 0 : 1, failedDirectories.Count);
+                Assert.HasCount(failInWriter ? 0 : 1, failedDirectories);
                 Assert.AreEqual(0, observation.Active);
                 Assert.AreEqual(0u, created.Block.Header.AccessDeniedSubtreeCount);
             }
@@ -1059,8 +1058,8 @@ public sealed partial class EnumerationProducerTests : IDisposable
                 Assert.AreEqual(0, result.AccessDeniedSubtreeCount);
                 Assert.AreEqual(0, observation.Active);
                 Assert.AreEqual(3u, result.RowCount);
-                Assert.AreEqual(2, progress.Directories.Count);
-                Assert.IsFalse(observation.Visited.Any(path => Path.GetFileName(path) == "deep"),
+                Assert.HasCount(2, progress.Directories);
+                Assert.DoesNotContain(path => Path.GetFileName(path) == "deep", observation.Visited,
                     "Descendants of unwritten rows must never be scheduled");
             }
             finally

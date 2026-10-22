@@ -48,7 +48,7 @@ public class SnapshotBorrowTests
         {
             var thrown = Assert.ThrowsExactly<ObjectDisposedException>(() => new SnapshotBorrow(snapshot));
 
-            StringAssert.Contains(thrown.ObjectName, nameof(DriveBlock));
+            Assert.Contains(nameof(DriveBlock), thrown.ObjectName);
             Assert.AreEqual(0, snapshot[0].ReleaseState.Hooks.OutstandingBorrowCount);
         }
         finally

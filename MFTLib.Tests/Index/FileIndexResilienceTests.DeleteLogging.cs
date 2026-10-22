@@ -30,8 +30,7 @@ public partial class FileIndexResilienceTests
         Assert.AreEqual(DriveState.Failed, failed.State);
         Assert.AreEqual(DriveFailureKind.CacheDeclined, failed.Failure?.Kind);
         Assert.IsNull(failed.Block!);
-        CollectionAssert.AreEqual(bytes, await File.ReadAllBytesAsync(blockPath),
-            "a cache-only open leaves the rejected block in place");
+        Assert.AreSequenceEqual(bytes, await File.ReadAllBytesAsync(blockPath), "a cache-only open leaves the rejected block in place");
     }
 
     [TestMethod]
@@ -49,7 +48,7 @@ public partial class FileIndexResilienceTests
         Assert.IsFalse(File.Exists(staleRetiredPath));
         var line = deletions.SingleOrDefault(entry => entry.Contains(staleRetiredPath));
         Assert.IsNotNull(line, "the sweep delete must be logged with its path");
-        StringAssert.Contains(line, "retired");
+        Assert.Contains("retired", line);
     }
 
     [TestMethod]
@@ -70,7 +69,7 @@ public partial class FileIndexResilienceTests
 
         var line = deletions.SingleOrDefault(entry => entry.Contains(blockPath));
         Assert.IsNotNull(line, "the rejected cache delete must be logged with its path");
-        StringAssert.Contains(line, nameof(BlockValidationResult.WrongMagic));
+        Assert.Contains(nameof(BlockValidationResult.WrongMagic), line);
     }
 
     [TestMethod]
@@ -97,7 +96,7 @@ public partial class FileIndexResilienceTests
             Assert.AreEqual(BlockOrigin.ProducedByScan, index.Drives[0].Block!.Origin);
             var line = deletions.SingleOrDefault(entry => entry.Contains(blockPath));
             Assert.IsNotNull(line, "the wrong-root discard must be logged with its path");
-            StringAssert.Contains(line, nameof(BlockValidationResult.WrongRootDirectory));
+            Assert.Contains(nameof(BlockValidationResult.WrongRootDirectory), line);
         }
         finally
         {
@@ -120,7 +119,7 @@ public partial class FileIndexResilienceTests
 
         var line = deletions.SingleOrDefault(entry => entry.Contains(".retired-"));
         Assert.IsNotNull(line, "the superseded block's delete at release must be logged with its path");
-        StringAssert.Contains(line, "superseded");
+        Assert.Contains("superseded", line);
     }
 
     [TestMethod]

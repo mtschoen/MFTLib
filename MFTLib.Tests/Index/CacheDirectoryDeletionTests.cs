@@ -46,7 +46,7 @@ public class CacheDirectoryDeletionTests
         var results = CacheDirectory.DeleteCached(_directory,
             new HashSet<char> { 'T' }.Select(letter => new DriveKey(letter)));
 
-        CollectionAssert.AreEquivalent(selected, results.Select(result => result.File.Path).ToArray());
+        Assert.AreSequenceEqual(selected, results.Select(result => result.File.Path).ToArray(), SequenceOrder.InAnyOrder);
         foreach (var result in results)
         {
             Assert.AreEqual(CachedBlockDeletionOutcome.Deleted, result.Outcome);
@@ -61,7 +61,7 @@ public class CacheDirectoryDeletionTests
             Assert.IsTrue(File.Exists(path));
         }
         Assert.IsFalse(File.Exists(BlockOwnerLock.LockPathFor(excluded)));
-        Assert.AreEqual(0, CacheDirectory.DeleteCached(_directory, new HashSet<char>().Select(letter => new DriveKey(letter))).Count);
+        Assert.IsEmpty(CacheDirectory.DeleteCached(_directory, new HashSet<char>().Select(letter => new DriveKey(letter))));
         Assert.AreEqual(CachedBlockDeletionOutcome.Deleted, CacheDirectory.DeleteCached(_directory, ['u']).Single().Outcome);
         Assert.IsFalse(File.Exists(excluded));
         Assert.IsTrue(File.Exists(BlockOwnerLock.LockPathFor(excluded)));
@@ -76,7 +76,7 @@ public class CacheDirectoryDeletionTests
 
         var results = CacheDirectory.DeleteCached(_directory);
 
-        Assert.AreEqual(2, results.Count);
+        Assert.HasCount(2, results);
         var busy = results.Single(result => result.File.Path == unavailable);
         Assert.AreEqual(CachedBlockDeletionOutcome.InUse, busy.Outcome);
         Assert.IsNull(busy.FailureReason);
@@ -105,7 +105,7 @@ public class CacheDirectoryDeletionTests
 
         var results = CacheDirectory.DeleteCached(_directory);
 
-        Assert.AreEqual(3, results.Count);
+        Assert.HasCount(3, results);
         var failure = results.Single(result => result.Outcome == CachedBlockDeletionOutcome.Failed);
         Assert.AreEqual(replaced, failure.File.Path);
         Assert.IsFalse(string.IsNullOrWhiteSpace(failure.FailureReason));
@@ -127,7 +127,7 @@ public class CacheDirectoryDeletionTests
 
         var results = CacheDirectory.DeleteCached(_directory);
 
-        CollectionAssert.AreEquivalent(paths, results.Select(result => result.File.Path).ToArray());
+        Assert.AreSequenceEqual(paths, results.Select(result => result.File.Path).ToArray(), SequenceOrder.InAnyOrder);
         foreach (var result in results)
         {
             Assert.AreEqual(CachedBlockDeletionOutcome.Deleted, result.Outcome);
@@ -143,9 +143,9 @@ public class CacheDirectoryDeletionTests
     public void DeleteCached_EmptyMissingAndInvalidPathsFollowInventoryContract()
     {
         var missing = Path.Combine(_directory, "missing");
-        Assert.AreEqual(0, CacheDirectory.DeleteCached(missing).Count);
+        Assert.IsEmpty(CacheDirectory.DeleteCached(missing));
         Assert.IsFalse(Directory.Exists(missing));
-        Assert.AreEqual(0, CacheDirectory.DeleteCached(_directory).Count);
+        Assert.IsEmpty(CacheDirectory.DeleteCached(_directory));
         Assert.ThrowsExactly<ArgumentNullException>(() => CacheDirectory.DeleteCached(null!));
         Assert.ThrowsExactly<ArgumentException>(() => CacheDirectory.DeleteCached(string.Empty));
     }

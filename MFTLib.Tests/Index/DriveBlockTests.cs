@@ -76,7 +76,7 @@ public class DriveBlockTests
         // assertion at all is half of the contract; the other half is that the failed
         // release ran before the block was unmapped.
         Assert.IsTrue(release.IsReleaseStarted);
-        Assert.IsTrue(block.Rows.Length > 0, "the block is still mapped");
+        Assert.IsGreaterThan(0, block.Rows.Length, "the block is still mapped");
         block.Dispose();
     }
 

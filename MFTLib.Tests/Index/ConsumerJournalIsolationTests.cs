@@ -22,7 +22,7 @@ public class ConsumerJournalIsolationTests
     int _productions;
 
     public TestContext TestContext { get; set; } = null!;
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     static SyntheticJournalWindow Healthy => new(JournalIdentifier: 7, FirstUsn: 0, NextUsn: 5_000,
         AllocationDelta: 64, MaximumSize: 8_192);
@@ -118,11 +118,11 @@ public class ConsumerJournalIsolationTests
         {
             var refusal = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
                 () => index.StartWatchingAsync(['T'], Token));
-            StringAssert.Contains(refusal.Message, "RescanAsync");
-            Assert.AreEqual(0, source.Starts.Count);
+            Assert.Contains("RescanAsync", refusal.Message);
+            Assert.IsEmpty(source.Starts);
             status = index.Drives.Single();
             Assert.IsNotNull(status.Watch.FailureMessage);
-            StringAssert.Contains(status.Watch.FailureMessage, "RescanAsync");
+            Assert.Contains("RescanAsync", status.Watch.FailureMessage);
             Assert.AreEqual(WatchState.Faulted, status.Watch.State);
         }
     }

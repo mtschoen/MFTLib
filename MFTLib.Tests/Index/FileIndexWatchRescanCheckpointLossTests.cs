@@ -22,7 +22,7 @@ public class FileIndexWatchRescanCheckpointLossTests
 
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     [TestMethod]
     public async Task RescanAsync_AfterEveryDriveFaulted_LeavesADriveWhoseLiveWatchLostItsCheckpointOutOfTheRestart()
@@ -51,8 +51,8 @@ public class FileIndexWatchRescanCheckpointLossTests
         await harness.Index.RescanAsync(['T'], Token);
 
         Assert.AreEqual(new IndexWatchTarget('T', 13, 9000), harness.Source.TargetsFor('T')[^1]);
-        Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
-        Assert.AreEqual(1, harness.Source.TargetsFor('U').Count, "U's condemned cursor is never started again");
+        Assert.HasCount(2, harness.Source.TargetsFor('T'));
+        Assert.HasCount(1, harness.Source.TargetsFor('U'), "U's condemned cursor is never started again");
 
         var lostDrive = harness.DriveFor('U');
         Assert.AreEqual(uFault.Exception.Message, lostDrive.Watch.FailureMessage);

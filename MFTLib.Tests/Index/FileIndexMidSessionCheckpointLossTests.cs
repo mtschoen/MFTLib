@@ -28,7 +28,7 @@ public class FileIndexMidSessionCheckpointLossTests
 
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     /// <summary>T has lost its position by 500 bytes; every other drive's is still inside the journal.</summary>
     static IDisposable TrimmedForTOnly()
@@ -180,8 +180,7 @@ public class FileIndexMidSessionCheckpointLossTests
         var drive = harness.DriveFor('T');
         Assert.IsNotNull(drive.Watch.FailureMessage);
         Assert.IsNull(drive.Watch.CheckpointLoss, "a fault unrelated to the journal reports no checkpoint loss");
-        CollectionAssert.AreEqual(new[] { 'T' }, queriedDrives.ToArray(),
-            "the journal is asked once, and its answer is what decides");
+        Assert.AreSequenceEqual(new[] { 'T' }, queriedDrives.ToArray(), "the journal is asked once, and its answer is what decides");
 
         await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
             () => harness.Index.StopWatchingAsync(['T'], Token));

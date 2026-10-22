@@ -97,8 +97,8 @@ public class NamespaceBoundaryTests
 
         var descriptions = string.Join(Environment.NewLine,
             rule.Evaluate(ProductionAndFixtureArchitecture).Select(result => result.Description));
-        StringAssert.Contains(descriptions, nameof(NamespaceBoundaryViolationFixture));
-        StringAssert.Contains(descriptions, "MftRecord");
+        Assert.Contains(nameof(NamespaceBoundaryViolationFixture), descriptions);
+        Assert.Contains("MftRecord", descriptions);
     }
 
     static GivenTypesConjunction OwnedTypes(params string[] names)
@@ -136,8 +136,8 @@ public class NamespaceBoundaryTests
     [TestMethod]
     public void Sources_DoNotDependOnBrokerOwnedTypes()
     {
-        Assert.IsTrue(SourceTypes().GetObjects(ProductionArchitecture).Any(), "SourceTypes must match production types.");
-        Assert.IsTrue(BrokerTypes().GetObjects(ProductionArchitecture).Any(), "BrokerTypes must match production types.");
+        Assert.IsNotEmpty(SourceTypes().GetObjects(ProductionArchitecture), "SourceTypes must match production types.");
+        Assert.IsNotEmpty(BrokerTypes().GetObjects(ProductionArchitecture), "BrokerTypes must match production types.");
         var rule = SourceBoundaryRule();
         Assert.IsTrue(rule.HasNoViolations(ProductionArchitecture),
             string.Join(Environment.NewLine,
@@ -147,13 +147,13 @@ public class NamespaceBoundaryTests
     [TestMethod]
     public void SourceBoundary_ReportsTheDeliberateBrokerReference()
     {
-        Assert.IsTrue(SourceTypes().GetObjects(ProductionArchitecture).Any(), "SourceTypes must match production types.");
-        Assert.IsTrue(BrokerTypes().GetObjects(ProductionArchitecture).Any(), "BrokerTypes must match production types.");
+        Assert.IsNotEmpty(SourceTypes().GetObjects(ProductionArchitecture), "SourceTypes must match production types.");
+        Assert.IsNotEmpty(BrokerTypes().GetObjects(ProductionArchitecture), "BrokerTypes must match production types.");
         var rule = SourceBoundaryRule();
         Assert.IsFalse(rule.HasNoViolations(ProductionAndFixtureArchitecture));
         var descriptions = string.Join(Environment.NewLine,
             rule.Evaluate(ProductionAndFixtureArchitecture).Select(result => result.Description));
-        StringAssert.Contains(descriptions, "SourcesBoundaryViolationFixture");
-        StringAssert.Contains(descriptions, "BrokerMftBlockProducer");
+        Assert.Contains("SourcesBoundaryViolationFixture", descriptions);
+        Assert.Contains("BrokerMftBlockProducer", descriptions);
     }
 }

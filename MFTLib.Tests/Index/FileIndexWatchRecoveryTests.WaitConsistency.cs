@@ -111,7 +111,7 @@ public partial class FileIndexWatchRecoveryTests
 
         AssertWaitFollowsTheReplacement(observation);
         Assert.IsFalse(observation.Wait!.IsCompleted, "the replacement has not caught up yet");
-        Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
+        Assert.HasCount(2, harness.Source.TargetsFor('T'));
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         await observation.Wait.WaitAsync(HangGuard);
         Assert.AreEqual(WatchState.CaughtUp, harness.DriveFor('T').Watch.State);
@@ -150,7 +150,7 @@ public partial class FileIndexWatchRecoveryTests
         AssertWaitFollowsTheReplacement(observation);
         await stop!.WaitAsync(HangGuard);
         await DriveResultAssertions.FailureAsync<TaskCanceledException>(() => observation.Wait!.WaitAsync(HangGuard));
-        Assert.AreEqual(1, harness.Source.TargetsFor('T').Count, "the stop withdrew the request");
+        Assert.HasCount(1, harness.Source.TargetsFor('T'), "the stop withdrew the request");
         var drive = harness.DriveFor('T');
         Assert.IsFalse(drive.Watch.IsRequested);
         Assert.AreEqual(WatchState.NotStarted, drive.Watch.State);
@@ -170,7 +170,7 @@ public partial class FileIndexWatchRecoveryTests
         AssertWaitFollowsTheReplacement(observation);
         await disposal!.WaitAsync(HangGuard);
         await Assert.ThrowsAsync<TaskCanceledException>(() => observation.Wait!.WaitAsync(HangGuard));
-        Assert.AreEqual(1, harness.Source.TargetsFor('T').Count, "disposal withdrew the request");
+        Assert.HasCount(1, harness.Source.TargetsFor('T'), "disposal withdrew the request");
     }
 
     /// <summary>
@@ -245,7 +245,7 @@ public partial class FileIndexWatchRecoveryTests
         var lost = await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(() => wait.WaitAsync(HangGuard));
         Assert.IsFalse(lost.IsRecoveryStopped);
         Assert.AreEqual(1, harness.CatchUpLossStatuses('T').Single().Watch.ConsecutiveLostCatchUps);
-        Assert.AreEqual(2, harness.Source.TargetsFor('T').Count, "the retry's block restarts the watch");
+        Assert.HasCount(2, harness.Source.TargetsFor('T'), "the retry's block restarts the watch");
         await index.StopWatchingAsync(['T'], Token);
     }
 

@@ -210,14 +210,14 @@ public sealed class RowScanningContractTests
         foreach (var query in queries)
         {
             var expected = index.Search(query).Select(entry => entry.RecordKey).ToArray();
-            CollectionAssert.AreEqual(expected, index.Enumerate(query).Select(entry => entry.RecordKey).ToArray(), query.ToString());
+            Assert.AreSequenceEqual(expected, index.Enumerate(query).Select(entry => entry.RecordKey).ToArray(), query.ToString());
             var rows = new List<IndexRecordKey>();
             foreach (var row in index.EnumerateRows(query))
             {
                 rows.Add(row.ToEntry().RecordKey);
             }
 
-            CollectionAssert.AreEqual(expected, rows, query.ToString());
+            Assert.AreSequenceEqual(expected, rows, query.ToString());
         }
     }
 
@@ -239,7 +239,7 @@ public sealed class RowScanningContractTests
             Assert.AreEqual("query", missing?.ParamName);
             var invalid = ThrownByBegin(begin, index, new SearchQuery("readme", (NameMatchMode)99)) as ArgumentOutOfRangeException;
             Assert.AreEqual("query", invalid?.ParamName);
-            StringAssert.StartsWith(invalid!.Message, "Unknown name match mode.");
+            Assert.StartsWith("Unknown name match mode.", invalid!.Message);
         }
 
         Assert.AreEqual(0, BorrowCount(index));
@@ -332,8 +332,8 @@ public sealed class RowScanningContractTests
 
         Assert.AreEqual(throwFromBody, failed);
         Assert.AreEqual(1, record.Visits);
-        Assert.AreEqual(index.CurrentSnapshot.Count, record.Borrows.Length);
-        CollectionAssert.AreEqual(Enumerable.Repeat(1, record.Borrows.Length).ToArray(), record.Borrows);
+        Assert.HasCount(index.CurrentSnapshot.Count, record.Borrows);
+        Assert.AreSequenceEqual(Enumerable.Repeat(1, record.Borrows.Length).ToArray(), record.Borrows);
         Assert.IsTrue(index.CurrentSnapshot.All(block => block.ReleaseState.Hooks.OutstandingBorrowCount == 0));
     }
 
@@ -347,7 +347,7 @@ public sealed class RowScanningContractTests
         var visited = VisitUntilCancelled(index, true, new SearchQuery(null), 3, cancellation, out var cancelled);
 
         Assert.IsTrue(cancelled);
-        Assert.IsTrue(visited <= 4096, $"yielded {visited} rows; the contract is one check at least every 4096 rows");
+        Assert.IsLessThanOrEqualTo(4096, visited, $"yielded {visited} rows; the contract is one check at least every 4096 rows");
         Assert.AreEqual(0, BorrowCount(index));
     }
 

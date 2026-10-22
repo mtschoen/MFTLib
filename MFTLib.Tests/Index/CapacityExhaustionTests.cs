@@ -61,7 +61,7 @@ public sealed class CapacityExhaustionTests : IDisposable
                 [Create(1, "fits.txt"), Create(400, "does-not-fit.txt"), Create(2, "also-fits.txt")],
                 journalIdentifier: 1, nextUsn: 10);
 
-            Assert.AreEqual(2, changes.Count);
+            Assert.HasCount(2, changes);
             Assert.IsTrue(block.Header.IsCapacityExhausted);
             Assert.AreEqual("fits.txt", new string(NamePool.ReadRowName(block, 1)));
             Assert.AreEqual("also-fits.txt", new string(NamePool.ReadRowName(block, 2)));
@@ -90,9 +90,9 @@ public sealed class CapacityExhaustionTests : IDisposable
 
             var changes = mutator.Apply(snapshot[0], entries, journalIdentifier: 1, nextUsn: 20);
 
-            Assert.AreEqual(1, changes.Count);
+            Assert.HasCount(1, changes);
             Assert.IsTrue(block.Header.IsCapacityExhausted);
-            Assert.IsTrue(block.Header.NamePoolUsed <= block.Header.NamePoolCapacity);
+            Assert.IsLessThanOrEqualTo(block.Header.NamePoolCapacity, block.Header.NamePoolUsed);
             Assert.AreEqual("name-number-1.txt", new string(NamePool.ReadRowName(block, 1)));
             Assert.IsFalse(block.Rows[2].IsInUse);
         }
@@ -113,8 +113,8 @@ public sealed class CapacityExhaustionTests : IDisposable
                 journalIdentifier: 1, nextUsn: 30);
 
             var results = SearchEngine.Search(snapshot, new SearchQuery("survivor"));
-            Assert.AreEqual(1, results.Count);
-            Assert.AreEqual(0, SearchEngine.Search(snapshot, new SearchQuery("lost")).Count);
+            Assert.HasCount(1, results);
+            Assert.IsEmpty(SearchEngine.Search(snapshot, new SearchQuery("lost")));
         }
         finally
         {

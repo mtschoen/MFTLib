@@ -68,8 +68,7 @@ public partial class FileIndexCatchUpLossTests
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
         GC.WaitForPendingFinalizers();
 
-        CollectionAssert.AreEqual(new[] { LossScriptedCache.CanonicalBlockName }, cache.BlockFileNames(),
-            "each superseded block's file is gone once its snapshot is released");
+        Assert.AreSequenceEqual(new[] { LossScriptedCache.CanonicalBlockName }, cache.BlockFileNames(), "each superseded block's file is gone once its snapshot is released");
     }
 
     [TestMethod]
@@ -103,7 +102,7 @@ public partial class FileIndexCatchUpLossTests
 
         harness.FailNextProduction('T', new MessagelessException());
         var messageless = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => harness.Index.RescanAsync(['T'], Token));
-        StringAssert.Contains(messageless.Message, "Drive T failed without a failure message");
+        Assert.Contains("Drive T failed without a failure message", messageless.Message);
         Assert.AreEqual("the first scan failed", harness.DriveFor('T').Failure?.Message);
         Assert.AreEqual(DriveState.Ready, harness.DriveFor('T').State);
 

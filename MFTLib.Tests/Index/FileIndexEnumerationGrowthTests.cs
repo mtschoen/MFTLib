@@ -57,11 +57,10 @@ public sealed class FileIndexEnumerationGrowthTests : IDisposable
             var expectedFiles = Directory.GetFiles(Path.Combine(TreeRoot, "crowded1"))
                 .Concat(Directory.GetFiles(Path.Combine(TreeRoot, "crowded2")))
                 .ToArray();
-            CollectionAssert.AreEquivalent(
-                expectedFiles,
-                index.Search(new SearchQuery(null, IsDirectory: false)).Select(entry => entry.Path).ToArray());
-            Assert.IsTrue(diagnostics.Any(line => line.Contains(_fixture.CacheDirectory) &&
-                                                  line.Contains("capacity", StringComparison.OrdinalIgnoreCase)));
+            Assert.AreSequenceEqual(
+                expectedFiles, index.Search(new SearchQuery(null, IsDirectory: false)).Select(entry => entry.Path).ToArray(), SequenceOrder.InAnyOrder);
+            Assert.Contains(line => line.Contains(_fixture.CacheDirectory) &&
+                                                  line.Contains("capacity", StringComparison.OrdinalIgnoreCase), diagnostics);
         }
         finally
         {

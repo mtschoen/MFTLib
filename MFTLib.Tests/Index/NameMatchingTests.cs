@@ -91,7 +91,7 @@ public class NameMatchingTests
             () => NameMatching.Matches("a", "a", (NameMatchMode)99, caseSensitive: false));
 
         Assert.AreEqual("mode", exception.ParamName);
-        StringAssert.StartsWith(exception.Message, "Unknown name match mode.");
+        Assert.StartsWith("Unknown name match mode.", exception.Message);
     }
 
     [TestMethod]
@@ -103,6 +103,6 @@ public class NameMatchingTests
             () => NameMatching.ThrowIfUndefined(new SearchQuery("a", (NameMatchMode)99)));
 
         Assert.AreEqual("query", exception.ParamName);
-        StringAssert.StartsWith(exception.Message, "Unknown name match mode.");
+        Assert.StartsWith("Unknown name match mode.", exception.Message);
     }
 }

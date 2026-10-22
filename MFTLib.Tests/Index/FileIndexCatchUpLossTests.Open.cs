@@ -30,9 +30,9 @@ public partial class FileIndexCatchUpLossTests
         Assert.IsFalse(drive.Watch.IsRecoveryStopped);
         Assert.AreEqual(StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss, "the retry keeps the report the loss produced");
         Assert.AreEqual(WatchState.NotStarted, drive.Watch.State);
-        CollectionAssert.AreEqual(new[] { LossScriptedCache.CanonicalBlockName }, cache.BlockFileNames());
+        Assert.AreSequenceEqual(new[] { LossScriptedCache.CanonicalBlockName }, cache.BlockFileNames());
         await index.StartWatchingAsync(['T'], Token);
-        Assert.AreEqual(1, cache.Source.TargetsFor('T').Count, "the retried block is resumable");
+        Assert.HasCount(1, cache.Source.TargetsFor('T'), "the retried block is resumable");
     }
 
     [TestMethod]
@@ -52,10 +52,10 @@ public partial class FileIndexCatchUpLossTests
         Assert.IsTrue(drive.Watch.IsRecoveryStopped, "exhaustion is visible before open completes");
         Assert.AreEqual(StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss);
         Assert.AreEqual(WatchState.Faulted, drive.Watch.State);
-        StringAssert.Contains(drive.Watch.FailureMessage, "12288");
-        CollectionAssert.AreEqual(new[] { LossScriptedCache.CanonicalBlockName }, cache.BlockFileNames());
+        Assert.Contains("12288", drive.Watch.FailureMessage!);
+        Assert.AreSequenceEqual(new[] { LossScriptedCache.CanonicalBlockName }, cache.BlockFileNames());
         var refusal = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.StartWatchingAsync(['T'], Token));
-        StringAssert.Contains(refusal.Message, "RescanAsync");
+        Assert.Contains("RescanAsync", refusal.Message);
     }
 
     [TestMethod]
@@ -74,9 +74,9 @@ public partial class FileIndexCatchUpLossTests
         Assert.IsFalse(drive.Watch.IsRecoveryStopped);
         Assert.AreEqual(StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss);
         Assert.AreEqual("the retry scan failed", drive.Failure?.Message);
-        CollectionAssert.AreEqual(new[] { LossScriptedCache.CanonicalBlockName }, cache.BlockFileNames());
+        Assert.AreSequenceEqual(new[] { LossScriptedCache.CanonicalBlockName }, cache.BlockFileNames());
         var refusal = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.StartWatchingAsync(['T'], Token));
-        StringAssert.Contains(refusal.Message, "RescanAsync");
+        Assert.Contains("RescanAsync", refusal.Message);
     }
 
     /// <summary>

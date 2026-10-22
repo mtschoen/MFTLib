@@ -148,7 +148,7 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
                 using (var exclusive = new FileStream(request.BlockPath,
                            FileMode.Open, FileAccess.ReadWrite, FileShare.None))
                 {
-                    Assert.IsTrue(exclusive.Length > 0);
+                    Assert.IsGreaterThan(0, exclusive.Length);
                 }
 
                 scanCount++;
@@ -217,6 +217,6 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
         Assert.AreSame(failure, observed);
         var blockPath = Path.Combine(_fixture.CacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
         using var exclusive = new FileStream(blockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-        Assert.IsTrue(exclusive.Length > 0);
+        Assert.IsGreaterThan(0, exclusive.Length);
     }
 }

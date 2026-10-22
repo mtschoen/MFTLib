@@ -50,7 +50,7 @@ public sealed class FileIndexScanFinishedTests : IDisposable
     {
         var drive = samples.Where(sample => sample.Drive == driveLetter).ToArray();
         var finished = drive.Where(sample => sample.Phase == IndexScanPhase.Finished).ToArray();
-        Assert.AreEqual(expectedFinishedCount, finished.Length, $"drive {driveLetter} finished count");
+        Assert.HasCount(expectedFinishedCount, finished, $"drive {driveLetter} finished count");
         Assert.AreEqual(IndexScanPhase.Finished, drive[^1].Phase, "Finished follows every other sample");
         Assert.IsTrue(drive.Where(sample => sample.Phase != IndexScanPhase.Finished)
             .All(sample => sample.Outcome is null));
@@ -77,15 +77,15 @@ public sealed class FileIndexScanFinishedTests : IDisposable
         };
 
         await using var index = await FileIndex.OpenAsync(Options(drives, samples),
-            TestContext.CancellationTokenSource.Token);
+            TestContext.CancellationToken);
 
         foreach (var driveLetter in "TUV")
         {
             var finished = FinishedOf(samples, driveLetter);
             Assert.AreEqual(IndexScanOutcome.Succeeded, finished.Outcome);
-            Assert.IsTrue(finished.WrittenRowCount > 0);
-            Assert.IsTrue(samples.Any(sample =>
-                sample.Drive == driveLetter && sample.Phase == IndexScanPhase.Enumerating));
+            Assert.IsGreaterThan(0u, finished.WrittenRowCount);
+            Assert.Contains(sample =>
+                sample.Drive == driveLetter && sample.Phase == IndexScanPhase.Enumerating, samples);
         }
     }
 
@@ -97,11 +97,11 @@ public sealed class FileIndexScanFinishedTests : IDisposable
 
         await using var index = await FileIndex.OpenAsync(
             Options(drives, samples, ProducerKind.Mft, (request, _) => ProduceBlock(request)),
-            TestContext.CancellationTokenSource.Token);
+            TestContext.CancellationToken);
 
         var finished = FinishedOf(samples, 'T');
         Assert.AreEqual(IndexScanOutcome.Succeeded, finished.Outcome);
-        Assert.IsTrue(samples.Any(sample => sample.Phase == IndexScanPhase.ParsingMft));
+        Assert.Contains(sample => sample.Phase == IndexScanPhase.ParsingMft, samples);
     }
 
     [TestMethod]
@@ -113,7 +113,7 @@ public sealed class FileIndexScanFinishedTests : IDisposable
         await using var index = await FileIndex.OpenAsync(
             Options(drives, samples, ProducerKind.Mft,
                 (_, _) => throw new InvalidOperationException("producer failed")),
-            TestContext.CancellationTokenSource.Token);
+            TestContext.CancellationToken);
 
         var finished = FinishedOf(samples, 'T');
         Assert.AreEqual(IndexScanOutcome.Failed, finished.Outcome);
@@ -129,7 +129,7 @@ public sealed class FileIndexScanFinishedTests : IDisposable
             (_, _) => throw new OperationCanceledException());
         await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () =>
         {
-            await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
+            await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
         });
 
         Assert.AreEqual(IndexScanOutcome.Cancelled, FinishedOf(samples, 'T').Outcome);
@@ -145,14 +145,14 @@ public sealed class FileIndexScanFinishedTests : IDisposable
             new IndexedDrive('U', CreateDriveRoot("second"), 2)
         };
         await using var index = await FileIndex.OpenAsync(Options(drives, samples),
-            TestContext.CancellationTokenSource.Token);
+            TestContext.CancellationToken);
         Assert.AreEqual(IndexScanOutcome.Succeeded, FinishedOf(samples, 'T').Outcome);
 
-        await index.RescanAsync(['T'], TestContext.CancellationTokenSource.Token);
+        await index.RescanAsync(['T'], TestContext.CancellationToken);
 
         Assert.AreEqual(IndexScanOutcome.Succeeded, FinishedOf(samples, 'T', expectedFinishedCount: 2).Outcome);
-        Assert.AreEqual(1, samples.Count(sample =>
-            sample.Drive == 'U' && sample.Phase == IndexScanPhase.Finished));
+        Assert.ContainsSingle(sample =>
+            sample.Drive == 'U' && sample.Phase == IndexScanPhase.Finished, samples);
     }
 
     sealed class ThrowingOnFinished : IProgress<IndexScanProgress>
@@ -177,10 +177,10 @@ public sealed class FileIndexScanFinishedTests : IDisposable
             Diagnostics = diagnostics.Enqueue
         };
 
-        await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
+        await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
 
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
-        Assert.IsTrue(diagnostics.Any(line => line.Contains("handler boom")));
+        Assert.Contains(line => line.Contains("handler boom"), diagnostics);
     }
 
     [TestMethod]
@@ -194,7 +194,7 @@ public sealed class FileIndexScanFinishedTests : IDisposable
 
         await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () =>
         {
-            await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
+            await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
         });
     }
 
@@ -208,7 +208,7 @@ public sealed class FileIndexScanFinishedTests : IDisposable
             Diagnostics = _ => throw new InvalidOperationException("diagnostics boom")
         };
 
-        await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
+        await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
 
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
@@ -227,7 +227,7 @@ public sealed class FileIndexScanFinishedTests : IDisposable
 
         await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () =>
         {
-            await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
+            await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
         });
     }
 }

@@ -18,7 +18,7 @@ public class FileIndexWatchFailedRescanTests
 {
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     /// <summary>T's cursor has been trimmed out of its journal.</summary>
     static IDisposable LostCheckpointForT() =>
@@ -34,7 +34,7 @@ public class FileIndexWatchFailedRescanTests
         Assert.AreEqual(before.Watch.FailureMessage, after.Watch.FailureMessage);
         Assert.AreEqual(WatchState.Faulted, after.Watch.State);
         Assert.AreEqual(before.Watch.CheckpointLoss, after.Watch.CheckpointLoss);
-        Assert.AreEqual(startCount, harness.Source.TargetsFor('T').Count, "the condemned cursor is never started again");
+        Assert.HasCount(startCount, harness.Source.TargetsFor('T'), "the condemned cursor is never started again");
     }
 
     [TestMethod]
@@ -143,9 +143,9 @@ public class FileIndexWatchFailedRescanTests
         Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
         Assert.AreEqual(0, firstHandle.DisposeCount, "the original watch is still running");
         var starts = harness.Source.TargetsFor('T');
-        Assert.AreEqual(1, starts.Count);
+        Assert.HasCount(1, starts);
         Assert.AreEqual(new IndexWatchTarget('T', WatchHarness.JournalIdentifier, WatchHarness.NextUsn), starts[0]);
-        Assert.AreEqual(1, harness.Source.TargetsFor('U').Count);
+        Assert.HasCount(1, harness.Source.TargetsFor('U'));
         await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(9, "still-watching.txt", nextUsn: 4500));
         Assert.AreEqual(4500L, harness.Index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
         await harness.Index.StopWatchingAsync(['T'], Token);
@@ -171,7 +171,7 @@ public class FileIndexWatchFailedRescanTests
         await harness.Index.RescanAsync(['T'], Token);
 
         var starts = harness.Source.TargetsFor('T');
-        Assert.AreEqual(2, starts.Count);
+        Assert.HasCount(2, starts);
         Assert.AreEqual(new IndexWatchTarget('T', 13, 9000), starts[1]);
         Assert.AreNotSame(original, harness.Index.Root('T').DriveBlock);
         var drive = harness.DriveFor('T');

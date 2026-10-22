@@ -17,7 +17,7 @@ public sealed class FileIndexConcurrentRescanTests : IDisposable
 {
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     IndexTreeFixture _fixture = null!;
     string TreeRoot => _fixture.TreeRoot;
@@ -199,8 +199,8 @@ public sealed class FileIndexConcurrentRescanTests : IDisposable
 
         index.ApplyJournalEntries('T', [WatchHarness.Create(9, "direct.txt")], WatchHarness.JournalIdentifier, 600);
 
-        Assert.AreEqual(false, ownGateFree, "the apply holds T's write gate");
-        Assert.AreEqual(true, otherGatesFree, "the apply holds none of U's gates");
+        Assert.IsFalse(ownGateFree, "the apply holds T's write gate");
+        Assert.IsTrue(otherGatesFree, "the apply holds none of U's gates");
         Assert.AreEqual(600L, harness.Index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
     }
 

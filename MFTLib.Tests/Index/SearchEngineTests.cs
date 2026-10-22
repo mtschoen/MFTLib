@@ -52,21 +52,21 @@ public class SearchEngineTests
     public void Search_SubstringIsCaseInsensitiveByDefault()
     {
         var results = SearchEngine.Search(_snapshot, new SearchQuery("report"));
-        CollectionAssert.AreEqual(new[] { "Report.docx", "report.pdf" }, NamesOf(results));
+        Assert.AreSequenceEqual(new[] { "Report.docx", "report.pdf" }, NamesOf(results));
     }
 
     [TestMethod]
     public void Search_CaseSensitiveNarrowsTheResult()
     {
         var results = SearchEngine.Search(_snapshot, new SearchQuery("report", CaseSensitive: true));
-        CollectionAssert.AreEqual(new[] { "report.pdf" }, NamesOf(results));
+        Assert.AreSequenceEqual(new[] { "report.pdf" }, NamesOf(results));
     }
 
     [TestMethod]
     public void Search_GlobPatternMatchesTheWholeName()
     {
         var results = SearchEngine.Search(_snapshot, new SearchQuery("*.pdf", NameMatchMode.Glob));
-        CollectionAssert.AreEqual(new[] { "report.pdf" }, NamesOf(results));
+        Assert.AreSequenceEqual(new[] { "report.pdf" }, NamesOf(results));
     }
 
     [TestMethod]
@@ -74,14 +74,14 @@ public class SearchEngineTests
     {
         var results = SearchEngine.Search(_snapshot, new SearchQuery(null));
         // Root, two directories, and three live files. The tombstoned row is excluded.
-        Assert.AreEqual(6, results.Count);
+        Assert.HasCount(6, results);
     }
 
     [TestMethod]
     public void Search_ExcludesTombstonedRows()
     {
         var results = SearchEngine.Search(_snapshot, new SearchQuery("deleted"));
-        Assert.AreEqual(0, results.Count);
+        Assert.IsEmpty(results);
     }
 
     [TestMethod]
@@ -95,7 +95,7 @@ public class SearchEngineTests
     public void Search_DirectoriesFalseReturnsOnlyFiles()
     {
         var results = SearchEngine.Search(_snapshot, new SearchQuery(null, IsDirectory: false));
-        CollectionAssert.AreEqual(new[] { "Report.docx", "holiday.jpg", "report.pdf" }, NamesOf(results));
+        Assert.AreSequenceEqual(new[] { "Report.docx", "holiday.jpg", "report.pdf" }, NamesOf(results));
     }
 
     [TestMethod]
@@ -103,7 +103,7 @@ public class SearchEngineTests
     {
         var results = SearchEngine.Search(_snapshot,
             new SearchQuery(null, IsDirectory: false, SizeMinimum: 100, SizeMaximum: 4096));
-        CollectionAssert.AreEqual(new[] { "Report.docx", "report.pdf" }, NamesOf(results));
+        Assert.AreSequenceEqual(new[] { "Report.docx", "report.pdf" }, NamesOf(results));
     }
 
     [TestMethod]
@@ -121,12 +121,12 @@ public class SearchEngineTests
         try
         {
             var resultsMin = SearchEngine.Search(snapshot, new SearchQuery(null, SizeMinimum: 0));
-            Assert.IsTrue(resultsMin.Any(entry => entry.Name == "known-zero.txt"));
-            Assert.IsFalse(resultsMin.Any(entry => entry.Name == "unknown-size.txt"));
+            Assert.Contains(entry => entry.Name == "known-zero.txt", resultsMin);
+            Assert.DoesNotContain(entry => entry.Name == "unknown-size.txt", resultsMin);
 
             var resultsMax = SearchEngine.Search(snapshot, new SearchQuery(null, SizeMaximum: 100));
-            Assert.IsTrue(resultsMax.Any(entry => entry.Name == "known-zero.txt"));
-            Assert.IsFalse(resultsMax.Any(entry => entry.Name == "unknown-size.txt"));
+            Assert.Contains(entry => entry.Name == "known-zero.txt", resultsMax);
+            Assert.DoesNotContain(entry => entry.Name == "unknown-size.txt", resultsMax);
         }
         finally
         {
@@ -143,7 +143,7 @@ public class SearchEngineTests
             new SearchQuery(null, IsDirectory: false,
                 LastWriteTimeMinimum: isLowerBound ? Newer : null,
                 LastWriteTimeMaximum: isLowerBound ? null : Older));
-        CollectionAssert.AreEqual(expectedNames, NamesOf(results));
+        Assert.AreSequenceEqual(expectedNames, NamesOf(results));
     }
 
     [TestMethod]
@@ -151,7 +151,7 @@ public class SearchEngineTests
     {
         var documents = FileEntry.Create(_snapshot[0], _documentsRow);
         var results = SearchEngine.Search(_snapshot, new SearchQuery(null, Subtree: documents));
-        CollectionAssert.AreEqual(new[] { "Documents", "Report.docx", "report.pdf" }, NamesOf(results));
+        Assert.AreSequenceEqual(new[] { "Documents", "Report.docx", "report.pdf" }, NamesOf(results));
     }
 
     [TestMethod]
@@ -159,7 +159,7 @@ public class SearchEngineTests
     {
         var pictures = FileEntry.Create(_snapshot[0], _picturesRow);
         var results = SearchEngine.Search(_snapshot, new SearchQuery("report", Subtree: pictures));
-        Assert.AreEqual(0, results.Count);
+        Assert.IsEmpty(results);
     }
 
     [TestMethod]
@@ -202,7 +202,7 @@ public class SearchEngineTests
             var ancestor = FileEntry.Create(snapshot[0], root);
             var exception = Assert.ThrowsExactly<InvalidDataException>(() =>
                 SearchEngine.Search(snapshot, new SearchQuery("needle.txt", Subtree: ancestor)));
-            StringAssert.Contains(exception.Message, BlockLayout.MaximumPathDepth.ToString(CultureInfo.InvariantCulture));
+            Assert.Contains(BlockLayout.MaximumPathDepth.ToString(CultureInfo.InvariantCulture), exception.Message);
         }
         finally
         {
@@ -229,7 +229,7 @@ public class SearchEngineTests
         {
             var ancestor = FileEntry.Create(snapshot[0], root);
             var results = SearchEngine.Search(snapshot, new SearchQuery("*.txt", NameMatchMode.Glob, Subtree: ancestor));
-            Assert.AreEqual(1, results.Count);
+            Assert.HasCount(1, results);
             Assert.AreEqual("valid.txt", results[0].Name);
         }
         finally
@@ -256,7 +256,7 @@ public class SearchEngineTests
         try
         {
             var results = SearchEngine.Search(snapshot, new SearchQuery("*.dat", NameMatchMode.Glob));
-            Assert.AreEqual(fileCount, results.Count);
+            Assert.HasCount(fileCount, results);
         }
         finally
         {
@@ -303,7 +303,7 @@ public class SearchEngineTests
         try
         {
             Assert.AreEqual(0u, builder.OpenForWriting().Header.RowCount);
-            Assert.AreEqual(0, SearchEngine.Search(snapshot, new SearchQuery(null)).Count);
+            Assert.IsEmpty(SearchEngine.Search(snapshot, new SearchQuery(null)));
         }
         finally
         {

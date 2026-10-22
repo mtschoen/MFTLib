@@ -49,17 +49,17 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
     public void Search_ExactMode_SpansTheWholeDrive()
     {
         var results = _index.Search(new SearchQuery("readme.md", NameMatchMode.Exact));
-        Assert.AreEqual(2, results.Count);
+        Assert.HasCount(2, results);
     }
 
     [TestMethod]
     public void Search_ReturnsTheWholeMatchSetForSlicing()
     {
         var results = _index.Search(new SearchQuery("read"));
-        Assert.AreEqual(2, results.Count);
+        Assert.HasCount(2, results);
 
         var firstPage = results.Take(1).ToArray();
-        Assert.AreEqual(1, firstPage.Length);
+        Assert.HasCount(1, firstPage);
     }
 
     [TestMethod]
@@ -67,7 +67,7 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
     {
         var pictures = _index.Find(Path.Combine(TreeRoot, "Pictures"))!.Value;
         var results = _index.Search(new SearchQuery("readme", Subtree: pictures));
-        Assert.AreEqual(1, results.Count);
+        Assert.HasCount(1, results);
         Assert.AreEqual(Path.Combine(TreeRoot, "Pictures", "readme.md"), results[0].Path);
     }
 
@@ -113,7 +113,7 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
         }, CancellationToken.None));
 
         Assert.AreEqual("options", exception.ParamName);
-        StringAssert.Contains(exception.Message, "Drive T is listed more than once.");
+        Assert.Contains("Drive T is listed more than once.", exception.Message);
         Assert.AreEqual(0, producerCalls);
     }
 
@@ -178,7 +178,7 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
 
             Assert.IsInstanceOfType<ArgumentException>(outcome);
             var exception = (ArgumentException)outcome;
-            StringAssert.Contains(exception.Message, $"Drive {new DriveKey(driveLetter)} has no block (state: {state}).");
+            Assert.Contains($"Drive {new DriveKey(driveLetter)} has no block (state: {state}).", exception.Message);
             Assert.IsFalse(exception.Message.Contains("not part of this index", StringComparison.Ordinal));
             Assert.AreEqual("drive", exception.ParamName);
         }
@@ -208,7 +208,7 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
 
         Assert.IsInstanceOfType<ArgumentException>(outcome);
         var exception = (ArgumentException)outcome;
-        StringAssert.Contains(exception.Message, $"Drive {new DriveKey(driveLetter)} is not part of this index.");
+        Assert.Contains($"Drive {new DriveKey(driveLetter)} is not part of this index.", exception.Message);
         Assert.AreEqual("drive", exception.ParamName);
     }
 
@@ -289,7 +289,7 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
     {
         var names = _index.Root('T').Children().Select(child => child.Name)
             .OrderBy(name => name, StringComparer.Ordinal).ToArray();
-        CollectionAssert.AreEqual(new[] { "Documents", "Pictures" }, names);
+        Assert.AreSequenceEqual(new[] { "Documents", "Pictures" }, names);
     }
 
     [TestMethod]
@@ -307,7 +307,7 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
         File.WriteAllText(Path.Combine(TreeRoot, "Documents", "added.md"), "added");
         _index.RescanAsync(['T'], CancellationToken.None).GetAwaiter().GetResult();
 
-        Assert.AreEqual(1, _index.Search(new SearchQuery("added")).Count);
+        Assert.HasCount(1, _index.Search(new SearchQuery("added")));
     }
 
     [TestMethod]

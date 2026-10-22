@@ -100,8 +100,7 @@ public partial class FileIndexResilienceTests
             .WaitAsync(HangGuard);
         try
         {
-            CollectionAssert.AreEqual(new[] { CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*" },
-                listings);
+            Assert.AreSequenceEqual(new[] { CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*" }, listings);
             Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
             Assert.IsTrue(File.Exists(staleRetiredPath), "the sweep that could not list deleted nothing");
         }

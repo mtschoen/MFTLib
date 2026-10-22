@@ -57,7 +57,7 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
             [CreateEntry(5, 1, "brand-new.txt", UsnReason.FileCreate | UsnReason.Close, ChangeMoment)],
             journalIdentifier: 7, nextUsn: 2000);
 
-        Assert.AreEqual(1, changes.Count);
+        Assert.HasCount(1, changes);
         Assert.AreEqual(FileChangeKind.Created, changes[0].Kind);
         Assert.AreEqual("brand-new.txt", changes[0].Entry.Name);
         Assert.AreEqual(1u, _block.Rows[5].ParentRow);
@@ -97,7 +97,7 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
                 UsnReason.FileDelete | UsnReason.Close, ChangeMoment)
         ], journalIdentifier: 7, nextUsn: 2000);
 
-        Assert.AreEqual(0, changes.Count);
+        Assert.IsEmpty(changes);
         Assert.IsTrue(mutator.CapacityExhausted);
         Assert.IsFalse(_block.Rows[5].IsInUse);
         Assert.IsFalse(_block.Rows[5].IsDeleted);
@@ -217,7 +217,7 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
             [CreateEntry(2, 0, "renamed.txt", UsnReason.RenameNewName | UsnReason.Close, ChangeMoment)],
             journalIdentifier: 7, nextUsn: 2100);
 
-        Assert.IsTrue(_block.Header.NamePoolUsed > namePoolUsedAfterMove);
+        Assert.IsGreaterThan(namePoolUsedAfterMove, _block.Header.NamePoolUsed);
     }
 
     [TestMethod]
@@ -228,7 +228,7 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
             [CreateEntry(2, 1, "existing.txt", UsnReason.RenameOldName, ChangeMoment)],
             journalIdentifier: 7, nextUsn: 2000);
 
-        Assert.AreEqual(0, changes.Count);
+        Assert.IsEmpty(changes);
         Assert.AreEqual("existing.txt", new string(NamePool.ReadRowName(_block, 2)));
     }
 
@@ -255,7 +255,7 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
             [CreateEntry(2, 1, "existing.txt", UsnReason.Close, ChangeMoment)],
             journalIdentifier: 7, nextUsn: 2000);
 
-        Assert.AreEqual(0, changes.Count);
+        Assert.IsEmpty(changes);
     }
 
     [TestMethod]
@@ -270,7 +270,7 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
 
         Assert.IsTrue(mutator.CapacityExhausted);
         Assert.IsTrue(_block.Header.IsCapacityExhausted);
-        Assert.AreEqual(1, changes.Count);
+        Assert.HasCount(1, changes);
         Assert.AreEqual("near.txt", changes[0].Entry.Name);
     }
 
@@ -299,7 +299,7 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
                 fileAttributes: FileAttributes.Directory)],
             journalIdentifier: 7, nextUsn: 2000);
 
-        Assert.AreEqual(1, changes.Count);
+        Assert.HasCount(1, changes);
         Assert.IsTrue(_block.Rows[5].IsDirectory);
         Assert.IsFalse(_block.Rows[5].SizeKnown);
     }
@@ -317,7 +317,7 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
                 ChangeMoment)],
             journalIdentifier: 7, nextUsn: 2000);
 
-        Assert.AreEqual(0, changes.Count);
+        Assert.IsEmpty(changes);
         Assert.IsTrue(_block.Header.IsCapacityExhausted);
         Assert.AreEqual("existing.txt", new string(NamePool.ReadRowName(_block, 2)));
     }
@@ -347,7 +347,7 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
 
         var changes = mutator.Apply(_snapshot[0], [], journalIdentifier: 0xABCD, nextUsn: 4242);
 
-        Assert.AreEqual(0, changes.Count);
+        Assert.IsEmpty(changes);
         Assert.AreEqual(generationBefore, _block.Header.Generation);
         Assert.AreEqual(4242L, _block.Header.UsnNextUsn);
     }
@@ -368,7 +368,7 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
             [CreateEntry(2, parentRecordNumber, fileName, UsnReason.FileCreate | UsnReason.Close, ChangeMoment)],
             journalIdentifier: 7, nextUsn: 2100);
 
-        Assert.AreEqual(1, changes.Count);
+        Assert.HasCount(1, changes);
         Assert.AreEqual(FileChangeKind.Created, changes[0].Kind);
         Assert.IsTrue(_block.Rows[2].IsInUse);
         Assert.IsFalse(_block.Rows[2].IsDeleted);

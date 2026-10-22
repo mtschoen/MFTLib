@@ -21,7 +21,7 @@ public sealed class FileIndexCheckpointLossDetectionTests : IDisposable
 
     CheckpointLossFixture _fixture = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     [TestInitialize]
     public void Initialize() => _fixture = new CheckpointLossFixture();

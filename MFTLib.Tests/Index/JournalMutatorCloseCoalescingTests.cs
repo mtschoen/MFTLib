@@ -28,9 +28,9 @@ public class JournalMutatorCloseCoalescingTests
         var second = fixture.Apply([CreateEntry(9, 6, "fresh.txt", UsnReason.FileCreate | UsnReason.Close,
             closeMoment, sequenceNumber: 3, FileAttributes.Archive | FileAttributes.ReadOnly)]);
 
-        Assert.AreEqual(1, first.Count);
+        Assert.HasCount(1, first);
         Assert.AreEqual(FileChangeKind.Created, first[0].Kind);
-        Assert.AreEqual(0, second.Count);
+        Assert.IsEmpty(second);
         // The close record's attributes still land on the row and advance generation; its time never does.
         Assert.IsFalse(fixture.Block.Rows[9].LastWriteTimeKnown);
         Assert.AreEqual(0L, fixture.Block.Rows[9].ModifiedTicks);
@@ -51,9 +51,9 @@ public class JournalMutatorCloseCoalescingTests
         var second = fixture.Apply([CreateEntry(7, 6, "notes.txt", UsnReason.DataExtend | UsnReason.Close,
             closeMoment, sequenceNumber: 1)]);
 
-        Assert.AreEqual(1, first.Count);
+        Assert.HasCount(1, first);
         Assert.AreEqual(FileChangeKind.Modified, first[0].Kind);
-        Assert.AreEqual(0, second.Count);
+        Assert.IsEmpty(second);
         Assert.IsFalse(fixture.Block.Rows[7].LastWriteTimeKnown);
         Assert.AreEqual(0L, fixture.Block.Rows[7].ModifiedTicks);
         Assert.IsFalse(fixture.Block.Rows[7].SizeKnown);
@@ -71,7 +71,7 @@ public class JournalMutatorCloseCoalescingTests
             UsnReason.DataExtend | UsnReason.DataTruncation | UsnReason.Close,
             fixture.Timestamp.AddMinutes(1), sequenceNumber: 1)]);
 
-        Assert.AreEqual(1, second.Count);
+        Assert.HasCount(1, second);
         Assert.AreEqual(FileChangeKind.Modified, second[0].Kind);
     }
 
@@ -89,8 +89,7 @@ public class JournalMutatorCloseCoalescingTests
                 closeMoment, sequenceNumber: 3)
         ]);
 
-        CollectionAssert.AreEqual(new[] { FileChangeKind.Created },
-            changes.Select(change => change.Kind).ToArray());
+        Assert.AreSequenceEqual(new[] { FileChangeKind.Created }, changes.Select(change => change.Kind).ToArray());
         Assert.IsFalse(fixture.Block.Rows[9].LastWriteTimeKnown);
         Assert.AreEqual(0L, fixture.Block.Rows[9].ModifiedTicks);
     }
@@ -107,34 +106,34 @@ public class JournalMutatorCloseCoalescingTests
         // Batch 1: FileCreate (file handle opened and file created)
         var first = fixture.Apply([CreateEntry(9, 6, "fresh.txt", UsnReason.FileCreate,
             createMoment, sequenceNumber: 3)]);
-        Assert.AreEqual(1, first.Count);
+        Assert.HasCount(1, first);
         Assert.AreEqual(FileChangeKind.Created, first[0].Kind);
         var generationAfterCreate = fixture.Block.Header.Generation;
-        Assert.IsTrue(generationAfterCreate > initialGeneration);
+        Assert.IsGreaterThan(initialGeneration, generationAfterCreate);
 
         // Batch 2: FileCreate | DataExtend (data write inside create cycle is part of creation)
         var second = fixture.Apply([CreateEntry(9, 6, "fresh.txt",
             UsnReason.FileCreate | UsnReason.DataExtend, extendMoment, sequenceNumber: 3)]);
-        Assert.AreEqual(0, second.Count,
+        Assert.IsEmpty(second,
             "Intermediate write inside create cycle must raise nothing extra.");
 
         // Batch 3: FileCreate | DataExtend | Close (close record repeating all accumulated reasons)
         var third = fixture.Apply([CreateEntry(9, 6, "fresh.txt",
             UsnReason.FileCreate | UsnReason.DataExtend | UsnReason.Close,
             closeMoment, sequenceNumber: 3, FileAttributes.Archive | FileAttributes.ReadOnly)]);
-        Assert.AreEqual(0, third.Count, "Close record must not emit duplicate change.");
+        Assert.IsEmpty(third, "Close record must not emit duplicate change.");
         Assert.IsFalse(fixture.Block.Rows[9].LastWriteTimeKnown);
         Assert.AreEqual(0L, fixture.Block.Rows[9].ModifiedTicks);
         Assert.AreEqual((uint)(FileAttributes.Archive | FileAttributes.ReadOnly),
             fixture.Block.Rows[9].Attributes);
         var generationAfterClose = fixture.Block.Header.Generation;
-        Assert.IsTrue(generationAfterClose > generationAfterCreate,
+        Assert.IsGreaterThan(generationAfterCreate, generationAfterClose,
             "Close-only batch mutating metadata must advance Generation.");
 
         // Batch 4: Redundant close or batch with identical metadata produces no generation bump
         var fourth = fixture.Apply([CreateEntry(9, 6, "fresh.txt",
             UsnReason.Close, closeMoment, sequenceNumber: 3, FileAttributes.Archive | FileAttributes.ReadOnly)]);
-        Assert.AreEqual(0, fourth.Count);
+        Assert.IsEmpty(fourth);
         Assert.AreEqual(generationAfterClose, fixture.Block.Header.Generation,
             "Batch with no changes and no metadata mutation must not advance Generation.");
     }
@@ -149,8 +148,8 @@ public class JournalMutatorCloseCoalescingTests
         var second = fixture.Apply([CreateEntry(7, 6, "notes.txt", UsnReason.Close,
             fixture.Timestamp.AddMinutes(1), sequenceNumber: 1)]);
 
-        Assert.AreEqual(1, first.Count);
-        Assert.AreEqual(0, second.Count);
+        Assert.HasCount(1, first);
+        Assert.IsEmpty(second);
         Assert.IsFalse(fixture.Block.Rows[7].LastWriteTimeKnown);
         Assert.AreEqual(0L, fixture.Block.Rows[7].ModifiedTicks);
     }
@@ -165,9 +164,9 @@ public class JournalMutatorCloseCoalescingTests
         var second = fixture.Apply([CreateEntry(7, 6, "notes.txt", UsnReason.FileDelete | UsnReason.Close,
             fixture.Timestamp.AddMinutes(1), sequenceNumber: 1)]);
 
-        Assert.AreEqual(1, first.Count);
+        Assert.HasCount(1, first);
         Assert.AreEqual(FileChangeKind.Deleted, first[0].Kind);
-        Assert.AreEqual(0, second.Count);
+        Assert.IsEmpty(second);
         Assert.IsTrue(fixture.Block.Rows[7].IsDeleted);
     }
 
@@ -181,9 +180,9 @@ public class JournalMutatorCloseCoalescingTests
         var second = fixture.Apply([CreateEntry(7, 6, "renamed.txt", UsnReason.RenameNewName | UsnReason.Close,
             fixture.Timestamp.AddMinutes(1), sequenceNumber: 1)]);
 
-        Assert.AreEqual(1, first.Count);
+        Assert.HasCount(1, first);
         Assert.AreEqual(FileChangeKind.Renamed, first[0].Kind);
-        Assert.AreEqual(0, second.Count);
+        Assert.IsEmpty(second);
     }
 
     [TestMethod]
@@ -211,14 +210,14 @@ public class JournalMutatorCloseCoalescingTests
                 closeMoment, sequenceNumber: 1)
         ]);
 
-        Assert.AreEqual(1, firstPair.Count);
+        Assert.HasCount(1, firstPair);
         Assert.AreEqual(FileChangeKind.Renamed, firstPair[0].Kind);
-        Assert.AreEqual(1, secondPair.Count,
+        Assert.HasCount(1, secondPair,
             "A second rename inside one open cycle is a new rename, not the close record's echo.");
         Assert.AreEqual(FileChangeKind.Renamed, secondPair[0].Kind);
         Assert.AreEqual(Path.Combine(TestDriveRoot.For('T'), "documents", "first.txt"),
             secondPair[0].PreviousPath);
-        Assert.AreEqual(0, close.Count,
+        Assert.IsEmpty(close,
             "The close record repeats the second rename's name and parent, so it is the echo.");
         Assert.AreEqual("second.txt", new string(NamePool.ReadRowName(fixture.Block, 7)));
         Assert.AreEqual(5u, fixture.Block.Rows[7].ParentRow);
@@ -248,12 +247,12 @@ public class JournalMutatorCloseCoalescingTests
                 fixture.Timestamp.AddMinutes(1), sequenceNumber: 1)
         ]);
 
-        Assert.AreEqual(1, move.Count,
+        Assert.HasCount(1, move,
             "A RenameNewName carrying a parent the cycle has not applied is a move, not an echo.");
         Assert.AreEqual(FileChangeKind.Renamed, move[0].Kind);
         Assert.AreEqual(5u, fixture.Block.Rows[7].ParentRow);
         Assert.AreEqual("first.txt", new string(NamePool.ReadRowName(fixture.Block, 7)));
-        Assert.AreEqual(0, close.Count);
+        Assert.IsEmpty(close);
     }
 
     [TestMethod]
@@ -268,7 +267,7 @@ public class JournalMutatorCloseCoalescingTests
         var second = fixture.Apply([CreateEntry(9, 6, "reused.txt", UsnReason.FileCreate | UsnReason.Close,
             fixture.Timestamp.AddMinutes(1), sequenceNumber: 4)]);
 
-        Assert.AreEqual(1, second.Count);
+        Assert.HasCount(1, second);
         Assert.AreEqual(FileChangeKind.Created, second[0].Kind);
     }
 

@@ -14,7 +14,7 @@ public class FileIndexWatchCatchUpLinkedWaitTests
 {
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     [TestMethod]
     public async Task WaitForCatchUpAsync_WithoutACallerToken_CompletesWithTheCatchUp()

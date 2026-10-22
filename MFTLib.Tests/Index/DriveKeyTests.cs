@@ -47,7 +47,7 @@ public class DriveKeyTests
     {
         var operators = typeof(DriveKey).GetMethods(BindingFlags.Public | BindingFlags.Static)
             .Where(method => method.Name is "op_Implicit" or "op_Explicit").ToArray();
-        Assert.AreEqual(1, operators.Length);
+        Assert.HasCount(1, operators);
         Assert.AreEqual("op_Implicit", operators[0].Name);
         Assert.AreEqual(typeof(char), operators[0].GetParameters().Single().ParameterType);
         Assert.AreEqual(typeof(DriveKey), operators[0].ReturnType);
@@ -95,9 +95,8 @@ public class DriveKeyTests
         var scan = new InProcessBrokerScan('c', retainedFileNames);
         Assert.AreSame(retainedFileNames, scan.RetainedFileNames);
         Assert.IsNull(new InProcessBrokerScan('c', null).RetainedFileNames);
-        Assert.AreEqual(0, new InProcessBrokerScan('c', Array.Empty<string>()).RetainedFileNames!.Count);
-        CollectionAssert.AreEqual(new[] { "marker" },
-            (scan with { RetainedFileNames = new[] { "marker" } }).RetainedFileNames!.ToArray());
+        Assert.IsEmpty(new InProcessBrokerScan('c', Array.Empty<string>()).RetainedFileNames!);
+        Assert.AreSequenceEqual(new[] { "marker" }, (scan with { RetainedFileNames = new[] { "marker" } }).RetainedFileNames!.ToArray());
         var start = new ScriptedWatchStart('c', default);
         Assert.AreEqual('C', scan.Drive);
         Assert.AreEqual('C', start.Drive);

@@ -80,21 +80,21 @@ public partial class IndexNavigationTests
         var children = Entry(_documentsRow).Children();
         var names = children.Select(child => child.Name).OrderBy(name => name).ToArray();
 
-        CollectionAssert.AreEqual(new[] { "notes.txt", "Projects" }, names);
+        Assert.AreSequenceEqual(new[] { "notes.txt", "Projects" }, names);
     }
 
     [TestMethod]
     public void Children_OfAFileIsEmpty()
     {
-        Assert.AreEqual(0, Entry(_reportRow).Children().Count);
+        Assert.IsEmpty(Entry(_reportRow).Children());
     }
 
     [TestMethod]
     public void Children_DoesNotReturnTheRootAsItsOwnChild()
     {
         var children = Entry(_rootRow).Children();
-        Assert.IsFalse(children.Any(child => child.RowIndex == _rootRow));
-        Assert.AreEqual(1, children.Count);
+        Assert.DoesNotContain(child => child.RowIndex == _rootRow, children);
+        Assert.HasCount(1, children);
     }
 
     [TestMethod]
@@ -115,10 +115,8 @@ public partial class IndexNavigationTests
         var firstRoot = index.Root('T');
         var secondRoot = index.Root('U');
 
-        Assert.IsFalse(index.Search(new SearchQuery(null, Subtree: firstRoot))
-            .Any(entry => entry.Drive == 'U'));
-        Assert.IsFalse(index.Search(new SearchQuery(null, Subtree: secondRoot))
-            .Any(entry => entry.Drive == 'T'));
+        Assert.DoesNotContain(entry => entry.Drive == 'U', index.Search(new SearchQuery(null, Subtree: firstRoot)));
+        Assert.DoesNotContain(entry => entry.Drive == 'T', index.Search(new SearchQuery(null, Subtree: secondRoot)));
         Assert.ThrowsExactly<ArgumentException>(() =>
             index.Search(new SearchQuery(null, Subtree: default(FileEntry))));
         Assert.ThrowsExactly<ArgumentException>(() =>
@@ -218,7 +216,7 @@ public partial class IndexNavigationTests
         try
         {
             var children = FileEntry.Create(snapshot[0], root).Children();
-            Assert.AreEqual(1, children.Count);
+            Assert.HasCount(1, children);
             Assert.AreEqual("live.txt", children[0].Name);
             Assert.AreEqual(liveRow, children[0].RowIndex);
         }
@@ -244,7 +242,7 @@ public partial class IndexNavigationTests
             // Rows 1 and 2 point at each other. The walk must stop rather than loop.
             var path = FileEntry.Create(snapshot[0], second).Path;
             Assert.IsTrue(path.StartsWith(TestDriveRoot.For('W'), StringComparison.Ordinal));
-            Assert.IsTrue(path.Length < 100);
+            Assert.IsLessThan(100, path.Length);
         }
         finally
         {
@@ -298,7 +296,7 @@ public partial class IndexNavigationTests
         {
             var exception = Assert.ThrowsExactly<InvalidDataException>(
                 () => _ = FileEntry.Create(snapshot[0], parent).Path);
-            StringAssert.Contains(exception.Message, BlockLayout.MaximumPathDepth.ToString(CultureInfo.InvariantCulture));
+            Assert.Contains(BlockLayout.MaximumPathDepth.ToString(CultureInfo.InvariantCulture), exception.Message);
         }
         finally
         {

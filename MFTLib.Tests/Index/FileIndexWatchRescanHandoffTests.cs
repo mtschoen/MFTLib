@@ -10,7 +10,7 @@ public class FileIndexWatchRescanHandoffTests
 {
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     [TestMethod]
     public async Task AppliedChange_DeliveredAfterCommit_CanRepeatDuringReplacementCatchUp()
@@ -47,18 +47,18 @@ public class FileIndexWatchRescanHandoffTests
                 var rescan = index.RescanAsync(['T'], Token);
                 Assert.AreNotSame(original, index.Root('T').DriveBlock,
                     "publication need not wait for an already applied change's delivery");
-                Assert.AreEqual(0, changes.Count);
-                Assert.AreEqual(0, index.Search(new SearchQuery("replayed.txt", NameMatchMode.Exact), Token).Count, "queries await the new catch-up");
+                Assert.IsEmpty(changes);
+                Assert.IsEmpty(index.Search(new SearchQuery("replayed.txt", NameMatchMode.Exact), Token), "queries await the new catch-up");
                 delivering.Release();
                 await rescan.WaitAsync(HangGuard);
                 await delivered.WaitAsync(HangGuard);
-                Assert.AreEqual(1, changes.Count);
+                Assert.HasCount(1, changes);
                 await source.WatchFor('T').Publish(WatchHarness.Batch(9, "replayed.txt", 700));
-                Assert.AreEqual(2, changes.Count);
+                Assert.HasCount(2, changes);
                 Assert.AreEqual(WatchState.CatchingUp, index.Drives.Single().Watch.State);
                 await source.WatchFor('T').Publish(new DriveCaughtUp());
                 await index.WaitForCatchUpAsync(['T'], Token);
-                Assert.AreEqual(1, index.Search(new SearchQuery("replayed.txt", NameMatchMode.Exact), Token).Count);
+                Assert.HasCount(1, index.Search(new SearchQuery("replayed.txt", NameMatchMode.Exact), Token));
                 await index.StopWatchingAsync(['T'], Token);
             }
             finally
@@ -105,7 +105,7 @@ public class FileIndexWatchRescanHandoffTests
         applying.Release();
         await rescan.WaitAsync(HangGuard);
         await queued.WaitAsync(HangGuard);
-        Assert.AreEqual(0, harness.Changes.Count);
+        Assert.IsEmpty(harness.Changes);
         Assert.AreEqual(new IndexWatchTarget('T', 13, 9000), harness.Source.TargetsFor('T')[1]);
         await index.StopWatchingAsync(['T'], Token);
     }
@@ -137,7 +137,7 @@ public class FileIndexWatchRescanHandoffTests
         }
 
         Assert.AreEqual(1, handle.DisposeCount);
-        Assert.AreEqual(1, harness.Source.TargetsFor('T').Count);
+        Assert.HasCount(1, harness.Source.TargetsFor('T'));
     }
 
     [TestMethod]

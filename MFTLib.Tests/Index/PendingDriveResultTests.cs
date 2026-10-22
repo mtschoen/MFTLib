@@ -22,6 +22,6 @@ public class PendingDriveResultTests
 
         var exception = Assert.ThrowsExactly<InvalidOperationException>(() => result.RequireFailureMessage('T'));
 
-        StringAssert.Contains(exception.Message, "Drive T");
+        Assert.Contains("Drive T", exception.Message);
     }
 }
