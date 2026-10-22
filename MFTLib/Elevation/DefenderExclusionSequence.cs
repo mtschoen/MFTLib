@@ -35,6 +35,7 @@ sealed class DefenderExclusionSequence
     readonly Func<Process, int> _getExitCode;
     readonly Func<string> _getTemporaryDirectory;
     readonly Action<string>? _scriptWritten;
+    readonly Func<Microsoft.Win32.SafeHandles.SafeFileHandle, Microsoft.Win32.SafeHandles.SafeFileHandle>? _takeScriptAnchor;
 
     internal DefenderExclusionSequence(ElevationSeams seams)
     {
@@ -44,6 +45,7 @@ sealed class DefenderExclusionSequence
         _getExitCode = seams.GetExitCode ?? ExitCode;
         _getTemporaryDirectory = seams.GetTemporaryDirectory ?? Path.GetTempPath;
         _scriptWritten = seams.ScriptWritten;
+        _takeScriptAnchor = seams.TakeScriptAnchor;
     }
 
     internal static bool WaitForExit(Process process, TimeSpan timeout) => process.WaitForExit(timeout);
@@ -127,7 +129,7 @@ sealed class DefenderExclusionSequence
         HeldScriptFile? held = null;
         try
         {
-            held = HeldScriptFile.Create(_getTemporaryDirectory(), script, _scriptWritten);
+            held = HeldScriptFile.Create(_getTemporaryDirectory(), script, _scriptWritten, _takeScriptAnchor);
             startInfo.ArgumentList.Add("-NoProfile");
             startInfo.ArgumentList.Add("-NonInteractive");
             startInfo.ArgumentList.Add("-ExecutionPolicy");

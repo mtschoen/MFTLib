@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using System.Text;
 using MFTLib.NativeInterop;
 using Microsoft.Win32.SafeHandles;
@@ -8,16 +9,17 @@ namespace MFTLib;
 ///     A temporary PowerShell script held for a child process to run. The script is written, reopened read-only with
 ///     write and delete sharing refused, checked to be the written file holding the written bytes, and named to the
 ///     child by <see cref="LaunchPath" />: on Windows the file's final path, which no junction, symbolic link or
-///     rename can redirect while the file is held. Disposing deletes the file through its handle, not its pathname.
+///     rename can redirect while the file is held. On Windows the file is only ever deleted through its handle, never
+///     its pathname.
 /// </summary>
 sealed class HeldScriptFile : IDisposable
 {
     readonly FileStream _held;
     readonly SafeFileHandle? _anchor;
     readonly string _createdPath;
+    bool _disposed;
 
-    HeldScriptFile(FileStream held, SafeFileHandle? anchor, string createdPath,
-        string launchPath)
+    HeldScriptFile(FileStream held, SafeFileHandle? anchor, string createdPath, string launchPath)
     {
         _held = held;
         _anchor = anchor;
@@ -30,11 +32,13 @@ sealed class HeldScriptFile : IDisposable
 
     /// <summary>
     ///     Writes <paramref name="script" /> as UTF-8 with a byte order mark (Windows PowerShell 5.1 reads it as UTF-8
-    ///     only then) into a new uniquely named file in <paramref name="directory" /> and holds it.
-    ///     <paramref name="written" /> runs after the writer closes and before the locked reopen; test support only.
-    ///     Throws <see cref="IOException" /> when the held file is not the one written or cannot be pinned.
+    ///     only then) into a new uniquely named file in <paramref name="directory" /> and holds it. Throws
+    ///     <see cref="IOException" /> when the held file is not the one written or cannot be pinned. Test support
+    ///     only: <paramref name="written" /> runs after the writer closes and before the locked reopen, and
+    ///     <paramref name="takeAnchor" /> replaces the attributes-only reopen of the writer's handle.
     /// </summary>
-    internal static HeldScriptFile Create(string directory, string script, Action<string>? written = null)
+    internal static HeldScriptFile Create(string directory, string script, Action<string>? written = null,
+        Func<SafeFileHandle, SafeFileHandle>? takeAnchor = null)
     {
         var utf8WithByteOrderMark = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
         var expected = utf8WithByteOrderMark.GetPreamble().Concat(utf8WithByteOrderMark.GetBytes(script)).ToArray();
@@ -49,7 +53,7 @@ sealed class HeldScriptFile : IDisposable
                 created = true;
                 // An attributes-only handle on the written file itself: what the held file is checked against and
                 // what the delete goes through, so neither ever resolves the pathname again.
-                anchor = OperatingSystem.IsWindows() ? HandleBoundFile.ReopenForAttributes(writer.SafeFileHandle) : null;
+                anchor = OperatingSystem.IsWindows() ? TakeAnchor(writer.SafeFileHandle, takeAnchor) : null;
                 writer.Write(expected);
                 writer.Flush(flushToDisk: true);
             }
@@ -73,6 +77,10 @@ sealed class HeldScriptFile : IDisposable
         }
     }
 
+    [SupportedOSPlatform("windows")]
+    static SafeFileHandle TakeAnchor(SafeFileHandle writer, Func<SafeFileHandle, SafeFileHandle>? takeAnchor) =>
+        takeAnchor is null ? HandleBoundFile.ReopenForAttributes(writer) : takeAnchor(writer);
+
     static void RequireBytes(FileStream held, byte[] expected)
     {
         var actual = new byte[expected.Length + 1];
@@ -85,10 +93,13 @@ sealed class HeldScriptFile : IDisposable
 
     // The final path names every component by its real name with every junction and symbolic link already resolved,
     // so each component is a real directory on the held file's ancestor chain; NTFS refuses to rename any of them
-    // while the file is open, and a non-empty directory cannot become a junction. The path is used only when Win32
-    // normalization leaves it unchanged (a trailing dot or space would otherwise name a different directory) and
-    // when opening it the way the child will lands on the held file.
-    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    // while the file is open, and a non-empty directory cannot become a junction. That holds only for a local NTFS
+    // volume reached at its drive root, so a network path, another file system or a folder mount point is refused.
+    // The path must also mean the same to PowerShell as to Win32: Win32 normalization must leave it unchanged (a
+    // trailing dot or space would name a different directory), and it must carry no PowerShell wildcard or escape
+    // character, because powershell.exe -File resolves 'dir[ab]' to a sibling 'dira'. Last, opening it the way
+    // Win32 does must land on the written file.
+    [SupportedOSPlatform("windows")]
     static string PinnedLaunchPath(FileStream held, SafeFileHandle anchor)
     {
         // The reopen resolved the pathname again, so it must land on the very file the writer created.
@@ -98,12 +109,17 @@ sealed class HeldScriptFile : IDisposable
             throw new IOException("The PowerShell script path was redirected before the script could be locked.");
         }
 
-        var launchPath = ToWin32Path(HandleBoundFile.FinalPathOf(held.SafeFileHandle));
-        var components = launchPath.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
-        if (Path.GetFullPath(launchPath) != launchPath
-            || components.Skip(1).Any(component => component.EndsWith('.') || component.EndsWith(' ')))
+        var fileSystem = HandleBoundFile.FileSystemNameOf(held.SafeFileHandle);
+        if (fileSystem != "NTFS")
         {
-            throw new IOException($"The PowerShell script path '{launchPath}' does not survive Win32 normalization.");
+            throw new IOException($"The PowerShell script is on {fileSystem}, not NTFS, so its path cannot be pinned.");
+        }
+
+        var launchPath = ToLocalDrivePath(HandleBoundFile.FinalPathOf(held.SafeFileHandle));
+        RequireSameMeaningToPowerShell(launchPath);
+        if (!IsDriveRoot(HandleBoundFile.VolumePathOf(launchPath)))
+        {
+            throw new IOException($"The PowerShell script path '{launchPath}' passes through a folder mount point.");
         }
 
         using var check = HandleBoundFile.OpenAttributesOnly(launchPath);
@@ -115,45 +131,77 @@ sealed class HeldScriptFile : IDisposable
         return launchPath;
     }
 
-    // Windows PowerShell 5.1 refuses a -File path in the \\?\ form, so the final path goes back to its drive or UNC
-    // form; PinnedLaunchPath then checks that form still names the same file.
-    internal static string ToWin32Path(string finalPath)
+    /// <summary>
+    ///     Throws <see cref="IOException" /> when Win32 normalization would change <paramref name="launchPath" /> or
+    ///     when it holds a character PowerShell's path resolution treats as a wildcard or escape.
+    /// </summary>
+    internal static void RequireSameMeaningToPowerShell(string launchPath)
     {
-        const string uncPrefix = @"\\?\UNC\";
-        const string localPrefix = @"\\?\";
-        if (finalPath.StartsWith(uncPrefix, StringComparison.OrdinalIgnoreCase))
+        if (launchPath.IndexOfAny(['[', ']', '`', '*', '?']) >= 0)
         {
-            return @"\\" + finalPath[uncPrefix.Length..];
+            throw new IOException(
+                $"The PowerShell script path '{launchPath}' holds a character PowerShell reads as a wildcard.");
         }
 
-        return finalPath.StartsWith(localPrefix, StringComparison.Ordinal) ? finalPath[localPrefix.Length..] : finalPath;
+        var components = launchPath.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
+        if (Path.GetFullPath(launchPath) != launchPath
+            || components.Skip(1).Any(component => component.EndsWith('.') || component.EndsWith(' ')))
+        {
+            throw new IOException($"The PowerShell script path '{launchPath}' does not survive Win32 normalization.");
+        }
     }
 
+    // Windows PowerShell 5.1 refuses a -File path in the \\?\ form, so the final path goes back to its drive form.
+    // Anything but a local drive path (a \\?\UNC\ network path, a volume GUID path) is refused: a server, not the
+    // local kernel, would decide what the child reads.
+    internal static string ToLocalDrivePath(string finalPath)
+    {
+        const string localPrefix = @"\\?\";
+        var drivePath = finalPath.StartsWith(localPrefix, StringComparison.Ordinal) ? finalPath[localPrefix.Length..] : "";
+        if (drivePath.Length < 3 || !char.IsAsciiLetter(drivePath[0]) || drivePath[1] != ':' || drivePath[2] != '\\')
+        {
+            throw new IOException($"The PowerShell script path '{finalPath}' is not on a local drive.");
+        }
+
+        return drivePath;
+    }
+
+    internal static bool IsDriveRoot(string volumePath) =>
+        volumePath.Length == 3 && char.IsAsciiLetter(volumePath[0]) && volumePath[1] == ':' && volumePath[2] == '\\';
+
     /// <summary>
-    ///     Releases the hold and deletes the file. On Windows the delete goes through a reopen of the held file's own
-    ///     handle, so a pathname redirected after the child ran cannot steer it at another file. A failed delete is
-    ///     ignored: a leftover temporary script must not change the outcome of the run.
+    ///     Releases the hold and deletes the file; a second call does nothing. On Windows the delete goes through a
+    ///     reopen of the held file's own handle, so a pathname redirected after the child ran cannot steer it at another
+    ///     file. A failed delete is ignored: a leftover temporary script must not change the outcome of the run.
     /// </summary>
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
         _held.Dispose();
         Delete(_anchor, _createdPath);
     }
 
-    // The anchor exists only on Windows; elsewhere, or when the anchor could not be taken, the delete goes by pathname.
+    // On Windows the delete goes only through the anchor; without one (it could not be taken) the file is left
+    // behind, because a pathname resolved after the writer closed may no longer name it. Elsewhere it goes by path.
     static void Delete(SafeFileHandle? anchor, string path)
     {
-        if (anchor is null)
+        if (!OperatingSystem.IsWindows())
         {
             DeleteQuietly(path);
             return;
         }
 
-        if (OperatingSystem.IsWindows())
+        if (anchor is null)
         {
-            HandleBoundFile.TryDeleteByHandle(anchor);
+            return;
         }
 
+        HandleBoundFile.TryDeleteByHandle(anchor);
         anchor.Dispose();
     }
 

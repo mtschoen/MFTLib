@@ -74,12 +74,15 @@ throws `ArgumentException` before anything runs, even off Windows. The script is
 `Add-MpPreference -ExclusionProcess` literal per name, so a name cannot inject a command. PowerShell runs it from a
 script file: a uniquely named temporary `.ps1` (UTF-8 with a byte order mark) started with
 `-NoProfile -NonInteractive -ExecutionPolicy Bypass -File`. The file is held open read-only, refusing write and delete
-sharing, until the child exits (or is killed on timeout). The held file must be the very file written (same volume and
-file index, not only the same bytes), and on Windows the child is given its final path, with every junction and
-symbolic link resolved, rather than the temporary-directory path. NTFS refuses to rename any directory above an open
-file, so that path cannot be redirected while the child runs. A final path that Win32 normalization would change (a
-trailing dot or space) or that does not open the held file is refused, and nothing starts. Afterward the file is deleted
-through a reopen of its own handle, never by pathname; a failed delete never changes the result.
+sharing, until the child exits (or is killed on timeout). The held file must be the very file written (same volume
+and 128-bit file id, not only the same bytes), and on Windows the child is given its final path, with every junction
+and symbolic link resolved, rather than the temporary-directory path. NTFS refuses to rename any directory above an
+open file, so that path cannot be redirected while the child runs. Nothing starts when the script is not on a local
+NTFS drive reached at its drive root (a network path, another file system or a folder mount point), when Win32
+normalization would change the path (a trailing dot or space), when the path holds `[`, `]`, a backtick, `*` or `?`
+(Windows PowerShell 5.1 resolves a `-File` path as a wildcard, so `dir[ab]` would run a sibling `dira`), or when the
+path does not open the held file. Afterward the file is deleted through a reopen of its own handle, never by pathname;
+if that handle could not be taken the file is left behind, and a failed delete never changes the result.
 
 Tests use `MFTLibTestExtensions.DefenderExclusionIsolation.ScriptPowerShell`, a process-global scope (use a nonparallel
 fixture) that records each PowerShell launch and reports a chosen outcome. A fake `IElevationProvider` decides the

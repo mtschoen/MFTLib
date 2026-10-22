@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using Microsoft.Win32.SafeHandles;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -7,7 +8,8 @@ namespace MFTLib.Tests;
 /// <summary>
 ///     The PowerShell script file a Defender exclusion run hands its (possibly elevated) child: the path the child
 ///     gets must keep naming the verified file however the temporary directory's junctions are retargeted, and the
-///     cleanup must delete that file and nothing else. Real junctions, no real PowerShell, no elevation.
+///     cleanup must delete that file and nothing else. Real junctions and no elevation; only the one test that shows
+///     why bracketed paths are refused starts a real (unelevated) Windows PowerShell.
 /// </summary>
 [TestClass]
 [DoNotParallelize]
@@ -23,7 +25,8 @@ public class DefenderExclusionScriptPinningTests
     }
 
     static DefenderExclusionSequence SequenceOver(
-        string temporaryDirectory, Func<ProcessStartInfo, Process?> startProcess, Action<string>? scriptWritten = null)
+        string temporaryDirectory, Func<ProcessStartInfo, Process?> startProcess, Action<string>? scriptWritten = null,
+        Func<SafeFileHandle, SafeFileHandle>? takeScriptAnchor = null)
     {
         return new DefenderExclusionSequence(new ElevationSeams
         {
@@ -32,7 +35,8 @@ public class DefenderExclusionScriptPinningTests
             KillProcess = _ => { },
             GetExitCode = _ => 0,
             GetTemporaryDirectory = () => temporaryDirectory,
-            ScriptWritten = scriptWritten
+            ScriptWritten = scriptWritten,
+            TakeScriptAnchor = takeScriptAnchor
         });
     }
 
@@ -211,12 +215,181 @@ public class DefenderExclusionScriptPinningTests
     }
 
     [TestMethod]
-    [DataRow(@"\\?\D:\Scratch\Temp\a.ps1", @"D:\Scratch\Temp\a.ps1")]
-    [DataRow(@"\\?\UNC\server\share\Temp\a.ps1", @"\\server\share\Temp\a.ps1")]
-    [DataRow(@"\\?\unc\server\share\a.ps1", @"\\server\share\a.ps1")]
-    [DataRow(@"C:\already\plain.ps1", @"C:\already\plain.ps1")]
-    public void ToWin32Path_DropsTheLongPathPrefixPowerShellRefuses(string finalPath, string expected)
+    public void RunPowerShell_DirectoryWithAPowerShellWildcard_RefusesWithoutStarting()
     {
-        Assert.AreEqual(expected, HeldScriptFile.ToWin32Path(finalPath));
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("The launch path is pinned on Windows only.");
+        }
+
+        var root = CreateOwnedDirectory();
+        try
+        {
+            // powershell.exe -File would read "dir[ab]" as a pattern and run "dira\<name>.ps1" instead.
+            var bracketed = Directory.CreateDirectory(Path.Combine(root, "dir[ab]")).FullName;
+            var started = false;
+            var sequence = SequenceOver(bracketed, _ =>
+            {
+                started = true;
+                return new Process();
+            });
+
+            Assert.IsFalse(sequence.RunPowerShell(Script, elevated: true));
+
+            Assert.IsFalse(started);
+            Assert.IsEmpty(Directory.GetFileSystemEntries(bracketed), "The written script is still deleted.");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    // Why the test above matters: what Windows PowerShell 5.1 itself runs for a bracketed -File path. Win32 opens the
+    // literal file; PowerShell runs the sibling the brackets match.
+    [TestMethod]
+    public void WindowsPowerShellFileParameter_ReadsBracketsAsAWildcardAndRunsTheSibling()
+    {
+        if (!OperatingSystem.IsWindows() || !File.Exists(DefenderExclusionSequence.PowerShellPath))
+        {
+            Assert.Inconclusive("Needs Windows PowerShell.");
+        }
+
+        var root = CreateOwnedDirectory();
+        try
+        {
+            var literal = Directory.CreateDirectory(Path.Combine(root, "dir[ab]")).FullName;
+            var sibling = Directory.CreateDirectory(Path.Combine(root, "dira")).FullName;
+            File.WriteAllText(Path.Combine(literal, "script.ps1"), "Write-Output 'literal'");
+            File.WriteAllText(Path.Combine(sibling, "script.ps1"), "Write-Output 'sibling'");
+            var startInfo = new ProcessStartInfo(DefenderExclusionSequence.PowerShellPath)
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true
+            };
+            foreach (var argument in new[]
+                     {
+                         "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
+                         Path.Combine(literal, "script.ps1")
+                     })
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
+
+            using var process = Process.Start(startInfo)!;
+            var output = process.StandardOutput.ReadToEnd().Trim();
+            process.WaitForExit();
+
+            Assert.AreEqual("sibling", output);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void RunPowerShell_AnchorCannotBeTaken_RefusesAndNeverDeletesByPathname()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Junctions are a Windows file system feature.");
+        }
+
+        var root = CreateOwnedDirectory();
+        try
+        {
+            var staging = Directory.CreateDirectory(Path.Combine(root, "staging")).FullName;
+            var decoy = Directory.CreateDirectory(Path.Combine(root, "decoy")).FullName;
+            var junction = Path.Combine(root, "temp");
+            CreateJunction(junction, staging);
+            var started = false;
+            string? decoyFile = null;
+            var sequence = SequenceOver(
+                junction,
+                _ =>
+                {
+                    started = true;
+                    return new Process();
+                },
+                takeScriptAnchor: _ =>
+                {
+                    // Without an anchor the only way left to delete is by pathname, which now names the decoy.
+                    var name = Directory.GetFiles(staging).Single();
+                    decoyFile = Path.Combine(decoy, Path.GetFileName(name));
+                    File.WriteAllBytes(decoyFile, DecoyBytes);
+                    RetargetJunction(junction, decoy);
+                    throw new IOException("The anchor could not be taken.");
+                });
+
+            Assert.IsFalse(sequence.RunPowerShell(Script, elevated: true));
+
+            Assert.IsFalse(started);
+            Assert.IsTrue(File.Exists(decoyFile), "A failed anchor must not turn into a delete by pathname.");
+        }
+        finally
+        {
+            DeleteRootWithJunction(root);
+        }
+    }
+
+    [TestMethod]
+    public void Dispose_CalledTwice_DoesNothingTheSecondTime()
+    {
+        var directory = CreateOwnedDirectory();
+        try
+        {
+            var held = HeldScriptFile.Create(directory, Script);
+            held.Dispose();
+            held.Dispose();
+
+            Assert.IsEmpty(Directory.GetFileSystemEntries(directory));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    [DataRow(@"\\?\D:\Scratch\Temp\a.ps1", @"D:\Scratch\Temp\a.ps1")]
+    [DataRow(@"\\?\c:\a.ps1", @"c:\a.ps1")]
+    public void ToLocalDrivePath_DropsTheLongPathPrefixPowerShellRefuses(string finalPath, string expected)
+    {
+        Assert.AreEqual(expected, HeldScriptFile.ToLocalDrivePath(finalPath));
+    }
+
+    [TestMethod]
+    [DataRow(@"\\?\UNC\server\share\Temp\a.ps1")]
+    [DataRow(@"\\?\unc\server\share\a.ps1")]
+    [DataRow(@"\\?\Volume{00000000-0000-0000-0000-000000000000}\a.ps1")]
+    [DataRow(@"\\?\1:\a.ps1")]
+    [DataRow(@"\\?\D:")]
+    [DataRow(@"D:\already\plain.ps1")]
+    [DataRow(@"\\server\share\a.ps1")]
+    public void ToLocalDrivePath_AnythingButALocalDrive_IsRefused(string finalPath)
+    {
+        Assert.ThrowsExactly<IOException>(() => HeldScriptFile.ToLocalDrivePath(finalPath));
+    }
+
+    [TestMethod]
+    [DataRow(@"D:\Scratch\dir[ab]\a.ps1")]
+    [DataRow(@"D:\Scratch\dir]\a.ps1")]
+    [DataRow(@"D:\Scratch\tick`b\a.ps1")]
+    public void RequireSameMeaningToPowerShell_WildcardOrEscapeCharacter_IsRefused(string launchPath)
+    {
+        Assert.ThrowsExactly<IOException>(() => HeldScriptFile.RequireSameMeaningToPowerShell(launchPath));
+    }
+
+    [TestMethod]
+    [DataRow(@"D:\", true)]
+    [DataRow(@"z:\", true)]
+    [DataRow(@"D:\Mounts\Volume\", false)]
+    [DataRow(@"\\server\share\", false)]
+    [DataRow(@"D:", false)]
+    public void IsDriveRoot_OnlyABareDriveRoot(string volumePath, bool expected)
+    {
+        Assert.AreEqual(expected, HeldScriptFile.IsDriveRoot(volumePath));
     }
 }

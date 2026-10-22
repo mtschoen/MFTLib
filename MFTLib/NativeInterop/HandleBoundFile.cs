@@ -20,15 +20,54 @@ static partial class HandleBoundFile
     const uint FileNameNormalized = 0x0;
     const uint VolumeNameDos = 0x0;
 
-    /// <summary>The volume serial number and 64-bit file index that name one file on one volume.</summary>
-    internal static (uint Volume, ulong Index) IdentityOf(SafeFileHandle handle)
+    const int FileIdInfoClass = 18; // FILE_INFO_BY_HANDLE_CLASS.FileIdInfo
+
+    /// <summary>
+    ///     The 64-bit volume serial number and 128-bit file id that name one file on one machine. The 64-bit index of
+    ///     <c>GetFileInformationByHandle</c> is not unique on ReFS, so this reads <c>FILE_ID_INFO</c>, and it refuses
+    ///     an all-zero or all-ones id, which a file system reports when it has no stable id.
+    /// </summary>
+    internal static unsafe (ulong Volume, UInt128 File) IdentityOf(SafeFileHandle handle)
     {
-        if (!Kernel32.GetFileInformationByHandle(handle, out var information))
+        FileIdInformation information;
+        if (!GetFileInformationByHandleEx(handle, FileIdInfoClass, &information, (uint)sizeof(FileIdInformation)))
         {
             throw new IOException("Could not read the file identity.", Marshal.GetHRForLastWin32Error());
         }
 
-        return (information.VolumeSerialNumber, ((ulong)information.FileIndexHigh << 32) | information.FileIndexLow);
+        var file = new UInt128(information.FileIdHigh, information.FileIdLow);
+        if (file == UInt128.Zero || file == UInt128.MaxValue)
+        {
+            throw new IOException("The file system reported no stable file identity.");
+        }
+
+        return (information.VolumeSerialNumber, file);
+    }
+
+    /// <summary>The name of the file system holding the open file, such as <c>NTFS</c>.</summary>
+    internal static unsafe string FileSystemNameOf(SafeFileHandle handle)
+    {
+        const int capacity = 64;
+        var buffer = stackalloc char[capacity];
+        if (!GetVolumeInformationByHandleW(handle, null, 0, null, null, null, buffer, capacity))
+        {
+            throw new IOException("Could not read the file system name.", Marshal.GetHRForLastWin32Error());
+        }
+
+        return new string(buffer);
+    }
+
+    /// <summary>The root of the volume <paramref name="path" /> is on, which is a folder for a mount point.</summary>
+    internal static unsafe string VolumePathOf(string path)
+    {
+        const int capacity = 1024;
+        var buffer = stackalloc char[capacity];
+        if (!GetVolumePathNameW(path, buffer, capacity))
+        {
+            throw new IOException($"Could not read the volume of '{path}'.", Marshal.GetHRForLastWin32Error());
+        }
+
+        return new string(buffer);
     }
 
     /// <summary>
@@ -94,6 +133,31 @@ static partial class HandleBoundFile
         handle.Dispose();
         throw new IOException(message, error);
     }
+
+    // Mirrors FILE_ID_INFO: a ULONGLONG volume serial number, then the 16-byte FILE_ID_128, read as two halves.
+    [StructLayout(LayoutKind.Sequential)]
+    struct FileIdInformation
+    {
+        public ulong VolumeSerialNumber;
+        public ulong FileIdLow;
+        public ulong FileIdHigh;
+    }
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetFileInformationByHandleEx", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static unsafe partial bool GetFileInformationByHandleEx(
+        SafeFileHandle file, int informationClass, void* information, uint bufferSize);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetVolumeInformationByHandleW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static unsafe partial bool GetVolumeInformationByHandleW(
+        SafeFileHandle file, char* volumeName, uint volumeNameSize, uint* volumeSerialNumber,
+        uint* maximumComponentLength, uint* fileSystemFlags, char* fileSystemName, uint fileSystemNameSize);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetVolumePathNameW", SetLastError = true,
+        StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static unsafe partial bool GetVolumePathNameW(string fileName, char* volumePath, uint volumePathSize);
 
     [LibraryImport("kernel32.dll", EntryPoint = "ReOpenFile", SetLastError = true)]
     private static partial SafeFileHandle ReOpenFile(
