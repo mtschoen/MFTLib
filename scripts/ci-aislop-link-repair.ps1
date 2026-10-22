@@ -7,6 +7,18 @@ param([string] $ForkDirectory, [string] $EvidenceLogPath)
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 
+# tar extracts a relative directory symlink as a file symlink when its target is not yet extracted,
+# and Windows will not traverse a file symlink to a directory. Recreate it as a directory symlink.
+function Repair-RelativeDirectorySymlink {
+    param([string] $Entry, [string] $Target)
+    $resolved = Join-Path (Split-Path -Parent $Entry) $Target
+    if (([IO.File]::GetAttributes($Entry) -band [IO.FileAttributes]::Directory) -ne 0) { return $false }
+    if (-not (Test-Path -LiteralPath $resolved -PathType Container)) { return $false }
+    [IO.File]::Delete($Entry)
+    New-Item -ItemType SymbolicLink -Path $Entry -Target $Target | Out-Null
+    return $true
+}
+
 function Repair-AislopDependencyLinks {
     param([string] $ForkDirectory, [string] $EvidenceLogPath)
     $root = (Resolve-Path -LiteralPath $ForkDirectory).Path
@@ -25,7 +37,10 @@ function Repair-AislopDependencyLinks {
         $target = (Get-Item -LiteralPath $entry -Force).LinkTarget
         if ([string]::IsNullOrEmpty($target)) { continue }
         $normalized = $target -replace '^\\\\\?\\', '' -replace '^\\\?\?\\', ''
-        if (-not [IO.Path]::IsPathRooted($normalized)) { continue }
+        if (-not [IO.Path]::IsPathRooted($normalized)) {
+            if (Repair-RelativeDirectorySymlink $entry $target) { $retargeted++ }
+            continue
+        }
         $components = $normalized.Split('\', [StringSplitOptions]::RemoveEmptyEntries)
         $candidate = $null
         for ($index = 1; $index -lt $components.Count; $index++) {

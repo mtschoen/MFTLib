@@ -102,6 +102,11 @@ jobs:
         # Restored absolute dependency links point into the producing job's deleted
         # directory. scripts/ci-aislop-link-repair.ps1 retargets them into this job's
         # checkout and verifies the CLI before scanning; see cache path note above.
+        # A failed repair must not fail the job: the cache key is the immutable pin
+        # sha, so a bad entry would otherwise fail every run. continue-on-error keeps
+        # steps.aislop-link-repair.outcome == 'failure' (recorded in the evidence)
+        # and the cold build below runs as the fallback.
+        continue-on-error: true
         shell: pwsh
         run: |
           & "$env:GITHUB_WORKSPACE/scripts/ci-aislop-link-repair.ps1" `
@@ -111,7 +116,7 @@ jobs:
 
       - name: Build C#-capable aislop (pinned fork commit)
         id: aislop-cold-build
-        if: steps.aislop-cache.outputs.cache-hit != 'true'
+        if: steps.aislop-cache.outputs.cache-hit != 'true' || steps.aislop-link-repair.outcome == 'failure'
         env:
           AISLOP_REPOSITORY_URL: ${{ format('{0}/schoen/aislop.git', github.server_url) }}
         # Cloned into the job-private, gitignored workspace directory, so aislop does not scan the fork's own source.

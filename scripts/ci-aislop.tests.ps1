@@ -336,6 +336,18 @@ $failedOutput = Join-Path $evidenceDirectory 'failed'
 $failedSummary = Get-Content -LiteralPath (Join-Path $failedOutput 'summary.txt') -Raw
 Assert-True ($LASTEXITCODE -eq 0 -and $failedSummary.Contains('cache-hit: false') -and $failedSummary.Contains('cold-build-step: failure') -and
     $failedSummary.Contains('provenance: not reached') -and $failedSummary.Contains('score: unavailable')) 'Evidence is written even when the gate never ran'
+$fallbackOutput = Join-Path $evidenceDirectory 'fallback'
+& (Join-Path $PSHOME 'pwsh.exe') -NoProfile -File $evidenceScript -OutputDirectory $fallbackOutput `
+    -ReportPath $evidenceReport -ProvenanceLogPath $evidenceProvenance -LinkRepairLogPath $evidenceRepair `
+    -CacheHit true -LinkRepairOutcome failure -ColdBuildOutcome success -GateOutcome success | Out-Null
+$fallbackSummary = Get-Content -LiteralPath (Join-Path $fallbackOutput 'summary.txt') -Raw
+Assert-True ($fallbackSummary.Contains('link-repair-step: failure') -and $fallbackSummary.Contains('cold-build-step: success') -and
+    $fallbackSummary.Contains('fallback: link repair failed, so the fork was rebuilt cold (cold build outcome success)')) 'Evidence records the cold build fallback after a failed link repair'
+Assert-True (-not $summary.Contains('fallback:')) 'Evidence records no fallback when the restored cache works'
+$repairStepText = [regex]::Match($workflow, '(?ms)^      - name: Repair restored aislop dependency links\r?\n.*?(?=^      - name:|\z)').Value
+$coldStepText = [regex]::Match($workflow, '(?ms)^      - name: Build C#-capable aislop.*?(?=^      - name:|\z)').Value
+Assert-True ($repairStepText -match '(?m)^\s*continue-on-error: true\r?$') 'Failed link repair does not fail the job'
+Assert-True ($coldStepText.Contains("steps.aislop-link-repair.outcome == 'failure'")) 'Cold build runs after a failed link repair'
 foreach ($stepName in @('Write aislop gate evidence', 'Upload aislop gate evidence')) {
     $step = [regex]::Match($workflow, "(?ms)^      - name: $stepName\r?\n.*?(?=^      - name:|\z)").Value
     Assert-True ($step -match '(?m)^\s*if: always\(\)\r?$') "$stepName runs on every outcome"
@@ -381,6 +393,20 @@ Assert-True ((Get-Content -LiteralPath "$restored/node_modules/.pnpm/kind" -Raw)
 Assert-True ((Get-Item -LiteralPath "$restored/wrongkind" -Force).LinkTarget -ceq "$repairRoot/old/node_modules/.pnpm/kind".Replace('/', '\')) 'Failed repair leaves the original junction in place'
 [IO.Directory]::Delete("$restored/stale"); [IO.Directory]::Delete("$restored/outside")
 [IO.Directory]::Delete("$restored/wrongkind")
+
+# tar restores a relative directory symlink as a file symlink when its target is extracted later.
+$relativeRoot = Join-Path $repairRoot 'relative tree'
+New-Item -ItemType Directory -Force -Path "$relativeRoot/.pnpm/pkg@1/node_modules/pkg", "$relativeRoot/.pnpm/consumer/node_modules" | Out-Null
+Set-Content -LiteralPath "$relativeRoot/.pnpm/pkg@1/node_modules/pkg/value.txt" -Value 'relative' -NoNewline
+$relativeLink = "$relativeRoot/.pnpm/consumer/node_modules/pkg"
+$relativeTarget = '..\..\pkg@1\node_modules\pkg'
+$relativeLinkWindows = $relativeLink.Replace('/', '\')
+cmd /c "mklink `"$relativeLinkWindows`" $relativeTarget" | Out-Null
+Assert-True (([IO.File]::GetAttributes($relativeLink) -band [IO.FileAttributes]::Directory) -eq 0) 'Fixture is a file symlink to a directory'
+Repair-AislopDependencyLinks $relativeRoot $log
+Assert-True ((Get-Content -LiteralPath "$relativeLink/value.txt" -Raw) -ceq 'relative') 'Relative file symlink to a directory is recreated as a directory symlink'
+Assert-True ((Get-Item -LiteralPath $relativeLink -Force).LinkTarget -ceq $relativeTarget) 'Repaired relative symlink keeps its relative target'
+Assert-True ((Get-Content -LiteralPath $log -Raw).Trim() -ceq 'Repaired 1 of 1 restored dependency links') 'Relative repair is counted in the evidence'
 
 foreach ($failure in $failures) { Write-Host "FAIL: $failure" }
 Write-Host "ci-aislop.tests.ps1: $checks checks, $($failures.Count) failures"

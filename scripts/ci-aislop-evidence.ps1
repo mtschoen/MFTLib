@@ -54,6 +54,9 @@ function New-AislopEvidenceSummary {
     $lines.Add("link-repair-step: $(Get-AislopEvidenceValue $LinkRepairOutcome)")
     foreach ($line in (Read-AislopEvidenceLines $LinkRepairLogPath 'not run')) { $lines.Add("link-repair: $line") }
     $lines.Add("cold-build-step: $(Get-AislopEvidenceValue $ColdBuildOutcome)")
+    if ($LinkRepairOutcome -eq 'failure' -and $ColdBuildOutcome -ne 'skipped') {
+        $lines.Add("fallback: link repair failed, so the fork was rebuilt cold (cold build outcome $(Get-AislopEvidenceValue $ColdBuildOutcome))")
+    }
     foreach ($line in (Read-AislopEvidenceLines $ProvenanceLogPath 'not reached')) { $lines.Add("provenance: $line") }
     $lines.Add("gate-step: $(Get-AislopEvidenceValue $GateOutcome)")
     $lines.Add("score: $score")

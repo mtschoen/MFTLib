@@ -234,7 +234,8 @@ every job; actions/cache rejects `..` segments; and the act workspace is per-job
 so no job shares a checkout with another job, which matters because concurrency
 is grouped per ref only). The directory is gitignored, which aislop honors, so
 the scan never reads the fork's source. The workflow runs scripts/ci-aislop-link-repair.ps1 to repair restored
-dependency links on cache hits and clones/builds with pnpm on misses.
+dependency links on cache hits (absolute links are retargeted; a relative directory link that tar restored as a file symlink is recreated as a directory symlink) and clones/builds with pnpm on misses.
+The repair step is `continue-on-error`: when it fails, the cold build step runs as the fallback, and the evidence summary records the failed repair outcome, the cold build outcome and a `fallback:` line.
 After preparation it resolves that checkout into `AISLOP_HOME` and
 invokes `scripts/ci-aislop.ps1 -ReportPath` with
 `$env:RUNNER_TEMP/aislop-report.json`. The shared script owns scanner execution,
