@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Text;
 
 namespace MFTLib;
 
@@ -34,6 +33,8 @@ sealed class DefenderExclusionSequence
     readonly Func<Process, TimeSpan, bool> _waitForExit;
     readonly Action<Process> _killProcess;
     readonly Func<Process, int> _getExitCode;
+    readonly Func<string> _getTemporaryDirectory;
+    readonly Action<string>? _scriptWritten;
 
     internal DefenderExclusionSequence(ElevationSeams seams)
     {
@@ -41,6 +42,8 @@ sealed class DefenderExclusionSequence
         _waitForExit = seams.WaitForExit ?? WaitForExit;
         _killProcess = seams.KillProcess ?? Kill;
         _getExitCode = seams.GetExitCode ?? ExitCode;
+        _getTemporaryDirectory = seams.GetTemporaryDirectory ?? Path.GetTempPath;
+        _scriptWritten = seams.ScriptWritten;
     }
 
     internal static bool WaitForExit(Process process, TimeSpan timeout) => process.WaitForExit(timeout);
@@ -121,12 +124,16 @@ sealed class DefenderExclusionSequence
             startInfo.Verb = "runas";
         }
 
-        startInfo.ArgumentList.Add("-NoProfile");
-        startInfo.ArgumentList.Add("-NonInteractive");
-        startInfo.ArgumentList.Add("-EncodedCommand");
-        startInfo.ArgumentList.Add(Convert.ToBase64String(Encoding.Unicode.GetBytes(script)));
+        HeldScriptFile? held = null;
         try
         {
+            held = HeldScriptFile.Create(_getTemporaryDirectory(), script, _scriptWritten);
+            startInfo.ArgumentList.Add("-NoProfile");
+            startInfo.ArgumentList.Add("-NonInteractive");
+            startInfo.ArgumentList.Add("-ExecutionPolicy");
+            startInfo.ArgumentList.Add("Bypass");
+            startInfo.ArgumentList.Add("-File");
+            startInfo.ArgumentList.Add(held.LaunchPath);
             using var process = _startProcess(startInfo);
             if (process is null)
             {
@@ -141,9 +148,14 @@ sealed class DefenderExclusionSequence
 
             return _getExitCode(process) == 0;
         }
-        catch (Exception exception) when (exception is Win32Exception or InvalidOperationException)
+        catch (Exception exception) when (exception is Win32Exception or InvalidOperationException
+            or IOException or UnauthorizedAccessException)
         {
             return false;
+        }
+        finally
+        {
+            held?.Dispose();
         }
     }
 }

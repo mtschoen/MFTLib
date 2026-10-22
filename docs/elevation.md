@@ -71,8 +71,15 @@ before it kills the process; the self-elevated child gets 60 seconds, so the out
 Each name must be a plain file name: letters, digits, `.`, `-`, `_`, `+` and inner spaces, with at least one letter or
 digit. Anything else (empty, whitespace-only, quotes, semicolons, backticks, dollar signs, pipes, path separators)
 throws `ArgumentException` before anything runs, even off Windows. The script is one single-quoted
-`Add-MpPreference -ExclusionProcess` literal per name, passed to PowerShell with `-EncodedCommand`, so a name cannot
-inject a command.
+`Add-MpPreference -ExclusionProcess` literal per name, so a name cannot inject a command. PowerShell runs it from a
+script file: a uniquely named temporary `.ps1` (UTF-8 with a byte order mark) started with
+`-NoProfile -NonInteractive -ExecutionPolicy Bypass -File`. The file is held open read-only, refusing write and delete
+sharing, until the child exits (or is killed on timeout). The held file must be the very file written (same volume and
+file index, not only the same bytes), and on Windows the child is given its final path, with every junction and
+symbolic link resolved, rather than the temporary-directory path. NTFS refuses to rename any directory above an open
+file, so that path cannot be redirected while the child runs. A final path that Win32 normalization would change (a
+trailing dot or space) or that does not open the held file is refused, and nothing starts. Afterward the file is deleted
+through a reopen of its own handle, never by pathname; a failed delete never changes the result.
 
 Tests use `MFTLibTestExtensions.DefenderExclusionIsolation.ScriptPowerShell`, a process-global scope (use a nonparallel
 fixture) that records each PowerShell launch and reports a chosen outcome. A fake `IElevationProvider` decides the

@@ -230,39 +230,241 @@ public class DefenderExclusionSequenceTests
         Func<ProcessStartInfo, Process?>? startProcess = null,
         Func<Process, TimeSpan, bool>? waitForExit = null,
         Action<Process>? killProcess = null,
-        int exitCode = 0)
+        int exitCode = 0,
+        string? temporaryDirectory = null)
     {
         return new DefenderExclusionSequence(new ElevationSeams
         {
             StartProcess = startProcess ?? (_ => new Process()),
             WaitForExit = waitForExit ?? ((_, _) => true),
             KillProcess = killProcess ?? (_ => { }),
-            GetExitCode = _ => exitCode
+            GetExitCode = _ => exitCode,
+            GetTemporaryDirectory = temporaryDirectory is null ? null : () => temporaryDirectory
         });
     }
 
-    [TestMethod]
-    public void RunPowerShell_Elevated_UsesTheRunAsVerbAndPassesTheScriptEncoded()
+    static string ScriptPathOf(ProcessStartInfo started) => started.ArgumentList[^1];
+
+    static string CreateOwnedDirectory()
     {
-        ProcessStartInfo? started = null;
-        var sequence = SequenceOver(startInfo =>
+        var directory = Path.Combine(Path.GetTempPath(), "MFTLib.DefenderExclusionSequenceTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        return directory;
+    }
+
+    [TestMethod]
+    public void RunPowerShell_Elevated_UsesTheRunAsVerbAndRunsTheScriptFromALockedFile()
+    {
+        var directory = CreateOwnedDirectory();
+        try
         {
-            started = startInfo;
-            return new Process();
-        });
-        const string script = "Add-MpPreference -ExclusionProcess 'app.exe' -ErrorAction Stop";
+            ProcessStartInfo? started = null;
+            byte[]? contentWhileRunning = null;
+            var lockedAgainstWrites = false;
+            var lockedAgainstDeletes = false;
+            var sequence = SequenceOver(
+                startInfo =>
+                {
+                    started = startInfo;
+                    var path = ScriptPathOf(startInfo);
+                    contentWhileRunning = ReadSharedRead(path);
+                    lockedAgainstWrites = OpeningThrows(path, FileAccess.Write, FileShare.ReadWrite);
+                    lockedAgainstDeletes = MovingThrows(path);
+                    return new Process();
+                },
+                temporaryDirectory: directory);
+            const string script = "Add-MpPreference -ExclusionProcess 'app.exe' -ErrorAction Stop; # caf\u00e9";
 
-        Assert.IsTrue(sequence.RunPowerShell(script, elevated: true));
+            Assert.IsTrue(sequence.RunPowerShell(script, elevated: true));
 
-        Assert.IsNotNull(started);
-        Assert.AreEqual(TrustedPowerShellPath, started.FileName);
-        Assert.AreEqual("runas", started.Verb);
-        Assert.IsTrue(started.UseShellExecute);
-        Assert.AreEqual(string.Empty, started.Arguments);
-        Assert.AreSequenceEqual(
-            ["-NoProfile", "-NonInteractive", "-EncodedCommand"], [.. started.ArgumentList.Take(3)]);
-        Assert.HasCount(4, started.ArgumentList);
-        Assert.AreEqual(script, Encoding.Unicode.GetString(Convert.FromBase64String(started.ArgumentList[3])));
+            Assert.IsNotNull(started);
+            Assert.AreEqual(TrustedPowerShellPath, started.FileName);
+            Assert.AreEqual("runas", started.Verb);
+            Assert.IsTrue(started.UseShellExecute);
+            Assert.AreEqual(string.Empty, started.Arguments);
+            Assert.AreSequenceEqual(
+                ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"],
+                [.. started.ArgumentList.Take(5)]);
+            Assert.HasCount(6, started.ArgumentList);
+            var path = ScriptPathOf(started);
+            Assert.AreEqual(directory, Path.GetDirectoryName(path));
+            Assert.AreEqual(".ps1", Path.GetExtension(path));
+            Assert.IsNotNull(contentWhileRunning);
+            Assert.AreSequenceEqual(new byte[] { 0xEF, 0xBB, 0xBF }, [.. contentWhileRunning.Take(3)]);
+            Assert.AreEqual(script, new UTF8Encoding(false).GetString(contentWhileRunning, 3, contentWhileRunning.Length - 3));
+            if (OperatingSystem.IsWindows())
+            {
+                Assert.IsTrue(lockedAgainstWrites, "The script file must refuse a writer while the child runs.");
+                Assert.IsTrue(lockedAgainstDeletes, "The script file must refuse a delete or rename while the child runs.");
+            }
+
+            Assert.IsFalse(File.Exists(path), "The script file is deleted afterward.");
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    static byte[] ReadSharedRead(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var buffer = new MemoryStream();
+        stream.CopyTo(buffer);
+        return buffer.ToArray();
+    }
+
+    static bool MovingThrows(string path)
+    {
+        try
+        {
+            File.Move(path, path + ".moved");
+            File.Move(path + ".moved", path);
+            return false;
+        }
+        catch (IOException)
+        {
+            return true;
+        }
+    }
+
+    static bool OpeningThrows(string path, FileAccess access, FileShare share)
+    {
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, access, share);
+            return false;
+        }
+        catch (IOException)
+        {
+            return true;
+        }
+    }
+
+    [TestMethod]
+    public void RunPowerShell_EachRun_UsesItsOwnScriptFileAndDeletesIt()
+    {
+        var directory = CreateOwnedDirectory();
+        try
+        {
+            var paths = new List<string>();
+            var sequence = SequenceOver(
+                startInfo =>
+                {
+                    paths.Add(ScriptPathOf(startInfo));
+                    return new Process();
+                },
+                temporaryDirectory: directory);
+
+            Assert.IsTrue(sequence.RunPowerShell("first", false));
+            Assert.IsTrue(sequence.RunPowerShell("second", false));
+
+            Assert.HasCount(2, paths);
+            Assert.AreNotEqual(paths[0], paths[1]);
+            Assert.IsEmpty(Directory.GetFileSystemEntries(directory));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    [DataRow(1)]
+    [DataRow(0)]
+    public void RunPowerShell_ProcessOutcome_StillDeletesTheScriptFile(int exitCode)
+    {
+        var directory = CreateOwnedDirectory();
+        try
+        {
+            SequenceOver(exitCode: exitCode, temporaryDirectory: directory).RunPowerShell("script", true);
+
+            Assert.IsEmpty(Directory.GetFileSystemEntries(directory));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void RunPowerShell_FailurePaths_DeleteTheScriptFile()
+    {
+        var directory = CreateOwnedDirectory();
+        try
+        {
+            Assert.IsFalse(SequenceOver(startProcess: _ => null, temporaryDirectory: directory).RunPowerShell("script", true));
+            Assert.IsFalse(SequenceOver(
+                waitForExit: (_, _) => false, temporaryDirectory: directory).RunPowerShell("script", true));
+            Assert.IsFalse(SequenceOver(
+                startProcess: _ => throw new Win32Exception(1223), temporaryDirectory: directory).RunPowerShell("script", true));
+            Assert.ThrowsExactly<NotSupportedException>(() => SequenceOver(
+                startProcess: _ => throw new NotSupportedException("unexpected"),
+                temporaryDirectory: directory).RunPowerShell("script", true));
+
+            Assert.IsEmpty(Directory.GetFileSystemEntries(directory));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void RunPowerShell_ScriptFileCannotBeCreated_ReturnsFalseWithoutStarting()
+    {
+        var directory = CreateOwnedDirectory();
+        try
+        {
+            var blocker = Path.Combine(directory, "not-a-directory");
+            File.WriteAllText(blocker, "a file where the directory should be");
+            var started = false;
+
+            var applied = SequenceOver(
+                startProcess: _ =>
+                {
+                    started = true;
+                    return new Process();
+                },
+                temporaryDirectory: blocker).RunPowerShell("script", true);
+
+            Assert.IsFalse(applied);
+            Assert.IsFalse(started);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void RunPowerShell_ScriptFileStillOpenElsewhere_DoesNotMaskTheResult()
+    {
+        var directory = CreateOwnedDirectory();
+        try
+        {
+            FileStream? outsider = null;
+            var sequence = SequenceOver(
+                startInfo =>
+                {
+                    outsider = new FileStream(ScriptPathOf(startInfo), FileMode.Open, FileAccess.Read, FileShare.Read);
+                    return new Process();
+                },
+                temporaryDirectory: directory);
+
+            try
+            {
+                Assert.IsTrue(sequence.RunPowerShell("script", false));
+            }
+            finally
+            {
+                outsider?.Dispose();
+            }
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 
     [TestMethod]

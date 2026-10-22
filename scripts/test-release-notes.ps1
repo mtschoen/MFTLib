@@ -123,17 +123,19 @@ function gh {
 '@
     $source = $setup + "`n`$script:pushExitCode = $PushExitCode`n" +
         $NotesWriterDefinition + "`n" + $Tail + "`nexit 0`n"
-    $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($source))
-    $start = [Diagnostics.ProcessStartInfo]::new()
-    $start.FileName = @(Get-Command pwsh -CommandType Application)[0].Source
-    $start.UseShellExecute = $false
-    $start.RedirectStandardOutput = $true
-    $start.RedirectStandardError = $true
-    foreach ($argument in @('-NoProfile', '-NonInteractive', '-OutputFormat', 'Text', '-EncodedCommand', $encodedCommand)) {
-        $start.ArgumentList.Add($argument)
-    }
-    $process = [Diagnostics.Process]::Start($start)
+    $sourcePath = Join-Path ([IO.Path]::GetTempPath()) ([Guid]::NewGuid().ToString('N') + '.ps1')
+    $process = $null
     try {
+        [IO.File]::WriteAllText($sourcePath, $source, [Text.UTF8Encoding]::new($true))
+        $start = [Diagnostics.ProcessStartInfo]::new()
+        $start.FileName = @(Get-Command pwsh -CommandType Application)[0].Source
+        $start.UseShellExecute = $false
+        $start.RedirectStandardOutput = $true
+        $start.RedirectStandardError = $true
+        foreach ($argument in @('-NoProfile', '-NonInteractive', '-OutputFormat', 'Text', '-File', $sourcePath)) {
+            $start.ArgumentList.Add($argument)
+        }
+        $process = [Diagnostics.Process]::Start($start)
         $outputTask = $process.StandardOutput.ReadToEndAsync()
         $errorTask = $process.StandardError.ReadToEndAsync()
         $process.WaitForExit()
@@ -144,7 +146,10 @@ function gh {
         }
     }
     finally {
-        $process.Dispose()
+        if ($null -ne $process) {
+            $process.Dispose()
+        }
+        Remove-Item -LiteralPath $sourcePath -Force -ErrorAction SilentlyContinue
     }
 }
 
