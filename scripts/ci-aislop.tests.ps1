@@ -366,22 +366,47 @@ $repairRoot = Join-Path $temporaryDirectory 'link repair'
 $restored = Join-Path $repairRoot 'restored tree'
 $external = Join-Path $repairRoot 'external'
 $log = Join-Path $repairRoot 'repair.txt'
-New-Item -ItemType Directory -Force -Path "$restored/node_modules/.pnpm/pkg", "$repairRoot/old/node_modules/.pnpm/pkg", $external | Out-Null
+New-Item -ItemType Directory -Force -Path "$restored/node_modules/.pnpm/pkg/sub", "$repairRoot/old/node_modules/.pnpm/pkg/sub", $external | Out-Null
 Set-Content -LiteralPath "$restored/node_modules/.pnpm/pkg/value.txt" -Value 'restored' -NoNewline
+Set-Content -LiteralPath "$restored/node_modules/.pnpm/pkg/sub/value.txt" -Value 'restored-sub' -NoNewline
 New-Item -ItemType Junction -Path "$restored/stale" -Target "$repairRoot/old/node_modules/.pnpm/pkg" | Out-Null
+New-Item -ItemType SymbolicLink -Path "$restored/a-dependent" -Target 'stale\sub' | Out-Null
+New-Item -ItemType SymbolicLink -Path "$restored/z-dependent" -Target 'stale\sub' | Out-Null
 New-Item -ItemType Junction -Path "$restored/outside" -Target $external | Out-Null
+New-Item -ItemType SymbolicLink -Path "$restored/relative-ok" -Target 'node_modules\.pnpm\pkg' | Out-Null
+New-Item -ItemType SymbolicLink -Path "$restored/relative-forward" -Target 'node_modules\.pnpm\late' | Out-Null
+New-Item -ItemType Directory -Force -Path "$restored/node_modules/.pnpm/late" | Out-Null
+Set-Content -LiteralPath "$restored/node_modules/.pnpm/late/value.txt" -Value 'late' -NoNewline
+Assert-True (-not (Test-Path -LiteralPath "$restored/relative-forward" -PathType Container)) 'Forward relative symlink starts as a file reparse point'
 Remove-Item -LiteralPath "$repairRoot/old" -Recurse -Force
 Repair-AislopDependencyLinks $restored $log
 Assert-True ((Get-Content -LiteralPath "$restored/stale/value.txt" -Raw) -ceq 'restored') 'Stale link is retargeted into the restored tree'
+Assert-True ((Get-Content -LiteralPath "$restored/a-dependent/value.txt" -Raw) -ceq 'restored-sub' -and
+    (Get-Content -LiteralPath "$restored/z-dependent/value.txt" -Raw) -ceq 'restored-sub') 'Dependent relative links resolve in both visitation orders'
+Assert-True ((Get-Content -LiteralPath "$restored/relative-forward/value.txt" -Raw) -ceq 'late') 'Forward relative directory symlink is repaired into a directory link'
 Assert-True ((Get-Item -LiteralPath "$restored/outside").LinkTarget -ceq $external) 'Link to an existing external target is left alone'
-Assert-True ((Get-Content -LiteralPath $log -Raw).Trim() -ceq 'Repaired 1 of 2 restored dependency links') 'Repair evidence carries actual outcomes'
-New-Item -ItemType Directory -Path "$repairRoot/gone" | Out-Null
-New-Item -ItemType Junction -Path "$restored/broken" -Target "$repairRoot/gone" | Out-Null
-Remove-Item -LiteralPath "$repairRoot/gone" -Force
-$repairFailure = ''
-try { Repair-AislopDependencyLinks $restored $log } catch { $repairFailure = $_.Exception.Message }
-Assert-True ($repairFailure.Contains('do not map')) 'Unmappable dangling target fails'
-[IO.Directory]::Delete("$restored/broken")
+Assert-True ((Get-Item -LiteralPath "$restored/relative-ok").LinkTarget -ceq 'node_modules\.pnpm\pkg') 'Healthy relative directory symlink is left alone'
+Assert-True ((Get-Content -LiteralPath $log -Raw).Trim() -ceq 'Repaired 2 of 6 restored dependency links') 'Repair evidence carries actual outcomes'
+foreach ($brokenCase in @(
+    @{ Type = 'Junction'; Target = "$repairRoot/gone" },
+    @{ Type = 'SymbolicLink'; Target = 'node_modules\.pnpm\missing' }
+)) {
+    if ($brokenCase.Type -eq 'Junction') {
+        New-Item -ItemType Directory -Path $brokenCase.Target | Out-Null
+        New-Item -ItemType Junction -Path "$restored/broken" -Target $brokenCase.Target | Out-Null
+        Remove-Item -LiteralPath $brokenCase.Target -Force
+    } else {
+        New-Item -ItemType SymbolicLink -Path "$restored/broken" -Target $brokenCase.Target | Out-Null
+    }
+    $repairFailure = ''
+    try { Repair-AislopDependencyLinks $restored $log } catch { $repairFailure = $_.Exception.Message }
+    Assert-True ($repairFailure.Contains('do not map')) "Unmappable dangling $($brokenCase.Type) target fails"
+    if (([IO.File]::GetAttributes("$restored/broken") -band [IO.FileAttributes]::Directory) -ne 0) {
+        [IO.Directory]::Delete("$restored/broken")
+    } else {
+        [IO.File]::Delete("$restored/broken")
+    }
+}
 Set-Content -LiteralPath "$restored/node_modules/.pnpm/kind" -Value 'file' -NoNewline
 New-Item -ItemType Directory -Path "$repairRoot/old/node_modules/.pnpm/kind" -Force | Out-Null
 New-Item -ItemType Junction -Path "$restored/wrongkind" -Target "$repairRoot/old/node_modules/.pnpm/kind" | Out-Null
@@ -392,6 +417,8 @@ Assert-True ($repairFailure -ne '') 'Mapped target of the wrong kind fails repai
 Assert-True ((Get-Content -LiteralPath "$restored/node_modules/.pnpm/kind" -Raw) -ceq 'file') 'Failed repair preserves the candidate contents'
 Assert-True ((Get-Item -LiteralPath "$restored/wrongkind" -Force).LinkTarget -ceq "$repairRoot/old/node_modules/.pnpm/kind".Replace('/', '\')) 'Failed repair leaves the original junction in place'
 [IO.Directory]::Delete("$restored/stale"); [IO.Directory]::Delete("$restored/outside")
+[IO.Directory]::Delete("$restored/a-dependent"); [IO.Directory]::Delete("$restored/z-dependent")
+[IO.Directory]::Delete("$restored/relative-ok"); [IO.Directory]::Delete("$restored/relative-forward")
 [IO.Directory]::Delete("$restored/wrongkind")
 
 # tar restores a relative directory symlink as a file symlink when its target is extracted later.

@@ -7,18 +7,6 @@ param([string] $ForkDirectory, [string] $EvidenceLogPath)
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 
-# tar extracts a relative directory symlink as a file symlink when its target is not yet extracted,
-# and Windows will not traverse a file symlink to a directory. Recreate it as a directory symlink.
-function Repair-RelativeDirectorySymlink {
-    param([string] $Entry, [string] $Target)
-    $resolved = Join-Path (Split-Path -Parent $Entry) $Target
-    if (([IO.File]::GetAttributes($Entry) -band [IO.FileAttributes]::Directory) -ne 0) { return $false }
-    if (-not (Test-Path -LiteralPath $resolved -PathType Container)) { return $false }
-    [IO.File]::Delete($Entry)
-    New-Item -ItemType SymbolicLink -Path $Entry -Target $Target | Out-Null
-    return $true
-}
-
 function Repair-AislopDependencyLinks {
     param([string] $ForkDirectory, [string] $EvidenceLogPath)
     $root = (Resolve-Path -LiteralPath $ForkDirectory).Path
@@ -31,38 +19,57 @@ function Repair-AislopDependencyLinks {
             elseif (($attributes -band [IO.FileAttributes]::Directory) -ne 0) { $stack.Push($entry) }
         }
     }
-    $retargeted = 0
-    $unrepairable = [Collections.Generic.List[string]]::new()
-    foreach ($entry in $links) {
-        $target = (Get-Item -LiteralPath $entry -Force).LinkTarget
-        if ([string]::IsNullOrEmpty($target)) { continue }
-        $normalized = $target -replace '^\\\\\?\\', '' -replace '^\\\?\?\\', ''
-        if (-not [IO.Path]::IsPathRooted($normalized)) {
-            if (Repair-RelativeDirectorySymlink $entry $target) { $retargeted++ }
-            continue
+    $repaired = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    do {
+        $progressed = $false
+        $wrongKind = $null
+        $unrepairable = [Collections.Generic.List[string]]::new()
+        foreach ($entry in $links) {
+            $target = (Get-Item -LiteralPath $entry -Force).LinkTarget
+            if ([string]::IsNullOrEmpty($target)) { continue }
+            $normalized = $target -replace '^\\\\\?\\', '' -replace '^\\\?\?\\', ''
+            $entryIsDirectory = (([IO.File]::GetAttributes($entry) -band [IO.FileAttributes]::Directory) -ne 0)
+            if ([IO.Path]::IsPathRooted($normalized)) {
+                $components = $normalized.Split('\', [StringSplitOptions]::RemoveEmptyEntries)
+                $candidate = $null
+                for ($index = 1; $index -lt $components.Count; $index++) {
+                    $candidatePath = Join-Path $root ([string]::Join('\', $components, $index, $components.Count - $index))
+                    if (Test-Path -LiteralPath $candidatePath) { $candidate = $candidatePath; break }
+                }
+                if ($null -eq $candidate) {
+                    if (-not (Test-Path -LiteralPath $normalized)) { $unrepairable.Add("$entry -> $target") }
+                    continue
+                }
+                $candidateIsDirectory = Test-Path -LiteralPath $candidate -PathType Container
+                if (($candidate -ieq $normalized) -and ($entryIsDirectory -eq $candidateIsDirectory)) { continue }
+                $retargetValue = $candidate
+            } else {
+                $candidate = [IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $entry) $normalized))
+                if (-not (Test-Path -LiteralPath $candidate)) {
+                    $unrepairable.Add("$entry -> $target")
+                    continue
+                }
+                $candidateIsDirectory = Test-Path -LiteralPath $candidate -PathType Container
+                if ($entryIsDirectory -eq $candidateIsDirectory) { continue }
+                $retargetValue = $target
+            }
+            if ($entryIsDirectory) {
+                if (-not $candidateIsDirectory) {
+                    if ($null -eq $wrongKind) { $wrongKind = "A directory is required, but $candidate is not a directory" }
+                    continue
+                }
+                [IO.Directory]::Delete($entry)
+                New-Item -ItemType Junction -Path $entry -Target $retargetValue | Out-Null
+            } else {
+                [IO.File]::Delete($entry)
+                New-Item -ItemType SymbolicLink -Path $entry -Target $retargetValue | Out-Null
+            }
+            [void] $repaired.Add($entry)
+            $progressed = $true
         }
-        $components = $normalized.Split('\', [StringSplitOptions]::RemoveEmptyEntries)
-        $candidate = $null
-        for ($index = 1; $index -lt $components.Count; $index++) {
-            $candidatePath = Join-Path $root ([string]::Join('\', $components, $index, $components.Count - $index))
-            if (Test-Path -LiteralPath $candidatePath) { $candidate = $candidatePath; break }
-        }
-        if ($null -eq $candidate) {
-            if (-not (Test-Path -LiteralPath $normalized)) { $unrepairable.Add("$entry -> $target") }
-            continue
-        }
-        if ($candidate -ieq $normalized) { continue }
-        if (([IO.File]::GetAttributes($entry) -band [IO.FileAttributes]::Directory) -ne 0) {
-            if (-not (Test-Path -LiteralPath $candidate -PathType Container)) { throw "A directory is required, but $candidate is not a directory" }
-            [IO.Directory]::Delete($entry)
-            New-Item -ItemType Junction -Path $entry -Target $candidate | Out-Null
-        } else {
-            [IO.File]::Delete($entry)
-            New-Item -ItemType SymbolicLink -Path $entry -Target $candidate | Out-Null
-        }
-        $retargeted++
-    }
-    $line = "Repaired $retargeted of $($links.Count) restored dependency links"
+    } while ($progressed)
+    if ($null -ne $wrongKind) { throw $wrongKind }
+    $line = "Repaired $($repaired.Count) of $($links.Count) restored dependency links"
     Write-Host $line
     Set-Content -LiteralPath $EvidenceLogPath -Value $line -Encoding utf8
     if ($unrepairable.Count -gt 0) {
