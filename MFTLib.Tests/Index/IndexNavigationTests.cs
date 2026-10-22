@@ -77,7 +77,7 @@ public partial class IndexNavigationTests
     [TestMethod]
     public void Children_ReturnsDirectChildrenOnly()
     {
-        var children = Entry(_documentsRow).Children();
+        var children = Entry(_documentsRow).Children(TestContext.CancellationToken);
         var names = children.Select(child => child.Name).Order().ToArray();
 
         Assert.AreSequenceEqual(["notes.txt", "Projects"], names);
@@ -86,13 +86,13 @@ public partial class IndexNavigationTests
     [TestMethod]
     public void Children_OfAFileIsEmpty()
     {
-        Assert.IsEmpty(Entry(_reportRow).Children());
+        Assert.IsEmpty(Entry(_reportRow).Children(TestContext.CancellationToken));
     }
 
     [TestMethod]
     public void Children_DoesNotReturnTheRootAsItsOwnChild()
     {
-        var children = Entry(_rootRow).Children();
+        var children = Entry(_rootRow).Children(TestContext.CancellationToken);
         Assert.DoesNotContain(child => child.RowIndex == _rootRow, children);
         Assert.HasCount(1, children);
     }
@@ -112,15 +112,15 @@ public partial class IndexNavigationTests
     {
         using var harness = new WatchHarness('T', 'U');
         var index = harness.Index;
-        var firstRoot = index.Root('T');
-        var secondRoot = index.Root('U');
+        var firstRoot = index.Root('T', TestContext.CancellationToken);
+        var secondRoot = index.Root('U', TestContext.CancellationToken);
 
-        Assert.DoesNotContain(entry => entry.Drive == 'U', index.Search(new SearchQuery(null, Subtree: firstRoot)));
-        Assert.DoesNotContain(entry => entry.Drive == 'T', index.Search(new SearchQuery(null, Subtree: secondRoot)));
+        Assert.DoesNotContain(entry => entry.Drive == 'U', index.Search(new SearchQuery(null, Subtree: firstRoot), TestContext.CancellationToken));
+        Assert.DoesNotContain(entry => entry.Drive == 'T', index.Search(new SearchQuery(null, Subtree: secondRoot), TestContext.CancellationToken));
         Assert.ThrowsExactly<ArgumentException>(() =>
-            index.Search(new SearchQuery(null, Subtree: default(FileEntry))));
+            index.Search(new SearchQuery(null, Subtree: default(FileEntry)), TestContext.CancellationToken));
         Assert.ThrowsExactly<ArgumentException>(() =>
-            index.Enumerate(new SearchQuery(null, Subtree: default(FileEntry))));
+            index.Enumerate(new SearchQuery(null, Subtree: default(FileEntry)), TestContext.CancellationToken));
     }
 
     /// <summary>
@@ -215,7 +215,7 @@ public partial class IndexNavigationTests
         DriveBlock[] snapshot = [new DriveBlock('U', 0, block, rootDirectoryPath: TestDriveRoot.For('U'))];
         try
         {
-            var children = FileEntry.Create(snapshot[0], root).Children();
+            var children = FileEntry.Create(snapshot[0], root).Children(TestContext.CancellationToken);
             Assert.HasCount(1, children);
             Assert.AreEqual("live.txt", children[0].Name);
             Assert.AreEqual(liveRow, children[0].RowIndex);
@@ -357,4 +357,6 @@ public partial class IndexNavigationTests
             await snapshot.ReleaseNowAsync();
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

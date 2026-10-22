@@ -197,8 +197,8 @@ public sealed class RowScanningContractTests
     {
         using var tree = new TwoDriveQueryFixture();
         await using var index = await tree.OpenAsync();
-        var documents = index.Find(Path.Combine(tree.FirstRoot, "Documents"))!.Value;
-        var pictures = index.Find(Path.Combine(tree.SecondRoot, "Pictures"))!.Value;
+        var documents = index.Find(Path.Combine(tree.FirstRoot, "Documents"), TestContext.CancellationToken)!.Value;
+        var pictures = index.Find(Path.Combine(tree.SecondRoot, "Pictures"), TestContext.CancellationToken)!.Value;
 
         SearchQuery[] queries =
         [
@@ -209,10 +209,10 @@ public sealed class RowScanningContractTests
         ];
         foreach (var query in queries)
         {
-            var expected = index.Search(query).Select(entry => entry.RecordKey).ToArray();
-            Assert.AreSequenceEqual(expected, [.. index.Enumerate(query).Select(entry => entry.RecordKey)], query.ToString());
+            var expected = index.Search(query, TestContext.CancellationToken).Select(entry => entry.RecordKey).ToArray();
+            Assert.AreSequenceEqual(expected, [.. index.Enumerate(query, TestContext.CancellationToken).Select(entry => entry.RecordKey)], query.ToString());
             var rows = new List<IndexRecordKey>();
-            foreach (var row in index.EnumerateRows(query))
+            foreach (var row in index.EnumerateRows(query, TestContext.CancellationToken))
             {
                 rows.Add(row.ToEntry().RecordKey);
             }
@@ -228,9 +228,9 @@ public sealed class RowScanningContractTests
         await using var index = await tree.OpenAsync();
         Action<FileIndex, SearchQuery?>[] begins =
         [
-            (target, query) => target.Search(query!),
-            (target, query) => target.Enumerate(query!),
-            (target, query) => target.EnumerateRows(query!)
+            (target, query) => target.Search(query!, TestContext.CancellationToken),
+            (target, query) => target.Enumerate(query!, TestContext.CancellationToken),
+            (target, query) => target.EnumerateRows(query!, TestContext.CancellationToken)
         ];
 
         foreach (var begin in begins)
@@ -253,7 +253,7 @@ public sealed class RowScanningContractTests
         await using var index = await tree.OpenAsync();
 
         Assert.AreEqual(typeof(OperationCanceledException),
-            ThrownBy(call, index, index.Root('T'), Path.Combine(tree.FirstRoot, "Documents", "readme.md"), Cancelled), api);
+            ThrownBy(call, index, index.Root('T', TestContext.CancellationToken), Path.Combine(tree.FirstRoot, "Documents", "readme.md"), Cancelled), api);
         Assert.AreEqual(0, BorrowCount(index), api);
     }
 
@@ -263,7 +263,7 @@ public sealed class RowScanningContractTests
     {
         using var tree = new TwoDriveQueryFixture();
         var index = await tree.OpenAsync();
-        var root = index.Root('T');
+        var root = index.Root('T', TestContext.CancellationToken);
         var path = Path.Combine(tree.FirstRoot, "Documents", "readme.md");
         var blocks = index.CurrentSnapshot.ToArray();
         await index.DisposeAsync();
@@ -280,7 +280,7 @@ public sealed class RowScanningContractTests
         await using var index = await tree.OpenAsync();
 
         var path = Path.Combine(tree.FirstRoot, "Documents", "readme.md");
-        Assert.AreEqual(expectedCount, call(index, index.Root('T'), path, CancellationToken.None), api);
+        Assert.AreEqual(expectedCount, call(index, index.Root('T', TestContext.CancellationToken), path, CancellationToken.None), api);
         Assert.AreEqual(0, BorrowCount(index), api);
     }
 
@@ -366,11 +366,13 @@ public sealed class RowScanningContractTests
             row => row == sentinel ? chainEnd : row is > 6 and <= chainEnd ? row - 1 : 5);
         using var cancellation = new CancellationTokenSource();
 
-        var query = new SearchQuery("needle", Subtree: index.Root('T'));
+        var query = new SearchQuery("needle", Subtree: index.Root('T', TestContext.CancellationToken));
         var visited = VisitUntilCancelled(index, rows, query, 1, cancellation, out var cancelled);
 
         Assert.IsTrue(cancelled);
         Assert.AreEqual(1, visited);
         Assert.AreEqual(0, BorrowCount(index));
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

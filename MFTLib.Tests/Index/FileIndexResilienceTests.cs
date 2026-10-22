@@ -97,7 +97,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
     {
         var secondTreeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree2-{Guid.NewGuid():N}");
         Directory.CreateDirectory(Path.Combine(secondTreeRoot, "Documents"));
-        await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "Documents", "readme2.md"), "hello2").WaitAsync(HangGuard * 3);
+        await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "Documents", "readme2.md"), "hello2", TestContext.CancellationToken).WaitAsync(HangGuard * 3, TestContext.CancellationToken);
 
         // Drives settle concurrently, so nothing but the first drive's own settle can say it has
         // been adopted. It warm-starts from a cache a first open leaves behind. The open is
@@ -110,8 +110,8 @@ public sealed partial class FileIndexResilienceTests : IDisposable
             {
                 Drives = [firstDrive with { Producer = ProducerKind.Enumeration }],
                 CacheDirectory = CacheDirectoryPath
-            }, CancellationToken.None).WaitAsync(HangGuard * 3);
-        await warmingOpen.DisposeAsync().AsTask().WaitAsync(HangGuard * 3);
+            }, CancellationToken.None).WaitAsync(HangGuard * 3, TestContext.CancellationToken);
+        await warmingOpen.DisposeAsync().AsTask().WaitAsync(HangGuard * 3, TestContext.CancellationToken);
 
         using var cancellationTokenSource = new CancellationTokenSource();
         var firstSettled = new DriveSettledSignal('T');
@@ -129,10 +129,10 @@ public sealed partial class FileIndexResilienceTests : IDisposable
             await AssertThrowsCancellation(async () =>
             {
                 var opening = FileIndex.OpenAsync(options, cancellationTokenSource.Token);
-                await Task.WhenAll(firstSettled.Reported, secondParked.Parked).WaitAsync(HangGuard * 3);
+                await Task.WhenAll(firstSettled.Reported, secondParked.Parked).WaitAsync(HangGuard * 3, TestContext.CancellationToken);
                 Assert.IsFalse(opening.IsCompleted, "the second drive is still mid-scan when the open is cancelled");
-                await cancellationTokenSource.CancelAsync().WaitAsync(HangGuard * 3);
-                await opening.WaitAsync(HangGuard * 3);
+                await cancellationTokenSource.CancelAsync().WaitAsync(HangGuard * 3, TestContext.CancellationToken);
+                await opening.WaitAsync(HangGuard * 3, TestContext.CancellationToken);
             });
 
             var firstBlockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 0x0BADF00D));
@@ -219,7 +219,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
         var rowsBefore = index.HeaderOf().RowCount;
         var timestampBefore = index.Drives[0].Block!.ScanTimestamp;
 
-        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
         progress.Armed = true;
 
         await AssertThrowsCancellation(() => index.RescanAsync(['T'], cancellationTokenSource.Token));
@@ -242,7 +242,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
             rowsBefore = index.HeaderOf().RowCount;
             timestampBefore = index.Drives[0].Block!.ScanTimestamp;
 
-            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
+            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
             progress.Armed = true;
 
             await AssertThrowsCancellation(() => index.RescanAsync(['T'], cancellationTokenSource.Token));
@@ -284,7 +284,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
             firstPath = firstSnapshot[driveOrdinal].Block.Path;
             Assert.IsTrue(File.Exists(firstPath));
 
-            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
+            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
             await index.RescanAsync(['T'], CancellationToken.None);
             secondPath = GetCurrentBlockPath(index, driveOrdinal);
 
@@ -311,7 +311,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
             var firstPath = GetCurrentBlockPath(index, driveOrdinal);
             Assert.IsTrue(File.Exists(firstPath));
 
-            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
+            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
             await index.RescanAsync(['T'], CancellationToken.None);
             Assert.AreNotEqual(firstPath, GetCurrentBlockPath(index, driveOrdinal));
 
@@ -335,7 +335,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
         var oldSnapshot = index.CurrentSnapshot;
         var canonicalPath = oldSnapshot[driveOrdinal].Block.Path;
 
-        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
         await index.RescanAsync(['T'], CancellationToken.None);
 
         var newPath = index.CurrentSnapshot[driveOrdinal].Block.Path;
@@ -358,11 +358,11 @@ public sealed partial class FileIndexResilienceTests : IDisposable
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         var firstSnapshot = index.CurrentSnapshot;
 
-        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
         await index.RescanAsync(['T'], CancellationToken.None);
         var secondSnapshot = index.CurrentSnapshot;
 
-        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "third.md"), "third");
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "third.md"), "third", TestContext.CancellationToken);
         await index.RescanAsync(['T'], CancellationToken.None);
 
         var retiredPaths = Directory
@@ -384,7 +384,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
     public async Task ReadsAfterDispose_ThrowObjectDisposedException()
     {
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        var entry = index.Find(Path.Combine(TreeRoot, "Documents", "readme.md"))!.Value;
+        var entry = index.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken)!.Value;
         await index.DisposeAsync();
 
         Assert.ThrowsExactly<ObjectDisposedException>(() => index.Drives);
@@ -418,7 +418,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
         // mapped: BlockFile opens with FileShare.Delete.
         File.Delete(canonicalPath);
 
-        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
         await index.RescanAsync(['T'], CancellationToken.None);
 
         Assert.IsTrue(File.Exists(canonicalPath));
@@ -454,4 +454,6 @@ public sealed partial class FileIndexResilienceTests : IDisposable
             secondFixture.Dispose();
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

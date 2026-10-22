@@ -25,10 +25,10 @@ public partial class FileIndexWatchRecoveryTests
         var producedBefore = harness.ProductionCount('T');
         var watchFailure = new IOException("T's journal wrapped");
         harness.Source.WatchFor('T').FailDrive(watchFailure);
-        await beforeRegistration.Entered.WaitAsync(HangGuard);
+        await beforeRegistration.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var failure = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
-            () => harness.Index.StopWatchingAsync(['T'], Token).WaitAsync(HangGuard));
+            () => harness.Index.StopWatchingAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreSame(watchFailure, failure.InnerException, "the stop reports the fault it stopped");
         beforeRegistration.Release();
         await harness.WaitForRecoveryAsync('T');
@@ -56,13 +56,13 @@ public partial class FileIndexWatchRecoveryTests
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
         var beforeRegistration = HoldRestartBeforeRegistration(harness, 'T');
         var rescan = harness.Index.RescanAsync(['T'], Token);
-        await beforeRegistration.Entered.WaitAsync(HangGuard);
+        await beforeRegistration.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var failure = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
-            () => harness.Index.StopWatchingAsync(['T'], Token).WaitAsync(HangGuard));
+            () => harness.Index.StopWatchingAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreSame(watchFailure, failure.InnerException, "the stop reports the fault it stopped");
         beforeRegistration.Release();
-        await rescan.WaitAsync(HangGuard);
+        await rescan.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.HasCount(1, harness.Source.TargetsFor('T'), "no watch starts after the stop returned");
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
@@ -78,11 +78,11 @@ public partial class FileIndexWatchRecoveryTests
         await harness.Index.StartWatchingAsync(['T'], Token);
         var beforeRegistration = HoldRestartBeforeRegistration(harness, 'T');
         var rescan = harness.Index.RescanAsync(['T'], Token);
-        await beforeRegistration.Entered.WaitAsync(HangGuard);
+        await beforeRegistration.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        await harness.Index.StopWatchingAsync(['T'], Token).WaitAsync(HangGuard);
+        await harness.Index.StopWatchingAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         beforeRegistration.Release();
-        await rescan.WaitAsync(HangGuard);
+        await rescan.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.HasCount(1, harness.Source.TargetsFor('T'), "no watch starts after the stop returned");
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);

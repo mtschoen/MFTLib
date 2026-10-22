@@ -20,7 +20,8 @@ public sealed partial class FileIndex
     }
 
     /// <summary>A test seam: takes the drive's write gate, as a batch or a commit would.</summary>
-    internal Task WaitForDriveWriteGateForTest(DriveKey drive) => GetDriveRuntime(drive).WriteGate.WaitAsync();
+    internal Task WaitForDriveWriteGateForTest(DriveKey drive, CancellationToken cancellationToken = default) =>
+        GetDriveRuntime(drive).WriteGate.WaitAsync(cancellationToken);
 
     /// <summary>A test seam: releases the write gate <see cref="WaitForDriveWriteGateForTest" /> took.</summary>
     internal void ReleaseDriveWriteGateForTest(DriveKey drive) => GetDriveRuntime(drive).WriteGate.Release();

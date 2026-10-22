@@ -146,7 +146,7 @@ public partial class FileIndexWatchRecoveryTests
         harness.Source.WatchFor('T').LoseChannel(new IOException("the broker died"));
         await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
 
-        Assert.IsFalse(await recoveryQueuedWhenRaised.Task.WaitAsync(HangGuard), "a channel fault queues no recovery");
+        Assert.IsFalse(await recoveryQueuedWhenRaised.Task.WaitAsync(HangGuard, TestContext.CancellationToken), "a channel fault queues no recovery");
         Assert.AreEqual(0, harness.RecoveryCount('T'));
         Assert.AreEqual(0, harness.ProductionCount('T') - producedBefore);
         Assert.AreEqual(WatchState.Faulted, harness.DriveFor('T').Watch.State);
@@ -158,18 +158,18 @@ public partial class FileIndexWatchRecoveryTests
     {
         using var harness = new WatchHarness('T');
         await harness.Index.StartWatchingAsync(['T'], Token);
-        var original = harness.Index.Root('T').DriveBlock;
+        var original = harness.Index.Root('T', TestContext.CancellationToken).DriveBlock;
         var producedBefore = harness.ProductionCount('T');
         var held = harness.HoldNextProduction('T');
 
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
-        await held.Entered.WaitAsync(HangGuard);
+        await held.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => harness.Index.StopWatchingAsync(['T'], Token));
         held.Release();
         await harness.WaitForRecoveryAsync('T');
 
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore);
-        Assert.AreNotSame(original, harness.Index.Root('T').DriveBlock, "the recovery committed its block");
+        Assert.AreNotSame(original, harness.Index.Root('T', TestContext.CancellationToken).DriveBlock, "the recovery committed its block");
         Assert.HasCount(1, harness.Source.TargetsFor('T'), "the stopped watch is not restarted");
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
         Assert.AreSequenceEqual([WatchFaultKind.Drive], FaultKinds(harness, 'T'));
@@ -182,11 +182,11 @@ public partial class FileIndexWatchRecoveryTests
         await harness.Index.StartWatchingAsync(['T'], Token);
         var held = harness.HoldNextProduction('T');
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
-        await held.Entered.WaitAsync(HangGuard);
+        await held.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         var recovery = harness.RecoveryCompletion('T');
         Assert.IsFalse(recovery.IsCompleted);
 
-        await harness.Index.DisposeAsync().AsTask().WaitAsync(HangGuard);
+        await harness.Index.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsTrue(recovery.IsCompleted, "disposal cancels the recovery and waits for it");
         await recovery;
@@ -203,7 +203,7 @@ public partial class FileIndexWatchRecoveryTests
         await harness.WaitForFaultAsync(WatchFaultKind.Recovery, 'T');
         await harness.WaitForRecoveryAsync('T');
 
-        await harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard);
+        await harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.HasCount(2, harness.Source.TargetsFor('T'));
         var drive = harness.DriveFor('T');
@@ -220,11 +220,11 @@ public partial class FileIndexWatchRecoveryTests
         await harness.Index.StartWatchingAsync(['T'], Token);
         var held = harness.HoldNextProduction('T');
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
-        await held.Entered.WaitAsync(HangGuard);
+        await held.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreEqual(WatchState.Recovering, harness.DriveFor('T').Watch.State);
         await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
-            () => harness.Index.WaitForCatchUpAsync(['T'], Token).WaitAsync(HangGuard));
+            () => harness.Index.WaitForCatchUpAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken));
 
         held.Release();
         await harness.WaitForRecoveryAsync('T');
@@ -260,10 +260,10 @@ public partial class FileIndexWatchRecoveryTests
         await harness.Index.StartWatchingAsync(['T'], Token);
         var beforeGate = HoldRecoveryBeforeItsGate(harness, 'T');
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
-        await beforeGate.Entered.WaitAsync(HangGuard);
+        await beforeGate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         var producedBefore = harness.ProductionCount('T');
 
-        await harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard);
+        await harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore);
         beforeGate.Release();
         await harness.WaitForRecoveryAsync('T');
@@ -282,7 +282,7 @@ public partial class FileIndexWatchRecoveryTests
         var beforeGate = HoldRecoveryBeforeItsGate(harness, 'T');
         var producedBefore = harness.ProductionCount('T');
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
-        await beforeGate.Entered.WaitAsync(HangGuard);
+        await beforeGate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => harness.Index.StopWatchingAsync(['T'], Token));
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
@@ -302,9 +302,9 @@ public partial class FileIndexWatchRecoveryTests
         var beforeGate = HoldRecoveryBeforeItsGate(harness, 'T');
         var producedBefore = harness.ProductionCount('T');
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
-        await beforeGate.Entered.WaitAsync(HangGuard);
+        await beforeGate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        await harness.Index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
+        await harness.Index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.IsFalse(harness.Index.TryGetRecoveryCompletionForTest('T', out _), "the start clears the ticket");
         beforeGate.Release();
         await harness.WaitForRecoveryAsync('T');
@@ -323,13 +323,13 @@ public partial class FileIndexWatchRecoveryTests
         var held = harness.HoldNextProduction('T');
         harness.FailNextProduction('T', new IOException("the volume went away"));
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
-        await held.Entered.WaitAsync(HangGuard);
+        await held.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => harness.Index.StopWatchingAsync(['T'], Token));
         var newerStart = harness.Index.StartWatchingAsync(['T'], Token);
         Assert.IsFalse(newerStart.IsCompleted, "the start waits for the recovery's lifecycle gate");
 
         held.Release();
-        await newerStart.WaitAsync(HangGuard);
+        await newerStart.WaitAsync(HangGuard, TestContext.CancellationToken);
         await harness.WaitForRecoveryAsync('T');
 
         Assert.AreSequenceEqual([WatchFaultKind.Drive], FaultKinds(harness, 'T'));
@@ -351,7 +351,7 @@ public partial class FileIndexWatchRecoveryTests
 
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
         harness.Source.WatchFor('U').FailDrive(new IOException("U's journal wrapped"));
-        await Task.WhenAll(heldT.Entered, heldU.Entered).WaitAsync(HangGuard);
+        await Task.WhenAll(heldT.Entered, heldU.Entered).WaitAsync(HangGuard, TestContext.CancellationToken);
         heldT.Release();
         heldU.Release();
         await harness.WaitForRecoveryAsync('T');
@@ -394,7 +394,7 @@ public partial class FileIndexWatchRecoveryTests
 
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
 
-        Assert.IsFalse(await observed.Task.WaitAsync(HangGuard),
+        Assert.IsFalse(await observed.Task.WaitAsync(HangGuard, TestContext.CancellationToken),
             "the ticket's continuation ran on the stack that completed it");
     }
 

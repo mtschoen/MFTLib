@@ -184,13 +184,13 @@ public class FileEntryIncarnationTests
     {
         await using var fixture = SeededFixture();
         var retained = FileEntry.Create(fixture.Snapshot[0], DirectoryRow);
-        Assert.HasCount(1, retained.Children());
+        Assert.HasCount(1, retained.Children(TestContext.CancellationToken));
 
         ApplyReuseBatch(fixture);
 
-        Assert.IsEmpty(retained.Children());
+        Assert.IsEmpty(retained.Children(TestContext.CancellationToken));
         var replacement = FileEntry.Create(fixture.Snapshot[0], DirectoryRow);
-        Assert.AreEqual("replacement-child.txt", replacement.Children().Single().Name);
+        Assert.AreEqual("replacement-child.txt", replacement.Children(TestContext.CancellationToken).Single().Name);
     }
 
     [TestMethod]
@@ -305,7 +305,7 @@ public class FileEntryIncarnationTests
             Assert.IsTrue(handle.IsDeleted);
             Assert.AreNotEqual(replacement, handle);
             Assert.ThrowsExactly<InvalidOperationException>(() => handle.Size);
-            Assert.IsEmpty(handle.Children());
+            Assert.IsEmpty(handle.Children(TestContext.CancellationToken));
         }
 
         Assert.EndsWith("notes.txt", deleted.Path);
@@ -394,4 +394,6 @@ public class FileEntryIncarnationTests
         Assert.IsTrue(retained.IsDeleted);
         Assert.AreSequenceEqual(new ushort[] { 1 }, calls);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

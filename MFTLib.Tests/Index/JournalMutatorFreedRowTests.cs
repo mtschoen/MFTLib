@@ -87,13 +87,13 @@ public class JournalMutatorFreedRowTests
 
         var replacement = FileEntry.Create(fixture.Snapshot[0], FreedRow);
         var deletedSubtreeSearch = SearchEngine.Search(fixture.Snapshot,
-            new SearchQuery(null, Subtree: replacement, IncludeDeleted: true))
+            new SearchQuery(null, Subtree: replacement, IncludeDeleted: true), TestContext.CancellationToken)
             .Where(entry => entry.IsDeleted)
             .ToList();
         Assert.IsEmpty(deletedSubtreeSearch);
 
         var deletedSubtreeEnumerate = SearchEngine.Enumerate(fixture.Snapshot,
-            new SearchQuery(null, Subtree: replacement, IncludeDeleted: true))
+            new SearchQuery(null, Subtree: replacement, IncludeDeleted: true), TestContext.CancellationToken)
             .Where(entry => entry.IsDeleted)
             .ToList();
         Assert.IsEmpty(deletedSubtreeEnumerate);
@@ -226,4 +226,6 @@ public class JournalMutatorFreedRowTests
             Usn = 1000,
             TimestampUtc = new DateTime(2026, 10, 6, 6, 0, 0, DateTimeKind.Utc)
         });
+
+    public TestContext TestContext { get; set; } = null!;
 }

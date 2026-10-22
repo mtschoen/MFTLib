@@ -52,7 +52,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
     {
         var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        var entry = index.Search(new SearchQuery("readme.md", NameMatchMode.Exact)).Single();
+        var entry = index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), TestContext.CancellationToken).Single();
         Assert.IsFalse(entry.IsDisposed);
 
         await index.DisposeAsync();
@@ -69,10 +69,10 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
     public async Task DisposeAsync_AfterARescan_ReleasesTheRetiredBlockToo()
     {
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        var retiredHandle = index.Search(new SearchQuery("readme.md", NameMatchMode.Exact)).Single();
-        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
+        var retiredHandle = index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), TestContext.CancellationToken).Single();
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
         await index.RescanAsync(['T'], CancellationToken.None);
-        var currentHandle = index.Search(new SearchQuery("second.md", NameMatchMode.Exact)).Single();
+        var currentHandle = index.Search(new SearchQuery("second.md", NameMatchMode.Exact), TestContext.CancellationToken).Single();
 
         await index.DisposeAsync();
 
@@ -88,7 +88,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
         using var secondTree = new TempDirectory("mftlib-tree");
         var secondTreeRoot = secondTree.Path;
         var secondVolumeSerial = TestVolumeSerial.GetNext();
-        await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "unchanged.md"), "unchanged");
+        await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "unchanged.md"), "unchanged", TestContext.CancellationToken);
         var index = await OpenAndRescanWithoutRetainingThePreviousSnapshotAsync(
             secondTreeRoot, secondVolumeSerial);
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
@@ -111,12 +111,12 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
         using var secondTree = new TempDirectory("mftlib-tree");
         var secondTreeRoot = secondTree.Path;
         var secondVolumeSerial = TestVolumeSerial.GetNext();
-        await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "unchanged.md"), "unchanged");
+        await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "unchanged.md"), "unchanged", TestContext.CancellationToken);
         var index = await FileIndex.OpenAsync(TwoDriveOptions(secondTreeRoot, secondVolumeSerial),
             CancellationToken.None);
-        var held = index.Search(new SearchQuery("readme.md", NameMatchMode.Exact)).Single();
+        var held = index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), TestContext.CancellationToken).Single();
         var retiredRelease = ReleaseStateOf(index, 'U');
-        await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "second.md"), "second");
+        await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "second.md"), "second", TestContext.CancellationToken);
         await index.RescanAsync(['U'], CancellationToken.None);
 
         GC.Collect();
@@ -168,7 +168,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
         using var secondTree = new TempDirectory("mftlib-tree");
         var secondTreeRoot = secondTree.Path;
         var secondVolumeSerial = TestVolumeSerial.GetNext();
-        await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "unchanged.md"), "unchanged");
+        await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "unchanged.md"), "unchanged", TestContext.CancellationToken);
         var reachedTheGate = new TestGate();
         var gate = new TestGate();
         try
@@ -183,7 +183,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
                 gate.WaitForRelease();
             };
 
-            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
+            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
             await index.RescanAsync(['T'], CancellationToken.None);
 
             // Stands in for the snapshot finalizer: the same non-waiting release call, held at the
@@ -287,7 +287,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
         var token = cancellation.Token;
         await index.DisposeAsync();
 
-        Assert.ThrowsExactly<ObjectDisposedException>(() => index.Search(new SearchQuery("readme.md", NameMatchMode.Exact)));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), TestContext.CancellationToken));
         Assert.ThrowsExactly<ObjectDisposedException>(() => index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), token));
 
         Assert.AreEqual(0, release.Hooks.OutstandingBorrowCount);
@@ -361,7 +361,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
         var borrow = new SnapshotBorrow(index.CurrentSnapshot);
         try
         {
-            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
+            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
             await index.RescanAsync(['T'], CancellationToken.None);
             Assert.AreNotSame(borrow.DriveBlocks, index.CurrentSnapshot,
                 "the rescan did not retire the borrowed snapshot, so this proves nothing");
@@ -406,13 +406,13 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
                 gate.WaitForRelease();
             };
 
-            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
+            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
             await index.RescanAsync(['T'], CancellationToken.None);
 
             var competingRelease = Task.Run(retiredRelease.Release);
             TestGate.WaitSynchronously(reachedTheGate.Entered);
 
-            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "third.md"), "third");
+            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "third.md"), "third", TestContext.CancellationToken);
             await index.RescanAsync(['T'], CancellationToken.None);
 
             var disposal = index.DisposeAsync().AsTask();
@@ -444,7 +444,8 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
         var index = await FileIndex.OpenAsync(TwoDriveOptions(secondTreeRoot, secondVolumeSerial),
             CancellationToken.None);
         GC.SuppressFinalize(LookupEngine.FindDriveBlock(index.CurrentSnapshot, 'T')!);
-        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second",
+            TestContext.CancellationToken);
         await index.RescanAsync(['T'], CancellationToken.None);
         return index;
     }
@@ -453,8 +454,11 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
     async Task<FileIndex> OpenAndRescanWithoutRetainingThePreviousSnapshotAsync()
     {
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second",
+            TestContext.CancellationToken);
         await index.RescanAsync(['T'], CancellationToken.None);
         return index;
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

@@ -48,9 +48,9 @@ public sealed class BlockValidationMatrixTests : IDisposable
     public async Task CorruptedMagic_ColdScans()
     {
         await SeedCacheAsync();
-        var bytes = await File.ReadAllBytesAsync(BlockPath());
+        var bytes = await File.ReadAllBytesAsync(BlockPath(), TestContext.CancellationToken);
         bytes[0] = 0x00;
-        await File.WriteAllBytesAsync(BlockPath(), bytes);
+        await File.WriteAllBytesAsync(BlockPath(), bytes, TestContext.CancellationToken);
 
         await AssertColdScansAsync(Options(), BlockValidationResult.WrongMagic);
     }
@@ -59,9 +59,9 @@ public sealed class BlockValidationMatrixTests : IDisposable
     public async Task WrongFormatVersion_ColdScans()
     {
         await SeedCacheAsync();
-        var bytes = await File.ReadAllBytesAsync(BlockPath());
+        var bytes = await File.ReadAllBytesAsync(BlockPath(), TestContext.CancellationToken);
         BitConverter.GetBytes(BlockLayout.FormatVersion + 1).CopyTo(bytes, 4);
-        await File.WriteAllBytesAsync(BlockPath(), bytes);
+        await File.WriteAllBytesAsync(BlockPath(), bytes, TestContext.CancellationToken);
 
         await AssertColdScansAsync(Options(), BlockValidationResult.WrongFormatVersion);
     }
@@ -70,9 +70,9 @@ public sealed class BlockValidationMatrixTests : IDisposable
     public async Task MissingCompleteFlag_ColdScans()
     {
         await SeedCacheAsync();
-        var bytes = await File.ReadAllBytesAsync(BlockPath());
+        var bytes = await File.ReadAllBytesAsync(BlockPath(), TestContext.CancellationToken);
         BitConverter.GetBytes((uint)BlockFlags.None).CopyTo(bytes, 12);
-        await File.WriteAllBytesAsync(BlockPath(), bytes);
+        await File.WriteAllBytesAsync(BlockPath(), bytes, TestContext.CancellationToken);
 
         await AssertColdScansAsync(Options(), BlockValidationResult.Incomplete);
     }
@@ -88,9 +88,9 @@ public sealed class BlockValidationMatrixTests : IDisposable
     public async Task WrongVolumeSerial_ColdScans()
     {
         await SeedCacheAsync();
-        var bytes = await File.ReadAllBytesAsync(BlockPath());
+        var bytes = await File.ReadAllBytesAsync(BlockPath(), TestContext.CancellationToken);
         BitConverter.GetBytes(0x99999999u).CopyTo(bytes, 16);
-        await File.WriteAllBytesAsync(BlockPath(), bytes);
+        await File.WriteAllBytesAsync(BlockPath(), bytes, TestContext.CancellationToken);
 
         await AssertColdScansAsync(Options(), BlockValidationResult.WrongVolumeSerial);
     }
@@ -99,8 +99,8 @@ public sealed class BlockValidationMatrixTests : IDisposable
     public async Task TruncatedBlock_ColdScans()
     {
         await SeedCacheAsync();
-        var bytes = await File.ReadAllBytesAsync(BlockPath());
-        await File.WriteAllBytesAsync(BlockPath(), [.. bytes.AsSpan(0, BlockLayout.PageSize)]);
+        var bytes = await File.ReadAllBytesAsync(BlockPath(), TestContext.CancellationToken);
+        await File.WriteAllBytesAsync(BlockPath(), [.. bytes.AsSpan(0, BlockLayout.PageSize)], TestContext.CancellationToken);
 
         await AssertColdScansAsync(Options(), BlockValidationResult.InconsistentRegions);
     }
@@ -109,10 +109,10 @@ public sealed class BlockValidationMatrixTests : IDisposable
     public async Task NameDescriptorPastUsedPool_ColdScans()
     {
         await SeedCacheAsync();
-        var bytes = await File.ReadAllBytesAsync(BlockPath());
+        var bytes = await File.ReadAllBytesAsync(BlockPath(), TestContext.CancellationToken);
         const long rowOneNameOffset = BlockLayout.RowRegionOffset + BlockLayout.RowBytes + 8;
         BitConverter.GetBytes(uint.MaxValue - 1).CopyTo(bytes, rowOneNameOffset);
-        await File.WriteAllBytesAsync(BlockPath(), bytes);
+        await File.WriteAllBytesAsync(BlockPath(), bytes, TestContext.CancellationToken);
 
         await AssertColdScansAsync(Options(), BlockValidationResult.InvalidNameDescriptor);
     }
@@ -121,9 +121,9 @@ public sealed class BlockValidationMatrixTests : IDisposable
     public async Task SequenceRegionOffsetWrong_ColdScans()
     {
         await SeedCacheAsync();
-        var bytes = await File.ReadAllBytesAsync(BlockPath());
+        var bytes = await File.ReadAllBytesAsync(BlockPath(), TestContext.CancellationToken);
         BitConverter.GetBytes(123ul).CopyTo(bytes, 96);
-        await File.WriteAllBytesAsync(BlockPath(), bytes);
+        await File.WriteAllBytesAsync(BlockPath(), bytes, TestContext.CancellationToken);
 
         await AssertColdScansAsync(Options(), BlockValidationResult.InconsistentRegions);
     }
@@ -135,7 +135,7 @@ public sealed class BlockValidationMatrixTests : IDisposable
     public async Task EmptyBlockFile_ColdScans()
     {
         await SeedCacheAsync();
-        await File.WriteAllBytesAsync(BlockPath(), []);
+        await File.WriteAllBytesAsync(BlockPath(), [], TestContext.CancellationToken);
 
         await AssertColdScansAsync(Options(), BlockValidationResult.WrongMagic);
     }
@@ -146,7 +146,7 @@ public sealed class BlockValidationMatrixTests : IDisposable
         await SeedCacheAsync();
         var differentTreeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-other-{Guid.NewGuid():N}");
         Directory.CreateDirectory(Path.Combine(differentTreeRoot, "Documents"));
-        await File.WriteAllTextAsync(Path.Combine(differentTreeRoot, "Documents", "readme.md"), "hello");
+        await File.WriteAllTextAsync(Path.Combine(differentTreeRoot, "Documents", "readme.md"), "hello", TestContext.CancellationToken);
         try
         {
             var options = new FileIndexOptions
@@ -165,4 +165,6 @@ public sealed class BlockValidationMatrixTests : IDisposable
             }
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

@@ -30,7 +30,7 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
     [DataRow(true)]
     public async Task ValidCheckpoint_WarmStartsAndReportsNoLoss(bool watchCapable)
     {
-        await _fixture.Seed();
+        await _fixture.Seed(cancellationToken: TestContext.CancellationToken);
         using var journal = Journal(firstUsn: CachedNextUsn - 500,
             nextUsn: watchCapable ? CachedNextUsn + 4_000 : CachedNextUsn);
 
@@ -46,7 +46,7 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
     [TestMethod]
     public async Task CheckpointTrimmedAway_RescansAndReportsRoundedSpanPlusMargin()
     {
-        await _fixture.Seed();
+        await _fixture.Seed(cancellationToken: TestContext.CancellationToken);
         // The journal has moved on past the cached checkpoint by 500 bytes, and its tip is
         // 4000 bytes past it.
         using var journal = Journal(
@@ -74,7 +74,7 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
     [TestMethod]
     public async Task JournalRecreated_RescansAndSuggestsNoSize()
     {
-        await _fixture.Seed();
+        await _fixture.Seed(cancellationToken: TestContext.CancellationToken);
         using var journal = Journal(journalIdentifier: 0xFEED, firstUsn: 0, nextUsn: 200);
 
         await using var reopened = await FileIndex.OpenAsync(_fixture.Options(), CancellationToken.None);
@@ -92,7 +92,7 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
     [TestMethod]
     public async Task VolumeThatCannotAnswer_WarmStartsAsBefore()
     {
-        await _fixture.Seed();
+        await _fixture.Seed(cancellationToken: TestContext.CancellationToken);
         using var journal = JournalIsolation.OverrideJournalWindow(_ => null);
 
         await using var reopened = await FileIndex.OpenAsync(_fixture.Options(), CancellationToken.None);
@@ -136,7 +136,7 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
     [TestMethod]
     public async Task UnrepresentableRetentionSize_RescansWithNullHintAndClosesCandidate()
     {
-        await _fixture.Seed();
+        await _fixture.Seed(cancellationToken: TestContext.CancellationToken);
         using var journal = Journal(
             firstUsn: CachedNextUsn + 500, nextUsn: long.MaxValue,
             allocationDelta: 1L << 62);
@@ -182,7 +182,7 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
     [TestMethod]
     public async Task UnrepresentableRetentionSize_CacheOnlyAdoptsTheBlockAndReportsTheLoss()
     {
-        await _fixture.Seed();
+        await _fixture.Seed(cancellationToken: TestContext.CancellationToken);
         using var journal = Journal(
             firstUsn: CachedNextUsn + 500, nextUsn: long.MaxValue,
             allocationDelta: 1L << 62);
@@ -199,13 +199,13 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
         Assert.IsNotNull(drive.Watch.CheckpointLoss);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, drive.Watch.CheckpointLoss.Cause);
         Assert.IsNull(drive.Watch.CheckpointLoss.SizeThatWouldHaveRetained);
-        Assert.IsTrue(reopened.Root('T').IsValid, "the adopted block must still answer queries");
+        Assert.IsTrue(reopened.Root('T', TestContext.CancellationToken).IsValid, "the adopted block must still answer queries");
     }
 
     [TestMethod]
     public async Task CheckpointQueryThrows_PropagatesAndClosesUnpublishedCandidate()
     {
-        await _fixture.Seed();
+        await _fixture.Seed(cancellationToken: TestContext.CancellationToken);
         var failure = new InvalidOperationException("Injected journal query failure.");
         using var journal = JournalIsolation.OverrideJournalWindow(_ => throw failure);
 
@@ -219,4 +219,6 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
         using var exclusive = new FileStream(blockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         Assert.IsGreaterThan(0, exclusive.Length);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

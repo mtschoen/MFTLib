@@ -39,8 +39,10 @@ public class SearchQueryMatchModeTests
 
     string[] Names(string? pattern, NameMatchMode mode, bool caseSensitive = false)
     {
-        var results = SearchEngine.Search(_snapshot, new SearchQuery(pattern, mode, caseSensitive));
-        var streamed = SearchEngine.Enumerate(_snapshot, new SearchQuery(pattern, mode, caseSensitive)).ToList();
+        var results = SearchEngine.Search(_snapshot, new SearchQuery(pattern, mode, caseSensitive),
+            TestContext.CancellationToken);
+        var streamed = SearchEngine.Enumerate(_snapshot, new SearchQuery(pattern, mode, caseSensitive),
+            TestContext.CancellationToken).ToList();
         Assert.AreSequenceEqual([.. results.Select(entry => entry.Name)], [.. streamed.Select(entry => entry.Name)], "Search and Enumerate must share one predicate.");
         return [.. results.Select(entry => entry.Name).OrderBy(name => name, StringComparer.Ordinal)];
     }
@@ -109,9 +111,11 @@ public class SearchQueryMatchModeTests
         var query = new SearchQuery(null, (NameMatchMode)99);
 
         var searchFailure = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
-            () => SearchEngine.Search(_snapshot, query));
+            () => SearchEngine.Search(_snapshot, query, TestContext.CancellationToken));
 
         Assert.AreEqual("query", searchFailure.ParamName);
         Assert.StartsWith("Unknown name match mode.", searchFailure.Message);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

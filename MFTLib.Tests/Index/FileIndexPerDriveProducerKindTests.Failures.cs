@@ -32,7 +32,7 @@ public partial class FileIndexPerDriveProducerKindTests
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
         AssertDrive(index, 'T', ProducerKind.Mft);
-        Assert.AreEqual(new DriveKey('T'), index.Search(new SearchQuery("scanned.txt")).Single().RecordKey.Drive);
+        Assert.AreEqual(new DriveKey('T'), index.Search(new SearchQuery("scanned.txt"), TestContext.CancellationToken).Single().RecordKey.Drive);
         var failed = index.Drives.Single(drive => drive.Drive == 'U');
         Assert.AreEqual(DriveState.Failed, failed.State);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, failed.Failure?.Kind);
@@ -73,7 +73,7 @@ public partial class FileIndexPerDriveProducerKindTests
         Assert.AreEqual(previousStatus, status.Block);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind);
         Assert.AreEqual(failure.Message, status.Failure?.Message);
-        Assert.AreEqual("walked.txt", index.Search(new SearchQuery("walked.txt")).Single().Name);
+        Assert.AreEqual("walked.txt", index.Search(new SearchQuery("walked.txt"), TestContext.CancellationToken).Single().Name);
         if (previousBytes is not null)
         {
             Assert.AreSequenceEqual(previousBytes, ReadSharedBlock(canonicalPath));

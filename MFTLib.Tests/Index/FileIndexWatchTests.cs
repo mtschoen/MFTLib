@@ -164,10 +164,10 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
         Assert.AreEqual(FileChangeKind.Created, observed[0].Kind);
         Assert.AreEqual("injected.txt", observed[0].Entry.Name);
         Assert.AreEqual(observed[0], applied[0]);
-        var root = _index.Root('T');
+        var root = _index.Root('T', TestContext.CancellationToken);
         Assert.AreEqual(5UL, root.DriveBlock.Block.Header.UsnJournalIdentifier);
         Assert.AreEqual(100L, root.DriveBlock.Block.Header.UsnNextUsn);
-        Assert.HasCount(1, _index.Search(new SearchQuery("injected")));
+        Assert.HasCount(1, _index.Search(new SearchQuery("injected"), TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -184,13 +184,13 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
             [Entry(20, 0, "injected.txt", UsnReason.FileCreate | UsnReason.Close)],
             journalIdentifier: 5, nextUsn: 100);
 
-        Assert.HasCount(1, _index.Search(new SearchQuery("injected")));
+        Assert.HasCount(1, _index.Search(new SearchQuery("injected"), TestContext.CancellationToken));
     }
 
     [TestMethod]
     public void ApplyJournalEntries_DeleteMakesTheEntryReadAsDeletedButKeepsItsName()
     {
-        var target = _index.Find(Path.Combine(TreeRoot, "Documents", "readme.md"))!.Value;
+        var target = _index.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken)!.Value;
         var recordNumber = target.RecordKey.RecordNumber;
 
         var applied = _index.ApplyJournalEntries('T',
@@ -209,14 +209,24 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
     }
 
     [TestMethod]
-    public async Task ApplyJournalEntries_ConcurrentHeldHandleReaderSeesOnlyCompleteNames()
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ApplyJournalEntries_ConcurrentHeldHandleReaderSeesOnlyCompleteNames(bool cancelBeforeStartup = false)
     {
-        var target = _index.Find(Path.Combine(TreeRoot, "Documents", "readme.md"))!.Value;
+        var target = _index.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken)!.Value;
         var recordNumber = target.RecordKey.RecordNumber;
         const string shortName = "x";
         const string longName = "journal-renamed-document.txt";
         var state = new ConcurrentReaderState();
         var unexpectedNames = new ConcurrentQueue<string>();
+
+        using var startupCancellation = cancelBeforeStartup
+            ? new CancellationTokenSource()
+            : CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+        if (cancelBeforeStartup)
+        {
+            startupCancellation.Cancel();
+        }
 
         var reader = Task.Run(() =>
         {
@@ -231,30 +241,45 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
 
                 Thread.Yield();
             }
-        });
+        }, startupCancellation.Token);
 
-        await state.Started.Task;
         try
         {
-            for (var iteration = 0; iteration < 64; iteration++)
+            var completed = await Task.WhenAny(state.Started.Task, reader).WaitAsync(HangGuard, startupCancellation.Token);
+            if (completed == state.Started.Task)
             {
-                var name = iteration % 2 == 0 ? shortName : longName;
-                _index.ApplyJournalEntries('T',
-                    [Entry(recordNumber, 1, name, UsnReason.RenameNewName | UsnReason.Close)],
-                    journalIdentifier: 5, nextUsn: iteration + 1);
-                Thread.Yield();
+                await state.Started.Task;
+                for (var iteration = 0; iteration < 64; iteration++)
+                {
+                    var name = iteration % 2 == 0 ? shortName : longName;
+                    _index.ApplyJournalEntries('T',
+                        [Entry(recordNumber, 1, name, UsnReason.RenameNewName | UsnReason.Close)],
+                        journalIdentifier: 5, nextUsn: iteration + 1);
+                    Thread.Yield();
+                }
             }
+        }
+        catch (OperationCanceledException) when (cancelBeforeStartup)
+        {
         }
         finally
         {
             state.Finished = true;
+            try
+            {
+                await reader;
+            }
+            catch (OperationCanceledException)
+            {
+            }
         }
 
-        await reader;
-
-        Assert.IsEmpty(unexpectedNames,
-            $"Reader observed torn names: {string.Join(", ", unexpectedNames)}");
-        Assert.AreEqual(longName, target.Name);
+        if (!cancelBeforeStartup)
+        {
+            Assert.IsEmpty(unexpectedNames,
+                $"Reader observed torn names: {string.Join(", ", unexpectedNames)}");
+            Assert.AreEqual(longName, target.Name);
+        }
     }
 
     [TestMethod]
@@ -266,14 +291,14 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
 
         Assert.AreEqual(DriveState.Ready, _index.Drives[0].State);
         Assert.IsTrue(_index.Drives[0].Block!.IsCapacityExhausted);
-        Assert.IsNotNull(_index.Find(Path.Combine(TreeRoot, "Documents", "readme.md")));
+        Assert.IsNotNull(_index.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken));
 
         await _index.RescanAsync(['T'], CancellationToken.None);
 
         var replaced = _index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Ready, replaced.State);
         Assert.IsFalse(replaced.Block!.IsCapacityExhausted);
-        Assert.IsNotNull(_index.Find(Path.Combine(TreeRoot, "Documents", "readme.md")));
+        Assert.IsNotNull(_index.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -367,7 +392,7 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
     [TestMethod]
     public void ApplyJournalEntries_CloseCarryingAnUnreportedReason_StillRaisesOneChange()
     {
-        var target = _index.Find(Path.Combine(TreeRoot, "Documents", "readme.md"))!.Value;
+        var target = _index.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken)!.Value;
         var recordNumber = target.RecordKey.RecordNumber;
         _index.ApplyJournalEntries('T',
             [Entry(recordNumber, 1, "readme.md", UsnReason.DataExtend)], journalIdentifier: 5, nextUsn: 100);
@@ -397,4 +422,6 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
                 $"Source was asked to start drive {target.Drive} with cancellation {cancellationToken.CanBeCanceled}.");
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

@@ -34,7 +34,7 @@ public sealed class FileIndexCheckpointLossDetectionTests : IDisposable
     /// </summary>
     async Task<FileIndex> OpenWithAnOpenTimeLossAsync(IIndexWatchSource watchSource)
     {
-        await _fixture.Seed(_fixture.Options(watchSource: watchSource));
+        await _fixture.Seed(_fixture.Options(watchSource: watchSource), TestContext.CancellationToken);
         using var journal = JournalWindows.Journal(firstUsn: CachedNextUsn + 500, nextUsn: CachedNextUsn + 4_000);
         var index = await FileIndex.OpenAsync(_fixture.Options(watchSource: watchSource), CancellationToken.None);
         try

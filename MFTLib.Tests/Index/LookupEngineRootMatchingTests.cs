@@ -35,18 +35,18 @@ public class LookupEngineRootMatchingTests
         ];
         try
         {
-            var inner = LookupEngine.Find(snapshot, Path.Combine(innerRoot, "inner.txt"));
+            var inner = LookupEngine.Find(snapshot, Path.Combine(innerRoot, "inner.txt"), TestContext.CancellationToken);
             Assert.IsTrue(inner.HasValue);
             Assert.AreEqual('I', inner.GetValueOrDefault().RecordKey.Drive);
 
-            var outer = LookupEngine.Find(snapshot, Path.Combine(outerRoot, "outer.txt"));
+            var outer = LookupEngine.Find(snapshot, Path.Combine(outerRoot, "outer.txt"), TestContext.CancellationToken);
             Assert.IsTrue(outer.HasValue);
             Assert.AreEqual('O', outer.GetValueOrDefault().RecordKey.Drive);
 
             // "inner.txt" is not a child of the outer block's root, so the longest root having
             // won is exactly what makes this resolve at all.
             Assert.IsNull(LookupEngine.Find(snapshot,
-                Path.Combine(innerRoot, "absent.txt")));
+                Path.Combine(innerRoot, "absent.txt"), TestContext.CancellationToken));
         }
         finally
         {
@@ -64,9 +64,9 @@ public class LookupEngineRootMatchingTests
         try
         {
             Assert.IsNotNull(LookupEngine.Find(snapshot,
-                Path.Combine(root, "documents", "notes.txt")));
+                Path.Combine(root, "documents", "notes.txt"), TestContext.CancellationToken));
             Assert.IsNotNull(LookupEngine.Find(snapshot,
-                Path.Combine(root, "DOCUMENTS", "NOTES.TXT")));
+                Path.Combine(root, "DOCUMENTS", "NOTES.TXT"), TestContext.CancellationToken));
         }
         finally
         {
@@ -84,9 +84,9 @@ public class LookupEngineRootMatchingTests
         ];
         try
         {
-            Assert.IsNotNull(LookupEngine.Find(snapshot, Path.Combine(root, "Readme.md")));
+            Assert.IsNotNull(LookupEngine.Find(snapshot, Path.Combine(root, "Readme.md"), TestContext.CancellationToken));
 
-            var mismatchedCase = LookupEngine.Find(snapshot, Path.Combine(root, "README.MD"));
+            var mismatchedCase = LookupEngine.Find(snapshot, Path.Combine(root, "README.MD"), TestContext.CancellationToken);
             if (OperatingSystem.IsWindows())
             {
                 Assert.IsNotNull(mismatchedCase, "a Windows enumeration block folds case the way the host does");
@@ -118,7 +118,7 @@ public class LookupEngineRootMatchingTests
         ];
         try
         {
-            var entry = LookupEngine.Find(snapshot, Path.Combine(root, "visible.txt"));
+            var entry = LookupEngine.Find(snapshot, Path.Combine(root, "visible.txt"), TestContext.CancellationToken);
             Assert.IsTrue(entry.HasValue);
             Assert.AreEqual('T', entry.GetValueOrDefault().RecordKey.Drive);
         }
@@ -139,7 +139,7 @@ public class LookupEngineRootMatchingTests
         try
         {
             var mixedPath = root.Replace('\\', '/').Replace("/Users/", @"\Users/") + @"\file.txt";
-            var entry = LookupEngine.Find(snapshot, mixedPath);
+            var entry = LookupEngine.Find(snapshot, mixedPath, TestContext.CancellationToken);
             if (OperatingSystem.IsWindows())
             {
                 Assert.IsTrue(entry.HasValue);
@@ -180,7 +180,7 @@ public class LookupEngineRootMatchingTests
         try
         {
             var expected = FileEntry.Create(snapshot[0], backslashFile);
-            var resolved = LookupEngine.Find(snapshot, expected.Path);
+            var resolved = LookupEngine.Find(snapshot, expected.Path, TestContext.CancellationToken);
 
             Assert.IsTrue(resolved.HasValue);
             var resolvedVal = resolved.GetValueOrDefault();
@@ -213,10 +213,10 @@ public class LookupEngineRootMatchingTests
         DriveBlock[] outerOnly = [outerBlock];
         try
         {
-            var entry = LookupEngine.Find(snapshot, Path.Combine(secondRoot, "file.txt"));
+            var entry = LookupEngine.Find(snapshot, Path.Combine(secondRoot, "file.txt"), TestContext.CancellationToken);
             Assert.IsTrue(entry.HasValue);
             Assert.AreEqual('I', entry.GetValueOrDefault().RecordKey.Drive);
-            Assert.IsNull(LookupEngine.Find(outerOnly, Path.Combine(secondRoot, "file.txt")),
+            Assert.IsNull(LookupEngine.Find(outerOnly, Path.Combine(secondRoot, "file.txt"), TestContext.CancellationToken),
                 "a string prefix without a path boundary must not select the outer root");
         }
         finally
@@ -232,7 +232,7 @@ public class LookupEngineRootMatchingTests
         var root = Path.Combine(Path.GetTempPath(), $"mftlib-trailing-{Guid.NewGuid():N}");
         var cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-trailing-cache-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
-        await File.WriteAllTextAsync(Path.Combine(root, "file.txt"), "hello");
+        await File.WriteAllTextAsync(Path.Combine(root, "file.txt"), "hello", TestContext.CancellationToken);
         try
         {
             foreach (var indexedRoot in new[] { root, root + Path.DirectorySeparatorChar })
@@ -243,11 +243,11 @@ public class LookupEngineRootMatchingTests
                     CacheDirectory = cacheDirectory
                 }, CancellationToken.None);
 
-                var entry = index.Find(Path.Combine(root, "file.txt"));
+                var entry = index.Find(Path.Combine(root, "file.txt"), TestContext.CancellationToken);
                 Assert.IsTrue(entry.HasValue);
                 Assert.AreEqual(Path.Combine(root, "file.txt"), entry.GetValueOrDefault().Path);
-                Assert.AreEqual(index.Root('E').RecordKey, index.Find(root)!.Value.RecordKey);
-                Assert.AreEqual(index.Root('E').RecordKey, index.Find(root + Path.DirectorySeparatorChar)!.Value.RecordKey);
+                Assert.AreEqual(index.Root('E', TestContext.CancellationToken).RecordKey, index.Find(root, TestContext.CancellationToken)!.Value.RecordKey);
+                Assert.AreEqual(index.Root('E', TestContext.CancellationToken).RecordKey, index.Find(root + Path.DirectorySeparatorChar, TestContext.CancellationToken)!.Value.RecordKey);
             }
         }
         finally
@@ -256,4 +256,6 @@ public class LookupEngineRootMatchingTests
             Directory.Delete(cacheDirectory, recursive: true);
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

@@ -17,7 +17,7 @@ public partial class FileIndexPerDriveWatchTests
         var oldHandle = harness.Source.WatchFor('T');
         var applying = harness.HoldFirstApply('T');
         _ = oldHandle.Queue(WatchHarness.Batch(9, "held.txt", nextUsn: 700));
-        await applying.Entered.WaitAsync(HangGuard);
+        await applying.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         using var alreadyCancelled = new CancellationTokenSource();
         await alreadyCancelled.CancelAsync();
         await Assert.ThrowsAsync<OperationCanceledException>(
@@ -28,7 +28,7 @@ public partial class FileIndexPerDriveWatchTests
         Assert.HasCount(1, harness.Source.Starts, "the restart waits for the old instance to drain");
         Assert.IsFalse(restart.IsCompleted);
         applying.Release();
-        await restart.WaitAsync(HangGuard);
+        await restart.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.HasCount(2, harness.Source.Starts);
         Assert.AreEqual(1, oldHandle.DisposeCount, "the old pump disposed its handle before the restart published");
     }
@@ -41,7 +41,7 @@ public partial class FileIndexPerDriveWatchTests
         var generationBefore = harness.BlockFor('T').Header.Generation;
         var applying = harness.HoldFirstApply('T');
         _ = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "held.txt", nextUsn: 700));
-        await applying.Entered.WaitAsync(HangGuard);
+        await applying.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         using var alreadyCancelled = new CancellationTokenSource();
         await alreadyCancelled.CancelAsync();
         await Assert.ThrowsAsync<OperationCanceledException>(
@@ -49,7 +49,7 @@ public partial class FileIndexPerDriveWatchTests
         var restart = harness.Index.StartWatchingAsync(['T'], Token);
 
         applying.Release();
-        await restart.WaitAsync(HangGuard);
+        await restart.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var header = harness.BlockFor('T').Header;
         Assert.AreEqual(generationBefore, header.Generation, "the retiring pump's batch never reached the block");
@@ -100,14 +100,14 @@ public partial class FileIndexPerDriveWatchTests
         await harness.Index.StartWatchingAsync(['T'], Token);
         var applying = harness.HoldFirstApply('T');
         _ = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "held.txt", nextUsn: 700));
-        await applying.Entered.WaitAsync(HangGuard);
+        await applying.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         using var rescanCancellation = new CancellationTokenSource();
         var rescan = harness.Index.RescanAsync(['T'], rescanCancellation.Token);
 
         await rescanCancellation.CancelAsync();
         applying.Release();
 
-        await Assert.ThrowsAsync<OperationCanceledException>(() => rescan.WaitAsync(HangGuard));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => rescan.WaitAsync(HangGuard, TestContext.CancellationToken));
         var starts = harness.Source.TargetsFor('T');
         Assert.HasCount(2, starts, "cancellation after commit does not abandon the replacement watch");
         Assert.AreEqual(new IndexWatchTarget('T', WatchHarness.JournalIdentifier, WatchHarness.NextUsn), starts[1]);
@@ -123,7 +123,7 @@ public partial class FileIndexPerDriveWatchTests
         await harness.Index.StartWatchingAsync(['V'], Token);
         var draining = harness.HoldFirstApply('U');
         _ = harness.Source.WatchFor('U').Queue(WatchHarness.Batch(10, "u.txt"));
-        await draining.Entered.WaitAsync(HangGuard);
+        await draining.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         using var waitCancellation = new CancellationTokenSource();
         using var stopCancellation = new CancellationTokenSource();
         var waiter = ObserveAsync(harness.Index.WaitForCatchUpAsync(['V'], waitCancellation.Token));
@@ -132,7 +132,7 @@ public partial class FileIndexPerDriveWatchTests
 
         await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(9, "t.txt"));
 
-        var observed = await Task.WhenAll(waiter, stopper).WaitAsync(HangGuard);
+        var observed = await Task.WhenAll(waiter, stopper).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.IsFalse(observed[0], "the catch-up wait's continuation ran on the cancelling handler's stack");
         Assert.IsFalse(observed[1], "the stop's continuation ran on the cancelling handler's stack");
         draining.Release();
@@ -182,7 +182,7 @@ public partial class FileIndexPerDriveWatchTests
         harness.Source.HoldStart(held);
         using var rescanCancellation = CancellationTokenSource.CreateLinkedTokenSource(Token);
         var start = harness.Index.StartWatchingAsync(['T'], Token);
-        await held.Entered.WaitAsync(HangGuard);
+        await held.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         var productionsBefore = harness.ProductionCount('T');
 
         var rescan = harness.Index.RescanAsync(['T'], rescanCancellation.Token);
@@ -190,12 +190,12 @@ public partial class FileIndexPerDriveWatchTests
 
         // The rescan was waiting for the starting watch's lifecycle gate and had touched nothing, so
         // it scans nothing and records no failure against a drive the start is about to watch.
-        await Assert.ThrowsAsync<OperationCanceledException>(() => rescan.WaitAsync(HangGuard));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => rescan.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
         Assert.AreEqual(productionsBefore, harness.ProductionCount('T'));
 
         held.Release();
-        await start.WaitAsync(HangGuard);
+        await start.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.HasCount(1, harness.Source.TargetsFor('T'));
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
         await harness.Index.StopWatchingAsync(['T'], Token);
@@ -208,14 +208,14 @@ public partial class FileIndexPerDriveWatchTests
         var producing = harness.HoldNextProduction('T');
         harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
         var rescan = harness.Index.RescanAsync(['T'], Token);
-        await producing.Entered.WaitAsync(HangGuard);
+        await producing.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var start = harness.Index.StartWatchingAsync(['T'], Token);
         Assert.IsFalse(start.IsCompleted, "the start waits for the rescan's lifecycle gate");
         Assert.IsEmpty(harness.Source.Starts);
         producing.Release();
-        await rescan.WaitAsync(HangGuard);
-        await start.WaitAsync(HangGuard);
+        await rescan.WaitAsync(HangGuard, TestContext.CancellationToken);
+        await start.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreSequenceEqual([new IndexWatchTarget('T', 13, 9000)], [.. harness.Source.Targets]);
         Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
@@ -230,12 +230,12 @@ public partial class FileIndexPerDriveWatchTests
         await harness.Index.StartWatchingAsync(['T'], Token);
         var producing = harness.HoldNextProduction('T');
         var rescan = harness.Index.RescanAsync(['T'], Token);
-        await producing.Entered.WaitAsync(HangGuard);
+        await producing.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        await harness.Index.StopWatchingAsync(['T'], Token).WaitAsync(HangGuard);
+        await harness.Index.StopWatchingAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         producing.Release();
-        await rescan.WaitAsync(HangGuard);
+        await rescan.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.HasCount(1, harness.Source.TargetsFor('T'));
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
     }
@@ -267,7 +267,7 @@ public partial class FileIndexPerDriveWatchTests
         harness.Source.WatchFor('T').FailDrive(new IOException("the volume went away"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
 
-        await harness.Index.DisposeAsync().AsTask().WaitAsync(HangGuard);
+        await harness.Index.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.HasCount(2, harness.Source.Watches);
         foreach (var handle in harness.Source.Watches)
@@ -298,7 +298,7 @@ public partial class FileIndexPerDriveWatchTests
         var handle = harness.Source.WatchFor('T');
         handle.FailDrive(new IOException("the volume went away"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
-        await handle.Disposed.WaitAsync(HangGuard);
+        await handle.Disposed.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => harness.Index.StopWatchingAsync(['T'], Token));
         await harness.Index.DisposeAsync();
@@ -359,7 +359,7 @@ public partial class FileIndexPerDriveWatchTests
 
         harness.Source.WatchFor('T').FailDrive(new IOException("the volume went away"));
 
-        Assert.IsFalse(await waiter.WaitAsync(HangGuard), "the waiter's continuation ran on the settling stack");
+        Assert.IsFalse(await waiter.WaitAsync(HangGuard, TestContext.CancellationToken), "the waiter's continuation ran on the settling stack");
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('U').Watch.State);
         return;
 

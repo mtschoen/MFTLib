@@ -39,13 +39,13 @@ public sealed class MftDumpRescanTests : IDisposable
     {
         var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         await using var index = await OpenAsync(MftIndexSources.FromMftDumpFile(path, 'D'));
-        Assert.IsNotNull(index.Find(NotesPath));
+        Assert.IsNotNull(index.Find(NotesPath, TestContext.CancellationToken));
 
-        await File.WriteAllBytesAsync(path, Renamed(replacementRecordSize));
+        await File.WriteAllBytesAsync(path, Renamed(replacementRecordSize), TestContext.CancellationToken);
         await index.RescanAsync(['D'], CancellationToken.None);
 
-        Assert.IsNull(index.Find(NotesPath));
-        Assert.AreEqual(33L, index.Find(RenamedPath)!.Value.Size);
+        Assert.IsNull(index.Find(NotesPath, TestContext.CancellationToken));
+        Assert.AreEqual(33L, index.Find(RenamedPath, TestContext.CancellationToken)!.Value.Size);
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, drive.State);
         Assert.IsNull(drive.Failure);
@@ -60,7 +60,7 @@ public sealed class MftDumpRescanTests : IDisposable
         var invalid = MftDumpFixture.Standard();
         invalid[(7 * 1024) + 510] ^= 0xFF;
 
-        await File.WriteAllBytesAsync(path, invalid);
+        await File.WriteAllBytesAsync(path, invalid, TestContext.CancellationToken);
         var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
             () => index.RescanAsync(['D'], CancellationToken.None));
 
@@ -68,15 +68,15 @@ public sealed class MftDumpRescanTests : IDisposable
         Assert.IsInstanceOfType<InvalidDataException>(failure.InnerException);
         Assert.AreEqual(InvalidFixupMessage, failure.InnerException.Message);
         Assert.AreEqual($"Drive D was not rescanned: {InvalidFixupMessage}", failure.Message);
-        Assert.AreEqual(11L, index.Find(NotesPath)!.Value.Size, "the last good block still answers queries");
+        Assert.AreEqual(11L, index.Find(NotesPath, TestContext.CancellationToken)!.Value.Size, "the last good block still answers queries");
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, drive.State);
         Assert.AreEqual(InvalidFixupMessage, drive.Failure?.Message);
 
-        await File.WriteAllBytesAsync(path, Renamed(1024));
+        await File.WriteAllBytesAsync(path, Renamed(1024), TestContext.CancellationToken);
         await index.RescanAsync(['D'], CancellationToken.None);
 
-        Assert.IsNotNull(index.Find(RenamedPath));
+        Assert.IsNotNull(index.Find(RenamedPath, TestContext.CancellationToken));
         Assert.IsNull(index.Drives.Single().Failure, "a later good rescan clears the failure");
     }
 
@@ -92,7 +92,7 @@ public sealed class MftDumpRescanTests : IDisposable
 
         Assert.IsInstanceOfType<IOException>(failure.InnerException);
         Assert.StartsWith("Failed to open file. Error: ", failure.InnerException.Message);
-        Assert.IsNotNull(index.Find(NotesPath));
+        Assert.IsNotNull(index.Find(NotesPath, TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -100,14 +100,14 @@ public sealed class MftDumpRescanTests : IDisposable
     {
         var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         await using var index = await OpenAsync(MftIndexSources.FromMftDumpFile(path, 'D'));
-        await File.WriteAllBytesAsync(path, Renamed(1024));
+        await File.WriteAllBytesAsync(path, Renamed(1024), TestContext.CancellationToken);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
         await Assert.ThrowsAsync<OperationCanceledException>(
             () => index.RescanAsync(['D'], cancellation.Token));
-        Assert.IsNotNull(index.Find(NotesPath));
-        Assert.IsNull(index.Find(RenamedPath));
+        Assert.IsNotNull(index.Find(NotesPath, TestContext.CancellationToken));
+        Assert.IsNull(index.Find(RenamedPath, TestContext.CancellationToken));
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
     }
 
@@ -121,7 +121,7 @@ public sealed class MftDumpRescanTests : IDisposable
 
         await Assert.ThrowsAsync<OperationCanceledException>(
             () => index.RescanAsync(['D'], cancellation.Token));
-        Assert.IsNotNull(index.Find(NotesPath));
+        Assert.IsNotNull(index.Find(NotesPath, TestContext.CancellationToken));
         using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         Assert.IsGreaterThan(0, exclusive.Length, "the cancelled scan closed its input");
     }
@@ -141,7 +141,7 @@ public sealed class MftDumpRescanTests : IDisposable
         await indexes[0].DisposeAsync();
         await using var remaining = indexes[1];
         Assert.AreEqual(DriveState.Ready, remaining.Drives.Single().State);
-        Assert.AreEqual(11L, remaining.Find(NotesPath)!.Value.Size, "one index's disposal leaves the other's block mapped");
+        Assert.AreEqual(11L, remaining.Find(NotesPath, TestContext.CancellationToken)!.Value.Size, "one index's disposal leaves the other's block mapped");
     }
 
     [TestMethod]
@@ -152,13 +152,13 @@ public sealed class MftDumpRescanTests : IDisposable
         await using var firstIndex = await OpenAsync(MftIndexSources.FromMftDumpFile(first, 'D'));
         await using var secondIndex = await OpenAsync(MftIndexSources.FromMftDumpFile(second, 'd'));
 
-        await File.WriteAllBytesAsync(first, Renamed(1024));
+        await File.WriteAllBytesAsync(first, Renamed(1024), TestContext.CancellationToken);
         await secondIndex.RescanAsync(['D'], CancellationToken.None);
 
-        Assert.IsNotNull(firstIndex.Find(NotesPath), "the first index was not rescanned");
-        Assert.IsNull(firstIndex.Find(RenamedPath));
-        Assert.IsNotNull(secondIndex.Find(RenamedPath));
-        Assert.IsNull(secondIndex.Find(NotesPath));
+        Assert.IsNotNull(firstIndex.Find(NotesPath, TestContext.CancellationToken), "the first index was not rescanned");
+        Assert.IsNull(firstIndex.Find(RenamedPath, TestContext.CancellationToken));
+        Assert.IsNotNull(secondIndex.Find(RenamedPath, TestContext.CancellationToken));
+        Assert.IsNull(secondIndex.Find(NotesPath, TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -209,4 +209,6 @@ public sealed class MftDumpRescanTests : IDisposable
         records[7] = new DumpRecord("Renamed.txt", 6) { Size = 33 };
         return MftDumpFixture.Build(recordSize, 16, records);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

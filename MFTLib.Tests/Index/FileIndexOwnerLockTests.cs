@@ -89,7 +89,7 @@ public sealed class FileIndexOwnerLockTests : IDisposable
             secondBlockPath = second.CurrentSnapshot[secondOrdinal].Block.Path;
             Assert.IsTrue(File.Exists(secondBlockPath));
             Assert.AreSequenceEqual(canonicalBytes, await SharedFileReader.ReadAllBytesAsync(CanonicalPath), "the owning index's canonical cache is not replaced, truncated, or deleted");
-            Assert.IsNotNull(second.Find(Path.Combine(TreeRoot, "Documents", "readme.md")));
+            Assert.IsNotNull(second.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken));
         }
 
         Assert.IsFalse(File.Exists(secondBlockPath),
@@ -110,7 +110,7 @@ public sealed class FileIndexOwnerLockTests : IDisposable
             rowsBefore = first.HeaderOf().RowCount;
             timestampBefore = first.Drives[0].Block!.ScanTimestamp;
 
-            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
+            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
             progress.Armed = true;
             var rescan = first.RescanAsync(['T'], cancellationTokenSource.Token);
             await progress.Reported;
@@ -149,7 +149,7 @@ public sealed class FileIndexOwnerLockTests : IDisposable
         {
             var oldSnapshot = first.CurrentSnapshot;
 
-            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
+            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
             await first.RescanAsync(['T'], CancellationToken.None);
 
             var retiredPaths = Directory
@@ -172,7 +172,7 @@ public sealed class FileIndexOwnerLockTests : IDisposable
                     "the first index's disposal deletes its own retired file, never the second index's block");
                 Assert.IsFalse(File.Exists(retiredPaths[0]));
                 Assert.AreEqual(DriveState.Ready, second.Drives.Single().State);
-                Assert.IsNotNull(second.Find(Path.Combine(TreeRoot, "Documents", "readme.md")));
+                Assert.IsNotNull(second.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken));
             }
 
             Assert.Contains(entry => entry.Contains(".retired-") && entry.Contains("superseded"), deletions,
@@ -201,7 +201,7 @@ public sealed class FileIndexOwnerLockTests : IDisposable
 
             // While the first index owns the slot, the second index's rescan must not rename the
             // canonical file aside: it scans privately again.
-            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
+            await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
             await second.RescanAsync(['T'], CancellationToken.None);
 
             var secondPrivatePath = second.CurrentSnapshot[secondOrdinal].Block.Path;
@@ -326,7 +326,7 @@ public sealed class FileIndexOwnerLockTests : IDisposable
             var rescan = second.RescanAsync(['T'], cancellation.Token);
             try
             {
-                await progress.Reported.WaitAsync(HangGuard * 3);
+                await progress.Reported.WaitAsync(HangGuard * 3, TestContext.CancellationToken);
                 Assert.AreEqual(CacheLocation.PrivateFallback, second.Drives.Single().Block!.CacheLocation);
                 Assert.AreEqual(rowCountBefore, second.HeaderOf().RowCount);
             }
@@ -352,7 +352,7 @@ public sealed class FileIndexOwnerLockTests : IDisposable
                 second.Drives.Single().Block!.CacheLocation);
             Assert.AreEqual(CacheLocation.PrivateFallback, before.Block.CacheLocation);
             Assert.AreEqual(DriveState.Ready, second.Drives.Single().State);
-            Assert.IsNotNull(second.Find(Path.Combine(TreeRoot, "Documents", "readme.md")));
+            Assert.IsNotNull(second.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken));
 
             if (cancel)
             {
@@ -381,4 +381,5 @@ public sealed class FileIndexOwnerLockTests : IDisposable
         Assert.Fail("Expected an OperationCanceledException (or a derived type such as TaskCanceledException).");
     }
 
+    public TestContext TestContext { get; set; } = null!;
 }

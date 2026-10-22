@@ -167,8 +167,8 @@ public sealed class FileIndexScanShapeTests
 
         Assert.AreEqual(BlockOrigin.WarmStartedFromCache, OriginOf(reopened, 'A'));
         Assert.AreEqual(BlockOrigin.ProducedByScan, OriginOf(reopened, 'B'));
-        Assert.IsNotNull(reopened.Find(Path.Combine(RootB, "build", "output", "app.dll")));
-        Assert.IsNotNull(reopened.Find(Path.Combine(RootA, "build", "output", "app.dll")),
+        Assert.IsNotNull(reopened.Find(Path.Combine(RootB, "build", "output", "app.dll"), TestContext.CancellationToken));
+        Assert.IsNotNull(reopened.Find(Path.Combine(RootA, "build", "output", "app.dll"), TestContext.CancellationToken),
             "drive A's warm block still holds its rows");
     }
 

@@ -37,29 +37,31 @@ public class BlockWriterCompleteDisposalRaceTests
         };
 
         Task? disposeTask = null;
-        var completeTask = Task.Run(() => writer.Complete(Moment, null));
+        var completeTask = Task.Run(() => writer.Complete(Moment, null), TestContext.CancellationToken);
         try
         {
-            Assert.IsTrue(accessTaken.Entered.Wait(HangGuard * 3),
+            Assert.IsTrue(accessTaken.Entered.Wait(HangGuard * 3, TestContext.CancellationToken),
                 "Complete never took its access, so the race was never set up");
 
-            disposeTask = Task.Run(block.Dispose);
-            Assert.IsTrue(disposeStarted.Entered.Wait(HangGuard * 3), "dispose never began, so the race was never set up");
+            disposeTask = Task.Run(block.Dispose, TestContext.CancellationToken);
+            Assert.IsTrue(disposeStarted.Entered.Wait(HangGuard * 3, TestContext.CancellationToken), "dispose never began, so the race was never set up");
             Assert.IsTrue(disposeWillWait,
                 "dispose found no in-flight access to wait for, so Complete was not holding the block");
 
             releaseComplete.Release();
 
-            completeTask.Wait(HangGuard * 3);
+            completeTask.Wait(HangGuard * 3, TestContext.CancellationToken);
             Assert.AreEqual(TaskStatus.RanToCompletion, completeTask.Status,
                 "Complete was admitted before disposal began and must finish its flush without throwing");
-            Assert.IsTrue(disposeTask.Wait(HangGuard * 3), "dispose never finished after Complete left the block");
+            Assert.IsTrue(disposeTask.Wait(HangGuard * 3, TestContext.CancellationToken), "dispose never finished after Complete left the block");
         }
         finally
         {
             releaseComplete.Release();
-            completeTask.Wait(HangGuard * 3);
-            disposeTask?.Wait(HangGuard * 3);
+            completeTask.Wait(HangGuard * 3, TestContext.CancellationToken);
+            disposeTask?.Wait(HangGuard * 3, TestContext.CancellationToken);
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

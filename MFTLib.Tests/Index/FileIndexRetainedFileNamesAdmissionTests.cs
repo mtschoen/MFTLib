@@ -103,7 +103,7 @@ public sealed class FileIndexRetainedFileNamesAdmissionTests : IDisposable
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
         retained.Clear();
 
-        Assert.IsNotNull(index.Find(Path.Combine(_fixture.TreeRoot, "keep.txt")));
-        Assert.IsNull(index.Find(Path.Combine(_fixture.TreeRoot, "Documents", "readme.md")));
+        Assert.IsNotNull(index.Find(Path.Combine(_fixture.TreeRoot, "keep.txt"), TestContext.CancellationToken));
+        Assert.IsNull(index.Find(Path.Combine(_fixture.TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken));
     }
 }

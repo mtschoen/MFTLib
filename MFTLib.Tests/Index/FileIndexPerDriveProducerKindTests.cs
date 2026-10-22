@@ -48,7 +48,7 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
 
         AssertDrive(index, 'T', ProducerKind.Mft);
         AssertDrive(index, 'U', ProducerKind.Enumeration);
-        var rows = index.Search(new SearchQuery(".txt"));
+        var rows = index.Search(new SearchQuery(".txt"), TestContext.CancellationToken);
         Assert.AreSequenceEqual(["scanned.txt", "walked.txt"], [.. rows.Select(row => row.Name)], SequenceOrder.InAnyOrder);
         Assert.AreSequenceEqual(['T', 'U'], [.. rows.Select(row => row.RecordKey.Drive.Letter)], SequenceOrder.InAnyOrder);
 
@@ -72,7 +72,7 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
         Assert.AreEqual(DriveFailureKind.MftSourceMissing, failed.Failure?.Kind);
         Assert.IsNull(failed.Block);
         AssertDrive(index, 'U', ProducerKind.Enumeration);
-        Assert.AreEqual(new DriveKey('U'), index.Search(new SearchQuery("walked.txt")).Single().RecordKey.Drive);
+        Assert.AreEqual(new DriveKey('U'), index.Search(new SearchQuery("walked.txt"), TestContext.CancellationToken).Single().RecordKey.Drive);
 
         var results = await index.RescanAsync(['T', 'U'], CancellationToken.None);
         Assert.AreEqual(DriveOperationOutcome.Failed, results[0].Outcome);
@@ -80,7 +80,7 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
         Assert.AreEqual(DriveFailureKind.MftSourceMissing,
             index.Drives.Single(drive => drive.Drive == 'T').Failure?.Kind);
         AssertDrive(index, 'U', ProducerKind.Enumeration);
-        Assert.AreEqual(new DriveKey('U'), index.Search(new SearchQuery("walked.txt")).Single().Drive);
+        Assert.AreEqual(new DriveKey('U'), index.Search(new SearchQuery("walked.txt"), TestContext.CancellationToken).Single().Drive);
     }
 
     [TestMethod]
@@ -105,7 +105,7 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
             Assert.IsNull(status.Failure);
         }
 
-        Assert.AreSequenceEqual(['T', 'U'], [.. index.Search(new SearchQuery("walked.txt")).Select(entry => entry.Drive.Letter)], SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(['T', 'U'], [.. index.Search(new SearchQuery("walked.txt"), TestContext.CancellationToken).Select(entry => entry.Drive.Letter)], SequenceOrder.InAnyOrder);
         Assert.AreEqual(0, invocationCount);
     }
 
@@ -125,7 +125,7 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
         Assert.AreEqual("Drive T: no MFT source is available to scan this drive.", failed.Failure?.Message);
         Assert.IsNull(failed.Block);
         AssertDrive(index, 'U', ProducerKind.Enumeration);
-        Assert.AreEqual(new DriveKey('U'), index.Search(new SearchQuery("walked.txt")).Single().Drive);
+        Assert.AreEqual(new DriveKey('U'), index.Search(new SearchQuery("walked.txt"), TestContext.CancellationToken).Single().Drive);
     }
 
     [TestMethod]
@@ -173,19 +173,19 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
             Assert.AreEqual(DriveState.Failed, failed.State);
             Assert.AreEqual(DriveFailureKind.CacheDeclined, failed.Failure?.Kind);
             Assert.IsNull(failed.Block);
-            Assert.IsEmpty(index.Search(new SearchQuery(null)));
+            Assert.IsEmpty(index.Search(new SearchQuery(null), TestContext.CancellationToken));
         }
         else
         {
             AssertDrive(index, 'T', requested);
             var expectedName = requested == ProducerKind.Mft ? "scanned.txt" : "walked.txt";
             var rejectedName = requested == ProducerKind.Mft ? "walked.txt" : "scanned.txt";
-            var entry = index.Search(new SearchQuery(".txt")).Single();
+            var entry = index.Search(new SearchQuery(".txt"), TestContext.CancellationToken).Single();
             Assert.AreEqual(expectedName, entry.Name);
             Assert.AreEqual(requested, entry.RecordKey.ProducerKind);
             Assert.AreEqual(requested,
-                index.Search(new SearchQuery(expectedName)).Single().RecordKey.ProducerKind);
-            Assert.IsEmpty(index.Search(new SearchQuery(rejectedName)));
+                index.Search(new SearchQuery(expectedName), TestContext.CancellationToken).Single().RecordKey.ProducerKind);
+            Assert.IsEmpty(index.Search(new SearchQuery(rejectedName), TestContext.CancellationToken));
         }
 
         Assert.Contains(line => line.Contains("producer kind mismatch", StringComparison.Ordinal), diagnostics);
@@ -224,4 +224,6 @@ public sealed partial class FileIndexPerDriveProducerKindTests : IDisposable
         Assert.AreEqual(origin, status.Block.Origin);
         Assert.AreEqual(kind, SyntheticIndexInspection.ReadHeader(index, letter)!.ProducerKind);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

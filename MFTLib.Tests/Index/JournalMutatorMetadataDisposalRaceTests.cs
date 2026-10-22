@@ -42,10 +42,10 @@ public class JournalMutatorMetadataDisposalRaceTests
             [CreateEntry(7, 6, "notes.txt", UsnReason.DataExtend, timestamp)], 7, 2000));
         try
         {
-            Assert.IsTrue(rowCaptured.Entered.Wait(HangGuard * 3),
+            Assert.IsTrue(rowCaptured.Entered.Wait(HangGuard * 3, TestContext.CancellationToken),
                 "the metadata write never ran inside the writer's access scope, so the race was never set up");
-            disposeTask = Task.Run(block.Dispose);
-            Assert.IsTrue(disposeStarted.Entered.Wait(HangGuard * 3), "dispose never began");
+            disposeTask = Task.Run(block.Dispose, TestContext.CancellationToken);
+            Assert.IsTrue(disposeStarted.Entered.Wait(HangGuard * 3, TestContext.CancellationToken), "dispose never began");
             Assert.IsTrue(disposeWillWait, "dispose did not see the metadata write's access scope, so it would unmap under it");
             releaseWriter.Release();
 
@@ -53,29 +53,31 @@ public class JournalMutatorMetadataDisposalRaceTests
             // the write that was already inside the block is what must have completed first.
             try
             {
-                Assert.IsTrue(applyTask.Wait(HangGuard * 3), "the in-flight apply never finished");
+                Assert.IsTrue(applyTask.Wait(HangGuard * 3, TestContext.CancellationToken), "the in-flight apply never finished");
             }
             catch (AggregateException exception) when (exception.InnerException is ObjectDisposedException)
             {
                 // Expected for a step admitted after disposal began.
             }
 
-            Assert.IsTrue(disposeTask.Wait(HangGuard * 3), "dispose never finished");
+            Assert.IsTrue(disposeTask.Wait(HangGuard * 3, TestContext.CancellationToken), "dispose never finished");
         }
         finally
         {
             releaseWriter.Release();
             try
             {
-                applyTask.Wait(HangGuard * 3);
+                applyTask.Wait(HangGuard * 3, TestContext.CancellationToken);
             }
             catch (AggregateException exception) when (exception.InnerException is ObjectDisposedException)
             {
                 // Expected for a step admitted after disposal began.
             }
 
-            disposeTask?.Wait(HangGuard * 3);
-            snapshot.ReleaseNowAsync().Wait(HangGuard * 3);
+            disposeTask?.Wait(HangGuard * 3, TestContext.CancellationToken);
+            snapshot.ReleaseNowAsync().Wait(HangGuard * 3, TestContext.CancellationToken);
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

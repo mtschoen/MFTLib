@@ -15,16 +15,16 @@ public partial class FileIndexPerDriveWatchTests
     {
         using var harness = new WatchHarness();
         var index = harness.Index;
-        await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
+        await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         var oldHandle = harness.Source.WatchFor('T');
         var applying = harness.HoldFirstApply('T');
         _ = oldHandle.Queue(WatchHarness.Batch(9, "held.txt", nextUsn: 700));
-        await applying.Entered.WaitAsync(HangGuard);
+        await applying.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         using var alreadyCancelled = new CancellationTokenSource();
-        await alreadyCancelled.CancelAsync().WaitAsync(HangGuard);
+        await alreadyCancelled.CancelAsync().WaitAsync(HangGuard, TestContext.CancellationToken);
         var stopToken = alreadyCancelled.Token;
         await Assert.ThrowsAsync<OperationCanceledException>(
-            () => index.StopWatchingAsync(['T'], stopToken)).WaitAsync(HangGuard);
+            () => index.StopWatchingAsync(['T'], stopToken)).WaitAsync(HangGuard, TestContext.CancellationToken);
         var producedBefore = harness.ProductionCount('T');
 
         var rescan = index.RescanAsync(['T'], Token);
@@ -32,7 +32,7 @@ public partial class FileIndexPerDriveWatchTests
         Assert.IsFalse(rescan.IsCompleted, "the rescan waits for the retiring instance");
         Assert.AreEqual(producedBefore + 1, harness.ProductionCount('T'), "production precedes the drain");
         applying.Release();
-        await rescan.WaitAsync(HangGuard);
+        await rescan.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(producedBefore + 1, harness.ProductionCount('T'));
         Assert.AreEqual(1, oldHandle.DisposeCount, "the retiring pump disposed its handle");
         Assert.HasCount(1, harness.Source.TargetsFor('T'), "the stopped watch is not restarted");

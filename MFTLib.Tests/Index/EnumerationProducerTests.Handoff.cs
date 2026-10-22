@@ -87,15 +87,15 @@ public sealed partial class EnumerationProducerTests
         try
         {
             using (await EnumerationWalkTestSupport.ReserveSlotsAsync(HandoffReaders, CancellationToken.None)
-                       .WaitAsync(HangGuard))
+                       .WaitAsync(HangGuard, TestContext.CancellationToken))
             {
                 produceTask = EnumerationWalkTestSupport.ProduceAsync(producer, created.Writer, progress,
                     cancellation.Token, maximumWorkers: HandoffReaders);
 
                 // The writer holds the first child; the other two first-round readers finish meanwhile.
-                await firstCommit.Entered.WaitAsync(HangGuard);
-                await firstRoundExited.Task.WaitAsync(HangGuard);
-                await firstRoundPublished.Task.WaitAsync(HangGuard);
+                await firstCommit.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
+                await firstRoundExited.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
+                await firstRoundPublished.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
 
                 // Both extra permits come back while the writer is still held, so no reader idles on one.
                 // Reserving all but (readers - 1) takes exactly the walk's two extra permits.
@@ -108,8 +108,8 @@ public sealed partial class EnumerationProducerTests
                 }
 
                 firstCommit.Release();
-                await secondCommit.Entered.WaitAsync(HangGuard);
-                await handoffWaiting.Task.WaitAsync(HangGuard);
+                await secondCommit.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
+                await handoffWaiting.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
                 if (cancel)
                 {
                     cancellation.Cancel();
@@ -119,12 +119,12 @@ public sealed partial class EnumerationProducerTests
                 if (cancel)
                 {
                     var thrown = await Assert.ThrowsExactlyAsync<OperationCanceledException>(
-                        () => produceTask.WaitAsync(HangGuard));
+                        () => produceTask.WaitAsync(HangGuard, TestContext.CancellationToken));
                     Assert.AreEqual(cancellation.Token, thrown.CancellationToken);
                 }
                 else
                 {
-                    await produceTask.WaitAsync(HangGuard);
+                    await produceTask.WaitAsync(HangGuard, TestContext.CancellationToken);
                     const uint expectedRowCount = 1u + (2u * HandoffChildren) +
                                            (2u * HandoffChildren * HandoffGrandchildrenPerChild);
                     Assert.AreEqual(expectedRowCount, created.Writer.RowCount);
@@ -143,7 +143,7 @@ public sealed partial class EnumerationProducerTests
             {
                 try
                 {
-                    await produceTask.WaitAsync(HangGuard);
+                    await produceTask.WaitAsync(HangGuard, TestContext.CancellationToken);
                 }
                 catch (OperationCanceledException)
                 {

@@ -26,7 +26,7 @@ public class FileIndexWatchCatchUpLinkedWaitTests
         Assert.IsFalse(wait.IsCompleted);
 
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
-        await wait.WaitAsync(HangGuard);
+        await wait.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreEqual(WatchState.CaughtUp, harness.DriveFor('T').Watch.State);
         await harness.Index.StopWatchingAsync(['T'], Token);
@@ -46,7 +46,7 @@ public class FileIndexWatchCatchUpLinkedWaitTests
             await harness.Index.DisposeAsync();
 
             await Assert.ThrowsAsync<OperationCanceledException>(
-                () => wait.WaitAsync(HangGuard));
+                () => wait.WaitAsync(HangGuard, TestContext.CancellationToken));
         }
         finally
         {

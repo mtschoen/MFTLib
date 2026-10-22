@@ -176,7 +176,7 @@ public class ConsumerJournalIsolationTests
             _ => Healthy
         };
         handle.FailDrive(new IOException("synthetic fault"));
-        await announced.Task.WaitAsync(HangGuard);
+        await announced.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
         var status = index.Drives.Single();
         Assert.AreEqual(1, _productions);
         Assert.AreEqual(WatchState.Recovering, status.Watch.State);

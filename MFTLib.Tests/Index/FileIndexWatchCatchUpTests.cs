@@ -64,7 +64,7 @@ public class FileIndexWatchCatchUpTests
         Assert.IsFalse(wait.IsCompleted);
 
         await handle.Publish(new DriveCaughtUp());
-        await wait.WaitAsync(HangGuard);
+        await wait.WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 
     [TestMethod]
@@ -122,7 +122,7 @@ public class FileIndexWatchCatchUpTests
         Assert.IsFalse(wait.IsCompleted);
 
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
-        await wait.WaitAsync(HangGuard);
+        await wait.WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 
     [TestMethod]
@@ -166,7 +166,7 @@ public class FileIndexWatchCatchUpTests
         var replacementWait = harness.Index.WaitForCatchUpAsync(['T'], Token);
         Assert.IsFalse(replacementWait.IsCompleted, "the replacement wait remains pending until the drive catches up");
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
-        await replacementWait.WaitAsync(HangGuard);
+        await replacementWait.WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 
     [TestMethod]
@@ -234,7 +234,7 @@ public class FileIndexWatchCatchUpTests
 
         Assert.AreEqual(WatchState.CaughtUp, harness.DriveFor('T').Watch.State);
         Assert.IsEmpty(harness.Faults);
-        await harness.Index.WaitForCatchUpAsync(['T'], Token).WaitAsync(HangGuard);
+        await harness.Index.WaitForCatchUpAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 
     [TestMethod]

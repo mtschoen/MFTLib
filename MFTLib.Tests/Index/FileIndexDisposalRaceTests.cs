@@ -77,7 +77,7 @@ public sealed class FileIndexDisposalRaceTests : IDisposable
         try
         {
             progress.Armed = true;
-            var original = index.Root('T').DriveBlock;
+            var original = index.Root('T', TestContext.CancellationToken).DriveBlock;
 
             // Parks inside the scan while holding the drive's lifecycle gate, so the call below
             // queues behind it.
@@ -116,11 +116,11 @@ public sealed class FileIndexDisposalRaceTests : IDisposable
     public async Task RescanAsync_AdmittedBeforeDisposal_ReachingACheckpointBeforeTheTokenIsCancelled_IsCancelled()
     {
         using var progress = new BlockOnFirstReport();
-        var index = await FileIndex.OpenAsync(Options(progress), CancellationToken.None).WaitAsync(HangGuard * 3);
+        var index = await FileIndex.OpenAsync(Options(progress), CancellationToken.None).WaitAsync(HangGuard * 3, TestContext.CancellationToken);
         try
         {
             progress.Armed = true;
-            var original = index.Root('T').DriveBlock;
+            var original = index.Root('T', TestContext.CancellationToken).DriveBlock;
             var gateHolder = index.RescanAsync(['T'], CancellationToken.None);
             Assert.IsTrue(progress.WaitUntilParked(),
                 "the first rescan never reached its progress callback, so it never took the gate");
@@ -145,16 +145,16 @@ public sealed class FileIndexDisposalRaceTests : IDisposable
 
             Assert.IsTrue(settledInTheWindow, "both rescans settled before disposal cancelled its token");
             await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => gateHolder)
-                .WaitAsync(HangGuard * 3);
+                .WaitAsync(HangGuard * 3, TestContext.CancellationToken);
             await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => queuedRescan)
-                .WaitAsync(HangGuard * 3);
-            await disposal.WaitAsync(HangGuard * 3);
+                .WaitAsync(HangGuard * 3, TestContext.CancellationToken);
+            await disposal.WaitAsync(HangGuard * 3, TestContext.CancellationToken);
             Assert.IsTrue(original.IsReleased, "the block neither rescan replaced was released by the disposal");
         }
         finally
         {
             progress.Release();
-            await index.DisposeAsync().AsTask().WaitAsync(HangGuard * 3);
+            await index.DisposeAsync().AsTask().WaitAsync(HangGuard * 3, TestContext.CancellationToken);
         }
     }
 
@@ -179,4 +179,6 @@ public sealed class FileIndexDisposalRaceTests : IDisposable
         Assert.ThrowsExactly<ObjectDisposedException>(
             () => index.ApplyJournalEntries('T', [], journalIdentifier: 1, nextUsn: 1));
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

@@ -37,14 +37,14 @@ public class FileIndexWatchRescanFaultDuringProductionTests
         }
 
         var rescan = harness.Index.RescanAsync(['T'], Token);
-        await production.Entered.WaitAsync(HangGuard);
+        await production.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         var handle = harness.Source.WatchFor('T');
         Assert.AreEqual(0, handle.DisposeCount);
         var applyFailure = new IOException("T's in-flight batch could not be applied");
         var applyGate = harness.TrackGate();
         var consumed = handle.Queue(new JournalBatch(new GatedFailingEntries(applyGate, applyFailure),
             WatchHarness.JournalIdentifier, WatchHarness.NextUsn + 300));
-        await applyGate.Entered.WaitAsync(HangGuard);
+        await applyGate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         applyGate.Release();
         var fault = await harness.WaitForFaultAsync(WatchFaultKind.Apply, 'T');
         Assert.AreSame(applyFailure, fault.Exception);
@@ -59,7 +59,7 @@ public class FileIndexWatchRescanFaultDuringProductionTests
             await rescan;
         }
 
-        await consumed.WaitAsync(HangGuard);
+        await consumed.WaitAsync(HangGuard, TestContext.CancellationToken);
         await harness.WaitForRecoveryAsync('T');
         Assert.AreEqual(scanFails ? 3 : 2, harness.ProductionCount('T'));
         Assert.ContainsSingle(item => item.Kind == WatchFaultKind.Apply, harness.Faults);

@@ -112,13 +112,15 @@ public sealed class CapacityExhaustionTests : IDisposable
             mutator.Apply(snapshot[0], [Create(1, "survivor.txt"), Create(900, "lost.txt")],
                 journalIdentifier: 1, nextUsn: 30);
 
-            var results = SearchEngine.Search(snapshot, new SearchQuery("survivor"));
+            var results = SearchEngine.Search(snapshot, new SearchQuery("survivor"), TestContext.CancellationToken);
             Assert.HasCount(1, results);
-            Assert.IsEmpty(SearchEngine.Search(snapshot, new SearchQuery("lost")));
+            Assert.IsEmpty(SearchEngine.Search(snapshot, new SearchQuery("lost"), TestContext.CancellationToken));
         }
         finally
         {
             await snapshot.ReleaseNowAsync();
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

@@ -18,9 +18,9 @@ public partial class FileIndexResilienceTests
         }
 
         var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
-        var bytes = await File.ReadAllBytesAsync(blockPath);
+        var bytes = await File.ReadAllBytesAsync(blockPath, TestContext.CancellationToken);
         bytes[0] = 0xFF;
-        await File.WriteAllBytesAsync(blockPath, bytes);
+        await File.WriteAllBytesAsync(blockPath, bytes, TestContext.CancellationToken);
 
         var cacheOnlyOptions = Options();
         cacheOnlyOptions = cacheOnlyOptions with { CacheMode = CacheMode.ExistingOnly };
@@ -30,7 +30,7 @@ public partial class FileIndexResilienceTests
         Assert.AreEqual(DriveState.Failed, failed.State);
         Assert.AreEqual(DriveFailureKind.CacheDeclined, failed.Failure?.Kind);
         Assert.IsNull(failed.Block);
-        Assert.AreSequenceEqual(bytes, await File.ReadAllBytesAsync(blockPath), "a cache-only open leaves the rejected block in place");
+        Assert.AreSequenceEqual(bytes, await File.ReadAllBytesAsync(blockPath, TestContext.CancellationToken), "a cache-only open leaves the rejected block in place");
     }
 
     [TestMethod]
@@ -39,7 +39,7 @@ public partial class FileIndexResilienceTests
         Directory.CreateDirectory(CacheDirectoryPath);
         var staleRetiredPath = Path.Combine(CacheDirectoryPath,
             CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-" + Guid.NewGuid().ToString("N"));
-        await File.WriteAllTextAsync(staleRetiredPath, "leftover from a killed process");
+        await File.WriteAllTextAsync(staleRetiredPath, "leftover from a killed process", TestContext.CancellationToken);
 
         var deletions = new List<string>();
         await using var index = await FileIndex.OpenAsync(Options(diagnostics: deletions.Add),
@@ -59,9 +59,9 @@ public partial class FileIndexResilienceTests
         }
 
         var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
-        var bytes = await File.ReadAllBytesAsync(blockPath);
+        var bytes = await File.ReadAllBytesAsync(blockPath, TestContext.CancellationToken);
         bytes[0] = 0xFF;
-        await File.WriteAllBytesAsync(blockPath, bytes);
+        await File.WriteAllBytesAsync(blockPath, bytes, TestContext.CancellationToken);
 
         var deletions = new List<string>();
         await using var index = await FileIndex.OpenAsync(Options(diagnostics: deletions.Add),
@@ -112,7 +112,7 @@ public partial class FileIndexResilienceTests
             CancellationToken.None);
         var oldSnapshot = index.CurrentSnapshot;
 
-        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
         await index.RescanAsync(['T'], CancellationToken.None);
 
         await oldSnapshot.ReleaseNowAsync();
@@ -131,7 +131,7 @@ public partial class FileIndexResilienceTests
         await using var index = await FileIndex.OpenAsync(
             Options(progress: progress, diagnostics: deletions.Add), CancellationToken.None);
 
-        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
         progress.Armed = true;
 
         await AssertThrowsCancellation(() => index.RescanAsync(['T'], cancellationTokenSource.Token));

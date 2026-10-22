@@ -119,7 +119,7 @@ public sealed partial class EnumerationProducerTests
         // Hidden is an attribute bit on Windows and the dot-name convention elsewhere, which .NET reports as Hidden.
         var hidden = TreePath(".cache");
         Directory.CreateDirectory(hidden);
-        await File.WriteAllTextAsync(Path.Combine(hidden, "blob.bin"), "x");
+        await File.WriteAllTextAsync(Path.Combine(hidden, "blob.bin"), "x", TestContext.CancellationToken);
         if (OperatingSystem.IsWindows())
         {
             File.SetAttributes(hidden, File.GetAttributes(hidden) | FileAttributes.Hidden);
@@ -135,8 +135,8 @@ public sealed partial class EnumerationProducerTests
     {
         var gitDirectory = TreePath(".git");
         Directory.CreateDirectory(gitDirectory);
-        await File.WriteAllTextAsync(Path.Combine(gitDirectory, "HEAD"), "ref: refs/heads/main");
-        await File.WriteAllTextAsync(TreePath(".gitignore"), "bin/");
+        await File.WriteAllTextAsync(Path.Combine(gitDirectory, "HEAD"), "ref: refs/heads/main", TestContext.CancellationToken);
+        await File.WriteAllTextAsync(TreePath(".gitignore"), "bin/", TestContext.CancellationToken);
 
         await AssertProduced(new DirectoryWalkOptions { PruneDotDirectories = true },
             present: [gitDirectory, TreePath(".gitignore"), TreePath("Documents", "readme.md")],
@@ -148,7 +148,7 @@ public sealed partial class EnumerationProducerTests
     {
         var gitDirectory = TreePath(".git");
         Directory.CreateDirectory(gitDirectory);
-        await File.WriteAllTextAsync(Path.Combine(gitDirectory, "HEAD"), "ref: refs/heads/main");
+        await File.WriteAllTextAsync(Path.Combine(gitDirectory, "HEAD"), "ref: refs/heads/main", TestContext.CancellationToken);
         if (OperatingSystem.IsWindows())
         {
             File.SetAttributes(gitDirectory, File.GetAttributes(gitDirectory) | FileAttributes.Hidden);

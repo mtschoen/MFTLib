@@ -36,12 +36,12 @@ public sealed class FileIndexEnumerateTests : IDisposable
     {
         await using var index = await OpenSyntheticIndexWithDeepCandidateAsync();
         var release = index.CurrentSnapshot[0].ReleaseState;
-        var query = new SearchQuery("candidate", Subtree: index.Root('T'));
+        var query = new SearchQuery("candidate", Subtree: index.Root('T', TestContext.CancellationToken));
 
         // Search materializes the whole match set and fails because it visits the deep candidate up front.
         try
         {
-            index.Search(query);
+            index.Search(query, TestContext.CancellationToken);
             Assert.Fail("Search on a tree with a candidate beyond depth cap must throw InvalidDataException.");
         }
         catch (InvalidDataException)
@@ -50,7 +50,7 @@ public sealed class FileIndexEnumerateTests : IDisposable
         }
 
         // Enumerate is cold: no rows scanned, no borrow taken.
-        var enumerable = index.Enumerate(query);
+        var enumerable = index.Enumerate(query, TestContext.CancellationToken);
         Assert.AreEqual(0, release.Hooks.OutstandingBorrowCount, "the call itself already scanned");
 
         var enumerator = enumerable.GetEnumerator();
@@ -207,4 +207,6 @@ public sealed class FileIndexEnumerateTests : IDisposable
 
         return BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!;
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

@@ -16,7 +16,7 @@ public partial class FileIndexWatchRecoveryTests
     {
         using var harness = new WatchHarness('T');
         var index = harness.Index;
-        await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
+        await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         Task? stop = null;
         index.Hooks.RestartRequested = letter =>
         {
@@ -32,14 +32,14 @@ public partial class FileIndexWatchRecoveryTests
             return Task.CompletedTask;
         };
 
-        await harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard);
+        await harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsNotNull(stop, "the restart read the watch as still requested");
-        await stop.WaitAsync(HangGuard);
+        await stop.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(0, registrationsReached, "the start's first step already saw the stop");
         Assert.HasCount(1, harness.Source.TargetsFor('T'), "no watch starts after the stop");
         Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
         await DriveResultAssertions.NotApplicableAsync(
-            () => index.StopWatchingAsync(['T'], Token), "the stop's cleared request stands").WaitAsync(HangGuard);
+            () => index.StopWatchingAsync(['T'], Token), "the stop's cleared request stands").WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 }

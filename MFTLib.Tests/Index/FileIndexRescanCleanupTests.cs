@@ -57,14 +57,14 @@ public sealed class FileIndexRescanCleanupTests : IDisposable
         var canonicalPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 1));
         Assert.IsTrue(File.Exists(canonicalPath), "the cold scan wrote the canonical cache file");
 
-        await index.WaitForDriveWriteGateForTest('T');
+        await index.WaitForDriveWriteGateForTest('T', TestContext.CancellationToken);
         try
         {
             using var rescanCancellation = new CancellationTokenSource();
             var rescan = index.RescanAsync(['T'], rescanCancellation.Token);
 
             // The rescan has produced its replacement block and is parked at the write gate.
-            await producerReturned.Task.WaitAsync(HangGuard);
+            await producerReturned.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
             await rescanCancellation.CancelAsync();
 
             await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => rescan);
@@ -169,13 +169,13 @@ public sealed class FileIndexRescanCleanupTests : IDisposable
         Assert.AreEqual(DriveState.Failed, declined.State);
         Assert.AreEqual(DriveFailureKind.CacheDeclined, declined.Failure?.Kind);
 
-        await index.WaitForDriveWriteGateForTest('T');
+        await index.WaitForDriveWriteGateForTest('T', TestContext.CancellationToken);
         try
         {
             using var rescanCancellation = new CancellationTokenSource();
             var rescan = index.RescanAsync(['T'], rescanCancellation.Token);
 
-            await producerEntered.Task.WaitAsync(HangGuard);
+            await producerEntered.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
             // Cancel before the producer returns: the scan completes normally, and the
             // cancellation is observed by the commit's write-gate wait.
             await rescanCancellation.CancelAsync();

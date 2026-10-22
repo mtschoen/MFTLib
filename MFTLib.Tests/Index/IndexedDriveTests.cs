@@ -264,8 +264,8 @@ public sealed class IndexedDriveTests : IDisposable
         var rootU = Path.Combine(TreeRoot, "U");
         Directory.CreateDirectory(rootT);
         Directory.CreateDirectory(rootU);
-        await File.WriteAllTextAsync(Path.Combine(rootT, "t.txt"), "t");
-        await File.WriteAllTextAsync(Path.Combine(rootU, "u.txt"), "u");
+        await File.WriteAllTextAsync(Path.Combine(rootT, "t.txt"), "t", TestContext.CancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(rootU, "u.txt"), "u", TestContext.CancellationToken);
 
         var sequence = new SinglePassDriveList(
         [
@@ -294,7 +294,7 @@ public sealed class IndexedDriveTests : IDisposable
     {
         Directory.CreateDirectory(CacheDirectoryPath);
         var existingFile = Path.Combine(CacheDirectoryPath, "existing.txt");
-        await File.WriteAllTextAsync(existingFile, "keep");
+        await File.WriteAllTextAsync(existingFile, "keep", TestContext.CancellationToken);
         var contentsBefore = SnapshotDirectory(CacheDirectoryPath);
         var protectionBefore = ReadProtection(CacheDirectoryPath);
         var producerCalls = 0;
@@ -320,7 +320,7 @@ public sealed class IndexedDriveTests : IDisposable
         Assert.AreEqual(0, producerCalls);
         Assert.AreEqual(0, progressCalls);
         Assert.AreSequenceEqual(contentsBefore, SnapshotDirectory(CacheDirectoryPath), "no block slot, lock file or other entry may appear or vanish");
-        Assert.AreEqual("keep", await File.ReadAllTextAsync(existingFile));
+        Assert.AreEqual("keep", await File.ReadAllTextAsync(existingFile, TestContext.CancellationToken));
         Assert.AreEqual(protectionBefore, ReadProtection(CacheDirectoryPath));
     }
 
@@ -410,4 +410,6 @@ public sealed class IndexedDriveTests : IDisposable
 
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

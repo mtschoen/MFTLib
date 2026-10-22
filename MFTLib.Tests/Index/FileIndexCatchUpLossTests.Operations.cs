@@ -34,22 +34,22 @@ public partial class FileIndexCatchUpLossTests
             {
                 await handlerReturning.Task;
                 queuedRescan.TrySetResult(index.RescanAsync(['T'], token));
-            });
+            }, TestContext.CancellationToken);
             handlerReturning.TrySetResult();
         };
         var producedBefore = harness.ProductionCount('T');
 
         var operation = index.RescanAsync(['T'], Token);
-        await heldRetry.Entered.WaitAsync(HangGuard);
-        var queued = await queuedRescan.Task.WaitAsync(HangGuard);
+        await heldRetry.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
+        var queued = await queuedRescan.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsFalse(queued.IsCompleted, "the queued rescan waits for the operation's lifecycle gate");
         Assert.IsFalse(harness.Index.AreDriveGatesFreeForTest('T'));
         Assert.AreEqual(2, harness.ProductionCount('T') - producedBefore, "the queued rescan has not scanned");
 
         heldRetry.Release();
-        await operation.WaitAsync(HangGuard);
-        await queued.WaitAsync(HangGuard);
+        await operation.WaitAsync(HangGuard, TestContext.CancellationToken);
+        await queued.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(3, harness.ProductionCount('T') - producedBefore);
     }
 
@@ -61,7 +61,7 @@ public partial class FileIndexCatchUpLossTests
         cache.Losses.Enqueue(StandardCatchUpLoss('T'));
         cache.Losses.Enqueue(StandardCatchUpLoss('T'));
 
-        await index.RescanAsync(['T'], Token).WaitAsync(HangGuard);
+        await index.RescanAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(4, cache.Productions, "the open's scan, then two lost catch-ups and the scan that held");
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
         GC.WaitForPendingFinalizers();
@@ -81,13 +81,13 @@ public partial class FileIndexCatchUpLossTests
         harness.SetNextProducedCursor('T', journalIdentifier: 21, nextUsn: 7700);
 
         var rescan = harness.Index.RescanAsync(['T'], Token);
-        await heldScan.Entered.WaitAsync(HangGuard);
+        await heldScan.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         var start = harness.Index.StartWatchingAsync(['T'], Token);
         Assert.IsFalse(start.IsCompleted, "the start waits for the rescan's lifecycle gate");
         heldScan.Release();
 
-        await rescan.WaitAsync(HangGuard);
-        await start.WaitAsync(HangGuard);
+        await rescan.WaitAsync(HangGuard, TestContext.CancellationToken);
+        await start.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(new IndexWatchTarget('T', 21, 7700), harness.Source.TargetsFor('T').Single());
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
     }

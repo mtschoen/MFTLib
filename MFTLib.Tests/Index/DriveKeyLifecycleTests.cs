@@ -63,7 +63,7 @@ public class DriveKeyLifecycleTests
         Assert.ThrowsExactly<ArgumentException>(() =>
         {
             using var harness = new WatchHarness('T');
-            harness.Index.Root(default);
+            harness.Index.Root(default, TestContext.CancellationToken);
         });
         Assert.ThrowsExactly<ArgumentException>(() =>
         {
@@ -88,7 +88,7 @@ public class DriveKeyLifecycleTests
         var changes = harness.Index.ApplyJournalEntries('t', [WatchHarness.Create(9, "created.txt")],
             WatchHarness.JournalIdentifier, 200);
         Assert.AreEqual('T', changes.Single().Entry.RecordKey.Drive);
-        Assert.AreEqual('T', harness.Index.Root('t').RecordKey.Drive);
+        Assert.AreEqual('T', harness.Index.Root('t', TestContext.CancellationToken).RecordKey.Drive);
         await harness.Index.StartWatchingAsync(['t'], CancellationToken.None);
         harness.Source.WatchFor('t').FailDrive(new IOException("scripted drive failure"));
         var fault = await harness.WaitForFaultAsync(WatchFaultKind.Drive, 't');
@@ -130,4 +130,6 @@ public class DriveKeyLifecycleTests
         Assert.AreSequenceEqual(requested, [.. results.Select(result => result.Drive)]);
         Assert.IsTrue(results.All(result => result.Outcome == DriveOperationOutcome.Succeeded));
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

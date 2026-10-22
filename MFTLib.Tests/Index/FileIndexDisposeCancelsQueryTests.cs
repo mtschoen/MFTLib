@@ -37,9 +37,13 @@ public sealed class FileIndexDisposeCancelsQueryTests : IDisposable
 
     /// <summary>The same through the parallel search path, with a pattern that matches every row.</summary>
     [TestMethod]
-    public async Task DisposeAsync_WhileAParallelSearchIsRunning_CancelsItAndReleasesEveryBlock()
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task DisposeAsync_WhileAParallelSearchIsRunning_CancelsItAndReleasesEveryBlock(bool cancelWhileAdmitted = false)
     {
-        var outcome = await QueryAcrossDisposalAsync((index, _) => index.Search(new SearchQuery("file")));
+        var outcome = await QueryAcrossDisposalAsync(
+            (index, _, cancellationToken) => index.Search(new SearchQuery("file"), cancellationToken),
+            cancelWhileAdmitted);
 
         Assert.IsInstanceOfType<OperationCanceledException>(outcome,
             $"a search that held the snapshot when disposal began must be cancelled, not {Describe(outcome)}");
@@ -53,7 +57,7 @@ public sealed class FileIndexDisposeCancelsQueryTests : IDisposable
     public async Task DisposeAsync_WhileASearchWithSubtreeFilterIsRunning_CancelsItAndReleasesEveryBlock()
     {
         var outcome = await QueryAcrossDisposalAsync(
-            (index, root) => index.Search(new SearchQuery("file", Subtree: root)));
+            (index, root) => index.Search(new SearchQuery("file", Subtree: root), TestContext.CancellationToken));
 
         Assert.IsInstanceOfType<OperationCanceledException>(outcome,
             $"a search with subtree filter that held the snapshot when disposal began must be cancelled, not {Describe(outcome)}");
@@ -67,7 +71,7 @@ public sealed class FileIndexDisposeCancelsQueryTests : IDisposable
     [TestMethod]
     public async Task DisposeAsync_WhileAChildrenScanIsRunning_WaitsForItAndReleasesEveryBlock()
     {
-        var listed = await ReadAcrossDisposalAsync((_, root) => root.Children().Count);
+        var listed = await ReadAcrossDisposalAsync((_, root) => root.Children(TestContext.CancellationToken).Count);
 
         Assert.AreEqual((int)RowCount, listed,
             "the listing was cut short, so disposal unmapped rows it was still walking");
@@ -84,7 +88,7 @@ public sealed class FileIndexDisposeCancelsQueryTests : IDisposable
     {
         var outcome = await QueryAcrossDisposalAsync((index, _) =>
         {
-            foreach (var unused in index.Enumerate(new SearchQuery("file")))
+            foreach (var unused in index.Enumerate(new SearchQuery("file"), TestContext.CancellationToken))
             {
             }
         });
@@ -96,7 +100,7 @@ public sealed class FileIndexDisposeCancelsQueryTests : IDisposable
     [TestMethod]
     public async Task DisposeAsync_WhileEnumerateRowsIsRunning_CancelsItAndReleasesEveryBlock()
     {
-        var outcome = await QueryAcrossDisposalAsync((index, _) => ConsumeRows(index, new SearchQuery(null)));
+        var outcome = await QueryAcrossDisposalAsync((index, _) => ConsumeRows(index, new SearchQuery(null), TestContext.CancellationToken));
 
         Assert.IsInstanceOfType<OperationCanceledException>(outcome,
             $"a row enumeration that held the snapshot when disposal began must be cancelled, not {Describe(outcome)}");
@@ -118,7 +122,7 @@ public sealed class FileIndexDisposeCancelsQueryTests : IDisposable
     public async Task DisposeAsync_WhileEnumerateRowsWithSubtreeFilterIsRunning_CancelsItAndReleasesEveryBlock()
     {
         var outcome = await QueryAcrossDisposalAsync(
-            (index, root) => ConsumeRows(index, new SearchQuery(null, Subtree: root)));
+            (index, root) => ConsumeRows(index, new SearchQuery(null, Subtree: root), TestContext.CancellationToken));
 
         Assert.IsInstanceOfType<OperationCanceledException>(outcome,
             $"a row enumeration with subtree filter must be cancelled by disposal, not {Describe(outcome)}");
@@ -138,21 +142,24 @@ public sealed class FileIndexDisposeCancelsQueryTests : IDisposable
     }
 
     /// <summary>The exception a query ended with across a disposal, or null when it answered.</summary>
-    Task<Exception?> QueryAcrossDisposalAsync(Action<FileIndex, FileEntry> query)
+    Task<Exception?> QueryAcrossDisposalAsync(Action<FileIndex, FileEntry, CancellationToken> query, bool cancelWhileAdmitted = false)
     {
-        return ReadAcrossDisposalAsync((index, root) =>
+        return ReadAcrossDisposalAsync((index, root, cancellationToken) =>
         {
             try
             {
-                query(index, root);
+                query(index, root, cancellationToken);
                 return null;
             }
             catch (Exception exception)
             {
                 return exception;
             }
-        });
+        }, cancelWhileAdmitted);
     }
+
+    Task<Exception?> QueryAcrossDisposalAsync(Action<FileIndex, FileEntry> query, bool cancelWhileAdmitted = false) =>
+        QueryAcrossDisposalAsync((index, root, _) => query(index, root), cancelWhileAdmitted);
 
     /// <summary>
     ///     Runs one reader across a disposal, in an order nothing can reorder: the reader is held
@@ -161,32 +168,59 @@ public sealed class FileIndexDisposeCancelsQueryTests : IDisposable
     ///     Disposal reaches its lifecycle gates after its cancellation has run every callback, a
     ///     linked query token's among them, so that seam is what says the reader has been told.
     /// </summary>
-    async Task<TResult> ReadAcrossDisposalAsync<TResult>(Func<FileIndex, FileEntry, TResult> read)
+    async Task<TResult> ReadAcrossDisposalAsync<TResult>(
+        Func<FileIndex, FileEntry, CancellationToken, TResult> read,
+        bool cancelWhileAdmitted = false)
     {
         var index = await FileIndex.OpenAsync(SyntheticDriveOptions(), CancellationToken.None);
+        using var runnerCancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+        var token = runnerCancellation.Token;
         var released = new TaskCompletionSource();
         Task? disposal = null;
+        Task<TResult>? reader = null;
+        var initialBlock = index.CurrentSnapshot.Count > 0 ? index.CurrentSnapshot[0] : null;
         try
         {
-            var root = index.Root('T');
+            var root = index.Root('T', token);
             var admitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var cancellationDelivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var holdTheReader = () =>
             {
                 admitted.TrySetResult();
-                released.Task.Wait();
+                try
+                {
+                    released.Task.Wait(token);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                catch (AggregateException aggregateException)
+                    when (aggregateException.InnerExceptions.All(e => e is OperationCanceledException))
+                {
+                }
             };
             index.Hooks.ReaderAdmitted = holdTheReader;
-            index.CurrentSnapshot[0].ReleaseState.Hooks._readerAdmitted = holdTheReader;
+            if (initialBlock is not null)
+            {
+                initialBlock.ReleaseState.Hooks._readerAdmitted = holdTheReader;
+            }
             index.Hooks.LifecycleGatesTakenForDisposal = () => cancellationDelivered.TrySetResult();
 
-            var reader = Task.Run(() => read(index, root));
-            await admitted.Task.WaitAsync(HangGuard * 3);
+            reader = Task.Run(() => read(index, root, token));
+            await admitted.Task.WaitAsync(HangGuard * 3, token);
+
+            if (cancelWhileAdmitted)
+            {
+                await runnerCancellation.CancelAsync();
+            }
 
             disposal = index.DisposeAsync().AsTask();
-            await cancellationDelivered.Task.WaitAsync(HangGuard * 3);
-            Assert.IsFalse(disposal.IsCompleted,
-                "DisposeAsync returned while the reader still held its borrow on the snapshot");
+            if (!cancelWhileAdmitted)
+            {
+                await cancellationDelivered.Task.WaitAsync(HangGuard * 3, token);
+                Assert.IsFalse(disposal.IsCompleted,
+                    "DisposeAsync returned while the reader still held its borrow on the snapshot");
+            }
 
             released.TrySetResult();
             var result = await reader;
@@ -201,9 +235,29 @@ public sealed class FileIndexDisposeCancelsQueryTests : IDisposable
             // Lets a reader still parked at the seam go, so a failed handshake cannot strand its
             // borrow and leave the disposal below waiting for it.
             released.TrySetResult();
+            index.Hooks.ReaderAdmitted = null;
+            if (initialBlock is not null)
+            {
+                initialBlock.ReleaseState.Hooks._readerAdmitted = null;
+            }
+
+            if (reader != null)
+            {
+                try
+                {
+                    await reader;
+                }
+                catch (OperationCanceledException)
+                {
+                }
+            }
+
             await (disposal ?? index.DisposeAsync().AsTask());
         }
     }
+
+    Task<TResult> ReadAcrossDisposalAsync<TResult>(Func<FileIndex, FileEntry, TResult> read) =>
+        ReadAcrossDisposalAsync((index, root, _) => read(index, root));
 
     FileIndexOptions SyntheticDriveOptions() =>
         _fixture.Options(producer: ProducerKind.Mft) with
@@ -213,4 +267,5 @@ public sealed class FileIndexDisposeCancelsQueryTests : IDisposable
                     SkippedRecordCount: 0)))
         };
 
+    public TestContext TestContext { get; set; } = null!;
 }

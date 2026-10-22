@@ -123,7 +123,7 @@ public sealed class FileIndexDriveStatusTests : IDisposable
         var documentsPath = Path.Combine(TreeRoot, "Documents");
         var vanishingPath = Path.Combine(documentsPath, "Vanishing");
         Directory.CreateDirectory(vanishingPath);
-        await File.WriteAllTextAsync(Path.Combine(vanishingPath, "inner.txt"), "gone soon");
+        await File.WriteAllTextAsync(Path.Combine(vanishingPath, "inner.txt"), "gone soon", TestContext.CancellationToken);
 
         var options = Options(progress: new DeleteSubtreeOnReport(documentsPath, vanishingPath));
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
@@ -138,7 +138,7 @@ public sealed class FileIndexDriveStatusTests : IDisposable
         var documentsPath = Path.Combine(TreeRoot, "Documents");
         var vanishingPath = Path.Combine(documentsPath, "Vanishing");
         Directory.CreateDirectory(vanishingPath);
-        await File.WriteAllTextAsync(Path.Combine(vanishingPath, "inner.txt"), "gone soon");
+        await File.WriteAllTextAsync(Path.Combine(vanishingPath, "inner.txt"), "gone soon", TestContext.CancellationToken);
         await using (var scanned = await FileIndex.OpenAsync(
             Options(progress: new DeleteSubtreeOnReport(documentsPath, vanishingPath)), CancellationToken.None))
         {
@@ -163,7 +163,7 @@ public sealed class FileIndexDriveStatusTests : IDisposable
         Assert.AreEqual(0, index.Drives[0].Block!.SkippedRecordCount);
 
         Directory.CreateDirectory(vanishingPath);
-        await File.WriteAllTextAsync(Path.Combine(vanishingPath, "inner.txt"), "gone soon");
+        await File.WriteAllTextAsync(Path.Combine(vanishingPath, "inner.txt"), "gone soon", TestContext.CancellationToken);
         await index.RescanAsync(['T'], CancellationToken.None);
 
         Assert.AreEqual(1, index.Drives[0].Block!.AccessDeniedSubtreeCount);
@@ -191,7 +191,7 @@ public sealed class FileIndexDriveStatusTests : IDisposable
         }
         finally
         {
-            await index.DisposeAsync().AsTask().WaitAsync(HangGuard);
+            await index.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
         }
     }
 
@@ -235,7 +235,7 @@ public sealed class FileIndexDriveStatusTests : IDisposable
         };
 
         var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken)
-            .WaitAsync(HangGuard * 3);
+            .WaitAsync(HangGuard * 3, TestContext.CancellationToken);
         try
         {
             var statuses = index.Drives;
@@ -247,7 +247,7 @@ public sealed class FileIndexDriveStatusTests : IDisposable
         }
         finally
         {
-            await index.DisposeAsync().AsTask().WaitAsync(HangGuard);
+            await index.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
         }
     }
 
@@ -260,13 +260,13 @@ public sealed class FileIndexDriveStatusTests : IDisposable
     public async Task Drives_DisposalCompletesBeforeTheReadTakesTheStateLock_ThrowsObjectDisposed()
     {
         var index = await FileIndex.OpenAsync(Options(), TestContext.CancellationToken)
-            .WaitAsync(HangGuard * 3);
+            .WaitAsync(HangGuard * 3, TestContext.CancellationToken);
         var disposals = 0;
         index.Hooks.DrivesReadBeforeLock = () =>
         {
             if (Interlocked.Increment(ref disposals) == 1)
             {
-                index.DisposeAsync().AsTask().WaitAsync(HangGuard).GetAwaiter().GetResult();
+                index.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken).GetAwaiter().GetResult();
             }
         };
 

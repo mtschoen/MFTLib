@@ -42,13 +42,13 @@ public class FileIndexWatchRescanCacheTests
             try
             {
                 await index.StartWatchingAsync(['T'], token);
-                var original = index.Root('T').DriveBlock;
+                var original = index.Root('T', TestContext.CancellationToken).DriveBlock;
                 var handle = source.WatchFor('T');
                 var catchUp = index.WaitForCatchUpAsync(['T'], token);
                 using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
                 rescanRequested.SetResult();
                 var rescan = index.RescanAsync(['T'], cancellation.Token);
-                await production.Entered.WaitAsync(HangGuard);
+                await production.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
                 Assert.AreEqual(0, handle.DisposeCount);
                 Assert.HasCount(1, Directory.GetFiles(directory.FullName, "*.retired-*"));
                 await handle.Publish(WatchHarness.Batch(9, "during.txt", 700));
@@ -63,7 +63,7 @@ public class FileIndexWatchRescanCacheTests
                     await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => rescan);
                 }
 
-                Assert.AreSame(original, index.Root('T').DriveBlock);
+                Assert.AreSame(original, index.Root('T', TestContext.CancellationToken).DriveBlock);
                 Assert.AreSame(handle, source.WatchFor('T'));
                 Assert.HasCount(1, source.TargetsFor('T'));
                 Assert.IsFalse(catchUp.IsCompleted);
@@ -73,7 +73,7 @@ public class FileIndexWatchRescanCacheTests
                 Assert.IsNotNull(restored, validation.ToString());
                 Assert.AreEqual(700L, restored.Header.UsnNextUsn);
                 await handle.Publish(new DriveCaughtUp());
-                await catchUp.WaitAsync(HangGuard);
+                await catchUp.WaitAsync(HangGuard, TestContext.CancellationToken);
                 await index.StopWatchingAsync(['T'], token);
             }
             finally

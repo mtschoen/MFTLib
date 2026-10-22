@@ -167,8 +167,10 @@ public class FileEntryDisposalTests
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.Drive);
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.Path);
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.Parent);
-        Assert.ThrowsExactly<ObjectDisposedException>(() => entry.Children());
+        Assert.ThrowsExactly<ObjectDisposedException>(() => entry.Children(TestContext.CancellationToken));
         var failure = Assert.ThrowsExactly<ObjectDisposedException>(() => entry.Open(FileAccess.Read));
         Assert.Contains(entry.ToString(), failure.Message);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

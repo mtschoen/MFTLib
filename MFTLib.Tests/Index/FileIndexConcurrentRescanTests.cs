@@ -41,13 +41,13 @@ public sealed class FileIndexConcurrentRescanTests : IDisposable
 
         var rescanT = harness.Index.RescanAsync(['T'], Token);
         var rescanU = harness.Index.RescanAsync(['U'], Token);
-        await Task.WhenAll(heldT.Entered, heldU.Entered).WaitAsync(HangGuard);
+        await Task.WhenAll(heldT.Entered, heldU.Entered).WaitAsync(HangGuard, TestContext.CancellationToken);
         heldT.Release();
         heldU.Release();
-        await Task.WhenAll(rescanT, rescanU).WaitAsync(HangGuard);
+        await Task.WhenAll(rescanT, rescanU).WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        Assert.AreSame(harness.BlockFor('T'), harness.Index.Root('T').DriveBlock.Block);
-        Assert.AreSame(harness.BlockFor('U'), harness.Index.Root('U').DriveBlock.Block);
+        Assert.AreSame(harness.BlockFor('T'), harness.Index.Root('T', TestContext.CancellationToken).DriveBlock.Block);
+        Assert.AreSame(harness.BlockFor('U'), harness.Index.Root('U', TestContext.CancellationToken).DriveBlock.Block);
     }
 
     [TestMethod]
@@ -61,7 +61,7 @@ public sealed class FileIndexConcurrentRescanTests : IDisposable
         await producers.BothEnteredAsync();
         producers.Release('T');
         producers.Release('U');
-        await Task.WhenAll(rescanT, rescanU).WaitAsync(HangGuard);
+        await Task.WhenAll(rescanT, rescanU).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsTrue(index.TryGetDriveOrdinal('T', out var ordinalT));
         Assert.IsTrue(index.TryGetDriveOrdinal('U', out var ordinalU));
@@ -87,11 +87,11 @@ public sealed class FileIndexConcurrentRescanTests : IDisposable
             producers.Release(driveLetter);
             if (driveLetter == 'T')
             {
-                await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => rescanT.WaitAsync(HangGuard));
+                await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => rescanT.WaitAsync(HangGuard, TestContext.CancellationToken));
             }
             else
             {
-                await rescanU.WaitAsync(HangGuard);
+                await rescanU.WaitAsync(HangGuard, TestContext.CancellationToken);
             }
         }
 
@@ -118,8 +118,8 @@ public sealed class FileIndexConcurrentRescanTests : IDisposable
         await producers.BothEnteredAsync();
         producers.Release('T');
         producers.Release('U');
-        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => rescanT.WaitAsync(HangGuard));
-        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => rescanU.WaitAsync(HangGuard));
+        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => rescanT.WaitAsync(HangGuard, TestContext.CancellationToken));
+        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => rescanU.WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.AreEqual("T lost its volume",
             index.Drives.Single(drive => drive.Drive == 'T').Failure?.Message);
@@ -144,15 +144,15 @@ public sealed class FileIndexConcurrentRescanTests : IDisposable
         // Off the test's thread: the held commit blocks the thread that reaches it.
         var index = harness.Index;
         var token = Token;
-        var rescanU = Task.Run(() => index.RescanAsync(['U'], token));
-        await commitOfU.Entered.WaitAsync(HangGuard);
+        var rescanU = Task.Run(() => index.RescanAsync(['U'], token), token);
+        await commitOfU.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(9, "during.txt", nextUsn: 700));
 
-        Assert.AreEqual(700L, harness.Index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
+        Assert.AreEqual(700L, harness.Index.Root('T', TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
         Assert.IsFalse(rescanU.IsCompleted, "T's batch applied while U's commit still held U's write gate");
         commitOfU.Release();
-        await rescanU.WaitAsync(HangGuard);
+        await rescanU.WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 
     [TestMethod]
@@ -170,17 +170,17 @@ public sealed class FileIndexConcurrentRescanTests : IDisposable
             }
         };
         var consumed = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "held.txt", nextUsn: 700));
-        await batchOnT.Entered.WaitAsync(HangGuard);
+        await batchOnT.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         var snapshotDuringBatch = harness.Index.CurrentSnapshot;
 
-        await harness.Index.RescanAsync(['U'], Token).WaitAsync(HangGuard);
+        await harness.Index.RescanAsync(['U'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreNotSame(snapshotDuringBatch, harness.Index.CurrentSnapshot, "U's commit retired the snapshot");
         batchOnT.Release();
-        await consumed.WaitAsync(HangGuard);
+        await consumed.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var change = harness.Changes.Single(candidate => candidate.Path.EndsWith("held.txt", StringComparison.Ordinal));
         Assert.AreEqual("held.txt", change.Entry.Name);
-        Assert.AreEqual(700L, harness.Index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
+        Assert.AreEqual(700L, harness.Index.Root('T', TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
         Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
     }
 
@@ -201,7 +201,7 @@ public sealed class FileIndexConcurrentRescanTests : IDisposable
 
         Assert.IsFalse(ownGateFree, "the apply holds T's write gate");
         Assert.IsTrue(otherGatesFree, "the apply holds none of U's gates");
-        Assert.AreEqual(600L, harness.Index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
+        Assert.AreEqual(600L, harness.Index.Root('T', TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
     }
 
     /// <summary>

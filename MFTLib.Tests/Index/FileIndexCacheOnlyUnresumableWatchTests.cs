@@ -52,7 +52,7 @@ public sealed class FileIndexCacheOnlyUnresumableWatchTests : IDisposable
     {
         var driveT = _fixture.Drive();
         var driveU = _fixture.Drive('U');
-        await _fixture.Seed(_fixture.Options(drives: [driveT, driveU]));
+        await _fixture.Seed(_fixture.Options(drives: [driveT, driveU]), TestContext.CancellationToken);
 
         var source = new ScriptedWatchSource();
         using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
@@ -82,7 +82,7 @@ public sealed class FileIndexCacheOnlyUnresumableWatchTests : IDisposable
 
         await source.WatchFor('U').Publish(new JournalBatch(
             [WatchHarness.Create(recordNumber: 9, "after.txt")], JournalIdentifier: CachedJournalIdentifier, NextUsn: 9_500));
-        Assert.AreEqual(9_500L, index.Root('U').DriveBlock.Block.Header.UsnNextUsn);
+        Assert.AreEqual(9_500L, index.Root('U', TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
 
         await index.StopWatchingAsync(['U'], Token);
     }
@@ -97,7 +97,7 @@ public sealed class FileIndexCacheOnlyUnresumableWatchTests : IDisposable
     {
         var driveT = _fixture.Drive();
         var driveU = _fixture.Drive('U');
-        await _fixture.Seed(_fixture.Options(drives: [driveT, driveU]));
+        await _fixture.Seed(_fixture.Options(drives: [driveT, driveU]), TestContext.CancellationToken);
 
         var source = new ScriptedWatchSource();
         using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
@@ -121,7 +121,7 @@ public sealed class FileIndexCacheOnlyUnresumableWatchTests : IDisposable
             index.Drives.Single(drive => drive.Drive == 'T').Watch.State);
         await source.WatchFor('T').Publish(new JournalBatch(
             [WatchHarness.Create(recordNumber: 9, "after.txt")], JournalIdentifier: CachedJournalIdentifier, NextUsn: 5_000));
-        Assert.AreEqual(5_000L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
+        Assert.AreEqual(5_000L, index.Root('T', TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
 
         await index.StopWatchingAsync(['T'], Token);
         await index.StopWatchingAsync(['U'], Token);
@@ -138,7 +138,7 @@ public sealed class FileIndexCacheOnlyUnresumableWatchTests : IDisposable
     {
         var driveT = _fixture.Drive();
         var driveU = _fixture.Drive('U');
-        await _fixture.Seed(_fixture.Options(drives: [driveT, driveU]));
+        await _fixture.Seed(_fixture.Options(drives: [driveT, driveU]), TestContext.CancellationToken);
 
         var scanFailure = new IOException("synthetic scan failure for T");
         Task<MftBlockProduceResult> Producer(MftBlockProduceRequest request, CancellationToken token)
@@ -179,7 +179,7 @@ public sealed class FileIndexCacheOnlyUnresumableWatchTests : IDisposable
         // U is unaffected by T's failed rescan.
         await source.WatchFor('U').Publish(new JournalBatch(
             [WatchHarness.Create(recordNumber: 9, "u.txt")], JournalIdentifier: CachedJournalIdentifier, NextUsn: 9_000));
-        Assert.AreEqual(9_000L, index.Root('U').DriveBlock.Block.Header.UsnNextUsn);
+        Assert.AreEqual(9_000L, index.Root('U', TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
 
         await index.StopWatchingAsync(['U'], Token);
     }
@@ -193,7 +193,7 @@ public sealed class FileIndexCacheOnlyUnresumableWatchTests : IDisposable
     public async Task RescanAsync_ThatReplacesAWatchedBlockWithAnUnwatchableOne_WithdrawsTheRequestAndFaultsTheWait()
     {
         var driveT = _fixture.Drive();
-        await _fixture.Seed(_fixture.Options(drives: [driveT]));
+        await _fixture.Seed(_fixture.Options(drives: [driveT]), TestContext.CancellationToken);
         var source = new ScriptedWatchSource();
         using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
         BlockFile? producedBlock = null;
@@ -215,7 +215,7 @@ public sealed class FileIndexCacheOnlyUnresumableWatchTests : IDisposable
 
             Assert.IsNotNull(wait);
             var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
-                () => wait.WaitAsync(HangGuard));
+                () => wait.WaitAsync(HangGuard, TestContext.CancellationToken));
             Assert.Contains("no MFT-backed block", failure.Message);
             var status = index.Drives.Single();
             Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
@@ -239,7 +239,7 @@ public sealed class FileIndexCacheOnlyUnresumableWatchTests : IDisposable
     public async Task RescanAsync_ThatReplacesAChannelFaultedWatchsBlockWithAnUnwatchableOne_ReadsNotStarted()
     {
         var driveT = _fixture.Drive();
-        await _fixture.Seed(_fixture.Options(drives: [driveT]));
+        await _fixture.Seed(_fixture.Options(drives: [driveT]), TestContext.CancellationToken);
         var source = new ScriptedWatchSource();
         using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
         BlockFile? producedBlock = null;
@@ -260,7 +260,7 @@ public sealed class FileIndexCacheOnlyUnresumableWatchTests : IDisposable
         };
         await index.StartWatchingAsync(['T'], Token);
         source.WatchFor('T').LoseChannel(new IOException("the channel went away"));
-        await channelFaulted.Task.WaitAsync(HangGuard);
+        await channelFaulted.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(WatchState.Faulted, index.Drives.Single().Watch.State);
 
         await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.RescanAsync(['T'], Token));
@@ -279,7 +279,7 @@ public sealed class FileIndexCacheOnlyUnresumableWatchTests : IDisposable
     public async Task StartWatchingAsync_WhenTheOnlyMftDriveIsUnresumable_RefusesItAndReportsIt()
     {
         var driveT = _fixture.Drive();
-        await _fixture.Seed(_fixture.Options(drives: [driveT]));
+        await _fixture.Seed(_fixture.Options(drives: [driveT]), TestContext.CancellationToken);
 
         var source = new ScriptedWatchSource();
         using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = TrimmedWindow });

@@ -42,14 +42,14 @@ public class FileIndexWatchRescanCommitTests
         var starting = harness.TrackGate();
         harness.Source.HoldStartFor('T', starting, observeToken: true);
         var rescan = harness.Index.RescanAsync(['T'], Token);
-        await starting.Entered.WaitAsync(HangGuard);
+        await starting.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var stopping = dispose
             ? harness.Index.DisposeAsync().AsTask()
             : harness.Index.StopWatchingAsync(['T'], Token);
 
         await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescan);
-        await stopping.WaitAsync(HangGuard);
+        await stopping.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.IsEmpty(harness.Faults);
     }
 
@@ -61,7 +61,7 @@ public class FileIndexWatchRescanCommitTests
         using var harness = new WatchHarness('T');
         await harness.Index.StartWatchingAsync(['T'], Token);
         var handle = harness.Source.WatchFor('T');
-        var original = harness.Index.Root('T').DriveBlock;
+        var original = harness.Index.Root('T', TestContext.CancellationToken).DriveBlock;
         var caughtUp = harness.Index.WaitForCatchUpAsync(['T'], Token);
         var production = harness.HoldNextProduction('T');
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(Token);
@@ -71,7 +71,7 @@ public class FileIndexWatchRescanCommitTests
         }
 
         var rescan = harness.Index.RescanAsync(['T'], cancellation.Token);
-        await production.Entered.WaitAsync(HangGuard);
+        await production.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(0, handle.DisposeCount, "production must keep the current watch running");
         Assert.IsFalse(caughtUp.IsCompleted, "production must keep the pending catch-up attached");
         await handle.Publish(WatchHarness.Batch(9, "during.txt", nextUsn: 700));
@@ -87,12 +87,12 @@ public class FileIndexWatchRescanCommitTests
             await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => rescan);
         }
 
-        Assert.AreSame(original, harness.Index.Root('T').DriveBlock);
+        Assert.AreSame(original, harness.Index.Root('T', TestContext.CancellationToken).DriveBlock);
         Assert.AreSame(handle, harness.Source.WatchFor('T'));
         Assert.HasCount(1, harness.Source.TargetsFor('T'));
         Assert.IsFalse(caughtUp.IsCompleted);
         await handle.Publish(new DriveCaughtUp());
-        await caughtUp.WaitAsync(HangGuard);
+        await caughtUp.WaitAsync(HangGuard, TestContext.CancellationToken);
         await harness.Index.StopWatchingAsync(['T'], Token);
     }
 
@@ -113,10 +113,10 @@ public class FileIndexWatchRescanCommitTests
         var failure = new IOException("new start failed");
         harness.Source.FailNextStartFor('T', failure);
         harness.SetNextProducedCursor('T', 13, 9000);
-        var original = harness.Index.Root('T').DriveBlock;
+        var original = harness.Index.Root('T', TestContext.CancellationToken).DriveBlock;
         await harness.Index.RescanAsync(['T'], Token);
 
-        Assert.AreNotSame(original, harness.Index.Root('T').DriveBlock);
+        Assert.AreNotSame(original, harness.Index.Root('T', TestContext.CancellationToken).DriveBlock);
         var fault = harness.Faults.Single(item => item.Kind == WatchFaultKind.RescanRestart);
         Assert.AreSame(failure, fault.Exception.InnerException);
         Assert.Contains("rescan replaced", fault.Exception.Message);
@@ -150,7 +150,7 @@ public class FileIndexWatchRescanCommitTests
         }
 
         var rescan = harness.Index.RescanAsync(['T'], Token);
-        await production.Entered.WaitAsync(HangGuard);
+        await production.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         var handle = harness.Source.WatchFor('T');
         Assert.AreEqual(0, handle.DisposeCount, "a fault during production still belongs to the current watch");
         handle.FailDrive(new IOException("watch failed during production"));

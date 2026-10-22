@@ -167,7 +167,7 @@ public class FileIndexWatchFaultTests
         harness.Source.HoldStart(held);
         using var callerCancellation = new CancellationTokenSource();
         var start = harness.Index.StartWatchingAsync(['T'], callerCancellation.Token);
-        await held.Entered.WaitAsync(HangGuard);
+        await held.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         await callerCancellation.CancelAsync();
 
@@ -211,7 +211,7 @@ public class FileIndexWatchFaultTests
         await harness.Index.StartWatchingAsync(['T'], Token);
         var firstHandle = harness.Source.WatchFor('T');
         _ = firstHandle.Queue(WatchHarness.Batch(recordNumber: 9, "one.txt"));
-        await applying.Entered.WaitAsync(HangGuard);
+        await applying.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         using var cancelledStop = new CancellationTokenSource();
         await cancelledStop.CancelAsync();
@@ -219,7 +219,7 @@ public class FileIndexWatchFaultTests
             () => harness.Index.StopWatchingAsync(['T'], cancelledStop.Token));
 
         applying.Release();
-        await harness.Index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
+        await harness.Index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(1, firstHandle.DisposeCount);
         Assert.HasCount(2, harness.Source.TargetsFor('T'));
         await harness.Index.StopWatchingAsync(['T'], Token);

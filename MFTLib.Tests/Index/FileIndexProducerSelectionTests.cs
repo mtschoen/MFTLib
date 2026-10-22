@@ -80,10 +80,10 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
         Assert.AreSequenceEqual(retained, [.. seen.Single()!]);
         var walked = index.Drives.Single(drive => drive.Drive == 'T');
         Assert.AreEqual(DriveState.Ready, walked.State);
-        Assert.IsNotNull(index.Find(Path.Combine(TreeRoot, "Notes.TXT")));
-        Assert.IsNull(index.Find(Path.Combine(TreeRoot, "other.bin")));
-        Assert.IsNull(index.Find(Path.Combine(TreeRoot, "Documents", "readme.md")));
-        Assert.IsTrue(index.Find(Path.Combine(TreeRoot, "Documents"))!.Value.IsDirectory);
+        Assert.IsNotNull(index.Find(Path.Combine(TreeRoot, "Notes.TXT"), TestContext.CancellationToken));
+        Assert.IsNull(index.Find(Path.Combine(TreeRoot, "other.bin"), TestContext.CancellationToken));
+        Assert.IsNull(index.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken));
+        Assert.IsTrue(index.Find(Path.Combine(TreeRoot, "Documents"), TestContext.CancellationToken)!.Value.IsDirectory);
     }
 
     [TestMethod]
@@ -214,7 +214,7 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
             await DriveResultAssertions.FailureAsync<InvalidOperationException>(
                 () => index.RescanAsync(['T'], CancellationToken.None));
 
-            Assert.AreEqual(4096L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
+            Assert.AreEqual(4096L, index.Root('T', TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
             Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
             Assert.AreEqual(DriveFailureKind.ProducerFailed, index.Drives.Single().Failure?.Kind);
             Assert.AreEqual("elevation declined during rescan", index.Drives.Single().Failure?.Message);
@@ -224,7 +224,7 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
         }
 
         await using var reopened = await FileIndex.OpenAsync(options, CancellationToken.None);
-        Assert.AreEqual(4096L, reopened.Root('T').DriveBlock.Block.Header.UsnNextUsn);
+        Assert.AreEqual(4096L, reopened.Root('T', TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
         Assert.AreEqual(DriveState.Ready, reopened.Drives.Single().State);
         Assert.AreEqual(0, reopened.Drives.Single().Block!.SkippedRecordCount);
         Assert.AreEqual(0, reopened.Drives.Single().Block!.AccessDeniedSubtreeCount);
@@ -255,7 +255,7 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
         await index.RescanAsync(['T'], CancellationToken.None);
 
         Assert.IsNull(index.Drives.Single().Failure);
-        Assert.AreEqual(12288L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
+        Assert.AreEqual(12288L, index.Root('T', TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
     }
 
     [TestMethod]
@@ -270,14 +270,14 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
 
         await using var index = await FileIndex.OpenAsync(Options(ProducerKind.Mft, Produce),
             CancellationToken.None);
-        var previousRoot = index.Root('T');
+        var previousRoot = index.Root('T', TestContext.CancellationToken);
 
         await index.RescanAsync(['T'], CancellationToken.None);
 
         Assert.AreEqual(2, invocationCount);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
         Assert.IsFalse(index.Drives[0].Watch.IsSupported, "the source offers no watch source");
-        Assert.AreEqual(8192L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
+        Assert.AreEqual(8192L, index.Root('T', TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
         Assert.AreEqual(4096L, previousRoot.DriveBlock.Block.Header.UsnNextUsn);
         Assert.AreEqual(TreeRoot, previousRoot.Path);
     }
@@ -458,7 +458,7 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
         Assert.AreEqual(BlockOrigin.ProducedByScan, status.Block!.Origin);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
         Assert.IsFalse(status.Watch.IsSupported, "the source offers no watch source");
-        Assert.AreEqual(4096L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
+        Assert.AreEqual(4096L, index.Root('T', TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
     }
 
     [TestMethod]

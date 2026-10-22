@@ -123,7 +123,7 @@ public sealed class FileIndexLifetimeTests : IDisposable
         var oldEntry = FileEntry.Create(oldSnapshot[driveOrdinal], rowIndex: 0);
         var rowsBefore = index.HeaderOf().RowCount;
 
-        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
         await index.RescanAsync(['T'], CancellationToken.None);
 
         Assert.AreNotSame(oldSnapshot, index.CurrentSnapshot);
@@ -144,7 +144,7 @@ public sealed class FileIndexLifetimeTests : IDisposable
     public async Task DisposeAsync_AHeldFileEntryBecomesDisposedAndThrows()
     {
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        var entry = index.Search(new SearchQuery("readme.md", NameMatchMode.Exact)).Single();
+        var entry = index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), TestContext.CancellationToken).Single();
         Assert.AreEqual("readme.md", entry.Name);
 
         await index.DisposeAsync();
@@ -155,4 +155,6 @@ public sealed class FileIndexLifetimeTests : IDisposable
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.RecordKey);
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.Path);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

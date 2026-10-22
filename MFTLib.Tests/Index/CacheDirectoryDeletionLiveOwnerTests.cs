@@ -83,7 +83,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
             "a lock file created while deleting an unowned block must be preserved");
 
         Assert.AreEqual(DriveState.Ready, owner.Drives.Single().State);
-        Assert.IsNotNull(owner.Find(Path.Combine(TreeRoot, "Documents", "readme.md")),
+        Assert.IsNotNull(owner.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken),
             "the live index keeps working after unrelated blocks are cleared out from under it");
     }
 
@@ -94,7 +94,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
         await using var owner = await FileIndex.OpenAsync(Options(progress: progress), CancellationToken.None);
         var canonicalBytesBeforeRescan = await SharedFileReader.ReadAllBytesAsync(CanonicalPath);
 
-        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second");
+        await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
         progress.Armed = true;
 
         // Parks mid-rescan: the canonical file has already been renamed aside and the
@@ -151,7 +151,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
     {
         await using (var seed = await FileIndex.OpenAsync(Options(), CancellationToken.None))
         {
-            Assert.IsNotNull(seed.Find(Path.Combine(TreeRoot, "Documents", "readme.md")));
+            Assert.IsNotNull(seed.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken));
         }
         var canonicalBytesBeforeRace = await SharedFileReader.ReadAllBytesAsync(CanonicalPath);
 
@@ -182,7 +182,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
             privateBlockPath = fallbackOpen.CurrentSnapshot[ordinal].Block.Path;
             Assert.Contains("mftlib-private-", privateBlockPath);
             Assert.AreNotEqual(CanonicalPath, privateBlockPath);
-            Assert.IsNotNull(fallbackOpen.Find(Path.Combine(TreeRoot, "Documents", "readme.md")));
+            Assert.IsNotNull(fallbackOpen.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken));
             Assert.AreSequenceEqual(canonicalBytesBeforeRace, await SharedFileReader.ReadAllBytesAsync(CanonicalPath), "a non-cache-only open racing a parked delete must fall back to a private block "
                 + "instead of touching the slot the delete still holds");
         }
@@ -204,4 +204,6 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IDisposable
         Assert.AreEqual(CanonicalPath, freshOpen.CurrentSnapshot[freshOrdinal].Block.Path,
             "once the clear has released the lock, a fresh open takes the slot normally");
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

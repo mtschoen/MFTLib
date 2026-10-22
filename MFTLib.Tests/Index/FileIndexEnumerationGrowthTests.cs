@@ -58,7 +58,7 @@ public sealed class FileIndexEnumerationGrowthTests : IDisposable
                 .Concat(Directory.GetFiles(Path.Combine(TreeRoot, "crowded2")))
                 .ToArray();
             Assert.AreSequenceEqual(
-                expectedFiles, [.. index.Search(new SearchQuery(null, IsDirectory: false)).Select(entry => entry.Path)], SequenceOrder.InAnyOrder);
+                expectedFiles, [.. index.Search(new SearchQuery(null, IsDirectory: false), TestContext.CancellationToken).Select(entry => entry.Path)], SequenceOrder.InAnyOrder);
             Assert.Contains(line => line.Contains(_fixture.CacheDirectory) &&
                                                   line.Contains("capacity", StringComparison.OrdinalIgnoreCase), diagnostics);
         }
@@ -67,4 +67,6 @@ public sealed class FileIndexEnumerationGrowthTests : IDisposable
             EnumerationWalkLimit.Hooks.ResetToDefaults();
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

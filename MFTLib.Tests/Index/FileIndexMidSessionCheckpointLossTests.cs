@@ -296,7 +296,7 @@ public class FileIndexMidSessionCheckpointLossTests
         harness.Source.WatchFor('T').FailDrive(
             new IOException("USN journal entries have been deleted; full rescan needed"));
 
-        var loss = await seenByHandler.Task.WaitAsync(HangGuard);
+        var loss = await seenByHandler.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.IsNotNull(loss, "the handler must see the loss the fault found");
         Assert.AreEqual(JournalCheckpointLossDetection.LiveWatch, loss.DetectedDuring);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);

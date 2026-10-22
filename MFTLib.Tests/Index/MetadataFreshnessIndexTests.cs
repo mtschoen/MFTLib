@@ -83,13 +83,13 @@ public sealed class MetadataFreshnessIndexTests : IDisposable
         Assert.AreEqual(DateTime.MinValue, unknown.LastWriteTime);
 
         var farFuture = new DateTime(2100, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var upper = index.Search(new SearchQuery(null, IsDirectory: false, LastWriteTimeMaximum: farFuture));
+        var upper = index.Search(new SearchQuery(null, IsDirectory: false, LastWriteTimeMaximum: farFuture), TestContext.CancellationToken);
         Assert.AreSequenceEqual(["report.txt", "other.txt"], [.. upper.Select(entry => entry.Name)], SequenceOrder.InAnyOrder);
 
-        var lower = index.Search(new SearchQuery(null, IsDirectory: false, LastWriteTimeMinimum: DateTime.MinValue));
+        var lower = index.Search(new SearchQuery(null, IsDirectory: false, LastWriteTimeMinimum: DateTime.MinValue), TestContext.CancellationToken);
         Assert.AreSequenceEqual(["report.txt", "other.txt"], [.. lower.Select(entry => entry.Name)], SequenceOrder.InAnyOrder);
 
-        var unbounded = index.Search(new SearchQuery(null, IsDirectory: false));
+        var unbounded = index.Search(new SearchQuery(null, IsDirectory: false), TestContext.CancellationToken);
         Assert.HasCount(3, unbounded, "Without a last-write bound the unknown row is an ordinary row.");
     }
 
@@ -109,7 +109,7 @@ public sealed class MetadataFreshnessIndexTests : IDisposable
         Assert.AreEqual(1234, renamed.Size);
         Assert.AreEqual(EventMoment, changes.Single().Timestamp);
 
-        var foundByEventDate = index.Search(new SearchQuery("renamed", LastWriteTimeMinimum: EventMoment));
+        var foundByEventDate = index.Search(new SearchQuery("renamed", LastWriteTimeMinimum: EventMoment), TestContext.CancellationToken);
         Assert.IsEmpty(foundByEventDate);
     }
 
@@ -127,7 +127,7 @@ public sealed class MetadataFreshnessIndexTests : IDisposable
         Assert.IsFalse(changed.IsLastWriteTimeKnown);
         Assert.AreEqual(DateTime.MinValue, changed.LastWriteTime);
         var ranged = index.Search(new SearchQuery("report", LastWriteTimeMinimum: ScannedMoment,
-            LastWriteTimeMaximum: EventMoment));
+            LastWriteTimeMaximum: EventMoment), TestContext.CancellationToken);
         Assert.IsEmpty(ranged);
     }
 
@@ -160,7 +160,7 @@ public sealed class MetadataFreshnessIndexTests : IDisposable
         Assert.IsFalse(change.Entry.IsSizeKnown);
         Assert.IsFalse(change.Entry.IsLastWriteTimeKnown);
         Assert.AreEqual(DateTime.MinValue, change.Entry.LastWriteTime);
-        Assert.IsEmpty(index.Search(new SearchQuery("created", LastWriteTimeMaximum: EventMoment)));
+        Assert.IsEmpty(index.Search(new SearchQuery("created", LastWriteTimeMaximum: EventMoment), TestContext.CancellationToken));
     }
 
     [TestMethod]

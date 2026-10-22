@@ -379,7 +379,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
         // convention. Giving the file both makes the assertion meaningful on every platform.
         const string hiddenName = ".hidden.txt";
         var hiddenPath = Path.Combine(_treeRoot, hiddenName);
-        await File.WriteAllTextAsync(hiddenPath, "secret");
+        await File.WriteAllTextAsync(hiddenPath, "secret", TestContext.CancellationToken);
         if (OperatingSystem.IsWindows())
         {
             File.SetAttributes(hiddenPath, File.GetAttributes(hiddenPath) | FileAttributes.Hidden);
@@ -611,13 +611,13 @@ public sealed partial class EnumerationProducerTests : IDisposable
             var task = EnumerationWalkTestSupport.ProduceAsync(producer, created.Writer, null, CancellationToken.None);
             try
             {
-                await Task.WhenAll(documentsGate.Entered, picturesGate.Entered).WaitAsync(HangGuard);
+                await Task.WhenAll(documentsGate.Entered, picturesGate.Entered).WaitAsync(HangGuard, TestContext.CancellationToken);
             }
             finally
             {
                 documentsGate.Release();
                 picturesGate.Release();
-                await task.WaitAsync(HangGuard);
+                await task.WaitAsync(HangGuard, TestContext.CancellationToken);
             }
         }
         finally
@@ -642,9 +642,9 @@ public sealed partial class EnumerationProducerTests : IDisposable
         Directory.CreateDirectory(Path.Combine(_treeRoot, "Sub1"));
         Directory.CreateDirectory(Path.Combine(_treeRoot, "Sub2"));
         Directory.CreateDirectory(Path.Combine(_treeRoot, "Sub3"));
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Sub1", "file1.txt"), "content1");
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Sub2", "file2.txt"), "content2");
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Sub3", "file3.txt"), "content3");
+        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Sub1", "file1.txt"), "content1", TestContext.CancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Sub2", "file2.txt"), "content2", TestContext.CancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Sub3", "file3.txt"), "content3", TestContext.CancellationToken);
 
         var leases = new List<EnumerationWalkLimit.Lease>();
         try
@@ -717,17 +717,17 @@ public sealed partial class EnumerationProducerTests : IDisposable
 
             try
             {
-                await firstExtraGate.Entered.WaitAsync(HangGuard);
-                await secondExtraGate.Entered.WaitAsync(HangGuard);
+                await firstExtraGate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
+                await secondExtraGate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
                 secondExtraGate.Release();
-                await secondExtraFinished.Task.WaitAsync(HangGuard);
-                await observedSecondWhileFirstHeld.Task.WaitAsync(HangGuard);
+                await secondExtraFinished.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
+                await observedSecondWhileFirstHeld.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
             }
             finally
             {
                 firstExtraGate.Release();
                 secondExtraGate.Release();
-                await task.WaitAsync(HangGuard);
+                await task.WaitAsync(HangGuard, TestContext.CancellationToken);
             }
         }
         finally
@@ -806,8 +806,8 @@ public sealed partial class EnumerationProducerTests : IDisposable
             try
             {
                 produceTask = EnumerationWalkTestSupport.ProduceAsync(producer, created.Writer, null, token);
-                await childEntered.Task.WaitAsync(HangGuard);
-                await exitGate.Entered.WaitAsync(HangGuard);
+                await childEntered.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
+                await exitGate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
                 Assert.IsFalse(produceTask.IsCompleted, "Produce must wait for workers to drain before completing");
                 exitGate.Release();
                 var thrown = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => produceTask);
@@ -821,7 +821,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
                 {
                     try
                     {
-                        await produceTask.WaitAsync(HangGuard);
+                        await produceTask.WaitAsync(HangGuard, TestContext.CancellationToken);
                     }
                     catch (OperationCanceledException)
                     {
@@ -845,9 +845,9 @@ public sealed partial class EnumerationProducerTests : IDisposable
         Directory.CreateDirectory(failingDir);
         Directory.CreateDirectory(healthyDir);
         Directory.CreateDirectory(childOfFailing);
-        await File.WriteAllTextAsync(Path.Combine(childOfFailing, "subfile.txt"), "sub");
-        await File.WriteAllTextAsync(Path.Combine(failingDir, "file1.txt"), "1");
-        await File.WriteAllTextAsync(Path.Combine(healthyDir, "healthy.txt"), "h");
+        await File.WriteAllTextAsync(Path.Combine(childOfFailing, "subfile.txt"), "sub", TestContext.CancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(failingDir, "file1.txt"), "1", TestContext.CancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(healthyDir, "healthy.txt"), "h", TestContext.CancellationToken);
 
         var observation = new EnumerationReadObservation();
         EnumerationWalkLimit.Hooks._directoryEntered = observation.Enter;
@@ -918,10 +918,10 @@ public sealed partial class EnumerationProducerTests : IDisposable
             try
             {
                 produceTask = EnumerationDrainObservation.Start(producer, created.Writer, null);
-                await observation.Stopped.WaitAsync(HangGuard);
+                await observation.Stopped.WaitAsync(HangGuard, TestContext.CancellationToken);
                 Assert.IsFalse(produceTask.IsCompleted, "Caller cannot finish before sibling cleanup");
                 observation.WorkerExit.Release();
-                var thrown = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => produceTask.WaitAsync(HangGuard));
+                var thrown = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => produceTask.WaitAsync(HangGuard, TestContext.CancellationToken));
                 Assert.AreSame(sentinel, thrown);
                 Assert.Contains(observation.FaultedPath, observation.Visited);
                 Assert.AreEqual(0, observation.Active);
@@ -933,7 +933,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
                 {
                     try
                     {
-                        await produceTask.WaitAsync(HangGuard);
+                        await produceTask.WaitAsync(HangGuard, TestContext.CancellationToken);
                     }
                     catch (InvalidOperationException)
                     {
@@ -990,10 +990,10 @@ public sealed partial class EnumerationProducerTests : IDisposable
             try
             {
                 produceTask = EnumerationDrainObservation.Start(producer, created.Writer, progress);
-                await observation.Stopped.WaitAsync(HangGuard);
+                await observation.Stopped.WaitAsync(HangGuard, TestContext.CancellationToken);
                 Assert.IsFalse(produceTask.IsCompleted, "Caller cannot finish before sibling cleanup");
                 observation.WorkerExit.Release();
-                var thrown = await Assert.ThrowsExactlyAsync<IOException>(() => produceTask.WaitAsync(HangGuard));
+                var thrown = await Assert.ThrowsExactlyAsync<IOException>(() => produceTask.WaitAsync(HangGuard, TestContext.CancellationToken));
                 Assert.AreSame(sentinel, thrown);
                 Assert.HasCount(failInWriter ? 0 : 1, failedDirectories);
                 Assert.AreEqual(0, observation.Active);
@@ -1006,7 +1006,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
                 {
                     try
                     {
-                        await produceTask.WaitAsync(HangGuard);
+                        await produceTask.WaitAsync(HangGuard, TestContext.CancellationToken);
                     }
                     catch (IOException)
                     {
@@ -1048,10 +1048,10 @@ public sealed partial class EnumerationProducerTests : IDisposable
             try
             {
                 produceTask = EnumerationDrainObservation.Start(producer, created.Writer, progress);
-                await observation.Stopped.WaitAsync(HangGuard);
+                await observation.Stopped.WaitAsync(HangGuard, TestContext.CancellationToken);
                 Assert.IsFalse(produceTask.IsCompleted, "Exhaustion must drain the held reader");
                 observation.WorkerExit.Release();
-                var result = await produceTask.WaitAsync(HangGuard);
+                var result = await produceTask.WaitAsync(HangGuard, TestContext.CancellationToken);
                 Assert.IsTrue(result.CapacityExhausted);
                 Assert.IsTrue(created.Writer.CapacityExhausted);
                 Assert.AreEqual(0, result.AccessDeniedSubtreeCount);
@@ -1068,7 +1068,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
                 {
                     try
                     {
-                        await produceTask.WaitAsync(HangGuard);
+                        await produceTask.WaitAsync(HangGuard, TestContext.CancellationToken);
                     }
                     catch (OperationCanceledException)
                     {
@@ -1100,6 +1100,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
         }
     }
 
+    public TestContext TestContext { get; set; } = null!;
 }
 
 /// <summary>

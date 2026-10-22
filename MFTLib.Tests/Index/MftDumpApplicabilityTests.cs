@@ -76,7 +76,7 @@ public class MftDumpApplicabilityTests
         Assert.AreEqual(DriveState.Ready, drive.State);
         Assert.IsNull(drive.Block!.CacheLocation, "a dump block is never backed by a cache location");
         Assert.AreEqual(string.Empty, index.CacheDirectoryPath);
-        Assert.IsTrue(index.Root(MftDumpIndexes.DriveLetter).IsDirectory);
+        Assert.IsTrue(index.Root(MftDumpIndexes.DriveLetter, TestContext.CancellationToken).IsDirectory);
     }
 
     [TestMethod]
@@ -237,7 +237,7 @@ public class MftDumpApplicabilityTests
 
         await index.RescanAsync(['D'], CancellationToken.None);
 
-        Assert.AreEqual("dump:/D/documents", index.Find("dump:/D/documents")!.Value.Path);
+        Assert.AreEqual("dump:/D/documents", index.Find("dump:/D/documents", TestContext.CancellationToken)!.Value.Path);
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
         AssertNoWatchStatus(index.Drives.Single());
     }
@@ -275,4 +275,6 @@ public class MftDumpApplicabilityTests
         public Task<IIndexDriveWatch> StartAsync(IndexWatchTarget target, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

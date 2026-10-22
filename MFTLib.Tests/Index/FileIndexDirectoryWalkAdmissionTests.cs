@@ -123,8 +123,8 @@ public sealed class FileIndexDirectoryWalkAdmissionTests : IDisposable
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
         names.Clear();
 
-        Assert.IsNotNull(index.Find(Path.Combine(_fixture.TreeRoot, "Documents")));
-        Assert.IsNull(index.Find(Path.Combine(_fixture.TreeRoot, "Documents", "readme.md")));
+        Assert.IsNotNull(index.Find(Path.Combine(_fixture.TreeRoot, "Documents"), TestContext.CancellationToken));
+        Assert.IsNull(index.Find(Path.Combine(_fixture.TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken));
     }
 
     [TestMethod]

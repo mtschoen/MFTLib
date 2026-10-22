@@ -39,7 +39,7 @@ public sealed class FileIndexCheckpointLossLifetimeTests : IDisposable
     {
         var first = _fixture.Drive();
         var second = _fixture.Drive('U');
-        await _fixture.Seed(_fixture.Options(drives: [first, second]));
+        await _fixture.Seed(_fixture.Options(drives: [first, second]), TestContext.CancellationToken);
 
         using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow>
         {
@@ -81,7 +81,7 @@ public sealed class FileIndexCheckpointLossLifetimeTests : IDisposable
     public async Task CacheOnlyAdoptsATrimmedCheckpoint_ReportsWhyAndTheSize()
     {
         var drive = _fixture.Drive();
-        await _fixture.Seed(_fixture.Options(drives: [drive]));
+        await _fixture.Seed(_fixture.Options(drives: [drive]), TestContext.CancellationToken);
 
         using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = TrimmedWindow });
         await using var index = await FileIndex.OpenAsync(
@@ -105,7 +105,7 @@ public sealed class FileIndexCheckpointLossLifetimeTests : IDisposable
     public async Task CacheOnlyAdoptsOverARecreatedJournal_ReportsTheLossWithNoSize()
     {
         var drive = _fixture.Drive();
-        await _fixture.Seed(_fixture.Options(drives: [drive]));
+        await _fixture.Seed(_fixture.Options(drives: [drive]), TestContext.CancellationToken);
 
         using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = Recreated });
         await using var index = await FileIndex.OpenAsync(
@@ -126,7 +126,7 @@ public sealed class FileIndexCheckpointLossLifetimeTests : IDisposable
     public async Task CacheOnlyOverAHealthyBlock_WarmStartsAndReportsNoLoss()
     {
         var drive = _fixture.Drive();
-        await _fixture.Seed(_fixture.Options(drives: [drive]));
+        await _fixture.Seed(_fixture.Options(drives: [drive]), TestContext.CancellationToken);
 
         using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
@@ -148,7 +148,7 @@ public sealed class FileIndexCheckpointLossLifetimeTests : IDisposable
     public async Task ASuccessfulRescanClearsTheLoss()
     {
         var drive = _fixture.Drive();
-        await _fixture.Seed(_fixture.Options(drives: [drive]));
+        await _fixture.Seed(_fixture.Options(drives: [drive]), TestContext.CancellationToken);
 
         using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = TrimmedWindow });
         await using var index = await FileIndex.OpenAsync(
@@ -160,4 +160,6 @@ public sealed class FileIndexCheckpointLossLifetimeTests : IDisposable
         Assert.IsNull(index.Drives.Single().Watch.CheckpointLoss,
             "the rescan replaced the block the report described");
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

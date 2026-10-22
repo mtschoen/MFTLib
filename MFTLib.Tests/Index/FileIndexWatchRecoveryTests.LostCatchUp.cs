@@ -81,7 +81,7 @@ public partial class FileIndexWatchRecoveryTests
         harness.ScriptScans('T', Lost('T', hold: held), Held());
         var producedBefore = harness.ProductionCount('T');
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
-        await held.Entered.WaitAsync(HangGuard);
+        await held.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => harness.Index.StopWatchingAsync(['T'], Token));
         held.Release();
@@ -133,7 +133,7 @@ public partial class FileIndexWatchRecoveryTests
         await harness.WaitForRecoveryAsync('T');
         Assert.AreEqual(WatchState.Faulted, harness.DriveFor('T').Watch.State);
 
-        await harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard);
+        await harness.Index.RescanAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var drive = harness.DriveFor('T');
         Assert.AreEqual(0, drive.Watch.ConsecutiveLostCatchUps);
@@ -155,15 +155,15 @@ public partial class FileIndexWatchRecoveryTests
         var heldRetry = harness.TrackGate();
         harness.ScriptScans('T', Lost('T'), Held(heldRetry));
         var rescan = harness.Index.RescanAsync(['T'], Token);
-        await heldRetry.Entered.WaitAsync(HangGuard);
+        await heldRetry.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(WatchState.Recovering, harness.DriveFor('T').Watch.State);
 
         var failure = await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(
-            () => harness.Index.WaitForCatchUpAsync(['T'], Token).WaitAsync(HangGuard));
+            () => harness.Index.WaitForCatchUpAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.AreSame(CatchUpLosses(harness, 'T').Single(), failure);
         heldRetry.Release();
-        await rescan.WaitAsync(HangGuard);
+        await rescan.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
     }
 }

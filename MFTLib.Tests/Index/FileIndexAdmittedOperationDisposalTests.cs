@@ -29,7 +29,7 @@ public class FileIndexAdmittedOperationDisposalTests
         var index = harness.Index;
         var production = harness.HoldNextProduction('T');
         var gateHolder = index.RescanAsync(['T'], Token);
-        await production.Entered.WaitAsync(HangGuard);
+        await production.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         var start = index.StartWatchingAsync(['T'], Token);
         var settledInTheWindow = false;
         index.Hooks.DisposedFlagSet = () =>
@@ -49,9 +49,9 @@ public class FileIndexAdmittedOperationDisposalTests
         var disposal = index.DisposeAsync().AsTask();
 
         Assert.IsTrue(settledInTheWindow, "the rescan and the start settled before disposal cancelled its token");
-        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => gateHolder).WaitAsync(HangGuard);
-        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => start).WaitAsync(HangGuard);
-        await disposal.WaitAsync(HangGuard);
+        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => gateHolder).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => start).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await disposal.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.IsEmpty(harness.Source.TargetsFor('T'), "the cancelled start never invoked the source");
     }
 
@@ -64,7 +64,7 @@ public class FileIndexAdmittedOperationDisposalTests
     {
         using var harness = new WatchHarness('T');
         var index = harness.Index;
-        await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
+        await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         harness.ScriptScans('T', new WatchHarnessScan(new JournalCheckpointLoss('T', JournalCheckpointLossDetection.ScanCatchUp, JournalCheckpointLossCause.CheckpointTrimmed,
             new UsnJournalSettings { AllocationDelta = 4096, MaximumSize = 32768 })
         {
@@ -88,13 +88,13 @@ public class FileIndexAdmittedOperationDisposalTests
             }
         };
         var producedBefore = harness.ProductionCount('T');
-        var rescan = Task.Run(() => index.RescanAsync(['T'], Token));
-        await lostRaised.Task.WaitAsync(HangGuard);
+        var rescan = Task.Run(() => index.RescanAsync(['T'], Token), Token);
+        await lostRaised.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var disposal = index.DisposeAsync().AsTask();
 
-        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescan).WaitAsync(HangGuard);
-        await disposal.WaitAsync(HangGuard);
+        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescan).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await disposal.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore, "the retry never scanned");
     }
 
@@ -108,7 +108,7 @@ public class FileIndexAdmittedOperationDisposalTests
     {
         using var harness = new WatchHarness('T');
         var index = harness.Index;
-        await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
+        await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         var decisionReached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var flagSet = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         index.Hooks.DisposedFlagSet = () => flagSet.TrySetResult();
@@ -117,12 +117,12 @@ public class FileIndexAdmittedOperationDisposalTests
             decisionReached.TrySetResult();
             TestGate.WaitSynchronously(flagSet.Task);
         };
-        var rescan = Task.Run(() => index.RescanAsync(['T'], Token));
-        await decisionReached.Task.WaitAsync(HangGuard);
+        var rescan = Task.Run(() => index.RescanAsync(['T'], Token), Token);
+        await decisionReached.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        await index.DisposeAsync().AsTask().WaitAsync(HangGuard);
+        await index.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescan).WaitAsync(HangGuard);
+        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescan).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.HasCount(1, harness.Source.TargetsFor('T'), "the restart never invoked the source");
     }
 
@@ -136,7 +136,7 @@ public class FileIndexAdmittedOperationDisposalTests
     {
         using var harness = new WatchHarness('T');
         var index = harness.Index;
-        await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
+        await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         var decisionReached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var flagSet = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         index.Hooks.DisposedFlagSet = () => flagSet.TrySetResult();
@@ -147,12 +147,12 @@ public class FileIndexAdmittedOperationDisposalTests
         };
         var producedBefore = harness.ProductionCount('T');
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
-        await decisionReached.Task.WaitAsync(HangGuard);
+        await decisionReached.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
         var recovery = harness.RecoveryCompletion('T');
 
-        await index.DisposeAsync().AsTask().WaitAsync(HangGuard);
+        await index.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        await recovery.WaitAsync(HangGuard);
+        await recovery.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore, "the recovery scanned once");
         Assert.HasCount(1, harness.Source.TargetsFor('T'), "the recovery restarted nothing");
         Assert.AreSequenceEqual([WatchFaultKind.Drive], [.. harness.Faults.Where(fault => fault.Drive == 'T').Select(fault => fault.Kind)]);
@@ -163,15 +163,15 @@ public class FileIndexAdmittedOperationDisposalTests
     {
         using var harness = new WatchHarness('T');
         var index = harness.Index;
-        await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
+        await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         Task? disposal = null;
         index.Hooks.RestartRequested = _ => disposal ??= index.DisposeAsync().AsTask();
 
         await DriveResultAssertions.FailureAsync<OperationCanceledException>(
-            () => index.RescanAsync(['T'], Token)).WaitAsync(HangGuard);
+            () => index.RescanAsync(['T'], Token)).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsNotNull(disposal, "the restart decided to start the watch again");
-        await disposal.WaitAsync(HangGuard);
+        await disposal.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.HasCount(1, harness.Source.TargetsFor('T'), "the restart never invoked the source");
     }
 
@@ -180,7 +180,7 @@ public class FileIndexAdmittedOperationDisposalTests
     {
         using var harness = new WatchHarness('T');
         var index = harness.Index;
-        await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard);
+        await index.StartWatchingAsync(['T'], Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         Task? disposal = null;
         index.Hooks.RestartBeforeRegistration = _ =>
         {
@@ -189,10 +189,10 @@ public class FileIndexAdmittedOperationDisposalTests
         };
 
         await DriveResultAssertions.FailureAsync<OperationCanceledException>(
-            () => index.RescanAsync(['T'], Token)).WaitAsync(HangGuard);
+            () => index.RescanAsync(['T'], Token)).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsNotNull(disposal, "the restart reached its registration");
-        await disposal.WaitAsync(HangGuard);
+        await disposal.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.HasCount(1, harness.Source.TargetsFor('T'), "the restart never invoked the source");
     }
 }

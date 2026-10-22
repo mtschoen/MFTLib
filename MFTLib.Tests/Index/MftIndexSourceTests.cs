@@ -107,7 +107,7 @@ public sealed class MftIndexSourceTests : IDisposable
             Assert.IsNull(before.Failure);
             Assert.IsNotNull(before.Block);
             Assert.AreEqual(BlockOrigin.WarmStartedFromCache, before.Block.Origin);
-            var root = index.Root('T').RecordKey;
+            var root = index.Root('T', TestContext.CancellationToken).RecordKey;
             await DriveResultAssertions.NotApplicableAsync(
                 () => index.StartWatchingAsync(['T'], Token));
             Assert.IsFalse(index.Drives.Single().Watch.IsRequested);
@@ -123,7 +123,7 @@ public sealed class MftIndexSourceTests : IDisposable
             Assert.AreEqual(before.Block.Origin, after.Block.Origin);
             Assert.AreEqual(before.Block.CacheLocation, after.Block.CacheLocation);
             Assert.AreEqual(before.Block.LiveRowCount, after.Block.LiveRowCount);
-            Assert.AreEqual(root, index.Root('T').RecordKey);
+            Assert.AreEqual(root, index.Root('T', TestContext.CancellationToken).RecordKey);
             Assert.IsFalse(after.Watch.IsRequested);
         }
 
@@ -136,7 +136,7 @@ public sealed class MftIndexSourceTests : IDisposable
     [TestMethod]
     public async Task SourceWithoutWatchSource_ReportsWatchingNotApplicable()
     {
-        await _fixture.Seed();
+        await _fixture.Seed(cancellationToken: TestContext.CancellationToken);
         using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(_fixture.Options() with { MftSource = new MftIndexSource(ProduceMftShapedBlock) }, Token);
 
@@ -149,7 +149,7 @@ public sealed class MftIndexSourceTests : IDisposable
     [TestMethod]
     public async Task SourceWithWatchSource_StartsTheWatchOnThatSource()
     {
-        await _fixture.Seed();
+        await _fixture.Seed(cancellationToken: TestContext.CancellationToken);
         var watchSource = new ScriptedWatchSource();
         using var journals = ForDrives(new Dictionary<DriveKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(

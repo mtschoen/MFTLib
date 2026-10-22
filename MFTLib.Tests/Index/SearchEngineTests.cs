@@ -51,28 +51,28 @@ public class SearchEngineTests
     [TestMethod]
     public void Search_SubstringIsCaseInsensitiveByDefault()
     {
-        var results = SearchEngine.Search(_snapshot, new SearchQuery("report"));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery("report"), TestContext.CancellationToken);
         Assert.AreSequenceEqual(["Report.docx", "report.pdf"], NamesOf(results));
     }
 
     [TestMethod]
     public void Search_CaseSensitiveNarrowsTheResult()
     {
-        var results = SearchEngine.Search(_snapshot, new SearchQuery("report", CaseSensitive: true));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery("report", CaseSensitive: true), TestContext.CancellationToken);
         Assert.AreSequenceEqual(["report.pdf"], NamesOf(results));
     }
 
     [TestMethod]
     public void Search_GlobPatternMatchesTheWholeName()
     {
-        var results = SearchEngine.Search(_snapshot, new SearchQuery("*.pdf", NameMatchMode.Glob));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery("*.pdf", NameMatchMode.Glob), TestContext.CancellationToken);
         Assert.AreSequenceEqual(["report.pdf"], NamesOf(results));
     }
 
     [TestMethod]
     public void Search_NullPatternMatchesEveryLiveRow()
     {
-        var results = SearchEngine.Search(_snapshot, new SearchQuery(null));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery(null), TestContext.CancellationToken);
         // Root, two directories, and three live files. The tombstoned row is excluded.
         Assert.HasCount(6, results);
     }
@@ -80,21 +80,21 @@ public class SearchEngineTests
     [TestMethod]
     public void Search_ExcludesTombstonedRows()
     {
-        var results = SearchEngine.Search(_snapshot, new SearchQuery("deleted"));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery("deleted"), TestContext.CancellationToken);
         Assert.IsEmpty(results);
     }
 
     [TestMethod]
     public void Search_DirectoriesTrueReturnsOnlyDirectories()
     {
-        var results = SearchEngine.Search(_snapshot, new SearchQuery(null, IsDirectory: true));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery(null, IsDirectory: true), TestContext.CancellationToken);
         Assert.IsTrue(results.All(entry => entry.IsDirectory));
     }
 
     [TestMethod]
     public void Search_DirectoriesFalseReturnsOnlyFiles()
     {
-        var results = SearchEngine.Search(_snapshot, new SearchQuery(null, IsDirectory: false));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery(null, IsDirectory: false), TestContext.CancellationToken);
         Assert.AreSequenceEqual(["Report.docx", "holiday.jpg", "report.pdf"], NamesOf(results));
     }
 
@@ -102,7 +102,7 @@ public class SearchEngineTests
     public void Search_SizeBoundsAreInclusive()
     {
         var results = SearchEngine.Search(_snapshot,
-            new SearchQuery(null, IsDirectory: false, SizeMinimum: 100, SizeMaximum: 4096));
+            new SearchQuery(null, IsDirectory: false, SizeMinimum: 100, SizeMaximum: 4096), TestContext.CancellationToken);
         Assert.AreSequenceEqual(["Report.docx", "report.pdf"], NamesOf(results));
     }
 
@@ -120,11 +120,11 @@ public class SearchEngineTests
         DriveBlock[] snapshot = [new DriveBlock('S', 0, block)];
         try
         {
-            var resultsMin = SearchEngine.Search(snapshot, new SearchQuery(null, SizeMinimum: 0));
+            var resultsMin = SearchEngine.Search(snapshot, new SearchQuery(null, SizeMinimum: 0), TestContext.CancellationToken);
             Assert.Contains(entry => entry.Name == "known-zero.txt", resultsMin);
             Assert.DoesNotContain(entry => entry.Name == "unknown-size.txt", resultsMin);
 
-            var resultsMax = SearchEngine.Search(snapshot, new SearchQuery(null, SizeMaximum: 100));
+            var resultsMax = SearchEngine.Search(snapshot, new SearchQuery(null, SizeMaximum: 100), TestContext.CancellationToken);
             Assert.Contains(entry => entry.Name == "known-zero.txt", resultsMax);
             Assert.DoesNotContain(entry => entry.Name == "unknown-size.txt", resultsMax);
         }
@@ -142,7 +142,7 @@ public class SearchEngineTests
         var results = SearchEngine.Search(_snapshot,
             new SearchQuery(null, IsDirectory: false,
                 LastWriteTimeMinimum: isLowerBound ? Newer : null,
-                LastWriteTimeMaximum: isLowerBound ? null : Older));
+                LastWriteTimeMaximum: isLowerBound ? null : Older), TestContext.CancellationToken);
         Assert.AreSequenceEqual(expectedNames, NamesOf(results));
     }
 
@@ -150,7 +150,7 @@ public class SearchEngineTests
     public void Search_SubtreeRestrictsToTheEntryAndBelow()
     {
         var documents = FileEntry.Create(_snapshot[0], _documentsRow);
-        var results = SearchEngine.Search(_snapshot, new SearchQuery(null, Subtree: documents));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery(null, Subtree: documents), TestContext.CancellationToken);
         Assert.AreSequenceEqual(["Documents", "Report.docx", "report.pdf"], NamesOf(results));
     }
 
@@ -158,7 +158,7 @@ public class SearchEngineTests
     public void Search_UnderADifferentSubtreeExcludesSiblings()
     {
         var pictures = FileEntry.Create(_snapshot[0], _picturesRow);
-        var results = SearchEngine.Search(_snapshot, new SearchQuery("report", Subtree: pictures));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery("report", Subtree: pictures), TestContext.CancellationToken);
         Assert.IsEmpty(results);
     }
 
@@ -167,7 +167,7 @@ public class SearchEngineTests
     {
         var invalidAncestor = default(FileEntry);
         Assert.ThrowsExactly<ArgumentException>(
-            () => SearchEngine.Search(_snapshot, new SearchQuery(null, Subtree: invalidAncestor)));
+            () => SearchEngine.Search(_snapshot, new SearchQuery(null, Subtree: invalidAncestor), TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -201,7 +201,7 @@ public class SearchEngineTests
         {
             var ancestor = FileEntry.Create(snapshot[0], root);
             var exception = Assert.ThrowsExactly<InvalidDataException>(() =>
-                SearchEngine.Search(snapshot, new SearchQuery("needle.txt", Subtree: ancestor)));
+                SearchEngine.Search(snapshot, new SearchQuery("needle.txt", Subtree: ancestor), TestContext.CancellationToken));
             Assert.Contains(BlockLayout.MaximumPathDepth.ToString(CultureInfo.InvariantCulture), exception.Message);
         }
         finally
@@ -228,7 +228,7 @@ public class SearchEngineTests
         try
         {
             var ancestor = FileEntry.Create(snapshot[0], root);
-            var results = SearchEngine.Search(snapshot, new SearchQuery("*.txt", NameMatchMode.Glob, Subtree: ancestor));
+            var results = SearchEngine.Search(snapshot, new SearchQuery("*.txt", NameMatchMode.Glob, Subtree: ancestor), TestContext.CancellationToken);
             Assert.HasCount(1, results);
             Assert.AreEqual("valid.txt", results[0].Name);
         }
@@ -255,7 +255,7 @@ public class SearchEngineTests
         DriveBlock[] snapshot = [new DriveBlock('Y', 0, block)];
         try
         {
-            var results = SearchEngine.Search(snapshot, new SearchQuery("*.dat", NameMatchMode.Glob));
+            var results = SearchEngine.Search(snapshot, new SearchQuery("*.dat", NameMatchMode.Glob), TestContext.CancellationToken);
             Assert.HasCount(fileCount, results);
         }
         finally
@@ -303,11 +303,13 @@ public class SearchEngineTests
         try
         {
             Assert.AreEqual(0u, builder.OpenForWriting().Header.RowCount);
-            Assert.IsEmpty(SearchEngine.Search(snapshot, new SearchQuery(null)));
+            Assert.IsEmpty(SearchEngine.Search(snapshot, new SearchQuery(null), TestContext.CancellationToken));
         }
         finally
         {
             await snapshot.ReleaseNowAsync();
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

@@ -43,21 +43,21 @@ public class BlockWriterDisposalRaceTests
         var writeTask = Task.Run(() => writer.TryWriteRow(1, "report.pdf", FileColumns()));
         try
         {
-            Assert.IsTrue(rowCaptured.Entered.Wait(HangGuard * 3),
+            Assert.IsTrue(rowCaptured.Entered.Wait(HangGuard * 3, TestContext.CancellationToken),
                 "the writer never reached the row capture, so the race was never set up");
 
-            disposeTask = Task.Run(block.Dispose);
-            Assert.IsTrue(disposeStarted.Entered.Wait(HangGuard * 3),
+            disposeTask = Task.Run(block.Dispose, TestContext.CancellationToken);
+            Assert.IsTrue(disposeStarted.Entered.Wait(HangGuard * 3, TestContext.CancellationToken),
                 "dispose never began, so the race was never set up");
             Assert.IsFalse(disposeTask.IsCompleted,
                 "dispose returned while a writer was still inside the block");
 
             releaseWriter.Release();
 
-            Assert.IsTrue(writeTask.Wait(HangGuard * 3), "the in-flight write never finished");
+            Assert.IsTrue(writeTask.Wait(HangGuard * 3, TestContext.CancellationToken), "the in-flight write never finished");
             Assert.IsTrue(writeTask.Result,
                 "a write admitted before disposal began must complete against the still-mapped block");
-            Assert.IsTrue(disposeTask.Wait(HangGuard * 3),
+            Assert.IsTrue(disposeTask.Wait(HangGuard * 3, TestContext.CancellationToken),
                 "dispose never finished after the writer left the block");
 
             Assert.ThrowsExactly<ObjectDisposedException>(
@@ -68,8 +68,8 @@ public class BlockWriterDisposalRaceTests
         {
             // A failed assertion must not leave the writer parked on a thread-pool thread.
             releaseWriter.Release();
-            writeTask.Wait(HangGuard * 3);
-            disposeTask?.Wait(HangGuard * 3);
+            writeTask.Wait(HangGuard * 3, TestContext.CancellationToken);
+            disposeTask?.Wait(HangGuard * 3, TestContext.CancellationToken);
         }
     }
 
@@ -93,4 +93,6 @@ public class BlockWriterDisposalRaceTests
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = writer.RowCount);
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = writer.CapacityExhausted);
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

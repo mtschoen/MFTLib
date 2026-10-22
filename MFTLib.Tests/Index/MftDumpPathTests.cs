@@ -21,14 +21,14 @@ public class MftDumpPathTests
     {
         await using var index = await MftDumpIndexes.OpenAsync();
 
-        var root = index.Root('D');
-        var documents = index.Find("dump:/D/documents")!.Value;
+        var root = index.Root('D', TestContext.CancellationToken);
+        var documents = index.Find("dump:/D/documents", TestContext.CancellationToken)!.Value;
 
         Assert.AreEqual("dump:/D", root.Path);
         Assert.AreEqual("dump:/D/documents", documents.Path);
         Assert.AreEqual(root, documents.Parent);
-        Assert.AreSequenceEqual(["Deep", "Notes.txt"], [.. documents.Children().Select(c => c.Name)], SequenceOrder.InAnyOrder);
-        var subtree = index.Search(new SearchQuery("leaf", Subtree: documents));
+        Assert.AreSequenceEqual(["Deep", "Notes.txt"], [.. documents.Children(TestContext.CancellationToken).Select(c => c.Name)], SequenceOrder.InAnyOrder);
+        var subtree = index.Search(new SearchQuery("leaf", Subtree: documents), TestContext.CancellationToken);
         Assert.AreEqual("dump:/D/documents/Deep/leaf.txt", subtree.Single().Path);
     }
 
@@ -37,9 +37,9 @@ public class MftDumpPathTests
     {
         await using var index = await MftDumpIndexes.OpenAsync();
 
-        foreach (var entry in index.Search(new SearchQuery("")).Where(entry => entry.Name != "$MFT"))
+        foreach (var entry in index.Search(new SearchQuery(""), TestContext.CancellationToken).Where(entry => entry.Name != "$MFT"))
         {
-            var found = index.Find(entry.Path);
+            var found = index.Find(entry.Path, TestContext.CancellationToken);
             Assert.IsNotNull(found, entry.Path);
             Assert.AreEqual(entry, found.Value, entry.Path);
         }
@@ -49,7 +49,7 @@ public class MftDumpPathTests
     public async Task Find_AcceptsEitherSeparatorAnyCaseAndATrailingSeparator()
     {
         await using var index = await MftDumpIndexes.OpenAsync();
-        var leaf = index.Find("dump:/D/documents/Deep/leaf.txt")!.Value;
+        var leaf = index.Find("dump:/D/documents/Deep/leaf.txt", TestContext.CancellationToken)!.Value;
 
         string[] spellings =
         [
@@ -63,7 +63,7 @@ public class MftDumpPathTests
 
         foreach (var spelling in spellings)
         {
-            Assert.AreEqual(leaf, index.Find(spelling), spelling);
+            Assert.AreEqual(leaf, index.Find(spelling, TestContext.CancellationToken), spelling);
         }
     }
 
@@ -71,12 +71,12 @@ public class MftDumpPathTests
     public async Task Find_ARootWithATrailingSeparatorOrBackslashIsTheRootRow()
     {
         await using var index = await MftDumpIndexes.OpenAsync();
-        var root = index.Root('D');
+        var root = index.Root('D', TestContext.CancellationToken);
 
-        Assert.AreEqual(root, index.Find("dump:/D"));
-        Assert.AreEqual(root, index.Find("dump:/D/"));
-        Assert.AreEqual(root, index.Find(BackslashRoot));
-        Assert.AreEqual(root, index.Find(BackslashRoot + "\\"));
+        Assert.AreEqual(root, index.Find("dump:/D", TestContext.CancellationToken));
+        Assert.AreEqual(root, index.Find("dump:/D/", TestContext.CancellationToken));
+        Assert.AreEqual(root, index.Find(BackslashRoot, TestContext.CancellationToken));
+        Assert.AreEqual(root, index.Find(BackslashRoot + "\\", TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -84,12 +84,12 @@ public class MftDumpPathTests
     {
         await using var index = await MftDumpIndexes.OpenAsync();
 
-        Assert.IsNull(index.Find("dump:/DX/documents"));
-        Assert.IsNull(index.Find("dump:/Dumps"));
-        Assert.IsNull(index.Find("dump:/"));
-        Assert.IsNull(index.Find("dump:/D/missing"));
-        Assert.IsNull(index.Find("dump:/D/documents/Deep/leaf.txt/extra"));
-        Assert.IsNull(index.Find(Path.Combine(Path.GetTempPath(), "documents")));
+        Assert.IsNull(index.Find("dump:/DX/documents", TestContext.CancellationToken));
+        Assert.IsNull(index.Find("dump:/Dumps", TestContext.CancellationToken));
+        Assert.IsNull(index.Find("dump:/", TestContext.CancellationToken));
+        Assert.IsNull(index.Find("dump:/D/missing", TestContext.CancellationToken));
+        Assert.IsNull(index.Find("dump:/D/documents/Deep/leaf.txt/extra", TestContext.CancellationToken));
+        Assert.IsNull(index.Find(Path.Combine(Path.GetTempPath(), "documents"), TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -102,8 +102,8 @@ public class MftDumpPathTests
         foreach (var path in new[] { "dump:/D", "dump:/D/documents", "dump:/D/documents/Notes.txt" })
         {
             var failure = MftDumpIndexes.Throws<InvalidOperationException>(
-                index, i => i.Find(path)!.Value.Open(FileAccess.Read));
-            Assert.AreEqual($"{index.Find(path)!.Value}: Files in an MFT dump cannot be opened through the index.", failure.Message, path);
+                index, i => i.Find(path, TestContext.CancellationToken)!.Value.Open(FileAccess.Read));
+            Assert.AreEqual($"{index.Find(path, TestContext.CancellationToken)!.Value}: Files in an MFT dump cannot be opened through the index.", failure.Message, path);
         }
     }
 
@@ -135,4 +135,6 @@ public class MftDumpPathTests
         Assert.ThrowsExactly<ArgumentException>(() => new MftDumpSourceIdentity(" ", 'D'));
         Assert.ThrowsExactly<ArgumentException>(() => new MftDumpSourceIdentity("x.mft", '1'));
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

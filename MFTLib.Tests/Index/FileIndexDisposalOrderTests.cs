@@ -25,12 +25,12 @@ public class FileIndexDisposalOrderTests
         var heldU = harness.HoldNextProduction('U');
         var rescanT = harness.Index.RescanAsync(['T'], Token);
         var rescanU = harness.Index.RescanAsync(['U'], Token);
-        await Task.WhenAll(heldT.Entered, heldU.Entered).WaitAsync(HangGuard);
+        await Task.WhenAll(heldT.Entered, heldU.Entered).WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        await harness.Index.DisposeAsync().AsTask().WaitAsync(HangGuard);
+        await harness.Index.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescanT.WaitAsync(HangGuard));
-        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescanU.WaitAsync(HangGuard));
+        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescanT.WaitAsync(HangGuard, TestContext.CancellationToken));
+        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescanU.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual(1, watchOfV.DisposeCount, "disposal awaited V's pump, which disposed its handle");
         foreach (var driveLetter in "TUV")
         {
@@ -45,12 +45,12 @@ public class FileIndexDisposalOrderTests
         using var harness = new WatchHarness('T');
         var held = harness.HoldNextProduction('T');
         var rescan = harness.Index.RescanAsync(['T'], CancellationToken.None);
-        await held.Entered.WaitAsync(HangGuard);
+        await held.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var disposal = harness.Index.DisposeAsync().AsTask();
 
-        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescan.WaitAsync(HangGuard));
-        await disposal.WaitAsync(HangGuard);
+        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescan.WaitAsync(HangGuard, TestContext.CancellationToken));
+        await disposal.WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 
     [TestMethod]
@@ -68,19 +68,19 @@ public class FileIndexDisposalOrderTests
         };
         var index = harness.Index;
         var apply = Task.Run(() => index.ApplyJournalEntries('T', [WatchHarness.Create(9, "last.txt")],
-            WatchHarness.JournalIdentifier, 600));
-        await batch.Entered.WaitAsync(HangGuard);
+            WatchHarness.JournalIdentifier, 600), TestContext.CancellationToken);
+        await batch.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         var lifecycleGatesTaken = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         index.Hooks.LifecycleGatesTakenForDisposal = () => lifecycleGatesTaken.TrySetResult();
 
         var disposal = index.DisposeAsync().AsTask();
-        await lifecycleGatesTaken.Task.WaitAsync(HangGuard);
+        await lifecycleGatesTaken.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsFalse(index.AreDriveGatesFreeForTest('U'), "disposal holds every lifecycle gate");
         Assert.IsFalse(disposal.IsCompleted, "disposal waits for the batch that holds T's write gate");
         batch.Release();
-        var changes = await apply.WaitAsync(HangGuard);
+        var changes = await apply.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.HasCount(1, changes, "the batch finished against a block that was still mapped");
-        await disposal.WaitAsync(HangGuard);
+        await disposal.WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 }
