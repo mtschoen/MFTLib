@@ -41,7 +41,7 @@ public partial class JournalBrokerHostChannelTests
         var reply = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.Error, reply.Kind);
-        StringAssert.Contains(reply.Message, "CaughtUp is not a control request");
+        Assert.Contains("CaughtUp is not a control request", reply.Message!);
         await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 4, 'C'));
         Assert.AreEqual(4u, (await harness.ReadControlAsync()).RequestId, "The session keeps serving.");
     }
@@ -138,9 +138,9 @@ public partial class JournalBrokerHostChannelTests
         releaseRead.SetResult();
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.AreEqual(1, frames.Count);
+        Assert.HasCount(1, frames);
         Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
-        StringAssert.Contains(frames[0].Message, "received no request within");
+        Assert.Contains("received no request within", frames[0].Message!);
     }
 
     [TestMethod]

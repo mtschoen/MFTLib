@@ -66,7 +66,7 @@ public sealed partial class DumpParseNativeTests : IDisposable
         var result = ParseHeader(path, 8192, 7);
 
         Assert.AreEqual("Failed to grow entry array", result.ErrorMessage);
-        Assert.IsTrue(result.UsedRecords > 0, "Should have partial results");
+        Assert.IsGreaterThan(0UL, result.UsedRecords, "Should have partial results");
     }
 
     // One thread and 256-record chunks: each chunk merges once, and the merge that passes 1024
@@ -80,8 +80,8 @@ public sealed partial class DumpParseNativeTests : IDisposable
         var result = ParseHeader(path, 256, 6);
 
         Assert.AreEqual("Failed to grow entry array", result.ErrorMessage);
-        Assert.IsTrue(result.UsedRecords > 0, "Should have partial results");
-        Assert.IsTrue(result.UsedRecords < 5000, "Should not have all records");
+        Assert.IsGreaterThan(0UL, result.UsedRecords, "Should have partial results");
+        Assert.IsLessThan(5000UL, result.UsedRecords, "Should not have all records");
     }
 
     [TestMethod]

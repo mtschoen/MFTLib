@@ -37,8 +37,7 @@ public partial class JournalBrokerHostLivenessTests
         var frames = await HostChannelHarness.ReadToEndAsync(pipe, includeHeartbeats: true);
 
         var kinds = frames.Where(frame => frame.Kind != BrokerFrameKind.Heartbeat).Select(frame => frame.Kind).ToArray();
-        CollectionAssert.AreEqual(new[] { BrokerFrameKind.Cursor, BrokerFrameKind.Stalled }, kinds,
-            "Stalled is the last frame the pipe carries; the finished operation's frames are not written.");
+        Assert.AreSequenceEqual(new[] { BrokerFrameKind.Cursor, BrokerFrameKind.Stalled }, kinds, "Stalled is the last frame the pipe carries; the finished operation's frames are not written.");
         Assert.AreEqual(BrokerFrameKind.Stalled, frames[^1].Kind);
     }
 
@@ -81,7 +80,7 @@ public partial class JournalBrokerHostLivenessTests
                 // the bound only makes a missing write fail the test instead of looping.
                 for (var interval = 0; !stalledWrite.Started.IsCompleted; interval++)
                 {
-                    Assert.IsTrue(interval < MaximumIntervalsBeforeStalled,
+                    Assert.IsLessThan(MaximumIntervalsBeforeStalled, interval,
                         $"No Stalled write started within {MaximumIntervalsBeforeStalled} heartbeat intervals.");
                     await liveness.AdvanceOneIntervalAsync();
                 }
@@ -95,7 +94,7 @@ public partial class JournalBrokerHostLivenessTests
                 var frames = await HostChannelHarness.ReadToEndAsync(pipe, includeHeartbeats: true);
 
                 var kinds = frames.Where(frame => frame.Kind != BrokerFrameKind.Heartbeat).Select(frame => frame.Kind).ToArray();
-                CollectionAssert.AreEqual(new[] { BrokerFrameKind.Cursor, BrokerFrameKind.Stalled }, kinds);
+                Assert.AreSequenceEqual(new[] { BrokerFrameKind.Cursor, BrokerFrameKind.Stalled }, kinds);
             }
             finally
             {

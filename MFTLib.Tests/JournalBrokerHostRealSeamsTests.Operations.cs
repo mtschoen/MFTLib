@@ -32,7 +32,7 @@ public partial class JournalBrokerHostRealSeamsTests
         Assert.AreEqual(RowFlags.None, writer.Block.Rows[102].Flags);
         Assert.AreEqual("file0.txt", NamePool.ReadRowName(writer.Block, 100).ToString());
         var catchUp = frames.Single(frame => frame.Kind == BrokerFrameKind.ScanCompleted);
-        Assert.AreEqual(0, catchUp.Entries.Length);
+        Assert.IsEmpty(catchUp.Entries);
         Assert.AreEqual(default(UsnJournalCursor), catchUp.Cursor);
         Assert.AreEqual(cursor.JournalIdentifier, writer.Block.Header.UsnJournalIdentifier);
         Assert.AreEqual(cursor.NextUsn, writer.Block.Header.UsnNextUsn);
@@ -65,7 +65,7 @@ public partial class JournalBrokerHostRealSeamsTests
         Assert.AreEqual(300L, reports[^1].TotalRecords);
         Assert.AreEqual(BrokerScanPhase.Transferring, reports[^1].Phase);
         Assert.IsTrue(writer.Block.Header.IsComplete);
-        CollectionAssert.AreEqual(new[] { false }, freedRequests, "The default scan asks for no freed rows.");
+        Assert.AreSequenceEqual(new[] { false }, freedRequests, "The default scan asks for no freed rows.");
     }
 
     [TestMethod]
@@ -125,7 +125,7 @@ public partial class JournalBrokerHostRealSeamsTests
         await harness.Serve.WaitAsync(HangGuard);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Error),
+        Assert.DoesNotContain(frame => frame.Kind == BrokerFrameKind.Error, frames,
             "A watch cancelled between empty batches ends without reporting a failure.");
         var calls = IdleUsnPipe.CallOrder();
         Assert.IsTrue(calls.Contains('C') && calls.Contains('F'), "The cancelled read is cancelled and freed.");
@@ -342,7 +342,7 @@ public partial class JournalBrokerHostRealSeamsTests
             var frames = await HostChannelHarness.ReadToEndAsync(pipe);
             var errorPayloads = string.Join("; ",
                 frames.Where(frame => frame.Kind == BrokerFrameKind.Error).Select(frame => frame.Message));
-            Assert.AreEqual(0, frames.Count,
+            Assert.IsEmpty(frames,
                 $"Expected the channel to end without a frame after its watch was stopped. Errors: {errorPayloads}");
         }
     }

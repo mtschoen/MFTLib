@@ -94,9 +94,9 @@ public partial class BrokerProcessTests
             await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
             lock (lines)
             {
-                Assert.IsTrue(lines.Any(line =>
+                Assert.Contains(line =>
                         line.Contains($":{BrokerDiagnostics.ControlChannel}]", StringComparison.Ordinal) &&
-                        line.Contains("Unknown frame kind: 200", StringComparison.Ordinal)),
+                        line.Contains("Unknown frame kind: 200", StringComparison.Ordinal), lines,
                     "The host session's failure must reach the log on the control channel.");
             }
         }

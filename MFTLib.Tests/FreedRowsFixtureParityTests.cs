@@ -53,7 +53,7 @@ public class FreedRowsFixtureParityTests
         MftBlockRowWriter.WriteBatches(new BlockWriter(block), [scanned.ToRecords()],
             new MftScanOptions { IncludeFreed = true }, null, CancellationToken.None);
 
-        CollectionAssert.AreEquivalent(TrustedFreedRecords.Concat(UntrustedFreedRecords).ToArray(), freedRecords);
+        Assert.AreSequenceEqual(TrustedFreedRecords.Concat(UntrustedFreedRecords).ToArray(), freedRecords, SequenceOrder.InAnyOrder);
         foreach (var recordNumber in freedRecords)
         {
             Assert.IsTrue(block.Rows[(int)recordNumber].IsDeleted, $"record {recordNumber} is a deleted row");

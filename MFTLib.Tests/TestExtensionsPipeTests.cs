@@ -73,7 +73,7 @@ public class TestExtensionsPipeTests
         await using var ownedListener = listener;
         var failure = await Assert.ThrowsExactlyAsync<IOException>(() =>
             pipes.ConnectAsync("drive", CancellationToken.None));
-        StringAssert.Contains(failure.Message, "closed before it connected");
+        Assert.Contains("closed before it connected", failure.Message);
         await released!;
         Assert.IsNotNull(createdClient);
         await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() =>

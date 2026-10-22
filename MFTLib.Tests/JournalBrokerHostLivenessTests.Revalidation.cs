@@ -22,8 +22,7 @@ public partial class JournalBrokerHostLivenessTests
         await scenario.RunSweepsToTheLimitAsync(() => scenario.WedgedReporter.Processing("wedged step"));
 
         var frames = await scenario.FinishAsync();
-        CollectionAssert.AreEqual(Enumerable.Repeat(BrokerFrameKind.Heartbeat, 6).ToArray(), frames.Select(frame => frame.Kind).ToArray(),
-            $"Progress published after the sweep began restarts the clock: a heartbeat, not Stalled. Saw {string.Join(", ", frames.Select(frame => frame.Kind))}.");
+        Assert.AreSequenceEqual(Enumerable.Repeat(BrokerFrameKind.Heartbeat, 6).ToArray(), frames.Select(frame => frame.Kind).ToArray(), $"Progress published after the sweep began restarts the clock: a heartbeat, not Stalled. Saw {string.Join(", ", frames.Select(frame => frame.Kind))}.");
     }
 
     [TestMethod]
@@ -38,10 +37,8 @@ public partial class JournalBrokerHostLivenessTests
         });
 
         var frames = await scenario.FinishAsync();
-        CollectionAssert.AreEqual(
-            Enumerable.Repeat(BrokerFrameKind.Heartbeat, 5).Append(BrokerFrameKind.JournalBatch).Append(BrokerFrameKind.CaughtUp).ToArray(),
-            frames.Select(frame => frame.Kind).ToArray(),
-            $"A frame completed after the sweep began is this interval's write: no Stalled and no sixth heartbeat. Saw {string.Join(", ", frames.Select(frame => frame.Kind))}.");
+        Assert.AreSequenceEqual(
+            Enumerable.Repeat(BrokerFrameKind.Heartbeat, 5).Append(BrokerFrameKind.JournalBatch).Append(BrokerFrameKind.CaughtUp).ToArray(), frames.Select(frame => frame.Kind).ToArray(), $"A frame completed after the sweep began is this interval's write: no Stalled and no sixth heartbeat. Saw {string.Join(", ", frames.Select(frame => frame.Kind))}.");
     }
 
     sealed class SweepScenario : IAsyncDisposable
@@ -237,9 +234,9 @@ public partial class JournalBrokerHostLivenessTests
         }
 
         var rest = await HostChannelHarness.ReadToEndAsync(pipe, includeHeartbeats: true);
-        Assert.IsFalse(rest.Any(frame => frame.Kind == BrokerFrameKind.Stalled), "60 seconds of progress never stalls.");
+        Assert.DoesNotContain(frame => frame.Kind == BrokerFrameKind.Stalled, rest, "60 seconds of progress never stalls.");
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, rest[^1].Kind);
-        Assert.AreEqual(0, rest[^1].Entries.Length, "The chunks the catch-up read stay on the host.");
+        Assert.IsEmpty(rest[^1].Entries, "The chunks the catch-up read stay on the host.");
     }
 
     [TestMethod]
@@ -258,23 +255,21 @@ public partial class JournalBrokerHostLivenessTests
             clock.Advance(BrokerLiveness.ProcessingLimit - BrokerLiveness.HeartbeatInterval);
             Assert.AreEqual(0L, stream.Length, "Publishing progress writes no operation frame.");
             pipe.Visit(clock.GetUtcNow());
-            CollectionAssert.AreEqual(new[] { BrokerFrameKind.Heartbeat }, FrameKinds(stream));
+            Assert.AreSequenceEqual(new[] { BrokerFrameKind.Heartbeat }, FrameKinds(stream));
             Assert.IsFalse(owner.IsCancellationRequested);
 
             pipe.Processing("catch-up");
             clock.Advance(2 * BrokerLiveness.HeartbeatInterval);
             pipe.Visit(clock.GetUtcNow());
-            CollectionAssert.AreEqual(
-                new[] { BrokerFrameKind.Heartbeat, BrokerFrameKind.Heartbeat }, FrameKinds(stream),
-                "Republished progress keeps a no-frame operation alive beyond its original deadline.");
+            Assert.AreSequenceEqual(
+                new[] { BrokerFrameKind.Heartbeat, BrokerFrameKind.Heartbeat }, FrameKinds(stream), "Republished progress keeps a no-frame operation alive beyond its original deadline.");
             Assert.IsFalse(owner.IsCancellationRequested);
 
             clock.Advance(BrokerLiveness.ProcessingLimit - 2 * BrokerLiveness.HeartbeatInterval
                 + extraIntervalsAfterLimit * BrokerLiveness.HeartbeatInterval);
             pipe.Visit(clock.GetUtcNow());
-            CollectionAssert.AreEqual(
-                new[] { BrokerFrameKind.Heartbeat, BrokerFrameKind.Heartbeat, BrokerFrameKind.Stalled },
-                FrameKinds(stream), "Heartbeats do not reset the processing progress clock.");
+            Assert.AreSequenceEqual(
+                new[] { BrokerFrameKind.Heartbeat, BrokerFrameKind.Heartbeat, BrokerFrameKind.Stalled }, FrameKinds(stream), "Heartbeats do not reset the processing progress clock.");
             Assert.IsTrue(owner.IsCancellationRequested);
         }
         finally

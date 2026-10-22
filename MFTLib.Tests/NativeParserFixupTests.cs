@@ -76,7 +76,7 @@ public sealed class NativeParserFixupTests : IDisposable
         var names = ParseNames(dump);
 
         CollectionAssert.DoesNotContain(names, "Notes.txt", description);
-        CollectionAssert.Contains(names, "leaf.txt", description);
+        Assert.Contains("leaf.txt", names, description);
     }
 
     [TestMethod]
@@ -138,8 +138,8 @@ public sealed class NativeParserFixupTests : IDisposable
 
         var names = ParseNames(dump);
 
-        CollectionAssert.AreEqual(new byte[] { 0x01, 0x01 }, firstSectorTail, "the fixture protects the sector tail");
-        CollectionAssert.Contains(names, longName);
+        Assert.AreSequenceEqual(new byte[] { 0x01, 0x01 }, firstSectorTail, "the fixture protects the sector tail");
+        Assert.Contains(longName, names);
     }
 
     [TestMethod]
@@ -151,7 +151,7 @@ public sealed class NativeParserFixupTests : IDisposable
         SetArray(record, 0x2A, 3);
         Protect(record, 0x2A, 0x0202);
 
-        CollectionAssert.Contains(ParseNames(dump), "Notes.txt");
+        Assert.Contains("Notes.txt", ParseNames(dump));
     }
 
     string[] ParseNames(byte[] dump)

@@ -134,7 +134,7 @@ public class MftBlockRowWriterTests
         MftBlockRowWriter.WriteBatches(writer, Batches(), new MftScanOptions(),
             new SynchronousProgress<BlockWriteProgress>(reports.Add), CancellationToken.None);
 
-        Assert.AreEqual(2, reports.Count);
+        Assert.HasCount(2, reports);
         Assert.AreEqual(new BlockWriteProgress(1, 2, null, null), reports[0]);
         Assert.AreEqual(new BlockWriteProgress(2, 10, null, null), reports[1]);
     }
@@ -270,7 +270,7 @@ public class MftBlockRowWriterTests
             new SynchronousProgress<BlockWriteProgress>(reports.Add), CancellationToken.None, []);
 
         Assert.AreEqual(0L, result.SkippedRecordCount);
-        Assert.AreEqual(1, reports.Count);
+        Assert.HasCount(1, reports);
         Assert.AreEqual(1L, reports[0].RecordsProcessed);
     }
 

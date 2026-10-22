@@ -152,7 +152,7 @@ public partial class JournalBrokerHostRealSeamsTests
 
         var frames = await HostChannelHarness.ReadToEndAsync(await harness.OpenScanChannelAsync('C', "section-C"));
 
-        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Error),
+        Assert.DoesNotContain(frame => frame.Kind == BrokerFrameKind.Error, frames,
             string.Join("; ", frames.Where(frame => frame.Kind == BrokerFrameKind.Error).Select(frame => frame.Message)));
         return frames;
     }

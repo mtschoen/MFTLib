@@ -61,7 +61,7 @@ public class SyntheticConversionTests
         var synthetic = Enum.GetValues<SyntheticJournalReason>().Select(reason => (uint)reason).Order().ToArray();
         var production = Enum.GetValues<UsnReason>().Select(reason => (uint)reason).Order().ToArray();
 
-        CollectionAssert.AreEqual(production, synthetic);
+        Assert.AreSequenceEqual(production, synthetic);
     }
 
     [TestMethod]
@@ -73,8 +73,8 @@ public class SyntheticConversionTests
             JournalEntries.CreateSynthetic(21, 101, "second.txt")
         }.ToProduction();
 
-        CollectionAssert.AreEqual(new[] { "first.txt", "second.txt" }, entries.Select(entry => entry.FileName).ToArray());
-        CollectionAssert.AreEqual(new[] { 100L, 101L }, entries.Select(entry => entry.Usn).ToArray());
+        Assert.AreSequenceEqual(new[] { "first.txt", "second.txt" }, entries.Select(entry => entry.FileName).ToArray());
+        Assert.AreSequenceEqual(new[] { 100L, 101L }, entries.Select(entry => entry.Usn).ToArray());
     }
 
     [TestMethod]

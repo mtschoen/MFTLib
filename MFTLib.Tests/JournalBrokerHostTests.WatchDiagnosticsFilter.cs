@@ -61,9 +61,8 @@ public partial class JournalBrokerHostTests
 
             // No JournalBatch for the filtered-empty first batch, but the CaughtUp marker still
             // fires because its cursor (7,150) passed the arm-time tip (7,140).
-            CollectionAssert.AreEqual(new[] { BrokerFrameKind.CaughtUp, BrokerFrameKind.JournalBatch },
-                frames.Select(frame => frame.Kind).ToArray());
-            Assert.AreEqual(1, frames[1].Entries.Length);
+            Assert.AreSequenceEqual(new[] { BrokerFrameKind.CaughtUp, BrokerFrameKind.JournalBatch }, frames.Select(frame => frame.Kind).ToArray());
+            Assert.HasCount(1, frames[1].Entries);
             Assert.AreEqual("real.txt", frames[1].Entries[0].FileName);
         }
         finally
@@ -99,9 +98,9 @@ public partial class JournalBrokerHostTests
             var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
             var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-            Assert.AreEqual(1, frames.Count);
+            Assert.HasCount(1, frames);
             Assert.AreEqual(BrokerFrameKind.JournalBatch, frames[0].Kind);
-            Assert.AreEqual(3, frames[0].Entries.Length);
+            Assert.HasCount(3, frames[0].Entries);
         }
         finally
         {
@@ -127,9 +126,9 @@ public partial class JournalBrokerHostTests
         var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.AreEqual(1, frames.Count);
+        Assert.HasCount(1, frames);
         Assert.AreEqual(BrokerFrameKind.JournalBatch, frames[0].Kind);
-        Assert.AreEqual(2, frames[0].Entries.Length);
+        Assert.HasCount(2, frames[0].Entries);
     }
 
     [TestMethod]
@@ -148,10 +147,10 @@ public partial class JournalBrokerHostTests
             var pipe = await harness.OpenScanChannelAsync('C');
             var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-            Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.JournalBatch));
+            Assert.DoesNotContain(frame => frame.Kind == BrokerFrameKind.JournalBatch, frames);
             var completed = frames.Single(frame => frame.Kind == BrokerFrameKind.ScanCompleted);
             Assert.AreEqual(default(UsnJournalCursor), completed.Cursor);
-            Assert.AreEqual(0, completed.Entries.Length);
+            Assert.IsEmpty(completed.Entries);
         }
         finally
         {

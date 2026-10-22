@@ -30,7 +30,7 @@ public class NtfsVolumeInformationAdminTests
 
         Assert.IsTrue(info.BytesPerFileRecordSegment is 1024 or 4096,
             $"Expected the standard 1024- or 4096-byte MFT record size, got {info.BytesPerFileRecordSegment}");
-        Assert.IsTrue(info.MftValidDataLength > 0, "A live system volume must have a non-empty MFT");
-        Assert.IsTrue(info.MftRecordCount > 0, "A live system volume must report at least one MFT record");
+        Assert.IsGreaterThan(0, info.MftValidDataLength, "A live system volume must have a non-empty MFT");
+        Assert.IsGreaterThan(0, info.MftRecordCount, "A live system volume must report at least one MFT record");
     }
 }

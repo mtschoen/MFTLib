@@ -29,8 +29,8 @@ public class WatchHostFailureTests
 
         var report = string.Join(Environment.NewLine, lines);
         Assert.AreEqual(1, result, report);
-        Assert.IsTrue(lines.Contains("Error: InvalidOperationException: drive listing failed"), report);
-        Assert.IsTrue(lines.Contains("  caused by IOException: device gone"), report);
+        Assert.Contains("Error: InvalidOperationException: drive listing failed", lines, report);
+        Assert.Contains("  caused by IOException: device gone", lines, report);
         Assert.IsFalse(report.Contains("   at ", StringComparison.Ordinal), report);
         Assert.AreEqual(SampleHost.PausePrompt, lines[^1], "The prompt follows the failure and is the last line before the key read.");
         Assert.AreEqual('y', (char)input.Read(), "Exactly one key was consumed.");
@@ -46,8 +46,8 @@ public class WatchHostFailureTests
         var result = host.RunAndPause(["rescan", "C", "--cache-directory", "cache"], ownsWindow: false);
 
         Assert.AreEqual(1, result);
-        Assert.IsTrue(lines.Contains("Error: InvalidOperationException: drive listing failed"), string.Join(Environment.NewLine, lines));
-        Assert.IsFalse(lines.Contains(SampleHost.PausePrompt));
+        Assert.Contains("Error: InvalidOperationException: drive listing failed", lines, string.Join(Environment.NewLine, lines));
+        Assert.DoesNotContain(SampleHost.PausePrompt, lines);
     }
 
     [TestMethod]
@@ -75,6 +75,6 @@ public class WatchHostFailureTests
         var host = FailingHost(lines, new FailingReader("An unattended run must not wait for a key."));
 
         Assert.AreEqual(1, host.RunAndPause(["rescan", "C", "--cache-directory", "cache"], ownsWindow: true));
-        Assert.IsFalse(lines.Contains(SampleHost.PausePrompt));
+        Assert.DoesNotContain(SampleHost.PausePrompt, lines);
     }
 }

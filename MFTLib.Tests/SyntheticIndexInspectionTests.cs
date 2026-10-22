@@ -20,7 +20,7 @@ public sealed class SyntheticIndexInspectionTests : IDisposable
 
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     [TestInitialize]
     public void Initialize()
@@ -48,7 +48,7 @@ public sealed class SyntheticIndexInspectionTests : IDisposable
 
         Assert.IsNotNull(header);
         Assert.AreEqual(ProducerKind.Enumeration, header.ProducerKind);
-        Assert.IsTrue(header.RowCount >= index.Drives.Single().Block!.LiveRowCount, "slots include every live row");
+        Assert.IsGreaterThanOrEqualTo(index.Drives.Single().Block!.LiveRowCount, header.RowCount, "slots include every live row");
         Assert.AreEqual(tag, header.CacheTag);
     }
 

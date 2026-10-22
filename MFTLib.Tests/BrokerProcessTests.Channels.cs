@@ -61,7 +61,7 @@ public partial class BrokerProcessTests
             broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, Armed),
                 CancellationToken.None).WaitAsync(HangGuard));
 
-        StringAssert.Contains(exception.Message, "refused after connecting");
+        Assert.Contains("refused after connecting", exception.Message);
         await using var stream = await hostEnd.Task.WaitAsync(HangGuard);
         var buffer = new byte[16];
         Assert.AreEqual(0, await stream.ReadAsync(buffer).AsTask().WaitAsync(HangGuard),
@@ -82,7 +82,7 @@ public partial class BrokerProcessTests
             broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, Armed),
                 CancellationToken.None).WaitAsync(HangGuard));
 
-        StringAssert.Contains(exception.Message, "no pipe for drive C");
+        Assert.Contains("no pipe for drive C", exception.Message);
         Assert.IsFalse(broker.Process.Ended.IsCompleted);
     }
 

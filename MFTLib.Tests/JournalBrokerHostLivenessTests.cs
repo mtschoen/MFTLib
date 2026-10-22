@@ -40,7 +40,7 @@ public partial class JournalBrokerHostLivenessTests
         }
 
         await harness.CloseControlAsync();
-        Assert.AreEqual(0, (await HostChannelHarness.ReadToEndAsync(pipe, includeHeartbeats: true)).Count,
+        Assert.IsEmpty(await HostChannelHarness.ReadToEndAsync(pipe, includeHeartbeats: true),
             "An idle watch writes 24 heartbeats in 120 seconds and nothing else: no Stalled.");
     }
 
@@ -71,10 +71,9 @@ public partial class JournalBrokerHostLivenessTests
         // Within the limit the processing pipe heartbeats; past it, Stalled is the last frame and the
         // host closes the pipe.
         Assert.AreEqual(BrokerFrameKind.Stalled, frames[^1].Kind, "Stalled is the last frame, then EOF.");
-        CollectionAssert.AreEqual(new[] { BrokerFrameKind.Cursor, BrokerFrameKind.Stalled },
-            frames.Where(frame => frame.Kind != BrokerFrameKind.Heartbeat).Select(frame => frame.Kind).ToArray());
-        StringAssert.Contains(frames[^1].Message, "wedged step");
-        StringAssert.Contains(frames[^1].Message, "30 seconds");
+        Assert.AreSequenceEqual(new[] { BrokerFrameKind.Cursor, BrokerFrameKind.Stalled }, frames.Where(frame => frame.Kind != BrokerFrameKind.Heartbeat).Select(frame => frame.Kind).ToArray());
+        Assert.Contains("wedged step", frames[^1].Message!);
+        Assert.Contains("30 seconds", frames[^1].Message!);
     }
 
     [TestMethod]
@@ -107,7 +106,7 @@ public partial class JournalBrokerHostLivenessTests
 
         var frames = await HostChannelHarness.ReadToEndAsync(pipe, includeHeartbeats: true);
 
-        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Stalled));
+        Assert.DoesNotContain(frame => frame.Kind == BrokerFrameKind.Stalled, frames);
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind, "The scan completes normally.");
     }
 

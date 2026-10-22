@@ -88,18 +88,18 @@ public class DirectExcludeDefenderTests
 
         Assert.AreEqual(AppliedExitCode, result);
         Assert.AreEqual(0, console.KeyReads, "The elevated child owns a new console and must not wait for a key.");
-        Assert.AreEqual(0, console.Dialogs.Count, "An already elevated run shows no heads-up.");
+        Assert.IsEmpty(console.Dialogs, "An already elevated run shows no heads-up.");
         var log = File.ReadAllText(host.OutputLogPath);
         if (OperatingSystem.IsWindows())
         {
             var launch = scripted.Launches.Single();
             Assert.IsFalse(launch.IsElevated);
             Assert.IsTrue(launch.Script.Contains($"'{SampleHost.DefenderProcessName}'", StringComparison.Ordinal), launch.Script);
-            StringAssert.Contains(log, $"Windows Defender process exclusion added: {SampleHost.DefenderProcessName}.");
+            Assert.Contains($"Windows Defender process exclusion added: {SampleHost.DefenderProcessName}.", log);
         }
         else
         {
-            Assert.AreEqual(0, scripted.Launches.Count);
+            Assert.IsEmpty(scripted.Launches);
         }
     }
 
@@ -129,11 +129,11 @@ public class DirectExcludeDefenderTests
         var result = host.Run([SampleHost.ExcludeDefenderVerb]);
 
         Assert.AreEqual(OperatingSystem.IsWindows() && relaunchResult ? 0 : 1, result);
-        Assert.AreEqual(0, scripted.Launches.Count);
+        Assert.IsEmpty(scripted.Launches);
         if (OperatingSystem.IsWindows())
         {
             var (arguments, timeout) = relaunches.Single();
-            CollectionAssert.AreEqual(new[] { SampleHost.ExcludeDefenderVerb }, arguments.ToArray());
+            Assert.AreSequenceEqual(new[] { SampleHost.ExcludeDefenderVerb }, arguments.ToArray());
             Assert.AreEqual(TimeSpan.FromSeconds(60), timeout);
         }
     }
@@ -151,11 +151,11 @@ public class DirectExcludeDefenderTests
         var result = host.Run([SampleHost.ExcludeDefenderVerb]);
 
         Assert.AreEqual(1, result);
-        Assert.AreEqual(1, console.Dialogs.Count);
+        Assert.HasCount(1, console.Dialogs);
         Assert.IsTrue(console.Dialogs[0].Contains("Defender", StringComparison.Ordinal), console.Dialogs[0]);
         Assert.IsFalse(console.Dialogs[0].Contains("Reading a volume's MFT", StringComparison.Ordinal), console.Dialogs[0]);
-        Assert.AreEqual(0, scripted.Launches.Count);
-        Assert.IsTrue(lines.Contains("Cancelled: no elevation was requested and no Windows Defender exclusion was added."));
+        Assert.IsEmpty(scripted.Launches);
+        Assert.Contains("Cancelled: no elevation was requested and no Windows Defender exclusion was added.", lines);
     }
 
     [TestMethod]
@@ -167,8 +167,8 @@ public class DirectExcludeDefenderTests
 
         Host(lines, elevated: false, canSelfElevate: false, console: console).Run([SampleHost.ExcludeDefenderVerb]);
 
-        Assert.AreEqual(1, console.Dialogs.Count);
-        Assert.AreEqual(OperatingSystem.IsWindows() ? 1 : 0, scripted.Launches.Count);
+        Assert.HasCount(1, console.Dialogs);
+        Assert.HasCount(OperatingSystem.IsWindows() ? 1 : 0, scripted.Launches);
     }
 
     [TestMethod]
@@ -187,8 +187,8 @@ public class DirectExcludeDefenderTests
         var result = Host(lines, elevated: false, canSelfElevate: true, console: console, isWindows: false, tryRunElevated: (_, _) => false).Run([SampleHost.ExcludeDefenderVerb]);
 
         Assert.AreEqual(1, result);
-        Assert.AreEqual(0, console.Dialogs.Count);
-        Assert.AreEqual(0, scripted.Launches.Count);
+        Assert.IsEmpty(console.Dialogs);
+        Assert.IsEmpty(scripted.Launches);
     }
 
     [TestMethod]
@@ -200,7 +200,7 @@ public class DirectExcludeDefenderTests
         var result = Host(lines, elevated: false, canSelfElevate: false).Run([SampleHost.ExcludeDefenderVerb]);
 
         Assert.AreEqual(1, result);
-        Assert.IsTrue(lines.Contains("The Windows Defender process exclusion was not added."));
+        Assert.Contains("The Windows Defender process exclusion was not added.", lines);
         if (OperatingSystem.IsWindows())
         {
             Assert.IsTrue(scripted.Launches.Single().IsElevated);
@@ -216,8 +216,8 @@ public class DirectExcludeDefenderTests
         var result = Host(lines, elevated: false, canSelfElevate: true, unattended: true).Run([SampleHost.ExcludeDefenderVerb]);
 
         Assert.AreEqual(1, result);
-        Assert.AreEqual(0, scripted.Launches.Count);
-        Assert.IsTrue(lines.Any(line => line.Contains("Running unattended (MFTLIB_SAMPLE_UNATTENDED=1)", StringComparison.Ordinal)));
+        Assert.IsEmpty(scripted.Launches);
+        Assert.Contains(line => line.Contains("Running unattended (MFTLIB_SAMPLE_UNATTENDED=1)", StringComparison.Ordinal), lines);
     }
 
     [TestMethod]
@@ -238,7 +238,7 @@ public class DirectExcludeDefenderTests
         var result = Host(lines, elevated: true, canSelfElevate: true).Run([SampleHost.ExcludeDefenderVerb, "D"]);
 
         Assert.AreEqual(2, result);
-        Assert.AreEqual(0, scripted.Launches.Count);
-        Assert.IsTrue(lines.Any(line => line.Contains("exclude-defender", StringComparison.Ordinal)));
+        Assert.IsEmpty(scripted.Launches);
+        Assert.Contains(line => line.Contains("exclude-defender", StringComparison.Ordinal), lines);
     }
 }

@@ -22,12 +22,12 @@ public partial class JournalBrokerHostTests
 
         Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
         Assert.AreEqual(ScanArmedCursor, frames[0].Cursor);
-        Assert.IsTrue(frames.Any(f => f.Kind == BrokerFrameKind.ScanProgress));
-        Assert.AreEqual(1, frames.Count(f => f.Kind == BrokerFrameKind.ScanReady));
+        Assert.Contains(f => f.Kind == BrokerFrameKind.ScanProgress, frames);
+        Assert.ContainsSingle(f => f.Kind == BrokerFrameKind.ScanReady, frames);
         var completed = frames.Single(f => f.Kind == BrokerFrameKind.ScanCompleted);
         Assert.AreEqual(101u, blockWriter.Block.Header.RowCount);
         Assert.AreEqual(default(UsnJournalCursor), completed.Cursor);
-        Assert.AreEqual(0, completed.Entries.Length, "Catch-up entries stay on the host.");
+        Assert.IsEmpty(completed.Entries, "Catch-up entries stay on the host.");
         Assert.AreEqual(1, InUseRowCount(blockWriter));
         Assert.AreEqual("mftlib-scan-C", blockWriter.LastSectionName);
         Assert.IsTrue(frames.All(f => f.Drive == null && f.RequestId == 0), "A drive pipe carries no drive and no request id.");
@@ -49,8 +49,8 @@ public partial class JournalBrokerHostTests
         var frames = await ScanFramesAsync(harness, 'C', "mftlib-streaming-C");
 
         Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
-        Assert.IsTrue(frames.Any(f => f.Kind == BrokerFrameKind.ScanProgress));
-        Assert.AreEqual(1, frames.Count(f => f.Kind == BrokerFrameKind.ScanReady));
+        Assert.Contains(f => f.Kind == BrokerFrameKind.ScanProgress, frames);
+        Assert.ContainsSingle(f => f.Kind == BrokerFrameKind.ScanReady, frames);
         Assert.AreEqual(3u, blockWriter.Block.Header.RowCount);
         Assert.AreEqual("batch1.txt", NamePool.ReadRowName(blockWriter.Block, 1).ToString());
         Assert.AreEqual("batch2.txt", NamePool.ReadRowName(blockWriter.Block, 2).ToString());
@@ -91,10 +91,10 @@ public partial class JournalBrokerHostTests
             });
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.AreEqual(1, frames.Count);
+        Assert.HasCount(1, frames);
         Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
-        StringAssert.Contains(frames[0].Message, "malformed");
-        StringAssert.Contains(frames[0].Message, "99");
+        Assert.Contains("malformed", frames[0].Message!);
+        Assert.Contains("99", frames[0].Message!);
         Assert.IsNull(blockWriter.LastSectionName, "No scan runs for a request the host could not decode.");
         await AssertControlStillAnswersAsync(harness);
     }
@@ -110,7 +110,7 @@ public partial class JournalBrokerHostTests
 
         var frames = await ScanFramesAsync(harness, 'D', "mftlib-scan-D");
 
-        Assert.AreEqual(1, frames.Count);
+        Assert.HasCount(1, frames);
         Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
         Assert.AreEqual(0u, frames[0].RequestId);
         Assert.AreEqual("journal wrapped", frames[0].Message);
@@ -137,12 +137,12 @@ public partial class JournalBrokerHostTests
         Assert.AreEqual(BrokerFrameKind.ScanReady, failingFrames[^2].Kind);
         Assert.AreEqual(BrokerFrameKind.Error, failingFrames[^1].Kind);
         Assert.AreEqual("journal wrapped", failingFrames[^1].Message);
-        Assert.IsFalse(failingFrames.Any(f => f.Kind == BrokerFrameKind.ScanCompleted),
+        Assert.DoesNotContain(f => f.Kind == BrokerFrameKind.ScanCompleted, failingFrames,
             "A failed catch-up ships no batch that would let the client treat the scan as caught up.");
 
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, healthyFrames[^1].Kind);
         Assert.AreEqual(new UsnJournalCursor(2UL, 200L), healthyFrames[0].Cursor);
-        Assert.IsFalse(healthyFrames.Any(f => f.Kind == BrokerFrameKind.Error));
+        Assert.DoesNotContain(f => f.Kind == BrokerFrameKind.Error, healthyFrames);
     }
 
     [TestMethod]

@@ -44,8 +44,8 @@ public class WatchHostModeTests
         var result = scanner.Run(["scan", "--verbose"]);
 
         Assert.AreEqual(2, result);
-        Assert.IsTrue(lines.Any(line => line.Contains("Unknown option --verbose")));
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Usage:", StringComparison.Ordinal)));
+        Assert.Contains(line => line.Contains("Unknown option --verbose"), lines);
+        Assert.Contains(line => line.StartsWith("Usage:", StringComparison.Ordinal), lines);
     }
 
     [TestMethod]
@@ -61,10 +61,10 @@ public class WatchHostModeTests
         var result = await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["C"]), session, ResolveDrive, CancellationToken.None);
 
         Assert.AreEqual(0, result);
-        Assert.IsTrue(lines.Contains("Index holds 2 rows; 0 records skipped"), string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(lines.Contains("Catch-up held; watch supported: True"));
-        Assert.IsTrue(lines.Any(line => line.StartsWith("  C: Finished: ", StringComparison.Ordinal)));
-        Assert.IsTrue(lines.Contains("=== Drive C: done ==="));
+        Assert.Contains("Index holds 2 rows; 0 records skipped", lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains("Catch-up held; watch supported: True", lines);
+        Assert.Contains(line => line.StartsWith("  C: Finished: ", StringComparison.Ordinal), lines);
+        Assert.Contains("=== Drive C: done ===", lines);
     }
 
     [TestMethod]
@@ -81,7 +81,7 @@ public class WatchHostModeTests
 
         Assert.AreEqual(0, result);
         Assert.AreEqual(2, lines.Count(line => line.StartsWith("Index holds ", StringComparison.Ordinal)));
-        Assert.IsTrue(lines.Contains("=== Drive D: done ==="));
+        Assert.Contains("=== Drive D: done ===", lines);
         Assert.IsTrue(handle.Ended.IsCompleted,
             "The scanner must dispose its session before returning.");
     }
@@ -101,8 +101,8 @@ public class WatchHostModeTests
 
         await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["C"]), session, ResolveDrive, CancellationToken.None);
 
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Index holds ", StringComparison.Ordinal)));
-        Assert.IsTrue(lines.Contains("Catch-up lost: CheckpointTrimmed"));
+        Assert.Contains(line => line.StartsWith("Index holds ", StringComparison.Ordinal), lines);
+        Assert.Contains("Catch-up lost: CheckpointTrimmed", lines);
     }
 
     [TestMethod]
@@ -119,9 +119,9 @@ public class WatchHostModeTests
 
         await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["C"]), session, ResolveDrive, CancellationToken.None);
 
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Error on drive C: ", StringComparison.Ordinal) &&
-                                        line.Contains("volume unreadable")), string.Join(Environment.NewLine, lines));
-        Assert.IsFalse(lines.Any(line => line.Contains("done")));
+        Assert.Contains(line => line.StartsWith("Error on drive C: ", StringComparison.Ordinal) &&
+                                        line.Contains("volume unreadable"), lines, string.Join(Environment.NewLine, lines));
+        Assert.DoesNotContain(line => line.Contains("done"), lines);
     }
 
     [TestMethod]
@@ -148,10 +148,10 @@ public class WatchHostModeTests
 
         await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["Q"]), session, _ => new IndexedDrive('Q', Path.Combine(_directory, "missing-root"), 4242), CancellationToken.None);
 
-        Assert.IsTrue(lines.Contains("Error on drive Q: The drive is offline; nothing was scanned."),
+        Assert.Contains("Error on drive Q: The drive is offline; nothing was scanned.", lines,
             string.Join(Environment.NewLine, lines));
-        Assert.IsFalse(lines.Any(line => line.StartsWith("Catch-up", StringComparison.Ordinal) ||
-                                        line.Contains("done")));
+        Assert.DoesNotContain(line => line.StartsWith("Catch-up", StringComparison.Ordinal) ||
+                                        line.Contains("done"), lines);
     }
 
     [TestMethod]
@@ -163,10 +163,10 @@ public class WatchHostModeTests
 
         await scanner.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Scan, ["C"]), session, ResolveDrive, CancellationToken.None);
 
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Error on drive C: ", StringComparison.Ordinal) &&
-                                        line.Contains("UAC prompt declined", StringComparison.Ordinal)),
+        Assert.Contains(line => line.StartsWith("Error on drive C: ", StringComparison.Ordinal) &&
+                                        line.Contains("UAC prompt declined", StringComparison.Ordinal), lines,
             string.Join(Environment.NewLine, lines));
-        Assert.IsFalse(lines.Any(line => line.Contains("done", StringComparison.Ordinal)));
+        Assert.DoesNotContain(line => line.Contains("done", StringComparison.Ordinal), lines);
     }
 
     [TestMethod]
@@ -186,8 +186,8 @@ public class WatchHostModeTests
         var result = scanner.Run(["scan", "C"]);
 
         Assert.AreEqual(1, result);
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Error creating broker session: ", StringComparison.Ordinal)));
-        Assert.IsFalse(lines.Any(line => line.StartsWith("Completed at", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
+        Assert.Contains(line => line.StartsWith("Error creating broker session: ", StringComparison.Ordinal), lines);
+        Assert.DoesNotContain(line => line.StartsWith("Completed at", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
     }
 
     static SampleHost ScannerOverBroker(List<string> lines, TimeProvider? timeProvider = null)

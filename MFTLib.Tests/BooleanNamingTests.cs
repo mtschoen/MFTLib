@@ -41,10 +41,10 @@ public class BooleanNamingTests
     {
         var types = SurfaceAssemblies.SelectMany(assembly => assembly.GetExportedTypes()).ToArray();
 
-        Assert.IsTrue(types.SelectMany(BooleanProperties).Any(property => HasStatePrefix(property.Name)),
+        Assert.Contains(property => HasStatePrefix(property.Name), types.SelectMany(BooleanProperties),
             "the assemblies must yield prefixed state booleans, or the reflection matched nothing");
         var offenders = BareStateFlags(types, InstructionOptionTypes);
-        Assert.AreEqual(0, offenders.Length,
+        Assert.IsEmpty(offenders,
             "public boolean properties must start with Is, Has or Can unless their type is an instruction option type: " +
             string.Join(", ", offenders));
     }
@@ -56,7 +56,7 @@ public class BooleanNamingTests
         {
             var optionType = SurfaceAssemblies.Select(assembly => assembly.GetType(optionTypeName)).FirstOrDefault(type => type is not null);
             Assert.IsNotNull(optionType, $"{optionTypeName} is not a type of the surface assemblies; remove it from the allowlist");
-            Assert.IsTrue(BooleanProperties(optionType).Any(property => !HasStatePrefix(property.Name)),
+            Assert.Contains(property => !HasStatePrefix(property.Name), BooleanProperties(optionType),
                 $"{optionTypeName} no longer holds a bare instruction boolean; remove it from the allowlist");
         }
     }
@@ -78,7 +78,7 @@ public class BooleanNamingTests
 
         var offenders = BareStateFlags(fixtures, new HashSet<string>(StringComparer.Ordinal));
 
-        CollectionAssert.AreEquivalent(new[]
+        Assert.AreSequenceEqual(new[]
         {
             "MFTLib.Tests.BooleanNamingTests+PlainFixture.Ready",
             "MFTLib.Tests.BooleanNamingTests+PlainFixture.Maybe",
@@ -91,7 +91,7 @@ public class BooleanNamingTests
             "MFTLib.Tests.BooleanNamingTests+GenericFixture`2.Both",
             "MFTLib.Tests.BooleanNamingTests+IndexerFixture.Item",
             "MFTLib.Tests.BooleanNamingTests+FlowFixture.Flowed"
-        }, offenders);
+        }, offenders, SequenceOrder.InAnyOrder);
     }
 
     static string[] BareStateFlags(IEnumerable<Type> types, HashSet<string> allowedTypeNames) =>

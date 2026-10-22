@@ -55,7 +55,7 @@ public class DefenderExclusionSequenceTests
         var result = DefenderExclusionSequence.Run(OneName, Relaunch, elevation, true, runner.Run);
 
         Assert.IsTrue(result);
-        Assert.AreEqual(0, elevation.Relaunches.Count);
+        Assert.IsEmpty(elevation.Relaunches);
         Assert.AreEqual(("Add-MpPreference -ExclusionProcess 'app.exe' -ErrorAction Stop", false), runner.Launches.Single());
     }
 
@@ -78,9 +78,9 @@ public class DefenderExclusionSequenceTests
         var result = DefenderExclusionSequence.Run(OneName, Relaunch, elevation, true, runner.Run);
 
         Assert.AreEqual(relaunchResult, result);
-        Assert.AreEqual(0, runner.Launches.Count);
+        Assert.IsEmpty(runner.Launches);
         var (arguments, timeout) = elevation.Relaunches.Single();
-        CollectionAssert.AreEqual(Relaunch, arguments.ToArray());
+        Assert.AreSequenceEqual(Relaunch, arguments.ToArray());
         Assert.AreEqual(DefenderExclusionSequence.ElevatedTimeout, timeout);
     }
 
@@ -95,7 +95,7 @@ public class DefenderExclusionSequenceTests
         var result = DefenderExclusionSequence.Run(OneName, Relaunch, elevation, true, runner.Run);
 
         Assert.AreEqual(powerShellResult, result);
-        Assert.AreEqual(0, elevation.Relaunches.Count);
+        Assert.IsEmpty(elevation.Relaunches);
         Assert.IsTrue(runner.Launches.Single().Elevated);
     }
 
@@ -106,15 +106,15 @@ public class DefenderExclusionSequenceTests
         var runner = new RecordingRunner();
 
         Assert.IsFalse(DefenderExclusionSequence.Run(OneName, Relaunch, elevation, false, runner.Run));
-        Assert.AreEqual(0, elevation.Relaunches.Count);
-        Assert.AreEqual(0, runner.Launches.Count);
+        Assert.IsEmpty(elevation.Relaunches);
+        Assert.IsEmpty(runner.Launches);
     }
 
     [TestMethod]
     public void ElevatedTimeout_ExceedsThePowerShellTimeoutWithSlackToStartAndExit()
     {
         Assert.AreEqual(TimeSpan.FromSeconds(30), DefenderExclusionSequence.PowerShellTimeout);
-        Assert.IsTrue(DefenderExclusionSequence.ElevatedTimeout > DefenderExclusionSequence.PowerShellTimeout);
+        Assert.IsGreaterThan(DefenderExclusionSequence.PowerShellTimeout, DefenderExclusionSequence.ElevatedTimeout);
         Assert.AreEqual(
             DefenderExclusionSequence.PowerShellTimeout + DefenderExclusionSequence.ElevatedChildSlack,
             DefenderExclusionSequence.ElevatedTimeout);
@@ -207,7 +207,7 @@ public class DefenderExclusionSequenceTests
 
         Assert.ThrowsExactly<ArgumentException>(
             () => DefenderExclusionSequence.Run(["a;b.exe"], Relaunch, elevation, false, runner.Run));
-        Assert.AreEqual(0, runner.Launches.Count);
+        Assert.IsEmpty(runner.Launches);
     }
 
     // --- the one PowerShell runner ---
@@ -259,10 +259,9 @@ public class DefenderExclusionSequenceTests
         Assert.AreEqual("runas", started.Verb);
         Assert.IsTrue(started.UseShellExecute);
         Assert.AreEqual(string.Empty, started.Arguments);
-        CollectionAssert.AreEqual(
-            new[] { "-NoProfile", "-NonInteractive", "-EncodedCommand" },
-            started.ArgumentList.Take(3).ToArray());
-        Assert.AreEqual(4, started.ArgumentList.Count);
+        Assert.AreSequenceEqual(
+            new[] { "-NoProfile", "-NonInteractive", "-EncodedCommand" }, started.ArgumentList.Take(3).ToArray());
+        Assert.HasCount(4, started.ArgumentList);
         Assert.AreEqual(script, Encoding.Unicode.GetString(Convert.FromBase64String(started.ArgumentList[3])));
     }
 
@@ -293,7 +292,7 @@ public class DefenderExclusionSequenceTests
         var sequence = SequenceOver(exitCode: exitCode, killProcess: killed.Add);
 
         Assert.AreEqual(expected, sequence.RunPowerShell("script", false));
-        Assert.AreEqual(0, killed.Count);
+        Assert.IsEmpty(killed);
     }
 
     [TestMethod]
@@ -339,8 +338,8 @@ public class DefenderExclusionSequenceTests
             killProcess: killed.Add);
 
         Assert.IsFalse(sequence.RunPowerShell("script", true));
-        CollectionAssert.AreEqual(new[] { DefenderExclusionSequence.PowerShellTimeout }, waited);
-        Assert.AreEqual(1, killed.Count);
+        Assert.AreSequenceEqual(new[] { DefenderExclusionSequence.PowerShellTimeout }, waited);
+        Assert.HasCount(1, killed);
     }
 
     [TestMethod]
@@ -394,7 +393,7 @@ public class DefenderExclusionSequenceTests
             OneName, Relaunch, new FakeElevation(elevated: true, canSelfElevate: false));
 
         Assert.AreEqual(OperatingSystem.IsWindows(), applied);
-        Assert.AreEqual(OperatingSystem.IsWindows() ? 1 : 0, scripted.Launches.Count);
+        Assert.HasCount(OperatingSystem.IsWindows() ? 1 : 0, scripted.Launches);
     }
 
     [TestMethod]

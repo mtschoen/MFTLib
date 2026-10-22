@@ -101,7 +101,7 @@ public class BrokerIndexWatchSourceFaultTests
 
         Assert.IsInstanceOfType<BrokerChannelLostException>(fault.Exception);
         Assert.AreEqual('T', ((BrokerChannelLostException)fault.Exception).Drive);
-        Assert.AreEqual(1, harness.Faults.Count);
+        Assert.HasCount(1, harness.Faults);
         Assert.AreEqual(WatchState.Faulted, harness.DriveFor('T').Watch.State);
         Assert.IsNotNull(harness.DriveFor('T').Watch.FailureMessage);
         Assert.AreEqual(WatchState.CaughtUp, harness.DriveFor('U').Watch.State);

@@ -66,15 +66,15 @@ public sealed class WatchVerbTests : IDisposable
         var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { CacheDirectory = cacheDir, Seconds = 30 }, session, FixtureDrive, CancellationToken.None);
 
         Assert.AreEqual(0, result);
-        Assert.IsTrue(lines.Any(line => line.StartsWith("  watch X: CaughtUp", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(lines.Any(line =>
+        Assert.Contains(line => line.StartsWith("  watch X: CaughtUp", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains(line =>
             line.StartsWith("  Created: ", StringComparison.Ordinal) &&
-            line.EndsWith(", drive X, entry new.txt", StringComparison.Ordinal)),
+            line.EndsWith(", drive X, entry new.txt", StringComparison.Ordinal), lines,
             string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Saw 1 changes in 30 seconds;", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(lines.Contains("Broker: connected."));
-        Assert.IsTrue(lines.Contains("  start X: Succeeded"), string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(lines.Contains("  stop X: Succeeded"), string.Join(Environment.NewLine, lines));
+        Assert.Contains(line => line.StartsWith("Saw 1 changes in 30 seconds;", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains("Broker: connected.", lines);
+        Assert.Contains("  start X: Succeeded", lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains("  stop X: Succeeded", lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -91,10 +91,10 @@ public sealed class WatchVerbTests : IDisposable
 
         Assert.AreEqual(0, result);
         Assert.AreEqual(2, lines.Count(line => line.StartsWith("Index holds ", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(lines.Contains("=== Drive X: done ==="));
+        Assert.Contains("=== Drive X: done ===", lines);
         Assert.AreEqual(2, lines.Count(line => line.StartsWith("Cache X: block ", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Watch: NotStarted v", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(lines.Any(line => line.Contains("recovery stopped False", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
+        Assert.Contains(line => line.StartsWith("Watch: NotStarted v", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains(line => line.Contains("recovery stopped False", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -113,7 +113,7 @@ public sealed class WatchVerbTests : IDisposable
         var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Journal, ["X"]) { CacheDirectory = cacheDir, MaximumSize = 9000, AllocationDelta = 4096 }, session, FixtureDrive, CancellationToken.None);
 
         Assert.AreEqual(0, result);
-        Assert.IsTrue(lines.Contains("Journal X: maximum size 9000, allocation delta 4096"), string.Join(Environment.NewLine, lines));
+        Assert.Contains("Journal X: maximum size 9000, allocation delta 4096", lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -133,11 +133,11 @@ public sealed class WatchVerbTests : IDisposable
         Assert.AreEqual(0, HostOver(clearing.Add).Run(["cache", "X", "--cache-directory", cacheDirectory, "--clear"]));
         Assert.AreEqual(0, HostOver(afterwards.Add).Run(["cache", "--cache-directory", cacheDirectory]));
 
-        Assert.AreEqual(1, listing.Count(line => line.StartsWith("X: ", StringComparison.Ordinal)), string.Join(Environment.NewLine, listing));
-        Assert.IsTrue(listing.Any(line => line.StartsWith("X: ", StringComparison.Ordinal) && line.Contains(", policy policy-", StringComparison.Ordinal)), "The block lives in its policy folder and the listing names it.");
-        Assert.AreEqual(1, clearing.Count(line => line.Trim() == "X: Deleted"),
-            string.Join(Environment.NewLine, clearing));
-        Assert.IsFalse(clearing.Any(line => line.StartsWith("Deleted block file '", StringComparison.Ordinal)),
+        Assert.ContainsSingle(line => line.StartsWith("X: ", StringComparison.Ordinal), listing, string.Join(Environment.NewLine, listing));
+        Assert.Contains(line => line.StartsWith("X: ", StringComparison.Ordinal) && line.Contains(", policy policy-", StringComparison.Ordinal), listing, "The block lives in its policy folder and the listing names it.");
+        Assert.ContainsSingle(line => line.Trim() == "X: Deleted",
+clearing, string.Join(Environment.NewLine, clearing));
+        Assert.DoesNotContain(line => line.StartsWith("Deleted block file '", StringComparison.Ordinal), clearing,
             "Cache clearing reports deletion through results only: " + string.Join(Environment.NewLine, clearing));
         Assert.AreEqual(0, afterwards.Count(line => line.StartsWith("X: ", StringComparison.Ordinal)));
     }
@@ -166,7 +166,7 @@ public sealed class WatchVerbTests : IDisposable
         var listing = new List<string>();
         Assert.AreEqual(0, HostOver(listing.Add).Run(["cache", "--cache-directory", root]));
         Assert.AreEqual(4, listing.Count(line => line.Contains(" bytes, ", StringComparison.Ordinal)));
-        Assert.IsFalse(listing.Any(line => line.StartsWith("  ", StringComparison.Ordinal)));
+        Assert.DoesNotContain(line => line.StartsWith("  ", StringComparison.Ordinal), listing);
         Assert.IsTrue(available.Append(unavailable).All(File.Exists));
 
         CacheDirectory.Hooks._beforeDelete = path =>
@@ -182,14 +182,14 @@ public sealed class WatchVerbTests : IDisposable
         var result = HostOver(clearing.Add).Run(["cache", "--clear", "--cache-directory", root]);
 
         var outcomes = clearing.Where(line => line.StartsWith("  ", StringComparison.Ordinal)).ToArray();
-        Assert.AreEqual(4, outcomes.Length, string.Join(Environment.NewLine, clearing));
+        Assert.HasCount(4, outcomes, string.Join(Environment.NewLine, clearing));
         foreach (var letter in new[] { 'U', 'V', 'W' })
         {
-            Assert.AreEqual(1, outcomes.Count(line => line == $"  {letter}: Deleted"));
+            Assert.ContainsSingle(line => line == $"  {letter}: Deleted", outcomes);
         }
-        Assert.AreEqual(1, outcomes.Count(line => unavailableOutcome == CachedBlockDeletionOutcome.Failed
+        Assert.ContainsSingle(line => unavailableOutcome == CachedBlockDeletionOutcome.Failed
             ? line.StartsWith("  T: Failed (", StringComparison.Ordinal) && line.EndsWith(')')
-            : line == "  T: InUse"));
+            : line == "  T: InUse", outcomes);
         Assert.IsTrue(available.All(path => !File.Exists(path)));
         Assert.IsTrue(unavailableOutcome == CachedBlockDeletionOutcome.InUse
             ? File.Exists(unavailable)
@@ -207,7 +207,7 @@ public sealed class WatchVerbTests : IDisposable
 
         Assert.AreEqual(0, HostOver(lines.Add).Run(["cache", "--clear", "--cache-directory", root]));
 
-        Assert.AreEqual(0, lines.Count);
+        Assert.IsEmpty(lines);
     }
 
     static string CreateCacheBlock(string directory, char letter)
@@ -236,7 +236,7 @@ public sealed class WatchVerbTests : IDisposable
 
         Assert.AreEqual(0, await HostOver(lines.Add).RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, replacementSession, FixtureDrive, CancellationToken.None));
 
-        Assert.IsTrue(lines.Contains("Journal growth target unavailable: CheckpointNotTrimmed"), string.Join(Environment.NewLine, lines));
+        Assert.Contains("Journal growth target unavailable: CheckpointNotTrimmed", lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -253,8 +253,8 @@ public sealed class WatchVerbTests : IDisposable
         var result = host.Run(["elevation-status"]);
 
         Assert.AreEqual(0, result);
-        Assert.IsTrue(lines.Contains($"Process: {Environment.ProcessPath}"));
-        Assert.IsTrue(lines.Contains("Elevated: False; can self-elevate: True; unattended: False"), string.Join(Environment.NewLine, lines));
+        Assert.Contains($"Process: {Environment.ProcessPath}", lines);
+        Assert.Contains("Elevated: False; can self-elevate: True; unattended: False", lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -274,8 +274,8 @@ public sealed class WatchVerbTests : IDisposable
         Assert.AreEqual(0, host.Run(["cache", "--clear", "--cache-directory", root]));
 
         Assert.IsTrue(Directory.Exists(root));
-        Assert.IsTrue(lines.Any(line => line.StartsWith("X: ", StringComparison.Ordinal) && line.Contains(root, StringComparison.Ordinal)));
-        Assert.IsTrue(lines.Any(line => line.Trim() == "X: Deleted"));
+        Assert.Contains(line => line.StartsWith("X: ", StringComparison.Ordinal) && line.Contains(root, StringComparison.Ordinal), lines);
+        Assert.Contains(line => line.Trim() == "X: Deleted", lines);
 
         var hostSource = string.Join("\n", new[]
         {

@@ -31,7 +31,7 @@ public class ElevatedEntryPointTests
         Assert.IsTrue(handled);
         Assert.AreEqual(1, runner.BrokerCalls);
         Assert.AreEqual("mftlib-pipe-123", runner.BrokerPipe);
-        Assert.AreEqual(0, runner.ExitCodes.Count);
+        Assert.IsEmpty(runner.ExitCodes);
     }
 
     [TestMethod]
@@ -94,7 +94,7 @@ public class ElevatedEntryPointTests
 
             Assert.IsTrue(handled);
             Assert.AreEqual(1, runner.BrokerCalls);
-            Assert.AreEqual(0, runner.ExitCodes.Count);
+            Assert.IsEmpty(runner.ExitCodes);
             var brokerPath = Path.Combine(clientDirectory, "broker-diagnostics.broker.log");
             Assert.AreEqual(brokerPath, BrokerDiagnostics.LogPath,
                 "The child must configure the supplied directory before any diagnostics write.");
@@ -102,10 +102,10 @@ public class ElevatedEntryPointTests
             BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "diag-enabled-check");
             await BrokerDiagnostics.FlushAsync(CancellationToken.None);
             var artifact = await File.ReadAllTextAsync(brokerPath);
-            StringAssert.Contains(artifact, "[broker:");
+            Assert.Contains("[broker:", artifact);
             Assert.IsFalse(artifact.Contains("client-enabled-check", StringComparison.Ordinal));
-            StringAssert.Contains(await File.ReadAllTextAsync(suppliedPath), "client-enabled-check");
-            StringAssert.Contains(artifact, "diag-enabled-check");
+            Assert.Contains("client-enabled-check", await File.ReadAllTextAsync(suppliedPath));
+            Assert.Contains("diag-enabled-check", artifact);
         }
         finally
         {
@@ -138,7 +138,7 @@ public class ElevatedEntryPointTests
         {
             Assert.IsTrue(ElevatedEntryPoint.RunBrokerIfRequested(arguments, runner, runner.RecordExit));
             Assert.AreEqual(0, runner.TotalCalls);
-            CollectionAssert.AreEqual(new[] { 1 }, runner.ExitCodes);
+            Assert.AreSequenceEqual(new[] { 1 }, runner.ExitCodes);
         }
         finally
         {

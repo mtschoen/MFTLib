@@ -34,7 +34,7 @@ public partial class BrokerProcessTests
         Assert.AreNotEqual(advanced.NextUsn, block.Header.UsnNextUsn);
         Assert.IsNull(result.CatchUpLoss);
         Assert.AreSame(sectionBlock, block);
-        Assert.IsTrue(block.Header.RowCount > 0);
+        Assert.IsGreaterThan(0u, block.Header.RowCount);
         Assert.AreEqual(Armed.JournalIdentifier, block.Header.UsnJournalIdentifier);
         Assert.AreEqual(target.CacheTag, block.Header.CacheTag);
         Assert.AreEqual(target.Path, block.Path);
@@ -65,7 +65,7 @@ public partial class BrokerProcessTests
             .WaitAsync(HangGuard);
         result.Block.Block.Dispose();
 
-        Assert.IsTrue(reports.Count > 0);
+        Assert.IsNotEmpty(reports);
         Assert.AreEqual(BlockScanPhase.Transferring, reports[^1].Phase);
     }
 
@@ -88,7 +88,7 @@ public partial class BrokerProcessTests
         }
         else
         {
-            CollectionAssert.AreEqual(names, broker.Writer.LastRetainedFileNames!.ToArray());
+            Assert.AreSequenceEqual(names, broker.Writer.LastRetainedFileNames!.ToArray());
         }
 
         Assert.AreEqual(new DriveKey('C'), broker.Handle.Scans.Single().Drive);
@@ -116,7 +116,7 @@ public partial class BrokerProcessTests
         Assert.AreEqual(Armed.NextUsn, loss.CheckpointUsn);
         Assert.AreEqual(5000L, loss.FirstUsn);
         Assert.AreEqual(12288L, loss.SizeThatWouldHaveRetained);
-        Assert.IsTrue(block.Header.RowCount > 0, "The section stays alive for the caller.");
+        Assert.IsGreaterThan(0u, block.Header.RowCount, "The section stays alive for the caller.");
         await (await hostEnd.Task.WaitAsync(HangGuard)).Disposed.WaitAsync(HangGuard);
     }
 
@@ -144,7 +144,7 @@ public partial class BrokerProcessTests
                 writer => BrokerProtocol.WriteCatchUpLost(writer, TrimmedLoss())));
 
         Assert.AreEqual('C', lost.Drive);
-        StringAssert.Contains(lost.Message, "CatchUpLost");
+        Assert.Contains("CatchUpLost", lost.Message);
     }
 
     [TestMethod]
@@ -158,7 +158,7 @@ public partial class BrokerProcessTests
             pipe => HostChannelHarness.WriteFrameAsync(pipe, BrokerProtocol.WriteScanCompleted));
 
         Assert.AreEqual('C', lost.Drive);
-        StringAssert.Contains(lost.Message, "ScanCompleted");
+        Assert.Contains("ScanCompleted", lost.Message);
     }
 
     [TestMethod]
@@ -171,8 +171,8 @@ public partial class BrokerProcessTests
                 writer => BrokerProtocol.WriteJournalBatch(writer, Armed, [])));
 
         Assert.AreEqual('C', lost.Drive);
-        StringAssert.Contains(lost.Message, "JournalBatch");
-        StringAssert.Contains(lost.Message, "ScanCompleted or CatchUpLost");
+        Assert.Contains("JournalBatch", lost.Message);
+        Assert.Contains("ScanCompleted or CatchUpLost", lost.Message);
     }
 
     // After its terminal frame the host only closes the channel. A frame the host starts and never
@@ -187,7 +187,7 @@ public partial class BrokerProcessTests
             pipe => WriteRawAsync(pipe, [10, 0, 0, 0, (byte)BrokerFrameKind.Heartbeat]));
 
         Assert.AreEqual('C', lost.Drive);
-        StringAssert.Contains(lost.Message, "Truncated");
+        Assert.Contains("Truncated", lost.Message);
     }
 
     [TestMethod]
@@ -200,7 +200,7 @@ public partial class BrokerProcessTests
             pipe => WriteRawAsync(pipe, [0, 0, 0, 0]));
 
         Assert.AreEqual('C', lost.Drive);
-        StringAssert.Contains(lost.Message, "too short");
+        Assert.Contains("too short", lost.Message);
     }
 
     [TestMethod]
@@ -227,7 +227,7 @@ public partial class BrokerProcessTests
         Assert.AreEqual(5000L, produced.CatchUpLoss.FirstUsn);
         Assert.AreEqual(Armed.JournalIdentifier, block.Header.UsnJournalIdentifier);
         Assert.AreEqual(Armed.NextUsn, block.Header.UsnNextUsn);
-        Assert.IsTrue(block.Header.RowCount > 0);
+        Assert.IsGreaterThan(0u, block.Header.RowCount);
     }
 
     [TestMethod]
@@ -276,7 +276,7 @@ public partial class BrokerProcessTests
         using var block = other.Block.Block;
 
         Assert.AreEqual(new DriveKey('D'), other.Drive);
-        Assert.IsTrue(block.Header.RowCount > 0);
+        Assert.IsGreaterThan(0u, block.Header.RowCount);
         Assert.IsFalse(broker.Process.Ended.IsCompleted);
     }
 
@@ -306,10 +306,10 @@ public partial class BrokerProcessTests
         foreach (var result in results)
         {
             using var block = result.Block.Block;
-            Assert.IsTrue(block.Header.RowCount > 0);
+            Assert.IsGreaterThan(0u, block.Header.RowCount);
         }
 
-        CollectionAssert.AreEqual(new DriveKey[] { 'C', 'D' }, results.Select(result => result.Drive).ToArray());
+        Assert.AreSequenceEqual(new DriveKey[] { 'C', 'D' }, results.Select(result => result.Drive).ToArray());
     }
 
     [TestMethod]
@@ -333,7 +333,7 @@ public partial class BrokerProcessTests
         produced.Block.Dispose();
 
         Assert.IsNull(produced.CatchUpLoss);
-        Assert.IsTrue(indexReports.Count > 0);
+        Assert.IsNotEmpty(indexReports);
         Assert.IsTrue(indexReports.All(report => report.Drive == 'C'));
         Assert.AreEqual(IndexScanPhase.Transferring, indexReports[^1].Phase);
         Assert.IsTrue(indexReports[^1].ExpectedRowCount > 0);
@@ -380,7 +380,7 @@ public partial class BrokerProcessTests
         var lost = await ScanScriptedAsync(pipe => WriteRawAsync(pipe, rawBytes));
 
         Assert.AreEqual('C', lost.Drive);
-        StringAssert.Contains(lost.Message, "Truncated");
+        Assert.Contains("Truncated", lost.Message);
     }
 
     [TestMethod]
@@ -424,7 +424,7 @@ public partial class BrokerProcessTests
         }, CancellationToken.None).WaitAsync(HangGuard);
         produced.Block.Dispose();
 
-        Assert.AreEqual(1, connections.Count);
+        Assert.HasCount(1, connections);
     }
 
     // Runs one scan against a scripted drive pipe that writes the given frames and closes.

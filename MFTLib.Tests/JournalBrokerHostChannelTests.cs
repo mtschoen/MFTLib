@@ -212,7 +212,7 @@ public partial class JournalBrokerHostChannelTests
 
         Assert.AreEqual(BrokerFrameKind.Error, reply.Kind);
         Assert.AreEqual(77u, reply.RequestId);
-        StringAssert.Contains(reply.Message, "pipe not found");
+        Assert.Contains("pipe not found", reply.Message!);
     }
 
     [TestMethod]
@@ -229,9 +229,9 @@ public partial class JournalBrokerHostChannelTests
         await HostChannelHarness.WriteFrameAsync(pipe, BrokerProtocol.WriteCaughtUp);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.AreEqual(1, frames.Count);
+        Assert.HasCount(1, frames);
         Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
-        StringAssert.Contains(frames[0].Message, "CaughtUp");
+        Assert.Contains("CaughtUp", frames[0].Message!);
     }
 
     [TestMethod]
@@ -270,9 +270,9 @@ public partial class JournalBrokerHostChannelTests
         });
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.AreEqual(1, frames.Count);
+        Assert.HasCount(1, frames);
         Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
-        StringAssert.Contains(frames[0].Message, "malformed");
+        Assert.Contains("malformed", frames[0].Message!);
         await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 8, 'C'));
         Assert.AreEqual(BrokerFrameKind.VolumeInfo, (await harness.ReadControlAsync()).Kind,
             "The session keeps serving after one channel's malformed request.");

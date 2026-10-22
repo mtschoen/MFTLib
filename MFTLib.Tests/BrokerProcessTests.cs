@@ -187,7 +187,7 @@ public partial class BrokerProcessTests
             await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
             Assert.IsTrue(control.Gate.Entered.IsCompleted);
             await broker.Process.Ended.WaitAsync(HangGuard);
-            StringAssert.Contains(await broker.Process.Ended.WaitAsync(HangGuard), "could not be written");
+            Assert.Contains("could not be written", await broker.Process.Ended.WaitAsync(HangGuard));
         }
         finally
         {
@@ -232,7 +232,7 @@ public partial class BrokerProcessTests
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             BrokerProcess.LaunchAsync(_ => false, CancellationToken.None));
 
-        StringAssert.Contains(exception.Message, "declined");
+        Assert.Contains("declined", exception.Message);
     }
 
 

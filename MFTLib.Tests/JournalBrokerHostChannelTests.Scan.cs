@@ -36,7 +36,7 @@ public partial class JournalBrokerHostChannelTests
         Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
         Assert.AreEqual(Armed, frames[0].Cursor);
         Assert.IsTrue(frames.Skip(1).Take(frames.Count - 3).All(frame => frame.Kind == BrokerFrameKind.ScanProgress));
-        Assert.IsTrue(frames.Count > 3, "At least the final progress sample precedes ScanReady.");
+        Assert.IsGreaterThan(3, frames.Count, "At least the final progress sample precedes ScanReady.");
         var finalProgress = frames[^3].Progress!.Value;
         Assert.AreEqual(BrokerScanPhase.Transferring, finalProgress.Phase);
         Assert.AreEqual(BrokerFrameKind.ScanReady, frames[^2].Kind);
@@ -45,7 +45,7 @@ public partial class JournalBrokerHostChannelTests
         Assert.AreEqual(0L, frames[^2].SkippedRecordCount);
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
         Assert.AreEqual(default(UsnJournalCursor), frames[^1].Cursor);
-        Assert.AreEqual(0, frames[^1].Entries.Length, "Catch-up entries stay on the host.");
+        Assert.IsEmpty(frames[^1].Entries, "Catch-up entries stay on the host.");
         Assert.AreEqual(Armed, caughtUpFrom);
         Assert.AreEqual("section-C", sectionWriter.LastSectionName);
         Assert.IsTrue(frames.All(frame => frame.Drive == null));
@@ -115,8 +115,8 @@ public partial class JournalBrokerHostChannelTests
         var frames = await ScanWithFailedCatchUpAsync(new OperationCanceledException());
 
         Assert.AreEqual(BrokerFrameKind.ScanReady, frames[^1].Kind);
-        Assert.IsFalse(frames.Any(frame => frame.Kind is BrokerFrameKind.CatchUpLost or BrokerFrameKind.Error
-            or BrokerFrameKind.ScanCompleted));
+        Assert.DoesNotContain(frame => frame.Kind is BrokerFrameKind.CatchUpLost or BrokerFrameKind.Error
+            or BrokerFrameKind.ScanCompleted, frames);
     }
 
     [TestMethod]
@@ -159,7 +159,7 @@ public partial class JournalBrokerHostChannelTests
         // The source broke its contract: a read from the tip returned entries again. Shipping them
         // would duplicate the first read's entries, so the scan fails loudly instead.
         AssertScanReadyThen(frames, BrokerFrameKind.Error);
-        StringAssert.Contains(frames[^1].Message, "without advancing");
+        Assert.Contains("without advancing", frames[^1].Message!);
     }
 
     static async Task<List<BrokerFrame>> ScanWithFailedCatchUpAsync(Exception failure, Action? onCursorQuery = null)
@@ -184,6 +184,6 @@ public partial class JournalBrokerHostChannelTests
         Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
         Assert.AreEqual(BrokerFrameKind.ScanReady, frames[^2].Kind);
         Assert.AreEqual(terminal, frames[^1].Kind);
-        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.ScanCompleted));
+        Assert.DoesNotContain(frame => frame.Kind == BrokerFrameKind.ScanCompleted, frames);
     }
 }

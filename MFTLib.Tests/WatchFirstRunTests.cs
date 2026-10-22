@@ -50,9 +50,9 @@ public sealed class WatchFirstRunTests : IDisposable
         var result = host.TryChooseDrives(ref parsed, available);
 
         Assert.IsTrue(result);
-        CollectionAssert.Contains(lines, @"Skipping drive F:\ (Fixed, ready, format exFAT: not NTFS (exFAT))");
-        Assert.IsTrue(lines.Contains("No drive was named, so this run covers every ready NTFS fixed drive: C, G, H. Name drives to choose others."), string.Join(Environment.NewLine, lines));
-        CollectionAssert.AreEqual(new[] { "C", "G", "H" }, parsed.Drives.ToArray());
+        Assert.Contains(@"Skipping drive F:\ (Fixed, ready, format exFAT: not NTFS (exFAT))", lines);
+        Assert.Contains("No drive was named, so this run covers every ready NTFS fixed drive: C, G, H. Name drives to choose others.", lines, string.Join(Environment.NewLine, lines));
+        Assert.AreSequenceEqual(new[] { "C", "G", "H" }, parsed.Drives.ToArray());
     }
 
     [TestMethod]
@@ -65,8 +65,8 @@ public sealed class WatchFirstRunTests : IDisposable
         var result = host.TryChooseDrives(ref parsed, []);
 
         Assert.IsTrue(result);
-        Assert.IsFalse(lines.Any(line => line.StartsWith("No drive was named", StringComparison.Ordinal)));
-        CollectionAssert.AreEqual(new[] { "Z" }, parsed.Drives.ToArray());
+        Assert.DoesNotContain(line => line.StartsWith("No drive was named", StringComparison.Ordinal), lines);
+        Assert.AreSequenceEqual(new[] { "Z" }, parsed.Drives.ToArray());
     }
 
     [TestMethod]
@@ -79,7 +79,7 @@ public sealed class WatchFirstRunTests : IDisposable
         var result = host.TryChooseDrives(ref parsed, [Facts(@"D:\", "optical")]);
 
         Assert.IsFalse(result);
-        Assert.IsTrue(lines.Any(line => line.StartsWith("No drive was named and no ready NTFS fixed drive", StringComparison.Ordinal)));
+        Assert.Contains(line => line.StartsWith("No drive was named and no ready NTFS fixed drive", StringComparison.Ordinal), lines);
     }
 
     [TestMethod]
@@ -123,9 +123,9 @@ public sealed class WatchFirstRunTests : IDisposable
         Assert.AreEqual(0, result);
         var received = probe.Received.Single();
         Assert.AreEqual(WatchVerb.Watch, received.Verb);
-        CollectionAssert.AreEqual(new[] { "C", "G", "H" }, received.Drives.ToArray());
+        Assert.AreSequenceEqual(new[] { "C", "G", "H" }, received.Drives.ToArray());
         Assert.IsFalse(string.IsNullOrEmpty(received.CacheDirectory), "A cached verb reaches execution with its cache directory resolved.");
-        Assert.IsTrue(lines.Contains("No drive was named, so this run covers every ready NTFS fixed drive: C, G, H. Name drives to choose others."), string.Join(Environment.NewLine, lines));
+        Assert.Contains("No drive was named, so this run covers every ready NTFS fixed drive: C, G, H. Name drives to choose others.", lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -136,7 +136,7 @@ public sealed class WatchFirstRunTests : IDisposable
         var result = HostOver(new List<string>()).Run(["scan", "Z"], MachineThatMustNotBeListed(), probe.Execute);
 
         Assert.AreEqual(0, result);
-        CollectionAssert.AreEqual(new[] { "Z" }, probe.Received.Single().Drives.ToArray());
+        Assert.AreSequenceEqual(new[] { "Z" }, probe.Received.Single().Drives.ToArray());
     }
 
     [TestMethod]
@@ -153,8 +153,8 @@ public sealed class WatchFirstRunTests : IDisposable
         var result = host.Run([], [Facts(@"D:\", "optical")], probe.Execute);
 
         Assert.AreEqual(1, result);
-        Assert.AreEqual(0, probe.Received.Count);
-        Assert.IsTrue(lines.Any(line => line.StartsWith("No drive was named and no ready NTFS fixed drive", StringComparison.Ordinal)));
+        Assert.IsEmpty(probe.Received);
+        Assert.Contains(line => line.StartsWith("No drive was named and no ready NTFS fixed drive", StringComparison.Ordinal), lines);
     }
 
     [TestMethod]
@@ -166,7 +166,7 @@ public sealed class WatchFirstRunTests : IDisposable
         Assert.AreEqual(0, host.Run(["elevation-status"], MachineThatMustNotBeListed(), probe.Execute));
         Assert.AreEqual(0, host.Run(["cache", "--cache-directory", Path.Combine(TemporaryDirectoryPath, "none")], MachineThatMustNotBeListed(), probe.Execute));
 
-        CollectionAssert.AreEqual(new[] { WatchVerb.ElevationStatus, WatchVerb.Cache }, probe.Received.Select(request => request.Verb).ToArray());
+        Assert.AreSequenceEqual(new[] { WatchVerb.ElevationStatus, WatchVerb.Cache }, probe.Received.Select(request => request.Verb).ToArray());
     }
 
     [TestMethod]
@@ -182,7 +182,7 @@ public sealed class WatchFirstRunTests : IDisposable
         var result = host.Run(["scan", "C"], MachineThatMustNotBeListed(), probe.Execute);
 
         Assert.AreEqual(1, result);
-        Assert.AreEqual(0, probe.Received.Count, "An unattended run never launches the broker.");
+        Assert.IsEmpty(probe.Received, "An unattended run never launches the broker.");
     }
 
     [TestMethod]
@@ -218,9 +218,9 @@ public sealed class WatchFirstRunTests : IDisposable
         var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, session, FixtureDrive, CancellationToken.None);
 
         Assert.AreEqual(0, result);
-        Assert.IsTrue(lines.Contains("Watching X. Press any key to stop."), string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Saw 1 changes until a key was pressed;", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(lines.Contains("  stop X: Succeeded"), string.Join(Environment.NewLine, lines));
+        Assert.Contains("Watching X. Press any key to stop.", lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains(line => line.StartsWith("Saw 1 changes until a key was pressed;", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains("  stop X: Succeeded", lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -265,7 +265,7 @@ public sealed class WatchFirstRunTests : IDisposable
 
         Assert.AreEqual(0, result, string.Join(Environment.NewLine, lines));
         Assert.AreEqual(TimeSpan.FromSeconds(WatchArguments.DefaultSeconds), clock.TotalAdvanced);
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Saw 0 changes in 10 seconds;", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
+        Assert.Contains(line => line.StartsWith("Saw 0 changes in 10 seconds;", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -300,9 +300,9 @@ public sealed class WatchFirstRunTests : IDisposable
             CancellationToken.None);
 
         Assert.AreEqual(1, result, string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(lines.Contains("Error on drive Q: The drive is offline; nothing was scanned."), string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Saw 0 changes in 10 seconds;", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
-        Assert.IsFalse(lines.Any(line => line.StartsWith("Completed at", StringComparison.Ordinal)));
+        Assert.Contains("Error on drive Q: The drive is offline; nothing was scanned.", lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains(line => line.StartsWith("Saw 0 changes in 10 seconds;", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
+        Assert.DoesNotContain(line => line.StartsWith("Completed at", StringComparison.Ordinal), lines);
     }
 
     [TestMethod]
@@ -321,7 +321,7 @@ public sealed class WatchFirstRunTests : IDisposable
             CancellationToken.None);
 
         Assert.AreEqual(1, result);
-        Assert.IsFalse(lines.Any(line => line.StartsWith("Watching", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
+        Assert.DoesNotContain(line => line.StartsWith("Watching", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]

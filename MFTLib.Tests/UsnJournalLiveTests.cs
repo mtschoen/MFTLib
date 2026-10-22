@@ -23,8 +23,8 @@ public class UsnJournalLiveTests
         using var volume = MftVolume.Open('C');
         var cursor = volume.Journal.QueryUsnJournalCursor();
 
-        Assert.IsTrue(cursor.JournalIdentifier > 0, "JournalIdentifier should be nonzero");
-        Assert.IsTrue(cursor.NextUsn > 0, "NextUsn should be positive");
+        Assert.IsGreaterThan(0UL, cursor.JournalIdentifier, "JournalIdentifier should be nonzero");
+        Assert.IsGreaterThan(0L, cursor.NextUsn, "NextUsn should be positive");
     }
 
     [TestMethod]
@@ -52,8 +52,8 @@ public class UsnJournalLiveTests
             // Read journal since our cursor
             var (entries, updatedCursor) = volume.Journal.ReadUsnJournalBounded(cursor, 0);
 
-            Assert.IsTrue(entries.Length > 0, "Should have at least one journal entry");
-            Assert.IsTrue(updatedCursor.NextUsn >= cursor.NextUsn, "Cursor should advance");
+            Assert.IsNotEmpty(entries, "Should have at least one journal entry");
+            Assert.IsGreaterThanOrEqualTo(cursor.NextUsn, updatedCursor.NextUsn, "Cursor should advance");
 
             // Find our temp file in the entries
             var found = entries.Any(e => e.FileName.Equals(tempFileName, StringComparison.OrdinalIgnoreCase));
@@ -81,7 +81,7 @@ public class UsnJournalLiveTests
         // Reading from current position should return very few entries
         var (entries, _) = volume.Journal.ReadUsnJournalBounded(cursor, 0);
 
-        Assert.IsTrue(entries.Length < 1000,
+        Assert.IsLessThan(1000, entries.Length,
             $"Expected few entries from current position, got {entries.Length}");
     }
 
@@ -133,7 +133,7 @@ public class UsnJournalLiveTests
         }
 
         var allEntries = batches.SelectMany(b => b).ToArray();
-        Assert.IsTrue(allEntries.Any(e => e.FileName.Equals(tempFileName, StringComparison.OrdinalIgnoreCase)),
+        Assert.Contains(e => e.FileName.Equals(tempFileName, StringComparison.OrdinalIgnoreCase), allEntries,
             $"Should find {tempFileName} in watched entries");
     }
 
@@ -161,7 +161,7 @@ public class UsnJournalLiveTests
         var targetMaximum = before.MaximumSize + before.AllocationDelta;
         var grown = volume.Journal.GrowUsnJournal(targetMaximum, before.AllocationDelta);
 
-        Assert.IsTrue(grown.MaximumSize >= targetMaximum,
+        Assert.IsGreaterThanOrEqualTo(targetMaximum, grown.MaximumSize,
             $"Expected at least {targetMaximum} bytes, got {grown.MaximumSize}");
 
         // Grow-only refusal, using the just-grown size (no second mutation).
@@ -172,7 +172,7 @@ public class UsnJournalLiveTests
         }
         catch (InvalidOperationException exception)
         {
-            StringAssert.Contains(exception.Message, "only growth");
+            Assert.Contains("only growth", exception.Message);
         }
     }
 }

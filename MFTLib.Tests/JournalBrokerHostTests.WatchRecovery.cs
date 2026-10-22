@@ -43,9 +43,9 @@ public partial class JournalBrokerHostTests
 
         var error = framesC.Single();
         Assert.AreEqual(BrokerFrameKind.Error, error.Kind);
-        StringAssert.Contains(error.RequireMessage(), "7:100");
-        StringAssert.Contains(error.RequireMessage(), "USN journal entries have been deleted; full rescan needed");
-        StringAssert.Contains(error.RequireMessage(), "rescan");
+        Assert.Contains("7:100", error.RequireMessage());
+        Assert.Contains("USN journal entries have been deleted; full rescan needed", error.RequireMessage());
+        Assert.Contains("rescan", error.RequireMessage());
 
         var batch = await HostChannelHarness.ReadFrameAsync(pipeD);
         Assert.AreEqual(BrokerFrameKind.JournalBatch, batch?.Kind);
@@ -71,8 +71,7 @@ public partial class JournalBrokerHostTests
         var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        CollectionAssert.AreEqual(new[] { BrokerFrameKind.JournalBatch, BrokerFrameKind.Error },
-            frames.Select(frame => frame.Kind).ToArray());
+        Assert.AreSequenceEqual(new[] { BrokerFrameKind.JournalBatch, BrokerFrameKind.Error }, frames.Select(frame => frame.Kind).ToArray());
         Assert.AreEqual("journal wrapped mid-stream", frames[1].Message);
         await AssertControlStillServesAsync(harness);
         Assert.AreEqual(0, queryCount);
@@ -89,7 +88,7 @@ public partial class JournalBrokerHostTests
         var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.AreEqual(1, frames.Count);
+        Assert.HasCount(1, frames);
         Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
         Assert.AreEqual("Access is denied", frames[0].Message);
     }
@@ -120,9 +119,9 @@ public partial class JournalBrokerHostTests
         var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.AreEqual(1, frames.Count);
+        Assert.HasCount(1, frames);
         Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
-        StringAssert.Contains(frames[0].RequireMessage(), "USN journal wrapped before the cached cursor");
+        Assert.Contains("USN journal wrapped before the cached cursor", frames[0].RequireMessage());
         Assert.AreEqual(1, watchCallCount);
         Assert.AreEqual(1, queryCallCount);
     }
@@ -139,8 +138,7 @@ public partial class JournalBrokerHostTests
         var pipe = await harness.OpenWatchChannelAsync('C', default);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        CollectionAssert.AreEqual(new[] { BrokerFrameKind.Error },
-            frames.Select(frame => frame.Kind).ToArray());
+        Assert.AreSequenceEqual(new[] { BrokerFrameKind.Error }, frames.Select(frame => frame.Kind).ToArray());
         Assert.AreEqual(failureMessage, frames[0].Message);
     }
 
@@ -168,9 +166,9 @@ public partial class JournalBrokerHostTests
 
         var error = frames.Single();
         Assert.AreEqual(BrokerFrameKind.Error, error.Kind);
-        StringAssert.Contains(error.RequireMessage(), "7:100");
-        StringAssert.Contains(error.RequireMessage(), "Journal ID mismatch");
-        StringAssert.Contains(error.RequireMessage(), "rescan");
+        Assert.Contains("7:100", error.RequireMessage());
+        Assert.Contains("Journal ID mismatch", error.RequireMessage());
+        Assert.Contains("rescan", error.RequireMessage());
         Assert.AreEqual(1, queryCallCount);
     }
 }

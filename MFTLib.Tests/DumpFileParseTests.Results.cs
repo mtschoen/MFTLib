@@ -18,7 +18,7 @@ public partial class DumpFileParseTests
     {
         var records = DirectParse.ParseFile(_syntheticPath, out var totalRecords);
 
-        Assert.IsTrue((ulong)records.Length <= totalRecords);
+        Assert.IsLessThanOrEqualTo(totalRecords, (ulong)records.Length);
     }
 
     [TestMethod]
@@ -43,8 +43,7 @@ public partial class DumpFileParseTests
         var batches = result.ReadBatches(4096).ToList();
 
         Assert.IsTrue(batches.All(batch => batch.Length is > 0 and <= 4096));
-        CollectionAssert.AreEqual(expectedRecordNumbers,
-            batches.SelectMany(batch => batch).Select(record => record.RecordNumber).ToArray());
+        Assert.AreSequenceEqual(expectedRecordNumbers, batches.SelectMany(batch => batch).Select(record => record.RecordNumber).ToArray());
     }
 
     [TestMethod]
@@ -55,11 +54,10 @@ public partial class DumpFileParseTests
 
         var batches = result.ReadBatches(batchSize).ToList();
 
-        Assert.IsTrue(batches.Count > 1);
+        Assert.IsGreaterThan(1, batches.Count);
         Assert.IsTrue(batches[..^1].All(batch => batch.Length == batchSize));
-        Assert.IsTrue(batches[^1].Length <= batchSize);
-        CollectionAssert.AreEqual(result.ToRecords().Select(record => record.RecordNumber).ToArray(),
-            batches.SelectMany(batch => batch).Select(record => record.RecordNumber).ToArray());
+        Assert.IsLessThanOrEqualTo(batchSize, batches[^1].Length);
+        Assert.AreSequenceEqual(result.ToRecords().Select(record => record.RecordNumber).ToArray(), batches.SelectMany(batch => batch).Select(record => record.RecordNumber).ToArray());
     }
 
     [TestMethod]
@@ -72,8 +70,8 @@ public partial class DumpFileParseTests
         var firstBatch = enumerator.Current;
         var firstBatchNames = firstBatch.Select(record => record.FileName).ToArray();
         Assert.IsTrue(enumerator.MoveNext());
-        Assert.IsTrue(enumerator.Current.Length > 0);
+        Assert.IsNotEmpty(enumerator.Current);
 
-        CollectionAssert.AreEqual(firstBatchNames, firstBatch.Select(record => record.FileName).ToArray());
+        Assert.AreSequenceEqual(firstBatchNames, firstBatch.Select(record => record.FileName).ToArray());
     }
 }

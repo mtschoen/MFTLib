@@ -57,7 +57,7 @@ public sealed class MftDumpInputTests : IDisposable
         using var result = input.Parse();
         var records = result.ToRecords().ToDictionary(record => record.RecordNumber);
 
-        CollectionAssert.AreEquivalent(new ulong[] { 0, 5, 6, 7, 8, 9, 10 }, records.Keys.ToArray());
+        Assert.AreSequenceEqual(new ulong[] { 0, 5, 6, 7, 8, 9, 10 }, records.Keys.ToArray(), SequenceOrder.InAnyOrder);
         Assert.AreEqual(16UL, result.TotalRecords);
         Assert.IsTrue(records[5].IsDirectory);
         Assert.AreEqual(5UL, records[5].ParentRecordNumber);
@@ -124,7 +124,7 @@ public sealed class MftDumpInputTests : IDisposable
         var failure = Assert.ThrowsExactly<IOException>(
             () => MftDumpInput.Open(Path.Combine(TemporaryDirectoryPath, "absent.mft")));
 
-        StringAssert.StartsWith(failure.Message, "Failed to open file. Error: ");
+        Assert.StartsWith("Failed to open file. Error: ", failure.Message);
     }
 
     [TestMethod]
@@ -164,10 +164,10 @@ public sealed class MftDumpInputTests : IDisposable
         File.Move(path, path + ".old");
         File.WriteAllBytes(path, MftDumpFixture.Build(4096, 32, replacement));
 
-        CollectionAssert.Contains(Names(input), "Notes.txt");
+        Assert.Contains("Notes.txt", Names(input));
         Assert.AreEqual(1024u, input.RecordSize);
         using var reopened = MftDumpInput.Open(path);
-        CollectionAssert.Contains(Names(reopened), "Replaced.txt");
+        Assert.Contains("Replaced.txt", Names(reopened));
         Assert.AreEqual(4096u, reopened.RecordSize);
     }
 
@@ -254,7 +254,7 @@ public sealed class MftDumpInputTests : IDisposable
 
         using var result = input.Parse(new MftFileScanOptions(progress, BufferSizeRecords: 4));
 
-        Assert.AreEqual(4, samples.Count, "sixteen records in chunks of four");
+        Assert.HasCount(4, samples, "sixteen records in chunks of four");
         Assert.AreEqual(16L, samples[^1].RecordsScanned);
         Assert.IsTrue(samples.All(sample => sample.TotalRecords == 16));
     }
@@ -267,7 +267,7 @@ public sealed class MftDumpInputTests : IDisposable
 
         var batches = input.ReadRecordBatches(3, null, CancellationToken.None).ToArray();
 
-        CollectionAssert.AreEqual(new[] { 3, 3, 1 }, batches.Select(batch => batch.Length).ToArray());
+        Assert.AreSequenceEqual(new[] { 3, 3, 1 }, batches.Select(batch => batch.Length).ToArray());
         Assert.AreEqual("$MFT", batches[0][0].FileName);
     }
 
@@ -287,7 +287,7 @@ public sealed class MftDumpInputTests : IDisposable
         var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         using var input = MftDumpInput.Open(path);
 
-        CollectionAssert.AreEqual(Names(input), Names(input));
+        Assert.AreSequenceEqual(Names(input), Names(input));
     }
 
     [TestMethod]

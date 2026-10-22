@@ -49,7 +49,7 @@ public partial class JournalBrokerHostTests
             var throttledRest = await HostChannelHarness.ReadToEndAsync(throttledPipe);
             foreach (var frames in new[] { immediateRest, throttledRest })
             {
-                CollectionAssert.AreEqual(new long[] { 19 }, frames
+                Assert.AreSequenceEqual(new long[] { 19 }, frames
                     .Where(frame => frame.Kind == BrokerFrameKind.ScanProgress &&
                         frame.Progress!.Value.Phase == BrokerScanPhase.Parsing)
                     .Select(frame => frame.Progress!.Value.RecordsProcessed).ToArray());
@@ -103,7 +103,7 @@ public partial class JournalBrokerHostTests
         var rest = await HostChannelHarness.ReadToEndAsync(pipe);
 
         var progressFrames = rest.Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
-        Assert.IsTrue(progressFrames.Any(f => f.Progress!.Value.RecordsProcessed == 19),
+        Assert.Contains(f => f.Progress!.Value.RecordsProcessed == 19, progressFrames,
             "The newest throttled report is flushed when the progress stream completes.");
     }
 
@@ -115,8 +115,8 @@ public partial class JournalBrokerHostTests
 
         var frames = await ScanFramesAsync(harness);
 
-        Assert.IsFalse(frames.Any(f => f.Kind == BrokerFrameKind.Error), "Cancellation must not emit an Error frame.");
-        Assert.IsFalse(frames.Any(f => f.Kind is BrokerFrameKind.ScanReady or BrokerFrameKind.ScanCompleted));
+        Assert.DoesNotContain(f => f.Kind == BrokerFrameKind.Error, frames, "Cancellation must not emit an Error frame.");
+        Assert.DoesNotContain(f => f.Kind is BrokerFrameKind.ScanReady or BrokerFrameKind.ScanCompleted, frames);
     }
 
     [TestMethod]
@@ -138,12 +138,12 @@ public partial class JournalBrokerHostTests
         var frames = await ScanFramesAsync(harness);
         var progressFrames = frames.Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
 
-        Assert.IsTrue(progressFrames.Count >= 2, "Expected intermediate parse and write progress frames.");
-        Assert.IsTrue(progressFrames.Any(f => f.Progress?.BytesProcessed > 0),
+        Assert.IsGreaterThanOrEqualTo(2, progressFrames.Count, "Expected intermediate parse and write progress frames.");
+        Assert.Contains(f => f.Progress?.BytesProcessed > 0, progressFrames,
             "At least one progress frame must report BytesProcessed > 0 from the write phase.");
         var finalProgress = progressFrames[^1].Progress!.Value;
         Assert.AreEqual(1000L, finalProgress.TotalRecords);
-        Assert.IsTrue(finalProgress.BytesProcessed > 0);
+        Assert.IsGreaterThan(0, finalProgress.BytesProcessed);
         Assert.AreEqual(finalProgress.BytesProcessed, finalProgress.TotalBytes);
     }
 
@@ -176,7 +176,7 @@ public partial class JournalBrokerHostTests
         // Only the final frame is guaranteed. Intermediate frames flow through a bounded(1)
         // DropOldest channel, so the pump silently loses any value it has not read before the
         // next write. The invariants below hold for whatever does arrive.
-        Assert.IsTrue(progressFrames.Count >= 1, "The final progress frame is always emitted.");
+        Assert.IsGreaterThanOrEqualTo(1, progressFrames.Count, "The final progress frame is always emitted.");
         var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
         var lastProgressIndex = frames.FindLastIndex(f => f.Kind == BrokerFrameKind.ScanProgress);
         Assert.AreEqual(scanReadyIndex - 1, lastProgressIndex, "The final progress frame immediately precedes ScanReady.");
@@ -188,14 +188,14 @@ public partial class JournalBrokerHostTests
         {
             if (progress.Phase == BrokerScanPhase.Parsing)
             {
-                Assert.IsTrue(progress.RecordsProcessed >= previousParsingRecords,
+                Assert.IsGreaterThanOrEqualTo(previousParsingRecords, progress.RecordsProcessed,
                     $"Parsing RecordsProcessed must not decrease: got {progress.RecordsProcessed}, previous {previousParsingRecords}");
                 Assert.AreEqual(5000L, progress.TotalRecords, "Parsing TotalRecords stays 5000 throughout.");
                 previousParsingRecords = progress.RecordsProcessed;
             }
             else
             {
-                Assert.IsTrue(progress.RecordsProcessed >= previousTransferringRecords,
+                Assert.IsGreaterThanOrEqualTo(previousTransferringRecords, progress.RecordsProcessed,
                     $"Transferring RecordsProcessed must not decrease: got {progress.RecordsProcessed}");
                 previousTransferringRecords = progress.RecordsProcessed;
             }
@@ -204,7 +204,7 @@ public partial class JournalBrokerHostTests
         var finalProgress = progressFrames[^1].Progress!.Value;
         Assert.AreEqual(5000L, finalProgress.RecordsProcessed);
         Assert.AreEqual(5000L, finalProgress.TotalRecords);
-        Assert.IsTrue(finalProgress.BytesProcessed > 0);
+        Assert.IsGreaterThan(0, finalProgress.BytesProcessed);
         Assert.AreEqual(finalProgress.BytesProcessed, finalProgress.TotalBytes);
     }
 
@@ -227,9 +227,9 @@ public partial class JournalBrokerHostTests
         var frames = await ScanFramesAsync(harness);
 
         var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
-        Assert.IsTrue(scanReadyIndex > 0, "ScanReady frame must be present.");
+        Assert.IsGreaterThan(0, scanReadyIndex, "ScanReady frame must be present.");
         var beforeCompletion = frames.Take(scanReadyIndex - 1).Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
-        Assert.IsTrue(beforeCompletion.Count > 0,
+        Assert.IsNotEmpty(beforeCompletion,
             "Expected a write-phase ScanProgress frame before the completion frame.");
         Assert.IsTrue(beforeCompletion.All(f => f.Progress!.Value.BytesProcessed > 0),
             "Write-phase progress frames report nonzero bytes processed.");
@@ -255,7 +255,7 @@ public partial class JournalBrokerHostTests
         await harness.Serve.WaitAsync(HangGuard);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.IsFalse(frames.Any(f => f.Kind == BrokerFrameKind.Error),
+        Assert.DoesNotContain(f => f.Kind == BrokerFrameKind.Error, frames,
             "Cancellation emits no Error frame, and the pump's own cancellation is swallowed inside the host.");
     }
 
@@ -275,7 +275,7 @@ public partial class JournalBrokerHostTests
         var frames = await ScanFramesAsync(harness);
 
         var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
-        Assert.IsTrue(scanReadyIndex > 0, "ScanReady frame must be present.");
+        Assert.IsGreaterThan(0, scanReadyIndex, "ScanReady frame must be present.");
         var finalProgress = frames[scanReadyIndex - 1].Progress;
         Assert.IsNotNull(finalProgress);
         Assert.AreEqual(10L, finalProgress.Value.RecordsProcessed,
@@ -299,10 +299,10 @@ public partial class JournalBrokerHostTests
 
         var frames = await ScanFramesAsync(harness, 'C', "mftlib-progress-C");
 
-        Assert.IsTrue(frames.Count >= 3, "Expected at least Cursor, ScanProgress, and ScanReady frames.");
+        Assert.IsGreaterThanOrEqualTo(3, frames.Count, "Expected at least Cursor, ScanProgress, and ScanReady frames.");
         Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
         var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
-        Assert.IsTrue(scanReadyIndex > 0, "ScanReady frame must be present.");
+        Assert.IsGreaterThan(0, scanReadyIndex, "ScanReady frame must be present.");
         var finalProgressIndex = scanReadyIndex - 1;
         Assert.AreEqual(BrokerFrameKind.ScanProgress, frames[finalProgressIndex].Kind,
             "The final progress frame immediately precedes ScanReady.");
@@ -311,7 +311,7 @@ public partial class JournalBrokerHostTests
         Assert.IsNotNull(progress);
         Assert.AreEqual(3L, progress.Value.RecordsProcessed);
         Assert.AreEqual(3L, progress.Value.TotalRecords);
-        Assert.IsTrue(progress.Value.BytesProcessed > 0);
+        Assert.IsGreaterThan(0, progress.Value.BytesProcessed);
         Assert.AreEqual(progress.Value.BytesProcessed, progress.Value.TotalBytes);
     }
 
@@ -340,8 +340,8 @@ public partial class JournalBrokerHostTests
         var progressFrames = frames.Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
         // With a 10-minute interval the burst of 20 reports emits at most one initial frame,
         // one flush of the newest throttled report, and the final frame before ScanReady.
-        Assert.IsTrue(progressFrames.Count >= 1, "At least one progress frame must be emitted.");
-        Assert.IsTrue(progressFrames.Count <= 3,
+        Assert.IsGreaterThanOrEqualTo(1, progressFrames.Count, "At least one progress frame must be emitted.");
+        Assert.IsLessThanOrEqualTo(3, progressFrames.Count,
             $"Expected at most 3 progress frames due to throttling, but got {progressFrames.Count}");
         var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
         var lastProgressIndex = frames.FindLastIndex(f => f.Kind == BrokerFrameKind.ScanProgress);

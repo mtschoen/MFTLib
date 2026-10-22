@@ -20,7 +20,7 @@ public class MftIndexSourcesDumpTests
             () => MftIndexSources.FromMftDumpFile(filePath!, 'D'));
 
         Assert.AreEqual("filePath", failure.ParamName);
-        StringAssert.StartsWith(failure.Message, "A dump file path is required.");
+        Assert.StartsWith("A dump file path is required.", failure.Message);
     }
 
     [TestMethod]
@@ -39,7 +39,7 @@ public class MftIndexSourcesDumpTests
             () => MftIndexSources.FromMftDumpFile("volume.mft", driveLetter));
 
         Assert.AreEqual("letter", failure.ParamName);
-        StringAssert.StartsWith(failure.Message, "The drive key must be an ASCII letter.");
+        Assert.StartsWith("The drive key must be an ASCII letter.", failure.Message);
     }
 
     [TestMethod]

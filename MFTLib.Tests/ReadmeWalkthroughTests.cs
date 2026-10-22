@@ -42,7 +42,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
     public async Task DumpWalkthrough_ExactNameSearchOverStandardDump_ReturnsNotesTxtAndDisposesBlock()
     {
         var filePath = _dumpFile;
-        var cancellationToken = TestContext.CancellationTokenSource.Token;
+        var cancellationToken = TestContext.CancellationToken;
         var options = new FileIndexOptions
         {
             MftSource = MftIndexSources.FromMftDumpFile(filePath, 'D')
@@ -72,7 +72,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
             }
         }
 
-        CollectionAssert.AreEqual(new[] { "dump:/D/documents/Notes.txt  11" }, lines);
+        Assert.AreSequenceEqual(new[] { "dump:/D/documents/Notes.txt  11" }, lines);
         Assert.IsTrue(retainedEntry.IsValid);
         Assert.IsTrue(retainedEntry.IsDisposed);
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = retainedEntry.Path);
@@ -86,7 +86,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
 
         foreach (var filePath in new[] { missingDumpFile, emptyDumpFile })
         {
-            var cancellationToken = TestContext.CancellationTokenSource.Token;
+            var cancellationToken = TestContext.CancellationToken;
             var options = new FileIndexOptions
             {
                 MftSource = MftIndexSources.FromMftDumpFile(filePath, 'D')
@@ -108,7 +108,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
                         $"Dump scan failed ({status.Failure?.Kind}): {status.Failure?.Message}");
                 }
             });
-            StringAssert.Contains(failure.Message, "Dump scan failed (ProducerFailed):");
+            Assert.Contains("Dump scan failed (ProducerFailed):", failure.Message);
         }
     }
 
@@ -118,7 +118,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
     {
         IndexedDrive.Dependencies._volumeSerialReader = _ => 0x0BADF00Du;
 
-        var cancellationToken = TestContext.CancellationTokenSource.Token;
+        var cancellationToken = TestContext.CancellationToken;
         var drive = IndexedDrive.FromWindowsVolume('C');
         var productionOptions = new FileIndexOptions
         {
@@ -183,18 +183,17 @@ public sealed class ReadmeWalkthroughTests : IDisposable
             }
 
             var exactMatches = index.Search(new SearchQuery("Notes.txt", NameMatchMode.Exact), cancellationToken);
-            Assert.AreEqual(1, exactMatches.Count);
+            Assert.HasCount(1, exactMatches);
             Assert.AreEqual(11L, exactMatches[0].Size);
         }
 
         Assert.AreEqual(1, scanCount);
-        CollectionAssert.AreEqual(
+        Assert.AreSequenceEqual(
             new[]
             {
                 $"{Path.Combine(TemporaryDirectoryPath, "logs", "app.log")} (42 bytes, last write observed 2026-10-14 12:00:00Z)",
                 $"{Path.Combine(TemporaryDirectoryPath, "logs", "pending.log")} (size unknown, last write observed 2026-10-14 12:00:00Z)"
-            },
-            lines);
+            }, lines);
         Assert.IsTrue(retainedEntry.IsDisposed);
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = retainedEntry.Size);
     }
@@ -214,7 +213,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
                 new SyntheticMftProducer(_ => throw new InvalidOperationException("Access to the volume was denied.")))
         };
 
-        await using (var failedIndex = await FileIndex.OpenAsync(failingOptions, TestContext.CancellationTokenSource.Token))
+        await using (var failedIndex = await FileIndex.OpenAsync(failingOptions, TestContext.CancellationToken))
         {
             var status = failedIndex.Drives.Single();
             Assert.AreEqual(DriveState.Failed, status.State);

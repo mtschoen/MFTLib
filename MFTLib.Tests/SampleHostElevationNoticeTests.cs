@@ -56,7 +56,7 @@ public partial class SampleHostElevationNoticeTests
         var result = RunElevation(scanner);
 
         Assert.AreEqual(0, result);
-        CollectionAssert.AreEqual(new[] { "dialog", "elevate" }, events);
+        Assert.AreSequenceEqual(new[] { "dialog", "elevate" }, events);
     }
 
     [TestMethod]
@@ -69,9 +69,9 @@ public partial class SampleHostElevationNoticeTests
         var result = RunElevation(scanner);
 
         Assert.AreEqual(1, result);
-        CollectionAssert.AreEqual(new[] { "dialog" }, events);
-        Assert.IsTrue(lines.Any(line => line.Contains("AUTOMATIC ELEVATION FAILED", StringComparison.Ordinal)));
-        Assert.IsTrue(lines.Any(line => line.Contains(Environment.ProcessPath!, StringComparison.Ordinal)));
+        Assert.AreSequenceEqual(new[] { "dialog" }, events);
+        Assert.Contains(line => line.Contains("AUTOMATIC ELEVATION FAILED", StringComparison.Ordinal), lines);
+        Assert.Contains(line => line.Contains(Environment.ProcessPath!, StringComparison.Ordinal), lines);
     }
 
     [TestMethod]
@@ -88,7 +88,7 @@ public partial class SampleHostElevationNoticeTests
         var result = RunElevation(scanner);
 
         Assert.AreEqual(0, result);
-        CollectionAssert.AreEqual(new[] { "dialog", "dialog", "elevate" }, events);
+        Assert.AreSequenceEqual(new[] { "dialog", "dialog", "elevate" }, events);
         Assert.IsFalse(messages[0].Contains("too fast", StringComparison.Ordinal));
         Assert.IsTrue(messages[1].Contains("too fast", StringComparison.Ordinal));
     }
@@ -105,7 +105,7 @@ public partial class SampleHostElevationNoticeTests
         var result = RunElevation(scanner);
 
         Assert.AreEqual(0, result);
-        CollectionAssert.AreEqual(new[] { "dialog", "dialog", "elevate" }, events);
+        Assert.AreSequenceEqual(new[] { "dialog", "dialog", "elevate" }, events);
     }
 
     [TestMethod]
@@ -117,7 +117,7 @@ public partial class SampleHostElevationNoticeTests
 
         RunElevation(scanner);
 
-        CollectionAssert.AreEqual(new[] { "dialog", "elevate" }, events);
+        Assert.AreSequenceEqual(new[] { "dialog", "elevate" }, events);
     }
 
     [TestMethod]
@@ -130,8 +130,8 @@ public partial class SampleHostElevationNoticeTests
         var result = RunElevation(scanner);
 
         Assert.AreEqual(1, result);
-        CollectionAssert.AreEqual(new[] { "dialog" }, events);
-        Assert.IsTrue(lines.Any(line => line.Contains("AUTOMATIC ELEVATION FAILED")));
+        Assert.AreSequenceEqual(new[] { "dialog" }, events);
+        Assert.Contains(line => line.Contains("AUTOMATIC ELEVATION FAILED"), lines);
     }
 
     [TestMethod]
@@ -143,7 +143,7 @@ public partial class SampleHostElevationNoticeTests
 
         RunElevation(scanner, ["scan", "T"]);
 
-        CollectionAssert.AreEqual(Array.Empty<string>(), events);
+        Assert.AreSequenceEqual(Array.Empty<string>(), events);
     }
 
     [TestMethod]
@@ -156,7 +156,7 @@ public partial class SampleHostElevationNoticeTests
         var result = RunElevation(scanner);
 
         Assert.AreEqual(1, result);
-        CollectionAssert.AreEqual(Array.Empty<string>(), events);
+        Assert.AreSequenceEqual(Array.Empty<string>(), events);
     }
 
     [TestMethod]
@@ -232,9 +232,9 @@ public partial class SampleHostElevationNoticeTests
         }
 
         Assert.AreEqual(1, result);
-        CollectionAssert.AreEqual(new[] { "dialog" }, events);
-        Assert.IsTrue(lines.Any(line => line.Contains("not answered in time", StringComparison.Ordinal) || line.Contains("not answered in time")));
-        Assert.IsTrue(lines.Any(line => line.Contains("AUTOMATIC ELEVATION FAILED", StringComparison.Ordinal) || line.Contains("AUTOMATIC ELEVATION FAILED")));
+        Assert.AreSequenceEqual(new[] { "dialog" }, events);
+        Assert.Contains(line => line.Contains("not answered in time", StringComparison.Ordinal) || line.Contains("not answered in time"), lines);
+        Assert.Contains(line => line.Contains("AUTOMATIC ELEVATION FAILED", StringComparison.Ordinal) || line.Contains("AUTOMATIC ELEVATION FAILED"), lines);
     }
 
     [TestMethod]
@@ -248,10 +248,10 @@ public partial class SampleHostElevationNoticeTests
         var result = RunElevation(scanner);
 
         Assert.AreEqual(1, result);
-        CollectionAssert.AreEqual(Array.Empty<string>(), events);
-        Assert.IsTrue(lines.Any(line => line.Contains("Running unattended (MFTLIB_SAMPLE_UNATTENDED=1): elevation skipped")));
-        Assert.IsTrue(lines.Any(line => line.Contains("AUTOMATIC ELEVATION FAILED")));
-        Assert.IsTrue(lines.Contains("  scan"));
+        Assert.AreSequenceEqual(Array.Empty<string>(), events);
+        Assert.Contains(line => line.Contains("Running unattended (MFTLIB_SAMPLE_UNATTENDED=1): elevation skipped"), lines);
+        Assert.Contains(line => line.Contains("AUTOMATIC ELEVATION FAILED"), lines);
+        Assert.Contains("  scan", lines);
     }
 
     [TestMethod]
@@ -265,7 +265,7 @@ public partial class SampleHostElevationNoticeTests
             throw new AssertFailedException("An unattended local scan must not run."));
 
         Assert.AreEqual(1, result);
-        Assert.IsTrue(lines.Any(line => line.Contains("Running unattended")));
+        Assert.Contains(line => line.Contains("Running unattended"), lines);
     }
 
     [TestMethod]
@@ -281,7 +281,7 @@ public partial class SampleHostElevationNoticeTests
 
         RunElevation(scanner);
 
-        CollectionAssert.AreEqual(new[] { "dialog", "elevate" }, events);
+        Assert.AreSequenceEqual(new[] { "dialog", "elevate" }, events);
     }
 
     [TestMethod]
@@ -296,7 +296,7 @@ public partial class SampleHostElevationNoticeTests
             throw new IOException("the scan was attempted"));
 
         Assert.AreEqual(1, result, "The scan was attempted and failed; the switch changed nothing.");
-        Assert.IsFalse(lines.Any(line => line.Contains("Running unattended")));
+        Assert.DoesNotContain(line => line.Contains("Running unattended"), lines);
     }
 
     [TestMethod]
@@ -312,8 +312,8 @@ public partial class SampleHostElevationNoticeTests
 
         Assert.AreEqual(1, result);
         var report = File.ReadAllText(scanner.OutputLogPath);
-        Assert.IsTrue(report.Contains("Error: IOException: the scan was attempted"));
-        Assert.IsFalse(lines.Any(line => line.Contains("Running unattended")));
+        Assert.Contains("Error: IOException: the scan was attempted", report);
+        Assert.DoesNotContain(line => line.Contains("Running unattended"), lines);
     }
 
     static (int Result, double SecondsToAnswer) Answer(int result, double secondsToAnswer) => (result, secondsToAnswer);

@@ -99,7 +99,7 @@ public partial class MftResultTests
 
         var ex = Assert.ThrowsExactly<InvalidOperationException>(() =>
             new MftResult(resultPtr));
-        Assert.IsTrue(ex.Message.Contains("stride"));
+        Assert.Contains("stride", ex.Message);
     }
 
     [TestMethod]
@@ -210,7 +210,7 @@ public partial class MftResultTests
 
             using var mftResult = new MftResult(resultPtr);
             var records = mftResult.ToRecords();
-            Assert.AreEqual(1, records.Length);
+            Assert.HasCount(1, records);
             Assert.AreEqual(string.Empty, records[0].FileName);
         }
         finally

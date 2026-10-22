@@ -49,15 +49,15 @@ public sealed class MftDumpBlockProducerTests : IDisposable
         }
 
         using var live = liveScanRunning
-            ? await Allocator.AdmitAsync(TestContext.CancellationTokenSource.Token)
+            ? await Allocator.AdmitAsync(TestContext.CancellationToken)
             : null;
         var result = await new MftDumpBlockProducer(_path, TimeProvider.System).ProduceAsync(Request(),
-            TestContext.CancellationTokenSource.Token);
+            TestContext.CancellationToken);
         using var block = result.Block;
         var counts = ParseControlBlock.ChunkThreadCounts();
         var expected = liveScanRunning ? Environment.ProcessorCount / 2 : Environment.ProcessorCount;
 
-        Assert.IsTrue(counts.Length > 0, "The real native dump parser must have processed a chunk.");
+        Assert.IsNotEmpty(counts, "The real native dump parser must have processed a chunk.");
         Assert.IsTrue(counts.All(count => count == expected),
             $"Expected every dump chunk to use {expected} threads; observed {string.Join(", ", counts)}.");
         Assert.AreEqual(liveScanRunning ? 1 : 0, Allocator.RunningScanCount);
@@ -77,12 +77,12 @@ public sealed class MftDumpBlockProducerTests : IDisposable
         {
             for (var position = 1; position < Environment.ProcessorCount; position++)
             {
-                registrations.Add(await Allocator.AdmitAsync(TestContext.CancellationTokenSource.Token));
+                registrations.Add(await Allocator.AdmitAsync(TestContext.CancellationToken));
             }
 
             var producer = new MftDumpBlockProducer(_path, TimeProvider.System, (_, _, token) =>
             {
-                waiting = Allocator.AdmitAsync(TestContext.CancellationTokenSource.Token).AsTask();
+                waiting = Allocator.AdmitAsync(TestContext.CancellationToken).AsTask();
                 queuedDuringScan = Allocator.QueuedScanCount;
                 if (!cancelled)
                 {
@@ -107,7 +107,7 @@ public sealed class MftDumpBlockProducerTests : IDisposable
                 Assert.AreEqual("dump source failed", failure.Message);
             }
 
-            using var admitted = await waiting!.WaitAsync(TestContext.CancellationTokenSource.Token);
+            using var admitted = await waiting!.WaitAsync(TestContext.CancellationToken);
             Assert.AreEqual(1, queuedDuringScan, "The dump occupies the last running slot until cancellation.");
             Assert.AreEqual(Environment.ProcessorCount, Allocator.RunningScanCount);
             Assert.AreEqual(0, Allocator.QueuedScanCount);

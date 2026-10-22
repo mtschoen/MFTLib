@@ -42,8 +42,8 @@ public partial class DumpFileParseTests
     {
         var records = DirectParse.ParseFile(_syntheticPath, out var totalRecords);
 
-        Assert.IsTrue(records.Length > 0);
-        Assert.IsTrue(totalRecords >= 1000);
+        Assert.IsNotEmpty(records);
+        Assert.IsGreaterThanOrEqualTo(1000UL, totalRecords);
         Assert.IsNotNull(records[0].FileName);
     }
 
@@ -98,7 +98,7 @@ public partial class DumpFileParseTests
 
         // Records 0-4 are $MFT in synthetic data
         var mftRecords = records.Where(r => r.RecordNumber < 5).ToArray();
-        Assert.IsTrue(mftRecords.Length > 0, "Expected system records to be present");
+        Assert.IsNotEmpty(mftRecords, "Expected system records to be present");
         foreach (var r in mftRecords)
         {
             Assert.AreEqual("$MFT", r.FileName);
@@ -112,7 +112,7 @@ public partial class DumpFileParseTests
         try
         {
             MftVolume.GenerateSyntheticMFT(path, 100, 256);
-            Assert.IsTrue(new FileInfo(path).Length > 0);
+            Assert.IsGreaterThan(0, new FileInfo(path).Length);
         }
         finally
         {
@@ -150,14 +150,14 @@ public partial class DumpFileParseTests
             MftVolume.GenerateSyntheticMFT(tempPath, 1000, 256, recordSize);
             var records = DirectParse.ParseFile(tempPath, out var totalRecords);
 
-            Assert.IsTrue(records.Length > 0);
+            Assert.IsNotEmpty(records);
             Assert.AreEqual(1000UL, totalRecords);
 
-            Assert.IsTrue(records.Any(r => r.RecordNumber == 0), "Record 0 ($MFT) must exist");
+            Assert.Contains(r => r.RecordNumber == 0, records, "Record 0 ($MFT) must exist");
             var rec0 = records.First(r => r.RecordNumber == 0);
             Assert.AreEqual("$MFT", rec0.FileName);
 
-            Assert.IsTrue(records.Any(r => r.RecordNumber == 5), "Record 5 (root directory) must exist");
+            Assert.Contains(r => r.RecordNumber == 5, records, "Record 5 (root directory) must exist");
             var rec5 = records.First(r => r.RecordNumber == 5);
             Assert.AreEqual(".", rec5.FileName);
             Assert.IsTrue(rec5.IsDirectory, "Record 5 must be a directory");

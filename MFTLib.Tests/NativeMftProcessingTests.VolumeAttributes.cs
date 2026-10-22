@@ -106,7 +106,7 @@ public partial class NativeMftProcessingTests
             try
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.IsTrue(result.ErrorMessage.Contains("malformed attribute"));
+                Assert.Contains("malformed attribute", result.ErrorMessage);
             }
             finally
             {
@@ -155,7 +155,7 @@ public partial class NativeMftProcessingTests
             try
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.IsTrue(result.ErrorMessage.Contains("MFT record 0"));
+                Assert.Contains("MFT record 0", result.ErrorMessage);
             }
             finally
             {
@@ -205,7 +205,7 @@ public partial class NativeMftProcessingTests
             try
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.IsTrue(result.TotalRecords > 0);
+                Assert.IsGreaterThan(0UL, result.TotalRecords);
             }
             finally
             {

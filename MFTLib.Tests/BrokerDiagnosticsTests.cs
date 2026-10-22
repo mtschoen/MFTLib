@@ -51,7 +51,7 @@ public class BrokerDiagnosticsTests
             Assert.IsFalse(BrokerDiagnostics.Enabled);
             Assert.AreEqual(Path.Combine(Path.GetTempPath(), "broker-diagnostics.client.log"), BrokerDiagnostics.LogPath);
             Assert.IsFalse(writer.TryEnqueue("after-reset"));
-            Assert.AreEqual(1, lines.Count);
+            Assert.HasCount(1, lines);
             StringAssert.EndsWith(lines[0], ":control]  before-reset");
         }
         finally
@@ -81,7 +81,7 @@ public class BrokerDiagnosticsTests
 
         var path = Path.Combine(_temporaryRoot, "broker-diagnostics.client.log");
         Assert.IsTrue(File.Exists(path));
-        StringAssert.Contains(await File.ReadAllTextAsync(path), message);
+        Assert.Contains(message, await File.ReadAllTextAsync(path));
     }
 
     [TestMethod]
@@ -95,9 +95,9 @@ public class BrokerDiagnosticsTests
         await BrokerDiagnostics.FlushAsync(CancellationToken.None);
 
         Assert.AreEqual(Path.Combine(Path.GetTempPath(), "broker-diagnostics.client.log"), BrokerDiagnostics.LogPath);
-        Assert.AreEqual(1, lines.Count);
-        StringAssert.Contains(lines[0], "[client:");
-        StringAssert.Contains(lines[0], "environment-opt-in");
+        Assert.HasCount(1, lines);
+        Assert.Contains("[client:", lines[0]);
+        Assert.Contains("environment-opt-in", lines[0]);
     }
 
     [TestMethod]
@@ -120,7 +120,7 @@ public class BrokerDiagnosticsTests
 
         var path = Path.Combine(_temporaryRoot, "broker-diagnostics.broker.log");
         Assert.IsTrue(File.Exists(path));
-        StringAssert.Contains(await File.ReadAllTextAsync(path), "[broker:");
+        Assert.Contains("[broker:", await File.ReadAllTextAsync(path));
     }
 
     [TestMethod]
@@ -147,8 +147,8 @@ public class BrokerDiagnosticsTests
         var path = Path.Combine(_temporaryRoot, "broker-diagnostics.client.log");
         Assert.IsTrue(File.Exists(path));
         var line = await File.ReadAllTextAsync(path);
-        StringAssert.Contains(line, "frame read kind=6 len=42 t=");
-        StringAssert.Contains(line, ":test-C-3]");
+        Assert.Contains("frame read kind=6 len=42 t=", line);
+        Assert.Contains(":test-C-3]", line);
     }
 
     [TestMethod]
@@ -226,11 +226,10 @@ public class BrokerDiagnosticsTests
             Assert.IsTrue(clientWriter.TryEnqueue("client-recovered"));
             await clientWriter.FlushAsync(CancellationToken.None).WaitAsync(HangGuard * 3);
             var clientLines = await File.ReadAllLinesAsync(clientPath);
-            StringAssert.Contains(clientLines[0], $"1 records dropped: append failed: {failure.GetType().Name}: {failure.Message}");
+            Assert.Contains($"1 records dropped: append failed: {failure.GetType().Name}: {failure.Message}", clientLines[0]);
             Assert.IsFalse(clientLines[0].Contains("buffer full", StringComparison.Ordinal));
-            CollectionAssert.AreEqual(new[] { "client-recovered" }, clientLines.Skip(1).ToArray());
-            CollectionAssert.AreEqual(Enumerable.Range(0, 20).Select(index => $"broker-record-{index}").ToArray(),
-                await File.ReadAllLinesAsync(brokerPath));
+            Assert.AreSequenceEqual(new[] { "client-recovered" }, clientLines.Skip(1).ToArray());
+            Assert.AreSequenceEqual(Enumerable.Range(0, 20).Select(index => $"broker-record-{index}").ToArray(), await File.ReadAllLinesAsync(brokerPath));
         }
         finally
         {
@@ -261,8 +260,7 @@ public class BrokerDiagnosticsTests
                 .Select(line => System.Text.RegularExpressions.Regex.Match(line,
                     @"^\d{4}-\d\d-\d\dT[\d:.]+Z  \[broker:\d+:(?<tag>[^\]]+)\]  frame (?<direction>read|write) kind=\d+ len=17 t=\d+$"))
                 .ToArray();
-            CollectionAssert.AreEquivalent(new[] { "read", "write" },
-                traces.Select(trace => trace.Groups["direction"].Value).ToArray());
+            Assert.AreSequenceEqual(new[] { "read", "write" }, traces.Select(trace => trace.Groups["direction"].Value).ToArray(), SequenceOrder.InAnyOrder);
             var tag = traces[0].Groups["tag"].Value;
             Assert.AreEqual(tag, traces[1].Groups["tag"].Value, $"Client and host tags differ for drive {drive}.");
             Assert.IsTrue(seenTags.Add(tag), "Each channel must have its own identity, including repeated drives.");
@@ -291,7 +289,7 @@ public class BrokerDiagnosticsTests
         await Task.WhenAll(writers).WaitAsync(HangGuard * 3);
         await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard * 3);
 
-        Assert.AreEqual(1600, lines.Count);
+        Assert.HasCount(1600, lines);
         for (var channelIndex = 0; channelIndex < 8; channelIndex++)
         {
             var tag = $":test-{(char)('C' + channelIndex)}-{channelIndex}]";
@@ -329,7 +327,7 @@ public class BrokerDiagnosticsTests
 
             gate.Release();
             await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard * 3);
-            Assert.AreEqual(101, lines.Count);
+            Assert.HasCount(101, lines);
         }
         finally
         {
@@ -364,8 +362,8 @@ public class BrokerDiagnosticsTests
             gate.Release();
             await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard * 3);
 
-            Assert.AreEqual(1, lines.Count(line => line.Contains("5 records dropped: queue full", StringComparison.Ordinal)));
-            Assert.AreEqual(1 + BrokerDiagnosticsWriter.Capacity + 1, lines.Count);
+            Assert.ContainsSingle(line => line.Contains("5 records dropped: queue full", StringComparison.Ordinal), lines);
+            Assert.HasCount(1 + BrokerDiagnosticsWriter.Capacity + 1, lines);
         }
         finally
         {
@@ -395,8 +393,8 @@ public class BrokerDiagnosticsTests
         BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "third");
         await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard * 3);
 
-        Assert.AreEqual(2, lines.Count);
-        StringAssert.Contains(lines[0], "2 records dropped: append failed: IOException: sink offline");
-        StringAssert.Contains(lines[1], "third");
+        Assert.HasCount(2, lines);
+        Assert.Contains("2 records dropped: append failed: IOException: sink offline", lines[0]);
+        Assert.Contains("third", lines[1]);
     }
 }

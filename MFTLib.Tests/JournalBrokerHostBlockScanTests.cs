@@ -44,7 +44,7 @@ public class JournalBrokerHostBlockScanTests
 
         Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
         Assert.AreEqual(ArmedCursor, frames[0].Cursor);
-        Assert.AreEqual(1, frames.Count(frame => frame.Kind == BrokerFrameKind.ScanReady));
+        Assert.ContainsSingle(frame => frame.Kind == BrokerFrameKind.ScanReady, frames);
         Assert.AreEqual(21u, blockWriter.Block.Header.RowCount);
         Assert.AreEqual(18u, blockWriter.Block.Header.NamePoolUsed);
         Assert.AreEqual("section-C", blockWriter.LastSectionName);
@@ -56,7 +56,7 @@ public class JournalBrokerHostBlockScanTests
         Assert.AreEqual("file.txt", NamePool.ReadRowName(blockWriter.Block, 20).ToString());
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
         Assert.AreEqual(default(UsnJournalCursor), frames[^1].Cursor);
-        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Error));
+        Assert.DoesNotContain(frame => frame.Kind == BrokerFrameKind.Error, frames);
     }
 
     [TestMethod]
@@ -73,11 +73,11 @@ public class JournalBrokerHostBlockScanTests
 
         var frames = await ScanAsync(host, blockWriter, [".git"]);
 
-        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Error));
+        Assert.DoesNotContain(frame => frame.Kind == BrokerFrameKind.Error, frames);
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
         Assert.AreEqual("section-C", blockWriter.LastSectionName);
         Assert.IsNotNull(blockWriter.LastRetainedFileNames);
-        CollectionAssert.AreEqual(new[] { ".git" }, blockWriter.LastRetainedFileNames.ToArray());
+        Assert.AreSequenceEqual(new[] { ".git" }, blockWriter.LastRetainedFileNames.ToArray());
         Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, blockWriter.Block.Rows[5].Flags);
         Assert.AreEqual(RowFlags.None, blockWriter.Block.Rows[20].Flags);
     }
@@ -117,9 +117,9 @@ public class JournalBrokerHostBlockScanTests
 
         var frames = await ScanAsync(host, null);
 
-        StringAssert.Contains(frames.Single(frame => frame.Kind == BrokerFrameKind.Error).Message,
-            "blockSectionWriter");
-        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.ScanReady));
+        Assert.Contains("blockSectionWriter",
+frames.Single(frame => frame.Kind == BrokerFrameKind.Error).Message!);
+        Assert.DoesNotContain(frame => frame.Kind == BrokerFrameKind.ScanReady, frames);
     }
 
     [TestMethod]
@@ -144,8 +144,8 @@ public class JournalBrokerHostBlockScanTests
         Assert.AreEqual(6u, blockWriter.Block.Header.RowCount);
         Assert.IsFalse(blockWriter.Block.Header.IsComplete);
         Assert.AreEqual(0UL, blockWriter.Block.Header.UsnJournalIdentifier);
-        Assert.AreEqual("record batch failed", frames.Single(frame => frame.Kind == BrokerFrameKind.Error).Message);
-        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.ScanReady));
+        Assert.AreEqual("record batch failed", frames.Single(frame => frame.Kind == BrokerFrameKind.Error).Message!);
+        Assert.DoesNotContain(frame => frame.Kind == BrokerFrameKind.ScanReady, frames);
     }
 
     [TestMethod]
@@ -178,7 +178,7 @@ public class JournalBrokerHostBlockScanTests
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
         var transfers = frames.Where(frame => frame.Kind == BrokerFrameKind.ScanProgress).ToArray();
-        Assert.IsTrue(transfers.Length > 0);
+        Assert.IsNotEmpty(transfers);
         Assert.IsTrue(transfers.All(frame => frame.Progress?.Phase == BrokerScanPhase.Transferring));
         Assert.AreEqual(18L, transfers[^1].Progress?.BytesProcessed);
         Assert.AreEqual(transfers[^1].Progress?.BytesProcessed, transfers[^1].Progress?.TotalBytes);
@@ -218,7 +218,7 @@ public class JournalBrokerHostBlockScanTests
 
         Assert.AreEqual(6u, blockWriter.Block.Header.RowCount);
         Assert.IsFalse(blockWriter.Block.Header.IsComplete);
-        Assert.IsFalse(frames.Any(frame => frame.Kind is BrokerFrameKind.ScanReady or BrokerFrameKind.Error));
+        Assert.DoesNotContain(frame => frame.Kind is BrokerFrameKind.ScanReady or BrokerFrameKind.Error, frames);
     }
 
     [TestMethod]
@@ -256,7 +256,7 @@ public class JournalBrokerHostBlockScanTests
 
         Assert.AreEqual(skippedByHost, result.SkippedRecordCount);
         Assert.AreEqual(2L, result.SkippedRecordCount);
-        CollectionAssert.AreEqual(BlockBytes(hostWriter.Block), BlockBytes(directBlock));
+        Assert.AreSequenceEqual(BlockBytes(hostWriter.Block), BlockBytes(directBlock));
         await AssertExpectedRowsAsync(hostWriter.Block);
         await AssertExpectedRowsAsync(directBlock);
     }

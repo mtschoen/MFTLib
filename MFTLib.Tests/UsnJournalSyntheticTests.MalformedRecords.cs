@@ -34,7 +34,7 @@ public partial class UsnJournalSyntheticTests
 
         var (entries, cursor) = await ReadOrWatchBatchAsync(stream.ToArray(), watch);
 
-        Assert.AreEqual(1, entries.Length);
+        Assert.HasCount(1, entries);
         Assert.AreEqual(100UL, entries[0].RecordNumber);
         Assert.AreEqual("before.txt", entries[0].FileName);
         Assert.AreEqual(2000L, cursor.NextUsn);
@@ -65,7 +65,7 @@ public partial class UsnJournalSyntheticTests
 
         var (entries, cursor) = await ReadOrWatchBatchAsync(stream.ToArray(), watch);
 
-        Assert.AreEqual(1, entries.Length);
+        Assert.HasCount(1, entries);
         Assert.AreEqual(100UL, entries[0].RecordNumber);
         Assert.AreEqual("before.txt", entries[0].FileName);
         Assert.AreEqual(2000L, cursor.NextUsn);
@@ -99,7 +99,7 @@ public partial class UsnJournalSyntheticTests
 
         var (entries, cursor) = await ReadOrWatchBatchAsync(stream.ToArray(), watch);
 
-        Assert.AreEqual(3, entries.Length);
+        Assert.HasCount(3, entries);
         Assert.AreEqual("before.txt", entries[0].FileName);
         Assert.AreEqual(200UL, entries[1].RecordNumber);
         Assert.AreEqual(1200L, entries[1].Usn);
@@ -133,7 +133,7 @@ public partial class UsnJournalSyntheticTests
 
         var (entries, cursor) = await ReadOrWatchBatchAsync(stream.ToArray(), watch);
 
-        Assert.AreEqual(3, entries.Length);
+        Assert.HasCount(3, entries);
         Assert.AreEqual("before.txt", entries[0].FileName);
         Assert.AreEqual(200UL, entries[1].RecordNumber);
         Assert.AreEqual(expectedClampedName, entries[1].FileName);

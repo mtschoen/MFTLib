@@ -40,8 +40,8 @@ public class BrokerDiagnosticsWriterFlushTests
             Assert.IsTrue(writer.TryEnqueue("recovered record"));
             await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
 
-            Assert.AreEqual(2, lines.Count);
-            StringAssert.Contains(lines[0], $"{BrokerDiagnosticsWriter.Capacity + 2} records dropped: queue full (1); append failed ({BrokerDiagnosticsWriter.Capacity + 1}): IOException: sink unavailable");
+            Assert.HasCount(2, lines);
+            Assert.Contains($"{BrokerDiagnosticsWriter.Capacity + 2} records dropped: queue full (1); append failed ({BrokerDiagnosticsWriter.Capacity + 1}): IOException: sink unavailable", lines[0]);
             Assert.AreEqual("recovered record", lines[1]);
         }
         finally
@@ -89,14 +89,13 @@ public class BrokerDiagnosticsWriterFlushTests
             Assert.IsFalse(flush.IsCompleted);
             lastAppend.Release();
             await flush.WaitAsync(HangGuard);
-            Assert.AreEqual(BrokerDiagnosticsWriter.Capacity + 2, lines.Count);
-            Assert.AreEqual(1, lines.Count(line =>
-                line.Contains("1 records dropped: queue full", StringComparison.Ordinal)));
-            Assert.IsFalse(lines.Contains("dropped"));
-            CollectionAssert.AreEqual(
+            Assert.HasCount(BrokerDiagnosticsWriter.Capacity + 2, lines);
+            Assert.ContainsSingle(line =>
+                line.Contains("1 records dropped: queue full", StringComparison.Ordinal), lines);
+            Assert.DoesNotContain("dropped", lines);
+            Assert.AreSequenceEqual(
                 new[] { "parks the sink" }.Concat(Enumerable.Range(0, BrokerDiagnosticsWriter.Capacity)
-                    .Select(index => $"fill {index}")).ToArray(),
-                lines.Where(line => !line.Contains("records dropped:", StringComparison.Ordinal)).ToArray());
+                    .Select(index => $"fill {index}")).ToArray(), lines.Where(line => !line.Contains("records dropped:", StringComparison.Ordinal)).ToArray());
         }
         finally
         {
@@ -117,6 +116,6 @@ public class BrokerDiagnosticsWriterFlushTests
         Assert.IsFalse(writer.TryEnqueue("late"));
         await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
 
-        Assert.AreEqual(0, lines.Count);
+        Assert.IsEmpty(lines);
     }
 }

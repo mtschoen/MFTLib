@@ -34,7 +34,7 @@ public class MftVolumeAdminTests
         RequireElevation();
         using var volume = MftVolume.Open('C', 65536);
         var records = volume.ReadAll();
-        Assert.IsTrue(records.Length > 0);
+        Assert.IsNotEmpty(records);
     }
 
     [TestMethod]
@@ -44,7 +44,7 @@ public class MftVolumeAdminTests
         using var volume = MftVolume.Open('C');
         var records = volume.ReadAll();
 
-        Assert.IsTrue(records.Length > 0, "Expected records on C:");
+        Assert.IsNotEmpty(records, "Expected records on C:");
     }
 
     [TestMethod]
@@ -54,7 +54,7 @@ public class MftVolumeAdminTests
         using var volume = MftVolume.Open('C');
         var records = volume.ReadAll();
 
-        Assert.IsTrue(records.Length > 0);
+        Assert.IsNotEmpty(records);
         var first = records[0];
         var name1 = first.FileName;
         var name2 = first.FileName;
@@ -99,9 +99,9 @@ public class MftVolumeAdminTests
             }
         }
 
-        Assert.AreEqual(2, batches.Count);
-        Assert.AreEqual(100, batches[0].Length);
-        Assert.AreEqual(100, batches[1].Length);
+        Assert.HasCount(2, batches);
+        Assert.HasCount(100, batches[0]);
+        Assert.HasCount(100, batches[1]);
         Assert.IsNotNull(batches[0][0].FileName);
         Assert.IsNotNull(batches[1][0].FileName);
     }

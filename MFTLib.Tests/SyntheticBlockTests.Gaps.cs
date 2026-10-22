@@ -26,11 +26,11 @@ public partial class SyntheticBlockTests
     {
         var path = Seed([.. SampleRows(), new SyntheticRow(10, "stale.bin", 6) { IsFree = true, Size = 99 }]);
 
-        Assert.IsFalse(SyntheticBlock.ReadRows(path, Serial).Any(row => row.Name == "stale.bin"));
+        Assert.DoesNotContain(row => row.Name == "stale.bin", SyntheticBlock.ReadRows(path, Serial));
         Assert.AreEqual(11u, SyntheticBlock.ReadHeader(path, Serial).RowCount, "a free slot below the highest row still counts");
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
-        Assert.AreEqual(0, index.Search(new SearchQuery("stale.bin", NameMatchMode.Exact)).Count);
+        Assert.IsEmpty(index.Search(new SearchQuery("stale.bin", NameMatchMode.Exact)));
         Assert.AreEqual(5u, index.Drives.Single().Block!.LiveRowCount, "the tombstone and the free slot are not live");
     }
 
@@ -65,8 +65,8 @@ public partial class SyntheticBlockTests
 
         Assert.IsFalse(index.Drives.Single().Watch.IsSupported, "a cache-only open has no watch source");
         Assert.IsTrue(zebra.IsDeleted);
-        Assert.AreEqual(0, index.Search(new SearchQuery("zebra.txt", NameMatchMode.Exact)).Count);
-        Assert.AreEqual(1, index.Search(new SearchQuery("keep.txt", NameMatchMode.Exact)).Count);
+        Assert.IsEmpty(index.Search(new SearchQuery("zebra.txt", NameMatchMode.Exact)));
+        Assert.HasCount(1, index.Search(new SearchQuery("keep.txt", NameMatchMode.Exact)));
     }
 
     [TestMethod]
@@ -176,16 +176,14 @@ public partial class SyntheticBlockTests
 
         Assert.AreEqual(headerBefore with { CacheTag = replacementTag },
             SyntheticBlock.ReadHeader(path, Serial));
-        CollectionAssert.AreEqual(rowsBefore, SyntheticBlock.ReadRows(path, Serial).ToArray());
+        Assert.AreSequenceEqual(rowsBefore, SyntheticBlock.ReadRows(path, Serial).ToArray());
         var bytesAfter = await File.ReadAllBytesAsync(path, Token);
-        Assert.AreEqual(bytesBefore.Length, bytesAfter.Length);
+        Assert.HasCount(bytesBefore.Length, bytesAfter);
         var tagStart = Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.CacheTagFourCc)).ToInt32();
         var tagEnd = Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.CacheTagVersion)).ToInt32()
                      + sizeof(uint);
-        CollectionAssert.AreEqual(bytesBefore[..tagStart], bytesAfter[..tagStart],
-            "Every header field before the tag must be unchanged.");
-        CollectionAssert.AreEqual(bytesBefore[tagEnd..], bytesAfter[tagEnd..],
-            "Header padding, all row slots, sequence numbers and the name pool must be unchanged.");
+        Assert.AreSequenceEqual(bytesBefore[..tagStart], bytesAfter[..tagStart], "Every header field before the tag must be unchanged.");
+        Assert.AreSequenceEqual(bytesBefore[tagEnd..], bytesAfter[tagEnd..], "Header padding, all row slots, sequence numbers and the name pool must be unchanged.");
 
         await using var index = await FileIndex.OpenAsync(
             CacheOnly(enumeration) with { CacheTag = originalTag }, Token);

@@ -19,11 +19,11 @@ public partial class MftVolumeTests
 
             var batches = volume.ReadRecordBatches(4096, progress, allowance, CancellationToken.None).ToList();
 
-            Assert.IsTrue(batches.Count > 0);
+            Assert.IsNotEmpty(batches);
             var counts = ParseControlBlock.ChunkThreadCounts();
-            Assert.AreEqual(16, counts.Length);
+            Assert.HasCount(16, counts);
             Assert.AreEqual(nativeHardwareThreadCount, counts[0]);
-            CollectionAssert.AreEqual(Enumerable.Repeat(1u, 15).ToArray(), counts[1..]);
+            Assert.AreSequenceEqual(Enumerable.Repeat(1u, 15).ToArray(), counts[1..]);
         });
     }
 
@@ -34,9 +34,9 @@ public partial class MftVolumeTests
         {
             var firstParse = volume.ReadRecordBatches(4096, null, new ParseThreadAllowance(1), CancellationToken.None)
                 .ToList();
-            Assert.IsTrue(firstParse.Count > 0);
+            Assert.IsNotEmpty(firstParse);
             var finishedCounts = ParseControlBlock.ChunkThreadCounts();
-            Assert.AreEqual(16, finishedCounts.Length);
+            Assert.HasCount(16, finishedCounts);
 
             uint[]? countsDuringSecondParse = null;
             var progress = new SynchronousProgress<MftScanProgress>(_ =>
@@ -44,10 +44,9 @@ public partial class MftVolumeTests
 
             var secondParse = volume.ReadRecordBatches(4096, progress, null, CancellationToken.None).ToList();
 
-            Assert.IsTrue(secondParse.Count > 0);
-            CollectionAssert.AreEqual(finishedCounts, countsDuringSecondParse,
-                "A running parse does not clear or extend the recording of the last finished parse.");
-            Assert.AreEqual(16, ParseControlBlock.ChunkThreadCounts().Length);
+            Assert.IsNotEmpty(secondParse);
+            Assert.AreSequenceEqual(finishedCounts, countsDuringSecondParse, "A running parse does not clear or extend the recording of the last finished parse.");
+            Assert.HasCount(16, ParseControlBlock.ChunkThreadCounts());
         });
     }
 
@@ -68,7 +67,7 @@ public partial class MftVolumeTests
             var exception = Assert.ThrowsExactly<OperationCanceledException>(() => batches.MoveNext());
 
             Assert.AreEqual(cancellation.Token, exception.CancellationToken);
-            Assert.AreEqual(1, ParseControlBlock.ChunkThreadCounts().Length, "The parse must stop after one chunk");
+            Assert.HasCount(1, ParseControlBlock.ChunkThreadCounts(), "The parse must stop after one chunk");
         });
     }
 

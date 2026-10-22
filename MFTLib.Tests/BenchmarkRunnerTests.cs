@@ -32,7 +32,7 @@ public partial class BenchmarkRunnerTests
     public async Task Run_Index_InvalidArguments_ReportUsage(params string[] arguments)
     {
         Assert.AreEqual(1, await _runner.RunAsync(["index", .. arguments]));
-        StringAssert.Contains(_output.ToString(), "Usage: Benchmark.exe index");
+        Assert.Contains("Usage: Benchmark.exe index", _output.ToString());
     }
 
     [TestMethod]
@@ -49,8 +49,8 @@ public partial class BenchmarkRunnerTests
             clock.Advance(TimeSpan.FromMilliseconds(durations.Dequeue()));
             return Array.Empty<FileEntry>();
         }, iterations, output.WriteLine);
-        StringAssert.Contains(output.ToString(), $"Median: {expected} ms; Matches: 0");
-        Assert.AreEqual(0, durations.Count);
+        Assert.Contains($"Median: {expected} ms; Matches: 0", output.ToString());
+        Assert.IsEmpty(durations);
     }
 
     [TestMethod]
@@ -60,14 +60,14 @@ public partial class BenchmarkRunnerTests
     {
         Assert.AreEqual(0, await _runner.RunAsync(["INDEX", "--synthetic", rows.ToString(CultureInfo.InvariantCulture), "--iterations", iterations.ToString(CultureInfo.InvariantCulture)]));
         var output = _output.ToString().Replace("\r\n", "\n", StringComparison.Ordinal);
-        StringAssert.Contains(output, $"Rows: {rows}");
-        StringAssert.Contains(output, $"Slot capacity: {BlockLayout.ComputeSlotCapacity((uint)rows)}");
-        StringAssert.Contains(output, "File bytes:");
-        StringAssert.Contains(output, "Name-pool bytes:");
-        StringAssert.Contains(output, "Name-pool capacity bytes:");
-        StringAssert.Contains(output, "--- exact-search ---");
-        StringAssert.Contains(output, "--- substring-search ---");
-        StringAssert.Contains(output, $"Matches: {(rows == 1 ? 0 : 1)}");
+        Assert.Contains($"Rows: {rows}", output);
+        Assert.Contains($"Slot capacity: {BlockLayout.ComputeSlotCapacity((uint)rows)}", output);
+        Assert.Contains("File bytes:", output);
+        Assert.Contains("Name-pool bytes:", output);
+        Assert.Contains("Name-pool capacity bytes:", output);
+        Assert.Contains("--- exact-search ---", output);
+        Assert.Contains("--- substring-search ---", output);
+        Assert.Contains($"Matches: {(rows == 1 ? 0 : 1)}", output);
     }
 
     [TestMethod]
@@ -81,7 +81,7 @@ public partial class BenchmarkRunnerTests
     public async Task Run_NativeTimings_InvalidArguments_ReportUsage(params string[] arguments)
     {
         Assert.AreEqual(1, await _runner.RunAsync(["native-timings", .. arguments]));
-        StringAssert.Contains(_output.ToString(), "Usage: Benchmark.exe native-timings");
+        Assert.Contains("Usage: Benchmark.exe native-timings", _output.ToString());
     }
 
     [TestMethod]
@@ -89,9 +89,9 @@ public partial class BenchmarkRunnerTests
     {
         Assert.AreEqual(0, await _runner.RunAsync(["native-timings", "--synthetic", "4096", "--iterations", "2"]));
         var output = _output.ToString();
-        StringAssert.Contains(output, "--- native-parse-timings ---");
-        StringAssert.Contains(output, "Records: 4096 examined");
-        StringAssert.Contains(output, "(median of 2 runs)");
+        Assert.Contains("--- native-parse-timings ---", output);
+        Assert.Contains("Records: 4096 examined", output);
+        Assert.Contains("(median of 2 runs)", output);
         var milliseconds = new Dictionary<string, double>();
         foreach (var label in new[] { "Native I/O", "Native fixup", "Native parse", "Native total" })
         {
@@ -101,11 +101,11 @@ public partial class BenchmarkRunnerTests
         }
         foreach (var label in new[] { "Native I/O", "Native fixup", "Native parse" })
         {
-            Assert.IsTrue(milliseconds["Native total"] >= milliseconds[label], $"The total bounds {label}.");
+            Assert.IsGreaterThanOrEqualTo(milliseconds[label], milliseconds["Native total"], $"The total bounds {label}.");
         }
         StringAssert.Matches(output, new Regex(@"Bound: the (read \(I/O\)|parse \(CPU\)) stage dominates"));
-        StringAssert.Contains(output, "buffered");
-        Assert.IsFalse(output.Contains("disk is the bottleneck"), "The verdict names a stage, not the disk.");
+        Assert.Contains("buffered", output);
+        Assert.DoesNotContain("disk is the bottleneck", output, "The verdict names a stage, not the disk.");
     }
 
     [TestMethod]
@@ -113,14 +113,14 @@ public partial class BenchmarkRunnerTests
     {
         var path = Path.Combine(Path.GetTempPath(), $"missing-{Guid.NewGuid():N}.mft");
         Assert.AreEqual(1, await _runner.RunAsync(["native-timings", "--dump", path]));
-        StringAssert.Contains(_output.ToString(), "Error:");
+        Assert.Contains("Error:", _output.ToString());
     }
 
     [TestMethod]
     public async Task Run_Index_DefaultIterations_ReportsThreeSamples()
     {
         Assert.AreEqual(0, await _runner.RunAsync(["index", "--synthetic", "2"]));
-        StringAssert.Contains(_output.ToString(), "median of 3 runs");
+        Assert.Contains("median of 3 runs", _output.ToString());
     }
 
     [TestMethod]
@@ -155,24 +155,24 @@ public partial class BenchmarkRunnerTests
             }
 
             var originals = Directory.GetFiles(directory, "*.mlix").ToDictionary(path => path, File.ReadAllBytes);
-            Assert.AreEqual(2 + declined.Length, originals.Count);
+            Assert.HasCount(2 + declined.Length, originals);
             Assert.AreEqual(1, await _runner.RunAsync(["index", "--cache-directory", directory]));
             var output = _output.ToString();
-            StringAssert.Contains(output, "Drive: T");
-            StringAssert.Contains(output, "Drive: U");
-            StringAssert.Contains(output, "Rows: 2");
-            StringAssert.Contains(output, "Matches: 1");
+            Assert.Contains("Drive: T", output);
+            Assert.Contains("Drive: U", output);
+            Assert.Contains("Rows: 2", output);
+            Assert.Contains("Matches: 1", output);
             var usedNameBytes = (directory.Length + "file-0000000001".Length) * 2;
             var fileBytes = new FileInfo(Path.Combine(directory, "T-00000001.mlix")).Length;
-            StringAssert.Contains(output, string.Create(CultureInfo.InvariantCulture,
-                $"Name-pool bytes: {usedNameBytes} ({100.0 * usedNameBytes / fileBytes:F2}% of file)"));
+            Assert.Contains(string.Create(CultureInfo.InvariantCulture,
+                $"Name-pool bytes: {usedNameBytes} ({100.0 * usedNameBytes / fileBytes:F2}% of file)"), output);
             foreach (var (drive, _, _) in declined)
             {
-                StringAssert.Contains(output, $"{drive}-00000001.mlix: unsupported scan shape");
+                Assert.Contains($"{drive}-00000001.mlix: unsupported scan shape", output);
             }
             foreach (var original in originals)
             {
-                CollectionAssert.AreEqual(original.Value, await File.ReadAllBytesAsync(original.Key));
+                Assert.AreSequenceEqual(original.Value, await File.ReadAllBytesAsync(original.Key));
             }
         }
         finally { Directory.Delete(directory, true); }
@@ -192,7 +192,7 @@ public partial class BenchmarkRunnerTests
                 await File.WriteAllTextAsync(Path.Combine(directory, "T-00000001.mlix"), "corrupt");
             }
             Assert.AreEqual(1, await _runner.RunAsync(["index", "--cache-directory", directory]));
-            StringAssert.Contains(_output.ToString(), corrupt ? "Invalid" : "No cache blocks");
+            Assert.Contains(corrupt ? "Invalid" : "No cache blocks", _output.ToString());
         }
         finally { Directory.Delete(directory, true); }
     }
@@ -224,7 +224,7 @@ public partial class BenchmarkRunnerTests
             }
             using var owner = locked ? BlockOwnerLock.TryAcquire(path) : null;
             Assert.AreEqual(1, await _runner.RunAsync(["index", "--cache-directory", directory]));
-            StringAssert.Contains(_output.ToString(), locked ? "InUse" : "Offline");
+            Assert.Contains(locked ? "InUse" : "Offline", _output.ToString());
         }
         finally { Directory.Delete(directory, true); }
     }
@@ -261,8 +261,8 @@ public partial class BenchmarkRunnerTests
             }
             Assert.AreEqual(0, await _runner.RunAsync(["index", "--cache-directory", directory]),
                 _output.ToString());
-            StringAssert.Contains(_output.ToString(), "Rows: 6");
-            StringAssert.Contains(_output.ToString(), "Name-pool bytes: 0 (0.00% of file)");
+            Assert.Contains("Rows: 6", _output.ToString());
+            Assert.Contains("Name-pool bytes: 0 (0.00% of file)", _output.ToString());
         }
         finally { Directory.Delete(directory, true); }
     }
@@ -271,7 +271,7 @@ public partial class BenchmarkRunnerTests
     public async Task Run_NoVerb_ReportsUsage()
     {
         Assert.AreEqual(1, await _runner.RunAsync([]));
-        StringAssert.Contains(_output.ToString(), "Usage: Benchmark.exe <index|compare|native-timings|enumeration-walk>");
+        Assert.Contains("Usage: Benchmark.exe <index|compare|native-timings|enumeration-walk>", _output.ToString());
     }
 
     [TestMethod]
@@ -279,9 +279,9 @@ public partial class BenchmarkRunnerTests
     {
         Assert.AreEqual(0, await _runner.RunAsync(["index", "--synthetic", "2"]));
         var output = _output.ToString();
-        StringAssert.Contains(output, "System Info");
-        StringAssert.Contains(output, "CPU:");
-        StringAssert.Contains(output, "Disk:");
+        Assert.Contains("System Info", output);
+        Assert.Contains("CPU:", output);
+        Assert.Contains("Disk:", output);
     }
 
     [TestMethod]
@@ -289,7 +289,7 @@ public partial class BenchmarkRunnerTests
     {
         var beforeFiles = Directory.GetFiles(_directory);
         Assert.AreEqual(0, await _runner.RunAsync(["index", "--synthetic", "2"]));
-        CollectionAssert.AreEqual(beforeFiles, Directory.GetFiles(_directory));
+        Assert.AreSequenceEqual(beforeFiles, Directory.GetFiles(_directory));
         Assert.IsFalse(_output.ToString().Contains("Report saved to", StringComparison.Ordinal));
     }
 
@@ -307,7 +307,7 @@ public partial class BenchmarkRunnerTests
     public async Task Run_Index_WriteFailure_ReportsError()
     {
         Assert.AreEqual(1, await _runner.RunAsync(["index", "--synthetic", "2", "--out", _directory]));
-        StringAssert.Contains(_output.ToString(), "Error:");
+        Assert.Contains("Error:", _output.ToString());
     }
 
     [TestMethod]
@@ -318,12 +318,12 @@ public partial class BenchmarkRunnerTests
         var path = Path.Combine(_directory, "report with spaces.txt");
         Assert.AreEqual(0, await runner.RunAsync(["index", "--synthetic", "2", "--out", path]));
         var saved = await File.ReadAllTextAsync(path);
-        StringAssert.Contains(saved, "--- exact-search ---");
-        StringAssert.Contains(saved, "--- substring-search ---");
-        StringAssert.Contains(output.ToString(), $"Report saved to {Path.GetFullPath(path)}");
+        Assert.Contains("--- exact-search ---", saved);
+        Assert.Contains("--- substring-search ---", saved);
+        Assert.Contains($"Report saved to {Path.GetFullPath(path)}", output.ToString());
         Assert.AreEqual(0, await runner.RunAsync(["compare", path, path, "exact-search"]));
         await output.WriteLineAsync("still owned by caller");
-        StringAssert.Contains(output.ToString(), "still owned by caller");
+        Assert.Contains("still owned by caller", output.ToString());
     }
 
     [TestMethod]
@@ -347,7 +347,7 @@ public partial class BenchmarkRunnerTests
             Assert.AreEqual(1, await _runner.RunAsync(["compare", literalBaseline, grownPath, scenario]));
         }
 
-        StringAssert.Contains(_output.ToString(), "FAILED");
+        Assert.Contains("FAILED", _output.ToString());
     }
 
     [TestMethod]
@@ -384,7 +384,7 @@ public partial class BenchmarkRunnerTests
     public async Task Compare_MissingScenarioOrMedian_ReturnsOne(string afterReport)
     {
         Assert.AreEqual(1, await Compare("--- exact-search ---\n  Median: 1.000 ms", afterReport));
-        StringAssert.Contains(_output.ToString(), "no median for scenario 'exact-search'");
+        Assert.Contains("no median for scenario 'exact-search'", _output.ToString());
     }
 
     [TestMethod]
@@ -393,17 +393,17 @@ public partial class BenchmarkRunnerTests
         var before = Path.Combine(_directory, "before.txt");
         var after = Path.Combine(_directory, "after.txt");
         Assert.AreEqual(1, await _runner.RunAsync(["compare", before, after, "exact-search"]));
-        StringAssert.Contains(_output.ToString(), $"Baseline before file not found: {before}");
+        Assert.Contains($"Baseline before file not found: {before}", _output.ToString());
         await File.WriteAllTextAsync(before, "--- exact-search ---\n  Median: 1.000 ms");
         Assert.AreEqual(1, await _runner.RunAsync(["compare", before, after, "exact-search"]));
-        StringAssert.Contains(_output.ToString(), $"Benchmark after file not found: {after}");
+        Assert.Contains($"Benchmark after file not found: {after}", _output.ToString());
     }
 
     [TestMethod]
     public async Task Compare_MissingArguments_ReportsUsage()
     {
         Assert.AreEqual(1, await _runner.RunAsync(["compare", "before.txt", "after.txt"]));
-        StringAssert.Contains(_output.ToString(), "Usage: Benchmark.exe compare");
+        Assert.Contains("Usage: Benchmark.exe compare", _output.ToString());
     }
 
     [TestMethod]
@@ -420,7 +420,7 @@ public partial class BenchmarkRunnerTests
         var matches = Directory.EnumerateFiles(Path.Combine(root.FullName, "Benchmark"), "*.cs", SearchOption.AllDirectories)
             .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}") && !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
             .SelectMany(path => File.ReadLines(path).Where(line => retired.IsMatch(line)).Select(line => $"{Path.GetFileName(path)}: {line.Trim()}"));
-        CollectionAssert.AreEqual(Array.Empty<string>(), matches.ToArray());
+        Assert.AreSequenceEqual(Array.Empty<string>(), matches.ToArray());
     }
 
     async Task<int> Compare(string beforeReport, string afterReport, string scenario = "exact-search")

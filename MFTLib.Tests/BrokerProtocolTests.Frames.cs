@@ -47,7 +47,7 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(0xDEADBEEF, frame.RequestId);
         Assert.AreEqual(new DriveKey('C'), frame.RequireDrive());
         Assert.AreEqual("mftlib-drive-C-1", frame.PipeName);
-        Assert.AreEqual(0, frame.Entries.Length);
+        Assert.IsEmpty(frame.Entries);
         Assert.IsNull(frame.RetainedFileNames);
     }
 
@@ -80,7 +80,7 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(1024U, frame.BytesPerFileRecordSegment);
         Assert.AreEqual(8_192_000_000L, frame.MftValidDataLength);
         Assert.IsNull(frame.Drive, "The reply is matched by its request id, not by a drive.");
-        Assert.AreEqual(0, frame.Entries.Length);
+        Assert.IsEmpty(frame.Entries);
     }
 
     [TestMethod]
@@ -92,7 +92,7 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(42u, frame.RequestId);
         Assert.AreEqual("journal wrapped", frame.Message);
         Assert.IsNull(frame.Drive);
-        Assert.AreEqual(0, frame.Entries.Length);
+        Assert.IsEmpty(frame.Entries);
     }
 
     [TestMethod]
@@ -111,7 +111,7 @@ public partial class BrokerProtocolTests
 
         Assert.AreEqual(BrokerFrameKind.Heartbeat, frame.Kind);
         Assert.AreEqual(0u, frame.RequestId);
-        Assert.AreEqual(0, frame.Entries.Length);
+        Assert.IsEmpty(frame.Entries);
     }
 
     [TestMethod]

@@ -64,7 +64,7 @@ public class BrokerMftBlockProducerProtocolTests : BrokerBlockTestBase
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => resultTask.WaitAsync(HangGuard));
 
         Assert.AreEqual("query failed", exception.Message);
-        Assert.AreEqual(0, broker.Sections.All().Count);
+        Assert.IsEmpty(broker.Sections.All());
         Assert.IsFalse(File.Exists(request.BlockPath));
     }
 
@@ -144,7 +144,7 @@ public class BrokerMftBlockProducerProtocolTests : BrokerBlockTestBase
             exception = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => resultTask.WaitAsync(HangGuard));
         }
 
-        StringAssert.Contains(exception.Message, message);
+        Assert.Contains(message, exception.Message);
         var section = broker.Sections.Single();
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
         BlockFileAssertions.IsDisposed(section.Block);

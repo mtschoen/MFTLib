@@ -20,7 +20,7 @@ public class SystemInfoWmiTests
     {
         var result = SystemInfo.DefaultGetWmiValue("Win32_OperatingSystem", "Caption");
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.Length > 0);
+        Assert.IsGreaterThan(0, result.Length);
     }
 
     [TestMethod]
@@ -43,7 +43,7 @@ public class SystemInfoWmiTests
     public void DefaultQueryMemoryCapacities_ReturnsPositiveValues()
     {
         var capacities = SystemInfo.DefaultQueryMemoryCapacities().ToList();
-        Assert.IsTrue(capacities.Count > 0);
+        Assert.IsNotEmpty(capacities);
         Assert.IsTrue(capacities.All(capacity => capacity > 0));
     }
 
@@ -51,7 +51,7 @@ public class SystemInfoWmiTests
     public void DefaultQueryPartitionIds_WithValidDrive_ReturnsPartitions()
     {
         var partitions = SystemInfo.DefaultQueryPartitionIds("C").ToList();
-        Assert.IsTrue(partitions.Count > 0);
+        Assert.IsNotEmpty(partitions);
     }
 
     [TestMethod]
@@ -60,7 +60,7 @@ public class SystemInfoWmiTests
         try
         {
             var partitions = SystemInfo.DefaultQueryPartitionIds("Z").ToList();
-            Assert.AreEqual(0, partitions.Count);
+            Assert.IsEmpty(partitions);
         }
         catch (ManagementException)
         {
@@ -72,11 +72,11 @@ public class SystemInfoWmiTests
     public void DefaultQueryDiskModelForPartition_WithValidPartition_ReturnsModel()
     {
         var partitions = SystemInfo.DefaultQueryPartitionIds("C").ToList();
-        Assert.IsTrue(partitions.Count > 0);
+        Assert.IsNotEmpty(partitions);
 
         var model = SystemInfo.DefaultQueryDiskModelForPartition(partitions[0]);
         Assert.IsNotNull(model);
-        Assert.IsTrue(model.Length > 0);
+        Assert.IsGreaterThan(0, model.Length);
     }
 
     [TestMethod]

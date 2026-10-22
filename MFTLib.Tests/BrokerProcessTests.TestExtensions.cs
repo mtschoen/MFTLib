@@ -159,7 +159,7 @@ public partial class BrokerProcessTests
         var process = handle.Process;
         try
         {
-            Assert.IsFalse(handle.Scans.Any(), "Host startup failed before any scan began.");
+            Assert.IsEmpty(handle.Scans, "Host startup failed before any scan began.");
             await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
                 process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
             await process.DisposeAsync().AsTask().WaitAsync(HangGuard);
@@ -202,7 +202,7 @@ public partial class BrokerProcessTests
             handle.Process.ScanDriveAsync('C', ScanTarget(), new MftScanOptions(), null, CancellationToken.None)
                 .WaitAsync(HangGuard));
 
-        StringAssert.Contains(failure.Message, "no scan source");
+        Assert.Contains("no scan source", failure.Message);
         Assert.AreEqual(new DriveKey('C'), handle.Scans.Single().Drive);
     }
 
@@ -249,14 +249,14 @@ public partial class BrokerProcessTests
             var resultD = await handle.Process.ScanDriveAsync('d', TestBlockSections.Target(), options, null, CancellationToken.None).WaitAsync(HangGuard);
             Assert.AreEqual(new DriveKey('D'), resultD.Drive);
 
-            Assert.AreEqual(2, handle.Scans.Count);
+            Assert.HasCount(2, handle.Scans);
             Assert.AreEqual('C', handle.Scans[0].Drive);
             Assert.AreEqual('D', handle.Scans[1].Drive);
 
             firstCallbackRelease.Release();
             var resultC = await scanC.WaitAsync(HangGuard);
             Assert.AreEqual(new DriveKey('C'), resultC.Drive);
-            Assert.AreEqual(2, handle.Scans.Count);
+            Assert.HasCount(2, handle.Scans);
             Assert.AreEqual('C', handle.Scans[0].Drive);
             Assert.AreEqual('D', handle.Scans[1].Drive);
             return;
@@ -288,11 +288,11 @@ public partial class BrokerProcessTests
             var failure = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
                 singleHandle.Process.ScanDriveAsync('c', target, options, null, CancellationToken.None)
                     .WaitAsync(HangGuard));
-            StringAssert.Contains(failure.Message, expectedMessage);
+            Assert.Contains(expectedMessage, failure.Message);
 
             var recorded = singleHandle.Scans.Single();
             Assert.AreEqual('C', recorded.Drive);
-            CollectionAssert.AreEqual(new[] { ".git" }, recorded.RetainedFileNames!.ToArray());
+            Assert.AreSequenceEqual(new[] { ".git" }, recorded.RetainedFileNames!.ToArray());
             return;
         }
 
@@ -302,10 +302,10 @@ public partial class BrokerProcessTests
         Assert.AreEqual(new DriveKey('C'), result.Drive);
         Assert.AreEqual(Armed, result.ArmedCursor);
         Assert.IsNull(result.CatchUpLoss);
-        Assert.IsTrue(result.Block.Block.Header.RowCount > 0);
+        Assert.IsGreaterThan(0u, result.Block.Block.Header.RowCount);
         var scan = singleHandle.Scans.Single();
         Assert.AreEqual('C', scan.Drive);
-        CollectionAssert.AreEqual(new[] { ".git" }, scan.RetainedFileNames!.ToArray());
+        Assert.AreSequenceEqual(new[] { ".git" }, scan.RetainedFileNames!.ToArray());
     }
 
     [TestMethod]
@@ -328,7 +328,7 @@ public partial class BrokerProcessTests
         else
         {
             Assert.IsNotNull(scan.RetainedFileNames);
-            Assert.AreEqual(0, scan.RetainedFileNames.Count);
+            Assert.IsEmpty(scan.RetainedFileNames);
         }
     }
 
@@ -357,9 +357,9 @@ public partial class BrokerProcessTests
         await handle.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(), progressSink, CancellationToken.None)
             .WaitAsync(HangGuard);
 
-        Assert.AreEqual(1, seen.Count);
+        Assert.HasCount(1, seen);
         Assert.AreEqual('C', seen[0].Drive);
-        Assert.IsTrue(seen[0].ParseThreads >= 1);
+        Assert.IsGreaterThanOrEqualTo(1, seen[0].ParseThreads);
         Assert.IsFalse(seen[0].Cancelled);
         Assert.IsTrue(parsedSeen.Task.IsCompletedSuccessfully);
         Assert.AreEqual(2L, (await parsedSeen.Task).TotalRecords);
@@ -419,7 +419,7 @@ public partial class BrokerProcessTests
         var settings = await handle.Process.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None)
             .WaitAsync(HangGuard);
 
-        CollectionAssert.AreEqual(new[] { ArmedSynthetic, advanced }, readCursors.ToArray());
+        Assert.AreSequenceEqual(new[] { ArmedSynthetic, advanced }, readCursors.ToArray());
         Assert.AreEqual(Armed, scan.ArmedCursor);
         Assert.IsNull(scan.CatchUpLoss);
         Assert.AreEqual(0x08000000L, settings.MaximumSize);
@@ -473,7 +473,7 @@ public partial class BrokerProcessTests
         }
 
         Assert.IsNotNull(batch);
-        Assert.AreEqual(1, batch.Entries.Count);
+        Assert.HasCount(1, batch.Entries);
         Assert.AreEqual(cursor.NextUsn, batch.NextUsn);
     }
 
@@ -515,6 +515,6 @@ public partial class BrokerProcessTests
 
         var failure = await Assert.ThrowsExactlyAsync<DriveWatchFaultException>(async () =>
             await reader.MoveNextAsync());
-        StringAssert.Contains(failure.Message, "no watch source");
+        Assert.Contains("no watch source", failure.Message);
     }
 }

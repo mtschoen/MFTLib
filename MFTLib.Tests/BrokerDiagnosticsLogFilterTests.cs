@@ -52,12 +52,10 @@ public class BrokerDiagnosticsLogFilterTests
 
         var kept = filter.Filter(driveChar, entries);
 
-        CollectionAssert.AreEqual(new[] { "unrelated.txt" }, kept.Select(entry => entry.FileName).ToArray());
-        CollectionAssert.AreEqual(
-            new[] { "broker-diagnostics.broker.log", "broker-diagnostics.ui.log" },
-            otherFilter.Filter(driveChar, entries).Select(entry => entry.FileName).ToArray());
-        CollectionAssert.AreEqual(new[] { "unrelated.txt" },
-            filter.Filter(driveChar, entries).Select(entry => entry.FileName).ToArray());
+        Assert.AreSequenceEqual(new[] { "unrelated.txt" }, kept.Select(entry => entry.FileName).ToArray());
+        Assert.AreSequenceEqual(
+            new[] { "broker-diagnostics.broker.log", "broker-diagnostics.ui.log" }, otherFilter.Filter(driveChar, entries).Select(entry => entry.FileName).ToArray());
+        Assert.AreSequenceEqual(new[] { "unrelated.txt" }, filter.Filter(driveChar, entries).Select(entry => entry.FileName).ToArray());
     }
 
     [TestMethod]
@@ -69,10 +67,10 @@ public class BrokerDiagnosticsLogFilterTests
         var filter = new BrokerDiagnosticsLogFilter(OwnLogPath, null, _ => resolvable.Value ? OwnLogReference : null);
         var entries = new[] { Entry(OwnLogReference, "broker-diagnostics.broker.log") };
 
-        Assert.AreEqual(1, filter.Filter('C', entries).Length);
+        Assert.HasCount(1, filter.Filter('C', entries));
 
         resolvable.Value = true;
-        Assert.AreEqual(0, filter.Filter('C', entries).Length);
+        Assert.IsEmpty(filter.Filter('C', entries));
     }
 
     [TestMethod]
@@ -86,9 +84,9 @@ public class BrokerDiagnosticsLogFilterTests
         var entries = new[] { Entry(ClientLogReference, "broker-diagnostics.ui.log") };
 
         // The D-rooted path never resolves for a C batch, so the entry is kept there...
-        Assert.AreEqual(1, filter.Filter('C', entries).Length);
+        Assert.HasCount(1, filter.Filter('C', entries));
         // ...and resolves for a D batch, where it is dropped.
-        Assert.AreEqual(0, filter.Filter('D', entries).Length);
+        Assert.IsEmpty(filter.Filter('D', entries));
     }
 
     [TestMethod]
@@ -120,7 +118,7 @@ public class BrokerDiagnosticsLogFilterTests
         var kept = filter.Filter('C', entries);
 
         Assert.AreEqual(prefixedPath, resolvedPath);
-        Assert.AreEqual(1, kept.Length);
+        Assert.HasCount(1, kept);
         Assert.AreEqual("unrelated.txt", kept[0].FileName);
     }
 
@@ -140,8 +138,7 @@ public class BrokerDiagnosticsLogFilterTests
             Entry(initialReference, "broker-diagnostics.broker.log"),
             Entry(recycledReference, "recycled.txt")
         };
-        CollectionAssert.AreEqual(new[] { "recycled.txt" },
-            filter.Filter('C', first).Select(entry => entry.FileName).ToArray());
+        Assert.AreSequenceEqual(new[] { "recycled.txt" }, filter.Filter('C', first).Select(entry => entry.FileName).ToArray());
         currentReference.Value = replacementReference;
         var replaced = new[]
         {
@@ -150,10 +147,8 @@ public class BrokerDiagnosticsLogFilterTests
             Entry(recycledReference, "recycled.txt"),
             Entry(4242, "unrelated.txt")
         };
-        CollectionAssert.AreEqual(new[] { "recycled.txt", "unrelated.txt" },
-            filter.Filter('C', replaced).Select(entry => entry.FileName).ToArray());
-        CollectionAssert.AreEqual(new[] { "recycled.txt", "unrelated.txt" },
-            filter.Filter('C', replaced).Select(entry => entry.FileName).ToArray());
+        Assert.AreSequenceEqual(new[] { "recycled.txt", "unrelated.txt" }, filter.Filter('C', replaced).Select(entry => entry.FileName).ToArray());
+        Assert.AreSequenceEqual(new[] { "recycled.txt", "unrelated.txt" }, filter.Filter('C', replaced).Select(entry => entry.FileName).ToArray());
     }
 
     [TestMethod]
@@ -230,7 +225,7 @@ public class BrokerDiagnosticsLogFilterTests
                 Entry(4242, "unrelated.txt")
             };
             var kept = filter.Filter('C', entries);
-            Assert.AreEqual(1, kept.Length);
+            Assert.HasCount(1, kept);
             Assert.AreEqual("unrelated.txt", kept[0].FileName);
         }
         finally
@@ -293,7 +288,7 @@ public class BrokerDiagnosticsLogFilterTests
 
             var kept = filter.Filter(drive, new[] { matching, unrelated });
 
-            Assert.AreEqual(1, kept.Length);
+            Assert.HasCount(1, kept);
             Assert.AreEqual("unrelated.txt", kept[0].FileName);
         }
         finally
@@ -352,7 +347,7 @@ public class BrokerDiagnosticsLogFilterTests
 
         var kept = filter.Filter('C', entries);
 
-        Assert.AreEqual(1, kept.Length);
+        Assert.HasCount(1, kept);
         Assert.AreEqual("unrelated.txt", kept[0].FileName);
     }
 }

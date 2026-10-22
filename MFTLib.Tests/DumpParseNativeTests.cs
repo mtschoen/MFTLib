@@ -39,7 +39,7 @@ public partial class DumpParseNativeTests
         var result = ParseHeader(path, 256);
 
         Assert.AreEqual(5000UL, result.TotalRecords);
-        Assert.IsTrue(result.UsedRecords > 1024, "The entry array starts at 1024 entries and must have grown");
+        Assert.IsGreaterThan(1024UL, result.UsedRecords, "The entry array starts at 1024 entries and must have grown");
     }
 
     [TestMethod]
@@ -52,7 +52,7 @@ public partial class DumpParseNativeTests
         var result = ParseHeader(path, 4096);
 
         Assert.AreEqual(5000UL, result.TotalRecords);
-        Assert.IsTrue(result.UsedRecords > 1024);
+        Assert.IsGreaterThan(1024UL, result.UsedRecords);
     }
 
     [TestMethod]
@@ -66,8 +66,8 @@ public partial class DumpParseNativeTests
 
         var records = DirectParse.ParseFile(path, out _);
 
-        Assert.IsTrue(records.Length > 0);
-        Assert.IsFalse(records.Any(record => record.RecordNumber == 10));
+        Assert.IsNotEmpty(records);
+        Assert.DoesNotContain(record => record.RecordNumber == 10, records);
     }
 
     // TryExtractFileName's second bounds check (ValueOffset + requiredNameSize > RecordLength), reached
@@ -86,8 +86,8 @@ public partial class DumpParseNativeTests
 
         var records = DirectParse.ParseFile(path, out _);
 
-        Assert.IsTrue(records.Length > 0);
-        Assert.IsFalse(records.Any(record => record.RecordNumber == 6));
+        Assert.IsNotEmpty(records);
+        Assert.DoesNotContain(record => record.RecordNumber == 6, records);
     }
 
     [TestMethod]
@@ -103,8 +103,8 @@ public partial class DumpParseNativeTests
 
         var records = DirectParse.ParseFile(path, out _);
 
-        Assert.IsTrue(records.Length > 0);
-        Assert.IsFalse(records.Any(record => record.RecordNumber == 6));
+        Assert.IsNotEmpty(records);
+        Assert.DoesNotContain(record => record.RecordNumber == 6, records);
     }
 
     // ScanRecordAttributes' FirstAttributeOffset guard: below 42, or overflowing the record.
@@ -158,8 +158,8 @@ public partial class DumpParseNativeTests
         NativeTestHooks.NativeSetMaxThreads(1);
         var singleThread = DirectParse.ParseFile(path, out _, 64).Select(record => record.RecordNumber).ToArray();
 
-        Assert.IsTrue(everyCore.Length > 64, "The parse must span several 64-record chunks");
-        CollectionAssert.AreEqual(everyCore, singleThread);
+        Assert.IsGreaterThan(64, everyCore.Length, "The parse must span several 64-record chunks");
+        Assert.AreSequenceEqual(everyCore, singleThread);
     }
 
     string WriteSynthetic(ulong recordCount, uint bufferSizeRecords)

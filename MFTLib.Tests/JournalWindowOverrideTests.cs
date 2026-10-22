@@ -49,7 +49,7 @@ public class JournalWindowOverrideTests
         using var scope = JournalIsolation.OverrideJournalWindow(_ => Trimmed);
         var failure = Assert.ThrowsExactly<InvalidOperationException>(
             () => JournalIsolation.OverrideJournalWindow(_ => null));
-        StringAssert.Contains(failure.Message, "already active");
+        Assert.Contains("already active", failure.Message);
         await Task.Run(() => Assert.ThrowsExactly<InvalidOperationException>(
             () => JournalIsolation.OverrideJournalWindow(_ => null)));
         Assert.IsNotNull(Check());

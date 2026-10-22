@@ -27,9 +27,7 @@ public partial class JournalBrokerHostChannelTests
         using var a = await three.AdmitAsync(CancellationToken.None);
         using var b = await three.AdmitAsync(CancellationToken.None);
         using var c = await three.AdmitAsync(CancellationToken.None);
-        CollectionAssert.AreEqual(new[] { 3, 3, 2 },
-            new[] { a.Allowance.Count, b.Allowance.Count, c.Allowance.Count },
-            "The remainder goes to the earliest admissions.");
+        Assert.AreSequenceEqual(new[] { 3, 3, 2 }, new[] { a.Allowance.Count, b.Allowance.Count, c.Allowance.Count }, "The remainder goes to the earliest admissions.");
     }
 
     [TestMethod]
@@ -243,7 +241,7 @@ public partial class JournalBrokerHostChannelTests
     {
         var running = await RunningAsync(outstanding, processorCount);
         Assert.AreEqual(running.Count, allocator.RunningScanCount);
-        Assert.IsTrue(running.Count <= processorCount);
+        Assert.IsLessThanOrEqualTo(processorCount, running.Count);
         Assert.IsTrue(running.All(registration => registration.Allowance.Count >= 1));
         if (running.Count > 0)
         {

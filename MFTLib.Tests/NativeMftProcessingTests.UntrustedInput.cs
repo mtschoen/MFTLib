@@ -271,7 +271,7 @@ public partial class NativeMftProcessingTests
         }
 
         var outcome = ParseImage(data, data.Length);
-        StringAssert.Contains(outcome.ErrorMessage, "malformed attribute");
+        Assert.Contains("malformed attribute", outcome.ErrorMessage);
     }
 
     [TestMethod]

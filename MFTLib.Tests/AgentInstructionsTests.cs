@@ -21,7 +21,7 @@ public class AgentInstructionsTests
                 $"warning: AGENTS.md has {characters} characters, within 500 of the 15000 budget.");
         }
 
-        Assert.IsTrue(characters < 15000,
+        Assert.IsLessThan(15000, characters,
             $"AGENTS.md has {characters} characters; it must stay below 15000. " +
             "Move narrative unchanged into linked docs pages.");
     }
@@ -31,7 +31,7 @@ public class AgentInstructionsTests
     {
         var blocks = Regex.Split(ReadInstructions(), @"\r?\n[\t ]*\r?\n");
         var longest = blocks.Max(CountCharacters);
-        Assert.IsTrue(longest < 3000,
+        Assert.IsLessThan(3000, longest,
             $"AGENTS.md has a {longest}-character block; each must stay below 3000. " +
             "Separate concise rules with blank lines.");
     }
@@ -43,7 +43,7 @@ public class AgentInstructionsTests
             .Select(match => match.Groups[1].Value)
             .Distinct()
             .ToList();
-        Assert.IsTrue(links.Count > 0, "AGENTS.md links no docs pages.");
+        Assert.IsNotEmpty(links, "AGENTS.md links no docs pages.");
         foreach (var link in links)
         {
             var path = Path.Combine(AppContext.BaseDirectory, "repository-docs", link);
@@ -106,8 +106,8 @@ public class AgentInstructionsTests
     {
         var paths = RepositoryFiles.Git("ls-files", "-z")
             .Split('\0', StringSplitOptions.RemoveEmptyEntries);
-        Assert.IsTrue(paths.Length > 0, "Git returned no tracked files.");
-        CollectionAssert.Contains(paths, ".plan", "The backlog must remain tracked.");
+        Assert.IsNotEmpty(paths, "Git returned no tracked files.");
+        Assert.Contains(".plan", paths, "The backlog must remain tracked.");
         var patterns = PrivateContentPatterns();
         var failures = new List<string>();
         foreach (var path in paths)
@@ -133,7 +133,7 @@ public class AgentInstructionsTests
             }
         }
 
-        Assert.AreEqual(0, failures.Count, string.Join(Environment.NewLine, failures));
+        Assert.IsEmpty(failures, string.Join(Environment.NewLine, failures));
         CollectionAssert.DoesNotContain(paths, ".maintenance.json", "Maintenance state must be local.");
         Assert.AreEqual(".maintenance.json",
             RepositoryFiles.Git("check-ignore", "--no-index", ".maintenance.json").Trim());
@@ -156,7 +156,7 @@ public class AgentInstructionsTests
         var patterns = PrivateContentPatterns();
         foreach (var text in rejected)
         {
-            Assert.IsTrue(patterns.Any(pattern => Regex.IsMatch(text, pattern)),
+            Assert.Contains(pattern => Regex.IsMatch(text, pattern), patterns,
                 "A private-content negative control was not detected.");
         }
 
@@ -167,7 +167,7 @@ public class AgentInstructionsTests
             @"C:\Data\test\file.txt", "https://github.com/mtschoen/MFTLib"
         })
         {
-            Assert.IsFalse(patterns.Any(pattern => Regex.IsMatch(text, pattern)),
+            Assert.DoesNotContain(pattern => Regex.IsMatch(text, pattern), patterns,
                 $"Portable content was rejected: {text}");
         }
     }
@@ -182,7 +182,7 @@ public class AgentInstructionsTests
         var sources = paths.ToDictionary(path => path,
             path => Regex.Replace(RepositoryFiles.Read(path), @"//[^\r\n]*|/\*[\s\S]*?\*/", ""));
         var shared = sources.Where(pair => pair.Key.StartsWith("SampleProgram.Shared/", StringComparison.Ordinal)).ToArray();
-        Assert.IsTrue(shared.Length > 0, "The shared source set must not be empty.");
+        Assert.IsNotEmpty(shared, "The shared source set must not be empty.");
         var sharedText = string.Join("\n", shared.Select(pair => pair.Value));
         var failures = new List<string>();
         foreach (var name in new[]
@@ -205,7 +205,7 @@ public class AgentInstructionsTests
         foreach (var (path, text) in shared)
         {
             var declarations = declaration.Matches(text).ToArray();
-            Assert.IsTrue(declarations.Length > 0, $"No shared members found in {path}.");
+            Assert.IsNotEmpty(declarations, $"No shared members found in {path}.");
             for (var index = 0; index < declarations.Length; index++)
             {
                 var match = declarations[index];
@@ -217,7 +217,7 @@ public class AgentInstructionsTests
         foreach (var sample in new[] { "Direct", "Watch" })
         {
             var local = sources.Where(pair => pair.Key.StartsWith($"SampleProgram.{sample}/", StringComparison.Ordinal)).ToArray();
-            Assert.IsTrue(local.Length > 0, $"No source found for {sample}.");
+            Assert.IsNotEmpty(local, $"No source found for {sample}.");
             var identifiers = Regex.Matches(string.Join("\n", local.Select(pair => pair.Value)), @"\b[A-Za-z_]\w*\b")
                 .Select(match => match.Value).ToHashSet(StringComparer.Ordinal);
             var pending = new Queue<string>(members.Keys.Where(identifiers.Contains));
@@ -247,7 +247,7 @@ public class AgentInstructionsTests
             }
         }
 
-        Assert.AreEqual(0, failures.Count, string.Join(Environment.NewLine, failures));
+        Assert.IsEmpty(failures, string.Join(Environment.NewLine, failures));
     }
 
     [TestMethod]
@@ -261,7 +261,7 @@ public class AgentInstructionsTests
             { ".ps1", ".psm1", ".psd1", ".sh", ".bash", ".py", ".cmd", ".bat" };
         var scripts = paths.Where(path => extensions.Contains(Path.GetExtension(path)) ||
             RepositoryFiles.Read(path).StartsWith("#!", StringComparison.Ordinal)).ToArray();
-        Assert.IsTrue(scripts.Length > 0, "No scripts found under scripts/.");
+        Assert.IsNotEmpty(scripts, "No scripts found under scripts/.");
         var required = scripts.Concat(new[]
         {
             "SampleProgram.Direct/SampleProgram.Direct.csproj",
@@ -270,8 +270,8 @@ public class AgentInstructionsTests
         var failures = ValidateMaintainedTools(
             RepositoryFiles.Read("docs/maintained-developer-tools.md"), required,
             path => File.Exists(Path.Combine(RepositoryFiles.Root, path)));
-        Assert.AreEqual(0, failures.Length, string.Join(Environment.NewLine, failures));
-        StringAssert.Contains(ReadInstructions(), "(docs/maintained-developer-tools.md)");
+        Assert.IsEmpty(failures, string.Join(Environment.NewLine, failures));
+        Assert.Contains("(docs/maintained-developer-tools.md)", ReadInstructions());
     }
 
     [TestMethod]
@@ -279,7 +279,7 @@ public class AgentInstructionsTests
     {
         const string valid = "| `scripts/fixture.ps1` | Parse fixtures | agent | Syntax gate |\n";
         var required = new[] { "scripts/fixture.ps1" };
-        Assert.AreEqual(0, ValidateMaintainedTools(valid, required, _ => true).Length);
+        Assert.IsEmpty(ValidateMaintainedTools(valid, required, _ => true));
         var cases = new[]
         {
             (Text: "", Required: required, Exists: true, Error: "Missing maintained tool"),
@@ -301,7 +301,7 @@ public class AgentInstructionsTests
         foreach (var item in cases)
         {
             var failures = ValidateMaintainedTools(item.Text, item.Required, _ => item.Exists);
-            Assert.IsTrue(failures.Any(message => message.Contains(item.Error, StringComparison.Ordinal)),
+            Assert.Contains(message => message.Contains(item.Error, StringComparison.Ordinal), failures,
                 $"Expected {item.Error}: {string.Join(';', failures)}");
         }
     }

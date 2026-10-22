@@ -34,7 +34,7 @@ public class UsnJournalTests
         using var synchronous = FileUtilities.Hooks._getVolumeHandle(@"\\.\C:");
         using var watch = FileUtilities.Hooks._getWatchVolumeHandle(@"\\.\C:");
 
-        CollectionAssert.AreEqual(new uint[] { 0, 0x40000000 }, flags.ToArray());
+        Assert.AreSequenceEqual(new uint[] { 0, 0x40000000 }, flags.ToArray());
     }
 
     [TestMethod]
@@ -59,9 +59,9 @@ public class UsnJournalTests
     {
         var entry = JournalEntries.Create(42, 100, "test.txt", UsnReason.FileCreate);
         var text = entry.ToString();
-        Assert.IsTrue(text.Contains("FileCreate"));
-        Assert.IsTrue(text.Contains("test.txt"));
-        Assert.IsTrue(text.Contains("42"));
+        Assert.Contains("FileCreate", text);
+        Assert.Contains("test.txt", text);
+        Assert.Contains("42", text);
     }
 
     [TestMethod]

@@ -104,7 +104,7 @@ public partial class NativeVolumeParsingTests
                 if (parses)
                 {
                     Assert.IsTrue(string.IsNullOrEmpty(result.ErrorMessage), result.ErrorMessage);
-                    Assert.IsTrue(result.TotalRecords > 0);
+                    Assert.IsGreaterThan(0UL, result.TotalRecords);
                 }
                 else
                 {
@@ -155,8 +155,8 @@ public partial class NativeVolumeParsingTests
             try
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.IsTrue(result.TotalRecords > 0);
-                Assert.IsTrue(invocations.Count >= 1, "Expected at least one in-loop progress report");
+                Assert.IsGreaterThan(0UL, result.TotalRecords);
+                Assert.IsGreaterThanOrEqualTo(1, invocations.Count, "Expected at least one in-loop progress report");
                 Assert.IsTrue(
                     invocations[^1].Scanned == result.TotalRecords && invocations[^1].Total == result.TotalRecords,
                     "Last reported chunk must reach the full record count");
@@ -212,7 +212,7 @@ public partial class NativeVolumeParsingTests
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
                 Assert.AreEqual(0UL, result.UsedRecords);
                 Assert.IsFalse(string.IsNullOrEmpty(result.ErrorMessage), "a failed first chunk must fail the parse");
-                Assert.AreEqual(0, invocations.Count, "a scan that read nothing reports no progress");
+                Assert.IsEmpty(invocations, "a scan that read nothing reports no progress");
             }
             finally
             {

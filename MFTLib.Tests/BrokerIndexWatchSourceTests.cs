@@ -226,9 +226,8 @@ public class BrokerIndexWatchSourceTests
         second.Push(11, "after.txt", 500);
         await afterApplied;
 
-        CollectionAssert.AreEqual(new[] { "fresh.txt", "after.txt" },
-            harness.Changes.Select(change => change.Entry.Name).ToArray());
-        Assert.AreEqual(0, harness.Faults.Count, string.Join("; ", harness.Faults.Select(fault => fault.Exception.Message)));
+        Assert.AreSequenceEqual(new[] { "fresh.txt", "after.txt" }, harness.Changes.Select(change => change.Entry.Name).ToArray());
+        Assert.IsEmpty(harness.Faults, string.Join("; ", harness.Faults.Select(fault => fault.Exception.Message)));
         Assert.AreEqual(500L, harness.BlockFor('T').Header.UsnNextUsn);
         Assert.IsFalse(broker.Process.Ended.IsCompleted);
     }

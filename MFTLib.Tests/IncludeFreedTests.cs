@@ -51,8 +51,7 @@ public class IncludeFreedTests
             (21, "deleted-under-freed-file.txt", 13, 22),
             (22, "deleted-under-live-file.txt", 6, 23)
         };
-        CollectionAssert.AreEqual(expected.Select(row => row.Number).ToArray(),
-            freed.Select(record => record.RecordNumber).ToArray());
+        Assert.AreSequenceEqual(expected.Select(row => row.Number).ToArray(), freed.Select(record => record.RecordNumber).ToArray());
         foreach (var row in expected)
         {
             var record = freed.Single(candidate => candidate.RecordNumber == row.Number);
@@ -67,7 +66,7 @@ public class IncludeFreedTests
         }
 
         AssertRowsEqual(ordinary, records.Where(record => record.InUse).ToArray());
-        Assert.IsFalse(records.Any(record => record.RecordNumber is 18 or 19 or 20 or 23));
+        Assert.DoesNotContain(record => record.RecordNumber is 18 or 19 or 20 or 23, records);
     }
 
     [TestMethod]
@@ -92,7 +91,7 @@ public class IncludeFreedTests
 
     static void AssertRowsEqual(MftRecord[] expected, MftRecord[] actual)
     {
-        Assert.AreEqual(expected.Length, actual.Length);
+        Assert.HasCount(expected.Length, actual);
         for (var index = 0; index < expected.Length; index++)
         {
             Assert.AreEqual(expected[index].RecordNumber, actual[index].RecordNumber);
@@ -117,7 +116,7 @@ public class IncludeFreedTests
     static int FileNameOffset(byte[] image, int recordNumber)
     {
         var recordOffset = recordNumber * RecordSize;
-        Assert.IsTrue(recordOffset + RecordSize <= image.Length, "Fixture record must exist.");
+        Assert.IsLessThanOrEqualTo(image.Length, recordOffset + RecordSize, "Fixture record must exist.");
         Assert.AreEqual(0x454c4946u, BitConverter.ToUInt32(image, recordOffset), "Fixture record must have a FILE header.");
         var attributeOffset = recordOffset + BitConverter.ToUInt16(image, recordOffset + 0x14);
         while (BitConverter.ToUInt32(image, attributeOffset) != 0x30)

@@ -25,7 +25,7 @@ public partial class BenchmarkRunnerTests
     public async Task Run_EnumerationWalk_InvalidArguments_ReportUsage(params string[] arguments)
     {
         Assert.AreEqual(1, await _runner.RunAsync(["enumeration-walk", .. arguments]));
-        StringAssert.Contains(_output.ToString(), "Usage: Benchmark.exe enumeration-walk");
+        Assert.Contains("Usage: Benchmark.exe enumeration-walk", _output.ToString());
     }
 
     [TestMethod]
@@ -53,17 +53,17 @@ public partial class BenchmarkRunnerTests
                 output.ToString());
 
             var report = await File.ReadAllTextAsync(reportPath);
-            StringAssert.StartsWith(output.ToString(), report);
-            StringAssert.Contains(report, $"Directories: {directories} (including root)");
-            StringAssert.Contains(report, $"Files: {directories * filesPerDirectory}");
-            StringAssert.Contains(report, $"median of {iterations} runs");
-            StringAssert.Contains(report, "--- enumeration-walk-sequential ---");
-            StringAssert.Contains(report, "--- enumeration-walk-parallel ---");
-            StringAssert.Contains(report, string.Create(CultureInfo.InvariantCulture,
-                $"Median: {directories:F3} ms; Rows: {directories * (filesPerDirectory + 1)}"));
-            StringAssert.Contains(report, "Speedup (sequential / parallel): 1.000x");
-            StringAssert.Contains(report, "warm filesystem cache");
-            Assert.AreEqual(directories, visits.Count);
+            Assert.StartsWith(report, output.ToString());
+            Assert.Contains($"Directories: {directories} (including root)", report);
+            Assert.Contains($"Files: {directories * filesPerDirectory}", report);
+            Assert.Contains($"median of {iterations} runs", report);
+            Assert.Contains("--- enumeration-walk-sequential ---", report);
+            Assert.Contains("--- enumeration-walk-parallel ---", report);
+            Assert.Contains(string.Create(CultureInfo.InvariantCulture,
+                $"Median: {directories:F3} ms; Rows: {directories * (filesPerDirectory + 1)}"), report);
+            Assert.Contains("Speedup (sequential / parallel): 1.000x", report);
+            Assert.Contains("warm filesystem cache", report);
+            Assert.HasCount(directories, visits);
             foreach (var (path, count) in visits)
             {
                 Assert.AreEqual(2 * (iterations + 1), count, "Both modes warm up and repeat the whole walk.");
@@ -125,7 +125,7 @@ public partial class BenchmarkRunnerTests
         {
             Assert.AreEqual(0, await _runner.RunAsync(["enumeration-walk", "--directories", "9",
                 "--files-per-directory", "0", "--iterations", "2"]), _output.ToString());
-            Assert.AreEqual(sequential.Length, walks.Count);
+            Assert.HasCount(sequential.Length, walks);
             for (var walk = 0; walk < sequential.Length; walk++)
             {
                 if (sequential[walk])
@@ -134,7 +134,7 @@ public partial class BenchmarkRunnerTests
                 }
                 else
                 {
-                    Assert.IsTrue(walks[walk].Peak > 1, "Parallel reads use additional shared-budget readers.");
+                    Assert.IsGreaterThan(1, walks[walk].Peak, "Parallel reads use additional shared-budget readers.");
                 }
             }
         }
@@ -150,9 +150,9 @@ public partial class BenchmarkRunnerTests
         using var output = new StringWriter();
         var runner = new BenchmarkRunner(output, new FakeTimeProvider());
         Assert.AreEqual(0, await runner.RunAsync(["enumeration-walk", "--directories", "2"]));
-        StringAssert.Contains(output.ToString(), "Files: 2");
-        StringAssert.Contains(output.ToString(), "median of 5 runs");
-        StringAssert.Contains(output.ToString(), "Speedup (sequential / parallel): unavailable");
+        Assert.Contains("Files: 2", output.ToString());
+        Assert.Contains("median of 5 runs", output.ToString());
+        Assert.Contains("Speedup (sequential / parallel): unavailable", output.ToString());
     }
 
     [TestMethod]
@@ -175,8 +175,8 @@ public partial class BenchmarkRunnerTests
             var report = Path.Combine(_directory, "report.txt");
             await File.WriteAllTextAsync(report, "keep me");
             Assert.AreEqual(1, await _runner.RunAsync(["enumeration-walk", "--directories", "2", "--out", report]));
-            StringAssert.Contains(_output.ToString(), "Error:");
-            StringAssert.Contains(_output.ToString(), throwBeforeReading ? "injected read failure" : "Incomplete enumeration:");
+            Assert.Contains("Error:", _output.ToString());
+            Assert.Contains(throwBeforeReading ? "injected read failure" : "Incomplete enumeration:", _output.ToString());
             Assert.AreEqual("keep me", await File.ReadAllTextAsync(report));
             Assert.IsNotEmpty(visits);
             foreach (var path in visits)
@@ -194,7 +194,7 @@ public partial class BenchmarkRunnerTests
     public async Task Run_EnumerationWalk_WriteFailure_ReportsError()
     {
         Assert.AreEqual(1, await _runner.RunAsync(["enumeration-walk", "--directories", "1", "--out", _directory]));
-        StringAssert.Contains(_output.ToString(), "Error:");
+        Assert.Contains("Error:", _output.ToString());
     }
 
     /// <summary>Concurrent directory reads observed for one walk.</summary>

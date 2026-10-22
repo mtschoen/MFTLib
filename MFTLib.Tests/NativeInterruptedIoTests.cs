@@ -82,8 +82,8 @@ public sealed class NativeInterruptedIoTests : IDisposable
 
         MftVolume.GenerateSyntheticMFT(interruptedPath, 100, 256);
 
-        Assert.IsTrue(NativeTestHooks.NativeGetInterruptedIoCalls() >= 4);
-        CollectionAssert.AreEqual(File.ReadAllBytes(expectedPath), File.ReadAllBytes(interruptedPath));
+        Assert.IsGreaterThanOrEqualTo(4, NativeTestHooks.NativeGetInterruptedIoCalls());
+        Assert.AreSequenceEqual(File.ReadAllBytes(expectedPath), File.ReadAllBytes(interruptedPath));
     }
 
     [TestMethod]

@@ -21,7 +21,7 @@ public partial class NativeMftProcessingTests
             Assert.IsTrue(MFTLibNative.GenerateSyntheticMftSized(path, 1024, 256, 1024));
             using var input = MftDumpInput.Open(path);
             using var result = input.Parse();
-            Assert.IsTrue(result.UsedRecords > 0);
+            Assert.IsGreaterThan(0UL, result.UsedRecords);
         }
         finally
         {
@@ -68,7 +68,7 @@ public partial class NativeMftProcessingTests
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(pointer);
                 Assert.AreEqual(string.Empty, result.ErrorMessage);
-                Assert.IsTrue(result.UsedRecords > 0);
+                Assert.IsGreaterThan(0UL, result.UsedRecords);
             }
             finally
             {
@@ -105,7 +105,7 @@ public partial class NativeMftProcessingTests
             try
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(pointer);
-                StringAssert.Contains(result.ErrorMessage, "Out of memory");
+                Assert.Contains("Out of memory", result.ErrorMessage);
                 Assert.AreEqual(0UL, result.UsedRecords);
                 Assert.AreEqual(IntPtr.Zero, result.Entries);
                 Assert.AreEqual(IntPtr.Zero, result.EntryStrings);
@@ -118,14 +118,14 @@ public partial class NativeMftProcessingTests
             NativeTestHooks.NativeResetTestState();
             using var managedInput = MftDumpInput.Open(path);
             using var ordinaryResult = managedInput.Parse();
-            Assert.IsTrue(ordinaryResult.UsedRecords > 0);
+            Assert.IsGreaterThan(0UL, ordinaryResult.UsedRecords);
             NativeTestHooks.NativeSetAllocFailCountdown(-1);
             var failure = Assert.ThrowsExactly<InvalidOperationException>(() =>
             {
                 using var failingInput = MftDumpInput.Open(path);
                 using var unexpectedResult = failingInput.Parse();
             });
-            StringAssert.Contains(failure.Message, "Out of memory");
+            Assert.Contains("Out of memory", failure.Message);
         }
         finally
         {

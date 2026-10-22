@@ -60,17 +60,16 @@ public class DirectLargestFilesTests
     public void Largest_ReturnsTheBiggestFilesInDescendingOrder()
     {
         var results = LargestFiles.Find(_index, 3, under: null, CancellationToken.None);
-        CollectionAssert.AreEqual(
-            new[] { "huge.bin", "large.bin", "medium.bin" },
-            results.Select(entry => entry.Name).ToArray());
+        Assert.AreSequenceEqual(
+            new[] { "huge.bin", "large.bin", "medium.bin" }, results.Select(entry => entry.Name).ToArray());
     }
 
     [TestMethod]
     public void Largest_ExcludesDirectoriesAndTombstones()
     {
         var results = LargestFiles.Find(_index, 10, under: null, CancellationToken.None);
-        Assert.IsFalse(results.Any(entry => entry.IsDirectory));
-        Assert.IsFalse(results.Any(entry => entry.Name == "gone.bin"));
+        Assert.DoesNotContain(entry => entry.IsDirectory, results);
+        Assert.DoesNotContain(entry => entry.Name == "gone.bin", results);
     }
 
     [TestMethod]
@@ -85,9 +84,8 @@ public class DirectLargestFilesTests
 
         await using var index = await OpenIndexAsync(builder);
         var results = LargestFiles.Find(index, 10, under: null, CancellationToken.None);
-        CollectionAssert.AreEqual(
-            new[] { "known-big.txt", "known-small.txt" },
-            results.Select(entry => entry.Name).ToArray());
+        Assert.AreSequenceEqual(
+            new[] { "known-big.txt", "known-small.txt" }, results.Select(entry => entry.Name).ToArray());
     }
 
     [TestMethod]
@@ -95,9 +93,8 @@ public class DirectLargestFilesTests
     {
         var documents = FileEntry.Create(_index.CurrentSnapshot[0], _documentsRow);
         var results = LargestFiles.Find(_index, 5, documents, CancellationToken.None);
-        CollectionAssert.AreEqual(
-            new[] { "huge.bin", "large.bin", "readme.md" },
-            results.Select(entry => entry.Name).ToArray());
+        Assert.AreSequenceEqual(
+            new[] { "huge.bin", "large.bin", "readme.md" }, results.Select(entry => entry.Name).ToArray());
     }
 
     [TestMethod]
@@ -105,22 +102,21 @@ public class DirectLargestFilesTests
     {
         var file = _index.Search(new SearchQuery("huge.bin", NameMatchMode.Exact)).Single();
         var results = LargestFiles.Find(_index, 5, file, CancellationToken.None);
-        CollectionAssert.AreEqual(new[] { file.RecordKey }, results.Select(entry => entry.RecordKey).ToArray());
+        Assert.AreSequenceEqual(new[] { file.RecordKey }, results.Select(entry => entry.RecordKey).ToArray());
     }
 
     [TestMethod]
     public void Largest_CountLargerThanTheDriveReturnsEverything()
     {
         var results = LargestFiles.Find(_index, 1000, under: null, CancellationToken.None);
-        Assert.AreEqual(6, results.Count);
+        Assert.HasCount(6, results);
     }
 
     [TestMethod]
     public void Largest_MaximumCountOverSmallIndex_ReturnsOnlyTheAvailableFiles()
     {
         var results = LargestFiles.Find(_index, int.MaxValue, under: null, CancellationToken.None);
-        CollectionAssert.AreEqual(new long[] { 9_000_000, 5_000_000, 3_000_000, 1_000, 20, 10 },
-            results.Select(entry => entry.Size).ToArray());
+        Assert.AreSequenceEqual(new long[] { 9_000_000, 5_000_000, 3_000_000, 1_000, 20, 10 }, results.Select(entry => entry.Size).ToArray());
     }
 
     [TestMethod]
@@ -148,7 +144,7 @@ public class DirectLargestFilesTests
     [TestMethod]
     public void Largest_ZeroCountReturnsEmpty()
     {
-        Assert.AreEqual(0, LargestFiles.Find(_index, 0, under: null, CancellationToken.None).Count);
+        Assert.IsEmpty(LargestFiles.Find(_index, 0, under: null, CancellationToken.None));
     }
 
     [TestMethod]
@@ -215,8 +211,7 @@ public class DirectLargestFilesTests
         builder.Complete(Moment);
         await using var index = await OpenIndexAsync(builder);
         var results = LargestFiles.Find(index, 5, under: null, CancellationToken.None);
-        CollectionAssert.AreEqual(
-            Enumerable.Range(0, 5).Select(offset => $"file{LargeRowCount - offset}.bin").ToArray(),
-            results.Select(entry => entry.Name).ToArray());
+        Assert.AreSequenceEqual(
+            Enumerable.Range(0, 5).Select(offset => $"file{LargeRowCount - offset}.bin").ToArray(), results.Select(entry => entry.Name).ToArray());
     }
 }

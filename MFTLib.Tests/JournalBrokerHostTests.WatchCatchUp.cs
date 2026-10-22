@@ -16,8 +16,7 @@ public partial class JournalBrokerHostTests
         var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        CollectionAssert.AreEqual(new[] { BrokerFrameKind.CaughtUp, BrokerFrameKind.JournalBatch },
-            frames.Select(frame => frame.Kind).ToArray());
+        Assert.AreSequenceEqual(new[] { BrokerFrameKind.CaughtUp, BrokerFrameKind.JournalBatch }, frames.Select(frame => frame.Kind).ToArray());
     }
 
     [TestMethod]
@@ -35,9 +34,8 @@ public partial class JournalBrokerHostTests
         var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        CollectionAssert.AreEqual(
-            new[] { BrokerFrameKind.JournalBatch, BrokerFrameKind.JournalBatch, BrokerFrameKind.CaughtUp },
-            frames.Select(frame => frame.Kind).ToArray());
+        Assert.AreSequenceEqual(
+            new[] { BrokerFrameKind.JournalBatch, BrokerFrameKind.JournalBatch, BrokerFrameKind.CaughtUp }, frames.Select(frame => frame.Kind).ToArray());
         Assert.AreEqual(new UsnJournalCursor(7UL, 140L), frames[0].Cursor);
         Assert.AreEqual(new UsnJournalCursor(7UL, 160L), frames[1].Cursor);
     }
@@ -54,7 +52,7 @@ public partial class JournalBrokerHostTests
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
         // The channel closes after its one batch, which proves no CaughtUp followed it.
-        CollectionAssert.AreEqual(new[] { BrokerFrameKind.JournalBatch }, frames.Select(frame => frame.Kind).ToArray());
+        Assert.AreSequenceEqual(new[] { BrokerFrameKind.JournalBatch }, frames.Select(frame => frame.Kind).ToArray());
     }
 
     [TestMethod]
@@ -68,7 +66,7 @@ public partial class JournalBrokerHostTests
         var pipe = await harness.OpenWatchChannelAsync('C', default);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        CollectionAssert.AreEqual(new[] { BrokerFrameKind.CaughtUp }, frames.Select(frame => frame.Kind).ToArray());
+        Assert.AreSequenceEqual(new[] { BrokerFrameKind.CaughtUp }, frames.Select(frame => frame.Kind).ToArray());
     }
 
     [TestMethod]
@@ -101,7 +99,7 @@ public partial class JournalBrokerHostTests
         var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.AreEqual(1, frames.Count);
+        Assert.HasCount(1, frames);
         Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
         Assert.AreEqual("Access is denied", frames[0].Message);
     }

@@ -47,7 +47,7 @@ public partial class BrokerProtocolTests
 
         var exception = Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(frame, out _));
 
-        StringAssert.Contains(exception.Message, "4 bytes needed, 2 left");
+        Assert.Contains("4 bytes needed, 2 left", exception.Message);
     }
 
     [TestMethod]
@@ -58,7 +58,7 @@ public partial class BrokerProtocolTests
 
         var exception = Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(frame, out _));
 
-        StringAssert.Contains(exception.Message, "journal entry declares");
+        Assert.Contains("journal entry declares", exception.Message);
     }
 
     [TestMethod]
@@ -83,7 +83,7 @@ public partial class BrokerProtocolTests
 
         var exception = Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(frame, out _));
 
-        StringAssert.Contains(exception.Message, expectedMessage);
+        Assert.Contains(expectedMessage, exception.Message);
     }
 
     [TestMethod]

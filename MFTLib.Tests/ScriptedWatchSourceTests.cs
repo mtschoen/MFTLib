@@ -13,7 +13,7 @@ public class ScriptedWatchSourceTests
 {
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     static IndexWatchTarget Target(char driveLetter, ulong journalIdentifier = 7, long nextUsn = 100) =>
         new(driveLetter, journalIdentifier, nextUsn);
@@ -84,9 +84,8 @@ public class ScriptedWatchSourceTests
 
         Assert.AreSame(failure, first);
         Assert.AreSame(failure, second);
-        CollectionAssert.AreEqual(new DriveKey[] { 'U', 'U', 'T' }, source.Starts.Select(start => start.Drive).ToArray(),
-            "failed starts are still recorded");
-        Assert.AreEqual(1, source.Watches.Count, "only the successful start handed out a watch");
+        Assert.AreSequenceEqual(new DriveKey[] { 'U', 'U', 'T' }, source.Starts.Select(start => start.Drive).ToArray(), "failed starts are still recorded");
+        Assert.HasCount(1, source.Watches, "only the successful start handed out a watch");
     }
 
     [TestMethod]
@@ -99,7 +98,7 @@ public class ScriptedWatchSourceTests
         var watch = await StartAsync(source, Target('T'));
 
         Assert.IsNotNull(watch);
-        Assert.AreEqual(2, source.Starts.Count);
+        Assert.HasCount(2, source.Starts);
     }
 
     [TestMethod]
@@ -112,7 +111,7 @@ public class ScriptedWatchSourceTests
         await Assert.ThrowsExactlyAsync<IOException>(() => StartAsync(source, Target('U')));
         await StartAsync(source, Target('U'));
 
-        Assert.AreEqual(2, source.Watches.Count);
+        Assert.HasCount(2, source.Watches);
     }
 
     [TestMethod]

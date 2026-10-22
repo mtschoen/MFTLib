@@ -44,7 +44,7 @@ public class NativeMockTests
             var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
                 MftFixture.Generate(path));
 
-            StringAssert.Contains(exception.Message, path);
+            Assert.Contains(path, exception.Message);
         }
         finally
         {

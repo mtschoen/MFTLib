@@ -49,12 +49,12 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.AreEqual(4096L, notes.Size);
         Assert.IsTrue(notes.IsSizeKnown);
         Assert.AreEqual(Modified, notes.LastWriteTime);
-        CollectionAssert.AreEquivalent(new ulong[] { 20, 22 }, index.Search(new SearchQuery("notes.txt"))
-            .Select(entry => entry.RecordKey.RecordNumber).ToArray());
+        Assert.AreSequenceEqual(new ulong[] { 20, 22 }, index.Search(new SearchQuery("notes.txt"))
+            .Select(entry => entry.RecordKey.RecordNumber).ToArray(), SequenceOrder.InAnyOrder);
         var duplicates = CollectFileRows(index).GroupBy(row => row.Name, StringComparer.OrdinalIgnoreCase)
             .Single(group => group.Count() > 1);
         Assert.AreEqual("notes.txt", duplicates.Key);
-        Assert.AreEqual(2, duplicates.Count());
+        Assert.HasCount(2, duplicates);
         var deleted = index.Find(At("documents", "obsolete.txt"))!.Value;
         var renamed = index.Find(At("documents", "draft.txt"))!.Value;
         Assert.IsNull(index.Drives[0].Watch.CheckpointLoss);
@@ -64,8 +64,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
 
         var changes = index.ApplyJournalEntries('C', CatchUpEntries(), AdvancedCursor.JournalIdentifier, AdvancedCursor.NextUsn);
 
-        CollectionAssert.AreEqual(new[] { FileChangeKind.Created, FileChangeKind.Deleted, FileChangeKind.Renamed },
-            changes.Select(change => change.Kind).ToArray());
+        Assert.AreSequenceEqual(new[] { FileChangeKind.Created, FileChangeKind.Deleted, FileChangeKind.Renamed }, changes.Select(change => change.Kind).ToArray());
         Assert.AreEqual(30UL, index.Find(At("documents", "created.txt"))!.Value.RecordKey.RecordNumber);
         Assert.IsTrue(deleted.IsDeleted);
         Assert.IsTrue(block.Rows[21].IsDeleted);
@@ -75,7 +74,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.IsNull(index.Find(At("documents", "draft.txt")));
         Assert.AreEqual(AdvancedCursor.JournalIdentifier, block.Header.UsnJournalIdentifier);
         Assert.AreEqual(AdvancedCursor.NextUsn, block.Header.UsnNextUsn);
-        Assert.IsTrue(block.Header.UsnNextUsn > ArmedCursor.NextUsn);
+        Assert.IsGreaterThan(ArmedCursor.NextUsn, block.Header.UsnNextUsn);
     }
 
     [TestMethod]
@@ -110,14 +109,14 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None).WaitAsync(HangGuard);
 
         AssertReady(index);
-        Assert.IsTrue(progress.Any(value => value.Phase == IndexScanPhase.ParsingMft));
-        Assert.IsTrue(progress.Any(value => value.Phase == IndexScanPhase.Transferring));
+        Assert.Contains(value => value.Phase == IndexScanPhase.ParsingMft, progress);
+        Assert.Contains(value => value.Phase == IndexScanPhase.Transferring, progress);
         Assert.IsTrue(progress.All(value => value.Drive == 'C'));
         var transferring = progress.FindLast(value => value.Phase == IndexScanPhase.Transferring);
         Assert.IsNotNull(transferring);
         Assert.IsNotNull(transferring.ExpectedRowCount);
         Assert.IsTrue(transferring.ExpectedRowCount > 0);
-        Assert.IsTrue(progress[^1].WrittenRowCount > 0);
+        Assert.IsGreaterThan(0u, progress[^1].WrittenRowCount);
         Assert.IsTrue(index.Find(At("documents"))!.Value.IsDirectory);
         Assert.IsNotNull(index.Find(At("documents", "notes.txt")));
         Assert.IsNotNull(index.Find(At("notes.txt")));
@@ -138,7 +137,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         await using var index = await FileIndex.OpenAsync(Options(source), CancellationToken.None).WaitAsync(HangGuard);
 
         var created = broker.Sections.Single().Block;
-        Assert.IsTrue(created.Header.SlotCapacity < 1_000_000);
+        Assert.IsLessThan(1_000_000u, created.Header.SlotCapacity);
         Assert.IsTrue(created.Header.IsComplete);
         Assert.IsTrue(created.Header.IsCapacityExhausted);
         Assert.IsTrue(index.Drives[0].Block!.IsCapacityExhausted);
@@ -190,7 +189,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.AreEqual(RearmedCursor.NextUsn, replacementBlock.Header.UsnNextUsn);
         Assert.AreEqual(40UL, index.Find(At("replacement.txt"))!.Value.RecordKey.RecordNumber);
         Assert.IsNull(index.Find(At("documents", "notes.txt")));
-        Assert.AreEqual(2, watchSource.Starts.Count);
+        Assert.HasCount(2, watchSource.Starts);
         Assert.AreEqual(new ScriptedWatchStart('C', RearmedCursor.ToSynthetic()), watchSource.Starts[1]);
         Assert.AreEqual(Path.Combine(_rootDirectory, "documents", "notes.txt"), previous.Path);
         Assert.AreEqual("notes.txt", previous.Name);

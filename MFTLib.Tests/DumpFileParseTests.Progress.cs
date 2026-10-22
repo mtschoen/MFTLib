@@ -16,11 +16,10 @@ public partial class DumpFileParseTests
 
         using var result = StreamFile(new SynchronousProgress<MftScanProgress>(reports.Add));
 
-        Assert.IsTrue(reports.Count > 1, "A 1000-record image read 256 records at a time reports more than once.");
+        Assert.IsGreaterThan(1, reports.Count, "A 1000-record image read 256 records at a time reports more than once.");
         Assert.IsTrue(reports.All(report => report.TotalRecords == 1000));
         Assert.AreEqual(1000L, reports[^1].RecordsScanned);
-        CollectionAssert.AreEqual(reports.Select(report => report.RecordsScanned).OrderBy(scanned => scanned).ToArray(),
-            reports.Select(report => report.RecordsScanned).ToArray(), "Records scanned never goes backwards.");
+        Assert.AreSequenceEqual(reports.Select(report => report.RecordsScanned).OrderBy(scanned => scanned).ToArray(), reports.Select(report => report.RecordsScanned).ToArray(), "Records scanned never goes backwards.");
     }
 
     [TestMethod]
@@ -33,12 +32,12 @@ public partial class DumpFileParseTests
             BufferSizeRecords: 1));
 
         Assert.AreEqual(1000UL, result.TotalRecords);
-        Assert.AreEqual(1000, reports.Count, "Every one-record chunk reports once.");
+        Assert.HasCount(1000, reports, "Every one-record chunk reports once.");
         long previous = 0;
         foreach (var report in reports)
         {
-            Assert.IsTrue(report.RecordsScanned > previous, $"{report.RecordsScanned} does not pass {previous}");
-            Assert.IsTrue(report.RecordsScanned <= report.TotalRecords);
+            Assert.IsGreaterThan(previous, report.RecordsScanned, $"{report.RecordsScanned} does not pass {previous}");
+            Assert.IsLessThanOrEqualTo(report.TotalRecords, report.RecordsScanned);
             Assert.AreEqual(1000L, report.TotalRecords);
             previous = report.RecordsScanned;
         }
@@ -93,7 +92,7 @@ public partial class DumpFileParseTests
             () => StreamFile(progress, cancellationToken: cancellation.Token));
 
         Assert.AreEqual(1, reports, "The chunk after the cancelling report is never reported.");
-        Assert.IsTrue(uncancelledReports > reports);
+        Assert.IsGreaterThan(reports, uncancelledReports);
     }
 
     [TestMethod]
@@ -108,7 +107,7 @@ public partial class DumpFileParseTests
         }
 
         var chunkThreadCounts = ParseControlBlock.ChunkThreadCounts();
-        Assert.IsTrue(chunkThreadCounts.Length > 1);
+        Assert.IsGreaterThan(1, chunkThreadCounts.Length);
         Assert.IsTrue(chunkThreadCounts.All(count => count <= (uint)allowedThreads),
             "No chunk runs more threads than the allowance.");
     }

@@ -21,7 +21,7 @@ public class BrokerFrameWriteLimitTests
         var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
             BrokerProtocol.WriteArmAndScan(buffer, "section", KeepList(32_700)));
 
-        StringAssert.Contains(exception.Message, "frame limit");
+        Assert.Contains("frame limit", exception.Message);
         Assert.AreEqual(0, buffer.WrittenCount);
     }
 
@@ -60,7 +60,7 @@ public class BrokerFrameWriteLimitTests
         Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
         Assert.AreEqual(BrokerProtocol.MaximumMessageUnits, frame.RequireMessage().Length);
         Assert.IsTrue(frame.RequireMessage().EndsWith(BrokerProtocol.TruncationMarker, StringComparison.Ordinal));
-        Assert.IsTrue(consumed < BrokerFrameStream.MaximumFrameLength);
+        Assert.IsLessThan(BrokerFrameStream.MaximumFrameLength, consumed);
     }
 
     [TestMethod]

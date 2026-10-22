@@ -28,7 +28,7 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
 
         Assert.AreEqual(0x08000000L, settings.MaximumSize);
         Assert.AreEqual(0x01000000L, settings.AllocationDelta);
-        Assert.AreEqual(1, received.Count);
+        Assert.HasCount(1, received);
         Assert.AreEqual(new DriveKey('C'), received[0].Drive);
         Assert.AreEqual(0x08000000L, received[0].MaximumSize);
         Assert.AreEqual(0x01000000L, received[0].AllocationDelta);
@@ -57,7 +57,7 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             broker.Process.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 32, AllocationDelta = 16 }, CancellationToken.None).WaitAsync(HangGuard));
 
-        StringAssert.Contains(exception.Message, "only growth");
+        Assert.Contains("only growth", exception.Message);
     }
 
     [TestMethod]
@@ -100,8 +100,8 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
         var negative = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             broker.Process.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = -1 }, CancellationToken.None).WaitAsync(HangGuard));
 
-        StringAssert.Contains(zero.Message, "positive sizes are required");
-        StringAssert.Contains(negative.Message, "positive sizes are required");
-        CollectionAssert.AreEqual(new[] { (0L, 0x01000000L), (0x08000000L, -1L) }, received);
+        Assert.Contains("positive sizes are required", zero.Message);
+        Assert.Contains("positive sizes are required", negative.Message);
+        Assert.AreSequenceEqual(new[] { (0L, 0x01000000L), (0x08000000L, -1L) }, received);
     }
 }

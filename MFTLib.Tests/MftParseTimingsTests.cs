@@ -31,10 +31,10 @@ public class MftParseTimingsTests
         var t = new MftParseTimings(10.1, 20.2, 30.3, 60.6);
         var s = t.ToString();
 
-        Assert.IsTrue(s.Contains("10.1"));
-        Assert.IsTrue(s.Contains("20.2"));
-        Assert.IsTrue(s.Contains("30.3"));
-        Assert.IsTrue(s.Contains("60.6"));
+        Assert.Contains("10.1", s);
+        Assert.Contains("20.2", s);
+        Assert.Contains("30.3", s);
+        Assert.Contains("60.6", s);
     }
 
     [TestMethod]
@@ -67,11 +67,11 @@ public class MftParseTimingsTests
             timings = result.Timings;
         }
 
-        Assert.IsTrue(timings.NativeIo >= TimeSpan.Zero);
-        Assert.IsTrue(timings.NativeFixup >= TimeSpan.Zero);
-        Assert.IsTrue(timings.NativeParse >= TimeSpan.Zero);
-        Assert.IsTrue(timings.NativeTotal >= timings.NativeIo);
-        Assert.IsTrue(timings.NativeTotal >= timings.NativeFixup);
-        Assert.IsTrue(timings.NativeTotal >= timings.NativeParse);
+        Assert.IsGreaterThanOrEqualTo(TimeSpan.Zero, timings.NativeIo);
+        Assert.IsGreaterThanOrEqualTo(TimeSpan.Zero, timings.NativeFixup);
+        Assert.IsGreaterThanOrEqualTo(TimeSpan.Zero, timings.NativeParse);
+        Assert.IsGreaterThanOrEqualTo(timings.NativeIo, timings.NativeTotal);
+        Assert.IsGreaterThanOrEqualTo(timings.NativeFixup, timings.NativeTotal);
+        Assert.IsGreaterThanOrEqualTo(timings.NativeParse, timings.NativeTotal);
     }
 }

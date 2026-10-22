@@ -63,12 +63,12 @@ public class WatchHostTests
         var result = scanner.Run(arguments);
 
         Assert.AreEqual(1, result);
-        Assert.IsTrue(lines.Any(line => line.Contains("Running unattended (MFTLIB_SAMPLE_UNATTENDED=1): elevation skipped")));
-        Assert.IsTrue(lines.Any(line => line.Contains("AUTOMATIC ELEVATION FAILED")));
-        Assert.IsTrue(lines.Any(line => line.StartsWith($"Arguments ({arguments.Length})", StringComparison.Ordinal)));
+        Assert.Contains(line => line.Contains("Running unattended (MFTLIB_SAMPLE_UNATTENDED=1): elevation skipped"), lines);
+        Assert.Contains(line => line.Contains("AUTOMATIC ELEVATION FAILED"), lines);
+        Assert.Contains(line => line.StartsWith($"Arguments ({arguments.Length})", StringComparison.Ordinal), lines);
         foreach (var argument in arguments)
         {
-            Assert.IsTrue(lines.Contains($"  {argument}"), $"Argument {argument} was not listed.");
+            Assert.Contains($"  {argument}", lines, $"Argument {argument} was not listed.");
         }
     }
 

@@ -33,10 +33,9 @@ public class MftFixtureTests
     public void Fixture_Parses_EightInUseRecords()
     {
         var records = DirectParse.ParseFile(_fixturePath, out _);
-        Assert.AreEqual(8, records.Length);
-        CollectionAssert.AreEquivalent(
-            new ulong[] { 0, 5, 6, 7, 8, 9, 10, 11 },
-            records.Select(record => record.RecordNumber).ToArray());
+        Assert.HasCount(8, records);
+        Assert.AreSequenceEqual(
+            new ulong[] { 0, 5, 6, 7, 8, 9, 10, 11 }, records.Select(record => record.RecordNumber).ToArray(), SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]
@@ -98,7 +97,7 @@ public class MftFixtureTests
             (8, 0, true), (9, 0, false), (10, 4096, true), (11, 0, false)
         ];
 
-        Assert.AreEqual(expected.Length, records.Count);
+        Assert.HasCount(expected.Length, records);
         foreach (var (recordNumber, size, sizeKnown) in expected)
         {
             Assert.AreEqual(size, records[recordNumber].Size, $"size of record {recordNumber}");

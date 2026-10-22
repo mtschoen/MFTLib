@@ -46,9 +46,9 @@ public sealed class LocalMftBlockProducerCursorTests : IDisposable
                 Drive = 'T',
                 VolumeSerial = 123,
                 BlockPath = Path.Combine(CacheDirectoryPath, "cached.mlix")
-            }, TestContext.CancellationTokenSource.Token);
+            }, TestContext.CancellationToken);
         using var block = result.Block;
-        CollectionAssert.AreEqual(new[] { "cursor", "scan" }, calls);
+        Assert.AreSequenceEqual(new[] { "cursor", "scan" }, calls);
         Assert.AreEqual(cursor.JournalIdentifier, block.Header.UsnJournalIdentifier);
         Assert.AreEqual(cursor.NextUsn, block.Header.UsnNextUsn);
     }
@@ -85,7 +85,7 @@ public sealed class LocalMftBlockProducerCursorTests : IDisposable
             cacheMode: cacheDisabled ? CacheMode.Disabled : CacheMode.Persistent) with
         {
             MftSource = source
-        }, TestContext.CancellationTokenSource.Token);
+        }, TestContext.CancellationToken);
         var status = index.Drives.Single();
         Assert.AreEqual(cacheDisabled ? 0 : 1, queries);
         Assert.AreEqual(cacheDisabled ? 1 : 0, scans);
@@ -93,7 +93,7 @@ public sealed class LocalMftBlockProducerCursorTests : IDisposable
         if (!cacheDisabled)
         {
             Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind);
-            Assert.AreEqual(0, Directory.GetFiles(CacheDirectoryPath, "*.mlix").Length);
+            Assert.IsEmpty(Directory.GetFiles(CacheDirectoryPath, "*.mlix"));
         }
     }
 }

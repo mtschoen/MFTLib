@@ -31,8 +31,8 @@ public class SyntheticIndexSourceTests
         using var block = result.Block;
 
         Assert.AreSame(watches.IndexSource, source.WatchSource);
-        CollectionAssert.AreEqual(new DriveKey[] { 'T' }, producer.ProducedDrives.ToArray());
-        Assert.IsTrue(block.Header.RowCount > 0);
+        Assert.AreSequenceEqual(new DriveKey[] { 'T' }, producer.ProducedDrives.ToArray());
+        Assert.IsGreaterThan(0u, block.Header.RowCount);
     }
 
     [TestMethod]
@@ -43,7 +43,7 @@ public class SyntheticIndexSourceTests
         var failure = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             source.Producer(Request(Path.Combine(Path.GetTempPath(), "never-created.mlix")), CancellationToken.None));
 
-        StringAssert.Contains(failure.Message, "no synthetic producer was supplied");
+        Assert.Contains("no synthetic producer was supplied", failure.Message);
         Assert.IsNull(source.WatchSource);
     }
 }

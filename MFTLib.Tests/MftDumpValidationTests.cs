@@ -90,7 +90,7 @@ public sealed class MftDumpValidationTests : IDisposable
 
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveFailureKind.ProducerFailed, drive.Failure?.Kind);
-        StringAssert.StartsWith(drive.Failure?.Message, "Failed to open file. Error: ");
+        Assert.StartsWith("Failed to open file. Error: ", drive.Failure?.Message);
     }
 
     [TestMethod]
@@ -118,8 +118,7 @@ public sealed class MftDumpValidationTests : IDisposable
         Assert.AreEqual(22L, index.Find("dump:/D/documents/Deep/leaf.txt")!.Value.Size);
         Assert.IsFalse(index.Find("dump:/D/sizeless.bin")!.Value.IsSizeKnown);
         Assert.IsTrue(index.Find("dump:/D/documents")!.Value.IsDirectory);
-        CollectionAssert.AreEquivalent(new[] { "$MFT", "documents", "sizeless.bin" },
-            index.Root('D').Children().Select(child => child.Name).ToArray());
+        Assert.AreSequenceEqual(new[] { "$MFT", "documents", "sizeless.bin" }, index.Root('D').Children().Select(child => child.Name).ToArray(), SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]
@@ -186,13 +185,13 @@ public sealed class MftDumpValidationTests : IDisposable
 
         var parsing = samples.Where(sample => sample.Phase == IndexScanPhase.ParsingMft).ToArray();
         var transferring = samples.Where(sample => sample.Phase == IndexScanPhase.Transferring).ToArray();
-        Assert.IsTrue(parsing.Length > 0);
+        Assert.IsNotEmpty(parsing);
         Assert.AreEqual(16u, parsing[^1].WrittenRowCount);
         Assert.AreEqual(16u, parsing[^1].ExpectedRowCount);
         Assert.AreEqual(7u, transferring[^1].WrittenRowCount);
         Assert.IsNull(transferring[^1].ExpectedRowCount);
         Assert.IsTrue(samples.All(sample => sample.Drive == 'D' && sample.Outcome is null));
-        Assert.IsTrue(samples.IndexOf(parsing[^1]) < samples.IndexOf(transferring[0]),
+        Assert.IsLessThan(samples.IndexOf(transferring[0]), samples.IndexOf(parsing[^1]),
             "the parse total is reported before the first transfer sample");
     }
 
@@ -210,7 +209,7 @@ public sealed class MftDumpValidationTests : IDisposable
         foreach (var path in new[] { valid, invalid })
         {
             using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-            Assert.IsTrue(exclusive.Length > 0, path);
+            Assert.IsGreaterThan(0, exclusive.Length, path);
         }
     }
 

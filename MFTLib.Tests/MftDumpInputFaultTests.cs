@@ -124,7 +124,7 @@ public sealed class MftDumpInputFaultTests : IDisposable
         var failure = Assert.ThrowsExactly<InvalidOperationException>(
             () => MftDumpInput.Open(Path.Combine(TemporaryDirectoryPath, "absent.mft")));
 
-        StringAssert.Contains(failure.Message, "ABI mismatch");
+        Assert.Contains("ABI mismatch", failure.Message);
     }
 
     [TestMethod]

@@ -70,9 +70,9 @@ public class JournalCloseCoalescingLiveTests
         var fileEntries = batches.SelectMany(batch => batch)
             .Where(e => e.FileName.Equals(tempFileName, StringComparison.OrdinalIgnoreCase))
             .ToArray();
-        Assert.IsTrue(fileEntries.Any(e => e.IsCreate && !e.IsClose),
+        Assert.Contains(e => e.IsCreate && !e.IsClose, fileEntries,
             "Expected an intermediate FileCreate record before the close record.");
-        Assert.IsTrue(fileEntries.Any(e => e.IsCreate && e.IsClose),
+        Assert.Contains(e => e.IsCreate && e.IsClose, fileEntries,
             "Expected a FileCreate|Close record.");
 
         await using var fixture = new MutatorFixture();
@@ -111,12 +111,12 @@ public class JournalCloseCoalescingLiveTests
             }
         }
 
-        Assert.AreEqual(1, changes.Count(change => change.Kind == FileChangeKind.Created),
-            "One real create must raise exactly one Created change.");
-        Assert.AreEqual(1, changes.Count(change => change.Kind == FileChangeKind.Modified),
-            "One real append/modify cycle must raise exactly one Modified change.");
-        Assert.AreEqual(1, changes.Count(change => change.Kind == FileChangeKind.Deleted),
-            "One real delete must raise exactly one Deleted change.");
+        Assert.ContainsSingle(change => change.Kind == FileChangeKind.Created,
+changes, "One real create must raise exactly one Created change.");
+        Assert.ContainsSingle(change => change.Kind == FileChangeKind.Modified,
+changes, "One real append/modify cycle must raise exactly one Modified change.");
+        Assert.ContainsSingle(change => change.Kind == FileChangeKind.Deleted,
+changes, "One real delete must raise exactly one Deleted change.");
         Assert.IsTrue(fixture.Block.Rows[20].IsDeleted);
         Assert.IsNotNull(lastContentClose, "Expected a close record for the create-write cycle.");
         Assert.AreEqual(0L, ticksAfterLastContentClose,

@@ -39,7 +39,7 @@ public sealed class BrokerFileIndexRescanTests
             var appliedDuringScan = ChangeSignal.WhenApplied(index, "t-during.txt");
             firstT.Push(42, "t-during.txt", 200);
             await appliedDuringScan;
-            Assert.AreEqual(1, index.Search(new SearchQuery("t-during.txt", NameMatchMode.Exact), token).Count);
+            Assert.HasCount(1, index.Search(new SearchQuery("t-during.txt", NameMatchMode.Exact), token));
             var appliedOnU = ChangeSignal.WhenApplied(index, "during.txt");
             firstU.Push(40, "during.txt", 200);
             await appliedOnU;
@@ -57,8 +57,8 @@ public sealed class BrokerFileIndexRescanTests
         Assert.AreEqual(2, harness.Watch('T').StartedCount);
         Assert.AreEqual(1, harness.Watch('U').StartedCount, "U's channel was never reopened");
         Assert.AreEqual(ScriptedWatchBrokerHarness.DefaultTip, secondT.Since, "T reopens from its fresh block's cursor");
-        Assert.AreEqual(1, index.Search(new SearchQuery("scan-2.txt", NameMatchMode.Exact), token).Count);
-        Assert.AreEqual(1, index.Search(new SearchQuery("scan-1.txt", NameMatchMode.Exact), token).Count, "only U's first scan is left");
+        Assert.HasCount(1, index.Search(new SearchQuery("scan-2.txt", NameMatchMode.Exact), token));
+        Assert.HasCount(1, index.Search(new SearchQuery("scan-1.txt", NameMatchMode.Exact), token), "only U's first scan is left");
         Assert.IsTrue(index.Drives.All(drive => drive.Watch.FailureMessage == null));
         var appliedOnT = ChangeSignal.WhenApplied(index, "after.txt");
         secondT.Push(41, "after.txt", 300);

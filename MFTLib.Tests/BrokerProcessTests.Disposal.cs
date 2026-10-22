@@ -228,7 +228,7 @@ public partial class BrokerProcessTests
 
             var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => open.WaitAsync(HangGuard));
             Assert.AreEqual('C', lost.Drive);
-            StringAssert.Contains(lost.Message, "the broker process was disposed");
+            Assert.Contains("the broker process was disposed", lost.Message);
             Assert.IsFalse(firstRequestWritten, "Tracking rejects the channel before its first request is built.");
             await clientPipe.Disposed.WaitAsync(HangGuard);
             Assert.IsNull(await HostChannelHarness.ReadFrameAsync(hostPipe).WaitAsync(HangGuard),

@@ -39,14 +39,14 @@ public class LocalMftCacheFreshnessTests
         {
             MftSource = source
         };
-        await using (var initial = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token))
+        await using (var initial = await FileIndex.OpenAsync(options, TestContext.CancellationToken))
         {
             Assert.AreEqual(DriveState.Ready, initial.Drives.Single().State);
         }
         using var journal = JournalIsolation.OverrideJournalWindow(
             _ => new SyntheticJournalWindow(journalIdentifier, firstUsn, nextUsn, 64, 32768));
         options = options with { CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent };
-        await using var reopened = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
+        await using var reopened = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
         var status = reopened.Drives.Single();
         Assert.AreEqual(cacheOnly ? 1 : 2, scans);
         Assert.AreEqual(DriveState.Ready, status.State);

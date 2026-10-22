@@ -16,7 +16,7 @@ public class TestPackageSurfaceTests
     {
         var offenders = Offenders(typeof(BrokerTestHarness).Assembly.GetTypes().Where(type => type.IsVisible));
 
-        Assert.AreEqual(0, offenders.Length, "Public types naming non-public bases or interfaces:\n" +
+        Assert.IsEmpty(offenders, "Public types naming non-public bases or interfaces:\n" +
                                              string.Join('\n', offenders));
     }
 
@@ -29,10 +29,10 @@ public class TestPackageSurfaceTests
     {
         var offenders = Offenders([typeof(LeakyFixture), typeof(CleanFixture)]);
 
-        Assert.AreEqual(1, offenders.Length, string.Join('\n', offenders));
-        StringAssert.Contains(offenders[0], nameof(LeakyFixture));
-        StringAssert.Contains(offenders[0], nameof(IInternalFixture));
-        Assert.AreEqual(0, Offenders([typeof(CleanFixture)]).Length);
+        Assert.HasCount(1, offenders, string.Join('\n', offenders));
+        Assert.Contains(nameof(LeakyFixture), offenders[0]);
+        Assert.Contains(nameof(IInternalFixture), offenders[0]);
+        Assert.IsEmpty(Offenders([typeof(CleanFixture)]));
     }
 
     static string[] Offenders(IEnumerable<Type> types) =>

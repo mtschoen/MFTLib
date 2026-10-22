@@ -32,7 +32,7 @@ public partial class UsnJournalSyntheticTests
             using var volume = MftVolume.Open('C');
             volume.Journal.ReadUsnJournalBounded(Cursor, 0);
         });
-        StringAssert.Contains(failure.Message, "ReadUsnJournal returned null");
+        Assert.Contains("ReadUsnJournal returned null", failure.Message);
     }
 
     [TestMethod]
@@ -54,7 +54,7 @@ public partial class UsnJournalSyntheticTests
         try
         {
             var result = Marshal.PtrToStructure<UsnJournalResultNative>(pointer);
-            StringAssert.Contains(result.ErrorMessage, "Out of memory");
+            Assert.Contains("Out of memory", result.ErrorMessage);
             Assert.AreEqual(0UL, result.EntryCount);
             Assert.AreEqual(IntPtr.Zero, result.Entries);
             Assert.AreEqual(500L, result.NextUsn);
@@ -77,7 +77,7 @@ public partial class UsnJournalSyntheticTests
             Assert.IsTrue(MFTLibNative.GenerateSyntheticMftSized(path, 256, 256, 1024));
             using var input = MftDumpInput.Open(path);
             using var result = input.Parse();
-            Assert.IsTrue(result.UsedRecords > 0);
+            Assert.IsGreaterThan(0UL, result.UsedRecords);
         }
         finally
         {

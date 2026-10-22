@@ -133,7 +133,7 @@ public class DefaultElevationProviderTests
         var provider = CreateFakeProcessProvider(waitResult: true, exitCode, out var killed, startProcess: _ => process);
         Assert.AreEqual(expected, provider.TryRunElevated(["--test"], ElevationUtilities.DefaultElevatedTimeout));
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = process.StandardInput, "The process wrapper must be disposed before TryRunElevated returns.");
-        Assert.AreEqual(0, killed.Count, "A process that exited is never killed.");
+        Assert.IsEmpty(killed, "A process that exited is never killed.");
     }
 
     [TestMethod]
@@ -154,7 +154,7 @@ public class DefaultElevationProviderTests
             ["Program Files", "say \"hi\"", "C:\\spaced dir\\"], ElevationUtilities.DefaultElevatedTimeout));
 
         Assert.IsNotNull(started);
-        CollectionAssert.AreEqual(new[] { "Program Files", "say \"hi\"", "C:\\spaced dir\\" }, started.ArgumentList.ToArray());
+        Assert.AreSequenceEqual(new[] { "Program Files", "say \"hi\"", "C:\\spaced dir\\" }, started.ArgumentList.ToArray());
         Assert.AreEqual(string.Empty, started.Arguments, "ArgumentList and Arguments are mutually exclusive.");
         Assert.AreEqual("runas", started.Verb);
         Assert.IsTrue(started.UseShellExecute);
@@ -195,14 +195,14 @@ public class DefaultElevationProviderTests
         {
             Assert.ThrowsExactly<ObjectDisposedException>(() => _ = process.StandardInput, "The process wrapper must be disposed after the timeout kill, before returning.");
             Assert.AreEqual(1, startedCount, "Supported timeout starts the child process.");
-            CollectionAssert.AreEqual(new[] { timeout }, waited);
-            Assert.AreEqual(expectedKills, killed.Count, "The process that outlived its timeout is killed once.");
+            Assert.AreSequenceEqual(new[] { timeout }, waited);
+            Assert.HasCount(expectedKills, killed, "The process that outlived its timeout is killed once.");
         }
         else
         {
             Assert.AreEqual(0, startedCount, "Unsupported timeout must never launch a child.");
-            Assert.AreEqual(0, waited.Count, "Unsupported timeout must never wait.");
-            Assert.AreEqual(0, killed.Count, "Never-started process is never killed.");
+            Assert.IsEmpty(waited, "Unsupported timeout must never wait.");
+            Assert.IsEmpty(killed, "Never-started process is never killed.");
         }
     }
 

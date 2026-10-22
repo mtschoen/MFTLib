@@ -111,7 +111,7 @@ public partial class BrokerProcessTests
         var result = await scan.WaitAsync(HangGuard);
         result.Block.Block.Dispose();
 
-        Assert.AreEqual(2, reports.Count);
+        Assert.HasCount(2, reports);
         Assert.AreEqual(50, reports[0].RecordsProcessed);
         Assert.AreEqual(1000, reports[0].BytesProcessed);
         Assert.AreEqual(100, reports[1].RecordsProcessed);
@@ -158,7 +158,7 @@ public partial class BrokerProcessTests
         var result = await scan.WaitAsync(HangGuard);
         result.Block.Block.Dispose();
 
-        Assert.AreEqual(1, reports.Count);
+        Assert.HasCount(1, reports);
         Assert.AreEqual(10, reports[0].RecordsProcessed);
         Assert.AreEqual(Armed, result.ArmedCursor);
         Assert.IsNull(result.CatchUpLoss);

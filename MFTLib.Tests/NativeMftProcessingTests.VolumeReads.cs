@@ -26,7 +26,7 @@ public partial class NativeMftProcessingTests
         {
             var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
             var errorMessage = result.ErrorMessage;
-            Assert.IsTrue(errorMessage!.Contains("invalid"));
+            Assert.Contains("invalid", errorMessage);
         }
         finally
         {
@@ -87,7 +87,7 @@ public partial class NativeMftProcessingTests
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
                 var errorMessage = result.ErrorMessage;
-                Assert.IsTrue(errorMessage!.Contains("boot sector"));
+                Assert.Contains("boot sector", errorMessage);
             }
             finally
             {

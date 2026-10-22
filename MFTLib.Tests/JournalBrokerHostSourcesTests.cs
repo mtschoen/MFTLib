@@ -59,8 +59,8 @@ public class JournalBrokerHostSourcesTests
             Assert.AreEqual(stalls, owner.IsCancellationRequested);
             if (stalls)
             {
-                StringAssert.Contains(frame.Message, "MFT parse");
-                StringAssert.Contains(frame.Message, "30 seconds");
+                Assert.Contains("MFT parse", frame.Message!);
+                Assert.Contains("30 seconds", frame.Message!);
             }
         }
         finally

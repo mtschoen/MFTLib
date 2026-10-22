@@ -74,7 +74,7 @@ public class BrokerLiveWatchErrorTests
 
         var lost = await WatchReads.ThrowsNextAsync<BrokerChannelLostException>(readerC);
         Assert.AreEqual('C', lost.Drive);
-        StringAssert.Contains(lost.Message, nameof(BrokerFrameKind.Cursor));
+        Assert.Contains(nameof(BrokerFrameKind.Cursor), lost.Message);
         Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerD));
     }
 
@@ -140,7 +140,7 @@ public class BrokerLiveWatchErrorTests
 
         var lost = await WatchReads.ThrowsNextAsync<BrokerChannelLostException>(reader);
         Assert.AreEqual('C', lost.Drive);
-        StringAssert.Contains(lost.Message, "Truncated broker frame");
+        Assert.Contains("Truncated broker frame", lost.Message);
         Assert.IsFalse(process.Ended.IsCompleted, "a broken drive pipe loses that drive's channel, not the process");
     }
 

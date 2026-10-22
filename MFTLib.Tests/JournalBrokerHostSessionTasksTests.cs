@@ -13,11 +13,11 @@ public class JournalBrokerHostSessionTasksTests
         var tasks = new JournalBrokerHost.SessionTasks();
         var pending = new TaskCompletionSource();
         tasks.Track(pending.Task);
-        Assert.AreEqual(1, tasks.Snapshot().Length);
+        Assert.HasCount(1, tasks.Snapshot());
 
         pending.SetResult();
 
-        Assert.AreEqual(0, tasks.Snapshot().Length);
+        Assert.IsEmpty(tasks.Snapshot());
     }
 
     [TestMethod]
@@ -27,7 +27,7 @@ public class JournalBrokerHostSessionTasksTests
 
         tasks.Track(Task.CompletedTask);
 
-        Assert.AreEqual(0, tasks.Snapshot().Length);
+        Assert.IsEmpty(tasks.Snapshot());
     }
 
     [TestMethod]
@@ -40,9 +40,9 @@ public class JournalBrokerHostSessionTasksTests
             tasks.Track(source.Task);
         }
 
-        Assert.AreEqual(pending.Length, tasks.Snapshot().Length);
+        Assert.HasCount(pending.Length, tasks.Snapshot());
         pending[10].SetResult();
-        Assert.AreEqual(pending.Length - 1, tasks.Snapshot().Length);
+        Assert.HasCount(pending.Length - 1, tasks.Snapshot());
         Assert.IsFalse(tasks.Snapshot().Contains(pending[10].Task));
     }
 
@@ -61,7 +61,7 @@ public class JournalBrokerHostSessionTasksTests
         var failure = new InvalidOperationException("request failed");
         tasks.Track(Task.FromException(failure));
 
-        Assert.AreEqual(1, tasks.Snapshot().Length);
+        Assert.HasCount(1, tasks.Snapshot());
         var thrown = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => host.DrainAsync(tasks));
         Assert.AreSame(failure, thrown);
     }
@@ -73,6 +73,6 @@ public class JournalBrokerHostSessionTasksTests
 
         tasks.Track(Task.FromCanceled(new CancellationToken(canceled: true)));
 
-        Assert.AreEqual(1, tasks.Snapshot().Length);
+        Assert.HasCount(1, tasks.Snapshot());
     }
 }

@@ -29,7 +29,7 @@ public partial class JournalBrokerHostTests
         });
 
         Assert.AreEqual(message, await ReadStartupErrorAsync(message, CachedCursor));
-        CollectionAssert.AreEqual(new[] { 'C' }, queriedDrives);
+        Assert.AreSequenceEqual(new[] { 'C' }, queriedDrives);
     }
 
     [TestMethod]

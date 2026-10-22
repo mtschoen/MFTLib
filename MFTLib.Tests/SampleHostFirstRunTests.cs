@@ -37,7 +37,7 @@ public class SampleHostFirstRunTests
         {
             var host = new DirectHost(output, input, directory);
             host.PauseBeforeExit(ownsWindow: true);
-            StringAssert.Contains(output.ToString(), DirectHost.PausePrompt);
+            Assert.Contains(DirectHost.PausePrompt, output.ToString());
             Assert.AreEqual('y', (char)input.Read());
             output.WriteLine("borrowed writer remains open");
         }
@@ -168,14 +168,14 @@ public class SampleHostFirstRunTests
             var result = host.RunWithElevation(arguments, ElevationNeed.SelfElevate, () => host.Run(arguments));
 
             Assert.AreEqual(childSucceeded ? 0 : 1, result);
-            CollectionAssert.AreEqual(arguments, relaunchedWith!.ToArray());
+            Assert.AreSequenceEqual(arguments, relaunchedWith!.ToArray());
             Assert.AreEqual(Timeout.InfiniteTimeSpan, elevationTimeout);
             var report = output.ToString();
-            StringAssert.Contains(report, $"The elevated run writes its output to {Path.Combine(directory, "output.log")}");
+            Assert.Contains($"The elevated run writes its output to {Path.Combine(directory, "output.log")}", report);
             if (!childSucceeded)
             {
-                StringAssert.Contains(report, "THE ELEVATED RUN DID NOT COMPLETE SUCCESSFULLY");
-                StringAssert.Contains(report, "output.log");
+                Assert.Contains("THE ELEVATED RUN DID NOT COMPLETE SUCCESSFULLY", report);
+                Assert.Contains("output.log", report);
                 Assert.IsFalse(report.Contains("AUTOMATIC ELEVATION FAILED", StringComparison.Ordinal), report);
                 Assert.IsFalse(report.Contains("requires Administrative privileges", StringComparison.Ordinal), report);
             }
@@ -233,7 +233,7 @@ public class SampleHostFirstRunTests
             var result = host.RunAndPause(["scan", UnusedDriveLetter()], ownsWindow: true);
 
             Assert.AreEqual(1, result);
-            StringAssert.Contains(File.ReadAllText(host.OutputLogPath), "Error: ");
+            Assert.Contains("Error: ", File.ReadAllText(host.OutputLogPath));
             Assert.AreEqual(string.Empty, output.ToString());
             // The file is closed when the elevated operation returns.
             using (File.Open(host.OutputLogPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None)) { }
@@ -268,7 +268,7 @@ public class SampleHostFirstRunTests
             var exitCode = host.RunAndPause(["scan", "C"], ownsWindow: true);
 
             Assert.AreEqual(1, exitCode);
-            StringAssert.Contains(output.ToString(), "Error: ");
+            Assert.Contains("Error: ", output.ToString());
         }
         finally
         {
@@ -290,13 +290,12 @@ public class SampleHostFirstRunTests
         reporter.Report(new IndexScanProgress('D', IndexScanPhase.ParsingMft, 2 * interval) { ExpectedRowCount = 3 * interval });
 
         var lines = output.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
-        CollectionAssert.AreEqual(
+        Assert.AreSequenceEqual(
             new[]
             {
                 $"  D: ParsingMft: 0 rows of {3 * interval}",
                 $"  D: ParsingMft: {interval} rows of {3 * interval}",
                 $"  D: ParsingMft: {2 * interval} rows of {3 * interval}"
-            },
-            lines);
+            }, lines);
     }
 }

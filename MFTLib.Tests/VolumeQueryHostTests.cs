@@ -78,7 +78,7 @@ public class VolumeQueryHostTests
 
         Assert.AreEqual(BrokerFrameKind.VolumeInfo, volumeInfo.Kind, "Expected a VolumeInfo frame from the query");
         Assert.AreEqual(5u, volumeInfo.RequestId);
-        Assert.IsTrue(scanFrames.Any(f => f.Kind == BrokerFrameKind.ScanReady),
+        Assert.Contains(f => f.Kind == BrokerFrameKind.ScanReady, scanFrames,
             "Expected the scan that followed to still complete");
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, scanFrames[^1].Kind);
     }

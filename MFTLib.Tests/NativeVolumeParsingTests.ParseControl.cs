@@ -21,7 +21,7 @@ public partial class NativeVolumeParsingTests
     {
         var nativeHardwareThreadCount = NativeTestHooks.NativeGetNativeHardwareThreadCount();
         Console.WriteLine($"Native hardware threads: {nativeHardwareThreadCount}; managed processors: {Environment.ProcessorCount}");
-        Assert.IsTrue(nativeHardwareThreadCount >= 1);
+        Assert.IsGreaterThanOrEqualTo(1u, nativeHardwareThreadCount);
 
         NativeTestHooks.NativeSetMaxThreads(1);
         Assert.AreEqual(nativeHardwareThreadCount, NativeTestHooks.NativeGetNativeHardwareThreadCount());
@@ -94,10 +94,10 @@ public partial class NativeVolumeParsingTests
 
             AssertCancelled(result);
             Assert.AreEqual(0, progressCalls);
-            Assert.AreEqual(0, ParseControlBlock.ChunkThreadCounts().Length, "No chunk may be parsed");
+            Assert.IsEmpty(ParseControlBlock.ChunkThreadCounts(), "No chunk may be parsed");
             // The countdown is still armed only if no chunk was read, so the next parse's first
             // read (its boot sector) is the one that fails.
-            StringAssert.Contains(ParseImageWithoutControl(path).ErrorMessage, "boot sector");
+            Assert.Contains("boot sector", ParseImageWithoutControl(path).ErrorMessage);
         });
     }
 
@@ -119,7 +119,7 @@ public partial class NativeVolumeParsingTests
 
             AssertCancelled(result);
             Assert.AreEqual(1, parsingCalls);
-            Assert.AreEqual(1, ParseControlBlock.ChunkThreadCounts().Length);
+            Assert.HasCount(1, ParseControlBlock.ChunkThreadCounts());
         });
     }
 
@@ -139,7 +139,7 @@ public partial class NativeVolumeParsingTests
 
             AssertCancelled(result);
             Assert.AreEqual(0, progressCalls, "The parse must stop before reporting the chunk");
-            CollectionAssert.AreEqual(new[] { 1u }, ParseControlBlock.ChunkThreadCounts());
+            Assert.AreSequenceEqual(new[] { 1u }, ParseControlBlock.ChunkThreadCounts());
         });
     }
 
@@ -165,7 +165,7 @@ public partial class NativeVolumeParsingTests
 
             AssertCancelled(result);
             Assert.AreEqual(0, progressCalls);
-            CollectionAssert.AreEqual(new[] { 2u }, ParseControlBlock.ChunkThreadCounts());
+            Assert.AreSequenceEqual(new[] { 2u }, ParseControlBlock.ChunkThreadCounts());
         });
     }
 
@@ -194,16 +194,16 @@ public partial class NativeVolumeParsingTests
             });
 
             var counts = ParseControlBlock.ChunkThreadCounts();
-            Assert.AreEqual(ImageChunkCount, counts.Length);
+            Assert.HasCount(ImageChunkCount, counts);
             Assert.AreEqual((uint)initialAllowance, counts[0], "The chunk the callback followed keeps its count");
-            CollectionAssert.AreEqual(
+            Assert.AreSequenceEqual(
                 Enumerable.Repeat((uint)laterAllowance, ImageChunkCount - 1).ToArray(), counts[1..]);
         });
     }
 
     static void AssertEveryChunkUsed(uint expected)
     {
-        CollectionAssert.AreEqual(
+        Assert.AreSequenceEqual(
             Enumerable.Repeat(expected, ImageChunkCount).ToArray(), ParseControlBlock.ChunkThreadCounts());
     }
 

@@ -13,7 +13,7 @@ public class WatchArgumentsTests
 
         Assert.IsNull(error);
         Assert.AreEqual(WatchVerb.Watch, parsed!.Verb);
-        Assert.AreEqual(0, parsed.Drives.Count);
+        Assert.IsEmpty(parsed.Drives);
         Assert.IsNull(parsed.Seconds);
         Assert.IsTrue(parsed.NeedsDrives);
     }
@@ -24,7 +24,7 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse(["C", "D:"], out var parsed, out _));
 
         Assert.AreEqual(WatchVerb.Watch, parsed!.Verb);
-        CollectionAssert.AreEqual(new[] { "C", "D" }, parsed.Drives.ToArray());
+        Assert.AreSequenceEqual(new[] { "C", "D" }, parsed.Drives.ToArray());
     }
 
     [TestMethod]
@@ -35,7 +35,7 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse([name, "C", "E"], out var parsed, out _));
 
         Assert.AreEqual(WatchVerb.Scan, parsed!.Verb);
-        CollectionAssert.AreEqual(new[] { "C", "E" }, parsed.Drives.ToArray());
+        Assert.AreSequenceEqual(new[] { "C", "E" }, parsed.Drives.ToArray());
     }
 
     [TestMethod]
@@ -44,7 +44,7 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse(["scan"], out var parsed, out _));
 
         Assert.AreEqual(WatchVerb.Scan, parsed!.Verb);
-        Assert.AreEqual(0, parsed.Drives.Count);
+        Assert.IsEmpty(parsed.Drives);
     }
 
     [TestMethod]
@@ -81,15 +81,15 @@ public class WatchArgumentsTests
     {
         foreach (var name in WatchVerbs.Names.Keys)
         {
-            StringAssert.Contains(WatchArguments.Usage, name);
+            Assert.Contains(name, WatchArguments.Usage);
         }
     }
 
     [TestMethod]
     public void Usage_QualifiesTheUnattendedDefaultAsElevated()
     {
-        StringAssert.Contains(WatchArguments.Usage, $"an unattended elevated one for {WatchArguments.DefaultSeconds} seconds");
-        StringAssert.Contains(WatchArguments.Usage, "an unattended run that is not elevated exits 1 without watching");
+        Assert.Contains($"an unattended elevated one for {WatchArguments.DefaultSeconds} seconds", WatchArguments.Usage);
+        Assert.Contains("an unattended run that is not elevated exits 1 without watching", WatchArguments.Usage);
     }
 
     [TestMethod]
@@ -101,7 +101,7 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse([name], out var parsed, out _));
 
         Assert.AreEqual(verb, parsed!.Verb.ToString());
-        Assert.AreEqual(0, parsed.Drives.Count);
+        Assert.IsEmpty(parsed.Drives);
         Assert.AreEqual(ElevationNeed.BrokerLaunch, parsed.Need);
     }
 
@@ -179,7 +179,7 @@ public class WatchArgumentsTests
     {
         Assert.IsTrue(WatchArguments.TryParse(["cache", "c:", "d"], out var parsed, out _));
 
-        CollectionAssert.AreEqual(new[] { "C", "D" }, parsed!.Drives.ToArray());
+        Assert.AreSequenceEqual(new[] { "C", "D" }, parsed!.Drives.ToArray());
     }
 
     [TestMethod]
@@ -234,7 +234,7 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse([verb, "C", "--keep-name", "a.txt", "--cache-directory", "folder"], out var parsed, out var error), error);
 
         Assert.AreEqual("folder", parsed!.CacheDirectory);
-        CollectionAssert.AreEqual(new[] { "a.txt" }, parsed.RetainedFileNames!.ToArray());
+        Assert.AreSequenceEqual(new[] { "a.txt" }, parsed.RetainedFileNames!.ToArray());
     }
 
     [TestMethod]
@@ -276,7 +276,7 @@ public class WatchArgumentsTests
 
         Assert.AreEqual(ElevationNeed.None, cache!.Need);
         Assert.AreEqual(ElevationNeed.None, status!.Need);
-        Assert.AreEqual(0, cache.Drives.Count);
+        Assert.IsEmpty(cache.Drives);
         Assert.AreEqual("cache-folder", cache.CacheDirectory);
         Assert.IsTrue(cache.Clear);
     }
@@ -288,8 +288,8 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C"], out var plain, out _));
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--directories-only"], out var directories, out _));
 
-        CollectionAssert.AreEqual(new[] { "desktop.ini", ".gitignore" }, parsed!.RetainedFileNames!.ToArray());
-        Assert.AreEqual(0, directories!.RetainedFileNames!.Count);
+        Assert.AreSequenceEqual(new[] { "desktop.ini", ".gitignore" }, parsed!.RetainedFileNames!.ToArray());
+        Assert.IsEmpty(directories!.RetainedFileNames!);
         Assert.AreNotEqual(plain!.PolicyDirectoryName, directories.PolicyDirectoryName);
         Assert.AreNotEqual(parsed.PolicyDirectoryName, directories.PolicyDirectoryName);
         Assert.AreEqual(new MFTLib.Index.CacheTag("SMPW", 2), WatchArguments.CacheTag);

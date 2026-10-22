@@ -19,7 +19,7 @@ public class PhaseReporterTests
         reporter.Report(new IndexScanProgress('D', IndexScanPhase.ParsingMft, 9));
 
         var lines = output.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
-        CollectionAssert.AreEqual(
+        Assert.AreSequenceEqual(
             new[] { @"  D: Enumerating: 7 rows in D:\data", "  D: ParsingMft: 9 rows" }, lines);
     }
 
@@ -33,6 +33,6 @@ public class PhaseReporterTests
         reporter.Report(new IndexDriveOpened('C', 1, 3));
 
         var lines = output.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
-        CollectionAssert.AreEqual(new[] { "D: opened (2 of 3 drives)", "C: opened (1 of 3 drives)" }, lines);
+        Assert.AreSequenceEqual(new[] { "D: opened (2 of 3 drives)", "C: opened (1 of 3 drives)" }, lines);
     }
 }

@@ -71,7 +71,7 @@ public partial class NativeMftProcessingTests
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
                 Assert.AreEqual(string.Empty, result.ErrorMessage);
-                Assert.IsTrue(result.TotalRecords > 0);
+                Assert.IsGreaterThan(0UL, result.TotalRecords);
             }
             finally
             {

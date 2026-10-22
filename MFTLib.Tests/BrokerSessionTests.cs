@@ -173,7 +173,7 @@ public partial class BrokerSessionTests
         await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard);
         await session.ConnectAsync(CancellationToken.None).WaitAsync(HangGuard);
 
-        CollectionAssert.AreEqual(new[] { "connecting", "launch", "connected" }, order);
+        Assert.AreSequenceEqual(new[] { "connecting", "launch", "connected" }, order);
     }
 
     [TestMethod]
@@ -333,7 +333,7 @@ public partial class BrokerSessionTests
 
         var refusal = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             session.ConnectAsync(CancellationToken.None));
-        StringAssert.Contains(refusal.Message, reason);
+        Assert.Contains(reason, refusal.Message);
         Assert.AreEqual(reason, await session.Ended.WaitAsync(HangGuard));
         Assert.AreEqual(1, launches);
     }
@@ -393,7 +393,7 @@ public partial class BrokerSessionTests
         var (beforeDispose, afterDispose) = await callback.WaitAsync(HangGuard);
 
         Assert.AreEqual(typeof(InvalidOperationException), beforeDispose.GetType());
-        StringAssert.Contains(beforeDispose.Message, await brokerProcess.Ended.WaitAsync(HangGuard));
+        Assert.Contains(await brokerProcess.Ended.WaitAsync(HangGuard), beforeDispose.Message);
         Assert.IsInstanceOfType<ObjectDisposedException>(afterDispose);
     }
 
@@ -594,7 +594,7 @@ public partial class BrokerSessionTests
         Assert.AreEqual(0x08000000L, settings.MaximumSize);
         Assert.AreEqual(0x01000000L, settings.AllocationDelta);
         Assert.AreEqual(1, launches);
-        Assert.AreEqual(1, received.Count);
+        Assert.HasCount(1, received);
         Assert.AreEqual('C', received[0].Drive);
         Assert.AreEqual(0x08000000L, received[0].MaximumSize);
         Assert.AreEqual(0x01000000L, received[0].AllocationDelta);
@@ -711,7 +711,7 @@ public partial class BrokerSessionTests
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             session.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 2, AllocationDelta = 1 }, CancellationToken.None));
 
-        StringAssert.Contains(first.Message, "UAC prompt was declined");
+        Assert.Contains("UAC prompt was declined", first.Message);
         Assert.AreEqual(2, prompts);
         Assert.IsFalse(session.Ended.IsCompleted);
     }
@@ -733,8 +733,8 @@ public partial class BrokerSessionTests
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             session.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 2, AllocationDelta = 1 }, CancellationToken.None));
 
-        Assert.AreEqual(2, commandLines.Count);
-        StringAssert.StartsWith(commandLines[0], "--broker --pipe ");
+        Assert.HasCount(2, commandLines);
+        Assert.StartsWith("--broker --pipe ", commandLines[0]);
         Assert.AreEqual(2, connecting);
         return;
 

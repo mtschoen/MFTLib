@@ -53,8 +53,8 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
         Assert.AreEqual(1UL, counted.InvalidFixupRecords);
         Assert.AreEqual(1UL, result.InvalidFixupRecordCount);
         CollectionAssert.DoesNotContain(recordNumbers, corruptRecord);
-        CollectionAssert.Contains(recordNumbers, corruptRecord - 1);
-        CollectionAssert.Contains(recordNumbers, corruptRecord + 1);
+        Assert.Contains(corruptRecord - 1, recordNumbers);
+        Assert.Contains(corruptRecord + 1, recordNumbers);
     }
 
     [TestMethod]
@@ -129,7 +129,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
 
         Assert.AreEqual(0L, omitted);
         Assert.AreEqual(0L, written.SkippedRecordCount);
-        Assert.IsTrue(block.Header.RowCount > 5);
+        Assert.IsGreaterThan(5u, block.Header.RowCount);
     }
 
 

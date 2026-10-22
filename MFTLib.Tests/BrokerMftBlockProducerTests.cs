@@ -74,7 +74,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
             () => ProduceAsync(broker.Process, request).WaitAsync(HangGuard));
 
         var expectedMessage = check.StartsWith("cursor ", StringComparison.Ordinal) ? "journal cursor" : check;
-        StringAssert.Contains(exception.Message, expectedMessage);
+        Assert.Contains(expectedMessage, exception.Message);
         var section = broker.Sections.Single();
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
         BlockFileAssertions.IsDisposed(section.Block);
@@ -99,7 +99,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => ProduceAsync(broker.Process, request).WaitAsync(HangGuard));
 
-        StringAssert.Contains(exception.Message, "cache tag");
+        Assert.Contains("cache tag", exception.Message);
         var section = broker.Sections.Single();
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
         BlockFileAssertions.IsDisposed(section.Block);
@@ -122,7 +122,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
             () => ProduceAsync(broker.Process, request).WaitAsync(HangGuard));
 
         // The per-drive error reaches the caller as this exception.
-        StringAssert.Contains(exception.Message, "batch failed");
+        Assert.Contains("batch failed", exception.Message);
         var section = broker.Sections.Single();
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
         BlockFileAssertions.IsDisposed(section.Block);
@@ -142,9 +142,9 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         var result = await ProduceAsync(broker.Process, request).WaitAsync(HangGuard);
         result.Block.Dispose();
 
-        Assert.IsTrue(samples.Count > 0, "the broker reported no progress to the index channel");
+        Assert.IsNotEmpty(samples, "the broker reported no progress to the index channel");
         Assert.IsTrue(samples.All(sample => sample.Drive == 'C'));
-        Assert.IsTrue(samples.Any(sample => sample.Phase == IndexScanPhase.Transferring));
+        Assert.Contains(sample => sample.Phase == IndexScanPhase.Transferring, samples);
         Assert.IsTrue(samples.All(sample => sample.ExpectedRowCount is null || sample.ExpectedRowCount.Value >= sample.WrittenRowCount),
             "when present, total rows should not be less than rows written");
     }
@@ -162,7 +162,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         using var block = result.Block;
 
         Assert.IsTrue(block.Header.IsComplete);
-        Assert.IsTrue(block.Header.RowCount > 0);
+        Assert.IsGreaterThan(0u, block.Header.RowCount);
     }
 
     [TestMethod]

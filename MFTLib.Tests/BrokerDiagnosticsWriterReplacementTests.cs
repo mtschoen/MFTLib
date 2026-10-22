@@ -31,8 +31,8 @@ public class BrokerDiagnosticsWriterReplacementTests
             BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "hello");
             await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
 
-            Assert.AreEqual(1, lines.Count);
-            StringAssert.Contains(lines[0], ":control]  hello");
+            Assert.HasCount(1, lines);
+            Assert.Contains(":control]  hello", lines[0]);
         }
         finally
         {
@@ -59,9 +59,9 @@ public class BrokerDiagnosticsWriterReplacementTests
             BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "after");
             await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
 
-            Assert.AreEqual(1, second.Count);
-            StringAssert.Contains(second[0], ":control]  after");
-            Assert.AreEqual(0, first.Count, "The replaced writer was completed and receives nothing more.");
+            Assert.HasCount(1, second);
+            Assert.Contains(":control]  after", second[0]);
+            Assert.IsEmpty(first, "The replaced writer was completed and receives nothing more.");
         }
         finally
         {
@@ -110,13 +110,13 @@ public class BrokerDiagnosticsWriterReplacementTests
                 }
             }
             await writers[^1].FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
-            Assert.AreEqual(0, outputs[0].Count);
+            Assert.IsEmpty(outputs[0]);
             gate.Release();
             await Task.WhenAll(writers.Select(writer => writer.FlushAsync(CancellationToken.None)))
                 .WaitAsync(HangGuard);
             for (var index = 0; index < writers.Count; index++)
             {
-                Assert.AreEqual(1, outputs[index].Count);
+                Assert.HasCount(1, outputs[index]);
                 StringAssert.EndsWith(outputs[index].Single(), $":control]  writer-{index}");
             }
             foreach (var retired in writers.Take(replacementCount))

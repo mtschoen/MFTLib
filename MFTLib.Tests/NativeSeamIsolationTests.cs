@@ -27,7 +27,7 @@ public class NativeSeamIsolationTests
         var candidates = typeof(NativeSeamIsolationTests).Assembly.GetTypes()
             .Where(type => type.IsDefined(typeof(TestClassAttribute), inherit: true));
         var violations = FindViolations(candidates);
-        Assert.AreEqual(0, violations.Length, string.Join(Environment.NewLine, violations));
+        Assert.IsEmpty(violations, string.Join(Environment.NewLine, violations));
     }
 
     [TestMethod]
@@ -62,10 +62,10 @@ public class NativeSeamIsolationTests
     public void Detector_ReportsUnmarkedReferences(Type fixture, string member)
     {
         var violations = FindViolations([fixture]);
-        Assert.IsTrue(violations.Length > 0, fixture.FullName);
+        Assert.IsNotEmpty(violations, fixture.FullName);
         var description = string.Join(Environment.NewLine, violations);
-        StringAssert.Contains(description, fixture.FullName!);
-        StringAssert.Contains(description, member);
+        Assert.Contains(fixture.FullName!, description);
+        Assert.Contains(member, description);
     }
 
     [TestMethod]
@@ -80,7 +80,7 @@ public class NativeSeamIsolationTests
     [DataRow(typeof(IsolatedDiagnosticsReferenceFixture))]
     public void Detector_AcceptsIsolatedAndUnrelatedTypes(Type fixture)
     {
-        Assert.AreEqual(0, FindViolations([fixture]).Length);
+        Assert.IsEmpty(FindViolations([fixture]));
     }
 
     static string[] FindViolations(IEnumerable<Type> candidates)

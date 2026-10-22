@@ -48,9 +48,9 @@ public class DirectDuplicateNameSieveTests
         builder.Complete(Moment);
         await using var index = await OpenIndexAsync(builder);
         var groups = DuplicateNameSieve.Find(index, CancellationToken.None);
-        Assert.AreEqual(1, groups.Count);
+        Assert.HasCount(1, groups);
         Assert.AreEqual("readme.txt", groups[0].Name);
-        CollectionAssert.AreEquivalent(new long[] { 1, 2, 3 }, groups[0].Entries.Select(entry => entry.Size).ToArray());
+        Assert.AreSequenceEqual(new long[] { 1, 2, 3 }, groups[0].Entries.Select(entry => entry.Size).ToArray(), SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]
@@ -70,7 +70,7 @@ public class DirectDuplicateNameSieveTests
         AddFile(builder, root, "live.txt", 2, RowFlags.InUse | RowFlags.Tombstone);
         builder.Complete(Moment);
         await using var index = await OpenIndexAsync(builder);
-        Assert.AreEqual(0, DuplicateNameSieve.Find(index, CancellationToken.None).Count);
+        Assert.IsEmpty(DuplicateNameSieve.Find(index, CancellationToken.None));
     }
 
     [TestMethod]
@@ -82,8 +82,8 @@ public class DirectDuplicateNameSieveTests
         var groups = DuplicateNameSieve.Find(index, CancellationToken.None,
             bucketCountOverride: SieveBitmap.MinimumBucketCount,
             nameMaterializedForTest: count => materializedCount = count);
-        Assert.AreEqual(0, groups.Count);
-        Assert.IsTrue(materializedCount <= 200,
+        Assert.IsEmpty(groups);
+        Assert.IsLessThanOrEqualTo(200, materializedCount,
             $"{materializedCount} names were materialized; the hash passes should leave at most one percent of 20000 unique names as candidates.");
     }
 
@@ -95,10 +95,10 @@ public class DirectDuplicateNameSieveTests
         using var builder = BuildLargeBlock(includeDuplicates: true);
         await using var index = await OpenIndexAsync(builder);
         var groups = DuplicateNameSieve.Find(index, CancellationToken.None, bucketCount);
-        Assert.AreEqual(2, groups.Count);
+        Assert.HasCount(2, groups);
         var byName = groups.ToDictionary(group => group.Name);
-        CollectionAssert.AreEquivalent(new long[] { 1, 2 }, byName["dup-a.bin"].Entries.Select(entry => entry.Size).ToArray());
-        CollectionAssert.AreEquivalent(new long[] { 3, 4, 5 }, byName["dup-b.bin"].Entries.Select(entry => entry.Size).ToArray());
+        Assert.AreSequenceEqual(new long[] { 1, 2 }, byName["dup-a.bin"].Entries.Select(entry => entry.Size).ToArray(), SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(new long[] { 3, 4, 5 }, byName["dup-b.bin"].Entries.Select(entry => entry.Size).ToArray(), SequenceOrder.InAnyOrder);
     }
 
     static SyntheticBlockBuilder BuildLargeBlock(bool includeDuplicates)
@@ -137,9 +137,9 @@ public class DirectDuplicateNameSieveTests
         File.Copy(second.BlockPath, Path.Combine(first.DirectoryPath, Path.GetFileName(second.BlockPath)));
         await using var index = await OpenIndexAsync(first, second);
         var groups = DuplicateNameSieve.Find(index, CancellationToken.None, 64);
-        Assert.AreEqual(1, groups.Count);
+        Assert.HasCount(1, groups);
         var expected = index.Enumerate(new SearchQuery(null, IsDirectory: false)).Select(entry => entry.RecordKey).ToArray();
-        CollectionAssert.AreEqual(expected, groups[0].Entries.Select(entry => entry.RecordKey).ToArray());
+        Assert.AreSequenceEqual(expected, groups[0].Entries.Select(entry => entry.RecordKey).ToArray());
     }
 
     [TestMethod]
@@ -248,8 +248,8 @@ public class DirectDuplicateNameSieveTests
             }
         }
 
-        Assert.IsTrue(pairs.Count >= 100);
-        Assert.IsTrue(pairs.Count(pair => seedOne.BucketIndexFor(pair.First) == seedOne.BucketIndexFor(pair.Second)) < pairs.Count / 4);
+        Assert.IsGreaterThanOrEqualTo(100, pairs.Count);
+        Assert.IsLessThan(pairs.Count / 4, pairs.Count(pair => seedOne.BucketIndexFor(pair.First) == seedOne.BucketIndexFor(pair.Second)));
     }
 
     [TestMethod]

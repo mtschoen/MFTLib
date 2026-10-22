@@ -26,7 +26,7 @@ partial class SampleHostElevationNoticeTests
         var result = RunElevation(scanner);
 
         Assert.AreEqual(0, result);
-        CollectionAssert.AreEqual(new[] { "dialog", "dialog", "elevate" }, events);
+        Assert.AreSequenceEqual(new[] { "dialog", "dialog", "elevate" }, events);
     }
 
     // The caller resumes only after the dialog thread is done, so an immediate answer followed by a long delay before
@@ -67,7 +67,7 @@ partial class SampleHostElevationNoticeTests
         var result = RunElevation(scanner);
 
         Assert.AreEqual(0, result);
-        CollectionAssert.AreEqual(new[] { "dialog", "dialog", "elevate" }, events);
+        Assert.AreSequenceEqual(new[] { "dialog", "dialog", "elevate" }, events);
     }
 
     [TestMethod]
@@ -121,7 +121,7 @@ partial class SampleHostElevationNoticeTests
         var result = RunElevation(scanner);
 
         Assert.AreEqual(0, result);
-        CollectionAssert.AreEqual(new[] { "dialog", "dialog", "elevate" }, events);
+        Assert.AreSequenceEqual(new[] { "dialog", "dialog", "elevate" }, events);
     }
 
     [TestMethod]
@@ -134,8 +134,8 @@ partial class SampleHostElevationNoticeTests
         var result = RunElevation(scanner);
 
         Assert.AreEqual(1, result);
-        CollectionAssert.AreEqual(new[] { "dialog" }, events);
-        Assert.IsTrue(lines.Any(line => line.Contains("not answered in time")));
+        Assert.AreSequenceEqual(new[] { "dialog" }, events);
+        Assert.Contains(line => line.Contains("not answered in time"), lines);
     }
 
     [TestMethod]
@@ -151,8 +151,8 @@ partial class SampleHostElevationNoticeTests
         Assert.AreEqual(1, RunElevation(atTimeout));
         Assert.AreEqual(0, RunElevation(earlier));
 
-        CollectionAssert.AreEqual(new[] { "dialog" }, atTimeoutEvents);
-        CollectionAssert.AreEqual(new[] { "dialog", "elevate" }, earlierEvents);
+        Assert.AreSequenceEqual(new[] { "dialog" }, atTimeoutEvents);
+        Assert.AreSequenceEqual(new[] { "dialog", "elevate" }, earlierEvents);
     }
 
     // Runs each queued task on a new thread, then a hook once the task has completed.

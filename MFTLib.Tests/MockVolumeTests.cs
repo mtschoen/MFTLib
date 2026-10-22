@@ -182,7 +182,7 @@ public class MockVolumeTests
         using var volume = MftVolume.Open('C');
         var records = volume.ReadAll();
 
-        Assert.AreEqual(3, records.Length);
+        Assert.HasCount(3, records);
         Assert.AreEqual(0UL, records[0].RecordNumber);
         Assert.AreEqual("file0.txt", records[0].FileName);
     }
@@ -338,7 +338,7 @@ public class MockVolumeTests
         using var volume = MftVolume.Open('C');
         var records = volume.ReadAll();
 
-        Assert.AreEqual(5, records.Length);
+        Assert.HasCount(5, records);
         Assert.AreEqual("file0.txt", records[0].FileName);
         Assert.AreEqual("file4.txt", records[4].FileName);
     }
@@ -377,13 +377,13 @@ public class MockVolumeTests
 
         var batches = result.ReadBatches(3).ToList();
 
-        Assert.AreEqual(3, batches.Count);
-        Assert.AreEqual(3, batches[0].Length);
-        Assert.AreEqual(3, batches[1].Length);
-        Assert.AreEqual(1, batches[2].Length);
+        Assert.HasCount(3, batches);
+        Assert.HasCount(3, batches[0]);
+        Assert.HasCount(3, batches[1]);
+        Assert.HasCount(1, batches[2]);
 
         var concatenated = batches.SelectMany(b => b).ToArray();
-        Assert.AreEqual(7, concatenated.Length);
+        Assert.HasCount(7, concatenated);
         for (var i = 0; i < 7; i++)
         {
             Assert.AreEqual((ulong)i, concatenated[i].RecordNumber);
@@ -399,7 +399,7 @@ public class MockVolumeTests
         var batches = result.ReadBatches(2).ToList();
         result.Dispose();
 
-        Assert.AreEqual(2, batches.Count);
+        Assert.HasCount(2, batches);
         Assert.AreEqual("file0.txt", batches[0][0].FileName);
         Assert.AreEqual("file1.txt", batches[0][1].FileName);
         Assert.AreEqual("file2.txt", batches[1][0].FileName);
@@ -436,10 +436,10 @@ public class MockVolumeTests
         using var volume = MftVolume.Open('C');
         var batches = volume.ReadRecordBatches(3, null, null, CancellationToken.None).ToList();
 
-        Assert.AreEqual(3, batches.Count);
-        Assert.AreEqual(3, batches[0].Length);
-        Assert.AreEqual(3, batches[1].Length);
-        Assert.AreEqual(1, batches[2].Length);
+        Assert.HasCount(3, batches);
+        Assert.HasCount(3, batches[0]);
+        Assert.HasCount(3, batches[1]);
+        Assert.HasCount(1, batches[2]);
 
         var concatenated = batches.SelectMany(b => b).ToArray();
         for (var i = 0; i < 7; i++)
@@ -483,7 +483,7 @@ public class MockVolumeTests
 
         Assert.IsTrue(freed, "Native MftResult should be freed upon early enumeration disposal");
         Assert.IsNotNull(firstBatch);
-        Assert.AreEqual(3, firstBatch.Length);
+        Assert.HasCount(3, firstBatch);
         Assert.AreEqual("file0.txt", firstBatch[0].FileName);
     }
 

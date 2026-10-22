@@ -26,9 +26,9 @@ public class BrokerProcessLaunchTests
         {
             var arguments = await CaptureDeclinedLaunchArgumentsAsync();
 
-            StringAssert.Contains(arguments, " --diag ");
-            StringAssert.Contains(arguments, $" --diag-log \"{BrokerDiagnostics.LogPath}\"");
-            Assert.IsFalse(arguments.Contains("--diag-include-self"));
+            Assert.Contains(" --diag ", arguments);
+            Assert.Contains($" --diag-log \"{BrokerDiagnostics.LogPath}\"", arguments);
+            Assert.DoesNotContain("--diag-include-self", arguments);
         }
         finally
         {
@@ -47,9 +47,9 @@ public class BrokerProcessLaunchTests
         {
             var arguments = await CaptureDeclinedLaunchArgumentsAsync();
 
-            StringAssert.Contains(arguments, " --diag ");
-            StringAssert.Contains(arguments, $" --diag-log \"{BrokerDiagnostics.LogPath}\"");
-            Assert.IsFalse(arguments.Contains("--diag-include-self"));
+            Assert.Contains(" --diag ", arguments);
+            Assert.Contains($" --diag-log \"{BrokerDiagnostics.LogPath}\"", arguments);
+            Assert.DoesNotContain("--diag-include-self", arguments);
         }
         finally
         {
@@ -68,7 +68,7 @@ public class BrokerProcessLaunchTests
 
             var expectedPath = BrokerDiagnostics.LogPath;
             Assert.IsTrue(Path.IsPathRooted(expectedPath));
-            StringAssert.Contains(arguments, $" --diag-log \"{expectedPath}\"");
+            Assert.Contains($" --diag-log \"{expectedPath}\"", arguments);
         }
         finally
         {
@@ -116,7 +116,7 @@ public class BrokerProcessLaunchTests
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", null);
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG_INCLUDE_SELF", null);
 
-        Assert.IsFalse((await CaptureDeclinedLaunchArgumentsAsync()).Contains("--diag"));
+        Assert.DoesNotContain("--diag", await CaptureDeclinedLaunchArgumentsAsync());
     }
 
     [TestMethod]
@@ -164,7 +164,7 @@ public class BrokerProcessLaunchTests
             using var block = result.Block.Block;
 
             Assert.AreEqual(new UsnJournalCursor(7UL, 0L), result.ArmedCursor);
-            Assert.IsTrue(block.Header.RowCount > 0);
+            Assert.IsGreaterThan(0u, block.Header.RowCount);
         }
         finally
         {
@@ -220,9 +220,9 @@ public class BrokerProcessLaunchTests
             Assert.IsTrue(timer.Fired);
             var exception = await Assert.ThrowsExactlyAsync<TimeoutException>(() => launch);
 
-            StringAssert.Contains(exception.Message, "Timed out waiting 50ms");
-            StringAssert.Contains(exception.Message, "mftlib-broker-");
-            StringAssert.Contains(exception.Message, "launched, but never connected");
+            Assert.Contains("Timed out waiting 50ms", exception.Message);
+            Assert.Contains("mftlib-broker-", exception.Message);
+            Assert.Contains("launched, but never connected", exception.Message);
         }
         finally
         {

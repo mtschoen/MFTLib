@@ -120,10 +120,10 @@ public sealed class LocalMftBlockProducerTests : IDisposable
             return Volume;
         }, scan: (_, _, _, _, _, _) => TimedBatches()));
 
-        var result = await ProducerOf(producer)(request, TestContext.CancellationTokenSource.Token);
+        var result = await ProducerOf(producer)(request, TestContext.CancellationToken);
         var block = result.Block;
 
-        CollectionAssert.AreEqual(new[] { new DriveKey('T') }, queried);
+        Assert.AreSequenceEqual(new[] { new DriveKey('T') }, queried);
         Assert.AreEqual(request.BlockPath, block.Path);
         Assert.AreEqual(RequestedTag, block.Header.CacheTag);
         Assert.AreEqual(123u, block.Header.VolumeSerial);
@@ -142,7 +142,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
         await using var enumeration = await FileIndex.OpenAsync(
             FileIndexTestAccess.WithTimeProvider(
                 _fixture.Options(volumeSerial: 123, cacheMode: CacheMode.Disabled),
-                timeProvider), TestContext.CancellationTokenSource.Token);
+                timeProvider), TestContext.CancellationToken);
         Assert.AreEqual(timeProvider.GetUtcNow().UtcDateTime, enumeration.Drives.Single().Block!.ScanTimestamp);
     }
 
@@ -155,7 +155,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
             return [new[] { Record(5, ".", 3) }];
         }));
 
-        var result = await ProducerOf(producer)(Request(), TestContext.CancellationTokenSource.Token);
+        var result = await ProducerOf(producer)(Request(), TestContext.CancellationToken);
         using var block = result.Block;
 
         Assert.AreEqual(int.MaxValue, result.SkippedRecordCount);
@@ -186,7 +186,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
             };
 
         await using (var initialIndex = await FileIndex.OpenAsync(CachingOptions(isCacheOnly: false),
-            TestContext.CancellationTokenSource.Token))
+            TestContext.CancellationToken))
         {
             Assert.AreEqual(1, scanCalls);
             var initialDrive = initialIndex.Drives.Single();
@@ -200,7 +200,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
         Assert.IsTrue(File.Exists(canonicalPath));
 
         await using (var reopenedIndex = await FileIndex.OpenAsync(CachingOptions(isCacheOnly: cacheOnly),
-            TestContext.CancellationTokenSource.Token))
+            TestContext.CancellationToken))
         {
             Assert.AreEqual(1, scanCalls, "A cached block must not scan again on reopening.");
             var reopenedDrive = reopenedIndex.Drives.Single();
@@ -256,11 +256,11 @@ public sealed class LocalMftBlockProducerTests : IDisposable
 
         using var cancellationT = new CancellationTokenSource();
         var taskT = ProducerOf(producer)(Request(drive: 'T'), cancellationT.Token);
-        await gateT.Entered.WaitAsync(TestContext.CancellationTokenSource.Token);
+        await gateT.Entered.WaitAsync(TestContext.CancellationToken);
         Assert.AreEqual(4, allowanceT!.Count, "A single running scan takes the full thread budget.");
 
-        var taskU = ProducerOf(producer)(Request(drive: 'U'), TestContext.CancellationTokenSource.Token);
-        await gateU.Entered.WaitAsync(TestContext.CancellationTokenSource.Token);
+        var taskU = ProducerOf(producer)(Request(drive: 'U'), TestContext.CancellationToken);
+        await gateU.Entered.WaitAsync(TestContext.CancellationToken);
         Assert.AreEqual(2, allowanceT.Count, "Admission of a second scan halves the running scan's allowance.");
         Assert.AreEqual(2, allowanceU!.Count, "The second scan receives half the allowance.");
 
@@ -304,7 +304,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
         }));
         using var block = (await ProducerOf(producer)(
             Request(progress: new DirectProgress<IndexScanProgress>(samples.Add)),
-            TestContext.CancellationTokenSource.Token)).Block;
+            TestContext.CancellationToken)).Block;
         var parsing = samples.Single(sample => sample.Phase == IndexScanPhase.ParsingMft);
         Assert.AreEqual(expected, parsing.WrittenRowCount);
         Assert.AreEqual(expected, parsing.ExpectedRowCount);
@@ -363,7 +363,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
             Scripted(scan: (_, _, _, _, _, _) => throw new IOException(message)));
 
         var failure = await Assert.ThrowsExactlyAsync<IOException>(
-            () => ProducerOf(producer)(request, TestContext.CancellationTokenSource.Token));
+            () => ProducerOf(producer)(request, TestContext.CancellationToken));
 
         Assert.AreEqual(message, failure.Message);
         Assert.IsFalse(File.Exists(request.BlockPath));
@@ -376,9 +376,9 @@ public sealed class LocalMftBlockProducerTests : IDisposable
         var producer = new LocalMftBlockProducer(TimeProvider.System, null, Scripted(scan: (_, _, _, _, _, _) => []));
 
         var failure = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-            () => ProducerOf(producer)(request, TestContext.CancellationTokenSource.Token));
+            () => ProducerOf(producer)(request, TestContext.CancellationToken));
 
-        StringAssert.Contains(failure.Message, "RowCount");
+        Assert.Contains("RowCount", failure.Message);
         Assert.IsFalse(File.Exists(request.BlockPath));
     }
 
@@ -390,23 +390,23 @@ public sealed class LocalMftBlockProducerTests : IDisposable
 
         await using var index = await FileIndex.OpenAsync(
             Options(source, new DirectProgress<IndexScanProgress>(reports.Add)),
-            TestContext.CancellationTokenSource.Token);
+            TestContext.CancellationToken);
 
         var names = index.Search(new SearchQuery("file.txt")).Select(entry => entry.Name).ToArray();
-        CollectionAssert.AreEqual(new[] { "file.txt" }, names);
+        Assert.AreSequenceEqual(new[] { "file.txt" }, names);
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.AreEqual(BlockOrigin.ProducedByScan, status.Block!.Origin);
         Assert.IsFalse(status.Watch.IsSupported);
         Assert.IsFalse(status.Watch.IsRequested);
-        Assert.IsTrue(reports.Count > 0);
+        Assert.IsNotEmpty(reports);
     }
 
     [TestMethod]
     public async Task Index_WatchStartAndCatchUpAreNotApplicableThroughTheNoWatchGate()
     {
         var source = new LocalMftBlockProducer(TimeProvider.System, null, Scripted()).CreateIndexSource();
-        await using var index = await FileIndex.OpenAsync(Options(source), TestContext.CancellationTokenSource.Token);
+        await using var index = await FileIndex.OpenAsync(Options(source), TestContext.CancellationToken);
         await DriveResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync(['t'], CancellationToken.None));
         await DriveResultAssertions.NotApplicableAsync(() => index.WaitForCatchUpAsync(['t'], CancellationToken.None));
 
@@ -421,12 +421,12 @@ public sealed class LocalMftBlockProducerTests : IDisposable
         var source = new LocalMftBlockProducer(TimeProvider.System, null,
             Scripted(_ => throw new PlatformNotSupportedException(message))).CreateIndexSource();
 
-        await using var index = await FileIndex.OpenAsync(Options(source), TestContext.CancellationTokenSource.Token);
+        await using var index = await FileIndex.OpenAsync(Options(source), TestContext.CancellationToken);
 
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, status.State);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind);
-        StringAssert.Contains(status.Failure?.Message, message);
+        Assert.Contains(message, status.Failure?.Message!);
     }
 
     [TestMethod]

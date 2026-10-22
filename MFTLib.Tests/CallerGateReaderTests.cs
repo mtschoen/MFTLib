@@ -103,7 +103,7 @@ public class CallerGateReaderTests
         foreach (var (name, type, propertyName, credited) in expectations)
         {
             var seen = references[name];
-            Assert.IsTrue(seen.Any(key => key.StartsWith($"{Name(type)}::.ctor", StringComparison.Ordinal)),
+            Assert.Contains(key => key.StartsWith($"{Name(type)}::.ctor", StringComparison.Ordinal), seen,
                 $"{name}: the generated IL must reference a constructor of {Name(type)}: {string.Join("; ", seen)}");
             Assert.AreEqual(credited, Property(surface, type, propertyName).IsReferencedBy(seen),
                 $"{Name(type)}.{propertyName} credited by constructing it");
@@ -180,7 +180,7 @@ public class CallerGateReaderTests
         var genericOverride = Method(surface, typeof(CallerGateGenericText<>), "ToString() : System.String");
         Assert.IsTrue(genericOverride.IsReferencedBy(references["Generic"]), "a closed generic constraint resolves to its definition");
 
-        Assert.IsFalse(references["TypeParameter"].Any(key => key.Contains('!') || key.Contains("::ToString", StringComparison.Ordinal)),
+        Assert.DoesNotContain(key => key.Contains('!') || key.Contains("::ToString", StringComparison.Ordinal), references["TypeParameter"],
             "a type-parameter constraint names no type: " + string.Join("; ", references["TypeParameter"]));
         var hidden = Method(surface, typeof(CallerGateHiddenText), "ToString() : System.String");
         Assert.IsFalse(hidden.IsReferencedBy(references["HiddenConstrained"]), "a method that hides Object.ToString is not what the constrained call runs");
@@ -200,21 +200,21 @@ public class CallerGateReaderTests
         Assert.IsFalse(Method(surface, typeof(CallerGateForeignBaseText), "ToString() : System.String").IsReferencedBy(references["ForeignBase"]),
             "a base in another assembly cannot be followed to Object, so it is refused");
         Assert.IsTrue(hidden.IsReferencedBy(references["HiddenDirect"]), "a direct call of the hiding method still credits it");
-        Assert.AreEqual(0, references["Foreign"].Count, "a type outside the library is not the library's override: " + string.Join("; ", references["Foreign"]));
+        Assert.IsEmpty(references["Foreign"], "a type outside the library is not the library's override: " + string.Join("; ", references["Foreign"]));
         Assert.IsFalse(toString.IsReferencedBy(references["Gap"]), "the prefix covers only the next instruction");
-        Assert.IsFalse(surface.Members.Any(member => member.Display.StartsWith($"method {Name(typeof(CallerGateNoOverrideText))}.ToString", StringComparison.Ordinal)),
+        Assert.DoesNotContain(member => member.Display.StartsWith($"method {Name(typeof(CallerGateNoOverrideText))}.ToString", StringComparison.Ordinal), surface.Members,
             "a type with no override has no member for the call to credit");
     }
 
     [TestMethod]
     public void TheSurfaceKeys_AreUniqueOnTheFixturesAndFireOnFunctionPointerOverloads()
     {
-        Assert.AreEqual(0, DuplicateKeys(FixtureSurface()).Count, string.Join("; ", DuplicateKeys(FixtureSurface())));
+        Assert.IsEmpty(DuplicateKeys(FixtureSurface()), string.Join("; ", DuplicateKeys(FixtureSurface())));
 
         var pointers = ReadSurface(FixtureAssembly, ["MFTLib.Tests.CallerGateFixturePointers"]);
         var duplicates = DuplicateKeys(pointers);
-        Assert.AreEqual(1, duplicates.Count, string.Join("; ", pointers.Members.Select(member => member.Display)));
-        StringAssert.Contains(duplicates[0], "Choose");
+        Assert.HasCount(1, duplicates, string.Join("; ", pointers.Members.Select(member => member.Display)));
+        Assert.Contains("Choose", duplicates[0]);
     }
 
     [TestMethod]
@@ -224,10 +224,10 @@ public class CallerGateReaderTests
         var displays = surface.Members.Select(member => member.Display).ToList();
         string Report() => string.Join("; ", displays);
 
-        Assert.IsTrue(displays.Contains($"type {MarkedNamespace}.DecoyedType"), Report());
-        Assert.IsTrue(displays.Contains($"method {MarkedNamespace}.Marked.DecoyedMethod() : System.Void"), Report());
-        Assert.IsFalse(displays.Contains($"type {MarkedNamespace}.RealType"), "the real attribute still hides: " + Report());
-        Assert.IsFalse(displays.Contains($"method {MarkedNamespace}.Marked.RealMethod() : System.Void"), "the real attribute still hides: " + Report());
+        Assert.Contains($"type {MarkedNamespace}.DecoyedType", displays, Report());
+        Assert.Contains($"method {MarkedNamespace}.Marked.DecoyedMethod() : System.Void", displays, Report());
+        Assert.DoesNotContain($"type {MarkedNamespace}.RealType", displays, "the real attribute still hides: " + Report());
+        Assert.DoesNotContain($"method {MarkedNamespace}.Marked.RealMethod() : System.Void", displays, "the real attribute still hides: " + Report());
     }
 
     [TestMethod]
@@ -236,9 +236,9 @@ public class CallerGateReaderTests
         var surface = ReadSurfaceFromImage(BuildHandWrittenConstructors(), [HandNamespace]);
         SurfaceMember Value(string type) => surface.Members.Single(member => member.Display == $"property {HandNamespace}.{type}.Value : System.Int32");
 
-        Assert.AreEqual(1, Value("Argument").ConstructorKeys.Count, "the positive twin proves the hand-built shape is read as a record");
-        Assert.AreEqual(0, Value("ThisShort").ConstructorKeys.Count, "ldarg.s 0 is this");
-        Assert.AreEqual(0, Value("ThisLong").ConstructorKeys.Count, "ldarg 0 is this");
-        Assert.AreEqual(0, Value("StargLong").ConstructorKeys.Count, "a long-form starg overwrites the argument");
+        Assert.HasCount(1, Value("Argument").ConstructorKeys, "the positive twin proves the hand-built shape is read as a record");
+        Assert.IsEmpty(Value("ThisShort").ConstructorKeys, "ldarg.s 0 is this");
+        Assert.IsEmpty(Value("ThisLong").ConstructorKeys, "ldarg 0 is this");
+        Assert.IsEmpty(Value("StargLong").ConstructorKeys, "a long-form starg overwrites the argument");
     }
 }

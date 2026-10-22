@@ -55,7 +55,7 @@ public class ParseThreadAllowanceTests
 
         using var volume = MftVolume.Open('C');
         _ = volume.ReadRecordBatches(4096, null, allowance, CancellationToken.None).ToList();
-        CollectionAssert.AreEqual(new[] { 2, 3, 5 }, observed);
+        Assert.AreSequenceEqual(new[] { 2, 3, 5 }, observed);
 
         // Detached when the parse returned: the next parse attaches again and sees the current count.
         observed.Clear();
@@ -91,7 +91,7 @@ public class ParseThreadAllowanceTests
 
         using var volume = MftVolume.Open('C');
         _ = volume.ReadRecordBatches(4096, null, null, cancellation.Token).ToList();
-        CollectionAssert.AreEqual(new[] { 0, 1 }, observed);
+        Assert.AreSequenceEqual(new[] { 0, 1 }, observed);
     }
 
     [TestMethod]

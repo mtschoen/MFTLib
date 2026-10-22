@@ -26,7 +26,7 @@ public class UsnSeamSourceGuardTests
     {
         var revived = typeof(MFTLibNative).GetMembers(AllDeclared).Select(member => member.Name)
             .Where(name => RetiredSeams.Contains(name)).ToArray();
-        Assert.AreEqual(0, revived.Length, $"Retired USN delegate seams reappeared: {string.Join(", ", revived)}");
+        Assert.IsEmpty(revived, $"Retired USN delegate seams reappeared: {string.Join(", ", revived)}");
     }
 
     [TestMethod]
@@ -37,6 +37,6 @@ public class UsnSeamSourceGuardTests
             .SelectMany(type => type.GetMethods(AllDeclared), (type, method) => (type, method))
             .Where(pair => pair.method.Name == "FakeHandle" && pair.method.ReturnType == typeof(SafeFileHandle))
             .Select(pair => pair.type.FullName).ToArray();
-        Assert.AreEqual(0, copies.Length, $"Copied FakeHandle factories reappeared in: {string.Join(", ", copies)}");
+        Assert.IsEmpty(copies, $"Copied FakeHandle factories reappeared in: {string.Join(", ", copies)}");
     }
 }

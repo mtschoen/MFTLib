@@ -39,7 +39,7 @@ public class TestExtensionsStreamTests
             var bytes = new byte[4];
             Assert.AreEqual(2, stream.Read(bytes, 0, 2));
             Assert.AreEqual(2, await stream.ReadAsync(bytes.AsMemory(2)));
-            CollectionAssert.AreEqual(new byte[] { 1, 2, 3, 4 }, bytes);
+            Assert.AreSequenceEqual(new byte[] { 1, 2, 3, 4 }, bytes);
             stream.ReleaseUnmanagedResources();
             Assert.IsTrue(inner.CanRead, "Dispose(false) leaves managed resources alone.");
             stream.Dispose();
@@ -75,12 +75,12 @@ public class TestExtensionsStreamTests
             var bytes = new byte[2];
             Assert.AreEqual(1, stream.Read(bytes, 0, 1));
             Assert.AreEqual(1, await stream.ReadAsync(bytes.AsMemory(1)));
-            CollectionAssert.AreEqual(new byte[] { 1, 2 }, bytes);
+            Assert.AreSequenceEqual(new byte[] { 1, 2 }, bytes);
             stream.Write(bytes, 0, 1);
             await stream.WriteAsync(bytes.AsMemory(1));
             stream.Flush();
             await stream.FlushAsync(CancellationToken.None);
-            CollectionAssert.AreEqual(bytes, output.ToArray());
+            Assert.AreSequenceEqual(bytes, output.ToArray());
             stream.Dispose();
             Assert.IsFalse(input.CanRead);
             Assert.IsFalse(output.CanWrite);
@@ -173,7 +173,7 @@ public class TestExtensionsStreamTests
             {
                 release.SetResult();
                 await write;
-                CollectionAssert.AreEqual(new byte[] { 7 }, inner.ToArray());
+                Assert.AreSequenceEqual(new byte[] { 7 }, inner.ToArray());
             }
         }
         finally

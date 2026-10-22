@@ -22,7 +22,7 @@ public sealed partial class SyntheticBlockTests : IDisposable
 
     public TestContext TestContext { get; set; } = null!;
 
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+    CancellationToken Token => TestContext.CancellationToken;
 
     [TestInitialize]
     public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
@@ -93,7 +93,7 @@ public sealed partial class SyntheticBlockTests : IDisposable
         var path = Seed();
 
         Assert.AreEqual(SyntheticBlock.CachedPath(CacheDirectoryPath, 'T', Serial), path);
-        CollectionAssert.AreEqual(SampleRows(), SyntheticBlock.ReadRows(path, Serial).ToArray());
+        Assert.AreSequenceEqual(SampleRows(), SyntheticBlock.ReadRows(path, Serial).ToArray());
     }
 
     [TestMethod]
@@ -104,7 +104,7 @@ public sealed partial class SyntheticBlockTests : IDisposable
 
         var path = Seed(rows);
 
-        Assert.AreEqual(rows.Count, SyntheticBlock.ReadRows(path, Serial).Count);
+        Assert.HasCount(rows.Count, SyntheticBlock.ReadRows(path, Serial));
     }
 
     [TestMethod]
@@ -181,7 +181,7 @@ public sealed partial class SyntheticBlockTests : IDisposable
 
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
-        Assert.AreEqual(0, index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)).Count);
+        Assert.IsEmpty(index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)));
         Assert.AreEqual(77, index.Search(new SearchQuery("renamed.txt", NameMatchMode.Exact)).Single().Size);
         Assert.AreEqual(1, index.Search(new SearchQuery("added.txt", NameMatchMode.Exact)).Single().Size);
         Assert.AreEqual(FileAttributes.Hidden | FileAttributes.Directory, index.Search(new SearchQuery("docs", NameMatchMode.Exact)).Single().Attributes);
@@ -210,7 +210,7 @@ public sealed partial class SyntheticBlockTests : IDisposable
         var drive = index.Drives.Single();
         Assert.IsTrue(drive.Block!.IsCapacityExhausted);
         Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(1, index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)).Count);
+        Assert.HasCount(1, index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)));
     }
 
     [TestMethod]
@@ -284,16 +284,16 @@ public sealed partial class SyntheticBlockTests : IDisposable
         var missing = SyntheticBlock.CachedPath(CacheDirectoryPath, 'T', Serial);
         var absent = Assert.ThrowsExactly<InvalidOperationException>(
             () => SyntheticBlock.Edit(missing, Serial, _ => { }));
-        StringAssert.Contains(absent.Message, "does not exist");
+        Assert.Contains("does not exist", absent.Message);
 
         var path = Seed();
         var wrongSerial = Assert.ThrowsExactly<InvalidOperationException>(
             () => SyntheticBlock.ReadRows(path, Serial + 1));
-        StringAssert.Contains(wrongSerial.Message, nameof(BlockValidationResult.WrongVolumeSerial));
+        Assert.Contains(nameof(BlockValidationResult.WrongVolumeSerial), wrongSerial.Message);
 
         var oversized = Assert.ThrowsExactly<InvalidOperationException>(
             () => Seed([new SyntheticRow(5, new string('x', 32768), 5)]));
-        StringAssert.Contains(oversized.Message, "does not fit");
+        Assert.Contains("does not fit", oversized.Message);
     }
 
     [TestMethod]
@@ -320,7 +320,7 @@ public sealed partial class SyntheticBlockTests : IDisposable
 
         var failure = Assert.ThrowsExactly<InvalidOperationException>(() => SyntheticBlock.ReadHeader(path, Serial));
 
-        StringAssert.Contains(failure.Message, nameof(BlockValidationResult.WrongMagic));
+        Assert.Contains(nameof(BlockValidationResult.WrongMagic), failure.Message);
         Assert.ThrowsExactly<InvalidOperationException>(
             () => SyntheticBlock.ReadHeader(Path.Combine(CacheDirectoryPath, "absent.mlix"), Serial));
     }
@@ -365,11 +365,11 @@ public sealed partial class SyntheticBlockTests : IDisposable
     {
         var producer = SampleProducer();
         await using var index = await FileIndex.OpenAsync(Scanning(producer), Token);
-        CollectionAssert.AreEqual(new DriveKey[] { 'T' }, producer.ProducedDrives.ToArray());
+        Assert.AreSequenceEqual(new DriveKey[] { 'T' }, producer.ProducedDrives.ToArray());
 
         await index.RescanAsync(['T'], Token);
 
-        CollectionAssert.AreEqual(new DriveKey[] { 'T', 'T' }, producer.ProducedDrives.ToArray());
+        Assert.AreSequenceEqual(new DriveKey[] { 'T', 'T' }, producer.ProducedDrives.ToArray());
     }
 
     [TestMethod]
@@ -388,7 +388,7 @@ public sealed partial class SyntheticBlockTests : IDisposable
         await entered.Task.WaitAsync(Token);
 
         Assert.IsFalse(opening.IsCompleted, "the held scan keeps the open pending");
-        Assert.AreEqual(1, producer.ProducedDrives.Count, "a held production is already counted");
+        Assert.HasCount(1, producer.ProducedDrives, "a held production is already counted");
         release.SetResult();
         await using var index = await opening;
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
@@ -408,7 +408,7 @@ public sealed partial class SyntheticBlockTests : IDisposable
             var failedDrive = failedIndex.Drives.Single();
             Assert.AreEqual(DriveState.Failed, failedDrive.State);
             Assert.AreEqual(DriveFailureKind.ProducerFailed, failedDrive.Failure?.Kind);
-            StringAssert.Contains(failedDrive.Failure?.Message, "catch-up evaluation failed");
+            Assert.Contains("catch-up evaluation failed", failedDrive.Failure?.Message!);
             return;
         }
 
@@ -420,7 +420,7 @@ public sealed partial class SyntheticBlockTests : IDisposable
         var drive = index.Drives.Single();
         Assert.AreEqual(loss, drive.Watch.CheckpointLoss);
         Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(2, producer.ProducedDrives.Count, "the lost catch-up is scanned again");
+        Assert.HasCount(2, producer.ProducedDrives, "the lost catch-up is scanned again");
     }
 
     [TestMethod]

@@ -35,8 +35,8 @@ public class DefaultElevatedEntryRunnerTests
         first.RunBroker(null);
         second.RunBroker(null);
         first.RunBroker(null);
-        CollectionAssert.AreEqual(new[] { 1, 1 }, firstExits);
-        CollectionAssert.AreEqual(new[] { 1 }, secondExits);
+        Assert.AreSequenceEqual(new[] { 1, 1 }, firstExits);
+        Assert.AreSequenceEqual(new[] { 1 }, secondExits);
     }
 
     [TestMethod]
@@ -257,7 +257,7 @@ public class DefaultElevatedEntryRunnerTests
             Assert.IsNull(exitCode);
             lock (appended)
             {
-                Assert.IsTrue(appended.Any(line => line.Contains("frame read kind=200", StringComparison.Ordinal)),
+                Assert.Contains(line => line.Contains("frame read kind=200", StringComparison.Ordinal), appended,
                     "The line logged as the session failed must reach the log before the runner leaves.");
             }
         }
@@ -353,7 +353,7 @@ public class DefaultElevatedEntryRunnerTests
             var delayedRunner = new DefaultElevatedEntryRunner(TimeProvider.System, exits.Add);
             await Cleanup();
             delayedRunner.RunBroker(null);
-            CollectionAssert.AreEqual(new[] { 1 }, exits);
+            Assert.AreSequenceEqual(new[] { 1 }, exits);
         }
         finally
         {

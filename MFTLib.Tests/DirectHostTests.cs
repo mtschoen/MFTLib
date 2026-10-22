@@ -50,8 +50,8 @@ public sealed class DirectHostTests : IDisposable
         var result = HostOver(lines).Run(Dump("search", "--name", "notes"));
 
         Assert.AreEqual(0, result, string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(lines.Contains($"{DumpRoot}/documents/Notes.txt  11"), string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(lines.Contains("1 entries"));
+        Assert.Contains($"{DumpRoot}/documents/Notes.txt  11", lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains("1 entries", lines);
     }
 
     [TestMethod]
@@ -63,7 +63,7 @@ public sealed class DirectHostTests : IDisposable
             ["search", "D", "--source", "dump", "--dump-file", _dumpFile, "--name", "Notes.txt", "--exact", "--stream"]);
 
         Assert.AreEqual(0, result, string.Join(Environment.NewLine, lines));
-        CollectionAssert.AreEqual(
+        Assert.AreSequenceEqual(
             new[]
             {
                 "  D: ParsingMft: 16 rows of 16",
@@ -71,9 +71,7 @@ public sealed class DirectHostTests : IDisposable
                 "  D: Finished: 11 rows (Succeeded)",
                 $"{DumpRoot}/documents/Notes.txt  11",
                 "1 entries"
-            },
-            lines,
-            string.Join(Environment.NewLine, lines));
+            }, lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -84,7 +82,7 @@ public sealed class DirectHostTests : IDisposable
         var result = HostOver(lines).Run([.. Dump("search", "--stream", "--limit", "2")]);
 
         Assert.AreEqual(0, result);
-        Assert.IsTrue(lines.Contains("2 entries"), string.Join(Environment.NewLine, lines));
+        Assert.Contains("2 entries", lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -96,8 +94,8 @@ public sealed class DirectHostTests : IDisposable
 
         Assert.AreEqual(0, result);
         Assert.AreEqual(DumpRoot, lines.First(line => line.StartsWith("dump:", StringComparison.Ordinal)).TrimEnd('/'));
-        Assert.IsTrue(lines.Contains("  documents/"), string.Join(Environment.NewLine, lines));
-        Assert.IsFalse(lines.Any(line => line.Contains("Notes.txt")), "depth 1 stops at the root's children");
+        Assert.Contains("  documents/", lines, string.Join(Environment.NewLine, lines));
+        Assert.DoesNotContain(line => line.Contains("Notes.txt"), lines, "depth 1 stops at the root's children");
     }
 
     [TestMethod]
@@ -110,8 +108,8 @@ public sealed class DirectHostTests : IDisposable
 
         Assert.AreEqual(0, result, string.Join(Environment.NewLine, lines));
         var documents = lines.IndexOf("  documents/");
-        Assert.IsTrue(documents >= 0, string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(lines.Contains("    Notes.txt"), string.Join(Environment.NewLine, lines));
+        Assert.IsGreaterThanOrEqualTo(0, documents, string.Join(Environment.NewLine, lines));
+        Assert.Contains("    Notes.txt", lines, string.Join(Environment.NewLine, lines));
         Assert.IsTrue(lines.IndexOf("    Deep/") > documents && lines.IndexOf("    Deep/") < lines.IndexOf("    Notes.txt"), string.Join(Environment.NewLine, lines));
 
         static IEnumerable<FileEntry> Once(IEnumerable<FileEntry> rows, Action entered)
@@ -133,7 +131,7 @@ public sealed class DirectHostTests : IDisposable
             Assert.AreEqual(0, enumerations++);
         }));
         Assert.AreEqual(1, enumerations);
-        Assert.IsTrue(lookup.Count > 0);
+        Assert.IsNotEmpty(lookup);
     }
 
     [TestMethod]
@@ -144,7 +142,7 @@ public sealed class DirectHostTests : IDisposable
         var result = HostOver(lines).Run([.. Dump("largest"), "--count", "1"]);
 
         Assert.AreEqual(0, result);
-        Assert.IsTrue(lines.Contains($"{DumpRoot}/documents/Deep/leaf.txt  22"), string.Join(Environment.NewLine, lines));
+        Assert.Contains($"{DumpRoot}/documents/Deep/leaf.txt  22", lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -155,10 +153,10 @@ public sealed class DirectHostTests : IDisposable
         var result = HostOver(lines).Run(Dump("scan"));
 
         Assert.AreEqual(0, result);
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Index holds ", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(lines.Contains("Catch-up held; watch supported: False"));
-        Assert.IsTrue(lines.Contains("D: 4 live files, 3 live directories, 0 retained deleted rows"), string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(lines.Contains("D: 1 files with unknown size, 0 with unknown last-write time, 0 hidden, newest known last write 2019-04-17 18:40:01Z"),
+        Assert.Contains(line => line.StartsWith("Index holds ", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains("Catch-up held; watch supported: False", lines);
+        Assert.Contains("D: 4 live files, 3 live directories, 0 retained deleted rows", lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains("D: 1 files with unknown size, 0 with unknown last-write time, 0 hidden, newest known last write 2019-04-17 18:40:01Z", lines,
             string.Join(Environment.NewLine, lines));
     }
 
@@ -171,7 +169,7 @@ public sealed class DirectHostTests : IDisposable
 
         await host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('C', TemporaryDirectoryPath, 4242), CancellationToken.None);
 
-        StringAssert.Contains(output.ToString(), "C: 2 live files, 2 live directories, 1 retained deleted rows");
+        Assert.Contains("C: 2 live files, 2 live directories, 1 retained deleted rows", output.ToString());
     }
 
     [TestMethod]
@@ -183,9 +181,9 @@ public sealed class DirectHostTests : IDisposable
 
         Assert.AreEqual(1, result);
         var description = $"{DumpRoot}/documents/Notes.txt ({new IndexRecordKey('D', 7, ProducerKind.Mft)})";
-        Assert.IsTrue(lines.Any(line => line.StartsWith($"{description}: record 7 on D (Mft), ", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
+        Assert.Contains(line => line.StartsWith($"{description}: record 7 on D (Mft), ", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
         Assert.AreEqual($"Error: InvalidOperationException: {description}: Files in an MFT dump cannot be opened through the index.", lines.Single(line => line.StartsWith("Error: ", StringComparison.Ordinal)));
-        Assert.IsFalse(lines.Any(line => line.StartsWith("  caused by ", StringComparison.Ordinal)));
+        Assert.DoesNotContain(line => line.StartsWith("  caused by ", StringComparison.Ordinal), lines);
     }
 
     [TestMethod]
@@ -215,9 +213,9 @@ public sealed class DirectHostTests : IDisposable
         await host.RunSourceAsync(parsed!, source, new IndexedDrive('C', TemporaryDirectoryPath, 4242), CancellationToken.None);
 
         var report = output.ToString();
-        StringAssert.Contains(report, $"{path} ({new IndexRecordKey('C', 7, ProducerKind.Mft)}): record ");
-        StringAssert.Contains(report, $"modified {expectedLastWriteTime}, parent ");
-        StringAssert.Contains(report, "3 bytes, first 3: 010203");
+        Assert.Contains($"{path} ({new IndexRecordKey('C', 7, ProducerKind.Mft)}): record ", report);
+        Assert.Contains($"modified {expectedLastWriteTime}, parent ", report);
+        Assert.Contains("3 bytes, first 3: 010203", report);
     }
 
     [TestMethod]
@@ -228,7 +226,7 @@ public sealed class DirectHostTests : IDisposable
         var result = HostOver(lines).Run([.. Dump("open"), "--path", $"{DumpRoot}/missing.txt"]);
 
         Assert.AreEqual(1, result);
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Error: ", StringComparison.Ordinal) && line.Contains($"No entry at {DumpRoot}/missing.txt.")), string.Join(Environment.NewLine, lines));
+        Assert.Contains(line => line.StartsWith("Error: ", StringComparison.Ordinal) && line.Contains($"No entry at {DumpRoot}/missing.txt."), lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -239,7 +237,7 @@ public sealed class DirectHostTests : IDisposable
         var result = HostOver(lines).Run(["scan", "D", "--source", "dump", "--dump-file", Path.Combine(TemporaryDirectoryPath, "absent.mft")]);
 
         Assert.AreEqual(1, result);
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Error: ", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
+        Assert.Contains(line => line.StartsWith("Error: ", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -251,8 +249,8 @@ public sealed class DirectHostTests : IDisposable
         var result = host.Run([.. Dump("search"), "--include-freed"]);
 
         Assert.AreEqual(2, result);
-        Assert.IsTrue(lines.Any(line => line.Contains("a dump never yields freed rows")));
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Usage:", StringComparison.Ordinal)));
+        Assert.Contains(line => line.Contains("a dump never yields freed rows"), lines);
+        Assert.Contains(line => line.StartsWith("Usage:", StringComparison.Ordinal), lines);
     }
 
     [TestMethod]
@@ -267,7 +265,7 @@ public sealed class DirectHostTests : IDisposable
             throw new AssertFailedException("An unelevated unattended run must not scan."));
 
         Assert.AreEqual(1, result);
-        Assert.IsTrue(lines.Any(line => line.Contains("AUTOMATIC ELEVATION FAILED")));
+        Assert.Contains(line => line.Contains("AUTOMATIC ELEVATION FAILED"), lines);
     }
 
     [TestMethod]
@@ -289,13 +287,13 @@ public sealed class DirectHostTests : IDisposable
         Assert.AreEqual(string.Empty, output.ToString(), "Elevated output goes to output.log.");
         var log = File.ReadAllText(host.OutputLogPath);
         Assert.IsTrue(seen!.IncludeFreed);
-        StringAssert.Contains(log, "a.txt  100  deleted=False");
-        StringAssert.Contains(log, "a.txt  7  deleted=True");
+        Assert.Contains("a.txt  100  deleted=False", log);
+        Assert.Contains("a.txt  7  deleted=True", log);
 
         var followUp = host.Run([]);
 
         Assert.AreEqual(2, followUp);
-        StringAssert.Contains(output.ToString(), "Usage:", "After the elevated run the original borrowed writer is restored.");
+        Assert.Contains("Usage:", output.ToString(), "After the elevated run the original borrowed writer is restored.");
     }
 
     [TestMethod]
@@ -308,8 +306,8 @@ public sealed class DirectHostTests : IDisposable
         await host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('C', TemporaryDirectoryPath, 4242), CancellationToken.None);
 
         var report = output.ToString();
-        Assert.IsFalse(report.Contains("deleted="), report);
-        StringAssert.Contains(report, "2 entries");
+        Assert.DoesNotContain("deleted=", report, report);
+        Assert.Contains("2 entries", report);
     }
 
     [TestMethod]
@@ -333,14 +331,12 @@ public sealed class DirectHostTests : IDisposable
 
         var elevatedLines = elevatedOutput.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
         var matches = elevatedLines.Where(line => line.Contains(".log", StringComparison.Ordinal) && !line.StartsWith("Indexing ", StringComparison.Ordinal)).ToList();
-        CollectionAssert.AreEquivalent(
+        Assert.AreSequenceEqual(
             new[]
             {
                 $"{Path.Combine(TemporaryDirectoryPath, "logs", "app.log")}  42",
                 $"{Path.Combine(TemporaryDirectoryPath, "logs", "pending.log")}  ?"
-            },
-            matches,
-            elevatedOutput.ToString());
+            }, matches, SequenceOrder.InAnyOrder, elevatedOutput.ToString());
         Assert.IsTrue(elevatedLines.Contains("2 entries"), elevatedOutput.ToString());
 
         using var unattended = new UnattendedEnvironmentScope("1");
@@ -351,8 +347,8 @@ public sealed class DirectHostTests : IDisposable
             throw new AssertFailedException("An unelevated unattended run must not scan."));
 
         Assert.AreEqual(1, unattendedResult);
-        StringAssert.Contains(unattendedOutput.ToString(), "Running unattended (MFTLIB_SAMPLE_UNATTENDED=1): elevation skipped, no prompt shown.");
-        StringAssert.Contains(unattendedOutput.ToString(), "AUTOMATIC ELEVATION FAILED.");
+        Assert.Contains("Running unattended (MFTLIB_SAMPLE_UNATTENDED=1): elevation skipped, no prompt shown.", unattendedOutput.ToString());
+        Assert.Contains("AUTOMATIC ELEVATION FAILED.", unattendedOutput.ToString());
     }
 
     [TestMethod]
@@ -364,7 +360,7 @@ public sealed class DirectHostTests : IDisposable
 
         await host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('C', TemporaryDirectoryPath, 4242), CancellationToken.None);
 
-        StringAssert.Contains(output.ToString(), "a.txt: 2 entries");
+        Assert.Contains("a.txt: 2 entries", output.ToString());
     }
 
     [TestMethod]
@@ -376,7 +372,7 @@ public sealed class DirectHostTests : IDisposable
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('Q', Path.Combine(TemporaryDirectoryPath, "missing-root"), 4242), CancellationToken.None));
-        StringAssert.Contains(exception.Message, "The drive is offline; nothing was scanned.");
+        Assert.Contains("The drive is offline; nothing was scanned.", exception.Message);
     }
 
     [TestMethod]
@@ -389,7 +385,7 @@ public sealed class DirectHostTests : IDisposable
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             host.RunSourceAsync(parsed!, source, new IndexedDrive('C', TemporaryDirectoryPath, 4242), CancellationToken.None));
-        StringAssert.Contains(exception.Message, "volume unreadable");
+        Assert.Contains("volume unreadable", exception.Message);
     }
 
     [TestMethod]
@@ -407,7 +403,7 @@ public sealed class DirectHostTests : IDisposable
         var result = host.Run(["scan", "C"]);
 
         Assert.AreEqual(1, result);
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Error: ", StringComparison.Ordinal) && line.Contains("Volume serials are read on Windows only.")), string.Join(Environment.NewLine, lines));
+        Assert.Contains(line => line.StartsWith("Error: ", StringComparison.Ordinal) && line.Contains("Volume serials are read on Windows only."), lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]

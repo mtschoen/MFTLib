@@ -120,7 +120,7 @@ public class PublicMemberCallerTests
 
     /// <summary>Fails naming every exposed type outside the surface namespaces, which the gate would never see.</summary>
     static void AssertNoOutOfScopeTypes(Surface surface) =>
-        Assert.AreEqual(0, surface.OutOfScopeTypes.Count,
+        Assert.IsEmpty(surface.OutOfScopeTypes,
             "These public types sit outside the MFTLib and MFTLib.Index namespaces, so the caller gate would not see " +
             "them. Move them into a gated namespace or extend the gate: " + string.Join("; ", surface.OutOfScopeTypes));
 
@@ -134,23 +134,23 @@ public class PublicMemberCallerTests
         var surface = ReadSurface(LibraryPath);
         AssertNoOutOfScopeTypes(surface);
         var references = CollectReferences(samplePaths);
-        Assert.AreEqual(0, DuplicateKeys(surface).Count,
+        Assert.IsEmpty(DuplicateKeys(surface),
             "These keys name more than one public member, so one caller would credit both: " + string.Join("; ", DuplicateKeys(surface)));
 
         var unreferenced = FindUnreferenced(surface, references, ExemptMembers);
-        Assert.AreEqual(0, unreferenced.Count,
+        Assert.IsEmpty(unreferenced,
             "These public members have no caller in SampleProgram.Direct or SampleProgram.Watch and no reasoned " +
             "exemption. Give each a real use, internalize it, or delete it:" + Environment.NewLine +
             Describe(unreferenced));
 
         var staleExemptions = ExemptMembers.Keys.Where(key => surface.Members.All(member => member.Display != key)).ToList();
-        Assert.AreEqual(0, staleExemptions.Count,
+        Assert.IsEmpty(staleExemptions,
             "These exempt entries name no public member: " + string.Join("; ", staleExemptions));
 
         var redundant = surface.Members
             .Where(member => ExemptMembers.ContainsKey(member.Display) && member.IsReferencedBy(references))
             .Select(member => member.Display).ToList();
-        Assert.AreEqual(0, redundant.Count,
+        Assert.IsEmpty(redundant,
             "These exempt members now have a sample caller; drop the exemption: " + string.Join("; ", redundant));
     }
 
@@ -162,8 +162,8 @@ public class PublicMemberCallerTests
         var unlisted = declared.Except(InlinedConstants.Keys).OrderBy(name => name, StringComparer.Ordinal).ToList();
         var lingering = InlinedConstants.Keys.Except(declared).OrderBy(name => name, StringComparer.Ordinal).ToList();
 
-        Assert.AreEqual(0, unlisted.Count, "Public constants with no reason: " + string.Join("; ", unlisted));
-        Assert.AreEqual(0, lingering.Count, "Listed constants the library no longer declares: " + string.Join("; ", lingering));
+        Assert.IsEmpty(unlisted, "Public constants with no reason: " + string.Join("; ", unlisted));
+        Assert.IsEmpty(lingering, "Listed constants the library no longer declares: " + string.Join("; ", lingering));
     }
 
     /// <summary>
@@ -178,16 +178,16 @@ public class PublicMemberCallerTests
         var references = CollectReferences([SamplePath(DirectSample)]);
         var openAsync = surface.Members.Single(member => member.Display.StartsWith(
             "method MFTLib.Index.FileIndex.OpenAsync(", StringComparison.Ordinal));
-        Assert.IsTrue(openAsync.Keys.Any(references.Contains), "the control needs a member the sample really calls");
+        Assert.Contains(key => references.Contains(key), openAsync.Keys, "the control needs a member the sample really calls");
 
         var before = FindUnreferenced(surface, references, new Dictionary<string, string>());
         var withoutOpenAsync = references.Except(openAsync.Keys).ToHashSet(StringComparer.Ordinal);
         var after = FindUnreferenced(surface, withoutOpenAsync, new Dictionary<string, string>());
 
         var added = after.Except(before).ToList();
-        Assert.AreEqual(1, added.Count);
+        Assert.HasCount(1, added);
         Assert.AreEqual(openAsync.Display, added[0].Display);
-        StringAssert.Contains(Describe(after), "FileIndex.OpenAsync(");
+        Assert.Contains("FileIndex.OpenAsync(", Describe(after));
     }
 
     /// <summary>
@@ -207,8 +207,8 @@ public class PublicMemberCallerTests
         var sibling = surface.Members.Single(member => member.Display ==
             "method MFTLib.BrokerSession..ctor() : System.Void");
 
-        Assert.IsTrue(called.Keys.Any(references.Contains), "the overload the fixture calls must be found");
-        Assert.IsFalse(sibling.Keys.Any(references.Contains), "the sibling overload no IL names must not be found");
+        Assert.Contains(key => references.Contains(key), called.Keys, "the overload the fixture calls must be found");
+        Assert.DoesNotContain(key => references.Contains(key), sibling.Keys, "the sibling overload no IL names must not be found");
     }
 
     /// <summary>
@@ -230,38 +230,38 @@ public class PublicMemberCallerTests
         string Report() => string.Join("; ", displays);
 
         // Authored members that share a name or shape with a synthesized one are kept.
-        Assert.IsTrue(displays.Any(display => display.StartsWith($"property {positional}.Extra", StringComparison.Ordinal)), Report());
-        Assert.IsTrue(displays.Contains($"method {positional}.Deconstruct(System.Int32&) : System.Void"), Report());
-        Assert.IsTrue(displays.Contains($"method {positional}.ToString() : System.String"), Report());
-        Assert.IsTrue(displays.Contains($"method {positional}..ctor(System.String, System.String) : System.Void"), Report());
-        Assert.IsTrue(displays.Any(display => display.StartsWith($"property {replaced}.Alpha", StringComparison.Ordinal)), Report());
-        Assert.IsTrue(displays.Contains($"method {copy}..ctor({copy}) : System.Void"), Report());
+        Assert.Contains(display => display.StartsWith($"property {positional}.Extra", StringComparison.Ordinal), displays, Report());
+        Assert.Contains($"method {positional}.Deconstruct(System.Int32&) : System.Void", displays, Report());
+        Assert.Contains($"method {positional}.ToString() : System.String", displays, Report());
+        Assert.Contains($"method {positional}..ctor(System.String, System.String) : System.Void", displays, Report());
+        Assert.Contains(display => display.StartsWith($"property {replaced}.Alpha", StringComparison.Ordinal), displays, Report());
+        Assert.Contains($"method {copy}..ctor({copy}) : System.Void", displays, Report());
 
         // Every property is listed, whatever its name, type or accessors.
         const string sibling = "MFTLib.Tests.CallerGateFixtures.CallerGateCaseSiblingRecord";
         const string contract = "MFTLib.Tests.CallerGateFixtures.CallerGateAuthoredContractRecord";
         const string mixed = "MFTLib.Tests.CallerGateFixtures.CallerGateMixedAccessorRecord";
-        Assert.IsTrue(displays.Contains($"property {sibling}.first : System.String"), Report());
-        Assert.IsTrue(displays.Contains($"property {contract}.EqualityContract : System.Type"), Report());
-        Assert.IsTrue(displays.Contains($"property {mixed}.First : System.Int32"), Report());
+        Assert.Contains($"property {sibling}.first : System.String", displays, Report());
+        Assert.Contains($"property {contract}.EqualityContract : System.Type", displays, Report());
+        Assert.Contains($"property {mixed}.First : System.Int32", displays, Report());
 
-        Assert.IsTrue(displays.Contains($"property {positional}.First : System.Int32"), Report());
-        Assert.IsTrue(displays.Contains($"property {positional}.Second : System.Int32"), Report());
-        Assert.IsTrue(displays.Contains($"property {replaced}.Beta : System.Int32"), Report());
-        Assert.IsTrue(displays.Contains($"property {sibling}.First : System.Int32"), Report());
+        Assert.Contains($"property {positional}.First : System.Int32", displays, Report());
+        Assert.Contains($"property {positional}.Second : System.Int32", displays, Report());
+        Assert.Contains($"property {replaced}.Beta : System.Int32", displays, Report());
+        Assert.Contains($"property {sibling}.First : System.Int32", displays, Report());
 
         // Members carrying evidence of synthesis are dropped.
-        Assert.IsFalse(displays.Contains($"method {positional}..ctor(System.Int32, System.Int32) : System.Void"), Report());
-        Assert.IsFalse(displays.Contains($"method {positional}.Deconstruct(System.Int32&, System.Int32&) : System.Void"), Report());
-        Assert.IsFalse(displays.Contains($"method {positional}..ctor({positional}) : System.Void"), Report());
-        Assert.IsFalse(displays.Contains($"method {copy}..ctor(System.Int32) : System.Void"), Report());
+        Assert.DoesNotContain($"method {positional}..ctor(System.Int32, System.Int32) : System.Void", displays, Report());
+        Assert.DoesNotContain($"method {positional}.Deconstruct(System.Int32&, System.Int32&) : System.Void", displays, Report());
+        Assert.DoesNotContain($"method {positional}..ctor({positional}) : System.Void", displays, Report());
+        Assert.DoesNotContain($"method {copy}..ctor(System.Int32) : System.Void", displays, Report());
         foreach (var synthesized in new[] { "Equals", "GetHashCode", "PrintMembers", "<Clone>$", "op_Equality", "op_Inequality" })
         {
-            Assert.IsFalse(displays.Any(display => display.StartsWith($"method {positional}.{synthesized}(", StringComparison.Ordinal)), Report());
+            Assert.DoesNotContain(display => display.StartsWith($"method {positional}.{synthesized}(", StringComparison.Ordinal), displays, Report());
         }
 
-        Assert.IsFalse(displays.Any(display => display.Contains("EqualityContract", StringComparison.Ordinal) &&
-                                                 !display.Contains(contract, StringComparison.Ordinal)), Report());
+        Assert.DoesNotContain(display => display.Contains("EqualityContract", StringComparison.Ordinal) &&
+                                                 !display.Contains(contract, StringComparison.Ordinal), displays, Report());
     }
 
     /// <summary>
@@ -289,7 +289,7 @@ public class PublicMemberCallerTests
 
         var inherited = CollectReferencesFromType(assembly, "MFTLib.Tests.CallerGateFixtureInheritedToString");
         Assert.IsFalse(toString.IsReferencedBy(inherited), "another type's call must not credit FileEntry.ToString");
-        Assert.IsFalse(surface.Members.Any(member => member.Display.StartsWith("method MFTLib.Index.ProducerKind.ToString(", StringComparison.Ordinal)),
+        Assert.DoesNotContain(member => member.Display.StartsWith("method MFTLib.Index.ProducerKind.ToString(", StringComparison.Ordinal), surface.Members,
             "an enum declares no ToString, so the constrained call credits no member");
     }
 
@@ -309,20 +309,20 @@ public class PublicMemberCallerTests
         string Report() => string.Join("; ", displays);
 
         const string inheritable = "MFTLib.Tests.CallerGateFixtures.CallerGateInheritableRecord";
-        Assert.IsFalse(displays.Any(display => display.StartsWith($"method {inheritable}..ctor({inheritable})", StringComparison.Ordinal)), Report());
-        Assert.IsFalse(displays.Any(display => display.StartsWith($"method {inheritable}.PrintMembers(", StringComparison.Ordinal)), Report());
-        Assert.IsFalse(displays.Contains($"method {inheritable}..ctor(System.Int32) : System.Void"), Report());
+        Assert.DoesNotContain(display => display.StartsWith($"method {inheritable}..ctor({inheritable})", StringComparison.Ordinal), displays, Report());
+        Assert.DoesNotContain(display => display.StartsWith($"method {inheritable}.PrintMembers(", StringComparison.Ordinal), displays, Report());
+        Assert.DoesNotContain($"method {inheritable}..ctor(System.Int32) : System.Void", displays, Report());
 
         const string empty = "MFTLib.Tests.CallerGateFixtures.CallerGateEmptyRecord";
-        Assert.IsTrue(displays.Contains($"method {empty}..ctor() : System.Void"), Report());
-        Assert.IsFalse(displays.Any(display => display.StartsWith($"method {empty}..ctor({empty})", StringComparison.Ordinal)), Report());
+        Assert.Contains($"method {empty}..ctor() : System.Void", displays, Report());
+        Assert.DoesNotContain(display => display.StartsWith($"method {empty}..ctor({empty})", StringComparison.Ordinal), displays, Report());
 
         const string authored = "MFTLib.Tests.CallerGateFixtures.CallerGateAuthoredDeconstructRecord";
-        Assert.IsTrue(displays.Contains($"method {authored}.Deconstruct(System.Int32&, System.Int32&) : System.Void"), Report());
-        Assert.IsTrue(displays.Contains($"method {authored}..ctor(System.Int32, System.Int32) : System.Void"), Report());
-        Assert.IsTrue(displays.Any(display => display.StartsWith($"property {authored}.Left", StringComparison.Ordinal)), Report());
-        Assert.IsTrue(displays.Any(display => display.StartsWith($"property {authored}.Right", StringComparison.Ordinal)), Report());
-        Assert.IsFalse(displays.Any(display => display.StartsWith($"method {authored}..ctor({authored})", StringComparison.Ordinal)), Report());
+        Assert.Contains($"method {authored}.Deconstruct(System.Int32&, System.Int32&) : System.Void", displays, Report());
+        Assert.Contains($"method {authored}..ctor(System.Int32, System.Int32) : System.Void", displays, Report());
+        Assert.Contains(display => display.StartsWith($"property {authored}.Left", StringComparison.Ordinal), displays, Report());
+        Assert.Contains(display => display.StartsWith($"property {authored}.Right", StringComparison.Ordinal), displays, Report());
+        Assert.DoesNotContain(display => display.StartsWith($"method {authored}..ctor({authored})", StringComparison.Ordinal), displays, Report());
     }
 
     /// <summary>
@@ -334,7 +334,7 @@ public class PublicMemberCallerTests
     {
         var fixtures = ReadSurface(typeof(PublicMemberCallerTests).Assembly.Location, ["MFTLib.Tests.CallerGateFixtures"]);
         var fixtureDisplays = fixtures.Members.Select(member => member.Display).ToList();
-        Assert.AreEqual(fixtureDisplays.Count, fixtureDisplays.Distinct().Count(), string.Join("; ", fixtureDisplays));
+        Assert.HasCount(fixtureDisplays.Count, fixtureDisplays.Distinct(), string.Join("; ", fixtureDisplays));
 
         var surface = ReadSurface(LibraryPath);
         var exempt = surface.Members.Single(member => member.Display ==
@@ -344,8 +344,8 @@ public class PublicMemberCallerTests
         var unreferenced = FindUnreferenced(surface, new HashSet<string>(),
             new Dictionary<string, string> { [exempt.Display] = "control" });
 
-        Assert.IsFalse(unreferenced.Contains(exempt));
-        Assert.IsTrue(unreferenced.Contains(sibling));
+        Assert.DoesNotContain(exempt, unreferenced);
+        Assert.Contains(sibling, unreferenced);
     }
 
     [TestMethod]
@@ -361,7 +361,7 @@ public class PublicMemberCallerTests
         var surface = ReadSurface(typeof(PublicMemberCallerTests).Assembly.Location, ["MFTLib.Tests.CallerGateFixtures"]);
 
         var failure = Assert.ThrowsExactly<AssertFailedException>(() => AssertNoOutOfScopeTypes(surface));
-        StringAssert.Contains(failure.Message, "MFTLib.Tests.PublicMemberCallerTests");
+        Assert.Contains("MFTLib.Tests.PublicMemberCallerTests", failure.Message);
     }
 
     [TestMethod]
@@ -370,7 +370,7 @@ public class PublicMemberCallerTests
         var absent = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
 
         var failure = Assert.ThrowsExactly<AssertFailedException>(() => GateSamplePaths(true, absent));
-        StringAssert.Contains(failure.Message, Path.Combine(absent, WatchSample));
+        Assert.Contains(Path.Combine(absent, WatchSample), failure.Message);
         Assert.ThrowsExactly<AssertInconclusiveException>(() => GateSamplePaths(false, absent));
     }
 
@@ -380,7 +380,7 @@ public class PublicMemberCallerTests
         var absent = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "MFTLib.dll");
 
         var failure = Assert.ThrowsExactly<AssertFailedException>(() => ResolveLibraryPath(absent));
-        StringAssert.Contains(failure.Message, absent);
+        Assert.Contains(absent, failure.Message);
         Assert.ThrowsExactly<AssertFailedException>(() => ResolveLibraryPath(null));
         Assert.AreEqual(typeof(FileIndex).Assembly.Location, ResolveLibraryPath(typeof(FileIndex).Assembly.Location));
     }

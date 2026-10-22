@@ -31,8 +31,8 @@ public class BrokerFrameLengthTests
 
         var totalLength = BinaryPrimitives.ReadInt32LittleEndian(buffer.WrittenSpan);
         Assert.AreEqual(16_777_067, totalLength);
-        Assert.IsTrue(totalLength <= BrokerFrameStream.MaximumFrameLength);
-        Assert.AreEqual(names.Length, BrokerProtocol.ReadFrame(buffer.WrittenSpan, out _).RetainedFileNames!.Count);
+        Assert.IsLessThanOrEqualTo(BrokerFrameStream.MaximumFrameLength, totalLength);
+        Assert.HasCount(names.Length, BrokerProtocol.ReadFrame(buffer.WrittenSpan, out _).RetainedFileNames!);
     }
 
     [TestMethod]
@@ -65,7 +65,7 @@ public class BrokerFrameLengthTests
             await harness.SendControlAsync(writer => WriteLengthPrefix(writer, length));
 
             var exception = await Assert.ThrowsExactlyAsync<InvalidDataException>(() => harness.Serve.WaitAsync(HangGuard));
-            StringAssert.Contains(exception.Message, length.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            Assert.Contains(length.ToString(System.Globalization.CultureInfo.InvariantCulture), exception.Message);
         }
         finally
         {
@@ -82,9 +82,9 @@ public class BrokerFrameLengthTests
         await HostChannelHarness.WriteFrameAsync(pipe, writer => WriteLengthPrefix(writer, int.MaxValue));
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.AreEqual(1, frames.Count);
+        Assert.HasCount(1, frames);
         Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
-        StringAssert.Contains(frames[0].Message, "malformed");
+        Assert.Contains("malformed", frames[0].Message!);
         await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 8, 'C'));
         Assert.AreEqual(BrokerFrameKind.VolumeInfo, (await harness.ReadControlAsync()).Kind,
             "Only the channel that received the malformed frame ends.");
@@ -102,7 +102,7 @@ public class BrokerFrameLengthTests
 
         var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
         Assert.IsNull(lost.Drive);
-        StringAssert.Contains(await ended.WaitAsync(HangGuard), "2147483647");
+        Assert.Contains("2147483647", await ended.WaitAsync(HangGuard));
     }
 
     [TestMethod]

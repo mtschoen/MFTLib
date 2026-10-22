@@ -19,7 +19,7 @@ public partial class BrokerProtocolTests
     {
         var buffer = new ArrayBufferWriter<byte>();
         write(buffer);
-        CollectionAssert.AreEqual(expected, buffer.WrittenSpan.ToArray());
+        Assert.AreSequenceEqual(expected, buffer.WrittenSpan.ToArray());
     }
 
     // Writes one frame, reads it back, and checks the reader consumed exactly the bytes written.
@@ -64,7 +64,7 @@ public partial class BrokerProtocolTests
     {
         var kinds = Enum.GetValues<BrokerFrameKind>().Select(kind => (int)kind).Order().ToArray();
 
-        CollectionAssert.AreEqual(Enumerable.Range(1, 18).ToArray(), kinds, "The wire numbers kinds densely from 1.");
+        Assert.AreSequenceEqual(Enumerable.Range(1, 18).ToArray(), kinds, "The wire numbers kinds densely from 1.");
     }
 
     // The Require* accessors guard a protocol invariant: every factory receives a real, non-null

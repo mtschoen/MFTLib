@@ -57,7 +57,7 @@ public sealed class FreedRowsIndexTests : IDisposable
         var docs = index.Find(Path.Combine(TreeRoot, "docs"))!.Value;
         var root = index.Root('T');
 
-        CollectionAssert.AreEqual(new[] { "keep.txt" }, docs.Children().Select(child => child.Name).ToArray());
+        Assert.AreSequenceEqual(new[] { "keep.txt" }, docs.Children().Select(child => child.Name).ToArray());
         CollectionAssert.DoesNotContain(root.Children().Select(child => child.Name).ToArray(), "orphan.txt");
         Assert.IsNull(index.Find(Path.Combine(TreeRoot, "docs", "orphan.txt")));
         Assert.IsNull(index.Find(Path.Combine(TreeRoot, "orphan.txt")));
@@ -75,10 +75,9 @@ public sealed class FreedRowsIndexTests : IDisposable
             .Search(new SearchQuery(".txt", Subtree: under, IncludeDeleted: true)).Select(entry => entry.Name)
             .Order().ToArray();
 
-        CollectionAssert.AreEqual(new[] { "keep.txt", "trusted.txt" }, Names(docs));
-        CollectionAssert.AreEqual(new[] { "dup.txt", "dup.txt", "keep.txt", "trusted.txt" }, Names(root));
-        CollectionAssert.AreEqual(new[] { "dup.txt", "dup.txt", "keep.txt", "orphan.txt", "trusted.txt" },
-            Names(null));
+        Assert.AreSequenceEqual(new[] { "keep.txt", "trusted.txt" }, Names(docs));
+        Assert.AreSequenceEqual(new[] { "dup.txt", "dup.txt", "keep.txt", "trusted.txt" }, Names(root));
+        Assert.AreSequenceEqual(new[] { "dup.txt", "dup.txt", "keep.txt", "orphan.txt", "trusted.txt" }, Names(null));
     }
 
     [TestMethod]
@@ -92,11 +91,10 @@ public sealed class FreedRowsIndexTests : IDisposable
             .Enumerate(new SearchQuery(".txt", IncludeDeleted: includeDeleted)).Select(entry => entry.Name)
             .Order().ToArray();
 
-        CollectionAssert.AreEqual(new[] { "dup.txt", "keep.txt" }, Search(includeDeleted: false));
-        CollectionAssert.AreEqual(new[] { "dup.txt", "dup.txt", "keep.txt", "orphan.txt", "trusted.txt" },
-            Search(includeDeleted: true));
-        CollectionAssert.AreEqual(Search(false), Enumerate(false));
-        CollectionAssert.AreEqual(Search(true), Enumerate(true));
+        Assert.AreSequenceEqual(new[] { "dup.txt", "keep.txt" }, Search(includeDeleted: false));
+        Assert.AreSequenceEqual(new[] { "dup.txt", "dup.txt", "keep.txt", "orphan.txt", "trusted.txt" }, Search(includeDeleted: true));
+        Assert.AreSequenceEqual(Search(false), Enumerate(false));
+        Assert.AreSequenceEqual(Search(true), Enumerate(true));
     }
 
     [TestMethod]
@@ -107,7 +105,7 @@ public sealed class FreedRowsIndexTests : IDisposable
         var largeDeleted = index.Search(new SearchQuery(null, SizeMinimum: 150, IncludeDeleted: true));
         var deletedDirectories = index.Search(new SearchQuery(null, IsDirectory: true, IncludeDeleted: true));
 
-        CollectionAssert.AreEqual(new[] { "orphan.txt" }, largeDeleted.Select(entry => entry.Name).ToArray());
+        Assert.AreSequenceEqual(new[] { "orphan.txt" }, largeDeleted.Select(entry => entry.Name).ToArray());
         var goneDirectory = deletedDirectories.Single(entry => entry.IsDeleted);
         Assert.AreEqual("gone-dir", goneDirectory.Name);
         Assert.IsTrue(goneDirectory.IsDirectory);
@@ -131,7 +129,7 @@ public sealed class FreedRowsIndexTests : IDisposable
 
         CollectionAssert.DoesNotContain(names, "orphan.txt");
         CollectionAssert.DoesNotContain(names, "trusted.txt");
-        Assert.AreEqual(1, names.Count(name => name == "dup.txt"));
+        Assert.ContainsSingle(name => name == "dup.txt", names);
 
         var deletedNames = new List<string>();
         foreach (var row in index.EnumerateRows(new SearchQuery(null, IsDirectory: false, IncludeDeleted: true)))
@@ -142,7 +140,7 @@ public sealed class FreedRowsIndexTests : IDisposable
             }
         }
 
-        CollectionAssert.AreEquivalent(new[] { "orphan.txt", "trusted.txt", "dup.txt" }, deletedNames);
+        Assert.AreSequenceEqual(new[] { "orphan.txt", "trusted.txt", "dup.txt" }, deletedNames, SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]
@@ -152,8 +150,8 @@ public sealed class FreedRowsIndexTests : IDisposable
 
         Assert.AreEqual(0, index.Search(new SearchQuery(null, IncludeDeleted: true))
             .Count(entry => entry.IsDeleted));
-        Assert.AreEqual(index.Search(new SearchQuery(null)).Count,
-            index.Search(new SearchQuery(null, IncludeDeleted: true)).Count);
+        Assert.HasCount(index.Search(new SearchQuery(null)).Count,
+            index.Search(new SearchQuery(null, IncludeDeleted: true)));
     }
 
     // The scripted source behaves like the live one: freed records are yielded only when the scan asks for them.

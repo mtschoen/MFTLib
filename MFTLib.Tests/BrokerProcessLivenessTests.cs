@@ -204,8 +204,8 @@ public class BrokerProcessLivenessTests
 
         Assert.IsTrue(replyTimeout.Fired);
         var timeout = await Assert.ThrowsExactlyAsync<TimeoutException>(() => slow.WaitAsync(HangGuard));
-        StringAssert.Contains(timeout.Message, "did not answer request");
-        StringAssert.Contains(timeout.Message, "30 seconds");
+        Assert.Contains("did not answer request", timeout.Message);
+        Assert.Contains("30 seconds", timeout.Message);
         Assert.IsFalse(session.Process.Ended.IsCompleted, "Only the request timed out.");
         Assert.AreEqual(1, session.Process.Hooks.PendingRequestCount, "The id stays until its reply arrives.");
 
@@ -327,7 +327,7 @@ public class BrokerProcessLivenessTests
         Assert.IsFalse(session.Process.Ended.IsCompleted);
         clock.CallbackEntered.Release();
         await advance.WaitAsync(HangGuard);
-        StringAssert.Contains(await ended.WaitAsync(HangGuard), "closed its control pipe");
+        Assert.Contains("closed its control pipe", await ended.WaitAsync(HangGuard));
     }
 
     static int FrameLength(Action<IBufferWriter<byte>> write)

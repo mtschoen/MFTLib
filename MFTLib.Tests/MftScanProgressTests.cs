@@ -48,8 +48,8 @@ public class MftScanProgressTests
         using var volume = MftVolume.Open('C');
         var batches = volume.ReadRecordBatches(4096, directProgress, null, CancellationToken.None).ToList();
 
-        Assert.AreEqual(1, batches.Count);
-        Assert.AreEqual(1, reported.Count);
+        Assert.HasCount(1, batches);
+        Assert.HasCount(1, reported);
         Assert.AreEqual(1L, reported[0].RecordsScanned);
         Assert.AreEqual(10L, reported[0].TotalRecords);
     }
@@ -73,7 +73,7 @@ public class MftScanProgressTests
         _ = volume.ReadRecordBatches(4096, directProgress, null, CancellationToken.None).ToList();
 
         Assert.AreEqual(2, reportedDuringParse, "Both progress samples must have arrived before parse returned");
-        Assert.AreEqual(2, reported.Count);
+        Assert.HasCount(2, reported);
         Assert.AreEqual(1L, reported[0].RecordsScanned);
         Assert.AreEqual(5L, reported[1].RecordsScanned);
     }

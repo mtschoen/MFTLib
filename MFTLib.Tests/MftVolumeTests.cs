@@ -37,8 +37,8 @@ public partial class MftVolumeTests
         using var volume = MftVolume.Open('C');
         var batches = volume.ReadRecordBatches(4096, directProgress, null, CancellationToken.None).ToList();
 
-        Assert.AreEqual(1, batches.Count, "The parse itself must still succeed despite the malformed progress sample");
-        Assert.AreEqual(0, reported.Count, "The NaN-elapsed sample must be dropped, not reported");
+        Assert.HasCount(1, batches, "The parse itself must still succeed despite the malformed progress sample");
+        Assert.IsEmpty(reported, "The NaN-elapsed sample must be dropped, not reported");
     }
 
     [TestMethod]
@@ -67,7 +67,7 @@ public partial class MftVolumeTests
         using var volume = MftVolume.Open('C');
         var batches = volume.ReadRecordBatches(4096, directProgress, null, CancellationToken.None).ToList();
 
-        Assert.AreEqual(1, batches.Count);
+        Assert.HasCount(1, batches);
         Assert.AreEqual(3, receivedCountAtReturn,
             "All three progress samples must reach the consumer before the native call returns");
         Assert.AreEqual(3, receivedCount);
@@ -101,8 +101,8 @@ public partial class MftVolumeTests
         using var volume = MftVolume.Open('C');
         var batches = volume.ReadRecordBatches(4096, directProgress, null, CancellationToken.None).ToList();
 
-        Assert.AreEqual(1, batches.Count, "The parse itself must still succeed despite the throwing consumer");
-        Assert.AreEqual(1, reported.Count, "The sample after the throwing report must still arrive");
+        Assert.HasCount(1, batches, "The parse itself must still succeed despite the throwing consumer");
+        Assert.HasCount(1, reported, "The sample after the throwing report must still arrive");
         Assert.AreEqual(2, reported[0].RecordsScanned);
     }
 }

@@ -19,8 +19,8 @@ public partial class JournalBrokerHostTests
         var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.JournalBatch));
+        Assert.DoesNotContain(frame => frame.Kind == BrokerFrameKind.JournalBatch, frames);
         Assert.AreEqual(BrokerFrameKind.Error, frames[^1].Kind);
-        StringAssert.Contains(frames[^1].RequireMessage(), "frame limit");
+        Assert.Contains("frame limit", frames[^1].RequireMessage());
     }
 }

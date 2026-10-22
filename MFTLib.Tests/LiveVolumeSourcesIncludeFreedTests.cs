@@ -60,13 +60,13 @@ public sealed class LiveVolumeSourcesIncludeFreedTests : IDisposable
                 new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions { IncludeFreed = includeFreed }, _ => { }, CancellationToken.None)
             .SelectMany(batch => batch).ToArray();
 
-        CollectionAssert.AreEqual(new[] { includeFreed }, requests);
+        Assert.AreSequenceEqual(new[] { includeFreed }, requests);
         var freed = records.Where(record => !record.InUse).ToArray();
-        Assert.AreEqual(includeFreed ? 1 : 0, freed.Length);
+        Assert.HasCount(includeFreed ? 1 : 0, freed);
         if (includeFreed)
         {
             Assert.AreEqual(freedRecord, freed[0].RecordNumber);
-            Assert.IsTrue(records.Any(record => record.InUse), "Live records still arrive with the option on.");
+            Assert.Contains(record => record.InUse, records, "Live records still arrive with the option on.");
         }
     }
 

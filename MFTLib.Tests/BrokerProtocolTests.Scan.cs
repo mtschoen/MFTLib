@@ -28,7 +28,7 @@ public partial class BrokerProtocolTests
         Assert.AreEqual("mftlib-scan-C", frame.SectionName);
         Assert.IsNull(frame.RetainedFileNames);
         Assert.IsNull(frame.Drive, "The drive pipe names no drive.");
-        Assert.AreEqual(0, frame.Entries.Length);
+        Assert.IsEmpty(frame.Entries);
     }
 
     [TestMethod]
@@ -40,7 +40,7 @@ public partial class BrokerProtocolTests
             writer, "s", RetainedFileNamesGitAndNonAscii, includeFreed));
 
         Assert.AreEqual(includeFreed, frame.IncludeFreed);
-        CollectionAssert.AreEqual(RetainedFileNamesGitAndNonAscii, frame.RetainedFileNames!.ToArray());
+        Assert.AreSequenceEqual(RetainedFileNamesGitAndNonAscii, frame.RetainedFileNames!.ToArray());
     }
 
     [TestMethod]
@@ -54,7 +54,7 @@ public partial class BrokerProtocolTests
         bytes[11] = 2;
         var exception = Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(bytes, out _));
 
-        StringAssert.Contains(exception.Message, "2");
+        Assert.Contains("2", exception.Message);
     }
 
     [TestMethod]
@@ -63,7 +63,7 @@ public partial class BrokerProtocolTests
         var frame = RoundTrip(writer => BrokerProtocol.WriteArmAndScan(
             writer, "s", RetainedFileNamesGitAndNonAscii)); // non-ASCII to prove UTF-16
 
-        CollectionAssert.AreEqual(RetainedFileNamesGitAndNonAscii, frame.RetainedFileNames!.ToArray());
+        Assert.AreSequenceEqual(RetainedFileNamesGitAndNonAscii, frame.RetainedFileNames!.ToArray());
     }
 
     [TestMethod]
@@ -77,7 +77,7 @@ public partial class BrokerProtocolTests
         var exception = Assert.ThrowsExactly<InvalidDataException>(() =>
             BrokerProtocol.ReadFrame(bytes, out _));
 
-        StringAssert.Contains(exception.Message, "99");
+        Assert.Contains("99", exception.Message);
     }
 
     [TestMethod]
@@ -88,7 +88,7 @@ public partial class BrokerProtocolTests
 
         Assert.AreEqual(BrokerFrameKind.StartWatch, frame.Kind);
         Assert.AreEqual(cursor, frame.Cursor);
-        Assert.AreEqual(0, frame.Entries.Length);
+        Assert.IsEmpty(frame.Entries);
     }
 
     [TestMethod]
@@ -100,7 +100,7 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(BrokerFrameKind.Cursor, frame.Kind);
         Assert.AreEqual(cursor, frame.Cursor);
         Assert.IsNull(frame.Drive);
-        Assert.AreEqual(0, frame.Entries.Length);
+        Assert.IsEmpty(frame.Entries);
     }
 
     [TestMethod]
@@ -225,7 +225,7 @@ public partial class BrokerProtocolTests
 
         Assert.AreEqual(BrokerFrameKind.ScanReady, frame.Kind);
         Assert.AreEqual(3L, frame.SkippedRecordCount);
-        Assert.AreEqual(0, frame.Entries.Length);
+        Assert.IsEmpty(frame.Entries);
     }
 
     [TestMethod]
@@ -235,7 +235,7 @@ public partial class BrokerProtocolTests
 
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frame.Kind);
         Assert.AreEqual(default(UsnJournalCursor), frame.Cursor);
-        Assert.AreEqual(0, frame.Entries.Length);
+        Assert.IsEmpty(frame.Entries);
     }
 
     [TestMethod]
@@ -252,7 +252,7 @@ public partial class BrokerProtocolTests
 
         Assert.AreEqual(BrokerFrameKind.JournalBatch, frame.Kind);
         Assert.AreEqual(cursor, frame.Cursor);
-        Assert.AreEqual(2, frame.Entries.Length);
+        Assert.HasCount(2, frame.Entries);
         Assert.AreEqual("b", frame.Entries[1].FileName);
         Assert.IsNull(frame.Drive);
     }
@@ -264,7 +264,7 @@ public partial class BrokerProtocolTests
             writer, new UsnJournalCursor(1UL, 0L), Array.Empty<UsnJournalEntry>()));
 
         Assert.AreEqual(BrokerFrameKind.JournalBatch, frame.Kind);
-        Assert.AreEqual(0, frame.Entries.Length);
+        Assert.IsEmpty(frame.Entries);
     }
 
     [TestMethod]
@@ -273,7 +273,7 @@ public partial class BrokerProtocolTests
         var frame = RoundTrip(BrokerProtocol.WriteCaughtUp);
 
         Assert.AreEqual(BrokerFrameKind.CaughtUp, frame.Kind);
-        Assert.AreEqual(0, frame.Entries.Length);
+        Assert.IsEmpty(frame.Entries);
     }
 
     [TestMethod]
@@ -476,6 +476,6 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(BrokerFrameKind.ScanProgress, frame.Kind);
         Assert.AreEqual(progress, frame.Progress);
         Assert.AreEqual(BrokerScanPhase.Parsing, frame.Progress!.Value.Phase);
-        Assert.AreEqual(0, frame.Entries.Length);
+        Assert.IsEmpty(frame.Entries);
     }
 }

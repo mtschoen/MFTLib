@@ -35,7 +35,7 @@ public class DirectArgumentsTests
         Assert.IsTrue(parsed.Exact);
         Assert.IsTrue(parsed.CaseSensitive);
         Assert.AreEqual("C:\\logs", parsed.Under);
-        Assert.AreEqual(true, parsed.Directories);
+        Assert.IsTrue(parsed.Directories);
         Assert.AreEqual(10L, parsed.MinimumSize);
         Assert.AreEqual(2000L, parsed.MaximumSize);
         Assert.AreEqual(new DateTime(2026, 1, 2), parsed.After);
@@ -61,7 +61,7 @@ public class DirectArgumentsTests
     [TestMethod]
     public void TryParse_Files_SelectsNonDirectories()
     {
-        Assert.AreEqual(false, Parse("search", "C", "--files").Directories);
+        Assert.IsFalse(Parse("search", "C", "--files").Directories);
     }
 
     [TestMethod]
@@ -149,7 +149,7 @@ public class DirectArgumentsTests
     {
         var error = Refused("search", "D", "--source", "dump", "--dump-file", "volume.mft", "--include-freed");
 
-        StringAssert.Contains(error, "a dump never yields freed rows");
+        Assert.Contains("a dump never yields freed rows", error);
     }
 
     [TestMethod]
@@ -188,7 +188,7 @@ public class DirectArgumentsTests
         var query = SampleHost.BuildQuery(parsed, null);
 
         Assert.IsTrue(query.CaseSensitive);
-        Assert.AreEqual(false, query.IsDirectory);
+        Assert.IsFalse(query.IsDirectory);
         Assert.AreEqual((1L, 9L), (query.SizeMinimum, query.SizeMaximum));
         Assert.AreEqual(new DateTime(2026, 1, 1), query.LastWriteTimeMinimum);
         Assert.AreEqual(new DateTime(2026, 2, 1), query.LastWriteTimeMaximum);

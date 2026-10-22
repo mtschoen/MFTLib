@@ -80,7 +80,7 @@ public class PublicSurfaceTests
     [TestMethod]
     public void PublicSurface_NegativeControl()
     {
-        CollectionAssert.AreEqual(new[]
+        Assert.AreSequenceEqual(new[]
         {
             "MFTLib.Tests.PublicSurfaceFixture :: constructor public ()",
             "MFTLib.Tests.PublicSurfaceFixture :: method protected internal static ProtectedInternalMethod() : void",
@@ -121,7 +121,7 @@ public class PublicSurfaceTests
             $"{nested} :: method public Deconstruct(out TValue Value) : void",
             "MFTLib.Tests.GenericSurfaceOuter<TOuter>.SiblingRecord<TValue> :: method public virtual <Clone>$() : " +
             "MFTLib.Tests.GenericSurfaceOuter<TOuter>.SiblingRecord<TValue>");
-        Assert.IsFalse(genericOuter.Any(line => line.Contains("GenericSurfaceOuter<TOuter, TValue>", StringComparison.Ordinal)),
+        Assert.DoesNotContain(line => line.Contains("GenericSurfaceOuter<TOuter, TValue>", StringComparison.Ordinal), genericOuter,
             "nested generic types must keep each level's own arguments:\n" + string.Join('\n', genericOuter));
 
         AssertContains(Surface(typeof(NullableSurfaceRecord<>)),
@@ -134,8 +134,7 @@ public class PublicSurfaceTests
             "MFTLib.Tests.UnconstrainedSurfaceRecord<T> :: type public sealed class : " +
             "System.IEquatable<MFTLib.Tests.UnconstrainedSurfaceRecord<T>>");
 
-        CollectionAssert.Contains(PublicSurfaceEnumerator.TopLevelTypes(typeof(PublicSurfaceFixture).Assembly).ToArray(),
-            typeof(SurfaceProbeExtensions));
+        Assert.Contains(typeof(SurfaceProbeExtensions), PublicSurfaceEnumerator.TopLevelTypes(typeof(PublicSurfaceFixture).Assembly).ToArray());
         AssertContains(Surface(typeof(SurfaceProbeExtensions)),
             "System.IO.SurfaceProbeExtensions :: method public static ProbeExtension(this string value) : void",
             "System.IO.SurfaceProbeExtensions :: type public static class");
@@ -167,7 +166,7 @@ public class PublicSurfaceTests
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
 
-        CollectionAssert.AreEqual(new[] { "Benchmark", "MFTLib.Tests", "MFTLibTestExtensions" }, names);
+        Assert.AreSequenceEqual(new[] { "Benchmark", "MFTLib.Tests", "MFTLibTestExtensions" }, names);
     }
 
     /// <summary>

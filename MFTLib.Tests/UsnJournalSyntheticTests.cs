@@ -110,7 +110,7 @@ public partial class UsnJournalSyntheticTests
         using var volume = MftVolume.Open('C');
         var (entries, cursor) = volume.Journal.ReadUsnJournalBounded(Cursor, 0);
 
-        Assert.AreEqual(2, entries.Length);
+        Assert.HasCount(2, entries);
         Assert.AreEqual(100UL, entries[0].RecordNumber);
         Assert.AreEqual("newfile.txt", entries[0].FileName);
         Assert.AreEqual(200UL, entries[1].RecordNumber);
@@ -130,7 +130,7 @@ public partial class UsnJournalSyntheticTests
 
         using var volume = MftVolume.Open('C');
         var (entries, _) = volume.Journal.ReadUsnJournalBounded(Cursor, 0);
-        Assert.AreEqual(1400, entries.Length);
+        Assert.HasCount(1400, entries);
     }
 
     [TestMethod]
@@ -144,13 +144,13 @@ public partial class UsnJournalSyntheticTests
         using var volume = MftVolume.Open('C');
         var (firstEntries, firstCursor) = volume.Journal.ReadUsnJournalBounded(Cursor, 1);
 
-        Assert.AreEqual(1, firstEntries.Length);
+        Assert.HasCount(1, firstEntries);
         Assert.AreEqual("first.txt", firstEntries[0].FileName);
         Assert.AreEqual(2000L, firstCursor.NextUsn);
 
         var (secondEntries, secondCursor) = volume.Journal.ReadUsnJournalBounded(firstCursor, 1);
 
-        Assert.AreEqual(1, secondEntries.Length);
+        Assert.HasCount(1, secondEntries);
         Assert.AreEqual("second.txt", secondEntries[0].FileName);
         Assert.AreEqual(3000L, secondCursor.NextUsn);
     }
@@ -167,7 +167,7 @@ public partial class UsnJournalSyntheticTests
         using var volume = MftVolume.Open('C');
         var (entries, cursor) = volume.Journal.ReadUsnJournalBounded(Cursor, 0);
 
-        Assert.AreEqual(3, entries.Length);
+        Assert.HasCount(3, entries);
         Assert.AreEqual(4000L, cursor.NextUsn);
     }
 
@@ -194,7 +194,7 @@ public partial class UsnJournalSyntheticTests
             using var volume = MftVolume.Open('C');
             volume.Journal.ReadUsnJournalBounded(Cursor, 0);
         });
-        Assert.IsTrue(exception.Message.Contains("allocate"));
+        Assert.Contains("allocate", exception.Message);
     }
 
     [TestMethod]
@@ -207,7 +207,7 @@ public partial class UsnJournalSyntheticTests
             using var volume = MftVolume.Open('C');
             volume.Journal.ReadUsnJournalBounded(Cursor, 0);
         });
-        Assert.IsTrue(exception.Message.Contains("allocate"));
+        Assert.Contains("allocate", exception.Message);
     }
 
     [TestMethod]
@@ -223,7 +223,7 @@ public partial class UsnJournalSyntheticTests
             using var volume = MftVolume.Open('C');
             volume.Journal.ReadUsnJournalBounded(Cursor, 0);
         });
-        Assert.IsTrue(exception.Message.Contains("grow"));
+        Assert.Contains("grow", exception.Message);
     }
 
     [TestMethod]
@@ -236,7 +236,7 @@ public partial class UsnJournalSyntheticTests
             using var volume = MftVolume.Open('C');
             volume.Journal.ReadUsnJournalBounded(Cursor, 0);
         });
-        Assert.IsTrue(exception.Message.Contains("not active"));
+        Assert.Contains("not active", exception.Message);
     }
 
     [TestMethod]
@@ -249,7 +249,7 @@ public partial class UsnJournalSyntheticTests
             using var volume = MftVolume.Open('C');
             volume.Journal.ReadUsnJournalBounded(Cursor, 0);
         });
-        Assert.IsTrue(exception.Message.Contains("deletion"));
+        Assert.Contains("deletion", exception.Message);
     }
 
     [TestMethod]
@@ -262,7 +262,7 @@ public partial class UsnJournalSyntheticTests
             using var volume = MftVolume.Open('C');
             volume.Journal.ReadUsnJournalBounded(Cursor, 0);
         });
-        Assert.IsTrue(exception.Message.Contains("rescan"));
+        Assert.Contains("rescan", exception.Message);
     }
 
     [TestMethod]
@@ -275,7 +275,7 @@ public partial class UsnJournalSyntheticTests
             using var volume = MftVolume.Open('C');
             volume.Journal.ReadUsnJournalBounded(Cursor, 0);
         });
-        Assert.IsTrue(exception.Message.Contains("Error: 5"));
+        Assert.Contains("Error: 5", exception.Message);
     }
 
     [TestMethod]
@@ -285,7 +285,7 @@ public partial class UsnJournalSyntheticTests
         QueueSuccess(new byte[4]);
         using var volume = MftVolume.Open('C');
         var (entries, _) = volume.Journal.ReadUsnJournalBounded(Cursor, 0);
-        Assert.AreEqual(0, entries.Length);
+        Assert.IsEmpty(entries);
     }
 
     [TestMethod]
@@ -296,7 +296,7 @@ public partial class UsnJournalSyntheticTests
         QueueSuccess(UsnReadBuffers.Build(2000));
         using var volume = MftVolume.Open('C');
         var (entries, cursor) = volume.Journal.ReadUsnJournalBounded(Cursor, 0);
-        Assert.AreEqual(0, entries.Length);
+        Assert.IsEmpty(entries);
         Assert.AreEqual(2000L, cursor.NextUsn);
     }
 
@@ -307,7 +307,7 @@ public partial class UsnJournalSyntheticTests
         NativeTestHooks.NativeSetUsnIoFailError(ERROR_HANDLE_EOF, 1);
         using var volume = MftVolume.Open('C');
         var (entries, _) = volume.Journal.ReadUsnJournalBounded(Cursor, 0);
-        Assert.AreEqual(0, entries.Length);
+        Assert.IsEmpty(entries);
     }
 
     [TestMethod]
@@ -321,7 +321,7 @@ public partial class UsnJournalSyntheticTests
         QueueSuccess(UsnReadBuffers.Build(2000, (100, 5, 1000, 0x00000100u, "passed.txt")));
         using var volume = MftVolume.Open('C');
         var (entries, _) = volume.Journal.ReadUsnJournalBounded(Cursor, 0);
-        Assert.AreEqual(1, entries.Length);
+        Assert.HasCount(1, entries);
         Assert.AreEqual("passed.txt", entries[0].FileName);
     }
 
@@ -437,7 +437,7 @@ public partial class UsnJournalSyntheticTests
             UncancelableUsnWatch.Read(volumeHandle, Cursor.NextUsn, Cursor.JournalIdentifier);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative.NativeFreeUsnJournalResult(resultPtr);
-        Assert.IsTrue(result.ErrorMessage.Contains("allocate"));
+        Assert.Contains("allocate", result.ErrorMessage);
     }
 
     [TestMethod]
@@ -476,7 +476,7 @@ public partial class UsnJournalSyntheticTests
             UncancelableUsnWatch.Read(volumeHandle, Cursor.NextUsn, Cursor.JournalIdentifier);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative.NativeFreeUsnJournalResult(resultPtr);
-        Assert.IsTrue(result.ErrorMessage.Contains("not active"));
+        Assert.Contains("not active", result.ErrorMessage);
     }
 
     [TestMethod]
@@ -488,7 +488,7 @@ public partial class UsnJournalSyntheticTests
             UncancelableUsnWatch.Read(volumeHandle, Cursor.NextUsn, Cursor.JournalIdentifier);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative.NativeFreeUsnJournalResult(resultPtr);
-        Assert.IsTrue(result.ErrorMessage.Contains("deletion"));
+        Assert.Contains("deletion", result.ErrorMessage);
     }
 
     [TestMethod]
@@ -500,7 +500,7 @@ public partial class UsnJournalSyntheticTests
             UncancelableUsnWatch.Read(volumeHandle, Cursor.NextUsn, Cursor.JournalIdentifier);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative.NativeFreeUsnJournalResult(resultPtr);
-        Assert.IsTrue(result.ErrorMessage.Contains("rescan"));
+        Assert.Contains("rescan", result.ErrorMessage);
     }
 
     [TestMethod]
@@ -525,7 +525,7 @@ public partial class UsnJournalSyntheticTests
             UncancelableUsnWatch.Read(volumeHandle, Cursor.NextUsn, Cursor.JournalIdentifier);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative.NativeFreeUsnJournalResult(resultPtr);
-        Assert.IsTrue(result.ErrorMessage.Contains("Error: 5"));
+        Assert.Contains("Error: 5", result.ErrorMessage);
     }
 
     [TestMethod]
@@ -542,7 +542,7 @@ public partial class UsnJournalSyntheticTests
             {
             }
         });
-        StringAssert.Contains(exception.Message, "not active");
+        Assert.Contains("not active", exception.Message);
     }
 
     [TestMethod]
@@ -559,7 +559,7 @@ public partial class UsnJournalSyntheticTests
             {
             }
         });
-        StringAssert.Contains(exception.Message, "WatchUsnJournalBatch returned null");
+        Assert.Contains("WatchUsnJournalBatch returned null", exception.Message);
     }
 
     [TestMethod]
@@ -616,7 +616,7 @@ public partial class UsnJournalSyntheticTests
         }
         catch (InvalidOperationException exception)
         {
-            StringAssert.Contains(exception.Message, "only growth");
+            Assert.Contains("only growth", exception.Message);
         }
 
         Assert.IsFalse(createCalled);

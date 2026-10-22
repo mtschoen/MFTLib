@@ -80,14 +80,12 @@ public partial class JournalBrokerHostLivenessTests
                 call.Release();
             }
             var rest = await HostChannelHarness.ReadToEndAsync(pipe, includeHeartbeats: true);
-            CollectionAssert.AreEqual(new[] { BrokerFrameKind.ScanCompleted }, rest.Select(frame => frame.Kind).ToArray());
-            Assert.AreEqual(0, rest[0].Entries.Length);
+            Assert.AreSequenceEqual(new[] { BrokerFrameKind.ScanCompleted }, rest.Select(frame => frame.Kind).ToArray());
+            Assert.IsEmpty(rest[0].Entries);
             Assert.AreEqual(default(UsnJournalCursor), rest[0].Cursor);
-            CollectionAssert.AreEqual(Enumerable.Range(0, 4)
-                .Select(index => Tip with { NextUsn = Tip.NextUsn + index * 100 }).ToArray(),
-                observed.Select(read => read.Cursor).ToArray());
-            CollectionAssert.AreEqual(Enumerable.Repeat(BrokerLiveness.CatchUpBufferReadsPerCall, 4).ToArray(),
-                observed.Select(read => read.Limit).ToArray());
+            Assert.AreSequenceEqual(Enumerable.Range(0, 4)
+                .Select(index => Tip with { NextUsn = Tip.NextUsn + index * 100 }).ToArray(), observed.Select(read => read.Cursor).ToArray());
+            Assert.AreSequenceEqual(Enumerable.Repeat(BrokerLiveness.CatchUpBufferReadsPerCall, 4).ToArray(), observed.Select(read => read.Limit).ToArray());
         }
         finally
         {
@@ -123,8 +121,8 @@ public partial class JournalBrokerHostLivenessTests
         Assert.AreEqual(BrokerFrameKind.ScanReady, frames[^2].Kind);
         Assert.AreEqual(BrokerFrameKind.CatchUpLost, frames[^1].Kind, "CatchUpLost is the last frame, then EOF.");
         Assert.IsNull(frames[^1].Message, "The failure text stays on the host.");
-        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.ScanCompleted));
-        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.JournalBatch));
+        Assert.DoesNotContain(frame => frame.Kind == BrokerFrameKind.ScanCompleted, frames);
+        Assert.DoesNotContain(frame => frame.Kind == BrokerFrameKind.JournalBatch, frames);
         Assert.IsNotNull(frames[^1].CatchUpLoss);
         Assert.AreEqual(2, calls, "A failed bounded read is not retried.");
         Assert.AreEqual(startTime, liveness.Clock.GetUtcNow(), "The host never waited on its clock.");
@@ -178,7 +176,7 @@ public partial class JournalBrokerHostLivenessTests
                     flush.Release();
                 }
                 var frames = await HostChannelHarness.ReadToEndAsync(pipe, includeHeartbeats: true);
-                CollectionAssert.AreEqual(new[]
+                Assert.AreSequenceEqual(new[]
                 {
                     BrokerFrameKind.ScanProgress, BrokerFrameKind.ScanReady, BrokerFrameKind.ScanCompleted
                 }, frames.Select(frame => frame.Kind).ToArray());
@@ -227,7 +225,7 @@ public partial class JournalBrokerHostLivenessTests
                 return;
             }
             var index = Interlocked.Increment(ref _nextRange) - 1;
-            Assert.IsTrue(index < ranges.Length, "Unexpected additional flush range.");
+            Assert.IsLessThan(ranges.Length, index, "Unexpected additional flush range.");
             ranges[index].MarkEntered();
             ranges[index].WaitForRelease();
         }
