@@ -779,7 +779,6 @@ public partial class BrokerSessionTests
         readonly TaskCompletionSource _entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         readonly TaskCompletionSource _stopRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int _count;
-        CancellationToken _token;
 
         public int Count => Volatile.Read(ref _count);
 
@@ -787,12 +786,12 @@ public partial class BrokerSessionTests
 
         public Task StopRequested => _stopRequested.Task;
 
-        public CancellationToken LaunchToken => _token;
+        public CancellationToken LaunchToken { get; private set; }
 
         public Task<BrokerProcess> LaunchAsync(CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref _count);
-            _token = cancellationToken;
+            LaunchToken = cancellationToken;
             cancellationToken.Register(() => _stopRequested.TrySetResult());
             _entered.TrySetResult();
             return _result.Task;

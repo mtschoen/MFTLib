@@ -14,7 +14,7 @@ public partial class JournalBrokerHostTests
         using var blockWriter = new RecordingBlockSectionWriter();
         var host = ScanHost(
             scanDrive: (_, _, _, _, _, _) => [[ScanRecord(100, "a.txt")]],
-            readJournal: CatchUpSources.ToTip(new UsnJournalCursor(ScanArmedCursor.JournalIdentifier, ScanArmedCursor.NextUsn + 1),
+            readJournal: CatchUpSources.ToTip(ScanArmedCursor with { NextUsn = ScanArmedCursor.NextUsn + 1 },
                 ScanEntry()));
         await using var harness = new HostChannelHarness(host, blockWriter);
 
@@ -146,14 +146,10 @@ public partial class JournalBrokerHostTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
     public void RealBlockSectionWriter_WritesBlock_ClientCanReadItBack()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Named block sections require Windows.");
-        }
-
         var sectionName = NamedBlockSection.BuildSectionName('C');
         var (block, lifetime) = NamedBlockSection.Create(new BlockFileCreateOptions
         {

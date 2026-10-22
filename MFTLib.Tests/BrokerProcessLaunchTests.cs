@@ -150,13 +150,9 @@ public class BrokerProcessLaunchTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     public async Task LaunchAsync_EndToEnd_UsesRealPipeAndRealBlockSeams()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Named block sections require Windows.");
-        }
-
         Task? brokerTask = null;
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var token = cancellation.Token;

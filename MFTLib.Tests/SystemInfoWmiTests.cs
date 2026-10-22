@@ -10,6 +10,7 @@ namespace MFTLib.Tests;
 ///     <see cref="PlatformNotSupportedException" /> elsewhere, so MFTLib.Tests.csproj leaves this file out of the Linux build.
 /// </summary>
 [TestClass]
+[OSCondition(OperatingSystems.Windows)]
 [SupportedOSPlatform("windows")]
 public class SystemInfoWmiTests
 {

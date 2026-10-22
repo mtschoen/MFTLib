@@ -19,8 +19,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         }));
         var request = Request(Target());
 
-        var result = await ProduceAsync(broker.Process, request).WaitAsync(HangGuard, TestContext.CancellationToken);
-        var block = result.Block;
+        var (block, skippedRecordCount) = await ProduceAsync(broker.Process, request).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var section = broker.Sections.Single();
         Assert.AreSame(section.Block, block);
@@ -32,8 +31,8 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         Assert.AreEqual(123u, block.Header.VolumeSerial);
         Assert.AreEqual(ArmedCursor.JournalIdentifier, block.Header.UsnJournalIdentifier);
         Assert.AreEqual(ArmedCursor.NextUsn, block.Header.UsnNextUsn);
-        Assert.AreEqual(0, result.SkippedRecordCount);
-        Assert.IsFalse(result.Block.Header.IsCapacityExhausted);
+        Assert.AreEqual(0, skippedRecordCount);
+        Assert.IsFalse(block.Header.IsCapacityExhausted);
         Assert.AreEqual("file.txt", NamePool.ReadRowName(block, 20).ToString());
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
         Assert.AreEqual(21u, block.Header.RowCount);

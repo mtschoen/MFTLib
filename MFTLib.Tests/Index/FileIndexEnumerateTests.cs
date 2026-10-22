@@ -123,7 +123,7 @@ public sealed class FileIndexEnumerateTests : IDisposable
         Assert.IsTrue(enumerator.MoveNext());
         Assert.AreEqual("file6.dat", enumerator.Current.Name);
 
-        cancellation.Cancel();
+        await cancellation.CancelAsync();
 
         try
         {

@@ -72,14 +72,10 @@ public class DefaultElevatedEntryRunnerTests
     [TestMethod]
     [DataRow(true)]
     [DataRow(false)]
+    [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
     public async Task RunBroker_ClientDisconnectsDuringWatch_BrokenPipe_ExitsWithCode0(bool cancelBeforeFailure)
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("The native USN watch hooks are Windows-only.");
-        }
-
         // RunBroker serves through JournalBrokerHost.CreateDefault(), so fake the volume handle and
         // serve the watch from an idle native pipe - the test process is not elevated (the same
         // technique as JournalBrokerHostRealSeamsTests).
@@ -108,7 +104,7 @@ public class DefaultElevatedEntryRunnerTests
         int? exitCode = null;
 
         using var cts = new CancellationTokenSource(HangGuard);
-        using var timeoutRelease = cts.Token.Register(idlePipe.UnblockForCleanup); // never leak the parked read
+        await using var timeoutRelease = cts.Token.Register(idlePipe.UnblockForCleanup); // never leak the parked read
 
         var (control, drive, runTask) = StartRunnerWithDrivePipe(code => exitCode = code);
         try
@@ -180,7 +176,7 @@ public class DefaultElevatedEntryRunnerTests
         int? exitCode = null;
 
         using var cts = new CancellationTokenSource(HangGuard);
-        using var timeoutRelease = cts.Token.Register(() => releaseCursorQuery.TrySetResult());
+        await using var timeoutRelease = cts.Token.Register(() => releaseCursorQuery.TrySetResult());
 
         var (control, drive, runTask) = StartRunnerWithDrivePipe(code => exitCode = code);
         try

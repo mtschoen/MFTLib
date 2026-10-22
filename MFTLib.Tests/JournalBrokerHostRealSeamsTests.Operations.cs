@@ -69,13 +69,9 @@ public partial class JournalBrokerHostRealSeamsTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     public async Task ServeAsync_StartWatch_ClosingThePipeCancelsTheNativeWatch()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("The native USN watch hooks are Windows-only.");
-        }
-
         FileUtilities.Hooks._getVolumeHandle = _ => FakeVolumeHandle.Create();
         MockWatchJournalTip();
 
@@ -100,13 +96,9 @@ public partial class JournalBrokerHostRealSeamsTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     public async Task ServeAsync_StartWatch_CancelledBetweenEmptyBatches_EndsWatchCleanly()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("The native USN watch hooks are Windows-only.");
-        }
-
         FileUtilities.Hooks._getVolumeHandle = _ => FakeVolumeHandle.Create();
         MockWatchJournalTip();
 
@@ -239,15 +231,10 @@ public partial class JournalBrokerHostRealSeamsTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")] // NtfsVolumeInformation.Query is Windows-only
     public async Task ServeAsync_QueryVolume_UsesRealNtfsVolumeInformationSeam()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("FSCTL_GET_NTFS_VOLUME_DATA requires Windows");
-            return;
-        }
-
         FileUtilities.Hooks._getVolumeHandle = _ => FakeVolumeHandle.Create();
         var native = new NtfsVolumeDataBufferNative
         {
@@ -274,13 +261,9 @@ public partial class JournalBrokerHostRealSeamsTests
     [TestMethod]
     [DataRow(true)]
     [DataRow(false)]
+    [OSCondition(OperatingSystems.Windows)]
     public async Task ServeAsync_SessionEnd_AcrossSeveralWatchChannels_EmitsZeroErrorFrames(bool cancelDrivesIndividually)
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("The native USN watch hooks are Windows-only.");
-        }
-
         FileUtilities.Hooks._getVolumeHandle = _ => FakeVolumeHandle.Create();
         MockWatchJournalTip();
 

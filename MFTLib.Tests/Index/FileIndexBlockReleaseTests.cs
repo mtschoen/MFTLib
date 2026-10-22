@@ -306,7 +306,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         index.CurrentSnapshot[0].ReleaseState.Hooks._releaseStarted =
             () => throw new InvalidOperationException("the release itself");
-        using var registration = index.DisposalToken.Register(
+        await using var registration = index.DisposalToken.Register(
             () => throw new InvalidOperationException("a cancellation callback of someone else's"));
 
         var thrown = await Assert.ThrowsExactlyAsync<AggregateException>(
@@ -339,7 +339,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
     {
         var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', _volumeSerial));
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        using var registration = index.DisposalToken.Register(
+        await using var registration = index.DisposalToken.Register(
             () => throw new InvalidOperationException("a cancellation callback of someone else's"));
 
         var thrown = await Assert.ThrowsExactlyAsync<AggregateException>(

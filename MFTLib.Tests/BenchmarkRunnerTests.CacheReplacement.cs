@@ -33,7 +33,7 @@ public partial class BenchmarkRunnerTests
 
         var replacements = Directory.GetFiles(staging, "*.mlix")
             .ToDictionary(path => Path.Combine(directory, Path.GetFileName(path)), File.ReadAllBytes);
-        using var output = new LineTriggerWriter("A-00000001.mlix: unsupported scan shape", () =>
+        await using var output = new LineTriggerWriter("A-00000001.mlix: unsupported scan shape", () =>
         {
             foreach (var (path, bytes) in replacements)
             {

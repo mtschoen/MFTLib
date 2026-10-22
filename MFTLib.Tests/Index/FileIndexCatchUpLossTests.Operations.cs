@@ -114,8 +114,6 @@ public partial class FileIndexCatchUpLossTests
     /// <summary>A producer failure whose <see cref="Message" /> can be null, which no framework exception produces.</summary>
     sealed class MessagelessException : Exception
     {
-        readonly string? _message;
-
         public MessagelessException()
         {
         }
@@ -123,15 +121,15 @@ public partial class FileIndexCatchUpLossTests
         public MessagelessException(string message)
             : base(message)
         {
-            _message = message;
+            Message = message;
         }
 
         public MessagelessException(string message, Exception innerException)
             : base(message, innerException)
         {
-            _message = message;
+            Message = message;
         }
 
-        public override string Message => _message!;
+        public override string Message { get; } = null!;
     }
 }

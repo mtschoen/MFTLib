@@ -182,13 +182,9 @@ public partial class BrokerDiagnosticsTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     public async Task Log_DifferentRoles_HeldFileDoesNotDropOtherRoleRecords()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Windows file sharing is the subject of this regression.");
-        }
-
         BrokerDiagnostics.Enable("ui", _temporaryRoot);
         var clientPath = BrokerDiagnostics.LogPath;
         BrokerDiagnostics.Enable("broker", _temporaryRoot);
@@ -210,7 +206,7 @@ public partial class BrokerDiagnosticsTests
             line => File.AppendAllText(brokerPath, line + Environment.NewLine), () => "broker");
         try
         {
-            using (new FileStream(clientPath, FileMode.Append, FileAccess.Write, FileShare.Read))
+            await using (new FileStream(clientPath, FileMode.Append, FileAccess.Write, FileShare.Read))
             {
                 Assert.IsTrue(clientWriter.TryEnqueue("held-client-record"));
                 for (var index = 0; index < 20; index++)

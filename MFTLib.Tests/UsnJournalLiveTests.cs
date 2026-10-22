@@ -166,15 +166,18 @@ public class UsnJournalLiveTests
             $"Expected at least {targetMaximum} bytes, got {grown.MaximumSize}");
 
         // Grow-only refusal, using the just-grown size (no second mutation).
+        InvalidOperationException? caught = null;
         try
         {
             volume.Journal.GrowUsnJournal(grown.MaximumSize, grown.AllocationDelta);
-            Assert.Fail("Expected InvalidOperationException");
         }
         catch (InvalidOperationException exception)
         {
-            Assert.Contains("only growth", exception.Message);
+            caught = exception;
         }
+
+        Assert.IsNotNull(caught);
+        Assert.Contains("only growth", caught.Message);
     }
 
     public TestContext TestContext { get; set; } = null!;

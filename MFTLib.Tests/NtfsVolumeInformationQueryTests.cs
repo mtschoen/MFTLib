@@ -26,15 +26,10 @@ public class NtfsVolumeInformationQueryTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")] // NtfsVolumeInformation.Query is Windows-only
     public void Query_WithSyntheticVolumeData_MapsBothSizingFields()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("FSCTL_GET_NTFS_VOLUME_DATA requires Windows");
-            return;
-        }
-
         var native = new NtfsVolumeDataBufferNative
         {
             MftValidDataLength = 8_192_000_000L,
@@ -69,15 +64,10 @@ public class NtfsVolumeInformationQueryTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")] // NtfsVolumeInformation.Query is Windows-only
     public void Query_WhenTheIoctlFails_ThrowsWin32Exception()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("FSCTL_GET_NTFS_VOLUME_DATA requires Windows");
-            return;
-        }
-
         static bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
             uint inBufferSize, IntPtr outBuffer, uint outBufferSize, out uint bytesReturned, IntPtr overlapped)
         {

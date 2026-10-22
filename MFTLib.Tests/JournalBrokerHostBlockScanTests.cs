@@ -29,7 +29,7 @@ public class JournalBrokerHostBlockScanTests
                 Assert.IsTrue(capturedBlockWriter.Block.Header.IsComplete);
                 Assert.AreEqual(BrokerLiveness.CatchUpBufferReadsPerCall, maximumBufferReads);
                 return cursor == ArmedCursor
-                    ? ([], new UsnJournalCursor(cursor.JournalIdentifier, 12500))
+                    ? ([], cursor with { NextUsn = 12500 })
                     : (Array.Empty<UsnJournalEntry>(), cursor);
             },
             RecordBatches = (drive, _, _, _, _, _) =>

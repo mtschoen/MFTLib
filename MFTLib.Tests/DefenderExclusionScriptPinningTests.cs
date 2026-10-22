@@ -16,7 +16,7 @@ namespace MFTLib.Tests;
 public class DefenderExclusionScriptPinningTests
 {
     const string Script = "Add-MpPreference -ExclusionProcess 'app.exe' -ErrorAction Stop";
-    static readonly byte[] DecoyBytes = Encoding.UTF8.GetBytes("Write-Output 'not the verified script'");
+    static readonly byte[] DecoyBytes = "Write-Output 'not the verified script'"u8.ToArray();
 
     static byte[] ExpectedBytes()
     {
@@ -96,13 +96,9 @@ public class DefenderExclusionScriptPinningTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     public void RunPowerShell_JunctionRetargetedAfterTheScriptIsLocked_ChildStillReadsTheVerifiedScript()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Junctions are a Windows file system feature.");
-        }
-
         var root = CreateOwnedDirectory();
         try
         {
@@ -138,13 +134,9 @@ public class DefenderExclusionScriptPinningTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     public void RunPowerShell_JunctionRetargetedBeforeTheScriptIsLocked_RefusesWithoutStarting()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Junctions are a Windows file system feature.");
-        }
-
         var root = CreateOwnedDirectory();
         try
         {
@@ -182,13 +174,9 @@ public class DefenderExclusionScriptPinningTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     public void RunPowerShell_DirectoryThatWin32NormalizationRenames_RefusesWithoutStarting()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Win32 path normalization is Windows behavior.");
-        }
-
         var root = CreateOwnedDirectory();
         // "trailing." is a real NTFS name, but a Win32 path through it drops the dot and names "trailing" instead.
         var trailing = @"\\?\" + Path.Combine(root, "trailing.");
@@ -215,13 +203,9 @@ public class DefenderExclusionScriptPinningTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     public void RunPowerShell_DirectoryWithAPowerShellWildcard_RefusesWithoutStarting()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("The launch path is pinned on Windows only.");
-        }
-
         var root = CreateOwnedDirectory();
         try
         {
@@ -290,13 +274,9 @@ public class DefenderExclusionScriptPinningTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     public void RunPowerShell_AnchorCannotBeTaken_RefusesAndNeverDeletesByPathname()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Junctions are a Windows file system feature.");
-        }
-
         var root = CreateOwnedDirectory();
         try
         {

@@ -252,14 +252,10 @@ public class BrokerDiagnosticsLogFilterTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     public void ResolveFileReference_RealFile_MatchesThatFilesJournalEntries()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("GetFileInformationByHandle is Windows-only.");
-        }
-
         // Exercise the real CreateFileW + GetFileInformationByHandle path, not the seam.
         var directory = Path.Combine(Path.GetTempPath(), "BrokerDiagFilterTests_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -309,14 +305,10 @@ public class BrokerDiagnosticsLogFilterTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     public void TryGetDrive_ForARelativePath_ResolvesAgainstTheCurrentDrive()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("The relative-path fallback runs only on Windows.");
-        }
-
         var resolved = BrokerDiagnosticsLogFilter.TryGetDrive("relative-name.log", out var drive);
 
         Assert.IsTrue(resolved);

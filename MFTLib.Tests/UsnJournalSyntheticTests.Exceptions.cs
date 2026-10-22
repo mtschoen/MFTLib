@@ -8,15 +8,11 @@ namespace MFTLib.Tests;
 public partial class UsnJournalSyntheticTests
 {
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [DataRow(false)]
     [DataRow(true)]
     public void Journal_ResultAllocationExceptionReturnsNull(bool watch)
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("USN exports are Windows-only.");
-        }
-
         using var handle = FakeVolumeHandle.Create();
         NativeTestHooks.NativeSetAllocFailCountdown(-3);
         var pointer = watch
@@ -27,24 +23,19 @@ public partial class UsnJournalSyntheticTests
 
         UseFakeHandle();
         NativeTestHooks.NativeSetAllocFailCountdown(-3);
+        using var volume = MftVolume.Open('C');
+        var journal = volume.Journal;
         var failure = Assert.ThrowsExactly<InvalidOperationException>(() =>
-        {
-            using var volume = MftVolume.Open('C');
-            volume.Journal.ReadUsnJournalBounded(Cursor, 0);
-        });
+            journal.ReadUsnJournalBounded(Cursor, 0));
         Assert.Contains("ReadUsnJournal returned null", failure.Message);
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [DataRow(false)]
     [DataRow(true)]
     public void Journal_ExceptionReleasesAllocatedBuffersAndReturnsEmptyFailure(bool watch)
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("USN exports are Windows-only.");
-        }
-
         using var handle = FakeVolumeHandle.Create();
         NativeTestHooks.NativeSetAllocFailCountdown(-6);
         var pointer = watch

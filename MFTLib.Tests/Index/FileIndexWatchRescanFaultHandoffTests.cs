@@ -245,7 +245,7 @@ public class FileIndexWatchRescanFaultHandoffTests
             {
                 using var queuedCancellation = new CancellationTokenSource();
                 var cancelledWait = index.WaitForDriveWriteGateForTest('T', queuedCancellation.Token);
-                queuedCancellation.Cancel();
+                await queuedCancellation.CancelAsync();
                 await Assert.ThrowsAsync<OperationCanceledException>(() => cancelledWait);
             }
             finally

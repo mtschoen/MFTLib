@@ -157,13 +157,9 @@ public class LookupEngineRootMatchingTests
     }
 
     [TestMethod]
+    [OSCondition(ConditionMode.Exclude, OperatingSystems.Windows)]
     public async Task Find_OnLinux_LeavesBackslashesInsideFileNamesUntouched()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Windows reserves backslash as a path separator.");
-        }
-
         var root = Path.Combine(Path.GetTempPath(), "mftlib-backslash-name");
         using var builder = new SyntheticBlockBuilder('E');
         var rootRow = builder.AddRoot();

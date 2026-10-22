@@ -23,8 +23,8 @@ public partial class UsnJournalSyntheticTests
     public async Task ReadAndWatchUsnJournal_RecordLengthBelowHeaderSize_DropsMalformedTailAndReturnsPrecedingEntries(
         bool watch, uint malformedRecordLength)
     {
-        using var stream = new MemoryStream();
-        using var writer = new BinaryWriter(stream);
+        await using var stream = new MemoryStream();
+        await using var writer = new BinaryWriter(stream);
         writer.Write(2000L);
         UsnReadBuffers.WriteRecord(writer, 100, 5, 1000, 0x00000100u, "before.txt");
         WriteRawRecord(writer, recordLengthField: malformedRecordLength, wireByteCount: 64, recordNumber: 200,
@@ -55,8 +55,8 @@ public partial class UsnJournalSyntheticTests
     public async Task ReadAndWatchUsnJournal_RecordLengthBeyondBufferEnd_DropsTruncatedRecordAndReturnsPrecedingEntries(
         bool watch, int remainingBytes, uint claimedRecordLength)
     {
-        using var stream = new MemoryStream();
-        using var writer = new BinaryWriter(stream);
+        await using var stream = new MemoryStream();
+        await using var writer = new BinaryWriter(stream);
         writer.Write(2000L);
         UsnReadBuffers.WriteRecord(writer, 100, 5, 1000, 0x00000100u, "before.txt");
         WriteRawRecord(writer, recordLengthField: claimedRecordLength, wireByteCount: remainingBytes,
@@ -88,8 +88,8 @@ public partial class UsnJournalSyntheticTests
     public async Task ReadAndWatchUsnJournal_FileNameOffsetOutOfRange_ReturnsEmptyNameAndContinuesWalk(
         bool watch, ushort fileNameOffset)
     {
-        using var stream = new MemoryStream();
-        using var writer = new BinaryWriter(stream);
+        await using var stream = new MemoryStream();
+        await using var writer = new BinaryWriter(stream);
         writer.Write(2000L);
         UsnReadBuffers.WriteRecord(writer, 100, 5, 1000, 0x00000100u, "before.txt");
         WriteRawRecord(writer, recordLengthField: 64, wireByteCount: 64, recordNumber: 200,
@@ -122,8 +122,8 @@ public partial class UsnJournalSyntheticTests
     public async Task ReadAndWatchUsnJournal_FileNameLengthPastRecordEnd_ClampsNameToRecordLengthAndContinuesWalk(
         bool watch, ushort fileNameOffset, ushort claimedFileNameByteLength, string expectedClampedName)
     {
-        using var stream = new MemoryStream();
-        using var writer = new BinaryWriter(stream);
+        await using var stream = new MemoryStream();
+        await using var writer = new BinaryWriter(stream);
         writer.Write(2000L);
         UsnReadBuffers.WriteRecord(writer, 100, 5, 1000, 0x00000100u, "before.txt");
         WriteRawRecord(writer, recordLengthField: 64, wireByteCount: 64, recordNumber: 200,

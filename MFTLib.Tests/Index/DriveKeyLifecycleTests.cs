@@ -60,21 +60,13 @@ public class DriveKeyLifecycleTests
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     public async Task PublicDriveEntryPoints_RejectDefaultBeforeAccessingResources()
     {
-        Assert.ThrowsExactly<ArgumentException>(() =>
-        {
-            using var harness = new WatchHarness('T');
-            harness.Index.Root(default, TestContext.CancellationToken);
-        });
-        Assert.ThrowsExactly<ArgumentException>(() =>
-        {
-            using var harness = new WatchHarness('T');
-            harness.Index.QueryUsnJournalSettings(default);
-        });
-        await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
-        {
-            await using var session = BrokerTestHarness.CreateSession(_ => throw new AssertFailedException("the invalid key must not launch a broker"));
-            await session.GrowUsnJournalAsync(default, new UsnJournalSettings { MaximumSize = 4096, AllocationDelta = 1024 }, CancellationToken.None);
-        });
+        using var harness = new WatchHarness('T');
+        var index = harness.Index;
+        Assert.ThrowsExactly<ArgumentException>(() => index.Root(default, TestContext.CancellationToken));
+        Assert.ThrowsExactly<ArgumentException>(() => index.QueryUsnJournalSettings(default));
+        await using var session = BrokerTestHarness.CreateSession(_ => throw new AssertFailedException("the invalid key must not launch a broker"));
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+            session.GrowUsnJournalAsync(default, new UsnJournalSettings { MaximumSize = 4096, AllocationDelta = 1024 }, CancellationToken.None));
         var source = new ScriptedWatchSource();
         Assert.ThrowsExactly<ArgumentException>(() => source.WatchFor(default));
         Assert.ThrowsExactly<ArgumentException>(() => source.WaitForStartAsync(default, 1, CancellationToken.None));

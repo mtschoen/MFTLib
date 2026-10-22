@@ -172,14 +172,9 @@ public class DirectExcludeDefenderTests
     }
 
     [TestMethod]
+    [OSCondition(ConditionMode.Exclude, OperatingSystems.Windows)]
     public void Run_NotWindows_ShowsNoHeadsUpAndAddsNothing()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Exercises off-Windows behavior.");
-            return;
-        }
-
         var lines = new List<string>();
         var console = new ConsoleLog();
         using var scripted = DefenderExclusionIsolation.ScriptPowerShell();

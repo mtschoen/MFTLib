@@ -102,7 +102,7 @@ public sealed class MftDumpRescanTests : IDisposable
         await using var index = await OpenAsync(MftIndexSources.FromMftDumpFile(path, 'D'));
         await File.WriteAllBytesAsync(path, Renamed(1024), TestContext.CancellationToken);
         using var cancellation = new CancellationTokenSource();
-        cancellation.Cancel();
+        await cancellation.CancelAsync();
 
         await Assert.ThrowsAsync<OperationCanceledException>(
             () => index.RescanAsync(['D'], cancellation.Token));
@@ -122,7 +122,7 @@ public sealed class MftDumpRescanTests : IDisposable
         await Assert.ThrowsAsync<OperationCanceledException>(
             () => index.RescanAsync(['D'], cancellation.Token));
         Assert.IsNotNull(index.Find(NotesPath, TestContext.CancellationToken));
-        using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        await using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         Assert.IsGreaterThan(0, exclusive.Length, "the cancelled scan closed its input");
     }
 

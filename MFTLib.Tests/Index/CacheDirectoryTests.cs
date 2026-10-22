@@ -41,14 +41,10 @@ public class CacheDirectoryTests
     }
 
     [TestMethod]
+    [OSCondition(ConditionMode.Exclude, OperatingSystems.Windows)]
+    [UnsupportedOSPlatform("windows")]
     public void EnsureCreated_OnUnixLeavesOwnerOnlyPermissions()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Unix file mode is not meaningful on Windows.");
-            return;
-        }
-
         CacheDirectory.EnsureCreated(_root);
         var mode = File.GetUnixFileMode(_root);
         Assert.AreEqual(UnixFileMode.None, mode & UnixFileMode.GroupRead);
@@ -56,14 +52,10 @@ public class CacheDirectoryTests
     }
 
     [TestMethod]
+    [OSCondition(ConditionMode.Exclude, OperatingSystems.Windows)]
+    [UnsupportedOSPlatform("windows")]
     public void EnsureCreated_OnUnixNarrowsAnAlreadyWideDirectory()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Unix file mode is not meaningful on Windows.");
-            return;
-        }
-
         Directory.CreateDirectory(_root);
         File.SetUnixFileMode(_root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
             | UnixFileMode.GroupRead | UnixFileMode.GroupExecute
@@ -80,14 +72,10 @@ public class CacheDirectoryTests
     }
 
     [TestMethod]
+    [OSCondition(ConditionMode.Exclude, OperatingSystems.Windows)]
+    [UnsupportedOSPlatform("windows")]
     public void EnsureCreated_OnUnixWidensAnUnderpermissionedDirectory()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Unix file mode is not meaningful on Windows.");
-            return;
-        }
-
         Directory.CreateDirectory(_root);
         File.SetUnixFileMode(_root, UnixFileMode.None);
 
@@ -98,14 +86,10 @@ public class CacheDirectoryTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
+    [SupportedOSPlatform("windows")]
     public void EnsureCreated_OnWindowsProtectsTheAccessRulesOfANewDirectory()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Access-control lists are a Windows concept.");
-            return;
-        }
-
         CacheDirectory.EnsureCreated(_root);
 
         Assert.IsTrue(AreAccessRulesProtected(_root),
@@ -113,14 +97,10 @@ public class CacheDirectoryTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
+    [SupportedOSPlatform("windows")]
     public void EnsureCreated_OnWindowsReprotectsADirectoryThatAlreadyExists()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Access-control lists are a Windows concept.");
-            return;
-        }
-
         // Stands in for a directory the user created by hand, or one an interrupted earlier run
         // created but never got to secure: it exists and it inherits the parent's entries.
         Directory.CreateDirectory(_root);

@@ -103,12 +103,11 @@ public partial class BrokerProcessTests
             BrokerHostFactory.Create(new() { ReadJournal = (_, _, _) => throw new IOException("catch-up read failed") }),
             wrapConnector: RecordHostEnd(hostEnd));
 
-        var result = await broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
+        var (_, armedCursor, loss, producedBlock) = await broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
             null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
-        using var block = result.Block.Block;
+        using var block = producedBlock.Block;
 
-        Assert.AreEqual(Armed, result.ArmedCursor);
-        var loss = result.CatchUpLoss;
+        Assert.AreEqual(Armed, armedCursor);
         Assert.IsNotNull(loss);
         Assert.AreEqual('C', loss.Drive);
         Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, loss.DetectedDuring);

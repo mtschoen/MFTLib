@@ -36,7 +36,7 @@ public partial class FileIndexResilienceTests
         // failing the open that triggered the cleanup. Unix has no mandatory share-mode
         // locking, so the delete there succeeds even with the handle still open; either way
         // the open itself must not fail.
-        using var lockingHandle =
+        await using var lockingHandle =
             new FileStream(staleRetiredPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);

@@ -164,7 +164,7 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
                     : CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
                 if (scenario == "rescan-cancelled")
                 {
-                    rescanCancellation.Cancel();
+                    await rescanCancellation.CancelAsync();
                 }
 
                 outcome = await RootAfterAdmissionAsync(index, driveLetter, async () =>

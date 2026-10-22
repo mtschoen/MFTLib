@@ -124,7 +124,7 @@ public sealed class FileIndexOwnerLockTests : IDisposable
                 Assert.AreEqual(DriveFailureKind.InUse, second.Drives.Single().Failure?.Kind);
             }
 
-            cancellationTokenSource.Cancel();
+            await cancellationTokenSource.CancelAsync();
             progress.Release();
             await AssertThrowsCancellation(() => rescan);
 
@@ -334,7 +334,7 @@ public sealed class FileIndexOwnerLockTests : IDisposable
             {
                 if (cancel)
                 {
-                    cancellation.Cancel();
+                    await cancellation.CancelAsync();
                 }
 
                 progress.Release();

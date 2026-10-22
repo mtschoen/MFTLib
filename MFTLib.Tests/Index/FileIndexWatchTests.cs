@@ -225,7 +225,7 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
             : CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
         if (cancelBeforeStartup)
         {
-            startupCancellation.Cancel();
+            await startupCancellation.CancelAsync();
         }
 
         var reader = Task.Run(() =>

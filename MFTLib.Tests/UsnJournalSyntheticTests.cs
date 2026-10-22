@@ -77,11 +77,10 @@ public partial class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         JournalQueryFake.Fail(win32Error);
+        using var volume = MftVolume.Open('C');
+        var journal = volume.Journal;
         var exception = Assert.ThrowsExactly<Win32Exception>(() =>
-        {
-            using var volume = MftVolume.Open('C');
-            volume.Journal.QueryUsnJournalCursor();
-        });
+            journal.QueryUsnJournalCursor());
         Assert.AreEqual(win32Error, exception.NativeErrorCode);
     }
 
@@ -189,11 +188,10 @@ public partial class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         NativeTestHooks.NativeSetAllocFailCountdown(1); // fail read buffer alloc (before any IOCTL)
+        using var volume = MftVolume.Open('C');
+        var journal = volume.Journal;
         var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
-        {
-            using var volume = MftVolume.Open('C');
-            volume.Journal.ReadUsnJournalBounded(Cursor, 0);
-        });
+            journal.ReadUsnJournalBounded(Cursor, 0));
         Assert.Contains("allocate", exception.Message);
     }
 
@@ -202,11 +200,10 @@ public partial class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         NativeTestHooks.NativeSetAllocFailCountdown(2); // skip read buffer, fail entry array
+        using var volume = MftVolume.Open('C');
+        var journal = volume.Journal;
         var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
-        {
-            using var volume = MftVolume.Open('C');
-            volume.Journal.ReadUsnJournalBounded(Cursor, 0);
-        });
+            journal.ReadUsnJournalBounded(Cursor, 0));
         Assert.Contains("allocate", exception.Message);
     }
 
@@ -218,11 +215,10 @@ public partial class UsnJournalSyntheticTests
         QueueSuccess(BuildManyRecords(1000, 2000, 700));
         QueueSuccess(BuildManyRecords(2000, 3000, 700));
         NativeTestHooks.NativeSetAllocFailCountdown(3); // readBuffer, entryArray, then grow → fail
+        using var volume = MftVolume.Open('C');
+        var journal = volume.Journal;
         var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
-        {
-            using var volume = MftVolume.Open('C');
-            volume.Journal.ReadUsnJournalBounded(Cursor, 0);
-        });
+            journal.ReadUsnJournalBounded(Cursor, 0));
         Assert.Contains("grow", exception.Message);
     }
 
@@ -231,11 +227,10 @@ public partial class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         NativeTestHooks.NativeSetUsnIoFailError(ERROR_JOURNAL_NOT_ACTIVE, 1);
+        using var volume = MftVolume.Open('C');
+        var journal = volume.Journal;
         var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
-        {
-            using var volume = MftVolume.Open('C');
-            volume.Journal.ReadUsnJournalBounded(Cursor, 0);
-        });
+            journal.ReadUsnJournalBounded(Cursor, 0));
         Assert.Contains("not active", exception.Message);
     }
 
@@ -244,11 +239,10 @@ public partial class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         NativeTestHooks.NativeSetUsnIoFailError(ERROR_JOURNAL_DELETE_IN_PROGRESS, 1);
+        using var volume = MftVolume.Open('C');
+        var journal = volume.Journal;
         var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
-        {
-            using var volume = MftVolume.Open('C');
-            volume.Journal.ReadUsnJournalBounded(Cursor, 0);
-        });
+            journal.ReadUsnJournalBounded(Cursor, 0));
         Assert.Contains("deletion", exception.Message);
     }
 
@@ -257,11 +251,10 @@ public partial class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         NativeTestHooks.NativeSetUsnIoFailError(ERROR_JOURNAL_ENTRY_DELETED, 1);
+        using var volume = MftVolume.Open('C');
+        var journal = volume.Journal;
         var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
-        {
-            using var volume = MftVolume.Open('C');
-            volume.Journal.ReadUsnJournalBounded(Cursor, 0);
-        });
+            journal.ReadUsnJournalBounded(Cursor, 0));
         Assert.Contains("rescan", exception.Message);
     }
 
@@ -270,11 +263,10 @@ public partial class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         NativeTestHooks.NativeSetUsnIoFailError(5, 1);
+        using var volume = MftVolume.Open('C');
+        var journal = volume.Journal;
         var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
-        {
-            using var volume = MftVolume.Open('C');
-            volume.Journal.ReadUsnJournalBounded(Cursor, 0);
-        });
+            journal.ReadUsnJournalBounded(Cursor, 0));
         Assert.Contains("Error: 5", exception.Message);
     }
 
@@ -358,23 +350,17 @@ public partial class UsnJournalSyntheticTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     public void QueryUsnJournal_NoInjection_FallsThroughToRealDeviceIoControl()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("The real query is a kernel32 DeviceIoControl call.");
-            return;
-        }
-
         // With no scripted reply the query reaches the real DeviceIoControl on the fake handle,
         // which fails with ERROR_INVALID_HANDLE. Covers the real-syscall path without admin.
         const int errorInvalidHandle = 6;
         UseFakeHandle();
+        using var volume = MftVolume.Open('C');
+        var journal = volume.Journal;
         var exception = Assert.ThrowsExactly<Win32Exception>(() =>
-        {
-            using var volume = MftVolume.Open('C');
-            volume.Journal.QueryUsnJournalCursor();
-        });
+            journal.QueryUsnJournalCursor());
         Assert.AreEqual(errorInvalidHandle, exception.NativeErrorCode);
     }
 
@@ -608,16 +594,19 @@ public partial class UsnJournalSyntheticTests
         }
 
         Kernel32.Hooks._deviceIoControl = FakeDeviceIoControl;
+        InvalidOperationException? caught = null;
         try
         {
             using var volume = MftVolume.Open('C');
             volume.Journal.GrowUsnJournal(requestedMaximumSize, 0x100000);
-            Assert.Fail("Expected InvalidOperationException");
         }
         catch (InvalidOperationException exception)
         {
-            Assert.Contains("only growth", exception.Message);
+            caught = exception;
         }
+
+        Assert.IsNotNull(caught);
+        Assert.Contains("only growth", caught.Message);
 
         Assert.IsFalse(createCalled);
     }

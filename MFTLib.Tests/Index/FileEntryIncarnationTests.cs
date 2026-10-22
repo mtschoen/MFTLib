@@ -158,7 +158,7 @@ public class FileEntryIncarnationTests
             return new MemoryBackedFileStream();
         };
 
-        using (retained.Open(FileAccess.Read))
+        await using (retained.Open(FileAccess.Read))
         {
         }
 
@@ -172,7 +172,7 @@ public class FileEntryIncarnationTests
         Assert.IsEmpty(calls);
 
         var replacement = FileEntry.Create(fixture.Snapshot[0], DirectoryRow);
-        using (replacement.Open(FileAccess.Read))
+        await using (replacement.Open(FileAccess.Read))
         {
         }
 
@@ -238,7 +238,7 @@ public class FileEntryIncarnationTests
         Assert.IsFalse(retained.IsDeleted);
         Assert.AreEqual("documents", retained.Name);
         Assert.AreEqual(retained, FileEntry.Create(fixture.Snapshot[0], DirectoryRow));
-        using (FileEntry.Create(fixture.Snapshot[0], DirectoryRow).Open(FileAccess.Read))
+        await using (FileEntry.Create(fixture.Snapshot[0], DirectoryRow).Open(FileAccess.Read))
         {
         }
 
@@ -333,7 +333,7 @@ public class FileEntryIncarnationTests
         Assert.IsFalse(retained.IsDeleted);
         Assert.DoesNotContain(change => change.Kind == FileChangeKind.Deleted, changes, "The earlier incarnation's delete is ignored.");
         Assert.AreEqual(retained, FileEntry.Create(fixture.Snapshot[0], ChildRow));
-        using (retained.Open(FileAccess.Read))
+        await using (retained.Open(FileAccess.Read))
         {
         }
 
@@ -387,7 +387,7 @@ public class FileEntryIncarnationTests
         ]);
 
         var replacement = FileEntry.Create(fixture.Snapshot[0], ChildRow);
-        using (replacement.Open(FileAccess.Read))
+        await using (replacement.Open(FileAccess.Read))
         {
         }
 

@@ -48,15 +48,10 @@ public class UsnJournalSettingsQueryLiveTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
     public void Query_OnRealVolume_ReturnsSettingsUnelevated()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Requires a Windows NTFS volume");
-            return;
-        }
-
         var settings = UsnJournalSettingsQuery.Query('C');
 
         Assert.IsGreaterThan(0, settings.MaximumSize, "MaximumSize should be positive");
@@ -66,28 +61,18 @@ public class UsnJournalSettingsQueryLiveTests
     }
 
     [TestMethod]
+    [OSCondition(ConditionMode.Exclude, OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
     public void Query_NonWindowsHost_ThrowsPlatformNotSupported()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Covers the non-Windows guard only");
-            return;
-        }
-
         Assert.ThrowsExactly<PlatformNotSupportedException>(() => UsnJournalSettingsQuery.Query('C'));
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
     public void Query_ForADriveLetterThatDoesNotExist_ThrowsIOExceptionNamingTheRoot()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Requires a Windows host to open drive roots");
-            return;
-        }
-
         var missing = Enumerable.Range('D', 'Z' - 'D' + 1)
             .Select(value => (char)value)
             .FirstOrDefault(letter => !Directory.Exists($"{letter}:\\"));

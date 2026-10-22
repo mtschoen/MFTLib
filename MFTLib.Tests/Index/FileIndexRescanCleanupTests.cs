@@ -84,17 +84,10 @@ public sealed class FileIndexRescanCleanupTests : IDisposable
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [System.Runtime.Versioning.SupportedOSPlatform("windows")] // FileShare.None only blocks a delete on Windows
     public async Task RescanAsync_FailedScanWithALockedReplacementFile_RecordsTheFailureAndLeavesTheRetiredFileAside()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive(
-                "Unix has no mandatory share-mode locking, so RestoreRetiredFile's delete of the " +
-                "\"locked\" replacement succeeds there instead of failing the way this test requires.");
-            return;
-        }
-
         // The failed rescan's replacement file stays locked by this test, so the restore's
         // delete of it fails: the restore is best-effort and must not mask the real failure.
         var producerFailure = new IOException("the producer lost the volume");

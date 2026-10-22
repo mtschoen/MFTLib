@@ -208,7 +208,7 @@ public sealed class MftDumpValidationTests : IDisposable
 
         foreach (var path in new[] { valid, invalid })
         {
-            using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            await using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
             Assert.IsGreaterThan(0, exclusive.Length, path);
         }
     }
@@ -337,7 +337,7 @@ public sealed class MftDumpValidationTests : IDisposable
     public async Task Produce_TokenCancelledBeforeTheScan_IsCancelledWithoutOpeningTheDump()
     {
         using var cancellation = new CancellationTokenSource();
-        cancellation.Cancel();
+        await cancellation.CancelAsync();
         var producer = new MftDumpBlockProducer(Path.Combine(TemporaryDirectoryPath, "absent.mft"), TimeProvider.System);
 
         await Assert.ThrowsExactlyAsync<TaskCanceledException>(

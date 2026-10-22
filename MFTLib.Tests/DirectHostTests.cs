@@ -160,7 +160,7 @@ public sealed class DirectHostTests : IDisposable
     public async Task Run_ScanOverAScriptedSource_ReportsLiveAndRetainedDeletedCounts()
     {
         Assert.IsTrue(DirectArguments.TryParse(["scan", "C", "--include-freed"], out var parsed, out var error), error);
-        using var output = new StringWriter();
+        await using var output = new StringWriter();
         var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
 
         await host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('C', TemporaryDirectoryPath, 4242), CancellationToken.None);
@@ -190,7 +190,7 @@ public sealed class DirectHostTests : IDisposable
     {
         var path = Path.Combine(TemporaryDirectoryPath, "a.txt");
         File.WriteAllBytes(path, [1, 2, 3]);
-        using var output = new StringWriter();
+        await using var output = new StringWriter();
         var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
         var source = SyntheticIndexSource.Create(new SyntheticMftProducer(_ =>
         [
@@ -296,7 +296,7 @@ public sealed class DirectHostTests : IDisposable
     public async Task Run_LocalSourceWithoutIncludeFreed_HidesTheDeletedRow()
     {
         Assert.IsTrue(DirectArguments.TryParse(["search", "C", "--name", "a.txt"], out var parsed, out var error), error);
-        using var output = new StringWriter();
+        await using var output = new StringWriter();
         var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
 
         await host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('C', TemporaryDirectoryPath, 4242), CancellationToken.None);
@@ -311,7 +311,7 @@ public sealed class DirectHostTests : IDisposable
     {
         string[] command = ["search", "C", "--source", "local", "--name", "*.log", "--files", "--stream", "--limit", "20"];
         Assert.IsTrue(DirectArguments.TryParse(command, out var parsed, out var error), error);
-        using var elevatedOutput = new StringWriter();
+        await using var elevatedOutput = new StringWriter();
         var elevatedHost = new SampleHost(elevatedOutput, TextReader.Null, TemporaryDirectoryPath);
         var source = SyntheticIndexSource.Create(new SyntheticMftProducer(_ =>
         [
@@ -335,7 +335,7 @@ public sealed class DirectHostTests : IDisposable
         Assert.IsTrue(elevatedLines.Contains("2 entries"), elevatedOutput.ToString());
 
         using var unattended = new UnattendedEnvironmentScope("1");
-        using var unattendedOutput = new StringWriter();
+        await using var unattendedOutput = new StringWriter();
         var unattendedHost = new SampleHost(unattendedOutput, TextReader.Null, TemporaryDirectoryPath) { _isElevated = () => false };
 
         var unattendedResult = unattendedHost.RunWithElevation(command, ElevationNeed.SelfElevate, () =>
@@ -350,7 +350,7 @@ public sealed class DirectHostTests : IDisposable
     public async Task Run_DuplicateNamesOverAScriptedSource_ListsTheGroup()
     {
         Assert.IsTrue(DirectArguments.TryParse(["duplicate-names", "C"], out var parsed, out var error), error);
-        using var output = new StringWriter();
+        await using var output = new StringWriter();
         var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
 
         await host.RunSourceAsync(parsed!, ScriptedSource(), new IndexedDrive('C', TemporaryDirectoryPath, 4242), CancellationToken.None);
@@ -362,7 +362,7 @@ public sealed class DirectHostTests : IDisposable
     public async Task Run_DriveThatIsOffline_ReportsItAndReturnsOne()
     {
         Assert.IsTrue(DirectArguments.TryParse(["scan", "Q"], out var parsed, out var error), error);
-        using var output = new StringWriter();
+        await using var output = new StringWriter();
         var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
@@ -374,7 +374,7 @@ public sealed class DirectHostTests : IDisposable
     public async Task Run_ScanThatFails_ReportsTheProducerFailure()
     {
         Assert.IsTrue(DirectArguments.TryParse(["scan", "C"], out var parsed, out var error), error);
-        using var output = new StringWriter();
+        await using var output = new StringWriter();
         var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
         var source = SyntheticIndexSource.Create(new SyntheticMftProducer(_ => throw new IOException("volume unreadable")));
 
@@ -384,14 +384,9 @@ public sealed class DirectHostTests : IDisposable
     }
 
     [TestMethod]
+    [OSCondition(ConditionMode.Exclude, OperatingSystems.Windows)]
     public void Run_LocalSourceOffWindows_SkipsTheElevationFlowAndReportsThePlatform()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Exercises off-Windows behavior.");
-            return;
-        }
-
         var lines = new List<string>();
         var host = HostOver(lines);
 

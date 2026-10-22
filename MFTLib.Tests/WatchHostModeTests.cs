@@ -170,13 +170,9 @@ public class WatchHostModeTests
     }
 
     [TestMethod]
+    [OSCondition(ConditionMode.Exclude, OperatingSystems.Windows)]
     public void Run_BrokerSessionCannotBeCreated_ReturnsOneAndNeverReportsCompletion()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
         var lines = new List<string>();
         var scanner = new SampleHost(new LineCollectingWriter(lines), TextReader.Null)
         {

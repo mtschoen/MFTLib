@@ -205,7 +205,7 @@ public sealed class WatchFirstRunTests : IDisposable
         });
         var lines = new List<string>();
         var seen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var notifyingWriter = new LineCollectingWriter(lines, line =>
+        await using var notifyingWriter = new LineCollectingWriter(lines, line =>
         {
             if (line.StartsWith("  Created:", StringComparison.Ordinal))
             {

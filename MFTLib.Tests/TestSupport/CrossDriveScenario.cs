@@ -180,15 +180,18 @@ sealed class CrossDriveScenario : IAsyncDisposable
         await _visits.Reader.ReadAsync().AsTask().WaitAsync(HangGuard);
         foreach (var (key, pipe) in awaited)
         {
+            var timedOut = false;
             try
             {
                 await pipe.Reads.WhenReadPendingAfter(pipe.Settled).WaitAsync(HangGuard);
             }
             catch (TimeoutException)
             {
-                throw new AssertFailedException($"The client never read the {key} pipe's expected heartbeat: " +
-                                                $"{pipe.Reads.BytesRead} of {pipe.Settled} bytes.");
+                timedOut = true;
             }
+
+            Assert.IsFalse(timedOut, $"The client never read the {key} pipe's expected heartbeat: " +
+                                     $"{pipe.Reads.BytesRead} of {pipe.Settled} bytes.");
         }
 
         ClientClock.Advance(BrokerLiveness.HeartbeatInterval);

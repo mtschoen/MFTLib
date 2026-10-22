@@ -139,12 +139,11 @@ sealed class EnumerationReadObservation
 {
     int _active;
     int _peak;
-    readonly ConcurrentDictionary<string, int> _visits = new(StringComparer.OrdinalIgnoreCase);
     readonly ConcurrentDictionary<string, TestGate> _gates = new(StringComparer.OrdinalIgnoreCase);
 
     public int Active => Volatile.Read(ref _active);
     public int Peak => Volatile.Read(ref _peak);
-    public ConcurrentDictionary<string, int> Visits => _visits;
+    public ConcurrentDictionary<string, int> Visits { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     public TestGate GateFor(string path) => _gates.GetOrAdd(path, _ => new TestGate());
 
@@ -168,7 +167,7 @@ sealed class EnumerationReadObservation
             }
         }
 
-        _visits.AddOrUpdate(path, 1, (_, count) => count + 1);
+        Visits.AddOrUpdate(path, 1, (_, count) => count + 1);
 
         if (_gates.TryGetValue(path, out var gate))
         {

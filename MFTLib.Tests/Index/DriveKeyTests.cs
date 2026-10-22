@@ -61,10 +61,13 @@ public class DriveKeyTests
         Assert.ThrowsExactly<ArgumentException>(() => new DriveOperationResult(default, DriveOperationOutcome.Succeeded, null));
         Assert.ThrowsExactly<ArgumentException>(() => new WatchStateChange(default, new DriveWatchStatus(), null));
         var drive = new IndexedDrive('c', "unused", 0);
+        var recordKey = new IndexRecordKey('C', 5, ProducerKind.Mft);
+        var operationResult = new DriveOperationResult('C', DriveOperationOutcome.Succeeded, null);
+        var stateChange = new WatchStateChange('C', new DriveWatchStatus(), null);
         Assert.ThrowsExactly<ArgumentException>(() => drive with { Drive = default });
-        Assert.ThrowsExactly<ArgumentException>(() => new IndexRecordKey('C', 5, ProducerKind.Mft) with { Drive = default });
-        Assert.ThrowsExactly<ArgumentException>(() => new DriveOperationResult('C', DriveOperationOutcome.Succeeded, null) with { Drive = default });
-        Assert.ThrowsExactly<ArgumentException>(() => new WatchStateChange('C', new DriveWatchStatus(), null) with { Drive = default });
+        Assert.ThrowsExactly<ArgumentException>(() => recordKey with { Drive = default });
+        Assert.ThrowsExactly<ArgumentException>(() => operationResult with { Drive = default });
+        Assert.ThrowsExactly<ArgumentException>(() => stateChange with { Drive = default });
         Assert.ThrowsExactly<ArgumentException>(() =>
             SyntheticNotifications.CreateWatchStateChange(default, new DriveWatchStatus(), null));
         Assert.ThrowsExactly<ArgumentException>(() =>

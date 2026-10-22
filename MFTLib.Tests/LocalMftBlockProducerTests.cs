@@ -276,7 +276,7 @@ public sealed class LocalMftBlockProducerTests : IDisposable
                 await Assert.ThrowsExactlyAsync<IOException>(() => taskT);
                 break;
             case ScanTermination.Cancels:
-                cancellationT.Cancel();
+                await cancellationT.CancelAsync();
                 gateT.Release();
                 await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => taskT);
                 break;
@@ -430,13 +430,9 @@ public sealed class LocalMftBlockProducerTests : IDisposable
     }
 
     [TestMethod]
+    [OSCondition(ConditionMode.Exclude, OperatingSystems.Windows)]
     public void LiveSeams_OnANonWindowsHostRefuseTheVolumeQuery()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
         Assert.ThrowsExactly<PlatformNotSupportedException>(
             () => LiveVolumeAccess.Instance.QueryVolumeInformation('T'));
     }

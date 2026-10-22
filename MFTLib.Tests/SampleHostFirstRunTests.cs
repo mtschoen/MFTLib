@@ -212,14 +212,9 @@ public class SampleHostFirstRunTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     public void RunAndPause_TheElevatedChildWritingToOutputLog_DoesNotHoldItsOwnWindow()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Exercises Windows elevation log flow.");
-            return;
-        }
-
         using var output = new StringWriter();
         var directory = Directory.CreateTempSubdirectory("sample-log-").FullName;
         try
@@ -249,14 +244,9 @@ public class SampleHostFirstRunTests
             .First(letter => !Directory.Exists($"{letter}:\\")));
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     public void RunAndPause_UnwritableLogDirectory_PropagatesToFailureBoundaryAndLeavesWriterAvailable()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Exercises Windows elevation log flow.");
-            return;
-        }
-
         using var output = new StringWriter();
         var tempDir = Directory.CreateTempSubdirectory("sample-unwritable-").FullName;
         try

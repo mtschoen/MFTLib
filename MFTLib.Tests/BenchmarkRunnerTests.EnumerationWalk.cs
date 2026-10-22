@@ -44,7 +44,7 @@ public partial class BenchmarkRunnerTests
         try
         {
             var reportPath = Path.Combine(_directory, "walk report.txt");
-            using var output = new StringWriter();
+            await using var output = new StringWriter();
             var runner = new BenchmarkRunner(output, clock);
             Assert.AreEqual(0, await runner.RunAsync(["ENUMERATION-WALK",
                 "--directories", directories.ToString(CultureInfo.InvariantCulture),
@@ -147,7 +147,7 @@ public partial class BenchmarkRunnerTests
     [TestMethod]
     public async Task Run_EnumerationWalk_DefaultsAndZeroClock_ReportUnavailableRatio()
     {
-        using var output = new StringWriter();
+        await using var output = new StringWriter();
         var runner = new BenchmarkRunner(output, new FakeTimeProvider());
         Assert.AreEqual(0, await runner.RunAsync(["enumeration-walk", "--directories", "2"]));
         Assert.Contains("Files: 2", output.ToString());

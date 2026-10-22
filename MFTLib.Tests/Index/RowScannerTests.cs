@@ -112,14 +112,8 @@ public class RowScannerTests
         cancellation.Cancel();
         var token = cancellation.Token;
 
-        Assert.ThrowsExactly<OperationCanceledException>(() =>
-        {
-            var scanner = new RowScanner(_snapshot[0], startRow: 0, endRowExclusive: 0, token);
-            while (scanner.MoveNext())
-            {
-                // The range is empty, so the only thing that can end this loop is the token.
-            }
-        });
+        Assert.ThrowsExactly<OperationCanceledException>(
+            () => new RowScanner(_snapshot[0], startRow: 0, endRowExclusive: 0, token).MoveNext());
     }
 
     [TestMethod]

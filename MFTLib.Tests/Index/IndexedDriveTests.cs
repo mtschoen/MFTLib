@@ -62,14 +62,10 @@ public sealed class IndexedDriveTests : IDisposable
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
     public void FromWindowsVolume_ReadsARealSerialForTheSystemDrive()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Windows-only: GetVolumeInformationW against a real drive");
-        }
-
         var systemRoot = Path.GetPathRoot(Environment.SystemDirectory)!;
         var drive = IndexedDrive.FromWindowsVolume(systemRoot[0]);
 

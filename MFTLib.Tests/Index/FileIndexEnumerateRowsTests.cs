@@ -73,6 +73,7 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
         Assert.IsTrue(enumerator.MoveNext());
         using var copy = enumerator;
         enumerator.Dispose();
+        ObjectDisposedException? caught = null;
         try
         {
             if (readCurrent)
@@ -83,13 +84,14 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
             {
                 _ = throughCopy ? copy.MoveNext() : enumerator.MoveNext();
             }
-
-            Assert.Fail("A returned shared borrow must reject access before reading mapped memory.");
         }
         catch (ObjectDisposedException exception)
         {
-            Assert.AreEqual(nameof(IndexRowEnumerator), exception.ObjectName);
+            caught = exception;
         }
+
+        Assert.IsNotNull(caught, "A returned shared borrow must reject access before reading mapped memory.");
+        Assert.AreEqual(nameof(IndexRowEnumerator), caught.ObjectName);
     }
 
     [TestMethod]

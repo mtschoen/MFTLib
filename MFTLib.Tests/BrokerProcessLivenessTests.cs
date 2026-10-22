@@ -355,7 +355,7 @@ public class BrokerProcessLivenessTests
 
         public ReadCounter ControlReads { get; } = new();
 
-        public ReadCounter DriveReads(char letter) => _driveReads.GetOrAdd(letter, _ => new ReadCounter());
+        ReadCounter DriveReads(char letter) => _driveReads.GetOrAdd(letter, _ => new ReadCounter());
 
         public Task SendControlAsync(Action<IBufferWriter<byte>> write)
         {

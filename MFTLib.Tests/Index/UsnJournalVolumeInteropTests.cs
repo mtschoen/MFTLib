@@ -87,26 +87,11 @@ public class UsnJournalVolumeInteropTests
                 window.NextUsn, window.AllocationDelta, window.MaximumSize)
             : null;
 
-    static bool SkipOffWindows()
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            return false;
-        }
-
-        Assert.Inconclusive("Requires a Windows host to open a volume-root handle");
-        return true;
-    }
-
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
     public void SettingsQuery_MetadataIoctlFails_SurfacesTheWin32Error()
     {
-        if (SkipOffWindows())
-        {
-            return;
-        }
-
         FailIoControl(UsnJournalVolumeInterop.FsctlQueryUsnJournal, ErrorJournalNotActive);
 
         var exception = Assert.ThrowsExactly<Win32Exception>(() => UsnJournalSettingsQuery.Query('C'));
@@ -147,14 +132,10 @@ public class UsnJournalVolumeInteropTests
     ///     unusable, so the check reports nothing rather than forcing a rescan over it.
     /// </summary>
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
     public void CheckpointCheck_JournalQueryRefused_ReportsNothing()
     {
-        if (SkipOffWindows())
-        {
-            return;
-        }
-
         FailIoControl(UsnJournalVolumeInterop.FsctlQueryUsnJournal, ErrorJournalNotActive);
         using var live = JournalIsolation.OverrideJournalWindow(ReadLive);
 
@@ -191,14 +172,10 @@ public class UsnJournalVolumeInteropTests
     ///     the one test whose subject is a real volume.
     /// </summary>
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
     public void CheckpointCheck_AgainstTheRealVolume_ReadsItsLiveJournal()
     {
-        if (SkipOffWindows())
-        {
-            return;
-        }
-
         using var live = JournalIsolation.OverrideJournalWindow(ReadLive);
         var loss = JournalCheckpointCheck.Check('C', checkpointJournalIdentifier: 0, checkpointUsn: 0,
             JournalCheckpointLossDetection.DriveOpening);
@@ -220,14 +197,10 @@ public class UsnJournalVolumeInteropTests
     ///     one over a letter that does not.
     /// </summary>
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
     public void LiveJournalReadsAreForbiddenInThisTestProcess()
     {
-        if (SkipOffWindows())
-        {
-            return;
-        }
-
         // C: really does have a journal, and really would answer, yet the check says nothing.
         Assert.IsNull(JournalCheckpointCheck.Check('C', checkpointJournalIdentifier: 0, checkpointUsn: 0,
             JournalCheckpointLossDetection.DriveOpening));
@@ -243,14 +216,10 @@ public class UsnJournalVolumeInteropTests
     ///     and reading the live journal, so a process whose guard is off reads the real volume.
     /// </summary>
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
     public void JournalReader_NoOverride_TheGuardAloneDecidesWhetherTheLiveJournalIsRead()
     {
-        if (SkipOffWindows())
-        {
-            return;
-        }
-
         Assert.IsNull(new JournalCheckpointCheck.JournalReader(() => true, JournalCheckpointCheck.ReadLiveJournal).Read('C'));
 
         var journal = new JournalCheckpointCheck.JournalReader(() => false, JournalCheckpointCheck.ReadLiveJournal).Read('C');
@@ -261,14 +230,10 @@ public class UsnJournalVolumeInteropTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
     public void ResetToDefaults_RestoresTheRealIoctl()
     {
-        if (SkipOffWindows())
-        {
-            return;
-        }
-
         FailIoControl(UsnJournalVolumeInterop.FsctlQueryUsnJournal, ErrorJournalNotActive);
         Kernel32.Hooks.ResetToDefaults();
 

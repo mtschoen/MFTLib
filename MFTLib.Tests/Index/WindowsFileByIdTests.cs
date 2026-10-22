@@ -17,14 +17,10 @@ public class WindowsFileByIdTests
         Kernel32.Hooks.ResetToDefaults();
     }
     [TestMethod]
-    [SupportedOSPlatform("windows")] // Assert.Inconclusive() below is a runtime guard the analyzer cannot see through.
+    [OSCondition(OperatingSystems.Windows)]
+    [SupportedOSPlatform("windows")]
     public void Open_RoundTripsARealFileThroughItsFileReference()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Windows-only: OpenFileById against a real volume root");
-        }
-
         var path = Path.Combine(Path.GetTempPath(), $"mftlib-openbyid-{Guid.NewGuid():N}.txt");
         File.WriteAllText(path, "round trip");
         try
@@ -44,14 +40,10 @@ public class WindowsFileByIdTests
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")] // Assert.Inconclusive() below is a runtime guard the analyzer cannot see through.
+    [OSCondition(OperatingSystems.Windows)]
+    [SupportedOSPlatform("windows")]
     public void Open_WithWriteAccess_OpensAndAcceptsAWrite()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Windows-only: OpenFileById against a real volume root");
-        }
-
         var path = Path.Combine(Path.GetTempPath(), $"mftlib-openbyid-{Guid.NewGuid():N}.txt");
         File.WriteAllText(path, "before");
         try
@@ -75,14 +67,10 @@ public class WindowsFileByIdTests
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")] // Assert.Inconclusive() below is a runtime guard the analyzer cannot see through.
+    [OSCondition(OperatingSystems.Windows)]
+    [SupportedOSPlatform("windows")]
     public void Open_WithReadWriteAccess_ReadsAndWritesThroughTheSameHandle()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Windows-only: OpenFileById against a real volume root");
-        }
-
         var path = Path.Combine(Path.GetTempPath(), $"mftlib-openbyid-{Guid.NewGuid():N}.txt");
         File.WriteAllText(path, "before");
         try
@@ -109,14 +97,10 @@ public class WindowsFileByIdTests
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")] // Assert.Inconclusive() below is a runtime guard the analyzer cannot see through.
+    [OSCondition(OperatingSystems.Windows)]
+    [SupportedOSPlatform("windows")]
     public void Open_InvalidVolumeHintPath_ThrowsIOExceptionNamingThePath()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Windows-only: OpenFileById against a real volume root");
-        }
-
         var missingPath = Path.Combine(Path.GetTempPath(), $"mftlib-missing-hint-{Guid.NewGuid():N}",
             "no-such-directory");
 
@@ -134,14 +118,10 @@ public class WindowsFileByIdTests
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")] // Assert.Inconclusive() below is a runtime guard the analyzer cannot see through.
+    [OSCondition(OperatingSystems.Windows)]
+    [SupportedOSPlatform("windows")]
     public void Open_UnrecognizedFileAccessValue_ThrowsArgumentOutOfRangeException()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Windows-only: OpenFileById against a real volume root");
-        }
-
         var path = Path.Combine(Path.GetTempPath(), $"mftlib-openbyid-{Guid.NewGuid():N}.txt");
         File.WriteAllText(path, "x");
         try
@@ -159,14 +139,10 @@ public class WindowsFileByIdTests
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")] // Assert.Inconclusive() below is a runtime guard the analyzer cannot see through.
+    [OSCondition(OperatingSystems.Windows)]
+    [SupportedOSPlatform("windows")]
     public void Open_ThrowsIOExceptionNamingTheRecordWhenTheSequenceNumberIsWrong()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Windows-only: OpenFileById against a real volume root");
-        }
-
         var path = Path.Combine(Path.GetTempPath(), $"mftlib-openbyid-{Guid.NewGuid():N}.txt");
         File.WriteAllText(path, "x");
         try

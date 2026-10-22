@@ -171,17 +171,13 @@ public partial class NativeMftProcessingTests
     }
 
     [TestMethod]
+    [OSCondition(ConditionMode.Exclude, OperatingSystems.Windows)]
     [DataRow((byte)0xF6, true, DisplayName = "-10 declares 1024-byte records")]
     [DataRow((byte)0x00, false, DisplayName = "zero declares no record size")]
     [DataRow((byte)0xE0, false, DisplayName = "-32 declares a size past the supported range")]
     public void ParseMFTRecords_OffWindowsWithoutAnOverride_TakesTheRecordSizeFromTheBootSector(
         byte clustersPerFileRecord, bool parses)
     {
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("On Windows the record size comes from FSCTL_GET_NTFS_VOLUME_DATA, not the boot sector.");
-        }
-
         var path = Path.GetTempFileName();
         try
         {

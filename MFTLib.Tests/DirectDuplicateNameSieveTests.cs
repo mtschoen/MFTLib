@@ -150,7 +150,7 @@ public class DirectDuplicateNameSieveTests
         builder.Complete(Moment);
         await using var index = await OpenIndexAsync(builder);
         using var cancellation = new CancellationTokenSource();
-        cancellation.Cancel();
+        await cancellation.CancelAsync();
         var token = cancellation.Token;
         AssertCancelled(index, token);
     }

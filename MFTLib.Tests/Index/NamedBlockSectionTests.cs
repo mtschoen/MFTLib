@@ -23,29 +23,19 @@ public sealed class NamedBlockSectionTests : IDisposable
     public void Dispose() => _directory.Dispose();
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
     public void BuildSectionName_HasTheFixedLengthTheAdmissionCheckAssumes()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Named memory-mapped sections require Windows.");
-            return;
-        }
-
         Assert.AreEqual(BlockSectionNaming.Length, NamedBlockSection.BuildSectionName('T').Length);
         Assert.AreEqual(BlockSectionNaming.Length, NamedBlockSection.BuildSectionName('z').Length);
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
     public void CreateThenOpenExisting_SeesTheSameRows()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Named memory-mapped sections require Windows.");
-            return;
-        }
-
         var sectionName = NamedBlockSection.BuildSectionName('T');
         var options = new BlockFileCreateOptions
         {
@@ -74,15 +64,10 @@ public sealed class NamedBlockSectionTests : IDisposable
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
     public void Create_MappingConstructionFails_DeletesTheFileAndDisposesTheStream()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Named memory-mapped sections require Windows.");
-            return;
-        }
-
         var sectionName = NamedBlockSection.BuildSectionName('T');
         var firstOptions = new BlockFileCreateOptions
         {
@@ -116,15 +101,10 @@ public sealed class NamedBlockSectionTests : IDisposable
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
     public void OpenExisting_UnknownSectionName_ThrowsFileNotFound()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Named memory-mapped sections require Windows.");
-            return;
-        }
-
         Assert.ThrowsExactly<FileNotFoundException>(() =>
             NamedBlockSection.OpenExisting(NamedBlockSection.BuildSectionName('Z'), 4096));
     }

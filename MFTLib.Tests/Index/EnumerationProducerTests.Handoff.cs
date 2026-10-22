@@ -112,7 +112,7 @@ public sealed partial class EnumerationProducerTests
                 await handoffWaiting.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
                 if (cancel)
                 {
-                    cancellation.Cancel();
+                    await cancellation.CancelAsync();
                 }
 
                 secondCommit.Release();
@@ -136,7 +136,7 @@ public sealed partial class EnumerationProducerTests
         }
         finally
         {
-            cancellation.Cancel();
+            await cancellation.CancelAsync();
             firstCommit.Release();
             secondCommit.Release();
             if (produceTask is not null)

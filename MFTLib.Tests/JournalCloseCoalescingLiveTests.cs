@@ -56,14 +56,17 @@ public class JournalCloseCoalescingLiveTests
         await File.AppendAllTextAsync(tempPath, "modify", CancellationToken.None);
         File.Delete(tempPath);
 
+        var timedOut = false;
         try
         {
             await watchTask;
         }
         catch (OperationCanceledException) when (!TestContext.CancellationToken.IsCancellationRequested)
         {
-            Assert.Fail($"Timed out waiting for the delete-close record of {tempFileName}.");
+            timedOut = true;
         }
+
+        Assert.IsFalse(timedOut, $"Timed out waiting for the delete-close record of {tempFileName}.");
 
         // Premise guard: the fix targets the record shape NTFS writes. Without both an
         // intermediate create record and a create-close record in the raw stream, the

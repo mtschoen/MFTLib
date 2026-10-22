@@ -346,13 +346,18 @@ public sealed partial class EnumerationProducerTests : IDisposable
     public async Task Produce_DirectorySymbolicLink_RecordsRowButDoesNotFollowIt()
     {
         var linkPath = Path.Combine(_treeRoot, "RootLink");
+        Exception? linkFailure = null;
         try
         {
             Directory.CreateSymbolicLink(linkPath, _treeRoot);
         }
         catch (Exception exception)
         {
-            Assert.Inconclusive($"Could not create a directory symbolic link: {exception.Message}");
+            linkFailure = exception;
+        }
+        if (linkFailure is not null)
+        {
+            Assert.Inconclusive($"Could not create a directory symbolic link: {linkFailure.Message}");
         }
 
         var snapshot = Produce(out var block, out var result);
@@ -421,7 +426,7 @@ public sealed partial class EnumerationProducerTests : IDisposable
         var created = CreateBlock();
         using var block = created.Block;
         using var cancellation = new CancellationTokenSource();
-        cancellation.Cancel();
+        await cancellation.CancelAsync();
         var token = cancellation.Token;
 
         var producer = new EnumerationProducer(new EnumerationProducerOptions

@@ -32,7 +32,6 @@ sealed class WatchHarness : IDisposable
     readonly Dictionary<char, List<Task>> _recoveriesByDrive = [];
     readonly List<(Func<WatchFault, bool> Match, TaskCompletionSource<WatchFault> Completion)> _faultWaiters = [];
     readonly HashSet<char> _blocklessDrives;
-    readonly string _cacheDirectory;
 
     public WatchHarness(params char[] driveLetters)
         : this(null, driveLetters)
@@ -56,14 +55,14 @@ sealed class WatchHarness : IDisposable
         _cursorsByDrive = driveLetters.Select(char.ToUpperInvariant)
             .ToDictionary(letter => letter, letter => new IndexWatchTarget(letter, JournalIdentifier, NextUsn));
         _blockBuilders = _cursorsByDrive.ToDictionary(pair => pair.Key, pair => CreateMftBlock(pair.Value));
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-watch-cache-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_cacheDirectory);
+        CacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-watch-cache-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(CacheDirectory);
 
         Index = FileIndex.OpenAsync(new FileIndexOptions
         {
             Drives = _blockBuilders.Select(pair => new IndexedDrive(pair.Key,
                 pair.Value.DirectoryPath, pair.Value.VolumeSerial)).ToArray(),
-            CacheDirectory = _cacheDirectory,
+            CacheDirectory = CacheDirectory,
             MftSource = new MftIndexSource(Produce, watchSource ?? Source.IndexSource)
         }, CancellationToken.None).GetAwaiter().GetResult();
         Index.Changed += _changes.Enqueue;
@@ -80,7 +79,7 @@ sealed class WatchHarness : IDisposable
     public FileIndex Index { get; }
 
     /// <summary>The owned temporary directory this harness gives the index as its cache directory.</summary>
-    public string CacheDirectory => _cacheDirectory;
+    public string CacheDirectory { get; }
 
     public ScriptedWatchSource Source { get; } = new();
 
@@ -234,7 +233,7 @@ sealed class WatchHarness : IDisposable
             blockBuilder.Dispose();
         }
 
-        Directory.Delete(_cacheDirectory, recursive: true);
+        Directory.Delete(CacheDirectory, recursive: true);
     }
 
     /// <summary>

@@ -39,7 +39,7 @@ public class JournalBrokerHostSourcesTests
     {
         var clock = new FakeTimeProvider();
         using var owner = new CancellationTokenSource();
-        using var stream = new MemoryStream();
+        await using var stream = new MemoryStream();
         var pipe = new HostPipeWriter(stream, "pipe", clock, heartbeatsWhenIdle: false, owner);
         try
         {

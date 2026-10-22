@@ -23,7 +23,7 @@ public class TestExtensionsStreamTests
     [TestMethod]
     public async Task Forwarding_PreservesBytesAndNonSeekingContract()
     {
-        var inner = new MemoryStream();
+        await using var inner = new MemoryStream();
         var stream = new ForwardingStream(inner);
         try
         {
@@ -49,8 +49,7 @@ public class TestExtensionsStreamTests
         }
         finally
         {
-            stream.Dispose();
-            inner.Dispose();
+            await stream.DisposeAsync();
         }
     }
 
@@ -66,8 +65,8 @@ public class TestExtensionsStreamTests
     [TestMethod]
     public async Task Duplex_UsesDifferentReadAndWriteStreamsAndClosesBoth()
     {
-        using var input = new MemoryStream([1, 2]);
-        using var output = new MemoryStream();
+        await using var input = new MemoryStream([1, 2]);
+        await using var output = new MemoryStream();
         var stream = new InMemoryDuplexStream(input, output);
         try
         {
@@ -89,7 +88,7 @@ public class TestExtensionsStreamTests
         }
         finally
         {
-            stream.Dispose();
+            await stream.DisposeAsync();
         }
     }
 
@@ -112,8 +111,8 @@ public class TestExtensionsStreamTests
     [DataRow(true)]
     public async Task PendingRead_TranslatesMisuseOnlyAfterClose(bool close)
     {
-        using var input = new ControlledReadStream();
-        using var output = new MemoryStream();
+        await using var input = new ControlledReadStream();
+        await using var output = new MemoryStream();
         var stream = new InMemoryDuplexStream(input, output);
         try
         {
@@ -138,7 +137,7 @@ public class TestExtensionsStreamTests
         {
             if (!close)
             {
-                stream.Dispose();
+                await stream.DisposeAsync();
             }
         }
     }
@@ -149,8 +148,8 @@ public class TestExtensionsStreamTests
     public async Task HeldWrite_ReleasesBytesOrCancelsWithoutWriting(bool cancel)
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var inner = new MemoryStream();
-        using var stream = new HeldWriteStream(inner, () => release.Task);
+        await using var inner = new MemoryStream();
+        await using var stream = new HeldWriteStream(inner, () => release.Task);
         using var cancellation = new CancellationTokenSource();
         var write = stream.WriteAsync(new byte[] { 7 }.AsMemory(), cancellation.Token).AsTask();
         try
@@ -159,7 +158,7 @@ public class TestExtensionsStreamTests
             Assert.AreEqual(0L, inner.Length);
             if (cancel)
             {
-                cancellation.Cancel();
+                await cancellation.CancelAsync();
                 try
                 {
                     await write;
@@ -186,7 +185,7 @@ public class TestExtensionsStreamTests
     public async Task AsyncDisposal_ClosesClientBeforeJoiningHost()
     {
         var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var inner = new MemoryStream();
+        await using var inner = new MemoryStream();
         var stream = new HostLifetimeStream(inner, exited.Task);
         var disposal = stream.DisposeAsync().AsTask();
         try

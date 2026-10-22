@@ -84,7 +84,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
             // file BlockFile still has mapped, since BlockFile opens with FileShare.Delete. An
             // exclusive open with FileShare.None succeeds only if no handle - mapped or not -
             // remains open on the file at all.
-            using var exclusive = new FileStream(blockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            await using var exclusive = new FileStream(blockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         }
 
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
@@ -139,7 +139,7 @@ public sealed partial class FileIndexResilienceTests : IDisposable
 
             // If the first drive's already-open mapping were not unwound, this exclusive
             // reopen would fail with a sharing violation instead of succeeding.
-            using var exclusive = new FileStream(firstBlockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            await using var exclusive = new FileStream(firstBlockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
 
             // The second drive's partly written canonical file may remain (a canonical target is
             // not delete-on-close); it must never be adoptable, so a later open cold-scans it.

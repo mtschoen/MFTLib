@@ -64,15 +64,10 @@ public sealed class FileIndexJournalSettingsTests : IDisposable
     ///     handle on C: and the volume gets a fake handle; only the control request is scripted.
     /// </summary>
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
     public async Task QueryUsnJournalSettings_VolumeAndIndex_ReportTheSameSettingsForOneJournalState()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("The index query opens a Windows volume-root handle.");
-            return;
-        }
-
         FileUtilities.Hooks._getVolumeHandle = _ => new Microsoft.Win32.SafeHandles.SafeFileHandle(new IntPtr(1), false);
         JournalQueryFake.Serve(journalIdentifier: 9, nextUsn: 77, maximumSize: 0x08000000, allocationDelta: 0x01000000);
         await using var index = await FileIndex.OpenAsync(_fixture.Options('C'), CancellationToken.None);
@@ -91,15 +86,18 @@ public sealed class FileIndexJournalSettingsTests : IDisposable
     public async Task QueryUsnJournalSettings_UnconfiguredDrive_ThrowsArgumentException()
     {
         await using var index = await OpenIndexAsync();
+        ArgumentException? caught = null;
 
         try
         {
             index.QueryUsnJournalSettings('Q');
-            Assert.Fail("Expected ArgumentException");
         }
         catch (ArgumentException exception)
         {
-            Assert.Contains("Q", exception.Message);
+            caught = exception;
         }
+
+        Assert.IsNotNull(caught);
+        Assert.Contains("Q", caught.Message);
     }
 }

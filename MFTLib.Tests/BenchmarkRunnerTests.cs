@@ -230,13 +230,9 @@ public partial class BenchmarkRunnerTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     public async Task Run_Index_MftCache_OpensWithJournalIsolationEnabled()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("An MFT block names a drive letter, and only Windows has a drive root to open it under.");
-        }
-
         var directory = Path.Combine(Path.GetTempPath(), $"benchmark-index-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
         var drive = Path.GetPathRoot(directory)![0];
@@ -313,7 +309,7 @@ public partial class BenchmarkRunnerTests
     [TestMethod]
     public async Task Run_OutputIsBorrowedAndReportsAreRealFiles()
     {
-        using var output = new StringWriter();
+        await using var output = new StringWriter();
         var runner = new BenchmarkRunner(output);
         var path = Path.Combine(_directory, "report with spaces.txt");
         Assert.AreEqual(0, await runner.RunAsync(["index", "--synthetic", "2", "--out", path]));

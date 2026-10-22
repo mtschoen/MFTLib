@@ -10,7 +10,6 @@ namespace MFTLib.Tests.Index;
 sealed class MutatorFixture : IAsyncDisposable
 {
     readonly SyntheticBlockBuilder _builder;
-    readonly DriveBlock[] _snapshot;
     readonly JournalMutator _mutator;
     long _nextUsn = 1000;
 
@@ -20,22 +19,22 @@ sealed class MutatorFixture : IAsyncDisposable
         var block = _builder.OpenForWriting();
         var driveBlock = new DriveBlock(_builder.Drive, 0, block,
             rootDirectoryPath: TestDriveRoot.For(_builder.Drive));
-        _snapshot = [driveBlock];
+        Snapshot = [driveBlock];
         _mutator = new JournalMutator(new BlockWriter(block));
     }
 
     public DateTime Timestamp { get; } = new(2026, 9, 2, 6, 0, 0, DateTimeKind.Utc);
     public BlockFile Block => _mutator.Writer.Block;
-    public DriveBlock[] Snapshot => _snapshot;
+    public DriveBlock[] Snapshot { get; }
 
     public IReadOnlyList<FileChange> Apply(IReadOnlyList<UsnJournalEntry> entries)
     {
-        return _mutator.Apply(_snapshot[0], entries, journalIdentifier: 7, _nextUsn++);
+        return _mutator.Apply(Snapshot[0], entries, journalIdentifier: 7, _nextUsn++);
     }
 
     public async ValueTask DisposeAsync()
     {
-        await _snapshot.ReleaseNowAsync();
+        await Snapshot.ReleaseNowAsync();
         _builder.Dispose();
     }
 }

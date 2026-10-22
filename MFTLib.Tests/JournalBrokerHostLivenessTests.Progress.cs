@@ -128,14 +128,10 @@ public partial class JournalBrokerHostLivenessTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
     public async Task BlockFlush_EachRange_RestartsScanPipeProgressClock()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Named block sections require Windows.");
-        }
-
         var liveness = new Liveness();
         var sectionName = NamedBlockSection.BuildSectionName('C');
         var (block, lifetime) = NamedBlockSection.Create(new BlockFileCreateOptions
