@@ -187,17 +187,7 @@ public sealed class FileIndexDisposeCancelsQueryTests : IDisposable
             var holdTheReader = () =>
             {
                 admitted.TrySetResult();
-                try
-                {
-                    released.Task.Wait(token);
-                }
-                catch (OperationCanceledException)
-                {
-                }
-                catch (AggregateException aggregateException)
-                    when (aggregateException.InnerExceptions.All(e => e is OperationCanceledException))
-                {
-                }
+                released.Task.Wait();
             };
             index.Hooks.ReaderAdmitted = holdTheReader;
             if (initialBlock is not null)
