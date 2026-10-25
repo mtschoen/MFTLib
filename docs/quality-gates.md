@@ -180,7 +180,7 @@ The default report is `.aislop/preflight/report.json` under the repository.
 Use `-ReportPath` for another destination; relative paths are repository-relative.
 Scanner stdout is preserved there even when JSON validation or the gate fails.
 Empty, malformed, or null JSON and fewer than ten scanned files fail the gate.
-A nonzero scanner exit remains a failure. While waiting, the gate observes the
+A nonzero scanner exit remains a failure. When it leaves the score at or above `failBelow`, the gate prints the report's missing tools, engine failures and failed engines in one `aislop gate: exited nonzero` line, also appended to the evidence log. While waiting, the gate observes the
 process every five seconds and emits a heartbeat every sixty seconds so a
 quiet scan does not lose its CI log lease. It waits for redirected output to
 finish before reading the report. On scanner failure it groups score-affecting

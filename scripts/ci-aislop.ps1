@@ -47,7 +47,7 @@ function Write-AislopDiagnostics {
     $scoring = @($diagnostics | Where-Object { $_.scoreImpact.multiplier -gt 0 })
     $reportOnly = $diagnostics.Count - $scoring.Count
     if ($scoring.Count -eq 0) {
-        Write-Host "aislop score below failBelow, but no score-affecting findings were reported ($reportOnly report-only findings not shown)"
+        Write-Host "aislop: no score-affecting findings were reported ($reportOnly report-only findings not shown)"
         return
     }
     Write-Host "::group::aislop score-affecting findings ($($scoring.Count); $reportOnly report-only findings not shown)"
@@ -62,6 +62,58 @@ function Write-AislopEvidence {
     param([string] $Line, [string] $EvidenceLogPath)
     Write-Host $Line
     if ($EvidenceLogPath) { Add-Content -LiteralPath $EvidenceLogPath -Value $Line -Encoding utf8 }
+}
+
+function Get-AislopFailBelow {
+    $configPath = '.aislop/config.yml'
+    if (Test-Path -LiteralPath $configPath -PathType Leaf) {
+        foreach ($line in Get-Content -LiteralPath $configPath) {
+            if ($line -match '^\s*failBelow:\s*(\d+)') { return [int] $Matches[1] }
+        }
+    }
+    return 100
+}
+
+function Get-AislopEngineProperty {
+    param($Result, [string] $Property)
+    if (-not $Result.engines) { return }
+    foreach ($engine in $Result.engines.PSObject.Properties) {
+        if ($engine.Value.$Property) { [pscustomobject]@{ Name = $engine.Name; Value = $engine.Value.$Property } }
+    }
+}
+
+function Format-AislopEngineFailure {
+    param([string] $EngineName, $Failure)
+    $tool = if ($Failure.tool) { $Failure.tool } else { 'unknown' }
+    $target = if ($Failure.target) { $Failure.target } else { 'unknown' }
+    $reason = if ($Failure.reason) { $Failure.reason } else { 'no reason' }
+    return "$EngineName $tool ${target}: $reason"
+}
+
+function Get-AislopExitReason {
+    param($Result)
+    $missingTools = @(@($Result.missingTools) + @(Get-AislopEngineProperty $Result 'missingTools' | ForEach-Object { $_.Value }) |
+        Where-Object { $_ } | Select-Object -Unique)
+    $failures = @(Get-AislopEngineProperty $Result 'failures' | ForEach-Object {
+        $name = $_.Name
+        foreach ($failure in @($_.Value)) { Format-AislopEngineFailure $name $failure }
+    })
+    $failedEngines = @(Get-AislopEngineProperty $Result 'failed' | ForEach-Object { $_.Name })
+    $parts = @()
+    if ($missingTools.Count -gt 0) { $parts += "missing tools: $($missingTools -join ', ')" }
+    if ($failures.Count -gt 0) { $parts += "engine failures: $($failures -join '; ')" }
+    if ($failedEngines.Count -gt 0) { $parts += "failed engines: $($failedEngines -join ', ')" }
+    return $parts
+}
+
+function Write-AislopExitReason {
+    param($Result, [string] $EvidenceLogPath)
+    $parts = @(Get-AislopExitReason $Result)
+    foreach ($part in $parts) { Write-Host "aislop $part" }
+    $failBelow = Get-AislopFailBelow
+    if ($Result.score -lt $failBelow) { return }
+    $detail = if ($parts.Count -gt 0) { $parts -join '; ' } else { 'no missing tool or engine failure in the report, inspect it' }
+    Write-AislopEvidence "aislop gate: exited nonzero at score $($Result.score) (failBelow $failBelow); $detail" $EvidenceLogPath
 }
 
 function Invoke-AislopGate {
@@ -109,6 +161,7 @@ function Invoke-AislopGate {
         if ($files -lt 10) { throw "aislop only scanned $files files; the C# engine did not run." }
         if ($gateExit -ne 0) {
             Write-AislopDiagnostics $result
+            Write-AislopExitReason $result $EvidenceLogPath
             Write-Host "aislop scanner failed with exit code $gateExit"
         }
         return [int] $gateExit

@@ -210,6 +210,41 @@ if (process.argv[2] === '--version') {
     }
     Set-FixtureState $goodReport
 
+    Set-Content -LiteralPath (Join-Path $repository '.aislop/config.yml') -Value "scoring:`n  failBelow: 100"
+    $missingToolsReport = @{
+        score = 100
+        summary = @{ files = 12 }
+        diagnostics = @()
+        engines = [ordered]@{
+            format = @{ missingTools = @('clang-format') }
+            lint = @{ missingTools = @('cppcheck', 'clang-format') }
+            'ai-slop' = @{
+                failed = $true
+                failures = @(@{ tool = 'git ls-files'; target = '.'; reason = 'exit 128' })
+            }
+        }
+    } | ConvertTo-Json -Depth 6 -Compress
+    $reasonLog = Join-Path $temporaryDirectory 'reason-evidence-log.txt'
+    Set-FixtureState $missingToolsReport -ExitCode 1
+    $result = Invoke-Gate -EvidenceLogPath $reasonLog
+    $expectedReason = 'aislop gate: exited nonzero at score 100 (failBelow 100); missing tools: clang-format, cppcheck; ' +
+        'engine failures: ai-slop git ls-files .: exit 128; failed engines: ai-slop'
+    Assert-True ($result.ExitCode -eq 1) 'Missing tools at a perfect score keep the scanner failure status'
+    Assert-True ($result.Output.Contains('aislop missing tools: clang-format, cppcheck')) 'Missing tools are listed once each across engines'
+    Assert-True ($result.Output.Contains('aislop engine failures: ai-slop git ls-files .: exit 128')) 'Engine failures are listed'
+    Assert-True ($result.Output.Contains($expectedReason)) 'Nonzero exit at a passing score prints the explanatory line'
+    Assert-True (@(Get-Content -LiteralPath $reasonLog) -contains $expectedReason) 'Evidence log receives the exit reason line'
+
+    Set-FixtureState ($missingToolsReport -replace '"score":100', '"score":90') -ExitCode 1
+    $result = Invoke-Gate
+    Assert-True ($result.ExitCode -eq 1 -and -not $result.Output.Contains('aislop gate: exited nonzero')) 'A score below failBelow prints no explanatory line'
+    Assert-True ($result.Output.Contains('aislop missing tools: clang-format, cppcheck')) 'A score below failBelow still lists missing tools'
+
+    Set-FixtureState $goodReport -ExitCode 1
+    $result = Invoke-Gate
+    Assert-True ($result.Output.Contains('(failBelow 100); no missing tool or engine failure in the report, inspect it')) 'An unexplained nonzero exit says to inspect the report'
+    Set-FixtureState $goodReport
+
     Invoke-FixtureGit commit --quiet --allow-empty -m 'Different scanner commit'
     $actualCommit = Invoke-FixtureGit rev-parse HEAD
     $result = Invoke-Gate
