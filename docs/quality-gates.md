@@ -2,7 +2,7 @@
 
 ## CI
 
-Gitea Actions workflow at `.gitea/workflows/test.yml` defines four jobs on every PR and on push to `main` or to a `pr-crew/merge-train/**` branch (the merge train validates a batch there before landing it): `windows`, `linux`, `docs`, and `linux-package`. The coverage jobs (`windows` and `linux`) run their respective coverage scripts (`scripts/run-coverage.ps1 -NonInteractive` and `scripts/coverage-linux.sh`). Branch protection on `main` requires the `test / windows`, `test / linux`, `test / linux-package` and `aislop / quality-gate` `(pull_request)` checks to pass before merge; the `test / docs (pull_request)` check runs on every pull request but is not a required check.
+Gitea Actions workflow at `.gitea/workflows/test.yml` defines four shared validation jobs on every PR and on push to `main` or to a `pr-crew/merge-train/**` branch (the merge train validates a batch there before landing it): `windows`, `linux`, `docs`, and `linux-package`. The report-specific jobs are described below. The coverage jobs (`windows` and `linux`) run their respective coverage scripts (`scripts/run-coverage.ps1 -NonInteractive` and `scripts/coverage-linux.sh`). Branch protection on `main` requires the `test / windows`, `test / linux`, `test / linux-package` and `aislop / quality-gate` `(pull_request)` checks to pass before merge; the `test / docs (pull_request)` check runs on every pull request but is not a required check.
 
 The Windows job first parses every maintained script and runs the syntax gate's
 offline regression suite. Both steps run before `id: changed-files`, including
@@ -77,6 +77,40 @@ The `linux-package` job builds the Release linux-x64 library, runs `scripts/chec
 Windows jobs run on the host-mode `windows-latest` runner, where toolchains are provisioned on the host: no `actions/setup-*` step belongs in a job that runs on it (`microsoft/setup-msbuild` only locates MSBuild and is allowed). The `linux`, `docs` and `linux-package` jobs read their container image from the repository Actions variable `MFTLIB_CI_IMAGE`. The repository operator provisions the image reference before enabling these jobs. The image supplies CMake, Ninja, gcovr, .NET SDK 10, g++, gcov and make; workflows do not install those tools. Each container retains `--ulimit nofile=65536:65536`.
 
 Keep `pwsh` on the runner account's PATH and configure `DOTNET_INSTALL_DIR` at the runner service, never through workflow bootstrap steps. Use amd64 MSBuild and the shared Windows build script. Keep coverlet's comma-separated include filter in the project file rather than passing it through PowerShell. Compute file hashes in the shell because `hashFiles()` can evaluate empty on this runner. Every workflow upload uses the pinned `ChristopherHX/gitea-upload-artifact` action, because `actions/upload-artifact@v3` uploads are not listed by this Gitea deployment's artifacts REST API, which pr-crew reviews read.
+
+## Generated test summary
+
+`test / report-guard` runs on every pull request and rejects any PR diff touching
+`TEST-REPORT.md`, including additions and deletions. The report is generated on main
+by CI, never edited in a PR or written by local coverage scripts.
+
+The `test` workflow also runs nightly at 03:23 UTC. After successful `windows` and
+`linux` coverage jobs, `publish-report` runs only on main pushes and scheduled main
+runs. The existing docs-only early exit suppresses coverage and publication for
+report-only pushes, preventing a bot publication loop without workflow-level path
+filters. Nightly runs collect fresh results even when main has not changed.
+
+The publisher downloads the current run's `windows-coverage` and `linux-coverage`
+artifacts with the pinned `ChristopherHX/gitea-download-artifact` action, paired with
+the upload pin, verifies their `commit.txt` markers against the
+source commit, and runs `scripts/generate-test-report.ps1`. The summary stays below
+4096 UTF-8 bytes: per-project TRX Counters totals, passed, failed and skipped counts,
+managed Cobertura line and branch coverage, optional Linux native line coverage,
+source commit and workflow run id as plain text (no host links, so the tracked file passes the portability guard), and the run's creation timestamp. Skipped counts come from the per-result NotExecuted outcomes, because the producer leaves the Counters notExecuted attribute at zero. Full TRX
+and coverage output remain CI artifacts. The generator reuses the coverage status
+helper's invariant percentage validation. Identical inputs produce identical bytes.
+
+Publication reuses `MFTLIB_SYNC_TOKEN`, the consumer-sync bot credential, and commits
+as `claude-code` with `chore: regenerate TEST-REPORT.md from <run id>`. An identical
+file is not committed. A run whose source is no longer main's tip does not publish;
+a concurrent main update makes the ordinary non-force push fail safely. The first
+report is created by CI after this workflow reaches main.
+
+Run the offline fixtures with `pwsh -NoProfile -File scripts/generate-test-report.ps1`
+or `pwsh -NoProfile -File scripts/generate-test-report.tests.ps1`. To generate a local
+sample, supply `-WindowsTrx`, `-WindowsCobertura`, `-LinuxTrx`, `-LinuxCobertura`,
+`-Commit`, `-RunId`, `-GeneratedAt`, and an ignored `-OutputPath`;
+`-LinuxNativeSummary` is optional. Do not generate the root report locally.
 
 ## Local CI preflight
 

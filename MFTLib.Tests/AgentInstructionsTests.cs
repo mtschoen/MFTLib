@@ -134,10 +134,19 @@ public partial class AgentInstructionsTests
         Assert.DoesNotContain(".maintenance.json", paths, "Maintenance state must be local.");
         Assert.AreEqual(".maintenance.json",
             RepositoryFiles.Git("check-ignore", "--no-index", ".maintenance.json").Trim());
-        Assert.DoesNotContain("TEST-REPORT.md", paths,
-            "Per-run measurements belong in coverage artifacts.");
-        Assert.AreEqual("TEST-REPORT.md",
-            RepositoryFiles.Git("check-ignore", "--no-index", "TEST-REPORT.md").Trim());
+        Assert.DoesNotContain("TEST-REPORT", RepositoryFiles.Read(".gitignore"),
+            "CI tracks the generated report on main, so it must not be ignored.");
+        if (paths.Contains("TEST-REPORT.md"))
+        {
+            // The loop above already applied every private-content rule to the tracked report.
+            var report = RepositoryFiles.Read("TEST-REPORT.md");
+            Assert.StartsWith("# Test report: generated on main by CI; must not be edited in a pull request",
+                report, "A tracked report must carry the generator's provenance header.");
+            Assert.IsTrue(Regex.IsMatch(report, @"(?m)^Source commit: [0-9a-f]{40}\r?$"),
+                "A tracked report must name its full source commit.");
+            Assert.IsTrue(Regex.IsMatch(report, @"(?m)^Workflow run: \d+\r?$"),
+                "A tracked report must name its workflow run.");
+        }
     }
 
     [TestMethod]

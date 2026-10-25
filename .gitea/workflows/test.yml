@@ -5,6 +5,8 @@ on:
     # pr-crew merge train pushes its synthetic batch commit to this branch and polls this run's statuses before landing the batch.
     branches: [main, 'pr-crew/merge-train/**']
   pull_request:
+  schedule:
+    - cron: '23 3 * * *'
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -17,6 +19,8 @@ jobs:
   windows:
     runs-on: windows-latest
     timeout-minutes: 45
+    outputs:
+      skip_build: ${{ steps.changed-files.outputs.skip_build }}
     steps:
       - uses: actions/checkout@v4
 
@@ -83,6 +87,11 @@ jobs:
         if: steps.changed-files.outputs.skip_build != 'true'
         shell: pwsh
         run: pwsh -NoProfile -File scripts/test-coverage-status.ps1
+
+      - name: Test summary report generator
+        if: steps.changed-files.outputs.skip_build != 'true'
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/generate-test-report.ps1
 
       - name: Test shared coverage child runner
         if: steps.changed-files.outputs.skip_build != 'true'
@@ -163,6 +172,8 @@ jobs:
       image: ${{ vars.MFTLIB_CI_IMAGE }}
       options: --ulimit nofile=65536:65536
     timeout-minutes: 30
+    outputs:
+      skip_build: ${{ steps.changed-files.outputs.skip_build }}
     steps:
       - uses: actions/checkout@v4
 
@@ -313,3 +324,112 @@ jobs:
           path: |
             build/linux/libMFTLibNative.so
             build/linux/native-check.txt
+
+  report-guard:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reject pull request edits to the generated report
+        shell: bash
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          test -n "$PR_BASE"
+          git fetch origin "$PR_BASE"
+          changed=$(git diff --name-only "$PR_BASE"...HEAD -- TEST-REPORT.md)
+          if [ -n "$changed" ]; then
+            echo 'TEST-REPORT.md is generated on main by CI and must not be edited in a pull request.' >&2
+            exit 1
+          fi
+
+  publish-report:
+    needs: [windows, linux]
+    # The shared docs-only early exit also suppresses report-only bot pushes.
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'schedule') &&
+      needs.windows.outputs.skip_build != 'true' && needs.linux.outputs.skip_build != 'true'
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          token: ${{ secrets.MFTLIB_SYNC_TOKEN }}
+      - name: Download the Windows coverage artifact
+        # Gitea-native fork, paired with the upload pin: the stock download action cannot read artifacts uploaded by it.
+        uses: ChristopherHX/gitea-download-artifact@75635f32b4c1c41c4b3d64e8f85210112ed4c9c7
+        with:
+          name: windows-coverage
+          path: ${{ runner.temp }}/test-report-windows
+      - name: Download the Linux coverage artifact
+        uses: ChristopherHX/gitea-download-artifact@75635f32b4c1c41c4b3d64e8f85210112ed4c9c7
+        with:
+          name: linux-coverage
+          path: ${{ runner.temp }}/test-report-linux
+      - name: Generate the summary from the downloaded artifacts
+        id: summary
+        shell: pwsh
+        env:
+          GITEA_TOKEN: ${{ secrets.MFTLIB_SYNC_TOKEN }}
+          SERVER_URL: ${{ github.server_url }}
+          REPOSITORY: ${{ github.repository }}
+          SOURCE_COMMIT: ${{ github.sha }}
+          WORKFLOW_RUN: ${{ github.run_id }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git fetch origin main
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect main before publication' }
+          $mainCommit = git rev-parse FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve main' }
+          if ($mainCommit -ne $env:SOURCE_COMMIT) {
+            Write-Host 'Main advanced; a newer run owns report publication.'
+            exit 0
+          }
+          $headers = @{ Authorization = "token $env:GITEA_TOKEN" }
+          $api = "$env:SERVER_URL/api/v1/repos/$env:REPOSITORY"
+          $run = Invoke-RestMethod "$api/actions/runs/$env:WORKFLOW_RUN" -Headers $headers
+          if ($run.head_sha -ne $env:SOURCE_COMMIT) { throw 'Workflow source commit mismatch' }
+          $roots = @{}
+          foreach ($platform in @('windows', 'linux')) {
+            $directory = Join-Path $env:RUNNER_TEMP "test-report-$platform"
+            $markers = @(Get-ChildItem $directory -Recurse -Filter commit.txt)
+            if ($markers.Count -ne 1 -or (Get-Content $markers[0].FullName -Raw).Trim() -ne $env:SOURCE_COMMIT) {
+              throw "$platform artifact source commit mismatch"
+            }
+            $roots[$platform] = $markers[0].Directory.FullName
+          }
+          $timestamp = ([DateTimeOffset]$run.created_at).ToUniversalTime().ToString('o')
+          $arguments = @{
+            WindowsTrx = @(Join-Path $roots.windows 'non-admin.trx')
+            WindowsCobertura = @(Join-Path (Split-Path $roots.windows -Parent) 'coverage.xml')
+            LinuxTrx = @(Join-Path $roots.linux 'managed.trx')
+            LinuxCobertura = @(Join-Path $roots.linux 'managed/coverage.cobertura.xml')
+            Commit = $env:SOURCE_COMMIT; RunId = $env:WORKFLOW_RUN
+            GeneratedAt = $timestamp
+          }
+          $native = Join-Path $roots.linux 'summary.txt'
+          if (Test-Path -LiteralPath $native) { $arguments.LinuxNativeSummary = $native }
+          & ./scripts/generate-test-report.ps1 @arguments
+          'publish=true' | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+      - name: Commit the generated report as the bot
+        if: steps.summary.outputs.publish == 'true'
+        shell: pwsh
+        env:
+          WORKFLOW_RUN: ${{ github.run_id }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git add -- TEST-REPORT.md
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot stage generated report' }
+          git diff --cached --quiet -- TEST-REPORT.md
+          if ($LASTEXITCODE -eq 0) { Write-Host 'Report is unchanged.'; exit 0 }
+          if ($LASTEXITCODE -ne 1) { throw 'Cannot compare generated report' }
+          git -c user.name=claude-code -c user.email=claude-code@noreply.local commit -m "chore: regenerate TEST-REPORT.md from $env:WORKFLOW_RUN"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot commit generated report' }
+          git push origin HEAD:main
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot publish report; main may have advanced' }
