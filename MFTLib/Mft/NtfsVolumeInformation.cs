@@ -37,9 +37,14 @@ readonly record struct NtfsVolumeInformation(
     [SupportedOSPlatform("windows")]
     public static NtfsVolumeInformation Query(DriveKey drive) => Query(drive, OperatingSystem.IsWindows());
 
+    /// <summary>
+    ///     The real query behind <see cref="Query(DriveKey)" />, given whether the host is Windows, so
+    ///     the refusal off Windows is tested on every platform. Depends only on its arguments and
+    ///     the platform APIs.
+    /// </summary>
     internal static NtfsVolumeInformation Query(DriveKey drive, bool isWindows)
     {
-        if (!isWindows)
+        if (!isWindows || !OperatingSystem.IsWindows())
         {
             throw new PlatformNotSupportedException(
                 "NTFS volume information queries require Windows (FSCTL_GET_NTFS_VOLUME_DATA).");

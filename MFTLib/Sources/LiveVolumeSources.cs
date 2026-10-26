@@ -84,16 +84,12 @@ static class LiveVolumeSources
         return volume.Journal.QueryUsnJournalCursor();
     }
 
-    // NtfsVolumeInformation.Query is [SupportedOSPlatform("windows")]; the explicit
-    // OperatingSystem.IsWindows() guard (rather than marking this method or its callers
-    // windows-only) lets a broker built for this cross-platform library still throw a clear
-    // PlatformNotSupportedException on a non-Windows host instead of failing to compile there.
+    // The internal overload carries the platform refusal, so a broker built for this cross-platform
+    // library throws a clear PlatformNotSupportedException on a non-Windows host instead of failing to
+    // compile there.
     internal static NtfsVolumeInformation QueryVolumeInfo(DriveKey drive)
     {
-        return OperatingSystem.IsWindows()
-            ? NtfsVolumeInformation.Query(drive)
-            : throw new PlatformNotSupportedException(
-                "NTFS volume information queries require Windows (FSCTL_GET_NTFS_VOLUME_DATA).");
+        return NtfsVolumeInformation.Query(drive, OperatingSystem.IsWindows());
     }
 
     internal static (UsnJournalEntry[] Entries, UsnJournalCursor Updated) ReadJournal(DriveKey drive, UsnJournalCursor since,

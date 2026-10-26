@@ -17,6 +17,8 @@ ref struct RowScanner
     internal const uint CancellationCheckIntervalRows = 4096;
 
     readonly ReadOnlySpan<FileRow> _rows;
+    // ReSharper disable once ReplaceWithFieldKeyword
+    // aislop-ignore-next-line jb/ReplaceWithFieldKeyword -- the field is the block's whole packed name pool, not CurrentName's storage
     readonly ReadOnlySpan<char> _namePool;
     readonly uint _endRowExclusive;
     readonly CancellationToken _cancellationToken;
@@ -60,8 +62,8 @@ ref struct RowScanner
         get
         {
             var descriptor = FileRow.ReadDescriptorWord(in Current);
-            var start = (int)(FileRow.DescriptorNameOffsetBytes(descriptor) / sizeof(char));
-            return _namePool.Slice(start, FileRow.DescriptorNameLengthUnits(descriptor));
+            return NamePool.Read(_namePool, FileRow.DescriptorNameOffsetBytes(descriptor),
+                FileRow.DescriptorNameLengthUnits(descriptor));
         }
     }
 
