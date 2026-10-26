@@ -178,7 +178,7 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
         var failed = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, failed.State);
         Assert.AreEqual(
-            "Drive T: no usable cache (missing, corrupt, or incompatible) and --cache-only forbids a scan.",
+            "Drive T: no usable cache (missing, corrupt, or incompatible) and CacheMode.ExistingOnly forbids a scan.",
             failed.Failure?.Message);
         Assert.AreEqual(DriveFailureKind.CacheDeclined, failed.Failure?.Kind);
     }

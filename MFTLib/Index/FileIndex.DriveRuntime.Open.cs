@@ -25,7 +25,7 @@ public sealed partial class FileIndex
                 return RecordFailedDrive(DriveFailureKind.InUse, new PendingDriveResult
                 {
                     ProducerFailureMessage =
-                        $"Drive {driveKey}: cache block is in use by another FileIndex and --cache-only forbids a scan."
+                        $"Drive {driveKey}: cache block is in use by another FileIndex and CacheMode.ExistingOnly forbids a scan."
                 }, settlement);
             }
 
@@ -60,7 +60,7 @@ public sealed partial class FileIndex
                 return RecordFailedDrive(failureKind, opened with
                 {
                     ProducerFailureMessage =
-                        $"Drive {driveKey}: no usable cache (missing, corrupt, or incompatible) and --cache-only forbids a scan."
+                        $"Drive {driveKey}: no usable cache (missing, corrupt, or incompatible) and CacheMode.ExistingOnly forbids a scan."
                 }, settlement);
             }
 

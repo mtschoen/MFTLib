@@ -54,7 +54,7 @@ public sealed class FileIndexOwnerLockTests : IDisposable
                 Assert.IsNull(status.Block);
                 Assert.AreEqual(DriveFailureKind.InUse, status.Failure?.Kind);
                 Assert.AreEqual(
-                    "Drive T: cache block is in use by another FileIndex and --cache-only forbids a scan.",
+                    "Drive T: cache block is in use by another FileIndex and CacheMode.ExistingOnly forbids a scan.",
                     status.Failure?.Message);
                 Assert.IsTrue(File.Exists(CanonicalPath),
                     "the second opener must not delete the first index's live block");
