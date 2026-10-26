@@ -26,7 +26,7 @@ public partial class MftVolumeTests
         // TimeSpan.FromMilliseconds throw while constructing the MftScanProgress,
         // exercising that catch. The malformed sample must be dropped (never reach
         // progress.Report), while the parse itself still succeeds normally.
-        MftProgressParseFixture.ConfigureSingleRecordParse(callback => callback?.Invoke(1, 10, double.NaN));
+        MftProgressParseFixture.ConfigureSingleRecordParse(callback => callback.Invoke(1, 10, double.NaN));
 
         var reported = new List<MftScanProgress>();
         var directProgress = new SynchronousProgress<MftScanProgress>(reported.Add);
@@ -53,9 +53,9 @@ public partial class MftVolumeTests
 
         MftProgressParseFixture.ConfigureSingleRecordParse(callback =>
         {
-            callback?.Invoke(1, 3, 10);
-            callback?.Invoke(2, 3, 20);
-            callback?.Invoke(3, 3, 30);
+            callback.Invoke(1, 3, 10);
+            callback.Invoke(2, 3, 20);
+            callback.Invoke(3, 3, 30);
             receivedCountAtReturn = receivedCount;
         });
 
@@ -78,8 +78,8 @@ public partial class MftVolumeTests
         // must still complete, and later samples must still reach the consumer.
         MftProgressParseFixture.ConfigureSingleRecordParse(callback =>
         {
-            callback?.Invoke(1, 2, 10);
-            callback?.Invoke(2, 2, 20);
+            callback.Invoke(1, 2, 10);
+            callback.Invoke(2, 2, 20);
         });
 
         var reported = new List<MftScanProgress>();

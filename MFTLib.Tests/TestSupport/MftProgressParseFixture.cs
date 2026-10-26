@@ -7,7 +7,7 @@ namespace MFTLib.Tests.TestSupport;
 
 static unsafe class MftProgressParseFixture
 {
-    public static void ConfigureSingleRecordParse(Action<MFTLibNative.NativeMftProgressCallback?> reportProgress)
+    public static void ConfigureSingleRecordParse(Action<NativeProgressCallback> reportProgress)
     {
         MFTLibNative.Hooks._getMftNativeAbiVersion = () => MFTLibNative.ExpectedMftNativeAbiVersion;
         FileUtilities.Hooks._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);

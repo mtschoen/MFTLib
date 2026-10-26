@@ -45,7 +45,7 @@ public partial class NativeMftProcessingTests
             using var input = MFTLibNative.OpenMftDumpInput(MFTLibNative.NullTerminatedUtf8(path), out var info);
             Assert.IsFalse(input.IsInvalid, info.ErrorMessage);
             NativeTestHooks.NativeSetAllocFailCountdown(mode);
-            var pointer = MFTLibNative.ParseMftDumpInput(input, 256, IntPtr.Zero, null);
+            var pointer = MFTLibNative.ParseMftDumpInput(input, 256, IntPtr.Zero, default);
             Assert.AreNotEqual(IntPtr.Zero, pointer);
             try
             {
@@ -62,7 +62,7 @@ public partial class NativeMftProcessingTests
 
             NativeTestHooks.NativeResetTestState();
             NativeTestHooks.NativeSetMaxThreads(2);
-            pointer = MFTLibNative.ParseMftDumpInput(input, 256, IntPtr.Zero, null);
+            pointer = MFTLibNative.ParseMftDumpInput(input, 256, IntPtr.Zero, default);
             Assert.AreNotEqual(IntPtr.Zero, pointer);
             try
             {
@@ -93,14 +93,15 @@ public partial class NativeMftProcessingTests
             Assert.IsTrue(MFTLibNative.GenerateSyntheticMftSized(path, 1024, 256, 1024));
             using var input = MFTLibNative.OpenMftDumpInput(MFTLibNative.NullTerminatedUtf8(path), out var info);
             Assert.IsFalse(input.IsInvalid, info.ErrorMessage);
-            var pointer = MFTLibNative.ParseMftDumpInput(input, 256, IntPtr.Zero,
-                (records, _, _) =>
+            using var registration = new NativeProgressRegistration(new SynchronousProgress<MftScanProgress>(
+                sample =>
                 {
-                    if (records == 256)
+                    if (sample.RecordsScanned == 256)
                     {
                         NativeTestHooks.NativeSetAllocFailCountdown(-1);
                     }
-                });
+                }));
+            var pointer = MFTLibNative.ParseMftDumpInput(input, 256, IntPtr.Zero, registration.Callback);
             Assert.AreNotEqual(IntPtr.Zero, pointer);
             try
             {

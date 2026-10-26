@@ -43,7 +43,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
         using var image = File.OpenHandle(imagePath);
 
         var resultPointer = MFTLibNative.Hooks._parseMftRecordsWithProgress(image, false, 64, IntPtr.Zero,
-            null);
+            default);
         var counted = Marshal.PtrToStructure<MftParseResult>(resultPointer);
         using var result = new MftResult(resultPointer);
         var recordNumbers = result.ToRecords().Select(record => record.RecordNumber).ToArray();
@@ -157,7 +157,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
         using var handle = File.OpenHandle(imagePath);
 
         var resultPointer = MFTLibNative.Hooks._parseMftRecordsWithProgress(handle, false, 64, IntPtr.Zero,
-            null);
+            default);
         try
         {
             var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
@@ -192,7 +192,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
     {
         using var image = File.OpenHandle(imagePath);
         using var result = new MftResult(
-            MFTLibNative.Hooks._parseMftRecordsWithProgress(image, false, 64, IntPtr.Zero, null));
+            MFTLibNative.Hooks._parseMftRecordsWithProgress(image, false, 64, IntPtr.Zero, default));
         Assert.AreEqual(0UL, result.InvalidFixupRecordCount, "the untouched image has no invalid fixup");
         return [.. result.ToRecords().Where(record => record.InUse).Select(record => record.RecordNumber)];
     }

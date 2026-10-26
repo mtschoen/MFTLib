@@ -9,10 +9,10 @@ namespace MFTLib.Tests;
 public class MftRecordSizeAndTimeTests
 {
     [TestMethod]
-    public void ExpectedAbiVersion_IsTen()
+    public void ExpectedAbiVersion_IsEleven()
     {
         var expectedVersion = MFTLibNative.ExpectedMftNativeAbiVersion;
-        Assert.AreEqual(10u, expectedVersion);
+        Assert.AreEqual(11u, expectedVersion);
     }
 
     [TestMethod]
@@ -24,9 +24,9 @@ public class MftRecordSizeAndTimeTests
 
     [TestMethod]
     [TestCategory("Smoke")]
-    public void NativeLibrary_ReportsAbiVersionTen()
+    public void NativeLibrary_ReportsAbiVersionEleven()
     {
-        Assert.AreEqual(10u, MFTLibNative.Hooks._getMftNativeAbiVersion());
+        Assert.AreEqual(11u, MFTLibNative.Hooks._getMftNativeAbiVersion());
     }
 
     [TestMethod]

@@ -130,7 +130,8 @@ public sealed class MftDumpInputFaultTests : IDisposable
     [TestMethod]
     public void NativeParse_WithoutAnInput_ReturnsAnErrorResult()
     {
-        var resultPointer = NativeTestHooks.NativeParseMftDumpInputRaw(IntPtr.Zero, 4, IntPtr.Zero, IntPtr.Zero);
+        var resultPointer = NativeTestHooks.NativeParseMftDumpInputRaw(IntPtr.Zero, 4, IntPtr.Zero, IntPtr.Zero,
+            IntPtr.Zero);
         try
         {
             var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
@@ -173,7 +174,8 @@ public sealed class MftDumpInputFaultTests : IDisposable
             Assert.AreEqual(1024u, opened.RecordSize);
             Assert.AreEqual(string.Empty, opened.ErrorMessage);
 
-            var resultPointer = NativeTestHooks.NativeParseMftDumpInputRaw(input, 0, IntPtr.Zero, IntPtr.Zero);
+            var resultPointer = NativeTestHooks.NativeParseMftDumpInputRaw(input, 0, IntPtr.Zero, IntPtr.Zero,
+                IntPtr.Zero);
             try
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);

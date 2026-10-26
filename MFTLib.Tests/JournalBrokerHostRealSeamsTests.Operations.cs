@@ -48,8 +48,8 @@ public partial class JournalBrokerHostRealSeamsTests
         MFTLibNative.Hooks._parseMftRecordsWithProgress = (_, freed, _, _, callback) =>
         {
             freedRequests.Add(freed);
-            callback?.Invoke(200, 300, 42.0);
-            callback?.Invoke(300, 300, 45.0);
+            callback.Invoke(200, 300, 42.0);
+            callback.Invoke(300, 300, 45.0);
             return parsePtr;
         };
         MockFreeMftResult();

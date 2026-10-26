@@ -182,13 +182,14 @@ EXPORT MftDumpInput* OpenMftDumpInput(const char* filePathUtf8, MftDumpInputInfo
 // Parses every allocated base record of an opened dump; freed records are never emitted. Fails with invalidInput set
 // when an allocated record's fixup is invalid or the file cannot be read to the length OpenMftDumpInput reported.
 EXPORT MftParseResult* ParseMftDumpInput(const MftDumpInput* input, const uint32_t bufferSizeRecords,
-                                         const MftParseControl* control, const MftProgressCallback callback) {
+                                         const MftParseControl* control, const MftProgressCallback callback,
+                                         void* const callbackContext) {
     return NativeBoundary(
         [&] {
             if (input == nullptr) {
                 return CreateParseResult(L"Dump input is invalid");
             }
-            return ParseDump(*input, ParseRequest{false, bufferSizeRecords, control, callback});
+            return ParseDump(*input, ParseRequest{false, bufferSizeRecords, control, callback, callbackContext});
         },
         [](const wchar_t*) -> MftParseResult* { return nullptr; });
 }

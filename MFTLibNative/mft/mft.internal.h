@@ -217,6 +217,7 @@ struct ParseRequest {
     uint32_t bufferSizeRecords = 0;
     const MftParseControl* control = nullptr;
     MftProgressCallback callback = nullptr;
+    void* callbackContext = nullptr;
 };
 
 // A zeroed result carrying the entry stride, and message when one is given.

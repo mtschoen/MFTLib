@@ -40,7 +40,7 @@ public partial class MftResultTests
             control.RequestCancel();
             using var image = new FileStream(imagePath, FileMode.Open, FileAccess.Read, FileShare.Read);
             var resultPtr = MFTLibNative.Hooks._parseMftRecordsWithProgress(
-                image.SafeFileHandle, false, 64, control.Pointer, null);
+                image.SafeFileHandle, false, 64, control.Pointer, default);
             try
             {
                 Assert.AreEqual((int)MFTLibNative.NativeCompactEntrySize, Marshal.ReadInt32(resultPtr, entryStrideOffset));

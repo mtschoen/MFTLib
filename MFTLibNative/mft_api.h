@@ -10,7 +10,7 @@
     #endif
 #endif
 
-constexpr uint32_t MFT_NATIVE_ABI_VERSION = 10;
+constexpr uint32_t MFT_NATIVE_ABI_VERSION = 11;
 
 // One UTF-16 code unit of a native error message. wchar_t is 16 bits on Windows and 32 bits
 // elsewhere, so the result structs declare their message buffers in this type and keep one
@@ -31,7 +31,9 @@ constexpr size_t MFT_ERROR_MESSAGE_UNITS = 256;
 // because the size is unknown rather than because the file is empty.
 constexpr uint16_t MFT_ENTRY_FLAG_SIZE_UNKNOWN = 0x8000;
 
-using MftProgressCallback = void (*)(uint64_t recordsScanned, uint64_t totalRecords, double elapsedMs);
+// Receives the callbackContext the caller passed beside it, unchanged, so the caller can route the
+// report without a closure.
+using MftProgressCallback = void (*)(void* context, uint64_t recordsScanned, uint64_t totalRecords, double elapsedMs);
 
 // Caller-owned, kept in place for the whole parse call. The caller may write either field while
 // the parse runs; the parser only reads them, atomically. cancelRequested nonzero asks the parse
@@ -146,11 +148,12 @@ extern "C" {
 EXPORT uint32_t GetMftNativeAbiVersion();
 EXPORT MftParseResult* ParseMFTRecordsWithProgress(void* volumeHandle, uint32_t includeFreed,
                                                    uint32_t bufferSizeRecords, const MftParseControl* control,
-                                                   MftProgressCallback callback);
+                                                   MftProgressCallback callback, void* callbackContext);
 EXPORT void FreeMftResult(MftParseResult* result);
 EXPORT MftDumpInput* OpenMftDumpInput(const char* filePathUtf8, MftDumpInputInfo* info);
 EXPORT MftParseResult* ParseMftDumpInput(const MftDumpInput* input, uint32_t bufferSizeRecords,
-                                         const MftParseControl* control, MftProgressCallback callback);
+                                         const MftParseControl* control, MftProgressCallback callback,
+                                         void* callbackContext);
 EXPORT void CloseMftDumpInput(MftDumpInput* input);
 EXPORT bool GenerateSyntheticMFTSizedUtf8(const char* filePath, uint64_t recordCount, uint32_t bufferSizeRecords,
                                           uint32_t recordSize);

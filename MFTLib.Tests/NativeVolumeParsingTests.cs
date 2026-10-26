@@ -37,7 +37,7 @@ public partial class NativeVolumeParsingTests
         client.Connect(5000);
 
         var resultPointer = MFTLibNative.Hooks._parseMftRecordsWithProgress(
-            client.SafePipeHandle, false, 256, IntPtr.Zero, null);
+            client.SafePipeHandle, false, 256, IntPtr.Zero, default);
         Assert.AreNotEqual(IntPtr.Zero, resultPointer);
         try
         {
@@ -145,12 +145,12 @@ public partial class NativeVolumeParsingTests
             File.WriteAllBytes(path, data);
 
             var invocations = new List<(ulong Scanned, ulong Total)>();
-            MFTLibNative.NativeMftProgressCallback callback = (scanned, total, _) =>
-                invocations.Add((scanned, total));
+            using var registration = new NativeProgressRegistration(new SynchronousProgress<MftScanProgress>(
+                sample => invocations.Add(((ulong)sample.RecordsScanned, (ulong)sample.TotalRecords))));
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             var resultPointer = MFTLibNative.Hooks._parseMftRecordsWithProgress(
-                fileStream.SafeFileHandle, false, 64, IntPtr.Zero, callback);
+                fileStream.SafeFileHandle, false, 64, IntPtr.Zero, registration.Callback);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -165,8 +165,6 @@ public partial class NativeVolumeParsingTests
             {
                 MFTLibNative.Hooks._freeMftResult(resultPointer);
             }
-
-            GC.KeepAlive(callback);
         }
         finally
         {
@@ -197,15 +195,15 @@ public partial class NativeVolumeParsingTests
             File.WriteAllBytes(path, data);
 
             var invocations = new List<(ulong Scanned, ulong Total)>();
-            MFTLibNative.NativeMftProgressCallback callback = (scanned, total, _) =>
-                invocations.Add((scanned, total));
+            using var registration = new NativeProgressRegistration(new SynchronousProgress<MftScanProgress>(
+                sample => invocations.Add(((ulong)sample.RecordsScanned, (ulong)sample.TotalRecords))));
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             // Fail the 3rd Read: 1=boot sector, 2=record 0, 3=VolumeReadChunk's
             // first read, so the chunk loop body never executes.
             NativeTestHooks.NativeSetReadFailCountdown(3);
             var resultPointer = MFTLibNative.Hooks._parseMftRecordsWithProgress(
-                fileStream.SafeFileHandle, false, 64, IntPtr.Zero, callback);
+                fileStream.SafeFileHandle, false, 64, IntPtr.Zero, registration.Callback);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -218,8 +216,6 @@ public partial class NativeVolumeParsingTests
             {
                 MFTLibNative.Hooks._freeMftResult(resultPointer);
             }
-
-            GC.KeepAlive(callback);
         }
         finally
         {

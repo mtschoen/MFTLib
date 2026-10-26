@@ -37,7 +37,7 @@ public class MftScanProgressTests
     [TestMethod]
     public void ReadRecordBatches_WithProgress_ReportsNativeProgress()
     {
-        MftProgressParseFixture.ConfigureSingleRecordParse(callback => callback?.Invoke(1, 10, 15.0));
+        MftProgressParseFixture.ConfigureSingleRecordParse(callback => callback.Invoke(1, 10, 15.0));
 
         var reported = new List<MftScanProgress>();
         var directProgress = new SynchronousProgress<MftScanProgress>(reported.Add);
@@ -59,8 +59,8 @@ public class MftScanProgressTests
 
         MftProgressParseFixture.ConfigureSingleRecordParse(callback =>
         {
-            callback?.Invoke(1, 10, 15.0);
-            callback?.Invoke(5, 10, 30.0);
+            callback.Invoke(1, 10, 15.0);
+            callback.Invoke(5, 10, 30.0);
             reportedDuringParse = reported.Count;
         });
 
@@ -78,7 +78,7 @@ public class MftScanProgressTests
     [TestMethod]
     public void ReadRecordBatches_ProgressCallbackThrows_SwallowsExceptionAndCompletes()
     {
-        MftProgressParseFixture.ConfigureSingleRecordParse(callback => callback?.Invoke(1, 10, 15.0));
+        MftProgressParseFixture.ConfigureSingleRecordParse(callback => callback.Invoke(1, 10, 15.0));
 
         var throwingProgress = new SynchronousProgress<MftScanProgress>(
             _ => throw new InvalidOperationException("Simulated UI progress failure"));

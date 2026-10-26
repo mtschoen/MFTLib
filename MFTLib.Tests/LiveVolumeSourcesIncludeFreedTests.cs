@@ -121,7 +121,7 @@ public sealed class LiveVolumeSourcesIncludeFreedTests : IDisposable
     {
         using var image = File.OpenHandle(imagePath);
         using var result = new MftResult(
-            MFTLibNative.Hooks._parseMftRecordsWithProgress(image, false, 64, IntPtr.Zero, null));
+            MFTLibNative.Hooks._parseMftRecordsWithProgress(image, false, 64, IntPtr.Zero, default));
         return [.. result.ToRecords().Where(record => record.InUse).Select(record => record.RecordNumber)];
     }
 

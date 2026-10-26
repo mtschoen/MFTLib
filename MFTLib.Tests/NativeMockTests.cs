@@ -74,7 +74,7 @@ public class NativeMockTests
         using var handle = new SafeFileHandle(new IntPtr(-1), false);
 
         var resultPointer = MFTLibNative.Hooks._parseMftRecordsWithProgress(
-            handle, false, 256, IntPtr.Zero, null);
+            handle, false, 256, IntPtr.Zero, default);
 
         Assert.AreNotEqual(IntPtr.Zero, resultPointer);
         try

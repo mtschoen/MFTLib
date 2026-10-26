@@ -128,12 +128,14 @@ sealed class MftVolume : IDisposable
     // progress adapter, the control block and its allowance and cancellation hooks, the null
     // check and the result wrapper. Only the native call differs.
     internal static MftResult ParseToResult(
-        Func<IntPtr, MFTLibNative.NativeMftProgressCallback?, IntPtr> nativeParse, string nativeName,
+        Func<IntPtr, NativeProgressCallback, IntPtr> nativeParse, string nativeName,
         IProgress<MftScanProgress>? progress, ParseThreadAllowance? parseThreads, CancellationToken cancellationToken)
     {
-        var nativeCallback = CreateNativeProgressCallback(progress);
-        var resultPtr = ParseWithControl(nativeParse, nativeCallback, parseThreads, cancellationToken);
-        GC.KeepAlive(nativeCallback);
+        IntPtr resultPtr;
+        using (var registration = new NativeProgressRegistration(progress))
+        {
+            resultPtr = ParseWithControl(nativeParse, registration.Callback, parseThreads, cancellationToken);
+        }
 
         if (resultPtr == IntPtr.Zero)
         {
@@ -147,9 +149,8 @@ sealed class MftVolume : IDisposable
     // the allowance writes through to it and the token registration sets its cancellation flag,
     // and both are released before it is freed.
     static unsafe IntPtr ParseWithControl(
-        Func<IntPtr, MFTLibNative.NativeMftProgressCallback?, IntPtr> nativeParse,
-        MFTLibNative.NativeMftProgressCallback? nativeCallback, ParseThreadAllowance? parseThreads,
-        CancellationToken cancellationToken)
+        Func<IntPtr, NativeProgressCallback, IntPtr> nativeParse, NativeProgressCallback progress,
+        ParseThreadAllowance? parseThreads, CancellationToken cancellationToken)
     {
         var control = (MftParseControl*)NativeMemory.AllocZeroed((nuint)sizeof(MftParseControl));
         try
@@ -159,7 +160,7 @@ sealed class MftVolume : IDisposable
             {
                 var controlAddress = (IntPtr)control;
                 using var registration = cancellationToken.Register(() => RequestCancel(controlAddress));
-                return nativeParse(controlAddress, nativeCallback);
+                return nativeParse(controlAddress, progress);
             }
             finally
             {
@@ -175,28 +176,6 @@ sealed class MftVolume : IDisposable
     static unsafe void RequestCancel(IntPtr control)
     {
         Volatile.Write(ref ((MftParseControl*)control)->CancelRequested, 1);
-    }
-
-    static MFTLibNative.NativeMftProgressCallback? CreateNativeProgressCallback(IProgress<MftScanProgress>? progress)
-    {
-        return progress != null
-            ? (recordsScanned, totalRecords, elapsedMs) =>
-            {
-                try
-                {
-                    var sample = new MftScanProgress((long)recordsScanned, (long)totalRecords,
-                        TimeSpan.FromMilliseconds(elapsedMs));
-                    progress.Report(sample);
-                }
-                catch
-                {
-                    // Non-throwing adapter: never throw across unmanaged boundary. This
-                    // callback runs synchronously on the native parse thread, so a
-                    // malformed sample (e.g. NaN elapsedMs) or a throwing consumer must
-                    // not abort the parse - the sample is simply dropped.
-                }
-            }
-        : null;
     }
 
     const uint DefaultSyntheticRecordSize = 1024;

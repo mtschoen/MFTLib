@@ -236,20 +236,18 @@ public partial class NativeVolumeParsingTests
     static MftParseResult ParseImage(string path, ParseControlBlock control,
         ControlProgressObserver? onProgress = null, uint bufferSizeRecords = 64)
     {
-        MFTLibNative.NativeMftProgressCallback callback = (scanned, total, _) =>
-            onProgress?.Invoke(control, scanned, total);
-        var result = ParseVolumeExport(path, control.Pointer, callback, bufferSizeRecords);
-        GC.KeepAlive(callback);
-        return result;
+        using var registration = new NativeProgressRegistration(new SynchronousProgress<MftScanProgress>(
+            sample => onProgress?.Invoke(control, (ulong)sample.RecordsScanned, (ulong)sample.TotalRecords)));
+        return ParseVolumeExport(path, control.Pointer, registration.Callback, bufferSizeRecords);
     }
 
     static MftParseResult ParseImageWithoutControl(string path)
     {
-        return ParseVolumeExport(path, IntPtr.Zero, null, 64);
+        return ParseVolumeExport(path, IntPtr.Zero, default, 64);
     }
 
     static MftParseResult ParseVolumeExport(string path, IntPtr control,
-        MFTLibNative.NativeMftProgressCallback? callback, uint bufferSizeRecords)
+        NativeProgressCallback callback, uint bufferSizeRecords)
     {
         NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
         using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
