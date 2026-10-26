@@ -4,24 +4,43 @@ namespace MFTLib.Index;
 ///     One Windows drive root with the facts <see cref="IndexedDrive.EnumerateWindowsVolumes" /> read and its
 ///     verdict. A consumer branches on the fields and renders its own words.
 /// </summary>
-/// <param name="Drive">The drive letter of <paramref name="RootDirectory" />.</param>
-/// <param name="RootDirectory">The drive root, for example <c>C:\</c>.</param>
-/// <param name="DriveType">The operating system's classification of the drive.</param>
-/// <param name="IsReady">
-///     True only when the drive was read as ready. Readiness is read for fixed drives alone, so every other
-///     drive type reports false.
-/// </param>
-/// <param name="Format">
-///     The file system name, for example <c>NTFS</c> or <c>exFAT</c>. Null unless the drive is a ready fixed drive
-///     whose format was read.
-/// </param>
-/// <param name="IsIndexable">True only for a ready fixed NTFS drive, which an MFT scan can index.</param>
-/// <param name="Reason">A display reason when <paramref name="IsIndexable" /> is false; null when it is true.</param>
-public sealed record WindowsVolume(
-    DriveKey Drive,
-    string RootDirectory,
-    DriveType DriveType,
-    bool IsReady,
-    string? Format,
-    bool IsIndexable,
-    string? Reason);
+public sealed record WindowsVolume
+{
+    /// <summary>Creates the identity of one drive root; the readiness facts and verdict are set by initializers.</summary>
+    /// <param name="drive">The drive letter of <paramref name="rootDirectory" />.</param>
+    /// <param name="rootDirectory">The drive root, for example <c>C:\</c>.</param>
+    /// <param name="driveType">The operating system's classification of the drive.</param>
+    internal WindowsVolume(DriveKey drive, string rootDirectory, DriveType driveType)
+    {
+        Drive = drive;
+        RootDirectory = rootDirectory;
+        DriveType = driveType;
+    }
+
+    /// <summary>The drive letter of <see cref="RootDirectory" />.</summary>
+    public DriveKey Drive { get; init => field = value.Validated(); }
+
+    /// <summary>The drive root, for example <c>C:\</c>.</summary>
+    public string RootDirectory { get; init; }
+
+    /// <summary>The operating system's classification of the drive.</summary>
+    public DriveType DriveType { get; init; }
+
+    /// <summary>
+    ///     True only when the drive was read as ready. Readiness is read for fixed drives alone, so every other
+    ///     drive type reports false.
+    /// </summary>
+    public bool IsReady { get; init; }
+
+    /// <summary>
+    ///     The file system name, for example <c>NTFS</c> or <c>exFAT</c>. Null unless the drive is a ready fixed drive
+    ///     whose format was read.
+    /// </summary>
+    public string? Format { get; init; }
+
+    /// <summary>True only for a ready fixed NTFS drive, which an MFT scan can index.</summary>
+    public bool IsIndexable { get; init; }
+
+    /// <summary>A display reason when <see cref="IsIndexable" /> is false; null when it is true.</summary>
+    public string? Reason { get; init; }
+}

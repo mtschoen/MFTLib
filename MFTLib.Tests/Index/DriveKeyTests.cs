@@ -64,12 +64,16 @@ public class DriveKeyTests
         var checkpointLoss = new JournalCheckpointLoss('C', JournalCheckpointLossDetection.LiveWatch,
             JournalCheckpointLossCause.CheckpointTrimmed, settings);
         var watchFault = new WatchFault(WatchFaultKind.Channel, 'C', new InvalidOperationException());
+        var windowsVolume = SyntheticNotifications.CreateWindowsVolume('C', @"C:\", DriveType.Fixed);
         Assert.ThrowsExactly<ArgumentException>(() => cachedBlockFile with { Drive = default });
         Assert.ThrowsExactly<ArgumentException>(() => driveStatus with { Drive = default });
         Assert.ThrowsExactly<ArgumentException>(() => driveOpened with { Drive = default });
         Assert.ThrowsExactly<ArgumentException>(() => scanProgress with { Drive = default });
         Assert.ThrowsExactly<ArgumentException>(() => checkpointLoss with { Drive = default });
         Assert.ThrowsExactly<ArgumentException>(() => watchFault with { Drive = default });
+        Assert.ThrowsExactly<ArgumentException>(() => windowsVolume with { Drive = default });
+        Assert.ThrowsExactly<ArgumentException>(() =>
+            SyntheticNotifications.CreateWindowsVolume(default, @"C:\", DriveType.Fixed));
     }
 
     [TestMethod]

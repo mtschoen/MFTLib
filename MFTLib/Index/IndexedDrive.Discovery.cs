@@ -50,21 +50,26 @@ public sealed partial record IndexedDrive
                 }
                 if (type != DriveType.Fixed)
                 {
-                    return new WindowsVolume(key, root, type, false, null, false, reason);
+                    return new WindowsVolume(key, root, type) { Reason = reason };
                 }
                 if (!isReady(drive))
                 {
-                    return new WindowsVolume(key, root, type, false, null, false, "not ready");
+                    return new WindowsVolume(key, root, type) { Reason = "not ready" };
                 }
                 var format = driveFormat(drive);
                 var isNtfs = string.Equals(format, "NTFS", StringComparison.OrdinalIgnoreCase);
-                return new WindowsVolume(key, root, type, true, format, isNtfs,
-                    isNtfs ? null : $"not NTFS ({format})");
+                return new WindowsVolume(key, root, type)
+                {
+                    IsReady = true,
+                    Format = format,
+                    IsIndexable = isNtfs,
+                    Reason = isNtfs ? null : $"not NTFS ({format})"
+                };
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
                                                   or System.Security.SecurityException)
             {
-                return new WindowsVolume(key, root, type, false, null, false, "not ready");
+                return new WindowsVolume(key, root, type) { Reason = "not ready" };
             }
         }
 

@@ -235,6 +235,20 @@ public class SyntheticNotificationsTests
     }
 
     [TestMethod]
+    public void CreateWindowsVolume_ForwardsEveryValue()
+    {
+        var volume = SyntheticNotifications.CreateWindowsVolume('t', @"T:\", DriveType.Fixed);
+
+        Assert.AreEqual('T', volume.Drive);
+        Assert.AreEqual(@"T:\", volume.RootDirectory);
+        Assert.AreEqual(DriveType.Fixed, volume.DriveType);
+        Assert.IsFalse(volume.IsReady);
+        Assert.IsNull(volume.Format);
+        Assert.IsFalse(volume.IsIndexable);
+        Assert.IsNull(volume.Reason);
+    }
+
+    [TestMethod]
     public void CreateIndexScanProgress_ForwardsEveryValue()
     {
         var progress = SyntheticNotifications.CreateIndexScanProgress('T', IndexScanPhase.Finished, 9, 10,

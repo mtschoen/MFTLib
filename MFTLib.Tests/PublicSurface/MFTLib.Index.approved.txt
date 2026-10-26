@@ -441,9 +441,7 @@ MFTLib.Index.WatchStateChange :: property public Drive { get; init; } : MFTLib.I
 MFTLib.Index.WatchStateChange :: property public Fault { get; init; } : MFTLib.Index.WatchFault?
 MFTLib.Index.WatchStateChange :: property public Watch { get; init; } : MFTLib.Index.DriveWatchStatus
 MFTLib.Index.WatchStateChange :: type public sealed class : System.IEquatable<MFTLib.Index.WatchStateChange>
-MFTLib.Index.WindowsVolume :: constructor public (MFTLib.Index.DriveKey Drive, string RootDirectory, System.IO.DriveType DriveType, bool IsReady, string? Format, bool IsIndexable, string? Reason)
 MFTLib.Index.WindowsVolume :: method public <Clone>$() : MFTLib.Index.WindowsVolume
-MFTLib.Index.WindowsVolume :: method public Deconstruct(out MFTLib.Index.DriveKey Drive, out string RootDirectory, out System.IO.DriveType DriveType, out bool IsReady, out string? Format, out bool IsIndexable, out string? Reason) : void
 MFTLib.Index.WindowsVolume :: method public Equals(MFTLib.Index.WindowsVolume? other) : bool
 MFTLib.Index.WindowsVolume :: method public override Equals(object? obj) : bool
 MFTLib.Index.WindowsVolume :: method public override GetHashCode() : int

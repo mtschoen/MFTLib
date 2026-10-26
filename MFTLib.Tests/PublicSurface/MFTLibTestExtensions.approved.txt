@@ -208,6 +208,7 @@ MFTLibTestExtensions.SyntheticNotifications :: method public static CreateJourna
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateJournalCheckpointLoss(MFTLib.Index.DriveKey drive, MFTLib.Index.JournalCheckpointLossCause cause, MFTLib.Index.JournalCheckpointLossDetection detectedDuring, MFTLib.UsnJournalSettings journalSettings) : MFTLib.Index.JournalCheckpointLoss
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateWatchFault(MFTLib.Index.WatchFaultKind kind, MFTLib.Index.DriveKey drive, System.Exception exception) : MFTLib.Index.WatchFault
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateWatchStateChange(MFTLib.Index.DriveKey drive, MFTLib.Index.DriveWatchStatus watch, MFTLib.Index.WatchFault? fault) : MFTLib.Index.WatchStateChange
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateWindowsVolume(MFTLib.Index.DriveKey drive, string rootDirectory, System.IO.DriveType driveType) : MFTLib.Index.WindowsVolume
 MFTLibTestExtensions.SyntheticNotifications :: type public static class
 MFTLibTestExtensions.SyntheticRow :: constructor public (uint Row, string Name, uint ParentRow)
 MFTLibTestExtensions.SyntheticRow :: method public <Clone>$() : MFTLibTestExtensions.SyntheticRow

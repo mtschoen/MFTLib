@@ -105,6 +105,17 @@ public static class SyntheticNotifications
         int totalDriveCount) =>
         new(drive, settledDriveCount, totalDriveCount);
 
+    /// <summary>
+    ///     Builds the identity of one drive root. A fixture sets the readiness facts and verdict with a <c>with</c>
+    ///     expression on the result.
+    /// </summary>
+    /// <param name="drive">The drive letter of <paramref name="rootDirectory" />.</param>
+    /// <param name="rootDirectory">The drive root, for example <c>C:\</c>.</param>
+    /// <param name="driveType">The operating system's classification of the drive.</param>
+    /// <returns>The volume, not ready and not indexable until the fixture says otherwise.</returns>
+    public static WindowsVolume CreateWindowsVolume(DriveKey drive, string rootDirectory, DriveType driveType) =>
+        new(drive, rootDirectory, driveType);
+
     /// <summary>Builds one scan progress sample.</summary>
     /// <param name="drive">The drive whose block is being produced.</param>
     /// <param name="phase">The current stage of the scan.</param>

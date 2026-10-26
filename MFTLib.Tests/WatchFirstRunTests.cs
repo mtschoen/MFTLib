@@ -35,8 +35,13 @@ public sealed class WatchFirstRunTests : IDisposable
     }
 
     static WindowsVolume Facts(string rootDirectory, string? reason = null) =>
-        new(new DriveKey(rootDirectory[0]), rootDirectory, DriveType.Fixed, true, reason is null ? "NTFS" : "exFAT",
-            reason is null, reason);
+        SyntheticNotifications.CreateWindowsVolume(new DriveKey(rootDirectory[0]), rootDirectory, DriveType.Fixed) with
+        {
+            IsReady = true,
+            Format = reason is null ? "NTFS" : "exFAT",
+            IsIndexable = reason is null,
+            Reason = reason
+        };
 
     [TestMethod]
     public void TryChooseDrives_NoArguments_CoversEveryChosenDriveAndSaysWhich()
