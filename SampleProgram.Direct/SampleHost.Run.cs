@@ -7,8 +7,6 @@ namespace SampleProgram.Direct;
 // or a saved $MFT file. It never caches, so every verb scans.
 partial class SampleHost
 {
-    readonly string _outputDirectory;
-
     internal SampleHost(TextWriter output, TextReader input, string outputDirectory, TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(output);
@@ -16,10 +14,10 @@ partial class SampleHost
         _output = TextWriter.Synchronized(output);
         _input = input;
         _timeProvider = timeProvider ?? TimeProvider.System;
-        _outputDirectory = Path.GetFullPath(outputDirectory);
+        OutputLogPath = Path.Combine(Path.GetFullPath(outputDirectory), "output.log");
     }
 
-    internal string OutputLogPath => Path.Combine(_outputDirectory, "output.log");
+    internal string OutputLogPath { get; }
 
     /// <summary>
     ///     Runs the command line, reports an escaping failure as one readable line, then holds an attended console window

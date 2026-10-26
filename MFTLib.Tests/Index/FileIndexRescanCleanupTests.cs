@@ -92,7 +92,7 @@ public sealed class FileIndexRescanCleanupTests : IDisposable
         // delete of it fails: the restore is best-effort and must not mask the real failure.
         var producerFailure = new IOException("the producer lost the volume");
         var failTheScan = new System.Runtime.CompilerServices.StrongBox<bool>(false);
-        FileStream? lockedReplacement = null;
+        var lockedReplacement = new ExclusiveFileLock();
         var options = new FileIndexOptions
         {
             Drives = [new IndexedDrive('T', TreeRoot, 1)],
@@ -102,8 +102,7 @@ public sealed class FileIndexRescanCleanupTests : IDisposable
                 if (failTheScan.Value)
                 {
                     File.WriteAllBytes(request.BlockPath, [1, 2, 3]);
-                    lockedReplacement = new FileStream(request.BlockPath, FileMode.Open, FileAccess.Read,
-                        FileShare.None);
+                    lockedReplacement.Lock(request.BlockPath);
                     throw producerFailure;
                 }
 
@@ -117,12 +116,12 @@ public sealed class FileIndexRescanCleanupTests : IDisposable
         var canonicalPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 1));
         Assert.IsTrue(File.Exists(canonicalPath));
 
-        failTheScan.Value = true;
-        var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
-            () => index.RescanAsync(['T'], Token));
-
         try
         {
+            failTheScan.Value = true;
+            var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+                () => index.RescanAsync(['T'], Token));
+
             Assert.AreSame(producerFailure, failure.InnerException);
             var drive = index.Drives.Single();
             Assert.AreEqual("the producer lost the volume", drive.Failure?.Message);
@@ -133,8 +132,22 @@ public sealed class FileIndexRescanCleanupTests : IDisposable
         }
         finally
         {
-            lockedReplacement?.Dispose();
+            await lockedReplacement.DisposeAsync();
         }
+    }
+
+    // Owns the handle that blocks deletion of a path, so the test disposes it however the assertions end.
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")] // FileShare.None only blocks a delete on Windows
+    sealed class ExclusiveFileLock : IAsyncDisposable
+    {
+        FileStream? _handle;
+
+        internal void Lock(string path)
+        {
+            _handle = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
+        }
+
+        public ValueTask DisposeAsync() => _handle?.DisposeAsync() ?? ValueTask.CompletedTask;
     }
 
     [TestMethod]

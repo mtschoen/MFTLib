@@ -42,7 +42,7 @@ public class TestExtensionsStreamTests
             Assert.AreSequenceEqual(new byte[] { 1, 2, 3, 4 }, bytes);
             stream.ReleaseUnmanagedResources();
             Assert.IsTrue(inner.CanRead, "Dispose(false) leaves managed resources alone.");
-            stream.Dispose();
+            await stream.DisposeAsync();
             Assert.IsFalse(inner.CanRead);
             Assert.IsFalse(stream.CanRead);
             Assert.IsFalse(stream.CanWrite);
@@ -80,7 +80,7 @@ public class TestExtensionsStreamTests
             stream.Flush();
             await stream.FlushAsync(CancellationToken.None);
             Assert.AreSequenceEqual(bytes, output.ToArray());
-            stream.Dispose();
+            await stream.DisposeAsync();
             Assert.IsFalse(input.CanRead);
             Assert.IsFalse(output.CanWrite);
             AssertDisposedSyncOperations(stream, bytes);
@@ -119,7 +119,7 @@ public class TestExtensionsStreamTests
             var read = stream.ReadAsync(new byte[1].AsMemory(), TestContext.CancellationToken).AsTask();
             if (close)
             {
-                stream.Dispose();
+                await stream.DisposeAsync();
             }
 
             var failure = new InvalidOperationException("reader completed");
