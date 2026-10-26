@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.Versioning;
 
 namespace MFTLib.Index;
@@ -11,6 +12,7 @@ public sealed partial class FileIndex
     /// </summary>
     /// <param name="drive">A configured drive key. The default key is invalid.</param>
     [SupportedOSPlatform("windows")]
+    [ExcludeFromCodeCoverage(Justification = "Windows-only pass-through to ReadUsnJournalSettings; the target is covered.")]
     public UsnJournalSettings QueryUsnJournalSettings(DriveKey drive) => ReadUsnJournalSettings(drive);
 
     /// <summary>

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.Versioning;
 using MFTLib.NativeInterop;
 
@@ -21,6 +22,7 @@ public sealed partial record IndexedDrive
     ///     re-lettered or replaced volume never matches the wrong cached block.
     /// </summary>
     [SupportedOSPlatform("windows")]
+    [ExcludeFromCodeCoverage(Justification = "Windows-only pass-through to ReadWindowsVolume; the target is covered.")]
     public static IndexedDrive FromWindowsVolume(DriveKey drive) => ReadWindowsVolume(drive);
 
     /// <summary>

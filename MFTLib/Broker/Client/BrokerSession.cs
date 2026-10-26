@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.ExceptionServices;
 using System.Runtime.Versioning;
 using MFTLib.Index;
@@ -55,6 +56,7 @@ public sealed class BrokerSession : IAsyncDisposable
 
     /// <summary>Owns a broker launched through <see cref="BrokerLauncher.Launch" /> with the default connect timeout.</summary>
     [SupportedOSPlatform("windows")]
+    [ExcludeFromCodeCoverage(Justification = "Windows-only pass-through to the launcher constructor; the target is covered.")]
     public BrokerSession()
         : this(BrokerLauncher.Launch)
     {
@@ -70,6 +72,7 @@ public sealed class BrokerSession : IAsyncDisposable
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="launchBroker" /> is null.</exception>
     [SupportedOSPlatform("windows")]
+    [ExcludeFromCodeCoverage(Justification = "Windows-only pass-through to the internal constructor with the named-section factory; the target is covered.")]
     public BrokerSession(Func<string, bool> launchBroker, TimeSpan? connectTimeout = null)
         : this(launchBroker, connectTimeout, BrokerProcess.CreateRealDriveBlockSection)
     {

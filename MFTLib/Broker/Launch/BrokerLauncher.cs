@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.Versioning;
 
 namespace MFTLib;
@@ -36,6 +37,7 @@ public static class BrokerLauncher
     /// <returns>True if the process started; false if the user declined the UAC prompt or no process could be started.</returns>
     /// <exception cref="InvalidOperationException">The current executable path cannot be determined.</exception>
     [SupportedOSPlatform("windows")]
+    [ExcludeFromCodeCoverage(Justification = "Windows-only pass-through to StartElevated; the target is covered.")]
     public static bool Launch(string brokerArguments) => StartElevated(brokerArguments);
 
     /// <summary>
