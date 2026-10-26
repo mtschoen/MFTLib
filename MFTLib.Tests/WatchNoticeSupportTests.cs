@@ -3,7 +3,7 @@ using SampleProgram.Watch;
 
 namespace MFTLib.Tests;
 
-// The Watch twin of the Direct acknowledgement in SampleHostElevationNoticeTests; the Watch tests are Windows only.
+// The Watch twin of the Direct acknowledgement in DirectNoticeSupport; the Watch tests are Windows only.
 static class WatchNoticeSupport
 {
     /// <summary>Makes the dialog answer with an OK after a deliberate pause, so a Watch run never shows a real window.</summary>

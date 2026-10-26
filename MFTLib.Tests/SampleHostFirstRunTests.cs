@@ -1,4 +1,3 @@
-using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SampleProgram.Direct;
@@ -25,26 +24,6 @@ public class SampleHostFirstRunTests
     public void TearDown()
     {
         Environment.SetEnvironmentVariable(DirectHost.UnattendedVariableName, _previousUnattended);
-    }
-
-    [TestMethod]
-    public void Run_OutputIsBorrowedAndStreamsControlPausing()
-    {
-        using var output = new StringWriter();
-        using var input = new StringReader("xy");
-        var directory = Directory.CreateTempSubdirectory("sample-stream-").FullName;
-        try
-        {
-            var host = new DirectHost(output, input, directory);
-            host.PauseBeforeExit(ownsWindow: true);
-            Assert.Contains(DirectHost.PausePrompt, output.ToString());
-            Assert.AreEqual('y', (char)input.Read());
-            output.WriteLine("borrowed writer remains open");
-        }
-        finally
-        {
-            Directory.Delete(directory, true);
-        }
     }
 
     [TestMethod]
@@ -163,7 +142,7 @@ public class SampleHostFirstRunTests
                     return childSucceeded;
                 }
             };
-            SampleHostElevationNoticeTests.AcknowledgeDeliberately(host);
+            DirectNoticeSupport.AcknowledgeDeliberately(host);
 
             var result = host.RunWithElevation(arguments, ElevationNeed.SelfElevate, () => host.Run(arguments));
 
@@ -264,27 +243,5 @@ public class SampleHostFirstRunTests
         {
             Directory.Delete(tempDir, true);
         }
-    }
-
-    [TestMethod]
-    public void PhaseReporter_PrintsAgainEveryIntervalOfRowsWithinAPhaseAndNeverByTime()
-    {
-        using var output = new StringWriter();
-        var reporter = new DirectHost.PhaseReporter(output);
-        const uint interval = DirectHost.PhaseReporter.ProgressRowInterval;
-
-        reporter.Report(new IndexScanProgress('D', IndexScanPhase.ParsingMft, 0) { ExpectedRowCount = 3 * interval });
-        reporter.Report(new IndexScanProgress('D', IndexScanPhase.ParsingMft, interval - 1) { ExpectedRowCount = 3 * interval });
-        reporter.Report(new IndexScanProgress('D', IndexScanPhase.ParsingMft, interval) { ExpectedRowCount = 3 * interval });
-        reporter.Report(new IndexScanProgress('D', IndexScanPhase.ParsingMft, interval + 5) { ExpectedRowCount = 3 * interval });
-        reporter.Report(new IndexScanProgress('D', IndexScanPhase.ParsingMft, 2 * interval) { ExpectedRowCount = 3 * interval });
-
-        var lines = output.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
-        Assert.AreSequenceEqual(
-            [
-                $"  D: ParsingMft: 0 rows of {3 * interval}",
-                $"  D: ParsingMft: {interval} rows of {3 * interval}",
-                $"  D: ParsingMft: {2 * interval} rows of {3 * interval}"
-            ], lines);
     }
 }

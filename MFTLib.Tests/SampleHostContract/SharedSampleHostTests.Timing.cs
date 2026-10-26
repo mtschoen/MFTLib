@@ -1,27 +1,25 @@
-using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using SampleProgram.Direct;
 
-namespace MFTLib.Tests;
+namespace MFTLib.Tests.SampleHostContract;
 
-partial class SampleHostElevationNoticeTests
+partial class SharedSampleHostTests
 {
     [TestMethod]
     public void Run_NotElevated_DialogStartedLateThenAnsweredAtOnce_IsAccidentalAndShownAgain()
     {
         var events = new List<string>();
         var scanner = Scanner([], events, []);
-        var clock = (FakeTimeProvider)scanner._timeProvider;
+        var clock = scanner.Clock;
         // The dialog thread starts ten minutes late, as when the pool is busy. Only the time on screen counts.
-        scanner._dialogScheduler = new LateStartScheduler(() => clock.Advance(TimeSpan.FromMinutes(10)));
-        var answers = new Queue<(int Result, double Seconds)>([(SampleHost.MessageBoxResultOk, 0), (SampleHost.MessageBoxResultOk, 3)]);
-        scanner._messageBox = (_, _, _, _) =>
+        scanner.SetDialogScheduler(new LateStartScheduler(() => clock.Advance(TimeSpan.FromMinutes(10))));
+        var answers = new Queue<(int Result, double Seconds)>([(scanner.ResultOk, 0), (scanner.ResultOk, 3)]);
+        scanner.SetMessageBox((_, _, _, _) =>
         {
             events.Add("dialog");
             var answer = answers.Dequeue();
             clock.Advance(TimeSpan.FromSeconds(answer.Seconds));
             return answer.Result;
-        };
+        });
 
         var result = RunElevation(scanner);
 
@@ -32,16 +30,16 @@ partial class SampleHostElevationNoticeTests
     // The caller resumes only after the dialog thread is done, so an immediate answer followed by a long delay before
     // the caller runs must still be judged by the time the dialog was on screen, which was none.
     [TestMethod]
-    [DataRow(SampleHost.MessageBoxResultOk)]
-    [DataRow(SampleHost.MessageBoxResultCancel)]
-    public void Run_NotElevated_ImmediateAnswerThenALongCallerDelay_IsStillAccidentalAndShownAgain(int button)
+    [DataRow(false)]
+    [DataRow(true)]
+    public void Run_NotElevated_ImmediateAnswerThenALongCallerDelay_IsStillAccidentalAndShownAgain(bool cancel)
     {
         var events = new List<string>();
         var delayedCaller = new TaskCompletionSource();
         var scanner = Scanner([], events, []);
-        var clock = (FakeTimeProvider)scanner._timeProvider;
+        var clock = scanner.Clock;
         var beepCount = 0;
-        scanner._messageBeep = _ =>
+        scanner.SetMessageBeep(_ =>
         {
             if (++beepCount > 1)
             {
@@ -49,7 +47,7 @@ partial class SampleHostElevationNoticeTests
             }
 
             return true;
-        };
+        });
         var scheduler = new AfterRunScheduler(() =>
         {
             try
@@ -61,15 +59,15 @@ partial class SampleHostElevationNoticeTests
                 delayedCaller.TrySetResult();
             }
         });
-        scanner._dialogScheduler = scheduler;
-        var answers = new Queue<(int Result, double Seconds)>([(button, 0), (SampleHost.MessageBoxResultOk, 3)]);
-        scanner._messageBox = (_, _, _, _) =>
+        scanner.SetDialogScheduler(scheduler);
+        var answers = new Queue<(int Result, double Seconds)>([(cancel ? scanner.ResultCancel : scanner.ResultOk, 0), (scanner.ResultOk, 3)]);
+        scanner.SetMessageBox((_, _, _, _) =>
         {
             events.Add("dialog");
             var answer = answers.Dequeue();
             clock.Advance(TimeSpan.FromSeconds(answer.Seconds));
             return answer.Result;
-        };
+        });
 
         var result = RunElevation(scanner);
         scheduler.CheckForFailure();
@@ -79,9 +77,9 @@ partial class SampleHostElevationNoticeTests
     }
 
     [TestMethod]
-    [DataRow(SampleHost.MessageBoxResultOk)]
-    [DataRow(SampleHost.MessageBoxResultCancel)]
-    public void Run_NotElevated_ImmediateAnswerThenForcedCallerDelayAtNextBeep_IsStillAccidentalAndShownAgain(int button)
+    [DataRow(false)]
+    [DataRow(true)]
+    public void Run_NotElevated_ImmediateAnswerThenForcedCallerDelayAtNextBeep_IsStillAccidentalAndShownAgain(bool cancel)
     {
         var events = new List<string>();
         var delayedCaller = new TaskCompletionSource();
@@ -90,9 +88,9 @@ partial class SampleHostElevationNoticeTests
         var secondDialogStarted = new TaskCompletionSource();
         var hookFinishedAdvance = new TaskCompletionSource();
         var scanner = Scanner([], events, []);
-        var clock = (FakeTimeProvider)scanner._timeProvider;
+        var clock = scanner.Clock;
         var beepCount = 0;
-        scanner._messageBeep = _ =>
+        scanner.SetMessageBeep(_ =>
         {
             if (++beepCount > 1)
             {
@@ -102,7 +100,7 @@ partial class SampleHostElevationNoticeTests
             }
 
             return true;
-        };
+        });
         var scheduler = new AfterRunScheduler(() =>
         {
             try
@@ -117,9 +115,9 @@ partial class SampleHostElevationNoticeTests
                 hookFinishedAdvance.TrySetResult();
             }
         });
-        scanner._dialogScheduler = scheduler;
-        var answers = new Queue<(int Result, double Seconds)>([(button, 0), (SampleHost.MessageBoxResultOk, 3)]);
-        scanner._messageBox = (_, _, _, _) =>
+        scanner.SetDialogScheduler(scheduler);
+        var answers = new Queue<(int Result, double Seconds)>([(cancel ? scanner.ResultCancel : scanner.ResultOk, 0), (scanner.ResultOk, 3)]);
+        scanner.SetMessageBox((_, _, _, _) =>
         {
             events.Add("dialog");
             if (events.Count == 2)
@@ -131,7 +129,7 @@ partial class SampleHostElevationNoticeTests
             var answer = answers.Dequeue();
             clock.Advance(TimeSpan.FromSeconds(answer.Seconds));
             return answer.Result;
-        };
+        });
 
         var result = RunElevation(scanner);
         scheduler.CheckForFailure();
@@ -145,7 +143,7 @@ partial class SampleHostElevationNoticeTests
     {
         var lines = new List<string>();
         var events = new List<string>();
-        var scanner = Scanner(lines, events, [Answer(SampleHost.MessageBoxResultOk, SampleHost.ElevationNoticeTimeout.TotalSeconds + 1)]);
+        var scanner = Scanner(lines, events, [Answer(Probe.ResultOk, Probe.NoticeTimeout.TotalSeconds + 1)]);
 
         var result = RunElevation(scanner);
 
@@ -158,11 +156,11 @@ partial class SampleHostElevationNoticeTests
     public void Run_NotElevated_AnswerExactlyAtTheTimeout_TimesOutAndOneTickEarlierStands()
     {
         var atTimeoutEvents = new List<string>();
-        var atTimeout = Scanner([], atTimeoutEvents, [Answer(SampleHost.MessageBoxResultOk, SampleHost.ElevationNoticeTimeout.TotalSeconds)]);
+        var atTimeout = Scanner([], atTimeoutEvents, [Answer(Probe.ResultOk, Probe.NoticeTimeout.TotalSeconds)]);
         var earlierEvents = new List<string>();
         var earlier = Scanner(
             [], earlierEvents,
-            [Answer(SampleHost.MessageBoxResultOk, SampleHost.ElevationNoticeTimeout.TotalSeconds - 0.001)]);
+            [Answer(Probe.ResultOk, Probe.NoticeTimeout.TotalSeconds - 0.001)]);
 
         Assert.AreEqual(1, RunElevation(atTimeout));
         Assert.AreEqual(0, RunElevation(earlier));
