@@ -435,11 +435,9 @@ public sealed partial class EnumerationProducerTests : IDisposable
             Drive = 'T'
         });
 
-        await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () =>
-        {
-            using var lease = await EnumerationWalkLimit.EnterAsync(CancellationToken.None);
-            producer.Produce(created.Writer, progress: null, lease, token);
-        });
+        using var lease = await EnumerationWalkLimit.EnterAsync(CancellationToken.None);
+        Assert.ThrowsExactly<OperationCanceledException>(
+            () => producer.Produce(created.Writer, progress: null, lease, token));
     }
 
     [TestMethod]

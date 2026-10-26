@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  JetBrains external annotations for MSTest.TestFramework 4.5.1: synchronous Assert.Throws*
+  overloads invoke their actions before returning, so a closure over a using-scoped local
+  is not run after that local is disposed. Async assertions are not annotated: an unawaited
+  or deferred-awaited callback can run after its using scope exits. The member names are the
+  XML documentation IDs of the synchronous Assert.Throws* overloads in MSTest.TestFramework.xml
+  from the 4.5.1 package; compare them with that file when MSTest is bumped.
+-->
+<assembly name="MSTest.TestFramework">
+  <member name="M:Microsoft.VisualStudio.TestTools.UnitTesting.Assert.ThrowsExactly``1(System.Action,Microsoft.VisualStudio.TestTools.UnitTesting.Assert.AssertThrowsExactlyInterpolatedStringHandler{``0}@,System.String)">
+    <parameter name="action">
+      <attribute ctor="M:JetBrains.Annotations.InstantHandleAttribute.#ctor" />
+    </parameter>
+  </member>
+  <member name="M:Microsoft.VisualStudio.TestTools.UnitTesting.Assert.ThrowsExactly``1(System.Action,System.Func{System.Exception,System.String},System.String)">
+    <parameter name="action">
+      <attribute ctor="M:JetBrains.Annotations.InstantHandleAttribute.#ctor" />
+    </parameter>
+  </member>
+  <member name="M:Microsoft.VisualStudio.TestTools.UnitTesting.Assert.ThrowsExactly``1(System.Action,System.String,System.String)">
+    <parameter name="action">
+      <attribute ctor="M:JetBrains.Annotations.InstantHandleAttribute.#ctor" />
+    </parameter>
+  </member>
+  <member name="M:Microsoft.VisualStudio.TestTools.UnitTesting.Assert.ThrowsExactly``1(System.Func{System.Object},Microsoft.VisualStudio.TestTools.UnitTesting.Assert.AssertThrowsExactlyInterpolatedStringHandler{``0}@,System.String)">
+    <parameter name="action">
+      <attribute ctor="M:JetBrains.Annotations.InstantHandleAttribute.#ctor" />
+    </parameter>
+  </member>
+  <member name="M:Microsoft.VisualStudio.TestTools.UnitTesting.Assert.ThrowsExactly``1(System.Func{System.Object},System.Func{System.Exception,System.String},System.String)">
+    <parameter name="action">
+      <attribute ctor="M:JetBrains.Annotations.InstantHandleAttribute.#ctor" />
+    </parameter>
+  </member>
+  <member name="M:Microsoft.VisualStudio.TestTools.UnitTesting.Assert.ThrowsExactly``1(System.Func{System.Object},System.String,System.String)">
+    <parameter name="action">
+      <attribute ctor="M:JetBrains.Annotations.InstantHandleAttribute.#ctor" />
+    </parameter>
+  </member>
+  <member name="M:Microsoft.VisualStudio.TestTools.UnitTesting.Assert.Throws``1(System.Action,Microsoft.VisualStudio.TestTools.UnitTesting.Assert.AssertNonStrictThrowsInterpolatedStringHandler{``0}@,System.String)">
+    <parameter name="action">
+      <attribute ctor="M:JetBrains.Annotations.InstantHandleAttribute.#ctor" />
+    </parameter>
+  </member>
+  <member name="M:Microsoft.VisualStudio.TestTools.UnitTesting.Assert.Throws``1(System.Action,System.Func{System.Exception,System.String},System.String)">
+    <parameter name="action">
+      <attribute ctor="M:JetBrains.Annotations.InstantHandleAttribute.#ctor" />
+    </parameter>
+  </member>
+  <member name="M:Microsoft.VisualStudio.TestTools.UnitTesting.Assert.Throws``1(System.Action,System.String,System.String)">
+    <parameter name="action">
+      <attribute ctor="M:JetBrains.Annotations.InstantHandleAttribute.#ctor" />
+    </parameter>
+  </member>
+  <member name="M:Microsoft.VisualStudio.TestTools.UnitTesting.Assert.Throws``1(System.Func{System.Object},Microsoft.VisualStudio.TestTools.UnitTesting.Assert.AssertNonStrictThrowsInterpolatedStringHandler{``0}@,System.String)">
+    <parameter name="action">
+      <attribute ctor="M:JetBrains.Annotations.InstantHandleAttribute.#ctor" />
+    </parameter>
+  </member>
+  <member name="M:Microsoft.VisualStudio.TestTools.UnitTesting.Assert.Throws``1(System.Func{System.Object},System.Func{System.Exception,System.String},System.String)">
+    <parameter name="action">
+      <attribute ctor="M:JetBrains.Annotations.InstantHandleAttribute.#ctor" />
+    </parameter>
+  </member>
+  <member name="M:Microsoft.VisualStudio.TestTools.UnitTesting.Assert.Throws``1(System.Func{System.Object},System.String,System.String)">
+    <parameter name="action">
+      <attribute ctor="M:JetBrains.Annotations.InstantHandleAttribute.#ctor" />
+    </parameter>
+  </member>
+</assembly>

@@ -12,8 +12,6 @@ static class SearchEngine
     internal static List<FileEntry> Search(IReadOnlyList<DriveBlock> snapshot, SearchQuery query,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(snapshot);
-        ArgumentNullException.ThrowIfNull(query);
         NameMatching.ThrowIfUndefined(query);
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -45,8 +43,6 @@ static class SearchEngine
     internal static IEnumerable<FileEntry> Enumerate(IReadOnlyList<DriveBlock> snapshot, SearchQuery query,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(snapshot);
-        ArgumentNullException.ThrowIfNull(query);
         cancellationToken.ThrowIfCancellationRequested();
 
         var subtree = SubtreeAnchor.Resolve(snapshot, query);

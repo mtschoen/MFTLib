@@ -272,6 +272,28 @@ public sealed class MftDumpInputTests : IDisposable
     }
 
     [TestMethod]
+    [DataRow(0)]
+    [DataRow(-1)]
+    public void ReadRecordBatches_ZeroOrNegativeBatchSize_ThrowsAtTheCall(int batchSize)
+    {
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
+        using var input = MftDumpInput.Open(path);
+
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => input.ReadRecordBatches(batchSize, null, CancellationToken.None));
+    }
+
+    [TestMethod]
+    public void ReadRecordBatches_AfterDispose_ThrowsAtTheCall()
+    {
+        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
+        var input = MftDumpInput.Open(path);
+        input.Dispose();
+
+        Assert.ThrowsExactly<ObjectDisposedException>(() => input.ReadRecordBatches(3, null, CancellationToken.None));
+    }
+
+    [TestMethod]
     public void ReadRecordBatches_TokenCancelledBetweenBatches_Throws()
     {
         var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());

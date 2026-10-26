@@ -188,7 +188,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
 
             // Stands in for the snapshot finalizer: the same non-waiting release call, held at the
             // exact point the finalizer reaches once the flag is set and before a block is unmapped.
-            var competingRelease = Task.Run(retiredRelease.Release);
+            var competingRelease = Task.Run(retiredRelease.ReleaseUnborrowed);
             TestGate.WaitSynchronously(reachedTheGate.Entered);
 
             var disposal = index.DisposeAsync().AsTask();
@@ -409,7 +409,7 @@ public sealed class FileIndexBlockReleaseTests : IDisposable
             await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "second.md"), "second", TestContext.CancellationToken);
             await index.RescanAsync(['T'], CancellationToken.None);
 
-            var competingRelease = Task.Run(retiredRelease.Release);
+            var competingRelease = Task.Run(retiredRelease.ReleaseUnborrowed);
             TestGate.WaitSynchronously(reachedTheGate.Entered);
 
             await File.WriteAllTextAsync(Path.Combine(TreeRoot, "Documents", "third.md"), "third", TestContext.CancellationToken);

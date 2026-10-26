@@ -76,7 +76,7 @@ public class DriveKeyLifecycleTests
     {
         using var harness = new WatchHarness('t');
         harness.Index.HoldEveryRecovery();
-        var changes = harness.Index.ApplyJournalEntries('t', [WatchHarness.Create(9, "created.txt")],
+        var changes = await harness.Index.ApplyJournalEntriesAsync('t', [WatchHarness.Create(9, "created.txt")],
             WatchHarness.JournalIdentifier, 200);
         Assert.AreEqual('T', changes.Single().Entry.RecordKey.Drive);
         Assert.AreEqual('T', harness.Index.Root('t', TestContext.CancellationToken).RecordKey.Drive);

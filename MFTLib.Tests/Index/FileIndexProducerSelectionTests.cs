@@ -412,17 +412,17 @@ public sealed class FileIndexProducerSelectionTests : IDisposable
         });
 
         // Prove coalescing works within an unreplaced block's open cycle.
-        Assert.HasCount(1, index.ApplyJournalEntries('T', [controlCreated], 7, 5002));
-        Assert.IsEmpty(index.ApplyJournalEntries('T', [controlClosed], 7, 5003));
+        Assert.HasCount(1, await index.ApplyJournalEntriesAsync('T', [controlCreated], 7, 5002));
+        Assert.IsEmpty(await index.ApplyJournalEntriesAsync('T', [controlClosed], 7, 5003));
 
         // Record 20's create leaves its cycle open in ReportedReasonCycles leading up to rescan.
-        Assert.HasCount(1, index.ApplyJournalEntries('T', [created], 7, 5004));
+        Assert.HasCount(1, await index.ApplyJournalEntriesAsync('T', [created], 7, 5004));
 
         await index.RescanAsync(['T'], TestContext.CancellationToken);
 
         // On the replaced block, the open cycle was discarded with the old DriveBlock;
         // the close record is treated as a first-sighted create rather than coalesced.
-        var afterRescan = index.ApplyJournalEntries('T', [closed], 7, 8193);
+        var afterRescan = await index.ApplyJournalEntriesAsync('T', [closed], 7, 8193);
         Assert.HasCount(1, afterRescan);
         Assert.AreEqual(FileChangeKind.Created, afterRescan[0].Kind);
     }

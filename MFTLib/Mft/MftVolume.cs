@@ -104,9 +104,20 @@ sealed class MftVolume : IDisposable
     ///     <paramref name="parseThreads" /> is attached to another parse that is still running. The
     ///     parse starts on the first enumeration, so that is when this is thrown.
     /// </exception>
+    /// <exception cref="ObjectDisposedException">This volume has been disposed.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="batchSize" /> is not positive.</exception>
     internal IEnumerable<MftRecord[]> ReadRecordBatches(int batchSize, IProgress<MftScanProgress>? progress,
         ParseThreadAllowance? parseThreads, CancellationToken cancellationToken, MftScanOptions? options = null,
         Action<long>? recordsOmitted = null)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
+        return ParseRecordBatches(batchSize, progress, parseThreads, options, recordsOmitted, cancellationToken);
+    }
+
+    IEnumerable<MftRecord[]> ParseRecordBatches(int batchSize, IProgress<MftScanProgress>? progress,
+        ParseThreadAllowance? parseThreads, MftScanOptions? options, Action<long>? recordsOmitted,
+        CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         MFTLibNative.EnsureCompatibleNativeAbi();

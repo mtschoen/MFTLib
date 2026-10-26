@@ -124,10 +124,10 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
     }
 
     [TestMethod]
-    public void ApplyJournalEntries_OnEnumerationDrive_ThrowsInvalidOperation()
+    public async Task ApplyJournalEntries_OnEnumerationDrive_ThrowsInvalidOperation()
     {
-        var exception = Assert.ThrowsExactly<InvalidOperationException>(
-            () => _index.ApplyJournalEntries('E', [Entry(20, 0, "injected.txt", UsnReason.FileCreate | UsnReason.Close)], 5, 100));
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => _index.ApplyJournalEntriesAsync('E', [Entry(20, 0, "injected.txt", UsnReason.FileCreate | UsnReason.Close)], 5, 100));
 
         Assert.Contains("enumeration producer", exception.Message);
     }
@@ -135,7 +135,7 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public void ApplyJournalEntries_CreatesARowAndRaisesChanged(bool throughTestExtensions)
+    public async Task ApplyJournalEntries_CreatesARowAndRaisesChanged(bool throughTestExtensions)
     {
         var observed = new List<FileChange>();
         _index.Changed += observed.Add;
@@ -155,9 +155,9 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
             }
         ];
         var applied = throughTestExtensions
-            ? FileIndexTestAccess.ApplyJournalEntries(_index, 'T', synthetic,
+            ? await FileIndexTestAccess.ApplyJournalEntriesAsync(_index, 'T', synthetic,
                 new SyntheticJournalCursor(5, 100))
-            : _index.ApplyJournalEntries('T', entries, journalIdentifier: 5, nextUsn: 100);
+            : await _index.ApplyJournalEntriesAsync('T', entries, journalIdentifier: 5, nextUsn: 100);
 
         Assert.HasCount(1, applied);
         Assert.HasCount(1, observed);
@@ -171,16 +171,16 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
     }
 
     [TestMethod]
-    public void ApplyJournalEntries_TestExtensionRejectsNullIndex()
+    public async Task ApplyJournalEntries_TestExtensionRejectsNullIndex()
     {
-        Assert.ThrowsExactly<ArgumentNullException>(() =>
-            FileIndexTestAccess.ApplyJournalEntries(null!, 'T', [], new SyntheticJournalCursor(5, 100)));
+        await Assert.ThrowsExactlyAsync<ArgumentNullException>(() =>
+            FileIndexTestAccess.ApplyJournalEntriesAsync(null!, 'T', [], new SyntheticJournalCursor(5, 100)));
     }
 
     [TestMethod]
-    public void ApplyJournalEntries_MakesTheNewRowVisibleToSearch()
+    public async Task ApplyJournalEntries_MakesTheNewRowVisibleToSearch()
     {
-        _index.ApplyJournalEntries('T',
+        await _index.ApplyJournalEntriesAsync('T',
             [Entry(20, 0, "injected.txt", UsnReason.FileCreate | UsnReason.Close)],
             journalIdentifier: 5, nextUsn: 100);
 
@@ -188,12 +188,12 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
     }
 
     [TestMethod]
-    public void ApplyJournalEntries_DeleteMakesTheEntryReadAsDeletedButKeepsItsName()
+    public async Task ApplyJournalEntries_DeleteMakesTheEntryReadAsDeletedButKeepsItsName()
     {
         var target = _index.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken)!.Value;
         var recordNumber = target.RecordKey.RecordNumber;
 
-        var applied = _index.ApplyJournalEntries('T',
+        var applied = await _index.ApplyJournalEntriesAsync('T',
             [Entry(recordNumber, 0, "readme.md", UsnReason.FileDelete | UsnReason.Close)],
             journalIdentifier: 5, nextUsn: 200);
 
@@ -252,7 +252,7 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
                 for (var iteration = 0; iteration < 64; iteration++)
                 {
                     var name = iteration % 2 == 0 ? shortName : longName;
-                    _index.ApplyJournalEntries('T',
+                    await _index.ApplyJournalEntriesAsync('T',
                         [Entry(recordNumber, 1, name, UsnReason.RenameNewName | UsnReason.Close)],
                         journalIdentifier: 5, nextUsn: iteration + 1);
                     Thread.Yield();
@@ -285,7 +285,7 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
     [TestMethod]
     public async Task ApplyJournalEntries_ExhaustingCapacityReportsReadyWithCapacityExhausted()
     {
-        _index.ApplyJournalEntries('T',
+        await _index.ApplyJournalEntriesAsync('T',
             [Entry(50_000_000, 0, "far.txt", UsnReason.FileCreate | UsnReason.Close)],
             journalIdentifier: 5, nextUsn: 300);
 
@@ -302,22 +302,22 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
     }
 
     [TestMethod]
-    public void ApplyJournalEntries_UnknownDriveThrows()
+    public async Task ApplyJournalEntries_UnknownDriveThrows()
     {
-        Assert.ThrowsExactly<ArgumentException>(() => _index.ApplyJournalEntries('Q', [], 0, 0));
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => _index.ApplyJournalEntriesAsync('Q', [], 0, 0));
     }
 
     [TestMethod]
-    public void ApplyJournalEntries_ConfiguredButOfflineDriveThrowsInvalidOperation()
+    public async Task ApplyJournalEntries_ConfiguredButOfflineDriveThrowsInvalidOperation()
     {
-        var exception = Assert.ThrowsExactly<InvalidOperationException>(
-            () => _index.ApplyJournalEntries('Z', [], 0, 0));
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => _index.ApplyJournalEntriesAsync('Z', [], 0, 0));
 
         Assert.Contains("offline", exception.Message);
     }
 
     [TestMethod]
-    public void ApplyJournalEntries_HandlerException_StillDeliversEveryChangeToOtherSubscribersThenSurfaces()
+    public async Task ApplyJournalEntries_HandlerException_StillDeliversEveryChangeToOtherSubscribersThenSurfaces()
     {
         var firstSubscriberCallCount = 0;
         _index.Changed += _ =>
@@ -332,7 +332,7 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
         var secondSubscriberChanges = new List<FileChange>();
         _index.Changed += secondSubscriberChanges.Add;
 
-        var thrown = Assert.ThrowsExactly<InvalidOperationException>(() => _index.ApplyJournalEntries('T',
+        var thrown = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => _index.ApplyJournalEntriesAsync('T',
             [
                 Entry(20, 0, "first.txt", UsnReason.FileCreate | UsnReason.Close),
                 Entry(21, 0, "second.txt", UsnReason.FileCreate | UsnReason.Close)
@@ -345,12 +345,12 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
     }
 
     [TestMethod]
-    public void ApplyJournalEntries_MultipleHandlerExceptions_ThrowsAggregateException()
+    public async Task ApplyJournalEntries_MultipleHandlerExceptions_ThrowsAggregateException()
     {
         _index.Changed += _ => throw new InvalidOperationException("first boom");
         _index.Changed += _ => throw new InvalidOperationException("second boom");
 
-        var thrown = Assert.ThrowsExactly<AggregateException>(() => _index.ApplyJournalEntries('T',
+        var thrown = await Assert.ThrowsExactlyAsync<AggregateException>(() => _index.ApplyJournalEntriesAsync('T',
             [Entry(20, 0, "first.txt", UsnReason.FileCreate | UsnReason.Close)],
             journalIdentifier: 5, nextUsn: 100));
 
@@ -359,11 +359,11 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
     }
 
     [TestMethod]
-    public void ApplyJournalEntries_SingleHandlerException_KeepsTheStackTraceOfTheHandlerThatThrew()
+    public async Task ApplyJournalEntries_SingleHandlerException_KeepsTheStackTraceOfTheHandlerThatThrew()
     {
         _index.Changed += ThrowingSubscriber;
 
-        var thrown = Assert.ThrowsExactly<InvalidOperationException>(() => _index.ApplyJournalEntries('T',
+        var thrown = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => _index.ApplyJournalEntriesAsync('T',
             [Entry(20, 0, "first.txt", UsnReason.FileCreate | UsnReason.Close)],
             journalIdentifier: 5, nextUsn: 100));
 
@@ -373,14 +373,14 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
     }
 
     [TestMethod]
-    public void ApplyJournalEntries_CreateClosePairAcrossBatches_RaisesExactlyOneCreated()
+    public async Task ApplyJournalEntries_CreateClosePairAcrossBatches_RaisesExactlyOneCreated()
     {
         var observed = new List<FileChange>();
         _index.Changed += observed.Add;
 
-        var first = _index.ApplyJournalEntries('T',
+        var first = await _index.ApplyJournalEntriesAsync('T',
             [Entry(20, 0, "injected.txt", UsnReason.FileCreate)], journalIdentifier: 5, nextUsn: 100);
-        var second = _index.ApplyJournalEntries('T',
+        var second = await _index.ApplyJournalEntriesAsync('T',
             [Entry(20, 0, "injected.txt", UsnReason.FileCreate | UsnReason.Close)], journalIdentifier: 5, nextUsn: 101);
 
         Assert.HasCount(1, first);
@@ -390,14 +390,14 @@ public sealed class FileIndexWatchTests : IAsyncDisposable
     }
 
     [TestMethod]
-    public void ApplyJournalEntries_CloseCarryingAnUnreportedReason_StillRaisesOneChange()
+    public async Task ApplyJournalEntries_CloseCarryingAnUnreportedReason_StillRaisesOneChange()
     {
         var target = _index.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken)!.Value;
         var recordNumber = target.RecordKey.RecordNumber;
-        _index.ApplyJournalEntries('T',
+        await _index.ApplyJournalEntriesAsync('T',
             [Entry(recordNumber, 1, "readme.md", UsnReason.DataExtend)], journalIdentifier: 5, nextUsn: 100);
 
-        var second = _index.ApplyJournalEntries('T',
+        var second = await _index.ApplyJournalEntriesAsync('T',
             [Entry(recordNumber, 1, "readme.md", UsnReason.DataExtend | UsnReason.DataTruncation | UsnReason.Close)],
             journalIdentifier: 5, nextUsn: 101);
 

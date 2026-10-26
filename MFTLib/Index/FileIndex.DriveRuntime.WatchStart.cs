@@ -265,8 +265,9 @@ public sealed partial class FileIndex
 
                 // Queued rather than run inline, so no source code runs while this lock is held. The
                 // pump's own exit path completes the instance's drain, which is what every waiter
-                // observes, so the task itself is not kept.
-                _ = Task.Run(() => PumpAsync(instance, handle));
+                // observes, so the task itself is not kept, and why the pump must start even after
+                // disposal has begun: no disposal token is passed.
+                _ = Task.Run(() => PumpAsync(instance, handle), CancellationToken.None);
                 return true;
             }
         }

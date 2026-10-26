@@ -61,8 +61,6 @@ public partial class DumpFileParseTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
-        // The assertion runs the lambda synchronously.
-        // ReSharper disable once AccessToDisposedClosure
         var exception = Assert.ThrowsExactly<OperationCanceledException>(
             () => StreamFile(cancellationToken: cancellation.Token));
 
@@ -86,8 +84,6 @@ public partial class DumpFileParseTests
             cancellation.Cancel();
         });
 
-        // The assertion runs the lambda synchronously.
-        // ReSharper disable once AccessToDisposedClosure
         Assert.ThrowsExactly<OperationCanceledException>(
             () => StreamFile(progress, cancellationToken: cancellation.Token));
 

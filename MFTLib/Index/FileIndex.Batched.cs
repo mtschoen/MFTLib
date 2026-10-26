@@ -74,28 +74,35 @@ public sealed partial class FileIndex
     public Task<IReadOnlyList<DriveOperationResult>> WaitForCatchUpAsync(IEnumerable<DriveKey> drives,
         CancellationToken cancellationToken)
     {
+        // Only the synchronous reads of the index sit inside the try: a disposal they observe
+        // from inside a handler is reported as that handler's rejection. The returned tasks are
+        // outside it on purpose, so their own faults reach the caller unchanged.
+        DriveKey[] keys;
+        Task?[] waits;
+        CancellationToken disposalToken;
         try
         {
-            var keys = ValidateBatch(drives);
-            Task?[] waits;
+            keys = ValidateBatch(drives);
             lock (_stateLock)
             {
                 waits = [.. keys.Select(key => GetDriveRuntime(key).GetCatchUpWaitLocked())];
             }
 
-            if (!cancellationToken.IsCancellationRequested && waits.Any(wait => wait is { IsCompleted: false }) &&
-                RejectedTask<IReadOnlyList<DriveOperationResult>>(nameof(WaitForCatchUpAsync)) is { } rejected)
-            {
-                return rejected;
-            }
-
-            return new BatchedCatchUpWait(keys, waits, cancellationToken, DisposalToken).Completion;
+            disposalToken = DisposalToken;
         }
         catch (ObjectDisposedException disposal) when (IsInsideHandlerOfThisIndex())
         {
             return Task.FromException<IReadOnlyList<DriveOperationResult>>(
                 RejectInsideHandler(nameof(WaitForCatchUpAsync)) ?? disposal);
         }
+
+        if (!cancellationToken.IsCancellationRequested && waits.Any(wait => wait is { IsCompleted: false }) &&
+            RejectedTask<IReadOnlyList<DriveOperationResult>>(nameof(WaitForCatchUpAsync)) is { } rejected)
+        {
+            return rejected;
+        }
+
+        return new BatchedCatchUpWait(keys, waits, cancellationToken, disposalToken).Completion;
     }
 
     bool HasWatchableBlock(DriveKey drive)

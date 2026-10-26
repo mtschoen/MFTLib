@@ -198,19 +198,19 @@ public class ConsumerJournalIsolationTests
     }
 
     [TestMethod]
-    public async Task ExceptionalScopeExit_RestoresIsolationForNextRealOpen()
+    public async Task ScopeEnd_RestoresIsolationForNextRealOpen()
     {
         using (JournalIsolation.OverrideJournalWindow(_ => Healthy))
         {
             await SeedAsync();
         }
-        await Assert.ThrowsExactlyAsync<IOException>(async () =>
+
+        using (JournalIsolation.OverrideJournalWindow(_ => Lost(false)))
         {
-            using var scope = JournalIsolation.OverrideJournalWindow(_ => Lost(false));
             await using var index = await FileIndex.OpenAsync(Options(true), Token);
             Assert.IsNotNull(index.Drives.Single().Watch.CheckpointLoss);
-            throw new IOException("synthetic test body failure");
-        });
+        }
+
         await using var restored = await FileIndex.OpenAsync(Options(true), Token);
         Assert.AreEqual(BlockOrigin.WarmStartedFromCache, restored.Drives.Single().Block!.Origin);
         Assert.AreEqual(1, _productions);

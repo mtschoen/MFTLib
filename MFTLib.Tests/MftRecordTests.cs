@@ -51,38 +51,6 @@ public class MftRecordTests
     }
 
     [TestMethod]
-    public void Materialize_AlreadyMaterialized_ReturnsSame()
-    {
-        var record = new MftRecord(42, 10, new MftRecordFields(0x0001), "readme.md");
-        var materialized = record.Materialize();
-
-        Assert.AreEqual(record.RecordNumber, materialized.RecordNumber);
-        Assert.AreEqual(record.ParentRecordNumber, materialized.ParentRecordNumber);
-        Assert.AreEqual(record.FileName, materialized.FileName);
-        Assert.AreEqual(record.InUse, materialized.InUse);
-        Assert.AreEqual(record.IsDirectory, materialized.IsDirectory);
-    }
-
-    [TestMethod]
-    public void Materialize_NoName_KeepsAnEmptyName()
-    {
-        var record = new MftRecord(1, 5, new MftRecordFields(0x0000), fileName: null);
-        Assert.AreEqual(string.Empty, record.Materialize().FileName);
-    }
-
-    [TestMethod]
-    public void Materialize_PreservesAllFields()
-    {
-        var record = new MftRecord(99, 7, new MftRecordFields(0x0003), "docs");
-        var materialized = record.Materialize();
-        Assert.AreEqual(99UL, materialized.RecordNumber);
-        Assert.AreEqual(7UL, materialized.ParentRecordNumber);
-        Assert.IsTrue(materialized.InUse);
-        Assert.IsTrue(materialized.IsDirectory);
-        Assert.AreEqual("docs", materialized.FileName);
-    }
-
-    [TestMethod]
     [DataRow(false, false, false, DisplayName = "Issue655_FreedFileUnknown")]
     [DataRow(false, false, true, DisplayName = "Issue655_FreedFileKnown")]
     [DataRow(false, true, false, DisplayName = "Issue655_FreedDirectoryUnknown")]
@@ -91,7 +59,7 @@ public class MftRecordTests
     [DataRow(true, false, true, DisplayName = "Issue655_LiveFileKnown")]
     [DataRow(true, true, false, DisplayName = "Issue655_LiveDirectoryUnknown")]
     [DataRow(true, true, true, DisplayName = "Issue655_LiveDirectoryKnown")]
-    public void Factory_Materialize_PreservesEveryColumn(bool inUse, bool isDirectory, bool sizeKnown)
+    public void Factory_PreservesEveryColumn(bool inUse, bool isDirectory, bool sizeKnown)
     {
         var record = MftRecordFactory.Create(new MftRecordTestValues
         {
@@ -108,20 +76,17 @@ public class MftRecordTests
             ParentSequenceNumber = 42
         });
 
-        foreach (var actual in new[] { record, record.Materialize() })
-        {
-            Assert.AreEqual(99UL, actual.RecordNumber);
-            Assert.AreEqual(7UL, actual.ParentRecordNumber);
-            Assert.AreEqual(inUse, actual.InUse);
-            Assert.AreEqual(isDirectory, actual.IsDirectory);
-            Assert.AreEqual(sizeKnown, actual.SizeKnown);
-            Assert.AreEqual("record", actual.FileName);
-            Assert.AreEqual(FileAttributes.Hidden | FileAttributes.Archive, actual.FileAttributes);
-            Assert.AreEqual(1234567L, actual.Size);
-            Assert.AreEqual(DateTime.FromFileTimeUtc(MftFixtureTests.ModifiedBaseFileTime), actual.ModifiedUtc);
-            Assert.AreEqual((ushort)37, actual.SequenceNumber);
-            Assert.AreEqual((ushort)42, actual.ParentSequenceNumber);
-        }
+        Assert.AreEqual(99UL, record.RecordNumber);
+        Assert.AreEqual(7UL, record.ParentRecordNumber);
+        Assert.AreEqual(inUse, record.InUse);
+        Assert.AreEqual(isDirectory, record.IsDirectory);
+        Assert.AreEqual(sizeKnown, record.SizeKnown);
+        Assert.AreEqual("record", record.FileName);
+        Assert.AreEqual(FileAttributes.Hidden | FileAttributes.Archive, record.FileAttributes);
+        Assert.AreEqual(1234567L, record.Size);
+        Assert.AreEqual(DateTime.FromFileTimeUtc(MftFixtureTests.ModifiedBaseFileTime), record.ModifiedUtc);
+        Assert.AreEqual((ushort)37, record.SequenceNumber);
+        Assert.AreEqual((ushort)42, record.ParentSequenceNumber);
     }
 
     [TestMethod]
@@ -147,48 +112,58 @@ public class MftRecordTests
     }
 
     [TestMethod]
-    public unsafe void UnmanagedRecord_Record5_WithName_ReadsItsName()
+    public unsafe void CopyFromNative_Record5_WithName_ReadsItsName()
     {
         fixed (char* dotPointer = ".")
         {
-            var record = new MftRecord(5, 5, new MftRecordFields(0x0003, FileAttributes.Directory), (IntPtr)dotPointer,
-                1);
+            var record = MftRecord.CopyFromNative(5, 5, new MftRecordFields(0x0003, FileAttributes.Directory),
+                dotPointer, 1);
 
             Assert.AreEqual(".", record.FileName);
-            Assert.AreEqual(".", record.Materialize().FileName);
         }
     }
 
     [TestMethod]
-    public void UnmanagedRecord_Record5_ZeroLengthName_ReadsAsDot()
+    public unsafe void CopyFromNative_Record5_ZeroLengthName_ReadsAsDot()
     {
-        var record = new MftRecord(5, 5, new MftRecordFields(0x0003, FileAttributes.Directory),
-            NonNullEmptyPoolPointer, 0);
+        var record = MftRecord.CopyFromNative(5, 5, new MftRecordFields(0x0003, FileAttributes.Directory),
+            (char*)NonNullEmptyPoolPointer, 0);
 
         Assert.AreEqual(".", record.FileName);
-        var materialized = record.Materialize();
-        Assert.AreEqual(".", materialized.FileName);
-        Assert.AreEqual(5UL, materialized.RecordNumber);
-        Assert.AreEqual(5UL, materialized.ParentRecordNumber);
-        Assert.IsTrue(materialized.InUse);
-        Assert.IsTrue(materialized.IsDirectory);
+        Assert.AreEqual(5UL, record.RecordNumber);
+        Assert.AreEqual(5UL, record.ParentRecordNumber);
+        Assert.IsTrue(record.InUse);
+        Assert.IsTrue(record.IsDirectory);
     }
 
     [TestMethod]
-    public void UnmanagedRecord_Record5_NullPointer_ReadsAsDot()
+    public unsafe void CopyFromNative_Record5_NullPointer_ReadsAsDot()
     {
-        var record = new MftRecord(5, 5, new MftRecordFields(0x0003, FileAttributes.Directory), IntPtr.Zero, 0);
+        var record = MftRecord.CopyFromNative(5, 5, new MftRecordFields(0x0003, FileAttributes.Directory), null, 0);
 
         Assert.AreEqual(".", record.FileName);
-        Assert.AreEqual(".", record.Materialize().FileName);
     }
 
     [TestMethod]
-    public void UnmanagedRecord_NonRecord5_ZeroLengthName_ReadsEmpty()
+    public unsafe void CopyFromNative_NonRecord5_ZeroLengthName_ReadsEmpty()
     {
-        var record = new MftRecord(100, 5, new MftRecordFields(0x0001, FileAttributes.Normal),
-            NonNullEmptyPoolPointer, 0);
+        var record = MftRecord.CopyFromNative(100, 5, new MftRecordFields(0x0001, FileAttributes.Normal),
+            (char*)NonNullEmptyPoolPointer, 0);
 
         Assert.AreEqual(string.Empty, record.FileName);
+    }
+
+    [TestMethod]
+    public unsafe void CopyFromNative_CopiesTheName_SoItOutlivesTheNativeBuffer()
+    {
+        var buffer = "pooled.txt".ToCharArray();
+        MftRecord record;
+        fixed (char* name = buffer)
+        {
+            record = MftRecord.CopyFromNative(30, 5, new MftRecordFields(0x0001), name, (ushort)buffer.Length);
+        }
+
+        Array.Fill(buffer, 'x');
+        Assert.AreEqual("pooled.txt", record.FileName);
     }
 }

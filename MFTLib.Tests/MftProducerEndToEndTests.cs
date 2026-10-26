@@ -61,7 +61,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.AreEqual(ArmedCursor.NextUsn, block.Header.UsnNextUsn);
         Assert.IsNull(index.Find(At("documents", "created.txt"), TestContext.CancellationToken));
 
-        var changes = index.ApplyJournalEntries('C', CatchUpEntries(), AdvancedCursor.JournalIdentifier, AdvancedCursor.NextUsn);
+        var changes = await index.ApplyJournalEntriesAsync('C', CatchUpEntries(), AdvancedCursor.JournalIdentifier, AdvancedCursor.NextUsn);
 
         Assert.AreSequenceEqual([FileChangeKind.Created, FileChangeKind.Deleted, FileChangeKind.Renamed], [.. changes.Select(change => change.Kind)]);
         Assert.AreEqual(30UL, index.Find(At("documents", "created.txt"), TestContext.CancellationToken)!.Value.RecordKey.RecordNumber);

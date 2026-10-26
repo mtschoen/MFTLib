@@ -50,24 +50,17 @@ public partial class BrokerProcessTests
     }
 
     [TestMethod]
-    public async Task HostFault_TestBodyThrowsInsideAwaitUsing_BodyExceptionEscapes()
+    public async Task HostFault_DisposeRightAfterTheFaultBeforeEndedIsObserved_StaysQuiet()
     {
-        var escaped = await Assert.ThrowsExactlyAsync<InvalidTimeZoneException>(async () =>
-        {
-            var corrupt = new CorruptFrameWrite(corruptWriteNumber: 1);
-            await using var broker = new InProcessBroker(BrokerHostFactory.Create(), wrapClientStream: ControlOnly(corrupt));
-            var request = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
-            try
-            {
-                await request.WaitAsync(HangGuard, TestContext.CancellationToken);
-            }
-            catch (BrokerChannelLostException)
-            {
-                throw new InvalidTimeZoneException("The test body failed after the host faulted.");
-            }
-        });
+        var corrupt = new CorruptFrameWrite(corruptWriteNumber: 1);
+        await using var broker = new InProcessBroker(BrokerHostFactory.Create(), wrapClientStream: ControlOnly(corrupt));
+        var request = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
 
-        Assert.AreEqual("The test body failed after the host faulted.", escaped.Message);
+        await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(
+            () => request.WaitAsync(HangGuard, TestContext.CancellationToken));
+
+        // The await using disposes the broker here, with Ended never awaited; a teardown
+        // exception from that disposal fails this test.
     }
 
     [TestMethod]

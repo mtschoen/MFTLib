@@ -73,16 +73,16 @@ public class JournalWindowOverrideTests
     }
 
     [TestMethod]
-    public void ExceptionalExit_RestoresGuardAndReleasesOwnership()
+    public void ObservationFailure_SurfacesAndScopeEndRestoresGuardAndReleasesOwnership()
     {
         JournalIsolation.ForbidLiveJournalReads();
         var failure = new IOException("synthetic observation failure");
-        var actual = Assert.ThrowsExactly<IOException>(() =>
+        using (JournalIsolation.OverrideJournalWindow(_ => throw failure))
         {
-            using var scope = JournalIsolation.OverrideJournalWindow(_ => throw failure);
-            Check();
-        });
-        Assert.AreSame(failure, actual);
+            var actual = Assert.ThrowsExactly<IOException>(() => Check());
+            Assert.AreSame(failure, actual);
+        }
+
         Assert.IsNull(Check());
         using var next = JournalIsolation.OverrideJournalWindow(_ => Trimmed);
         Assert.IsNotNull(Check());

@@ -43,7 +43,7 @@ public class SnapshotBorrowTests
         using var liveBuilder = CompletedBlocks.Create(ScanMoment);
         using var releasedBuilder = CompletedBlocks.Create(ScanMoment, 'U');
         DriveBlock[] snapshot = [OpenDriveBlock(liveBuilder), OpenDriveBlock(releasedBuilder)];
-        await snapshot[1].ReleaseState.ReleaseAsync();
+        await snapshot[1].ReleaseState.DrainAndReleaseAsync();
         try
         {
             var thrown = Assert.ThrowsExactly<ObjectDisposedException>(() => new SnapshotBorrow(snapshot));
@@ -134,7 +134,7 @@ public class SnapshotBorrowTests
         var borrow = new SnapshotBorrow(snapshot);
         try
         {
-            var release = snapshot[0].ReleaseState.ReleaseAsync().AsTask();
+            var release = snapshot[0].ReleaseState.DrainAndReleaseAsync().AsTask();
 
             Assert.IsFalse(release.IsCompleted, "the release completed with a borrow outstanding");
             Assert.IsFalse(driveBlock.ReleaseState.IsReleaseComplete);

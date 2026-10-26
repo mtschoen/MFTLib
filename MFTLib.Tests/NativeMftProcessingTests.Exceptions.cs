@@ -120,12 +120,9 @@ public partial class NativeMftProcessingTests
             using var managedInput = MftDumpInput.Open(path);
             using var ordinaryResult = managedInput.Parse();
             Assert.IsGreaterThan(0UL, ordinaryResult.UsedRecords);
+            using var failingInput = MftDumpInput.Open(path);
             NativeTestHooks.NativeSetAllocFailCountdown(-1);
-            var failure = Assert.ThrowsExactly<InvalidOperationException>(() =>
-            {
-                using var failingInput = MftDumpInput.Open(path);
-                using var unexpectedResult = failingInput.Parse();
-            });
+            var failure = Assert.ThrowsExactly<InvalidOperationException>(() => failingInput.Parse().Dispose());
             Assert.Contains("Out of memory", failure.Message);
         }
         finally

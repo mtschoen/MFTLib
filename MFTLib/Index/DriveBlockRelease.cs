@@ -160,7 +160,7 @@ sealed class DriveBlockRelease
     ///     nothing, because a borrow holds the <see cref="DriveBlock" /> itself and a borrowed
     ///     block is never collected.
     /// </summary>
-    internal bool Release()
+    internal bool ReleaseUnborrowed()
     {
         if (!TryBeginRelease())
         {
@@ -245,7 +245,7 @@ sealed class DriveBlockRelease
     ///     every reader that was inside the block has left it. Returns whether this call did the
     ///     releasing.
     /// </summary>
-    internal async ValueTask<bool> ReleaseAsync()
+    internal async ValueTask<bool> DrainAndReleaseAsync()
     {
         if (!TryBeginRelease())
         {

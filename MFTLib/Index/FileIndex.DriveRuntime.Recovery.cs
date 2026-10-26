@@ -53,7 +53,9 @@ public sealed partial class FileIndex
         /// <summary>Runs the recovery on the thread pool, off the pump that queued it.</summary>
         void StartRecovery(RecoveryTicket ticket)
         {
-            _ = Task.Run(() => RunRecoveryAsync(ticket));
+            // Never the disposal token: the recovery is the only completer of the ticket that
+            // disposal awaits, so it must start even after disposal has begun.
+            _ = Task.Run(() => RunRecoveryAsync(ticket), CancellationToken.None);
         }
 
         /// <summary>

@@ -24,17 +24,13 @@ namespace MFTLib;
 /// </summary>
 public static class BrokerDiagnostics
 {
-    static bool _forced;
-
     // Each role owns a separate log file. The broker child sets its role to "broker" via Enable.
-    static string _role = "client";
-
-    static string _logDirectory = Path.GetTempPath();
+    const string DefaultRole = "client";
 
     const string LogFilePrefix = "broker-diagnostics.";
     const string LogFileSuffix = ".log";
 
-    internal static string LogFileName => $"{LogFilePrefix}{_role}{LogFileSuffix}";
+    internal static string LogFileName => $"{LogFilePrefix}{Dependencies.Role}{LogFileSuffix}";
 
     static bool IsValidRole(string? role) =>
         !string.IsNullOrEmpty(role) && role.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
@@ -51,7 +47,7 @@ public static class BrokerDiagnostics
     ///     filters the log file's own journal entries out of the watch stream.
     /// </summary>
     internal static string LogPath =>
-        ResolveLogPath(Path.Combine(_logDirectory, LogFileName), OperatingSystem.IsWindows());
+        ResolveLogPath(Path.Combine(Dependencies.LogDirectory, LogFileName), OperatingSystem.IsWindows());
 
     internal static string ResolveLogPath(string combined, bool isWindows)
     {
@@ -75,9 +71,11 @@ public static class BrokerDiagnostics
     ///     The client process's log path, forwarded with <c>--diag-log</c> so the broker can
     ///     drop the client log's journal entries too. Null when the client sent no path.
     /// </summary>
-    internal static string? ClientLogPath { get; set; }
-
-    static bool _includeSelfEntries;
+    internal static string? ClientLogPath
+    {
+        get => Dependencies.ForwardedClientLogPath;
+        set => Dependencies.ForwardedClientLogPath = value;
+    }
 
     /// <summary>
     ///     Set by <c>--diag-include-self</c> (or <c>MFTLIB_BROKER_DIAG_INCLUDE_SELF=1</c>): ship
@@ -86,12 +84,13 @@ public static class BrokerDiagnostics
     /// </summary>
     internal static bool IncludeSelfEntries
     {
-        get => _includeSelfEntries || Environment.GetEnvironmentVariable("MFTLIB_BROKER_DIAG_INCLUDE_SELF") == "1";
-        set => _includeSelfEntries = value;
+        get => Dependencies.IncludeSelfRequested ||
+               Environment.GetEnvironmentVariable("MFTLIB_BROKER_DIAG_INCLUDE_SELF") == "1";
+        set => Dependencies.IncludeSelfRequested = value;
     }
 
     internal static bool Enabled =>
-        _forced || Environment.GetEnvironmentVariable("MFTLIB_BROKER_DIAG") == "1";
+        Dependencies.Forced || Environment.GetEnvironmentVariable("MFTLIB_BROKER_DIAG") == "1";
 
     /// <summary>
     ///     Force diagnostics on for this process and tag its log lines with
@@ -109,9 +108,9 @@ public static class BrokerDiagnostics
             throw new ArgumentException("The diagnostics role must contain only ASCII letters, digits, dash and underscore.", nameof(role));
         }
 
-        _logDirectory = logDirectory;
-        _role = role;
-        _forced = true;
+        Dependencies.LogDirectory = logDirectory;
+        Dependencies.Role = role;
+        Dependencies.Forced = true;
     }
 
     /// <summary>
@@ -128,31 +127,60 @@ public static class BrokerDiagnostics
             : null;
     }
 
-    /// <summary>Process-global diagnostics substitutions; reset after producers and drains stop.</summary>
+    /// <summary>
+    ///     Process-global diagnostics state and substitutions: the opt-in, role, directories and
+    ///     the writer. Reset after producers and drains stop.
+    /// </summary>
     internal static readonly DiagnosticsDependencies Dependencies = new();
 
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static",
-        Justification = "Named dependency container member pattern.")]
     internal sealed class DiagnosticsDependencies
     {
+        // Held only for writer handoff and queue admission, never for sink I/O.
+        readonly Lock _writerLock = new();
+
+        BrokerDiagnosticsWriter? _writer;
+
+        internal bool Forced { get; set; }
+
+        internal string Role { get; set; } = DefaultRole;
+
+        internal string LogDirectory { get; set; } = Path.GetTempPath();
+
+        internal string? ForwardedClientLogPath { get; set; }
+
+        internal bool IncludeSelfRequested { get; set; }
+
+        internal BrokerDiagnosticsWriter? Writer => Volatile.Read(ref _writer);
+
         internal void InstallWriter(BrokerDiagnosticsWriter writer)
         {
-            lock (WriterLock)
+            lock (_writerLock)
             {
                 Interlocked.Exchange(ref _writer, writer)?.Complete();
             }
         }
 
+        internal void Enqueue(string line)
+        {
+            lock (_writerLock)
+            {
+                var writer = _writer ??= new BrokerDiagnosticsWriter(
+                    queuedLine => File.AppendAllText(LogPath, queuedLine + Environment.NewLine),
+                    () => Role);
+                writer.TryEnqueue(line);
+            }
+        }
+
         internal void ResetToDefaults()
         {
-            lock (WriterLock)
+            lock (_writerLock)
             {
                 Interlocked.Exchange(ref _writer, null)?.Complete();
-                _forced = false;
-                _role = "client";
-                _logDirectory = Path.GetTempPath();
-                ClientLogPath = null;
-                _includeSelfEntries = false;
+                Forced = false;
+                Role = DefaultRole;
+                LogDirectory = Path.GetTempPath();
+                ForwardedClientLogPath = null;
+                IncludeSelfRequested = false;
             }
         }
     }
@@ -160,15 +188,10 @@ public static class BrokerDiagnostics
     /// <summary>The channel tag of the control pipe's lines.</summary>
     internal const string ControlChannel = "control";
 
-    // Held only for writer handoff and queue admission, never for sink I/O.
-    static readonly Lock WriterLock = new();
-
-    static BrokerDiagnosticsWriter? _writer;
-
     /// <summary>Completes once every line logged before this call has been appended or dropped.</summary>
     internal static Task FlushAsync(CancellationToken cancellationToken)
     {
-        return _writer?.FlushAsync(cancellationToken) ?? Task.CompletedTask;
+        return Dependencies.Writer?.FlushAsync(cancellationToken) ?? Task.CompletedTask;
     }
 
     /// <summary>
@@ -182,14 +205,7 @@ public static class BrokerDiagnostics
             return;
         }
 
-        var line = $"{DateTime.UtcNow:O}  [{_role}:{Environment.ProcessId}:{channel}]  {message}";
-        lock (WriterLock)
-        {
-            var writer = _writer ??= new BrokerDiagnosticsWriter(
-                queuedLine => File.AppendAllText(LogPath, queuedLine + Environment.NewLine),
-                () => _role);
-            writer.TryEnqueue(line);
-        }
+        Dependencies.Enqueue($"{DateTime.UtcNow:O}  [{Dependencies.Role}:{Environment.ProcessId}:{channel}]  {message}");
     }
 
     /// <summary>

@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using System.Text;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
@@ -249,7 +250,7 @@ public partial class JournalBrokerHostChannelTests
         }
         else
         {
-            payload.AddRange(new byte[] { 0x43, 0x00 });
+            payload.AddRange(Encoding.Unicode.GetBytes("C"));
         }
 
         var host = BrokerHostFactory.Create(new()

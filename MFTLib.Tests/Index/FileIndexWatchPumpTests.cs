@@ -146,6 +146,33 @@ public class FileIndexWatchPumpTests
     }
 
     [TestMethod]
+    public async Task StopWatchingAsync_EndsAPumpWaitingForAHeldWriteGateWithoutApplyingItsBatch()
+    {
+        using var harness = new WatchHarness();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Index.Hooks.ApplyJournalEntriesEntered = _ => entered.TrySetResult();
+        await harness.Index.StartWatchingAsync(['T'], Token);
+        await harness.Index.WaitForDriveWriteGateForTest('T', Token);
+        try
+        {
+            _ = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(recordNumber: 9, "held.txt"));
+            await entered.Task.WaitAsync(HangGuard, Token);
+
+            // The pump now waits for the gate this test holds. A stop must end that wait rather
+            // than leave a thread parked on the gate until the holder lets go.
+            var stopped = await harness.Index.StopWatchingAsync(['T'], Token).WaitAsync(HangGuard, Token);
+            Assert.AreEqual(DriveOperationOutcome.Succeeded, stopped.Single().Outcome);
+        }
+        finally
+        {
+            harness.Index.ReleaseDriveWriteGateForTest('T');
+        }
+
+        Assert.IsEmpty(harness.Changes, "a batch still waiting for the gate when the stop arrived was applied");
+        Assert.IsEmpty(harness.Faults, "a stop during the gate wait was reported as a fault");
+    }
+
+    [TestMethod]
     public async Task DisposeAsync_StopsTheWatchBeforeReleasingBlocks()
     {
         using var harness = new WatchHarness();

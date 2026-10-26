@@ -94,7 +94,7 @@ cat .\SampleProgram.Direct\bin\x64\Release\net10.0\output.log
 
 ## Architecture
 
-[Components and ABI](docs/architecture.md): preserve native thread safety, runtime record geometry and validated compact ABI/stride before parsing. Materialize lazy native-backed strings before freeing buffers. Preserve streaming/batched APIs and elevation dispatch. Direct local scans self-elevate; Watch stays unelevated and its broker elevates; Benchmark uses synthetic data. `MFTLibTestExtensions` ships separately, never inside MFTLib; its harness exposes production outcomes.
+[Components and ABI](docs/architecture.md): preserve native thread safety, runtime record geometry and validated compact ABI/stride before parsing. Copy native-backed strings into managed memory before freeing buffers. Preserve streaming/batched APIs and elevation dispatch. Direct local scans self-elevate; Watch stays unelevated and its broker elevates; Benchmark uses synthetic data. `MFTLibTestExtensions` ships separately, never inside MFTLib; its harness exposes production outcomes.
 
 [Public surface](docs/architecture.md): `PublicSurfaceTests` pins every public type and member of MFTLib and MFTLibTestExtensions to `MFTLib.Tests/PublicSurface/*.approved.txt`; update it in the same pull request. Public members need a sample or reasoned consumer caller (`PublicMemberCallerTests`). Test-only access goes through `MFTLibTestExtensions`, which forwards to internal code. `InternalsVisibleTo` never names a consumer assembly. A pull request that grows an approved file names, in its body, the consumer production caller of every added member.
 

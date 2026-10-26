@@ -500,8 +500,14 @@ public class FileIndexCallbackReentrancyTests
             }
         };
         var innerIndex = inner.Index;
-        OnChanged(outer, "t.txt", () => innerIndex.ApplyJournalEntries('T', [WatchHarness.Create(20, "inner.txt")],
-            WatchHarness.JournalIdentifier, 500));
+        OnChanged(outer, "t.txt", () =>
+        {
+            if (BlockOn(() => innerIndex.ApplyJournalEntriesAsync('T', [WatchHarness.Create(20, "inner.txt")],
+                    WatchHarness.JournalIdentifier, 500)) is { } failure)
+            {
+                outcome.TrySetException(failure);
+            }
+        });
         await StartBothAsync(outer).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         _ = outer.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));

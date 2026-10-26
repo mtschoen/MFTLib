@@ -254,7 +254,7 @@ SyntheticBlock.Edit(path, 0x1234, editor =>
   from `index.Drives` to preserve the timestamp for a later edit after disposal.
   `SetProducerKind(ProducerKind.Mft)` turns a block
   written by an enumeration scan into one an index warm-starts without a producer and
-  whose rows accept `FileIndexTestAccess.ApplyJournalEntries`.
+  whose rows accept `FileIndexTestAccess.ApplyJournalEntriesAsync`.
   `SetCacheTag(new CacheTag("TEST", 7))` replaces only the stored cache identity,
   preserving the scan timestamp, journal cursor, other header fields and every row;
   passing `default` stores the all-zero identity. A cache-only `FileIndex` opened

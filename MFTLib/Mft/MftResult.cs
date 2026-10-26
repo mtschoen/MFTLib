@@ -114,19 +114,25 @@ sealed class MftResult : IDisposable
     /// <summary>Copies the records into managed memory one batch at a time, in native order.</summary>
     /// <param name="batchSize">Records per batch; the last batch may be smaller.</param>
     /// <returns>Batches of materialized records, which stay valid after this result is disposed.</returns>
-    /// <exception cref="ObjectDisposedException">This result has been disposed; thrown when enumeration starts.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="batchSize" /> is not positive; thrown when enumeration starts.</exception>
+    /// <exception cref="ObjectDisposedException">This result has been disposed.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="batchSize" /> is not positive.</exception>
     public IEnumerable<MftRecord[]> ReadBatches(int batchSize)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
+        return EnumerateBatches(batchSize);
+    }
+
+    IEnumerable<MftRecord[]> EnumerateBatches(int batchSize)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         for (ulong start = 0; start < _result.UsedRecords; start += (ulong)batchSize)
         {
             var count = (int)Math.Min((ulong)batchSize, _result.UsedRecords - start);
             var batch = new MftRecord[count];
             for (var i = 0; i < count; i++)
             {
-                batch[i] = GetValidatedEntry(start + (ulong)i).Materialize();
+                batch[i] = GetValidatedEntry(start + (ulong)i);
             }
 
             yield return batch;
@@ -159,6 +165,7 @@ sealed class MftResult : IDisposable
 
         var fields = new MftRecordFields(flags, fileAttributes, size, modifiedFileTime, sequenceNumber,
             parentSequenceNumber);
-        return new MftRecord(recordNumber, parentRecordNumber, fields, (IntPtr)(pool + stringOffset), stringLength);
+        return MftRecord.CopyFromNative(recordNumber, parentRecordNumber, fields, (char*)(pool + stringOffset),
+            stringLength);
     }
 }

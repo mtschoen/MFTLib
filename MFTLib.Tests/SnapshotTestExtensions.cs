@@ -9,7 +9,7 @@ static class SnapshotTestExtensions
     {
         foreach (var driveBlock in snapshot)
         {
-            await driveBlock.ReleaseState.ReleaseAsync();
+            await driveBlock.ReleaseState.DrainAndReleaseAsync();
         }
     }
 }

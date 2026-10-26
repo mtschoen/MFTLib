@@ -53,7 +53,7 @@ public partial class SyntheticBlockTests
 
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
         var zebra = index.Search(new SearchQuery("zebra.txt", NameMatchMode.Exact), TestContext.CancellationToken).Single();
-        FileIndexTestAccess.ApplyJournalEntries(index, 'T',
+        await FileIndexTestAccess.ApplyJournalEntriesAsync(index, 'T',
             [new SyntheticJournalRecord
             {
                 RecordNumber = zebra.RecordKey.RecordNumber,

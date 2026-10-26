@@ -62,7 +62,7 @@ public sealed partial class FileIndex
 
             foreach (var release in retired)
             {
-                await release.ReleaseAsync().ConfigureAwait(false);
+                await release.DrainAndReleaseAsync().ConfigureAwait(false);
             }
         }
 
@@ -84,7 +84,7 @@ public sealed partial class FileIndex
         /// </summary>
         public void ReleaseUnpublishedBlockLocked()
         {
-            DetachCurrentBlockLocked()?.ReleaseState.Release();
+            DetachCurrentBlockLocked()?.ReleaseState.ReleaseUnborrowed();
             ReleaseCanonicalOwnershipLocked();
         }
     }

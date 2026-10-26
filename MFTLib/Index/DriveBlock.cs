@@ -33,7 +33,7 @@ sealed class DriveBlock
     ///     delete a retired block file, so a file the operating system will not unlink surfaces as
     ///     an exception, and an exception leaving a finalizer terminates the process with a stack
     ///     no consumer can act on. The worst case swallowed here is a leaked mapping or a leftover
-    ///     file, which is what the caller already has. <see cref="DriveBlockRelease.ReleaseAsync" />
+    ///     file, which is what the caller already has. <see cref="DriveBlockRelease.DrainAndReleaseAsync" />
     ///     keeps propagating, because a deterministic teardown failure is worth surfacing.
     /// </summary>
     [SuppressMessage("Roslynator", "RCS1075",
@@ -45,7 +45,7 @@ sealed class DriveBlock
     {
         try
         {
-            ReleaseState.Release();
+            ReleaseState.ReleaseUnborrowed();
         }
         catch (Exception)
         {

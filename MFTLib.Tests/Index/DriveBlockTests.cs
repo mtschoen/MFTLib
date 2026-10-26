@@ -21,7 +21,7 @@ public class DriveBlockTests
         Assert.AreEqual('T', driveBlock.Drive);
         Assert.AreEqual(ProducerKind.Enumeration, driveBlock.ProducerKind);
 
-        Assert.IsTrue(driveBlock.ReleaseState.Release());
+        Assert.IsTrue(driveBlock.ReleaseState.ReleaseUnborrowed());
     }
 
     [TestMethod]
@@ -31,8 +31,8 @@ public class DriveBlockTests
         var block = builder.OpenForReading(out _)!;
         var driveBlock = new DriveBlock('T', 0, block);
 
-        Assert.IsTrue(driveBlock.ReleaseState.Release());
-        Assert.IsFalse(driveBlock.ReleaseState.Release());
+        Assert.IsTrue(driveBlock.ReleaseState.ReleaseUnborrowed());
+        Assert.IsFalse(driveBlock.ReleaseState.ReleaseUnborrowed());
 
         Assert.IsTrue(driveBlock.IsReleased);
         Assert.IsTrue(driveBlock.ReleaseState.IsReleaseComplete);
@@ -91,7 +91,7 @@ public class DriveBlockTests
         File.Move(builder.BlockPath, renamedPath);
         driveBlock.ReleaseState.ScheduleDeleteAt(renamedPath);
 
-        driveBlock.ReleaseState.Release();
+        driveBlock.ReleaseState.ReleaseUnborrowed();
 
         Assert.IsFalse(File.Exists(renamedPath));
     }
@@ -115,7 +115,7 @@ public class DriveBlockTests
         using var lockingHandle =
             new FileStream(renamedPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 
-        driveBlock.ReleaseState.Release();
+        driveBlock.ReleaseState.ReleaseUnborrowed();
     }
 
     [TestMethod]
@@ -135,7 +135,7 @@ public class DriveBlockTests
             // Windows treats the read-only attribute as delete-denying, swallowed by Release.
             // Unix unlink ignores a file's own permission bits, so the delete there succeeds.
             // Either way Release must not throw.
-            driveBlock.ReleaseState.Release();
+            driveBlock.ReleaseState.ReleaseUnborrowed();
         }
         finally
         {

@@ -168,8 +168,11 @@ before restoring its defaults.
 ## Broker diagnostics dependencies
 
 `BrokerDiagnostics.Dependencies` is the process-global `DiagnosticsDependencies`
-owner. `InstallWriter` installs a sink-injected writer and completes its predecessor
-under the same `WriterLock` used for writer creation and queue admission. Append
+owner. It holds the diagnostics state itself: the forced opt-in, role, log directory,
+client log path, include-self flag and current writer; the `BrokerDiagnostics` static
+API reads and writes them through it. `InstallWriter` installs a sink-injected writer
+and completes its predecessor under the same writer lock used for writer creation and
+queue admission. Append
 I/O happens on each writer's drain outside that lock. `ResetToDefaults` completes
 and detaches the current writer and restores process diagnostics configuration.
 The existing isolation detector recognizes both the owner field and its members.

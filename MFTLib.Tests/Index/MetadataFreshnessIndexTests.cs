@@ -99,7 +99,7 @@ public sealed class MetadataFreshnessIndexTests : IDisposable
         Seed();
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
-        var changes = FileIndexTestAccess.ApplyJournalEntries(index, 'T',
+        var changes = await FileIndexTestAccess.ApplyJournalEntriesAsync(index, 'T',
             [Record(7, 6, "renamed.txt", SyntheticJournalReason.RenameNewName)], Cursor);
 
         Assert.AreEqual(FileChangeKind.Renamed, changes.Single().Kind);
@@ -119,7 +119,7 @@ public sealed class MetadataFreshnessIndexTests : IDisposable
         Seed();
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
-        FileIndexTestAccess.ApplyJournalEntries(index, 'T',
+        await FileIndexTestAccess.ApplyJournalEntriesAsync(index, 'T',
             [Record(7, 6, "report.txt", SyntheticJournalReason.DataExtend)], Cursor);
 
         var changed = Named(index, "report.txt");
@@ -137,7 +137,7 @@ public sealed class MetadataFreshnessIndexTests : IDisposable
         Seed();
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
-        FileIndexTestAccess.ApplyJournalEntries(index, 'T',
+        await FileIndexTestAccess.ApplyJournalEntriesAsync(index, 'T',
             [Record(7, 6, "report.txt", SyntheticJournalReason.BasicInformationChange, FileAttributes.Hidden)], Cursor);
 
         var changed = Named(index, "report.txt");
@@ -153,8 +153,8 @@ public sealed class MetadataFreshnessIndexTests : IDisposable
         Seed();
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
-        var change = FileIndexTestAccess.ApplyJournalEntries(index, 'T',
-            [Record(10, 6, "created.txt", SyntheticJournalReason.FileCreate)], Cursor).Single();
+        var change = (await FileIndexTestAccess.ApplyJournalEntriesAsync(index, 'T',
+            [Record(10, 6, "created.txt", SyntheticJournalReason.FileCreate)], Cursor)).Single();
 
         Assert.AreEqual(FileChangeKind.Created, change.Kind);
         Assert.IsFalse(change.Entry.IsSizeKnown);
@@ -168,7 +168,7 @@ public sealed class MetadataFreshnessIndexTests : IDisposable
     {
         Seed();
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
-        FileIndexTestAccess.ApplyJournalEntries(index, 'T',
+        await FileIndexTestAccess.ApplyJournalEntriesAsync(index, 'T',
         [
             Record(7, 6, "renamed.txt", SyntheticJournalReason.RenameNewName, FileAttributes.ReadOnly),
             Record(9, 6, "other.txt", SyntheticJournalReason.BasicInformationChange, FileAttributes.Hidden),
@@ -201,7 +201,7 @@ public sealed class MetadataFreshnessIndexTests : IDisposable
         var blockPath = Seed();
         await using (var first = await FileIndex.OpenAsync(CacheOnly(), Token))
         {
-            FileIndexTestAccess.ApplyJournalEntries(first, 'T',
+            await FileIndexTestAccess.ApplyJournalEntriesAsync(first, 'T',
             [
                 Record(7, 6, "report.txt", SyntheticJournalReason.DataExtend),
                 Record(9, 6, "other.txt", SyntheticJournalReason.RenameNewName)
@@ -237,7 +237,7 @@ public sealed class MetadataFreshnessIndexTests : IDisposable
             {
                 MftSource = new MftIndexSource(producer.Producer)
             }, Token);
-        FileIndexTestAccess.ApplyJournalEntries(index, 'T',
+        await FileIndexTestAccess.ApplyJournalEntriesAsync(index, 'T',
         [
             Record(7, 6, "report.txt", SyntheticJournalReason.DataExtend),
             Record(8, 6, "stamped-by-journal.txt", SyntheticJournalReason.BasicInformationChange)

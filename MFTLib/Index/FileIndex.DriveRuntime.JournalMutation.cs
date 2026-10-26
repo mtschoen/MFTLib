@@ -4,8 +4,14 @@ public sealed partial class FileIndex
 {
     sealed partial class DriveRuntime
     {
-        public IReadOnlyList<FileChange> ApplyJournalEntriesCore(WatchInstance? instance,
-            IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn)
+        /// <summary>
+        ///     Applies entries to the drive's current block under its write gate. A cancelled
+        ///     <paramref name="cancellationToken" /> ends the wait for the gate; once the gate is
+        ///     held the batch applies in full.
+        /// </summary>
+        public async Task<IReadOnlyList<FileChange>> ApplyJournalEntriesCoreAsync(WatchInstance? instance,
+            IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn,
+            CancellationToken cancellationToken)
         {
             ObjectDisposedException.ThrowIf(IsDisposed, _index);
             ArgumentNullException.ThrowIfNull(entries);
@@ -24,12 +30,7 @@ public sealed partial class FileIndex
                 Hooks.ApplyJournalEntriesEntered?.Invoke(Drive);
             }
 
-            // ApplyJournalEntries is synchronous by its public contract (it returns
-            // IReadOnlyList<FileChange>, not a Task), so this blocks on the SemaphoreSlim itself,
-            // not on a Task: it is the synchronous counterpart to the commit's WaitAsync, not
-            // sync-over-async.
-            // aislop-ignore-next-line csharp-sync-over-async -- WriteGate is a SemaphoreSlim, not a Task; ApplyJournalEntries is synchronous by its public contract
-            WriteGate.Wait();
+            await WriteGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 if (instance is not null && !IsRunningWatchOverItsBlock(instance))

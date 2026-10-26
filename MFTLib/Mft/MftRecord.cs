@@ -13,16 +13,12 @@ readonly struct MftRecordFields(
 }
 
 /// <summary>
-///     One parsed MFT file record. A record read straight from an <see cref="MftResult" /> borrows
-///     its name from native memory and is valid only until that result is disposed; call
-///     <see cref="Materialize" /> to keep one longer. Records from the batch and array APIs are
-///     already materialized.
+///     One parsed MFT file record. Its name is a managed copy, so a record stays valid after the
+///     <see cref="MftResult" /> it was read from is disposed.
 /// </summary>
 readonly struct MftRecord
 {
     readonly ushort _flags;
-    readonly ushort _nameLength;
-    readonly bool _materialized;
     readonly long _modifiedFileTime;
 
     const ushort InUseFlag = 1;
@@ -31,10 +27,6 @@ readonly struct MftRecord
 
     // DateTime.MaxValue as a FILETIME. Anything past it makes FromFileTimeUtc throw.
     static readonly long MaximumFileTime = DateTime.MaxValue.ToFileTimeUtc();
-
-    // Either a pointer to native memory (temporary) or a materialized string
-    readonly IntPtr _namePtr;
-    readonly string? _fileName;
 
     /// <summary>
     ///     MFT segment index (the lower 48 bits of the file reference number). Stable across USN
@@ -108,55 +100,19 @@ readonly struct MftRecord
     ///     The record's name. The root directory (segment 5) reads as <c>.</c> when it carried no
     ///     name of its own, and any other record without a name reads as an empty string.
     /// </summary>
-    public unsafe string FileName
-    {
-        get
-        {
-            if (_materialized)
-            {
-                return _fileName ?? string.Empty;
-            }
-
-            if (_namePtr != IntPtr.Zero && _nameLength > 0)
-            {
-                return new string((char*)_namePtr, 0, _nameLength);
-            }
-
-            return RecordNumber == 5 ? "." : string.Empty;
-        }
-    }
-
-    internal MftRecord(ulong recordNumber, ulong parentRecordNumber, MftRecordFields fields, IntPtr namePtr,
-        ushort nameLength)
-    {
-        RecordNumber = recordNumber;
-        ParentRecordNumber = parentRecordNumber;
-        _flags = fields.Flags;
-        FileAttributes = fields.FileAttributes;
-        Size = fields.Size;
-        _modifiedFileTime = fields.ModifiedFileTime;
-        SequenceNumber = fields.SequenceNumber;
-        ParentSequenceNumber = fields.ParentSequenceNumber;
-        _namePtr = namePtr;
-        _nameLength = nameLength;
-        _fileName = null;
-        _materialized = false;
-    }
+    public string FileName { get; }
 
     /// <summary>
-    ///     Creates a new MftRecord where the strings are materialized into managed memory.
-    ///     This makes the record safe to use after the underlying native buffer is freed.
+    ///     Copies a native record's name out of its string pool. A zero-length name reads as
+    ///     <c>.</c> for the root directory (segment 5) and as an empty string for any other record.
     /// </summary>
-    public MftRecord Materialize()
+    internal static unsafe MftRecord CopyFromNative(ulong recordNumber, ulong parentRecordNumber,
+        MftRecordFields fields, char* name, ushort nameLength)
     {
-        if (_materialized)
-        {
-            return this;
-        }
-
-        var fields = new MftRecordFields(_flags, FileAttributes, Size, _modifiedFileTime, SequenceNumber,
-            ParentSequenceNumber);
-        return new MftRecord(RecordNumber, ParentRecordNumber, fields, FileName);
+        var fileName = nameLength > 0
+            ? new string(name, 0, nameLength)
+            : recordNumber == 5 ? "." : string.Empty;
+        return new MftRecord(recordNumber, parentRecordNumber, fields, fileName);
     }
 
     internal MftRecord(ulong recordNumber, ulong parentRecordNumber, MftRecordFields fields, string? fileName)
@@ -169,9 +125,6 @@ readonly struct MftRecord
         _modifiedFileTime = fields.ModifiedFileTime;
         SequenceNumber = fields.SequenceNumber;
         ParentSequenceNumber = fields.ParentSequenceNumber;
-        _fileName = fileName;
-        _namePtr = IntPtr.Zero;
-        _nameLength = 0;
-        _materialized = true;
+        FileName = fileName ?? string.Empty;
     }
 }

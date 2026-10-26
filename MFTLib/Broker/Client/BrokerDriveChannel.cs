@@ -94,7 +94,7 @@ sealed class BrokerDriveChannel : IAsyncDisposable
             return;
         }
 
-        _closing.Cancel();
+        await _closing.CancelAsync().ConfigureAwait(false);
         await _reader.DisposeAsync().ConfigureAwait(false);
         _closed(this);
         await _pipe.DisposeAsync().ConfigureAwait(false);

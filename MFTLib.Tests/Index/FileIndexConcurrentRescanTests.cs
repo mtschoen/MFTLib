@@ -185,7 +185,7 @@ public sealed class FileIndexConcurrentRescanTests : IDisposable
     }
 
     [TestMethod]
-    public void ApplyJournalEntries_TakesOnlyItsDrivesWriteGate()
+    public async Task ApplyJournalEntries_TakesOnlyItsDrivesWriteGate()
     {
         using var harness = new WatchHarness('T', 'U');
         var index = harness.Index;
@@ -197,7 +197,7 @@ public sealed class FileIndexConcurrentRescanTests : IDisposable
             otherGatesFree = index.AreDriveGatesFreeForTest('U');
         };
 
-        index.ApplyJournalEntries('T', [WatchHarness.Create(9, "direct.txt")], WatchHarness.JournalIdentifier, 600);
+        await index.ApplyJournalEntriesAsync('T', [WatchHarness.Create(9, "direct.txt")], WatchHarness.JournalIdentifier, 600);
 
         Assert.IsFalse(ownGateFree, "the apply holds T's write gate");
         Assert.IsTrue(otherGatesFree, "the apply holds none of U's gates");

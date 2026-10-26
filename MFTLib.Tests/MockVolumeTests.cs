@@ -99,6 +99,17 @@ public class MockVolumeTests
         Marshal.FreeHGlobal(pointer);
     }
 
+    static void Consume<T>(IEnumerable<T> values) => _ = values.ToArray();
+
+    static void PrepareBatches(MftResult result, bool consumeFirst, out IEnumerable<MftRecord[]> batches)
+    {
+        batches = result.ReadBatches(1);
+        if (consumeFirst)
+        {
+            Consume(batches);
+        }
+    }
+
     // --- FileUtilities ---
 
     [TestMethod]
@@ -305,29 +316,27 @@ public class MockVolumeTests
     }
 
     [TestMethod]
-    public void MftResult_EnumerationAfterDispose_ThrowsObjectDisposed()
+    [DataRow(0u, false, DisplayName = "#700-deferred-empty-result")]
+    [DataRow(0u, true, DisplayName = "#700-repeated-empty-result")]
+    [DataRow(1u, false, DisplayName = "#700-deferred-nonempty-result")]
+    [DataRow(1u, true, DisplayName = "#700-repeated-nonempty-result")]
+    public void MftResult_EnumerationAfterDispose_ThrowsObjectDisposed(uint usedRecords, bool repeatEnumeration)
     {
-        var resultPtr = BuildResult(1);
-        MFTLibNative.Hooks._freeMftResult = ptr =>
+        var resultPtr = BuildResult(usedRecords);
+        MFTLibNative.Hooks._freeMftResult = _ => { };
+        try
         {
-            var p = Marshal.PtrToStructure<MftParseResult>(ptr);
-            if (p.Entries != IntPtr.Zero)
-            {
-                Marshal.FreeHGlobal(p.Entries);
-            }
+            var result = new MftResult(resultPtr);
+            PrepareBatches(result, repeatEnumeration, out var batches);
+            result.Dispose();
 
-            if (p.EntryStrings != IntPtr.Zero)
-            {
-                Marshal.FreeHGlobal(p.EntryStrings);
-            }
-
-            Marshal.FreeHGlobal(ptr);
-        };
-
-        var result = new MftResult(resultPtr);
-        result.Dispose();
-
-        Assert.ThrowsExactly<ObjectDisposedException>(() => result.ReadBatches(4096).ToList());
+            using var enumerator = batches.GetEnumerator();
+            Assert.ThrowsExactly<ObjectDisposedException>(() => enumerator.MoveNext());
+        }
+        finally
+        {
+            FreeBuiltResult(resultPtr);
+        }
     }
 
     [TestMethod]
@@ -351,11 +360,10 @@ public class MockVolumeTests
     public void MftResult_ReadBatches_ZeroOrNegativeBatchSize_ThrowsArgumentOutOfRangeException(int batchSize)
     {
         MFTLibNative.Hooks._freeMftResult = FreeBuiltResult;
-        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
-        {
-            using var result = new MftResult(BuildResult(5));
-            _ = result.ReadBatches(batchSize).ToList();
-        });
+        using var result = new MftResult(BuildResult(5));
+
+        // Not enumerated: the batch size is rejected at the call.
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => result.ReadBatches(batchSize));
     }
 
     [TestMethod]
@@ -406,14 +414,30 @@ public class MockVolumeTests
     }
 
     [TestMethod]
-    public void MftVolume_ReadRecordBatches_Disposed_ThrowsObjectDisposedException()
+    [DataRow(false, false, DisplayName = "call-after-dispose")]
+    [DataRow(true, false, DisplayName = "#700-deferred-volume-enumeration")]
+    [DataRow(true, true, DisplayName = "#700-repeated-volume-enumeration")]
+    public void MftVolume_ReadRecordBatches_Disposed_ThrowsObjectDisposedException(
+        bool readBeforeDispose, bool repeatEnumeration)
     {
-        SetupMocks(5);
+        FileUtilities.Hooks._getVolumeHandle = _ => FakeVolumeHandle.Create();
+        MFTLibNative.Hooks._parseMftRecordsWithProgress = (_, _, _, _, _) => BuildResult(1);
+        MFTLibNative.Hooks._freeMftResult = FreeBuiltResult;
         var volume = MftVolume.Open('C');
+        IEnumerable<MftRecord[]>? batches = null;
+        if (readBeforeDispose)
+        {
+            batches = volume.ReadRecordBatches(4096, null, null, CancellationToken.None);
+            if (repeatEnumeration)
+            {
+                Consume(batches);
+            }
+        }
+
         volume.Dispose();
 
         Assert.ThrowsExactly<ObjectDisposedException>(() =>
-            volume.ReadRecordBatches(4096, null, null, CancellationToken.None).ToList());
+            (batches ?? volume.ReadRecordBatches(4096, null, null, CancellationToken.None)).ToList());
     }
 
     [TestMethod]
@@ -422,11 +446,11 @@ public class MockVolumeTests
     public void MftVolume_ReadRecordBatches_ZeroOrNegativeBatchSize_ThrowsArgumentOutOfRangeException(int batchSize)
     {
         SetupMocks(5);
-        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
-        {
-            using var volume = MftVolume.Open('C');
-            _ = volume.ReadRecordBatches(batchSize, null, null, CancellationToken.None).ToList();
-        });
+        using var volume = MftVolume.Open('C');
+
+        // Not enumerated: the batch size is rejected before the parse runs.
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => volume.ReadRecordBatches(batchSize, null, null, CancellationToken.None));
     }
 
     [TestMethod]
@@ -524,7 +548,6 @@ public class MockVolumeTests
             Assert.AreEqual(".", record.FileName);
             Assert.IsTrue(record.IsDirectory);
             Assert.IsTrue(record.InUse);
-            Assert.AreEqual(".", record.Materialize().FileName);
         }
         finally
         {

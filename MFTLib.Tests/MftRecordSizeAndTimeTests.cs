@@ -44,7 +44,6 @@ public class MftRecordSizeAndTimeTests
             ModifiedFileTime = modifiedFileTime
         });
         Assert.AreEqual(DateTime.MinValue, record.ModifiedUtc);
-        Assert.AreEqual(DateTime.MinValue, record.Materialize().ModifiedUtc);
     }
 
     [TestMethod]

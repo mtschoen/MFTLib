@@ -176,8 +176,8 @@ public sealed class FileIndexDisposalRaceTests : IDisposable
         var index = await FileIndex.OpenAsync(Options(progress), CancellationToken.None);
         await index.DisposeAsync();
 
-        Assert.ThrowsExactly<ObjectDisposedException>(
-            () => index.ApplyJournalEntries('T', [], journalIdentifier: 1, nextUsn: 1));
+        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(
+            () => index.ApplyJournalEntriesAsync('T', [], journalIdentifier: 1, nextUsn: 1));
     }
 
     public TestContext TestContext { get; set; } = null!;

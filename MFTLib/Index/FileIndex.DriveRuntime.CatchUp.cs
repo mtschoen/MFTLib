@@ -115,7 +115,7 @@ public sealed partial class FileIndex
                 var (newlyAdopted, consecutiveLostCatchUps, settledCount) = AdoptOpenedDrive(
                     block, settled, settlement, replacing: adopted);
                 // Nothing published the lost block this retry replaced; releasing it deletes its renamed-aside file.
-                adopted?.ReleaseState.Release();
+                adopted?.ReleaseState.ReleaseUnborrowed();
                 adopted = newlyAdopted;
                 if (settled.CatchUpLoss is not { } catchUpLoss ||
                     RecordLostCatchUp(catchUpLoss, consecutiveLostCatchUps).IsRecoveryStopped)

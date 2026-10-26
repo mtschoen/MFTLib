@@ -23,7 +23,6 @@ ref struct RowScanner
     readonly uint _endRowExclusive;
     readonly CancellationToken _cancellationToken;
     uint _rowsUntilCancellationCheck;
-    uint _currentRowIndex;
     bool _started;
 
     internal RowScanner(DriveBlock driveBlock, CancellationToken cancellationToken = default)
@@ -45,13 +44,13 @@ ref struct RowScanner
         // query whose token was already cancelled stops before reading a row, and an engine that
         // opens one scanner per drive block observes the token at least once for every block.
         _rowsUntilCancellationCheck = 1;
-        _currentRowIndex = startRow;
+        CurrentRowIndex = startRow;
         _started = false;
     }
 
-    internal readonly uint CurrentRowIndex => _currentRowIndex;
+    internal uint CurrentRowIndex { get; private set; }
 
-    public readonly ref readonly FileRow Current => ref _rows[(int)_currentRowIndex];
+    public readonly ref readonly FileRow Current => ref _rows[(int)CurrentRowIndex];
 
     /// <summary>
     ///     The current row's name, taken from a single descriptor-word read so a concurrent
@@ -78,7 +77,7 @@ ref struct RowScanner
     {
         if (_started)
         {
-            _currentRowIndex++;
+            CurrentRowIndex++;
         }
 
         _started = true;
@@ -93,7 +92,7 @@ ref struct RowScanner
             _rowsUntilCancellationCheck = CancellationCheckIntervalRows;
         }
 
-        return _currentRowIndex < _endRowExclusive;
+        return CurrentRowIndex < _endRowExclusive;
     }
 
     public readonly RowScanner GetEnumerator()

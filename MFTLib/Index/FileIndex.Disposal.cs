@@ -168,13 +168,13 @@ public sealed partial class FileIndex
         var runtimes = _driveRuntimes.Values.OrderBy(runtime => runtime.Drive.Letter).ToArray();
         foreach (var runtime in runtimes)
         {
-            await runtime.LifecycleGate.WaitAsync().ConfigureAwait(false);
+            await runtime.LifecycleGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         }
 
         Hooks.LifecycleGatesTakenForDisposal?.Invoke();
         foreach (var runtime in runtimes)
         {
-            await runtime.WriteGate.WaitAsync().ConfigureAwait(false);
+            await runtime.WriteGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         }
 
         try
@@ -203,7 +203,7 @@ public sealed partial class FileIndex
             // be shut out of the lock for that long.
             foreach (var driveBlock in current ?? [])
             {
-                await driveBlock.ReleaseState.ReleaseAsync().ConfigureAwait(false);
+                await driveBlock.ReleaseState.DrainAndReleaseAsync().ConfigureAwait(false);
             }
         }
         catch (Exception releaseFailure) when (cancellationFailure is not null)

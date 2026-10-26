@@ -888,3 +888,18 @@ MSTEST0084 or CA1416 hides the mismatch instead of fixing the description of the
 
 **Revisit only if:** a public member's platform-neutral logic is needed by a consumer on Linux, which would
 make the internal member a public one.
+
+## Journal application is asynchronous end to end
+
+**Decision (2026-10-26, issue 700):** `MFTLibTestExtensions.FileIndexTestAccess.ApplyJournalEntriesAsync` replaces
+the synchronous `ApplyJournalEntries` and returns `Task<IReadOnlyList<FileChange>>`. It takes no cancellation
+token: a direct apply has no stop of its own. Internally every journal apply awaits the drive's write gate; the
+watch pump passes its stop token, so a stop that arrives while a batch waits for the gate ends the pump as a stop
+and leaves the batch unapplied.
+
+**Reason:** the only production caller of journal application is the async watch pump. The synchronous signature
+made a thread-pool thread block on the same `SemaphoreSlim` the commit path awaits, and a stop could not end that
+wait (JetBrains MethodSupportsCancellation, issue 700). The test-package forwarder was the one public face of the
+synchronous shape.
+
+**Revisit only if:** a consumer needs to apply journal entries from a context that cannot await.

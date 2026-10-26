@@ -19,7 +19,7 @@ namespace MFTLib.Index;
 ///     <see cref="DriveBlock" /> that owns it, which is the lifecycle reset a rescan (block
 ///     replacement) provides. Not thread-safe: every journal mutation
 ///     of a drive's block is already serialized by that drive's write gate
-///     (<see cref="FileIndex.ApplyJournalEntries" />), and tests drive it single-threaded.
+///     (<see cref="FileIndex.ApplyJournalEntriesAsync" />), and tests drive it single-threaded.
 /// </summary>
 sealed class ReportedReasonCycles
 {

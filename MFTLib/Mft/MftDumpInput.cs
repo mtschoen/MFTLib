@@ -118,8 +118,18 @@ sealed class MftDumpInput : IDisposable
     /// <param name="progress">Receives native parse progress.</param>
     /// <param name="cancellationToken">Stops parsing and batch enumeration.</param>
     /// <param name="parseThreads">The admitted scan's allowance; null lets the native parser use every processor.</param>
+    /// <exception cref="ObjectDisposedException">This input has been closed.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="batchSize" /> is not positive.</exception>
     public IEnumerable<MftRecord[]> ReadRecordBatches(int batchSize, IProgress<MftScanProgress>? progress,
         CancellationToken cancellationToken, ParseThreadAllowance? parseThreads = null)
+    {
+        ObjectDisposedException.ThrowIf(_handle.IsClosed, this);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
+        return ParseRecordBatches(batchSize, progress, parseThreads, cancellationToken);
+    }
+
+    IEnumerable<MftRecord[]> ParseRecordBatches(int batchSize, IProgress<MftScanProgress>? progress,
+        ParseThreadAllowance? parseThreads, CancellationToken cancellationToken)
     {
         using var result = Parse(new MftFileScanOptions(progress, ParseThreads: parseThreads,
 BufferSizeRecords: 0, CancellationToken: cancellationToken));

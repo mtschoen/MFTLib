@@ -212,12 +212,12 @@ public class SubtreeAnchorTests
     [DataRow(QueryForm.Search)]
     [DataRow(QueryForm.Enumerate)]
     [DataRow(QueryForm.EnumerateRows)]
-    public void AnchorSupersededByRowReuse_IsRejected(QueryForm form)
+    public async Task AnchorSupersededByRowReuse_IsRejected(QueryForm form)
     {
         using var harness = new WatchHarness('T');
         var anchor = Documents(harness.Index);
 
-        harness.Index.ApplyJournalEntries('T',
+        await harness.Index.ApplyJournalEntriesAsync('T',
             [Journal(UsnReason.FileDelete, "documents", 0), Journal(UsnReason.FileCreate, "replacement", 5)],
             WatchHarness.JournalIdentifier, 200);
 

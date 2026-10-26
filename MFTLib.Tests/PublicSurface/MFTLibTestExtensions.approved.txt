@@ -7,7 +7,7 @@ MFTLibTestExtensions.BrokerTestHarness :: method public static StartInProcess(MF
 MFTLibTestExtensions.BrokerTestHarness :: type public static class
 MFTLibTestExtensions.DefenderExclusionIsolation :: method public static ScriptPowerShell(bool succeeds = true) : MFTLibTestExtensions.ScriptedPowerShell
 MFTLibTestExtensions.DefenderExclusionIsolation :: type public static class
-MFTLibTestExtensions.FileIndexTestAccess :: method public static ApplyJournalEntries(MFTLib.Index.FileIndex index, MFTLib.Index.DriveKey drive, System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord> entries, MFTLibTestExtensions.SyntheticJournalCursor cursor) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileChange>
+MFTLibTestExtensions.FileIndexTestAccess :: method public static ApplyJournalEntriesAsync(MFTLib.Index.FileIndex index, MFTLib.Index.DriveKey drive, System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord> entries, MFTLibTestExtensions.SyntheticJournalCursor cursor) : System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileChange>>
 MFTLibTestExtensions.FileIndexTestAccess :: type public static class
 MFTLibTestExtensions.InProcessBrokerHandle :: method public Crash() : void
 MFTLibTestExtensions.InProcessBrokerHandle :: method public DisposeAsync() : System.Threading.Tasks.ValueTask

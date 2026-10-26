@@ -175,7 +175,7 @@ public partial class BrokerProcessTests
         BrokerProtocol.WriteCursor(frames, Armed);
         BrokerProtocol.WriteScanReady(frames, 0);
         BrokerProtocol.WriteScanCompleted(frames);
-        byte[] partialLengthPrefix = [10, 0];
+        var partialLengthPrefix = BitConverter.GetBytes(10)[..2];
         frames.Write(partialLengthPrefix);
         await hostEnd.WriteAsync(frames.WrittenMemory, TestContext.CancellationToken).AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
         await hostEnd.FlushAsync(TestContext.CancellationToken).WaitAsync(HangGuard, TestContext.CancellationToken);

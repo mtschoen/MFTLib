@@ -196,7 +196,7 @@ public partial class BrokerProcessTests
             pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, Armed)),
             pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, 0)),
             pipe => HostChannelHarness.WriteFrameAsync(pipe, BrokerProtocol.WriteScanCompleted),
-            pipe => WriteRawAsync(pipe, [0, 0, 0, 0]));
+            pipe => WriteRawAsync(pipe, BitConverter.GetBytes(0)));
 
         Assert.AreEqual('C', lost.Drive);
         Assert.Contains("too short", lost.Message);

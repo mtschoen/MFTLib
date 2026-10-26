@@ -54,7 +54,8 @@ public sealed partial class FileIndex
                 {
                     if (item is JournalBatch batch)
                     {
-                        if (ApplyWatchBatch(instance, batch) is { } applyFailure)
+                        if (await ApplyWatchBatchAsync(instance, batch, stopToken).ConfigureAwait(false) is
+                            { } applyFailure)
                         {
                             return new WatchFault(WatchFaultKind.Apply, drive, applyFailure);
                         }
@@ -86,17 +87,21 @@ public sealed partial class FileIndex
 
         /// <summary>
         ///     Applies one batch, then raises <see cref="Changed" /> with no gate or lock held. Returns
-        ///     the apply failure, which ends the drive's watch; a subscriber failure does not.
+        ///     the apply failure, which ends the drive's watch; a subscriber failure does not. A stop
+        ///     that arrives while the batch waits for the write gate propagates as cancellation, which
+        ///     the pump classifies as a stop.
         /// </summary>
-        Exception? ApplyWatchBatch(WatchInstance instance, JournalBatch batch)
+        async Task<Exception?> ApplyWatchBatchAsync(WatchInstance instance, JournalBatch batch,
+            CancellationToken stopToken)
         {
             IReadOnlyList<FileChange> changes;
             try
             {
-                changes = ApplyJournalEntriesCore(instance, batch.Entries, batch.JournalIdentifier,
-                    batch.NextUsn);
+                changes = await ApplyJournalEntriesCoreAsync(instance, batch.Entries, batch.JournalIdentifier,
+                    batch.NextUsn, stopToken).ConfigureAwait(false);
             }
-            catch (Exception exception)
+            catch (Exception exception) when (!(exception is OperationCanceledException &&
+                                                stopToken.IsCancellationRequested))
             {
                 return exception;
             }

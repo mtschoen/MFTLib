@@ -62,8 +62,6 @@ public partial class MftVolumeTests
 
             using var batches = volume.ReadRecordBatches(4096, progress, null, cancellation.Token)
                 .GetEnumerator();
-            // The assertion runs the lambda synchronously.
-            // ReSharper disable once AccessToDisposedClosure
             var exception = Assert.ThrowsExactly<OperationCanceledException>(() => batches.MoveNext());
 
             Assert.AreEqual(cancellation.Token, exception.CancellationToken);
@@ -82,8 +80,6 @@ public partial class MftVolumeTests
             Assert.IsTrue(batches.MoveNext());
             cancellation.Cancel();
 
-            // The assertion runs the lambda synchronously.
-            // ReSharper disable once AccessToDisposedClosure
             Assert.ThrowsExactly<OperationCanceledException>(() => batches.MoveNext());
         });
     }
