@@ -116,14 +116,7 @@ public sealed partial class FileIndex
                     $"Could not delete block file '{path}': the partial block a failed or cancelled scan left in the canonical cache slot ({exception.Message}).";
             }
 
-            try
-            {
-                Options.Diagnostics?.Invoke(report);
-            }
-            catch (Exception exception) when (exception is not OutOfMemoryException)
-            {
-                // The callback is the consumer's; its failure must not replace the scan's own exception.
-            }
+            ReportWithoutThrowing(report);
         }
 
         /// <summary>
@@ -138,7 +131,6 @@ public sealed partial class FileIndex
             }
 
             var (retiredPath, canonicalPath, superseded) = renamed;
-            var diagnostics = Options.Diagnostics;
             try
             {
                 if (File.Exists(retiredPath))
@@ -146,7 +138,7 @@ public sealed partial class FileIndex
                     if (File.Exists(canonicalPath))
                     {
                         File.Delete(canonicalPath);
-                        diagnostics?.Invoke(
+                        ReportWithoutThrowing(
                             $"Deleted block file '{canonicalPath}': removing the partial replacement a failed or cancelled scan left before restoring the renamed-aside cache file.");
                     }
 
@@ -156,8 +148,26 @@ public sealed partial class FileIndex
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
             }
+            finally
+            {
+                superseded.ReleaseState.ClearScheduledDelete();
+            }
+        }
 
-            superseded.ReleaseState.ClearScheduledDelete();
+        /// <summary>
+        ///     Reports through <see cref="FileIndexOptions.Diagnostics" /> from a failure path. The
+        ///     callback is the consumer's; its failure must not replace the scan's own exception.
+        /// </summary>
+        void ReportWithoutThrowing(string report)
+        {
+            try
+            {
+                Options.Diagnostics?.Invoke(report);
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                // Swallowed by design: see the summary.
+            }
         }
 
         void TryDeleteBestEffort(string path, string reason)

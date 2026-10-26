@@ -71,7 +71,8 @@ ownership; block operations still follow the locks described below.
       A file that already sat in the slot before the scan, such as a complete block rejected only for an
       unresumable checkpoint, is judged by what is there after the failure: it stays only while it still
       opens as a complete, valid block, and a truncated or half-written replacement is deleted. A rescan
-      restores its renamed-aside previous block instead.
+      restores its renamed-aside previous block instead; a throwing callback there neither replaces the scan's
+      exception nor stops the previous block from returning to the canonical slot.
       `DriveBlockStatus.CacheLocation` reports the current published block's backing, read from the drive owner's adopted `LastResult.CacheLocation`. The drive owner (`DriveRuntime`) holds the canonical lock (`CanonicalLock`) when it owns the slot, but `LastResult.CacheLocation` describes the published block:
       `CacheLocation.OwnedCanonical` for the canonical slot held by this index,
       `PrivateFallback` for a private fallback block, and null for

@@ -136,6 +136,81 @@ public sealed class FileIndexRescanCleanupTests : IDisposable
         }
     }
 
+    [TestMethod]
+    public async Task RescanAsync_FailedScanWithAThrowingDiagnosticsCallback_RestoresThePreviousBlockAndKeepsTheFailure()
+    {
+        // The restore reports deleting the partial replacement through Diagnostics; a callback
+        // that throws there must neither replace the scan's failure nor skip moving the
+        // renamed-aside previous block back into the canonical slot.
+        var producerFailure = new IOException("the producer lost the volume");
+        var failTheScan = new System.Runtime.CompilerServices.StrongBox<bool>(false);
+        var options = new FileIndexOptions
+        {
+            Drives = [new IndexedDrive('T', TreeRoot, 1)],
+            CacheDirectory = CacheDirectoryPath,
+            Diagnostics = _ =>
+            {
+                if (failTheScan.Value)
+                {
+                    throw new InvalidOperationException("the log destination closed");
+                }
+            },
+            MftSource = new MftIndexSource((request, cancellationToken) =>
+            {
+                if (failTheScan.Value)
+                {
+                    File.WriteAllBytes(request.BlockPath, [1, 2, 3]);
+                    throw producerFailure;
+                }
+
+                SeededBlocks.Write(request.BlockPath, request.VolumeSerial, journalIdentifier: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment);
+                return Task.FromResult(new MftBlockProduceResult(
+                    BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
+                    SkippedRecordCount: 0));
+            })
+        };
+        var canonicalPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 1));
+        byte[] previousBlockBytes;
+        await using (var index = await FileIndex.OpenAsync(options, Token))
+        {
+            previousBlockBytes = await ReadSharedAsync(canonicalPath);
+
+            failTheScan.Value = true;
+            try
+            {
+                var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+                    () => index.RescanAsync(['T'], Token));
+
+                Assert.AreSame(producerFailure, failure.InnerException,
+                    "the scan's own failure is reported, not the callback's exception");
+                Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
+                Assert.IsTrue(File.Exists(canonicalPath), "the renamed-aside previous block was moved back");
+                CollectionAssert.AreEqual(previousBlockBytes, await ReadSharedAsync(canonicalPath));
+                Assert.IsEmpty(Directory.GetFiles(CacheDirectoryPath, "*.retired-*"),
+                    "no retired sibling is left behind");
+            }
+            finally
+            {
+                // Disposal reports through the same callback; it must not mask the assertions above.
+                failTheScan.Value = false;
+            }
+        }
+
+        // Releasing the previous block on dispose must not delete the restored canonical file.
+        Assert.IsTrue(File.Exists(canonicalPath), "the restored file is no longer scheduled for deletion");
+        CollectionAssert.AreEqual(previousBlockBytes, await ReadSharedAsync(canonicalPath));
+    }
+
+    // The published block keeps its file mapped, so a plain read is refused while the index is open.
+    async Task<byte[]> ReadSharedAsync(string path)
+    {
+        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete);
+        using var copy = new MemoryStream();
+        await stream.CopyToAsync(copy, Token);
+        return copy.ToArray();
+    }
+
     // Owns the handle that blocks deletion of a path, so the test disposes it however the assertions end.
     [System.Runtime.Versioning.SupportedOSPlatform("windows")] // FileShare.None only blocks a delete on Windows
     sealed class ExclusiveFileLock : IAsyncDisposable
