@@ -25,11 +25,15 @@ public sealed record CallerGateReplacedPropertyRecord(int Alpha, int Beta)
 {
     readonly int _stored = Alpha;
 
+#pragma warning disable RCS1085 // The handwritten getter over an explicit field is the HandwrittenGetter case under test
+    // ReSharper disable once ConvertToAutoProperty
+    // aislop-ignore-next-line jb/ConvertToAutoProperty dotnet/RCS1085 -- the handwritten getter over an explicit field is the HandwrittenGetter case the gate reads
     public int Alpha
     {
         get => _stored;
         init => _stored = value;
     }
+#pragma warning restore RCS1085
 
     public int Combined => Alpha + Beta;
 }

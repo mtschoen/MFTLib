@@ -73,6 +73,7 @@ namespace System.IO
     {
         public static void ProbeExtension(this string value)
         {
+            ArgumentNullException.ThrowIfNull(value);
         }
     }
 }

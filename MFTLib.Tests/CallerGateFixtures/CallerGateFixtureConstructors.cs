@@ -53,7 +53,11 @@ public record CallerGateOtherFieldRecord
 
     public int Value { get; init; }
 
+#pragma warning disable RCS1085 // The field behind Other is stored from the constructor argument, which is the case under test
+    // ReSharper disable once ConvertToAutoProperty
+    // aislop-ignore-next-line jb/ConvertToAutoProperty dotnet/RCS1085 -- the explicit field is the case: the argument is stored into a field behind Other, not into Value's backing field
     public int Other => _other;
+#pragma warning restore RCS1085
 }
 
 // The constructor with the matching parameter is not public.
@@ -70,6 +74,8 @@ public record CallerGateInternalConstructorRecord
 // The constructor assigns through the init accessor, which stores nothing itself.
 public record CallerGateSetterRecord
 {
+    // ReSharper disable once ConvertToPrimaryConstructor
+    // aislop-ignore-next-line jb/ConvertToPrimaryConstructor -- the constructor assigns through the init accessor, which stores nothing itself; a primary constructor would change the case under test
     public CallerGateSetterRecord(int value)
     {
         Value = value;
@@ -82,6 +88,8 @@ public record CallerGateGenericRecord<T>(T Item);
 
 public record CallerGateGenericIgnoredRecord<T>
 {
+    // ReSharper disable once ConvertToPrimaryConstructor
+    // aislop-ignore-next-line jb/ConvertToPrimaryConstructor -- the never-stored Value parameter on a generic record is the uncredited case; a primary constructor would store it
     public CallerGateGenericIgnoredRecord(T Value)
     {
         Echo = Value;
@@ -96,6 +104,8 @@ public readonly record struct CallerGateStructRecord(int Amount);
 
 public record struct CallerGateStructIgnoredRecord
 {
+    // ReSharper disable once ConvertToPrimaryConstructor
+    // aislop-ignore-next-line jb/ConvertToPrimaryConstructor -- the never-stored Value parameter on a record struct is the uncredited case; a primary constructor would store it
     public CallerGateStructIgnoredRecord(int Value)
         : this()
     {
@@ -110,6 +120,8 @@ public record struct CallerGateStructIgnoredRecord
 // Constructors that name the argument and the field but do not run straight through to the store.
 public record CallerGateStraightRecord
 {
+    // ReSharper disable once ConvertToPrimaryConstructor
+    // aislop-ignore-next-line jb/ConvertToPrimaryConstructor -- the argument stored straight into the property is the credited case, and the explicit constructor body is what the gate reads
     public CallerGateStraightRecord(int value)
     {
         Value = value;
@@ -182,6 +194,8 @@ public record CallerGateGuardedRecord
 // Not a record: a private PrintMembers must not make it one.
 public class CallerGatePlainClass
 {
+    // ReSharper disable once ConvertToPrimaryConstructor
+    // aislop-ignore-next-line jb/ConvertToPrimaryConstructor -- a plain class is not a record, so its constructor must stay an explicit body that stores the argument
     public CallerGatePlainClass(int value)
     {
         Stored = value;
@@ -225,7 +239,12 @@ public readonly record struct CallerGateAuthoredEverythingStruct(int Id)
 
     public override int GetHashCode() => Id;
 
-    public override string ToString() => "authored";
+    public override string ToString()
+    {
+        var builder = new StringBuilder();
+        PrintMembers(builder);
+        return builder.ToString();
+    }
 
     bool PrintMembers(StringBuilder builder)
     {
