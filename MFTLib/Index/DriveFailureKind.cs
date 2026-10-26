@@ -35,7 +35,7 @@ public enum DriveFailureKind
     ///     (FourCC or version) differs from <see cref="FileIndexOptions.CacheTag" />, or its scan shape
     ///     differs from the one the open's row-shaping options make
     ///     (<see cref="BlockValidationResult.WrongCacheTag" /> or <see cref="BlockValidationResult.WrongScanShape" />).
-    ///     The block was discarded and best-effort deleted, and the scan that would build a replacement was forbidden.
+    ///     The block stays in place, and the scan that would build a replacement was forbidden.
     ///     <see cref="FileIndex.RescanAsync" /> scans such a drive and clears its failure.
     /// </summary>
     CacheIdentityMismatch,

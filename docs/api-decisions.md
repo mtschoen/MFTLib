@@ -121,9 +121,9 @@ a cold-production failure on a `ProducerKind.Enumeration` drive settles that dri
 `RescanAsync`. A failed rescan preserves the previous block and reports `DriveStatus.Failure` with
 `DriveFailureKind.ProducerFailed`. Argument validation performed at admission (null options, an undefined
 `CacheMode`, a missing cache directory, dump-source option conflicts) throws before any drive is produced. A drive
-whose production cannot start or fails for an operational reason, including an MFT drive that needs a scan when
-`FileIndexOptions.MftSource` is null, settles as `DriveState.Failed` with `DriveFailureKind.ProducerFailed` while
-sibling drives remain usable. Caller cancellation (`OperationCanceledException`) aborts the whole operation, and a
+whose production cannot start or fails for an operational reason settles as `DriveState.Failed` with
+`DriveFailureKind.ProducerFailed` while sibling drives remain usable. An MFT drive that needs a scan when
+`FileIndexOptions.MftSource` is null settles as `DriveState.Failed` with `DriveFailureKind.MftSourceMissing` instead. Caller cancellation (`OperationCanceledException`) aborts the whole operation, and a
 cancelled `OpenAsync` releases every adopted block.
 
 **Reason:** `IndexedDrive.Producer` is configured per drive so one index can mix MFT-scanned and directory-walked
@@ -721,9 +721,8 @@ name, a path that is not fully qualified, and `Directory` or `ReparsePoint` in t
 `ArgumentException` before any side effect. `PruneDotDirectories` is an instruction, so `BooleanNamingTests`
 allowlists the type.
 
-**Reason:** a delegate predicate over name, attributes, depth and path was rejected for three reasons. The
-library cannot fingerprint a delegate, so every consumer would hand-version its cache tag again. A delegate
-member breaks the value equality of `FileIndexOptions`, a record. A predicate also invites consumer logic into
+**Reason:** a delegate predicate over name, attributes, depth and path was rejected for two reasons. The
+library cannot fingerprint a delegate, so every consumer would hand-version its cache tag again. A predicate also invites consumer logic into
 the walk, such as git's bare-repository test, which stays in git-wizard. The four rules are what generic tree
 tools expose (`find -prune`, `fd --exclude`, `rg --hidden`), and recording the pruned directory keeps a marker
 row such as `.git` while skipping its contents.

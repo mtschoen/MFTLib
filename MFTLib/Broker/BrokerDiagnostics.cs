@@ -94,8 +94,9 @@ public static class BrokerDiagnostics
 
     /// <summary>
     ///     Force diagnostics on for this process and tag its log lines with
-    ///     <paramref name="role" />. Used by the elevated broker child, which cannot rely on
-    ///     inheriting the <c>MFTLIB_BROKER_DIAG</c> env var across the <c>runas</c> launch.
+    ///     <paramref name="role" />. Each process that wants its own log calls it with its own role:
+    ///     the elevated broker child cannot rely on inheriting the <c>MFTLIB_BROKER_DIAG</c> env var
+    ///     across the <c>runas</c> launch, and a consumer's user-interface process enables it under another role.
     ///     Appends to <c>broker-diagnostics.&lt;role&gt;.log</c> in the supplied directory.
     /// </summary>
     /// <param name="role">The nonempty role tag and file-name segment: ASCII letters, digits, dash and underscore only.</param>

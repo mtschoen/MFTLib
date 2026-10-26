@@ -48,8 +48,8 @@ Run these steps at `<release commit>`; pins and measurements belong in the relea
 ## Consumer bridge retirement
 
 After both consumers use the published packages and their NuGet integrations are
-verified, the owner retires these parts together. Line references and counts below
-describe the current source snapshot; locate the named code and recount at retirement.
+verified, the owner retires these parts together. Counts below describe the current source
+snapshot; locate the named code and recount at retirement.
 
 Delete these four whole files:
 
@@ -62,25 +62,25 @@ Delete these four whole files:
 
 The four files total **1,221 lines**. Also make these dependent edits:
 
-- Delete `.gitea/workflows/test.yml:306-312`: the four-line comment and the
-  three-line `Test the consumer sync script` step in the Linux job (seven lines).
-- Update `tools/ci-preflight.sh:30,84,129,138`: delete the `sync` arm in
-  `preflight_execute` (30), remove `sync` from the accepted scopes in
-  `preflight_main` (84), delete `preflight_gate sync sync any yes` (129), and
-  delete the `sync-publication` skip notice (138). These are three standalone
-  line deletions and one accepted-scope edit.
-- Update `scripts/ci-preflight.tests.sh:405`: change the Linux guard-count
-  expectation from `expected_guards=8` to `expected_guards=7` after removing
-  the guarded consumer-sync step. Recount if other workflow edits have landed;
-  retain the other preflight tests.
-- Delete only the consumer half at `MFTLib.Tests/AgentInstructionsTests.cs:88-90`
-  in `ScannerAndConsumerWorkflows_UseServerContext`: the read of the deleted
-  workflow and its `GITEA_URL` and `GITEA_TOKEN` assertions. Preserve the scanner
-  assertions at lines 79-87 and rename the method to
+- Delete the four-line comment and the three-line `Test the consumer sync script`
+  step in the Linux job of `.gitea/workflows/test.yml` (seven lines).
+- Update `tools/ci-preflight.sh`: delete the `sync` arm in `preflight_execute`,
+  remove `sync` from the accepted scopes in `preflight_main`, delete the
+  `preflight_gate sync sync any yes` call, and delete the `sync-publication`
+  skip notice. These are three standalone line deletions and one accepted-scope
+  edit.
+- Delete only the consumer half of `ScannerAndConsumerWorkflows_UseServerContext`
+  in `MFTLib.Tests/AgentInstructionsTests.cs`: the read of the deleted workflow
+  and its `GITEA_URL` and `GITEA_TOKEN` assertions. Preserve the scanner
+  assertions that precede it and rename the method to
   `ScannerWorkflow_UseServerContext` so its name describes the remaining check.
-- Update `docs/quality-gates.md`: remove the `sync` scope listing (78-79),
-  gate-table row (110), and consumer pin-publication skip entry (146-149).
-  Update the test description at 256-257 to describe scanner server context.
+- Update `docs/quality-gates.md`: remove `sync` from the `--only` scope list,
+  the `sync` row of the gate table, and the consumer pin-publication skip entry.
+  Update the `AgentInstructionsTests` description to describe scanner server context.
+- Delete the three `docs/maintained-developer-tools.md` inventory rows for
+  `scripts/mftlib_submodules.sh`, `scripts/sync_consumers.sh` and
+  `scripts/sync_consumers.tests.sh`; `AgentInstructionsTests` rejects an inventory
+  path that does not exist.
 - Remove the [active source-build recipe](#active-source-build-recipe) below
   and update its links in this runbook when the bridges are retired.
 
@@ -88,6 +88,10 @@ The four whole files plus the seven workflow lines and three standalone
 dispatcher lines total **1,231 deletable lines** before the managed-test removal,
 in-place edits, and documentation cleanup. This is the workflow/script subtotal,
 not the entire retirement diff.
+
+The `MFTLIB_SYNC_TOKEN` Actions secret also feeds the TEST-REPORT publisher in
+`.gitea/workflows/test.yml`, so it must stay when the sync workflow is retired, or the
+publisher must be migrated to another credential first.
 
 Keep the scanner fork's separately named consumer-sync workflow untouched.
 Preserve MFTLib's `.gitea/workflows/aislop.yml` and its scanner assertions.

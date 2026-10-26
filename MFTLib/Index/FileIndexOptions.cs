@@ -81,9 +81,11 @@ public sealed record FileIndexOptions
     public IProgress<IndexDriveOpened>? DriveOpenProgress { get; init; }
 
     /// <summary>
-    ///     Receives human-readable block-file deletion lines and cache-tag mismatch lines.
-    ///     A tag mismatch includes both stored and requested tags even when deletion fails.
-    ///     Invoked synchronously on whatever thread performs the delete or encounters a mismatch,
+    ///     Receives human-readable lines of five kinds: block-file deletions and failed deletions,
+    ///     cache-tag and scan-shape mismatches (naming the stored and requested values even when
+    ///     deletion fails), a rejected block left in place for a cache-only open, a block grown
+    ///     during a directory walk, and a progress handler that threw on its Finished sample.
+    ///     Invoked synchronously on whatever thread performs the delete or encounters the condition,
     ///     which can be a snapshot release inside <see cref="FileIndex.DisposeAsync" />,
     ///     so a subscriber must be fast and non-blocking. Null (the default) logs nothing.
     /// </summary>

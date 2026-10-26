@@ -10,11 +10,16 @@ public sealed partial class FileIndex
 {
     /// <summary>
     ///     Starts each drive's watch from its block's journal cursor, returning when the channel
-    ///     is connected and StartWatch is written. Already running watches remain running.
+    ///     is connected and the start request is written. Already running watches remain running.
     ///     A source without a watch or a drive without an MFT-backed block is NotApplicable and
     ///     records no request. A refused or failed start is Failed and retains the watch request
     ///     for rescan recovery, except when the caller cancels it.
     /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="drives" /> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="drives" /> holds a default key, a drive that is not part of this index, or the same drive twice.</exception>
+    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
+    /// <exception cref="InvalidOperationException">The call was made from inside a Changed, WatchFaulted or WatchStateChanged handler of this index.</exception>
     public Task<IReadOnlyList<DriveOperationResult>> StartWatchingAsync(IEnumerable<DriveKey> drives,
         CancellationToken cancellationToken)
     {
@@ -33,6 +38,11 @@ public sealed partial class FileIndex
     ///     is NotApplicable. Stop wins over a concurrent rescan or recovery and prevents its restart.
     ///     Cancellation bounds the teardown wait, while teardown continues independently.
     /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="drives" /> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="drives" /> holds a default key, a drive that is not part of this index, or the same drive twice.</exception>
+    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
+    /// <exception cref="InvalidOperationException">The call was made from inside a Changed, WatchFaulted or WatchStateChanged handler of this index.</exception>
     public Task<IReadOnlyList<DriveOperationResult>> StopWatchingAsync(IEnumerable<DriveKey> drives,
         CancellationToken cancellationToken)
     {
@@ -52,6 +62,11 @@ public sealed partial class FileIndex
     ///     RescanRestart while the successful scan is reported as Succeeded. Exhausted catch-up
     ///     recovery returns Failed with JournalCatchUpLostException and keeps the last block.
     /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="drives" /> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="drives" /> holds a default key, a drive that is not part of this index, or the same drive twice.</exception>
+    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
+    /// <exception cref="InvalidOperationException">The call was made from inside a Changed, WatchFaulted or WatchStateChanged handler of this index.</exception>
     public Task<IReadOnlyList<DriveOperationResult>> RescanAsync(IEnumerable<DriveKey> drives,
         CancellationToken cancellationToken)
     {
@@ -71,6 +86,11 @@ public sealed partial class FileIndex
     ///     cancellation and index disposal cancel this wait without stopping the watches.
     ///     An unsettled wait rejects callback reentrancy; settled waits remain readable.
     /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="drives" /> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="drives" /> holds a default key, a drive that is not part of this index, or the same drive twice.</exception>
+    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
+    /// <exception cref="InvalidOperationException">A wait that is not yet settled was requested from inside a Changed, WatchFaulted or WatchStateChanged handler of this index.</exception>
     public Task<IReadOnlyList<DriveOperationResult>> WaitForCatchUpAsync(IEnumerable<DriveKey> drives,
         CancellationToken cancellationToken)
     {

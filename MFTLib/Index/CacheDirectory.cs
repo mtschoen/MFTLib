@@ -103,6 +103,7 @@ public static class CacheDirectory
     ///     immediately, before any canonical inspection or deletion in this call. Return promptly
     ///     and do not mutate the directory during enumeration.
     /// </param>
+    /// <exception cref="ArgumentException"><paramref name="cacheDirectoryPath" /> is null or empty, or <paramref name="drives" /> holds the default key.</exception>
     public static IReadOnlyList<CachedBlockStatus> InspectCached(
         string cacheDirectoryPath, IEnumerable<DriveKey>? drives = null,
         Action<CachedBlockRejection>? rejectedFile = null)
@@ -169,6 +170,7 @@ public static class CacheDirectory
     ///     enumeration lists only files whose name this class wrote. Filtering precedes lock acquisition. Retired siblings,
     ///     unrelated names and subdirectories are not candidates.
     /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="cacheDirectoryPath" /> is null or empty, or <paramref name="drives" /> holds the default key.</exception>
     public static IReadOnlyList<CachedBlockDeletionResult> DeleteCached(
         string cacheDirectoryPath, IEnumerable<DriveKey>? drives = null)
         => DeleteCached(cacheDirectoryPath, drives, null);
@@ -296,6 +298,8 @@ public static class CacheDirectory
     ///     half-secured, or one restored from a backup keeps whatever permissions it carries, and
     ///     nothing else in the library ever re-checks it.
     /// </summary>
+    /// <param name="path">The cache directory to create or secure.</param>
+    /// <exception cref="ArgumentException"><paramref name="path" /> is null or empty.</exception>
     public static DirectoryInfo EnsureCreated(string path)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);

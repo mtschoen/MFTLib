@@ -16,8 +16,9 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 - `SearchQuery`: exact, substring and glob name matching, case sensitivity, subtree, file or directory, size and last-write bounds, and deleted rows.
 - `EnumerateRows` yields non-allocating `IndexRow` views for whole-drive passes.
 - Index sources: `BrokerSession.CreateIndexSource`, `MftIndexSources.FromLocalVolumes` for an elevated process, and `MftIndexSources.FromMftDumpFile` for a saved `$MFT` file on Windows or Linux without elevation.
+- `DriveKey` names a drive by ASCII letter, normalized to upper case, and `DriveKey.TryParse` accepts a drive spec such as `C`, `c:` or `C:\`. Every lifecycle verb takes enumerable `DriveKey` values.
 - `IndexedDrive.Producer` selects an MFT scan or a directory walk per drive, so one index can mix NTFS volumes with any other filesystem. `IndexedDrive.FromWindowsVolume` builds an MFT drive from a drive letter.
-- `IndexedDrive.EnumerateWindowsVolumes()` returns `IReadOnlyList<WindowsVolume>`, a record of `Drive`, `RootDirectory`, `DriveType`, `IsReady`, `Format`, `IsIndexable` and a display `Reason`. It replaces the tuple `(RootDirectory, IsIndexable, Reason)`: read `IsReady` and `Format` instead of matching the reason text.
+- `IndexedDrive.EnumerateWindowsVolumes()` returns `IReadOnlyList<WindowsVolume>`, a record of `Drive`, `RootDirectory`, `DriveType`, `IsReady`, `Format`, `IsIndexable` and a display `Reason`. Read `IsReady` and `Format` instead of matching the reason text.
 - Live USN watching per drive: `StartWatchingAsync`, `StopWatchingAsync`, `WaitForCatchUpAsync` and `RescanAsync` return one `DriveOperationResult` per requested drive.
 - `Changed` raises a `FileChange` with kind, path, previous path and journal timestamp. `WatchFaulted` raises a `WatchFault` with its kind and `IsRecovering`. `WatchStateChanged` reports every watch state change with a per-drive version.
 - Drive and apply faults recover automatically by rescanning the affected drive.
@@ -41,7 +42,7 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 - The MFT record size is detected at runtime instead of assumed to be 1024 bytes. A live volume accepts power-of-two sizes from 512 through 65536 bytes, and a saved dump accepts 1024 or 4096.
 - Elevation runs through `IElevationProvider`, reached by `ElevationUtilities.DefaultProvider`. `TryRunElevated` takes an argument list and a `TimeSpan`, and passes each argument separately.
 - Self-elevation returns false without attempting UAC when no interactive desktop is available, such as in CI or a service.
-- Native ABI 8 uses a three-value progress callback (`recordsScanned`, `totalRecords`, `elapsedMs`) for volume and dump parses. `mft_api.h` is the shared declaration source for all production native exports. Consumer submodule updates rebuild and deploy the native library and managed assembly from the same revision.
+- Native ABI 11 passes a caller-supplied context pointer, then `recordsScanned`, `totalRecords` and `elapsedMs`, to the progress callback for volume and dump parses. `mft_api.h` is the shared declaration source for all production native exports. Consumer submodule updates rebuild and deploy the native library and managed assembly from the same revision.
 
 ### Removed
 
@@ -51,7 +52,7 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 
 ### Fixed
 
-- Directory-walk scans retry with geometrically larger blocks when their initial estimate is too small, rather than publishing a silently truncated index.
+- A directory-walk block that runs out of rows or name pool grows in place by doubling both capacities while the walk continues, so the index is never silently truncated and no directory is read twice.
 - A native failure inside the parser, including a failed allocation or thread start, fails the scan instead of terminating the host process.
 - A volume scan fails instead of returning a partial inventory when the `$MFT` attribute list or a `$DATA` extension record is unreadable or invalid.
 - The parser validates each record's update sequence array before decoding it, so a record with an invalid fixup is never read as data.

@@ -121,9 +121,10 @@ public sealed record DriveWatchStatus
     ///         recovery of the fault that found it. Either can sit beside a later, unrelated
     ///         fault, which neither rewrites nor deletes it.
     ///     </para>
-    ///     Null when the drive warm-started, had no cache to resume, was rejected for a reason
-    ///     unrelated to the journal, or has never
-    ///     lost its position at either moment.
+    ///     Null when the drive warm-started with its journal position intact, had no cache to resume,
+    ///     was rejected for a reason unrelated to the journal, or has never lost its position at either
+    ///     moment. A cache-only open that adopts a block whose position the journal moved past keeps
+    ///     that block and carries the report that made it unresumable.
     /// </summary>
     public JournalCheckpointLoss? CheckpointLoss { get; init; }
 }

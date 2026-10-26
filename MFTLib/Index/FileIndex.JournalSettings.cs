@@ -11,6 +11,12 @@ public sealed partial class FileIndex
     ///     Resizing is an explicit elevated broker operation.
     /// </summary>
     /// <param name="drive">A configured drive key. The default key is invalid.</param>
+    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
+    /// <exception cref="ArgumentException"><paramref name="drive" /> is the default key or not part of this index.</exception>
+    /// <exception cref="InvalidOperationException">The drive's source has no live journal settings.</exception>
+    /// <exception cref="PlatformNotSupportedException">The host is not Windows.</exception>
+    /// <exception cref="IOException">The drive's root directory could not be opened.</exception>
+    /// <exception cref="System.ComponentModel.Win32Exception">Windows rejects the journal query, for example because the journal is not active.</exception>
     [SupportedOSPlatform("windows")]
     [ExcludeFromCodeCoverage(Justification = "Windows-only pass-through to ReadUsnJournalSettings; the target is covered.")]
     public UsnJournalSettings QueryUsnJournalSettings(DriveKey drive) => ReadUsnJournalSettings(drive);

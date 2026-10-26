@@ -21,6 +21,9 @@ public sealed partial record IndexedDrive
     ///     Builds a drive from a Windows drive letter, reading its real volume serial so a
     ///     re-lettered or replaced volume never matches the wrong cached block.
     /// </summary>
+    /// <param name="drive">The drive letter to read.</param>
+    /// <exception cref="ArgumentException"><paramref name="drive" /> is the default key.</exception>
+    /// <exception cref="IOException">The volume serial could not be read.</exception>
     [SupportedOSPlatform("windows")]
     [ExcludeFromCodeCoverage(Justification = "Windows-only pass-through to ReadWindowsVolume; the target is covered.")]
     public static IndexedDrive FromWindowsVolume(DriveKey drive) => ReadWindowsVolume(drive);

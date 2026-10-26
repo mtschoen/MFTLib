@@ -9,7 +9,7 @@ namespace MFTLib;
 ///     <c>--diag-log</c> - before JournalBatch frames are built. Without this filter every
 ///     logged frame line produces a USN record for the log file, which ships as another
 ///     JournalBatch, which gets logged again: a self-sustaining loop that drowns the watched
-///     volume's real traffic (file-wizard#299, git-wizard#143). Matching is by file reference
+///     volume's real traffic. Matching is by file reference
 ///     number (record number plus sequence number), which survives renames of the log file.
 ///     The filter is inactive when diagnostics are off or when the consumer opted the entries
 ///     back in with <c>MFTLIB_BROKER_DIAG_INCLUDE_SELF=1</c>. Configured log paths are re-checked

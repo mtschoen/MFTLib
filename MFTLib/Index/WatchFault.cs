@@ -52,8 +52,8 @@ public enum WatchFaultKind
     /// <summary>
     ///     A rescan replaced the block but could not start its watch. The exception describes the
     ///     rescan and carries the start failure as its inner exception. The drive stays faulted
-    ///     until a consumer starts or rescans it; no automatic recovery is queued. Stop rethrows
-    ///     this fault once.
+    ///     until a consumer starts or rescans it; no automatic recovery is queued. Stop returns
+    ///     this fault once as a Failed result.
     /// </summary>
     RescanRestart
 }

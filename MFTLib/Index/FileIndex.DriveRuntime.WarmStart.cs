@@ -21,8 +21,7 @@ public sealed partial class FileIndex
             var existedBeforeOpen = File.Exists(path);
 
             // Ownership of a successfully opened block passes to the DriveBlock its adoption builds,
-            // which releases it through the reference-counted Release() (see DriveBlock's own
-            // summary), not through IDisposable.
+            // which releases it through its DriveBlockRelease state, not through IDisposable.
             if (BlockFile.Open(path, Configuration.VolumeSerial, out var validation) is { } block)
             {
                 if (block.Header.ProducerKind != Configuration.Producer)
@@ -120,7 +119,7 @@ public sealed partial class FileIndex
             {
                 if (!accepted)
                 {
-                    // An unadopted candidate owns no references; close its mapping directly.
+                    // An unadopted candidate has no DriveBlock; close its mapping directly.
                     candidate.Dispose();
                 }
             }

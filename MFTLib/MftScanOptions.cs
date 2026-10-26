@@ -13,8 +13,8 @@ public sealed record MftScanOptions
     ///     watch applies journal events to live rows only. A freed row whose parent chain still
     ///     verifies keeps its parent and full path; any other freed row is detached, so its path is
     ///     its bare name and it is nobody's child. The default is false. A cached block carries the
-    ///     rows of the scan that produced it, so a consumer that changes this option also changes its
-    ///     <see cref="MFTLib.Index.CacheTag" /> version.
+    ///     rows of the scan that produced it, and the library compares this option as part of the
+    ///     block's scan shape, so changing it cold-scans without a <see cref="MFTLib.Index.CacheTag" /> change.
     /// </summary>
     public bool IncludeFreed { get; init; }
 }

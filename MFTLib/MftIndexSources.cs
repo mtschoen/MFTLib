@@ -19,7 +19,7 @@ public static partial class MftIndexSources
     ///     and a cache-only open keeps the snapshot flagged unresumable. Cached scans
     ///     require an active journal. A <see cref="MFTLib.Index.CacheMode.Disabled" /> open skips the cursor query and stamps zero.
     /// </summary>
-    /// <param name="scanOptions">Retention and freed-record inclusion; null scans every in-use record.</param>
+    /// <param name="scanOptions">Freed-record inclusion; null scans every in-use record.</param>
     /// <returns>The source to assign to <see cref="FileIndexOptions.MftSource" />.</returns>
     public static MftIndexSource FromLocalVolumes(MftScanOptions? scanOptions = null)
     {
