@@ -27,12 +27,12 @@ public sealed partial class FileIndex
         /// </summary>
         public WatchHandoff PrepareDisposalLocked()
         {
-            WatchRequested = false;
-            RefusedStartFault = null;
+            _watchRequested = false;
+            _refusedStartFault = null;
             CancelRestartPendingWaiterLocked();
             ClearRecoveryLocked();
             var drains = new List<Task>();
-            if (Retiring is { } alreadyRetiring)
+            if (_retiring is { } alreadyRetiring)
             {
                 drains.Add(alreadyRetiring.Drained);
             }
@@ -74,7 +74,7 @@ public sealed partial class FileIndex
         {
             var current = Block;
             Block = null;
-            LastResult = null;
+            _lastResult = null;
             return current;
         }
 

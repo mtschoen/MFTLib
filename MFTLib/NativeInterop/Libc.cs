@@ -5,7 +5,7 @@ namespace MFTLib.NativeInterop;
 static partial class Libc
 {
     /// <summary>
-    ///     The native <c>MS_SYNC | MS_INVALIDATE</c> flags for <see cref="msync" />:
+    ///     The native <c>MS_SYNC | MS_INVALIDATE</c> flags for <see cref="MemorySync" />:
     ///     Linux 6 (4 | 2), macOS 0x12 (0x10 | 0x02). On macOS, 4 is
     ///     <c>MS_KILLPAGES</c>. Any other platform is refused rather than passed guessed flags.
     /// </summary>
@@ -24,6 +24,6 @@ static partial class Libc
         throw new PlatformNotSupportedException($"No msync flag is known for platform {platform}.");
     }
 
-    [LibraryImport("libc", SetLastError = true)]
-    internal static unsafe partial int msync(byte* address, nuint length, int flags);
+    [LibraryImport("libc", EntryPoint = "msync", SetLastError = true)]
+    internal static unsafe partial int MemorySync(byte* address, nuint length, int flags);
 }

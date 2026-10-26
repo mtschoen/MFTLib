@@ -20,7 +20,7 @@ public sealed partial class FileIndex
         void ClearRecoveryLocked()
         {
             Recovery = null;
-            RecoveryState = RecoveryState.None;
+            _recoveryState = RecoveryState.None;
         }
 
         /// <summary>
@@ -35,7 +35,7 @@ public sealed partial class FileIndex
         {
             lock (StateLock)
             {
-                if (IsDisposed || !WatchRequested || !IsCurrentWatchOverItsBlockLocked(instance) ||
+                if (IsDisposed || !_watchRequested || !IsCurrentWatchOverItsBlockLocked(instance) ||
                     instance.State != WatchInstanceState.Faulted)
                 {
                     return null;
@@ -43,7 +43,7 @@ public sealed partial class FileIndex
 
                 var ticket = new RecoveryTicket(instance, instance.ArmedBlock, DisposalToken);
                 Recovery = ticket;
-                RecoveryState = RecoveryState.Recovering;
+                _recoveryState = RecoveryState.Recovering;
                 _recoveryCompletions.Add(ticket.Completion);
                 NoteWatchStateLocked(fault);
                 return ticket;
@@ -108,7 +108,7 @@ public sealed partial class FileIndex
         {
             lock (StateLock)
             {
-                return !IsDisposed && WatchRequested && ReferenceEquals(Recovery, ticket) &&
+                return !IsDisposed && _watchRequested && ReferenceEquals(Recovery, ticket) &&
                        ReferenceEquals(Current, ticket.FailedInstance) &&
                        ticket.FailedInstance.State == WatchInstanceState.Faulted &&
                        ReferenceEquals(FindWatchableDriveBlockLocked(), ticket.FailedBlock);
@@ -158,9 +158,9 @@ public sealed partial class FileIndex
                 if (ReferenceEquals(Recovery, ticket))
                 {
                     Recovery = null;
-                    if (failure is not null || RecoveryState == RecoveryState.Recovering)
+                    if (failure is not null || _recoveryState == RecoveryState.Recovering)
                     {
-                        RecoveryState = RecoveryState.None;
+                        _recoveryState = RecoveryState.None;
                     }
 
                     reported = failure is null ? null : new WatchFault(WatchFaultKind.Recovery, Drive, failure);

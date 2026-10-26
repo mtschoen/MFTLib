@@ -53,8 +53,8 @@ public sealed partial class FileIndex
             {
                 lock (StateLock)
                 {
-                    RetryingLostCatchUp = false;
-                    RetriedLostCatchUp = null;
+                    _retryingLostCatchUp = false;
+                    _retriedLostCatchUp = null;
                     NoteWatchStateLocked();
                 }
 
@@ -66,7 +66,7 @@ public sealed partial class FileIndex
         {
             lock (StateLock)
             {
-                return WatchRequested;
+                return _watchRequested;
             }
         }
 
@@ -142,22 +142,22 @@ public sealed partial class FileIndex
                 DescribeLostCatchUp(consecutiveLostCatchUps, recoveryStopped, catchUpLoss));
             lock (StateLock)
             {
-                RetryingLostCatchUp = !recoveryStopped && WatchRequested;
-                RetriedLostCatchUp = RetryingLostCatchUp ? lost : null;
+                _retryingLostCatchUp = !recoveryStopped && _watchRequested;
+                _retriedLostCatchUp = _retryingLostCatchUp ? lost : null;
                 FaultRestartPendingWaiterLocked(lost);
                 if (recoveryStopped)
                 {
-                    RecoveryStopped = true;
+                    _recoveryStopped = true;
                     // A recovery that reaches the limit ends here, so the drive reads Faulted with
                     // this loss as its cause now, before the loss is reported, rather than when the
                     // recovery returns.
-                    if (RecoveryState == RecoveryState.Recovering)
+                    if (_recoveryState == RecoveryState.Recovering)
                     {
-                        RecoveryState = RecoveryState.None;
+                        _recoveryState = RecoveryState.None;
                     }
 
-                    RefusedStartFault = lost;
-                    WatchFailureMessage = lost.Message;
+                    _refusedStartFault = lost;
+                    _watchFailureMessage = lost.Message;
                 }
 
                 NoteWatchStateLocked(new WatchFault(WatchFaultKind.CatchUpLost, drive, lost));

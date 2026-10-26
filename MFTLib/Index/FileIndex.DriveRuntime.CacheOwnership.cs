@@ -47,7 +47,7 @@ public sealed partial class FileIndex
         {
             lock (StateLock)
             {
-                if (CanonicalLock is not null)
+                if (_canonicalLock is not null)
                 {
                     return true;
                 }
@@ -61,7 +61,7 @@ public sealed partial class FileIndex
 
             lock (StateLock)
             {
-                CanonicalLock = ownerLock;
+                _canonicalLock = ownerLock;
             }
 
             return true;
@@ -70,8 +70,8 @@ public sealed partial class FileIndex
         /// <summary>The caller holds <see cref="_stateLock" />.</summary>
         public void ReleaseCanonicalOwnershipLocked()
         {
-            var owned = CanonicalLock;
-            CanonicalLock = null;
+            var owned = _canonicalLock;
+            _canonicalLock = null;
             owned?.Dispose();
         }
 

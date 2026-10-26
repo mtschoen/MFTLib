@@ -80,7 +80,7 @@ sealed unsafe partial class BlockFile
     int SynchronizeViewRangeNatively(long start, long end, int flag)
     {
         var pointer = _base + _view.PointerOffset;
-        return Libc.msync(pointer + start, (nuint)(end - start), flag) == 0 ? 0 : Marshal.GetLastWin32Error();
+        return Libc.MemorySync(pointer + start, (nuint)(end - start), flag) == 0 ? 0 : Marshal.GetLastWin32Error();
     }
 
     /// <summary>

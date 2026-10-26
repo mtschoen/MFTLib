@@ -125,7 +125,7 @@ public sealed partial class FileIndex
             lock (StateLock)
             {
                 first = !instance.SubscriberFaultAnnounced &&
-                        (ReferenceEquals(Current, instance) || ReferenceEquals(Retiring, instance) ||
+                        (ReferenceEquals(Current, instance) || ReferenceEquals(_retiring, instance) ||
                          instance.State == WatchInstanceState.Retiring);
                 if (first)
                 {
@@ -133,7 +133,7 @@ public sealed partial class FileIndex
                     instance.OutstandingFault ??= exception;
                     if (!ReferenceEquals(Current, instance))
                     {
-                        RescanHandoffFault ??= exception;
+                        _rescanHandoffFault ??= exception;
                     }
                 }
             }
@@ -151,9 +151,9 @@ public sealed partial class FileIndex
                 if (ReferenceEquals(Current, instance) && instance.State == WatchInstanceState.Running)
                 {
                     instance.CatchUp.Complete();
-                    if (RecoveryState == RecoveryState.RecoveredAwaitingCatchUp)
+                    if (_recoveryState == RecoveryState.RecoveredAwaitingCatchUp)
                     {
-                        RecoveryState = RecoveryState.None;
+                        _recoveryState = RecoveryState.None;
                     }
 
                     NoteWatchStateLocked();
@@ -196,12 +196,12 @@ public sealed partial class FileIndex
 
                     instance.State = WatchInstanceState.Faulted;
                     instance.OutstandingFault ??= fault.Exception;
-                    WatchFailureMessage = fault.Exception.Message;
+                    _watchFailureMessage = fault.Exception.Message;
                     faultedWaiter = instance.CatchUp.MarkFaulted(fault.Exception);
-                    recoveryFailed = RecoveryState == RecoveryState.RecoveredAwaitingCatchUp;
+                    recoveryFailed = _recoveryState == RecoveryState.RecoveredAwaitingCatchUp;
                     if (recoveryFailed)
                     {
-                        RecoveryState = RecoveryState.None;
+                        _recoveryState = RecoveryState.None;
                         if (recovers)
                         {
                             reported = fault with { Kind = WatchFaultKind.Recovery };

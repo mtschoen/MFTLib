@@ -66,12 +66,12 @@ public sealed partial class FileIndex
                 lock (StateLock)
                 {
                     if (FindWatchableDriveBlockLocked() is not { } driveBlock ||
-                        UnresumableCheckpoint is not { } reason)
+                        _unresumableCheckpoint is not { } reason)
                     {
                         return false;
                     }
 
-                    if (WatchRequested)
+                    if (_watchRequested)
                     {
                         _ = RecordUnresumableCheckpointWatchFailureLocked(driveBlock, reason);
                         NoteWatchStateLocked();
@@ -94,14 +94,14 @@ public sealed partial class FileIndex
         /// </summary>
         WatchHandoff RetireWatchAtCommitLocked()
         {
-            var predecessorDrain = Retiring?.Drained ?? Task.CompletedTask;
+            var predecessorDrain = _retiring?.Drained ?? Task.CompletedTask;
             var currentDrain = Current?.Drained ?? Task.CompletedTask;
             var retired = Current is { State: WatchInstanceState.Starting or WatchInstanceState.Running }
                 ? RetireCurrentLocked()
                 : null;
             if (retired is not null)
             {
-                RescanHandoffFault ??= retired.OutstandingFault;
+                _rescanHandoffFault ??= retired.OutstandingFault;
                 retired.OutstandingFault = null;
             }
 
@@ -122,8 +122,8 @@ public sealed partial class FileIndex
                     return;
                 }
 
-                RefusedStartFault = null;
-                WatchFailureMessage = null;
+                _refusedStartFault = null;
+                _watchFailureMessage = null;
                 NoteWatchStateLocked();
             }
 
@@ -145,7 +145,7 @@ public sealed partial class FileIndex
             {
                 _index.ThrowIfCancelledByDisposal(CancellationToken.None);
 
-                requested = WatchRequested && !IsDisposed;
+                requested = _watchRequested && !IsDisposed;
             }
 
             if (!requested)
@@ -176,10 +176,10 @@ public sealed partial class FileIndex
                 }
 
                 instance.State = WatchInstanceState.Faulted;
-                RescanHandoffFault = null;
+                _rescanHandoffFault = null;
                 instance.OutstandingFault = failure;
                 instance.CatchUp.Fault(failure);
-                WatchFailureMessage = failure.Message;
+                _watchFailureMessage = failure.Message;
                 NoteWatchStateLocked(fault);
             }
 

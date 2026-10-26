@@ -136,11 +136,11 @@ public sealed partial class FileIndex
         {
             lock (StateLock)
             {
-                Failure = new DriveFailure(failed.ScanFailureKind,
+                _failure = new DriveFailure(failed.ScanFailureKind,
                     failed.RequireFailureMessage(Drive));
                 if (Block is null)
                 {
-                    LastResult = failed;
+                    _lastResult = failed;
                     BlocklessState = DriveState.Failed;
                     ReleaseCanonicalOwnershipLocked();
                 }

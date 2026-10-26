@@ -21,14 +21,14 @@ public sealed partial class FileIndex
         void NoteWatchStateLocked(WatchFault? cause = null)
         {
             var state = GetWatchStateLocked();
-            if (state == NotedWatchState)
+            if (state == _notedWatchState)
             {
                 return;
             }
 
-            NotedWatchState = state;
-            WatchStateVersion++;
-            (PendingWatchStates ??= []).Add(
+            _notedWatchState = state;
+            _watchStateVersion++;
+            (_pendingWatchStates ??= []).Add(
                 new WatchStateChange(Drive, DescribeWatchLocked(), cause));
         }
 
@@ -55,8 +55,8 @@ public sealed partial class FileIndex
                 List<WatchStateChange>? pending;
                 lock (StateLock)
                 {
-                    pending = PendingWatchStates;
-                    PendingWatchStates = null;
+                    pending = _pendingWatchStates;
+                    _pendingWatchStates = null;
                 }
 
                 if (pending is null || _index.WatchStateChangedSubscribers is not { } subscribers)

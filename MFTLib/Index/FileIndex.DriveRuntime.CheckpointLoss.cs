@@ -62,7 +62,7 @@ public sealed partial class FileIndex
             {
                 if (IsCurrentWatchOverItsBlockLocked(instance))
                 {
-                    CheckpointLoss = loss;
+                    _checkpointLoss = loss;
                 }
             }
         }
@@ -100,16 +100,16 @@ public sealed partial class FileIndex
             UnresumableCheckpointReason reason)
         {
             var because = reason == UnresumableCheckpointReason.LostCatchUp
-                ? $"{ConsecutiveLostCatchUps} scans in a row lost their journal catch-up, so its block's " +
+                ? $"{_consecutiveLostCatchUps} scans in a row lost their journal catch-up, so its block's " +
                   "journal cursor could no longer be resumed."
                 : "a cache-only open adopted its cached block despite a journal checkpoint that could no longer " +
                   "be resumed.";
             var failure = new InvalidOperationException(
                 $"Drive {driveBlock.Drive} cannot be watched: {because} Call FileIndex.RescanAsync " +
                 "for this drive before watching it.");
-            WatchFailureMessage = failure.Message;
-            WatchRequested = true;
-            RefusedStartFault = failure;
+            _watchFailureMessage = failure.Message;
+            _watchRequested = true;
+            _refusedStartFault = failure;
             FaultRestartPendingWaiterLocked(failure);
             return failure;
         }
@@ -132,16 +132,16 @@ public sealed partial class FileIndex
                 return failure;
             }
 
-            WatchRequested = false;
-            RefusedStartFault = null;
-            RescanHandoffFault = null;
+            _watchRequested = false;
+            _refusedStartFault = null;
+            _rescanHandoffFault = null;
             FaultRestartPendingWaiterLocked(failure);
             if (RetireCurrentLocked() is { } superseded)
             {
                 superseded.OutstandingFault = null;
             }
 
-            WatchFailureMessage = null;
+            _watchFailureMessage = null;
 
             return failure;
         }

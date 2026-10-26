@@ -13,7 +13,7 @@ public sealed partial class FileIndex
         /// </summary>
         public Task? GetCatchUpWaitLocked()
         {
-            if (RetriedLostCatchUp is { } retried)
+            if (_retriedLostCatchUp is { } retried)
             {
                 return Task.FromException(retried);
             }
@@ -23,13 +23,13 @@ public sealed partial class FileIndex
                 return instance.CatchUp.Waiter.Task;
             }
 
-            if (RefusedStartFault is { } refused)
+            if (_refusedStartFault is { } refused)
             {
                 return Task.FromException(refused);
             }
 
-            return WatchRequested
-                ? (RestartPendingWaiter ??=
+            return _watchRequested
+                ? (_restartPendingWaiter ??=
                     new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).Task
                 : null;
         }
@@ -40,8 +40,8 @@ public sealed partial class FileIndex
         /// </summary>
         TaskCompletionSource? TakeRestartPendingWaiterLocked()
         {
-            var waiter = RestartPendingWaiter;
-            RestartPendingWaiter = null;
+            var waiter = _restartPendingWaiter;
+            _restartPendingWaiter = null;
             return waiter;
         }
 

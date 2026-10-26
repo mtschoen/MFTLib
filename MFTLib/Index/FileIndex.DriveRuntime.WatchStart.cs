@@ -98,7 +98,7 @@ public sealed partial class FileIndex
                         throw RefuseStartWithoutWatchableBlockLocked(restart);
                     }
 
-                    if (UnresumableCheckpoint is { } unresumable)
+                    if (_unresumableCheckpoint is { } unresumable)
                     {
                         throw RecordUnresumableCheckpointWatchFailureLocked(armedBlock, unresumable);
                     }
@@ -110,7 +110,7 @@ public sealed partial class FileIndex
 
                     var previousDrain = Current is { State: WatchInstanceState.Faulted } faulted
                         ? faulted.Drained
-                        : Retiring?.Drained;
+                        : _retiring?.Drained;
                     return (armedBlock, previousDrain);
                 }
                 finally
@@ -186,33 +186,33 @@ public sealed partial class FileIndex
                 {
                     if (restart && recovery is null)
                     {
-                        RescanHandoffFault ??= faulted.OutstandingFault;
+                        _rescanHandoffFault ??= faulted.OutstandingFault;
                         faulted.OutstandingFault = null;
                     }
 
                     _ = RetireCurrentLocked();
                 }
 
-                var instance = new WatchInstance(Drive, NextGeneration++, armedBlock,
+                var instance = new WatchInstance(Drive, _nextGeneration++, armedBlock,
                     TakeRestartPendingWaiterLocked(), DisposalToken);
                 Current = instance;
                 if (!restart)
                 {
-                    WatchRequested = true;
+                    _watchRequested = true;
                 }
 
-                RefusedStartFault = null;
-                RecoveryState = recovery is not null && ReferenceEquals(Recovery, recovery)
+                _refusedStartFault = null;
+                _recoveryState = recovery is not null && ReferenceEquals(Recovery, recovery)
                     ? RecoveryState.RecoveredAwaitingCatchUp
                     : RecoveryState.None;
-                WatchFailureMessage = null;
+                _watchFailureMessage = null;
                 NoteWatchStateLocked();
                 return new RegisteredWatchStart(instance, BuildWatchTarget(armedBlock));
             }
         }
 
         bool IsRestartStillRequestedLocked(RecoveryTicket? recovery) =>
-            WatchRequested && (recovery is null || ReferenceEquals(Recovery, recovery));
+            _watchRequested && (recovery is null || ReferenceEquals(Recovery, recovery));
 
         void AbandonFailedStart(WatchInstance instance, Exception exception,
             RecoveryTicket? recovery, CancellationToken cancellationToken)
@@ -225,14 +225,14 @@ public sealed partial class FileIndex
                     WatchFault? cause = null;
                     if (exception is OperationCanceledException && cancellationToken.IsCancellationRequested)
                     {
-                        WatchRequested = false;
+                        _watchRequested = false;
                         instance.CatchUp.Cancel();
                     }
                     else
                     {
-                        RefusedStartFault = exception;
+                        _refusedStartFault = exception;
                         instance.CatchUp.Fault(exception);
-                        WatchFailureMessage = exception.Message;
+                        _watchFailureMessage = exception.Message;
                         // A stop, a consumer start or disposal that cleared the recovery's ticket also
                         // retired this instance, so a recovery restart still current is still ticketed.
                         if (recovery is not null)
@@ -260,8 +260,8 @@ public sealed partial class FileIndex
 
                 instance.State = WatchInstanceState.Running;
                 NoteWatchStateLocked();
-                RescanHandoffFault = null;
-                Retiring?.OutstandingFault = null;
+                _rescanHandoffFault = null;
+                _retiring?.OutstandingFault = null;
 
                 // Queued rather than run inline, so no source code runs while this lock is held. The
                 // pump's own exit path completes the instance's drain, which is what every waiter

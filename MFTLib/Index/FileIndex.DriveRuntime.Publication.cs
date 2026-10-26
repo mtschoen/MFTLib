@@ -23,28 +23,28 @@ public sealed partial class FileIndex
         /// </summary>
         void RecordPendingResultLocked(PendingDriveResult published, bool clearsCheckpointLoss)
         {
-            LastResult = published;
-            Failure = null;
+            _lastResult = published;
+            _failure = null;
             if (published.CatchUpLoss is { } catchUpLoss)
             {
-                ConsecutiveLostCatchUps++;
-                CheckpointLoss = catchUpLoss;
-                UnresumableCheckpoint = UnresumableCheckpointReason.LostCatchUp;
+                _consecutiveLostCatchUps++;
+                _checkpointLoss = catchUpLoss;
+                _unresumableCheckpoint = UnresumableCheckpointReason.LostCatchUp;
                 return;
             }
 
-            ConsecutiveLostCatchUps = 0;
-            RecoveryStopped = false;
-            UnresumableCheckpoint = published.CacheOnlyUnresumable
+            _consecutiveLostCatchUps = 0;
+            _recoveryStopped = false;
+            _unresumableCheckpoint = published.CacheOnlyUnresumable
                 ? UnresumableCheckpointReason.CacheOnlyAdoption
                 : null;
             if (published.CheckpointLoss is { } checkpointLoss)
             {
-                CheckpointLoss = checkpointLoss;
+                _checkpointLoss = checkpointLoss;
             }
             else if (clearsCheckpointLoss)
             {
-                CheckpointLoss = null;
+                _checkpointLoss = null;
             }
         }
 
@@ -89,7 +89,7 @@ public sealed partial class FileIndex
                     RecordPendingResultLocked(produced, clearsCheckpointLoss);
                     _index.PublishSnapshotLocked();
                     NoteWatchStateLocked();
-                    return (ConsecutiveLostCatchUps, handoff);
+                    return (_consecutiveLostCatchUps, handoff);
                 }
             }
             finally

@@ -26,11 +26,11 @@ public sealed partial class FileIndex
                         $"Drive {Drive} is not watching, so there is no watch to stop.");
                 }
 
-                WatchRequested = false;
-                RefusedStartFault = null;
+                _watchRequested = false;
+                _refusedStartFault = null;
                 CancelRestartPendingWaiterLocked();
                 ClearRecoveryLocked();
-                previousDrain = Retiring?.Drained;
+                previousDrain = _retiring?.Drained;
                 retired = RetireCurrentLocked();
                 outstandingFault = TakeOutstandingFaultLocked(retired);
                 NoteWatchStateLocked();
@@ -59,16 +59,16 @@ public sealed partial class FileIndex
 
         Exception? TakeOutstandingFaultLocked(WatchInstance? retired)
         {
-            var fault = retired?.OutstandingFault ?? Retiring?.OutstandingFault ?? RescanHandoffFault;
+            var fault = retired?.OutstandingFault ?? _retiring?.OutstandingFault ?? _rescanHandoffFault;
             if (fault is null)
             {
                 return null;
             }
 
             retired?.OutstandingFault = null;
-            Retiring?.OutstandingFault = null;
+            _retiring?.OutstandingFault = null;
 
-            RescanHandoffFault = null;
+            _rescanHandoffFault = null;
             return fault;
         }
 
@@ -94,7 +94,7 @@ public sealed partial class FileIndex
             }
 
             instance.State = WatchInstanceState.Retiring;
-            Retiring = instance;
+            _retiring = instance;
             return instance;
         }
 
@@ -107,9 +107,9 @@ public sealed partial class FileIndex
         {
             lock (StateLock)
             {
-                if (ReferenceEquals(Retiring, instance))
+                if (ReferenceEquals(_retiring, instance))
                 {
-                    Retiring = null;
+                    _retiring = null;
                     NoteWatchStateLocked();
                 }
             }

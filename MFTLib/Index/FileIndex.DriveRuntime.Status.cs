@@ -12,17 +12,17 @@ public sealed partial class FileIndex
             {
                 return new DriveStatus(Drive, BlocklessState)
                 {
-                    Failure = Failure,
-                    Watch = new DriveWatchStatus { CheckpointLoss = CheckpointLoss }
+                    Failure = _failure,
+                    Watch = new DriveWatchStatus { CheckpointLoss = _checkpointLoss }
                 };
             }
 
-            var result = LastResult ?? throw new InvalidOperationException(
+            var result = _lastResult ?? throw new InvalidOperationException(
                 $"Drive {Drive} has a block without its adopted result.");
             ref readonly var header = ref driveBlock.Block.Header;
             return new DriveStatus(Drive, DriveState.Ready)
             {
-                Failure = Failure,
+                Failure = _failure,
                 Block = new DriveBlockStatus
                 {
                     Origin = result.Origin,
@@ -49,7 +49,7 @@ public sealed partial class FileIndex
         /// </summary>
         WatchState GetWatchStateLocked()
         {
-            if (RetryingLostCatchUp || RecoveryState == RecoveryState.Recovering)
+            if (_retryingLostCatchUp || _recoveryState == RecoveryState.Recovering)
             {
                 return WatchState.Recovering;
             }
@@ -61,12 +61,12 @@ public sealed partial class FileIndex
                     : instance.CatchUp.State;
             }
 
-            if (RefusedStartFault is not null)
+            if (_refusedStartFault is not null)
             {
                 return WatchState.Faulted;
             }
 
-            return WatchRequested ? WatchState.CatchingUp : WatchState.NotStarted;
+            return _watchRequested ? WatchState.CatchingUp : WatchState.NotStarted;
         }
 
         /// <summary>
@@ -81,20 +81,20 @@ public sealed partial class FileIndex
             return new DriveWatchStatus
             {
                 IsSupported = driveBlock.Kind.CanWatch && WatchSourceOrNull is not null,
-                IsRequested = WatchRequested,
+                IsRequested = _watchRequested,
                 State = GetWatchStateLocked(),
-                StateVersion = WatchStateVersion,
-                FailureMessage = WatchFailureMessage,
-                ConsecutiveLostCatchUps = ConsecutiveLostCatchUps,
-                IsRecoveryStopped = RecoveryStopped,
-                CheckpointLoss = CheckpointLoss
+                StateVersion = _watchStateVersion,
+                FailureMessage = _watchFailureMessage,
+                ConsecutiveLostCatchUps = _consecutiveLostCatchUps,
+                IsRecoveryStopped = _recoveryStopped,
+                CheckpointLoss = _checkpointLoss
             };
         }
 
         public bool HasWatchableBlockLocked() => WatchSourceOrNull is not null && Block is { Kind.CanWatch: true };
 
         public bool IsWatchingLocked() =>
-            WatchRequested || Current is not null || Retiring is not null;
+            _watchRequested || Current is not null || _retiring is not null;
 
         [SupportedOSPlatform("windows")]
         public UsnJournalSettings QueryUsnJournalSettings()

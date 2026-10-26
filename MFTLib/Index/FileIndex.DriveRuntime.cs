@@ -87,13 +87,13 @@ public sealed partial class FileIndex
         IndexedDrive Configuration { get; }
         public DriveKey Drive => Configuration.Drive;
         public DriveBlock? Block;
-        PendingDriveResult? LastResult;
+        PendingDriveResult? _lastResult;
         public DriveState BlocklessState = DriveState.Offline;
-        DriveFailure? Failure;
-        string? WatchFailureMessage;
-        JournalCheckpointLoss? CheckpointLoss;
-        UnresumableCheckpointReason? UnresumableCheckpoint;
-        BlockOwnerLock? CanonicalLock;
+        DriveFailure? _failure;
+        string? _watchFailureMessage;
+        JournalCheckpointLoss? _checkpointLoss;
+        UnresumableCheckpointReason? _unresumableCheckpoint;
+        BlockOwnerLock? _canonicalLock;
 
         /// <summary>Serializes start and rescan for this drive. Never taken under the state lock.</summary>
         public SemaphoreSlim LifecycleGate { get; } = new(1, 1);
@@ -105,19 +105,19 @@ public sealed partial class FileIndex
         public SemaphoreSlim WriteGate { get; } = new(1, 1);
 
         /// <summary>Scans of this drive in a row whose journal catch-up was lost.</summary>
-        int ConsecutiveLostCatchUps;
+        int _consecutiveLostCatchUps;
 
         /// <summary>Automatic catch-up retries exhausted; only a successful publication clears it.</summary>
-        bool RecoveryStopped;
+        bool _recoveryStopped;
 
         /// <summary>
         ///     Set while a scan operation of a watched drive retries after a lost catch-up, which is
         ///     what makes the drive read <see cref="WatchState.Recovering" />.
         /// </summary>
-        bool RetryingLostCatchUp;
+        bool _retryingLostCatchUp;
 
         /// <summary>The lost catch-up a retrying scan operation is rescanning for, while it retries.</summary>
-        JournalCatchUpLostException? RetriedLostCatchUp;
+        JournalCatchUpLostException? _retriedLostCatchUp;
 
         /// <summary>
         ///     The drive's queued or running recovery, or none. A manual rescan, a consumer start, a
@@ -126,26 +126,26 @@ public sealed partial class FileIndex
         public RecoveryTicket? Recovery;
 
         /// <summary>Where the drive stands in its automatic recovery.</summary>
-        RecoveryState RecoveryState;
+        RecoveryState _recoveryState;
 
         /// <summary>The drive's current watch instance, or none.</summary>
         public WatchInstance? Current;
 
         /// <summary>The previous instance until its <see cref="WatchInstance.Drained" /> completes.</summary>
-        WatchInstance? Retiring;
+        WatchInstance? _retiring;
 
         /// <summary>
         ///     An outstanding fault from the watch a manual rescan retired. Kept through teardown
         ///     and restart until stop takes it or the replacement start supersedes it.
         /// </summary>
-        Exception? RescanHandoffFault;
+        Exception? _rescanHandoffFault;
 
         /// <summary>
         ///     Set by a start, including one whose source threw or that was refused over an
         ///     unresumable block, and cleared by a stop, by disposal, or by a start its own caller
         ///     cancelled. A rescan restarts the drive's watch only while it is set.
         /// </summary>
-        bool WatchRequested;
+        bool _watchRequested;
 
         /// <summary>
         ///     A catch-up wait issued while the watch is requested and no instance is current, the
@@ -153,9 +153,9 @@ public sealed partial class FileIndex
         ///     replacement instance adopts it as its own catch-up waiter; a refusal or lost catch-up
         ///     faults it, and a stop or disposal cancels it.
         /// </summary>
-        TaskCompletionSource? RestartPendingWaiter;
+        TaskCompletionSource? _restartPendingWaiter;
 
-        long NextGeneration;
+        long _nextGeneration;
 
         /// <summary>
         ///     The failure of the drive's last start when that start left no current instance: the
@@ -164,26 +164,26 @@ public sealed partial class FileIndex
         ///     then faults with. The start already threw it to its caller, so a stop never rethrows
         ///     it; the drive's next start, a stop, or a rescan that replaces the block clears it.
         /// </summary>
-        Exception? RefusedStartFault;
+        Exception? _refusedStartFault;
 
         /// <summary>
         ///     The <see cref="WatchState" /> last noted for the drive, which
         ///     <see cref="NoteWatchStateLocked" /> compares the derived state against.
         /// </summary>
-        WatchState NotedWatchState;
+        WatchState _notedWatchState;
 
         /// <summary>The drive's <see cref="DriveWatchStatus.StateVersion" />.</summary>
-        long WatchStateVersion;
+        long _watchStateVersion;
 
         /// <summary>
         ///     Noted changes not yet delivered through <see cref="FileIndex.WatchStateChanged" />, in
         ///     version order.
         /// </summary>
-        List<WatchStateChange>? PendingWatchStates;
+        List<WatchStateChange>? _pendingWatchStates;
 
         /// <summary>
         ///     Serializes delivery of this drive's <see cref="FileIndex.WatchStateChanged" />, held from
-        ///     taking <see cref="PendingWatchStates" /> until the last handler returns. Taken before
+        ///     taking <see cref="_pendingWatchStates" /> until the last handler returns. Taken before
         ///     the state lock, never under it or under a write gate.
         /// </summary>
         Lock DeliveryLock { get; } = new();

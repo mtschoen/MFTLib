@@ -87,11 +87,11 @@ public sealed partial class FileIndex
 
                 RecordPendingResultLocked(settled, clearsCheckpointLoss: false);
                 int? settledCount = settled.CatchUpLoss is null ||
-                    ConsecutiveLostCatchUps >= LostCatchUpRecoveryLimit
+                    _consecutiveLostCatchUps >= LostCatchUpRecoveryLimit
                     ? settlement.ClaimLocked()
                     : null;
 
-                return (adopted, ConsecutiveLostCatchUps, settledCount);
+                return (adopted, _consecutiveLostCatchUps, settledCount);
             }
         }
 
@@ -102,8 +102,8 @@ public sealed partial class FileIndex
                 var settledCount = settlement.ClaimLocked();
                 BlocklessState = DriveState.Offline;
                 Block = null;
-                LastResult = null;
-                Failure = null;
+                _lastResult = null;
+                _failure = null;
                 return settledCount;
             }
         }
@@ -119,9 +119,9 @@ public sealed partial class FileIndex
             {
                 var settledCount = settlement.ClaimLocked();
                 BlocklessState = DriveState.Failed;
-                LastResult = settled;
-                Failure = new DriveFailure(failureKind, settled.RequireFailureMessage(Drive));
-                CheckpointLoss = settled.CheckpointLoss;
+                _lastResult = settled;
+                _failure = new DriveFailure(failureKind, settled.RequireFailureMessage(Drive));
+                _checkpointLoss = settled.CheckpointLoss;
                 ReleaseCanonicalOwnershipLocked();
                 return settledCount;
             }
