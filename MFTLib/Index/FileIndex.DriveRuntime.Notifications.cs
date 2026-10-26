@@ -59,7 +59,7 @@ public sealed partial class FileIndex
                     _pendingWatchStates = null;
                 }
 
-                if (pending is null || _index.WatchStateChangedSubscribers is not { } subscribers)
+                if (pending is null || Index.WatchStateChangedSubscribers is not { } subscribers)
                 {
                     return;
                 }
@@ -70,7 +70,7 @@ public sealed partial class FileIndex
                     {
                         try
                         {
-                            _index.Deliver((Action<WatchStateChange>)handler, change);
+                            Index.Deliver((Action<WatchStateChange>)handler, change);
                         }
                         catch (Exception exception)
                         {
@@ -94,11 +94,11 @@ public sealed partial class FileIndex
             RaiseWatchStateChanged();
             try
             {
-                if (_index.WatchFaultedSubscribers is { } subscribers)
+                if (Index.WatchFaultedSubscribers is { } subscribers)
                 {
                     lock (FaultDeliveryLock)
                     {
-                        _index.DeliverToEach(subscribers, fault);
+                        Index.DeliverToEach(subscribers, fault);
                     }
                 }
             }
@@ -114,7 +114,7 @@ public sealed partial class FileIndex
 
         public void RaiseChanged(IReadOnlyList<FileChange> changes)
         {
-            var subscribers = _index.ChangedSubscribers;
+            var subscribers = Index.ChangedSubscribers;
             if (subscribers is null)
             {
                 return;
@@ -127,7 +127,7 @@ public sealed partial class FileIndex
                 {
                     try
                     {
-                        _index.Deliver((Action<FileChange>)handler, change);
+                        Index.Deliver((Action<FileChange>)handler, change);
                     }
                     catch (Exception exception)
                     {

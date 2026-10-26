@@ -81,7 +81,7 @@ public sealed partial class FileIndex
         {
             lock (StateLock)
             {
-                var driveOrdinal = replacing?.DriveOrdinal ?? _index.AllocateDriveOrdinalLocked();
+                var driveOrdinal = replacing?.DriveOrdinal ?? Index.AllocateDriveOrdinalLocked();
                 var adopted = BuildDriveBlock(driveOrdinal, block);
                 Block = adopted;
 

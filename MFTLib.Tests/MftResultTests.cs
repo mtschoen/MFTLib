@@ -18,7 +18,7 @@ public partial class MftResultTests
     }
 
     [TestMethod]
-    public void AbiStride_MatchesCancelledField()
+    public void NativeCancelledResult_ReportsFiftyTwoByteStrideAndMatchesManagedLayout()
     {
         var entryStrideOffset = (int)Marshal.OffsetOf<MftParseResult>(nameof(MftParseResult.EntryStride));
         var cancelledOffset = (int)Marshal.OffsetOf<MftParseResult>(nameof(MftParseResult.Cancelled));
@@ -43,7 +43,9 @@ public partial class MftResultTests
                 image.SafeFileHandle, false, 64, control.Pointer, default);
             try
             {
-                Assert.AreEqual((int)MFTLibNative.NativeCompactEntrySize, Marshal.ReadInt32(resultPtr, entryStrideOffset));
+                var entryStride = Marshal.ReadInt32(resultPtr, entryStrideOffset);
+                Assert.AreEqual(52, entryStride);
+                Assert.AreEqual((int)MFTLibNative.NativeCompactEntrySize, entryStride);
                 Assert.AreEqual(1, Marshal.ReadInt32(resultPtr, cancelledOffset));
             }
             finally

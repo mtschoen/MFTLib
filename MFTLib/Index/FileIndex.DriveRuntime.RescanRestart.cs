@@ -143,7 +143,7 @@ public sealed partial class FileIndex
             bool requested;
             lock (StateLock)
             {
-                _index.ThrowIfCancelledByDisposal(CancellationToken.None);
+                Index.ThrowIfCancelledByDisposal(CancellationToken.None);
 
                 requested = _watchRequested && !IsDisposed;
             }

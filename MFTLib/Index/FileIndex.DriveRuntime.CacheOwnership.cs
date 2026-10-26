@@ -30,7 +30,7 @@ public sealed partial class FileIndex
         }
 
         string CanonicalBlockPath() =>
-            Path.Combine(_index.CacheDirectoryPath, CacheDirectory.BlockFileName(Drive, Configuration.VolumeSerial));
+            Path.Combine(Index.CacheDirectoryPath, CacheDirectory.BlockFileName(Drive, Configuration.VolumeSerial));
 
         CacheLocation? DescribeCacheLocation(bool ownsCanonicalSlot) =>
             Options.CacheMode == CacheMode.Disabled
@@ -80,7 +80,7 @@ public sealed partial class FileIndex
             var pattern = CacheDirectory.BlockFileName(Drive, Configuration.VolumeSerial) + ".retired-*";
             try
             {
-                foreach (var path in Hooks.EnumerateCacheFiles(_index.CacheDirectoryPath, pattern))
+                foreach (var path in Hooks.EnumerateCacheFiles(Index.CacheDirectoryPath, pattern))
                 {
                     TryDeleteBestEffort(path,
                         "sweeping a stale \".retired-*\" sibling left by a killed process");

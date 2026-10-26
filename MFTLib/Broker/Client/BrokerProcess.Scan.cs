@@ -104,18 +104,11 @@ sealed partial class BrokerProcess
     // or CatchUpLost, then EOF. Heartbeats may arrive anywhere and are skipped. An Error frame fails
     // the scan with the host's message; any other frame out of order, or EOF before the terminal
     // frame, is a lost channel.
-    sealed class ScanFrames
+    sealed class ScanFrames(BrokerDriveChannel channel, IProgress<BlockWriteProgress>? progress)
     {
-        readonly BrokerDriveChannel _channel;
-        readonly IProgress<BlockWriteProgress>? _progress;
-        readonly DriveKey _drive;
-
-        public ScanFrames(BrokerDriveChannel channel, IProgress<BlockWriteProgress>? progress)
-        {
-            _channel = channel;
-            _progress = progress;
-            _drive = channel.Drive;
-        }
+        BrokerDriveChannel Channel { get; } = channel;
+        IProgress<BlockWriteProgress>? Progress { get; } = progress;
+        readonly DriveKey _drive = channel.Drive;
 
         public async Task<UsnJournalCursor> ReadArmedCursorAsync(CancellationToken cancellationToken)
         {
@@ -133,7 +126,7 @@ sealed partial class BrokerProcess
                     case BrokerFrameKind.ScanProgress:
                         if (frame.Progress is { } sample)
                         {
-                            _progress?.Report(new BlockWriteProgress(sample.RecordsProcessed, sample.BytesProcessed,
+                            Progress?.Report(new BlockWriteProgress(sample.RecordsProcessed, sample.BytesProcessed,
                                 sample.TotalRecords, sample.TotalBytes,
                                 sample.Phase == BrokerScanPhase.Parsing ? BlockScanPhase.Parsing : BlockScanPhase.Transferring));
                         }
@@ -166,7 +159,7 @@ sealed partial class BrokerProcess
             {
                 extra = await ReadSkippingHeartbeatsAsync(cancellationToken).ConfigureAwait(false);
             }
-            catch (BrokerChannelLostException exception) when (_channel.IsOwnClose(exception))
+            catch (BrokerChannelLostException exception) when (Channel.IsOwnClose(exception))
             {
                 return terminal;
             }
@@ -188,7 +181,7 @@ sealed partial class BrokerProcess
         {
             while (true)
             {
-                var frame = await _channel.ReadAsync(cancellationToken).ConfigureAwait(false);
+                var frame = await Channel.ReadAsync(cancellationToken).ConfigureAwait(false);
                 if (frame is not { Kind: BrokerFrameKind.Heartbeat })
                 {
                     return frame;

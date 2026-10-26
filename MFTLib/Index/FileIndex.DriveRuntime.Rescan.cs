@@ -11,18 +11,18 @@ public sealed partial class FileIndex
         /// </summary>
         public async Task RescanDriveAsync(CancellationToken cancellationToken)
         {
-            if (_index.RejectInsideHandler(nameof(RescanAsync)) is { } rejection)
+            if (Index.RejectInsideHandler(nameof(RescanAsync)) is { } rejection)
             {
                 throw rejection;
             }
 
-            ObjectDisposedException.ThrowIf(IsDisposed, _index);
+            ObjectDisposedException.ThrowIf(IsDisposed, Index);
             using var rescanCancellation =
                 CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, DisposalToken);
             await LifecycleGate.WaitAsync(rescanCancellation.Token).ConfigureAwait(false);
             try
             {
-                _index.ThrowIfCancelledByDisposal(rescanCancellation.Token);
+                Index.ThrowIfCancelledByDisposal(rescanCancellation.Token);
                 await RescanWithGateHeldAsync(recovery: null, rescanCancellation.Token)
                     .ConfigureAwait(false);
             }
@@ -54,7 +54,7 @@ public sealed partial class FileIndex
         async Task<ScanAttempt> ScanAndPublishAsync(bool clearsCheckpointLoss,
             RecoveryTicket? recovery, CancellationToken cancellationToken)
         {
-            _index.ThrowIfCancelledByDisposal(cancellationToken);
+            Index.ThrowIfCancelledByDisposal(cancellationToken);
             var superseded = FindBlockForRescan();
 
             // The rename-aside is licensed by the owner lock: an index that does not hold it (its

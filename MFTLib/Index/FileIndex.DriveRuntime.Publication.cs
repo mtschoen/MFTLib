@@ -69,9 +69,9 @@ public sealed partial class FileIndex
                 Hooks.PublishInsideWriteGate?.Invoke(Drive);
                 lock (StateLock)
                 {
-                    _index.ThrowIfCancelledByDisposal(cancellationToken);
+                    Index.ThrowIfCancelledByDisposal(cancellationToken);
                     var replaced = Block;
-                    var driveOrdinal = replaced?.DriveOrdinal ?? _index.AllocateDriveOrdinalLocked();
+                    var driveOrdinal = replaced?.DriveOrdinal ?? Index.AllocateDriveOrdinalLocked();
 
                     var driveBlock = BuildDriveBlock(driveOrdinal, block);
                     var handoff = RetireWatchAtCommitLocked();
@@ -87,7 +87,7 @@ public sealed partial class FileIndex
 
                     Block = driveBlock;
                     RecordPendingResultLocked(produced, clearsCheckpointLoss);
-                    _index.PublishSnapshotLocked();
+                    Index.PublishSnapshotLocked();
                     NoteWatchStateLocked();
                     return (_consecutiveLostCatchUps, handoff);
                 }

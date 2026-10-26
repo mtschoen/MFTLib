@@ -13,7 +13,7 @@ public sealed partial class FileIndex
             IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn,
             CancellationToken cancellationToken)
         {
-            ObjectDisposedException.ThrowIf(IsDisposed, _index);
+            ObjectDisposedException.ThrowIf(IsDisposed, Index);
             ArgumentNullException.ThrowIfNull(entries);
 
             lock (StateLock)
@@ -38,7 +38,7 @@ public sealed partial class FileIndex
                     return [];
                 }
 
-                ObjectDisposedException.ThrowIf(IsDisposed, _index);
+                ObjectDisposedException.ThrowIf(IsDisposed, Index);
                 DriveBlock driveBlock;
                 lock (StateLock)
                 {

@@ -11,26 +11,20 @@ namespace MFTLib;
 ///     <see cref="BlockLayout.MaximumPathDepth" /> components, never revisits a record and rebuilds to a path of at
 ///     most <see cref="MaximumPathUnits" /> UTF-16 units. A freed row that fails the rule is detached.
 /// </summary>
-sealed class FreedRowTrust
+sealed class FreedRowTrust(BlockFile block)
 {
     // The longest path NTFS can name, in UTF-16 code units.
     internal const int MaximumPathUnits = 32767;
 
     const uint RootRecord = 5;
 
-    readonly BlockFile _block;
-    readonly ushort[] _parentSequences;
+    BlockFile Block { get; } = block;
+    readonly ushort[] _parentSequences = new ushort[block.Header.SlotCapacity];
     readonly List<uint> _freedRows = [];
     RecordFacts? _rootRecord;
 
     /// <summary>What the rule needs to know about a record that is a hop's parent.</summary>
     readonly record struct RecordFacts(bool IsDirectory, bool IsFreed, ushort Sequence);
-
-    public FreedRowTrust(BlockFile block)
-    {
-        _block = block;
-        _parentSequences = new ushort[block.Header.SlotCapacity];
-    }
 
     /// <summary>
     ///     Remembers record 5 even when it gets no row, because the rule asks the root only for its kind and sequence,
@@ -90,7 +84,7 @@ sealed class FreedRowTrust
         var depth = 0;
         long units = 0;
         var current = origin;
-        var rowCount = _block.Header.RowCount;
+        var rowCount = Block.Header.RowCount;
         while (current != RootRecord && current < rowCount && depth < BlockLayout.MaximumPathDepth)
         {
             if (visited[..visitedCount].Contains(current))
@@ -99,7 +93,7 @@ sealed class FreedRowTrust
             }
 
             visited[visitedCount++] = current;
-            var nameLength = NamePool.ReadRowName(_block, current).Length;
+            var nameLength = NamePool.ReadRowName(Block, current).Length;
             if (nameLength == 0)
             {
                 break;
@@ -107,7 +101,7 @@ sealed class FreedRowTrust
 
             units += nameLength;
             depth++;
-            var parent = _block.Rows[(int)current].ParentRow;
+            var parent = Block.Rows[(int)current].ParentRow;
             if (!TrustsParentHop(current, parent))
             {
                 return false;
@@ -134,12 +128,12 @@ sealed class FreedRowTrust
 
     bool TryGetFacts(uint record, out RecordFacts facts)
     {
-        if (record < _block.Header.RowCount)
+        if (record < Block.Header.RowCount)
         {
-            ref readonly var row = ref _block.Rows[(int)record];
+            ref readonly var row = ref Block.Rows[(int)record];
             if (row.IsInUse)
             {
-                facts = new RecordFacts(row.IsDirectory, row.IsDeleted, _block.SequenceNumbers[(int)record]);
+                facts = new RecordFacts(row.IsDirectory, row.IsDeleted, Block.SequenceNumbers[(int)record]);
                 return true;
             }
         }

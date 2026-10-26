@@ -9,12 +9,12 @@ public sealed partial class FileIndex
         /// <summary>Withdraws this drive's request and drains its watch without taking the lifecycle gate.</summary>
         public async Task StopDriveWatchingAsync(CancellationToken cancellationToken)
         {
-            if (_index.RejectInsideHandler(nameof(StopWatchingAsync)) is { } rejection)
+            if (Index.RejectInsideHandler(nameof(StopWatchingAsync)) is { } rejection)
             {
                 throw rejection;
             }
 
-            ObjectDisposedException.ThrowIf(IsDisposed, _index);
+            ObjectDisposedException.ThrowIf(IsDisposed, Index);
             WatchInstance? retired;
             Task? previousDrain;
             Exception? outstandingFault;

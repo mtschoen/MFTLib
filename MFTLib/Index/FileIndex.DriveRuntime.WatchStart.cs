@@ -7,12 +7,12 @@ public sealed partial class FileIndex
         /// <summary>Starts this drive for an admitted consumer request; readiness is handle publication.</summary>
         public Task StartDriveWatchingAsync(CancellationToken cancellationToken)
         {
-            if (_index.RejectedTask(nameof(StartWatchingAsync)) is { } rejected)
+            if (Index.RejectedTask(nameof(StartWatchingAsync)) is { } rejected)
             {
                 return rejected;
             }
 
-            ObjectDisposedException.ThrowIf(IsDisposed, _index);
+            ObjectDisposedException.ThrowIf(IsDisposed, Index);
             return StartConsumerWatchingAsync(cancellationToken);
         }
 
@@ -33,7 +33,7 @@ public sealed partial class FileIndex
         async Task StartWatchingWithGateHeldAsync(bool restart, RecoveryTicket? recovery,
             CancellationToken cancellationToken)
         {
-            _index.ThrowIfCancelledByDisposal(cancellationToken);
+            Index.ThrowIfCancelledByDisposal(cancellationToken);
             var source = WatchSourceOrNull ?? throw new InvalidOperationException(
                 MftIndexSource.FormatUnavailable(Drive, MftIndexSource.NoWatchReason));
 
@@ -174,7 +174,7 @@ public sealed partial class FileIndex
         {
             lock (StateLock)
             {
-                _index.ThrowIfCancelledByDisposal(CancellationToken.None);
+                Index.ThrowIfCancelledByDisposal(CancellationToken.None);
                 if (restart && !IsRestartStillRequestedLocked(recovery))
                 {
                     return null;

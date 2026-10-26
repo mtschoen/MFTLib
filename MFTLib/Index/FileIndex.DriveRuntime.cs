@@ -67,24 +67,18 @@ public sealed partial class FileIndex
     ///     <see cref="WatchFaultKind.RescanRestart" /> after a failed restart holds the drive's
     ///     lifecycle gate.
     /// </remarks>
-    sealed partial class DriveRuntime
+    sealed partial class DriveRuntime(FileIndex index, IndexedDrive configuration)
     {
-        readonly FileIndex _index;
+        FileIndex Index { get; } = index;
 
-        public DriveRuntime(FileIndex index, IndexedDrive configuration)
-        {
-            _index = index;
-            Configuration = configuration;
-        }
-
-        Lock StateLock => _index._stateLock;
-        FileIndexOptions Options => _index._options;
-        IndexHooks Hooks => _index.Hooks;
-        CancellationToken DisposalToken => _index.DisposalToken;
-        bool IsDisposed => _index._disposed;
+        Lock StateLock => Index._stateLock;
+        FileIndexOptions Options => Index._options;
+        IndexHooks Hooks => Index.Hooks;
+        CancellationToken DisposalToken => Index.DisposalToken;
+        bool IsDisposed => Index._disposed;
         IIndexWatchSource? WatchSourceOrNull => Options.MftSource?.WatchSource;
 
-        IndexedDrive Configuration { get; }
+        IndexedDrive Configuration { get; } = configuration;
         public DriveKey Drive => Configuration.Drive;
         public DriveBlock? Block;
         PendingDriveResult? _lastResult;

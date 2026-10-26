@@ -11,6 +11,8 @@ sealed class ScriptedBrokerResources : IDisposable
 {
     readonly List<InProcessBrokerScan> _scans = [];
 
+    // ReSharper disable once ConvertToPrimaryConstructor
+    // aislop-ignore-next-line jb/ConvertToPrimaryConstructor -- the explicit constructor body is the ownership transfer IDisposableAnalyzers follows; a primary-constructor initializer hides it and raises IDISP001 in Create
     public ScriptedBrokerResources(TestBlockSections sections,
         RecordingBlockSectionWriter writer, BrokerBlockSectionFactory createBlockSection)
     {

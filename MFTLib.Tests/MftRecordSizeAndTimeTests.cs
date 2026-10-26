@@ -15,13 +15,6 @@ public class MftRecordSizeAndTimeTests
     }
 
     [TestMethod]
-    public void NativeCompactEntrySize_IsFiftyTwo()
-    {
-        var entrySize = MFTLibNative.NativeCompactEntrySize;
-        Assert.AreEqual(52u, entrySize);
-    }
-
-    [TestMethod]
     [TestCategory("Smoke")]
     public void NativeLibrary_ReportsAbiVersionEleven()
     {
