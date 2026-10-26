@@ -1,5 +1,3 @@
-using System.Runtime.Versioning;
-
 namespace MFTLib.Index;
 
 public sealed partial class FileIndex
@@ -96,7 +94,6 @@ public sealed partial class FileIndex
         public bool IsWatchingLocked() =>
             _watchRequested || Current is not null || _retiring is not null;
 
-        [SupportedOSPlatform("windows")]
         public UsnJournalSettings QueryUsnJournalSettings()
         {
             if (!DriveKind.For(Configuration.Producer, Options.MftSource).HasJournalSettings)

@@ -7,7 +7,7 @@ namespace MFTLib;
 /// <summary>Creates the control pipe, launches the elevated broker against it, and waits for it to connect.</summary>
 sealed partial class BrokerProcess
 {
-    /// <summary>How long <see cref="LaunchAsync(Func{string, bool}, CancellationToken)" /> waits for the broker to connect.</summary>
+    /// <summary>How long <see cref="LaunchAsync" /> waits for the broker to connect when given no timeout.</summary>
     static readonly TimeSpan DefaultConnectTimeout = TimeSpan.FromSeconds(30);
 
     // Internal launch seams let tests drive the connection deadline with fake time.
@@ -21,38 +21,31 @@ sealed partial class BrokerProcess
     }
 
     /// <summary>
-    ///     Launches the elevated broker and waits up to <see cref="DefaultConnectTimeout" /> for it
-    ///     to connect to the control pipe.
-    /// </summary>
-    /// <inheritdoc cref="LaunchAsync(Func{string, bool}, TimeSpan, CancellationToken)" />
-    [SupportedOSPlatform("windows")]
-    internal static Task<BrokerProcess> LaunchAsync(Func<string, bool> launchBroker, CancellationToken cancellationToken)
-    {
-        return LaunchAsync(launchBroker, _connectTimeout, cancellationToken);
-    }
-
-    /// <summary>
     ///     Creates the control pipe, launches the elevated broker against it, and waits up to
-    ///     <paramref name="connectTimeout" /> for the broker to connect. Scans write into real named
-    ///     block sections.
+    ///     <paramref name="connectTimeout" /> for the broker to connect. Scans write into the sections
+    ///     <paramref name="createBlockSection" /> creates; production passes
+    ///     <see cref="CreateRealDriveBlockSection" />, whose named sections only Windows supports.
     /// </summary>
     /// <param name="launchBroker">
     ///     Receives the broker command line (<c>--broker --pipe NAME</c>, plus the diagnostics flags
     ///     when diagnostics are on) and returns whether the launch started: false when the UAC
     ///     prompt was declined. Production passes <see cref="BrokerLauncher.Launch" />.
     /// </param>
-    /// <param name="connectTimeout">How long to wait for the broker to connect; non-negative or infinite.</param>
+    /// <param name="connectTimeout">
+    ///     How long to wait for the broker to connect; non-negative or infinite. Null waits the default 30 seconds.
+    /// </param>
+    /// <param name="createBlockSection">Creates the block section each scan writes into.</param>
     /// <param name="cancellationToken">Stops waiting for the connection.</param>
     /// <exception cref="InvalidOperationException">The launch did not start.</exception>
     /// <exception cref="TimeoutException">The broker launched but never connected.</exception>
-    [SupportedOSPlatform("windows")]
-    internal static async Task<BrokerProcess> LaunchAsync(Func<string, bool> launchBroker, TimeSpan connectTimeout,
-        CancellationToken cancellationToken)
+    internal static async Task<BrokerProcess> LaunchAsync(Func<string, bool> launchBroker, TimeSpan? connectTimeout,
+        BrokerBlockSectionFactory createBlockSection, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(launchBroker);
-        if (connectTimeout < TimeSpan.Zero && connectTimeout != Timeout.InfiniteTimeSpan)
+        var timeout = connectTimeout ?? _connectTimeout;
+        if (timeout < TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan)
         {
-            throw new ArgumentOutOfRangeException(nameof(connectTimeout), connectTimeout,
+            throw new ArgumentOutOfRangeException(nameof(connectTimeout), timeout,
                 "Connect timeout must be non-negative or Timeout.InfiniteTimeSpan.");
         }
 
@@ -67,9 +60,9 @@ sealed partial class BrokerProcess
                     "Failed to launch the elevated broker (the UAC prompt was declined?)");
             }
 
-            await WaitForBrokerAsync(server, pipeName, connectTimeout, _connectTimeProvider, cancellationToken)
+            await WaitForBrokerAsync(server, pipeName, timeout, _connectTimeProvider, cancellationToken)
                 .ConfigureAwait(false);
-            var process = new BrokerProcess(server, new NamedPipeBrokerPipeFactory(), CreateRealDriveBlockSection,
+            var process = new BrokerProcess(server, new NamedPipeBrokerPipeFactory(), createBlockSection,
                 TimeProvider.System, pipeName);
             server = null;
             return process;
@@ -122,7 +115,7 @@ sealed partial class BrokerProcess
     // NamedBlockSection.Create), so disposing it once the section is written only unpublishes the
     // name; the Block's own view keeps the mapping alive.
     [SupportedOSPlatform("windows")]
-    static (string SectionName, BlockFile Block, IDisposable Lifetime) CreateRealDriveBlockSection(
+    internal static (string SectionName, BlockFile Block, IDisposable Lifetime) CreateRealDriveBlockSection(
         DriveKey drive, BlockFileCreateOptions options)
     {
         var sectionName = NamedBlockSection.BuildSectionName(drive);

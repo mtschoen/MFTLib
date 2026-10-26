@@ -11,7 +11,14 @@ public sealed partial class FileIndex
     /// </summary>
     /// <param name="drive">A configured drive key. The default key is invalid.</param>
     [SupportedOSPlatform("windows")]
-    public UsnJournalSettings QueryUsnJournalSettings(DriveKey drive)
+    public UsnJournalSettings QueryUsnJournalSettings(DriveKey drive) => ReadUsnJournalSettings(drive);
+
+    /// <summary>
+    ///     The logic behind <see cref="QueryUsnJournalSettings" />: validates the drive, refuses a source without
+    ///     live journal settings, and otherwise reads the volume, which throws
+    ///     <see cref="PlatformNotSupportedException" /> off Windows.
+    /// </summary>
+    internal UsnJournalSettings ReadUsnJournalSettings(DriveKey drive)
     {
         var validatedDrive = RequireConfiguredDrive(drive);
         return GetDriveRuntime(validatedDrive).QueryUsnJournalSettings();

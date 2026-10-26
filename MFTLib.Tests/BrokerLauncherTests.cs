@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Runtime.Versioning;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -19,16 +18,14 @@ public class BrokerLauncherTests
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")]
     public void Launch_NullProcessPath_Throws()
     {
         BrokerLauncher.Dependencies._getProcessPath = () => null;
         BrokerLauncher.Dependencies._startProcess = _ => throw new AssertFailedException("Missing path must fail before launch.");
-        Assert.ThrowsExactly<InvalidOperationException>(() => BrokerLauncher.Launch("--broker"));
+        Assert.ThrowsExactly<InvalidOperationException>(() => BrokerLauncher.StartElevated("--broker"));
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")]
     public void Launch_ProcessStarts_ReturnsTrueAndDisposesProcess()
     {
         var process = new Process();
@@ -42,7 +39,7 @@ public class BrokerLauncherTests
             return process;
         };
 
-        Assert.IsTrue(BrokerLauncher.Launch("--broker --pipe p"));
+        Assert.IsTrue(BrokerLauncher.StartElevated("--broker --pipe p"));
         Assert.IsNotNull(launched);
         Assert.AreEqual(executable, launched.FileName);
         Assert.AreEqual("--broker --pipe p", launched.Arguments);
@@ -53,22 +50,20 @@ public class BrokerLauncherTests
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")]
     public void Launch_ProcessReturnsNull_ReturnsFalse()
     {
         BrokerLauncher.Dependencies._getProcessPath = () => @"C:\app\MyApp.exe";
         BrokerLauncher.Dependencies._startProcess = _ => null;
 
-        Assert.IsFalse(BrokerLauncher.Launch("--broker --pipe p"));
+        Assert.IsFalse(BrokerLauncher.StartElevated("--broker --pipe p"));
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")]
     public void Launch_Win32Exception1223_ReturnsFalse()
     {
         BrokerLauncher.Dependencies._getProcessPath = () => @"C:\app\MyApp.exe";
         BrokerLauncher.Dependencies._startProcess = _ => throw new Win32Exception(1223);
 
-        Assert.IsFalse(BrokerLauncher.Launch("--broker --pipe p"));
+        Assert.IsFalse(BrokerLauncher.StartElevated("--broker --pipe p"));
     }
 }

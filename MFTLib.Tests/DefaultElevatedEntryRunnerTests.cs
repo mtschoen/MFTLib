@@ -1,5 +1,4 @@
 using System.IO.Pipes;
-using System.Runtime.Versioning;
 using MFTLib.NativeInterop;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
@@ -25,7 +24,6 @@ public class DefaultElevatedEntryRunnerTests
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")]
     public void RunBroker_NullPipeName_ExitsWithCode1_WithoutConnecting()
     {
         var firstExits = new List<int>();
@@ -40,7 +38,6 @@ public class DefaultElevatedEntryRunnerTests
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")]
     public async Task RunBroker_ValidControlPipe_ServesUntilControlCloses_ExitsWithCode0()
     {
         var pipeName = "mftlib-runner-test-" + Guid.NewGuid().ToString("N");
@@ -73,7 +70,6 @@ public class DefaultElevatedEntryRunnerTests
     [DataRow(true)]
     [DataRow(false)]
     [OSCondition(OperatingSystems.Windows)]
-    [SupportedOSPlatform("windows")]
     public async Task RunBroker_ClientDisconnectsDuringWatch_BrokenPipe_ExitsWithCode0(bool cancelBeforeFailure)
     {
         // RunBroker serves through JournalBrokerHost.CreateDefault(), so fake the volume handle and
@@ -156,7 +152,6 @@ public class DefaultElevatedEntryRunnerTests
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")]
     public async Task RunBroker_ClientDisconnectsDuringArmAndScan_BrokenPipe_ExitsWithCode0()
     {
         // RunBroker serves through JournalBrokerHost.CreateDefault(), so mock the native seams
@@ -210,7 +205,6 @@ public class DefaultElevatedEntryRunnerTests
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")]
     public async Task RunBroker_SessionFails_FlushesDiagnosticsBeforeLeaving()
     {
         var pipeName = "mftlib-runner-test-" + Guid.NewGuid().ToString("N");
@@ -270,7 +264,6 @@ public class DefaultElevatedEntryRunnerTests
     // RunBroker blocks synchronously for the whole session, so it runs on a background thread
     // while this thread plays the non-elevated caller's side of the real control pipe and of one
     // real drive pipe, both created here the way the caller creates them.
-    [SupportedOSPlatform("windows")]
     (NamedPipeServerStream Control, NamedPipeServerStream Drive, Task RunTask) StartRunnerWithDrivePipe(Action<int> exitProcess)
     {
         var controlName = "mftlib-runner-test-" + Guid.NewGuid().ToString("N");
@@ -325,7 +318,6 @@ public class DefaultElevatedEntryRunnerTests
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")]
     public async Task CleanupTimeout_DisposesPipesAndKeepsInjectedExit()
     {
         var runner = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

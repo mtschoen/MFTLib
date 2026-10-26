@@ -1,4 +1,3 @@
-using System.Runtime.Versioning;
 using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -9,20 +8,16 @@ namespace MFTLib.Tests.Index;
 ///     <see cref="UsnJournalSettingsQuery" />: no test category, so this runs in the
 ///     standard non-admin pass (fsutil usn queryjournal works unelevated, and so must
 ///     this). The marshaling success path is covered here on Windows; the
-///     platform guard is covered on Linux. The
-///     <see cref="SupportedOSPlatformAttribute" /> on each test mirrors
-///     <c>IndexedDriveTests</c>: it satisfies CA1416 and is inert at runtime.
+///     platform guard is covered on Linux.
 /// </summary>
 [TestClass]
 [DoNotParallelize]
 public class UsnJournalSettingsQueryLiveTests
 {
     [TestCleanup]
-    [SupportedOSPlatform("windows")]
     public void Cleanup() => UsnJournalSettingsQuery.Dependencies.ResetToDefaults();
 
     [TestMethod]
-    [SupportedOSPlatform("windows")]
     public void Query_HostIsNotWindows_ThrowsPlatformNotSupported()
     {
         var exception = Assert.ThrowsExactly<PlatformNotSupportedException>(
@@ -36,7 +31,6 @@ public class UsnJournalSettingsQueryLiveTests
     ///     answers the public entry point and is never consulted by the platform-taking one.
     /// </summary>
     [TestMethod]
-    [SupportedOSPlatform("windows")]
     public void Query_OverrideInstalled_AnswersThePublicEntryAndNotThePlatformTakingQuery()
     {
         var overridden = new UsnJournalSettings { MaximumSize = 7, AllocationDelta = 3 };
@@ -49,7 +43,6 @@ public class UsnJournalSettingsQueryLiveTests
 
     [TestMethod]
     [OSCondition(OperatingSystems.Windows)]
-    [SupportedOSPlatform("windows")]
     public void Query_OnRealVolume_ReturnsSettingsUnelevated()
     {
         var settings = UsnJournalSettingsQuery.Query('C');
@@ -62,7 +55,6 @@ public class UsnJournalSettingsQueryLiveTests
 
     [TestMethod]
     [OSCondition(ConditionMode.Exclude, OperatingSystems.Windows)]
-    [SupportedOSPlatform("windows")]
     public void Query_NonWindowsHost_ThrowsPlatformNotSupported()
     {
         Assert.ThrowsExactly<PlatformNotSupportedException>(() => UsnJournalSettingsQuery.Query('C'));
@@ -70,7 +62,6 @@ public class UsnJournalSettingsQueryLiveTests
 
     [TestMethod]
     [OSCondition(OperatingSystems.Windows)]
-    [SupportedOSPlatform("windows")]
     public void Query_ForADriveLetterThatDoesNotExist_ThrowsIOExceptionNamingTheRoot()
     {
         var missing = Enumerable.Range('D', 'Z' - 'D' + 1)

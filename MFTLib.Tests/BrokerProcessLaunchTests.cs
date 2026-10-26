@@ -9,7 +9,6 @@ namespace MFTLib.Tests;
 // The tests change process-wide diagnostics settings and broker connection timeout seams.
 [TestClass]
 [DoNotParallelize]
-[SupportedOSPlatform("windows")]
 public class BrokerProcessLaunchTests
 {
     [TestCleanup]
@@ -149,8 +148,10 @@ public class BrokerProcessLaunchTests
         Assert.DoesNotContain("--diag", await CaptureDeclinedLaunchArgumentsAsync());
     }
 
+    // Genuinely Windows-only: the client creates a real named block section, which only Windows supports.
     [TestMethod]
     [OSCondition(OperatingSystems.Windows)]
+    [SupportedOSPlatform("windows")]
     public async Task LaunchAsync_EndToEnd_UsesRealPipeAndRealBlockSeams()
     {
         Task? brokerTask = null;
@@ -181,7 +182,8 @@ public class BrokerProcessLaunchTests
             return true;
         });
 
-        var process = await BrokerProcess.LaunchAsync(launchBroker, cancellation.Token);
+        var process = await BrokerProcess.LaunchAsync(launchBroker, null, BrokerProcess.CreateRealDriveBlockSection,
+            cancellation.Token);
         try
         {
             var result = await process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
@@ -204,14 +206,15 @@ public class BrokerProcessLaunchTests
     public async Task LaunchAsync_NullLaunchBroker_ThrowsArgumentNull()
     {
         await Assert.ThrowsExactlyAsync<ArgumentNullException>(() =>
-            BrokerProcess.LaunchAsync(null!, CancellationToken.None));
+            BrokerProcess.LaunchAsync(null!, null, NoScanBlockSections.Factory, CancellationToken.None));
     }
 
     [TestMethod]
     public async Task LaunchAsync_NegativeTimeout_ThrowsArgumentOutOfRange()
     {
         await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(() =>
-            BrokerProcess.LaunchAsync(_ => true, TimeSpan.FromSeconds(-5), CancellationToken.None));
+            BrokerProcess.LaunchAsync(_ => true, TimeSpan.FromSeconds(-5), NoScanBlockSections.Factory,
+                CancellationToken.None));
     }
 
     [TestMethod]
@@ -231,8 +234,8 @@ public class BrokerProcessLaunchTests
         try
         {
             var launch = explicitTimeout
-                ? BrokerProcess.LaunchAsync(_ => true, duration, cancellation.Token)
-                : BrokerProcess.LaunchAsync(_ => true, cancellation.Token);
+                ? BrokerProcess.LaunchAsync(_ => true, duration, NoScanBlockSections.Factory, cancellation.Token)
+                : BrokerProcess.LaunchAsync(_ => true, null, NoScanBlockSections.Factory, cancellation.Token);
             var registration = clock.TimerCreated(duration);
             Assert.IsTrue(registration.IsCompletedSuccessfully,
                 "The connection deadline must be registered on the injected clock.");
@@ -265,7 +268,7 @@ public class BrokerProcessLaunchTests
 
         try
         {
-            await BrokerProcess.LaunchAsync(_ => true, TimeSpan.FromSeconds(30), cancellation.Token);
+            await BrokerProcess.LaunchAsync(_ => true, TimeSpan.FromSeconds(30), NoScanBlockSections.Factory, cancellation.Token);
             Assert.Fail("Expected an OperationCanceledException");
         }
         catch (OperationCanceledException)
@@ -287,8 +290,8 @@ public class BrokerProcessLaunchTests
     // No scan runs on these processes, so their section factory is never called.
     static BrokerProcess CreateProcess(Stream control)
     {
-        return new BrokerProcess(control, new NamedPipeBrokerPipeFactory(),
-            (_, _) => throw new AssertFailedException("No scan runs in this test."), TimeProvider.System);
+        return new BrokerProcess(control, new NamedPipeBrokerPipeFactory(), NoScanBlockSections.Factory,
+            TimeProvider.System);
     }
 
     // Declines the launch at once; the tests only read the command line it was given.
@@ -300,7 +303,7 @@ public class BrokerProcessLaunchTests
             {
                 captured = arguments;
                 return false;
-            }, CancellationToken.None));
+            }, null, NoScanBlockSections.Factory, CancellationToken.None));
 
         Assert.IsNotNull(captured);
         return captured;

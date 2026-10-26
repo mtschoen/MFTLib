@@ -1,4 +1,3 @@
-using System.Runtime.Versioning;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
@@ -226,11 +225,10 @@ public partial class BrokerProcessTests
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")]
     public async Task LaunchAsync_LaunchDeclined_Throws()
     {
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-            BrokerProcess.LaunchAsync(_ => false, CancellationToken.None));
+            BrokerProcess.LaunchAsync(_ => false, null, NoScanBlockSections.Factory, CancellationToken.None));
 
         Assert.Contains("declined", exception.Message);
     }

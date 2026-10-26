@@ -1,4 +1,3 @@
-using System.Runtime.Versioning;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -14,7 +13,6 @@ namespace MFTLib.Tests.Index;
 public class MftDumpApplicabilityTests
 {
     [TestCleanup]
-    [SupportedOSPlatform("windows")]
     public void Cleanup() => UsnJournalSettingsQuery.Dependencies.ResetToDefaults();
 
     [TestMethod]
@@ -141,27 +139,25 @@ public class MftDumpApplicabilityTests
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")]
     public async Task QueryUsnJournalSettings_ADumpDriveRefusesBeforeTheLiveQuery()
     {
         UsnJournalSettingsQuery.Dependencies._queryOverride =
             drive => throw new AssertFailedException($"The live volume {drive} must not be queried.");
         await using var index = await MftDumpIndexes.OpenAsync();
 
-        var failure = MftDumpIndexes.Throws<InvalidOperationException>(index, i => i.QueryUsnJournalSettings('d'));
+        var failure = MftDumpIndexes.Throws<InvalidOperationException>(index, i => i.ReadUsnJournalSettings('d'));
 
         Assert.AreEqual("Drive D: this source has no live journal settings.", failure.Message);
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")]
     public async Task QueryUsnJournalSettings_AFailedDumpDriveWithNoBlockStillRefuses()
     {
         UsnJournalSettingsQuery.Dependencies._queryOverride =
             drive => throw new AssertFailedException($"The live volume {drive} must not be queried.");
         await using var index = await MftDumpIndexes.OpenAsync(MftDumpIndexes.Source(MftDumpIndexes.Fail));
 
-        var failure = MftDumpIndexes.Throws<InvalidOperationException>(index, i => i.QueryUsnJournalSettings('D'));
+        var failure = MftDumpIndexes.Throws<InvalidOperationException>(index, i => i.ReadUsnJournalSettings('D'));
 
         Assert.AreEqual("Drive D: this source has no live journal settings.", failure.Message);
     }

@@ -36,7 +36,13 @@ public static class BrokerLauncher
     /// <returns>True if the process started; false if the user declined the UAC prompt or no process could be started.</returns>
     /// <exception cref="InvalidOperationException">The current executable path cannot be determined.</exception>
     [SupportedOSPlatform("windows")]
-    public static bool Launch(string brokerArguments)
+    public static bool Launch(string brokerArguments) => StartElevated(brokerArguments);
+
+    /// <summary>
+    ///     The logic behind <see cref="Launch" />: builds the <c>runas</c> start request, which elevates only on
+    ///     Windows, and starts it through the launch seams.
+    /// </summary>
+    internal static bool StartElevated(string brokerArguments)
     {
         var exePath = Dependencies._getProcessPath()
                       ?? throw new InvalidOperationException(

@@ -59,18 +59,20 @@ public partial class BenchmarkRunner
 
     static void LogSystemInfo(Action<string> log)
     {
+        var hardware = OperatingSystem.IsWindows()
+            ? SystemInfo.QueryWindowsHardware(AppContext.BaseDirectory)
+            : SystemInfo.DescribeWithoutWmi();
         log("System Info");
         log($"  Build:   {SystemInfo.DefaultGetBuildConfiguration()}");
-        log($"  OS:      {SystemInfo.DefaultGetWmiValue("Win32_OperatingSystem", "Caption")} ({Environment.OSVersion.Version})");
-        log($"  CPU:     {SystemInfo.DefaultGetWmiValue("Win32_Processor", "Name")}");
+        log($"  OS:      {hardware.OperatingSystem} ({Environment.OSVersion.Version})");
+        log($"  CPU:     {hardware.Processor}");
         log($"  Threads: {Environment.ProcessorCount}");
-        var memory = SystemInfo.ComputeInstalledMemoryGB(SystemInfo.DefaultQueryMemoryCapacities());
-        if (memory.Warning is not null)
+        if (hardware.MemoryWarning is not null)
         {
-            log(memory.Warning);
+            log(hardware.MemoryWarning);
         }
-        log($"  RAM:     {memory.Gigabytes} GB");
-        log($"  Disk:    {SystemInfo.ComputeDiskModel(SystemInfo.QueryDiskModels(AppContext.BaseDirectory))}");
+        log($"  RAM:     {hardware.Memory}");
+        log($"  Disk:    {hardware.DiskModel}");
         log($"  .NET:    {RuntimeInformation.FrameworkDescription}");
     }
 

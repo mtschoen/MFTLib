@@ -1,11 +1,9 @@
-using System.Runtime.Versioning;
 using Benchmark;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
 [TestClass]
-[SupportedOSPlatform("windows")]
 public class SystemInfoTests
 {
     // --- DefaultGetBuildConfiguration ---
@@ -15,6 +13,15 @@ public class SystemInfoTests
     {
         var result = SystemInfo.DefaultGetBuildConfiguration();
         Assert.IsTrue(result is "Release" or "Debug");
+    }
+
+    [TestMethod]
+    public void DescribeWithoutWmi_KnowsOnlyTheOperatingSystem()
+    {
+        var hardware = SystemInfo.DescribeWithoutWmi();
+
+        Assert.AreEqual(System.Runtime.InteropServices.RuntimeInformation.OSDescription, hardware.OperatingSystem);
+        Assert.AreEqual(new HardwareDescription(hardware.OperatingSystem, "Unknown", "Unknown", null, "Unknown"), hardware);
     }
 
     [TestMethod]

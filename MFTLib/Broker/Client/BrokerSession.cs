@@ -71,9 +71,16 @@ public sealed class BrokerSession : IAsyncDisposable
     /// <exception cref="ArgumentNullException"><paramref name="launchBroker" /> is null.</exception>
     [SupportedOSPlatform("windows")]
     public BrokerSession(Func<string, bool> launchBroker, TimeSpan? connectTimeout = null)
-        : this(cancellationToken => connectTimeout is { } timeout
-            ? BrokerProcess.LaunchAsync(launchBroker, timeout, cancellationToken)
-            : BrokerProcess.LaunchAsync(launchBroker, cancellationToken))
+        : this(launchBroker, connectTimeout, BrokerProcess.CreateRealDriveBlockSection)
+    {
+    }
+
+    // The logic behind the launcher constructors: scans write into the sections createBlockSection creates. Production
+    // passes the named sections only Windows supports; tests pass their own.
+    internal BrokerSession(Func<string, bool> launchBroker, TimeSpan? connectTimeout,
+        BrokerBlockSectionFactory createBlockSection)
+        : this(cancellationToken =>
+            BrokerProcess.LaunchAsync(launchBroker, connectTimeout, createBlockSection, cancellationToken))
     {
         ArgumentNullException.ThrowIfNull(launchBroker);
     }

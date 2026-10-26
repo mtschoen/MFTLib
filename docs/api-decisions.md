@@ -867,3 +867,24 @@ Linux fanotify watch. The draft design (issue comment 129571) also still has an 
 overflow-then-rescan into a rescan loop.
 
 **Revisit only if:** a consumer needs live updates on a walked drive, or during 0.4.0 planning.
+
+## Windows-only annotations sit on the member that reaches Windows
+
+**Decision (2026-10-26):** `[SupportedOSPlatform("windows")]` sits on the narrowest member that reaches a
+Windows-only API (a Windows P/Invoke, WMI, a named memory-mapped section, a Windows access-control list, UAC
+elevation), never on a whole type or assembly. Platform-neutral logic and test seams carry no annotation.
+A public Windows-only member whose behavior wraps logic is a one-line entry point over an internal
+platform-neutral member that tests call on every platform: `BrokerLauncher.Launch` over `StartElevated`,
+`IndexedDrive.FromWindowsVolume` over `ReadWindowsVolume`, `FileIndex.QueryUsnJournalSettings` over
+`ReadUsnJournalSettings`, and both launcher `BrokerSession` constructors over an internal constructor that takes
+the block section factory (production passes the Windows-only named-section factory). Internal members that
+guard with `OperatingSystem.IsWindows()` and throw `PlatformNotSupportedException` off Windows, such as
+`UsnJournalSettingsQuery.Query`, stay unannotated so their refusal is testable on Linux. No public member was
+added, removed or reshaped.
+
+**Reason:** a type- or assembly-wide annotation forced cross-platform tests (broker, index and Benchmark logic
+run on Linux through faked OS calls) to claim Windows-only to compile, which MSTest's MSTEST0084 flags. Suppressing
+MSTEST0084 or CA1416 hides the mismatch instead of fixing the description of the API (issue 743).
+
+**Revisit only if:** a public member's platform-neutral logic is needed by a consumer on Linux, which would
+make the internal member a public one.

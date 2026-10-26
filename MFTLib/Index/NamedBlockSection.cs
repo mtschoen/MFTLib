@@ -9,7 +9,6 @@ namespace MFTLib.Index;
 ///     the section by name and writes rows directly into it, so the cold scan and the cache save
 ///     are one act. Section names are unqualified and session-local.
 /// </summary>
-[SupportedOSPlatform("windows")]
 static class NamedBlockSection
 {
     /// <summary>Creates an initialized block and the lifetime of its published section name.</summary>
@@ -109,7 +108,6 @@ static class NamedBlockSection
         }
     }
 
-    [SupportedOSPlatform("windows")]
     public static string BuildSectionName(DriveKey drive)
     {
         return BlockSectionNaming.Prefix + drive + "-" + Guid.NewGuid().ToString("N");

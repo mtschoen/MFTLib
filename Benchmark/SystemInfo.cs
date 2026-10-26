@@ -1,10 +1,33 @@
 using System.Globalization;
 using System.Management;
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 
 namespace Benchmark;
 
+// The values a report's System Info block prints. Only Windows has WMI, so elsewhere every value but the operating
+// system reads "Unknown". MemoryWarning says why the installed memory could not be read, or is null.
+readonly record struct HardwareDescription(
+    string OperatingSystem, string Processor, string Memory, string? MemoryWarning, string DiskModel);
+
 static class SystemInfo
 {
+    /// <summary>Reads the hardware description from WMI, which only Windows has.</summary>
+    [SupportedOSPlatform("windows")]
+    internal static HardwareDescription QueryWindowsHardware(string path)
+    {
+        var memory = ComputeInstalledMemoryGB(DefaultQueryMemoryCapacities());
+        return new HardwareDescription(DefaultGetWmiValue("Win32_OperatingSystem", "Caption"),
+            DefaultGetWmiValue("Win32_Processor", "Name"), $"{memory.Gigabytes} GB", memory.Warning,
+            ComputeDiskModel(QueryDiskModels(path)));
+    }
+
+    /// <summary>Describes a host without WMI: only the operating system is known.</summary>
+    internal static HardwareDescription DescribeWithoutWmi()
+    {
+        return new HardwareDescription(RuntimeInformation.OSDescription, "Unknown", "Unknown", null, "Unknown");
+    }
+
     // Coalesce a WMI property value (object, nullable ToString) to a trimmed
     // string. A null value yields "Unknown"; both branches are unit-tested.
     internal static string WmiString(object? value)
@@ -12,6 +35,7 @@ static class SystemInfo
         return (value?.ToString() ?? "Unknown").Trim();
     }
 
+    [SupportedOSPlatform("windows")]
     internal static string DefaultGetWmiValue(string wmiClass, string property)
     {
         try
@@ -83,7 +107,8 @@ static class SystemInfo
         return string.IsNullOrEmpty(root) ? "C" : root[..1];
     }
 
-    internal static IEnumerable<string?> QueryDiskModels(string path)
+    [SupportedOSPlatform("windows")]
+    static IEnumerable<string?> QueryDiskModels(string path)
     {
         foreach (var partition in DefaultQueryPartitionIds(DriveForPath(path)))
         {
@@ -91,6 +116,7 @@ static class SystemInfo
         }
     }
 
+    [SupportedOSPlatform("windows")]
     internal static IEnumerable<long> DefaultQueryMemoryCapacities()
     {
         using var searcher = new ManagementObjectSearcher("SELECT Capacity FROM Win32_PhysicalMemory");
@@ -100,6 +126,7 @@ static class SystemInfo
         }
     }
 
+    [SupportedOSPlatform("windows")]
     internal static IEnumerable<string> DefaultQueryPartitionIds(string drive)
     {
         using var partitionSearch = new ManagementObjectSearcher(
@@ -110,6 +137,7 @@ static class SystemInfo
         }
     }
 
+    [SupportedOSPlatform("windows")]
     internal static string? DefaultQueryDiskModelForPartition(string partitionId)
     {
         try

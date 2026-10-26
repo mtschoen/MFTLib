@@ -27,7 +27,6 @@ static class OpenDependenciesReferenceFixture
 
 static class QueryDependenciesReferenceFixture
 {
-    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     public static void Reference() => UsnJournalSettingsQuery.Dependencies._queryOverride = null;
 }
 

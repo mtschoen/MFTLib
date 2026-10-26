@@ -8,7 +8,6 @@ namespace MFTLib.NativeInterop;
 ///     File operations bound to an open handle rather than to a pathname: the file's identity, the final path the
 ///     file system reports for it, a reopen of the same file with other access, and an attributes-only open by path.
 /// </summary>
-[SupportedOSPlatform("windows")]
 static partial class HandleBoundFile
 {
     const uint FileReadAttributes = 0x80;
@@ -27,6 +26,7 @@ static partial class HandleBoundFile
     ///     <c>GetFileInformationByHandle</c> is not unique on ReFS, so this reads <c>FILE_ID_INFO</c>, and it refuses
     ///     an all-zero or all-ones id, which a file system reports when it has no stable id.
     /// </summary>
+    [SupportedOSPlatform("windows")]
     internal static unsafe (ulong Volume, UInt128 File) IdentityOf(SafeFileHandle handle)
     {
         FileIdInformation information;
@@ -45,6 +45,7 @@ static partial class HandleBoundFile
     }
 
     /// <summary>The name of the file system holding the open file, such as <c>NTFS</c>.</summary>
+    [SupportedOSPlatform("windows")]
     internal static unsafe string FileSystemNameOf(SafeFileHandle handle)
     {
         const int capacity = 64;
@@ -58,6 +59,7 @@ static partial class HandleBoundFile
     }
 
     /// <summary>The root of the volume <paramref name="path" /> is on, which is a folder for a mount point.</summary>
+    [SupportedOSPlatform("windows")]
     internal static unsafe string VolumePathOf(string path)
     {
         const int capacity = 1024;
@@ -74,6 +76,7 @@ static partial class HandleBoundFile
     ///     The normalized final path of the open file, with every junction and symbolic link resolved, in its
     ///     <c>\\?\</c> form.
     /// </summary>
+    [SupportedOSPlatform("windows")]
     internal static unsafe string FinalPathOf(SafeFileHandle handle)
     {
         var capacity = 512u;
@@ -101,6 +104,7 @@ static partial class HandleBoundFile
     }
 
     /// <summary>An attributes-only handle on the same file, which takes no part in sharing checks.</summary>
+    [SupportedOSPlatform("windows")]
     internal static SafeFileHandle ReopenForAttributes(SafeFileHandle handle) =>
         Checked(ReOpenFile(handle, FileReadAttributes, ShareAll, 0), "Could not reopen the file by its handle.");
 
@@ -108,6 +112,7 @@ static partial class HandleBoundFile
     ///     Marks the file behind <paramref name="handle" /> for deletion through a reopen of that handle, so no
     ///     pathname is resolved; the file goes when its last handle closes. False when the reopen is refused.
     /// </summary>
+    [SupportedOSPlatform("windows")]
     internal static bool TryDeleteByHandle(SafeFileHandle handle)
     {
         using var deleter = ReOpenFile(handle, Delete, ShareAll, FileFlagDeleteOnClose);
@@ -118,6 +123,7 @@ static partial class HandleBoundFile
     ///     An attributes-only handle on <paramref name="path" />, without following a reparse point in its last
     ///     component.
     /// </summary>
+    [SupportedOSPlatform("windows")]
     internal static SafeFileHandle OpenAttributesOnly(string path) =>
         Checked(CreateFileW(path, FileReadAttributes, ShareAll, IntPtr.Zero, OpenExisting, FileFlagOpenReparsePoint,
             IntPtr.Zero), $"Could not open '{path}'.");

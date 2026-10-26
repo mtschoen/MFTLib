@@ -57,13 +57,12 @@ public class DriveKeyLifecycleTests
     }
 
     [TestMethod]
-    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     public async Task PublicDriveEntryPoints_RejectDefaultBeforeAccessingResources()
     {
         using var harness = new WatchHarness('T');
         var index = harness.Index;
         Assert.ThrowsExactly<ArgumentException>(() => index.Root(default, TestContext.CancellationToken));
-        Assert.ThrowsExactly<ArgumentException>(() => index.QueryUsnJournalSettings(default));
+        Assert.ThrowsExactly<ArgumentException>(() => index.ReadUsnJournalSettings(default));
         await using var session = BrokerTestHarness.CreateSession(_ => throw new AssertFailedException("the invalid key must not launch a broker"));
         await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             session.GrowUsnJournalAsync(default, new UsnJournalSettings { MaximumSize = 4096, AllocationDelta = 1024 }, CancellationToken.None));

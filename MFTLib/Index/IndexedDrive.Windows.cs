@@ -21,7 +21,14 @@ public sealed partial record IndexedDrive
     ///     re-lettered or replaced volume never matches the wrong cached block.
     /// </summary>
     [SupportedOSPlatform("windows")]
-    public static IndexedDrive FromWindowsVolume(DriveKey drive)
+    public static IndexedDrive FromWindowsVolume(DriveKey drive) => ReadWindowsVolume(drive);
+
+    /// <summary>
+    ///     The logic behind <see cref="FromWindowsVolume" />. The test seam answers when set; otherwise the serial
+    ///     comes from <c>GetVolumeInformationW</c>, and the read throws <see cref="PlatformNotSupportedException" />
+    ///     off Windows.
+    /// </summary>
+    internal static IndexedDrive ReadWindowsVolume(DriveKey drive)
     {
         var rootDirectory = drive.Letter + @":\";
         var reader = Dependencies._volumeSerialReader ?? ReadVolumeSerial;
@@ -30,9 +37,13 @@ public sealed partial record IndexedDrive
         return new IndexedDrive(drive, rootDirectory, serial);
     }
 
-    [SupportedOSPlatform("windows")]
     static uint? ReadVolumeSerial(string rootDirectory)
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException("Reading a volume serial requires Windows (GetVolumeInformationW).");
+        }
+
         return Kernel32.GetVolumeInformationW(rootDirectory, IntPtr.Zero, 0, out var serial, out _, out _, IntPtr.Zero, 0)
             ? serial
             : null;

@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Runtime.Versioning;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
@@ -9,13 +8,12 @@ namespace MFTLib.Tests;
 
 /// <summary>
 ///     The session's launch, end and disposal rules. Every launch is a task completion source the test
-///     completes, so nothing here waits for time to pass. No test launches a real broker: the public
-///     constructors get a launcher that declines.
+///     completes, so nothing here waits for time to pass. No test launches a real broker: the launcher
+///     constructor gets a launcher that declines.
 /// </summary>
 // The declined-prompt tests replace the BrokerLauncher process seams, which are process-global.
 [TestClass]
 [DoNotParallelize]
-[SupportedOSPlatform("windows")]
 public partial class BrokerSessionTests
 {
     [TestCleanup]
@@ -695,7 +693,7 @@ public partial class BrokerSessionTests
     }
 
     [TestMethod]
-    public async Task DefaultConstructor_RelaunchesAfterTheUacPromptIsDeclinedAndNeverCachesTheDecline()
+    public async Task ElevatedLauncher_RelaunchesAfterTheUacPromptIsDeclinedAndNeverCachesTheDecline()
     {
         var prompts = 0;
         BrokerLauncher.Dependencies._getProcessPath = () => @"C:\app\MyApp.exe";
@@ -704,7 +702,8 @@ public partial class BrokerSessionTests
             Interlocked.Increment(ref prompts);
             throw new Win32Exception(1223);
         };
-        await using var session = new BrokerSession();
+        // The default constructor's launcher, without the named block sections only Windows supports.
+        await using var session = new BrokerSession(BrokerLauncher.StartElevated, null, NoScanBlockSections.Factory);
 
         var first = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             session.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 2, AllocationDelta = 1 }, CancellationToken.None));
@@ -724,8 +723,8 @@ public partial class BrokerSessionTests
         var commandLines = new List<string>();
         var connecting = 0;
         await using var session = withTimeout
-            ? new BrokerSession(Decline, TimeSpan.FromSeconds(5))
-            : new BrokerSession(Decline);
+            ? new BrokerSession(Decline, TimeSpan.FromSeconds(5), NoScanBlockSections.Factory)
+            : new BrokerSession(Decline, null, NoScanBlockSections.Factory);
         session.Connecting += () => Interlocked.Increment(ref connecting);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -748,7 +747,7 @@ public partial class BrokerSessionTests
     [TestMethod]
     public async Task LauncherConstructor_PassesTheConnectTimeoutToTheLaunch()
     {
-        await using var session = new BrokerSession(_ => true, TimeSpan.FromSeconds(-5));
+        await using var session = new BrokerSession(_ => true, TimeSpan.FromSeconds(-5), NoScanBlockSections.Factory);
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
             session.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 2, AllocationDelta = 1 }, CancellationToken.None));
@@ -757,7 +756,7 @@ public partial class BrokerSessionTests
     [TestMethod]
     public void Constructors_RejectNullLaunchers()
     {
-        Assert.ThrowsExactly<ArgumentNullException>(() => new BrokerSession((Func<string, bool>)null!));
+        Assert.ThrowsExactly<ArgumentNullException>(() => new BrokerSession(null!, null, NoScanBlockSections.Factory));
         Assert.ThrowsExactly<ArgumentNullException>(() =>
             BrokerTestHarness.CreateSession(null!));
     }

@@ -10,7 +10,6 @@ namespace MFTLib.NativeInterop;
 ///     open on the target volume with backup semantics, which needs no elevation - not
 ///     specifically the volume root, despite the Win32 parameter's <c>hVolumeHint</c> name.
 /// </summary>
-[SupportedOSPlatform("windows")]
 static partial class WindowsFileById
 {
     const uint FileReadAttributes = 0x80;
@@ -20,6 +19,7 @@ static partial class WindowsFileById
     const uint OpenExisting = 3;
     const uint FileFlagBackupSemantics = 0x02000000;
 
+    [SupportedOSPlatform("windows")]
     internal static FileStream Open(string anyPathOnVolume, uint recordNumber, ushort sequenceNumber,
         FileAccess access)
     {

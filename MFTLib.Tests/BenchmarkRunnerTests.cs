@@ -1,6 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-using System.Runtime.Versioning;
 using System.Text.RegularExpressions;
 using Benchmark;
 using MFTLib.Index;
@@ -10,7 +9,6 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 [TestClass]
-[SupportedOSPlatform("windows")]
 [SuppressMessage("Design", "CA1001",
     Justification = "Cleanup is [TestCleanup], the MSTest-idiomatic disposal path this test project uses " +
                      "throughout rather than IDisposable on the test class itself.")]

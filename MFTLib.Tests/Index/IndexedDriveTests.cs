@@ -25,10 +25,9 @@ public sealed class IndexedDriveTests : IDisposable
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")]
     [DataRow('C')]
     [DataRow('c')]
-    public void FromWindowsVolume_NormalizesKeysToTheSameDrive(char spelling)
+    public void ReadWindowsVolume_NormalizesKeysToTheSameDrive(char spelling)
     {
         IndexedDrive.Dependencies._volumeSerialReader = root =>
         {
@@ -36,7 +35,7 @@ public sealed class IndexedDriveTests : IDisposable
             return 0xDEADBEEF;
         };
 
-        var drive = IndexedDrive.FromWindowsVolume(spelling);
+        var drive = IndexedDrive.ReadWindowsVolume(spelling);
 
         Assert.AreEqual('C', drive.Drive);
         Assert.AreEqual(@"C:\", drive.RootDirectory);
@@ -44,21 +43,19 @@ public sealed class IndexedDriveTests : IDisposable
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")]
-    public void FromWindowsVolume_ThrowsIOExceptionNamingTheDriveWhenTheQueryFails()
+    public void ReadWindowsVolume_ThrowsIOExceptionNamingTheDriveWhenTheQueryFails()
     {
         IndexedDrive.Dependencies._volumeSerialReader = _ => null;
 
-        var failure = Assert.ThrowsExactly<IOException>(() => IndexedDrive.FromWindowsVolume('Q'));
+        var failure = Assert.ThrowsExactly<IOException>(() => IndexedDrive.ReadWindowsVolume('Q'));
 
         Assert.Contains("Q", failure.Message);
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")]
-    public void FromWindowsVolume_RejectsDefaultKey()
+    public void ReadWindowsVolume_RejectsDefaultKey()
     {
-        Assert.ThrowsExactly<ArgumentException>(() => IndexedDrive.FromWindowsVolume(default));
+        Assert.ThrowsExactly<ArgumentException>(() => IndexedDrive.ReadWindowsVolume(default));
     }
 
     [TestMethod]
@@ -71,6 +68,15 @@ public sealed class IndexedDriveTests : IDisposable
 
         Assert.AreNotEqual(0u, drive.VolumeSerial);
         Assert.AreEqual(systemRoot, drive.RootDirectory);
+    }
+
+    [TestMethod]
+    [OSCondition(ConditionMode.Exclude, OperatingSystems.Windows)]
+    public void ReadWindowsVolume_OffWindowsWithoutTheSeam_ThrowsPlatformNotSupported()
+    {
+        var failure = Assert.ThrowsExactly<PlatformNotSupportedException>(() => IndexedDrive.ReadWindowsVolume('C'));
+
+        Assert.Contains("GetVolumeInformationW", failure.Message);
     }
 
     [TestMethod]

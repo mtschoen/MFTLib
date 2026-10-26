@@ -1,5 +1,4 @@
 using System.IO.Pipes;
-using System.Runtime.Versioning;
 
 namespace MFTLib;
 
@@ -40,7 +39,6 @@ sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
     ///     failure exit code.
     /// </param>
     /// <exception cref="IOException">The control pipe cannot be connected or used.</exception>
-    [SupportedOSPlatform("windows")]
     public void RunBroker(string? controlPipeName)
     {
         if (controlPipeName == null)

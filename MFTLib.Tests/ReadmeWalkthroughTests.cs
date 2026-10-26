@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Runtime.Versioning;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
@@ -113,13 +112,12 @@ public sealed class ReadmeWalkthroughTests : IDisposable
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")]
     public async Task LocalOneShotWalkthrough_CompilesPublicRecipeAndRunsMultipleQueriesOverOneScan()
     {
         IndexedDrive.Dependencies._volumeSerialReader = _ => 0x0BADF00Du;
 
         var cancellationToken = TestContext.CancellationToken;
-        var drive = IndexedDrive.FromWindowsVolume('C');
+        var drive = IndexedDrive.ReadWindowsVolume('C');
         var productionOptions = new FileIndexOptions
         {
             Drives = [drive],
@@ -198,11 +196,10 @@ public sealed class ReadmeWalkthroughTests : IDisposable
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")]
     public async Task LocalOneShotWalkthrough_FailedAndCancelledOperations_SurfaceExpectedOutcomes()
     {
         IndexedDrive.Dependencies._volumeSerialReader = _ => 0x0BADF00Du;
-        var drive = IndexedDrive.FromWindowsVolume('C') with { RootDirectory = TemporaryDirectoryPath };
+        var drive = IndexedDrive.ReadWindowsVolume('C') with { RootDirectory = TemporaryDirectoryPath };
 
         var failingOptions = new FileIndexOptions
         {

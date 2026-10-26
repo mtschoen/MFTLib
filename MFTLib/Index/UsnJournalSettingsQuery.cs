@@ -1,4 +1,3 @@
-using System.Runtime.Versioning;
 using MFTLib.NativeInterop;
 
 namespace MFTLib.Index;
@@ -8,7 +7,6 @@ namespace MFTLib.Index;
 ///     against the unelevated volume-root handle <see cref="UsnJournalVolumeInterop" />
 ///     opens - the same query <c>fsutil usn queryjournal</c> performs unelevated.
 /// </summary>
-[SupportedOSPlatform("windows")]
 static class UsnJournalSettingsQuery
 {
     internal static readonly QueryDependencies Dependencies = new();

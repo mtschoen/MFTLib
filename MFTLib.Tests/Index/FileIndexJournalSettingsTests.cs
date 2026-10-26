@@ -10,8 +10,7 @@ namespace MFTLib.Tests.Index;
 ///     <see cref="FileIndex.QueryUsnJournalSettings" />: drive membership validation and
 ///     delegation to the query engine. The engine itself is swapped out through
 ///     <c>UsnJournalSettingsQuery.Dependencies._queryOverride</c>, so these run on every platform
-///     (the <see cref="SupportedOSPlatformAttribute" /> on each test satisfies CA1416 and
-///     is inert at runtime, same as <c>IndexedDriveTests</c>).
+///     through <see cref="FileIndex.ReadUsnJournalSettings" />, the logic behind the Windows-only entry point.
 /// </summary>
 [TestClass]
 [DoNotParallelize]
@@ -23,7 +22,6 @@ public sealed class FileIndexJournalSettingsTests : IDisposable
     public void Initialize() => _fixture = new IndexTreeFixture(seedDocuments: false);
 
     [TestCleanup]
-    [SupportedOSPlatform("windows")]
     public void ResetQueryOverride() => UsnJournalSettingsQuery.Dependencies.ResetToDefaults();
 
     public void Dispose()
@@ -37,7 +35,6 @@ public sealed class FileIndexJournalSettingsTests : IDisposable
         FileIndex.OpenAsync(_fixture.Options(), CancellationToken.None);
 
     [TestMethod]
-    [SupportedOSPlatform("windows")]
     public async Task QueryUsnJournalSettings_ConfiguredDrive_ReturnsEngineResult()
     {
         var expected = new UsnJournalSettings
@@ -52,7 +49,7 @@ public sealed class FileIndexJournalSettingsTests : IDisposable
         await using var index = await OpenIndexAsync();
 
         // Lowercase input normalizes to the configured uppercase letter.
-        var settings = index.QueryUsnJournalSettings('t');
+        var settings = index.ReadUsnJournalSettings('t');
 
         Assert.AreEqual(expected.MaximumSize, settings.MaximumSize);
         Assert.AreEqual(expected.AllocationDelta, settings.AllocationDelta);
@@ -82,7 +79,6 @@ public sealed class FileIndexJournalSettingsTests : IDisposable
     }
 
     [TestMethod]
-    [SupportedOSPlatform("windows")]
     public async Task QueryUsnJournalSettings_UnconfiguredDrive_ThrowsArgumentException()
     {
         await using var index = await OpenIndexAsync();
@@ -90,7 +86,7 @@ public sealed class FileIndexJournalSettingsTests : IDisposable
 
         try
         {
-            index.QueryUsnJournalSettings('Q');
+            index.ReadUsnJournalSettings('Q');
         }
         catch (ArgumentException exception)
         {
