@@ -57,7 +57,7 @@ public sealed partial class FileIndex
             {
                 // The lifecycle gate keeps any other start or rescan out while this waits, and nothing
                 // is registered yet, so a retiring pump's last batch can never reach this start's watch.
-                await AwaitQueuedAsync(previousDrain, cancellationToken, CancellationToken.None).ConfigureAwait(false);
+                await AwaitQueuedAsync(previousDrain, cancellationToken).ConfigureAwait(false);
             }
 
             if (restart && Hooks.RestartBeforeRegistration is { } beforeRegistration)

@@ -86,26 +86,24 @@ public sealed partial class FileIndex
         RejectInsideHandler(operation) is { } rejection ? Task.FromException<TResult>(rejection) : null;
 
     /// <summary>
-    ///     Awaits <paramref name="wait" />, cancelled by either token, without ever running the
+    ///     Awaits <paramref name="wait" />, cancelled by <paramref name="cancellationToken" />, without ever running the
     ///     awaiter's continuation inline on the stack that settles the wait or cancels a token.
-    ///     The tokens reach the wait by cancelling a completion source created with
+    ///     The token reaches the wait by cancelling a completion source created with
     ///     <see cref="TaskCreationOptions.RunContinuationsAsynchronously" /> from a registration,
     ///     not through <see cref="Task.WaitAsync(CancellationToken)" />, which makes no such
     ///     promise. A pump settling a waiter, or a handler cancelling a token, therefore never runs
     ///     the waiter's code on its own thread.
     /// </summary>
-    static async Task AwaitQueuedAsync(Task wait, CancellationToken first, CancellationToken second)
+    static async Task AwaitQueuedAsync(Task wait, CancellationToken cancellationToken)
     {
-        if (wait.IsCompleted || (!first.CanBeCanceled && !second.CanBeCanceled))
+        if (wait.IsCompleted || !cancellationToken.CanBeCanceled)
         {
             await wait.ConfigureAwait(false);
             return;
         }
 
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var firstRegistration = first.Register(
-            static (state, token) => (state as TaskCompletionSource)?.TrySetCanceled(token), completion);
-        await using var secondRegistration = second.Register(
+        await using var registration = cancellationToken.Register(
             static (state, token) => (state as TaskCompletionSource)?.TrySetCanceled(token), completion);
         _ = wait.ContinueWith(antecedent => CopyOutcome(antecedent, completion),
             CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);

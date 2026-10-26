@@ -43,7 +43,7 @@ public sealed partial class FileIndex
                 : retired?.Drained ?? previousDrain;
             if (drain is not null)
             {
-                await AwaitQueuedAsync(drain, cancellationToken, CancellationToken.None).ConfigureAwait(false);
+                await AwaitQueuedAsync(drain, cancellationToken).ConfigureAwait(false);
             }
 
             lock (StateLock)
