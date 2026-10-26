@@ -199,7 +199,7 @@ public sealed partial class FileIndex
                 _namePoolCapacity = nextNamePoolCapacity;
                 _block = runtime.CreateEnumerationBlock(blockPath, deleteOnClose, _slotCapacity, _namePoolCapacity);
                 snapshot.RestoreInto(_block);
-                runtime.Options.Diagnostics?.Invoke(
+                DiagnosticsReport.Send(runtime.Options.Diagnostics,
                     $"Grew block file '{blockPath}': enumeration capacity exhausted at {snapshot.RowCount} rows; " +
                     $"the walk continues with {_slotCapacity} slots and {_namePoolCapacity} name-pool bytes.");
                 return new BlockWriter(_block);

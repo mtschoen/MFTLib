@@ -87,7 +87,10 @@ public sealed record FileIndexOptions
     ///     during a directory walk, and a progress handler that threw on its Finished sample.
     ///     Invoked synchronously on whatever thread performs the delete or encounters the condition,
     ///     which can be a snapshot release inside <see cref="FileIndex.DisposeAsync" />,
-    ///     so a subscriber must be fast and non-blocking. Null (the default) logs nothing.
+    ///     so a subscriber must be fast and non-blocking. An exception the callback throws is
+    ///     contained (except <see cref="OutOfMemoryException" />): it never replaces an operation's
+    ///     result or exception and never escapes a release or <see cref="FileIndex.DisposeAsync" />.
+    ///     Null (the default) logs nothing.
     /// </summary>
     public Action<string>? Diagnostics { get; init; }
 

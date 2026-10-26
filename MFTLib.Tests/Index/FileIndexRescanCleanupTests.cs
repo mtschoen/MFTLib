@@ -201,6 +201,46 @@ public sealed class FileIndexRescanCleanupTests : IDisposable
         CollectionAssert.AreEqual(previousBlockBytes, await ReadSharedAsync(canonicalPath));
     }
 
+    [TestMethod]
+    public async Task RescanAsync_ThrowingDiagnosticsOnTheSupersededBlockDeletion_SucceedsAndDisposesCleanly()
+    {
+        // The superseded block's file is deleted when its last borrow is released and the deletion
+        // is reported through Diagnostics; a throwing callback must not escape the release.
+        var options = new FileIndexOptions
+        {
+            Drives = [new IndexedDrive('T', TreeRoot, 1)],
+            CacheDirectory = CacheDirectoryPath,
+            Diagnostics = line =>
+            {
+                if (line.Contains("superseded by a completed rescan", StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException("the log destination closed");
+                }
+            },
+            MftSource = new MftIndexSource((request, cancellationToken) =>
+            {
+                SeededBlocks.Write(request.BlockPath, request.VolumeSerial, journalIdentifier: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment);
+                return Task.FromResult(new MftBlockProduceResult(
+                    BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
+                    SkippedRecordCount: 0));
+            })
+        };
+        var index = await FileIndex.OpenAsync(options, Token);
+        try
+        {
+            var results = await index.RescanAsync(['T'], Token);
+
+            Assert.AreEqual(DriveOperationOutcome.Succeeded, results.Single().Outcome);
+        }
+        finally
+        {
+            await index.DisposeAsync();
+        }
+
+        Assert.IsEmpty(Directory.GetFiles(CacheDirectoryPath, "*.retired-*"),
+            "the superseded block's file was deleted");
+    }
+
     // The published block keeps its file mapped, so a plain read is refused while the index is open.
     async Task<byte[]> ReadSharedAsync(string path)
     {

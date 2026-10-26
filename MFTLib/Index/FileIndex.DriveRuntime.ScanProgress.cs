@@ -55,15 +55,8 @@ public sealed partial class FileIndex
             }
             catch (Exception exception)
             {
-                try
-                {
-                    Options.Diagnostics?.Invoke(
-                        $"Drive {Drive}: the progress handler threw on the Finished sample: {exception.Message}");
-                }
-                catch (Exception diagnosticsException) when (diagnosticsException is not OutOfMemoryException)
-                {
-                    // The callback is the consumer's; its failure must not replace the scan's own result.
-                }
+                DiagnosticsReport.Send(Options.Diagnostics,
+                    $"Drive {Drive}: the progress handler threw on the Finished sample: {exception.Message}");
             }
         }
     }

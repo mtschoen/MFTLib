@@ -222,7 +222,7 @@ sealed class DriveBlockRelease
         try
         {
             File.Delete(deleteOverride);
-            deleteDiagnostics?.Invoke(
+            DiagnosticsReport.Send(deleteDiagnostics,
                 $"Deleted block file '{deleteOverride}': superseded by a completed rescan and fully released.");
         }
         catch (IOException)

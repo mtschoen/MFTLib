@@ -129,7 +129,7 @@ public sealed partial class FileIndex
         {
             var stored = block.Header.CacheTag;
             block.Dispose();
-            Options.Diagnostics?.Invoke(
+            DiagnosticsReport.Send(Options.Diagnostics,
                 $"Cache tag mismatch for '{path}': stored {stored}; requested {Options.CacheTag}.");
             DiscardRejectedBlock(path, $"cache validation failed: {BlockValidationResult.WrongCacheTag}");
             return new WarmStartResult(null, BlockValidationResult.WrongCacheTag);
@@ -145,7 +145,7 @@ public sealed partial class FileIndex
         {
             if (Options.CacheMode == CacheMode.ExistingOnly)
             {
-                Options.Diagnostics?.Invoke($"Left block file '{path}' in place for a cache-only open: {reason}.");
+                DiagnosticsReport.Send(Options.Diagnostics, $"Left block file '{path}' in place for a cache-only open: {reason}.");
                 return;
             }
 
@@ -160,7 +160,7 @@ public sealed partial class FileIndex
         {
             var stored = block.Header.ScanShape;
             block.Dispose();
-            Options.Diagnostics?.Invoke(FormattableString.Invariant(
+            DiagnosticsReport.Send(Options.Diagnostics, FormattableString.Invariant(
                 $"Cache scan shape mismatch for '{path}': stored {stored:X16}; requested {ExpectedScanShape:X16}."));
             DiscardRejectedBlock(path, $"cache validation failed: {BlockValidationResult.WrongScanShape}");
             return new WarmStartResult(null, BlockValidationResult.WrongScanShape);

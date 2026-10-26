@@ -58,13 +58,6 @@ sealed partial class BlockFile
             return;
         }
 
-        try
-        {
-            diagnostics?.Invoke($"Deleted block file '{path}': {reason}.");
-        }
-        catch (Exception exception) when (exception is not OutOfMemoryException)
-        {
-            // Cleanup reporting must not replace the producer's original failure.
-        }
+        DiagnosticsReport.Send(diagnostics, $"Deleted block file '{path}': {reason}.");
     }
 }
