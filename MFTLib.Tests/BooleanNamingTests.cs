@@ -136,9 +136,9 @@ public partial class BooleanNamingTests
         public sealed override bool Done => true;
     }
 
-    public struct ReadonlyFixture(bool open)
+    public readonly struct ReadonlyFixture(bool open)
     {
-        public readonly bool Open { get; } = open;
+        public bool Open { get; } = open;
     }
 
     public sealed class ByReferenceFixture

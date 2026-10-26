@@ -187,16 +187,13 @@ public sealed class FileIndexDisposeCancelsQueryTests : IDisposable
             var holdTheReader = () =>
             {
                 admitted.TrySetResult();
-                released.Task.Wait();
+                released.Task.Wait(TestContext.CancellationToken);
             };
             index.Hooks.ReaderAdmitted = holdTheReader;
-            if (initialBlock is not null)
-            {
-                initialBlock.ReleaseState.Hooks._readerAdmitted = holdTheReader;
-            }
+            initialBlock?.ReleaseState.Hooks._readerAdmitted = holdTheReader;
             index.Hooks.LifecycleGatesTakenForDisposal = () => cancellationDelivered.TrySetResult();
 
-            reader = Task.Run(() => read(index, root, token));
+            reader = Task.Run(() => read(index, root, token), TestContext.CancellationToken);
             await admitted.Task.WaitAsync(HangGuard * 3, token);
 
             if (cancelWhileAdmitted)
@@ -226,10 +223,7 @@ public sealed class FileIndexDisposeCancelsQueryTests : IDisposable
             // borrow and leave the disposal below waiting for it.
             released.TrySetResult();
             index.Hooks.ReaderAdmitted = null;
-            if (initialBlock is not null)
-            {
-                initialBlock.ReleaseState.Hooks._readerAdmitted = null;
-            }
+            initialBlock?.ReleaseState.Hooks._readerAdmitted = null;
 
             if (reader != null)
             {

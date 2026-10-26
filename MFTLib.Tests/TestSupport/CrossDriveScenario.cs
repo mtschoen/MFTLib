@@ -127,7 +127,7 @@ sealed class CrossDriveScenario : IAsyncDisposable
 
             var signal = new TaskCompletionSource<WatchFault>(TaskCreationOptions.RunContinuationsAsynchronously);
             _waiters.Add((kind, driveLetter, occurrence, signal));
-            return signal.Task.WaitAsync(HangGuard);
+            return signal.Task.WaitAsync(HangGuard, Token);
         }
     }
 
@@ -177,13 +177,13 @@ sealed class CrossDriveScenario : IAsyncDisposable
         }
 
         HostClock.Advance(BrokerLiveness.HeartbeatInterval);
-        await _visits.Reader.ReadAsync().AsTask().WaitAsync(HangGuard);
+        await _visits.Reader.ReadAsync(Token).AsTask().WaitAsync(HangGuard, Token);
         foreach (var (key, pipe) in awaited)
         {
             var timedOut = false;
             try
             {
-                await pipe.Reads.WhenReadPendingAfter(pipe.Settled).WaitAsync(HangGuard);
+                await pipe.Reads.WhenReadPendingAfter(pipe.Settled).WaitAsync(HangGuard, Token);
             }
             catch (TimeoutException)
             {

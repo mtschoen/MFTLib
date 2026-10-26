@@ -81,7 +81,7 @@ sealed class DefenderExclusionSequence
     // The system Defender module, imported by absolute path so a module planted in a per-user PSModulePath
     // directory cannot be autoloaded into the elevated session.
     internal const string ImportSystemDefenderModule =
-        "Import-Module -Name (Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\Modules\\Defender\\Defender.psd1') -ErrorAction Stop";
+        @"Import-Module -Name (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\Modules\Defender\Defender.psd1') -ErrorAction Stop";
 
     /// <summary>
     ///     The absolute-path import of the system Defender module, then one module-qualified

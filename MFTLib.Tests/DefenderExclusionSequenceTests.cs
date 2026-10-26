@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -13,12 +14,12 @@ namespace MFTLib.Tests;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public class DefenderExclusionSequenceTests
+public partial class DefenderExclusionSequenceTests
 {
     static readonly string[] OneName = ["app.exe"];
 
     const string ImportPrefix =
-        "Import-Module -Name (Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\Modules\\Defender\\Defender.psd1') -ErrorAction Stop; ";
+        @"Import-Module -Name (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\Modules\Defender\Defender.psd1') -ErrorAction Stop; ";
     static readonly string[] Relaunch = ["--elevated-defender"];
 
     sealed class FakeElevation(bool elevated, bool canSelfElevate, bool relaunchResult = true) : IElevationProvider
@@ -140,10 +141,10 @@ public class DefenderExclusionSequenceTests
         var script = DefenderExclusionSequence.BuildScript(["git.exe", "app.exe"]);
 
         Assert.StartsWith("Import-Module -Name (Join-Path $env:SystemRoot ", script);
-        Assert.Contains("System32\\WindowsPowerShell\\v1.0\\Modules\\Defender\\Defender.psd1", script);
+        Assert.Contains(@"System32\WindowsPowerShell\v1.0\Modules\Defender\Defender.psd1", script);
         Assert.Contains("-ErrorAction Stop", script);
-        Assert.AreEqual(2, System.Text.RegularExpressions.Regex.Count(script, @"Defender\\Add-MpPreference"));
-        Assert.IsEmpty(System.Text.RegularExpressions.Regex.Matches(script, @"(?<!Defender\\)Add-MpPreference"));
+        Assert.AreEqual(2, QualifiedDefenderCommandRegex().Count(script));
+        Assert.IsEmpty(UnqualifiedDefenderCommandRegex().Matches(script));
     }
 
     [TestMethod]
@@ -653,4 +654,10 @@ public class DefenderExclusionSequenceTests
         Assert.IsNull(DefenderExclusionSequence.RunnerOverride);
         DefenderExclusionIsolation.ScriptPowerShell().Dispose();
     }
+
+    [GeneratedRegex(@"Defender\\Add-MpPreference")]
+    private static partial Regex QualifiedDefenderCommandRegex();
+
+    [GeneratedRegex(@"(?<!Defender\\)Add-MpPreference")]
+    private static partial Regex UnqualifiedDefenderCommandRegex();
 }

@@ -68,7 +68,7 @@ static partial class MFTLibNative
     [LibraryImport(LibraryName, EntryPoint = "GenerateSyntheticMFTSizedUtf8")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     [return: MarshalAs(UnmanagedType.I1)]
-    private static partial bool NativeGenerateSyntheticMFTSizedUtf8(byte[] filePathUtf8, ulong recordCount,
+    private static partial bool NativeGenerateSyntheticMFTSizedUtf8([In] byte[] filePathUtf8, ulong recordCount,
         uint bufferSizeRecords, uint recordSize);
 
     // The dump input exports exist on every platform and take the path as null-terminated UTF-8

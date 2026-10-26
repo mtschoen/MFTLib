@@ -71,10 +71,11 @@ static class JournalCheckpointCheck
     static JournalCheckpointLoss? CheckObservation(DriveKey drive, ulong checkpointJournalIdentifier, long checkpointUsn,
         JournalCheckpointLossDetection detectedDuring, bool requireUnmoved)
     {
-        if (ProcessJournal.Read(drive) is not (var journalIdentifier, var firstUsn, var nextUsn, var allocationDelta, var maximumSize))
+        if (ProcessJournal.Read(drive) is not { } observation)
         {
             return null;
         }
+        var (journalIdentifier, firstUsn, nextUsn, allocationDelta, maximumSize) = observation;
 
         if (firstUsn < 0 || nextUsn < firstUsn || checkpointUsn < 0 || allocationDelta <= 0)
         {

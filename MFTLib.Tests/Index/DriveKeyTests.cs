@@ -54,6 +54,25 @@ public class DriveKeyTests
     }
 
     [TestMethod]
+    public void NotificationRecords_RejectDefaultKeysOnConstructionAndWithInitialization()
+    {
+        var settings = new UsnJournalSettings { MaximumSize = 65536, AllocationDelta = 4096 };
+        var cachedBlockFile = new CachedBlockFile('C', 1, "unused", 0, DateTime.UnixEpoch);
+        var driveStatus = new DriveStatus('C', DriveState.Offline);
+        var driveOpened = new IndexDriveOpened('C', 1, 1);
+        var scanProgress = new IndexScanProgress('C', IndexScanPhase.Finished, 0);
+        var checkpointLoss = new JournalCheckpointLoss('C', JournalCheckpointLossDetection.LiveWatch,
+            JournalCheckpointLossCause.CheckpointTrimmed, settings);
+        var watchFault = new WatchFault(WatchFaultKind.Channel, 'C', new InvalidOperationException());
+        Assert.ThrowsExactly<ArgumentException>(() => cachedBlockFile with { Drive = default });
+        Assert.ThrowsExactly<ArgumentException>(() => driveStatus with { Drive = default });
+        Assert.ThrowsExactly<ArgumentException>(() => driveOpened with { Drive = default });
+        Assert.ThrowsExactly<ArgumentException>(() => scanProgress with { Drive = default });
+        Assert.ThrowsExactly<ArgumentException>(() => checkpointLoss with { Drive = default });
+        Assert.ThrowsExactly<ArgumentException>(() => watchFault with { Drive = default });
+    }
+
+    [TestMethod]
     public void PublicRecords_RejectDefaultKeysOnConstructionAndWithInitialization()
     {
         Assert.ThrowsExactly<ArgumentException>(() => new IndexedDrive(default, "unused", 0));

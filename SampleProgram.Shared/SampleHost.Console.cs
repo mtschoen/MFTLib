@@ -50,5 +50,5 @@ partial class SampleHost
     }
 
     [LibraryImport("kernel32.dll")]
-    private static partial uint GetConsoleProcessList(uint[] processList, uint processCount);
+    private static partial uint GetConsoleProcessList([Out] uint[] processList, uint processCount);
 }

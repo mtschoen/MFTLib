@@ -167,9 +167,6 @@ public sealed partial class FileIndex
         sealed class EnumerationBlockGrowth(DriveRuntime runtime, string blockPath, bool deleteOnClose,
             uint slotCapacity, uint namePoolCapacity) : IDisposable
         {
-            readonly DriveRuntime _runtime = runtime;
-            readonly string _blockPath = blockPath;
-            readonly bool _deleteOnClose = deleteOnClose;
             uint _slotCapacity = slotCapacity;
             uint _namePoolCapacity = namePoolCapacity;
             BlockFile? _block = runtime.CreateEnumerationBlock(blockPath, deleteOnClose, slotCapacity, namePoolCapacity);
@@ -193,17 +190,17 @@ public sealed partial class FileIndex
                 // Dispose first: private blocks delete on close; canonical blocks need an
                 // explicit deletion while the caller still holds their cache owner lock.
                 Dispose();
-                if (!_deleteOnClose)
+                if (!deleteOnClose)
                 {
-                    File.Delete(_blockPath);
+                    File.Delete(blockPath);
                 }
 
                 _slotCapacity = nextSlotCapacity;
                 _namePoolCapacity = nextNamePoolCapacity;
-                _block = _runtime.CreateEnumerationBlock(_blockPath, _deleteOnClose, _slotCapacity, _namePoolCapacity);
+                _block = runtime.CreateEnumerationBlock(blockPath, deleteOnClose, _slotCapacity, _namePoolCapacity);
                 snapshot.RestoreInto(_block);
-                _runtime.Options.Diagnostics?.Invoke(
-                    $"Grew block file '{_blockPath}': enumeration capacity exhausted at {snapshot.RowCount} rows; " +
+                runtime.Options.Diagnostics?.Invoke(
+                    $"Grew block file '{blockPath}': enumeration capacity exhausted at {snapshot.RowCount} rows; " +
                     $"the walk continues with {_slotCapacity} slots and {_namePoolCapacity} name-pool bytes.");
                 return new BlockWriter(_block);
             }

@@ -43,10 +43,13 @@ public class DefenderImportProbeTests
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
-                RedirectStandardError = true
+                RedirectStandardError = true,
+                Environment =
+                {
+                    ["FAKE_DEFENDER_MARKER"] = marker,
+                    ["PSModulePath"] = fakeModules + ";" + Environment.GetEnvironmentVariable("PSModulePath")
+                }
             };
-            startInfo.Environment["FAKE_DEFENDER_MARKER"] = marker;
-            startInfo.Environment["PSModulePath"] = fakeModules + ";" + Environment.GetEnvironmentVariable("PSModulePath");
             foreach (var argument in new[]
                      {
                          "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
@@ -57,7 +60,7 @@ public class DefenderImportProbeTests
             }
 
             using var process = Process.Start(startInfo)!;
-            var errorTask = process.StandardError.ReadToEndAsync();
+            var errorTask = process.StandardError.ReadToEndAsync(TestContext.CancellationToken);
             var output = process.StandardOutput.ReadToEnd().Trim();
             process.WaitForExit();
             var error = errorTask.Result;
@@ -71,4 +74,6 @@ public class DefenderImportProbeTests
             Directory.Delete(root, recursive: true);
         }
     }
+
+    public TestContext TestContext { get; set; } = null!;
 }

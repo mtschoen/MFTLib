@@ -80,15 +80,12 @@ sealed class EnumerationDirectoryReader
                 _enumerationOptions);
 
             using var enumerator = enumerable.GetEnumerator();
-            while (true)
+            do
             {
                 BeforeMoveNext?.Invoke(directory.Path, observed);
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!enumerator.MoveNext())
-                {
-                    break;
-                }
             }
+            while (enumerator.MoveNext());
         }
         catch (Exception exception) when (exception is UnauthorizedAccessException
                                               or DirectoryNotFoundException or IOException)

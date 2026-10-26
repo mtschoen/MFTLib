@@ -16,7 +16,7 @@ namespace MFTLib.Tests;
 public class DefenderExclusionScriptPinningTests
 {
     const string Script = "Add-MpPreference -ExclusionProcess 'app.exe' -ErrorAction Stop";
-    static readonly byte[] DecoyBytes = "Write-Output 'not the verified script'"u8.ToArray();
+    static readonly byte[] DecoyBytes = [.. "Write-Output 'not the verified script'"u8];
 
     static byte[] ExpectedBytes()
     {
@@ -122,7 +122,7 @@ public class DefenderExclusionScriptPinningTests
             Assert.IsTrue(sequence.RunPowerShell(Script, elevated: true));
 
             Assert.IsNotNull(launched);
-            Assert.AreSequenceEqual(ExpectedBytes(), childReads!, "The child must read the verified script, not the decoy.");
+            Assert.AreSequenceEqual(ExpectedBytes(), childReads, "The child must read the verified script, not the decoy.");
             var decoyFile = Path.Combine(decoy, Path.GetFileName(launched));
             Assert.IsTrue(File.Exists(decoyFile), "The cleanup must not follow the retargeted junction to another file.");
             Assert.IsEmpty(Directory.GetFileSystemEntries(staging), "The cleanup must delete the verified script.");
@@ -367,7 +367,7 @@ public class DefenderExclusionScriptPinningTests
     [DataRow(@"z:\", true)]
     [DataRow(@"D:\Mounts\Volume\", false)]
     [DataRow(@"\\server\share\", false)]
-    [DataRow(@"D:", false)]
+    [DataRow("D:", false)]
     public void IsDriveRoot_OnlyABareDriveRoot(string volumePath, bool expected)
     {
         Assert.AreEqual(expected, HeldScriptFile.IsDriveRoot(volumePath));

@@ -52,12 +52,9 @@ public readonly record struct DriveKey
     }
 
     /// <summary>The normalized ASCII letter. Rejects the default key.</summary>
-    public char Letter
-    {
-        get => field != '\0'
-            ? field
-            : throw new ArgumentException("The default drive key is invalid.");
-    }
+    public char Letter => field != '\0'
+        ? field
+        : throw new ArgumentException("The default drive key is invalid.");
 
     /// <summary>Creates a normalized key from an ASCII letter.</summary>
     public static implicit operator DriveKey(char letter) => new(letter);

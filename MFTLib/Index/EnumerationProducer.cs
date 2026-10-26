@@ -98,8 +98,8 @@ sealed class EnumerationProducer
     /// </summary>
     /// <param name="writer">The block to write rows into.</param>
     /// <param name="progress">Receives one sample after each directory is enumerated, on the calling thread; may be null.</param>
-    /// <param name="cancellationToken">Observed before the root row, each directory entry read and each row write.</param>
     /// <param name="baseLease">The base lease for this walk from <see cref="EnumerationWalkLimit" />.</param>
+    /// <param name="cancellationToken">Observed before the root row, each directory entry read and each row write.</param>
     /// <param name="maximumWorkers">Maximum concurrent directory readers for the walk, including the one on the base permit.</param>
     /// <returns>The row count, the number of subtrees that could not be entered, and whether the block was too small.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="writer" /> or <paramref name="baseLease" /> is null.</exception>

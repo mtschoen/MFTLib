@@ -90,7 +90,7 @@ sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
     {
         _corruption.CorruptNextWrite();
         return Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
-            Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
+            Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard, CancellationToken));
     }
 
     public async ValueTask DisposeAsync()

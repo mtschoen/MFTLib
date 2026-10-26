@@ -142,9 +142,9 @@ public partial class AgentInstructionsTests
             var report = RepositoryFiles.Read("TEST-REPORT.md");
             Assert.StartsWith("# Test report: generated on main by CI; must not be edited in a pull request",
                 report, "A tracked report must carry the generator's provenance header.");
-            Assert.IsTrue(Regex.IsMatch(report, @"(?m)^Source commit: [0-9a-f]{40}\r?$"),
+            Assert.IsTrue(ReportSourceCommitRegex().IsMatch(report),
                 "A tracked report must name its full source commit.");
-            Assert.IsTrue(Regex.IsMatch(report, @"(?m)^Workflow run: \d+\r?$"),
+            Assert.IsTrue(ReportWorkflowRunRegex().IsMatch(report),
                 "A tracked report must name its workflow run.");
         }
     }
@@ -391,4 +391,10 @@ public partial class AgentInstructionsTests
 
     [GeneratedRegex(@"\b[A-Za-z_]\w*\b")]
     private static partial Regex IdentifierTokenRegex();
+
+    [GeneratedRegex(@"(?m)^Source commit: [0-9a-f]{40}\r?$")]
+    private static partial Regex ReportSourceCommitRegex();
+
+    [GeneratedRegex(@"(?m)^Workflow run: \d+\r?$")]
+    private static partial Regex ReportWorkflowRunRegex();
 }

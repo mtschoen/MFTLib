@@ -62,12 +62,13 @@ partial class SampleHost
         {
             _messageBeep(MessageBeepIconExclamation);
             var outcome = ShowElevationNotice(BuildElevationNotice(arguments, reason, previousDismissalTooFast, need));
-            if (outcome is not (var result, var shownAt, var answeredAt) || answeredAt - shownAt >= ElevationNoticeTimeout)
+            if (outcome is not { } answered || answered.AnsweredAt - answered.ShownAt >= ElevationNoticeTimeout)
             {
                 _output.WriteLine("The heads-up dialog was not answered in time; treating it as Cancel.");
                 return false;
             }
 
+            var (result, shownAt, answeredAt) = answered;
             var onScreen = answeredAt - shownAt;
 
             // A result that is neither button means the dialog failed, so asking again would never end.
