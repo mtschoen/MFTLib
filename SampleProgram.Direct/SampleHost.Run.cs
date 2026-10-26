@@ -7,6 +7,8 @@ namespace SampleProgram.Direct;
 // or a saved $MFT file. It never caches, so every verb scans.
 partial class SampleHost
 {
+    TextWriter _output;
+
     internal SampleHost(TextWriter output, TextReader input, string outputDirectory, TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(output);

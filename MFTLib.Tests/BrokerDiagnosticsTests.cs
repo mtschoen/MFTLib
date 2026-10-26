@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -21,7 +22,7 @@ public partial class BrokerDiagnosticsTests
     public async Task Cleanup()
     {
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", null);
-        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+        await BrokerDiagnosticsTestSupport.DrainAsync();
         BrokerDiagnostics.Dependencies.ResetToDefaults();
         // Best-effort cleanup only: a locked file or already-missing directory must
         // not fail the test.

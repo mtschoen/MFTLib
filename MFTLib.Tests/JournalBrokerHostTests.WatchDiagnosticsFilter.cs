@@ -32,7 +32,7 @@ public partial class JournalBrokerHostTests
     static async Task ResetDiagFilterSeamsAsync()
     {
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", null);
-        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+        await BrokerDiagnosticsTestSupport.DrainAsync();
         BrokerDiagnostics.Dependencies.ResetToDefaults();
     }
 

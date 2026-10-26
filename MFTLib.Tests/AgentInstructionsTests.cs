@@ -93,9 +93,9 @@ public partial class AgentInstructionsTests
         @"(?i)[a-z]:[\\/]+Users(?:[\\/]|\b)",
         @"(?i)/mnt/[a-z]/Users(?:/|\b)",
         "(?i)" + Regex.Escape(string.Join('.', "fleet", "sticktoitive", "net")),
-        @"(?i)\b" + "chon" + @"kers\b",
-        @"(?i)\b" + "llama" + @"box\b",
-        Regex.Escape("~/" + "schoen-lab/")
+        string.Concat(@"(?i)\b", "chon", @"kers\b"),
+        string.Concat(@"(?i)\b", "llama", @"box\b"),
+        Regex.Escape(string.Concat("~/", "schoen-lab/"))
     ];
 
     [TestMethod]
@@ -154,10 +154,10 @@ public partial class AgentInstructionsTests
     {
         var rejected = new[]
         {
-            "C:" + @"\Users\fixture\source", "c:" + "/users/fixture/source",
-            "C:" + @"\\Users\\fixture\\source", "/mnt/c/" + "Users/fixture/source",
+            string.Concat("C:", @"\Users\fixture\source"), string.Concat("c:", "/users/fixture/source"),
+            string.Concat("C:", @"\\Users\\fixture\\source"), string.Concat("/mnt/c/", "Users/fixture/source"),
             "https://" + string.Join('.', "gitea", "fleet", "sticktoitive", "net") + "/team/repo",
-            "CHON" + "KERS", "llama" + "box", "~/" + "schoen-lab/packages/guide.md"
+            string.Concat("CHON", "KERS"), string.Concat("llama", "box"), string.Concat("~/", "schoen-lab/packages/guide.md")
         };
         var patterns = PrivateContentPatterns();
         foreach (var text in rejected)

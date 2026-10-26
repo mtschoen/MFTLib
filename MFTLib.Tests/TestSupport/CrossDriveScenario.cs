@@ -204,14 +204,14 @@ sealed class CrossDriveScenario : IAsyncDisposable
         {
             if (_index is not null)
             {
-                await _index.DisposeAsync().AsTask().WaitAsync(HangGuard);
+                await _index.DisposeAsync().AsTask().WaitAsync(HangGuard, CancellationToken.None);
             }
         }
         finally
         {
             try
             {
-                await Broker.DisposeAsync().AsTask().WaitAsync(HangGuard);
+                await Broker.DisposeAsync().AsTask().WaitAsync(HangGuard, CancellationToken.None);
             }
             finally
             {

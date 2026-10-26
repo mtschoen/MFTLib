@@ -13,7 +13,6 @@ partial class SampleHost
 {
     internal const string PausePrompt = "Press any key to close this window.";
 
-    TextWriter _output;
     readonly TextReader _input;
 
     internal void PauseBeforeExit(bool ownsWindow)

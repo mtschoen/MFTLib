@@ -263,7 +263,8 @@ public sealed class FileIndexQueryTests : IAsyncDisposable
             }
         };
 
-        var reader = Task.Run(() => RootFailure(index, driveLetter, cancellationToken));
+        // The token is query input, not a scheduling token: even a pre-cancelled query must run.
+        var reader = Task.Run(() => RootFailure(index, driveLetter, cancellationToken), CancellationToken.None);
         try
         {
             var cancellationTask = Task.Delay(Timeout.Infinite, cancellationToken);

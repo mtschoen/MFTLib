@@ -33,7 +33,7 @@ public class BrokerProcessLaunchTests
         {
             try
             {
-                await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+                await BrokerDiagnosticsTestSupport.DrainAsync();
             }
             finally
             {
@@ -60,7 +60,7 @@ public class BrokerProcessLaunchTests
         {
             try
             {
-                await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+                await BrokerDiagnosticsTestSupport.DrainAsync();
             }
             finally
             {
@@ -85,7 +85,7 @@ public class BrokerProcessLaunchTests
         {
             try
             {
-                await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+                await BrokerDiagnosticsTestSupport.DrainAsync();
             }
             finally
             {
@@ -107,7 +107,7 @@ public class BrokerProcessLaunchTests
         {
             try
             {
-                await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+                await BrokerDiagnosticsTestSupport.DrainAsync();
             }
             finally
             {
@@ -130,7 +130,7 @@ public class BrokerProcessLaunchTests
         {
             try
             {
-                await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+                await BrokerDiagnosticsTestSupport.DrainAsync();
             }
             finally
             {

@@ -1,3 +1,4 @@
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -69,7 +70,7 @@ public class ElevatedEntryPointTests
     [TestCleanup]
     public async Task Cleanup()
     {
-        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+        await BrokerDiagnosticsTestSupport.DrainAsync();
         BrokerDiagnostics.Dependencies.ResetToDefaults();
     }
 
@@ -113,7 +114,7 @@ public class ElevatedEntryPointTests
             {
                 try
                 {
-                    await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+                    await BrokerDiagnosticsTestSupport.DrainAsync();
                 }
                 finally
                 {

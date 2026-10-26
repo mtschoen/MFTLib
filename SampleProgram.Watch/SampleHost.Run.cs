@@ -5,6 +5,7 @@ namespace SampleProgram.Watch;
 
 partial class SampleHost
 {
+    readonly TextWriter _output;
     readonly bool? _interactive;
 
     internal SampleHost(TextWriter output, TextReader input, TimeProvider? timeProvider = null, bool? interactive = null)

@@ -106,7 +106,7 @@ public partial class JournalBrokerHostLivenessTests
         {
             try
             {
-                await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+                await BrokerDiagnosticsTestSupport.DrainAsync();
             }
             finally
             {

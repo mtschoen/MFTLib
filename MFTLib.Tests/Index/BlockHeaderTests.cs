@@ -193,8 +193,13 @@ public class BlockHeaderTests
     [TestMethod]
     public void FormatVersion_IsFive()
     {
-        var formatVersion = BlockLayout.FormatVersion;
-        Assert.AreEqual(5u, formatVersion);
+        using var builder = new SyntheticBlockBuilder();
+        builder.AddRoot();
+        builder.Complete(DateTime.UnixEpoch);
+        using var block = builder.OpenForReading(out var validation);
+        Assert.IsNull(validation);
+        Assert.IsNotNull(block);
+        Assert.AreEqual(5u, block.Header.FormatVersion);
     }
 
     [TestMethod]

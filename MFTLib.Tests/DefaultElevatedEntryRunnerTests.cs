@@ -16,7 +16,7 @@ public class DefaultElevatedEntryRunnerTests
     [TestCleanup]
     public async Task Cleanup()
     {
-        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+        await BrokerDiagnosticsTestSupport.DrainAsync();
         BrokerDiagnostics.Dependencies.ResetToDefaults();
         NativeTestHooks.NativeResetTestState();
         FileUtilities.Hooks.ResetToDefaults();

@@ -107,13 +107,12 @@ unsigned EffectiveThreadCount(const MftParseControl* control) {
 
 // Runs during unwinding, so a failed lock leaves the previous observation instead of terminating.
 ParseThreadRecording::~ParseThreadRecording() noexcept {
-    try {
+    NativeBoundary([&] {
         std::scoped_lock lock(g_parseThreadCountsMutex);
         std::copy_n(counts_.begin(), length_, g_chunkThreadCounts.begin());
         g_chunkThreadCountLength = length_;
-    } catch (const std::system_error&) {
-        return;
-    }
+        return 0;
+    }, [](const wchar_t*) { return 0; });
 }
 
 bool ShouldFailAllocation() {

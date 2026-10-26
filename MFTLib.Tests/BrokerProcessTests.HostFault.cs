@@ -97,7 +97,7 @@ public partial class BrokerProcessTests
         {
             try
             {
-                await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+                await BrokerDiagnosticsTestSupport.DrainAsync();
             }
             finally
             {

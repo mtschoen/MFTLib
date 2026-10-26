@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -12,7 +13,7 @@ public class BrokerDiagnosticsWriterReplacementTests
     [TestCleanup]
     public async Task Cleanup()
     {
-        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+        await BrokerDiagnosticsTestSupport.DrainAsync();
         BrokerDiagnostics.Dependencies.ResetToDefaults();
     }
 
@@ -39,7 +40,7 @@ public class BrokerDiagnosticsWriterReplacementTests
             writer.Complete();
             try
             {
-                await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
+                await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard, CancellationToken.None);
             }
             finally
             {
@@ -76,7 +77,7 @@ public class BrokerDiagnosticsWriterReplacementTests
             try
             {
                 await Task.WhenAll(firstWriter.FlushAsync(CancellationToken.None), secondWriter.FlushAsync(CancellationToken.None))
-                    .WaitAsync(HangGuard);
+                    .WaitAsync(HangGuard, CancellationToken.None);
             }
             finally
             {
@@ -145,7 +146,7 @@ public class BrokerDiagnosticsWriterReplacementTests
             }
             try
             {
-                await installation.WaitAsync(HangGuard);
+                await installation.WaitAsync(HangGuard, CancellationToken.None);
             }
             catch
             {
@@ -156,7 +157,7 @@ public class BrokerDiagnosticsWriterReplacementTests
                 try
                 {
                     await Task.WhenAll(writers.Select(writer => writer.FlushAsync(CancellationToken.None)))
-                        .WaitAsync(HangGuard);
+                        .WaitAsync(HangGuard, CancellationToken.None);
                 }
                 finally
                 {

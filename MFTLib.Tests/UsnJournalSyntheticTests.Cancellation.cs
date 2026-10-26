@@ -92,7 +92,7 @@ public partial class UsnJournalSyntheticTests
                 await cancellation.CancelAsync();
                 try
                 {
-                    await watch.WaitAsync(HangGuard);
+                    await watch.WaitAsync(HangGuard, CancellationToken.None);
                 }
                 catch (InvalidOperationException) when (cancellation.IsCancellationRequested)
                 {
