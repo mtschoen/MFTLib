@@ -216,6 +216,7 @@ public partial class WatchArgumentsTests
     [DataRow(new[] { "cache", "--keep-name", "a.txt" }, "Option --keep-name does not apply to cache.")]
     [DataRow(new[] { "cache", "--directories-only" }, "Option --directories-only does not apply to cache.")]
     [DataRow(new[] { "cache", "--seconds", "3" }, "Option --seconds does not apply to cache.")]
+    [DataRow(new[] { "scan", "C", "--cache-directory", "folder" }, "Option --cache-directory does not apply to scan.")]
     [DataRow(new[] { "elevation-status", "--cache-directory", "folder" }, "Option --cache-directory does not apply to elevation-status.")]
     [DataRow(new[] { "elevation-status", "--clear" }, "Option --clear does not apply to elevation-status.")]
     public void TryParse_FlagTheVerbNeverReads_IsRefusedWithTheFlagAndTheVerbNamed(string[] arguments, string expected)
@@ -226,7 +227,6 @@ public partial class WatchArgumentsTests
     }
 
     [TestMethod]
-    [DataRow("scan")]
     [DataRow("watch")]
     [DataRow("rescan")]
     [DataRow("journal")]

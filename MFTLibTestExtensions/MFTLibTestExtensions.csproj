@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- Public, consumer-facing test harness for MFTLib. Consumers reference this from
-       their own test assemblies to isolate the cache directory and the live USN journal
-       without MFTLib friend-listing their test assembly by name.
+       their own test assemblies for test-side access to MFTLib internals and to isolate the
+       live USN journal, without MFTLib friend-listing their test assembly by name.
 
        This ships as the separate MFTLib.TestExtensions package and is never folded
        into the MFTLib package. -->

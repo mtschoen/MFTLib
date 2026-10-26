@@ -11,7 +11,4 @@ partial class SampleHost
 
         return Path.Combine(profileDirectory, ".MFTLib.Sample.Watch", "cache");
     }
-
-    internal static string ResolveCacheDirectory(WatchArguments parsed, string? profileDirectory) =>
-        parsed.CacheDirectory ?? CacheDirectoryFromProfile(profileDirectory);
 }

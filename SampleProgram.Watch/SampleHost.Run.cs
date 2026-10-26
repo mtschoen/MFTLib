@@ -61,10 +61,11 @@ partial class SampleHost
         {
             try
             {
-                var profileDirectory = parsed.CacheDirectory is null
-                    ? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
-                    : null;
-                parsed = parsed with { CacheDirectory = ResolveCacheDirectory(parsed, profileDirectory) };
+                if (parsed.CacheDirectory is null)
+                {
+                    var profileDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                    parsed = parsed with { CacheDirectory = CacheDirectoryFromProfile(profileDirectory) };
+                }
             }
             catch (ArgumentException exception)
             {

@@ -262,7 +262,7 @@ clearing, string.Join(Environment.NewLine, clearing));
     [TestMethod]
     public async Task Run_CachedModes_UseTheSampleProfileRootForProductionAndInventory()
     {
-        var root = SampleHost.ResolveCacheDirectory(new WatchArguments(WatchVerb.Rescan, ["X"]), TemporaryDirectoryPath);
+        var root = SampleHost.CacheDirectoryFromProfile(TemporaryDirectoryPath);
         Assert.AreEqual(Path.Combine(TemporaryDirectoryPath, ".MFTLib.Sample.Watch", "cache"), root);
 
         await using var handle = BrokerTestHarness.StartInProcess(Volumes());
@@ -296,12 +296,8 @@ clearing, string.Join(Environment.NewLine, clearing));
     public void Run_CacheWithoutAProfile_RequiresAnExplicitDirectory(string? profile)
     {
         var exception = Assert.ThrowsExactly<ArgumentException>(() =>
-            SampleHost.ResolveCacheDirectory(new WatchArguments(WatchVerb.Cache, []), profile));
+            SampleHost.CacheDirectoryFromProfile(profile));
         Assert.IsTrue(exception.Message.Contains("--cache-directory", StringComparison.Ordinal));
-
-        var explicitDir = Path.Combine(TemporaryDirectoryPath, "explicit");
-        var resolved = SampleHost.ResolveCacheDirectory(new WatchArguments(WatchVerb.Cache, []) { CacheDirectory = explicitDir }, profile);
-        Assert.AreEqual(explicitDir, resolved);
     }
 
     [TestMethod]
@@ -341,6 +337,6 @@ clearing, string.Join(Environment.NewLine, clearing));
         };
     }
 
-    [GeneratedRegex(@"\bResolveCacheDirectory\(parsed, profileDirectory\)")]
+    [GeneratedRegex(@"\bCacheDirectoryFromProfile\(profileDirectory\)")]
     private static partial Regex MyRegex();
 }

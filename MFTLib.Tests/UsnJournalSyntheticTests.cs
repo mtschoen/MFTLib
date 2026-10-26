@@ -368,7 +368,7 @@ public partial class UsnJournalSyntheticTests
     public void CancelUsnJournalWatch_OnHandle_Returns()
     {
         // Covers CancelUsnJournalWatch (CancelIoEx). On a handle with no pending
-        // I/O it returns false (ERROR_NOT_FOUND) — we only need the call covered.
+        // I/O it returns false (ERROR_NOT_FOUND) - we only need the call covered.
         MFTLibNative.NativeCancelUsnJournalWatch(FakeVolumeHandle.Create());
     }
 

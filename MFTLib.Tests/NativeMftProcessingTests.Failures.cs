@@ -13,7 +13,7 @@ public partial class NativeMftProcessingTests
     [TestMethod]
     public void ParseMFTRecords_ReadFailDuringExtensionRecordRead()
     {
-        // Reads: 1=boot sector, 2=record 0, 3=ReadMFTRecord for extension â†’ fail here
+        // Reads: 1=boot sector, 2=record 0, 3=ReadMFTRecord for extension -> fail here
         var path = Path.GetTempFileName();
         try
         {
@@ -64,14 +64,14 @@ public partial class NativeMftProcessingTests
     [TestMethod]
     public void ParseMFTRecords_VolumeReadChunkFail_ReturnsZeroUsedRecords()
     {
-        // With no attribute list, reads: 1=boot sector, 2=record 0, 3=VolumeReadChunk â†’ fail
+        // With no attribute list, reads: 1=boot sector, 2=record 0, 3=VolumeReadChunk -> fail
         var path = Path.GetTempFileName();
         try
         {
             var data = BuildBootSector();
             WriteFileRecord(data, 4096);
 
-            // Just a Data attribute, no AttributeList â†’ straight to VolumeReadChunk
+            // Just a Data attribute, no AttributeList -> straight to VolumeReadChunk
             const int a1 = 4096 + 0x38;
             WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
             WriteEndMarker(data, a1 + 0x48);
@@ -109,14 +109,14 @@ public partial class NativeMftProcessingTests
     [TestMethod]
     public void ParseMFTRecords_ReadFailDuringNonResidentAttributeList()
     {
-        // Record 0 has non-resident AttributeList. Read #3 targets its data â†’ fail.
+        // Record 0 has non-resident AttributeList. Read #3 targets its data -> fail.
         var path = Path.GetTempFileName();
         try
         {
             var data = BuildBootSector();
             WriteFileRecord(data, 4096);
 
-            // Attribute 1: Data (non-resident) â†’ clusters 1..256
+            // Attribute 1: Data (non-resident) -> clusters 1..256
             const int a1 = 4096 + 0x38;
             var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
 
