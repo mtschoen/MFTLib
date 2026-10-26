@@ -151,8 +151,9 @@ that tracking rejects the drive and disposes its pipe before writing a request.
 Release gates in finally blocks and observe the pending open before fixture cleanup.
 
 BrokerLauncher.Dependencies is the process-global LaunchDependencies owner of
-_getProcessPath and _startProcess. Its defaults are Environment.ProcessPath and
-Process.Start. Tests accessing that owner or its members require class-level
+_elevationProvider, _getProcessPath and _startProcess. Its defaults are
+ElevationUtilities.DefaultProvider, Environment.ProcessPath and Process.Start.
+Tests accessing that owner or its members require class-level
 DoNotParallelize and call Dependencies.ResetToDefaults only after their launches
 and sessions have stopped. NativeSeamIsolationTests recognizes the owner type
 and its access field, including access through helpers and generated methods.

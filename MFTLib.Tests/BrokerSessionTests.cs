@@ -696,6 +696,12 @@ public partial class BrokerSessionTests
     public async Task ElevatedLauncher_RelaunchesAfterTheUacPromptIsDeclinedAndNeverCachesTheDecline()
     {
         var prompts = 0;
+        BrokerLauncher.Dependencies._elevationProvider = new DefaultElevationProvider(new ElevationSeams
+        {
+            IsWindows = () => true,
+            GetProcessPath = () => "C:/app/MyApp.exe",
+            IsUserInteractive = () => true
+        });
         BrokerLauncher.Dependencies._getProcessPath = () => @"C:\app\MyApp.exe";
         BrokerLauncher.Dependencies._startProcess = _ =>
         {

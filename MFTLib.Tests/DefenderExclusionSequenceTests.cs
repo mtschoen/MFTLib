@@ -122,7 +122,6 @@ public partial class DefenderExclusionSequenceTests
         Assert.AreEqual(
             DefenderExclusionSequence.PowerShellTimeout + DefenderExclusionSequence.ElevatedChildSlack,
             DefenderExclusionSequence.ElevatedTimeout);
-        Assert.AreEqual(ElevationUtilities.DefaultElevatedTimeout, DefenderExclusionSequence.ElevatedTimeout);
     }
 
     // --- script text ---

@@ -19,11 +19,13 @@ public static class BrokerLauncher
 
     internal sealed class LaunchDependencies
     {
+        internal IElevationProvider _elevationProvider = ElevationUtilities.DefaultProvider;
         internal Func<string?> _getProcessPath = () => Environment.ProcessPath;
         internal Func<ProcessStartInfo, Process?> _startProcess = Process.Start;
 
         internal void ResetToDefaults()
         {
+            _elevationProvider = ElevationUtilities.DefaultProvider;
             _getProcessPath = () => Environment.ProcessPath;
             _startProcess = Process.Start;
         }
@@ -34,7 +36,7 @@ public static class BrokerLauncher
     ///     Disposes the process wrapper without waiting for or terminating the broker.
     /// </summary>
     /// <param name="brokerArguments">The broker mode and pipe name arguments.</param>
-    /// <returns>True if the process started; false if the user declined the UAC prompt or no process could be started.</returns>
+    /// <returns>True if the process started; false if self-elevation is unavailable, the user declined the UAC prompt or no process could be started.</returns>
     /// <exception cref="InvalidOperationException">The current executable path cannot be determined.</exception>
     [SupportedOSPlatform("windows")]
     [ExcludeFromCodeCoverage(Justification = "Windows-only pass-through to StartElevated; the target is covered.")]
@@ -46,6 +48,11 @@ public static class BrokerLauncher
     /// </summary>
     internal static bool StartElevated(string brokerArguments)
     {
+        if (!Dependencies._elevationProvider.CanSelfElevate())
+        {
+            return false;
+        }
+
         var exePath = Dependencies._getProcessPath()
                       ?? throw new InvalidOperationException(
                           "Cannot determine the current executable path to launch the broker");

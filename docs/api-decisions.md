@@ -226,15 +226,14 @@ and the broker has to keep running on its pipe. That is not evidence the helper 
 **Implementation:**
 the Defender sequence is `ElevationUtilities.TryAddDefenderProcessExclusions(processNames, relaunchArguments, elevation = null)`,
 one method on the existing type; [elevation](elevation.md#windows-defender-process-exclusions) holds its contract.
-The public elevation helper and provider remain the shared consumer API. The timeout field's
-visibility is governed by the sample-caller audit decision below.
+The public elevation helper and provider remain the shared consumer API.
 
 **Revisit only if:** one consumer needs elevation behavior the other cannot share.
 
 ## Sample-caller audit: helper policy and harness-owned observations
 
 **Decision:**
-`ElevationUtilities.DefaultElevatedTimeout` is internal. `InProcessBrokerScan` is a receive-only
+`InProcessBrokerScan` is a receive-only
 record with an explicit internal constructor, public init-only `Drive` and `RetainedFileNames`
 properties, and no positional deconstruction. Drive validation applies on construction and init.
 The Direct `open` sample branches on `FileEntry.IsLastWriteTimeKnown` and prints `<unknown>` for

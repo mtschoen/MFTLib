@@ -8,8 +8,6 @@ namespace MFTLib;
 /// </summary>
 public static class ElevationUtilities
 {
-    internal static readonly TimeSpan DefaultElevatedTimeout = TimeSpan.FromSeconds(60);
-
     /// <summary>
     ///     Production <see cref="IElevationProvider" />: the real Windows token check and UAC relaunch.
     ///     Consumers default to this and inject a fake in tests.

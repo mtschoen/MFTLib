@@ -10,11 +10,46 @@ public class BrokerLauncherTests
 {
     Process? _process;
 
+    [TestInitialize]
+    public void Initialize()
+    {
+        BrokerLauncher.Dependencies._elevationProvider = new DefaultElevationProvider(new ElevationSeams
+        {
+            IsWindows = () => true,
+            GetProcessPath = () => "C:/app/MyApp.exe",
+            IsUserInteractive = () => true
+        });
+    }
+
     [TestCleanup]
     public void Cleanup()
     {
         BrokerLauncher.Dependencies.ResetToDefaults();
         _process?.Dispose();
+    }
+
+    [TestMethod]
+    [DataRow("dotnet.exe", true, true, DisplayName = "issue-760-dotnet-host")]
+    [DataRow("MyApp.exe", false, true, DisplayName = "issue-760-non-windows")]
+    [DataRow("MyApp.exe", true, false, DisplayName = "issue-760-non-interactive")]
+    public void Launch_CannotSelfElevate_ReturnsFalseWithoutStartingProcess(string executable, bool isWindows, bool isInteractive)
+    {
+        var started = false;
+        BrokerLauncher.Dependencies._getProcessPath = () => "C:/app/" + executable;
+        BrokerLauncher.Dependencies._elevationProvider = new DefaultElevationProvider(new ElevationSeams
+        {
+            IsWindows = () => isWindows,
+            GetProcessPath = BrokerLauncher.Dependencies._getProcessPath,
+            IsUserInteractive = () => isInteractive
+        });
+        BrokerLauncher.Dependencies._startProcess = _ =>
+        {
+            started = true;
+            return null;
+        };
+
+        Assert.IsFalse(BrokerLauncher.StartElevated("--broker --pipe p"));
+        Assert.IsFalse(started, "An unavailable elevation route must return before any process starts.");
     }
 
     [TestMethod]

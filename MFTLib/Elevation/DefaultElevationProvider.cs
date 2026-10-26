@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
@@ -46,6 +45,11 @@ sealed class DefaultElevationProvider : IElevationProvider
 
     public bool CanSelfElevate()
     {
+        if (!_isWindows())
+        {
+            return false;
+        }
+
         var processPath = _getProcessPath();
         if (string.IsNullOrEmpty(processPath))
         {
@@ -70,6 +74,11 @@ sealed class DefaultElevationProvider : IElevationProvider
 
     public bool TryRunElevated(IReadOnlyList<string> arguments, TimeSpan timeout)
     {
+        if (!CanSelfElevate())
+        {
+            return false;
+        }
+
         var totalMilliseconds = (long)timeout.TotalMilliseconds;
         if (totalMilliseconds < -1 || totalMilliseconds > int.MaxValue || (timeout < TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan))
         {
@@ -77,23 +86,6 @@ sealed class DefaultElevationProvider : IElevationProvider
         }
 
         var exePath = _getProcessPath();
-        if (string.IsNullOrEmpty(exePath))
-        {
-            return false;
-        }
-
-        if (Path.GetFileNameWithoutExtension(exePath).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        // ShellExecuteEx with the "runas" verb needs an interactive desktop to show
-        // the UAC consent dialog. Without one (Session 0 services, CI runners) it
-        // fails unpredictably instead of cleanly declining, so bail out up front.
-        if (!_isUserInteractive())
-        {
-            return false;
-        }
 
         try
         {
@@ -122,10 +114,6 @@ sealed class DefaultElevationProvider : IElevationProvider
             }
 
             return _getExitCode(process) == 0;
-        }
-        catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
-        {
-            return false;
         }
         catch
         {

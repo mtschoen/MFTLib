@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Reflection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -42,17 +41,6 @@ public class DefaultElevationProviderTests
         Assert.IsInstanceOfType<bool>(result);
     }
 
-    [TestMethod]
-    public void DefaultElevatedTimeout_IsSixtySeconds()
-    {
-        Assert.AreEqual(TimeSpan.FromSeconds(60), ElevationUtilities.DefaultElevatedTimeout);
-        var timeout = typeof(ElevationUtilities).GetField(
-            nameof(ElevationUtilities.DefaultElevatedTimeout),
-            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-        Assert.IsNotNull(timeout);
-        Assert.IsTrue(timeout.IsAssembly, "The shared timeout is internal.");
-    }
-
     // --- IsElevated ---
 
     [TestMethod]
@@ -67,14 +55,14 @@ public class DefaultElevationProviderTests
     [TestMethod]
     public void CanSelfElevate_NullProcessPath_ReturnsFalse()
     {
-        var provider = new DefaultElevationProvider(new ElevationSeams { GetProcessPath = () => null });
+        var provider = new DefaultElevationProvider(new ElevationSeams { IsWindows = () => true, GetProcessPath = () => null });
         Assert.IsFalse(provider.CanSelfElevate());
     }
 
     [TestMethod]
     public void CanSelfElevate_EmptyProcessPath_ReturnsFalse()
     {
-        var provider = new DefaultElevationProvider(new ElevationSeams { GetProcessPath = () => "" });
+        var provider = new DefaultElevationProvider(new ElevationSeams { IsWindows = () => true, GetProcessPath = () => "" });
         Assert.IsFalse(provider.CanSelfElevate());
     }
 
@@ -82,45 +70,67 @@ public class DefaultElevationProviderTests
     public void CanSelfElevate_DotnetExe_ReturnsFalse()
     {
         // Use forward slashes so Path.GetFileNameWithoutExtension works on both Windows and Linux
-        var provider = new DefaultElevationProvider(new ElevationSeams { GetProcessPath = () => "C:/dotnet/dotnet.exe" });
+        var provider = new DefaultElevationProvider(new ElevationSeams { IsWindows = () => true, GetProcessPath = () => "C:/dotnet/dotnet.exe" });
         Assert.IsFalse(provider.CanSelfElevate());
     }
 
     [TestMethod]
-    public void CanSelfElevate_NormalExe_ReturnsTrue()
+    [DataRow(true, DisplayName = "windows-normal-executable")]
+    [DataRow(false, DisplayName = "issue-760-non-windows")]
+    public void CanSelfElevate_NormalExe_ReturnsPlatformAvailability(bool isWindows)
     {
-        var provider = new DefaultElevationProvider(new ElevationSeams { GetProcessPath = () => NormalExecutable, IsUserInteractive = () => true });
-        Assert.IsTrue(provider.CanSelfElevate());
+        var provider = new DefaultElevationProvider(new ElevationSeams { IsWindows = () => isWindows, GetProcessPath = () => NormalExecutable, IsUserInteractive = () => true });
+        Assert.AreEqual(isWindows, provider.CanSelfElevate());
     }
 
     [TestMethod]
     public void CanSelfElevate_NotUserInteractive_ReturnsFalse()
     {
-        var provider = new DefaultElevationProvider(new ElevationSeams { GetProcessPath = () => NormalExecutable, IsUserInteractive = () => false });
+        var provider = new DefaultElevationProvider(new ElevationSeams { IsWindows = () => true, GetProcessPath = () => NormalExecutable, IsUserInteractive = () => false });
         Assert.IsFalse(provider.CanSelfElevate());
     }
 
     // --- TryRunElevated ---
 
     [TestMethod]
+    public void TryRunElevated_NonWindows_ReturnsFalseWithoutStartingProcess_Issue760()
+    {
+        var started = false;
+        var provider = new DefaultElevationProvider(new ElevationSeams
+        {
+            IsWindows = () => false,
+            GetProcessPath = () => NormalExecutable,
+            IsUserInteractive = () => true,
+            StartProcess = _ =>
+            {
+                started = true;
+                return null;
+            }
+        });
+
+        Assert.IsFalse(provider.TryRunElevated(["--test"], TimeSpan.FromSeconds(60)));
+        Assert.IsFalse(started, "Non-Windows elevation must return before any process starts.");
+    }
+
+    [TestMethod]
     public void TryRunElevated_NullProcessPath_ReturnsFalse()
     {
-        var provider = new DefaultElevationProvider(new ElevationSeams { GetProcessPath = () => null });
-        Assert.IsFalse(provider.TryRunElevated(["--test"], ElevationUtilities.DefaultElevatedTimeout));
+        var provider = new DefaultElevationProvider(new ElevationSeams { IsWindows = () => true, GetProcessPath = () => null });
+        Assert.IsFalse(provider.TryRunElevated(["--test"], DefenderExclusionSequence.ElevatedTimeout));
     }
 
     [TestMethod]
     public void TryRunElevated_DotnetExe_ReturnsFalse()
     {
-        var provider = new DefaultElevationProvider(new ElevationSeams { GetProcessPath = () => "C:/dotnet/dotnet.exe" });
-        Assert.IsFalse(provider.TryRunElevated(["--test"], ElevationUtilities.DefaultElevatedTimeout));
+        var provider = new DefaultElevationProvider(new ElevationSeams { IsWindows = () => true, GetProcessPath = () => "C:/dotnet/dotnet.exe" });
+        Assert.IsFalse(provider.TryRunElevated(["--test"], DefenderExclusionSequence.ElevatedTimeout));
     }
 
     [TestMethod]
     public void TryRunElevated_ProcessReturnsNull_ReturnsFalse()
     {
-        var provider = new DefaultElevationProvider(new ElevationSeams { GetProcessPath = () => NormalExecutable, IsUserInteractive = () => true, StartProcess = _ => null });
-        Assert.IsFalse(provider.TryRunElevated(["--test"], ElevationUtilities.DefaultElevatedTimeout));
+        var provider = new DefaultElevationProvider(new ElevationSeams { IsWindows = () => true, GetProcessPath = () => NormalExecutable, IsUserInteractive = () => true, StartProcess = _ => null });
+        Assert.IsFalse(provider.TryRunElevated(["--test"], DefenderExclusionSequence.ElevatedTimeout));
     }
 
     [TestMethod]
@@ -131,7 +141,7 @@ public class DefaultElevationProviderTests
         var process = new Process();
         _process = process;
         var provider = CreateFakeProcessProvider(waitResult: true, exitCode, out var killed, startProcess: _ => process);
-        Assert.AreEqual(expected, provider.TryRunElevated(["--test"], ElevationUtilities.DefaultElevatedTimeout));
+        Assert.AreEqual(expected, provider.TryRunElevated(["--test"], DefenderExclusionSequence.ElevatedTimeout));
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = process.StandardInput, "The process wrapper must be disposed before TryRunElevated returns.");
         Assert.IsEmpty(killed, "A process that exited is never killed.");
     }
@@ -151,7 +161,7 @@ public class DefaultElevationProviderTests
             });
 
         Assert.IsTrue(provider.TryRunElevated(
-            ["Program Files", "say \"hi\"", @"C:\spaced dir\"], ElevationUtilities.DefaultElevatedTimeout));
+            ["Program Files", "say \"hi\"", @"C:\spaced dir\"], DefenderExclusionSequence.ElevatedTimeout));
 
         Assert.IsNotNull(started);
         Assert.AreSequenceEqual(["Program Files", "say \"hi\"", @"C:\spaced dir\"], [.. started.ArgumentList]);
@@ -217,7 +227,7 @@ public class DefaultElevationProviderTests
             out _,
             startProcess: _ => process,
             killProcess: _ => throw new InvalidOperationException("already exited"));
-        Assert.IsFalse(provider.TryRunElevated(["--test"], ElevationUtilities.DefaultElevatedTimeout));
+        Assert.IsFalse(provider.TryRunElevated(["--test"], DefenderExclusionSequence.ElevatedTimeout));
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = process.StandardInput, "The process wrapper must be disposed even when killing it fails.");
     }
 
@@ -230,6 +240,7 @@ public class DefaultElevationProviderTests
         _process = process;
         var provider = new DefaultElevationProvider(new ElevationSeams
         {
+            IsWindows = () => true,
             GetProcessPath = () => NormalExecutable,
             IsUserInteractive = () => true,
             StartProcess = _ => process,
@@ -237,7 +248,7 @@ public class DefaultElevationProviderTests
             GetExitCode = _ => throw new InvalidOperationException("exit code unavailable")
         });
 
-        Assert.IsFalse(provider.TryRunElevated(["--test"], ElevationUtilities.DefaultElevatedTimeout));
+        Assert.IsFalse(provider.TryRunElevated(["--test"], DefenderExclusionSequence.ElevatedTimeout));
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = process.StandardInput, "The process wrapper must be disposed when a post-start operation throws.");
     }
 
@@ -246,11 +257,12 @@ public class DefaultElevationProviderTests
     {
         var provider = new DefaultElevationProvider(new ElevationSeams
         {
+            IsWindows = () => true,
             GetProcessPath = () => NormalExecutable,
             IsUserInteractive = () => true,
             StartProcess = _ => throw new Win32Exception(1223)
         });
-        Assert.IsFalse(provider.TryRunElevated(["--test"], ElevationUtilities.DefaultElevatedTimeout));
+        Assert.IsFalse(provider.TryRunElevated(["--test"], DefenderExclusionSequence.ElevatedTimeout));
     }
 
     [TestMethod]
@@ -258,11 +270,12 @@ public class DefaultElevationProviderTests
     {
         var provider = new DefaultElevationProvider(new ElevationSeams
         {
+            IsWindows = () => true,
             GetProcessPath = () => NormalExecutable,
             IsUserInteractive = () => true,
             StartProcess = _ => throw new InvalidOperationException("test")
         });
-        Assert.IsFalse(provider.TryRunElevated(["--test"], ElevationUtilities.DefaultElevatedTimeout));
+        Assert.IsFalse(provider.TryRunElevated(["--test"], DefenderExclusionSequence.ElevatedTimeout));
     }
 
     [TestMethod]
@@ -270,11 +283,12 @@ public class DefaultElevationProviderTests
     {
         var provider = new DefaultElevationProvider(new ElevationSeams
         {
+            IsWindows = () => true,
             GetProcessPath = () => NormalExecutable,
             IsUserInteractive = () => false,
             StartProcess = _ => throw new InvalidOperationException("should not be called")
         });
-        Assert.IsFalse(provider.TryRunElevated(["--test"], ElevationUtilities.DefaultElevatedTimeout));
+        Assert.IsFalse(provider.TryRunElevated(["--test"], DefenderExclusionSequence.ElevatedTimeout));
     }
 
     // A never-started Process is only a handle: the wait, kill and exit-code fakes stand in for it.
@@ -290,6 +304,7 @@ public class DefaultElevationProviderTests
         killed = killedProcesses;
         return new DefaultElevationProvider(new ElevationSeams
         {
+            IsWindows = () => true,
             GetProcessPath = () => "C:/app/MyApp.exe",
             IsUserInteractive = () => true,
             StartProcess = startProcess ?? (_ => new Process()),

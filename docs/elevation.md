@@ -4,6 +4,9 @@ Reading a volume's MFT needs administrator rights, so a Direct sample scan of a 
 the elevated broker, and Windows shows a UAC consent prompt. There are exactly two ways to work, and you pick by whether the owner is at
 the desktop.
 
+Self-elevation requires Windows, a known executable other than the `dotnet` host, and an interactive desktop.
+`CanSelfElevate` returns false otherwise, and both self-relaunch and broker launch decline before starting a process.
+
 A full `dotnet test` run raises no prompt in either mode. The only tests that reach a sample's entry point
 are `SampleProgramWatch_EntryPoint_UnknownOption_PrintsUsageAndReturnsTwo` (a command line the parser refuses) and the Benchmark entry-point test (which cannot elevate); every other test of the relaunch stubs the
 dialog, `_canSelfElevate` and `_tryRunElevated`. Tests that need an elevated process skip themselves when the
