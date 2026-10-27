@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -6,7 +7,8 @@ namespace MFTLib.Tests.Index;
 
 /// <summary>
 ///     The walk's pruning rules: a pruned directory is written as a row and has no children, the root is never
-///     pruned, a path outside the root has no effect, and names and paths follow the drive comparison.
+///     pruned, a path outside the root has no effect, exact names and paths follow the drive comparison, and
+///     regex patterns follow each <see cref="Regex" /> instance's own options.
 ///     The fixture tree is root, Documents (readme.md, Projects/report.pdf) and Pictures (holiday.jpg).
 /// </summary>
 public sealed partial class EnumerationProducerTests
@@ -46,6 +48,38 @@ public sealed partial class EnumerationProducerTests
             absent: [TreePath("Documents", "readme.md"), TreePath("Documents", "Projects")]);
 
     [TestMethod]
+    public async Task Produce_PrunedDirectoryNamePattern_AppliesPatternOptionsAndKeepsFilesAndSiblings()
+    {
+        var gitDirectory = TreePath(".GIT");
+        Directory.CreateDirectory(gitDirectory);
+        await File.WriteAllTextAsync(Path.Combine(gitDirectory, "HEAD"), "ref: refs/heads/main", TestContext.CancellationToken);
+        await File.WriteAllTextAsync(TreePath("Documents", ".GIT"), "gitdir: ../.GIT", TestContext.CancellationToken);
+
+        await AssertProduced(
+            new DirectoryWalkOptions
+            {
+                PrunedDirectoryNamePatterns =
+                [
+                    new Regex(@"^nomatch$"),
+                    new Regex(@"^\.git$", RegexOptions.IgnoreCase)
+                ]
+            },
+            present:
+            [
+                gitDirectory,
+                TreePath("Documents", ".GIT"),
+                TreePath("Documents", "readme.md"),
+                TreePath("Pictures", "holiday.jpg")
+            ],
+            absent: [Path.Combine(gitDirectory, "HEAD")]);
+
+        await AssertProduced(
+            new DirectoryWalkOptions { PrunedDirectoryNamePatterns = [new Regex(@"^\.git$", RegexOptions.None)] },
+            present: [gitDirectory, Path.Combine(gitDirectory, "HEAD"), TreePath("Documents", "readme.md")],
+            absent: []);
+    }
+
+    [TestMethod]
     public async Task Produce_PrunedDirectory_IsARowWithNoChildren()
     {
         foreach (var maximumWorkers in new[] { 1, 2 })
@@ -80,6 +114,7 @@ public sealed partial class EnumerationProducerTests
         AssertProduced(new DirectoryWalkOptions
         {
             PrunedDirectoryNames = [Path.GetFileName(_treeRoot)],
+            PrunedDirectoryNamePatterns = [new Regex($"^{Regex.Escape(Path.GetFileName(_treeRoot))}$", RegexOptions.IgnoreCase)],
             PrunedDirectoryPaths = [_treeRoot],
             PruneDotDirectories = true
         },

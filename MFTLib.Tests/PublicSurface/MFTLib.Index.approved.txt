@@ -96,6 +96,7 @@ MFTLib.Index.DirectoryWalkOptions :: method public static op_Equality(MFTLib.Ind
 MFTLib.Index.DirectoryWalkOptions :: method public static op_Inequality(MFTLib.Index.DirectoryWalkOptions? left, MFTLib.Index.DirectoryWalkOptions? right) : bool
 MFTLib.Index.DirectoryWalkOptions :: property public PruneDotDirectories { get; init; } : bool
 MFTLib.Index.DirectoryWalkOptions :: property public PrunedDirectoryAttributes { get; init; } : System.IO.FileAttributes
+MFTLib.Index.DirectoryWalkOptions :: property public PrunedDirectoryNamePatterns { get; init; } : System.Collections.Generic.IReadOnlyCollection<System.Text.RegularExpressions.Regex>
 MFTLib.Index.DirectoryWalkOptions :: property public PrunedDirectoryNames { get; init; } : System.Collections.Generic.IReadOnlyCollection<string>
 MFTLib.Index.DirectoryWalkOptions :: property public PrunedDirectoryPaths { get; init; } : System.Collections.Generic.IReadOnlyCollection<string>
 MFTLib.Index.DirectoryWalkOptions :: type public sealed class : System.IEquatable<MFTLib.Index.DirectoryWalkOptions>

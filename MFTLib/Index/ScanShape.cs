@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace MFTLib.Index;
 
@@ -9,7 +10,9 @@ namespace MFTLib.Index;
 ///     The 64-bit identity of the options that shaped a block's rows, stored at header offset 112 and compared
 ///     on warm start after the cache tag. It is the first eight bytes, read little-endian, of SHA-256 over a
 ///     canonical encoding that depends on the producer; <c>docs/index-format.md</c> specifies both forms.
-///     Every integer is little-endian, and every string is its UTF-8 byte count as a u32 followed by the bytes.
+///     Every integer is little-endian, every name or path string is its UTF-8 byte count as a u32 followed by
+///     the bytes, and every regex pattern is its UTF-16 code-unit count as a u32 followed by the little-endian
+///     code units and its <see cref="RegexOptions" /> as a u32.
 /// </summary>
 static class ScanShape
 {
@@ -53,6 +56,7 @@ static class ScanShape
         WriteUInt32(buffer, (uint)walk.PrunedDirectoryAttributes);
         WriteFlag(buffer, walk.PruneDotDirectories);
         WriteStrings(buffer, walk.PathsWithin(rootDirectory).Select(FoldForDrive));
+        WritePatterns(buffer, walk.PrunedDirectoryNamePatterns);
         return Digest(buffer);
     }
 
@@ -80,6 +84,30 @@ static class ScanShape
             var bytes = Encoding.UTF8.GetBytes(value);
             WriteUInt32(buffer, (uint)bytes.Length);
             buffer.Write(bytes);
+        }
+    }
+
+    static void WritePatterns(ArrayBufferWriter<byte> buffer, IReadOnlyCollection<Regex> patterns)
+    {
+        var canonical = patterns
+            .Select(pattern => (Text: pattern.ToString(), Options: (uint)pattern.Options))
+            .Distinct()
+            .OrderBy(pair => pair.Text, StringComparer.Ordinal)
+            .ThenBy(pair => pair.Options)
+            .ToArray();
+
+        WriteUInt32(buffer, (uint)canonical.Length);
+        foreach (var (text, options) in canonical)
+        {
+            WriteUInt32(buffer, (uint)text.Length);
+            var span = buffer.GetSpan(text.Length * sizeof(char));
+            for (var index = 0; index < text.Length; index++)
+            {
+                BinaryPrimitives.WriteUInt16LittleEndian(span.Slice(index * sizeof(char), sizeof(char)), text[index]);
+            }
+
+            buffer.Advance(text.Length * sizeof(char));
+            WriteUInt32(buffer, options);
         }
     }
 

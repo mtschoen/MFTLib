@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -31,6 +32,17 @@ public sealed class FileIndexDirectoryWalkAdmissionTests : IndexTreeTestBase
     [TestMethod]
     public Task OpenAsync_NullNameCollection_Throws() =>
         AssertRefusedBeforeAnySideEffect(new DirectoryWalkOptions { PrunedDirectoryNames = null! }, "PrunedDirectoryNames");
+
+    [TestMethod]
+    public Task OpenAsync_NullNamePatternCollection_Throws() =>
+        AssertRefusedBeforeAnySideEffect(new DirectoryWalkOptions { PrunedDirectoryNamePatterns = null! },
+            "PrunedDirectoryNamePatterns");
+
+    [TestMethod]
+    public Task OpenAsync_NullNamePatternElement_Throws() =>
+        AssertRefusedBeforeAnySideEffect(
+            new DirectoryWalkOptions { PrunedDirectoryNamePatterns = [new Regex(@"^\.git$"), null!] },
+            "PrunedDirectoryNamePatterns");
 
     [TestMethod]
     public Task OpenAsync_NullPathCollection_Throws() =>
@@ -105,19 +117,46 @@ public sealed class FileIndexDirectoryWalkAdmissionTests : IndexTreeTestBase
         await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             FileIndex.OpenAsync(options, TestContext.CancellationToken));
         Assert.IsFalse(Directory.Exists(Fixture.CacheDirectory));
+
+        var invalidPatterns = Fixture.Options(producer: ProducerKind.Mft) with
+        {
+            DirectoryWalk = new DirectoryWalkOptions { PrunedDirectoryNamePatterns = [null!] }
+        };
+
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+            FileIndex.OpenAsync(invalidPatterns, TestContext.CancellationToken));
+        Assert.IsFalse(Directory.Exists(Fixture.CacheDirectory));
     }
 
     [TestMethod]
     public async Task OpenAsync_CopiesTheCollectionsOnceSoLaterEditsDoNotChangeTheWalk()
     {
+        var pictures = Path.Combine(Fixture.TreeRoot, "Pictures");
+        Directory.CreateDirectory(pictures);
+        await File.WriteAllTextAsync(Path.Combine(pictures, "holiday.jpg"), "pic", TestContext.CancellationToken);
+
         var names = new List<string> { "Documents" };
-        var options = Fixture.Options() with { DirectoryWalk = new DirectoryWalkOptions { PrunedDirectoryNames = names } };
+        var patterns = new List<Regex> { new(@"^Pictures$") };
+        var options = Fixture.Options() with
+        {
+            DirectoryWalk = new DirectoryWalkOptions
+            {
+                PrunedDirectoryNames = names,
+                PrunedDirectoryNamePatterns = patterns
+            }
+        };
 
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
         names.Clear();
+        patterns.Clear();
+
+        var rescan = await index.RescanAsync(index.Drives.Select(status => status.Drive), TestContext.CancellationToken);
+        Assert.AreEqual(DriveOperationOutcome.Succeeded, rescan.Single().Outcome);
 
         Assert.IsNotNull(index.Find(Path.Combine(Fixture.TreeRoot, "Documents"), TestContext.CancellationToken));
         Assert.IsNull(index.Find(Path.Combine(Fixture.TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken));
+        Assert.IsNotNull(index.Find(pictures, TestContext.CancellationToken));
+        Assert.IsNull(index.Find(Path.Combine(pictures, "holiday.jpg"), TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -126,6 +165,7 @@ public sealed class FileIndexDirectoryWalkAdmissionTests : IndexTreeTestBase
         var walk = new FileIndexOptions().DirectoryWalk;
 
         Assert.IsEmpty(walk.PrunedDirectoryNames);
+        Assert.IsEmpty(walk.PrunedDirectoryNamePatterns);
         Assert.IsEmpty(walk.PrunedDirectoryPaths);
         Assert.AreEqual(default, walk.PrunedDirectoryAttributes);
         Assert.IsFalse(walk.PruneDotDirectories);

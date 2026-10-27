@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace MFTLib.Index;
 
 /// <summary>
@@ -15,6 +17,14 @@ public sealed record DirectoryWalkOptions
     ///     collection and a null, blank, separator-containing or unpaired-surrogate name.
     /// </summary>
     public IReadOnlyCollection<string> PrunedDirectoryNames { get; init; } = [];
+
+    /// <summary>
+    ///     Regular expressions matched against each directory name. A directory whose name matches any
+    ///     pattern is recorded but not entered; the drive's root is never pruned. Each <see cref="Regex" />
+    ///     carries its own <see cref="RegexOptions" /> and match timeout rather than using the drive's path
+    ///     comparison. <see cref="FileIndex.OpenAsync" /> rejects a null collection and a null element.
+    /// </summary>
+    public IReadOnlyCollection<Regex> PrunedDirectoryNamePatterns { get; init; } = [];
 
     /// <summary>
     ///     Fully qualified directory paths that are recorded but not entered. A directory is pruned when its
@@ -36,7 +46,7 @@ public sealed record DirectoryWalkOptions
     /// <summary>When true, a directory whose name starts with '.' is recorded but not entered, on every platform.</summary>
     public bool PruneDotDirectories { get; init; }
 
-    /// <summary>The comparison every name and path rule uses: ignoring case on Windows, ordinal elsewhere.</summary>
+    /// <summary>The comparison exact name and path rules use: ignoring case on Windows, ordinal elsewhere.</summary>
     internal static StringComparer PathComparer =>
         OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
@@ -64,6 +74,7 @@ public sealed record DirectoryWalkOptions
         return walk with
         {
             PrunedDirectoryNames = AdmitNames(walk.PrunedDirectoryNames),
+            PrunedDirectoryNamePatterns = AdmitPatterns(walk.PrunedDirectoryNamePatterns),
             PrunedDirectoryPaths = AdmitPaths(walk.PrunedDirectoryPaths)
         };
     }
@@ -113,6 +124,29 @@ public sealed record DirectoryWalkOptions
             }
 
             copy.Add(name);
+        }
+
+        return [.. copy];
+    }
+
+    static Regex[] AdmitPatterns(IReadOnlyCollection<Regex>? patterns)
+    {
+        if (patterns is null)
+        {
+            throw new ArgumentException("DirectoryWalkOptions.PrunedDirectoryNamePatterns must not be null.",
+                nameof(patterns));
+        }
+
+        var copy = new List<Regex>(patterns.Count);
+        foreach (var pattern in patterns)
+        {
+            if (pattern is null)
+            {
+                throw new ArgumentException("DirectoryWalkOptions.PrunedDirectoryNamePatterns must not contain null.",
+                    nameof(patterns));
+            }
+
+            copy.Add(pattern);
         }
 
         return [.. copy];

@@ -1,4 +1,5 @@
 using System.IO.Enumeration;
+using System.Text.RegularExpressions;
 
 namespace MFTLib.Index;
 
@@ -6,6 +7,7 @@ sealed class EnumerationDirectoryReader
 {
     readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>>? _retainedFileNames;
     readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> _prunedNames;
+    readonly Regex[] _prunedNamePatterns;
     readonly HashSet<string> _prunedPaths;
     readonly FileAttributes _prunedAttributes;
     readonly bool _pruneDotDirectories;
@@ -23,6 +25,7 @@ sealed class EnumerationDirectoryReader
         _prunedNames = new HashSet<string>(walk.PrunedDirectoryNames, DirectoryWalkOptions.PathComparer)
             .GetAlternateLookup<ReadOnlySpan<char>>();
 
+        _prunedNamePatterns = [.. walk.PrunedDirectoryNamePatterns];
         _prunedPaths = new HashSet<string>(walk.PathsWithin(options.RootDirectory), DirectoryWalkOptions.PathComparer);
         _prunedAttributes = walk.PrunedDirectoryAttributes;
         _pruneDotDirectories = walk.PruneDotDirectories;
@@ -99,5 +102,19 @@ sealed class EnumerationDirectoryReader
     bool IsPrunedByName(ref FileSystemEntry entry) =>
         (entry.Attributes & _prunedAttributes) != 0 ||
         (_pruneDotDirectories && entry.FileName is ['.', ..]) ||
-        _prunedNames.Contains(entry.FileName);
+        _prunedNames.Contains(entry.FileName) ||
+        MatchesPrunedPattern(entry.FileName);
+
+    bool MatchesPrunedPattern(ReadOnlySpan<char> fileName)
+    {
+        foreach (var pattern in _prunedNamePatterns)
+        {
+            if (pattern.IsMatch(fileName))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

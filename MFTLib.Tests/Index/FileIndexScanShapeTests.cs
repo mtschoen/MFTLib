@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
@@ -95,6 +96,20 @@ public sealed class FileIndexScanShapeTests : IDisposable
         {
             "retention" => options with { RetainedFileNames = ["app.dll"] },
             "names" => options with { DirectoryWalk = new DirectoryWalkOptions { PrunedDirectoryNames = ["build"] } },
+            "pattern-text" => options with
+            {
+                DirectoryWalk = new DirectoryWalkOptions
+                {
+                    PrunedDirectoryNamePatterns = [new Regex(@"^\.git$", RegexOptions.IgnoreCase)]
+                }
+            },
+            "pattern-options" => options with
+            {
+                DirectoryWalk = new DirectoryWalkOptions
+                {
+                    PrunedDirectoryNamePatterns = [new Regex(@"^\.git$", RegexOptions.None)]
+                }
+            },
             "paths" => options with { DirectoryWalk = new DirectoryWalkOptions { PrunedDirectoryPaths = [RootA, RootB] } },
             "attributes" => options with { DirectoryWalk = new DirectoryWalkOptions { PrunedDirectoryAttributes = FileAttributes.Hidden } },
             "dot" => options with { DirectoryWalk = new DirectoryWalkOptions { PruneDotDirectories = true } },
@@ -105,6 +120,8 @@ public sealed class FileIndexScanShapeTests : IDisposable
     [TestMethod]
     [DataRow("retention")]
     [DataRow("names")]
+    [DataRow("pattern-text")]
+    [DataRow("pattern-options")]
     [DataRow("paths")]
     [DataRow("attributes")]
     [DataRow("dot")]
@@ -119,6 +136,69 @@ public sealed class FileIndexScanShapeTests : IDisposable
         Assert.IsTrue(RecordedWrongScanShape(diagnostics), label);
         Assert.AreEqual(BlockOrigin.ProducedByScan, OriginOf(reopened, 'A'), label);
         Assert.AreEqual(BlockOrigin.ProducedByScan, OriginOf(reopened, 'B'), label);
+    }
+
+    [TestMethod]
+    public async Task ChangingBetweenTwoPatternOptionsOnly_RecordsWrongScanShapeAndColdScans()
+    {
+        var diagnostics = new List<string>();
+        await OpenOnce(EnumerationOptions(diagnostics) with
+        {
+            DirectoryWalk = new DirectoryWalkOptions
+            {
+                PrunedDirectoryNamePatterns = [new Regex(@"^\.git$", RegexOptions.None)]
+            }
+        });
+
+        await using var reopened = await FileIndex.OpenAsync(EnumerationOptions(diagnostics) with
+        {
+            DirectoryWalk = new DirectoryWalkOptions
+            {
+                PrunedDirectoryNamePatterns = [new Regex(@"^\.git$", RegexOptions.IgnoreCase)]
+            }
+        }, TestContext.CancellationToken);
+
+        Assert.IsTrue(RecordedWrongScanShape(diagnostics));
+        Assert.AreEqual(BlockOrigin.ProducedByScan, OriginOf(reopened, 'A'));
+        Assert.AreEqual(BlockOrigin.ProducedByScan, OriginOf(reopened, 'B'));
+    }
+
+    [TestMethod]
+    public void ForEnumeration_DistinguishesPatternTextOptionsAndUnpairedSurrogatesWhileIgnoringOrderDuplicatesAndTimeout()
+    {
+        static ulong Shape(params Regex[] patterns) =>
+            ScanShape.ForEnumeration(null, new DirectoryWalkOptions { PrunedDirectoryNamePatterns = patterns }, "/root");
+
+        var lower = Shape(new Regex(@"^\.git$", RegexOptions.None));
+        var upper = Shape(new Regex(@"^\.GIT$", RegexOptions.None));
+        var ignoreCase = Shape(new Regex(@"^\.git$", RegexOptions.IgnoreCase));
+        var otherText = Shape(new Regex(@"^build$", RegexOptions.None));
+
+        Assert.AreNotEqual(lower, upper, "pattern text is not folded by the drive comparison");
+        Assert.AreNotEqual(lower, ignoreCase, "pattern options are part of the scan shape");
+        Assert.AreNotEqual(lower, otherText, "pattern text is part of the scan shape");
+
+        var reorderedAndDuplicated = Shape(
+            new Regex(@"^build$", RegexOptions.None, TimeSpan.FromSeconds(5)),
+            new Regex(@"^\.git$", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1)),
+            new Regex(@"^build$", RegexOptions.None, TimeSpan.FromSeconds(2)));
+        var canonical = Shape(
+            new Regex(@"^\.git$", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(10)),
+            new Regex(@"^build$", RegexOptions.None));
+        Assert.AreEqual(canonical, reorderedAndDuplicated, "equivalent pairs and differing timeouts share a shape");
+
+        var sameTextDifferentOptions = Shape(
+            new Regex(@"^\.git$", RegexOptions.IgnoreCase),
+            new Regex(@"^\.git$", RegexOptions.None));
+        var sameTextDifferentOptionsReordered = Shape(
+            new Regex(@"^\.git$", RegexOptions.None),
+            new Regex(@"^\.git$", RegexOptions.IgnoreCase));
+        Assert.AreEqual(sameTextDifferentOptions, sameTextDifferentOptionsReordered);
+        Assert.AreNotEqual(lower, sameTextDifferentOptions);
+
+        var surrogateFirst = Shape(new Regex(MalformedText.Make(0xD800, true), RegexOptions.None));
+        var surrogateSecond = Shape(new Regex(MalformedText.Make(0xD801, true), RegexOptions.None));
+        Assert.AreNotEqual(surrogateFirst, surrogateSecond, "unpaired UTF-16 code units are encoded losslessly");
     }
 
     [TestMethod]
@@ -139,13 +219,28 @@ public sealed class FileIndexScanShapeTests : IDisposable
     public async Task UnchangedOptions_WarmStartBothDrives()
     {
         var diagnostics = new List<string>();
-        var walk = new DirectoryWalkOptions { PrunedDirectoryNames = ["build"], PrunedDirectoryPaths = [RootB + "/.git"] };
+        var walk = new DirectoryWalkOptions
+        {
+            PrunedDirectoryNames = ["build"],
+            PrunedDirectoryNamePatterns =
+            [
+                new Regex(@"^node_modules$", RegexOptions.None, TimeSpan.FromSeconds(1)),
+                new Regex(@"^\.git$", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(2))
+            ],
+            PrunedDirectoryPaths = [RootB + "/.git"]
+        };
         await OpenOnce(EnumerationOptions(diagnostics) with { DirectoryWalk = walk });
 
-        // Equal content in other collections and another spelling of the same path are the same shape.
+        // Equal content in other collections, reordered equivalent regexes and another spelling of the same path are the same shape.
         var respelled = new DirectoryWalkOptions
         {
             PrunedDirectoryNames = ["build", "build"],
+            PrunedDirectoryNamePatterns =
+            [
+                new Regex(@"^\.git$", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(5)),
+                new Regex(@"^node_modules$", RegexOptions.None, TimeSpan.FromSeconds(10)),
+                new Regex(@"^\.git$", RegexOptions.IgnoreCase)
+            ],
             PrunedDirectoryPaths = [Path.Combine(RootB, ".git") + Path.DirectorySeparatorChar]
         };
         await using var reopened = await FileIndex.OpenAsync(
@@ -202,7 +297,10 @@ public sealed class FileIndexScanShapeTests : IDisposable
 
         await using var reopened = await FileIndex.OpenAsync(EnumerationOptions(diagnostics, CacheMode.ExistingOnly) with
         {
-            DirectoryWalk = new DirectoryWalkOptions { PruneDotDirectories = true }
+            DirectoryWalk = new DirectoryWalkOptions
+            {
+                PrunedDirectoryNamePatterns = [new Regex(@"^\.git$", RegexOptions.IgnoreCase)]
+            }
         }, TestContext.CancellationToken);
 
         foreach (var status in reopened.Drives)
@@ -283,7 +381,12 @@ public sealed class FileIndexScanShapeTests : IDisposable
         // MFT retention compares ignoring case, so another spelling of the same name is the same shape.
         await using var reopened = await FileIndex.OpenAsync(MftOptions(false, ["HEAD"], diagnostics) with
         {
-            DirectoryWalk = new DirectoryWalkOptions { PruneDotDirectories = true, PrunedDirectoryNames = ["build"] }
+            DirectoryWalk = new DirectoryWalkOptions
+            {
+                PruneDotDirectories = true,
+                PrunedDirectoryNames = ["build"],
+                PrunedDirectoryNamePatterns = [new Regex(@"^\.git$", RegexOptions.IgnoreCase)]
+            }
         }, TestContext.CancellationToken);
 
         Assert.IsFalse(RecordedWrongScanShape(diagnostics));

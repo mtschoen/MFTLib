@@ -126,8 +126,10 @@
       itself. Offset 112 stores a 64-bit scan shape, the first eight bytes of SHA-256 over
       a canonical encoding: retention and `MftScanOptions.IncludeFreed` for an MFT block
       (the index reads `IncludeFreed` from an internal flag on the source), retention and
-      `FileIndexOptions.DirectoryWalk` for an enumeration block, counting only the pruned
-      paths within that drive's root. `FileIndexOptions.RetainedFileNames` reaches the MFT
+      `FileIndexOptions.DirectoryWalk` (`PrunedDirectoryNames`, `PrunedDirectoryNamePatterns`
+      by pattern text and `RegexOptions` without `MatchTimeout`, `PrunedDirectoryAttributes`,
+      `PruneDotDirectories` and the `PrunedDirectoryPaths` within that drive's root) for an
+      enumeration block. `FileIndexOptions.RetainedFileNames` reaches the MFT
       producers in the produce request and the enumeration walk directly; the walk skips a
       non-directory entry whose name is not retained and records but does not enter a pruned
       directory. Warm start compares the shape after the cache tag: a mismatch reports

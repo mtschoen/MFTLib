@@ -772,26 +772,36 @@ how a producer reads its substrate. This supersedes the F4 sentence that scoped 
 
 ## The directory walk prunes declaratively and records pruned directories
 
-**Decision:** `FileIndexOptions.DirectoryWalk` is a `DirectoryWalkOptions` record, defaulting to `new()`, with
-four rules: `PrunedDirectoryNames`, `PrunedDirectoryPaths`, `PrunedDirectoryAttributes` and
+**Decision (amended 2026-10-27, owner ruling on [issue 835](/schoen/MFTLib/issues/835), mftlib-030-closeout link 8):**
+`FileIndexOptions.DirectoryWalk` is a `DirectoryWalkOptions` record, defaulting to `new()`, with
+five rules: `PrunedDirectoryNames`, `PrunedDirectoryNamePatterns`, `PrunedDirectoryPaths`, `PrunedDirectoryAttributes` and
 `PruneDotDirectories`. A pruned directory is written as a row, like `find -prune`, but its children are not
-enumerated. The drive's root is never pruned. On directory walks, retained names and these pruning rules use
-one drive comparison: ignoring case on Windows, ordinal elsewhere. Paths match a directory whose full path
+enumerated. The drive's root is never pruned. On directory walks, retained names and the exact-name and path pruning rules use
+one drive comparison: ignoring case on Windows, ordinal elsewhere. `PrunedDirectoryNamePatterns` is an
+`IReadOnlyCollection<Regex>` defaulting to `[]`: each `Regex` carries its own `RegexOptions` and match timeout (for example
+`new Regex(@"^\.git$", RegexOptions.IgnoreCase)`) rather than using the drive comparison, and a directory whose name matches
+any pattern is pruned the same way. `PrunedDirectoryNames` stays as the exact-name hash lookup. Each pattern's `ToString()`
+and `RegexOptions` (without `MatchTimeout`) are written into the enumeration `ScanShape` in a canonical order, so changing a
+pattern or its options discards the block and cold-scans. Paths match a directory whose full path
 equals them after `Path.GetFullPath` and
 `Path.TrimEndingDirectorySeparator`, so a path outside a drive's root has no effect on it. Hidden and system
 entries stay included unless a rule prunes them, and reparse points stay recorded and never entered. MFT drives
-ignore the record. `FileIndex.OpenAsync` rejects a null record or collection, a blank or separator-containing
+ignore the record, including `PrunedDirectoryNamePatterns`. `FileIndex.OpenAsync` rejects a null record or collection, a null pattern element, a blank or separator-containing
 name, a path that is not fully qualified, and `Directory` or `ReparsePoint` in the attribute mask with
 `ArgumentException` before any side effect. `PruneDotDirectories` is an instruction, so `BooleanNamingTests`
 allowlists the type.
 
 **Reason:** a delegate predicate over name, attributes, depth and path was rejected for two reasons. The
 library cannot fingerprint a delegate, so every consumer would hand-version its cache tag again. A predicate also invites consumer logic into
-the walk, such as git's bare-repository test, which stays in git-wizard. The four rules are what generic tree
-tools expose (`find -prune`, `fd --exclude`, `rg --hidden`), and recording the pruned directory keeps a marker
+the walk, such as git's bare-repository test, which stays in git-wizard. The initial four rules could not prune a name
+case-insensitively on a Unix drive because `PrunedDirectoryNames` uses the ordinal drive comparison off Windows, forcing
+git-wizard ([git-wizard issue 441](/schoen/git-wizard/issues/441)) to list all eight case spellings of `.git` to prune `.GIT` on
+a case-insensitive Unix mount. Wildcards (`FileSystemName.MatchesSimpleExpression`) were rejected because they have no character
+classes and their case option is per call, not per pattern. Adding `PrunedDirectoryNamePatterns` gives each rule its own
+`RegexOptions` while keeping the rule set fingerprintable in `ScanShape`, and recording the pruned directory keeps a marker
 row such as `.git` while skipping its contents.
 
-**Revisit only if:** a consumer needs a pruning rule that none of the four can express.
+**Revisit only if:** a consumer needs a pruning rule that none of the five can express.
 
 ## The library owns scan-shape identity
 
@@ -1083,8 +1093,8 @@ grounds that test code ships in the release DLL does not reopen this ruling.
 
 **Decision (2026-10-26, owner ruling B11):** `FileIndexOptions.RetainedFileNames` and directory-walk pruning
 use one comparison, the drive's. MFT sources use ordinal case-insensitive comparison for NTFS, including a dump
-parsed on Linux. The directory walk ignores case on Windows and is ordinal elsewhere for retained names, pruned
-names and pruned paths. The format version moved to 6, so blocks shaped under the previous comparison are discarded.
+parsed on Linux. The directory walk ignores case on Windows and is ordinal elsewhere for retained names, exact pruned
+names and pruned paths (`PrunedDirectoryNamePatterns` uses each `Regex` instance's own `RegexOptions`). The format version moved to 6, so blocks shaped under the previous comparison are discarded.
 
 **Reason:** one rule matches what the file system itself treats as the same name.
 

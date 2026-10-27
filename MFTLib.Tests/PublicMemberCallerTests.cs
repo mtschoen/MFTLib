@@ -70,6 +70,8 @@ public class PublicMemberCallerTests
             "git-wizard GitWizard/MftIndexSession.cs (git-wizard issue 328) builds its index options with the directory walk rules that replace its hand-rolled walk",
         ["property MFTLib.Index.DirectoryWalkOptions.PrunedDirectoryAttributes : System.IO.FileAttributes"] =
             "git-wizard GitWizard/MftIndexSession.cs (git-wizard issue 328) builds its index options with the directory walk rules that replace its hand-rolled walk",
+        ["property MFTLib.Index.DirectoryWalkOptions.PrunedDirectoryNamePatterns : System.Collections.Generic.IReadOnlyCollection`1<System.Text.RegularExpressions.Regex>"] =
+            "git-wizard GitWizard/Discovery/EnumerationDiscovery.cs (git-wizard issue 441, lands in git-wizard's 0.3.0 pin-bump pull request) prunes .git directories case-insensitively across platforms",
         ["property MFTLib.Index.DirectoryWalkOptions.PrunedDirectoryNames : System.Collections.Generic.IReadOnlyCollection`1<System.String>"] =
             "git-wizard GitWizard/MftIndexSession.cs (git-wizard issue 328) builds its index options with the directory walk rules that replace its hand-rolled walk",
         ["property MFTLib.Index.DirectoryWalkOptions.PrunedDirectoryPaths : System.Collections.Generic.IReadOnlyCollection`1<System.String>"] =
