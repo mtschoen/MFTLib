@@ -19,7 +19,9 @@ public static class ElevatedEntryPoint
     ///     ASCII letters, digits, dash and underscore, that does not name an existing directory, without
     ///     invalid characters or reserved directory names in the ordinary Windows namespace.
     ///     Extended-length Windows paths allow literal reserved names. Rejected arguments exit
-    ///     with code 1 without running the broker.
+    ///     with code 1 without running the broker. Broker diagnostics output is exclusively created at
+    ///     <c>broker-diagnostics.broker.log</c>; an already occupied broker output path suppresses file
+    ///     diagnostics rather than rejecting an otherwise valid session.
     /// </summary>
     /// <param name="arguments">The process arguments.</param>
     /// <returns><c>true</c> when broker mode was handled, including rejected diagnostics arguments.</returns>
@@ -52,6 +54,7 @@ public static class ElevatedEntryPoint
                     // --diag-include-self the opt-in to keep the logs' own journal
                     // entries, for the same reason. Without --diag they are meaningless:
                     // diagnostics are off, so nothing is filtered anyway.
+                    BrokerDiagnostics.Dependencies.AcceptEnvironmentOptIn = false;
                     if (HasFlag(arguments, "--diag"))
                     {
                         var clientLogPath = FindOption(arguments, "--diag-log");
@@ -62,7 +65,7 @@ public static class ElevatedEntryPoint
                             return true;
                         }
 
-                        BrokerDiagnostics.Enable("broker", logDirectory);
+                        BrokerDiagnostics.EnableBroker(logDirectory);
                         BrokerDiagnostics.ClientLogPath = clientLogPath;
                         BrokerDiagnostics.IncludeSelfEntries = HasFlag(arguments, "--diag-include-self");
                     }

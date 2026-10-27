@@ -16,6 +16,7 @@ sealed class BrokerDiagnosticsWriter
     readonly Channel<string> _channel;
     readonly Action<string> _appendLine;
     readonly Func<string> _roleProvider;
+    readonly Action? _completeSink;
 
     // Guards _accepted and the flush waiters. A record is queued and counted under it, so the
     // records counted are exactly the ones queued, in queue order, and a flush's snapshot never
@@ -29,13 +30,33 @@ sealed class BrokerDiagnosticsWriter
     long _accepted;
     long _processed;
 
-    /// <summary>Starts the background drain that appends queued lines through <paramref name="appendLine" />.</summary>
+    /// <summary>
+    ///     Starts the background drain for an owned <paramref name="sink" />, disposing it once the drain exits.
+    /// </summary>
+    /// <param name="sink">The file sink that appends lines and is disposed on drain completion.</param>
+    /// <param name="roleProvider">
+    ///     Supplies the role tag for the writer's own drop-report lines, read when the line is
+    ///     written. Defaults to <c>client</c>.
+    /// </param>
+    public BrokerDiagnosticsWriter(BrokerDiagnosticsFileSink sink, Func<string>? roleProvider = null)
+        : this(sink.AppendLine, roleProvider, sink.Dispose)
+    {
+    }
+
+    /// <summary>
+    ///     Starts the background drain that appends queued lines through <paramref name="appendLine" />
+    ///     and finalizes any owned sink through <paramref name="completeSink" /> once the drain exits.
+    /// </summary>
     /// <param name="appendLine">Appends one complete line to the log; may block or throw.</param>
     /// <param name="roleProvider">
     ///     Supplies the role tag for the writer's own drop-report lines, read when the line is
     ///     written. Defaults to <c>client</c>.
     /// </param>
-    public BrokerDiagnosticsWriter(Action<string> appendLine, Func<string>? roleProvider = null)
+    /// <param name="completeSink">
+    ///     Optional finalizer invoked once on the drain after every accepted line has been processed.
+    /// </param>
+    public BrokerDiagnosticsWriter(Action<string> appendLine, Func<string>? roleProvider = null,
+        Action? completeSink = null)
     {
         _channel = Channel.CreateBounded<string>(new BoundedChannelOptions(Capacity)
         {
@@ -46,8 +67,12 @@ sealed class BrokerDiagnosticsWriter
         });
         _appendLine = appendLine;
         _roleProvider = roleProvider ?? (() => "client");
-        _ = Task.Run(DrainAsync);
+        _completeSink = completeSink;
+        Completion = Task.Run(DrainAsync);
     }
+
+    /// <summary>Completes once admission is closed, all accepted records are processed, and any owned sink is finalized.</summary>
+    public Task Completion { get; }
 
     /// <summary>
     ///     Queues one line. Never waits for the drain; a full queue drops the line and counts it,
@@ -87,18 +112,33 @@ sealed class BrokerDiagnosticsWriter
         return completion.Task.WaitAsync(cancellationToken);
     }
 
-    /// <summary>Stops the drain after the queued records are processed.</summary>
+    /// <summary>Closes admission without waiting; the drain finalizes any owned sink after processing accepted records.</summary>
     public void Complete() => _channel.Writer.TryComplete();
 
     async Task DrainAsync()
     {
-        var reader = _channel.Reader;
-        while (await reader.WaitToReadAsync().ConfigureAwait(false))
+        try
         {
-            while (reader.TryRead(out var line))
+            var reader = _channel.Reader;
+            while (await reader.WaitToReadAsync().ConfigureAwait(false))
             {
-                Append(line);
-                NotifyProcessed();
+                while (reader.TryRead(out var line))
+                {
+                    Append(line);
+                    NotifyProcessed();
+                }
+            }
+        }
+        finally
+        {
+            try
+            {
+                _completeSink?.Invoke();
+            }
+            catch (Exception exception)
+            {
+                // Closing a best-effort diagnostic sink must not replace the broker's outcome.
+                RecordAppendFailure(exception);
             }
         }
     }

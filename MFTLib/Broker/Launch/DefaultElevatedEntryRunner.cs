@@ -152,7 +152,7 @@ sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
     void FlushDiagnostics()
     {
         using var stopBound = new CancellationTokenSource();
-        var flush = BrokerDiagnostics.FlushAsync(CancellationToken.None);
+        var flush = BrokerDiagnostics.CompleteAsync();
         var bound = Task.Delay(BrokerLiveness.DiagnosticsFlushTimeout, _timeProvider, stopBound.Token);
         // aislop-ignore-next-line csharp-sync-over-async -- the wait covers only the diagnostics writer's drain and a timer, neither of which posts to the calling thread's SynchronizationContext
         Task.WhenAny(flush, bound).GetAwaiter().GetResult();

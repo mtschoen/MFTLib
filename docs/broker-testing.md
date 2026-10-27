@@ -135,7 +135,7 @@ handles broker mode, skips the runner, and exits with code 1. Client-produced pa
 owned directories containing spaces, including Windows extended-length paths, remain valid.
 Extended-length cases create literal `NUL`, `CON`, `COM1`, `NUL.txt` and `LPT` followed by
 superscript one directories, verify both client and broker log writes, and clean up through
-their extended-length paths. These cases run only on Windows.
+their extended-length paths. These cases run only on Windows. Child-dispatch tests use fresh owned directories. Occupied broker-output tests preserve sentinel bytes through real Windows hardlinks and Linux symbolic links, including dangling links. They exercise the production dispatcher and file sink without spawning an elevated process or reading a live journal. In-library teardown awaits `BrokerDiagnosticsTestSupport.DrainAsync` before deleting directories. Tests retaining a replaced writer complete it and await its `Completion` independently.
 
 The client clock, per-pipe connection failures, held host writes, the host clock and the
 processor count are not exposed: no consumer drives them. They stay internal seams that

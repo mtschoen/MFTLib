@@ -151,7 +151,7 @@ discarded. A control write failure ends the process. A reply timeout throws
 
 After early child dispatch, clients call `BrokerDiagnostics.Enable(role, logDirectory)`
 with an application-owned directory they create themselves. Environment-only opt-in
-(`MFTLIB_BROKER_DIAG=1`) uses the OS temp directory and the `client` role. Each role
+(`MFTLIB_BROKER_DIAG=1`) uses the OS temp directory and the `client` role. Each client role
 appends to its own `broker-diagnostics.<role>.log`. Roles are nonempty ASCII letters,
 digits, dash and underscore only; invalid roles throw `ArgumentException` at `Enable`.
 Drop notices distinguish `queue full` from `append failed`, including the latest append
@@ -161,7 +161,7 @@ absolute log path as quoted `--diag-log` alongside `--diag`. Child dispatch deri
 directory from that path, enables the broker role, and supplies the client path to
 journal self-filtering before invoking the runner. The path must already be normalized,
 fully qualified, and named `broker-diagnostics.<role>.log` with the same role validation.
-The broker writes `broker-diagnostics.broker.log` in that directory. Missing or valueless paths,
+The dispatched broker exclusively creates `broker-diagnostics.broker.log` in that directory on its first queued write and retains the handle through the diagnostic drain. It refuses any pre-existing output file, hardlink, symbolic link or directory, without changing that object. A reparse-point check precedes atomic exclusive creation; exclusivity is what prevents a check/open race. Creation and write failures drop diagnostics through the existing append-failure accounting and do not stop the broker session. The elevated process never deletes or rotates an occupied log. To capture another session, stop the previous broker and archive or remove its log from the unelevated application or shell before launching again. Concurrent sessions need separate capture directories if both broker logs are required. The forwarded client log may already exist. Missing or valueless paths,
 directory-only arguments (including an existing directory named `broker-diagnostics.ui.log`),
 different file names, `.` or `..` components, invalid characters,
 and reserved device directory names in the ordinary Windows namespace are handled broker launches that exit with
@@ -184,8 +184,7 @@ completed writer also refuses new records while draining accepted records.
 Flush snapshots accepted lines and waits until each has been appended or handled
 as an append failure; refused lines do not extend that target. Drop notices are
 best effort, emitted before a later append, and retain queue and append-failure
-counts if the notice itself fails. Broker session exit, including a faulted
-session, waits for diagnostics flush for at most two seconds on the runner's clock.
+counts if the notice itself fails. Broker session exit, including a faulted session, completes diagnostic admission and waits for accepted records and sink closure for at most two seconds on the runner's clock. Flush during a session is nonterminal and waits only for its accepted-record snapshot. Filesystem work, including sink closure, stays on the background drain.
 
 Each watch filters the broker and client diagnostics paths by full file reference
 (record number and sequence number), scoped to the watched drive. Paths are

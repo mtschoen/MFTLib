@@ -110,16 +110,27 @@ public class BrokerDiagnosticsWriterFlushTests
     }
 
     [TestMethod]
-    public async Task TryEnqueue_AfterComplete_RefusesTheRecordAndFlushCompletes()
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task TryEnqueue_AfterComplete_RefusesTheRecordAndFlushCompletes(bool closeThrows)
     {
         var lines = new List<string>();
-        var writer = new BrokerDiagnosticsWriter(lines.Add);
+        var completions = new List<bool>();
+        var writer = new BrokerDiagnosticsWriter(lines.Add, completeSink: () =>
+        {
+            completions.Add(closeThrows);
+            if (closeThrows)
+            {
+                throw new IOException("diagnostic close failed");
+            }
+        });
         writer.Complete();
-
+        writer.Complete();
         Assert.IsFalse(writer.TryEnqueue("late"));
         await writer.FlushAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
-
+        await writer.Completion.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.IsEmpty(lines);
+        CollectionAssert.AreEqual(new[] { closeThrows }, completions);
     }
 
     public TestContext TestContext { get; set; } = null!;

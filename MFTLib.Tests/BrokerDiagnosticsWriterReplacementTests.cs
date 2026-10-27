@@ -95,6 +95,7 @@ public class BrokerDiagnosticsWriterReplacementTests
         var gate = new TestGate();
         var writers = new List<BrokerDiagnosticsWriter>();
         var outputs = new List<ConcurrentQueue<string>>();
+        var completedSinks = new ConcurrentQueue<int>();
         var installation = Task.CompletedTask;
         BrokerDiagnostics.Enable("broker", Path.GetTempPath());
         try
@@ -103,6 +104,7 @@ public class BrokerDiagnosticsWriterReplacementTests
             {
                 var output = new ConcurrentQueue<string>();
                 var holdSink = index == 0;
+                var sinkIndex = index;
                 var writer = new BrokerDiagnosticsWriter(line =>
                 {
                     if (holdSink)
@@ -111,7 +113,7 @@ public class BrokerDiagnosticsWriterReplacementTests
                         gate.WaitForRelease();
                     }
                     output.Enqueue(line);
-                });
+                }, completeSink: () => completedSinks.Enqueue(sinkIndex));
                 writers.Add(writer);
                 outputs.Add(output);
                 installation = Task.Run(() => BrokerDiagnostics.Dependencies.InstallWriter(writer), TestContext.CancellationToken);
@@ -124,6 +126,7 @@ public class BrokerDiagnosticsWriterReplacementTests
             }
             await writers[^1].FlushAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
             Assert.IsEmpty(outputs[0]);
+            Assert.IsFalse(completedSinks.Contains(0));
             gate.Release();
             await Task.WhenAll(writers.Select(writer => writer.FlushAsync(CancellationToken.None)))
                 .WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -132,6 +135,10 @@ public class BrokerDiagnosticsWriterReplacementTests
                 Assert.HasCount(1, outputs[index]);
                 Assert.EndsWith($":control]  writer-{index}", outputs[index].Single());
             }
+            await Task.WhenAll(writers.Take(replacementCount).Select(writer => writer.Completion))
+                .WaitAsync(HangGuard, TestContext.CancellationToken);
+            Assert.AreSequenceEqual(Enumerable.Range(0, replacementCount).ToArray(),
+                completedSinks.Order().ToArray());
             foreach (var retired in writers.Take(replacementCount))
             {
                 Assert.IsFalse(retired.TryEnqueue("late"));
@@ -156,7 +163,7 @@ public class BrokerDiagnosticsWriterReplacementTests
             {
                 try
                 {
-                    await Task.WhenAll(writers.Select(writer => writer.FlushAsync(CancellationToken.None)))
+                    await Task.WhenAll(writers.Select(writer => writer.Completion))
                         .WaitAsync(HangGuard, CancellationToken.None);
                 }
                 finally

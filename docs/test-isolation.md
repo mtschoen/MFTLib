@@ -216,11 +216,7 @@ and detaches the current writer and restores process diagnostics configuration.
 The existing isolation detector recognizes both the owner field and its members.
 
 Fixtures using the owner or changing diagnostics configuration require class-level
-`DoNotParallelize`. Stop brokers and logging tasks, release sink gates, complete
-and flush every owned writer, then reset configuration. Flush retired writers
-through their retained instances: the process-level `FlushAsync` observes only
-the current writer. Reset is synchronous and is not a drain wait. The public
-`BrokerDiagnosticsIsolation` facade forwards to this same owner.
+`DoNotParallelize`. Stop brokers and logging tasks, release sink gates, complete each owned writer, and await its `Completion` before resetting configuration or deleting its files. Await retired writers through their retained instances: process-level operations observe only the current writer. `FlushAsync` remains an accepted-record snapshot and does not close the sink. Reset is synchronous and is not a drain wait. The public `BrokerDiagnosticsIsolation` facade retains its client-log flush/reset contract; elevated sink ownership is internal.
 
 `BrokerDiagnosticsWriter` captures its append sink and role provider. Flush
 snapshots accepted records under the queue-admission lock and completes when

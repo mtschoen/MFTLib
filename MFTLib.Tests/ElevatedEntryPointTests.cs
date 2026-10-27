@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -102,11 +103,21 @@ public class ElevatedEntryPointTests
             Assert.AreEqual(suppliedPath, BrokerDiagnostics.ClientLogPath);
             BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "diag-enabled-check");
             await BrokerDiagnostics.FlushAsync(CancellationToken.None);
+            if (OperatingSystem.IsWindows())
+            {
+                Assert.ThrowsExactly<IOException>(() => File.Move(brokerPath, brokerPath + ".moved"),
+                    "The active broker log must remain owned by its original handle.");
+            }
+            BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "second-broker-record");
+            await BrokerDiagnosticsTestSupport.DrainAsync();
+            File.Move(brokerPath, brokerPath + ".moved");
+            File.Move(brokerPath + ".moved", brokerPath);
             var artifact = await File.ReadAllTextAsync(brokerPath, TestContext.CancellationToken);
             Assert.Contains("[broker:", artifact);
             Assert.IsFalse(artifact.Contains("client-enabled-check", StringComparison.Ordinal));
             Assert.Contains("client-enabled-check", await File.ReadAllTextAsync(suppliedPath, TestContext.CancellationToken));
             Assert.Contains("diag-enabled-check", artifact);
+            Assert.Contains("second-broker-record", artifact);
         }
         finally
         {
@@ -221,14 +232,110 @@ public class ElevatedEntryPointTests
     }
 
     [TestMethod]
-    public void RunBrokerIfRequested_DiagLogWithoutDiag_LeavesClientLogPathNull()
+    [DynamicData(nameof(OccupiedDiagnosticsTargets))]
+    public async Task RunBrokerIfRequested_OccupiedBrokerLog_IsNotWritten_Issue780(string kind)
     {
-        var runner = new RecordingRunner();
+        var directory = Path.Combine(Path.GetTempPath(), "BrokerDiagOccupied_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var target = Path.Combine(directory, "target.txt");
+        var logPath = Path.Combine(directory, "broker-diagnostics.broker.log");
+        const string sentinel = "original target bytes";
+        var targetExists = kind != "dangling-symbolic-link";
+        try
+        {
+            if (targetExists)
+            {
+                await File.WriteAllTextAsync(target, sentinel, TestContext.CancellationToken);
+            }
+            PlaceOccupiedDiagnosticsTarget(kind, logPath, target);
+            var runner = new RecordingRunner();
+            Assert.IsTrue(ElevatedEntryPoint.RunBrokerIfRequested(
+                ["--broker", "--pipe", "p", "--diag", "--diag-log",
+                    Path.Combine(directory, "broker-diagnostics.ui.log")], runner, runner.RecordExit));
+            Assert.AreEqual(1, runner.BrokerCalls);
+            Assert.IsEmpty(runner.ExitCodes);
 
-        var handled = ElevatedEntryPoint.RunBrokerIfRequested(DiagLogWithoutDiagArgs, runner, runner.RecordExit);
+            BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "must-not-reach-target");
+            BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "second-refused-record");
+            await BrokerDiagnostics.FlushAsync(CancellationToken.None)
+                .WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        Assert.IsTrue(handled);
-        Assert.IsNull(BrokerDiagnostics.ClientLogPath);
+            Assert.AreEqual(targetExists, File.Exists(target));
+            if (targetExists)
+            {
+                Assert.AreEqual(sentinel, await File.ReadAllTextAsync(target, TestContext.CancellationToken));
+                Assert.AreEqual(sentinel, await File.ReadAllTextAsync(logPath, TestContext.CancellationToken));
+            }
+        }
+        finally
+        {
+            await BrokerDiagnosticsTestSupport.DrainAsync();
+            BrokerDiagnostics.Dependencies.ResetToDefaults();
+            File.Delete(logPath);
+            Directory.Delete(directory, true);
+        }
+    }
+
+    public static IEnumerable<object[]> OccupiedDiagnosticsTargets()
+    {
+        yield return ["regular-file"];
+        if (OperatingSystem.IsWindows())
+        {
+            yield return ["hardlink"];
+        }
+        else
+        {
+            yield return ["symbolic-link"];
+            yield return ["dangling-symbolic-link"];
+        }
+    }
+
+    static void PlaceOccupiedDiagnosticsTarget(string kind, string logPath, string target)
+    {
+        switch (kind)
+        {
+            case "regular-file":
+                File.Copy(target, logPath);
+                break;
+            case "hardlink":
+                if (!CreateHardLink(logPath, target, IntPtr.Zero))
+                {
+                    throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+                }
+                break;
+            case "symbolic-link":
+            case "dangling-symbolic-link":
+                File.CreateSymbolicLink(logPath, target);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(kind));
+        }
+    }
+
+    [DllImport("kernel32.dll", EntryPoint = "CreateHardLinkW", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool CreateHardLink(string fileName, string existingFileName, IntPtr securityAttributes);
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void RunBrokerIfRequested_DiagLogWithoutDiag_LeavesClientLogPathNull(bool environmentOptIn)
+    {
+        var previous = Environment.GetEnvironmentVariable("MFTLIB_BROKER_DIAG");
+        try
+        {
+            Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", environmentOptIn ? "1" : null);
+            var runner = new RecordingRunner();
+            Assert.IsTrue(ElevatedEntryPoint.RunBrokerIfRequested(DiagLogWithoutDiagArgs, runner, runner.RecordExit));
+            Assert.AreEqual(1, runner.BrokerCalls);
+            Assert.IsNull(BrokerDiagnostics.ClientLogPath);
+            Assert.IsFalse(BrokerDiagnostics.Enabled,
+                "Inherited environment opt-in must not select the ordinary append sink in a broker child.");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", previous);
+        }
     }
 
     [TestMethod]

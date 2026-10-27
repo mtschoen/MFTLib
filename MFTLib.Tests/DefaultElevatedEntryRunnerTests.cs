@@ -214,7 +214,7 @@ public class DefaultElevatedEntryRunnerTests
         var sink = new TestGate();
         var appended = new List<string>();
         BrokerDiagnostics.Enable("broker", Path.GetTempPath());
-        BrokerDiagnostics.Dependencies.InstallWriter(new BrokerDiagnosticsWriter(line =>
+        var writer = new BrokerDiagnosticsWriter(line =>
         {
             sink.MarkEntered();
             sink.WaitForReleaseAsync(CancellationToken.None).WaitAsync(HangGuard, CancellationToken.None)
@@ -223,7 +223,8 @@ public class DefaultElevatedEntryRunnerTests
             {
                 appended.Add(line);
             }
-        }));
+        });
+        BrokerDiagnostics.Dependencies.InstallWriter(writer);
         var clock = new FlushBoundSignalingClock();
 
         using var cts = new CancellationTokenSource(HangGuard);
@@ -247,6 +248,8 @@ public class DefaultElevatedEntryRunnerTests
             {
                 Assert.Contains(line => line.Contains("frame read kind=200", StringComparison.Ordinal), appended,
                     "The line logged as the session failed must reach the log before the runner leaves.");
+                Assert.IsFalse(writer.TryEnqueue("after-broker-exit"),
+                    "Final broker shutdown must complete diagnostics admission.");
             }
         }
         finally

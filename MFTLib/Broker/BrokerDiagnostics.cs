@@ -3,14 +3,16 @@ namespace MFTLib;
 /// <summary>
 ///     Opt-in broker diagnostics. When environment variable
 ///     <c>MFTLIB_BROKER_DIAG=1</c> is set (or <see cref="Enable" /> has been called),
-///     broker activity appends timestamped, role-tagged lines to
+///     client activity appends timestamped, role-tagged lines to
 ///     <c>broker-diagnostics.&lt;role&gt;.log</c> in the configured directory; otherwise it is a no-op.
 ///     Consumers pass their own app-data directory to <see cref="Enable" /> after early
 ///     broker dispatch; environment-only opt-in defaults to the OS temp directory.
 ///     The elevated child receives diagnostics via <c>--diag</c> and the absolute
 ///     <c>--diag-log</c> path rather than the
 ///     env var, because a <c>runas</c> launch does not reliably inherit the parent's
-///     environment. Used to reveal, on an on-hardware run, what cursor the broker captured vs.
+///     environment. Child dispatch installs a broker-owned sink that exclusively creates
+///     <c>broker-diagnostics.broker.log</c> and retains the open file through its drain.
+///     Used to reveal, on an on-hardware run, what cursor the broker captured vs.
 ///     persisted, and the kind and byte length of every
 ///     frame on the wire, which is what localizes a pipe desync.
 ///     While diagnostics are enabled, the broker drops journal entries for the diagnostics
@@ -24,7 +26,7 @@ namespace MFTLib;
 /// </summary>
 public static class BrokerDiagnostics
 {
-    // Each role owns a separate log file. The broker child sets its role to "broker" via Enable.
+    // Each role owns a separate log file. The broker child sets its role to "broker" via EnableBroker.
     const string DefaultRole = "client";
 
     const string LogFilePrefix = "broker-diagnostics.";
@@ -89,15 +91,17 @@ public static class BrokerDiagnostics
         set => Dependencies.IncludeSelfRequested = value;
     }
 
-    internal static bool Enabled =>
-        Dependencies.Forced || Environment.GetEnvironmentVariable("MFTLIB_BROKER_DIAG") == "1";
+    internal static bool Enabled => Dependencies.Forced ||
+        (Dependencies.AcceptEnvironmentOptIn &&
+         Environment.GetEnvironmentVariable("MFTLIB_BROKER_DIAG") == "1");
 
     /// <summary>
     ///     Force diagnostics on for this process and tag its log lines with
-    ///     <paramref name="role" />. Each process that wants its own log calls it with its own role:
-    ///     the elevated broker child cannot rely on inheriting the <c>MFTLIB_BROKER_DIAG</c> env var
-    ///     across the <c>runas</c> launch, and a consumer's user-interface process enables it under another role.
-    ///     Appends to <c>broker-diagnostics.&lt;role&gt;.log</c> in the supplied directory.
+    ///     <paramref name="role" />. Each caller process that wants its own log calls it with its own role:
+    ///     the elevated broker child uses <see cref="EnableBroker" /> via child dispatch so its sink
+    ///     exclusively creates <c>broker-diagnostics.broker.log</c>, while a consumer's client or
+    ///     user-interface process calls <see cref="Enable" /> under its role and appends to
+    ///     <c>broker-diagnostics.&lt;role&gt;.log</c> in the supplied directory.
     /// </summary>
     /// <param name="role">The nonempty role tag and file-name segment: ASCII letters, digits, dash and underscore only.</param>
     /// <param name="logDirectory">The caller-owned log directory. The caller creates it before logging.</param>
@@ -112,6 +116,24 @@ public static class BrokerDiagnostics
         Dependencies.LogDirectory = logDirectory;
         Dependencies.Role = role;
         Dependencies.Forced = true;
+    }
+
+    internal static void EnableBroker(string logDirectory)
+    {
+        Enable("broker", logDirectory);
+        Dependencies.InstallWriter(new BrokerDiagnosticsWriter(new BrokerDiagnosticsFileSink(LogPath), () => "broker"));
+    }
+
+    internal static Task CompleteAsync()
+    {
+        var writer = Dependencies.Writer;
+        if (writer is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        writer.Complete();
+        return writer.Completion;
     }
 
     /// <summary>
@@ -142,6 +164,8 @@ public static class BrokerDiagnostics
         BrokerDiagnosticsWriter? _writer;
 
         internal bool Forced { get; set; }
+
+        internal bool AcceptEnvironmentOptIn { get; set; } = true;
 
         internal string Role { get; set; } = DefaultRole;
 
@@ -178,6 +202,7 @@ public static class BrokerDiagnostics
             {
                 Interlocked.Exchange(ref _writer, null)?.Complete();
                 Forced = false;
+                AcceptEnvironmentOptIn = true;
                 Role = DefaultRole;
                 LogDirectory = Path.GetTempPath();
                 ForwardedClientLogPath = null;
