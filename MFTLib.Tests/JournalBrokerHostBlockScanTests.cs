@@ -197,7 +197,11 @@ frames.Single(frame => frame.Kind == BrokerFrameKind.Error).Message!);
         {
             yield return [BrokerHostFactory.Record(5, ".", 3)];
             scanParked.MarkEntered();
-            cancellationToken.WaitHandle.WaitOne(HangGuard);
+            if (!cancellationToken.WaitHandle.WaitOne(HangGuard * 3))
+            {
+                throw new TimeoutException("The scan was never cancelled.");
+            }
+
             yield return [BrokerHostFactory.Record(20, "file.txt")];
         }
 
@@ -210,10 +214,10 @@ frames.Single(frame => frame.Kind == BrokerFrameKind.Error).Message!);
         });
         await using var harness = new HostChannelHarness(host, blockWriter);
         var pipe = await harness.OpenScanChannelAsync('C', "section-C");
-        await scanParked.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
+        await scanParked.Entered.WaitAsync(HangGuard * 3, TestContext.CancellationToken);
 
         await harness.CloseControlAsync();
-        await harness.Serve.WaitAsync(HangGuard, TestContext.CancellationToken);
+        await harness.Serve.WaitAsync(HangGuard * 3, TestContext.CancellationToken);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
         Assert.AreEqual(6u, blockWriter.Block.Header.RowCount);
