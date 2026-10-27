@@ -8,6 +8,24 @@ with evidence that its stated reason no longer holds (for example, the consumers
 Record every new ruling here in the same change that implements or files it: the decision, the reason, and
 what would justify revisiting it.
 
+## Release benchmark baselines are committed reports
+
+**Decision (owner ruling 2026-10-26, B13):** Keep one small, hand-captured
+release report in `Benchmark/baselines/<date>-<short sha>.txt`, measured on a
+quiet machine and committed beside the code as input to `Benchmark.exe compare`.
+These reports are the deliberate exception to the no-measurement-dumps rule;
+logs and raw captures remain excluded. Keep baselines for scenarios the current
+runner emits. The retained references are `2026-10-16-abaf975d.txt` for index
+queries and `2026-10-20-36f07c79.txt` for enumeration walks.
+
+**Reason:** Benchmark numbers need a quiet machine, so release baselines are
+captured by hand rather than CI. CI artifacts expire, and CI runners share load,
+making their timing numbers noisy. A small text file beside the code is the
+easiest input for `compare`.
+
+**Revisit only if:** an explicitly approved replacement provides durable,
+quiet-machine measurements with equally straightforward comparison inputs.
+
 ## Windows native releases target plain x64
 
 **Decision (2026-10-16):** the Windows Release native library targets plain x64

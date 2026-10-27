@@ -12,6 +12,7 @@ Run these steps at `<release commit>`; pins and measurements belong in the relea
 2. Complete attended library and consumer smokes at that commit. Record the exact
    library and consumer pins, test counts, coverage and results in the maintainer's release checklist.
    Verify the required checks in [quality gates](quality-gates.md).
+   - Complete the [benchmark release checklist](#benchmark-release-checklist) on a quiet machine before the clean-tree release dry run. Record each scenario's comparison result and the measured code revision in the maintainer's release checklist.
 3. Run the dry run on a Windows release host with the documented toolchains and WSL distribution.
    For both modes, set `MFTLIB_GITEA_REPOSITORY_URL` to the canonical repository's
    literal HTTPS or SSH URL. Missing input and remote aliases fail before the pipeline starts.
@@ -200,3 +201,53 @@ total, passed, failed, and skipped counts. The Windows files are in
 coverage reports with them and identify their workflow runs in
 the release checklist. Windows CI excludes admin tests; record attended admin
 testing, consumer pins, and consumer results separately in the release checklist.
+
+### Benchmark release checklist
+
+Use the same machine and workload as the reference for meaningful performance
+comparisons; the reports record the hardware and runtime. `compare` checks only
+the first matching scenario's median and permits growth of at most 25 percent.
+A different machine's result is not a comparable release-performance verdict.
+Investigate failed comparisons rather than replacing a reference to hide a
+regression. These measurements are attended release work, not a CI timing gate.
+
+This recipe saves the two compact `--out` reports outside the checkout, combines
+their report sections into one candidate, compares all four scenarios, and
+copies only the accepted small report into the release convention without
+capturing console logs:
+
+```powershell
+$benchmark = './Benchmark/bin/x64/Release/net10.0/Benchmark.exe'
+$reportDirectory = Join-Path ([IO.Path]::GetTempPath()) ('mftlib-release-benchmark-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $reportDirectory | Out-Null
+$indexReport = Join-Path $reportDirectory 'index.txt'
+$walkReport = Join-Path $reportDirectory 'walk.txt'
+$candidateReport = Join-Path $reportDirectory 'release.txt'
+& $benchmark index --synthetic 1000000 --iterations 5 --out $indexReport
+if ($LASTEXITCODE -ne 0) { throw 'Index benchmark failed.' }
+& $benchmark enumeration-walk --directories 32768 --files-per-directory 1 --iterations 5 --out $walkReport
+if ($LASTEXITCODE -ne 0) { throw 'Enumeration benchmark failed.' }
+$reportText = (Get-Content -LiteralPath $indexReport -Raw).TrimEnd() + [Environment]::NewLine + (Get-Content -LiteralPath $walkReport -Raw)
+Set-Content -LiteralPath $candidateReport -Value $reportText -Encoding utf8
+foreach ($scenario in @('exact-search', 'substring-search')) {
+    & $benchmark compare Benchmark/baselines/2026-10-16-abaf975d.txt $candidateReport $scenario
+    if ($LASTEXITCODE -ne 0) { throw "Release comparison failed: $scenario" }
+}
+foreach ($scenario in @('enumeration-walk-sequential', 'enumeration-walk-parallel')) {
+    & $benchmark compare Benchmark/baselines/2026-10-20-36f07c79.txt $candidateReport $scenario
+    if ($LASTEXITCODE -ne 0) { throw "Release comparison failed: $scenario" }
+}
+$measuredRevision = git rev-parse --short HEAD
+if ($LASTEXITCODE -ne 0) { throw 'Cannot identify the measured revision.' }
+$releaseReport = "Benchmark/baselines/$(Get-Date -Format yyyy-MM-dd)-$measuredRevision.txt"
+if (Test-Path -LiteralPath $releaseReport) { throw 'Release report already exists; review it before replacing.' }
+Copy-Item -LiteralPath $candidateReport -Destination $releaseReport
+```
+
+The filename identifies the measured code revision. Review and commit the report
+before the clean-tree release dry run, then validate the resulting release
+commit using the existing ordered release steps. On subsequent releases, select
+the previous accepted report for the same scenarios and workload; the two
+explicit references above bootstrap that convention. A future combined report
+serves both groups. Retain temporary files only as local scratch, never as
+committed logs or captures.
