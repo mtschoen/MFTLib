@@ -87,7 +87,6 @@ public class BlockWriterDisposalRaceTests
         Assert.ThrowsExactly<ObjectDisposedException>(() => writer.MarkSubtreeSkipped(1));
         Assert.ThrowsExactly<ObjectDisposedException>(writer.MarkCapacityExhausted);
         Assert.ThrowsExactly<ObjectDisposedException>(() => writer.SetJournalCursor(1, 2));
-        Assert.ThrowsExactly<ObjectDisposedException>(() => writer.SetCacheTag(new CacheTag("TEST", 7)));
         Assert.ThrowsExactly<ObjectDisposedException>(() => writer.BumpGeneration());
         Assert.ThrowsExactly<ObjectDisposedException>(() => writer.Complete(Moment, null));
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = writer.RowCount);

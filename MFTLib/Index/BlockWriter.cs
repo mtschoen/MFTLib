@@ -274,16 +274,6 @@ sealed partial class BlockWriter
         header.UsnNextUsn = nextUsn;
     }
 
-    /// <summary>Replaces the consumer cache identity without changing other header fields or rows.</summary>
-    /// <param name="cacheTag">The identity to store, including the all-zero default.</param>
-    public void SetCacheTag(CacheTag cacheTag)
-    {
-        using var access = Block.TakeAccess();
-        ref var header = ref Block.Header;
-        header.CacheTagFourCc = cacheTag.PackedFourCc;
-        header.CacheTagVersion = cacheTag.Version;
-    }
-
     /// <summary>Stores the enumeration producer's count of subtrees it could not enter, so a warm start reports it.</summary>
     /// <param name="count">The walk's access-denied subtree count.</param>
     public void SetAccessDeniedSubtreeCount(uint count)

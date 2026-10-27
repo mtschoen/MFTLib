@@ -3,7 +3,7 @@ using MFTLib.Index;
 namespace MFTLibTestExtensions;
 
 /// <summary>
-///     Edits an open block through the production block writer. Valid only inside
+///     Edits an open cache block without exposing the block format. Valid only inside
 ///     <see cref="SyntheticBlock.Edit" />: any use after the edit returns throws
 ///     <see cref="InvalidOperationException" />.
 /// </summary>
@@ -140,7 +140,10 @@ public sealed class SyntheticBlockEditor
     public void SetCacheTag(CacheTag cacheTag)
     {
         EnsureOpen();
-        _writer.SetCacheTag(cacheTag);
+        using var access = _block.TakeAccess();
+        ref var header = ref _block.Header;
+        header.CacheTagFourCc = cacheTag.PackedFourCc;
+        header.CacheTagVersion = cacheTag.Version;
     }
 
     /// <summary>

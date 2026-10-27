@@ -1088,3 +1088,11 @@ is skipped and is not a failure (B2). `DriveKey.TryParse(string? text, out Drive
 **Reason:** the single-method interface had one production implementation and existed only so unit tests could substitute the broker body without spawning an elevated process. A consumer that wants its elevated child process to perform application-owned work uses `IElevationProvider` with its own relaunch flags rather than replacing the broker body, and any future tunable of the broker run (such as connect timeout or clock) belongs on a public options parameter on `RunBrokerIfRequested`, not a replaceable body.
 
 **Revisit only if:** a consumer needs a public options parameter on `RunBrokerIfRequested` to tune broker-session execution.
+
+## In-place cache-tag mutation lives in the synthetic block editor
+
+**Decision (owner ruling, 2026-10-27, [issue 801](/schoen/MFTLib/issues/801), [recorded resolution](/schoen/MFTLib/issues/801#issuecomment-144621)):** `BlockWriter.SetCacheTag` is deleted. Production consumers configure cache identity through `FileIndexOptions.CacheTag`, which is written at block creation and on every replacement rescan. No public retag-in-place operation is added to `CacheDirectory` or the samples. `SyntheticBlockEditor.SetCacheTag` keeps its public signature and behavior, writing `CacheTagFourCc` and `CacheTagVersion` directly to the header under a `_block.TakeAccess()` scope.
+
+**Reason:** normal production sets the cache tag fields at block creation (`BlockFile.Create`); the internal writer method had no production caller and existed only so the test package's synthetic editor could rewrite a tag on an existing block.
+
+**Revisit only if:** a concrete production consumer requirement needs in-place cache-tag mutation outside block creation and replacement rescans.

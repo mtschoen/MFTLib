@@ -3,10 +3,10 @@ using MFTLib.Index;
 namespace MFTLibTestExtensions;
 
 /// <summary>
-///     Seeds, edits and reads cache blocks through the production block writer, so a test
-///     needs no knowledge of the block format. Each operation on a cache slot holds the slot's
-///     owner lock for its duration and throws <see cref="InvalidOperationException" /> when an
-///     open index owns the slot: close the index first.
+///     Seeds, edits and reads cache blocks so a test needs no knowledge of the block format.
+///     Each operation on a cache slot holds the slot's owner lock for its duration and throws
+///     <see cref="InvalidOperationException" /> when an open index owns the slot: close the
+///     index first.
 /// </summary>
 public static class SyntheticBlock
 {
