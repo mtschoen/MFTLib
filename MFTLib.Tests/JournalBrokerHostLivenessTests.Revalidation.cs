@@ -36,6 +36,8 @@ public partial class JournalBrokerHostLivenessTests
             TestGate.WaitSynchronously(scenario.BatchWritten.Entered);
         });
 
+        // The host writes CaughtUp after the batch; closing the control pipe earlier cancels that write.
+        await scenario.CaughtUpWritten.Entered.WaitAsync(HangGuard);
         var frames = await scenario.FinishAsync();
         Assert.AreSequenceEqual(
             [.. Enumerable.Repeat(BrokerFrameKind.Heartbeat, 5), BrokerFrameKind.JournalBatch, BrokerFrameKind.CaughtUp], [.. frames.Select(frame => frame.Kind)], $"A frame completed after the sweep began is this interval's write: no Stalled and no sixth heartbeat. Saw {string.Join(", ", frames.Select(frame => frame.Kind))}.");
@@ -53,6 +55,8 @@ public partial class JournalBrokerHostLivenessTests
         public TestGate Wedged { get; } = new();
 
         public TestGate BatchWritten { get; } = new();
+
+        public TestGate CaughtUpWritten { get; } = new();
 
         public ISourceOperationReporter WedgedReporter { get; private set; } = null!;
 
@@ -134,6 +138,10 @@ public partial class JournalBrokerHostLivenessTests
                 if (kind == BrokerFrameKind.JournalBatch)
                 {
                     BatchWritten.MarkEntered();
+                }
+                else if (kind == BrokerFrameKind.CaughtUp)
+                {
+                    CaughtUpWritten.MarkEntered();
                 }
             }, afterWrite: true);
         }
