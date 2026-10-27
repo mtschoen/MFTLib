@@ -15,7 +15,7 @@ sealed partial class BlockWriter
     public RowFlags ReadRowFlags(uint rowIndex)
     {
         using var access = Block.TakeAccess();
-        if (rowIndex >= Block.Header.SlotCapacity)
+        if (rowIndex >= Block.SlotCapacity)
         {
             return RowFlags.None;
         }
@@ -37,7 +37,7 @@ sealed partial class BlockWriter
     public bool UpdateRowMetadata(uint rowIndex, uint attributes, RowFreshness freshness)
     {
         using var access = Block.TakeAccess();
-        if (rowIndex >= Block.Header.SlotCapacity)
+        if (rowIndex >= Block.SlotCapacity)
         {
             MarkCapacityExhaustedCore();
             return false;

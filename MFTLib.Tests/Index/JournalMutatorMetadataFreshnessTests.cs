@@ -289,7 +289,7 @@ public class JournalMutatorMetadataFreshnessTests
     public async Task RenameWithAContentReason_WhenTheNamePoolIsFull_StillInvalidatesAndAdvancesGeneration()
     {
         await using var fixture = new MutatorFixture();
-        fixture.Block.Header.NamePoolUsed = fixture.Block.Header.NamePoolCapacity;
+        fixture.Block.PublishNamePoolUsed(fixture.Block.NamePoolCapacity);
         var generation = fixture.Block.Header.Generation;
 
         var changes = fixture.Apply(

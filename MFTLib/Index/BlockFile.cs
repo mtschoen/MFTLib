@@ -54,13 +54,30 @@ sealed unsafe partial class BlockFile : IDisposable
     /// </summary>
     internal DeletedChildLinks? _deletedChildren;
 
+    /// <summary>
+    ///     Builds a block over a mapping whose header copy <paramref name="layout" /> was already
+    ///     validated against <paramref name="length" />. Only that copy's capacities and cursors are
+    ///     kept; the offsets are derived from the capacities, and the mapped header is never read.
+    /// </summary>
     BlockFile(string path, long length, MemoryMappedFile mappedFile,
-        MemoryMappedViewAccessor view)
+        MemoryMappedViewAccessor view, BlockHeader layout)
     {
+        if (BlockLayout.TotalBlockBytes(layout.SlotCapacity, layout.NamePoolCapacity) > length ||
+            layout.RowCount > layout.SlotCapacity || layout.NamePoolUsed > layout.NamePoolCapacity)
+        {
+            throw new ArgumentException("The block layout does not fit the mapped view.", nameof(layout));
+        }
+
         Path = path;
         Length = length;
         _mappedFile = mappedFile;
         _view = view;
+        SlotCapacity = layout.SlotCapacity;
+        NamePoolCapacity = layout.NamePoolCapacity;
+        _sequenceRegionOffset = BlockLayout.SequenceRegionOffset(layout.SlotCapacity);
+        _namePoolOffset = BlockLayout.NamePoolOffset(layout.SlotCapacity);
+        _rowCount = layout.RowCount;
+        _namePoolUsed = layout.NamePoolUsed;
         Hooks = new BlockHooks(this);
         byte* pointer = null;
         _view.SafeMemoryMappedViewHandle.AcquirePointer(ref pointer);
@@ -138,13 +155,13 @@ sealed unsafe partial class BlockFile : IDisposable
         }
     }
 
-    /// <summary>The whole row region, <c>SlotCapacity</c> rows long, not only the used rows.</summary>
+    /// <summary>The whole row region, <see cref="SlotCapacity" /> rows long, not only the used rows.</summary>
     public Span<FileRow> Rows
     {
         get
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            return new Span<FileRow>(_base + BlockLayout.RowRegionOffset, (int)Header.SlotCapacity);
+            return new Span<FileRow>(_base + BlockLayout.RowRegionOffset, (int)SlotCapacity);
         }
     }
 
@@ -157,7 +174,7 @@ sealed unsafe partial class BlockFile : IDisposable
         get
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            return new Span<ushort>(_base + (long)Header.SequenceRegionOffset, (int)Header.SlotCapacity);
+            return new Span<ushort>(_base + _sequenceRegionOffset, (int)SlotCapacity);
         }
     }
 
@@ -167,8 +184,7 @@ sealed unsafe partial class BlockFile : IDisposable
         get
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            return new Span<char>(_base + (long)Header.NamePoolOffset,
-                (int)(Header.NamePoolCapacity / sizeof(char)));
+            return new Span<char>(_base + _namePoolOffset, (int)(NamePoolCapacity / sizeof(char)));
         }
     }
 
@@ -203,9 +219,10 @@ sealed unsafe partial class BlockFile : IDisposable
         MemoryMappedFile mappedFile, MemoryMappedViewAccessor view)
     {
         BlockFile block;
+        var header = InitialHeader(options);
         try
         {
-            block = new BlockFile(options.Path, length, mappedFile, view);
+            block = new BlockFile(options.Path, length, mappedFile, view, header);
         }
         catch
         {
@@ -216,17 +233,19 @@ sealed unsafe partial class BlockFile : IDisposable
             throw;
         }
 
-        block.InitializeHeader(options);
+        block.Header = header;
         return block;
     }
 
     /// <summary>
     ///     Builds a block over an already-built mapping and view without touching the header,
     ///     used by an opener (such as an elevated broker) that writes rows into a section created
-    ///     by another process.
+    ///     by another process. <paramref name="layout" /> is the copy of the section's header that
+    ///     <see cref="BlockHeader.ValidateSection" /> accepted.
     /// </summary>
-    internal BlockFile(MemoryMappedFile mappedFile, MemoryMappedViewAccessor view, long length)
-        : this(string.Empty, length, mappedFile, view)
+    internal BlockFile(MemoryMappedFile mappedFile, MemoryMappedViewAccessor view, long length,
+        BlockHeader layout)
+        : this(string.Empty, length, mappedFile, view, layout)
     {
     }
 
@@ -317,19 +336,28 @@ sealed unsafe partial class BlockFile : IDisposable
         out BlockValidationResult? validation)
     {
         BlockFile? block = null;
+        MemoryMappedFile? mappedFile = null;
+        MemoryMappedViewAccessor? view = null;
         try
         {
-            var (mappedFile, view) = OpenMapping(path, FileMode.Open, mappingCapacity: 0, viewLength: length,
+            (mappedFile, view) = OpenMapping(path, FileMode.Open, mappingCapacity: 0, viewLength: length,
                 fileOptions: FileOptions.None);
-            block = new BlockFile(path, length, mappedFile, view);
-            validation = BlockHeader.Validate(in block.Header, expectedVolumeSerial, length) ?? block.ValidateNameDescriptors();
+            view.Read(0, out BlockHeader header);
+            validation = BlockHeader.Validate(in header, expectedVolumeSerial, length);
+            if (validation is null)
+            {
+                block = new BlockFile(path, length, mappedFile, view, header);
+                view = null;
+                mappedFile = null;
+                validation = block.ValidateNameDescriptors();
+            }
 
             if (validation is null)
             {
                 return block;
             }
 
-            block.Dispose();
+            block?.Dispose();
             return null;
         }
         catch (IOException)
@@ -347,13 +375,19 @@ sealed unsafe partial class BlockFile : IDisposable
             validation = BlockValidationResult.WrongMagic;
             return null;
         }
+        finally
+        {
+            // Set only while no block owns the mapping: a rejected header, or a failed read of it.
+            view?.Dispose();
+            mappedFile?.Dispose();
+        }
     }
 
     BlockValidationResult? ValidateNameDescriptors()
     {
-        var usedBytes = (ulong)Header.NamePoolUsed;
+        var usedBytes = (ulong)NamePoolUsed;
         var rows = Rows;
-        for (var rowIndex = 0u; rowIndex < Header.RowCount; rowIndex++)
+        for (var rowIndex = 0u; rowIndex < RowCount; rowIndex++)
         {
             var descriptor = FileRow.ReadDescriptorWord(in rows[(int)rowIndex]);
             var offsetBytes = FileRow.DescriptorNameOffsetBytes(descriptor);
@@ -367,10 +401,9 @@ sealed unsafe partial class BlockFile : IDisposable
         return null;
     }
 
-    void InitializeHeader(BlockFileCreateOptions options)
+    static BlockHeader InitialHeader(BlockFileCreateOptions options)
     {
-        ref var header = ref Header;
-        header = default;
+        var header = default(BlockHeader);
         header.Magic = BlockLayout.Magic;
         header.FormatVersion = BlockLayout.FormatVersion;
         header.ProducerKind = options.ProducerKind;
@@ -385,5 +418,6 @@ sealed unsafe partial class BlockFile : IDisposable
         header.CacheTagFourCc = options.CacheTag.PackedFourCc;
         header.CacheTagVersion = options.CacheTag.Version;
         header.ScanShape = options.ScanShape;
+        return header;
     }
 }

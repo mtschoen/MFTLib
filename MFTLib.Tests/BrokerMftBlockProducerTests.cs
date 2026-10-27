@@ -37,6 +37,8 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
         Assert.AreEqual(21u, block.Header.RowCount);
         Assert.AreEqual(18u, block.Header.NamePoolUsed);
+        Assert.AreEqual(21u, block.RowCount, "the client adopts the cursors the broker published");
+        Assert.AreEqual(18u, block.NamePoolUsed, "the client adopts the cursors the broker published");
 
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
@@ -76,6 +78,29 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         Assert.Contains(expectedMessage, exception.Message);
         var section = broker.Sections.Single();
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
+        BlockFileAssertions.IsDisposed(section.Block);
+        Assert.IsFalse(File.Exists(request.BlockPath));
+    }
+
+    [TestMethod]
+    public async Task Produce_PublishedCapacityDiffersFromTheClientBlock_FailsAndDisposesBlock()
+    {
+        // A header that shrinks the slot capacity with matching offsets still fits the file, so
+        // only the client's own capacities expose it.
+        await using var broker = CreateBrokerChangingBlock(block =>
+        {
+            ref var header = ref block.Header;
+            header.SlotCapacity = header.RowCount;
+            header.SequenceRegionOffset = (ulong)BlockLayout.SequenceRegionOffset(header.SlotCapacity);
+            header.NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(header.SlotCapacity);
+        });
+        var request = Request(Target());
+
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => ProduceAsync(broker.Process, request).WaitAsync(HangGuard, TestContext.CancellationToken));
+
+        Assert.Contains(nameof(BlockValidationResult.InconsistentRegions), exception.Message);
+        var section = broker.Sections.Single();
         BlockFileAssertions.IsDisposed(section.Block);
         Assert.IsFalse(File.Exists(request.BlockPath));
     }

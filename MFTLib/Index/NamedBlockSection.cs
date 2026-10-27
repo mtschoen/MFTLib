@@ -69,34 +69,37 @@ static class NamedBlockSection
         }
     }
 
-    /// <summary>Opens a section using the capacities in its client-initialized header to determine its length.</summary>
+    /// <summary>
+    ///     Opens a client-created section for writing. The whole section is mapped, so the view's
+    ///     length is the section's own size rather than anything its header claims. One private copy
+    ///     of the header is then validated against that length, and the block is built from the
+    ///     copy alone: a process that rewrites the shared header afterwards cannot move the regions
+    ///     the block writes into.
+    /// </summary>
+    /// <exception cref="InvalidDataException">The section's header does not describe a block that exactly fills it.</exception>
     [SupportedOSPlatform("windows")]
     public static BlockFile OpenExisting(string sectionName)
     {
         ArgumentException.ThrowIfNullOrEmpty(sectionName);
-        long expectedLength;
-        using (var probe = MemoryMappedFile.OpenExisting(sectionName, MemoryMappedFileRights.Read))
-        using (var headerView = probe.CreateViewAccessor(0, BlockLayout.HeaderRegionBytes, MemoryMappedFileAccess.Read))
-        {
-            headerView.Read(0, out BlockHeader header);
-            expectedLength = BlockLayout.TotalBlockBytes(header.SlotCapacity, header.NamePoolCapacity);
-        }
-
-        return OpenExisting(sectionName, expectedLength);
-    }
-
-    [SupportedOSPlatform("windows")]
-    public static BlockFile OpenExisting(string sectionName, long expectedLength)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(sectionName);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(expectedLength);
 
         var mappedFile = MemoryMappedFile.OpenExisting(sectionName, MemoryMappedFileRights.ReadWrite);
         MemoryMappedViewAccessor? view = null;
         try
         {
-            view = mappedFile.CreateViewAccessor(0, expectedLength, MemoryMappedFileAccess.ReadWrite);
-            var block = new BlockFile(mappedFile, view, expectedLength);
+            view = mappedFile.CreateViewAccessor(0, 0, MemoryMappedFileAccess.ReadWrite);
+            var length = view.Capacity;
+            if (length < BlockLayout.HeaderRegionBytes)
+            {
+                throw RejectedSection(sectionName, BlockValidationResult.WrongMagic);
+            }
+
+            view.Read(0, out BlockHeader layout);
+            if (BlockHeader.ValidateSection(in layout, length) is { } validation)
+            {
+                throw RejectedSection(sectionName, validation);
+            }
+
+            var block = new BlockFile(mappedFile, view, length, layout);
             mappedFile = null;
             view = null;
             return block;
@@ -106,6 +109,11 @@ static class NamedBlockSection
             view?.Dispose();
             mappedFile?.Dispose();
         }
+    }
+
+    static InvalidDataException RejectedSection(string sectionName, BlockValidationResult validation)
+    {
+        return new InvalidDataException($"Block section '{sectionName}' was rejected: {validation}.");
     }
 
     public static string BuildSectionName(DriveKey drive)

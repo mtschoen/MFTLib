@@ -34,15 +34,14 @@ sealed class BlockRowSnapshot
     {
         ArgumentNullException.ThrowIfNull(block);
         using var access = block.TakeAccess();
-        var header = block.Header;
-        var rowCount = (int)header.RowCount;
-        var nameCharacters = (int)(header.NamePoolUsed / sizeof(char));
+        var rowCount = (int)block.RowCount;
+        var nameCharacters = (int)(block.NamePoolUsed / sizeof(char));
         return new BlockRowSnapshot(
             [.. block.Rows[..rowCount]],
             [.. block.SequenceNumbers[..rowCount]],
             [.. block.NamePoolCharacters[..nameCharacters]],
-            header.NamePoolUsed,
-            header.LiveRowCount);
+            block.NamePoolUsed,
+            block.Header.LiveRowCount);
     }
 
     /// <summary>Writes the snapshot into a fresh, empty <paramref name="target" /> large enough to hold it.</summary>
@@ -52,13 +51,12 @@ sealed class BlockRowSnapshot
     {
         ArgumentNullException.ThrowIfNull(target);
         using var access = target.TakeAccess();
-        ref var header = ref target.Header;
-        if (header.RowCount != 0 || header.NamePoolUsed != 0)
+        if (target.RowCount != 0 || target.NamePoolUsed != 0)
         {
             throw new ArgumentException("A snapshot restores only into an empty block.", nameof(target));
         }
 
-        if (header.SlotCapacity < RowCount || header.NamePoolCapacity < NamePoolUsed)
+        if (target.SlotCapacity < RowCount || target.NamePoolCapacity < NamePoolUsed)
         {
             throw new ArgumentException("The target block is smaller than the snapshot.", nameof(target));
         }
@@ -66,8 +64,8 @@ sealed class BlockRowSnapshot
         _rows.CopyTo(target.Rows);
         _sequenceNumbers.CopyTo(target.SequenceNumbers);
         _names.CopyTo(target.NamePoolCharacters);
-        header.NamePoolUsed = NamePoolUsed;
-        header.LiveRowCount = _liveRowCount;
-        header.RowCount = RowCount;
+        target.PublishNamePoolUsed(NamePoolUsed);
+        target.Header.LiveRowCount = _liveRowCount;
+        target.PublishRowCount(RowCount);
     }
 }

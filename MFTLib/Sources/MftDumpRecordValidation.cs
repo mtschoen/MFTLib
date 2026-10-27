@@ -34,7 +34,7 @@ sealed class MftDumpRecordValidation
     {
         ArgumentNullException.ThrowIfNull(block);
         _block = block;
-        _slotCapacity = block.Header.SlotCapacity;
+        _slotCapacity = block.SlotCapacity;
         _seenRows = new ulong[((ulong)_slotCapacity + 63) / 64];
     }
 

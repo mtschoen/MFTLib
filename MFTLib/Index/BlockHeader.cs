@@ -134,24 +134,61 @@ struct BlockHeader
         return ValidateRegions(in header, fileLength);
     }
 
+    /// <summary>
+    ///     Decides whether a client-created section the broker opened by name can be written. The
+    ///     header is shared with a less trusted process, so this runs on a private copy taken once,
+    ///     and the copy it accepts is the only geometry the writer ever uses. A section is not yet
+    ///     complete and names no volume the broker could check, so only its structure is validated:
+    ///     magic, version, cursors within capacity, every region offset where the capacities put
+    ///     it, and a block size that exactly fills the mapped section.
+    /// </summary>
+    /// <param name="header">A private copy of the section's header.</param>
+    /// <param name="mappedLength">Length, in bytes, of the broker's view of the whole section.</param>
+    /// <returns>A validation result that explains why the section cannot be written, or null.</returns>
     [SuppressMessage("Roslynator", "RCS1242",
         Justification = "BlockHeader is explicit-layout and intentionally mutable for field-by-field disk mapping; the in-parameter signature is spec-mandated.")]
-    static BlockValidationResult? ValidateRegions(in BlockHeader header, long fileLength)
+    public static BlockValidationResult? ValidateSection(in BlockHeader header, long mappedLength)
     {
-        if (header.RowCount > header.SlotCapacity || header.NamePoolUsed > header.NamePoolCapacity ||
-            header.RootRow >= header.RowCount)
+        if (header.Magic != BlockLayout.Magic)
+        {
+            return BlockValidationResult.WrongMagic;
+        }
+
+        if (header.FormatVersion != BlockLayout.FormatVersion)
+        {
+            return BlockValidationResult.WrongFormatVersion;
+        }
+
+        if (!HasConsistentGeometry(in header))
         {
             return BlockValidationResult.InconsistentRegions;
         }
 
-        if (header.RowRegionOffset != BlockLayout.RowRegionOffset ||
-            header.SequenceRegionOffset != (ulong)BlockLayout.SequenceRegionOffset(header.SlotCapacity) ||
-            header.NamePoolOffset != (ulong)BlockLayout.NamePoolOffset(header.SlotCapacity))
+        var required = BlockLayout.TotalBlockBytes(header.SlotCapacity, header.NamePoolCapacity);
+        return mappedLength != required ? BlockValidationResult.InconsistentRegions : null;
+    }
+
+    [SuppressMessage("Roslynator", "RCS1242",
+        Justification = "BlockHeader is explicit-layout and intentionally mutable for field-by-field disk mapping; the in-parameter signature is spec-mandated.")]
+    static BlockValidationResult? ValidateRegions(in BlockHeader header, long fileLength)
+    {
+        if (!HasConsistentGeometry(in header) || header.RootRow >= header.RowCount)
         {
             return BlockValidationResult.InconsistentRegions;
         }
 
         var required = BlockLayout.TotalBlockBytes(header.SlotCapacity, header.NamePoolCapacity);
         return fileLength < required ? BlockValidationResult.InconsistentRegions : null;
+    }
+
+    /// <summary>Cursors within their capacities, and every region offset where the capacities put it.</summary>
+    [SuppressMessage("Roslynator", "RCS1242",
+        Justification = "BlockHeader is explicit-layout and intentionally mutable for field-by-field disk mapping; the in-parameter signature is spec-mandated.")]
+    static bool HasConsistentGeometry(in BlockHeader header)
+    {
+        return header.RowCount <= header.SlotCapacity && header.NamePoolUsed <= header.NamePoolCapacity &&
+               header.RowRegionOffset == BlockLayout.RowRegionOffset &&
+               header.SequenceRegionOffset == (ulong)BlockLayout.SequenceRegionOffset(header.SlotCapacity) &&
+               header.NamePoolOffset == (ulong)BlockLayout.NamePoolOffset(header.SlotCapacity);
     }
 }

@@ -69,11 +69,10 @@ sealed class SyntheticBlockBuilder : IDisposable
             _nextRow = rowIndex + 1;
         }
 
-        ref var header = ref _block.Header;
-        var nameOffsetBytes = header.NamePoolUsed;
+        var nameOffsetBytes = _block.NamePoolUsed;
         var poolCharacterIndex = (int)(nameOffsetBytes / sizeof(char));
         name.AsSpan().CopyTo(_block.NamePoolCharacters.Slice(poolCharacterIndex, name.Length));
-        header.NamePoolUsed = nameOffsetBytes + (uint)(name.Length * sizeof(char));
+        _block.PublishNamePoolUsed(nameOffsetBytes + (uint)(name.Length * sizeof(char)));
 
         ref var row = ref _block.Rows[(int)rowIndex];
         row = new FileRow
@@ -88,9 +87,9 @@ sealed class SyntheticBlockBuilder : IDisposable
         // does: the name offset, the name length, and the flags are one 64-bit value.
         FileRow.WriteDescriptorWord(ref row, nameOffsetBytes, (ushort)name.Length, columns.Flags);
 
-        if (header.RowCount <= rowIndex)
+        if (_block.RowCount <= rowIndex)
         {
-            header.RowCount = rowIndex + 1;
+            _block.PublishRowCount(rowIndex + 1);
         }
 
         return rowIndex;

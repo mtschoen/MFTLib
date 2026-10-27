@@ -26,7 +26,7 @@ sealed partial class BlockWriter
         get
         {
             using var access = Block.TakeAccess();
-            return Block.Header.RowCount;
+            return Block.RowCount;
         }
     }
 
@@ -36,7 +36,7 @@ sealed partial class BlockWriter
         get
         {
             using var access = Block.TakeAccess();
-            return Block.Header.SlotCapacity;
+            return Block.SlotCapacity;
         }
     }
 
@@ -58,8 +58,7 @@ sealed partial class BlockWriter
     public bool TryWriteRow(uint rowIndex, ReadOnlySpan<char> name, in RowColumns columns)
     {
         using var access = Block.TakeAccess();
-        ref var header = ref Block.Header;
-        if (rowIndex >= header.SlotCapacity)
+        if (rowIndex >= Block.SlotCapacity)
         {
             MarkCapacityExhaustedCore();
             return false;
@@ -90,6 +89,7 @@ sealed partial class BlockWriter
         row.ModifiedTicks = columns.ModifiedTicks;
         FileRow.WriteDescriptorWord(ref row, nameOffsetBytes, (ushort)name.Length, columns.Flags);
 
+        ref var header = ref Block.Header;
         if (isLive && !wasLive)
         {
             header.LiveRowCount++;
@@ -99,9 +99,9 @@ sealed partial class BlockWriter
             header.LiveRowCount--;
         }
 
-        if (rowIndex >= header.RowCount)
+        if (rowIndex >= Block.RowCount)
         {
-            header.RowCount = rowIndex + 1;
+            Block.PublishRowCount(rowIndex + 1);
         }
 
         if (Block._deletedChildren is { } links)
@@ -139,7 +139,7 @@ sealed partial class BlockWriter
     public bool TryRenameRow(uint rowIndex, ReadOnlySpan<char> name, uint parentRow)
     {
         using var access = Block.TakeAccess();
-        if (rowIndex >= Block.Header.SlotCapacity)
+        if (rowIndex >= Block.SlotCapacity)
         {
             MarkCapacityExhaustedCore();
             return false;
@@ -202,7 +202,7 @@ sealed partial class BlockWriter
     public void DetachRow(uint rowIndex)
     {
         using var access = Block.TakeAccess();
-        if (rowIndex >= Block.Header.SlotCapacity)
+        if (rowIndex >= Block.SlotCapacity)
         {
             MarkCapacityExhaustedCore();
             return;
@@ -233,7 +233,7 @@ sealed partial class BlockWriter
     public void InvalidateDeletedDescendants(uint ancestorRow)
     {
         using var access = Block.TakeAccess();
-        if (ancestorRow >= Block.Header.RowCount)
+        if (ancestorRow >= Block.RowCount)
         {
             return;
         }
@@ -332,7 +332,7 @@ sealed partial class BlockWriter
     /// </summary>
     void AddRowFlags(uint rowIndex, RowFlags additionalFlags)
     {
-        if (rowIndex >= Block.Header.SlotCapacity)
+        if (rowIndex >= Block.SlotCapacity)
         {
             MarkCapacityExhaustedCore();
             return;
@@ -361,16 +361,15 @@ sealed partial class BlockWriter
     /// <summary>Callers reach this only from members already holding an access scope.</summary>
     bool TryAppendName(ReadOnlySpan<char> name, out uint nameOffsetBytes)
     {
-        ref var header = ref Block.Header;
-        var used = header.NamePoolUsed;
-        if (!NamePool.TryAppend(Block.NamePoolCharacters, ref used, header.NamePoolCapacity, name,
+        var used = Block.NamePoolUsed;
+        if (!NamePool.TryAppend(Block.NamePoolCharacters, ref used, Block.NamePoolCapacity, name,
                 out nameOffsetBytes))
         {
             MarkCapacityExhaustedCore();
             return false;
         }
 
-        header.NamePoolUsed = used;
+        Block.PublishNamePoolUsed(used);
         return true;
     }
 }

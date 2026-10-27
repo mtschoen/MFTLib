@@ -73,8 +73,11 @@ Any use after disposal throws `ObjectDisposedException`.
 ## Scan protocol
 
 The producer queries MFT sizing, creates the client-owned block section and opens
-a scan channel. The host captures the journal cursor, scans MFT records into the
-shared block, completes and flushes it, then reads the journal from the armed cursor
+a scan channel. The host captures the journal cursor, opens the section, validates
+a private copy of its header against the mapped length and fails the request with
+an `Error` frame when the layout disagrees ([MFT blocks](index-format.md#mft-blocks)
+lists the checks), scans MFT records into the shared block using only that copy's
+geometry, completes and flushes it, then reads the journal from the armed cursor
 to the tip in bounded chunks, retaining none of those entries. It reports successful
 catch-up or a proven catch-up loss. [Checkpoint loss](checkpoint-loss.md)
 defines proof and recovery; [scan sizing](broker-scan-tuning.md#sizing-the-block)

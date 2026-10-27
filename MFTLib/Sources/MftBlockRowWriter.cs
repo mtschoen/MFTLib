@@ -56,14 +56,14 @@ static class MftBlockRowWriter
                 }
             }
 
-            progress?.Report(new BlockWriteProgress(recordsWritten, writer.Block.Header.NamePoolUsed,
+            progress?.Report(new BlockWriteProgress(recordsWritten, writer.Block.NamePoolUsed,
                 null, null));
             cancellationToken.ThrowIfCancellationRequested();
         }
 
         // A freed record's parent can arrive after it, so trust is decided once every row is written.
         freedRows?.DetachUntrusted(writer, cancellationToken);
-        return new BlockWriteResult(writer.RowCount, writer.Block.Header.NamePoolUsed,
+        return new BlockWriteResult(writer.RowCount, writer.Block.NamePoolUsed,
             skippedRecordCount);
     }
 

@@ -395,6 +395,21 @@ writes rows and names directly from parse batches, without resolving full paths.
 It stamps the armed journal cursor and writes the completed header last; a crash
 before completion leaves a block the client discards.
 
+The section header is shared with a less trusted process, so the broker treats it
+as input. `NamedBlockSection.OpenExisting` maps the whole section, takes one private
+copy of the header and validates it with `BlockHeader.ValidateSection`: magic,
+version, row count and name-pool used within their capacities, every region offset
+equal to the `BlockLayout` value for those capacities, and a total block size equal
+to the mapped length. A rejected section fails the scan request with an `Error`
+frame naming the `BlockValidationResult`. Every `BlockFile` keeps the capacities of
+the copy it was built from and derives its region offsets from them; spans and
+writer bounds checks never read the mapped header. The writer tracks row count and
+name-pool used itself and publishes each change to the header without reading it
+back: the creator writes the header's capacities and offsets once, the writer
+publishes its cursors, and only validation and display read them. After the broker reports the scan
+ready, the client validates the completed header and adopts its published cursors
+only when its capacities equal the client block's own.
+
 Journal mutation coalesces NTFS close records. NTFS ends every open cycle with a record
 that repeats the cycle's reasons plus `USN_REASON_CLOSE`, and the watch reads with
 `ReturnOnlyOnClose = 0`, so every intermediate record arrives. `JournalMutator` tracks,

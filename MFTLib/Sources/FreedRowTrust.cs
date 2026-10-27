@@ -11,17 +11,25 @@ namespace MFTLib;
 ///     <see cref="BlockLayout.MaximumPathDepth" /> components, never revisits a record and rebuilds to a path of at
 ///     most <see cref="MaximumPathUnits" /> UTF-16 units. A freed row that fails the rule is detached.
 /// </summary>
-sealed class FreedRowTrust(BlockFile block)
+sealed class FreedRowTrust
 {
     // The longest path NTFS can name, in UTF-16 code units.
     internal const int MaximumPathUnits = 32767;
 
     const uint RootRecord = 5;
 
-    BlockFile Block { get; } = block;
-    readonly ushort[] _parentSequences = new ushort[block.Header.SlotCapacity];
+    readonly ushort[] _parentSequences;
     readonly List<uint> _freedRows = [];
     RecordFacts? _rootRecord;
+
+    /// <summary>Sizes the per-row parent sequences from the block's own slot capacity.</summary>
+    public FreedRowTrust(BlockFile block)
+    {
+        Block = block;
+        _parentSequences = new ushort[block.SlotCapacity];
+    }
+
+    BlockFile Block { get; }
 
     /// <summary>What the rule needs to know about a record that is a hop's parent.</summary>
     readonly record struct RecordFacts(bool IsDirectory, bool IsFreed, ushort Sequence);
@@ -84,7 +92,7 @@ sealed class FreedRowTrust(BlockFile block)
         var depth = 0;
         long units = 0;
         var current = origin;
-        var rowCount = Block.Header.RowCount;
+        var rowCount = Block.RowCount;
         while (current != RootRecord && current < rowCount && depth < BlockLayout.MaximumPathDepth)
         {
             if (visited[..visitedCount].Contains(current))
@@ -128,7 +136,7 @@ sealed class FreedRowTrust(BlockFile block)
 
     bool TryGetFacts(uint record, out RecordFacts facts)
     {
-        if (record < Block.Header.RowCount)
+        if (record < Block.RowCount)
         {
             ref readonly var row = ref Block.Rows[(int)record];
             if (row.IsInUse)

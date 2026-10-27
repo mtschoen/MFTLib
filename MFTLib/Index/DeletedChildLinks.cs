@@ -38,7 +38,7 @@ sealed class DeletedChildLinks
     {
         ArgumentNullException.ThrowIfNull(block);
         var links = new DeletedChildLinks();
-        var rowCount = block.Header.RowCount;
+        var rowCount = block.RowCount;
         var rows = block.Rows;
         for (var rowIndex = 0u; rowIndex < rowCount; rowIndex++)
         {

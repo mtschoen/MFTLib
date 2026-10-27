@@ -19,6 +19,13 @@ static class MftBlockValidation
             throw new InvalidOperationException($"Block validation failed: {validation}.");
         }
 
+        // A broker writes the block through its own mapping, so this block's cursors learn the
+        // published row count and name-pool length here, checked against its own capacities.
+        if (!block.TryAdoptPublishedCursors(header))
+        {
+            throw new InvalidOperationException($"Block validation failed: {BlockValidationResult.InconsistentRegions}.");
+        }
+
         if (header.ProducerKind != ProducerKind.Mft)
         {
             throw new InvalidOperationException("Block ProducerKind must be Mft.");

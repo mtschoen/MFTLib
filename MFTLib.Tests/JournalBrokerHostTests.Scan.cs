@@ -181,6 +181,37 @@ public partial class JournalBrokerHostTests
         }
     }
 
+    [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
+    [SupportedOSPlatform("windows")]
+    public async Task ArmAndScan_SectionHeaderRewrittenBeforeOpen_FailsTheScanWithTheRejection()
+    {
+        var sectionName = NamedBlockSection.BuildSectionName('C');
+        var (block, lifetime) = NamedBlockSection.Create(new BlockFileCreateOptions
+        {
+            Path = Path.Combine(Path.GetTempPath(), $"broker-block-{Guid.NewGuid():N}.bin"),
+            VolumeSerial = 123,
+            ProducerKind = ProducerKind.Mft,
+            RootRow = 5,
+            SlotCapacity = 128,
+            NamePoolCapacity = 1024,
+            DeleteOnClose = true
+        }, sectionName);
+        using (block)
+        using (lifetime)
+        {
+            block.Header.NamePoolOffset = BlockLayout.RowRegionOffset;
+            var host = ScanHost(scanDrive: (_, _, _, _, _, _) => [[ScanRecord(100, "a.txt")]]);
+            await using var harness = new HostChannelHarness(host, new RealBlockSectionWriter(TimeProvider.System));
+
+            var frames = await ScanFramesAsync(harness, 'C', sectionName);
+
+            Assert.AreEqual(BrokerFrameKind.Error, frames[^1].Kind);
+            Assert.Contains(nameof(BlockValidationResult.InconsistentRegions), frames[^1].Message!);
+            Assert.AreEqual(0u, block.Header.RowCount, "a refused section receives no rows");
+        }
+    }
+
     static async Task<RecordingBlockSectionWriter> ServeRetentionScanAsync(
         MftRecord[] records, IReadOnlyCollection<string>? retainedFileNames)
     {
