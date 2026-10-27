@@ -1,3 +1,4 @@
+// Holds the existing benchmark CLI, worker-memory, report, and comparison regression fixture in one partial module.
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text.RegularExpressions;
@@ -66,6 +67,14 @@ public partial class BenchmarkRunnerTests
         Assert.Contains("--- exact-search ---", output);
         Assert.Contains("--- substring-search ---", output);
         Assert.Contains($"Matches: {(rows == 1 ? 0 : 1)}", output);
+        Assert.Contains("  Peak private bytes: 100\n  Peak working set: 300\n  Memory measurement: windows-os-peak", output);
+        Assert.Contains("  Peak private bytes: 200\n  Peak working set: 300\n  Memory measurement: windows-os-peak", output);
+        Assert.IsLessThan(
+            output.IndexOf("--- substring-search ---", StringComparison.Ordinal),
+            output.IndexOf("Peak private bytes: 100", StringComparison.Ordinal));
+        Assert.IsGreaterThan(
+            output.IndexOf("--- substring-search ---", StringComparison.Ordinal),
+            output.IndexOf("Peak private bytes: 200", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -85,9 +94,15 @@ public partial class BenchmarkRunnerTests
     [TestMethod]
     public async Task Run_NativeTimings_Synthetic_PrintsTheIoFixupParseTotalBreakdown()
     {
-        Assert.AreEqual(0, await _runner.RunAsync(["native-timings", "--synthetic", "4096", "--iterations", "2"]));
+        var runner = new BenchmarkRunner(_output);
+        Assert.AreEqual(0, await runner.RunAsync(["native-timings", "--synthetic", "4096", "--iterations", "2"]));
         var output = _output.ToString();
+        Assert.Contains("Commit:", output);
         Assert.Contains("--- native-parse-timings ---", output);
+        Assert.MatchesRegex(@"(?m)^  Median: [0-9.]+ ms\r?$", output);
+        Assert.MatchesRegex(@"(?m)^  Peak private bytes: [1-9][0-9]*\r?$", output);
+        Assert.MatchesRegex(@"(?m)^  Peak working set: [1-9][0-9]*\r?$", output);
+        Assert.Contains("Memory measurement:", output);
         Assert.Contains("Records: 4096 examined", output);
         Assert.Contains("(median of 2 runs)", output);
         var milliseconds = new Dictionary<string, double>();
@@ -104,6 +119,10 @@ public partial class BenchmarkRunnerTests
         Assert.MatchesRegex(MyRegex(), output);
         Assert.Contains("buffered", output);
         Assert.DoesNotContain("disk is the bottleneck", output, "The verdict names a stage, not the disk.");
+
+        var reportPath = Path.Combine(_directory, "native-report.txt");
+        await File.WriteAllTextAsync(reportPath, output, TestContext.CancellationToken);
+        Assert.AreEqual(0, await runner.RunAsync(["compare", reportPath, reportPath, "native-parse-timings"]));
     }
 
     [TestMethod]
@@ -112,6 +131,10 @@ public partial class BenchmarkRunnerTests
         var path = Path.Combine(Path.GetTempPath(), $"missing-{Guid.NewGuid():N}.mft");
         Assert.AreEqual(1, await _runner.RunAsync(["native-timings", "--dump", path]));
         Assert.Contains("Error:", _output.ToString());
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            ScenarioMemoryProcess.MeasureAsync(
+                new ScenarioMemoryRequest("native-parse-timings", path, 1), TestContext.CancellationToken));
+        Assert.Contains("native-parse-timings", exception.Message);
     }
 
     [TestMethod]
@@ -131,8 +154,9 @@ public partial class BenchmarkRunnerTests
             void WriteBlock(char drive, ulong scanShape, ProducerKind producer = ProducerKind.Enumeration) =>
                 WriteCacheBlock(directory, directory, drive, scanShape, producer);
 
-            WriteBlock('T', SyntheticScanShape.Default(ProducerKind.Enumeration));
-            WriteBlock('U', SyntheticScanShape.Default(ProducerKind.Enumeration));
+            var expectedShape = SyntheticScanShape.Default(ProducerKind.Enumeration);
+            WriteBlock('T', expectedShape);
+            WriteBlock('U', expectedShape);
 
             // One block per row-shaping option the benchmark does not supply (issue #678): each must
             // be declined as an unsupported scan shape and its bytes left intact.
@@ -152,9 +176,20 @@ public partial class BenchmarkRunnerTests
                 WriteBlock(drive, shape, producer);
             }
 
+            var requests = new List<ScenarioMemoryRequest>();
+            var runner = new BenchmarkRunner(_output, TimeProvider.System, request =>
+            {
+                requests.Add(request);
+                Assert.IsNotNull(request.Index);
+                var blockPath = Path.Combine(request.InputPath, $"{request.Index.Drive}-00000001.mlix");
+                using var lockHandle = BlockOwnerLock.TryAcquire(blockPath);
+                Assert.IsNotNull(lockHandle, "Parent must release block ownership before starting the memory worker.");
+                return FixedMemoryAsync(request);
+            });
+
             var originals = Directory.GetFiles(directory, "*.mlix").ToDictionary(path => path, File.ReadAllBytes);
             Assert.HasCount(2 + declined.Length, originals);
-            Assert.AreEqual(1, await _runner.RunAsync(["index", "--cache-directory", directory]));
+            Assert.AreEqual(1, await runner.RunAsync(["index", "--cache-directory", directory]));
             var output = _output.ToString();
             Assert.Contains("Drive: T", output);
             Assert.Contains("Drive: U", output);
@@ -172,6 +207,20 @@ public partial class BenchmarkRunnerTests
             {
                 Assert.AreSequenceEqual(original.Value, await File.ReadAllBytesAsync(original.Key, TestContext.CancellationToken));
             }
+            CollectionAssert.AreEqual(
+                new (char, string, uint, uint, ulong)[]
+                {
+                    ('T', "exact-search", new CacheTag("TEST", 'T').PackedFourCc, 'T', expectedShape),
+                    ('T', "substring-search", new CacheTag("TEST", 'T').PackedFourCc, 'T', expectedShape),
+                    ('U', "exact-search", new CacheTag("TEST", 'U').PackedFourCc, 'U', expectedShape),
+                    ('U', "substring-search", new CacheTag("TEST", 'U').PackedFourCc, 'U', expectedShape)
+                },
+                requests.Select(request => (
+                    request.Index!.Drive,
+                    request.Scenario,
+                    request.Index.PackedFourCc,
+                    request.Index.TagVersion,
+                    request.Index.ScanShape)).ToArray());
         }
         finally { Directory.Delete(directory, true); }
     }
@@ -276,6 +325,138 @@ public partial class BenchmarkRunnerTests
         Assert.Contains("System Info", output);
         Assert.Contains("CPU:", output);
         Assert.Contains("Disk:", output);
+        var informational = typeof(BenchmarkRunner).Assembly
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .Cast<System.Reflection.AssemblyInformationalVersionAttribute>().Single().InformationalVersion;
+        var separator = informational.IndexOf('+', StringComparison.Ordinal);
+        Assert.IsTrue(separator >= 0, "The benchmark build must carry SourceRevisionId.");
+        Assert.Contains($"Commit: {informational[(separator + 1)..]}", output);
+        Assert.ThrowsExactly<InvalidOperationException>(() => BenchmarkRunner.ParseBuildCommit("1.0.0"));
+        Assert.ThrowsExactly<InvalidOperationException>(() => BenchmarkRunner.ParseBuildCommit("1.0.0+"));
+    }
+
+    [TestMethod]
+    [DataRow(true, 900L, "windows-os-peak")]
+    [DataRow(false, 800L, "linux-sampled-vmdata-10ms")]
+    public async Task MemoryCapture_RetainsThePeakAndSamplesBeforeFinish(
+        bool operatingSystemPeak, long expectedPrivate, string expectedMethod)
+    {
+        var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var readings = new Queue<MemoryReading>(
+        [
+            new MemoryReading(100, 300, 400),
+            new MemoryReading(800, 900, 1000),
+            new MemoryReading(200, 900, 1000)
+        ]);
+        await using var capture = new ScenarioMemoryCapture(
+            () => readings.Count > 1 ? readings.Dequeue() : readings.Peek(),
+            operatingSystemPeak,
+            clock);
+        capture.Sample();
+        clock.Advance(TimeSpan.FromMilliseconds(10));
+        var result = await capture.FinishAsync();
+        Assert.AreEqual(expectedPrivate, result.PeakPrivateBytes);
+        Assert.AreEqual(1000L, result.PeakWorkingSetBytes);
+        Assert.AreEqual(expectedMethod, result.Method);
+        Assert.AreEqual(Environment.ProcessId, result.ProcessId);
+    }
+
+    [TestMethod]
+    public async Task MemoryCapture_SamplerFailureCannotProduceAResult()
+    {
+        var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var readings = new Queue<MemoryReading>([new MemoryReading(100, 0, 200)]);
+        await using (var capture = new ScenarioMemoryCapture(
+            () => readings.TryDequeue(out var reading) ? reading : throw new IOException("counter unavailable"),
+            false, clock))
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(10));
+            var exception = await Assert.ThrowsAsync<IOException>(() => capture.FinishAsync());
+            Assert.Contains("counter unavailable", exception.Message);
+            Assert.ThrowsExactly<IOException>(() => capture.Sample());
+        }
+
+        await using var zeroCapture = new ScenarioMemoryCapture(
+            () => new MemoryReading(0, 0, 0), true, clock);
+        var zeroException = await Assert.ThrowsAsync<InvalidOperationException>(() => zeroCapture.FinishAsync());
+        Assert.Contains("Process memory counters are unavailable.", zeroException.Message);
+        Assert.ThrowsExactly<PlatformNotSupportedException>(
+            () => ScenarioMemoryCapture.EnsureSupportedPlatform(isWindows: false, isLinux: false));
+    }
+
+    [TestMethod]
+    public async Task MemoryProcess_UsesANewProcessForEveryScenario()
+    {
+        var startInfo = ScenarioMemoryProcess.CreateStartInfo(typeof(BenchmarkRunner).Assembly.Location);
+        CollectionAssert.Contains(startInfo.ArgumentList, "--measure-memory");
+
+        var cache = Directory.CreateDirectory(Path.Combine(_directory, "cache with spaces")).FullName;
+        var expectedShape = SyntheticScanShape.Default(ProducerKind.Enumeration);
+        WriteCacheBlock(cache, cache, 'T', expectedShape);
+        var input = new IndexMemoryInput('T', cache, 1, ProducerKind.Enumeration,
+            new CacheTag("TEST", 'T').PackedFourCc, 'T', expectedShape);
+        var first = await ScenarioMemoryProcess.MeasureAsync(
+            new ScenarioMemoryRequest("exact-search", cache, 1, input), TestContext.CancellationToken);
+        var second = await ScenarioMemoryProcess.MeasureAsync(
+            new ScenarioMemoryRequest("substring-search", cache, 1, input), TestContext.CancellationToken);
+        Assert.AreNotEqual(Environment.ProcessId, first.ProcessId);
+        Assert.AreNotEqual(Environment.ProcessId, second.ProcessId);
+        Assert.IsTrue(first.PeakPrivateBytes > 0 && second.PeakPrivateBytes > 0);
+        Assert.IsTrue(first.PeakWorkingSetBytes > 0 && second.PeakWorkingSetBytes > 0);
+        Assert.AreEqual(first.Method, second.Method);
+        Assert.IsTrue(File.Exists(Path.Combine(cache, "T-00000001.mlix")));
+
+        var walkRoot = Directory.CreateDirectory(Path.Combine(_directory, "walk-root")).FullName;
+        foreach (var walkScenario in new[] { "enumeration-walk-sequential", "enumeration-walk-parallel" })
+        {
+            var walkResult = await ScenarioMemoryProcess.MeasureAsync(
+                new ScenarioMemoryRequest(walkScenario, walkRoot, 1, Rows: 1), TestContext.CancellationToken);
+            Assert.AreNotEqual(Environment.ProcessId, walkResult.ProcessId);
+            Assert.IsGreaterThan(0, walkResult.PeakPrivateBytes);
+            Assert.IsGreaterThan(0, walkResult.PeakWorkingSetBytes);
+        }
+        Assert.IsTrue(Directory.Exists(walkRoot));
+
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            ScenarioMemoryProcess.MeasureAsync(
+                new ScenarioMemoryRequest("exact-search", cache, 1, input), cancelled.Token));
+
+        var missingCache = Path.Combine(_directory, "missing-cache");
+        var missingFailure = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            ScenarioMemoryProcess.MeasureAsync(
+                new ScenarioMemoryRequest("exact-search", missingCache, 1, input), TestContext.CancellationToken));
+        Assert.Contains("exact-search", missingFailure.Message);
+
+        foreach (var payload in new[]
+        {
+            "",
+            "null",
+            "{invalid",
+            "{\"Scenario\":\"exact-search\",\"InputPath\":\"\",\"Iterations\":1}",
+            "{\"Scenario\":\"unknown\",\"InputPath\":\"x\",\"Iterations\":1}",
+            "{\"Scenario\":\"exact-search\",\"InputPath\":\"x\",\"Iterations\":1}",
+            "{\"Scenario\":\"native-parse-timings\",\"InputPath\":\"x\",\"Iterations\":1,\"Rows\":1}",
+            "{\"Scenario\":\"enumeration-walk-sequential\",\"InputPath\":\"x\",\"Iterations\":1,\"Rows\":0}"
+        })
+        {
+            using var workerOut = new StringWriter();
+            using var workerError = new StringWriter();
+            Assert.AreEqual(1, await BenchmarkRunner.RunMemoryWorkerAsync(
+                new StringReader(payload), workerOut, workerError));
+            Assert.AreEqual("", workerOut.ToString());
+            Assert.StartsWith("Error:", workerError.ToString());
+        }
+
+        Assert.ThrowsExactly<InvalidOperationException>(
+            () => ScenarioMemoryProcess.ParseWorkerResult("exact-search", 1, 0, "{bad", ""));
+        Assert.ThrowsExactly<InvalidOperationException>(
+            () => ScenarioMemoryProcess.ParseWorkerResult(
+                "exact-search", 1, 0, "{\"PeakPrivateBytes\":0,\"PeakWorkingSetBytes\":1,\"Method\":\"m\",\"ProcessId\":1}", ""));
+        Assert.ThrowsExactly<InvalidOperationException>(
+            () => ScenarioMemoryProcess.ParseWorkerResult(
+                "exact-search", 1, 0, "{\"PeakPrivateBytes\":1,\"PeakWorkingSetBytes\":1,\"Method\":\"m\",\"ProcessId\":2}", ""));
     }
 
     [TestMethod]
@@ -294,6 +475,12 @@ public partial class BenchmarkRunnerTests
         await File.WriteAllTextAsync(report, "keep me", TestContext.CancellationToken);
         var emptyCache = Directory.CreateDirectory(Path.Combine(_directory, "empty-cache")).FullName;
         Assert.AreEqual(1, await _runner.RunAsync(["index", "--cache-directory", emptyCache, "--out", report]));
+        Assert.AreEqual("keep me", await File.ReadAllTextAsync(report, TestContext.CancellationToken));
+
+        var failingRunner = new BenchmarkRunner(_output, TimeProvider.System,
+            _ => throw new InvalidOperationException("worker failed"));
+        Assert.AreEqual(1, await failingRunner.RunAsync(["index", "--synthetic", "2", "--out", report]));
+        Assert.Contains("worker failed", _output.ToString());
         Assert.AreEqual("keep me", await File.ReadAllTextAsync(report, TestContext.CancellationToken));
     }
 
@@ -314,8 +501,22 @@ public partial class BenchmarkRunnerTests
         var saved = await File.ReadAllTextAsync(path, TestContext.CancellationToken);
         Assert.Contains("--- exact-search ---", saved);
         Assert.Contains("--- substring-search ---", saved);
+        Assert.AreEqual(2, Regex.Count(saved, @"(?m)^  Peak private bytes: [1-9][0-9]*\r?$"));
+        Assert.AreEqual(2, Regex.Count(saved, @"(?m)^  Peak working set: [1-9][0-9]*\r?$"));
+        Assert.Contains($"Commit: {BenchmarkRunner.GetBuildCommit()}", saved);
         Assert.Contains($"Report saved to {Path.GetFullPath(path)}", output.ToString());
         Assert.AreEqual(0, await runner.RunAsync(["compare", path, path, "exact-search"]));
+        var changed = new Regex(@"(?m)^(  Peak private bytes: )([0-9]+)(\r?)$")
+            .Replace(saved, match =>
+            {
+                var bytes = long.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
+                var grown = checked((long)decimal.Floor(bytes * 1.25m) + 1);
+                return match.Groups[1].Value + grown.ToString(CultureInfo.InvariantCulture) + match.Groups[3].Value;
+            }, 1);
+        var grownPath = Path.Combine(_directory, "real-memory-growth.txt");
+        await File.WriteAllTextAsync(grownPath, changed, TestContext.CancellationToken);
+        Assert.AreEqual(1, await runner.RunAsync(["compare", path, grownPath, "exact-search"]));
+        Assert.AreEqual(0, await runner.RunAsync(["compare", path, grownPath, "substring-search"]));
         await output.WriteLineAsync("still owned by caller");
         Assert.Contains("still owned by caller", output.ToString());
     }
@@ -331,10 +532,29 @@ public partial class BenchmarkRunnerTests
             Assert.AreEqual(0, await _runner.RunAsync(["compare", baselinePath, baselinePath, scenario]));
         }
 
+        var saved = await File.ReadAllTextAsync(baselinePath, TestContext.CancellationToken);
+        var changed = new Regex(@"(?m)^(  Peak private bytes: )([0-9]+)(\r?)$")
+            .Replace(saved, match =>
+            {
+                var bytes = long.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
+                var grown = checked((long)decimal.Floor(bytes * 1.25m) + 1);
+                return match.Groups[1].Value + grown.ToString(CultureInfo.InvariantCulture) + match.Groups[3].Value;
+            }, 1);
+        var memoryGrowthPath = Path.Combine(_directory, "memory-growth.txt");
+        await File.WriteAllTextAsync(memoryGrowthPath, changed, TestContext.CancellationToken);
+        Assert.AreEqual(1, await _runner.RunAsync(["compare", baselinePath, memoryGrowthPath, "exact-search"]));
+        Assert.AreEqual(0, await _runner.RunAsync(["compare", baselinePath, memoryGrowthPath, "substring-search"]));
+        Assert.Contains("Peak private bytes", _output.ToString());
+        Assert.Contains("FAILED", _output.ToString());
+
         var literalBaseline = Path.Combine(_directory, "literal-baseline.txt");
         var grownPath = Path.Combine(_directory, "grown.txt");
-        await File.WriteAllTextAsync(literalBaseline, "--- exact-search ---\n  Median: 4.000 ms; Matches: 1\n--- substring-search ---\n  Median: 4.000 ms; Matches: 1", TestContext.CancellationToken);
-        await File.WriteAllTextAsync(grownPath, "--- exact-search ---\n  Median: 5.001 ms; Matches: 1\n--- substring-search ---\n  Median: 5.001 ms; Matches: 1", TestContext.CancellationToken);
+        await File.WriteAllTextAsync(literalBaseline,
+            ScenarioReport("4.000") + ScenarioReport("4.000", scenario: "substring-search"),
+            TestContext.CancellationToken);
+        await File.WriteAllTextAsync(grownPath,
+            ScenarioReport("5.001") + ScenarioReport("5.001", scenario: "substring-search"),
+            TestContext.CancellationToken);
 
         foreach (var scenario in new[] { "exact-search", "substring-search" })
         {
@@ -345,40 +565,100 @@ public partial class BenchmarkRunnerTests
     }
 
     [TestMethod]
-    [DataRow("4.000", "5.000", 0)]
-    [DataRow("0.020", "0.025", 0)]
-    [DataRow("4.000", "5.001", 1)]
-    [DataRow("0.020", "0.026", 1)]
-    public async Task Compare_GrowthAgainstTheBound(string before, string after, int expectedExitCode)
+    [DataRow("4.000", "5.000", 100L, 125L, 0)]
+    [DataRow("0.020", "0.025", 100L, 100L, 0)]
+    [DataRow("4.000", "5.001", 100L, 100L, 1)]
+    [DataRow("0.020", "0.026", 100L, 100L, 1)]
+    [DataRow("4.000", "4.000", 100L, 126L, 1)]
+    [DataRow("4.000", "1.000", 100L, 126L, 1)]
+    [DataRow("4.000", "5.001", 100L, 50L, 1)]
+    public async Task Compare_GrowthAgainstTheBound(
+        string before, string after, long beforePrivate, long afterPrivate, int expectedExitCode)
     {
-        Assert.AreEqual(expectedExitCode, await Compare($"--- exact-search ---\n  Median: {before} ms; Matches: 1",
-            $"--- exact-search ---\n  Median: {after} ms; Matches: 1"));
+        var previousCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
+            Assert.AreEqual(expectedExitCode, await Compare(
+                ScenarioReport(before, beforePrivate),
+                ScenarioReport(after, afterPrivate)));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previousCulture;
+        }
     }
 
     [TestMethod]
     public async Task Compare_SpeedupAndZeroBaseline()
     {
-        Assert.AreEqual(0, await Compare("--- exact-search ---\n  Median: 4.000 ms", "--- exact-search ---\n  Median: 1.000 ms"));
-        Assert.AreEqual(0, await Compare("--- exact-search ---\n  Median: 0.000 ms", "--- exact-search ---\n  Median: 0.000 ms"));
-        Assert.AreEqual(1, await Compare("--- exact-search ---\n  Median: 0.000 ms", "--- exact-search ---\n  Median: 0.001 ms"));
+        Assert.AreEqual(0, await Compare(ScenarioReport("4.000"), ScenarioReport("1.000")));
+        Assert.AreEqual(0, await Compare(ScenarioReport("0.000"), ScenarioReport("0.000")));
+        Assert.AreEqual(1, await Compare(ScenarioReport("0.000"), ScenarioReport("0.001")));
+        Assert.AreEqual(1, await Compare(
+            ScenarioReport("0.0000000000000000000000000001"),
+            ScenarioReport("79228162514264337593543950335")));
+        Assert.Contains("invalid measurement range", _output.ToString());
     }
 
     [TestMethod]
     public async Task Compare_ReadsTheNamedScenarioBlock()
     {
-        const string report = "--- exact-search ---\r\n  Median: 1.000 ms\r\n--- substring-search ---\r\n  Median: 9.000 ms";
+        var report = (ScenarioReport("1.000") + ScenarioReport("9.000", scenario: "substring-search"))
+            .Replace("\n", "\r\n", StringComparison.Ordinal);
         Assert.AreEqual(0, await Compare(report, report.Replace("1.000", "1.100", StringComparison.Ordinal)));
+        var measurements = _runner.ReadScenarioMeasurements(
+            Path.Combine(_directory, "before.txt"), "exact-search", "Baseline before");
+        Assert.AreEqual(200L, measurements?.PeakWorkingSetBytes);
         Assert.AreEqual(1, await Compare(report, report.Replace("9.000", "99.000", StringComparison.Ordinal), "substring-search"));
+
+        var firstBlockMissingPrivate =
+            "--- exact-search ---\r\n  Median: 1.000 ms\r\n  Peak working set: 200\r\n  Memory measurement: windows-os-peak\r\n" +
+            ScenarioReport("9.000", scenario: "substring-search").Replace("\n", "\r\n", StringComparison.Ordinal);
+        Assert.AreEqual(1, await Compare(firstBlockMissingPrivate, report));
+        Assert.Contains("no peak private bytes", _output.ToString());
     }
 
     [TestMethod]
     [DataRow("")]
     [DataRow("--- exact-search ---\n  Matches: 1")]
     [DataRow("--- other ---\n  Median: 1.000 ms")]
+    [DataRow("--- exact-search ---\n  Median: 1.000 ms; Extra: 1")]
     public async Task Compare_MissingScenarioOrMedian_ReturnsOne(string afterReport)
     {
-        Assert.AreEqual(1, await Compare("--- exact-search ---\n  Median: 1.000 ms", afterReport));
+        Assert.AreEqual(1, await Compare(ScenarioReport("1.000"), afterReport));
         Assert.Contains("no median for scenario 'exact-search'", _output.ToString());
+    }
+
+    [TestMethod]
+    [DataRow("", "  Peak working set: 200\n", "  Memory measurement: windows-os-peak\n", "no peak private bytes")]
+    [DataRow("  Peak private bytes: -1\n", "  Peak working set: 200\n", "  Memory measurement: windows-os-peak\n", "invalid peak private bytes")]
+    [DataRow("  Peak private bytes: 0\n", "  Peak working set: 200\n", "  Memory measurement: windows-os-peak\n", "invalid peak private bytes")]
+    [DataRow("  Peak private bytes: nope\n", "  Peak working set: 200\n", "  Memory measurement: windows-os-peak\n", "invalid peak private bytes")]
+    [DataRow("  Peak private bytes: 9223372036854775808\n", "  Peak working set: 200\n", "  Memory measurement: windows-os-peak\n", "invalid peak private bytes")]
+    [DataRow("  Peak private bytes: 100\n  Peak private bytes: 100\n", "  Peak working set: 200\n", "  Memory measurement: windows-os-peak\n", "invalid peak private bytes")]
+    [DataRow("  Peak private bytes: 100\n", "", "  Memory measurement: windows-os-peak\n", "invalid peak working set")]
+    [DataRow("  Peak private bytes: 100\n", "  Peak working set: 0\n", "  Memory measurement: windows-os-peak\n", "invalid peak working set")]
+    [DataRow("  Peak private bytes: 100\n", "  Peak working set: 200\n", "", "no memory measurement method")]
+    [DataRow("  Peak private bytes: 100\n", "  Peak working set: 200\n", "  Memory measurement: \n", "no memory measurement method")]
+    [DataRow("  Peak private bytes: 100\n", "  Peak working set: 200\n", "  Memory measurement: linux-sampled-vmdata-10ms\n", "memory measurement methods differ")]
+    public async Task Compare_InvalidMemory_ReturnsOne(
+        string privateLine, string workingSetLine, string methodLine, string message)
+    {
+        var invalid = "--- exact-search ---\n  Median: 1.000 ms\n" + privateLine + workingSetLine + methodLine;
+        Assert.AreEqual(1, await Compare(invalid, ScenarioReport("1.000")));
+        if (message != "memory measurement methods differ")
+        {
+            Assert.Contains("Baseline before", _output.ToString());
+        }
+        Assert.Contains(message, _output.ToString());
+        _output.GetStringBuilder().Clear();
+        Assert.AreEqual(1, await Compare(ScenarioReport("1.000"), invalid));
+        if (message != "memory measurement methods differ")
+        {
+            Assert.Contains("Benchmark after", _output.ToString());
+        }
+        Assert.Contains(message, _output.ToString());
     }
 
     [TestMethod]
@@ -388,7 +668,7 @@ public partial class BenchmarkRunnerTests
         var after = Path.Combine(_directory, "after.txt");
         Assert.AreEqual(1, await _runner.RunAsync(["compare", before, after, "exact-search"]));
         Assert.Contains($"Baseline before file not found: {before}", _output.ToString());
-        await File.WriteAllTextAsync(before, "--- exact-search ---\n  Median: 1.000 ms", TestContext.CancellationToken);
+        await File.WriteAllTextAsync(before, ScenarioReport("1.000"), TestContext.CancellationToken);
         Assert.AreEqual(1, await _runner.RunAsync(["compare", before, after, "exact-search"]));
         Assert.Contains($"Benchmark after file not found: {after}", _output.ToString());
     }
@@ -400,6 +680,15 @@ public partial class BenchmarkRunnerTests
         Assert.Contains("Usage: Benchmark.exe compare", _output.ToString());
     }
 
+    static string ScenarioReport(string median, long privateBytes = 100, long workingSet = 200,
+        string scenario = "exact-search", string method = "windows-os-peak") =>
+        string.Create(CultureInfo.InvariantCulture,
+            $"--- {scenario} ---\n  Median: {median} ms; Matches: 1\n  Peak private bytes: {privateBytes}\n  Peak working set: {workingSet}\n  Memory measurement: {method}\n");
+
+    static Task<ScenarioMemoryResult> FixedMemoryAsync(ScenarioMemoryRequest request) =>
+        Task.FromResult(new ScenarioMemoryResult(
+            request.Scenario == "exact-search" ? 100 : 200, 300, "windows-os-peak", Environment.ProcessId));
+
     async Task<int> Compare(string beforeReport, string afterReport, string scenario = "exact-search")
     {
         var before = Path.Combine(_directory, "before.txt");
@@ -408,7 +697,6 @@ public partial class BenchmarkRunnerTests
         await File.WriteAllTextAsync(after, afterReport, TestContext.CancellationToken);
         return await _runner.RunAsync(["compare", before, after, scenario]);
     }
-
 
     string _directory = null!;
     StringWriter _output = null!;
@@ -419,7 +707,7 @@ public partial class BenchmarkRunnerTests
     {
         _directory = Directory.CreateTempSubdirectory("benchmark-host-").FullName;
         _output = new StringWriter();
-        _runner = new BenchmarkRunner(_output);
+        _runner = new BenchmarkRunner(_output, TimeProvider.System, FixedMemoryAsync);
     }
 
     [TestCleanup]

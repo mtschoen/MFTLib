@@ -1,16 +1,24 @@
-
 namespace Benchmark;
 
 public partial class BenchmarkRunner
 {
     readonly TextWriter _output;
     readonly TimeProvider _timeProvider;
+    readonly Func<ScenarioMemoryRequest, Task<ScenarioMemoryResult>> _measureMemory;
 
     public BenchmarkRunner(TextWriter output, TimeProvider? timeProvider = null)
+        : this(output, timeProvider, request => ScenarioMemoryProcess.MeasureAsync(request))
+    {
+    }
+
+    internal BenchmarkRunner(TextWriter output, TimeProvider? timeProvider,
+        Func<ScenarioMemoryRequest, Task<ScenarioMemoryResult>> measureMemory)
     {
         ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(measureMemory);
         _output = TextWriter.Synchronized(output);
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _measureMemory = measureMemory;
     }
 
     public Task<int> RunAsync(string[] arguments)

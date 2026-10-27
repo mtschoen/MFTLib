@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Globalization;
 using MFTLib.Index;
 
@@ -26,7 +27,8 @@ public partial class BenchmarkRunner
             return 0;
         }
         catch (Exception exception) when (exception is IOException or ArgumentException
-                                              or InvalidOperationException or UnauthorizedAccessException)
+                                              or InvalidOperationException or UnauthorizedAccessException
+                                              or PlatformNotSupportedException or Win32Exception)
         {
             await _output.WriteLineAsync($"Error: {exception.Message}").ConfigureAwait(false);
             return 1;
@@ -108,8 +110,14 @@ public partial class BenchmarkRunner
                 parallel[iteration] = sequentialFirst ? second : first;
             }
 
+            var sequentialMemory = await _measureMemory(new ScenarioMemoryRequest(
+                "enumeration-walk-sequential", root, iterations, Rows: rows)).ConfigureAwait(false);
+            var parallelMemory = await _measureMemory(new ScenarioMemoryRequest(
+                "enumeration-walk-parallel", root, iterations, Rows: rows)).ConfigureAwait(false);
             var sequentialMedian = PrintEnumerationMedian("sequential", sequential, rows, log);
+            PrintMemory(sequentialMemory, log);
             var parallelMedian = PrintEnumerationMedian("parallel", parallel, rows, log);
+            PrintMemory(parallelMemory, log);
             log(parallelMedian > 0
                 ? string.Create(CultureInfo.InvariantCulture, $"Speedup (sequential / parallel): {sequentialMedian / parallelMedian:F3}x")
                 : "Speedup (sequential / parallel): unavailable (parallel median is zero)");
@@ -140,7 +148,8 @@ public partial class BenchmarkRunner
         }
     }
 
-    async Task<double> MeasureEnumerationWalkAsync(string root, string blockPath, uint rows, bool sequential)
+    internal async Task<double> MeasureEnumerationWalkAsync(
+        string root, string blockPath, uint rows, bool sequential, Action? afterProduce = null)
     {
         using var block = BlockFile.Create(new BlockFileCreateOptions
         {
@@ -164,6 +173,7 @@ public partial class BenchmarkRunner
         {
             throw new InvalidOperationException($"Incomplete enumeration: expected {rows} rows, produced {header.RowCount}, skipped {header.AccessDeniedSubtreeCount}, capacity exhausted {header.IsCapacityExhausted}.");
         }
+        afterProduce?.Invoke();
         return elapsed;
     }
 

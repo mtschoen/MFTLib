@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Globalization;
+using System.Text.RegularExpressions;
 using Benchmark;
 using MFTLib.Index;
 using MFTLibTestExtensions;
@@ -45,7 +46,7 @@ public partial class BenchmarkRunnerTests
         {
             var reportPath = Path.Combine(_directory, "walk report.txt");
             await using var output = new StringWriter();
-            var runner = new BenchmarkRunner(output, clock);
+            var runner = new BenchmarkRunner(output, clock, FixedMemoryAsync);
             Assert.AreEqual(0, await runner.RunAsync(["ENUMERATION-WALK",
                 "--directories", directories.ToString(CultureInfo.InvariantCulture),
                 "--files-per-directory", filesPerDirectory.ToString(CultureInfo.InvariantCulture),
@@ -63,6 +64,9 @@ public partial class BenchmarkRunnerTests
                 $"Median: {directories:F3} ms; Rows: {directories * (filesPerDirectory + 1)}"), report);
             Assert.Contains("Speedup (sequential / parallel): 1.000x", report);
             Assert.Contains("warm filesystem cache", report);
+            Assert.AreEqual(2, Regex.Count(report, @"(?m)^  Peak private bytes: 200\r?$"));
+            Assert.AreEqual(2, Regex.Count(report, @"(?m)^  Peak working set: 300\r?$"));
+            Assert.Contains($"Commit: {BenchmarkRunner.GetBuildCommit()}", report);
             Assert.HasCount(directories, visits);
             foreach (var (path, count) in visits)
             {
@@ -148,7 +152,7 @@ public partial class BenchmarkRunnerTests
     public async Task Run_EnumerationWalk_DefaultsAndZeroClock_ReportUnavailableRatio()
     {
         await using var output = new StringWriter();
-        var runner = new BenchmarkRunner(output, new FakeTimeProvider());
+        var runner = new BenchmarkRunner(output, new FakeTimeProvider(), FixedMemoryAsync);
         Assert.AreEqual(0, await runner.RunAsync(["enumeration-walk", "--directories", "2"]));
         Assert.Contains("Files: 2", output.ToString());
         Assert.Contains("median of 5 runs", output.ToString());
@@ -156,9 +160,11 @@ public partial class BenchmarkRunnerTests
     }
 
     [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public async Task Run_EnumerationWalk_IncompleteWalk_ReportsFailureAndCleansUp(bool throwBeforeReading)
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(false, true)]
+    public async Task Run_EnumerationWalk_IncompleteWalk_ReportsFailureAndCleansUp(
+        bool throwBeforeReading, bool throwDuringMemory)
     {
         var visits = new ConcurrentBag<string>();
         EnumerationWalkLimit.Hooks._directoryEntered = (_, path, _) =>
@@ -168,15 +174,25 @@ public partial class BenchmarkRunnerTests
             {
                 throw new IOException("injected read failure");
             }
-            Directory.Delete(path, recursive: true);
+            if (!throwDuringMemory)
+            {
+                Directory.Delete(path, recursive: true);
+            }
         };
         try
         {
             var report = Path.Combine(_directory, "report.txt");
             await File.WriteAllTextAsync(report, "keep me", TestContext.CancellationToken);
-            Assert.AreEqual(1, await _runner.RunAsync(["enumeration-walk", "--directories", "2", "--out", report]));
+            var runner = throwDuringMemory
+                ? new BenchmarkRunner(_output, TimeProvider.System,
+                    _ => throw new InvalidOperationException("injected memory failure"))
+                : _runner;
+            Assert.AreEqual(1, await runner.RunAsync(["enumeration-walk", "--directories", "2", "--out", report]));
             Assert.Contains("Error:", _output.ToString());
-            Assert.Contains(throwBeforeReading ? "injected read failure" : "Incomplete enumeration:", _output.ToString());
+            var expectedMessage = throwBeforeReading
+                ? "injected read failure"
+                : throwDuringMemory ? "injected memory failure" : "Incomplete enumeration:";
+            Assert.Contains(expectedMessage, _output.ToString());
             Assert.AreEqual("keep me", await File.ReadAllTextAsync(report, TestContext.CancellationToken));
             Assert.IsNotEmpty(visits);
             foreach (var path in visits)

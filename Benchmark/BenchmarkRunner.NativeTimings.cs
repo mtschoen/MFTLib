@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Globalization;
 using MFTLib;
 
@@ -30,11 +31,17 @@ public partial class BenchmarkRunner
                 await Task.Run(() => MftVolume.GenerateSyntheticMFT(syntheticPath, records)).ConfigureAwait(false);
             }
 
+            LogSystemInfo(_output.WriteLine);
             PrintNativeTimings(dumpPath, iterations, _output.WriteLine);
+            var memory = await _measureMemory(
+                    new ScenarioMemoryRequest("native-parse-timings", Path.GetFullPath(dumpPath), iterations))
+                .ConfigureAwait(false);
+            PrintMemory(memory, _output.WriteLine);
             return 0;
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or ArgumentException
-                                              or InvalidOperationException or UnauthorizedAccessException)
+                                              or InvalidOperationException or UnauthorizedAccessException
+                                              or PlatformNotSupportedException or Win32Exception)
         {
             await _output.WriteLineAsync($"Error: {exception.Message}").ConfigureAwait(false);
             return 1;
@@ -98,6 +105,7 @@ public partial class BenchmarkRunner
         var parse = Median(samples.Select(timings => timings.NativeParse), static (left, right) => (left + right) / 2);
         var total = Median(samples.Select(timings => timings.NativeTotal), static (left, right) => (left + right) / 2);
         log("--- native-parse-timings ---");
+        log(string.Create(CultureInfo.InvariantCulture, $"  Median: {total.TotalMilliseconds:F3} ms"));
         log($"  Records: {totalRecords} examined, {usedRecords} returned (median of {iterations} runs)");
         log(Phase("Native I/O", io, total));
         log(Phase("Native fixup", fixup, total));

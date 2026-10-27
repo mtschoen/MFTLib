@@ -41,6 +41,16 @@
     </ItemGroup>
   </Target>
 
+  <Target Name="CopyBenchmarkWorkerManifests" AfterTargets="Build" DependsOnTargets="ResolveReferences">
+    <ItemGroup>
+      <_BenchmarkWorkerAssembly Include="@(ReferenceCopyLocalPaths)"
+        Condition="'%(Filename)%(Extension)' == 'Benchmark.dll'" />
+      <_BenchmarkWorkerManifest Include="@(_BenchmarkWorkerAssembly->'%(RootDir)%(Directory)%(Filename).runtimeconfig.json')" />
+      <_BenchmarkWorkerManifest Include="@(_BenchmarkWorkerAssembly->'%(RootDir)%(Directory)%(Filename).deps.json')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_BenchmarkWorkerManifest)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+
   <ItemGroup>
     <None Include="PublicSurface\*.approved.txt" CopyToOutputDirectory="Always" Link="PublicSurface\%(Filename)%(Extension)" />
     <None Include="..\AGENTS.md" Link="repository-docs\AGENTS.md"

@@ -41,14 +41,17 @@ public partial class BenchmarkRunnerTests
             }
         });
 
-        Assert.AreEqual(1, await new BenchmarkRunner(output).RunAsync(["index", "--cache-directory", directory]));
+        Assert.AreEqual(
+            1,
+            await new BenchmarkRunner(output, TimeProvider.System, FixedMemoryAsync)
+                .RunAsync(["index", "--cache-directory", directory]));
 
         Assert.IsTrue(output.Triggered, output.ToString());
         Assert.Contains("Drive B: Failed", output.ToString());
         // An MFT block names a drive letter, and only Windows has a drive root to open it under;
         // elsewhere the slot is offline and never opened, so its bytes survive for that reason.
         Assert.Contains(OperatingSystem.IsWindows() ? "Drive C: Failed" : "Drive C: Offline",
-output.ToString());
+            output.ToString());
         var deleted = replacements.Keys.Where(path => !File.Exists(path)).Select(Path.GetFileName).ToList();
         Assert.IsEmpty(deleted, $"deleted: {string.Join(", ", deleted)}");
         foreach (var (path, bytes) in replacements)

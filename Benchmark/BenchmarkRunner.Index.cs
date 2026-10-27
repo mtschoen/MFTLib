@@ -54,6 +54,7 @@ public partial class BenchmarkRunner
             ? SystemInfo.QueryWindowsHardware(AppContext.BaseDirectory)
             : SystemInfo.DescribeWithoutWmi();
         log("System Info");
+        log($"  Commit: {GetBuildCommit()}");
         log($"  Build:   {SystemInfo.DefaultGetBuildConfiguration()}");
         log($"  OS:      {hardware.OperatingSystem} ({Environment.OSVersion.Version})");
         log($"  CPU:     {hardware.Processor}");
@@ -65,6 +66,24 @@ public partial class BenchmarkRunner
         log($"  RAM:     {hardware.Memory}");
         log($"  Disk:    {hardware.DiskModel}");
         log($"  .NET:    {RuntimeInformation.FrameworkDescription}");
+    }
+
+    internal static string GetBuildCommit() =>
+        ParseBuildCommit(typeof(BenchmarkRunner).Assembly
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .Cast<System.Reflection.AssemblyInformationalVersionAttribute>()
+            .Single().InformationalVersion);
+
+    internal static string ParseBuildCommit(string informational)
+    {
+        var separator = informational.IndexOf('+', StringComparison.Ordinal);
+        if (separator < 0 || separator == informational.Length - 1)
+        {
+            throw new InvalidOperationException(
+                "Benchmark build has no embedded source revision; rebuild from a Git checkout.");
+        }
+
+        return informational[(separator + 1)..];
     }
 
     static bool TryParseIndexArguments(string[] arguments, out uint rows, out string? cacheDirectory,
@@ -162,26 +181,62 @@ public partial class BenchmarkRunner
                 continue;
             }
 
-            await using var index = await FileIndex.OpenAsync(new FileIndexOptions
+            var lines = new List<string>();
+            await using (var index = await FileIndex.OpenAsync(new FileIndexOptions
             {
                 CacheDirectory = directory,
                 CacheMode = CacheMode.ExistingOnly,
                 CacheTag = cacheTag,
                 Drives = [new IndexedDrive(candidate.File.Drive, candidate.RootDirectory, candidate.File.VolumeSerial,
                     producer)]
-            }, CancellationToken.None);
-            using var borrow = index.BorrowCurrentSnapshot();
-            var drive = LookupEngine.FindDriveBlock(borrow.DriveBlocks, candidate.File.Drive);
-            if (drive is null)
+            }, CancellationToken.None))
             {
-                log($"Error: Drive {candidate.File.Drive}: {index.Drives[0].State}.");
-                exitCode = 1;
-                continue;
+                using var borrow = index.BorrowCurrentSnapshot();
+                var drive = LookupEngine.FindDriveBlock(borrow.DriveBlocks, candidate.File.Drive);
+                if (drive is null)
+                {
+                    log($"Error: Drive {candidate.File.Drive}: {index.Drives[0].State}.");
+                    exitCode = 1;
+                    continue;
+                }
+
+                PrintIndexMetrics(index, drive, iterations, lines.Add);
             }
 
-            PrintIndexMetrics(index, drive, iterations, log);
+            var input = new IndexMemoryInput(candidate.File.Drive.Letter, candidate.RootDirectory,
+                candidate.File.VolumeSerial, producer, cacheTag.PackedFourCc, cacheTag.Version, storedShape);
+            await AppendIndexMemoryAsync(lines, directory, iterations, input, log).ConfigureAwait(false);
         }
         return exitCode;
+    }
+
+    async Task AppendIndexMemoryAsync(List<string> lines, string directory, int iterations,
+        IndexMemoryInput input, Action<string> log)
+    {
+        var exact = await _measureMemory(
+            new ScenarioMemoryRequest("exact-search", directory, iterations, input)).ConfigureAwait(false);
+        var substring = await _measureMemory(
+            new ScenarioMemoryRequest("substring-search", directory, iterations, input)).ConfigureAwait(false);
+        ScenarioMemoryResult? pending = null;
+        foreach (var line in lines)
+        {
+            if (line.StartsWith("--- ", StringComparison.Ordinal))
+            {
+                if (pending is not null)
+                {
+                    PrintMemory(pending, log);
+                }
+
+                pending = line == "--- exact-search ---" ? exact : substring;
+            }
+
+            log(line);
+        }
+
+        if (pending is not null)
+        {
+            PrintMemory(pending, log);
+        }
     }
 
     void PrintIndexMetrics(FileIndex index, DriveBlock drive, int iterations, Action<string> log)
