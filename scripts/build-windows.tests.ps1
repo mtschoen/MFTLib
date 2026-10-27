@@ -507,6 +507,7 @@ Assert-Equal (Test-Path -LiteralPath $sharedPropsPath -PathType Leaf) $true 'sha
 $fixtureRoot = Join-Path ([IO.Path]::GetTempPath()) ('MFTLib native items ' + [guid]::NewGuid().ToString('N'))
 try {
     New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
+    Copy-Item -LiteralPath (Join-Path $sourceRoot 'Directory.Build.props') -Destination $fixtureRoot
     Copy-Item -LiteralPath $sharedPropsPath -Destination $fixtureRoot
     Set-Content -LiteralPath (Join-Path $fixtureRoot 'AGENTS.md') -Value 'fixture document for the test project copy item'
     $projects = @('MFTLib/MFTLib.csproj', 'MFTLib.Tests/MFTLib.Tests.csproj')
@@ -536,7 +537,7 @@ try {
         foreach ($relativeProject in $projects) {
             $projectPath = Join-Path $fixtureRoot $relativeProject
             $msbuildArguments = @($projectPath, '-nologo', '-verbosity:quiet', '-getItem:None', "-p:OS=$($case.OperatingSystem)",
-                '-p:ImportDirectoryBuildProps=false', '-p:ImportDirectoryBuildTargets=false')
+                '-p:ImportDirectoryBuildTargets=false')
             if ($case.Flavor) { $msbuildArguments += "-p:MFTLibNativeLinuxFlavor=$($case.Flavor)" }
             $output = & dotnet msbuild @msbuildArguments
             if ($LASTEXITCODE -ne 0) { throw "MSBuild evaluation failed: $relativeProject / $($case.Name)" }
@@ -578,7 +579,7 @@ try {
             (Get-Item -LiteralPath $existing).LastWriteTimeUtc = [DateTime]::UtcNow.AddHours(1)
             $projectPath = Join-Path $fixtureRoot $relativeProject
             $copyOutput = & dotnet msbuild $projectPath -nologo -verbosity:quiet -restore '-p:OS=Unix' "-p:MFTLibNativeLinuxFlavor=$($switch.Flavor)" `
-                "-p:OutDir=$outputDirectory" '-p:ImportDirectoryBuildProps=false' '-p:ImportDirectoryBuildTargets=false' `
+                "-p:OutDir=$outputDirectory" '-p:ImportDirectoryBuildTargets=false' `
                 '-t:GetCopyToOutputDirectoryItems;_CopyOutOfDateSourceItemsToOutputDirectoryAlways;_CopyOutOfDateSourceItemsToOutputDirectory' |
                 Out-String
             if ($LASTEXITCODE -ne 0) { throw "MSBuild copy failed: $relativeProject / $($switch.Name)`n$copyOutput" }
@@ -594,12 +595,12 @@ $projectPaths = @(& git -C $sourceRoot ls-files -- '*.csproj' '*.vcxproj')
 if ($LASTEXITCODE -ne 0 -or $projectPaths.Count -eq 0) {
     throw 'Cannot enumerate tracked project files for the platform contract'
 }
-foreach ($relativePath in @('MFTLib.sln') + $projectPaths) {
+foreach ($relativePath in @('MFTLib.sln', 'Directory.Build.props') + $projectPaths) {
     $text = Get-Content -LiteralPath (Join-Path $sourceRoot $relativePath) -Raw
     if ($text -match '\b(?:x86|Win32)\b') {
         throw "$relativePath declares an unsupported x86/Win32 configuration"
     }
-    if ($relativePath.EndsWith('.csproj')) {
+    if ($relativePath -eq 'Directory.Build.props' -or $relativePath -like 'scripts/*.csproj') {
         [xml] $project = $text
         $platforms = @($project.SelectNodes('/Project/PropertyGroup/Platforms'))
         Assert-Equal $platforms.Count 1 "$relativePath platform declaration count"

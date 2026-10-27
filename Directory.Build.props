@@ -4,10 +4,13 @@
     <Version>0.3.0</Version>
   </PropertyGroup>
 
-  <!-- Analyzer / code-style gate. Conditioned on .csproj so the MFTLibNative
-       vcxproj (which also imports this file) doesn't pick up a C#-only Roslyn
-       analyzer PackageReference. -->
+  <!-- Managed defaults and analyzer/code-style settings apply only to C# projects.
+       MFTLibNative.vcxproj also imports this file. -->
   <PropertyGroup Condition="'$(MSBuildProjectExtension)' == '.csproj'">
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Platforms>x64</Platforms>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisLevel>latest-Recommended</AnalysisLevel>
     <!-- Turns the .editorconfig naming/style rules into build diagnostics. -->

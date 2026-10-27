@@ -7,9 +7,6 @@
        This ships as the separate MFTLib.TestExtensions package and is never folded
        into the MFTLib package. -->
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <AssemblyName>MFTLibTestExtensions</AssemblyName>
     <IsPackable>true</IsPackable>
     <PackageId>MFTLib.TestExtensions</PackageId>
@@ -27,7 +24,6 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
-    <Platforms>x64</Platforms>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
