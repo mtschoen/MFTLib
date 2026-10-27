@@ -1,6 +1,6 @@
 namespace SampleProgram.Direct;
 
-enum DirectVerb { Scan, Search, Tree, Open, Largest, DuplicateNames }
+enum DirectVerb { Scan, Search, Tree, Children, Open, Largest, DuplicateNames }
 
 /// <summary>Where the index gets its MFT: the live volume of this elevated process, or a saved MFT file.</summary>
 enum SourceKind { Local, Dump }
@@ -17,6 +17,7 @@ sealed partial record DirectArguments(DirectVerb Verb, string Drive)
         ["scan"] = DirectVerb.Scan,
         ["search"] = DirectVerb.Search,
         ["tree"] = DirectVerb.Tree,
+        ["children"] = DirectVerb.Children,
         ["open"] = DirectVerb.Open,
         ["largest"] = DirectVerb.Largest,
         ["duplicate-names"] = DirectVerb.DuplicateNames
@@ -28,7 +29,7 @@ sealed partial record DirectArguments(DirectVerb Verb, string Drive)
         "               [--min-size N] [--max-size N] [--after D] [--before D] [--stream] [--limit N] [--include-freed]",
         "  --after and --before are inclusive UTC bounds; use a timestamp ending in Z, such as 2026-08-01T00:00:00Z. No Kind conversion is performed.",
         "  tree DRIVE [--path P] [--depth N]    open DRIVE --path P    largest DRIVE [--count N] [--under P]",
-        "  duplicate-names DRIVE [--count N]    scan DRIVE",
+        "  children DRIVE [--path P]    duplicate-names DRIVE [--count N]    scan DRIVE",
         "  exclude-defender                     add this executable to the Windows Defender process exclusions (needs elevation; takes no drive)",
         "  --source and --dump-file apply to every verb; --include-freed applies to every verb but is a parse error with --source dump; any other flag a verb does not list is refused.");
 
@@ -40,6 +41,7 @@ sealed partial record DirectArguments(DirectVerb Verb, string Drive)
         [DirectVerb.Scan] = [],
         [DirectVerb.Search] = ["--name", "--exact", "--case-sensitive", "--under", "--directories", "--files", "--min-size", "--max-size", "--after", "--before", "--stream", "--limit"],
         [DirectVerb.Tree] = ["--path", "--depth"],
+        [DirectVerb.Children] = ["--path"],
         [DirectVerb.Open] = ["--path"],
         [DirectVerb.Largest] = ["--count", "--under"],
         [DirectVerb.DuplicateNames] = ["--count"]

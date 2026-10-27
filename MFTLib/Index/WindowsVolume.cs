@@ -41,6 +41,10 @@ public sealed record WindowsVolume
     /// <summary>True only for a ready fixed NTFS drive, which an MFT scan can index.</summary>
     public bool IsIndexable { get; init; }
 
-    /// <summary>A display reason when <see cref="IsIndexable" /> is false; null when it is true.</summary>
+    /// <summary>
+    ///     Display text explaining why <see cref="IsIndexable" /> is false; null when it is true. It is not a stable
+    ///     format: consumers show it and never parse it, and branch on <see cref="DriveType" />, <see cref="IsReady" />
+    ///     and <see cref="Format" /> instead.
+    /// </summary>
     public string? Reason { get; init; }
 }

@@ -36,6 +36,10 @@ partial class SampleHost
                 _output.WriteLine(start.Path);
                 WriteTree(start.RecordKey.RecordNumber, ChildLookup(index.Enumerate(new SearchQuery(null), cancellationToken)), 1, parsed.Depth);
                 break;
+            case DirectVerb.Children:
+                var parent = parsed.Path is null ? index.Root(letter, cancellationToken) : Resolve(index, parsed.Path, cancellationToken);
+                WriteRows(parent.Children(cancellationToken).OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase), parsed);
+                break;
             case DirectVerb.Open:
                 OpenFile(Resolve(index, parsed.Path, cancellationToken));
                 break;

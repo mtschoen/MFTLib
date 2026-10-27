@@ -98,6 +98,31 @@ public sealed class DirectHostTests : IDisposable
     }
 
     [TestMethod]
+    public void Run_ChildrenOfADirectory_ListsOnlyItsDirectChildren()
+    {
+        var lines = new List<string>();
+
+        var result = HostOver(lines).Run([.. Dump("children"), "--path", $"{DumpRoot}/documents"]);
+
+        Assert.AreEqual(0, result, string.Join(Environment.NewLine, lines));
+        Assert.Contains($"{DumpRoot}/documents/Notes.txt  11", lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains($"{DumpRoot}/documents/Deep  <dir>", lines, string.Join(Environment.NewLine, lines));
+        Assert.DoesNotContain(line => line.Contains("leaf.txt"), lines, "a grandchild is not a direct child");
+    }
+
+    [TestMethod]
+    public void Run_ChildrenWithoutAPath_ListsTheDriveRootsChildren()
+    {
+        var lines = new List<string>();
+
+        var result = HostOver(lines).Run(Dump("children"));
+
+        Assert.AreEqual(0, result, string.Join(Environment.NewLine, lines));
+        Assert.Contains($"{DumpRoot}/documents  <dir>", lines, string.Join(Environment.NewLine, lines));
+        Assert.DoesNotContain(line => line.Contains("Notes.txt"), lines, "a grandchild is not a direct child");
+    }
+
+    [TestMethod]
     public async Task Run_TreeOverSeveralDirectories_ReadsTheRowsOnceAndKeepsTheSortedOrder()
     {
         var lines = new List<string>();

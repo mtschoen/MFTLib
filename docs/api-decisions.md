@@ -912,3 +912,38 @@ wait (JetBrains MethodSupportsCancellation, issue 700). The test-package forward
 synchronous shape.
 
 **Revisit only if:** a consumer needs to apply journal entries from a context that cannot await.
+
+## FileEntry.Children stays, with the Direct sample as its caller
+
+**Decision (2026-10-26, issue 759):** `FileEntry.Children` stays as the supported direct-child navigation primitive.
+`SampleProgram.Direct` calls it from its `children` verb, which lists one directory's direct children (the drive root
+without `--path`), and `PublicMemberCallerTests` sees that sample caller instead of a reasoned exemption.
+
+**Reason:** the member is the natural answer to "what is directly inside this directory"; the `tree` verb groups one
+streaming pass by parent because it walks many directories, which `Children` (a whole-drive scan per call) does not
+suit. The earlier exemption named a consumer file that no longer calls it, so the caller gate was satisfied by a
+stale reason.
+
+**Revisit only if:** the children table becomes a precomputed structure and the sample's `children` verb no longer
+exercises the member.
+
+## WindowsVolume.Reason stays as display-only text
+
+**Decision (2026-10-26, issue 759):** `WindowsVolume.Reason` stays. It is display text that consumers show and never
+parse; its XML documentation says it is not a stable format. Consumers branch on `DriveType`, `IsReady`, `Format` and
+`IsIndexable`. The caller of record is the Watch sample, `SampleProgram.Shared/SampleHost.Drives.cs`, which prints it.
+
+**Reason:** the strings explain a skipped drive to a person; the typed members already carry the facts a program
+needs, so a second machine-readable channel would duplicate them.
+
+**Revisit only if:** a consumer needs a skip classification the typed members cannot express.
+
+## The Direct sample's largest and duplicate-names verbs stay as heavy-scan demos
+
+**Decision (2026-10-26, issue 759):** `SampleProgram.Direct`'s `largest` and `duplicate-names` verbs stay. They are
+deliberate heavy-scan demonstrations of row-level algorithms built over the public row enumeration.
+
+**Reason:** they show a consumer how to run a bounded-memory whole-drive pass (a size heap, a hash sieve) without
+materializing entries, which no lighter verb demonstrates.
+
+**Revisit only if:** the row enumeration they exercise is covered by another sample verb.
