@@ -10,20 +10,16 @@ namespace MFTLib.Tests;
 public partial class JournalBrokerHostTests
 {
     [TestMethod]
-    public async Task ProgressPump_ThrottleIntervalsAreHostLocal()
+    public async Task ProgressPump_ThrottleClocksAreHostLocal()
     {
         var immediateFirst = new TestGate();
         var immediateSecond = new TestGate();
         var throttledFirst = new TestGate();
         var throttledSecond = new TestGate();
-        var immediate = CreateProgressHost(immediateFirst, immediateSecond);
-        immediate.Hooks.ProgressThrottleInterval = TimeSpan.Zero;
-        var throttled = CreateProgressHost(throttledFirst, throttledSecond);
-        Assert.AreEqual(TimeSpan.FromMilliseconds(250), throttled.Hooks.ProgressThrottleInterval);
-        Assert.AreNotSame(immediate.Hooks, throttled.Hooks);
-        // Configure this host last: shared mutable configuration would suppress the
-        // immediate host's second report and fail the read below.
-        throttled.Hooks.ProgressThrottleInterval = TimeSpan.FromMinutes(10);
+        var immediateClock = new FakeTimeProvider();
+        var throttledClock = new FakeTimeProvider();
+        var immediate = CreateProgressHost(immediateFirst, immediateSecond, immediateClock);
+        var throttled = CreateProgressHost(throttledFirst, throttledSecond, throttledClock);
 
         await using var immediateHarness = new HostChannelHarness(immediate, new CountingBlockSectionWriter());
         await using var throttledHarness = new HostChannelHarness(throttled, new CountingBlockSectionWriter());
@@ -37,6 +33,7 @@ public partial class JournalBrokerHostTests
                 Assert.AreEqual(5L, (await HostChannelHarness.ReadFrameAsync(pipe))?.Progress?.RecordsProcessed);
             }
 
+            immediateClock.Advance(TimeSpan.FromMilliseconds(250));
             immediateFirst.Release();
             Assert.AreEqual(10L,
                 (await HostChannelHarness.ReadFrameAsync(immediatePipe))?.Progress?.RecordsProcessed);
@@ -64,7 +61,8 @@ public partial class JournalBrokerHostTests
             throttledSecond.Release();
         }
 
-        static JournalBrokerHost CreateProgressHost(TestGate first, TestGate second) =>
+        static JournalBrokerHost CreateProgressHost(TestGate first, TestGate second,
+            TimeProvider timeProvider) =>
             ScanHost(scanDrive: (_, _, reporting, _, _, _) =>
             {
                 reporting.Progress!.Report(new BlockWriteProgress(5, 0, 20, null, BlockScanPhase.Parsing));
@@ -74,7 +72,7 @@ public partial class JournalBrokerHostTests
                 second.WaitForRelease();
                 reporting.Progress.Report(new BlockWriteProgress(19, 0, 20, null, BlockScanPhase.Parsing));
                 return [];
-            }, timeProvider: new FakeTimeProvider());
+            }, timeProvider: timeProvider);
     }
 
     [TestMethod]
@@ -88,19 +86,26 @@ public partial class JournalBrokerHostTests
             afterFirstReport.WaitForRelease();
             reporting.Progress.Report(new BlockWriteProgress(19, 0, 20, null, BlockScanPhase.Parsing));
             return [[ScanRecord(5, ".", 3)]];
-        });
-        host.Hooks.ProgressThrottleInterval = TimeSpan.FromMinutes(10);
+        }, timeProvider: new FakeTimeProvider());
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
-        var pipe = await harness.OpenScanChannelAsync('C');
+        List<BrokerFrame> rest;
+        try
+        {
+            var pipe = await harness.OpenScanChannelAsync('C');
 
-        // The first report is on the wire before the second is made, so the second lands
-        // inside the throttle window deterministically.
-        var cursor = await HostChannelHarness.ReadFrameAsync(pipe);
-        var first = await HostChannelHarness.ReadFrameAsync(pipe);
-        Assert.AreEqual(BrokerFrameKind.Cursor, cursor?.Kind);
-        Assert.AreEqual(5L, first?.Progress?.RecordsProcessed, "The first report in the window is emitted immediately.");
-        afterFirstReport.Release();
-        var rest = await HostChannelHarness.ReadToEndAsync(pipe);
+            // The first report is on the wire before the second is made, so the second lands
+            // inside the throttle window deterministically.
+            var cursor = await HostChannelHarness.ReadFrameAsync(pipe);
+            var first = await HostChannelHarness.ReadFrameAsync(pipe);
+            Assert.AreEqual(BrokerFrameKind.Cursor, cursor?.Kind);
+            Assert.AreEqual(5L, first?.Progress?.RecordsProcessed, "The first report in the window is emitted immediately.");
+            afterFirstReport.Release();
+            rest = await HostChannelHarness.ReadToEndAsync(pipe);
+        }
+        finally
+        {
+            afterFirstReport.Release();
+        }
 
         var progressFrames = rest.Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
         Assert.Contains(f => f.Progress!.Value.RecordsProcessed == 19, progressFrames,
@@ -122,25 +127,47 @@ public partial class JournalBrokerHostTests
     [TestMethod]
     public async Task ScanProgress_WritePhase_PassesProgressToStreamingWriterAndReportsBytes()
     {
+        var clock = new FakeTimeProvider();
+        var parsingReported = new TestGate();
         using var blockWriter = new RecordingBlockSectionWriter();
-        var host = ScanHost(scanDrive: (_, _, reporting, _, _, _) =>
-        {
-            reporting.Progress?.Report(new BlockWriteProgress(100, 0, 1000, null, BlockScanPhase.Parsing));
-            return
-            [
-                [new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "r1.txt")],
-                [new MftRecord(2, 0, new MftRecordFields(1, FileAttributes.Archive, 200), "r2.txt")]
-            ];
-        });
-        host.Hooks.ProgressThrottleInterval = TimeSpan.Zero;
+        var host = ScanHost(scanDrive: (_, _, reporting, _, _, _) => Batches(reporting),
+            timeProvider: clock);
         await using var harness = new HostChannelHarness(host, blockWriter);
+        List<BrokerFrame> frames;
+        try
+        {
+            var pipe = await harness.OpenScanChannelAsync('C');
+            var cursor = await HostChannelHarness.ReadFrameAsync(pipe);
+            var parsing = await HostChannelHarness.ReadFrameAsync(pipe);
+            Assert.AreEqual(BrokerFrameKind.Cursor, cursor?.Kind);
+            Assert.AreEqual(BrokerScanPhase.Parsing, parsing?.Progress?.Phase);
+            Assert.AreEqual(100L, parsing?.Progress?.RecordsProcessed);
+            clock.Advance(TimeSpan.FromMilliseconds(250));
+            parsingReported.Release();
+            frames = [cursor!.Value, parsing!.Value, .. await HostChannelHarness.ReadToEndAsync(pipe)];
+        }
+        finally
+        {
+            parsingReported.Release();
+        }
 
-        var frames = await ScanFramesAsync(harness);
+        IEnumerable<IReadOnlyList<MftRecord>> Batches(BlockWriteReporting reporting)
+        {
+            reporting.Progress!.Report(new BlockWriteProgress(100, 0, 1000, null, BlockScanPhase.Parsing));
+            parsingReported.MarkEntered();
+            parsingReported.WaitForRelease();
+            yield return [new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "r1.txt")];
+            yield return [new MftRecord(2, 0, new MftRecordFields(1, FileAttributes.Archive, 200), "r2.txt")];
+        }
+
         var progressFrames = frames.Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
 
         Assert.IsGreaterThanOrEqualTo(2, progressFrames.Count, "Expected intermediate parse and write progress frames.");
         Assert.Contains(f => f.Progress?.BytesProcessed > 0, progressFrames,
             "At least one progress frame must report BytesProcessed > 0 from the write phase.");
+        var scanReadyPosition = frames.FindIndex(frame => frame.Kind == BrokerFrameKind.ScanReady);
+        Assert.Contains(frame => frame.Kind == BrokerFrameKind.ScanProgress &&
+            frame.Progress?.BytesProcessed > 0, frames.Take(scanReadyPosition - 1));
         var finalProgress = progressFrames[^1].Progress!.Value;
         Assert.AreEqual(1000L, finalProgress.TotalRecords);
         Assert.IsGreaterThan(0, finalProgress.BytesProcessed);
@@ -150,8 +177,8 @@ public partial class JournalBrokerHostTests
     [TestMethod]
     public async Task ScanProgress_MonotonicAcrossParseAndWritePhases()
     {
-        // Zero, not a small interval: a non-zero throttle makes emission depend on real elapsed
-        // time between reports. With Zero the pump emits every value it manages to read.
+        // Time is frozen. The bounded channel may coalesce intermediate reports;
+        // validate every emitted frame and the mandatory final frame.
         using var blockWriter = new RecordingBlockSectionWriter();
         var host = ScanHost(scanDrive: (_, _, reporting, _, _, _) =>
         {
@@ -166,8 +193,7 @@ public partial class JournalBrokerHostTests
                 [new MftRecord(2, 0, new MftRecordFields(1, FileAttributes.Archive, 200), "r2.txt")],
                 [new MftRecord(3, 0, new MftRecordFields(1, FileAttributes.Archive, 300), "r3.txt")]
             ];
-        });
-        host.Hooks.ProgressThrottleInterval = TimeSpan.Zero;
+        }, timeProvider: new FakeTimeProvider());
         await using var harness = new HostChannelHarness(host, blockWriter);
 
         var frames = await ScanFramesAsync(harness);
@@ -215,16 +241,36 @@ public partial class JournalBrokerHostTests
         // reports BytesProcessed = 0), so a frame with BytesProcessed > 0 can reach the wire
         // before the completion frame only if the host wires the same reporter into the
         // section writer, letting the write phase's per-batch byte progress flow through.
+        var firstBatchWritten = new TestGate();
         using var blockWriter = new RecordingBlockSectionWriter();
-        var host = ScanHost(scanDrive: (_, _, _, _, _, _) =>
-        [
-            [new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "r1.txt")],
-            [new MftRecord(2, 0, new MftRecordFields(1, FileAttributes.Archive, 200), "r2.txt")]
-        ]);
-        host.Hooks.ProgressThrottleInterval = TimeSpan.Zero;
+        var host = ScanHost(scanDrive: (_, _, _, _, _, _) => Batches(),
+            timeProvider: new FakeTimeProvider());
         await using var harness = new HostChannelHarness(host, blockWriter);
+        List<BrokerFrame> frames;
+        try
+        {
+            var pipe = await harness.OpenScanChannelAsync('C');
+            var cursor = await HostChannelHarness.ReadFrameAsync(pipe);
+            await firstBatchWritten.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
+            var transferring = await HostChannelHarness.ReadFrameAsync(pipe);
+            Assert.AreEqual(BrokerFrameKind.Cursor, cursor?.Kind);
+            Assert.AreEqual(BrokerFrameKind.ScanProgress, transferring?.Kind);
+            Assert.IsTrue(transferring?.Progress?.BytesProcessed > 0);
+            firstBatchWritten.Release();
+            frames = [cursor!.Value, transferring!.Value, .. await HostChannelHarness.ReadToEndAsync(pipe)];
+        }
+        finally
+        {
+            firstBatchWritten.Release();
+        }
 
-        var frames = await ScanFramesAsync(harness);
+        IEnumerable<IReadOnlyList<MftRecord>> Batches()
+        {
+            yield return [new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "r1.txt")];
+            firstBatchWritten.MarkEntered();
+            firstBatchWritten.WaitForRelease();
+            yield return [new MftRecord(2, 0, new MftRecordFields(1, FileAttributes.Archive, 200), "r2.txt")];
+        }
 
         var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
         Assert.IsGreaterThan(0, scanReadyIndex, "ScanReady frame must be present.");
@@ -331,15 +377,15 @@ public partial class JournalBrokerHostTests
                 }
 
                 return batches;
-            });
-        host.Hooks.ProgressThrottleInterval = TimeSpan.FromMinutes(10);
+            },
+            timeProvider: new FakeTimeProvider());
         await using var harness = new HostChannelHarness(host, blockWriter);
 
         var frames = await ScanFramesAsync(harness, 'C', "mftlib-throttle-C");
 
         var progressFrames = frames.Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
-        // With a 10-minute interval the burst of 20 reports emits at most one initial frame,
-        // one flush of the newest throttled report, and the final frame before ScanReady.
+        // Frozen time admits the first report, at most one completion flush of the
+        // newest throttled report, and the mandatory final frame before ScanReady.
         Assert.IsGreaterThanOrEqualTo(1, progressFrames.Count, "At least one progress frame must be emitted.");
         Assert.IsLessThanOrEqualTo(3, progressFrames.Count,
             $"Expected at most 3 progress frames due to throttling, but got {progressFrames.Count}");

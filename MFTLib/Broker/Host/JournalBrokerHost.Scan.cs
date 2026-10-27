@@ -67,8 +67,7 @@ sealed partial class JournalBrokerHost
             });
 
         var pumpTask = Task.Run(
-            () => RunProgressPumpAsync(channel, progressChannel.Reader, _timeProvider,
-                Hooks.ProgressThrottleInterval, cancellationToken),
+            () => RunProgressPumpAsync(channel, progressChannel.Reader, _timeProvider, cancellationToken),
             CancellationToken.None);
 
         try
@@ -135,7 +134,7 @@ sealed partial class JournalBrokerHost
     }
 
     static async Task RunProgressPumpAsync(DriveChannel channel, ChannelReader<BrokerScanProgress> reader,
-        TimeProvider timeProvider, TimeSpan progressThrottleInterval, CancellationToken cancellationToken)
+        TimeProvider timeProvider, CancellationToken cancellationToken)
     {
         var started = timeProvider.GetTimestamp();
         var lastEmit = TimeSpan.Zero;
@@ -149,7 +148,7 @@ sealed partial class JournalBrokerHost
                 while (reader.TryRead(out var progress))
                 {
                     var now = timeProvider.GetElapsedTime(started);
-                    if (first || now - lastEmit >= progressThrottleInterval)
+                    if (first || now - lastEmit >= BrokerLiveness.ProgressThrottleInterval)
                     {
                         first = false;
                         lastEmit = now;

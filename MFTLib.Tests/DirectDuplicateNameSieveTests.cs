@@ -79,34 +79,32 @@ public class DirectDuplicateNameSieveTests
         using var builder = BuildLargeBlock(includeDuplicates: false);
         await using var index = await OpenIndexAsync(builder);
         var materializedCount = 0;
-        var groups = DuplicateNameSieve.Find(index, CancellationToken.None,
-            bucketCountOverride: SieveBitmap.MinimumBucketCount,
-            nameMaterializedForTest: count => materializedCount = count);
+        var groups = DuplicateNameSieve.Find(index, CancellationToken.None, nameMaterializedForTest: count => materializedCount = count);
         Assert.IsEmpty(groups);
         Assert.IsLessThanOrEqualTo(200, materializedCount,
             $"{materializedCount} names were materialized; the hash passes should leave at most one percent of 20000 unique names as candidates.");
     }
 
     [TestMethod]
-    [DataRow(64)]
-    [DataRow(1 << 16)]
-    public async Task Find_TrueDuplicatesSurviveEveryRefinementPassUnderCollisions(int bucketCount)
+    [DataRow(0)]
+    [DataRow(UniqueNameCount)]
+    public async Task Find_TrueDuplicatesSurviveEveryRefinementPassUnderCollisions(int uniqueNameCount)
     {
-        using var builder = BuildLargeBlock(includeDuplicates: true);
+        using var builder = BuildLargeBlock(includeDuplicates: true, uniqueNameCount: uniqueNameCount);
         await using var index = await OpenIndexAsync(builder);
-        var groups = DuplicateNameSieve.Find(index, CancellationToken.None, bucketCount);
+        var groups = DuplicateNameSieve.Find(index, CancellationToken.None);
         Assert.HasCount(2, groups);
         var byName = groups.ToDictionary(group => group.Name);
         Assert.AreSequenceEqual([1, 2], [.. byName["dup-a.bin"].Entries.Select(entry => entry.Size)], SequenceOrder.InAnyOrder);
         Assert.AreSequenceEqual([3, 4, 5], [.. byName["dup-b.bin"].Entries.Select(entry => entry.Size)], SequenceOrder.InAnyOrder);
     }
 
-    static SyntheticBlockBuilder BuildLargeBlock(bool includeDuplicates)
+    static SyntheticBlockBuilder BuildLargeBlock(bool includeDuplicates, int uniqueNameCount = UniqueNameCount)
     {
-        var builder = new SyntheticBlockBuilder('U', slotCapacity: UniqueNameCount + 20,
-            namePoolCapacity: (uint)UniqueNameCount * 40);
+        var builder = new SyntheticBlockBuilder('U', slotCapacity: (uint)uniqueNameCount + 20,
+            namePoolCapacity: (uint)uniqueNameCount * 40 + 4096);
         var root = AddRoot(builder);
-        for (var row = 0; row < UniqueNameCount; row++)
+        for (var row = 0; row < uniqueNameCount; row++)
         {
             AddFile(builder, root, $"unique-{row}.bin", row);
         }
@@ -118,10 +116,36 @@ public class DirectDuplicateNameSieveTests
             AddFile(builder, root, "dup-b.bin", 3);
             AddFile(builder, root, "dup-b.bin", 4);
             AddFile(builder, root, "dup-b.bin", 5);
+            // One root, five duplicate members, and two unique colliding names.
+            var buckets = SieveBitmap.ComputeBucketCount(uniqueNameCount + 8);
+            var collision = FindCollidingNames(buckets);
+            AddFile(builder, root, collision.First, 6);
+            AddFile(builder, root, collision.Second, 7);
         }
 
         builder.Complete(Moment);
         return builder;
+    }
+
+    static (string First, string Second) FindCollidingNames(int bucketCount)
+    {
+        var bitmap = new SieveBitmap(bucketCount, 0);
+        var firstNameByBucket = new Dictionary<int, string>();
+        for (var candidate = 0; candidate <= bucketCount; candidate++)
+        {
+            var name = $"collision-{candidate}.bin";
+            var hash = string.GetHashCode(name, StringComparison.OrdinalIgnoreCase);
+            var bucket = bitmap.BucketIndexFor(hash);
+            if (firstNameByBucket.TryGetValue(bucket, out var first))
+            {
+                Assert.IsFalse(StringComparer.OrdinalIgnoreCase.Equals(first, name));
+                return (first, name);
+            }
+
+            firstNameByBucket.Add(bucket, name);
+        }
+
+        throw new AssertFailedException("More distinct names than buckets must produce a collision.");
     }
 
     [TestMethod]
@@ -136,7 +160,7 @@ public class DirectDuplicateNameSieveTests
         // Cache-only opens use one directory for all drives.
         File.Copy(second.BlockPath, Path.Combine(first.DirectoryPath, Path.GetFileName(second.BlockPath)));
         await using var index = await OpenIndexAsync(first, second);
-        var groups = DuplicateNameSieve.Find(index, CancellationToken.None, 64);
+        var groups = DuplicateNameSieve.Find(index, CancellationToken.None);
         Assert.HasCount(1, groups);
         var expected = index.Enumerate(new SearchQuery(null, IsDirectory: false), TestContext.CancellationToken).Select(entry => entry.RecordKey).ToArray();
         Assert.AreSequenceEqual(expected, [.. groups[0].Entries.Select(entry => entry.RecordKey)]);

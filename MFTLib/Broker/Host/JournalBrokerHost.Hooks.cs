@@ -22,8 +22,5 @@ sealed partial class JournalBrokerHost
         /// Must not block, throw, or wait for session disposal, which joins this thread.
         /// </summary>
         internal Action? HeartbeatVisited { get; set; }
-
-        /// <summary>Minimum time between intermediate scan reports; set before serving.</summary>
-        internal TimeSpan ProgressThrottleInterval { get; set; } = BrokerLiveness.ProgressThrottleInterval;
     }
 }

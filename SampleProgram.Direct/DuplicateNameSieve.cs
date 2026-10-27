@@ -17,13 +17,13 @@ static class DuplicateNameSieve
     const int CandidateThresholdDivisor = 256;
 
     internal static IReadOnlyList<DuplicateNameGroup> Find(FileIndex index, CancellationToken cancellationToken,
-        int? bucketCountOverride = null, Action<int>? resultAssembledForTest = null,
+        Action<int>? resultAssembledForTest = null,
         Action<int>? nameMaterializedForTest = null)
     {
         ArgumentNullException.ThrowIfNull(index);
         cancellationToken.ThrowIfCancellationRequested();
         var query = new SearchQuery(null, IsDirectory: false);
-        var bucketCount = bucketCountOverride ?? SieveBitmap.ComputeBucketCount(LiveRowCount(index));
+        var bucketCount = SieveBitmap.ComputeBucketCount(LiveRowCount(index));
         var passes = RunHashPasses(index, query, bucketCount, cancellationToken);
 
         var materializedNameCount = 0;
