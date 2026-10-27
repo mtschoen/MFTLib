@@ -49,6 +49,10 @@ assert_contains "$output" 'FAIL script-syntax'
 assert_contains "$output" 'PASS script-syntax-tests'
 failing_gate=''
 
+run_case --only generate-test-report
+assert_equal 0 "$status"
+assert_contains "$output" 'PASS generate-test-report'
+
 failing_gate=build-script
 run_case --all
 assert_equal 1 "$status"
@@ -104,8 +108,10 @@ check_path_case() {
     if [[ "$expected" == true ]]; then
         assert_contains "$output" 'SKIP windows: workflow docs-only/pin-only filter'
         assert_contains "$output" 'SKIP init-windows: workflow docs-only/pin-only filter'
+        assert_contains "$output" 'SKIP generate-test-report: workflow docs-only/pin-only filter'
     else
         assert_contains "$output" 'PASS windows'
+        assert_contains "$output" 'PASS generate-test-report'
     fi
     assert_contains "$output" 'PASS docs'
     assert_contains "$output" 'PASS script-syntax'
@@ -161,6 +167,7 @@ assert_contains "$output" 'PASS linux-package-smoke'
 failing_gate=''
 run_case --all
 assert_equal 0 "$status"
+assert_contains "$output" 'PASS generate-test-report'
 assert_contains "$output" 'SKIP windows: requires windows (host linux)'
 assert_contains "$output" 'SKIP windows-package-smoke: requires windows (host linux)'
 assert_contains "$output" 'SKIP coverage-child: requires windows (host linux)'
@@ -181,32 +188,44 @@ assert_equal 0 "$status"
 assert_contains "$output" 'SKIP script-syntax: requires windows (host linux)'
 assert_contains "$output" 'SKIP script-syntax-tests: requires windows (host linux)'
 
-for selection in only all; do
-    output="$(
-        # Restore the real executor; double only external script launchers.
-        source "$root/tools/ci-preflight.sh"
-        preflight_platform() { printf 'windows'; }
-        pwsh() {
-            printf 'INVOKED %s\n' "$*"
-            if [[ "$*" == *'scripts/build-windows.tests.ps1'* ]]; then return 23; fi
-        }
-        bash() { printf 'INVOKED %s\n' "$*"; }
-        dotnet() { printf 'INVOKED %s\n' "$*"; }
-        if [[ "$selection" == only ]]; then
-            preflight_main --only build-script
-        else
-            preflight_main --all
+for gate in build-script generate-test-report; do
+    case "$gate" in
+        build-script) script='scripts/build-windows.tests.ps1' ;;
+        generate-test-report) script='scripts/generate-test-report.ps1' ;;
+    esac
+    for selection in only all; do
+        output="$(
+            # Restore the real executor; double only external script launchers.
+            source "$root/tools/ci-preflight.sh"
+            preflight_platform() { printf 'windows'; }
+            pwsh() {
+                printf 'INVOKED %s\n' "$*"
+                if [[ "${3:-}" == "$script" ]]; then
+                    [[ "$#" -eq 3 && "$1" == -NoProfile && "$2" == -File ]] || return 97
+                    return 23
+                fi
+                return 0
+            }
+            bash() { printf 'INVOKED %s\n' "$*"; }
+            dotnet() { printf 'INVOKED %s\n' "$*"; }
+            if [[ "$selection" == only ]]; then
+                preflight_main --only "$gate"
+            else
+                preflight_main --all
+            fi
+        )"
+        status=$?
+        assert_equal 1 "$status"
+        assert_contains "$output" "INVOKED -NoProfile -File $script"
+        assert_contains "$output" "FAIL $gate: exit 23"
+        if [[ "$gate" == build-script ]]; then
+            assert_contains "$output" 'INVOKED -NoProfile -File scripts/ci-aislop.tests.ps1'
+            assert_contains "$output" 'INVOKED -NoProfile -File scripts/test-native-coverage-elevated.ps1'
         fi
-    )"
-    status=$?
-    assert_equal 1 "$status"
-    assert_contains "$output" 'INVOKED -NoProfile -File scripts/build-windows.tests.ps1'
-    assert_contains "$output" 'FAIL build-script: exit 23'
-    assert_contains "$output" 'INVOKED -NoProfile -File scripts/ci-aislop.tests.ps1'
-    assert_contains "$output" 'INVOKED -NoProfile -File scripts/test-native-coverage-elevated.ps1'
-    if [[ "$selection" == all ]]; then
-        assert_contains "$output" 'INVOKED -NoProfile -File scripts/smoke-package-windows.ps1'
-    fi
+        if [[ "$selection" == all ]]; then
+            assert_contains "$output" 'INVOKED -NoProfile -File scripts/smoke-package-windows.ps1'
+        fi
+    done
 done
 
 for scenario in success build-failure scan-failure; do

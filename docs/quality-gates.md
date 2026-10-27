@@ -122,7 +122,7 @@ bash tools/ci-preflight.sh --all
 bash tools/ci-preflight.sh --only coverage-status
 ```
 
-Scopes: `docs`, `scripts`, `preflight-tests`, `build-script`, `coverage-status`, `release-offline`, `windows`,
+Scopes: `docs`, `scripts`, `preflight-tests`, `build-script`, `coverage-status`, `generate-test-report`, `release-offline`, `windows`,
 `linux`, `linux-package`, `sync`, `aislop`, and `init`. Repeat `--only` to select several.
 Unknown arguments, unknown scopes, missing values and mixed modes exit 2.
 Every selected gate runs in the foreground, even after another gate fails.
@@ -152,12 +152,20 @@ unfiltered, subject to their existing host availability.
 | `build-script` / `coverage-child` | Run | Skip | `scripts/test-native-coverage-elevated.ps1`, shared child protocol and both coverage callers |
 | `release-offline` | Run (pwsh) | Run (requires pwsh) | `scripts/test-release-offline.sh`, offline package-validation and release-note regressions |
 | `coverage-status` | Run (pwsh) | Run (requires pwsh) | `scripts/test-coverage-status.ps1`, offline publisher regression tests |
+| `generate-test-report` | Run (pwsh) | Run (requires pwsh) | `scripts/generate-test-report.ps1` with no arguments, offline summary-generator regressions |
 | `init` / `init-windows`, `init-linux` | Windows adapter matrix | Linux adapter matrix | `scripts/optional-provisioning/tests/OptionalProvisioning.Tests.csproj --adapters`; also selected by the matching platform scope |
 | `windows` | Run | Skip | `scripts/run-coverage.ps1 -NonInteractive`, including native and managed build, followed by `scripts/smoke-package-windows.ps1` |
 | `linux` | Skip | Run | `scripts/coverage-linux.sh`, native and managed coverage |
 | `linux-package` | Skip | Run | `check-linux-native.tests.sh`, `build-linux.sh` (builds, then runs the managed `TestCategory=Smoke` tier), `check-linux-native.sh`, `smoke-package-linux.sh` under `scripts/` |
 | `sync` | Run | Run | `scripts/sync_consumers.tests.sh`, offline transport fixtures |
 | `aislop` | Run | Skip | Windows build plus `scripts/ci-aislop.ps1`, shared with the quality workflow |
+
+The `generate-test-report` scope runs the same no-argument offline regression as
+Windows CI. Select it with `bash tools/ci-preflight.sh --only generate-test-report`;
+`--all` includes it, and `--changed-from` skips it for docs-only/pin-only changes.
+It requires PowerShell 7 but no publication credentials. Fixture output stays
+under `.lane/fixtures`; the root `TEST-REPORT.md` is not generated. A failing
+regression fails preflight while the remaining selected gates still run.
 
 Install the same prerequisites as the selected CI jobs beforehand: .NET 10,
 Windows MSVC/amd64 MSBuild, reportgenerator, pwsh, Git/Bash, and the C# scanner
