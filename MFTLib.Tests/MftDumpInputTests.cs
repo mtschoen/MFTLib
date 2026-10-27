@@ -220,46 +220,6 @@ public sealed class MftDumpInputTests : IDisposable
     }
 
     [TestMethod]
-    public void Parse_TokenCancelledBeforeTheParse_ThrowsOperationCanceled()
-    {
-        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
-        using var input = MftDumpInput.Open(path);
-        using var cancellation = new CancellationTokenSource();
-        cancellation.Cancel();
-
-        var cancelled = ParseThrows<OperationCanceledException>(input,
-            new MftFileScanOptions(CancellationToken: cancellation.Token));
-
-        Assert.AreEqual(cancellation.Token, cancelled.CancellationToken);
-    }
-
-    [TestMethod]
-    public void Parse_TokenCancelledFromProgress_StopsAsCancelledNotAsIncomplete()
-    {
-        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
-        using var input = MftDumpInput.Open(path);
-        using var cancellation = new CancellationTokenSource();
-
-        ParseThrows<OperationCanceledException>(input, new MftFileScanOptions(CancelOnReport(cancellation),
-            BufferSizeRecords: 4, CancellationToken: cancellation.Token));
-    }
-
-    [TestMethod]
-    public void Parse_Progress_EndsAtTheFilesRecordCount()
-    {
-        var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
-        using var input = MftDumpInput.Open(path);
-        var samples = new List<MftScanProgress>();
-        var progress = new SynchronousProgress<MftScanProgress>(samples.Add);
-
-        using var result = input.Parse(new MftFileScanOptions(progress, BufferSizeRecords: 4));
-
-        Assert.HasCount(4, samples, "sixteen records in chunks of four");
-        Assert.AreEqual(16L, samples[^1].RecordsScanned);
-        Assert.IsTrue(samples.All(sample => sample.TotalRecords == 16));
-    }
-
-    [TestMethod]
     public void ReadRecordBatches_YieldsMaterializedBatchesOfTheAskedSize()
     {
         var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
@@ -337,9 +297,6 @@ public sealed class MftDumpInputTests : IDisposable
     internal static TException ParseThrows<TException>(MftDumpInput input, MftFileScanOptions options = default)
         where TException : Exception =>
         Assert.ThrowsExactly<TException>(() => input.Parse(options));
-
-    static SynchronousProgress<MftScanProgress> CancelOnReport(CancellationTokenSource cancellation) =>
-        new(_ => cancellation.Cancel());
 
     static void AssertCancelledAfterTheFirstBatch(MftDumpInput input, CancellationTokenSource cancellation)
     {

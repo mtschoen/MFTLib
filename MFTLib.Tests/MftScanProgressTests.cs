@@ -50,42 +50,4 @@ public class MftScanProgressTests
         Assert.AreEqual(1L, reported[0].RecordsScanned);
         Assert.AreEqual(10L, reported[0].TotalRecords);
     }
-
-    [TestMethod]
-    public void ReadRecordBatches_WithProgress_DeliversSamplesDuringParseExecution()
-    {
-        var reported = new List<MftScanProgress>();
-        var reportedDuringParse = 0;
-
-        MftProgressParseFixture.ConfigureSingleRecordParse(callback =>
-        {
-            callback.Invoke(1, 10, 15.0);
-            callback.Invoke(5, 10, 30.0);
-            reportedDuringParse = reported.Count;
-        });
-
-        var directProgress = new SynchronousProgress<MftScanProgress>(reported.Add);
-
-        using var volume = MftVolume.Open('C');
-        _ = volume.ReadRecordBatches(4096, directProgress, null, CancellationToken.None).ToList();
-
-        Assert.AreEqual(2, reportedDuringParse, "Both progress samples must have arrived before parse returned");
-        Assert.HasCount(2, reported);
-        Assert.AreEqual(1L, reported[0].RecordsScanned);
-        Assert.AreEqual(5L, reported[1].RecordsScanned);
-    }
-
-    [TestMethod]
-    public void ReadRecordBatches_ProgressCallbackThrows_SwallowsExceptionAndCompletes()
-    {
-        MftProgressParseFixture.ConfigureSingleRecordParse(callback => callback.Invoke(1, 10, 15.0));
-
-        var throwingProgress = new SynchronousProgress<MftScanProgress>(
-            _ => throw new InvalidOperationException("Simulated UI progress failure"));
-
-        using var volume = MftVolume.Open('C');
-        var batches = volume.ReadRecordBatches(4096, throwingProgress, null, CancellationToken.None).ToList();
-
-        Assert.AreEqual(1, batches.Sum(batch => batch.Length), "Parse must complete normally despite exception in progress handler");
-    }
 }

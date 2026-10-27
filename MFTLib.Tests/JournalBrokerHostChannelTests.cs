@@ -6,7 +6,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
-// The class installs JournalCheckpointCheck's process-wide journal override in its catch-up tests.
+// Control requests, channel lifetime, watch streaming and parse-thread allocation over HostChannelHarness.
 [TestClass]
 [DoNotParallelize]
 public partial class JournalBrokerHostChannelTests

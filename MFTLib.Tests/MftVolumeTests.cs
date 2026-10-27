@@ -48,7 +48,7 @@ public partial class MftVolumeTests
         // delegate invocation (i.e. before the "native call" has returned to
         // ReadRecordBatches), snapshots how many samples the consumer has received. With
         // live delivery that snapshot must already be 3.
-        var receivedCount = 0;
+        var reported = new List<MftScanProgress>();
         var receivedCountAtReturn = -1;
 
         MftProgressParseFixture.ConfigureSingleRecordParse(callback =>
@@ -56,10 +56,10 @@ public partial class MftVolumeTests
             callback.Invoke(1, 3, 10);
             callback.Invoke(2, 3, 20);
             callback.Invoke(3, 3, 30);
-            receivedCountAtReturn = receivedCount;
+            receivedCountAtReturn = reported.Count;
         });
 
-        var directProgress = new SynchronousProgress<MftScanProgress>(_ => receivedCount++);
+        var directProgress = new SynchronousProgress<MftScanProgress>(reported.Add);
 
         using var volume = MftVolume.Open('C');
         var batches = volume.ReadRecordBatches(4096, directProgress, null, CancellationToken.None).ToList();
@@ -67,7 +67,8 @@ public partial class MftVolumeTests
         Assert.HasCount(1, batches);
         Assert.AreEqual(3, receivedCountAtReturn,
             "All three progress samples must reach the consumer before the native call returns");
-        Assert.AreEqual(3, receivedCount);
+        Assert.HasCount(3, reported);
+        Assert.AreSequenceEqual([1L, 2L, 3L], [.. reported.Select(sample => sample.RecordsScanned)]);
     }
 
     [TestMethod]
@@ -99,6 +100,8 @@ public partial class MftVolumeTests
         var batches = volume.ReadRecordBatches(4096, directProgress, null, CancellationToken.None).ToList();
 
         Assert.HasCount(1, batches, "The parse itself must still succeed despite the throwing consumer");
+        Assert.AreEqual(1, batches.Sum(batch => batch.Length),
+            "Parse must complete normally despite exception in progress handler");
         Assert.HasCount(1, reported, "The sample after the throwing report must still arrive");
         Assert.AreEqual(2, reported[0].RecordsScanned);
     }

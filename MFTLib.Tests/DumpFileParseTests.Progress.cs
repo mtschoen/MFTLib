@@ -16,7 +16,7 @@ public partial class DumpFileParseTests
 
         using var result = StreamFile(new SynchronousProgress<MftScanProgress>(reports.Add), cancellationToken: TestContext.CancellationToken);
 
-        Assert.IsGreaterThan(1, reports.Count, "A 1000-record image read 256 records at a time reports more than once.");
+        Assert.HasCount(4, reports, "1000 records in chunks of 256 report four times.");
         Assert.IsTrue(reports.All(report => report.TotalRecords == 1000));
         Assert.AreEqual(1000L, reports[^1].RecordsScanned);
         Assert.AreSequenceEqual([.. reports.Select(report => report.RecordsScanned).Order()], [.. reports.Select(report => report.RecordsScanned)], "Records scanned never goes backwards.");
