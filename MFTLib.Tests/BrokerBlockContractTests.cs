@@ -50,7 +50,7 @@ public class BrokerBlockContractTests : BrokerBlockTestBase
     public void ScanReady_RoundTripsSkippedRecordCountBeyondInt32()
     {
         var writer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteScanReady(writer, 3_000_000_000L);
+        BrokerProtocol.WriteScanReady(writer, BrokerFrame.ScanReady(3_000_000_000L));
 
         var actual = BrokerProtocol.ReadFrame(writer.WrittenSpan, out var consumed);
 

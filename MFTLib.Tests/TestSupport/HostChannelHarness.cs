@@ -89,7 +89,7 @@ sealed class HostChannelHarness : IAsyncDisposable
     {
         var requestId = NextRequestId();
         var pipeName = NextPipeName(drive.Letter);
-        await SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, requestId, drive, pipeName));
+        await SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, BrokerFrame.OpenChannel(requestId, drive, pipeName)));
         var reply = await ReadControlAsync();
         Assert.AreEqual(BrokerFrameKind.ChannelOpened, reply.Kind, reply.Message);
         Assert.AreEqual(requestId, reply.RequestId);
@@ -102,14 +102,14 @@ sealed class HostChannelHarness : IAsyncDisposable
         var targetSectionName = sectionName ?? NamedBlockSection.BuildSectionName(drive);
         var pipe = await OpenChannelAsync(drive);
         await WriteFrameAsync(pipe,
-            writer => BrokerProtocol.WriteArmAndScan(writer, targetSectionName, retainedFileNames));
+            writer => BrokerProtocol.WriteArmAndScan(writer, BrokerFrame.ArmAndScan(targetSectionName, retainedFileNames)));
         return pipe;
     }
 
     public async Task<Stream> OpenWatchChannelAsync(VolumeKey drive, UsnJournalCursor since)
     {
         var pipe = await OpenChannelAsync(drive);
-        await WriteFrameAsync(pipe, writer => BrokerProtocol.WriteStartWatch(writer, since));
+        await WriteFrameAsync(pipe, writer => BrokerProtocol.WriteStartWatch(writer, BrokerFrame.StartWatch(since)));
         return pipe;
     }
 

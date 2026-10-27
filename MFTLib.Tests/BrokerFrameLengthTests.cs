@@ -12,9 +12,9 @@ namespace MFTLib.Tests;
 public class BrokerFrameLengthTests
 {
     // The cap's arithmetic (BrokerFrameStream.MaximumFrameLength): the largest legitimate frame is an
-    // ArmAndScan retained names. With the 107 bytes of kind, default section name, include-freed flag and count
+    // ArmAndScan retained names. With the 105 bytes of kind, default section name, include-freed flag and count
     // around it and 514 bytes per maximum-length NTFS name (255 UTF-16 units plus a 4-byte prefix), 32,640 names make
-    // 107 + 514 * 32,640 = 16,777,067 bytes and fit; 32,641 names make 16,777,581 and do not.
+    // 105 + 514 * 32,640 = 16,777,065 bytes and fit; 32,641 names make 16,777,579 and do not.
     const int MaximumNameCount = 32_640;
 
     // The shape of a name NamedBlockSection builds: "mftlib-block-", a drive letter, a dash and 32 hex digits.
@@ -27,10 +27,10 @@ public class BrokerFrameLengthTests
         var sectionName = DefaultSectionName;
         var buffer = new ArrayBufferWriter<byte>();
 
-        BrokerProtocol.WriteArmAndScan(buffer, sectionName, names);
+        BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan(sectionName, names));
 
         var totalLength = BinaryPrimitives.ReadInt32LittleEndian(buffer.WrittenSpan);
-        Assert.AreEqual(16_777_067, totalLength);
+        Assert.AreEqual(16_777_065, totalLength);
         Assert.IsLessThanOrEqualTo(BrokerFrameStream.MaximumFrameLength, totalLength);
         Assert.HasCount(names.Length, BrokerProtocol.ReadFrame(buffer.WrittenSpan, out _).RetainedFileNames!);
     }
@@ -42,9 +42,9 @@ public class BrokerFrameLengthTests
         var sectionName = DefaultSectionName;
         var buffer = new ArrayBufferWriter<byte>();
 
-        Assert.AreEqual(16_777_581L, BrokerProtocol.ArmAndScanFrameLength(sectionName, names));
+        Assert.AreEqual(16_777_579L, BrokerProtocol.ArmAndScanFrameLength(sectionName, names));
         Assert.ThrowsExactly<InvalidOperationException>(() =>
-            BrokerProtocol.WriteArmAndScan(buffer, sectionName, names));
+            BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan(sectionName, names)));
         Assert.AreEqual(0, buffer.WrittenCount, "No length prefix is emitted for a frame over the limit.");
     }
 
@@ -85,7 +85,7 @@ public class BrokerFrameLengthTests
         Assert.HasCount(1, frames);
         Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
         Assert.Contains("malformed", frames[0].Message!);
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 8, 'C'));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, BrokerFrame.QueryVolume(8, 'C')));
         Assert.AreEqual(BrokerFrameKind.VolumeInfo, (await harness.ReadControlAsync()).Kind,
             "Only the channel that received the malformed frame ends.");
     }

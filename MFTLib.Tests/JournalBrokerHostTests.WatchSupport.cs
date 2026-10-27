@@ -105,7 +105,7 @@ public partial class JournalBrokerHostTests
     static async Task AssertControlStillServesAsync(HostChannelHarness harness)
     {
         var requestId = harness.NextRequestId();
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, requestId, 'C'));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, BrokerFrame.QueryVolume(requestId, 'C')));
         var reply = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.VolumeInfo, reply.Kind);

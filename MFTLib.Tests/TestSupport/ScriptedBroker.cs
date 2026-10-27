@@ -45,8 +45,8 @@ sealed class ScriptedBroker : IAsyncDisposable
     {
         var request = await ReadRequestAsync();
         Assert.AreEqual(BrokerFrameKind.QueryVolume, request.Kind);
-        await WriteControlAsync(writer => BrokerProtocol.WriteVolumeInfo(writer, request.RequestId,
-            volume.BytesPerFileRecordSegment, volume.MftValidDataLength));
+        await WriteControlAsync(writer => BrokerProtocol.WriteVolumeInfo(writer, BrokerFrame.VolumeInfo(request.RequestId,
+            volume.BytesPerFileRecordSegment, volume.MftValidDataLength)));
     }
 
     /// <summary>Reads the next request, which must open a channel, connects it, and acknowledges it.</summary>
@@ -55,7 +55,7 @@ sealed class ScriptedBroker : IAsyncDisposable
         var request = await ReadRequestAsync();
         Assert.AreEqual(BrokerFrameKind.OpenChannel, request.Kind);
         var pipe = await Pipes.ConnectAsync(request.RequirePipeName(), CancellationToken.None);
-        await WriteControlAsync(writer => BrokerProtocol.WriteChannelOpened(writer, request.RequestId));
+        await WriteControlAsync(writer => BrokerProtocol.WriteChannelOpened(writer, BrokerFrame.ChannelOpened(request.RequestId)));
         return pipe;
     }
 

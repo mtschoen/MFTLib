@@ -72,12 +72,12 @@ public class WatchFailureObservationTests
             await starting;
             if (caughtUpFirst)
             {
-                await HostChannelHarness.WriteFrameAsync(host, BrokerProtocol.WriteCaughtUp);
+                await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteCaughtUp(writer, BrokerFrame.CaughtUp()));
                 await index.WaitForCatchUpAsync([new VolumeKey('T')], token);
                 Assert.AreEqual(WatchState.CaughtUp, index.Drives.Single().Watch.State);
             }
 
-            await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteStalled(writer, marker));
+            await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteStalled(writer, BrokerFrame.Stalled(marker)));
             var fault = await announced.Task.WaitAsync(token);
             Assert.AreEqual(WatchFaultKind.Channel, fault.Kind);
             Assert.AreEqual('T', fault.Drive);
@@ -125,7 +125,7 @@ public class WatchFailureObservationTests
         var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator();
         await using var _ = reader.ConfigureAwait(false);
         var first = reader.MoveNextAsync().AsTask();
-        await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteError(writer, 0, marker));
+        await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteError(writer, BrokerFrame.Error(0, marker)));
 
         var failure = await Assert.ThrowsAsync<DriveWatchFaultException>(
             () => first.WaitAsync(HangGuard));

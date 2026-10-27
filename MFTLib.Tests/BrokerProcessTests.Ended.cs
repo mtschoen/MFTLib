@@ -31,7 +31,7 @@ public partial class BrokerProcessTests
         }
         else if (ending == "unroutable")
         {
-            await broker.WriteControlAsync(BrokerProtocol.WriteCaughtUp);
+            await broker.WriteControlAsync(writer => BrokerProtocol.WriteCaughtUp(writer, BrokerFrame.CaughtUp()));
         }
         else if (ending == "truncated")
         {

@@ -18,7 +18,7 @@ sealed partial class JournalBrokerHost
 
     static Task WriteChannelErrorAsync(DriveChannel channel, string message, CancellationToken cancellationToken)
     {
-        return channel.Pipe.WriteFrameAsync(writer => BrokerProtocol.WriteError(writer, 0, message),
+        return channel.Pipe.WriteFrameAsync(writer => BrokerProtocol.WriteError(writer, BrokerFrame.Error(0, message)),
             cancellationToken);
     }
 
@@ -48,7 +48,7 @@ sealed partial class JournalBrokerHost
 
         try
         {
-            await WriteControlFrameAsync(session, writer => BrokerProtocol.WriteChannelOpened(writer, requestId))
+            await WriteControlFrameAsync(session, writer => BrokerProtocol.WriteChannelOpened(writer, BrokerFrame.ChannelOpened(requestId)))
                 .ConfigureAwait(false);
         }
         catch

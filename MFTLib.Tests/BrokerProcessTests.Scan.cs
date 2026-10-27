@@ -138,9 +138,9 @@ public partial class BrokerProcessTests
     public async Task ScanDrive_CatchUpLostBeforeScanReady_IsProtocolError()
     {
         var lost = await ScanScriptedAsync(
-            pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, Armed)),
+            pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, BrokerFrame.ArmedCursor(Armed))),
             pipe => HostChannelHarness.WriteFrameAsync(pipe,
-                writer => BrokerProtocol.WriteCatchUpLost(writer, TrimmedLoss())));
+                writer => BrokerProtocol.WriteCatchUpLost(writer, BrokerFrame.CatchUpLost(TrimmedLoss()))));
 
         Assert.AreEqual('C', lost.Drive);
         Assert.Contains("CatchUpLost", lost.Message);
@@ -150,11 +150,11 @@ public partial class BrokerProcessTests
     public async Task ScanDrive_ScanCompletedAfterCatchUpLost_IsProtocolError()
     {
         var lost = await ScanScriptedAsync(
-            pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, Armed)),
-            pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, 0)),
+            pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, BrokerFrame.ArmedCursor(Armed))),
+            pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, BrokerFrame.ScanReady(0))),
             pipe => HostChannelHarness.WriteFrameAsync(pipe,
-                writer => BrokerProtocol.WriteCatchUpLost(writer, TrimmedLoss())),
-            pipe => HostChannelHarness.WriteFrameAsync(pipe, BrokerProtocol.WriteScanCompleted));
+                writer => BrokerProtocol.WriteCatchUpLost(writer, BrokerFrame.CatchUpLost(TrimmedLoss()))),
+            pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanCompleted(writer, BrokerFrame.ScanCompleted())));
 
         Assert.AreEqual('C', lost.Drive);
         Assert.Contains("ScanCompleted", lost.Message);
@@ -164,10 +164,10 @@ public partial class BrokerProcessTests
     public async Task ScanDrive_JournalBatchAsTerminalFrame_IsProtocolError()
     {
         var lost = await ScanScriptedAsync(
-            pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, Armed)),
-            pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, 0)),
+            pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, BrokerFrame.ArmedCursor(Armed))),
+            pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, BrokerFrame.ScanReady(0))),
             pipe => HostChannelHarness.WriteFrameAsync(pipe,
-                writer => BrokerProtocol.WriteJournalBatch(writer, Armed, [])));
+                writer => BrokerProtocol.WriteJournalBatch(writer, BrokerFrame.JournalBatch(Armed, []))));
 
         Assert.AreEqual('C', lost.Drive);
         Assert.Contains("JournalBatch", lost.Message);
@@ -180,9 +180,9 @@ public partial class BrokerProcessTests
     public async Task ScanDrive_TruncatedFrameAfterTerminal_IsChannelLost()
     {
         var lost = await ScanScriptedAsync(
-            pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, Armed)),
-            pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, 0)),
-            pipe => HostChannelHarness.WriteFrameAsync(pipe, BrokerProtocol.WriteScanCompleted),
+            pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, BrokerFrame.ArmedCursor(Armed))),
+            pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, BrokerFrame.ScanReady(0))),
+            pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanCompleted(writer, BrokerFrame.ScanCompleted())),
             pipe => WriteRawAsync(pipe, [10, 0, 0, 0, (byte)BrokerFrameKind.Heartbeat]));
 
         Assert.AreEqual('C', lost.Drive);
@@ -193,9 +193,9 @@ public partial class BrokerProcessTests
     public async Task ScanDrive_InvalidFrameLengthAfterTerminal_IsChannelLost()
     {
         var lost = await ScanScriptedAsync(
-            pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, Armed)),
-            pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, 0)),
-            pipe => HostChannelHarness.WriteFrameAsync(pipe, BrokerProtocol.WriteScanCompleted),
+            pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, BrokerFrame.ArmedCursor(Armed))),
+            pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, BrokerFrame.ScanReady(0))),
+            pipe => HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanCompleted(writer, BrokerFrame.ScanCompleted())),
             pipe => WriteRawAsync(pipe, BitConverter.GetBytes(0)));
 
         Assert.AreEqual('C', lost.Drive);
@@ -464,17 +464,9 @@ public partial class BrokerProcessTests
         };
     }
 
-    static JournalCheckpointLoss TrimmedLoss()
+    static BrokerCatchUpLoss TrimmedLoss()
     {
-        return new JournalCheckpointLoss('C', JournalCheckpointLossDetection.ScanCatchUp, JournalCheckpointLossCause.CheckpointTrimmed,
-            new UsnJournalSettings { AllocationDelta = 4096, MaximumSize = 32768 })
-        {
-            CheckpointUsn = Armed.NextUsn,
-            FirstUsn = 5000,
-            NextUsn = 9000,
-            BytesBehind = 4000,
-            SizeThatWouldHaveRetained = 12288
-        };
+        return new BrokerCatchUpLoss(JournalCheckpointLossCause.CheckpointTrimmed, Armed.NextUsn, 5000, 9000, 4096, 32768, 4000, 12288);
     }
 
     static void AssertSectionReleased((string SectionName, BlockFile Block, RecordingLifetime Lifetime) section)

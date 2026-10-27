@@ -21,7 +21,7 @@ sealed partial class JournalBrokerHost
             return;
         }
 
-        await WriteControlFrameAsync(session, writer => BrokerProtocol.WriteUsnJournalSettings(writer, requestId,
-            settings.MaximumSize, settings.AllocationDelta)).ConfigureAwait(false);
+        await WriteControlFrameAsync(session, writer => BrokerProtocol.WriteUsnJournalSettings(writer, BrokerFrame.UsnJournalSettings(requestId, settings.MaximumSize, settings.AllocationDelta))).ConfigureAwait(false);
+
     }
 }

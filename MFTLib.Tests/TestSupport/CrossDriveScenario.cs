@@ -324,7 +324,7 @@ sealed class CrossDriveScenario : IAsyncDisposable
     static int MeasureHeartbeat()
     {
         var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteHeartbeat(buffer);
+        BrokerProtocol.WriteHeartbeat(buffer, BrokerFrame.Heartbeat());
         return buffer.WrittenCount;
     }
 

@@ -118,7 +118,7 @@ The broker-internal scan result carries the completed block, independently recei
 
 Frames are `Cursor`, zero or more `ScanProgress`, `ScanReady` (skipped record count), then one terminal frame: payload-free `ScanCompleted` for successful catch-up or `CatchUpLost` with the journal facts of proven loss. Catch-up entries stay on the host. `Error` replaces any of these frames, including an unproven catch-up failure. `BrokerMftBlockProducer` disposes a block that fails validation and fails its scan; a validated block transfers to the index.
 
-`ScanProgress` carries a 32-bit phase (Parsing = 0, Transferring = 1), then four signed 64-bit values: records processed, name-pool bytes processed, total records and total name-pool bytes. Unknown totals are encoded as -1. The length field is 37 (kind plus payload), for 41 bytes including the four-byte prefix. The channel identifies the drive. Watchdog progress and progress throttling use their own clocks.
+`ScanProgress` carries a 32-bit phase (Parsing = 0, Transferring = 1), two signed 64-bit values (records processed and name-pool bytes processed), and two nullable signed 64-bit totals (total records and total name-pool bytes, each a presence byte followed by an 8-byte signed integer). The length field is 39 (kind plus payload), for 43 bytes including the four-byte prefix. The channel identifies the drive. Watchdog progress and progress throttling use their own clocks.
 
 The frame length limit is 16 MiB, checked before sending and before allocating a
 received frame. Every frame kind must consume its declared payload completely; any
@@ -131,11 +131,11 @@ declared frame length belong to subsequent frames in a combined input. A native-
 from `FileIndex.OpenAsync` for an index with an MFT-producer drive, before any cache directory is created. An oversized journal batch fails that watch with `Error`, like any
 source failure.
 
-`ArmAndScan` encodes the section name, a 32-bit include-freed flag (0 or 1), then
-a signed 32-bit name count: -1 for full retention, 0 for directories only, or the
+`ArmAndScan` encodes the section name, a 1-byte include-freed flag (0 or 1), then
+a nullable signed 32-bit name count (a presence byte followed by a 4-byte signed integer): absent for full retention, present 0 for directories only, or present with the
 number of following UTF-16 names. The section name must match `mftlib-block-<drive>-`
 followed by 32 ASCII hex digits (`0-9`, `a-f`, `A-F`) for the scan channel's drive
-letter (47 UTF-16 units); any other section name, counts below -1 or beyond the
+letter (47 UTF-16 units); any other section name, negative present counts or counts beyond the
 remaining payload, truncated fields, invalid flags and trailing data are malformed
 requests and write an `Error` frame on the scan channel before the host touches the
 volume or opens the named section.

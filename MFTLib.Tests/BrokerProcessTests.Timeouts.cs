@@ -20,9 +20,9 @@ public partial class BrokerProcessTests
     {
         clock.Advance(HeartbeatAfter);
         var heartbeat = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteHeartbeat(heartbeat);
+        BrokerProtocol.WriteHeartbeat(heartbeat, BrokerFrame.Heartbeat());
         var sent = controlReads.BytesRead + heartbeat.WrittenCount;
-        await broker.WriteControlAsync(BrokerProtocol.WriteHeartbeat);
+        await broker.WriteControlAsync(writer => BrokerProtocol.WriteHeartbeat(writer, BrokerFrame.Heartbeat()));
         await controlReads.WhenReadPendingAfter(sent).WaitAsync(HangGuard);
     }
 
@@ -64,13 +64,13 @@ public partial class BrokerProcessTests
         await using var broker = new ScriptedBroker(clock, controlReads.Wrap);
         await clock.TimerCreated(BrokerLiveness.StallLimit).WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        var open = broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, Armed),
+        var open = broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, BrokerFrame.StartWatch(Armed)),
             CancellationToken.None);
         var request = await broker.ReadRequestAsync();
         // The 30 second timers so far: the control reader's stall limit, the request's write bound,
         // and its reply timeout (created after the write). The connection bound follows the reply.
         await clock.TimerCreated(BrokerLiveness.ControlReplyTimeout, occurrence: 3).WaitAsync(HangGuard, TestContext.CancellationToken);
-        await broker.WriteControlAsync(writer => BrokerProtocol.WriteChannelOpened(writer, request.RequestId));
+        await broker.WriteControlAsync(writer => BrokerProtocol.WriteChannelOpened(writer, BrokerFrame.ChannelOpened(request.RequestId)));
         var connectionBound = await clock.TimerCreated(BrokerLiveness.ControlReplyTimeout, occurrence: 4)
             .WaitAsync(HangGuard, TestContext.CancellationToken);
         await KeepControlAliveAsync(broker, clock, controlReads);

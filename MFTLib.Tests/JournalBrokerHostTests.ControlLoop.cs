@@ -28,7 +28,7 @@ public partial class JournalBrokerHostTests
         var host = ScanHost(queryVolumeInfo: _ => ControlVolume);
         await using var harness = new HostChannelHarness(host);
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 1, 'C'));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, BrokerFrame.QueryVolume(1, 'C')));
         Assert.AreEqual(BrokerFrameKind.VolumeInfo, (await harness.ReadControlAsync()).Kind);
         await harness.CloseControlAsync(); // the host's next read hits clean EOF
 

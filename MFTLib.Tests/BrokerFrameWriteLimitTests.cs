@@ -20,7 +20,7 @@ public class BrokerFrameWriteLimitTests
         var buffer = new ArrayBufferWriter<byte>();
 
         var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
-            BrokerProtocol.WriteArmAndScan(buffer, "section", KeepList(32_700)));
+            BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("section", KeepList(32_700))));
 
         Assert.Contains("frame limit", exception.Message);
         Assert.AreEqual(0, buffer.WrittenCount);
@@ -34,17 +34,19 @@ public class BrokerFrameWriteLimitTests
         var buffer = new ArrayBufferWriter<byte>();
 
         Assert.ThrowsExactly<InvalidOperationException>(() =>
-            BrokerProtocol.WriteJournalBatch(buffer, Armed, entries));
+            BrokerProtocol.WriteJournalBatch(buffer, BrokerFrame.JournalBatch(Armed, entries)));
 
         Assert.AreEqual(0, buffer.WrittenCount);
     }
 
     [TestMethod]
-    public void ArmAndScanFrameLength_MatchesTheWrittenFrame()
+    [DataRow(null)]
+    [DataRow(new string[0])]
+    [DataRow(new[] { ".git", "HEAD" })]
+    public void ArmAndScanFrameLength_MatchesTheWrittenFrame(string[]? names)
     {
-        var names = new[] { ".git", "HEAD" };
         var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteArmAndScan(buffer, "section-C", names);
+        BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("section-C", names));
 
         Assert.AreEqual(BinaryPrimitives.ReadInt32LittleEndian(buffer.WrittenSpan),
             BrokerProtocol.ArmAndScanFrameLength("section-C", names));
@@ -55,7 +57,7 @@ public class BrokerFrameWriteLimitTests
     {
         var buffer = new ArrayBufferWriter<byte>();
 
-        BrokerProtocol.WriteError(buffer, 3, new string('x', 8_388_604));
+        BrokerProtocol.WriteError(buffer, BrokerFrame.Error(3, new string('x', 8_388_604)));
 
         var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
         Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
@@ -69,7 +71,7 @@ public class BrokerFrameWriteLimitTests
     {
         var buffer = new ArrayBufferWriter<byte>();
 
-        BrokerProtocol.WriteStalled(buffer, new string('x', 9_000_000));
+        BrokerProtocol.WriteStalled(buffer, BrokerFrame.Stalled(new string('x', 9_000_000)));
 
         var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out _);
         Assert.AreEqual(BrokerProtocol.MaximumMessageUnits, frame.RequireMessage().Length);
@@ -80,7 +82,7 @@ public class BrokerFrameWriteLimitTests
     {
         var buffer = new ArrayBufferWriter<byte>();
 
-        BrokerProtocol.WriteError(buffer, 3, "journal wrapped");
+        BrokerProtocol.WriteError(buffer, BrokerFrame.Error(3, "journal wrapped"));
 
         Assert.AreEqual("journal wrapped", BrokerProtocol.ReadFrame(buffer.WrittenSpan, out _).RequireMessage());
     }

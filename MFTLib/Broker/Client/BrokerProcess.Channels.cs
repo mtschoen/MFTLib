@@ -51,7 +51,7 @@ sealed partial class BrokerProcess
     {
         try
         {
-            await RequestAsync((writer, requestId) => BrokerProtocol.WriteOpenChannel(writer, requestId, drive, pipeName),
+            await RequestAsync((writer, requestId) => BrokerProtocol.WriteOpenChannel(writer, BrokerFrame.OpenChannel(requestId, drive, pipeName)),
                 BrokerFrameKind.ChannelOpened, cancellationToken).ConfigureAwait(false);
         }
         catch (BrokerChannelLostException exception) when (exception.Drive is null)

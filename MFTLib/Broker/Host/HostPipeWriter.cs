@@ -177,12 +177,12 @@ sealed class HostPipeWriter : ISourceOperationReporter
             case ChannelOperationKind.WaitingOnVolume:
             case ChannelOperationKind.Queued:
             case ChannelOperationKind.Processing when now - state.Since < BrokerLiveness.ProcessingLimit:
-                return (BrokerProtocol.WriteHeartbeat, false);
+                return (writer => BrokerProtocol.WriteHeartbeat(writer, BrokerFrame.Heartbeat()), false);
 
             case ChannelOperationKind.Processing:
                 var seconds = BrokerLiveness.FormatSeconds(now - state.Since, "0");
                 var message = $"Broker step '{state.Step}' on pipe {Tag} made no progress for {seconds} seconds.";
-                return (writer => BrokerProtocol.WriteStalled(writer, message), true);
+                return (writer => BrokerProtocol.WriteStalled(writer, BrokerFrame.Stalled(message)), true);
 
             default:
                 return (null, false);

@@ -77,7 +77,7 @@ public partial class BrokerProcessTests
     {
         await using var broker = new ScriptedBroker(wrapClientControl: stream => new ThrowOnAsyncDisposeStream(stream));
         var ended = broker.Process.Ended;
-        var open = broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, Armed),
+        var open = broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, BrokerFrame.StartWatch(Armed)),
             CancellationToken.None);
         await using var hostEnd = await broker.AcceptChannelAsync();
         Assert.AreEqual(BrokerFrameKind.StartWatch, (await HostChannelHarness.ReadFrameAsync(hostEnd))?.Kind);
@@ -118,7 +118,7 @@ public partial class BrokerProcessTests
         await using var hostEnd = await broker.AcceptChannelAsync();
         Assert.AreEqual(BrokerFrameKind.ArmAndScan, (await HostChannelHarness.ReadFrameAsync(hostEnd))?.Kind);
         var cursor = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteCursor(cursor, Armed);
+        BrokerProtocol.WriteCursor(cursor, BrokerFrame.ArmedCursor(Armed));
         await hostEnd.WriteAsync(cursor.WrittenMemory, TestContext.CancellationToken).AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
         await hostEnd.FlushAsync(TestContext.CancellationToken).WaitAsync(HangGuard, TestContext.CancellationToken);
         await clientReads.WhenReadPendingAfter(cursor.WrittenCount).WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -143,9 +143,9 @@ public partial class BrokerProcessTests
         await using var hostEnd = await broker.AcceptChannelAsync();
         Assert.AreEqual(BrokerFrameKind.ArmAndScan, (await HostChannelHarness.ReadFrameAsync(hostEnd))?.Kind);
         var frames = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteCursor(frames, Armed);
-        BrokerProtocol.WriteScanReady(frames, 0);
-        BrokerProtocol.WriteScanCompleted(frames);
+        BrokerProtocol.WriteCursor(frames, BrokerFrame.ArmedCursor(Armed));
+        BrokerProtocol.WriteScanReady(frames, BrokerFrame.ScanReady(0));
+        BrokerProtocol.WriteScanCompleted(frames, BrokerFrame.ScanCompleted());
         await hostEnd.WriteAsync(frames.WrittenMemory, TestContext.CancellationToken).AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
         await hostEnd.FlushAsync(TestContext.CancellationToken).WaitAsync(HangGuard, TestContext.CancellationToken);
         await clientReads.WhenRead(frames.WrittenCount).WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -172,9 +172,9 @@ public partial class BrokerProcessTests
         await using var hostEnd = await broker.AcceptChannelAsync();
         Assert.AreEqual(BrokerFrameKind.ArmAndScan, (await HostChannelHarness.ReadFrameAsync(hostEnd))?.Kind);
         var frames = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteCursor(frames, Armed);
-        BrokerProtocol.WriteScanReady(frames, 0);
-        BrokerProtocol.WriteScanCompleted(frames);
+        BrokerProtocol.WriteCursor(frames, BrokerFrame.ArmedCursor(Armed));
+        BrokerProtocol.WriteScanReady(frames, BrokerFrame.ScanReady(0));
+        BrokerProtocol.WriteScanCompleted(frames, BrokerFrame.ScanCompleted());
         var partialLengthPrefix = BitConverter.GetBytes(10)[..2];
         frames.Write(partialLengthPrefix);
         await hostEnd.WriteAsync(frames.WrittenMemory, TestContext.CancellationToken).AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -202,7 +202,7 @@ public partial class BrokerProcessTests
         var open = broker.Process.OpenChannelAsync('C', writer =>
         {
             firstRequestWritten = true;
-            BrokerProtocol.WriteStartWatch(writer, Armed);
+            BrokerProtocol.WriteStartWatch(writer, BrokerFrame.StartWatch(Armed));
         }, CancellationToken.None);
         try
         {
@@ -214,8 +214,8 @@ public partial class BrokerProcessTests
             Assert.IsNotNull(clientPipe);
 
             var reply = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteChannelOpened(reply, request.RequestId);
-            await broker.WriteControlAsync(writer => BrokerProtocol.WriteChannelOpened(writer, request.RequestId));
+            BrokerProtocol.WriteChannelOpened(reply, BrokerFrame.ChannelOpened(request.RequestId));
+            await broker.WriteControlAsync(writer => BrokerProtocol.WriteChannelOpened(writer, BrokerFrame.ChannelOpened(request.RequestId)));
             await controlReads.WhenReadPendingAfter(reply.WrittenCount).WaitAsync(HangGuard, TestContext.CancellationToken);
             Assert.AreEqual(0, broker.Process.Hooks.PendingRequestCount,
                 "ChannelOpened has been routed before disposal.");

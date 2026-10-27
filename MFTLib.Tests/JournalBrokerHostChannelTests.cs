@@ -28,7 +28,7 @@ public partial class JournalBrokerHostChannelTests
         });
         await using var harness = new HostChannelHarness(host);
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 41, 'c'));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, BrokerFrame.QueryVolume(41, 'c')));
         var reply = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.VolumeInfo, reply.Kind);
@@ -53,7 +53,7 @@ public partial class JournalBrokerHostChannelTests
         });
         await using var harness = new HostChannelHarness(host);
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 9, 'D', 65536, 4096));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, BrokerFrame.GrowUsnJournal(9, 'D', 65536, 4096)));
         var reply = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.UsnJournalSettings, reply.Kind);
@@ -72,7 +72,7 @@ public partial class JournalBrokerHostChannelTests
         });
         await using var harness = new HostChannelHarness(host);
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 3, 'C'));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, BrokerFrame.QueryVolume(3, 'C')));
         var reply = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.Error, reply.Kind);
@@ -100,9 +100,9 @@ public partial class JournalBrokerHostChannelTests
         });
         await using var harness = new HostChannelHarness(host);
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 1, 'C'));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, BrokerFrame.QueryVolume(1, 'C')));
         await gate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 2, 'D'));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, BrokerFrame.QueryVolume(2, 'D')));
 
         var first = await harness.ReadControlAsync();
         gate.Release();
@@ -127,7 +127,7 @@ public partial class JournalBrokerHostChannelTests
             connectChannel: (driveName, driveToken) => DefaultElevatedEntryRunner.ConnectDrivePipeAsync(
                 driveName, BrokerLiveness.ElevatedConnectTimeout, TimeProvider.System, driveToken));
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 5, 'C', pipeName));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, BrokerFrame.OpenChannel(5, 'C', pipeName)));
         await server.WaitForConnectionAsync(TestContext.CancellationToken).WaitAsync(HangGuard, TestContext.CancellationToken);
         var reply = await harness.ReadControlAsync();
 
@@ -135,7 +135,7 @@ public partial class JournalBrokerHostChannelTests
         Assert.AreEqual(5u, reply.RequestId);
 
         // The connected pipe is served: a watch armed at the tip reports CaughtUp over it.
-        await HostChannelHarness.WriteFrameAsync(server, writer => BrokerProtocol.WriteStartWatch(writer, Armed));
+        await HostChannelHarness.WriteFrameAsync(server, writer => BrokerProtocol.WriteStartWatch(writer, BrokerFrame.StartWatch(Armed)));
         var caughtUp = await HostChannelHarness.ReadFrameAsync(server);
         Assert.AreEqual(BrokerFrameKind.CaughtUp, caughtUp?.Kind);
     }
@@ -158,7 +158,7 @@ public partial class JournalBrokerHostChannelTests
             return connection.Task;
         });
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 12, 'C', harness.NextPipeName('C')));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, BrokerFrame.OpenChannel(12, 'C', harness.NextPipeName('C'))));
         var reply = harness.ReadControlAsync();
         await AdvanceWhenTimerExistsAsync(clock, BrokerLiveness.ChannelConnectTimeout, 1, reply);
 
@@ -207,7 +207,7 @@ public partial class JournalBrokerHostChannelTests
         await using var harness = new HostChannelHarness(host,
             connectChannel: (_, _) => throw new IOException("pipe not found"));
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 77, 'C', harness.NextPipeName('C')));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, BrokerFrame.OpenChannel(77, 'C', harness.NextPipeName('C'))));
         var reply = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.Error, reply.Kind);
@@ -226,7 +226,7 @@ public partial class JournalBrokerHostChannelTests
         await using var harness = new HostChannelHarness(host);
         var pipe = await harness.OpenChannelAsync('C');
 
-        await HostChannelHarness.WriteFrameAsync(pipe, BrokerProtocol.WriteCaughtUp);
+        await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCaughtUp(writer, BrokerFrame.CaughtUp()));
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
         Assert.HasCount(1, frames);
@@ -244,7 +244,8 @@ public partial class JournalBrokerHostChannelTests
         payload.AddRange(BitConverter.GetBytes(malformation == "truncated section name" ? 100 : 0));
         if (malformation != "truncated section name")
         {
-            payload.AddRange(BitConverter.GetBytes(0)); // IncludeFreed
+            payload.Add(0); // IncludeFreed
+            payload.Add(1); // RetainedFileNames present
             payload.AddRange(BitConverter.GetBytes(malformation == "negative name count" ? -2 : int.MaxValue));
         }
         else
@@ -273,7 +274,7 @@ public partial class JournalBrokerHostChannelTests
         Assert.HasCount(1, frames);
         Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
         Assert.Contains("malformed", frames[0].Message!);
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 8, 'C'));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, BrokerFrame.QueryVolume(8, 'C')));
         Assert.AreEqual(BrokerFrameKind.VolumeInfo, (await harness.ReadControlAsync()).Kind,
             "The session keeps serving after one channel's malformed request.");
     }
@@ -289,9 +290,9 @@ public partial class JournalBrokerHostChannelTests
         await using var harness = new HostChannelHarness(host,
             connectChannel: (_, _) => Task.FromCanceled<Stream>(new CancellationToken(true)));
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 21, 'C', harness.NextPipeName('C')));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, BrokerFrame.OpenChannel(21, 'C', harness.NextPipeName('C'))));
         var reply = await harness.ReadControlAsync();
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 22, 'C'));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, BrokerFrame.QueryVolume(22, 'C')));
         var next = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.Error, reply.Kind);
@@ -325,9 +326,9 @@ public partial class JournalBrokerHostChannelTests
                 return Task.FromException<Stream>(new InvalidOperationException("Connector should not be called."));
             });
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 31, 'C', invalidPipeName));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, BrokerFrame.OpenChannel(31, 'C', invalidPipeName)));
         var reply = await harness.ReadControlAsync();
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 32, 'C'));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, BrokerFrame.QueryVolume(32, 'C')));
         var next = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.Error, reply.Kind);
@@ -357,7 +358,7 @@ public partial class JournalBrokerHostChannelTests
             return stream;
         });
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 45, 'C', validPipeName));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, BrokerFrame.OpenChannel(45, 'C', validPipeName)));
         var reply = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.ChannelOpened, reply.Kind);

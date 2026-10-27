@@ -61,7 +61,7 @@ sealed partial class JournalBrokerHost
             await using var batchesLifetime = batches.ConfigureAwait(false);
             if (caughtUpReported)
             {
-                await channel.Pipe.WriteFrameAsync(BrokerProtocol.WriteCaughtUp, cancellationToken)
+                await channel.Pipe.WriteFrameAsync(writer => BrokerProtocol.WriteCaughtUp(writer, BrokerFrame.CaughtUp()), cancellationToken)
                     .ConfigureAwait(false);
             }
 
@@ -80,14 +80,14 @@ sealed partial class JournalBrokerHost
                 if (filtered.Length > 0)
                 {
                     await channel.Pipe.WriteFrameAsync(
-                        writer => BrokerProtocol.WriteJournalBatch(writer, cursor, filtered),
+                        writer => BrokerProtocol.WriteJournalBatch(writer, BrokerFrame.JournalBatch(cursor, filtered)),
                         cancellationToken).ConfigureAwait(false);
                 }
 
                 if (!caughtUpReported && cursor.JournalIdentifier == arm.Tip.JournalIdentifier &&
                     cursor.NextUsn >= arm.Tip.NextUsn)
                 {
-                    await channel.Pipe.WriteFrameAsync(BrokerProtocol.WriteCaughtUp, cancellationToken)
+                    await channel.Pipe.WriteFrameAsync(writer => BrokerProtocol.WriteCaughtUp(writer, BrokerFrame.CaughtUp()), cancellationToken)
                         .ConfigureAwait(false);
                     caughtUpReported = true;
                 }

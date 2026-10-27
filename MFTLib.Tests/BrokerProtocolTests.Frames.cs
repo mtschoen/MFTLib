@@ -41,7 +41,7 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void OpenChannelFrame_RoundTrips_RequestIdDriveAndPipeName()
     {
-        var frame = RoundTrip(writer => BrokerProtocol.WriteOpenChannel(writer, 0xDEADBEEF, 'C', "mftlib-drive-C-1"));
+        var frame = RoundTrip(BrokerFrame.OpenChannel(0xDEADBEEF, 'C', "mftlib-drive-C-1"), BrokerProtocol.WriteOpenChannel);
 
         Assert.AreEqual(BrokerFrameKind.OpenChannel, frame.Kind);
         Assert.AreEqual(0xDEADBEEF, frame.RequestId);
@@ -54,7 +54,7 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void ChannelOpenedFrame_RoundTrips_RequestId()
     {
-        var frame = RoundTrip(writer => BrokerProtocol.WriteChannelOpened(writer, 17));
+        var frame = RoundTrip(BrokerFrame.ChannelOpened(17), BrokerProtocol.WriteChannelOpened);
 
         Assert.AreEqual(BrokerFrameKind.ChannelOpened, frame.Kind);
         Assert.AreEqual(17u, frame.RequestId);
@@ -63,7 +63,7 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void QueryVolumeFrame_RoundTrips_RequestIdAndDrive()
     {
-        var frame = RoundTrip(writer => BrokerProtocol.WriteQueryVolume(writer, 4, 'D'));
+        var frame = RoundTrip(BrokerFrame.QueryVolume(4, 'D'), BrokerProtocol.WriteQueryVolume);
 
         Assert.AreEqual(BrokerFrameKind.QueryVolume, frame.Kind);
         Assert.AreEqual(4u, frame.RequestId);
@@ -73,7 +73,7 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void VolumeInfoFrame_RoundTrips_RequestIdAndAllFields()
     {
-        var frame = RoundTrip(writer => BrokerProtocol.WriteVolumeInfo(writer, 9, 1024, 8_192_000_000));
+        var frame = RoundTrip(BrokerFrame.VolumeInfo(9, 1024, 8_192_000_000), BrokerProtocol.WriteVolumeInfo);
 
         Assert.AreEqual(BrokerFrameKind.VolumeInfo, frame.Kind);
         Assert.AreEqual(9u, frame.RequestId);
@@ -86,7 +86,7 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void ErrorFrame_RoundTrips_RequestIdAndMessage()
     {
-        var frame = RoundTrip(writer => BrokerProtocol.WriteError(writer, 42, "journal wrapped"));
+        var frame = RoundTrip(BrokerFrame.Error(42, "journal wrapped"), BrokerProtocol.WriteError);
 
         Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
         Assert.AreEqual(42u, frame.RequestId);
@@ -98,7 +98,7 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void ErrorFrame_OnDrivePipe_RoundTripsRequestIdZero()
     {
-        var frame = RoundTrip(writer => BrokerProtocol.WriteError(writer, 0, "no watch source"));
+        var frame = RoundTrip(BrokerFrame.Error(0, "no watch source"), BrokerProtocol.WriteError);
 
         Assert.AreEqual(0u, frame.RequestId);
         Assert.AreEqual("no watch source", frame.Message);
@@ -107,7 +107,7 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void HeartbeatFrame_RoundTrips_NoPayload()
     {
-        var frame = RoundTrip(BrokerProtocol.WriteHeartbeat);
+        var frame = RoundTrip(BrokerFrame.Heartbeat(), BrokerProtocol.WriteHeartbeat);
 
         Assert.AreEqual(BrokerFrameKind.Heartbeat, frame.Kind);
         Assert.AreEqual(0u, frame.RequestId);
@@ -117,7 +117,7 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void StalledFrame_RoundTrips_Message()
     {
-        var frame = RoundTrip(writer => BrokerProtocol.WriteStalled(writer, "no progress for 90 seconds"));
+        var frame = RoundTrip(BrokerFrame.Stalled("no progress for 90 seconds"), BrokerProtocol.WriteStalled);
 
         Assert.AreEqual(BrokerFrameKind.Stalled, frame.Kind);
         Assert.AreEqual("no progress for 90 seconds", frame.Message);
@@ -126,14 +126,14 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void WireBytes_Golden_NoPayloadFrames()
     {
-        AssertWireBytes(BrokerProtocol.WriteHeartbeat, [0x01, 0x00, 0x00, 0x00, 0x08]);
-        AssertWireBytes(BrokerProtocol.WriteCaughtUp, [0x01, 0x00, 0x00, 0x00, 0x11]);
+        AssertWireBytes(w => BrokerProtocol.WriteHeartbeat(w, BrokerFrame.Heartbeat()), [0x01, 0x00, 0x00, 0x00, 0x08]);
+        AssertWireBytes(w => BrokerProtocol.WriteCaughtUp(w, BrokerFrame.CaughtUp()), [0x01, 0x00, 0x00, 0x00, 0x11]);
     }
 
     [TestMethod]
     public void WireBytes_Golden_OpenChannelFrame()
     {
-        AssertWireBytes(w => BrokerProtocol.WriteOpenChannel(w, 1, 'c', "p"),
+        AssertWireBytes(w => BrokerProtocol.WriteOpenChannel(w, BrokerFrame.OpenChannel(1, 'c', "p")),
         [
             0x0D, 0x00, 0x00, 0x00, // totalLength = 13
             0x01, // kind = OpenChannel
@@ -143,21 +143,21 @@ public partial class BrokerProtocolTests
         ]);
 
         var buffer = new ArrayBufferWriter<byte>();
-        Assert.ThrowsExactly<ArgumentException>(() => BrokerProtocol.WriteOpenChannel(buffer, 1, default, "p"));
+        Assert.ThrowsExactly<ArgumentException>(() => BrokerProtocol.WriteOpenChannel(buffer, BrokerFrame.OpenChannel(1, default, "p")));
         Assert.AreEqual(0, buffer.WrittenCount);
     }
 
     [TestMethod]
     public void WireBytes_Golden_ChannelOpenedFrame()
     {
-        AssertWireBytes(w => BrokerProtocol.WriteChannelOpened(w, 3),
+        AssertWireBytes(w => BrokerProtocol.WriteChannelOpened(w, BrokerFrame.ChannelOpened(3)),
             [0x05, 0x00, 0x00, 0x00, 0x02, 0x03, 0x00, 0x00, 0x00]);
     }
 
     [TestMethod]
     public void WireBytes_Golden_QueryVolumeFrame()
     {
-        AssertWireBytes(w => BrokerProtocol.WriteQueryVolume(w, 2, 'c'),
+        AssertWireBytes(w => BrokerProtocol.WriteQueryVolume(w, BrokerFrame.QueryVolume(2, 'c')),
         [
             0x07, 0x00, 0x00, 0x00, // totalLength = 7
             0x03, // kind = QueryVolume
@@ -166,14 +166,14 @@ public partial class BrokerProtocolTests
         ]);
 
         var buffer = new ArrayBufferWriter<byte>();
-        Assert.ThrowsExactly<ArgumentException>(() => BrokerProtocol.WriteQueryVolume(buffer, 2, default));
+        Assert.ThrowsExactly<ArgumentException>(() => BrokerProtocol.WriteQueryVolume(buffer, BrokerFrame.QueryVolume(2, default)));
         Assert.AreEqual(0, buffer.WrittenCount);
     }
 
     [TestMethod]
     public void WireBytes_Golden_VolumeInfoFrame()
     {
-        AssertWireBytes(w => BrokerProtocol.WriteVolumeInfo(w, 5, 2, 3),
+        AssertWireBytes(w => BrokerProtocol.WriteVolumeInfo(w, BrokerFrame.VolumeInfo(5, 2, 3)),
         [
             0x11, 0x00, 0x00, 0x00, // totalLength = 17 (1 + 4 + 4 + 8)
             0x04, // kind = VolumeInfo
@@ -186,7 +186,7 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void WireBytes_Golden_ErrorFrame()
     {
-        AssertWireBytes(w => BrokerProtocol.WriteError(w, 42, "D"),
+        AssertWireBytes(w => BrokerProtocol.WriteError(w, BrokerFrame.Error(42, "D")),
         [
             0x0B, 0x00, 0x00, 0x00, // totalLength = 11
             0x07, // kind = Error
@@ -198,7 +198,7 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void WireBytes_Golden_StalledFrame()
     {
-        AssertWireBytes(w => BrokerProtocol.WriteStalled(w, "D"),
+        AssertWireBytes(w => BrokerProtocol.WriteStalled(w, BrokerFrame.Stalled("D")),
         [
             0x07, 0x00, 0x00, 0x00, // totalLength = 7
             0x09, // kind = Stalled

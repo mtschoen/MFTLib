@@ -31,7 +31,7 @@ public partial class BrokerProcessTests
             });
         using var cancellation = new CancellationTokenSource();
 
-        var open = broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, Armed),
+        var open = broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, BrokerFrame.StartWatch(Armed)),
             cancellation.Token);
         await connecting.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         await cancellation.CancelAsync();
@@ -58,7 +58,7 @@ public partial class BrokerProcessTests
             });
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-            broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, Armed),
+            broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, BrokerFrame.StartWatch(Armed)),
                 CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.Contains("refused after connecting", exception.Message);
@@ -79,7 +79,7 @@ public partial class BrokerProcessTests
         });
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-            broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, Armed),
+            broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, BrokerFrame.StartWatch(Armed)),
                 CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.Contains("no pipe for drive C", exception.Message);
@@ -97,7 +97,7 @@ public partial class BrokerProcessTests
             wrapConnector: RecordHostEnd(hostEnd));
 
         var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
-            broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, Armed),
+            broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, BrokerFrame.StartWatch(Armed)),
                 CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.AreEqual('C', lost.Drive);

@@ -19,8 +19,8 @@ public partial class BrokerProcessTests
         var channelC = pipeC;
         var sectionC = broker.Sections.ForDrive('C');
         broker.WriteSection(sectionC.SectionName, armedC);
-        await HostChannelHarness.WriteFrameAsync(channelC, writer => BrokerProtocol.WriteCursor(writer, armedC));
-        await HostChannelHarness.WriteFrameAsync(channelC, writer => BrokerProtocol.WriteScanReady(writer, 0));
+        await HostChannelHarness.WriteFrameAsync(channelC, writer => BrokerProtocol.WriteCursor(writer, BrokerFrame.ArmedCursor(armedC)));
+        await HostChannelHarness.WriteFrameAsync(channelC, writer => BrokerProtocol.WriteScanReady(writer, BrokerFrame.ScanReady(0)));
         await sectionC.Lifetime.Disposed.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         // C's section is released after its ScanReady while its scan still waits for catch-up.
@@ -33,15 +33,15 @@ public partial class BrokerProcessTests
         Assert.AreEqual(0, sectionD.Lifetime.DisposeCount, "Drive D's section must stay live while its scan is unread");
         Assert.IsFalse(scanC.IsCompleted);
 
-        await HostChannelHarness.WriteFrameAsync(channelC, BrokerProtocol.WriteScanCompleted);
+        await HostChannelHarness.WriteFrameAsync(channelC, writer => BrokerProtocol.WriteScanCompleted(writer, BrokerFrame.ScanCompleted()));
         await channelC.DisposeAsync();
         var resultC = await scanC.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(0, sectionD.Lifetime.DisposeCount, "Drive C completing must not release drive D's section");
 
         broker.WriteSection(sectionD.SectionName, armedD);
-        await HostChannelHarness.WriteFrameAsync(channelD, writer => BrokerProtocol.WriteCursor(writer, armedD));
-        await HostChannelHarness.WriteFrameAsync(channelD, writer => BrokerProtocol.WriteScanReady(writer, 0));
-        await HostChannelHarness.WriteFrameAsync(channelD, BrokerProtocol.WriteScanCompleted);
+        await HostChannelHarness.WriteFrameAsync(channelD, writer => BrokerProtocol.WriteCursor(writer, BrokerFrame.ArmedCursor(armedD)));
+        await HostChannelHarness.WriteFrameAsync(channelD, writer => BrokerProtocol.WriteScanReady(writer, BrokerFrame.ScanReady(0)));
+        await HostChannelHarness.WriteFrameAsync(channelD, writer => BrokerProtocol.WriteScanCompleted(writer, BrokerFrame.ScanCompleted()));
         await channelD.DisposeAsync();
         var resultD = await scanD.WaitAsync(HangGuard, TestContext.CancellationToken);
         using var blockC = resultC.Block.Block;
@@ -86,8 +86,8 @@ public partial class BrokerProcessTests
         var (pipe, _) = await broker.AcceptScanAsync(Volume);
         var channel = pipe;
         broker.WriteSection(broker.Sections.Single().SectionName, Armed);
-        await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteCursor(writer, Armed));
-        await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanProgress(writer,
+        await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteCursor(writer, BrokerFrame.ArmedCursor(Armed)));
+        await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanProgress(writer, BrokerFrame.ScanProgress(
             new BrokerScanProgress
             {
                 Phase = BrokerScanPhase.Parsing,
@@ -95,8 +95,8 @@ public partial class BrokerProcessTests
                 BytesProcessed = 1000,
                 TotalRecords = 100,
                 TotalBytes = 2000
-            }));
-        await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanProgress(writer,
+            })));
+        await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanProgress(writer, BrokerFrame.ScanProgress(
             new BrokerScanProgress
             {
                 Phase = BrokerScanPhase.Parsing,
@@ -104,9 +104,9 @@ public partial class BrokerProcessTests
                 BytesProcessed = 2000,
                 TotalRecords = 100,
                 TotalBytes = 2000
-            }));
-        await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanReady(writer, 0));
-        await HostChannelHarness.WriteFrameAsync(channel, BrokerProtocol.WriteScanCompleted);
+            })));
+        await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanReady(writer, BrokerFrame.ScanReady(0)));
+        await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanCompleted(writer, BrokerFrame.ScanCompleted()));
         await channel.DisposeAsync();
         var result = await scan.WaitAsync(HangGuard, TestContext.CancellationToken);
         result.Block.Block.Dispose();
@@ -136,8 +136,8 @@ public partial class BrokerProcessTests
         var (pipe, _) = await broker.AcceptScanAsync(Volume);
         var channel = pipe;
         var section = broker.Sections.Single();
-        await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteCursor(writer, Armed));
-        await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanProgress(writer,
+        await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteCursor(writer, BrokerFrame.ArmedCursor(Armed)));
+        await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanProgress(writer, BrokerFrame.ScanProgress(
             new BrokerScanProgress
             {
                 Phase = BrokerScanPhase.Parsing,
@@ -145,15 +145,15 @@ public partial class BrokerProcessTests
                 BytesProcessed = 200,
                 TotalRecords = 100,
                 TotalBytes = 2000
-            }));
+            })));
         await progressReceived.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsFalse(scan.IsCompleted, "a ScanProgress frame must not complete the drive");
         Assert.AreEqual(0, section.Lifetime.DisposeCount, "the section is released by ScanReady, not by progress");
 
         broker.WriteSection(section.SectionName, Armed);
-        await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanReady(writer, 0));
-        await HostChannelHarness.WriteFrameAsync(channel, BrokerProtocol.WriteScanCompleted);
+        await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanReady(writer, BrokerFrame.ScanReady(0)));
+        await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanCompleted(writer, BrokerFrame.ScanCompleted()));
         await channel.DisposeAsync();
         var result = await scan.WaitAsync(HangGuard, TestContext.CancellationToken);
         result.Block.Block.Dispose();

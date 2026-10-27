@@ -57,7 +57,7 @@ public partial class BrokerProcessTests
         var pending = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
         await broker.ReadRequestAsync();
 
-        await broker.WriteControlAsync(writer => BrokerProtocol.WriteStalled(writer, "the broker stopped answering"));
+        await broker.WriteControlAsync(writer => BrokerProtocol.WriteStalled(writer, BrokerFrame.Stalled("the broker stopped answering")));
 
         Assert.AreEqual("the broker stopped answering", await ended.WaitAsync(HangGuard, TestContext.CancellationToken));
         var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard, TestContext.CancellationToken));
@@ -76,7 +76,7 @@ public partial class BrokerProcessTests
         await broker.ReadRequestAsync();
 
         await broker.WriteControlAsync(writer =>
-            BrokerProtocol.WriteUsnJournalSettings(writer, request.RequestId, 65536, 4096));
+            BrokerProtocol.WriteUsnJournalSettings(writer, BrokerFrame.UsnJournalSettings(request.RequestId, 65536, 4096)));
 
         var wrongReply = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
             answered.WaitAsync(HangGuard, TestContext.CancellationToken));
@@ -96,13 +96,13 @@ public partial class BrokerProcessTests
     public async Task OpenChannel_AcknowledgedThenProcessEnds_FailsWithChannelLostNamingTheProcess()
     {
         await using var broker = new ScriptedBroker();
-        var open = broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, Armed),
+        var open = broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, BrokerFrame.StartWatch(Armed)),
             CancellationToken.None);
         var request = await broker.ReadRequestAsync();
         Assert.AreEqual(BrokerFrameKind.OpenChannel, request.Kind);
 
         // The host acknowledged and never connected; then the process ends while the client waits.
-        await broker.WriteControlAsync(writer => BrokerProtocol.WriteChannelOpened(writer, request.RequestId));
+        await broker.WriteControlAsync(writer => BrokerProtocol.WriteChannelOpened(writer, BrokerFrame.ChannelOpened(request.RequestId)));
         await broker.CloseControlAsync();
 
         var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => open.WaitAsync(HangGuard, TestContext.CancellationToken));

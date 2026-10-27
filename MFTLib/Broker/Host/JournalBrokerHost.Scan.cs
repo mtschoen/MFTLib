@@ -103,7 +103,7 @@ sealed partial class JournalBrokerHost
             Hooks.ScanStarting?.Invoke(channel.Drive, request.RetainedFileNames);
             channel.Pipe.WaitingOnVolume();
             var cursor = _volumeAccess.QueryCursor(channel.Drive);
-            await channel.Pipe.WriteFrameAsync(writer => BrokerProtocol.WriteCursor(writer, cursor),
+            await channel.Pipe.WriteFrameAsync(writer => BrokerProtocol.WriteCursor(writer, BrokerFrame.ArmedCursor(cursor)),
                 cancellationToken).ConfigureAwait(false);
 
             var scanOptions = new MftScanOptions { IncludeFreed = request.IncludeFreed };
@@ -157,7 +157,7 @@ sealed partial class JournalBrokerHost
                         throttled = null;
                         var progressToEmit = progress;
                         await channel.Pipe.WriteFrameAsync(
-                            writer => BrokerProtocol.WriteScanProgress(writer, progressToEmit),
+                            writer => BrokerProtocol.WriteScanProgress(writer, BrokerFrame.ScanProgress(progressToEmit)),
                             cancellationToken).ConfigureAwait(false);
                     }
                     else
@@ -174,7 +174,7 @@ sealed partial class JournalBrokerHost
             if (throttled is { } pending)
             {
                 await channel.Pipe.WriteFrameAsync(
-                    writer => BrokerProtocol.WriteScanProgress(writer, pending),
+                    writer => BrokerProtocol.WriteScanProgress(writer, BrokerFrame.ScanProgress(pending)),
                     cancellationToken).ConfigureAwait(false);
             }
         }
@@ -209,11 +209,11 @@ sealed partial class JournalBrokerHost
         };
 
         await channel.Pipe.WriteFrameAsync(
-            writer => BrokerProtocol.WriteScanProgress(writer, finalProgress),
+            writer => BrokerProtocol.WriteScanProgress(writer, BrokerFrame.ScanProgress(finalProgress)),
             cancellationToken).ConfigureAwait(false);
 
         await channel.Pipe.WriteFrameAsync(
-            writer => BrokerProtocol.WriteScanReady(writer, output.WriteResult.SkippedRecordCount),
+            writer => BrokerProtocol.WriteScanReady(writer, BrokerFrame.ScanReady(output.WriteResult.SkippedRecordCount)),
             cancellationToken).ConfigureAwait(false);
 
         try
@@ -228,7 +228,7 @@ sealed partial class JournalBrokerHost
         }
 
         await channel.Pipe.WriteFrameAsync(
-            BrokerProtocol.WriteScanCompleted,
+            writer => BrokerProtocol.WriteScanCompleted(writer, BrokerFrame.ScanCompleted()),
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -276,7 +276,7 @@ sealed partial class JournalBrokerHost
         }
 
         await channel.Pipe.WriteFrameAsync(
-            writer => BrokerProtocol.WriteCatchUpLost(writer, loss),
+            writer => BrokerProtocol.WriteCatchUpLost(writer, BrokerFrame.CatchUpLost(new BrokerCatchUpLoss(loss.Cause, loss.CheckpointUsn, loss.FirstUsn, loss.NextUsn, loss.JournalSettings.AllocationDelta, loss.JournalSettings.MaximumSize, loss.BytesBehind, loss.SizeThatWouldHaveRetained))),
             cancellationToken).ConfigureAwait(false);
     }
 }

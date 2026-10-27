@@ -65,8 +65,8 @@ sealed partial class BrokerProcess
         MftScanOptions options, IReadOnlyCollection<string>? retainedFileNames, IProgress<BlockWriteProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var channel = await OpenChannelAsync(drive, writer => BrokerProtocol.WriteArmAndScan(writer, section.SectionName,
-            retainedFileNames, options.IncludeFreed), cancellationToken).ConfigureAwait(false);
+        var channel = await OpenChannelAsync(drive, writer => BrokerProtocol.WriteArmAndScan(writer, BrokerFrame.ArmAndScan(section.SectionName, retainedFileNames, options.IncludeFreed)), cancellationToken).ConfigureAwait(false);
+
         await using var ownedChannel = channel.ConfigureAwait(false);
         var collector = new ScanFrames(channel, progress);
         var armed = await collector.ReadArmedCursorAsync(cancellationToken).ConfigureAwait(false);

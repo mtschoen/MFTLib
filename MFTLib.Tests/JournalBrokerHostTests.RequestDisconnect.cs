@@ -53,7 +53,7 @@ public partial class JournalBrokerHostTests
         // first frame to land on the dead pipe.
         harness.BreakableControl!.BreakPipe();
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 1, 'C'));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, BrokerFrame.QueryVolume(1, 'C')));
         await harness.BreakableControl.WriteFailureObserved.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         // ServeAsync completes rather than faulting with the broken pipe's IOException, which is
@@ -72,7 +72,7 @@ public partial class JournalBrokerHostTests
         await using var harness = new HostChannelHarness(host, breakableControl: true);
         harness.BreakableControl!.BreakPipe();
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 1, 'C', 0x08000000, 0x01000000));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, BrokerFrame.GrowUsnJournal(1, 'C', 0x08000000, 0x01000000)));
         await harness.BreakableControl.WriteFailureObserved.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         await harness.Serve.WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -95,7 +95,7 @@ public partial class JournalBrokerHostTests
         // A control request answers while the watch is still live, and its reply is what finds
         // the client gone.
         harness.BreakableControl!.BreakPipe();
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 9, 'C'));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, BrokerFrame.QueryVolume(9, 'C')));
         await harness.BreakableControl.WriteFailureObserved.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         await harness.Serve.WaitAsync(HangGuard, TestContext.CancellationToken);

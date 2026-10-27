@@ -1,5 +1,5 @@
 using System.Buffers;
-using System.Buffers.Binary;
+
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using MFTLib.Index;
@@ -267,9 +267,9 @@ public class JournalBrokerHostScanTests
             writer =>
             {
                 var buffer = new ArrayBufferWriter<byte>();
-                BrokerProtocol.WriteArmAndScan(buffer, "section");
+                BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("section"));
                 var bytes = buffer.WrittenSpan.ToArray();
-                BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(23), 99);
+                bytes[23] = 99;
                 var destination = writer.GetSpan(bytes.Length);
                 bytes.CopyTo(destination);
                 writer.Advance(bytes.Length);
@@ -605,7 +605,7 @@ public class JournalBrokerHostScanTests
 
         var pipe = await harness.OpenScanChannelAsync('C', invalidSectionName);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
-        await harness.SendControlAsync(bufferWriter => BrokerProtocol.WriteQueryVolume(bufferWriter, 51, 'C'));
+        await harness.SendControlAsync(bufferWriter => BrokerProtocol.WriteQueryVolume(bufferWriter, BrokerFrame.QueryVolume(51, 'C')));
         var controlReply = await harness.ReadControlAsync();
 
         Assert.HasCount(1, frames);

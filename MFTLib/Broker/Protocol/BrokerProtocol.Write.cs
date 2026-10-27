@@ -1,5 +1,4 @@
 using System.Buffers;
-using MFTLib.Index;
 
 namespace MFTLib;
 
@@ -10,46 +9,43 @@ static partial class BrokerProtocol
     // Control pipe
 
     // payload: [requestId u32][drive UTF-16 character][pipeName string]
-    public static void WriteOpenChannel(IBufferWriter<byte> writer, uint requestId, VolumeKey drive, string pipeName)
+    public static void WriteOpenChannel(IBufferWriter<byte> writer, BrokerFrame frame)
     {
-        new PayloadWriter().UInt32(requestId).Drive(drive).String(pipeName)
+        new PayloadWriter().UInt32(frame.RequestId).Drive(frame.RequireDrive()).String(frame.PipeName)
             .WriteTo(writer, BrokerFrameKind.OpenChannel);
     }
 
     // payload: [requestId u32]
-    public static void WriteChannelOpened(IBufferWriter<byte> writer, uint requestId)
+    public static void WriteChannelOpened(IBufferWriter<byte> writer, BrokerFrame frame)
     {
-        new PayloadWriter().UInt32(requestId).WriteTo(writer, BrokerFrameKind.ChannelOpened);
+        new PayloadWriter().UInt32(frame.RequestId).WriteTo(writer, BrokerFrameKind.ChannelOpened);
     }
 
     // payload: [requestId u32][drive UTF-16 character]
-    public static void WriteQueryVolume(IBufferWriter<byte> writer, uint requestId, VolumeKey drive)
+    public static void WriteQueryVolume(IBufferWriter<byte> writer, BrokerFrame frame)
     {
-        new PayloadWriter().UInt32(requestId).Drive(drive).WriteTo(writer, BrokerFrameKind.QueryVolume);
+        new PayloadWriter().UInt32(frame.RequestId).Drive(frame.RequireDrive()).WriteTo(writer, BrokerFrameKind.QueryVolume);
     }
 
     // payload: [requestId u32][bytesPerFileRecordSegment u32][mftValidDataLength i64]
-    public static void WriteVolumeInfo(IBufferWriter<byte> writer, uint requestId,
-        uint bytesPerFileRecordSegment, long mftValidDataLength)
+    public static void WriteVolumeInfo(IBufferWriter<byte> writer, BrokerFrame frame)
     {
-        new PayloadWriter().UInt32(requestId).UInt32(bytesPerFileRecordSegment)
-            .Int64(mftValidDataLength).WriteTo(writer, BrokerFrameKind.VolumeInfo);
+        new PayloadWriter().UInt32(frame.RequestId).UInt32(frame.BytesPerFileRecordSegment)
+            .Int64(frame.MftValidDataLength).WriteTo(writer, BrokerFrameKind.VolumeInfo);
     }
 
     // payload: [requestId u32][drive UTF-16 character][maximumSize i64][allocationDelta i64]
-    public static void WriteGrowUsnJournal(IBufferWriter<byte> writer, uint requestId, VolumeKey drive,
-        long maximumSize, long allocationDelta)
+    public static void WriteGrowUsnJournal(IBufferWriter<byte> writer, BrokerFrame frame)
     {
-        new PayloadWriter().UInt32(requestId).Drive(drive).Int64(maximumSize).Int64(allocationDelta)
-            .WriteTo(writer, BrokerFrameKind.GrowUsnJournal);
+        new PayloadWriter().UInt32(frame.RequestId).Drive(frame.RequireDrive()).Int64(frame.JournalMaximumSize)
+            .Int64(frame.JournalAllocationDelta).WriteTo(writer, BrokerFrameKind.GrowUsnJournal);
     }
 
     // payload: [requestId u32][maximumSize i64][allocationDelta i64]
-    public static void WriteUsnJournalSettings(IBufferWriter<byte> writer, uint requestId,
-        long maximumSize, long allocationDelta)
+    public static void WriteUsnJournalSettings(IBufferWriter<byte> writer, BrokerFrame frame)
     {
-        new PayloadWriter().UInt32(requestId).Int64(maximumSize).Int64(allocationDelta)
-            .WriteTo(writer, BrokerFrameKind.UsnJournalSettings);
+        new PayloadWriter().UInt32(frame.RequestId).Int64(frame.JournalMaximumSize)
+            .Int64(frame.JournalAllocationDelta).WriteTo(writer, BrokerFrameKind.UsnJournalSettings);
     }
 
     // Any pipe
@@ -67,20 +63,22 @@ static partial class BrokerProtocol
     }
 
     // payload: [requestId u32 (0 on a drive pipe)][message string]
-    public static void WriteError(IBufferWriter<byte> writer, uint requestId, string message)
+    public static void WriteError(IBufferWriter<byte> writer, BrokerFrame frame)
     {
-        new PayloadWriter().UInt32(requestId).String(FitMessage(message)).WriteTo(writer, BrokerFrameKind.Error);
+        new PayloadWriter().UInt32(frame.RequestId).String(FitMessage(frame.RequireMessage()))
+            .WriteTo(writer, BrokerFrameKind.Error);
     }
 
-    public static void WriteHeartbeat(IBufferWriter<byte> writer)
+    public static void WriteHeartbeat(IBufferWriter<byte> writer, BrokerFrame frame)
     {
+        _ = frame;
         new PayloadWriter().WriteTo(writer, BrokerFrameKind.Heartbeat);
     }
 
     // payload: [message string]
-    public static void WriteStalled(IBufferWriter<byte> writer, string message)
+    public static void WriteStalled(IBufferWriter<byte> writer, BrokerFrame frame)
     {
-        new PayloadWriter().String(FitMessage(message)).WriteTo(writer, BrokerFrameKind.Stalled);
+        new PayloadWriter().String(FitMessage(frame.RequireMessage())).WriteTo(writer, BrokerFrameKind.Stalled);
     }
 
     // Drive pipe
@@ -89,7 +87,7 @@ static partial class BrokerProtocol
     // the frame limit cannot carry before anything is sent.
     public static long ArmAndScanFrameLength(string sectionName, IReadOnlyCollection<string>? retainedFileNames)
     {
-        var length = 1L + 4 + (2L * sectionName.Length) + 4 + 4;
+        var length = 1L + 4 + (2L * sectionName.Length) + 1 + 5;
         foreach (var name in retainedFileNames ?? [])
         {
             length += 4 + (2L * name.Length);
@@ -98,13 +96,12 @@ static partial class BrokerProtocol
         return length;
     }
 
-    // payload: [sectionName string][includeFreed i32, 0 or 1][nameCount i32, -1 for null][per name: name string]
-    public static void WriteArmAndScan(IBufferWriter<byte> writer, string sectionName,
-        IReadOnlyCollection<string>? retainedFileNames = null, bool includeFreed = false)
+    // payload: [sectionName string][includeFreed byte, 0 or 1][nameCount nullable i32][per name: name string]
+    public static void WriteArmAndScan(IBufferWriter<byte> writer, BrokerFrame frame)
     {
-        var payload = new PayloadWriter().String(sectionName).Int32(includeFreed ? 1 : 0);
-        payload.Int32(retainedFileNames?.Count ?? -1);
-        foreach (var name in retainedFileNames ?? [])
+        var payload = new PayloadWriter().String(frame.SectionName).Boolean(frame.IncludeFreed)
+            .NullableInt32(frame.RetainedFileNames?.Count);
+        foreach (var name in frame.RetainedFileNames ?? [])
         {
             payload.String(name);
         }
@@ -113,43 +110,44 @@ static partial class BrokerProtocol
     }
 
     // payload: [journalIdentifier u64][nextUsn i64]
-    public static void WriteCursor(IBufferWriter<byte> writer, UsnJournalCursor cursor)
+    public static void WriteCursor(IBufferWriter<byte> writer, BrokerFrame frame)
     {
-        new PayloadWriter().Cursor(cursor).WriteTo(writer, BrokerFrameKind.Cursor);
+        new PayloadWriter().Cursor(frame.Cursor).WriteTo(writer, BrokerFrameKind.Cursor);
     }
 
-    // payload: [phase i32][recordsProcessed i64][bytesProcessed i64][totalRecordsOrMinusOne i64]
-    //          [totalBytesOrMinusOne i64]
+    // payload: [phase i32][recordsProcessed i64][bytesProcessed i64][totalRecords nullable i64]
+    //          [totalBytes nullable i64]
     // The drive is the channel's, so the progress sample's drive letter is not written.
-    public static void WriteScanProgress(IBufferWriter<byte> writer, BrokerScanProgress progress)
+    public static void WriteScanProgress(IBufferWriter<byte> writer, BrokerFrame frame)
     {
+        var progress = frame.Progress.GetValueOrDefault();
         new PayloadWriter().Int32((int)progress.Phase).Int64(progress.RecordsProcessed)
-            .Int64(progress.BytesProcessed).Int64(progress.TotalRecords ?? -1L)
-            .Int64(progress.TotalBytes ?? -1L).WriteTo(writer, BrokerFrameKind.ScanProgress);
+            .Int64(progress.BytesProcessed).NullableInt64(progress.TotalRecords)
+            .NullableInt64(progress.TotalBytes).WriteTo(writer, BrokerFrameKind.ScanProgress);
     }
 
     // payload: [cause i32][checkpointUsn i64][firstUsn i64][nextUsn i64][allocationDelta i64]
     //          [maximumSize i64][bytesBehind nullable i64][sizeThatWouldHaveRetained nullable i64]
-    internal static void WriteCatchUpLost(IBufferWriter<byte> writer, JournalCheckpointLoss loss)
+    internal static void WriteCatchUpLost(IBufferWriter<byte> writer, BrokerFrame frame)
     {
+        var loss = frame.CatchUpLoss.GetValueOrDefault();
         new PayloadWriter().Int32((int)loss.Cause).Int64(loss.CheckpointUsn).Int64(loss.FirstUsn)
-            .Int64(loss.NextUsn).Int64(loss.JournalSettings.AllocationDelta).Int64(loss.JournalSettings.MaximumSize)
+            .Int64(loss.NextUsn).Int64(loss.AllocationDelta).Int64(loss.MaximumSize)
             .NullableInt64(loss.BytesBehind).NullableInt64(loss.SizeThatWouldHaveRetained)
             .WriteTo(writer, BrokerFrameKind.CatchUpLost);
     }
 
     // payload: [skippedRecordCount i64]
-    public static void WriteScanReady(IBufferWriter<byte> writer, long skippedRecordCount)
+    public static void WriteScanReady(IBufferWriter<byte> writer, BrokerFrame frame)
     {
-        new PayloadWriter().Int64(skippedRecordCount).WriteTo(writer, BrokerFrameKind.ScanReady);
+        new PayloadWriter().Int64(frame.SkippedRecordCount).WriteTo(writer, BrokerFrameKind.ScanReady);
     }
 
     // payload: [journalIdentifier u64][nextUsn i64][entryCount i32][entries]
-    public static void WriteJournalBatch(IBufferWriter<byte> writer, UsnJournalCursor cursor,
-        UsnJournalEntry[] entries)
+    public static void WriteJournalBatch(IBufferWriter<byte> writer, BrokerFrame frame)
     {
-        var payload = new PayloadWriter().Cursor(cursor).Int32(entries.Length);
-        foreach (var entry in entries)
+        var payload = new PayloadWriter().Cursor(frame.Cursor).Int32(frame.Entries.Length);
+        foreach (var entry in frame.Entries)
         {
             payload.Entry(entry);
         }
@@ -158,19 +156,21 @@ static partial class BrokerProtocol
     }
 
     // payload: [journalIdentifier u64][nextUsn i64]
-    public static void WriteStartWatch(IBufferWriter<byte> writer, UsnJournalCursor since)
+    public static void WriteStartWatch(IBufferWriter<byte> writer, BrokerFrame frame)
     {
-        new PayloadWriter().Cursor(since).WriteTo(writer, BrokerFrameKind.StartWatch);
+        new PayloadWriter().Cursor(frame.Cursor).WriteTo(writer, BrokerFrameKind.StartWatch);
     }
 
-    public static void WriteCaughtUp(IBufferWriter<byte> writer)
+    public static void WriteCaughtUp(IBufferWriter<byte> writer, BrokerFrame frame)
     {
+        _ = frame;
         new PayloadWriter().WriteTo(writer, BrokerFrameKind.CaughtUp);
     }
 
     // No payload: successful completion of scan catch-up.
-    public static void WriteScanCompleted(IBufferWriter<byte> writer)
+    public static void WriteScanCompleted(IBufferWriter<byte> writer, BrokerFrame frame)
     {
+        _ = frame;
         new PayloadWriter().WriteTo(writer, BrokerFrameKind.ScanCompleted);
     }
 }

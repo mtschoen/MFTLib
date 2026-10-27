@@ -45,8 +45,8 @@ public class VolumeQueryClientTests : BrokerBlockTestBase
         var second = broker.Process.QueryVolumeAsync('G', CancellationToken.None);
         var firstRequest = await broker.ReadRequestAsync();
         await broker.ReadRequestAsync();
-        await broker.WriteControlAsync(writer => BrokerProtocol.WriteVolumeInfo(writer, firstRequest.RequestId,
-            1024, 8_192_000_000));
+        await broker.WriteControlAsync(writer => BrokerProtocol.WriteVolumeInfo(writer, BrokerFrame.VolumeInfo(firstRequest.RequestId,
+            1024, 8_192_000_000)));
         await broker.CloseControlAsync();
 
         var volume = await first.WaitAsync(HangGuard, TestContext.CancellationToken);

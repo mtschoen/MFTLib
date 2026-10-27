@@ -37,12 +37,12 @@ public partial class JournalBrokerHostChannelTests
         });
         await using var harness = new HostChannelHarness(host);
 
-        await harness.SendControlAsync(BrokerProtocol.WriteCaughtUp);
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteCaughtUp(writer, BrokerFrame.CaughtUp()));
         var reply = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.Error, reply.Kind);
         Assert.Contains("CaughtUp is not a control request", reply.Message!);
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 4, 'C'));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, BrokerFrame.QueryVolume(4, 'C')));
         Assert.AreEqual(4u, (await harness.ReadControlAsync()).RequestId, "The session keeps serving.");
     }
 
@@ -56,7 +56,7 @@ public partial class JournalBrokerHostChannelTests
         });
         await using var harness = new HostChannelHarness(host);
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 6, 'C'));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, BrokerFrame.QueryVolume(6, 'C')));
         var reply = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.Error, reply.Kind);
@@ -81,7 +81,7 @@ breakableControl: true);
         // frame to land on the dead control pipe, after the host connected the drive pipe.
         harness.BreakableControl!.BreakPipe();
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 8, 'C', harness.NextPipeName('C')));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, BrokerFrame.OpenChannel(8, 'C', harness.NextPipeName('C'))));
 
         await connected.Disposed.WaitAsync(HangGuard, TestContext.CancellationToken);
         await harness.Serve.WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -105,7 +105,7 @@ breakableControl: true);
         await using var late = new InMemoryPipePair();
         await using var lateStream = new DisposalRecordingStream(late.Host);
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 9, 'C', harness.NextPipeName('C')));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, BrokerFrame.OpenChannel(9, 'C', harness.NextPipeName('C'))));
         await connecting.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         await harness.CloseControlAsync();
         await harness.Serve.WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -186,7 +186,7 @@ breakableControl: true);
 
         // The ChannelOpened reply passed the session's end check and is held mid-write.
         await HostChannelHarness.WriteFrameAsync(client, writer =>
-            BrokerProtocol.WriteOpenChannel(writer, 3, 'C', "mftlib-broker-" + Guid.NewGuid().ToString("N")));
+            BrokerProtocol.WriteOpenChannel(writer, BrokerFrame.OpenChannel(3, 'C', "mftlib-broker-" + Guid.NewGuid().ToString("N"))));
         await heldReply.Started.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         // The client goes away: the session ends and its drain starts (the drain's grace timer is

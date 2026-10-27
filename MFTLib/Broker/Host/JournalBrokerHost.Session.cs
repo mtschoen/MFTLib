@@ -117,7 +117,7 @@ sealed partial class JournalBrokerHost
 
     static Task WriteControlErrorAsync(ControlSession session, uint requestId, string message)
     {
-        return WriteControlFrameAsync(session, writer => BrokerProtocol.WriteError(writer, requestId, message));
+        return WriteControlFrameAsync(session, writer => BrokerProtocol.WriteError(writer, BrokerFrame.Error(requestId, message)));
     }
 
     // Waits for every tracked task, including tasks tracked while waiting, until all have ended

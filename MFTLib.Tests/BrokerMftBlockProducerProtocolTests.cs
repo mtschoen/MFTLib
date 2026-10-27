@@ -59,7 +59,7 @@ public class BrokerMftBlockProducerProtocolTests : BrokerBlockTestBase
 
         var query = await broker.ReadRequestAsync();
         Assert.AreEqual(BrokerFrameKind.QueryVolume, query.Kind);
-        await broker.WriteControlAsync(writer => BrokerProtocol.WriteError(writer, query.RequestId, "query failed"));
+        await broker.WriteControlAsync(writer => BrokerProtocol.WriteError(writer, BrokerFrame.Error(query.RequestId, "query failed")));
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => resultTask.WaitAsync(HangGuard, TestContext.CancellationToken));
 
@@ -83,8 +83,8 @@ public class BrokerMftBlockProducerProtocolTests : BrokerBlockTestBase
             if (sendReady)
             {
                 broker.WriteSection(broker.Sections.Single().SectionName, ArmedCursor);
-                await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, ArmedCursor));
-                await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, 0));
+                await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, BrokerFrame.ArmedCursor(ArmedCursor)));
+                await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, BrokerFrame.ScanReady(0)));
             }
         }
 
@@ -111,26 +111,26 @@ public class BrokerMftBlockProducerProtocolTests : BrokerBlockTestBase
             broker.WriteSection(broker.Sections.Single().SectionName, ArmedCursor);
             if (fault != "MissingCursor")
             {
-                await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, ArmedCursor));
+                await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, BrokerFrame.ArmedCursor(ArmedCursor)));
             }
 
             if (fault == "MissingReady")
             {
-                await HostChannelHarness.WriteFrameAsync(pipe, BrokerProtocol.WriteScanCompleted);
+                await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanCompleted(writer, BrokerFrame.ScanCompleted()));
             }
             else
             {
-                await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, 0));
+                await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, BrokerFrame.ScanReady(0)));
             }
 
             if (fault == "RepeatedReady")
             {
-                await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, 0));
+                await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, BrokerFrame.ScanReady(0)));
             }
             else if (fault == "ErrorAfterReady")
             {
                 await HostChannelHarness.WriteFrameAsync(pipe,
-                    writer => BrokerProtocol.WriteError(writer, 0, "scan failed after ready"));
+                    writer => BrokerProtocol.WriteError(writer, BrokerFrame.Error(0, "scan failed after ready")));
             }
         }
 
@@ -160,9 +160,9 @@ public class BrokerMftBlockProducerProtocolTests : BrokerBlockTestBase
     static async Task CompleteScanAsync(ScriptedBroker broker, Stream pipe, string sectionName, long skippedRecordCount)
     {
         broker.WriteSection(sectionName, ArmedCursor);
-        await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, ArmedCursor));
-        await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, skippedRecordCount));
-        await HostChannelHarness.WriteFrameAsync(pipe, BrokerProtocol.WriteScanCompleted);
+        await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, BrokerFrame.ArmedCursor(ArmedCursor)));
+        await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, BrokerFrame.ScanReady(skippedRecordCount)));
+        await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanCompleted(writer, BrokerFrame.ScanCompleted()));
     }
 
     public TestContext TestContext { get; set; } = null!;

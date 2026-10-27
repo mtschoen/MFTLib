@@ -26,8 +26,8 @@ public class VolumeQueryHostTests
         });
         await using var harness = new HostChannelHarness(host);
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 1, 'C'));
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 2, 'G'));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, BrokerFrame.QueryVolume(1, 'C')));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, BrokerFrame.QueryVolume(2, 'G')));
         var replies = new[] { await harness.ReadControlAsync(), await harness.ReadControlAsync() };
 
         var volumeInfo = replies.Single(f => f.Kind == BrokerFrameKind.VolumeInfo);
@@ -51,7 +51,7 @@ public class VolumeQueryHostTests
             ProcessorCount = null
         }));
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 14, 'C'));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, BrokerFrame.QueryVolume(14, 'C')));
         var frame = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
@@ -72,7 +72,7 @@ public class VolumeQueryHostTests
         using var blockWriter = new RecordingBlockSectionWriter();
         await using var harness = new HostChannelHarness(host, blockWriter);
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 5, 'C'));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, BrokerFrame.QueryVolume(5, 'C')));
         var volumeInfo = await harness.ReadControlAsync();
         var scanFrames = await HostChannelHarness.ReadToEndAsync(await harness.OpenScanChannelAsync('C'));
 

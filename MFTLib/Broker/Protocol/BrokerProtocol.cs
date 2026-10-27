@@ -128,20 +128,15 @@ static partial class BrokerProtocol
     static BrokerFrame ReadArmAndScanFrame(ref PayloadReader payload)
     {
         var sectionName = payload.String();
-        var includeFreedValue = payload.Int32();
-        if (includeFreedValue is not (0 or 1))
-        {
-            throw new InvalidDataException($"Unknown broker include-freed value: {includeFreedValue}");
-        }
-
+        var includeFreed = payload.Boolean();
         var nameCount = payload.NullableNameCount();
-        List<string>? retainedFileNames = nameCount == -1 ? null : new(nameCount);
+        List<string>? retainedFileNames = nameCount is { } count ? new(count) : null;
         while (retainedFileNames is not null && retainedFileNames.Count < nameCount)
         {
             retainedFileNames.Add(payload.String());
         }
 
-        return BrokerFrame.ArmAndScan(sectionName, retainedFileNames, includeFreedValue == 1);
+        return BrokerFrame.ArmAndScan(sectionName, retainedFileNames, includeFreed);
     }
 
     static BrokerFrame ReadJournalBatchFrame(ref PayloadReader payload)
@@ -179,18 +174,13 @@ static partial class BrokerProtocol
             throw new InvalidDataException($"Unknown broker scan phase: {phaseRaw}");
         }
 
-        var recordsProcessed = payload.Int64();
-        var bytesProcessed = payload.Int64();
-        var totalRecordsRaw = payload.Int64();
-        var totalBytesRaw = payload.Int64();
-
         return new BrokerScanProgress
         {
             Phase = phase,
-            RecordsProcessed = recordsProcessed,
-            BytesProcessed = bytesProcessed,
-            TotalRecords = totalRecordsRaw >= 0 ? totalRecordsRaw : null,
-            TotalBytes = totalBytesRaw >= 0 ? totalBytesRaw : null
+            RecordsProcessed = payload.Int64(),
+            BytesProcessed = payload.Int64(),
+            TotalRecords = payload.NullableInt64(),
+            TotalBytes = payload.NullableInt64()
         };
     }
 }

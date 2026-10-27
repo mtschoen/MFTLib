@@ -227,7 +227,7 @@ public partial class JournalBrokerHostRealSeamsTests
         await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
 
         await harness.SendControlAsync(writer =>
-            BrokerProtocol.WriteGrowUsnJournal(writer, 6, 'C', 0x400000, 0x200000));
+            BrokerProtocol.WriteGrowUsnJournal(writer, BrokerFrame.GrowUsnJournal(6, 'C', 0x400000, 0x200000)));
         var frame = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.UsnJournalSettings, frame.Kind);
@@ -276,7 +276,7 @@ public partial class JournalBrokerHostRealSeamsTests
         const long overCapRequest = fiveGiB + 1;
 
         await harness.SendControlAsync(writer =>
-            BrokerProtocol.WriteGrowUsnJournal(writer, 15, 'C', overCapRequest, 0x100000));
+            BrokerProtocol.WriteGrowUsnJournal(writer, BrokerFrame.GrowUsnJournal(15, 'C', overCapRequest, 0x100000)));
         var errorReply = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.Error, errorReply.Kind);
@@ -286,7 +286,7 @@ public partial class JournalBrokerHostRealSeamsTests
         Assert.AreEqual(0, journalIoctls, "Refusal above the cap must not issue any journal IOCTL.");
 
         await harness.SendControlAsync(writer =>
-            BrokerProtocol.WriteGrowUsnJournal(writer, 16, 'C', 0x400000, 0x100000));
+            BrokerProtocol.WriteGrowUsnJournal(writer, BrokerFrame.GrowUsnJournal(16, 'C', 0x400000, 0x100000)));
         var nextReply = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.UsnJournalSettings, nextReply.Kind);
@@ -313,7 +313,7 @@ public partial class JournalBrokerHostRealSeamsTests
         };
         await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 3, 'C'));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, BrokerFrame.QueryVolume(3, 'C')));
         var frame = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.VolumeInfo, frame.Kind);

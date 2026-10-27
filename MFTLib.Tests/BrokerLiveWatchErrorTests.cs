@@ -69,8 +69,8 @@ public class BrokerLiveWatchErrorTests
         var readerD = handleD.ReadAsync(CancellationToken.None).GetAsyncEnumerator(TestContext.CancellationToken);
         await using var ______ = readerD.ConfigureAwait(false);
 
-        await HostChannelHarness.WriteFrameAsync(hostC, writer => BrokerProtocol.WriteCursor(writer, new UsnJournalCursor(7, 1)));
-        await HostChannelHarness.WriteFrameAsync(hostD, BrokerProtocol.WriteCaughtUp);
+        await HostChannelHarness.WriteFrameAsync(hostC, writer => BrokerProtocol.WriteCursor(writer, BrokerFrame.ArmedCursor(new UsnJournalCursor(7, 1))));
+        await HostChannelHarness.WriteFrameAsync(hostD, writer => BrokerProtocol.WriteCaughtUp(writer, BrokerFrame.CaughtUp()));
 
         var lost = await WatchReads.ThrowsNextAsync<BrokerChannelLostException>(readerC);
         Assert.AreEqual('C', lost.Drive);
@@ -90,7 +90,7 @@ public class BrokerLiveWatchErrorTests
         var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator(TestContext.CancellationToken);
         await using var ___ = reader.ConfigureAwait(false);
 
-        await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteStalled(writer, "the volume stopped answering"));
+        await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteStalled(writer, BrokerFrame.Stalled("the volume stopped answering")));
 
         var lost = await WatchReads.ThrowsNextAsync<BrokerChannelLostException>(reader);
         Assert.AreEqual('C', lost.Drive);
@@ -109,11 +109,11 @@ public class BrokerLiveWatchErrorTests
         var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator(TestContext.CancellationToken);
         await using var ___ = reader.ConfigureAwait(false);
 
-        await HostChannelHarness.WriteFrameAsync(host, BrokerProtocol.WriteHeartbeat);
-        await HostChannelHarness.WriteFrameAsync(host, BrokerProtocol.WriteCaughtUp);
-        await HostChannelHarness.WriteFrameAsync(host, BrokerProtocol.WriteHeartbeat);
+        await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteHeartbeat(writer, BrokerFrame.Heartbeat()));
+        await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteCaughtUp(writer, BrokerFrame.CaughtUp()));
+        await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteHeartbeat(writer, BrokerFrame.Heartbeat()));
         await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteJournalBatch(writer,
-            new UsnJournalCursor(7, 110), [JournalEntries.Create(1, 105, "c.txt")]));
+            BrokerFrame.JournalBatch(new UsnJournalCursor(7, 110), [JournalEntries.Create(1, 105, "c.txt")])));
 
         Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
         Assert.AreEqual(110L, (await WatchReads.NextBatchAsync(reader)).NextUsn);
@@ -130,7 +130,7 @@ public class BrokerLiveWatchErrorTests
         await using var __ = host.ConfigureAwait(false);
         var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator(TestContext.CancellationToken);
         await using var ___ = reader.ConfigureAwait(false);
-        await HostChannelHarness.WriteFrameAsync(host, BrokerProtocol.WriteCaughtUp);
+        await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteCaughtUp(writer, BrokerFrame.CaughtUp()));
         Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
 
         // A length prefix claiming ten bytes, three body bytes, then the pipe closes: the host died mid-frame.

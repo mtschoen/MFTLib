@@ -28,7 +28,7 @@ public class GrowUsnJournalHostTests
                 }
         }));
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 31, 'C', 0x08000000, 0x01000000));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, BrokerFrame.GrowUsnJournal(31, 'C', 0x08000000, 0x01000000)));
         var frame = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.UsnJournalSettings, frame.Kind);
@@ -50,7 +50,7 @@ public class GrowUsnJournalHostTests
                 throw new InvalidOperationException("Refusing to resize: only growth is permitted.")
         }));
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 32, 'C', 0x08000000, 0x01000000));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, BrokerFrame.GrowUsnJournal(32, 'C', 0x08000000, 0x01000000)));
         var frame = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
@@ -69,7 +69,7 @@ public class GrowUsnJournalHostTests
             ProcessorCount = null
         }));
 
-        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 33, 'C', 0x08000000, 0x01000000));
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, BrokerFrame.GrowUsnJournal(33, 'C', 0x08000000, 0x01000000)));
         var frame = await harness.ReadControlAsync();
 
         Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);

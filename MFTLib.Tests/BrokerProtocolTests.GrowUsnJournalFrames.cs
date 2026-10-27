@@ -13,7 +13,7 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void GrowUsnJournalFrame_RoundTrips_RequestIdDriveAndSizes()
     {
-        var frame = RoundTrip(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 12, 'c', 0x08000000, 0x01000000));
+        var frame = RoundTrip(BrokerFrame.GrowUsnJournal(12, 'c', 0x08000000, 0x01000000), BrokerProtocol.WriteGrowUsnJournal);
 
         Assert.AreEqual(BrokerFrameKind.GrowUsnJournal, frame.Kind);
         Assert.AreEqual(12u, frame.RequestId);
@@ -27,7 +27,7 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void UsnJournalSettingsFrame_RoundTrips_RequestIdAndSizes()
     {
-        var frame = RoundTrip(writer => BrokerProtocol.WriteUsnJournalSettings(writer, 12, 0x10000000, 0x02000000));
+        var frame = RoundTrip(BrokerFrame.UsnJournalSettings(12, 0x10000000, 0x02000000), BrokerProtocol.WriteUsnJournalSettings);
 
         Assert.AreEqual(BrokerFrameKind.UsnJournalSettings, frame.Kind);
         Assert.AreEqual(12u, frame.RequestId);
@@ -41,7 +41,7 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void WireBytes_Golden_GrowUsnJournalFrame()
     {
-        AssertWireBytes(w => BrokerProtocol.WriteGrowUsnJournal(w, 5, 'c', 0x08000000, 0x01000000),
+        AssertWireBytes(w => BrokerProtocol.WriteGrowUsnJournal(w, BrokerFrame.GrowUsnJournal(5, 'c', 0x08000000, 0x01000000)),
         [
             0x17, 0x00, 0x00, 0x00, // totalLength = 23
             0x05, // kind = GrowUsnJournal
@@ -52,14 +52,14 @@ public partial class BrokerProtocolTests
         ]);
 
         var buffer = new System.Buffers.ArrayBufferWriter<byte>();
-        Assert.ThrowsExactly<ArgumentException>(() => BrokerProtocol.WriteGrowUsnJournal(buffer, 5, default, 0x08000000, 0x01000000));
+        Assert.ThrowsExactly<ArgumentException>(() => BrokerProtocol.WriteGrowUsnJournal(buffer, BrokerFrame.GrowUsnJournal(5, default, 0x08000000, 0x01000000)));
         Assert.AreEqual(0, buffer.WrittenCount);
     }
 
     [TestMethod]
     public void WireBytes_Golden_UsnJournalSettingsFrame()
     {
-        AssertWireBytes(w => BrokerProtocol.WriteUsnJournalSettings(w, 5, 0x08000000, 0x01000000),
+        AssertWireBytes(w => BrokerProtocol.WriteUsnJournalSettings(w, BrokerFrame.UsnJournalSettings(5, 0x08000000, 0x01000000)),
         [
             0x15, 0x00, 0x00, 0x00, // totalLength = 21
             0x06, // kind = UsnJournalSettings

@@ -22,22 +22,66 @@ public partial class BrokerProtocolTests
         Assert.AreSequenceEqual(expected, [.. buffer.WrittenSpan]);
     }
 
-    // Writes one frame, reads it back, and checks the reader consumed exactly the bytes written.
-    static BrokerFrame RoundTrip(Action<ArrayBufferWriter<byte>> write)
+    // Writes one frame from its expected model, reads it back, and checks every field and the byte count.
+    static BrokerFrame RoundTrip(BrokerFrame expected, Action<IBufferWriter<byte>, BrokerFrame> write)
     {
         var buffer = new ArrayBufferWriter<byte>();
-        write(buffer);
-        var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
+        write(buffer, expected);
+        var actual = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
         Assert.AreEqual(buffer.WrittenCount, consumed);
-        return frame;
+        AssertFrameEqual(expected, actual);
+        return actual;
+    }
+
+    static void AssertFrameEqual(BrokerFrame expected, BrokerFrame actual)
+    {
+        Assert.AreEqual(expected.Kind, actual.Kind);
+        Assert.AreEqual(expected.RequestId, actual.RequestId);
+        Assert.AreEqual(expected.Drive, actual.Drive);
+        Assert.AreEqual(expected.PipeName, actual.PipeName);
+        Assert.AreEqual(expected.SectionName, actual.SectionName);
+        Assert.AreEqual(expected.IncludeFreed, actual.IncludeFreed);
+        Assert.AreEqual(expected.Cursor, actual.Cursor);
+        Assert.AreEqual(expected.SkippedRecordCount, actual.SkippedRecordCount);
+        Assert.AreEqual(expected.Message, actual.Message);
+        Assert.AreEqual(expected.Progress, actual.Progress);
+        Assert.AreEqual(expected.BytesPerFileRecordSegment, actual.BytesPerFileRecordSegment);
+        Assert.AreEqual(expected.MftValidDataLength, actual.MftValidDataLength);
+        Assert.AreEqual(expected.JournalMaximumSize, actual.JournalMaximumSize);
+        Assert.AreEqual(expected.JournalAllocationDelta, actual.JournalAllocationDelta);
+        Assert.AreEqual(expected.CatchUpLoss, actual.CatchUpLoss);
+        if (expected.RetainedFileNames is null)
+        {
+            Assert.IsNull(actual.RetainedFileNames);
+        }
+        else
+        {
+            Assert.IsNotNull(actual.RetainedFileNames);
+            Assert.AreSequenceEqual([.. expected.RetainedFileNames], [.. actual.RetainedFileNames]);
+        }
+
+        Assert.HasCount(expected.Entries.Length, actual.Entries);
+        for (var index = 0; index < expected.Entries.Length; index++)
+        {
+            var expectedEntry = expected.Entries[index];
+            var actualEntry = actual.Entries[index];
+            Assert.AreEqual(expectedEntry.RecordNumber, actualEntry.RecordNumber);
+            Assert.AreEqual(expectedEntry.ParentRecordNumber, actualEntry.ParentRecordNumber);
+            Assert.AreEqual(expectedEntry.SequenceNumber, actualEntry.SequenceNumber);
+            Assert.AreEqual(expectedEntry.Usn, actualEntry.Usn);
+            Assert.AreEqual(expectedEntry.TimestampUtc, actualEntry.TimestampUtc);
+            Assert.AreEqual(expectedEntry.Reason, actualEntry.Reason);
+            Assert.AreEqual(expectedEntry.FileAttributes, actualEntry.FileAttributes);
+            Assert.AreEqual(expectedEntry.FileName, actualEntry.FileName);
+        }
     }
 
     [TestMethod]
     public void ReadFrame_SetsConsumedToFullFrameLength()
     {
         var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteError(buffer, 1, "test");
-        BrokerProtocol.WriteHeartbeat(buffer);
+        BrokerProtocol.WriteError(buffer, BrokerFrame.Error(1, "test"));
+        BrokerProtocol.WriteHeartbeat(buffer, BrokerFrame.Heartbeat());
 
         var firstFrame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
 
@@ -57,7 +101,7 @@ public partial class BrokerProtocolTests
     public void ReadFrame_UnknownKind_ThrowsInvalidDataException(byte kind)
     {
         var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteHeartbeat(buffer); // any no-payload frame gives the right shape
+        BrokerProtocol.WriteHeartbeat(buffer, BrokerFrame.Heartbeat()); // any no-payload frame gives the right shape
         var bytes = buffer.WrittenSpan.ToArray();
         bytes[4] = kind; // a value no BrokerFrameKind defines
 

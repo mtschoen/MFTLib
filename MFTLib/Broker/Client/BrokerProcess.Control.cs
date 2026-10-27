@@ -33,7 +33,7 @@ sealed partial class BrokerProcess
     internal async Task<NtfsVolumeInformation> QueryVolumeAsync(VolumeKey drive, CancellationToken cancellationToken)
     {
         drive = drive.Validated();
-        var reply = await RequestAsync((writer, requestId) => BrokerProtocol.WriteQueryVolume(writer, requestId, drive),
+        var reply = await RequestAsync((writer, requestId) => BrokerProtocol.WriteQueryVolume(writer, BrokerFrame.QueryVolume(requestId, drive)),
             BrokerFrameKind.VolumeInfo, cancellationToken).ConfigureAwait(false);
         return new NtfsVolumeInformation(reply.MftValidDataLength, reply.BytesPerFileRecordSegment);
     }
@@ -53,7 +53,7 @@ sealed partial class BrokerProcess
     {
         drive = drive.Validated();
         var reply = await RequestAsync((writer, requestId) =>
-                BrokerProtocol.WriteGrowUsnJournal(writer, requestId, drive, target.MaximumSize, target.AllocationDelta),
+                BrokerProtocol.WriteGrowUsnJournal(writer, BrokerFrame.GrowUsnJournal(requestId, drive, target.MaximumSize, target.AllocationDelta)),
             BrokerFrameKind.UsnJournalSettings, cancellationToken).ConfigureAwait(false);
         return new UsnJournalSettings
         {

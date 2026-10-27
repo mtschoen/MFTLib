@@ -13,6 +13,13 @@ static partial class BrokerProtocol
     {
         readonly ArrayBufferWriter<byte> _payload = new();
 
+        public PayloadWriter Boolean(bool value)
+        {
+            _payload.GetSpan(1)[0] = value ? (byte)1 : (byte)0;
+            _payload.Advance(1);
+            return this;
+        }
+
         public PayloadWriter UInt32(uint value)
         {
             BinaryPrimitives.WriteUInt32LittleEndian(_payload.GetSpan(4), value);
@@ -25,6 +32,14 @@ static partial class BrokerProtocol
             BinaryPrimitives.WriteInt32LittleEndian(_payload.GetSpan(4), value);
             _payload.Advance(4);
             return this;
+        }
+
+        // [present byte][value int32], so every int value, negative ones included, round-trips.
+        public PayloadWriter NullableInt32(int? value)
+        {
+            _payload.GetSpan(1)[0] = value.HasValue ? (byte)1 : (byte)0;
+            _payload.Advance(1);
+            return Int32(value ?? 0);
         }
 
         PayloadWriter UInt64(ulong value)
@@ -50,9 +65,9 @@ static partial class BrokerProtocol
         }
 
         // [byteLength int32][UTF-16 bytes]
-        public PayloadWriter String(string value)
+        public PayloadWriter String(string? value)
         {
-            var bytes = Encoding.Unicode.GetBytes(value);
+            var bytes = Encoding.Unicode.GetBytes(string.Concat(value));
             Int32(bytes.Length);
             _payload.Write(bytes);
             return this;
@@ -103,6 +118,17 @@ static partial class BrokerProtocol
         readonly ReadOnlySpan<byte> _payload = payload;
         int _offset;
 
+        public bool Boolean()
+        {
+            var raw = Take(1)[0];
+            return raw switch
+            {
+                0 => false,
+                1 => true,
+                _ => throw new InvalidDataException($"Unknown broker boolean value: {raw}")
+            };
+        }
+
         public uint UInt32()
         {
             return BinaryPrimitives.ReadUInt32LittleEndian(Take(4));
@@ -111,6 +137,13 @@ static partial class BrokerProtocol
         public int Int32()
         {
             return BinaryPrimitives.ReadInt32LittleEndian(Take(4));
+        }
+
+        public int? NullableInt32()
+        {
+            var present = Take(1)[0] != 0;
+            var value = Int32();
+            return present ? value : null;
         }
 
         public ulong UInt64()
@@ -169,12 +202,12 @@ static partial class BrokerProtocol
 
         public int EntryCount() => Count(EntryFixedBytes);
 
-        public int NullableNameCount()
+        public int? NullableNameCount()
         {
-            var count = Int32();
-            if (count < -1 || count > Remaining / 4)
+            var count = NullableInt32();
+            if (count is { } value && (value < 0 || value > Remaining / 4))
             {
-                throw new InvalidDataException($"Broker frame declares {count} names in {Remaining} bytes");
+                throw new InvalidDataException($"Broker frame declares {value} names in {Remaining} bytes");
             }
 
             return count;

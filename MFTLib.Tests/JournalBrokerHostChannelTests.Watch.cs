@@ -178,7 +178,7 @@ public partial class JournalBrokerHostChannelTests
             await Task.WhenAll(stubborn.Entered, cooperative.Entered).WaitAsync(HangGuard, TestContext.CancellationToken);
 
             hostControl.BreakPipe();
-            await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 1, 'C'));
+            await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, BrokerFrame.QueryVolume(1, 'C')));
             await hostControl.WriteFailureObserved.WaitAsync(HangGuard, TestContext.CancellationToken);
             await Task.WhenAll(stubborn.Cancelled, cooperative.Cancelled).WaitAsync(HangGuard, TestContext.CancellationToken);
 

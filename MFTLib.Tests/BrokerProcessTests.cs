@@ -211,7 +211,7 @@ public partial class BrokerProcessTests
         try
         {
             await using var channel = await broker.Process.OpenChannelAsync('C',
-                    writer => BrokerProtocol.WriteStartWatch(writer, Armed), CancellationToken.None)
+                    writer => BrokerProtocol.WriteStartWatch(writer, BrokerFrame.StartWatch(Armed)), CancellationToken.None)
                 .WaitAsync(HangGuard, TestContext.CancellationToken);
             await watching.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         }
@@ -253,10 +253,10 @@ public partial class BrokerProcessTests
             });
 
         await using var first = await broker.Process.OpenChannelAsync('C',
-                writer => BrokerProtocol.WriteStartWatch(writer, Armed), CancellationToken.None)
+                writer => BrokerProtocol.WriteStartWatch(writer, BrokerFrame.StartWatch(Armed)), CancellationToken.None)
             .WaitAsync(HangGuard, TestContext.CancellationToken);
         await using var second = await broker.Process.OpenChannelAsync('C',
-                writer => BrokerProtocol.WriteStartWatch(writer, Armed), CancellationToken.None)
+                writer => BrokerProtocol.WriteStartWatch(writer, BrokerFrame.StartWatch(Armed)), CancellationToken.None)
             .WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.HasCount(2, connectedPipes);

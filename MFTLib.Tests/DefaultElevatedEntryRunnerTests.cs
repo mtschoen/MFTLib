@@ -112,7 +112,7 @@ public class DefaultElevatedEntryRunnerTests
                 // Arm the live watch with a cursor at the journal tip: the host reports CaughtUp
                 // over the still-healthy pipe, then parks in the mocked kernel wait above.
                 await HostChannelHarness.WriteFrameAsync(drive,
-                    writer => BrokerProtocol.WriteStartWatch(writer, new UsnJournalCursor(7, 200)));
+                    writer => BrokerProtocol.WriteStartWatch(writer, BrokerFrame.StartWatch(new UsnJournalCursor(7, 200))));
                 var caughtUp = await HostChannelHarness.ReadFrameAsync(drive);
                 Assert.AreEqual(BrokerFrameKind.CaughtUp, caughtUp?.Kind);
 
@@ -192,7 +192,7 @@ public class DefaultElevatedEntryRunnerTests
         {
             await AcceptDriveChannelAsync(control, drive, cts.Token);
             await HostChannelHarness.WriteFrameAsync(drive,
-                writer => BrokerProtocol.WriteArmAndScan(writer, NamedBlockSection.BuildSectionName('C')));
+                writer => BrokerProtocol.WriteArmAndScan(writer, BrokerFrame.ArmAndScan(NamedBlockSection.BuildSectionName('C'))));
 
             // Reach the cursor query before taking the client ends away, so the reply that
             // follows is written to a pipe that is already broken for certain. A scan that has
@@ -312,7 +312,7 @@ public class DefaultElevatedEntryRunnerTests
     {
         await control.WaitForConnectionAsync(cancellationToken);
         await HostChannelHarness.WriteFrameAsync(control,
-            writer => BrokerProtocol.WriteOpenChannel(writer, 1, 'C', _drivePipeName));
+            writer => BrokerProtocol.WriteOpenChannel(writer, BrokerFrame.OpenChannel(1, 'C', _drivePipeName)));
         await drive.WaitForConnectionAsync(cancellationToken);
         var opened = await HostChannelHarness.ReadFrameAsync(control);
         Assert.AreEqual(BrokerFrameKind.ChannelOpened, opened?.Kind);

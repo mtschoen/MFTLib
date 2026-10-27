@@ -24,7 +24,7 @@ public partial class BrokerProtocolTests
     static byte[] BatchFrameWithOneEntry(string fileName)
     {
         var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteJournalBatch(buffer, new UsnJournalCursor(7, 100),
+        BrokerProtocol.WriteJournalBatch(buffer, BrokerFrame.JournalBatch(new UsnJournalCursor(7, 100),
         [
             UsnJournalEntry.Create(new UsnJournalEntryOptions
             {
@@ -36,7 +36,7 @@ public partial class BrokerProtocolTests
                 TimestampUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
                 FileName = fileName
             })
-        ]);
+        ]));
         return [.. buffer.WrittenSpan];
     }
 
@@ -51,62 +51,62 @@ public partial class BrokerProtocolTests
         switch (kind)
         {
             case BrokerFrameKind.OpenChannel:
-                BrokerProtocol.WriteOpenChannel(buffer, 1, 'C', "p");
+                BrokerProtocol.WriteOpenChannel(buffer, BrokerFrame.OpenChannel(1, 'C', "p"));
                 break;
             case BrokerFrameKind.ChannelOpened:
-                BrokerProtocol.WriteChannelOpened(buffer, 1);
+                BrokerProtocol.WriteChannelOpened(buffer, BrokerFrame.ChannelOpened(1));
                 break;
             case BrokerFrameKind.QueryVolume:
-                BrokerProtocol.WriteQueryVolume(buffer, 1, 'C');
+                BrokerProtocol.WriteQueryVolume(buffer, BrokerFrame.QueryVolume(1, 'C'));
                 break;
             case BrokerFrameKind.VolumeInfo:
-                BrokerProtocol.WriteVolumeInfo(buffer, 1, 1024, 4096);
+                BrokerProtocol.WriteVolumeInfo(buffer, BrokerFrame.VolumeInfo(1, 1024, 4096));
                 break;
             case BrokerFrameKind.GrowUsnJournal:
-                BrokerProtocol.WriteGrowUsnJournal(buffer, 1, 'C', 0x08000000, 0x01000000);
+                BrokerProtocol.WriteGrowUsnJournal(buffer, BrokerFrame.GrowUsnJournal(1, 'C', 0x08000000, 0x01000000));
                 break;
             case BrokerFrameKind.UsnJournalSettings:
-                BrokerProtocol.WriteUsnJournalSettings(buffer, 1, 0x08000000, 0x01000000);
+                BrokerProtocol.WriteUsnJournalSettings(buffer, BrokerFrame.UsnJournalSettings(1, 0x08000000, 0x01000000));
                 break;
             case BrokerFrameKind.Error:
-                BrokerProtocol.WriteError(buffer, 1, "e");
+                BrokerProtocol.WriteError(buffer, BrokerFrame.Error(1, "e"));
                 break;
             case BrokerFrameKind.Heartbeat:
-                BrokerProtocol.WriteHeartbeat(buffer);
+                BrokerProtocol.WriteHeartbeat(buffer, BrokerFrame.Heartbeat());
                 break;
             case BrokerFrameKind.Stalled:
-                BrokerProtocol.WriteStalled(buffer, "s");
+                BrokerProtocol.WriteStalled(buffer, BrokerFrame.Stalled("s"));
                 break;
             case BrokerFrameKind.ArmAndScan:
-                BrokerProtocol.WriteArmAndScan(buffer, "s", RetainedFileNamesGitAndNonAscii, includeFreed: true);
+                BrokerProtocol.WriteArmAndScan(buffer, BrokerFrame.ArmAndScan("s", RetainedFileNamesGitAndNonAscii, includeFreed: true));
                 break;
             case BrokerFrameKind.Cursor:
-                BrokerProtocol.WriteCursor(buffer, new UsnJournalCursor(1, 2));
+                BrokerProtocol.WriteCursor(buffer, BrokerFrame.ArmedCursor(new UsnJournalCursor(1, 2)));
                 break;
             case BrokerFrameKind.ScanProgress:
-                BrokerProtocol.WriteScanProgress(buffer, new BrokerScanProgress
+                BrokerProtocol.WriteScanProgress(buffer, BrokerFrame.ScanProgress(new BrokerScanProgress
                 {
                     Phase = BrokerScanPhase.Parsing,
                     RecordsProcessed = 1,
                     BytesProcessed = 2,
                     TotalRecords = 3,
                     TotalBytes = 4
-                });
+                }));
                 break;
             case BrokerFrameKind.CatchUpLost:
-                BrokerProtocol.WriteCatchUpLost(buffer, FullLoss);
+                BrokerProtocol.WriteCatchUpLost(buffer, BrokerFrame.CatchUpLost(FullLoss));
                 break;
             case BrokerFrameKind.ScanReady:
-                BrokerProtocol.WriteScanReady(buffer, 1);
+                BrokerProtocol.WriteScanReady(buffer, BrokerFrame.ScanReady(1));
                 break;
             case BrokerFrameKind.StartWatch:
-                BrokerProtocol.WriteStartWatch(buffer, new UsnJournalCursor(1, 2));
+                BrokerProtocol.WriteStartWatch(buffer, BrokerFrame.StartWatch(new UsnJournalCursor(1, 2)));
                 break;
             case BrokerFrameKind.CaughtUp:
-                BrokerProtocol.WriteCaughtUp(buffer);
+                BrokerProtocol.WriteCaughtUp(buffer, BrokerFrame.CaughtUp());
                 break;
             case BrokerFrameKind.ScanCompleted:
-                BrokerProtocol.WriteScanCompleted(buffer);
+                BrokerProtocol.WriteScanCompleted(buffer, BrokerFrame.ScanCompleted());
                 break;
         }
 

@@ -13,7 +13,7 @@ sealed partial class BrokerProcess
     {
         ArgumentNullException.ThrowIfNull(target);
         var since = new UsnJournalCursor(target.JournalIdentifier, target.NextUsn);
-        var channel = await OpenChannelAsync(target.Drive, writer => BrokerProtocol.WriteStartWatch(writer, since),
+        var channel = await OpenChannelAsync(target.Drive, writer => BrokerProtocol.WriteStartWatch(writer, BrokerFrame.StartWatch(since)),
             cancellationToken).ConfigureAwait(false);
         return new BrokerWatchChannel(channel);
     }

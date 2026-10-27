@@ -59,7 +59,7 @@ public class BrokerProcessLivenessTests
         for (var heartbeat = 0; heartbeat < 4; heartbeat++)
         {
             clock.Advance(SendInterval);
-            await session.SendControlAsync(BrokerProtocol.WriteHeartbeat);
+            await session.SendControlAsync(writer => BrokerProtocol.WriteHeartbeat(writer, BrokerFrame.Heartbeat()));
             await session.ControlSettledAsync();
         }
 
@@ -80,8 +80,8 @@ public class BrokerProcessLivenessTests
         await session.ControlSettledAsync();
 
         clock.Advance(SendInterval);
-        await healthy.SendAsync(BrokerProtocol.WriteHeartbeat);
-        await session.SendControlAsync(BrokerProtocol.WriteHeartbeat);
+        await healthy.SendAsync(writer => BrokerProtocol.WriteHeartbeat(writer, BrokerFrame.Heartbeat()));
+        await session.SendControlAsync(writer => BrokerProtocol.WriteHeartbeat(writer, BrokerFrame.Heartbeat()));
         await healthy.SettledAsync();
         await session.ControlSettledAsync();
         clock.Advance(HalfWindow - OneTick);
@@ -122,8 +122,8 @@ public class BrokerProcessLivenessTests
                 TotalRecords = 100,
                 TotalBytes = 100
             };
-            await scan.SendAsync(writer => BrokerProtocol.WriteScanProgress(writer, sample));
-            await session.SendControlAsync(BrokerProtocol.WriteHeartbeat);
+            await scan.SendAsync(writer => BrokerProtocol.WriteScanProgress(writer, BrokerFrame.ScanProgress(sample)));
+            await session.SendControlAsync(writer => BrokerProtocol.WriteHeartbeat(writer, BrokerFrame.Heartbeat()));
             await scan.SettledAsync();
             await session.ControlSettledAsync();
         }
@@ -140,13 +140,13 @@ public class BrokerProcessLivenessTests
         var clock = new FakeTimeProvider();
         await using var session = new LivenessSession(clock);
         var scan = await session.StartScanAsync('C');
-        await scan.SendAsync(writer => BrokerProtocol.WriteScanReady(writer, 0));
-        await scan.SendAsync(BrokerProtocol.WriteScanCompleted);
+        await scan.SendAsync(writer => BrokerProtocol.WriteScanReady(writer, BrokerFrame.ScanReady(0)));
+        await scan.SendAsync(writer => BrokerProtocol.WriteScanCompleted(writer, BrokerFrame.ScanCompleted()));
         await scan.SettledAsync();
         await session.ControlSettledAsync();
 
         clock.Advance(SendInterval);
-        await session.SendControlAsync(BrokerProtocol.WriteHeartbeat);
+        await session.SendControlAsync(writer => BrokerProtocol.WriteHeartbeat(writer, BrokerFrame.Heartbeat()));
         await session.ControlSettledAsync();
         clock.Advance(HalfWindow);
 
@@ -166,7 +166,7 @@ public class BrokerProcessLivenessTests
         var other = await session.StartScanAsync('D');
         const string hostMessage = "Drive C stalled in step Parsing MFT records for 30 seconds";
 
-        await stalled.SendAsync(writer => BrokerProtocol.WriteStalled(writer, hostMessage));
+        await stalled.SendAsync(writer => BrokerProtocol.WriteStalled(writer, BrokerFrame.Stalled(hostMessage)));
 
         var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
             stalled.Scan.WaitAsync(HangGuard, TestContext.CancellationToken));
@@ -194,7 +194,7 @@ public class BrokerProcessLivenessTests
         var replyTimeout = await clock.TimerCreated(BrokerLiveness.ControlReplyTimeout, occurrence: 3)
             .WaitAsync(HangGuard, TestContext.CancellationToken);
         clock.Advance(HalfWindow);
-        await session.SendControlAsync(BrokerProtocol.WriteHeartbeat);
+        await session.SendControlAsync(writer => BrokerProtocol.WriteHeartbeat(writer, BrokerFrame.Heartbeat()));
         await session.ControlSettledAsync();
 
         clock.Advance(StallLimit - HalfWindow - OneTick);
@@ -209,15 +209,15 @@ public class BrokerProcessLivenessTests
         Assert.IsFalse(session.Process.Ended.IsCompleted, "Only the request timed out.");
         Assert.AreEqual(1, session.Process.Hooks.PendingRequestCount, "The id stays until its reply arrives.");
 
-        await session.SendControlAsync(writer => BrokerProtocol.WriteVolumeInfo(writer, slowRequest.RequestId, 1, 111));
+        await session.SendControlAsync(writer => BrokerProtocol.WriteVolumeInfo(writer, BrokerFrame.VolumeInfo(slowRequest.RequestId, 1, 111)));
         await session.ControlSettledAsync();
         Assert.AreEqual(0, session.Process.Hooks.PendingRequestCount, "The late reply is dropped with its id.");
 
         var next = session.Process.QueryVolumeAsync('C', CancellationToken.None);
         var nextRequest = await session.Broker.ReadRequestAsync();
         Assert.AreNotEqual(slowRequest.RequestId, nextRequest.RequestId);
-        await session.SendControlAsync(writer => BrokerProtocol.WriteVolumeInfo(writer, nextRequest.RequestId,
-            Volume.BytesPerFileRecordSegment, 222));
+        await session.SendControlAsync(writer => BrokerProtocol.WriteVolumeInfo(writer, BrokerFrame.VolumeInfo(nextRequest.RequestId, Volume.BytesPerFileRecordSegment, 222)));
+
         Assert.AreEqual(222L, (await next.WaitAsync(HangGuard, TestContext.CancellationToken)).MftValidDataLength);
     }
 
@@ -253,7 +253,7 @@ public class BrokerProcessLivenessTests
         await using var reader = new BrokerFrameReader(client, 'C', "test", clock);
         var first = reader.ReadAsync(CancellationToken.None).AsTask();
         clock.Advance(SendInterval);
-        await HostChannelHarness.WriteFrameAsync(hostPipe, BrokerProtocol.WriteHeartbeat).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await HostChannelHarness.WriteFrameAsync(hostPipe, writer => BrokerProtocol.WriteHeartbeat(writer, BrokerFrame.Heartbeat())).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(BrokerFrameKind.Heartbeat, (await first.WaitAsync(HangGuard, TestContext.CancellationToken))?.Kind);
 
         var second = reader.ReadAsync(CancellationToken.None).AsTask();
@@ -273,7 +273,7 @@ public class BrokerProcessLivenessTests
         await using var hostPipe = host;
         var gate = new TestGate();
         await using var reader = new BrokerFrameReader(new IgnoreCancellationStream(client, gate), 'C', "test", clock);
-        await HostChannelHarness.WriteFrameAsync(hostPipe, BrokerProtocol.WriteHeartbeat).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await HostChannelHarness.WriteFrameAsync(hostPipe, writer => BrokerProtocol.WriteHeartbeat(writer, BrokerFrame.Heartbeat())).WaitAsync(HangGuard, TestContext.CancellationToken);
         var read = reader.ReadAsync(CancellationToken.None).AsTask();
         await gate.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
@@ -370,8 +370,8 @@ public class BrokerProcessLivenessTests
         {
             var request = await Broker.ReadRequestAsync();
             Assert.AreEqual(BrokerFrameKind.QueryVolume, request.Kind);
-            await SendControlAsync(writer => BrokerProtocol.WriteVolumeInfo(writer, request.RequestId,
-                volume.BytesPerFileRecordSegment, volume.MftValidDataLength));
+            await SendControlAsync(writer => BrokerProtocol.WriteVolumeInfo(writer, BrokerFrame.VolumeInfo(request.RequestId, volume.BytesPerFileRecordSegment, volume.MftValidDataLength)));
+
         }
 
         // Starts a scan and scripts it to the point where the client waits for ScanReady.
@@ -385,10 +385,10 @@ public class BrokerProcessLivenessTests
             var pipeName = open.RequirePipeName();
             var pipe = await Broker.Pipes.ConnectAsync(pipeName, CancellationToken.None)
                 .WaitAsync(HangGuard);
-            await SendControlAsync(writer => BrokerProtocol.WriteChannelOpened(writer, open.RequestId));
+            await SendControlAsync(writer => BrokerProtocol.WriteChannelOpened(writer, BrokerFrame.ChannelOpened(open.RequestId)));
             Assert.AreEqual(BrokerFrameKind.ArmAndScan, (await HostChannelHarness.ReadFrameAsync(pipe).WaitAsync(HangGuard))?.Kind);
             var scripted = new StubbedScan(pipe, DriveReads(pipeName), scan);
-            await scripted.SendAsync(writer => BrokerProtocol.WriteCursor(writer, new UsnJournalCursor(7, 1000)));
+            await scripted.SendAsync(writer => BrokerProtocol.WriteCursor(writer, BrokerFrame.ArmedCursor(new UsnJournalCursor(7, 1000))));
             await scripted.SettledAsync();
             return scripted;
         }
@@ -416,8 +416,8 @@ public class BrokerProcessLivenessTests
         // The rest of a scan: ScanReady, the terminal ScanCompleted, then the host closing the channel.
         public async Task FinishAsync()
         {
-            await SendAsync(writer => BrokerProtocol.WriteScanReady(writer, 0));
-            await SendAsync(BrokerProtocol.WriteScanCompleted);
+            await SendAsync(writer => BrokerProtocol.WriteScanReady(writer, BrokerFrame.ScanReady(0)));
+            await SendAsync(writer => BrokerProtocol.WriteScanCompleted(writer, BrokerFrame.ScanCompleted()));
             await hostPipe.DisposeAsync().AsTask().WaitAsync(HangGuard);
         }
     }

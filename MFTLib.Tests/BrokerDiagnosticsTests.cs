@@ -242,7 +242,7 @@ public sealed partial class BrokerDiagnosticsTests : IDisposable
         foreach (var drive in new[] { 'C', 'D', 'C' })
         {
             await using var channel = await broker.Process.OpenChannelAsync(drive,
-                writer => BrokerProtocol.WriteStartWatch(writer, default), CancellationToken.None).WaitAsync(HangGuard * 3, TestContext.CancellationToken);
+                writer => BrokerProtocol.WriteStartWatch(writer, BrokerFrame.StartWatch(default)), CancellationToken.None).WaitAsync(HangGuard * 3, TestContext.CancellationToken);
             Assert.AreEqual(BrokerFrameKind.Error,
                 (await channel.ReadAsync(CancellationToken.None).AsTask().WaitAsync(HangGuard * 3, TestContext.CancellationToken))?.Kind);
             await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard * 3, TestContext.CancellationToken);
