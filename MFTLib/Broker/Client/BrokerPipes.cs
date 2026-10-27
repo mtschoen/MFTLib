@@ -44,8 +44,7 @@ sealed class NamedPipeBrokerPipeFactory : IBrokerPipeFactory
 {
     public BrokerPipeListener Listen(string pipeName)
     {
-        var server = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
-            PipeOptions.Asynchronous);
+        var server = BrokerPipeAccess.CreateServer(pipeName);
         return new BrokerPipeListener(pipeName, async cancellationToken =>
         {
             await server.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);

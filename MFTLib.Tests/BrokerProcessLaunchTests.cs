@@ -176,7 +176,8 @@ public class BrokerProcessLaunchTests
                     JournalRead = (_, cursor, _) => ([], cursor),
                     VolumeInformation = _ => new NtfsVolumeInformation(1024 * 1000, 1024)
                 });
-                await host.ServeAsync(pipe, DefaultElevatedEntryRunner.ConnectDrivePipeAsync,
+                await host.ServeAsync(pipe, (driveName, driveToken) => DefaultElevatedEntryRunner.ConnectDrivePipeAsync(
+                driveName, DefaultElevatedEntryRunner.ConnectTimeout, TimeProvider.System, driveToken),
                     new RealBlockSectionWriter(TimeProvider.System), CancellationToken.None);
             }, TestContext.CancellationToken);
             return true;

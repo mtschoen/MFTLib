@@ -7,6 +7,8 @@ the desktop.
 Self-elevation requires Windows, a known executable other than the `dotnet` host, and an interactive desktop.
 `CanSelfElevate` returns false otherwise, and both self-relaunch and broker launch decline before starting a process.
 
+The unelevated client creates the broker's pipes with a DACL that grants only the current user's SID, and the elevated broker connects as the client end. The broker does not use `PipeOptions.CurrentUserOnly`: .NET compares the pipe owner with the token's owner SID, and an elevated token's owner is Administrators while its user SID is the same as the unelevated user's, so the option would refuse the connection. The broker instead checks the connected pipe's DACL names only its own user SID and offers only `TokenImpersonationLevel.Identification`. A broker that finds no control pipe within 30 seconds exits with code 1. [Broker lifetime](broker-lifetime.md) has the contract.
+
 A full `dotnet test` run raises no prompt in either mode. The only tests that reach a sample's entry point
 are `SampleProgramWatch_EntryPoint_UnknownOption_PrintsUsageAndReturnsTwo` (a command line the parser refuses) and the Benchmark entry-point test (which cannot elevate); every other test of the relaunch stubs the
 dialog, `_canSelfElevate` and `_tryRunElevated`. Tests that need an elevated process skip themselves when the

@@ -50,8 +50,7 @@ sealed partial class BrokerProcess
         }
 
         var pipeName = "mftlib-broker-" + Guid.NewGuid().ToString("N");
-        NamedPipeServerStream? server = new(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
-            PipeOptions.Asynchronous);
+        NamedPipeServerStream? server = BrokerPipeAccess.CreateServer(pipeName);
         try
         {
             if (!launchBroker(FormattableString.Invariant($"--broker --pipe {pipeName}{DiagnosticsArguments()}")))

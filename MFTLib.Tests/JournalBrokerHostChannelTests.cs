@@ -1,4 +1,3 @@
-using System.IO.Pipes;
 using System.Text;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
@@ -117,8 +116,7 @@ public partial class JournalBrokerHostChannelTests
     public async Task OpenChannel_ConnectsNamedPipeAndReplies()
     {
         var pipeName = "mftlib-channel-test-" + Guid.NewGuid().ToString("N");
-        await using var server = new NamedPipeServerStream(
-            pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+        await using var server = BrokerPipeAccess.CreateServer(pipeName);
         var host = BrokerHostFactory.Create(new()
         {
             ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
@@ -126,7 +124,8 @@ public partial class JournalBrokerHostChannelTests
             WatchDrive = IdleWatch
         });
         await using var harness = new HostChannelHarness(host,
-            connectChannel: DefaultElevatedEntryRunner.ConnectDrivePipeAsync);
+            connectChannel: (driveName, driveToken) => DefaultElevatedEntryRunner.ConnectDrivePipeAsync(
+                driveName, DefaultElevatedEntryRunner.ConnectTimeout, TimeProvider.System, driveToken));
 
         await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 5, 'C', pipeName));
         await server.WaitForConnectionAsync(TestContext.CancellationToken).WaitAsync(HangGuard, TestContext.CancellationToken);

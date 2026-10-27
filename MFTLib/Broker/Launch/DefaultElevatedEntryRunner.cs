@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using System.Security.Principal;
 
 namespace MFTLib;
 
@@ -12,22 +13,29 @@ sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
     // How long an exiting broker waits for its queued diagnostics lines to reach the log.
     static readonly TimeSpan DiagnosticsFlushTimeout = TimeSpan.FromSeconds(2);
 
+    // How long the broker waits for the control pipe, and for each drive pipe, before it gives up.
+    internal static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(30);
+
     readonly TimeProvider _timeProvider;
     readonly Action<int> _exitProcess;
+    readonly TimeSpan _connectTimeout;
 
     /// <summary>Uses the system clock and terminates the production elevated child on completion.</summary>
     public DefaultElevatedEntryRunner()
-        : this(TimeProvider.System, Environment.Exit)
+        : this(TimeProvider.System, Environment.Exit, ConnectTimeout)
     {
     }
 
     /// <summary>Captures the clock and exit behavior for this runner's complete lifetime.</summary>
     /// <param name="timeProvider">The clock for block completion and the diagnostics flush bound.</param>
-    /// <param name="exitProcess">Called with 1 for a missing pipe and 0 after normal session completion.</param>
-    internal DefaultElevatedEntryRunner(TimeProvider timeProvider, Action<int> exitProcess)
+    /// <param name="exitProcess">Called with 1 for a missing or unreachable pipe and 0 after normal session completion.</param>
+    /// <param name="connectTimeout">How long to wait, on <paramref name="timeProvider" />, for the control pipe and each drive pipe to connect.</param>
+    internal DefaultElevatedEntryRunner(TimeProvider timeProvider, Action<int> exitProcess,
+        TimeSpan connectTimeout)
     {
         _timeProvider = timeProvider;
         _exitProcess = exitProcess;
+        _connectTimeout = connectTimeout;
     }
 
     /// <summary>
@@ -51,8 +59,13 @@ sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
         // end of each (high integrity connecting to medium integrity - the only safe
         // cross-integrity direction). It also opens the caller-created block sections.
         using var control = new NamedPipeClientStream(
-            ".", controlPipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-        control.Connect();
+            ".", controlPipeName, PipeDirection.InOut, BrokerPipeAccess.ClientOptions,
+            TokenImpersonationLevel.Identification);
+        if (!TryConnectControl(control))
+        {
+            _exitProcess(1);
+            return;
+        }
 
         // Block the elevated child's entry thread for the whole broker session: this
         // process exists solely to serve the broker, so there is no other work to
@@ -81,19 +94,60 @@ sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
         _exitProcess(0);
     }
 
-    /// <summary>The production <see cref="BrokerChannelConnector" />: the client end of the named drive pipe.</summary>
-    internal static async Task<Stream> ConnectDrivePipeAsync(string pipeName, CancellationToken cancellationToken)
+    /// <summary>The production <see cref="BrokerChannelConnector" />: the client end of the named drive pipe, bounded by this runner's connect timeout.</summary>
+    Task<Stream> ConnectDrivePipeAsync(string pipeName, CancellationToken cancellationToken)
     {
-        var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+        return ConnectDrivePipeAsync(pipeName, _connectTimeout, _timeProvider, cancellationToken);
+    }
+
+    /// <summary>Connects the named drive pipe, verifies its DACL, and fails with <see cref="TimeoutException" /> when no server answers within <paramref name="timeout" />.</summary>
+    internal static async Task<Stream> ConnectDrivePipeAsync(string pipeName, TimeSpan timeout,
+        TimeProvider timeProvider, CancellationToken cancellationToken)
+    {
+        var pipe = new NamedPipeClientStream(
+            ".", pipeName, PipeDirection.InOut, BrokerPipeAccess.ClientOptions, TokenImpersonationLevel.Identification);
         try
         {
-            await pipe.ConnectAsync(cancellationToken).ConfigureAwait(false);
+            using var bound = new CancellationTokenSource(timeout, timeProvider);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(bound.Token, cancellationToken);
+            try
+            {
+                await pipe.ConnectAsync(linked.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (bound.IsCancellationRequested &&
+                                                     !cancellationToken.IsCancellationRequested)
+            {
+                throw new TimeoutException(FormattableString.Invariant(
+                    $"No server answered drive pipe '{pipeName}' within {timeout.TotalSeconds:G} seconds."));
+            }
+
+            BrokerPipeAccess.VerifyServerRestrictedToCurrentUser(pipe);
             return pipe;
         }
         catch
         {
             await pipe.DisposeAsync().ConfigureAwait(false);
             throw;
+        }
+    }
+
+    // No server within the bound means the launching client is gone or never listened; the elevated
+    // process leaves instead of hanging. The wait is synchronous because the entry thread has no
+    // other work, and the timer is the runner's own clock.
+    bool TryConnectControl(NamedPipeClientStream control)
+    {
+        using var bound = new CancellationTokenSource(_connectTimeout, _timeProvider);
+        try
+        {
+            // aislop-ignore-next-line csharp-sync-over-async -- the connect awaits only the pipe and a timer, neither of which posts to the calling thread's SynchronizationContext
+            control.ConnectAsync(bound.Token).GetAwaiter().GetResult();
+            BrokerPipeAccess.VerifyServerRestrictedToCurrentUser(control);
+            return true;
+        }
+        catch (Exception exception) when (exception is UnauthorizedAccessException ||
+                                          (exception is OperationCanceledException && bound.IsCancellationRequested))
+        {
+            return false;
         }
     }
 

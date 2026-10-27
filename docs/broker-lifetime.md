@@ -43,6 +43,8 @@ throws `TimeoutException`, for callers waiting on that attempt. Failed launches 
 not cached: the next use launches again and raises `Connecting` again, including a
 rescan after a declined prompt.
 
+The unelevated client creates every pipe server (the control pipe and each drive pipe) with a DACL that grants only its own user SID, single instance. The elevated broker connects as the client end with `TokenImpersonationLevel.Identification`, so a server cannot impersonate the elevated token, and after each connect refuses the pipe (`UnauthorizedAccessException`; the control pipe ends the broker with exit code 1) unless its DACL names only the broker's own user SID. `PipeOptions.CurrentUserOnly` is not used on the broker's ends: .NET compares the pipe owner with the token's owner SID, which is Administrators in an elevated token, so it would refuse the unelevated user's pipe. The broker waits 30 seconds, on its runner's clock, for the control pipe and for each drive pipe (`TimeoutException` for a drive); with no server the broker exits with code 1 instead of hanging elevated. The client does not compare the connecting process id with the launched process, which would change the public launch delegate.
+
 The launch runs on the thread pool, never the caller's thread or synchronization
 context, so the blocking UAC prompt does not block a UI caller. Disposal is checked
 before and after `Connecting`: if it overtakes the launch before the launcher runs,

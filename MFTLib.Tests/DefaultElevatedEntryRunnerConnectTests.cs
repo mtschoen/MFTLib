@@ -14,7 +14,8 @@ public class DefaultElevatedEntryRunnerConnectTests
 
         try
         {
-            await DefaultElevatedEntryRunner.ConnectDrivePipeAsync(pipeName, cancellation.Token)
+            await DefaultElevatedEntryRunner.ConnectDrivePipeAsync(
+                pipeName, DefaultElevatedEntryRunner.ConnectTimeout, TimeProvider.System, cancellation.Token)
                 .WaitAsync(HangGuard, TestContext.CancellationToken);
         }
         catch (OperationCanceledException)

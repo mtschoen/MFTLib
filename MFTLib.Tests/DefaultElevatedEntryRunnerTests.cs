@@ -28,8 +28,8 @@ public class DefaultElevatedEntryRunnerTests
     {
         var firstExits = new List<int>();
         var secondExits = new List<int>();
-        var first = new DefaultElevatedEntryRunner(TimeProvider.System, firstExits.Add);
-        var second = new DefaultElevatedEntryRunner(TimeProvider.System, secondExits.Add);
+        var first = new DefaultElevatedEntryRunner(TimeProvider.System, firstExits.Add, DefaultElevatedEntryRunner.ConnectTimeout);
+        var second = new DefaultElevatedEntryRunner(TimeProvider.System, secondExits.Add, DefaultElevatedEntryRunner.ConnectTimeout);
         first.RunBroker(null);
         second.RunBroker(null);
         first.RunBroker(null);
@@ -49,9 +49,8 @@ public class DefaultElevatedEntryRunnerTests
         // RunBroker blocks synchronously (.GetAwaiter().GetResult()) for the whole session, so
         // drive it from a background thread while this thread plays the non-elevated caller's
         // side of the real control pipe. Closing that end is the control EOF that ends the session.
-        var server = new NamedPipeServerStream(
-            pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-        var runTask = Task.Run(() => new DefaultElevatedEntryRunner(TimeProvider.System, code => exitCode = code).RunBroker(pipeName), TestContext.CancellationToken);
+        var server = BrokerPipeAccess.CreateServer(pipeName);
+        var runTask = Task.Run(() => new DefaultElevatedEntryRunner(TimeProvider.System, code => exitCode = code, DefaultElevatedEntryRunner.ConnectTimeout).RunBroker(pipeName), TestContext.CancellationToken);
         try
         {
             await server.WaitForConnectionAsync(cts.Token);
@@ -228,9 +227,8 @@ public class DefaultElevatedEntryRunnerTests
         var clock = new FlushBoundSignalingClock();
 
         using var cts = new CancellationTokenSource(HangGuard);
-        await using var server = new NamedPipeServerStream(
-            pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-        var runTask = Task.Run(() => new DefaultElevatedEntryRunner(clock, code => exitCode = code).RunBroker(pipeName), TestContext.CancellationToken);
+        await using var server = BrokerPipeAccess.CreateServer(pipeName);
+        var runTask = Task.Run(() => new DefaultElevatedEntryRunner(clock, code => exitCode = code, DefaultElevatedEntryRunner.ConnectTimeout).RunBroker(pipeName), TestContext.CancellationToken);
         try
         {
             await server.WaitForConnectionAsync(cts.Token);
@@ -268,11 +266,9 @@ public class DefaultElevatedEntryRunnerTests
     {
         var controlName = "mftlib-runner-test-" + Guid.NewGuid().ToString("N");
         _drivePipeName = "mftlib-runner-drive-" + Guid.NewGuid().ToString("N");
-        var control = new NamedPipeServerStream(
-            controlName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-        var drive = new NamedPipeServerStream(
-            _drivePipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-        var runTask = Task.Run(() => new DefaultElevatedEntryRunner(TimeProvider.System, exitProcess).RunBroker(controlName), TestContext.CancellationToken);
+        var control = BrokerPipeAccess.CreateServer(controlName);
+        var drive = BrokerPipeAccess.CreateServer(_drivePipeName);
+        var runTask = Task.Run(() => new DefaultElevatedEntryRunner(TimeProvider.System, exitProcess, DefaultElevatedEntryRunner.ConnectTimeout).RunBroker(controlName), TestContext.CancellationToken);
         return (control, drive, runTask);
     }
 
@@ -312,7 +308,11 @@ public class DefaultElevatedEntryRunnerTests
 
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
-            _flushBoundStarted.TrySetResult();
+            if (dueTime != DefaultElevatedEntryRunner.ConnectTimeout)
+            {
+                _flushBoundStarted.TrySetResult();
+            }
+
             return base.CreateTimer(callback, state, dueTime, period);
         }
     }
@@ -338,7 +338,7 @@ public class DefaultElevatedEntryRunnerTests
             Assert.AreSame(timeout, observed);
 
             var exits = new List<int>();
-            var delayedRunner = new DefaultElevatedEntryRunner(TimeProvider.System, exits.Add);
+            var delayedRunner = new DefaultElevatedEntryRunner(TimeProvider.System, exits.Add, DefaultElevatedEntryRunner.ConnectTimeout);
             await Cleanup();
             delayedRunner.RunBroker(null);
             Assert.AreSequenceEqual([1], exits);
