@@ -34,6 +34,20 @@ static class SubtreeAnchor
         "unrestricted query, or take an anchor from the index being queried.", parameterName);
 
     /// <summary>
+    ///     The blocks a query reads: every block when it has no anchor, otherwise only the anchor's own block
+    ///     when it is current, and none when it is not, which <see cref="Resolve" /> then rejects.
+    /// </summary>
+    internal static IReadOnlyList<DriveBlock> SelectBlocks(IReadOnlyList<DriveBlock> current, SearchQuery query)
+    {
+        if (query.Subtree is not { } anchor)
+        {
+            return current;
+        }
+
+        return anchor.NamedDriveBlock is { } anchorBlock && current.Contains(anchorBlock) ? [anchorBlock] : [];
+    }
+
+    /// <summary>
     ///     Resolves the query's anchor against the snapshot the query borrowed, so a publication that lands
     ///     after admission cannot turn the validation into a check-then-use race.
     /// </summary>

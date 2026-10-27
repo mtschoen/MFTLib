@@ -19,15 +19,23 @@ static class LookupEngine
         return FileEntry.Create(driveBlock, driveBlock.Block.Header.RootRow);
     }
 
+    /// <summary>The one block <see cref="Find" /> reads for this path, or none when no indexed root matches.</summary>
+    internal static IReadOnlyList<DriveBlock> SelectPathBlock(IReadOnlyList<DriveBlock> snapshot, string nativePath) =>
+        FindLongestMatchingRoot(snapshot, nativePath) is { } match ? [match.DriveBlock] : [];
+
+    /// <summary>The one block <see cref="Root" /> reads for this drive, or none when it has no block.</summary>
+    internal static IReadOnlyList<DriveBlock> SelectDriveBlock(IReadOnlyList<DriveBlock> snapshot, DriveKey drive) =>
+        FindDriveBlock(snapshot, drive) is { } driveBlock ? [driveBlock] : [];
+
+    /// <summary>The snapshot's block for this drive, or null when it has none.</summary>
+    internal static DriveBlock? FindDriveBlock(IReadOnlyList<DriveBlock> snapshot, DriveKey drive) =>
+        snapshot.FirstOrDefault(candidate => candidate.Drive == drive.Validated());
+
     /// <summary>
     ///     Resolves a native filesystem path against the indexed roots. The block whose root
     ///     directory is the longest prefix of the path wins, so nested indexed roots resolve to
     ///     the inner one, and the remaining segments are walked down from that block's root row.
     /// </summary>
-    /// <summary>The snapshot's block for this drive, or null when it has none.</summary>
-    internal static DriveBlock? FindDriveBlock(IReadOnlyList<DriveBlock> snapshot, DriveKey drive) =>
-        snapshot.FirstOrDefault(candidate => candidate.Drive == drive.Validated());
-
     internal static FileEntry? Find(IReadOnlyList<DriveBlock> snapshot, string nativePath,
         CancellationToken cancellationToken = default)
     {

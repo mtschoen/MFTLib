@@ -19,7 +19,8 @@ public sealed partial class FileIndex
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
     public FileEntry? Find(string path, CancellationToken cancellationToken = default)
     {
-        using var query = BeginQuery(cancellationToken);
+        ArgumentNullException.ThrowIfNull(path);
+        using var query = BeginQuery(cancellationToken, snapshot => LookupEngine.SelectPathBlock(snapshot, path));
         return LookupEngine.Find(query.Snapshot, path, query.CancellationToken);
     }
 
@@ -49,7 +50,7 @@ public sealed partial class FileIndex
     {
         ArgumentNullException.ThrowIfNull(query);
         SubtreeAnchor.ThrowIfDefault(query);
-        using var scope = BeginQuery(cancellationToken);
+        using var scope = BeginQuery(cancellationToken, snapshot => SubtreeAnchor.SelectBlocks(snapshot, query));
         return SearchEngine.Search(scope.Snapshot, query, scope.CancellationToken);
     }
 
@@ -63,7 +64,7 @@ public sealed partial class FileIndex
     /// <param name="cancellationToken">Stops the scan, as described on <see cref="Find" />.</param>
     /// <returns>
     ///     A cold enumerable: the call itself reads nothing and takes no borrow. Each
-    ///     enumeration borrows the current snapshot from the first row until the enumerator
+    ///     enumeration borrows the blocks it reads from the first row until the enumerator
     ///     completes or is disposed, which a <c>foreach</c> does even on an early
     ///     <c>break</c>. An enumerator abandoned without disposal holds its borrow until it
     ///     is collected, and <see cref="DisposeAsync" /> waits for it like any other borrow.
@@ -139,7 +140,8 @@ public sealed partial class FileIndex
 
     internal IndexRowEnumerator BeginRowEnumeration(SearchQuery query, CancellationToken cancellationToken)
     {
-        return new IndexRowEnumerator(BeginQuery(cancellationToken), query);
+        return new IndexRowEnumerator(
+            BeginQuery(cancellationToken, snapshot => SubtreeAnchor.SelectBlocks(snapshot, query)), query);
     }
 
     /// <summary>
@@ -151,7 +153,7 @@ public sealed partial class FileIndex
     /// </summary>
     IEnumerable<FileEntry> EnumerateCore(SearchQuery query, CancellationToken cancellationToken)
     {
-        using var scope = BeginQuery(cancellationToken);
+        using var scope = BeginQuery(cancellationToken, snapshot => SubtreeAnchor.SelectBlocks(snapshot, query));
         foreach (var entry in SearchEngine.Enumerate(scope.Snapshot, query, scope.CancellationToken))
         {
             yield return entry;
@@ -180,7 +182,7 @@ public sealed partial class FileIndex
             blocklessDriveState = _driveRuntimes.TryGetValue(drive, out var runtime) && runtime.Block is null
                 ? runtime.BlocklessState
                 : null;
-            query = AdmitQuery(cancellationToken);
+            query = AdmitQuery(cancellationToken, snapshot => LookupEngine.SelectDriveBlock(snapshot, drive));
         }
 
         using (query)
@@ -201,16 +203,24 @@ public sealed partial class FileIndex
     ///     Takes a reader's claim on the current snapshot. Taken under <see cref="_stateLock" />,
     ///     the same lock a snapshot swap and index disposal publish through, so a borrow is
     ///     either counted before the snapshot leaves the index (and waited for when it is
-    ///     released) or refused because the release has already begun.
+    ///     released) or refused because the release has already begun. This borrows every current block;
+    ///     a query that reads only some of them borrows through <see cref="BorrowBlocks" /> instead.
     /// </summary>
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
-    internal SnapshotBorrow BorrowCurrentSnapshot()
+    internal SnapshotBorrow BorrowCurrentSnapshot() => BorrowBlocks(null);
+
+    /// <summary>
+    ///     The borrow behind <see cref="BorrowCurrentSnapshot" />: <paramref name="select" /> picks the blocks
+    ///     to hold from the current snapshot under the state lock, and null holds all of them.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
+    SnapshotBorrow BorrowBlocks(Func<IReadOnlyList<DriveBlock>, IReadOnlyList<DriveBlock>>? select)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         lock (_stateLock)
         {
             var snapshot = _snapshot ?? throw new ObjectDisposedException(nameof(FileIndex));
-            return new SnapshotBorrow(snapshot);
+            return new SnapshotBorrow(select is null ? snapshot : select(snapshot));
         }
     }
 
@@ -219,9 +229,10 @@ public sealed partial class FileIndex
     ///     snapshot to read, the token to observe, and a borrow that is returned when the query
     ///     returns, whether it answered or threw.
     /// </summary>
-    QueryScope BeginQuery(CancellationToken cancellationToken)
+    QueryScope BeginQuery(CancellationToken cancellationToken,
+        Func<IReadOnlyList<DriveBlock>, IReadOnlyList<DriveBlock>>? select = null)
     {
-        var scope = AdmitQuery(cancellationToken);
+        var scope = AdmitQuery(cancellationToken, select);
         Hooks.ReaderAdmitted?.Invoke();
         return scope;
     }
@@ -230,7 +241,8 @@ public sealed partial class FileIndex
     ///     Builds the scope <see cref="BeginQuery" /> hands out: the caller's token is checked,
     ///     linked to disposal when it can be cancelled at all, and the borrow is taken last.
     /// </summary>
-    QueryScope AdmitQuery(CancellationToken cancellationToken)
+    QueryScope AdmitQuery(CancellationToken cancellationToken,
+        Func<IReadOnlyList<DriveBlock>, IReadOnlyList<DriveBlock>>? select = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!cancellationToken.CanBeCanceled)
@@ -239,7 +251,7 @@ public sealed partial class FileIndex
             // would allocate a source and register on the one source every query shares, whose
             // registration takes that source's lock, so a consumer querying in a tight loop would
             // serialize its threads through it.
-            return new QueryScope(BorrowCurrentSnapshot(), DisposalToken);
+            return new QueryScope(BorrowBlocks(select), DisposalToken);
         }
 
         // Linked per query rather than shared, so the caller's own cancellation and the index's
@@ -252,7 +264,7 @@ public sealed partial class FileIndex
         var handedOver = false;
         try
         {
-            var scope = new QueryScope(BorrowCurrentSnapshot(), linkedCancellation);
+            var scope = new QueryScope(BorrowBlocks(select), linkedCancellation);
             handedOver = true;
             return scope;
         }
