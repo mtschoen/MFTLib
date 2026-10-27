@@ -19,10 +19,10 @@ public partial class JournalBrokerHostChannelTests
     {
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
-            QueryVolumeInformation = drive =>
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryVolumeInformation = volume =>
             {
-                Assert.AreEqual(new VolumeKey('C'), drive);
+                Assert.AreEqual(new VolumeKey('C'), volume);
                 return Volume;
             }
         });
@@ -35,7 +35,7 @@ public partial class JournalBrokerHostChannelTests
         Assert.AreEqual(41u, reply.RequestId);
         Assert.AreEqual(Volume.BytesPerFileRecordSegment, reply.BytesPerFileRecordSegment);
         Assert.AreEqual(Volume.MftValidDataLength, reply.MftValidDataLength);
-        Assert.IsNull(reply.Drive);
+        Assert.IsNull(reply.Volume);
     }
 
     [TestMethod]
@@ -43,11 +43,11 @@ public partial class JournalBrokerHostChannelTests
     {
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
-            GrowUsnJournal = (drive, maximumSize, allocationDelta) =>
+            GrowUsnJournal = (volume, maximumSize, allocationDelta) =>
             {
-                Assert.AreEqual(new VolumeKey('D'), drive);
+                Assert.AreEqual(new VolumeKey('D'), volume);
                 return new UsnJournalSettings { MaximumSize = maximumSize, AllocationDelta = allocationDelta };
             }
         });
@@ -67,7 +67,7 @@ public partial class JournalBrokerHostChannelTests
     {
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = _ => throw new UnauthorizedAccessException("access denied")
         });
         await using var harness = new HostChannelHarness(host);
@@ -86,10 +86,10 @@ public partial class JournalBrokerHostChannelTests
         var gate = new TestGate();
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
-            QueryVolumeInformation = drive =>
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryVolumeInformation = volume =>
             {
-                if (drive.Letter == 'C')
+                if (volume.Letter == 'C')
                 {
                     gate.MarkEntered();
                     gate.WaitForReleaseAsync(CancellationToken.None).Wait(HangGuard, TestContext.CancellationToken);
@@ -119,13 +119,13 @@ public partial class JournalBrokerHostChannelTests
         await using var server = BrokerPipeAccess.CreateServer(pipeName);
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
-            WatchDrive = IdleWatch
+            WatchVolume = IdleWatch
         });
         await using var harness = new HostChannelHarness(host,
-            connectChannel: (driveName, driveToken) => DefaultElevatedEntryRunner.ConnectDrivePipeAsync(
-                driveName, BrokerLiveness.ElevatedConnectTimeout, TimeProvider.System, driveToken));
+            connectChannel: (driveName, volumeToken) => DefaultElevatedEntryRunner.ConnectVolumePipeAsync(
+                driveName, BrokerLiveness.ElevatedConnectTimeout, TimeProvider.System, volumeToken));
 
         await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, BrokerFrame.OpenChannel(5, 'C', pipeName)));
         await server.WaitForConnectionAsync(TestContext.CancellationToken).WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -148,7 +148,7 @@ public partial class JournalBrokerHostChannelTests
         var connectToken = new TaskCompletionSource<CancellationToken>();
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
             TimeProvider = clock
         });
@@ -180,7 +180,7 @@ public partial class JournalBrokerHostChannelTests
         var clock = new TimerSignalingClock();
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
             TimeProvider = clock
         });
@@ -201,7 +201,7 @@ public partial class JournalBrokerHostChannelTests
     {
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
         });
         await using var harness = new HostChannelHarness(host,
@@ -216,11 +216,11 @@ public partial class JournalBrokerHostChannelTests
     }
 
     [TestMethod]
-    public async Task DriveChannel_UnknownFirstFrame_WritesErrorAndCloses()
+    public async Task VolumeChannel_UnknownFirstFrame_WritesErrorAndCloses()
     {
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
         });
         await using var harness = new HostChannelHarness(host);
@@ -238,7 +238,7 @@ public partial class JournalBrokerHostChannelTests
     [DataRow("truncated section name")]
     [DataRow("negative name count")]
     [DataRow("name count beyond the payload")]
-    public async Task DriveChannel_MalformedRequestPayload_WritesErrorAndOtherRequestsContinue(string malformation)
+    public async Task VolumeChannel_MalformedRequestPayload_WritesErrorAndOtherRequestsContinue(string malformation)
     {
         var payload = new List<byte>();
         payload.AddRange(BitConverter.GetBytes(malformation == "truncated section name" ? 100 : 0));
@@ -255,7 +255,7 @@ public partial class JournalBrokerHostChannelTests
 
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = _ => Volume
         });
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
@@ -284,7 +284,7 @@ public partial class JournalBrokerHostChannelTests
     {
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = _ => Volume
         });
         await using var harness = new HostChannelHarness(host,
@@ -316,7 +316,7 @@ public partial class JournalBrokerHostChannelTests
         var connectorCalls = 0;
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = _ => Volume
         });
         await using var harness = new HostChannelHarness(host,
@@ -348,11 +348,11 @@ public partial class JournalBrokerHostChannelTests
         var connectedNames = new List<string>();
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
-            WatchDrive = IdleWatch
+            WatchVolume = IdleWatch
         });
-        await using var harness = new HostChannelHarness(host, wrapDrivePipe: (pipeName, stream) =>
+        await using var harness = new HostChannelHarness(host, wrapVolumePipe: (pipeName, stream) =>
         {
             connectedNames.Add(pipeName);
             return stream;
@@ -366,7 +366,7 @@ public partial class JournalBrokerHostChannelTests
         Assert.AreSequenceEqual([validPipeName], connectedNames);
     }
     static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> IdleWatch(
-        VolumeKey drive, UsnJournalCursor since, ISourceOperationReporter operation,
+        VolumeKey volume, UsnJournalCursor since, ISourceOperationReporter operation,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
         operation.WaitingOnVolume();
@@ -389,9 +389,9 @@ public partial class JournalBrokerHostChannelTests
     // connection is still pending when it starts waiting, so the harness holds the connection
     // until that timer exists.
     static async Task<Stream> OpenChannelAfterConnectBoundAsync(HostChannelHarness harness, TimerSignalingClock clock,
-        TaskCompletionSource connectionsReleased, VolumeKey drive)
+        TaskCompletionSource connectionsReleased, VolumeKey volume)
     {
-        var open = harness.OpenChannelAsync(drive);
+        var open = harness.OpenChannelAsync(volume);
         await clock.TimerCreated(BrokerLiveness.ChannelConnectTimeout).WaitAsync(HangGuard);
         connectionsReleased.SetResult();
         return await open.WaitAsync(HangGuard);

@@ -44,7 +44,7 @@ public sealed partial class WatchVerbTests : IDisposable
         };
         await using var handle = BrokerTestHarness.StartInProcess(Volumes() with
         {
-            WatchDrive = (_, _, cancellationToken) => ScriptedJournalStreams.OneBatchThenQuiet([created], new SyntheticJournalCursor(7, 1500), cancellationToken)
+            WatchVolume = (_, _, cancellationToken) => ScriptedJournalStreams.OneBatchThenQuiet([created], new SyntheticJournalCursor(7, 1500), cancellationToken)
         });
         var lines = new List<string>();
         var seen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -65,20 +65,21 @@ public sealed partial class WatchVerbTests : IDisposable
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
         var cacheDir = Path.Combine(TemporaryDirectoryPath, "cache");
-        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { CacheDirectory = cacheDir, Seconds = 30 }, session, FixtureDrive, TestContext.CancellationToken);
+        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Watch, ["X"]) { CacheDirectory = cacheDir, Seconds = 30 }, session, FixtureRoot, TestContext.CancellationToken);
 
         Assert.AreEqual(0, result);
         Assert.Contains(line => line.StartsWith("  watch X: CaughtUp", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
         Assert.Contains(line =>
             line.StartsWith("  Created: ", StringComparison.Ordinal) &&
-            line.EndsWith(", drive X, entry new.txt", StringComparison.Ordinal), lines,
+            line.EndsWith(", root X, entry new.txt", StringComparison.Ordinal), lines,
             string.Join(Environment.NewLine, lines));
         Assert.Contains(line => line.StartsWith("Saw 1 changes in 30 seconds;", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
         Assert.Contains("Broker: connected.", lines);
         Assert.Contains("  start X: Succeeded", lines, string.Join(Environment.NewLine, lines));
-        Assert.Contains("  stop X: Succeeded", lines, string.Join(Environment.NewLine, lines)); Assert.Contains(line => line.StartsWith("Find resolved ", StringComparison.Ordinal) && !line.EndsWith(" to nothing", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
-        Assert.Contains(line => line.StartsWith("Search found ", StringComparison.Ordinal) && line.EndsWith(" directories", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
-        Assert.Contains(line => line.StartsWith("EnumerateRows totalled ", StringComparison.Ordinal) && line.EndsWith(" bytes", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains("  stop X: Succeeded", lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains($"Find resolved {TemporaryDirectoryPath} to {TemporaryDirectoryPath}", lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains("Search found 1 directories", lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains("EnumerateRows totalled 2 files, 4096 bytes", lines, string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -91,11 +92,11 @@ public sealed partial class WatchVerbTests : IDisposable
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
         var cacheDir = Path.Combine(TemporaryDirectoryPath, "cache");
 
-        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = cacheDir }, session, FixtureDrive, CancellationToken.None);
+        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = cacheDir }, session, FixtureRoot, CancellationToken.None);
 
         Assert.AreEqual(0, result);
         Assert.AreEqual(2, lines.Count(line => line.StartsWith("Index holds ", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
-        Assert.Contains("=== Drive X: done ===", lines);
+        Assert.Contains("=== Root X: done ===", lines);
         Assert.AreEqual(2, lines.Count(line => line.StartsWith("Cache X: block ", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
         Assert.Contains(line => line.StartsWith("Watch: NotStarted v", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
         Assert.Contains(line => line.Contains("recovery stopped False", StringComparison.Ordinal), lines, string.Join(Environment.NewLine, lines));
@@ -114,7 +115,7 @@ public sealed partial class WatchVerbTests : IDisposable
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
         var cacheDir = Path.Combine(TemporaryDirectoryPath, "cache");
 
-        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Journal, ["X"]) { CacheDirectory = cacheDir, MaximumSize = 9000, AllocationDelta = 4096 }, session, FixtureDrive, CancellationToken.None);
+        var result = await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Journal, ["X"]) { CacheDirectory = cacheDir, MaximumSize = 9000, AllocationDelta = 4096 }, session, FixtureRoot, CancellationToken.None);
 
         Assert.AreEqual(0, result);
         Assert.Contains("Journal X: maximum size 9000, allocation delta 4096", lines, string.Join(Environment.NewLine, lines));
@@ -127,7 +128,7 @@ public sealed partial class WatchVerbTests : IDisposable
         var cacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache");
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
-        await HostOver(_ => { }).RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = cacheDirectory }, session, FixtureDrive, CancellationToken.None);
+        await HostOver(_ => { }).RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = cacheDirectory }, session, FixtureRoot, CancellationToken.None);
 
         var listing = new List<string>();
         var clearing = new List<string>();
@@ -227,7 +228,7 @@ clearing, string.Join(Environment.NewLine, clearing));
         {
             var sLaunch = Task.FromResult(handle);
             var s = BrokerTestHarness.CreateSession(_ => sLaunch);
-            Assert.AreEqual(0, await HostOver(_ => { }).RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, s, FixtureDrive, CancellationToken.None));
+            Assert.AreEqual(0, await HostOver(_ => { }).RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, s, FixtureRoot, CancellationToken.None));
         }
 
         using var journal = JournalIsolation.OverrideJournalWindow(_ => new SyntheticJournalWindow(8, 0, 2000, 4096, 8192));
@@ -236,7 +237,7 @@ clearing, string.Join(Environment.NewLine, clearing));
         var replacementSessionLaunch = Task.FromResult(replacement);
         var replacementSession = BrokerTestHarness.CreateSession(_ => replacementSessionLaunch);
 
-        Assert.AreEqual(0, await HostOver(lines.Add).RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, replacementSession, FixtureDrive, CancellationToken.None));
+        Assert.AreEqual(0, await HostOver(lines.Add).RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = Path.Combine(TemporaryDirectoryPath, "cache") }, replacementSession, FixtureRoot, CancellationToken.None));
 
         Assert.Contains("Journal growth target unavailable: CheckpointNotTrimmed", lines, string.Join(Environment.NewLine, lines));
     }
@@ -270,7 +271,7 @@ clearing, string.Join(Environment.NewLine, clearing));
         var host = HostOver(lines.Add);
         var sessionLaunch = Task.FromResult(handle);
         var session = BrokerTestHarness.CreateSession(_ => sessionLaunch);
-        Assert.AreEqual(0, await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = root }, session, FixtureDrive, CancellationToken.None));
+        Assert.AreEqual(0, await host.RunThroughBrokerAsync(new WatchArguments(WatchVerb.Rescan, ["X"]) { CacheDirectory = root }, session, FixtureRoot, CancellationToken.None));
         lines.Clear();
 
         Assert.AreEqual(0, host.Run(["cache", "--clear", "--cache-directory", root]));
@@ -310,8 +311,8 @@ clearing, string.Join(Environment.NewLine, clearing));
     }
 
     // The run is attended and unelevated, so the heads-up dialog precedes the broker launch.
-    IndexedRoot FixtureDrive(string letter) =>
-        SyntheticIndexedDrive.Create(new VolumeKey(letter[0]), TemporaryDirectoryPath, 4242);
+    IndexedRoot FixtureRoot(string letter) =>
+        SyntheticIndexedRoot.Create(new VolumeKey(letter[0]), TemporaryDirectoryPath, 4242);
 
     static SampleHost HostOver(Action<string> writeLine, TimeProvider? timeProvider = null)
     {
@@ -328,11 +329,11 @@ clearing, string.Join(Environment.NewLine, clearing));
         return new ScriptedBrokerVolumes
         {
             QueryJournalCursor = _ => Armed,
-            ScanDrive = _ =>
+            ScanVolume = _ =>
             [
                 [
                     new SyntheticScanRecord { RecordNumber = 5, ParentRecordNumber = 5, FileName = ".", IsDirectory = true },
-                    new SyntheticScanRecord { RecordNumber = 6, ParentRecordNumber = 5, FileName = "file.txt" }
+                    new SyntheticScanRecord { RecordNumber = 6, ParentRecordNumber = 5, FileName = "file.txt", Size = 4096 }
                 ]
             ]
         };

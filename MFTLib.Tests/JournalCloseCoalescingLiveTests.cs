@@ -29,10 +29,10 @@ public class JournalCloseCoalescingLiveTests
         using var temporaryFile = new TempFile("mftlib-close-test", create: false);
         var tempPath = temporaryFile.Path;
         var volumeRoot = Path.GetPathRoot(Path.GetFullPath(tempPath));
-        var drive = !string.IsNullOrEmpty(volumeRoot) && volumeRoot.Length >= 2 && volumeRoot[1] == ':'
+        var volumeKey = !string.IsNullOrEmpty(volumeRoot) && volumeRoot.Length >= 2 && volumeRoot[1] == ':'
             ? new VolumeKey(volumeRoot[0])
             : new VolumeKey('C');
-        using var volume = MftVolume.Open(drive);
+        using var volume = MftVolume.Open(volumeKey);
         var cursor = volume.Journal.QueryUsnJournalCursor();
         var tempFileName = Path.GetFileName(tempPath);
 

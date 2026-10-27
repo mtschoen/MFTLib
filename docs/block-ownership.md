@@ -6,7 +6,7 @@
 require a nonblank `FileIndexOptions.CacheDirectory` and a non-null `FileIndexOptions.Root`.
 Missing configuration throws `ArgumentException` before directory creation.
 `CacheMode.Disabled` needs no directory and ignores a supplied path without
-resolving or creating it. Dump sources validate first and supply their own drive:
+resolving or creating it. Dump sources validate first and supply their own volume:
 `Root`, `CacheMode` and `CacheDirectory`
 must be null, and `CacheTag` must be default. Other values throw
 `ArgumentException` naming the option, including every non-null cache mode.
@@ -21,7 +21,7 @@ the directory has owner read/write/execute permissions (`0700`). This protects
 the directory; it is not a recursive repair of every existing file's permissions.
 
 Cached `FileIndex.OpenAsync` calls `EnsureCreated` automatically before opening
-drives. An application preparing the directory or writing its own sidecar before
+roots. An application preparing the directory or writing its own sidecar before
 an index open should call it explicitly first. For example, file-wizard's
 `FileWizard/ContentHashSidecar.cs` calls it before using `content-hashes` inside
 the index-cache directory. `CacheMode.Disabled` opens do not create a cache directory.
@@ -29,11 +29,11 @@ Dump sources require null `CacheMode` and `CacheDirectory` and default `CacheTag
 ownership; block operations still follow the locks described below.
 
 - Index contracts:
-    - **Block ownership**: a cache-mode drive's `DriveRuntime` holds a sibling `<block>.lock` (opened with
+    - **Block ownership**: a cache-mode root's `RootRuntime` holds a sibling `<block>.lock` (opened with
       `FileShare.None`, an exclusive non-blocking `flock` on Unix) for as long as it owns a canonical
       cache block, and that lock is taken before any validation, retired-sibling sweep, rename, or
       delete. A second `FileIndex` over the same cache directory, in any process, that cannot take the
-      lock reports the drive `Failed` with `DriveFailureKind.InUse` on a cache-only open; a non-cache-only
+      lock reports the root `Failed` with `RootFailureKind.InUse` on a cache-only open; a non-cache-only
       open instead scans into a private `mftlib-private-*` delete-on-close block and leaves the canonical
       cache untouched. `.lock` files are deliberately never unlinked (unlinking races a fresh
       create-and-lock), so cache-pruning tooling must leave `*.mlix.lock` alone. `FileIndexOptions.Diagnostics`
@@ -45,7 +45,7 @@ ownership; block operations still follow the locks described below.
       killed, and that removal produces no `Diagnostics` line. The operating system likewise
       releases the owner lock when its process dies, so a killed index never strands its slot.
       `CacheDirectory.DeleteCached(cacheDirectoryPath,
-      drives = null)` is the lock-safe way for a consumer to clear cache blocks: it takes each
+      roots = null)` is the lock-safe way for a consumer to clear cache blocks: it takes each
       candidate block's owner lock non-blockingly and deletes only while holding it, the same rule `FileIndex`
       itself follows, so it never deletes, renames, or unlinks a block a live `FileIndex` still owns. A block
       whose lock is already held reports `CachedBlockDeletionOutcome.InUse` and is left untouched; a delete
@@ -55,28 +55,28 @@ ownership; block operations still follow the locks described below.
       `CachedBlockFile` inventory entry, the `CachedBlockDeletionOutcome`, and a `FailureMessage` that is
       non-null only for `Failed`); an already-absent file is reported `Deleted`, an idempotent success rather
       than a `Failed`. Consumers render or log the returned results after the call returns. `CacheDirectory.InspectCached(cacheDirectoryPath,
-      drives = null, rejectedFile = null)` is one public method with optional drive selection
+      roots = null, rejectedFile = null)` is one public method with optional root selection
       and an optional `Action<CachedBlockRejection>? rejectedFile` callback carrying a full `Path` and
       human-readable `Reason`. Omitting the callback silently excludes rejected names. `DeleteCached`
       keeps an internal overload accepting `Action<CachedBlockRejection>? rejectedFile`;
       rejected-name reporting is not part of its public API. Canonical result lists contain only filenames the
       library recognizes. Reporting happens synchronously
-      during eager enumeration, before drive filtering and any inspection/deletion lock, including for empty
+      during eager enumeration, before root filtering and any inspection/deletion lock, including for empty
       selections; callback exceptions propagate before canonical work. Rejected files are never opened, locked,
       or deleted. Consumers can collect these reports to
       preserve their own corruption diagnostics without globbing the cache directory themselves.
       A scan into the canonical slot that fails or is cancelled without producing a block deletes its
-      partial file itself, while `DriveRuntime` still holds the owner lock, and logs the delete (or the
+      partial file itself, while `RootRuntime` still holds the owner lock, and logs the delete (or the
       failure to delete) through `Diagnostics`; a throwing callback never replaces the scan's own exception.
       A file that already sat in the slot before the scan, such as a complete block rejected only for an
       unresumable checkpoint, is judged by what is there after the failure: it stays only while it still
       opens as a complete, valid block, and a truncated or half-written replacement is deleted. A rescan
       restores its renamed-aside previous block instead; a throwing callback there neither replaces the scan's
       exception nor stops the previous block from returning to the canonical slot.
-      `DriveBlockStatus.CacheLocation` reports the current published block's backing, read from the drive owner's adopted `LastResult.CacheLocation`. The drive owner (`DriveRuntime`) holds the canonical lock (`CanonicalLock`) when it owns the slot, but `LastResult.CacheLocation` describes the published block:
+      `RootBlockStatus.CacheLocation` reports the current published block's backing, read from the root owner's adopted `LastResult.CacheLocation`. The root owner (`RootRuntime`) holds the canonical lock (`CanonicalLock`) when it owns the slot, but `LastResult.CacheLocation` describes the published block:
       `CacheLocation.OwnedCanonical` for the canonical slot held by this index,
       `PrivateFallback` for a private fallback block, and null for
-      a `CacheMode.Disabled` block (a blockless drive has no `Block` at all). It is independent of
+      a `CacheMode.Disabled` block (a blockless root has no `Block` at all). It is independent of
       `BlockOrigin`: both canonical and private scans report `ProducedByScan`.
       The status is captured under the state lock; reread `FileIndex.Status` after
       a rescan. Taking a lock for an in-flight rescan does not change the old

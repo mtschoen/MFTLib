@@ -6,7 +6,7 @@ public sealed partial class FileIndex
     ///     Raised once per applied change, in the order the journal batch delivered them, to
     ///     every subscriber, even when an earlier subscriber threw for an earlier change (or for
     ///     this one). The mutation and the USN cursor are already applied to the mapped block by the time any handler
-    ///     runs: the watch applies the whole batch and releases its drive's
+    ///     runs: the watch applies the whole batch and releases its root's
     ///     write gate before raising this event at all, so a throwing handler never undoes anything
     ///     and never stops another handler from seeing the rest of the batch. A close record that
     ///     repeats only reasons its open cycle already reported applies its metadata to the
@@ -15,26 +15,26 @@ public sealed partial class FileIndex
     ///     through <see cref="WatchFaulted" /> as <see cref="WatchFaultKind.Subscriber" />. A rescan
     ///     can publish before an old change is delivered, and its new watch can repeat that change
     ///     during catch-up. Queries can lag until that watch is CaughtUp.
-    ///     A handler must not block on a lifecycle call of this index: see
+    ///     A handler must not block on a lifecycle call of any index: see
     ///     <see cref="WatchFaulted" />.
     /// </summary>
     public event Action<FileChange>? Changed;
 
     /// <summary>
-    ///     Raised when a drive's watch first sees a subscriber fault, every time a drive's watch
-    ///     ends with a drive, apply, or channel fault, and after every scan of a drive whose
+    ///     Raised when a root's watch first sees a subscriber fault, every time a root's watch
+    ///     ends with a volume, apply, or channel fault, and after every scan of a volume whose
     ///     journal catch-up was lost or whose replacement watch could not start. Every fault names
-    ///     its drive. Raised from that drive's pump, or for <see cref="WatchFaultKind.CatchUpLost" />
+    ///     its root. Raised from that root's pump, or for <see cref="WatchFaultKind.CatchUpLost" />
     ///     and <see cref="WatchFaultKind.RescanRestart" /> from the scan after publication drained
-    ///     the old pump, so faults of different drives may be raised
-    ///     concurrently while one drive's faults never overlap. The scan operation raises its
-    ///     fault while it still holds the drive's lifecycle gate, so a handler must queue, not
-    ///     wait for, a rescan or start of that drive. Exceptions thrown by fault handlers are
+    ///     the old pump, so faults of different roots may be raised
+    ///     concurrently while one root's faults never overlap. The scan operation raises its
+    ///     fault while it still holds the root's lifecycle gate, so a handler must queue, not
+    ///     wait for, a rescan or start of that root. Exceptions thrown by fault handlers are
     ///     discarded.
     ///     <para>
     ///         Inside any <see cref="Changed" />, <see cref="WatchFaulted" /> or
-    ///         <see cref="WatchStateChanged" /> handler of this index,
-    ///         whichever drive it concerns, <c>StartWatchingAsync</c>, <c>StopWatchingAsync</c>,
+    ///         <see cref="WatchStateChanged" /> handler of any index,
+    ///         whichever root it concerns, <c>StartWatchingAsync</c>, <c>StopWatchingAsync</c>,
     ///         <c>RescanAsync</c>, <c>DisposeAsync</c> and a
     ///         <c>WaitForCatchUpAsync</c> that has not yet settled fail at once with
     ///         <see cref="InvalidOperationException" />, because each can wait for a pump that is itself
@@ -47,15 +47,15 @@ public sealed partial class FileIndex
     public event Action<WatchFault>? WatchFaulted;
 
     /// <summary>
-    ///     Raised once for every change of a drive's <see cref="DriveWatchStatus.State" />, with
-    ///     the drive's <see cref="RootStatus.Watch" /> after the change, whose
-    ///     <see cref="DriveWatchStatus.StateVersion" /> is the change's version: a start,
+    ///     Raised once for every change of a root's <see cref="RootWatchStatus.State" />, with
+    ///     the root's <see cref="RootStatus.Watch" /> after the change, whose
+    ///     <see cref="RootWatchStatus.StateVersion" /> is the change's version: a start,
     ///     a catch-up, a fault, a recovery being queued, finishing (the restarted watch reads
     ///     <see cref="WatchState.CatchingUp" />, then <see cref="WatchState.CaughtUp" />)
     ///     or failing, a rescan retiring and replacing the watch, a lost catch-up, a refused start,
-    ///     a stop, and disposal. Every version of a drive is delivered exactly once, after the change
-    ///     is visible in <see cref="Status" />, by a thread that changed the drive's state: a drive's
-    ///     pump, a scan or recovery holding the drive's lifecycle gate, or the caller of a lifecycle
+    ///     a stop, and disposal. Every version of a root is delivered exactly once, after the change
+    ///     is visible in <see cref="Status" />, by a thread that changed the root's state: a root's
+    ///     pump, a scan or recovery holding the root's lifecycle gate, or the caller of a lifecycle
     ///     method, including <see cref="DisposeAsync" />, which delivers it before that method
     ///     returns. No state lock or write gate is held during delivery. A change a fault caused is
     ///     delivered before <see cref="WatchFaulted" /> reports that fault. Once
@@ -63,13 +63,13 @@ public sealed partial class FileIndex
     ///     <see cref="ObjectDisposedException" />, so a handler of a disposal change reads the event
     ///     itself.
     ///     <para>
-    ///         One drive's changes are delivered one at a time, in version order; different drives'
+    ///         One root's changes are delivered one at a time, in version order; different roots'
     ///         changes can be delivered concurrently. A handler must therefore not block waiting for
-    ///         another change of the same drive. A consumer that also reads <see cref="Status" />,
+    ///         another change of the same root. A consumer that also reads <see cref="Status" />,
     ///         for example to seed a subscription made after the index opened, applies an event only
-    ///         when its <see cref="DriveWatchStatus.StateVersion" /> is larger than the last one it applied
-    ///         for that drive, since its read can be newer than an event still being delivered. A
-    ///         decision a consumer tagged with a version is superseded by any event of the same drive
+    ///         when its <see cref="RootWatchStatus.StateVersion" /> is larger than the last one it applied
+    ///         for that root, since its read can be newer than an event still being delivered. A
+    ///         decision a consumer tagged with a version is superseded by any event of the same root
     ///         with a larger one, which is how it orders its own publication against a fault that
     ///         lands after it read the state.
     ///     </para>

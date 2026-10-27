@@ -2,7 +2,7 @@
 
 - **MFTLibNative** (C++ DLL) - Core NTFS MFT parsing logic with multi-threaded parallel fixup+parse and double-buffered I/O. Parses are thread-safe and re-entrant: concurrent parses share no mutable state except the test-hook observation, which each parse replaces once, when it finishes. The test hooks are process-global, so a test reading `GetChunkThreadCounts` or arming a failure injection owns the process while it runs. MFT record geometry (a power-of-two record size from 512 to 65536 bytes, validated in `ntfs.h`) is detected at runtime rather than assumed - `FSCTL_GET_NTFS_VOLUME_DATA` for a live volume, record 0's header for an exported file. Results cross the P/Invoke boundary through compact ABI version 11 (`MFT_NATIVE_ABI_VERSION`): 52-byte `MftCompactEntry` rows with int64 size at offset 32, int64 modified time (FILETIME) at offset 40, uint16 sequence number at offset 48, and uint16 parent sequence number (the sequence the record's name stores in its parent reference) at offset 50, plus separate UTF-16 string pools. Flags bit `0x8000` marks an unknown size. The parser emits each record's own name and parent reference and resolves no paths; `mft_api.h` pins the row layout with static asserts.
 - **MFTLib** (C# Library) - Managed wrapper with P/Invoke interop. The `MFTLib.Index` namespace provides a substrate-neutral columnar block format and query engine; see `docs/index-format.md`.
-    - **Drive keys**: `VolumeKey` owns an ASCII letter, normalizes it to upper case once, and converts
+    - **Volume keys**: `VolumeKey` owns an ASCII letter, normalizes it to upper case once, and converts
       implicitly from `char`, with no string conversion.
       `VolumeKey.TryParse(string? text, out VolumeKey result)` accepts a trimmed ASCII
       letter, an optional colon, and an optional final slash or backslash, returning
@@ -13,11 +13,11 @@
       volume's serial (zero when unreported) of a walked folder.
       `Letter` and `ToString()` reject the invalid
       default key, as do index operations, cache selections and key-bearing record initializers.
-      Public key members are `Drive`. Each lifecycle verb on `FileIndex` acts on its single root and returns one `DriveOperationResult`.
-      Volume identity remains `VolumeKey` through local-volume sources and broker clients, hosts, and channels; a directory key with `ProducerKind.Mft` is rejected at configuration. Cache filenames derive from the key at the cache boundary. Drive-bearing broker control requests encode one uppercase ASCII character as two UTF-16LE bytes. `MFTUtilities.GetVolumePath(VolumeKey)` is the single raw device-path formatter used by volume opens and NTFS sizing queries.
-    - **Drive runtime and index state ownership**: Each `FileIndex` coordinates one `IndexedRoot` and owns one `DriveRuntime`. It owns the configuration, current `DriveBlock`, last adopted `PendingDriveResult`, canonical owner lock, producer failure, watch failure and checkpoint facts. Publication updates that owner under the state lock. Block metadata is read from the adopted result; live row counts, timestamps and capacity state are read from the block header. A failed replacement preserves the adopted result and records its producer failure separately. `DriveRuntime` is the behavior owner. Its partial files implement open, production, cache ownership, publication preparation, watch, catch-up, rescan, recovery and teardown. It retains outstanding recovery completions and retired block release states independently of its current ticket and block. `FileIndex` owns query borrowing, shutdown coordination and the callback reentrancy marker. Event subscriptions remain on `FileIndex`; the runtime delivers through that index's per-handler marker. State and fault callbacks use the runtime's separate delivery locks; `Changed` retains its existing unlocked delivery. All owners use the same index state lock.
+      Public key members are `Root`. Each lifecycle verb on `FileIndex` acts on its single root and returns one `RootOperationResult`.
+      Volume identity remains `VolumeKey` through local-volume sources and broker clients, hosts, and channels; a directory key with `ProducerKind.Mft` is rejected at configuration. Cache filenames derive from the key at the cache boundary. Volume-bearing broker control requests encode one uppercase ASCII character as two UTF-16LE bytes. `MFTUtilities.GetVolumePath(VolumeKey)` is the single raw device-path formatter used by volume opens and NTFS sizing queries.
+    - **Root runtime and index state ownership**: Each `FileIndex` coordinates one `IndexedRoot` and owns one `RootRuntime`. It owns the configuration, current `RootBlock`, last adopted `PendingRootResult`, canonical owner lock, producer failure, watch failure and checkpoint facts. Publication updates that owner under the state lock. Block metadata is read from the adopted result; live row counts, timestamps and capacity state are read from the block header. A failed replacement preserves the adopted result and records its producer failure separately. `RootRuntime` is the behavior owner. Its partial files implement open, production, cache ownership, publication preparation, watch, catch-up, rescan, recovery and teardown. It retains outstanding recovery completions and retired block release states independently of its current ticket and block. `FileIndex` owns query borrowing, shutdown coordination and the callback reentrancy marker. Event subscriptions remain on `FileIndex`; the runtime delivers through that index's per-handler marker. State and fault callbacks use the runtime's separate delivery locks; `Changed` retains its existing unlocked delivery. All owners use the same index state lock.
     - **Public queries and FileIndexSet**: `FileIndex.Search` materializes `FileEntry` values, `Enumerate` streams them for LINQ,
-      and `EnumerateRows` provides ref-struct `IndexRow` views with span names, sizes and flags for whole-drive
+      and `EnumerateRows` provides ref-struct `IndexRow` views with span names, sizes and flags for whole-root
       passes that retain few rows. `FileIndex.Root(CancellationToken = default)` returns the root `FileEntry` of that index.
       `FileIndexSet` coordinates read-only queries (`Find`, `Search`, `Enumerate`, `EnumerateRows`) across a fixed ordered list of
       distinct-root `FileIndex` instances exposed through `Indices`, borrowing one member's block at a time and owning no lifecycle or disposal of its members.
@@ -30,29 +30,29 @@
       compiled-IL rule, retains its deliberate `MftRecord` violation, and verifies the exact shared
       namespace permission. Not an aislop rule: the forbidden folders share the flat `MFTLib` namespace, so
       there is no `using` for an import rule to match. Growing the allowlist is a review decision.
-    - **MFT dump drives**: a source built with a dump identity (`MftDumpSourceIdentity`) makes its drive a virtual
+    - **MFT dump roots**: a source built with a dump identity (`MftDumpSourceIdentity`) makes its volume a virtual
       inventory with the root `dump:/{DRIVE}` (upper-case letter), rendered with `/` and read with `/` or `\`,
       case-insensitive on every platform; `MftDumpPaths` owns those rules and touches no filesystem. The block
-      carries an internal `DriveKind`, selected from the block's producer and the
+      carries an internal `RootKind`, selected from the block's producer and the
       source identity. Its live-volume, directory-walk and dump policies own root normalization,
       path syntax, entry-open eligibility, watch eligibility and journal-settings eligibility.
       Only live-volume kinds permit a watch, which additionally needs a watch source; both
       host-backed kinds permit the journal-settings query route. The dump policy skips host-root
       probes and refuses entry opens and journal-settings queries with `InvalidOperationException`.
       Dump watch support is false; start, stop and catch-up report `NotApplicable` with no failure.
-      `DriveKind.PrepareOpenOptions` validates and prepares a private options record before any
+      `RootKind.PrepareOpenOptions` validates and prepares a private options record before any
       cache directory work. Opening validates the options before any cache path is resolved or created:
       `Root`, `CacheMode` and `CacheDirectory`
       must be null, and `CacheTag` must be default. Other values throw
       `ArgumentException` naming the option; every non-null cache mode, including
       `Disabled`, is rejected. The index
-      then configures the identity's one virtual drive itself (the upper-case letter, root `dump:/{DRIVE}`, `VolumeSerial` zero,
-      `ProducerKind.Mft`) and opens it as `CacheMode.Disabled`, so `Status`, `Root()` and the settle see it; a dump block is never written to or adopted from a cache. `DriveWatchStatus.IsSupported` is false for
-      a dump drive and for any drive whose source has no watch source, the same fact a watch start's refusal uses.
-    - **MFT dump source**: `MftIndexSources.FromMftDumpFile(filePath, drive)` is the only way to build a dump
-       source. It checks its path (`A dump file path is required.`) and rejects the default drive key,
+      then configures the identity's one virtual volume itself (the upper-case letter, root `dump:/{DRIVE}`, `VolumeSerial` zero,
+      `ProducerKind.Mft`) and opens it as `CacheMode.Disabled`, so `Status`, `Root()` and the settle see it; a dump block is never written to or adopted from a cache. `RootWatchStatus.IsSupported` is false for
+      a dump volume and for any volume whose source has no watch source, the same fact a watch start's refusal uses.
+    - **MFT dump source**: `MftIndexSources.FromMftDumpFile(filePath, volume)` is the only way to build a dump
+       source. It checks its path (`A dump file path is required.`) and rejects the default volume key,
        makes the path absolute once and never opens the file; every scan and rescan opens the path anew, so
-      a missing or rejected dump is a `ProducerFailed` drive, or a failed rescan that keeps the last block, with the
+      a missing or rejected dump is a `ProducerFailed` volume, or a failed rescan that keeps the last block, with the
       reason in `RootStatus.Failure.Message`. `MftDumpBlockProducer` is a direct producer with no broker, pipe or
       session: one `MftDumpInput` per request sizes the block (`NtfsVolumeInformation(fileLength, recordSize)`, never
       the live volume sharing the letter) and supplies every record, the shared `MftBlockScan.WriteToBlock` writes a
@@ -80,7 +80,7 @@
       record fixup.`, on a live volume it is passed over and counted: the parse reports the allocated ones in
       `MftParseResult.invalidFixupRecords`, and the live record source reports that count through the
       `recordsOmitted` callback of `MftRecordBatchSource`, which the broker host and the direct producer add to the block
-      write's skipped count and so to `DriveBlockStatus.SkippedRecordCount`, so no record disappears
+      write's skipped count and so to `RootBlockStatus.SkippedRecordCount`, so no record disappears
       without a trace. A live volume's record zero is the exception: its decoded `$DATA` runs locate every other
       record, so an invalid fixup there fails the scan with `MFT record 0 has an invalid fixup` before any
       attribute is read. These rejections set `MftParseResult.invalidInput`, which
@@ -112,7 +112,7 @@
       resolving or creating them. Dump sources require null `CacheMode` and `CacheDirectory` and default `CacheTag`. An unset `CacheMode` resolves to `Persistent`, or
       to `Disabled` for a dump source; `ExistingOnly` and `Persistent` both require the directory.
       Watch defaults to `<user profile>/.MFTLib.Sample.Watch/cache`, one folder for every
-      drive and scan shape, used for production and cache inventory/deletion. Without a profile,
+      root and scan shape, used for production and cache inventory/deletion. Without a profile,
       it requires `--cache-directory`. Direct opens `CacheMode.Disabled`.
     - **Consumer cache identity**: `FileIndexOptions.CacheTag` carries an opaque
       four-ASCII-character code plus a `uint` version; default is all zeros and
@@ -122,7 +122,7 @@
       directory path) in page 0 after it. The cache file name derives from that key and the
       volume serial, and a block whose name is not the one its stored key derives is invalid and
       cold-scans. Old-format blocks cold-scan once. Mismatches report `WrongCacheTag` and cold-scan; a
-      cache-only open fails with `DriveFailureKind.CacheIdentityMismatch` and leaves the block in place. Both emit
+      cache-only open fails with `RootFailureKind.CacheIdentityMismatch` and leaves the block in place. Both emit
       stored/requested tag diagnostics.
     - **Scan-shape identity**: the library compares the options that shape a block's rows
       itself. Offset 112 stores a 64-bit scan shape, the first eight bytes of SHA-256 over
@@ -130,14 +130,14 @@
       (the index reads `IncludeFreed` from an internal flag on the source), retention and
       `FileIndexOptions.DirectoryWalk` (`PrunedDirectoryNames`, `PrunedDirectoryNamePatterns`
       by pattern text and `RegexOptions` without `MatchTimeout`, `PrunedDirectoryAttributes`,
-      `PruneDotDirectories` and the `PrunedDirectoryPaths` within that drive's root) for an
+      `PruneDotDirectories` and the `PrunedDirectoryPaths` within that root's directory) for an
       enumeration block. `FileIndexOptions.RetainedFileNames` reaches the MFT
       producers in the produce request and the enumeration walk directly; the walk skips a
       non-directory entry whose name is not retained and records but does not enter a pruned
       directory. Warm start compares the shape after the cache tag: a mismatch reports
       `WrongScanShape`, deletes the block under its owner lock and cold-scans, and a cache-only
-      open fails with `DriveFailureKind.CacheIdentityMismatch` and leaves the block in place. The index passes the expected
-      shape in the produce request; a producer returning another shape fails the drive. The
+      open fails with `RootFailureKind.CacheIdentityMismatch` and leaves the block in place. The index passes the expected
+      shape in the produce request; a producer returning another shape fails the root. The
       shape has no public accessor. Offset 120 stores the walk's access-denied subtree count,
       so a warm start reports it. `InspectCached` reports tags on available
       blocks. Tags are initialized before completion; the internal MFT producers copy
@@ -150,18 +150,18 @@
 
     - **Native export header**: `MFTLibNative/mft_api.h` declares every production C-linkage export, with the USN read/watch exports guarded by `_WIN32`. The volume and dump parse exports take a `MftProgressCallback` and a `callbackContext` pointer; the callback receives that context unchanged with `recordsScanned`, `totalRecords` and `elapsedMs`. Progress runs synchronously on the calling parse thread after each merged chunk. The managed side passes one `[UnmanagedCallersOnly]` trampoline and a `GCHandle` to the caller's `IProgress` as the context (`NativeProgressRegistration`), so every parse import is a blittable `LibraryImport` and no delegate has to be kept alive. Native and managed binaries are built and deployed together from the same revision under ABI version 11.
 
-    - **Per-root producer**: `IndexedRoot` carries `(Drive, RootDirectory, VolumeSerial,
+    - **Per-root producer**: `IndexedRoot` carries `(Root, RootDirectory, VolumeSerial,
       Producer = ProducerKind.Mft)`. Each root selects its own producer for initial scans
       and rescans, so an application can combine MFT-scanned roots with directory-walked roots across its indexes.
       `FromWindowsDrive` selects Mft; `FromDirectory` selects Enumeration and starts at that root's `RootDirectory`;
       an operational producer failure leaves the root `Failed` with
-      `DriveFailureKind.ProducerFailed`, for MFT and enumeration alike.
+      `RootFailureKind.ProducerFailed`, for MFT and enumeration alike.
       A failed rescan keeps the previous block and records `RootStatus.Failure` with the scan
       attempt's kind (`ProducerFailed` or `MftSourceMissing`);
       a successful replacement clears it. Argument validation at admission (null options, null `Root` on a non-dump open, undefined
       `CacheMode`, missing cache directory, dump-source option conflicts) throws before any root is
-      produced. A root that cannot start production, including an MFT drive needing a scan with a null
-      `MftSource`, settles `Failed` / `DriveFailureKind.MftSourceMissing`. Caller cancellation aborts
+      produced. A root that cannot start production, including an MFT volume needing a scan with a null
+      `MftSource`, settles `Failed` / `RootFailureKind.MftSourceMissing`. Caller cancellation aborts
       the operation, and a cancelled open releases its adopted block. An MFT failure never selects enumeration.
       Warm adoption compares the header's `ProducerKind` directly with `IndexedRoot.Producer` before
       cache-tag, root and journal checks. A mismatch closes and best-effort deletes the rejected
@@ -169,14 +169,14 @@
       A cache-only open never scans, so it never deletes a rejected block: every rejection
       (format, serial, producer kind, root, tag, shape) leaves the file in place for a writing open to rebuild.
       Enumeration roots have no live watch, even when MFT roots use a watch-capable source.
-      Their refresh contract is rescan-by-age: a consumer compares `DriveBlockStatus.ScanTimestamp` with its own
-      maximum age and calls `FileIndex.RescanAsync` ([API decisions](api-decisions.md#live-watch-is-mft-only-in-030-walked-drives-refresh-by-age)).
+      Their refresh contract is rescan-by-age: a consumer compares `RootBlockStatus.ScanTimestamp` with its own
+      maximum age and calls `FileIndex.RescanAsync` ([API decisions](api-decisions.md#live-watch-is-mft-only-in-030-walked-roots-refresh-by-age)).
     - **Enumeration traversal**: concurrent directory readers copy retained names and metadata
       into owned buffers. One calling-thread writer commits completed directories and reports
       progress, writing every parent before scheduling its children. Root is row zero and
       parents itself; row order between directories is unspecified. Every walk holds one
       base permit and borrows only immediately available extra permits from the process-wide
-      processor-sized `EnumerationWalkLimit` budget, shared across indexes and drives. A walk
+      processor-sized `EnumerationWalkLimit` budget, shared across indexes and roots. A walk
       limited to one reader is sequential: the writer reads each directory itself. Otherwise the
       writer only commits and dispatches: it lends the base permit to one reader at a time,
       dispatches before every take, and never reads while it could dispatch. A reader returns
@@ -193,13 +193,13 @@
       directory finishes reading.
       Parallel traversal ships unconditionally in 0.3.0.
     - **MFT source**: `FileIndexOptions.MftSource` is one `MftIndexSource` carrying the block
-      producer and the watch source of every MFT-backed drive, so the two cannot come from
+      producer and the watch source of every MFT-backed volume, so the two cannot come from
       different connections. `BrokerSession.CreateIndexSource()` builds the broker-backed
       one. `MftIndexSources.FromLocalVolumes(scanOptions)` builds the in-process one for a caller
       that is already elevated: `LocalMftBlockProducer` plans capacity from the volume geometry,
       creates the requested block and fills it through `MftBlockScan.WriteToBlock`, stamping the live
       journal cursor armed before a cached scan, with no broker process or pipe. It has no watch source, so watch start and
-       catch-up report `NotApplicable`, and `DriveWatchStatus.IsSupported` is false. Concurrent
+       catch-up report `NotApplicable`, and `RootWatchStatus.IsSupported` is false. Concurrent
       direct live-volume and dump scans share the process's parse threads through `ParseThreadAllocator`. Cache reopening
       adopts only when the journal identifier matches and its next USN exactly equals the stamped cursor;
       recreation, trimming or movement causes a rescan, with `JournalAdvanced` reporting movement
@@ -207,20 +207,20 @@
       Cache-only opens keep the snapshot flagged unresumable with its loss report. `CacheMode.Disabled` scans skip
       the cursor query and stamp zero; cached scans fail as `ProducerFailed` without an active journal.
       Dump blocks retain zero cursors and are never cached, so they never reach a cache freshness check. The factory
-      opens nothing until the first scan; a process that cannot open the volume fails the drive
+      opens nothing until the first scan; a process that cannot open the volume fails the volume
       as `ProducerFailed`. A process with no MFT source leaves `FileIndexOptions.MftSource` null. When an
-      MFT drive needs a scan, its failure kind is `DriveFailureKind.MftSourceMissing`
-      and its library message is `Drive {drive}: no MFT source is available to scan this drive.`
+      MFT volume needs a scan, its failure kind is `RootFailureKind.MftSourceMissing`
+      and its library message is `Volume {volume}: no MFT source is available to scan this volume.`
       The application maps the kind to its own display text using its known context.
-      A rescan cannot recover the drive while the source remains null. Usable cached
+      A rescan cannot recover the root while the source remains null. Usable cached
       blocks still open, and a failed rescan retains an existing block. Enumeration
-      drives ignore the source. Watch start reports `NotApplicable`, carries no
+      roots ignore the source. Watch start reports `NotApplicable`, carries no
       failure exception, and records no watch request. The block producer
-      delegate, the watch source and drive watch interfaces and their records are internal;
+      delegate, the watch source and root watch interfaces and their records are internal;
       only MFTLib implements them, and tests build sources through `MFTLibTestExtensions`.
       `JournalBrokerHost` and `LocalMftBlockProducer` take the internal `IVolumeAccess` contract: cursor query, record-batch scan, bounded journal read, watch, volume information and journal grow. Every operation is a nonnullable method. `LiveVolumeAccess` forwards to `LiveVolumeSources`, which owns native resource lifetime. The internal `ScriptedVolumeAccess` in MFTLibTestExtensions throws for unsupported operations. The local producer receives its TimeProvider independently of volume access and samples completion time after batch enumeration.
     - **Watch state events**: `FileIndex.WatchStateChanged` reports every change of the root's
-      derived `DriveWatchStatus.State` as a `WatchStateChange` whose `Watch` is the root's `DriveWatchStatus`
+      derived `RootWatchStatus.State` as a `WatchStateChange` whose `Watch` is the root's `RootWatchStatus`
       with a `StateVersion`, built by the same helper `Status` uses and noted by one helper inside the
       state-lock section that made the change and delivered with neither `_stateLock` nor a write
       gate held, in version order, before the `WatchFaulted` of the fault
@@ -234,8 +234,8 @@
     - **ElevationUtilities**: Names the public route to elevation: `DefaultProvider`, the production `IElevationProvider`. Callers supply a timeout appropriate to their operation; the shared Defender exclusion sequence allows 60 seconds for its elevated child. `IsElevated()`, `CanSelfElevate()` and `TryRunElevated(IReadOnlyList<string> arguments, TimeSpan timeout)` are interface members; `TryRunElevated` relaunches the executable with the `runas` verb and quotes each argument through `ProcessStartInfo.ArgumentList`, which .NET honours with `UseShellExecute = true`. `TryAddDefenderProcessExclusions` is the one Windows Defender process-exclusion sequence built on those members ([Defender exclusions](elevation.md#windows-defender-process-exclusions)). The internal `DefaultElevationProvider` holds the logic and takes its process, platform and wait dependencies through an internal constructor, so tests build their own instance with fakes.
 
 - **SampleProgram.Direct** and **SampleProgram.Watch** (C# Console Apps) - the two samples, each a CLI that compiles against the public API with no access to MFTLib internals; together their IL is the caller set the public surface is measured against. The heads-up dialog, unattended check, console primitives, common status reporting and common option readers live in `SampleProgram.Shared` and compile into both samples as linked source. Each sample owns its elevation flow; Direct owns self-relaunch/output redirection and integer/date option readers, while Watch owns per-root index opening and `FileIndexSet` coordination. Each verb is small, so a public member that needs contortion to appear is an internalization candidate, not a reason to grow a sample.
-  - **Direct** opens a `CacheMode.Disabled` `FileIndex` in this process, with no broker and no watch. `--source local` (the default) is `MftIndexSources.FromLocalVolumes` and self-elevates; `--source dump --dump-file PATH` is `MftIndexSources.FromMftDumpFile`, needs no elevation and runs on every platform. Verbs: `search` (name, exact, case, under, directories or files, size and date bounds, `--stream`, `--limit`, `--include-freed`), `tree`, `children`, `open`, `largest`, `duplicate-names` and `scan`, plus `exclude-defender` (no drive; it calls `ElevationUtilities.TryAddDefenderProcessExclusions` for the sample's own executable). `--include-freed` sets `MftScanOptions.IncludeFreed` and `SearchQuery.IncludeDeleted` together, prints `FileEntry.IsDeleted` per row, and is refused on a dump, which never yields freed rows. The `open` verb prints a known last-write timestamp in UTC, or `<unknown>` when `FileEntry.IsLastWriteTimeKnown` is false, before attempting to open the entry.
-  - **Watch** opens one `FileIndex` per root over `BrokerSession.CreateIndexSource()` and coordinates multi-root queries through `FileIndexSet`, the path consumers ship, and also dispatches `--broker` through `ElevatedEntryPoint`. Verbs: `watch` (the default; state changes, faults and each `FileChangeKind`, plus a cross-root root-directory check through `FileIndexSet`), `scan` (one pass: a `CacheMode.Disabled` open per root that prints the `RootStatus` rows, skipped records, checkpoint loss and a `FileIndexSet` inventory), `rescan` (rescans each root's `FileIndex` and verifies each root's `FileEntry` through `FileIndexSet.Find`), `journal` (settings, or `BrokerSession.GrowUsnJournalAsync` with a target settings struct), `cache` (`CacheDirectory.InspectCached`, and `--clear` through `DeleteCached`) and `elevation-status`. The other verbs open cached indexes, so they show `DriveBlockStatus.Origin`, `CacheLocation` and checkpoint loss, including its growth-target refusal reason. No retention flag means full scanning; `--directories-only` keeps directories alone, and `--keep-name A,B` keeps directories plus those names. These two flags are mutually exclusive and an empty keep-name value is refused. The sample passes the nullable retention policy as `FileIndexOptions.RetainedFileNames`, and the library's scan-shape comparison rebuilds a block whose retention differs; the sample tag is `SMPW` version 2. Every verb that opens indexes opens one `FileIndex` per named root concurrently and builds a `FileIndexSet` over them. One session launches its broker on the first needed scan, so one UAC prompt serves the run, and `--connect-timeout N` sets the seconds it waits for the broker (`BrokerSession(launchBroker, connectTimeout)`).
+  - **Direct** opens a `CacheMode.Disabled` `FileIndex` in this process, with no broker and no watch. `--source local` (the default) is `MftIndexSources.FromLocalVolumes` and self-elevates; `--source dump --dump-file PATH` is `MftIndexSources.FromMftDumpFile`, needs no elevation and runs on every platform. Verbs: `search` (name, exact, case, under, directories or files, size and date bounds, `--stream`, `--limit`, `--include-freed`), `tree`, `children`, `open`, `largest`, `duplicate-names` and `scan`, plus `exclude-defender` (no volume; it calls `ElevationUtilities.TryAddDefenderProcessExclusions` for the sample's own executable). `--include-freed` sets `MftScanOptions.IncludeFreed` and `SearchQuery.IncludeDeleted` together, prints `FileEntry.IsDeleted` per row, and is refused on a dump, which never yields freed rows. The `open` verb prints a known last-write timestamp in UTC, or `<unknown>` when `FileEntry.IsLastWriteTimeKnown` is false, before attempting to open the entry.
+  - **Watch** opens one `FileIndex` per root over `BrokerSession.CreateIndexSource()` and coordinates multi-root queries through `FileIndexSet`, the path consumers ship, and also dispatches `--broker` through `ElevatedEntryPoint`. Verbs: `watch` (the default; state changes, faults and each `FileChangeKind`, plus a machine-wide inventory and a root-directory check through the `FileIndexSet` queries `Enumerate`, `Find`, `Search` and `EnumerateRows`), `scan` (one pass: a `CacheMode.Disabled` open per root that prints each root's `RootStatus` rows, skipped records and checkpoint loss), `rescan` (rescans each root's `FileIndex` and reports each result), `journal` (settings, or `BrokerSession.GrowUsnJournalAsync` with a target settings struct), `cache` (`CacheDirectory.InspectCached`, and `--clear` through `DeleteCached`) and `elevation-status`. The other verbs open cached indexes, so they show `RootBlockStatus.Origin`, `CacheLocation` and checkpoint loss, including its growth-target refusal reason. No retention flag means full scanning; `--directories-only` keeps directories alone, and `--keep-name A,B` keeps directories plus those names. These two flags are mutually exclusive and an empty keep-name value is refused. The sample passes the nullable retention policy as `FileIndexOptions.RetainedFileNames`, and the library's scan-shape comparison rebuilds a block whose retention differs; the sample tag is `SMPW` version 2. Every verb that opens indexes opens one `FileIndex` per named root concurrently and builds a `FileIndexSet` over them; only the `watch` verb calls the set queries, and the other verbs act on each index in turn. One session launches its broker on the first needed scan, so one UAC prompt serves the run, and `--connect-timeout N` sets the seconds it waits for the broker (`BrokerSession(launchBroker, connectTimeout)`).
     The `cache` verb lists with exit code 0. With `--clear`, it attempts every selected block in the cache directory, prints each deletion outcome once, and returns 1 if any outcome is `InUse` or `Failed`, otherwise 0 (including when no blocks match).
   - **Direct row algorithms**: `largest` and `duplicate-names` are implemented in the sample over
     `EnumerateRows`. `LargestFiles` keeps a bounded heap of live, known-size files and prints paths and sizes
@@ -244,18 +244,18 @@
     Members keep enumeration order; the verb prints each name, member count and first member's path.
     Only the bitmaps are bounded (about 80 MiB at maximum bucket count); final candidate and duplicate-group
     storage depends on surviving rows. Each pass takes its own snapshot and may see concurrent changes.
-    The `scan` verb adds a per-drive inventory in one `EnumerateRows` pass with `IncludeDeleted: true`:
+    The `scan` verb adds a per-root inventory in one `EnumerateRows` pass with `IncludeDeleted: true`:
     live files, live directories (including the root), and retained deleted rows. Deleted files and
-     directories count only as deleted; free slots are excluded. `Drive` selects the tally,
-    `IsDeleted` separates retained history, and `IsDirectory` classifies the live inventory. A second per-drive
+     directories count only as deleted; free slots are excluded. `Root` selects the tally,
+    `IsDeleted` separates retained history, and `IsDirectory` classifies the live inventory. A second per-root
     line reads `IsSizeKnown`, `IsLastWriteTimeKnown`, `Attributes` and `LastWriteTime` from the same rows to report
     unknown-size, unknown-last-write, hidden and newest-known-last-write figures for the live files.
   - **Elevation:** a verb that launches the broker stays unelevated and the broker asks for elevation; a Direct local scan self-elevates through `ElevationUtilities.DefaultProvider`, waiting indefinitely for the elevated child process. Just before either prompt an attended run shows a blocking, system-modal `MessageBoxW` heads-up (with a beep) naming the executable and the exact arguments, so the UAC prompt that follows is expected: OK continues, Cancel prints the manual-elevation fallback and exits 1, a dismissal within 0.75 seconds is treated as an accidental key press and the dialog is shown again, and a dialog nobody answers within five minutes counts as Cancel. With `MFTLIB_SAMPLE_UNATTENDED=1` the samples show no dialog and request no elevation at all (see [Elevation: attended and unattended runs](elevation.md)). The dialog lives in the samples, never in `ElevationUtilities`, so a consumer's runtime flow gains none; it is skipped when already elevated and in an unattended run, and a Direct run that cannot self-elevate (including a session with no interactive desktop) shows none and prints the manual-elevation fallback; a Watch broker launch does not consult self-elevation and shows it in every attended unelevated run. Verbs call the library through `internal Func` seams on `SampleHost` that `MFTLib.Tests` replaces.
-- **Benchmark** (C# Console App) - Measures warm packed-index queries. Run `Benchmark.exe index --synthetic N` to write N rows (including the root) through the internal block writer, or `Benchmark.exe index --cache-directory <path>` to open existing blocks cache-only, without scanning or starting a watch. Each drive reports row count, slot capacity, file bytes, used name-pool bytes and their percentage of the file, and reserved name-pool capacity. Exact and substring `Search` query `file-0000000001`, warm up once, then report the median of K runs (`--iterations K`, default 3), with match counts. Synthetic file names are `file-0000000001` and onward, so this query compares same-length names in a full scan and matches one file when N is greater than one. Cache inspection supplies each block's root, consumer tag and scan shape; unavailable or offline blocks are reported as errors, and a block whose scan shape the benchmark's default row-shaping options do not reproduce (retention, walk pruning or freed-record inclusion) is reported as an unsupported scan shape and left in place rather than opened; a block replaced after inspection fails its drive, and the cache-only open leaves it in place. Synthetic blocks use production capacity headroom and are deleted after measurement. Reports identify the source commit embedded in the Benchmark assembly at build time. The report opens with system information, then one `--- exact-search ---` and one `--- substring-search ---` block per drive holding `Median: X ms`. Every scenario block contains its timing median, `Peak private bytes`, `Peak working set`, and `Memory measurement` method. Memory is measured in a separate fresh Benchmark process for each scenario and drive, after input generation. A worker opens that input, runs only its selected workload, and captures its memory counters before releasing workload resources. Index queries and enumeration walks warm up the selected workload once before K repetitions; native parsing performs K parses. The parent's timing measurements retain their original workload boundaries and are separate from memory sampling. Parent cache ownership is released before a query worker opens the block. The peak includes worker startup, runtime and input opening, but excludes input generation, system-information discovery and other scenarios. Windows uses `Process.PeakPagedMemorySize64` and `PeakWorkingSet64`. Linux reports a 10 ms sampled maximum of `PrivateMemorySize64` (VmData), with additional samples while each operation's result is alive, and the kernel peak working set. Linux's observed private maximum can miss shorter-lived allocations. The method identifies these different metrics; reports using different methods cannot be compared. Unavailable counters fail the command. `Benchmark.exe compare <before> <after> <scenario>` reads the first block with that exact name in each report and prints the before/after median and private-byte figures. It fails if either grows by more than 25 percent; exactly 25 percent passes. Working set is informational. Missing or invalid memory fields fail closed, including older baselines. Capture a new baseline with the same platform, measurement method, inputs and iteration count. `index --out` and `enumeration-walk --out` save a report only after all measurements succeed. The `native-parse-timings` block exposes the native-total median as `Median:` in addition to the phase breakdown and can be saved by redirecting stdout. At each release, hand-capture one small benchmark report on a quiet machine into `Benchmark/baselines/<date>-<short sha>.txt` and commit it beside the code as input to `Benchmark.exe compare`. These committed release reports are the deliberate exception to the no-measurement-dumps rule: one small report per release that `compare` reads, never logs or raw captures. Follow the [release benchmark checklist](handoff-release-0.3.0.md#benchmark-release-checklist) to compare matching workloads against the retained baselines. See the [owner ruling](api-decisions.md#release-benchmark-baselines-are-committed-reports) for the retention policy. `Benchmark.exe native-timings <--synthetic N|--dump path> [--iterations K]` parses an MFT dump (a dump of N records, at least 16, written by the native bulk synthetic generator, or a saved image) through the native parser and prints the median native I/O, fixup, parse and total durations from `MftResult.Timings`, each with its share of the total, then which stage dominates, the read (I/O) or the parse (CPU). The read is buffered, so the page cache can make it faster than the disk and the verdict does not say how fast the disk is. The native parse reads the next chunk while it fixes up and parses the current one, so the phases overlap and each is bounded by the total, not summed to it; the verdict compares the read against fixup plus parse. The timings come from the native `MftParseResult` (`ioTimeMs`, `fixupTimeMs`, `parseTimeMs`, `totalTimeMs`) and are internal to MFTLib.
+- **Benchmark** (C# Console App) - Measures warm packed-index queries. Run `Benchmark.exe index --synthetic N` to write N rows (including the root) through the internal block writer, or `Benchmark.exe index --cache-directory <path>` to open existing blocks cache-only, without scanning or starting a watch. Each volume reports row count, slot capacity, file bytes, used name-pool bytes and their percentage of the file, and reserved name-pool capacity. Exact and substring `Search` query `file-0000000001`, warm up once, then report the median of K runs (`--iterations K`, default 3), with match counts. Synthetic file names are `file-0000000001` and onward, so this query compares same-length names in a full scan and matches one file when N is greater than one. Cache inspection supplies each block's root, consumer tag and scan shape; unavailable or offline blocks are reported as errors, and a block whose scan shape the benchmark's default row-shaping options do not reproduce (retention, walk pruning or freed-record inclusion) is reported as an unsupported scan shape and left in place rather than opened; a block replaced after inspection fails its volume, and the cache-only open leaves it in place. Synthetic blocks use production capacity headroom and are deleted after measurement. Reports identify the source commit embedded in the Benchmark assembly at build time. The report opens with system information, then one `--- exact-search ---` and one `--- substring-search ---` block per volume holding `Median: X ms`. Every scenario block contains its timing median, `Peak private bytes`, `Peak working set`, and `Memory measurement` method. Memory is measured in a separate fresh Benchmark process for each scenario and volume, after input generation. A worker opens that input, runs only its selected workload, and captures its memory counters before releasing workload resources. Index queries and enumeration walks warm up the selected workload once before K repetitions; native parsing performs K parses. The parent's timing measurements retain their original workload boundaries and are separate from memory sampling. Parent cache ownership is released before a query worker opens the block. The peak includes worker startup, runtime and input opening, but excludes input generation, system-information discovery and other scenarios. Windows uses `Process.PeakPagedMemorySize64` and `PeakWorkingSet64`. Linux reports a 10 ms sampled maximum of `PrivateMemorySize64` (VmData), with additional samples while each operation's result is alive, and the kernel peak working set. Linux's observed private maximum can miss shorter-lived allocations. The method identifies these different metrics; reports using different methods cannot be compared. Unavailable counters fail the command. `Benchmark.exe compare <before> <after> <scenario>` reads the first block with that exact name in each report and prints the before/after median and private-byte figures. It fails if either grows by more than 25 percent; exactly 25 percent passes. Working set is informational. Missing or invalid memory fields fail closed, including older baselines. Capture a new baseline with the same platform, measurement method, inputs and iteration count. `index --out` and `enumeration-walk --out` save a report only after all measurements succeed. The `native-parse-timings` block exposes the native-total median as `Median:` in addition to the phase breakdown and can be saved by redirecting stdout. At each release, hand-capture one small benchmark report on a quiet machine into `Benchmark/baselines/<date>-<short sha>.txt` and commit it beside the code as input to `Benchmark.exe compare`. These committed release reports are the deliberate exception to the no-measurement-dumps rule: one small report per release that `compare` reads, never logs or raw captures. Follow the [release benchmark checklist](handoff-release-0.3.0.md#benchmark-release-checklist) to compare matching workloads against the retained baselines. See the [owner ruling](api-decisions.md#release-benchmark-baselines-are-committed-reports) for the retention policy. `Benchmark.exe native-timings <--synthetic N|--dump path> [--iterations K]` parses an MFT dump (a dump of N records, at least 16, written by the native bulk synthetic generator, or a saved image) through the native parser and prints the median native I/O, fixup, parse and total durations from `MftResult.Timings`, each with its share of the total, then which stage dominates, the read (I/O) or the parse (CPU). The read is buffered, so the page cache can make it faster than the disk and the verdict does not say how fast the disk is. The native parse reads the next chunk while it fixes up and parses the current one, so the phases overlap and each is bounded by the total, not summed to it; the verdict compares the read against fixup plus parse. The timings come from the native `MftParseResult` (`ioTimeMs`, `fixupTimeMs`, `parseTimeMs`, `totalTimeMs`) and are internal to MFTLib.
   - **Enumeration walk benchmark**: `Benchmark.exe enumeration-walk [--directories N] [--files-per-directory N] [--iterations K] [--out report.txt]` generates a temporary breadth-first tree with at most eight child directories per directory. Defaults are 10,000 directories including the root, one empty file per directory, and five measured runs per mode; the generated row count is capped at ten million. Both modes call the production `EnumerationProducer` and acquire a base `EnumerationWalkLimit` lease. Sequential uses the existing one-worker ceiling, so it cannot take extra permits; parallel uses the default shared processor-sized budget. Each mode warms up once, then measured timing pairs alternate their order on the same warm filesystem cache, without OS cache eviction. Each mode has its own fresh-process memory pass over the same generated tree before cleanup. Timing includes traversal, copied directory buffers, single-writer row writes and worker drain; tree creation, block allocation/disposal and report I/O are outside the timed interval. Every run uses a fresh, pre-sized block and must produce all expected rows without skipped subtrees or exhaustion. The tree and blocks are deleted even on failure. Reports include system information, tree size, cache conditions, `--- enumeration-walk-sequential ---` and `--- enumeration-walk-parallel ---` blocks with `Median: X ms; Rows: N`, `Peak private bytes`, `Peak working set` and `Memory measurement`, and the sequential/parallel median ratio (unavailable for a zero parallel median). Include enumeration results in the same hand-captured release report under `Benchmark/baselines/<date>-<short sha>.txt`; compare each mode against a baseline with the same tree shape and iteration count using the [release benchmark checklist](handoff-release-0.3.0.md#benchmark-release-checklist). Timing is measurement, never a test assertion about real elapsed time.
 - **MFTLib.Tests** (C# MSTest) - Unit, integration and contract tests for the library, the broker, the samples, the benchmark, the public surface and the agent instructions.
 - **MFTLibTestExtensions** (C# Library) - Public, consumer-facing `BrokerTestHarness` that runs a
-  real broker host in process over in-memory control and drive pipes and returns an `InProcessBrokerHandle`
+  real broker host in process over in-memory control and volume pipes and returns an `InProcessBrokerHandle`
   connected to it, with `Crash()` to simulate broker death and `Scans`
   to read the scans it served. A test scripts the host through `ScriptedBrokerVolumes` (journal cursor,
   scan, catch-up, watch and journal grow sources) and `ScriptedScan`; the harness supplies fixed
@@ -270,8 +270,8 @@
   cache commands without spelling the lock file name; disposing releases the slot and never unlinks
   the lock, and `LockPathFor` names the sibling lock for asserting that a command left it. Ships as the separate
   `MFTLib.TestExtensions` NuGet package at publish time; never folded into the `MFTLib` package.
-  `ScriptedWatchSource` and `ScriptedDriveWatch` script the live watch an index runs beside its scan,
-  without naming the internal `IIndexWatchSource` or `IIndexDriveWatch` (an internal adapter presents them to the index),
+  `ScriptedWatchSource` and `ScriptedVolumeWatch` script the live watch an index runs beside its scan,
+  without naming the internal `IIndexWatchSource` or `IIndexVolumeWatch` (an internal adapter presents them to the index),
 
   `SyntheticIndexSource.Create` joins a producer and a watch source into the `MftIndexSource` an index takes,
   and `SyntheticJournalRecord` and `SyntheticScanRecord` supply journal and scan records.

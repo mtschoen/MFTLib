@@ -6,7 +6,7 @@ namespace MFTLib.Tests.TestSupport;
 
 /// <summary>
 ///     A <see cref="BrokerProcess" /> whose host side is the test itself: the test reads each
-///     control request and writes whatever frames it wants on the control pipe and on each drive
+///     control request and writes whatever frames it wants on the control pipe and on each volume
 ///     pipe, including orders and replies a real host never produces.
 /// </summary>
 sealed class ScriptedBroker : IAsyncDisposable
@@ -14,12 +14,12 @@ sealed class ScriptedBroker : IAsyncDisposable
     readonly Stream _hostControl;
 
     public ScriptedBroker(TimeProvider? clock = null, Func<Stream, Stream>? wrapClientControl = null,
-        Func<string, Stream, Stream>? wrapClientDrivePipe = null,
+        Func<string, Stream, Stream>? wrapClientVolumePipe = null,
         Func<IBrokerPipeFactory, IBrokerPipeFactory>? wrapPipeFactory = null)
     {
         var (client, host) = new InMemoryPipePair();
         _hostControl = host;
-        Pipes = new InMemoryBrokerPipes(new BrokerTestHarnessOptions(), wrapClientDrivePipe);
+        Pipes = new InMemoryBrokerPipes(new BrokerTestHarnessOptions(), wrapClientVolumePipe);
         var processPipes = wrapPipeFactory?.Invoke(Pipes) ?? Pipes;
         Process = new BrokerProcess(wrapClientControl?.Invoke(client) ?? client, processPipes, Sections.Create,
             clock ?? TimeProvider.System);

@@ -6,7 +6,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 /// <summary>
-///     The scripted watch source is a public test double that consumer test assemblies drive, so its
+///     The scripted watch source is a public test double that consumer test assemblies volume, so its
 ///     scripting surface is pinned here directly, without an index.
 /// </summary>
 [TestClass]
@@ -19,14 +19,14 @@ public class ScriptedWatchSourceTests
     static IndexWatchTarget Target(char driveLetter, ulong journalIdentifier = 7, long nextUsn = 100) =>
         new(driveLetter, journalIdentifier, nextUsn);
 
-    Task<ScriptedDriveWatch> StartAsync(ScriptedWatchSource source, IndexWatchTarget target) =>
+    Task<ScriptedVolumeWatch> StartAsync(ScriptedWatchSource source, IndexWatchTarget target) =>
         source.StartAsync(target, Token);
 
-    static IAsyncEnumerator<WatchStreamItem> Read(ScriptedDriveWatch watch, CancellationToken cancellationToken) =>
+    static IAsyncEnumerator<WatchStreamItem> Read(ScriptedVolumeWatch watch, CancellationToken cancellationToken) =>
         watch.ReadAsync(cancellationToken).GetAsyncEnumerator(cancellationToken);
 
     [TestMethod]
-    public async Task StartAsync_RecordsEachStartAndHandsOutAWatchForTheDrive()
+    public async Task StartAsync_RecordsEachStartAndHandsOutAWatchForTheVolume()
     {
         var source = new ScriptedWatchSource();
 
@@ -36,7 +36,7 @@ public class ScriptedWatchSourceTests
         Assert.AreEqual(new SyntheticJournalCursor(9, 250), source.Starts.Single().Cursor);
         Assert.AreSame(watch, source.Watches.Single());
         Assert.AreSame(watch, source.WatchFor('T'));
-        Assert.AreEqual('t', watch.Drive);
+        Assert.AreEqual('t', watch.Volume);
         Assert.IsFalse(watch.ReadStarted);
     }
 
@@ -49,7 +49,7 @@ public class ScriptedWatchSourceTests
         await using var enumerator = Read(watch, Token);
 
         Assert.IsTrue(await enumerator.MoveNextAsync());
-        Assert.IsInstanceOfType<DriveCaughtUp>(enumerator.Current);
+        Assert.IsInstanceOfType<VolumeCaughtUp>(enumerator.Current);
         Assert.IsTrue(watch.ReadStarted);
     }
 
@@ -66,7 +66,7 @@ public class ScriptedWatchSourceTests
         var published = watch.PublishCaughtUpAsync();
 
         Assert.IsTrue(await pending.WaitAsync(HangGuard, Token));
-        Assert.IsInstanceOfType<DriveCaughtUp>(enumerator.Current);
+        Assert.IsInstanceOfType<VolumeCaughtUp>(enumerator.Current);
         var next = enumerator.MoveNextAsync().AsTask();
         await published.WaitAsync(HangGuard, Token);
         watch.End();
@@ -76,7 +76,7 @@ public class ScriptedWatchSourceTests
     [TestMethod]
     public async Task StartFailure_ThrowsOnEveryStartItReturnsAnExceptionFor()
     {
-        var failure = new IOException("drive U is gone");
+        var failure = new IOException("volume U is gone");
         var source = new ScriptedWatchSource { StartFailure = letter => letter == 'U' ? failure : null };
 
         var first = await Assert.ThrowsExactlyAsync<IOException>(() => StartAsync(source, Target('U')));
@@ -85,7 +85,7 @@ public class ScriptedWatchSourceTests
 
         Assert.AreSame(failure, first);
         Assert.AreSame(failure, second);
-        Assert.AreSequenceEqual(['U', 'U', 'T'], [.. source.Starts.Select(start => start.Drive)], "failed starts are still recorded");
+        Assert.AreSequenceEqual(['U', 'U', 'T'], [.. source.Starts.Select(start => start.Volume)], "failed starts are still recorded");
         Assert.HasCount(1, source.Watches, "only the successful start handed out a watch");
     }
 
@@ -103,7 +103,7 @@ public class ScriptedWatchSourceTests
     }
 
     [TestMethod]
-    public async Task FailNextStartFor_FailsOnlyTheNamedDrive()
+    public async Task FailNextStartFor_FailsOnlyTheNamedVolume()
     {
         var source = new ScriptedWatchSource();
         source.FailNextStartFor('u', new IOException("U only"));
@@ -116,13 +116,13 @@ public class ScriptedWatchSourceTests
     }
 
     [TestMethod]
-    public async Task WaitForStartAsync_CompletesWithTheWatchHandedOutForTheDriveLater()
+    public async Task WaitForStartAsync_CompletesWithTheWatchHandedOutForTheVolumeLater()
     {
         var source = new ScriptedWatchSource();
         var waiting = source.WaitForStartAsync('T', 1, Token);
         await StartAsync(source, Target('U'));
 
-        Assert.IsFalse(waiting.IsCompleted, "a start of another drive does not satisfy the wait");
+        Assert.IsFalse(waiting.IsCompleted, "a start of another volume does not satisfy the wait");
 
         var started = await StartAsync(source, Target('T'));
 
@@ -142,7 +142,7 @@ public class ScriptedWatchSourceTests
     }
 
     [TestMethod]
-    public async Task WaitForStartAsync_TheNthStartOfADriveIsTheNthWatchHandedOutForIt()
+    public async Task WaitForStartAsync_TheNthStartOfAVolumeIsTheNthWatchHandedOutForIt()
     {
         var source = new ScriptedWatchSource();
         var first = await StartAsync(source, Target('T'));
@@ -150,7 +150,7 @@ public class ScriptedWatchSourceTests
         var secondWait = source.WaitForStartAsync('T', 2, Token);
         var thirdWait = source.WaitForStartAsync('T', 3, Token);
         Assert.AreSame(first, await source.WaitForStartAsync('T', 1, Token));
-        Assert.IsFalse(secondWait.IsCompleted, "the drive was started once, not twice");
+        Assert.IsFalse(secondWait.IsCompleted, "the volume was started once, not twice");
 
         await first.DisposeWatchAsync();
         var second = await StartAsync(source, Target('T'));
@@ -200,7 +200,7 @@ public class ScriptedWatchSourceTests
     }
 
     [TestMethod]
-    public async Task StartAsync_RefusesASecondStartWhileTheDrivesWatchIsStillRunning()
+    public async Task StartAsync_RefusesASecondStartWhileTheVolumesWatchIsStillRunning()
     {
         var source = new ScriptedWatchSource();
         var first = await StartAsync(source, Target('T'));
@@ -249,7 +249,7 @@ public class ScriptedWatchSourceTests
 
         var queuedCaughtUp = watch.QueueCaughtUp();
         Assert.IsTrue(await next.WaitAsync(HangGuard, Token));
-        Assert.IsInstanceOfType<DriveCaughtUp>(enumerator.Current);
+        Assert.IsInstanceOfType<VolumeCaughtUp>(enumerator.Current);
         Assert.IsFalse(queuedCaughtUp.IsCompleted);
     }
 
@@ -284,7 +284,7 @@ public class ScriptedWatchSourceTests
                 watch.End();
                 break;
             case "fail-drive":
-                watch.FailDrive(new IOException("drive failed"));
+                watch.FailVolume(new IOException("volume failed"));
                 break;
             case "lose-channel":
                 watch.LoseChannel(new IOException("channel lost"));
@@ -471,13 +471,13 @@ public class ScriptedWatchSourceTests
         await enumerator.DisposeAsync();
     }
 
-    static async Task DisposeOnReleaseAsync(Task release, ScriptedDriveWatch watch)
+    static async Task DisposeOnReleaseAsync(Task release, ScriptedVolumeWatch watch)
     {
         await release;
         await watch.DisposeWatchAsync();
     }
 
-    static void AssertDeliveryRejected(ScriptedDriveWatch watch)
+    static void AssertDeliveryRejected(ScriptedVolumeWatch watch)
     {
         var entry = JournalEntries.CreateSynthetic(22, 260, "c.txt");
         var cursor = new SyntheticJournalCursor(7, 400);
@@ -487,7 +487,7 @@ public class ScriptedWatchSourceTests
         Assert.ThrowsExactly<InvalidOperationException>(watch.PublishCaughtUpAsync);
     }
 
-    async Task EndReadAsync(ScriptedDriveWatch watch, string mode)
+    async Task EndReadAsync(ScriptedVolumeWatch watch, string mode)
     {
         using var cancellation = new CancellationTokenSource();
         var enumerator = Read(watch, cancellation.Token);
@@ -582,16 +582,16 @@ public class ScriptedWatchSourceTests
     }
 
     [TestMethod]
-    public async Task FailDrive_MakesTheReadThrowADriveWatchFaultPreservingTheCause()
+    public async Task FailVolume_MakesTheReadThrowAVolumeWatchFaultPreservingTheCause()
     {
         var source = new ScriptedWatchSource();
         var watch = await StartAsync(source, Target('T'));
         await using var enumerator = Read(watch, Token);
         var inner = new InvalidOperationException("journal deleted");
 
-        watch.FailDrive(inner);
+        watch.FailVolume(inner);
 
-        var fault = await Assert.ThrowsExactlyAsync<DriveWatchFaultException>(async () => await enumerator.MoveNextAsync());
+        var fault = await Assert.ThrowsExactlyAsync<VolumeWatchFaultException>(async () => await enumerator.MoveNextAsync());
         Assert.AreEqual(inner.Message, fault.Message);
         Assert.AreSame(inner, fault.InnerException);
         Assert.IsFalse(await watch.ReadEnded.WaitAsync(HangGuard, Token));
@@ -627,7 +627,7 @@ public class ScriptedWatchSourceTests
     }
 
     [TestMethod]
-    public void WatchFor_ThrowsWhenNoWatchWasHandedOutForTheDrive()
+    public void WatchFor_ThrowsWhenNoWatchWasHandedOutForTheVolume()
     {
         var source = new ScriptedWatchSource();
 

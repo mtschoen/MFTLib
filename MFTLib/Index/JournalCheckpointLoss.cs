@@ -1,37 +1,37 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     Which of MFTLib's three journal-position checks found the loss: the open of a drive, its
+///     Which of MFTLib's three journal-position checks found the loss: the open of a volume, its
 ///     faulted live watch, or a scan's catch-up. A report outlives the
 ///     moment that produced it, so without this a consumer reading
-///     <see cref="DriveWatchStatus.CheckpointLoss" /> from inside a
+///     <see cref="RootWatchStatus.CheckpointLoss" /> from inside a
 ///     <see cref="FileIndex.WatchFaulted" /> handler could not tell a report about the fault it
 ///     is handling from one the open left behind.
 /// </summary>
 public enum JournalCheckpointLossDetection
 {
     /// <summary>
-    ///     Found while opening the drive, checking a cached block's checkpoint before adopting
+    ///     Found while opening the volume, checking a cached block's checkpoint before adopting
     ///     it. The rescan this explains has already happened, so there is nothing to do about
-    ///     the drive itself, unless the open was cache-only
+    ///     the volume itself, unless the open was cache-only
     ///     (<see cref="CacheMode.ExistingOnly" />): that open never scans, adopts the
-    ///     block anyway, and refuses the drive's watch start until
+    ///     block anyway, and refuses the volume's watch start until
     ///     <see cref="FileIndex.RescanAsync" />. Otherwise the report is
     ///     the standing explanation of why this session cold-scanned, and of the journal size
     ///     that would have avoided it.
     /// </summary>
-    DriveOpening,
+    RootOpening,
 
     /// <summary>
-    ///     Found when the drive's live watch faulted, against the position that watch had
+    ///     Found when the volume's live watch faulted, against the position that watch had
     ///     reached. This one is actionable: the cursor stayed at that position. A
-    ///     <see cref="WatchFaultKind.Drive" /> fault applied nothing past it; a
+    ///     <see cref="WatchFaultKind.Volume" /> fault applied nothing past it; a
     ///     <see cref="WatchFaultKind.Apply" /> fault may have applied part of the batch in flight
-    ///     before the cursor advanced. The drive stays behind until a rescan rebuilds it. A <see cref="WatchFaultKind.Drive" /> or
+    ///     before the cursor advanced. The volume stays behind until a rescan rebuilds it. A <see cref="WatchFaultKind.Volume" /> or
     ///     <see cref="WatchFaultKind.Apply" /> fault starts that rescan automatically; after any other
     ///     fault, or once automatic recovery is exhausted, only
     ///     <see cref="FileIndex.RescanAsync" /> does. A
-    ///     watch fault that leaves the report reading <see cref="DriveOpening" />, or leaves it
+    ///     watch fault that leaves the report reading <see cref="RootOpening" />, or leaves it
     ///     null, was not the journal outrunning the index.
     /// </summary>
     LiveWatch,
@@ -39,7 +39,7 @@ public enum JournalCheckpointLossDetection
     /// <summary>
     ///     Proven by the broker host against the live journal when a scan's catch-up failed, for the
     ///     cursor armed before that scan: the journal trimmed past it, or was recreated, while the
-    ///     drive was being scanned. The scan's block is complete but cannot be resumed from that
+    ///     volume was being scanned. The scan's block is complete but cannot be resumed from that
     ///     cursor.
     /// </summary>
     ScanCatchUp
@@ -71,8 +71,8 @@ public enum JournalCheckpointLossCause
 }
 
 /// <summary>
-///     What MFTLib found when a drive's journal position could no longer be adopted or resumed, so the
-///     drive needs a full scan rather than a catch-up: the position that was lost, the journal
+///     What MFTLib found when a volume's journal position could no longer be adopted or resumed, so the
+///     volume needs a full scan rather than a catch-up: the position that was lost, the journal
 ///     as it stood when the loss was detected, and the size a journal would need to be at least
 ///     to have kept it. The position is a cached block's checkpoint when a warm start found it
 ///     gone or moved, and the position a live watch had reached when that watch faulted.
@@ -85,25 +85,25 @@ public enum JournalCheckpointLossCause
 public sealed record JournalCheckpointLoss
 {
     /// <summary>Creates a report with its identifying values and no journal positions.</summary>
-    /// <param name="drive">The drive, in upper case.</param>
+    /// <param name="volume">The volume, in upper case.</param>
     /// <param name="detectedDuring">Which check found the loss.</param>
     /// <param name="cause">Which situation the loss was.</param>
     /// <param name="journalSettings">The journal's sizing when the loss was detected.</param>
-    internal JournalCheckpointLoss(VolumeKey drive, JournalCheckpointLossDetection detectedDuring,
+    internal JournalCheckpointLoss(VolumeKey volume, JournalCheckpointLossDetection detectedDuring,
         JournalCheckpointLossCause cause, UsnJournalSettings journalSettings)
     {
-        Drive = drive;
+        Volume = volume;
         DetectedDuring = detectedDuring;
         Cause = cause;
         JournalSettings = journalSettings;
     }
 
-    /// <summary>Upper case, matching the letter this drive was configured with.</summary>
-    public VolumeKey Drive { get; init => field = value.Validated(); }
+    /// <summary>Upper case, matching the letter this volume was configured with.</summary>
+    public VolumeKey Volume { get; init => field = value.Validated(); }
 
     /// <summary>
     ///     Which check found this, and so which moment the report comes from.
-    ///     A report is replaced only by a newer report for the same drive or cleared by a
+    ///     A report is replaced only by a newer report for the same volume or cleared by a
     ///     successful <see cref="FileIndex.RescanAsync" />, never by an unrelated watch fault,
     ///     so a handler that acts on a loss treats this as the report's origin and does not
     ///     assume the fault it is handling was the journal's doing.
@@ -117,8 +117,8 @@ public sealed record JournalCheckpointLoss
     public JournalCheckpointLossCause Cause { get; init; }
 
     /// <summary>
-    ///     Where the drive's block left off, and so the point the journal would have had to
-    ///     still reach back to for this drive to be caught up instead of rescanned. That is the
+    ///     Where the volume's block left off, and so the point the journal would have had to
+    ///     still reach back to for this volume to be caught up instead of rescanned. That is the
     ///     cached checkpoint for a loss found at open, and the position the live watch had
     ///     reached for one found when a watch faulted. Internal: consumers read the sizes derived
     ///     from it, <see cref="BytesBehind" /> and <see cref="SizeThatWouldHaveRetained" />.

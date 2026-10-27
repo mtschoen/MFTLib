@@ -7,13 +7,13 @@ namespace MFTLib.Tests.Index;
 
 /// <summary>
 ///     The walk's pruning rules: a pruned directory is written as a row and has no children, the root is never
-///     pruned, a path outside the root has no effect, exact names and paths follow the drive comparison, and
+///     pruned, a path outside the root has no effect, exact names and paths follow the root comparison, and
 ///     regex patterns follow each <see cref="Regex" /> instance's own options.
 ///     The fixture tree is root, Documents (readme.md, Projects/report.pdf) and Pictures (holiday.jpg).
 /// </summary>
 public sealed partial class EnumerationProducerTests
 {
-    static readonly bool DriveComparisonIgnoresCase = OperatingSystem.IsWindows();
+    static readonly bool RootComparisonIgnoresCase = OperatingSystem.IsWindows();
 
     string TreePath(params string[] parts) => Path.Combine([_treeRoot, .. parts]);
 
@@ -129,23 +129,23 @@ public sealed partial class EnumerationProducerTests
             rootDirectory: TreePath("Documents"));
 
     [TestMethod]
-    public async Task Produce_NamesFollowTheDriveComparison()
+    public async Task Produce_NamesFollowTheRootComparison()
     {
         var walk = new DirectoryWalkOptions { PrunedDirectoryNames = ["DOCUMENTS"] };
         string[] children = [TreePath("Documents", "readme.md")];
 
-        await AssertProduced(walk, present: DriveComparisonIgnoresCase ? [] : children,
-            absent: DriveComparisonIgnoresCase ? children : []);
+        await AssertProduced(walk, present: RootComparisonIgnoresCase ? [] : children,
+            absent: RootComparisonIgnoresCase ? children : []);
     }
 
     [TestMethod]
-    public async Task Produce_PathsFollowTheDriveComparison()
+    public async Task Produce_PathsFollowTheRootComparison()
     {
         var walk = new DirectoryWalkOptions { PrunedDirectoryPaths = [TreePath("PICTURES")] };
         string[] children = [TreePath("Pictures", "holiday.jpg")];
 
-        await AssertProduced(walk, present: DriveComparisonIgnoresCase ? [] : children,
-            absent: DriveComparisonIgnoresCase ? children : []);
+        await AssertProduced(walk, present: RootComparisonIgnoresCase ? [] : children,
+            absent: RootComparisonIgnoresCase ? children : []);
     }
 
     [TestMethod]
@@ -202,7 +202,7 @@ public sealed partial class EnumerationProducerTests
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = TreePath("absent"),
-            Drive = new VolumeKey('T')
+            Root = new VolumeKey('T')
         });
 
         using var lease = await EnumerationWalkLimit.EnterAsync(CancellationToken.None);

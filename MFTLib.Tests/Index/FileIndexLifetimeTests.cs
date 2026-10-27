@@ -17,8 +17,8 @@ public sealed class FileIndexLifetimeTests : IndexTreeTestBase
     {
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
 
-        Assert.AreEqual(new VolumeKey('T'), index.Status.Drive);
-        Assert.AreEqual(DriveState.Ready, index.Status.State);
+        Assert.AreEqual(new VolumeKey('T'), index.Status.Root);
+        Assert.AreEqual(RootState.Ready, index.Status.State);
         Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
         Assert.IsGreaterThanOrEqualTo(3u, index.HeaderOf().RowCount);
         Assert.IsFalse(index.Status.Watch.IsSupported);
@@ -44,7 +44,7 @@ public sealed class FileIndexLifetimeTests : IndexTreeTestBase
     {
         await using (var index = await FileIndex.OpenAsync(Options(cacheDisabled: true), CancellationToken.None))
         {
-            Assert.AreEqual(DriveState.Ready, index.Status.State);
+            Assert.AreEqual(RootState.Ready, index.Status.State);
         }
 
 
@@ -53,16 +53,16 @@ public sealed class FileIndexLifetimeTests : IndexTreeTestBase
     }
 
     [TestMethod]
-    public async Task OpenAsync_MissingRootDirectory_ReportsTheDriveOffline()
+    public async Task OpenAsync_MissingRootDirectory_ReportsTheRootOffline()
     {
         var options = new FileIndexOptions
         {
-            Root = SyntheticIndexedDrive.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "absent"), 1),
+            Root = SyntheticIndexedRoot.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "absent"), 1),
             CacheDirectory = CacheDirectoryPath
         };
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
-        Assert.AreEqual(DriveState.Offline, index.Status.State);
+        Assert.AreEqual(RootState.Offline, index.Status.State);
         Assert.IsNull(index.Status.Block);
         Assert.IsNull(SyntheticIndexInspection.ReadHeader(index, new VolumeKey('Z')));
     }

@@ -3,7 +3,7 @@ using MFTLib.Index;
 
 namespace MFTLib;
 
-/// <summary>Serves one drive's block scan and its journal catch-up on that drive's channel.</summary>
+/// <summary>Serves one volume's block scan and its journal catch-up on that volume's channel.</summary>
 sealed partial class JournalBrokerHost
 {
     // The processing steps a scan publishes, which a Stalled message names.
@@ -19,7 +19,7 @@ sealed partial class JournalBrokerHost
     // ended) writes nothing more. The pipe publishes Queued while admission waits, WaitingOnVolume
     // around the cursor's volume open, and Processing per record batch, per flushed block range
     // and per bounded catch-up read, so a long scan keeps restarting its progress clock.
-    async Task RunScanAsync(DriveChannel channel, BrokerFrame request, IBlockSectionWriter? blockSectionWriter,
+    async Task RunScanAsync(VolumeChannel channel, BrokerFrame request, IBlockSectionWriter? blockSectionWriter,
         CancellationToken cancellationToken)
     {
         if (blockSectionWriter == null)
@@ -31,7 +31,7 @@ sealed partial class JournalBrokerHost
 
         try
         {
-            _ = request.RequireSectionName(channel.Drive);
+            _ = request.RequireSectionName(channel.Volume);
 
             // A closed pipe cancels the wait and takes the scan out of the queue; its source never runs.
             channel.Pipe.Queued();
@@ -56,7 +56,7 @@ sealed partial class JournalBrokerHost
         }
     }
 
-    async Task<ScanOutput> ProduceBlockAsync(DriveChannel channel, BrokerFrame request,
+    async Task<ScanOutput> ProduceBlockAsync(VolumeChannel channel, BrokerFrame request,
         IBlockSectionWriter blockSectionWriter, ParseThreadAllowance parseThreads,
         CancellationToken cancellationToken)
     {
@@ -89,7 +89,7 @@ sealed partial class JournalBrokerHost
         }
     }
 
-    async Task<ScanOutput> WriteBlockAsync(DriveChannel channel, BrokerFrame request,
+    async Task<ScanOutput> WriteBlockAsync(VolumeChannel channel, BrokerFrame request,
         IBlockSectionWriter blockSectionWriter, ParseThreadAllowance parseThreads,
         ChannelWriter<BrokerScanProgress> progressWriter, CancellationToken cancellationToken)
     {
@@ -100,9 +100,9 @@ sealed partial class JournalBrokerHost
                 progressState.Report(value, progressWriter));
 
             // Armed before the scan starts, so every change the scan misses is replayed by catch-up.
-            Hooks.ScanStarting?.Invoke(channel.Drive, request.RetainedFileNames);
+            Hooks.ScanStarting?.Invoke(channel.Volume, request.RetainedFileNames);
             channel.Pipe.WaitingOnVolume();
-            var cursor = _volumeAccess.QueryCursor(channel.Drive);
+            var cursor = _volumeAccess.QueryCursor(channel.Volume);
             await channel.Pipe.WriteFrameAsync(writer => BrokerProtocol.WriteCursor(writer, BrokerFrame.ArmedCursor(cursor)),
                 cancellationToken).ConfigureAwait(false);
 
@@ -110,10 +110,10 @@ sealed partial class JournalBrokerHost
             var reporting = new BlockWriteReporting(progressReporter, channel.Pipe);
             long recordsOmitted = 0;
             var batches = PublishEachBatch(
-                _volumeAccess.ScanDriveRecordBatches(channel.Drive, parseThreads, reporting, scanOptions,
+                _volumeAccess.ScanVolumeRecordBatches(channel.Volume, parseThreads, reporting, scanOptions,
                     count => recordsOmitted += count, cancellationToken),
                 channel.Pipe);
-            var result = blockSectionWriter.Write(request.RequireSectionName(channel.Drive), cursor, batches,
+            var result = blockSectionWriter.Write(request.RequireSectionName(channel.Volume), cursor, batches,
                 new MftRowSelection(scanOptions, request.RetainedFileNames), reporting, cancellationToken);
             return progressState.Complete(cursor,
                 result with { SkippedRecordCount = result.SkippedRecordCount + recordsOmitted });
@@ -135,7 +135,7 @@ sealed partial class JournalBrokerHost
         }
     }
 
-    static async Task RunProgressPumpAsync(DriveChannel channel, ChannelReader<BrokerScanProgress> reader,
+    static async Task RunProgressPumpAsync(VolumeChannel channel, ChannelReader<BrokerScanProgress> reader,
         TimeProvider timeProvider, CancellationToken cancellationToken)
     {
         var started = timeProvider.GetTimestamp();
@@ -184,7 +184,7 @@ sealed partial class JournalBrokerHost
         }
     }
 
-    async Task EmitScanCompletionFramesAsync(DriveChannel channel, ScanOutput output,
+    async Task EmitScanCompletionFramesAsync(VolumeChannel channel, ScanOutput output,
         CancellationToken cancellationToken)
     {
         var finalRecords = output.TotalRecords ?? output.WriteResult.RowCount;
@@ -236,20 +236,20 @@ sealed partial class JournalBrokerHost
     // republishing progress after each advancing call, until an empty read at the tip.
     // The live watch replays these entries from the armed cursor. A throwing read or
     // entries without advancement ends catch-up; the caller classifies the journal loss.
-    void CatchUp(DriveChannel channel, UsnJournalCursor armed, CancellationToken cancellationToken)
+    void CatchUp(VolumeChannel channel, UsnJournalCursor armed, CancellationToken cancellationToken)
     {
         channel.Pipe.Processing(CatchUpStep);
         var cursor = armed;
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var (chunk, updated) = _volumeAccess.ReadJournal(channel.Drive, cursor, CatchUpBufferReadsPerCall);
+            var (chunk, updated) = _volumeAccess.ReadJournal(channel.Volume, cursor, CatchUpBufferReadsPerCall);
             if (updated == cursor)
             {
                 if (chunk.Length != 0)
                 {
                     throw new InvalidOperationException(FormattableString.Invariant(
-                        $"Drive {channel.Drive} catch-up read returned {chunk.Length} entries without advancing its cursor {cursor.JournalIdentifier}:{cursor.NextUsn}."));
+                        $"Volume {channel.Volume} catch-up read returned {chunk.Length} entries without advancing its cursor {cursor.JournalIdentifier}:{cursor.NextUsn}."));
                 }
 
                 return;
@@ -261,13 +261,13 @@ sealed partial class JournalBrokerHost
     }
 
     // The failure is never classified from the exception: the journal read throws the same
-    // exception for a trimmed journal, a vanished drive and a failed read. The live journal is the
+    // exception for a trimmed journal, a vanished volume and a failed read. The live journal is the
     // classifier. A proven loss of the armed cursor is CatchUpLost; a cursor still retained, or a
-    // journal that cannot answer, is an ordinary drive error on this scan.
-    static async Task ReportFailedCatchUpAsync(DriveChannel channel, UsnJournalCursor armed, Exception exception,
+    // journal that cannot answer, is an ordinary volume error on this scan.
+    static async Task ReportFailedCatchUpAsync(VolumeChannel channel, UsnJournalCursor armed, Exception exception,
         CancellationToken cancellationToken)
     {
-        var loss = JournalCheckpointCheck.Check(channel.Drive, armed.JournalIdentifier, armed.NextUsn,
+        var loss = JournalCheckpointCheck.Check(channel.Volume, armed.JournalIdentifier, armed.NextUsn,
             JournalCheckpointLossDetection.ScanCatchUp);
         if (loss is null)
         {

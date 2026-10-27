@@ -11,8 +11,8 @@ public sealed partial record IndexedRoot
     /// <exception cref="ArgumentException">The path is not a valid <see cref="RootKey" /> directory path.</exception>
     public static IndexedRoot FromDirectory(string rootDirectory)
     {
-        var drive = RootKey.FromDirectory(rootDirectory, out var normalizedPath);
-        return new IndexedRoot(drive, normalizedPath, ReadDirectoryVolumeSerial(normalizedPath),
+        var root = RootKey.FromDirectory(rootDirectory, out var normalizedPath);
+        return new IndexedRoot(root, normalizedPath, ReadDirectoryVolumeSerial(normalizedPath),
             ProducerKind.Enumeration);
     }
 

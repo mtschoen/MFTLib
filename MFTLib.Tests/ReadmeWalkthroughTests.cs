@@ -52,7 +52,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
         await using (var index = await FileIndex.OpenAsync(options, cancellationToken))
         {
             var status = index.Status;
-            if (status.State != DriveState.Ready)
+            if (status.State != RootState.Ready)
             {
                 throw new InvalidOperationException(
                     $"Dump scan failed ({status.Failure?.Kind}): {status.Failure?.Message}");
@@ -78,7 +78,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
     }
 
     [TestMethod]
-    public async Task DumpWalkthrough_MissingOrEmptyDump_ReportsFailedDriveInsteadOfEmptySuccess()
+    public async Task DumpWalkthrough_MissingOrEmptyDump_ReportsFailedRootInsteadOfEmptySuccess()
     {
         var emptyDumpFile = MftDumpFixture.WriteFile(TemporaryDirectoryPath, [], "empty.mft");
         var missingDumpFile = Path.Combine(TemporaryDirectoryPath, "missing.mft");
@@ -94,14 +94,14 @@ public sealed class ReadmeWalkthroughTests : IDisposable
             await using var index = await FileIndex.OpenAsync(options, cancellationToken);
             var status = index.Status;
 
-            Assert.AreEqual(DriveState.Failed, status.State, filePath);
+            Assert.AreEqual(RootState.Failed, status.State, filePath);
             Assert.IsNull(status.Block, filePath);
-            Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind, filePath);
+            Assert.AreEqual(RootFailureKind.ProducerFailed, status.Failure?.Kind, filePath);
             Assert.IsFalse(string.IsNullOrWhiteSpace(status.Failure?.Message), filePath);
 
             var failure = Assert.ThrowsExactly<InvalidOperationException>(() =>
             {
-                if (status.State != DriveState.Ready)
+                if (status.State != RootState.Ready)
                 {
                     throw new InvalidOperationException(
                         $"Dump scan failed ({status.Failure?.Kind}): {status.Failure?.Message}");
@@ -117,20 +117,20 @@ public sealed class ReadmeWalkthroughTests : IDisposable
         IndexedRoot.Dependencies._volumeSerialReader = _ => 0x0BADF00Du;
 
         var cancellationToken = TestContext.CancellationToken;
-        var drive = IndexedRoot.ReadWindowsVolume('C');
+        var root = IndexedRoot.ReadWindowsVolume('C');
         var productionOptions = new FileIndexOptions
         {
-            Root = drive,
+            Root = root,
             CacheMode = CacheMode.Disabled,
             MftSource = MftIndexSources.FromLocalVolumes()
         };
-        Assert.AreEqual(new VolumeKey('C'), productionOptions.Root!.Drive);
+        Assert.AreEqual(new VolumeKey('C'), productionOptions.Root!.Root);
         Assert.AreEqual(CacheMode.Disabled, productionOptions.CacheMode);
         Assert.IsNotNull(productionOptions.MftSource);
 
         // The production setup above is compiled as shown; execution swaps in the owned directory so the
         // synthetic scan never depends on a real C:\ root.
-        drive = drive with { RootDirectory = TemporaryDirectoryPath };
+        root = root with { RootDirectory = TemporaryDirectoryPath };
 
         var scanCount = 0;
         var syntheticProducer = new SyntheticMftProducer(_ =>
@@ -150,7 +150,7 @@ public sealed class ReadmeWalkthroughTests : IDisposable
         var ignoredCachePath = Path.Combine(TemporaryDirectoryPath, "never-created-cache");
         var options = productionOptions with
         {
-            Root = drive,
+            Root = root,
             CacheDirectory = ignoredCachePath,
             MftSource = SyntheticIndexSource.Create(syntheticProducer)
         };
@@ -160,12 +160,12 @@ public sealed class ReadmeWalkthroughTests : IDisposable
         await using (var index = await FileIndex.OpenAsync(options, cancellationToken))
         {
             var status = index.Status;
-            if (status.State != DriveState.Ready)
+            if (status.State != RootState.Ready)
             {
                 throw new InvalidOperationException(
                     status.Failure is { } failure
-                        ? $"Drive {status.Drive} failed ({failure.Kind}): {failure.Message}"
-                        : $"Drive {status.Drive} is {status.State}.");
+                        ? $"Root {status.Root} failed ({failure.Kind}): {failure.Message}"
+                        : $"Root {status.Root} is {status.State}.");
             }
 
             Assert.IsNull(status.Failure);
@@ -199,11 +199,11 @@ public sealed class ReadmeWalkthroughTests : IDisposable
     public async Task LocalOneShotWalkthrough_FailedAndCancelledOperations_SurfaceExpectedOutcomes()
     {
         IndexedRoot.Dependencies._volumeSerialReader = _ => 0x0BADF00Du;
-        var drive = IndexedRoot.ReadWindowsVolume('C') with { RootDirectory = TemporaryDirectoryPath };
+        var root = IndexedRoot.ReadWindowsVolume('C') with { RootDirectory = TemporaryDirectoryPath };
 
         var failingOptions = new FileIndexOptions
         {
-            Root = drive,
+            Root = root,
             CacheMode = CacheMode.Disabled,
             MftSource = SyntheticIndexSource.Create(
                 new SyntheticMftProducer(_ => throw new InvalidOperationException("Access to the volume was denied.")))
@@ -212,20 +212,20 @@ public sealed class ReadmeWalkthroughTests : IDisposable
         await using (var failedIndex = await FileIndex.OpenAsync(failingOptions, TestContext.CancellationToken))
         {
             var status = failedIndex.Status;
-            Assert.AreEqual(DriveState.Failed, status.State);
-            Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind);
+            Assert.AreEqual(RootState.Failed, status.State);
+            Assert.AreEqual(RootFailureKind.ProducerFailed, status.Failure?.Kind);
 
             var thrown = Assert.ThrowsExactly<InvalidOperationException>(() =>
             {
-                if (status.State != DriveState.Ready)
+                if (status.State != RootState.Ready)
                 {
                     throw new InvalidOperationException(
                         status.Failure is { } failure
-                            ? $"Drive {status.Drive} failed ({failure.Kind}): {failure.Message}"
-                            : $"Drive {status.Drive} is {status.State}.");
+                            ? $"Root {status.Root} failed ({failure.Kind}): {failure.Message}"
+                            : $"Root {status.Root} is {status.State}.");
                 }
             });
-            Assert.AreEqual("Drive C failed (ProducerFailed): Access to the volume was denied.", thrown.Message);
+            Assert.AreEqual("Root C failed (ProducerFailed): Access to the volume was denied.", thrown.Message);
         }
 
         using var cancelledSource = new CancellationTokenSource();

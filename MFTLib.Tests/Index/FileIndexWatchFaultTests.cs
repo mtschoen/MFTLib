@@ -5,7 +5,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 /// <summary>
-///     The per-drive fault lane. Every fault here is injected through a drive's scripted handle or a
+///     The per-root fault lane. Every fault here is injected through a root's scripted handle or a
 ///     throwing subscriber, so none of these needs a broker, a volume, or Windows.
 /// </summary>
 [TestClass]
@@ -16,7 +16,7 @@ public class FileIndexWatchFaultTests
     CancellationToken Token => TestContext.CancellationToken;
 
     [TestMethod]
-    public async Task ApplyFailure_IsReportedAsAnApplyFaultAndIsolatesTheDrive()
+    public async Task ApplyFailure_IsReportedAsAnApplyFaultAndIsolatesTheRoot()
     {
         using var harness = new WatchHarness('T', 'U');
         await harness.IndexFor('T').StartWatchingAsync(Token);
@@ -30,12 +30,12 @@ public class FileIndexWatchFaultTests
 
         Assert.HasCount(1, harness.Faults);
         Assert.IsInstanceOfType<ArgumentNullException>(fault.Exception);
-        Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage, "the recovery replaced the faulted watch");
-        Assert.AreEqual(DriveState.Ready, harness.DriveFor('T').State);
-        Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
+        Assert.IsNull(harness.RootFor('T').Watch.FailureMessage, "the recovery replaced the faulted watch");
+        Assert.AreEqual(RootState.Ready, harness.RootFor('T').State);
+        Assert.AreEqual(WatchState.CatchingUp, harness.RootFor('T').Watch.State);
         Assert.HasCount(2, harness.Source.TargetsFor('T'));
         Assert.HasCount(1, harness.Source.TargetsFor('U'));
-        Assert.IsNull(harness.DriveFor('U').Watch.FailureMessage);
+        Assert.IsNull(harness.RootFor('U').Watch.FailureMessage);
         Assert.AreEqual(frozenCursor, harness.BlockFor('T').Header.UsnNextUsn, "the rejected batch advanced nothing");
         Assert.AreEqual(9000L, harness.BlockFor('U').Header.UsnNextUsn);
         Assert.HasCount(1, harness.Changes);
@@ -54,26 +54,26 @@ public class FileIndexWatchFaultTests
         var wrapped = new IOException("journal wrapped");
         var frozenCursor = harness.BlockFor('T').Header.UsnNextUsn;
 
-        harness.Source.WatchFor('T').FailDrive(wrapped);
-        var fault = await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
+        harness.Source.WatchFor('T').FailVolume(wrapped);
+        var fault = await harness.WaitForFaultAsync(WatchFaultKind.Volume, 'T');
         await harness.Source.WatchFor('U').Publish(WatchHarness.Batch(10, "u.txt", nextUsn: 9000));
 
         Assert.HasCount(1, harness.Faults);
-        Assert.AreEqual('T', fault.Drive);
-        var driveFault = (DriveWatchFaultException)fault.Exception;
-        Assert.AreSame(wrapped, driveFault.InnerException);
-        Assert.AreEqual("journal wrapped", harness.DriveFor('T').Watch.FailureMessage);
-        Assert.AreEqual(DriveState.Ready, harness.DriveFor('T').State);
+        Assert.AreEqual('T', fault.Volume);
+        var rootFault = (VolumeWatchFaultException)fault.Exception;
+        Assert.AreSame(wrapped, rootFault.InnerException);
+        Assert.AreEqual("journal wrapped", harness.RootFor('T').Watch.FailureMessage);
+        Assert.AreEqual(RootState.Ready, harness.RootFor('T').State);
         Assert.AreEqual(frozenCursor, harness.BlockFor('T').Header.UsnNextUsn);
         Assert.AreEqual(9000L, harness.BlockFor('U').Header.UsnNextUsn);
 
-        var failure = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
+        var failure = await RootResultAssertions.FailureAsync<VolumeWatchFaultException>(
             () => harness.IndexFor('T').StopWatchingAsync(Token));
-        Assert.AreSame(driveFault, failure);
+        Assert.AreSame(rootFault, failure);
     }
 
     [TestMethod]
-    public async Task ChannelLoss_EndsOnlyThatDrivesPump_AndNamesTheDrive()
+    public async Task ChannelLoss_EndsOnlyThatRootsPump_AndNamesTheRoot()
     {
         using var harness = new WatchHarness('T', 'U');
         await harness.IndexFor('T').StartWatchingAsync(Token);
@@ -85,54 +85,54 @@ public class FileIndexWatchFaultTests
         await harness.Source.WatchFor('U').Publish(WatchHarness.Batch(10, "u.txt", nextUsn: 9000));
 
         Assert.HasCount(1, harness.Faults);
-        Assert.AreEqual('T', fault.Drive);
+        Assert.AreEqual('T', fault.Volume);
         Assert.AreSame(lost, fault.Exception);
-        Assert.AreEqual("the broker died", harness.DriveFor('T').Watch.FailureMessage);
-        Assert.AreEqual(WatchState.Faulted, harness.DriveFor('T').Watch.State);
-        Assert.IsNull(harness.DriveFor('U').Watch.FailureMessage);
-        Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('U').Watch.State);
+        Assert.AreEqual("the broker died", harness.RootFor('T').Watch.FailureMessage);
+        Assert.AreEqual(WatchState.Faulted, harness.RootFor('T').Watch.State);
+        Assert.IsNull(harness.RootFor('U').Watch.FailureMessage);
+        Assert.AreEqual(WatchState.CatchingUp, harness.RootFor('U').Watch.State);
         Assert.AreEqual(9000L, harness.BlockFor('U').Header.UsnNextUsn);
 
-        var failure = await DriveResultAssertions.FailureAsync<IOException>(
+        var failure = await RootResultAssertions.FailureAsync<IOException>(
             () => harness.IndexFor('T').StopWatchingAsync(Token));
         Assert.AreSame(lost, failure);
     }
 
     [TestMethod]
-    public async Task EveryDriveFaulted_LeavesEachDrivesFaultForItsOwnStop()
+    public async Task EveryRootFaulted_LeavesEachRootsFaultForItsOwnStop()
     {
         using var harness = new WatchHarness('T', 'U');
         harness.HoldEveryRecovery();
         await harness.IndexFor('T').StartWatchingAsync(Token);
         await harness.IndexFor('U').StartWatchingAsync(Token);
-        var driveTFailure = new IOException("T's journal wrapped");
-        var driveUFailure = new IOException("U's journal wrapped");
+        var rootTFailure = new IOException("T's journal wrapped");
+        var rootUFailure = new IOException("U's journal wrapped");
 
-        harness.Source.WatchFor('T').FailDrive(driveTFailure);
-        harness.Source.WatchFor('U').FailDrive(driveUFailure);
-        await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
-        await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'U');
+        harness.Source.WatchFor('T').FailVolume(rootTFailure);
+        harness.Source.WatchFor('U').FailVolume(rootUFailure);
+        await harness.WaitForFaultAsync(WatchFaultKind.Volume, 'T');
+        await harness.WaitForFaultAsync(WatchFaultKind.Volume, 'U');
 
         foreach (var driveLetter in new[] { 'T', 'U' })
         {
-            Assert.IsNotNull(harness.DriveFor(driveLetter).Watch.FailureMessage);
-            Assert.AreEqual(DriveState.Ready, harness.DriveFor(driveLetter).State);
+            Assert.IsNotNull(harness.RootFor(driveLetter).Watch.FailureMessage);
+            Assert.AreEqual(RootState.Ready, harness.RootFor(driveLetter).State);
         }
 
-        var thrownForU = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
+        var thrownForU = await RootResultAssertions.FailureAsync<VolumeWatchFaultException>(
             () => harness.IndexFor('U').StopWatchingAsync(Token));
-        var thrownForT = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
+        var thrownForT = await RootResultAssertions.FailureAsync<VolumeWatchFaultException>(
             () => harness.IndexFor('T').StopWatchingAsync(Token));
-        Assert.AreSame(driveUFailure, thrownForU.InnerException);
-        Assert.AreSame(driveTFailure, thrownForT.InnerException);
+        Assert.AreSame(rootUFailure, thrownForU.InnerException);
+        Assert.AreSame(rootTFailure, thrownForT.InnerException);
         foreach (var handle in harness.Source.Watches)
         {
-            Assert.AreEqual(1, handle.DisposeCount, $"drive {handle.Drive}");
+            Assert.AreEqual(1, handle.DisposeCount, $"root {handle.Volume}");
         }
     }
 
     [TestMethod]
-    public async Task SubscriberFault_DoesNotDropTheDrive()
+    public async Task SubscriberFault_DoesNotDropTheRoot()
     {
         using var harness = new WatchHarness();
         var changeCount = 0;
@@ -152,10 +152,10 @@ public class FileIndexWatchFaultTests
 
         Assert.HasCount(1, harness.Faults);
         Assert.AreEqual(WatchFaultKind.Subscriber, harness.Faults[0].Kind);
-        Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
+        Assert.IsNull(harness.RootFor('T').Watch.FailureMessage);
         Assert.AreEqual(300L, harness.BlockFor('T').Header.UsnNextUsn);
 
-        await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+        await RootResultAssertions.FailureAsync<InvalidOperationException>(
             () => harness.IndexFor('T').StopWatchingAsync(Token));
     }
 
@@ -174,11 +174,11 @@ public class FileIndexWatchFaultTests
         await Assert.ThrowsAsync<OperationCanceledException>(() => start);
         Assert.IsEmpty(harness.Faults);
         Assert.IsEmpty(harness.Source.Watches);
-        Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
-        Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
-        await DriveResultAssertions.NotApplicableAsync(
+        Assert.AreEqual(WatchState.NotStarted, harness.RootFor('T').Watch.State);
+        Assert.IsNull(harness.RootFor('T').Watch.FailureMessage);
+        await RootResultAssertions.NotApplicableAsync(
             () => harness.IndexFor('T').StopWatchingAsync(Token),
-            "the cancelled start cleared the request, so the drive is not watching");
+            "the cancelled start cleared the request, so the root is not watching");
     }
 
     [TestMethod]
@@ -199,7 +199,7 @@ public class FileIndexWatchFaultTests
     }
 
     [TestMethod]
-    public async Task StopWatchingAsync_WithACancelledToken_AbandonsTheWaitAndLeavesTheDriveRestartable()
+    public async Task StopWatchingAsync_WithACancelledToken_AbandonsTheWaitAndLeavesTheRootRestartable()
     {
         using var harness = new WatchHarness();
         var applying = harness.TrackGate();
@@ -231,14 +231,14 @@ public class FileIndexWatchFaultTests
         using var harness = new WatchHarness();
         harness.HoldEveryRecovery();
         await harness.IndexFor('T').StartWatchingAsync(Token);
-        harness.Source.WatchFor('T').FailDrive(new IOException("journal wrapped"));
-        await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
-        Assert.IsNotNull(harness.DriveFor('T').Watch.FailureMessage);
-        await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
+        harness.Source.WatchFor('T').FailVolume(new IOException("journal wrapped"));
+        await harness.WaitForFaultAsync(WatchFaultKind.Volume, 'T');
+        Assert.IsNotNull(harness.RootFor('T').Watch.FailureMessage);
+        await RootResultAssertions.FailureAsync<VolumeWatchFaultException>(
             () => harness.IndexFor('T').StopWatchingAsync(Token));
 
         await harness.IndexFor('T').StartWatchingAsync(Token);
-        Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
+        Assert.IsNull(harness.RootFor('T').Watch.FailureMessage);
         await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(recordNumber: 9, "after.txt", nextUsn: 300));
         Assert.AreEqual(300L, harness.BlockFor('T').Header.UsnNextUsn);
         await harness.IndexFor('T').StopWatchingAsync(Token);

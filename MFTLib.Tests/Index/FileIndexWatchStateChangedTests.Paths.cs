@@ -6,7 +6,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 /// <summary>
-///     The remaining paths that change a drive's watch state, and the two delivery guarantees a
+///     The remaining paths that change a root's watch state, and the two delivery guarantees a
 ///     concurrent or failing settlement could break: a fault's state change is delivered before
 ///     its WatchFaulted even when another thread took it from the queue, and it is delivered even
 ///     when the checkpoint check after the settlement throws.
@@ -24,7 +24,7 @@ public partial class FileIndexWatchStateChangedTests
     }
 
     /// <summary>
-    ///     A stop lands between the pump settling a drive fault and the pump reporting it, takes the
+    ///     A stop lands between the pump settling a root fault and the pump reporting it, takes the
     ///     queued Faulted with its own NotStarted, and is held inside the first handler. The pump
     ///     must wait for that delivery to finish before it raises WatchFaulted.
     /// </summary>
@@ -44,8 +44,8 @@ public partial class FileIndexWatchStateChangedTests
         };
         var recorder = new WatchStateRecorder(index);
         await index.StartWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
-        await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
-        Task<DriveOperationResult>? stop = null;
+        await harness.Source.WatchFor('T').Publish(new VolumeCaughtUp());
+        Task<RootOperationResult>? stop = null;
         index.Hooks.PumpFaultSettlementWrapper = settle =>
         {
             settle();
@@ -54,14 +54,14 @@ public partial class FileIndexWatchStateChangedTests
         };
         var contendedBefore = index.ContendedWatchStateDeliveriesForTest;
 
-        harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
+        harness.Source.WatchFor('T').FailVolume(new IOException("T's journal wrapped"));
         await stopDelivering.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         await UntilAsync(() => index.ContendedWatchStateDeliveriesForTest > contendedBefore);
         stopDelivering.Release();
-        await recorder.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
+        await recorder.WaitForFaultAsync(WatchFaultKind.Volume, 'T');
 
-        AssertHistory(recorder, 'T', "CatchingUp:1", "CaughtUp:2", "Faulted:3:Drive", "NotStarted:4", "!Drive");
-        await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => stop!.WaitAsync(HangGuard, TestContext.CancellationToken));
+        AssertHistory(recorder, 'T', "CatchingUp:1", "CaughtUp:2", "Faulted:3:Volume", "NotStarted:4", "!Volume");
+        await RootResultAssertions.FailureAsync<VolumeWatchFaultException>(() => stop!.WaitAsync(HangGuard, TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -73,13 +73,13 @@ public partial class FileIndexWatchStateChangedTests
         var recorder = new WatchStateRecorder(harness.Index);
         await harness.IndexFor('T').StartWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
+        harness.Source.WatchFor('T').FailVolume(new IOException("T's journal wrapped"));
         var faulted = await recorder.WaitForStateAsync('T', state => state.Watch.State == WatchState.Faulted);
 
         Assert.AreEqual(2, faulted.Watch.StateVersion);
-        Assert.AreEqual(WatchFaultKind.Drive, faulted.Fault?.Kind);
+        Assert.AreEqual(WatchFaultKind.Volume, faulted.Fault?.Kind);
         AssertStatusMatchesLastEvent(harness, recorder, 'T');
-        await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => harness.IndexFor('T').StopWatchingAsync(Token));
+        await RootResultAssertions.FailureAsync<VolumeWatchFaultException>(() => harness.IndexFor('T').StopWatchingAsync(Token));
     }
 
     [TestMethod]
@@ -95,15 +95,15 @@ public partial class FileIndexWatchStateChangedTests
             await recoveryHeld.WaitForReleaseAsync(token);
         };
         await index.StartWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
-        harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
-        await recorder.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
+        harness.Source.WatchFor('T').FailVolume(new IOException("T's journal wrapped"));
+        await recorder.WaitForFaultAsync(WatchFaultKind.Volume, 'T');
         await recoveryHeld.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         await index.StartWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         recoveryHeld.Release();
         await harness.WaitForRecoveryAsync('T');
 
-        AssertHistory(recorder, 'T', "CatchingUp:1", "Faulted:2:Drive", "Recovering:3:Drive", "!Drive", "Faulted:4",
+        AssertHistory(recorder, 'T', "CatchingUp:1", "Faulted:2:Volume", "Recovering:3:Volume", "!Volume", "Faulted:4",
             "CatchingUp:5");
         AssertStatusMatchesLastEvent(harness, recorder, 'T');
         await index.StopWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -116,7 +116,7 @@ public partial class FileIndexWatchStateChangedTests
         var index = harness.Index;
         var recorder = new WatchStateRecorder(index);
         await index.StartWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
-        await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
+        await harness.Source.WatchFor('T').Publish(new VolumeCaughtUp());
         Task? stop = null;
         index.Hooks.BeforeRestartDecision = _ => stop ??= index.StopWatchingAsync(CancellationToken.None);
 
@@ -138,7 +138,7 @@ public partial class FileIndexWatchStateChangedTests
         await recorder.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
 
         AssertHistory(recorder, 'T', "CatchingUp:1", "Faulted:2:Channel", "!Channel");
-        await DriveResultAssertions.FailureAsync<IOException>(() => harness.IndexFor('T').StopWatchingAsync(Token));
+        await RootResultAssertions.FailureAsync<IOException>(() => harness.IndexFor('T').StopWatchingAsync(Token));
         AssertHistory(recorder, 'T', "CatchingUp:1", "Faulted:2:Channel", "!Channel", "NotStarted:3");
     }
 

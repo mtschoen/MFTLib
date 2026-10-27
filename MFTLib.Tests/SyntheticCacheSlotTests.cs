@@ -13,7 +13,7 @@ namespace MFTLib.Tests;
 public sealed class SyntheticCacheSlotTests : IDisposable
 {
     const uint Serial = 0x1234;
-    static readonly VolumeKey Drive = new('T');
+    static readonly VolumeKey Volume = new('T');
     TempDirectory _directoryOwner = null!;
     string _cacheDirectory = null!;
 
@@ -31,7 +31,7 @@ public sealed class SyntheticCacheSlotTests : IDisposable
 
     string WriteCorruptBlock()
     {
-        var path = SyntheticBlock.CachedPath(_cacheDirectory, Drive, Serial);
+        var path = SyntheticBlock.CachedPath(_cacheDirectory, Volume, Serial);
         File.WriteAllBytes(path, new byte[64]);
         return path;
     }
@@ -41,7 +41,7 @@ public sealed class SyntheticCacheSlotTests : IDisposable
     {
         var blockPath = WriteCorruptBlock();
         var before = File.ReadAllBytes(blockPath);
-        using (var slot = SyntheticCacheSlot.Acquire(_cacheDirectory, Drive, Serial))
+        using (var slot = SyntheticCacheSlot.Acquire(_cacheDirectory, Volume, Serial))
         {
             Assert.AreEqual(blockPath, slot.BlockPath);
             var busy = CacheDirectory.InspectCached(_cacheDirectory).Single();
@@ -57,7 +57,7 @@ public sealed class SyntheticCacheSlotTests : IDisposable
     [TestMethod]
     public void Acquire_DoesNotRequireABlockAndNeverCreatesOne()
     {
-        using var slot = SyntheticCacheSlot.Acquire(_cacheDirectory, Drive, Serial);
+        using var slot = SyntheticCacheSlot.Acquire(_cacheDirectory, Volume, Serial);
 
         Assert.IsFalse(File.Exists(slot.BlockPath));
         Assert.IsTrue(File.Exists(slot.LockPath));
@@ -67,10 +67,10 @@ public sealed class SyntheticCacheSlotTests : IDisposable
     public void Acquire_WhileAnotherSlotHoldsItThrowsAndTheOwnerKeepsIt()
     {
         WriteCorruptBlock();
-        using var slot = SyntheticCacheSlot.Acquire(_cacheDirectory, Drive, Serial);
+        using var slot = SyntheticCacheSlot.Acquire(_cacheDirectory, Volume, Serial);
 
         Assert.ThrowsExactly<InvalidOperationException>(
-            () => SyntheticCacheSlot.Acquire(_cacheDirectory, Drive, Serial));
+            () => SyntheticCacheSlot.Acquire(_cacheDirectory, Volume, Serial));
         Assert.AreEqual(CachedBlockAvailability.InUse,
             CacheDirectory.InspectCached(_cacheDirectory).Single().Availability);
     }
@@ -78,9 +78,9 @@ public sealed class SyntheticCacheSlotTests : IDisposable
     [TestMethod]
     public void Acquire_AfterDisposeSucceedsAgain()
     {
-        SyntheticCacheSlot.Acquire(_cacheDirectory, Drive, Serial).Dispose();
+        SyntheticCacheSlot.Acquire(_cacheDirectory, Volume, Serial).Dispose();
 
-        using var again = SyntheticCacheSlot.Acquire(_cacheDirectory, Drive, Serial);
+        using var again = SyntheticCacheSlot.Acquire(_cacheDirectory, Volume, Serial);
 
         Assert.IsTrue(File.Exists(again.LockPath));
     }
@@ -88,7 +88,7 @@ public sealed class SyntheticCacheSlotTests : IDisposable
     [TestMethod]
     public void Dispose_KeepsTheLockFileAndIsIdempotent()
     {
-        var slot = SyntheticCacheSlot.Acquire(_cacheDirectory, Drive, Serial);
+        var slot = SyntheticCacheSlot.Acquire(_cacheDirectory, Volume, Serial);
         var lockPath = slot.LockPath;
 
         slot.Dispose();
@@ -102,7 +102,7 @@ public sealed class SyntheticCacheSlotTests : IDisposable
     {
         var nested = Path.Combine(_cacheDirectory, "nested");
 
-        using var slot = SyntheticCacheSlot.Acquire(nested, Drive, Serial);
+        using var slot = SyntheticCacheSlot.Acquire(nested, Volume, Serial);
 
         Assert.IsTrue(File.Exists(slot.LockPath));
     }
@@ -110,8 +110,8 @@ public sealed class SyntheticCacheSlotTests : IDisposable
     [TestMethod]
     public void LockPathFor_NamesTheSiblingOfTheBlockTheSlotHolds()
     {
-        var blockPath = SyntheticBlock.CachedPath(_cacheDirectory, Drive, Serial);
-        using var slot = SyntheticCacheSlot.Acquire(_cacheDirectory, Drive, Serial);
+        var blockPath = SyntheticBlock.CachedPath(_cacheDirectory, Volume, Serial);
+        using var slot = SyntheticCacheSlot.Acquire(_cacheDirectory, Volume, Serial);
 
         Assert.AreEqual(slot.LockPath, SyntheticCacheSlot.LockPathFor(blockPath));
         Assert.AreNotEqual(blockPath, slot.LockPath);
@@ -129,7 +129,7 @@ public sealed class SyntheticCacheSlotTests : IDisposable
     [TestMethod]
     public void ArgumentValidation_RejectsEmptyPaths()
     {
-        Assert.ThrowsExactly<ArgumentException>(() => SyntheticCacheSlot.Acquire("", Drive, Serial));
+        Assert.ThrowsExactly<ArgumentException>(() => SyntheticCacheSlot.Acquire("", Volume, Serial));
         Assert.ThrowsExactly<ArgumentException>(() => SyntheticCacheSlot.LockPathFor(""));
     }
 }

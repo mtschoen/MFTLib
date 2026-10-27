@@ -17,7 +17,7 @@ public sealed class FileIndexSetTests
     {
         Assert.ThrowsExactly<ArgumentNullException>(() => new FileIndexSet(null!));
 
-        using var fixture = new TwoDriveQueryFixture();
+        using var fixture = new TwoRootQueryFixture();
         await using var first = await fixture.OpenAsync();
         await using var second = await fixture.OpenSecondAsync();
 
@@ -26,7 +26,7 @@ public sealed class FileIndexSetTests
 
         var duplicate = Assert.ThrowsExactly<ArgumentException>(() => new FileIndexSet([first, first]));
         Assert.AreEqual("indices", duplicate.ParamName);
-        Assert.Contains("Drive T is listed more than once.", duplicate.Message);
+        Assert.Contains("Root T is listed more than once.", duplicate.Message);
 
         var mutable = new List<FileIndex> { first, second };
         var set = new FileIndexSet(mutable);
@@ -60,7 +60,7 @@ public sealed class FileIndexSetTests
 
         await using var volumeIndex = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = SyntheticIndexedDrive.Create(new VolumeKey('T'), volumeRoot, 1, ProducerKind.Enumeration),
+            Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), volumeRoot, 1, ProducerKind.Enumeration),
             CacheMode = CacheMode.Disabled
         }, Token);
         await using var repoIndex = await FileIndex.OpenAsync(new FileIndexOptions
@@ -73,12 +73,12 @@ public sealed class FileIndexSetTests
 
         var inRepo = set.Find(Path.Combine(repoRoot, "src", "program.cs"), Token);
         Assert.IsNotNull(inRepo);
-        Assert.AreEqual(repoIndex.Status.Drive, inRepo.Value.Drive);
+        Assert.AreEqual(repoIndex.Status.Root, inRepo.Value.Root);
         Assert.AreEqual("program.cs", inRepo.Value.Name);
 
         var inVolume = set.Find(Path.Combine(volumeRoot, "work", "other.txt"), Token);
         Assert.IsNotNull(inVolume);
-        Assert.AreEqual(new VolumeKey('T'), inVolume.Value.Drive);
+        Assert.AreEqual(new VolumeKey('T'), inVolume.Value.Root);
         Assert.AreEqual("other.txt", inVolume.Value.Name);
 
         // A path inside repoRoot that does not exist in repoIndex does not fall back to volumeIndex.
@@ -105,7 +105,7 @@ public sealed class FileIndexSetTests
 
         await using var volumeIndex = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = SyntheticIndexedDrive.Create(new VolumeKey('T'), volumeRoot, 1, ProducerKind.Enumeration),
+            Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), volumeRoot, 1, ProducerKind.Enumeration),
             CacheMode = CacheMode.Disabled
         }, Token);
         await using var declinedRepoIndex = await FileIndex.OpenAsync(new FileIndexOptions
@@ -114,7 +114,7 @@ public sealed class FileIndexSetTests
             CacheDirectory = cacheDir.Path,
             CacheMode = CacheMode.ExistingOnly
         }, Token);
-        Assert.AreEqual(DriveState.Failed, declinedRepoIndex.Status.State);
+        Assert.AreEqual(RootState.Failed, declinedRepoIndex.Status.State);
 
         var set = new FileIndexSet([volumeIndex, declinedRepoIndex]);
         Assert.IsNull(set.Find(sharedFile, Token));
@@ -123,13 +123,13 @@ public sealed class FileIndexSetTests
     [TestMethod]
     public async Task Queries_FanOutInMemberOrderAndSkipBlocklessMembers()
     {
-        using var fixture = new TwoDriveQueryFixture();
+        using var fixture = new TwoRootQueryFixture();
         using var cacheDir = new TempDirectory("mftlib-set-fanout-cache");
         await using var first = await fixture.OpenAsync();
         await using var second = await fixture.OpenSecondAsync();
         await using var blockless = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = SyntheticIndexedDrive.Create(new VolumeKey('V'), fixture.FirstRoot, 3),
+            Root = SyntheticIndexedRoot.Create(new VolumeKey('V'), fixture.FirstRoot, 3),
             CacheDirectory = cacheDir.Path,
             CacheMode = CacheMode.ExistingOnly
         }, Token);
@@ -138,27 +138,27 @@ public sealed class FileIndexSetTests
         var reverse = new FileIndexSet([second, blockless, first]);
         var query = new SearchQuery("readme.md", NameMatchMode.Exact);
 
-        var forwardDrives = forward.Search(query, Token).Select(entry => entry.Drive).ToArray();
-        var reverseDrives = reverse.Search(query, Token).Select(entry => entry.Drive).ToArray();
-        Assert.AreSequenceEqual([new VolumeKey('T'), new VolumeKey('T'), new VolumeKey('U')], forwardDrives);
-        Assert.AreSequenceEqual([new VolumeKey('U'), new VolumeKey('T'), new VolumeKey('T')], reverseDrives);
-        Assert.AreSequenceEqual(forwardDrives, [.. forward.Enumerate(query, Token).Select(entry => entry.Drive)]);
-        Assert.AreSequenceEqual(reverseDrives, [.. reverse.Enumerate(query, Token).Select(entry => entry.Drive)]);
+        var forwardRoots = forward.Search(query, Token).Select(entry => entry.Root).ToArray();
+        var reverseRoots = reverse.Search(query, Token).Select(entry => entry.Root).ToArray();
+        Assert.AreSequenceEqual([new VolumeKey('T'), new VolumeKey('T'), new VolumeKey('U')], forwardRoots);
+        Assert.AreSequenceEqual([new VolumeKey('U'), new VolumeKey('T'), new VolumeKey('T')], reverseRoots);
+        Assert.AreSequenceEqual(forwardRoots, [.. forward.Enumerate(query, Token).Select(entry => entry.Root)]);
+        Assert.AreSequenceEqual(reverseRoots, [.. reverse.Enumerate(query, Token).Select(entry => entry.Root)]);
 
-        var rowDrives = new List<RootKey>();
+        var rowRoots = new List<RootKey>();
         foreach (var row in reverse.EnumerateRows(query, Token))
         {
-            rowDrives.Add(row.Drive);
+            rowRoots.Add(row.Root);
         }
 
-        Assert.AreSequenceEqual(reverseDrives, rowDrives);
+        Assert.AreSequenceEqual(reverseRoots, rowRoots);
     }
 
     [TestMethod]
     public async Task SubtreeQueries_RouteOnlyToOwningMemberAndValidateForeignDefaultAndDisposedAnchors()
     {
-        using var fixture = new TwoDriveQueryFixture();
-        using var foreignFixture = new TwoDriveQueryFixture();
+        using var fixture = new TwoRootQueryFixture();
+        using var foreignFixture = new TwoRootQueryFixture();
         await using var first = await fixture.OpenAsync();
         await using var second = await fixture.OpenSecondAsync();
         var foreign = await foreignFixture.OpenAsync();
@@ -171,7 +171,7 @@ public sealed class FileIndexSetTests
 
         var matches = set.Search(new SearchQuery("readme.md", NameMatchMode.Exact, Subtree: secondPictures), Token);
         Assert.HasCount(1, matches);
-        Assert.AreEqual(new VolumeKey('U'), matches[0].Drive);
+        Assert.AreEqual(new VolumeKey('U'), matches[0].Root);
         Assert.AreEqual(0, firstAdmitted, "subtree on U must not borrow T");
 
         var enumerated = set.Enumerate(new SearchQuery("readme.md", NameMatchMode.Exact, Subtree: secondPictures), Token).ToArray();
@@ -181,7 +181,7 @@ public sealed class FileIndexSetTests
         var rowCount = 0;
         foreach (var row in set.EnumerateRows(new SearchQuery("readme.md", NameMatchMode.Exact, Subtree: secondPictures), Token))
         {
-            Assert.AreEqual(new VolumeKey('U'), row.Drive);
+            Assert.AreEqual(new VolumeKey('U'), row.Root);
             rowCount++;
         }
 
@@ -194,14 +194,14 @@ public sealed class FileIndexSetTests
         Assert.ThrowsExactly<ArgumentException>(() => set.Enumerate(defaultQuery, Token));
         Assert.ThrowsExactly<ArgumentException>(() => { _ = set.EnumerateRows(defaultQuery, Token); });
 
-        // Foreign FileEntry (from an index not in the set, both matching and unconfigured drive keys) is rejected.
-        var singleDriveSet = new FileIndexSet([first]);
-        var unconfiguredDriveQuery = new SearchQuery(null, Subtree: secondPictures);
-        Assert.ThrowsExactly<ArgumentException>(() => singleDriveSet.Search(unconfiguredDriveQuery, Token));
-        Assert.ThrowsExactly<ArgumentException>(() => singleDriveSet.Enumerate(unconfiguredDriveQuery, Token).ToArray());
+        // Foreign FileEntry (from an index not in the set, both matching and unconfigured root keys) is rejected.
+        var singleRootSet = new FileIndexSet([first]);
+        var unconfiguredRootQuery = new SearchQuery(null, Subtree: secondPictures);
+        Assert.ThrowsExactly<ArgumentException>(() => singleRootSet.Search(unconfiguredRootQuery, Token));
+        Assert.ThrowsExactly<ArgumentException>(() => singleRootSet.Enumerate(unconfiguredRootQuery, Token).ToArray());
         Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            foreach (var _ in singleDriveSet.EnumerateRows(unconfiguredDriveQuery, Token))
+            foreach (var _ in singleRootSet.EnumerateRows(unconfiguredRootQuery, Token))
             {
             }
         });
@@ -232,7 +232,7 @@ public sealed class FileIndexSetTests
     [TestMethod]
     public async Task CallTimeValidationAndCancellation_RejectInvalidInputs()
     {
-        using var fixture = new TwoDriveQueryFixture();
+        using var fixture = new TwoRootQueryFixture();
         await using var first = await fixture.OpenAsync();
         var set = new FileIndexSet([first]);
 

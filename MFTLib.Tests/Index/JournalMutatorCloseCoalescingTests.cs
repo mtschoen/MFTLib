@@ -9,7 +9,7 @@ namespace MFTLib.Tests.Index;
 ///     close that repeats the cycle's reasons plus <see cref="UsnReason.Close" />. The
 ///     mutator reports the first record and coalesces the close record: its metadata is
 ///     applied to the row, but a reason the cycle already reported produces no second
-///     change. Tracked per drive block across batches, reset by a sequence-number change
+///     change. Tracked per root block across batches, reset by a sequence-number change
 ///     (MFT segment reuse) and by each close record.
 /// </summary>
 [TestClass]
@@ -215,7 +215,7 @@ public class JournalMutatorCloseCoalescingTests
         Assert.HasCount(1, secondPair,
             "A second rename inside one open cycle is a new rename, not the close record's echo.");
         Assert.AreEqual(FileChangeKind.Renamed, secondPair[0].Kind);
-        Assert.AreEqual(Path.Combine(TestDriveRoot.For('T'), "documents", "first.txt"),
+        Assert.AreEqual(Path.Combine(TestRootDirectory.For('T'), "documents", "first.txt"),
             secondPair[0].PreviousPath);
         Assert.IsEmpty(close,
             "The close record repeats the second rename's name and parent, so it is the echo.");

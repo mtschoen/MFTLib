@@ -6,7 +6,7 @@ namespace MFTLib.Tests;
 public class DefaultElevatedEntryRunnerConnectTests
 {
     [TestMethod]
-    public async Task ConnectDrivePipeAsync_CancelledBeforeAnyServerListens_ThrowsOperationCancelled()
+    public async Task ConnectVolumePipeAsync_CancelledBeforeAnyServerListens_ThrowsOperationCancelled()
     {
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
@@ -14,7 +14,7 @@ public class DefaultElevatedEntryRunnerConnectTests
 
         try
         {
-            await DefaultElevatedEntryRunner.ConnectDrivePipeAsync(
+            await DefaultElevatedEntryRunner.ConnectVolumePipeAsync(
                 pipeName, BrokerLiveness.ElevatedConnectTimeout, TimeProvider.System, cancellation.Token)
                 .WaitAsync(HangGuard, TestContext.CancellationToken);
         }

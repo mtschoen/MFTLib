@@ -9,7 +9,7 @@ namespace MFTLib.Tests.TestSupport;
 
 /// <summary>
 ///     A real <see cref="BrokerProcess" /> served by an in-process <see cref="JournalBrokerHost" />
-///     whose watch source is scripted per drive: each host-side watch is a
+///     whose watch source is scripted per volume: each host-side watch is a
 ///     <see cref="ScriptedWatchRun" /> the test pushes batches into, fails, ends or holds. Nothing
 ///     here mocks the client, and a host fault reaches a test only through what the process and its
 ///     channels surface.
@@ -26,11 +26,11 @@ sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
     readonly ArmableControlCorruption _corruption = new();
     int _connectionCount;
 
-    /// <summary>Serves a broker process whose host has no scans unless <paramref name="scanDrive" /> supplies them.</summary>
+    /// <summary>Serves a broker process whose host has no scans unless <paramref name="scanVolume" /> supplies them.</summary>
     /// <param name="tip">The journal tip the host answers to a watch's arm query and to a scan's arming.</param>
-    /// <param name="scanDrive">The host's scan source; a test that scans supplies it, and any other scan fails.</param>
+    /// <param name="scanVolume">The host's scan source; a test that scans supplies it, and any other scan fails.</param>
     /// <param name="seams">The host's catch-up source and clock, the client's options and the observation hooks.</param>
-    public ScriptedWatchBrokerHarness(UsnJournalCursor? tip = null, MftRecordBatchSource? scanDrive = null,
+    public ScriptedWatchBrokerHarness(UsnJournalCursor? tip = null, MftRecordBatchSource? scanVolume = null,
         ScriptedBrokerSeams? seams = null)
     {
         seams ??= new ScriptedBrokerSeams();
@@ -38,10 +38,10 @@ sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
         var host = new JournalBrokerHost(
             new ScriptedVolumeAccess
             {
-                CursorQuery = drive => _tips.GetValueOrDefault(drive.Letter, journalTip),
-                RecordBatches = scanDrive ?? ((_, _, _, _, _, _) => throw new InvalidOperationException("A scan is not expected.")),
+                CursorQuery = volume => _tips.GetValueOrDefault(volume.Letter, journalTip),
+                RecordBatches = scanVolume ?? ((_, _, _, _, _, _) => throw new InvalidOperationException("A scan is not expected.")),
                 JournalRead = seams.ReadJournal ?? ((_, since, _) => ([], since)),
-                JournalWatch = (drive, since, operation, token) => Watch(drive.Letter).RunAsync(since, operation, token),
+                JournalWatch = (volume, since, operation, token) => Watch(volume.Letter).RunAsync(since, operation, token),
                 VolumeInformation = _ => new NtfsVolumeInformation(1024 * 100, 1024)
             },
             processorCount: 4,
@@ -73,11 +73,11 @@ sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
 
     /// <summary>
     ///     Moves the journal tip the host answers for <paramref name="driveLetter" />: a watch armed
-    ///     from a block cursor below it has a backlog to deliver before the drive is caught up.
+    ///     from a block cursor below it has a backlog to deliver before the volume is caught up.
     /// </summary>
     public void SetTip(char driveLetter, UsnJournalCursor tip) => _tips[char.ToUpperInvariant(driveLetter)] = tip;
 
-    /// <summary>The host-side script of one drive's watches.</summary>
+    /// <summary>The host-side script of one volume's watches.</summary>
     public ScriptedHostWatch Watch(char driveLetter) =>
         _watches.GetOrAdd(char.ToUpperInvariant(driveLetter), _ => new ScriptedHostWatch());
 
@@ -146,12 +146,12 @@ sealed record ScriptedBrokerSeams
     /// <summary>Runs on the host's heartbeat sender thread after each visit.</summary>
     public Action? HeartbeatVisited { get; init; }
 
-    /// <summary>Wraps the client end of each pipe, given its name (<c>"control"</c> or a drive pipe's name).</summary>
+    /// <summary>Wraps the client end of each pipe, given its name (<c>"control"</c> or a volume pipe's name).</summary>
     public Func<string, Stream, Stream>? WrapClientStream { get; init; }
 }
 
 /// <summary>
-///     The host-side watches of one drive, one <see cref="ScriptedWatchRun" /> per watch the host
+///     The host-side watches of one volume, one <see cref="ScriptedWatchRun" /> per watch the host
 ///     starts, numbered from one in the order the host starts them.
 /// </summary>
 sealed class ScriptedHostWatch
@@ -172,7 +172,7 @@ sealed class ScriptedHostWatch
     /// </summary>
     public void WedgeNextRunInProcessing(string stepName, TestGate gate) => _wedgeInNextRun = (stepName, gate);
 
-    /// <summary>Completes with the <paramref name="number" />th watch the host starts on this drive.</summary>
+    /// <summary>Completes with the <paramref name="number" />th watch the host starts on this volume.</summary>
     public Task<ScriptedWatchRun> RunAsync(int number) =>
         Slot(number).Task.WaitAsync(HangGuard);
 
@@ -205,7 +205,7 @@ sealed class ScriptedHostWatch
 }
 
 /// <summary>
-///     One watch the host runs on a drive, driven by hand. It yields each pushed batch, fails or
+///     One watch the host runs on a volume, driven by hand. It yields each pushed batch, fails or
 ///     ends when told to, and reports when it entered, when the host cancelled it (its pipe closed
 ///     or its session ended) and when it returned.
 /// </summary>
@@ -250,7 +250,7 @@ sealed class ScriptedWatchRun
     /// <summary>The host's watch fails: the client reads an <c>Error</c> frame carrying the exception's message.</summary>
     public void Fail(Exception exception) => _items.Writer.TryComplete(exception);
 
-    /// <summary>The host's watch source ends normally, which closes the drive's pipe.</summary>
+    /// <summary>The host's watch source ends normally, which closes the volume's pipe.</summary>
     public void End() => _items.Writer.TryComplete();
 
     /// <summary>Lets a watch that ignores cancellation finish, after it has yielded what is queued.</summary>
@@ -314,7 +314,7 @@ static class ChangeSignal
     }
 }
 
-/// <summary>Bounded reads of a drive's watch handle, so a hang fails a test instead of wedging it.</summary>
+/// <summary>Bounded reads of a volume's watch handle, so a hang fails a test instead of wedging it.</summary>
 static class WatchReads
 {
     public static async Task<WatchStreamItem> NextAsync(IAsyncEnumerator<WatchStreamItem> reader)

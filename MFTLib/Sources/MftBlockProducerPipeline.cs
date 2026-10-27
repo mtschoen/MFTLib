@@ -32,7 +32,7 @@ static class MftBlockProducerPipeline
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var block = BlockFile.Create(MftBlockCapacity.CreateOptions(plan.Volume, request.Drive,
+        var block = BlockFile.Create(MftBlockCapacity.CreateOptions(plan.Volume, request.Volume,
             request.BlockPath, request.VolumeSerial, request.DeleteOnClose,
             new BlockContentIdentity(request.CacheTag, request.ScanShape)));
         try

@@ -80,7 +80,7 @@ public class WatchFailureObservationTests
             await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteStalled(writer, BrokerFrame.Stalled(marker)));
             var fault = await announced.Task.WaitAsync(token);
             Assert.AreEqual(WatchFaultKind.Channel, fault.Kind);
-            Assert.AreEqual('T', fault.Drive);
+            Assert.AreEqual('T', fault.Volume);
             Assert.AreEqual(marker, fault.Exception.Message);
             var status = index.Status;
             Assert.AreEqual(WatchState.Faulted, status.Watch.State);
@@ -88,15 +88,15 @@ public class WatchFailureObservationTests
 
             if (requestLateWaits)
             {
-                var late = await DriveResultAssertions.FailureAsync<BrokerChannelLostException>(
+                var late = await RootResultAssertions.FailureAsync<BrokerChannelLostException>(
                     () => index.WaitForCatchUpAsync(token));
                 Assert.AreSame(fault.Exception, late);
                 var lateSingle = await index.WaitForCatchUpAsync(token);
-                Assert.AreEqual(DriveOperationOutcome.Failed, lateSingle.Outcome);
+                Assert.AreEqual(RootOperationOutcome.Failed, lateSingle.Outcome);
                 Assert.AreSame(fault.Exception, lateSingle.Failure);
             }
 
-            var stopped = await DriveResultAssertions.FailureAsync<BrokerChannelLostException>(
+            var stopped = await RootResultAssertions.FailureAsync<BrokerChannelLostException>(
                 () => index.StopWatchingAsync(token));
             Assert.AreSame(fault.Exception, stopped);
             return [new WeakReference(index), new WeakReference(source)];
@@ -127,7 +127,7 @@ public class WatchFailureObservationTests
         var first = reader.MoveNextAsync().AsTask();
         await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteError(writer, BrokerFrame.Error(0, marker)));
 
-        var failure = await Assert.ThrowsAsync<DriveWatchFaultException>(
+        var failure = await Assert.ThrowsAsync<VolumeWatchFaultException>(
             () => first.WaitAsync(HangGuard));
         Assert.IsNull(failure.InnerException);
         Assert.AreEqual(marker, failure.Message);

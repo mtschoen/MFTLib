@@ -60,7 +60,7 @@ public ref struct IndexRowEnumerator
     readonly FileIndex.QueryScope _scope;
     readonly RowEnumerationSegments? _segments;
     readonly SearchQuery _query;
-    readonly DriveBlock? _singleBlock;
+    readonly RootBlock? _singleBlock;
     readonly bool _flagsOnly;
     readonly bool _includeDeleted;
     readonly bool _filterDirectories;
@@ -68,8 +68,8 @@ public ref struct IndexRowEnumerator
     readonly ResolvedSubtree? _subtree;
     CancellationToken _cancellationToken;
     RowScanner _scanner;
-    DriveBlock? _driveBlock;
-    int _nextDrive;
+    RootBlock? _rootBlock;
+    int _nextRoot;
     int _segment;
 
     /// <summary>
@@ -82,7 +82,7 @@ public ref struct IndexRowEnumerator
         _segments = null;
         _query = query;
         _cancellationToken = scope.CancellationToken;
-        _singleBlock = scope.DriveBlock;
+        _singleBlock = scope.RootBlock;
 
         // A query with no name, size, date or subtree predicate needs only the row flags, so its loop
         // skips the general predicate and reads no query field per row.
@@ -102,8 +102,8 @@ public ref struct IndexRowEnumerator
         }
 
         _scanner = default;
-        _driveBlock = null;
-        _nextDrive = 0;
+        _rootBlock = null;
+        _nextRoot = 0;
         _segment = 0;
     }
 
@@ -121,8 +121,8 @@ public ref struct IndexRowEnumerator
         _wantDirectories = query.IsDirectory.GetValueOrDefault();
         _subtree = null;
         _scanner = default;
-        _driveBlock = null;
-        _nextDrive = 0;
+        _rootBlock = null;
+        _nextRoot = 0;
         _segment = 0;
     }
 
@@ -135,12 +135,12 @@ public ref struct IndexRowEnumerator
         get
         {
             ThrowIfDisposed();
-            var driveBlock = _driveBlock ?? throw new InvalidOperationException("The enumerator has no current row.");
-            return new IndexRow(driveBlock, _scanner.CurrentRowIndex, in _scanner.Current, _scanner.CurrentName);
+            var rootBlock = _rootBlock ?? throw new InvalidOperationException("The enumerator has no current row.");
+            return new IndexRow(rootBlock, _scanner.CurrentRowIndex, in _scanner.Current, _scanner.CurrentName);
         }
     }
 
-    /// <summary>Advances to the next matching row, moving across drive blocks as each is exhausted.</summary>
+    /// <summary>Advances to the next matching row, moving across root blocks as each is exhausted.</summary>
     /// <exception cref="OperationCanceledException">The token was cancelled; observed before the first row and every 4096 rows.</exception>
     /// <exception cref="ObjectDisposedException">This enumerator or a copy has returned the shared borrow.</exception>
     /// <exception cref="InvalidDataException">A candidate's parent chain exceeds 128 hops while applying a subtree restriction.</exception>
@@ -149,17 +149,17 @@ public ref struct IndexRowEnumerator
         ThrowIfDisposed();
         while (true)
         {
-            if (_driveBlock is not null)
+            if (_rootBlock is not null)
             {
-                if (_flagsOnly ? MoveToNextFlagsMatch() : MoveToNextGeneralMatch(_driveBlock))
+                if (_flagsOnly ? MoveToNextFlagsMatch() : MoveToNextGeneralMatch(_rootBlock))
                 {
                     return true;
                 }
 
-                _driveBlock = null;
+                _rootBlock = null;
             }
 
-            if (!AdvanceDrive())
+            if (!AdvanceRoot())
             {
                 return false;
             }
@@ -183,7 +183,7 @@ public ref struct IndexRowEnumerator
         return false;
     }
 
-    bool MoveToNextGeneralMatch(DriveBlock driveBlock)
+    bool MoveToNextGeneralMatch(RootBlock rootBlock)
     {
         while (_scanner.MoveNext())
         {
@@ -194,7 +194,7 @@ public ref struct IndexRowEnumerator
             }
 
             if (_subtree is { } under &&
-                !IndexNavigation.IsUnder(driveBlock.Block, _scanner.CurrentRowIndex, under.RowIndex))
+                !IndexNavigation.IsUnder(rootBlock.Block, _scanner.CurrentRowIndex, under.RowIndex))
             {
                 continue;
             }
@@ -205,34 +205,34 @@ public ref struct IndexRowEnumerator
         return false;
     }
 
-    bool AdvanceDrive()
+    bool AdvanceRoot()
     {
         if (_segments is not null)
         {
             if (_segments.TryMoveNextSegment(out var nextBlock, out _cancellationToken, ref _segment))
             {
-                _driveBlock = nextBlock;
+                _rootBlock = nextBlock;
                 _scanner = new RowScanner(nextBlock, _cancellationToken);
                 return true;
             }
 
-            _driveBlock = null;
+            _rootBlock = null;
             return false;
         }
 
-        if (_nextDrive == 0)
+        if (_nextRoot == 0)
         {
-            _nextDrive = 1;
+            _nextRoot = 1;
             _cancellationToken.ThrowIfCancellationRequested();
-            if (_singleBlock is { } driveBlock)
+            if (_singleBlock is { } rootBlock)
             {
-                _driveBlock = driveBlock;
-                _scanner = new RowScanner(driveBlock, _cancellationToken);
+                _rootBlock = rootBlock;
+                _scanner = new RowScanner(rootBlock, _cancellationToken);
                 return true;
             }
         }
 
-        _nextDrive = int.MaxValue;
+        _nextRoot = int.MaxValue;
         _cancellationToken.ThrowIfCancellationRequested();
         return false;
     }
@@ -306,7 +306,7 @@ sealed class RowEnumerationSegments : IDisposable
 
     internal int ActiveSegment => Volatile.Read(ref _activeSegment);
 
-    internal bool TryMoveNextSegment([NotNullWhen(true)] out DriveBlock? driveBlock, out CancellationToken cancellationToken,
+    internal bool TryMoveNextSegment([NotNullWhen(true)] out RootBlock? rootBlock, out CancellationToken cancellationToken,
         ref int enumeratorSegment)
     {
         while (true)
@@ -317,7 +317,7 @@ sealed class RowEnumerationSegments : IDisposable
                 if (!_hasActiveScope)
                 {
                     _callerCancellationToken.ThrowIfCancellationRequested();
-                    driveBlock = null;
+                    rootBlock = null;
                     cancellationToken = default;
                     return false;
                 }
@@ -336,7 +336,7 @@ sealed class RowEnumerationSegments : IDisposable
                 {
                     enumeratorSegment = _activeSegment;
                     _callerCancellationToken.ThrowIfCancellationRequested();
-                    driveBlock = null;
+                    rootBlock = null;
                     cancellationToken = default;
                     return false;
                 }
@@ -348,9 +348,9 @@ sealed class RowEnumerationSegments : IDisposable
             }
 
             _activeScope.CancellationToken.ThrowIfCancellationRequested();
-            if (_activeScope.DriveBlock is { } block)
+            if (_activeScope.RootBlock is { } block)
             {
-                driveBlock = block;
+                rootBlock = block;
                 cancellationToken = _activeScope.CancellationToken;
                 return true;
             }

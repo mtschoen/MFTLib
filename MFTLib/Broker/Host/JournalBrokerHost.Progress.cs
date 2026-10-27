@@ -2,7 +2,7 @@ using System.Threading.Channels;
 
 namespace MFTLib;
 
-/// <summary>Tracks parsing and transfer counts for the elevated broker's per-drive progress reports.</summary>
+/// <summary>Tracks parsing and transfer counts for the elevated broker's per-volume progress reports.</summary>
 sealed partial class JournalBrokerHost
 {
     // What a finished block scan hands to its completion frames.

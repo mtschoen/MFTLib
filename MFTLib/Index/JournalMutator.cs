@@ -7,11 +7,11 @@ namespace MFTLib.Index;
 ///     scanned observations when an event cannot have changed them and marks them unknown when
 ///     it can have; every row write goes through <see cref="BlockWriter" />, which holds the
 ///     block's access scope. Capacity exhaustion sets the
-///     capacity-exhausted flag, keeps applying what fits, and leaves the drive queryable rather
+///     capacity-exhausted flag, keeps applying what fits, and leaves the volume queryable rather
 ///     than crashing or silently dropping a record. NTFS closes every open cycle with a record
 ///     that repeats the cycle's reasons plus <see cref="UsnReason.Close" />; the mutator
 ///     coalesces that close record against the reasons the cycle already reported (tracked per
-///     drive block in <see cref="ReportedReasonCycles" />), so one real transition raises one
+///     root block in <see cref="ReportedReasonCycles" />), so one real transition raises one
 ///     change while the row still takes the close record's attributes.
 ///     A data write that happens inside the create cycle (a record whose reasons still include
 ///     <see cref="UsnReason.FileCreate" /> before the cycle's close) is part of the creation
@@ -38,17 +38,17 @@ sealed class JournalMutator
     ///     generation once if anything actually changed. Entries are applied sequentially rather
     ///     than grouped, because a create and a delete for one record can share a batch.
     /// </summary>
-    public IReadOnlyList<FileChange> Apply(DriveBlock driveBlock,
+    public IReadOnlyList<FileChange> Apply(RootBlock rootBlock,
         IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn)
     {
-        ArgumentNullException.ThrowIfNull(driveBlock);
+        ArgumentNullException.ThrowIfNull(rootBlock);
         ArgumentNullException.ThrowIfNull(entries);
 
         var changes = new List<FileChange>();
         var rowMutated = false;
         foreach (var entry in entries)
         {
-            var change = ApplyOne(driveBlock, entry, ref rowMutated);
+            var change = ApplyOne(rootBlock, entry, ref rowMutated);
             if (change is not null)
             {
                 changes.Add(change);
@@ -64,7 +64,7 @@ sealed class JournalMutator
         return changes;
     }
 
-    FileChange? ApplyOne(DriveBlock driveBlock, UsnJournalEntry entry, ref bool rowMutated)
+    FileChange? ApplyOne(RootBlock rootBlock, UsnJournalEntry entry, ref bool rowMutated)
     {
         var rowIndex = (uint)entry.RecordNumber;
         if (entry.RecordNumber > uint.MaxValue || rowIndex >= Writer.SlotCapacity)
@@ -81,7 +81,7 @@ sealed class JournalMutator
         // cycle is part of the creation and raises nothing extra, so a cycle that reported
         // FileCreate treats all modification reasons as reported. RenameOldName never
         // classifies: it is the paired frame whose RenameNewName sibling carries the rename.
-        var cycles = driveBlock.ReportedCycles;
+        var cycles = rootBlock.ReportedCycles;
         var reported = cycles.GetReportedReasons(rowIndex, entry.SequenceNumber);
         var meaningful = entry.Reason & ~(UsnReason.Close | UsnReason.RenameOldName);
         var classification = meaningful & ~reported;
@@ -109,19 +109,19 @@ sealed class JournalMutator
         }
         else if ((classification & UsnReason.FileCreate) != 0)
         {
-            change = ApplyCreate(driveBlock, entry, rowIndex);
+            change = ApplyCreate(rootBlock, entry, rowIndex);
         }
         else if ((classification & UsnReason.FileDelete) != 0)
         {
-            change = ApplyDelete(driveBlock, entry, rowIndex);
+            change = ApplyDelete(rootBlock, entry, rowIndex);
         }
         else if ((classification & UsnReason.RenameNewName) != 0)
         {
-            change = ApplyRenameArm(driveBlock, entry, rowIndex, classification, ref rowMutated);
+            change = ApplyRenameArm(rootBlock, entry, rowIndex, classification, ref rowMutated);
         }
         else if (classification != UsnReason.None)
         {
-            change = ApplyModification(driveBlock, entry, rowIndex, classification);
+            change = ApplyModification(rootBlock, entry, rowIndex, classification);
         }
         else
         {
@@ -152,16 +152,16 @@ sealed class JournalMutator
         return change;
     }
 
-    FileChange? ApplyDelete(DriveBlock driveBlock, UsnJournalEntry entry, uint rowIndex)
+    FileChange? ApplyDelete(RootBlock rootBlock, UsnJournalEntry entry, uint rowIndex)
     {
         if (IsDeletedRow(rowIndex) || !TryHydrateRow(entry, rowIndex, out _))
         {
             return null;
         }
 
-        var path = IndexNavigation.BuildPath(driveBlock, rowIndex);
+        var path = IndexNavigation.BuildPath(rootBlock, rowIndex);
         Writer.MarkTombstone(rowIndex);
-        return new FileChange(FileChangeKind.Deleted, FileEntry.Create(driveBlock, rowIndex), path,
+        return new FileChange(FileChangeKind.Deleted, FileEntry.Create(rootBlock, rowIndex), path,
             entry.TimestampUtc);
     }
 
@@ -169,7 +169,7 @@ sealed class JournalMutator
     ///     The rename arm of <see cref="ApplyOne" />: a rename of a row the index never
     ///     had is reported as a create, because there is no real previous path to give it.
     /// </summary>
-    FileChange? ApplyRenameArm(DriveBlock driveBlock, UsnJournalEntry entry, uint rowIndex,
+    FileChange? ApplyRenameArm(RootBlock rootBlock, UsnJournalEntry entry, uint rowIndex,
         UsnReason classification, ref bool rowMutated)
     {
         if (IsDeletedRow(rowIndex) || !TryHydrateRow(entry, rowIndex, out var hydrated))
@@ -179,11 +179,11 @@ sealed class JournalMutator
 
         if (hydrated)
         {
-            return new FileChange(FileChangeKind.Created, FileEntry.Create(driveBlock, rowIndex),
-                IndexNavigation.BuildPath(driveBlock, rowIndex), entry.TimestampUtc);
+            return new FileChange(FileChangeKind.Created, FileEntry.Create(rootBlock, rowIndex),
+                IndexNavigation.BuildPath(rootBlock, rowIndex), entry.TimestampUtc);
         }
 
-        return ApplyRename(driveBlock, entry, rowIndex, classification, ref rowMutated);
+        return ApplyRename(rootBlock, entry, rowIndex, classification, ref rowMutated);
     }
 
     /// <summary>
@@ -202,7 +202,7 @@ sealed class JournalMutator
         return Writer.UpdateRowMetadata(rowIndex, (uint)entry.FileAttributes, RowFreshness.Unchanged);
     }
 
-    FileChange? ApplyCreate(DriveBlock driveBlock, UsnJournalEntry entry, uint rowIndex)
+    FileChange? ApplyCreate(RootBlock rootBlock, UsnJournalEntry entry, uint rowIndex)
     {
         var columns = BuildColumns(entry);
         if (!Writer.TryWriteRow(rowIndex, entry.FileName, in columns))
@@ -212,14 +212,14 @@ sealed class JournalMutator
 
         Writer.InvalidateDeletedDescendants(rowIndex);
 
-        return new FileChange(FileChangeKind.Created, FileEntry.Create(driveBlock, rowIndex),
-            IndexNavigation.BuildPath(driveBlock, rowIndex), entry.TimestampUtc);
+        return new FileChange(FileChangeKind.Created, FileEntry.Create(rootBlock, rowIndex),
+            IndexNavigation.BuildPath(rootBlock, rowIndex), entry.TimestampUtc);
     }
 
-    FileChange? ApplyRename(DriveBlock driveBlock, UsnJournalEntry entry, uint rowIndex,
+    FileChange? ApplyRename(RootBlock rootBlock, UsnJournalEntry entry, uint rowIndex,
         UsnReason classification, ref bool rowMutated)
     {
-        var previousPath = IndexNavigation.BuildPath(driveBlock, rowIndex);
+        var previousPath = IndexNavigation.BuildPath(rootBlock, rowIndex);
         if (!Writer.TryRenameRow(rowIndex, entry.FileName, (uint)entry.ParentRecordNumber))
         {
             // The name did not fit, but the cycle now counts every reason of this record as reported, so a
@@ -235,7 +235,7 @@ sealed class JournalMutator
         // A rename alone changes neither size nor last-write time, so the scan's observations survive it.
         Writer.UpdateRowMetadata(rowIndex, (uint)entry.FileAttributes, FreshnessFor(classification));
         return new FileChange(FileChangeKind.Renamed,
-            FileEntry.Create(driveBlock, rowIndex), IndexNavigation.BuildPath(driveBlock, rowIndex),
+            FileEntry.Create(rootBlock, rowIndex), IndexNavigation.BuildPath(rootBlock, rowIndex),
             entry.TimestampUtc, previousPath);
     }
 
@@ -249,7 +249,7 @@ sealed class JournalMutator
     ///     time. <see cref="ApplyOne" /> calls this only for a classification that still holds
     ///     a reason other than Close and RenameOldName.
     /// </summary>
-    FileChange? ApplyModification(DriveBlock driveBlock, UsnJournalEntry entry, uint rowIndex,
+    FileChange? ApplyModification(RootBlock rootBlock, UsnJournalEntry entry, uint rowIndex,
         UsnReason classification)
     {
         if (IsDeletedRow(rowIndex) || !TryHydrateRow(entry, rowIndex, out _))
@@ -258,8 +258,8 @@ sealed class JournalMutator
         }
 
         Writer.UpdateRowMetadata(rowIndex, (uint)entry.FileAttributes, FreshnessFor(classification));
-        return new FileChange(FileChangeKind.Modified, FileEntry.Create(driveBlock, rowIndex),
-            IndexNavigation.BuildPath(driveBlock, rowIndex), entry.TimestampUtc);
+        return new FileChange(FileChangeKind.Modified, FileEntry.Create(rootBlock, rowIndex),
+            IndexNavigation.BuildPath(rootBlock, rowIndex), entry.TimestampUtc);
     }
 
     /// <summary>

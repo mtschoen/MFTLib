@@ -59,7 +59,7 @@ public class BrokerFrameLengthTests
     [DataRow(BrokerFrameStream.MaximumFrameLength + 1)]
     public async Task Host_ControlFrameLengthBeyondMaximum_EndsSessionWithInvalidData(int length)
     {
-        var harness = new HostChannelHarness(BrokerHostFactory.Create(new() { ScanDrive = (_, _, _, _, _, _) => [], ProcessorCount = null }));
+        var harness = new HostChannelHarness(BrokerHostFactory.Create(new() { ScanVolume = (_, _, _, _, _, _) => [], ProcessorCount = null }));
         try
         {
             await harness.SendControlAsync(writer => WriteLengthPrefix(writer, length));
@@ -74,9 +74,9 @@ public class BrokerFrameLengthTests
     }
 
     [TestMethod]
-    public async Task Host_DriveFirstRequestLengthBeyondMaximum_WritesErrorAndOtherRequestsContinue()
+    public async Task Host_VolumeFirstRequestLengthBeyondMaximum_WritesErrorAndOtherRequestsContinue()
     {
-        await using var harness = new HostChannelHarness(BrokerHostFactory.Create(new() { ScanDrive = (_, _, _, _, _, _) => [], ProcessorCount = null }));
+        await using var harness = new HostChannelHarness(BrokerHostFactory.Create(new() { ScanVolume = (_, _, _, _, _, _) => [], ProcessorCount = null }));
         var pipe = await harness.OpenChannelAsync('C');
 
         await HostChannelHarness.WriteFrameAsync(pipe, writer => WriteLengthPrefix(writer, int.MaxValue));
@@ -101,15 +101,15 @@ public class BrokerFrameLengthTests
         await broker.WriteControlAsync(writer => WriteLengthPrefix(writer, int.MaxValue));
 
         var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard, TestContext.CancellationToken));
-        Assert.IsNull(lost.Drive);
+        Assert.IsNull(lost.Volume);
         Assert.Contains("2147483647", await ended.WaitAsync(HangGuard, TestContext.CancellationToken));
     }
 
     [TestMethod]
-    public async Task Client_DriveFrameLengthBeyondMaximum_ScanFailsWithChannelLost()
+    public async Task Client_VolumeFrameLengthBeyondMaximum_ScanFailsWithChannelLost()
     {
         await using var broker = new ScriptedBroker();
-        var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
+        var scan = broker.Process.ScanVolumeAsync('C', TestBlockSections.Target(), new MftScanOptions(),
             null, CancellationToken.None);
         await broker.AnswerQueryVolumeAsync(new NtfsVolumeInformation(1024 * 1000, 1024));
         await using var pipe = await broker.AcceptChannelAsync();
@@ -118,7 +118,7 @@ public class BrokerFrameLengthTests
         await HostChannelHarness.WriteFrameAsync(pipe, writer => WriteLengthPrefix(writer, int.MaxValue));
 
         var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard, TestContext.CancellationToken));
-        Assert.AreEqual('C', lost.Drive);
+        Assert.AreEqual('C', lost.Volume);
         Assert.IsInstanceOfType<InvalidDataException>(lost.InnerException);
     }
 

@@ -74,22 +74,22 @@ using MFTLib;
 using MFTLib.Index;
 
 var cancellationToken = CancellationToken.None;
-var drive = IndexedRoot.FromWindowsDrive('C');
+var root = IndexedRoot.FromWindowsDrive('C');
 var options = new FileIndexOptions
 {
-    Root = drive,
+    Root = root,
     CacheMode = CacheMode.Disabled,
     MftSource = MftIndexSources.FromLocalVolumes()
 };
 
 await using var index = await FileIndex.OpenAsync(options, cancellationToken);
 var status = index.Status;
-if (status.State != DriveState.Ready)
+if (status.State != RootState.Ready)
 {
     throw new InvalidOperationException(
         status.Failure is { } failure
-            ? $"Drive {status.Drive} failed ({failure.Kind}): {failure.Message}"
-            : $"Drive {status.Drive} is {status.State}.");
+            ? $"Root {status.Root} failed ({failure.Kind}): {failure.Message}"
+            : $"Root {status.Root} is {status.State}.");
 }
 
 var query = new SearchQuery("*.log", NameMatchMode.Glob, IsDirectory: false);
@@ -102,16 +102,16 @@ foreach (var entry in index.Enumerate(query, cancellationToken).Take(20))
 
 - `IndexedRoot.FromWindowsDrive('C')` reads the volume serial from Windows and throws
   `IOException` when Windows cannot report it.
-- Check `RootStatus.State` before treating zero results as an empty drive. An unelevated
-  process settles the drive `Failed` with `DriveFailureKind.ProducerFailed` rather than throwing.
+- Check `RootStatus.State` before treating zero results as an empty root. An unelevated
+  process settles the root `Failed` with `RootFailureKind.ProducerFailed` rather than throwing.
 - One open is one scan. Run as many queries as you like against it, and finish every
   enumeration inside the `await using` scope. Sizes and times are what the scan observed.
 
 ## Quick start: query a saved MFT dump
 
-The dump source loads one saved `$MFT` file as a virtual drive, in process, on Windows or
+The dump source loads one saved `$MFT` file as a virtual volume, in process, on Windows or
 Linux, with no elevation. You choose the drive letter; entries render paths under `dump:/D`.
-The source supplies its own drive and is never cached. Supply the source through
+The source supplies its own root and is never cached. Supply the source through
 `MftSource`; `Root`, `CacheMode` and `CacheDirectory` must be null, and `CacheTag` must
 be default. Other values throw `ArgumentException`.
 
@@ -128,7 +128,7 @@ var options = new FileIndexOptions
 
 await using var index = await FileIndex.OpenAsync(options, cancellationToken);
 var status = index.Status;
-if (status.State != DriveState.Ready)
+if (status.State != RootState.Ready)
 {
     throw new InvalidOperationException(
         $"Dump scan failed ({status.Failure?.Kind}): {status.Failure?.Message}");
@@ -142,7 +142,7 @@ foreach (var entry in index.Enumerate(query, cancellationToken))
 }
 ```
 
-A dump is untrusted input. A missing, empty or malformed file settles the drive `Failed`
+A dump is untrusted input. A missing, empty or malformed file settles the volume `Failed`
 with the reason in `RootStatus.Failure.Message`. A dump holds metadata only, so
 `FileEntry.Open` throws `InvalidOperationException` for its entries.
 
@@ -176,12 +176,12 @@ var options = new FileIndexOptions
 await using var index = await FileIndex.OpenAsync(options, cancellationToken);
 index.Changed += change => Console.WriteLine($"{change.Kind}: {change.Path}");
 index.WatchFaulted += fault => Console.Error.WriteLine(
-    $"Drive {fault.Drive}: {fault.Kind}, automatic recovery: {fault.IsRecovering}");
+    $"Volume {fault.Volume}: {fault.Kind}, automatic recovery: {fault.IsRecovering}");
 
 var startResult = await index.StartWatchingAsync(cancellationToken);
-if (startResult.Outcome == DriveOperationOutcome.Failed)
+if (startResult.Outcome == RootOperationOutcome.Failed)
 {
-    Console.Error.WriteLine($"Drive {startResult.Drive} did not start: {startResult.Failure}");
+    Console.Error.WriteLine($"Root {startResult.Root} did not start: {startResult.Failure}");
 }
 
 await index.WaitForCatchUpAsync(cancellationToken);
@@ -210,7 +210,7 @@ Console.ReadLine();
 - **`RootStatus.Failure`** reports why opening or scanning a root failed: `CacheDeclined`,
   `CacheIdentityMismatch`, `InUse`, `ProducerFailed` or `MftSourceMissing`. A failed root accepts
   `RescanAsync`, except that `MftSourceMissing` stays failed while `FileIndexOptions.MftSource` is null.
-- **`DriveOperationResult.Failure`** carries the failure of the four lifecycle verbs on `FileIndex`.
+- **`RootOperationResult.Failure`** carries the failure of the four lifecycle verbs on `FileIndex`.
   `StopWatchingAsync` returns an outstanding watch fault once as a `Failed` result.
 - **`FileIndex.WatchFaulted`** reports live watch faults. `WatchFault.IsRecovering` says
   whether the root is rescanning itself, and `FileIndex.WatchStateChanged` reports each
@@ -223,7 +223,7 @@ Console.ReadLine();
 `SampleProgram.Direct` runs one-shot queries over a live volume or a saved dump: `search`,
 `tree`, `children`, `open`, `largest`, `duplicate-names` and `scan`. `SampleProgram.Watch` uses the broker:
 `scan`, `watch`, `rescan`, `journal`, `cache` and `elevation-status`. With no arguments
-it watches every ready NTFS fixed drive until a key press.
+it watches every ready NTFS fixed volume until a key press.
 
 ```powershell
 .\SampleProgram.Direct\bin\x64\Release\net10.0\SampleProgram.Direct.exe search C --name notes
@@ -238,7 +238,7 @@ to skip every prompt.
 - [Broker integration guide](https://github.com/mtschoen/MFTLib/blob/main/docs/broker-integration.md): session ownership, cached opens, watches, faults and journal growth.
 - [Broker scan sizing](https://github.com/mtschoen/MFTLib/blob/main/docs/broker-scan-tuning.md): block capacity, concurrent parse threads and catch-up tuning.
 - [Testing your integration](https://github.com/mtschoen/MFTLib/blob/main/docs/broker-testing.md): the `MFTLib.TestExtensions` harness, scripted watches and synthetic blocks.
-- [Checkpoint loss](https://github.com/mtschoen/MFTLib/blob/main/docs/checkpoint-loss.md): why a drive rescanned instead of resuming, and what journal size would have helped.
+- [Checkpoint loss](https://github.com/mtschoen/MFTLib/blob/main/docs/checkpoint-loss.md): why a volume rescanned instead of resuming, and what journal size would have helped.
 - [Watch lifetime](https://github.com/mtschoen/MFTLib/blob/main/docs/watch-lifetime.md): start, stop, rescan, recovery and event ordering.
 - [Query lifetime](https://github.com/mtschoen/MFTLib/blob/main/docs/query-lifetime.md): snapshot borrows, row views, entry handles and paths.
 - [Block format](https://github.com/mtschoen/MFTLib/blob/main/docs/index-format.md): cache files, cache identity, freed records and row columns.

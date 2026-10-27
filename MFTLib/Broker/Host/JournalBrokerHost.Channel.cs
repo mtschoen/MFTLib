@@ -2,21 +2,21 @@ using MFTLib.Index;
 
 namespace MFTLib;
 
-/// <summary>Opens one drive pipe and serves its one operation.</summary>
+/// <summary>Opens one volume pipe and serves its one operation.</summary>
 sealed partial class JournalBrokerHost
 {
-    // One drive pipe and what its operation needs to write to it. The pipe writer's lock keeps a
+    // One volume pipe and what its operation needs to write to it. The pipe writer's lock keeps a
     // scan's progress pump, its operation and the heartbeat sender from interleaving frames on
     // this pipe only; the pipe writer is also the operation state the channel's source reports to.
-    sealed class DriveChannel(Stream stream, VolumeKey drive, HostPipeWriter pipe)
+    sealed class VolumeChannel(Stream stream, VolumeKey volume, HostPipeWriter pipe)
     {
         public Stream Stream { get; } = stream;
-        public VolumeKey Drive { get; } = drive;
+        public VolumeKey Volume { get; } = volume;
         public string Tag => Pipe.Tag;
         public HostPipeWriter Pipe { get; } = pipe;
     }
 
-    static Task WriteChannelErrorAsync(DriveChannel channel, string message, CancellationToken cancellationToken)
+    static Task WriteChannelErrorAsync(VolumeChannel channel, string message, CancellationToken cancellationToken)
     {
         return channel.Pipe.WriteFrameAsync(writer => BrokerProtocol.WriteError(writer, BrokerFrame.Error(0, message)),
             cancellationToken);
@@ -29,7 +29,7 @@ sealed partial class JournalBrokerHost
     async Task OpenChannelAsync(ControlSession session, BrokerFrame request)
     {
         var requestId = request.RequestId;
-        var drive = request.RequireDrive();
+        var volume = request.RequireVolume();
         string pipeName;
         try
         {
@@ -41,7 +41,7 @@ sealed partial class JournalBrokerHost
             return;
         }
 
-        if (await ConnectChannelAsync(session, requestId, drive, pipeName).ConfigureAwait(false) is not { } stream)
+        if (await ConnectChannelAsync(session, requestId, volume, pipeName).ConfigureAwait(false) is not { } stream)
         {
             return;
         }
@@ -57,11 +57,11 @@ sealed partial class JournalBrokerHost
             throw;
         }
 
-        session.Tasks.Track(Task.Run(() => ServeChannelAsync(session, stream, drive, pipeName), CancellationToken.None));
+        session.Tasks.Track(Task.Run(() => ServeChannelAsync(session, stream, volume, pipeName), CancellationToken.None));
     }
 
     // Returns the connected stream, or null once the Error reply has been written.
-    async Task<Stream?> ConnectChannelAsync(ControlSession session, uint requestId, VolumeKey drive, string pipeName)
+    async Task<Stream?> ConnectChannelAsync(ControlSession session, uint requestId, VolumeKey volume, string pipeName)
     {
         using var connectCancellation = CancellationTokenSource.CreateLinkedTokenSource(session.Token);
         var connectToken = connectCancellation.Token;
@@ -79,7 +79,7 @@ sealed partial class JournalBrokerHost
             DisposeLateConnection(connection);
             var seconds = BrokerLiveness.FormatSeconds(BrokerLiveness.ChannelConnectTimeout);
             await WriteControlErrorAsync(session, requestId,
-                    $"Drive {drive} channel pipe '{pipeName}' did not connect within {seconds} seconds.")
+                    $"Volume {volume} channel pipe '{pipeName}' did not connect within {seconds} seconds.")
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (session.Token.IsCancellationRequested)
@@ -92,7 +92,7 @@ sealed partial class JournalBrokerHost
         catch (Exception exception)
         {
             await WriteControlErrorAsync(session, requestId,
-                    $"Drive {drive} channel pipe '{pipeName}' could not be connected: {exception.Message}")
+                    $"Volume {volume} channel pipe '{pipeName}' could not be connected: {exception.Message}")
                 .ConfigureAwait(false);
         }
 
@@ -115,7 +115,7 @@ sealed partial class JournalBrokerHost
     // behind. The host closes its end when the operation returns. The heartbeat sender visits the
     // pipe from the first request's wait until the operation has returned; a Stalled frame or a
     // failed heartbeat cancels the channel.
-    async Task ServeChannelAsync(ControlSession session, Stream stream, VolumeKey drive, string tag)
+    async Task ServeChannelAsync(ControlSession session, Stream stream, VolumeKey volume, string tag)
     {
         await using (stream.ConfigureAwait(false))
         {
@@ -123,7 +123,7 @@ sealed partial class JournalBrokerHost
             var channelToken = channelCancellation.Token;
             var pipe = new HostPipeWriter(stream, tag, _timeProvider, heartbeatsWhenIdle: false,
                 channelCancellation);
-            var channel = new DriveChannel(stream, drive, pipe);
+            var channel = new VolumeChannel(stream, volume, pipe);
             session.Heartbeats.Register(pipe);
             try
             {
@@ -163,7 +163,7 @@ sealed partial class JournalBrokerHost
         }
     }
 
-    Task RunChannelOperationAsync(DriveChannel channel, BrokerFrame request, IBlockSectionWriter? blockSectionWriter,
+    Task RunChannelOperationAsync(VolumeChannel channel, BrokerFrame request, IBlockSectionWriter? blockSectionWriter,
         CancellationToken cancellationToken)
     {
         return request.Kind switch
@@ -171,14 +171,14 @@ sealed partial class JournalBrokerHost
             BrokerFrameKind.ArmAndScan => RunScanAsync(channel, request, blockSectionWriter, cancellationToken),
             BrokerFrameKind.StartWatch => StreamWatchAsync(channel, request.Cursor, cancellationToken),
             _ => WriteChannelErrorAsync(channel,
-                $"{request.Kind} is not a drive channel request; expected ArmAndScan or StartWatch",
+                $"{request.Kind} is not a volume channel request; expected ArmAndScan or StartWatch",
                 cancellationToken)
         };
     }
 
     // Returns null when no request arrived in time or the pipe closed first; the Error frame, where
     // one can be written, has been written by then.
-    async Task<BrokerFrame?> ReadFirstRequestAsync(DriveChannel channel, CancellationToken cancellationToken)
+    async Task<BrokerFrame?> ReadFirstRequestAsync(VolumeChannel channel, CancellationToken cancellationToken)
     {
         using var readCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var read = BrokerFrameStream.ReadFrameAsync(channel.Stream, channel.Tag, readCancellation.Token);
@@ -194,14 +194,14 @@ sealed partial class JournalBrokerHost
             await AwaitCancelledReadAsync(read).ConfigureAwait(false);
             var seconds = BrokerLiveness.FormatSeconds(BrokerLiveness.FirstRequestTimeout);
             await WriteChannelErrorAsync(channel,
-                    $"Drive {channel.Drive} channel received no request within {seconds} seconds.", cancellationToken)
+                    $"Volume {channel.Volume} channel received no request within {seconds} seconds.", cancellationToken)
                 .ConfigureAwait(false);
             return null;
         }
         catch (Exception exception) when (exception is InvalidDataException or EndOfStreamException)
         {
             await WriteChannelErrorAsync(channel,
-                    $"Drive {channel.Drive} channel received a malformed request: {exception.Message}",
+                    $"Volume {channel.Volume} channel received a malformed request: {exception.Message}",
                     cancellationToken)
                 .ConfigureAwait(false);
             return null;

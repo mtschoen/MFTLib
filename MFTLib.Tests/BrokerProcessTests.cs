@@ -17,9 +17,9 @@ public partial class BrokerProcessTests
     {
         await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
-            QueryVolumeInformation = drive =>
+            QueryVolumeInformation = volume =>
             {
-                Assert.AreEqual(new VolumeKey('D'), drive);
+                Assert.AreEqual(new VolumeKey('D'), volume);
                 return Volume;
             }
         }));
@@ -36,9 +36,9 @@ public partial class BrokerProcessTests
     {
         await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
-            GrowUsnJournal = (drive, maximumSize, allocationDelta) =>
+            GrowUsnJournal = (volume, maximumSize, allocationDelta) =>
             {
-                Assert.AreEqual(new VolumeKey('E'), drive);
+                Assert.AreEqual(new VolumeKey('E'), volume);
                 return new UsnJournalSettings { MaximumSize = maximumSize * 2, AllocationDelta = allocationDelta };
             }
         }));
@@ -70,9 +70,9 @@ public partial class BrokerProcessTests
         var gate = new TestGate();
         await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
-            QueryVolumeInformation = drive =>
+            QueryVolumeInformation = volume =>
             {
-                if (drive != 'C')
+                if (volume != 'C')
                 {
                     return Volume with { MftValidDataLength = 2048 * 1000 };
                 }
@@ -138,7 +138,7 @@ public partial class BrokerProcessTests
         await broker.CloseControlAsync();
         var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => first.WaitAsync(HangGuard, TestContext.CancellationToken));
 
-        Assert.IsNull(lost.Drive);
+        Assert.IsNull(lost.Volume);
         Assert.AreEqual(0, broker.Process.Hooks.PendingRequestCount);
     }
 
@@ -205,7 +205,7 @@ public partial class BrokerProcessTests
         var watching = new TestGate();
         var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
-            WatchDrive = (_, _, _, cancellationToken) =>
+            WatchVolume = (_, _, _, cancellationToken) =>
                 WatchUntilCancelledAsync(watching, watchCancelled, cancellationToken)
         }));
         try
@@ -234,13 +234,13 @@ public partial class BrokerProcessTests
     }
 
     [TestMethod]
-    public async Task OpenChannelAsync_TwoSameDriveChannels_ProduceDistinctValidHexPipeNames()
+    public async Task OpenChannelAsync_TwoSameVolumeChannels_ProduceDistinctValidHexPipeNames()
     {
         var connectedPipes = new List<string>();
         await using var broker = new InProcessBroker(
             BrokerHostFactory.Create(new()
             {
-                WatchDrive = (_, _, _, _) => AsyncEnumerable.Empty<(UsnJournalEntry[], UsnJournalCursor)>()
+                WatchVolume = (_, _, _, _) => AsyncEnumerable.Empty<(UsnJournalEntry[], UsnJournalCursor)>()
             }),
             wrapConnector: inner => (pipeName, cancellationToken) =>
             {

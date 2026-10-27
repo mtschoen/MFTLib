@@ -8,7 +8,7 @@ namespace MFTLib.Tests.TestSupport;
 
 /// <summary>
 ///     Runs <see cref="JournalBrokerHost.ServeAsync" /> over an in-memory control pipe and
-///     in-memory drive pipes, and speaks raw frames to it the way a client would. Drive pipes
+///     in-memory volume pipes, and speaks raw frames to it the way a client would. Volume pipes
 ///     are created on demand by name, so the default connector hands the host the host end and a
 ///     test reads the client end of the same name. Reads skip <see cref="BrokerFrameKind.Heartbeat" />
 ///     frames, as the client does, unless a test asks for them.
@@ -17,7 +17,7 @@ sealed class HostChannelHarness : IAsyncDisposable
 {
     readonly ConcurrentDictionary<string, InMemoryPipePair> _pipes = new(StringComparer.Ordinal);
     readonly InMemoryPipePair _control = new();
-    readonly Func<string, Stream, Stream>? _wrapDrivePipe;
+    readonly Func<string, Stream, Stream>? _wrapVolumePipe;
     readonly Task? _connectionsReleased;
     uint _nextRequestId;
     int _nextPipe;
@@ -25,21 +25,21 @@ sealed class HostChannelHarness : IAsyncDisposable
     /// <summary>Starts <see cref="JournalBrokerHost.ServeAsync" /> on <paramref name="host" /> over a fresh control pipe.</summary>
     /// <param name="host">The host under test.</param>
     /// <param name="blockSectionWriter">The session's section writer; null serves a watch-only session.</param>
-    /// <param name="connectChannel">The drive-pipe connector; null connects the named in-memory pipe.</param>
+    /// <param name="connectChannel">The volume-pipe connector; null connects the named in-memory pipe.</param>
     /// <param name="breakableControl">
     ///     Serve the control pipe through a <see cref="BrokenPipeStream" />, exposed as
     ///     <see cref="BreakableControl" />, so a test can make the host's control writes fail.
     /// </param>
-    /// <param name="wrapDrivePipe">Wraps the host end the default connector hands the host, given the pipe's name.</param>
+    /// <param name="wrapVolumePipe">Wraps the host end the default connector hands the host, given the pipe's name.</param>
     /// <param name="connectionsReleased">
     ///     Holds every connection the default connector makes until it completes, so a test can
     ///     let the host start waiting for a connection before the connection exists.
     /// </param>
     public HostChannelHarness(JournalBrokerHost host, IBlockSectionWriter? blockSectionWriter = null,
         BrokerChannelConnector? connectChannel = null, bool breakableControl = false,
-        Func<string, Stream, Stream>? wrapDrivePipe = null, Task? connectionsReleased = null)
+        Func<string, Stream, Stream>? wrapVolumePipe = null, Task? connectionsReleased = null)
     {
-        _wrapDrivePipe = wrapDrivePipe;
+        _wrapVolumePipe = wrapVolumePipe;
         _connectionsReleased = connectionsReleased;
         BreakableControl = breakableControl ? new BrokenPipeStream(_control.Host) : null;
         Serve = host.ServeAsync(BreakableControl ?? _control.Host, connectChannel ?? ConnectInMemoryAsync,
@@ -53,8 +53,8 @@ sealed class HostChannelHarness : IAsyncDisposable
 
     public uint NextRequestId() => Interlocked.Increment(ref _nextRequestId);
 
-    public static string PipePrefix(VolumeKey drive) =>
-        $"{BrokerFrame.PipeNamePrefix}{(byte)drive.Validated().Letter:x2}";
+    public static string PipePrefix(VolumeKey volume) =>
+        $"{BrokerFrame.PipeNamePrefix}{(byte)volume.Validated().Letter:x2}";
 
     public string NextPipeName(char drive) =>
         $"{PipePrefix(drive)}{Interlocked.Increment(ref _nextPipe):x30}";
@@ -68,11 +68,11 @@ sealed class HostChannelHarness : IAsyncDisposable
         }
 
         var hostEnd = Pipe(pipeName).Host;
-        return _wrapDrivePipe?.Invoke(pipeName, hostEnd) ?? hostEnd;
+        return _wrapVolumePipe?.Invoke(pipeName, hostEnd) ?? hostEnd;
     }
 
-    /// <summary>The client end of the named in-memory drive pipe.</summary>
-    public Stream DrivePipe(string pipeName) => Pipe(pipeName).Client;
+    /// <summary>The client end of the named in-memory volume pipe.</summary>
+    public Stream VolumePipe(string pipeName) => Pipe(pipeName).Client;
 
     InMemoryPipePair Pipe(string pipeName) => _pipes.GetOrAdd(pipeName, _ => new InMemoryPipePair());
 
@@ -84,31 +84,31 @@ sealed class HostChannelHarness : IAsyncDisposable
                throw new AssertFailedException("The control pipe ended.");
     }
 
-    /// <summary>Opens a drive channel and returns the client end of its pipe once ChannelOpened arrives.</summary>
-    public async Task<Stream> OpenChannelAsync(VolumeKey drive)
+    /// <summary>Opens a volume channel and returns the client end of its pipe once ChannelOpened arrives.</summary>
+    public async Task<Stream> OpenChannelAsync(VolumeKey volume)
     {
         var requestId = NextRequestId();
-        var pipeName = NextPipeName(drive.Letter);
-        await SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, BrokerFrame.OpenChannel(requestId, drive, pipeName)));
+        var pipeName = NextPipeName(volume.Letter);
+        await SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, BrokerFrame.OpenChannel(requestId, volume, pipeName)));
         var reply = await ReadControlAsync();
         Assert.AreEqual(BrokerFrameKind.ChannelOpened, reply.Kind, reply.Message);
         Assert.AreEqual(requestId, reply.RequestId);
-        return DrivePipe(pipeName);
+        return VolumePipe(pipeName);
     }
 
-    public async Task<Stream> OpenScanChannelAsync(VolumeKey drive, string? sectionName = null,
+    public async Task<Stream> OpenScanChannelAsync(VolumeKey volume, string? sectionName = null,
         IReadOnlyCollection<string>? retainedFileNames = null)
     {
-        var targetSectionName = sectionName ?? NamedBlockSection.BuildSectionName(drive);
-        var pipe = await OpenChannelAsync(drive);
+        var targetSectionName = sectionName ?? NamedBlockSection.BuildSectionName(volume);
+        var pipe = await OpenChannelAsync(volume);
         await WriteFrameAsync(pipe,
             writer => BrokerProtocol.WriteArmAndScan(writer, BrokerFrame.ArmAndScan(targetSectionName, retainedFileNames)));
         return pipe;
     }
 
-    public async Task<Stream> OpenWatchChannelAsync(VolumeKey drive, UsnJournalCursor since)
+    public async Task<Stream> OpenWatchChannelAsync(VolumeKey volume, UsnJournalCursor since)
     {
-        var pipe = await OpenChannelAsync(drive);
+        var pipe = await OpenChannelAsync(volume);
         await WriteFrameAsync(pipe, writer => BrokerProtocol.WriteStartWatch(writer, BrokerFrame.StartWatch(since)));
         return pipe;
     }

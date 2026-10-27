@@ -2,7 +2,7 @@ using MFTLib.Index;
 
 namespace MFTLib;
 
-/// <summary>The destination of one drive's client-created packed block.</summary>
+/// <summary>The destination of one volume's client-created packed block.</summary>
 sealed record BlockScanTarget(string Path, uint VolumeSerial, bool DeleteOnClose)
 {
     /// <summary>

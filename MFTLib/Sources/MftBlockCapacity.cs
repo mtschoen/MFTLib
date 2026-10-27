@@ -47,7 +47,7 @@ static class MftBlockCapacity
     }
 
     /// <summary>
-    ///     The creation options of the block a cold MFT scan of one drive fills: planned from the
+    ///     The creation options of the block a cold MFT scan of one volume fills: planned from the
     ///     volume geometry, rooted at MFT record 5, in the file, mode and tag the request names.
     /// </summary>
     /// <param name="volumeInformation">The NTFS volume information that sizes the block.</param>

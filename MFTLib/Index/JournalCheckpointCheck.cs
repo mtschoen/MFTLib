@@ -13,7 +13,7 @@ readonly record struct JournalWindow(
 ///     Decides whether a block's journal position can still be resumed, by reading the live
 ///     journal through the same unelevated volume-root handle the settings query uses. A warm
 ///     start that adopts an unresumable checkpoint does not fail at open: it arms a watch that
-///     dies on its first read, so the drive ends up rescanned anyway, with nothing left to tell
+///     dies on its first read, so the volume ends up rescanned anyway, with nothing left to tell
 ///     the user why. Checking first turns that into one cold scan and one
 ///     <see cref="JournalCheckpointLoss" />. The same check answers for a watch that faults
 ///     mid-session, where the position asked about is the one that watch had reached, so both
@@ -42,36 +42,36 @@ static class JournalCheckpointCheck
 
     /// <summary>
     ///     Returns the loss when <paramref name="checkpointUsn" /> can no longer be resumed on
-    ///     <paramref name="drive" />, and null when it can or when the volume cannot say.
+    ///     <paramref name="volume" />, and null when it can or when the volume cannot say.
     ///     A volume with no journal, a non-NTFS volume, or any other refusal of the query
     ///     yields null: MFTLib reports causes it can detect and invents none.
     /// </summary>
-    /// <param name="drive">The drive to read the journal of.</param>
+    /// <param name="volume">The volume to read the journal of.</param>
     /// <param name="checkpointJournalIdentifier">The journal identifier the block's cursor was written against.</param>
-    /// <param name="checkpointUsn">The USN the drive would resume from.</param>
+    /// <param name="checkpointUsn">The USN the volume would resume from.</param>
     /// <param name="detectedDuring">
     ///     Which caller is asking, stamped onto any loss returned. The two callers run at
     ///     different moments and their reports outlive those moments, so a report has to carry
     ///     which one produced it rather than leaving a reader to infer it from context that is
     ///     gone by the time the report is read.
     /// </param>
-    public static JournalCheckpointLoss? Check(VolumeKey drive, ulong checkpointJournalIdentifier, long checkpointUsn,
+    public static JournalCheckpointLoss? Check(VolumeKey volume, ulong checkpointJournalIdentifier, long checkpointUsn,
         JournalCheckpointLossDetection detectedDuring)
-        => CheckObservation(drive, checkpointJournalIdentifier, checkpointUsn, detectedDuring, requireUnmoved: false);
+        => CheckObservation(volume, checkpointJournalIdentifier, checkpointUsn, detectedDuring, requireUnmoved: false);
 
     /// <summary>
     ///     Checks a scan-only cache against one journal observation: recreation and trimming take
     ///     precedence, then any unequal next USN requires a rescan. An unavailable or incoherent
     ///     observation reports nothing, just as the resumability check does.
     /// </summary>
-    internal static JournalCheckpointLoss? CheckUnmoved(VolumeKey drive, ulong checkpointJournalIdentifier,
+    internal static JournalCheckpointLoss? CheckUnmoved(VolumeKey volume, ulong checkpointJournalIdentifier,
         long checkpointUsn, JournalCheckpointLossDetection detectedDuring)
-        => CheckObservation(drive, checkpointJournalIdentifier, checkpointUsn, detectedDuring, requireUnmoved: true);
+        => CheckObservation(volume, checkpointJournalIdentifier, checkpointUsn, detectedDuring, requireUnmoved: true);
 
-    static JournalCheckpointLoss? CheckObservation(VolumeKey drive, ulong checkpointJournalIdentifier, long checkpointUsn,
+    static JournalCheckpointLoss? CheckObservation(VolumeKey volume, ulong checkpointJournalIdentifier, long checkpointUsn,
         JournalCheckpointLossDetection detectedDuring, bool requireUnmoved)
     {
-        if (ReadJournal(drive) is not { } observation)
+        if (ReadJournal(volume) is not { } observation)
         {
             return null;
         }
@@ -87,7 +87,7 @@ static class JournalCheckpointCheck
 
         if (journalIdentifier != checkpointJournalIdentifier)
         {
-            return new JournalCheckpointLoss(drive, detectedDuring, JournalCheckpointLossCause.JournalRecreated,
+            return new JournalCheckpointLoss(volume, detectedDuring, JournalCheckpointLossCause.JournalRecreated,
                 journalSettings)
             {
                 CheckpointUsn = checkpointUsn,
@@ -100,7 +100,7 @@ static class JournalCheckpointCheck
         {
             if (requireUnmoved && nextUsn != checkpointUsn)
             {
-                return new JournalCheckpointLoss(drive, detectedDuring,
+                return new JournalCheckpointLoss(volume, detectedDuring,
                     JournalCheckpointLossCause.JournalAdvanced, journalSettings)
                 {
                     CheckpointUsn = checkpointUsn,
@@ -112,7 +112,7 @@ static class JournalCheckpointCheck
             return null;
         }
 
-        return new JournalCheckpointLoss(drive, detectedDuring, JournalCheckpointLossCause.CheckpointTrimmed,
+        return new JournalCheckpointLoss(volume, detectedDuring, JournalCheckpointLossCause.CheckpointTrimmed,
             journalSettings)
         {
             CheckpointUsn = checkpointUsn,
@@ -140,11 +140,11 @@ static class JournalCheckpointCheck
     ///     Uses an installed observation override first, otherwise reports nothing while
     ///     automatic live reads are forbidden, otherwise reads the live journal.
     /// </summary>
-    static JournalWindow? ReadJournal(VolumeKey drive)
+    static JournalWindow? ReadJournal(VolumeKey volume)
     {
         if (Hooks.ObservationOverride is { } journalOverride)
         {
-            return journalOverride(drive);
+            return journalOverride(volume);
         }
 
         if (Hooks.LiveReadsForbidden)
@@ -154,21 +154,21 @@ static class JournalCheckpointCheck
             return null;
         }
 
-        return ReadLiveJournal(drive);
+        return ReadLiveJournal(volume);
     }
 
     /// <summary>
     ///     The real unelevated read, reachable from a test that deliberately wants a real
     ///     volume even while <see cref="ForbidLiveJournalReads" /> is active.
     /// </summary>
-    internal static JournalWindow? ReadLiveJournal(VolumeKey drive) =>
-        ReadLiveJournal(drive, OperatingSystem.IsWindows());
+    internal static JournalWindow? ReadLiveJournal(VolumeKey volume) =>
+        ReadLiveJournal(volume, OperatingSystem.IsWindows());
 
     /// <summary>
     ///     The read behind <see cref="ReadLiveJournal(VolumeKey)" />, given whether the host is Windows,
     ///     so the answer off Windows is tested on every platform.
     /// </summary>
-    internal static JournalWindow? ReadLiveJournal(VolumeKey drive, bool isWindows)
+    internal static JournalWindow? ReadLiveJournal(VolumeKey volume, bool isWindows)
     {
         if (!isWindows || !OperatingSystem.IsWindows())
         {
@@ -178,7 +178,7 @@ static class JournalCheckpointCheck
         try
         {
             using var handle = UsnJournalVolumeInterop.OpenVolumeRoot(
-                drive, "check whether its USN journal still holds the cached checkpoint");
+                volume, "check whether its USN journal still holds the cached checkpoint");
             var data = UsnJournalVolumeInterop.QueryJournalData(handle);
             return new JournalWindow(data.UsnJournalIdentifier, data.FirstUsn, data.NextUsn,
                 checked((long)data.AllocationDelta), checked((long)data.MaximumSize));
@@ -197,7 +197,7 @@ static class JournalCheckpointCheck
 
     /// <summary>
     ///     Stops this process's automatic checkpoint observations reading any real volume's journal for the rest of its life, so a
-    ///     warm start in a test decides the same way whatever drives the host happens
+    ///     warm start in a test decides the same way whatever volumes the host happens
     ///     to have. One way and idempotent, like the cache-directory guard; a test that wants
     ///     a real volume installs an override over <see cref="ReadLiveJournal(VolumeKey)" />.
     /// </summary>

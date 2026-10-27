@@ -6,13 +6,13 @@ namespace MFTLib.Index;
 /// </summary>
 public readonly ref struct IndexRow
 {
-    readonly DriveBlock _driveBlock;
+    readonly RootBlock _rootBlock;
     readonly ref readonly FileRow _row;
     readonly uint _rowIndex;
 
-    internal IndexRow(DriveBlock driveBlock, uint rowIndex, ref readonly FileRow row, ReadOnlySpan<char> name)
+    internal IndexRow(RootBlock rootBlock, uint rowIndex, ref readonly FileRow row, ReadOnlySpan<char> name)
     {
-        _driveBlock = driveBlock;
+        _rootBlock = rootBlock;
         _rowIndex = rowIndex;
         _row = ref row;
         Name = name;
@@ -21,8 +21,8 @@ public readonly ref struct IndexRow
     /// <summary>The name, read straight from the mapped name pool with no allocation.</summary>
     public ReadOnlySpan<char> Name { get; }
 
-    /// <summary>The configured logical drive key, including for virtual dump drives.</summary>
-    public RootKey Drive => _driveBlock.Drive;
+    /// <summary>The configured logical volume key, including for virtual dump roots.</summary>
+    public RootKey Root => _rootBlock.Root;
 
     /// <summary>
     ///     The file length in bytes, or zero for directories and unknown sizes. This is the length the last
@@ -52,5 +52,5 @@ public readonly ref struct IndexRow
     public bool IsDeleted => _row.IsDeleted;
 
     /// <summary>Returns a durable handle for this row, usable after the enumeration ends.</summary>
-    public FileEntry ToEntry() => FileEntry.Create(_driveBlock, _rowIndex);
+    public FileEntry ToEntry() => FileEntry.Create(_rootBlock, _rowIndex);
 }

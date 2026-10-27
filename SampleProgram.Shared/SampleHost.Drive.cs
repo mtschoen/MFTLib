@@ -8,7 +8,7 @@ namespace SampleProgram.Direct;
 
 partial class SampleHost
 {
-    static IndexedRoot ResolveDriveNative(string letter)
+    static IndexedRoot ResolveRootNative(string letter)
     {
         return OperatingSystem.IsWindows()
             ? IndexedRoot.FromWindowsDrive(new VolumeKey(letter[0]))

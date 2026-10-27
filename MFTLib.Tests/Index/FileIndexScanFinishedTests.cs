@@ -7,8 +7,8 @@ namespace MFTLib.Tests.Index;
 
 /// <summary>
 ///     <see cref="IndexScanPhase.Finished" />'s contract: <see cref="FileIndex" /> reports exactly
-///     one per drive scan, after the producer's last sample for that drive, carrying how the scan
-///     ended, for enumeration-backed and MFT-backed drives, in open and in rescans.
+///     one per root scan, after the producer's last sample for that root, carrying how the scan
+///     ended, for enumeration-backed and MFT-backed volumes, in open and in rescans.
 /// </summary>
 [TestClass]
 public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
@@ -17,7 +17,7 @@ public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
 
     protected override bool SeedDocuments => false;
 
-    string CreateDriveRoot(string name)
+    string CreateRoot(string name)
     {
         var root = Path.Combine(TreeRoot, name);
         Directory.CreateDirectory(root);
@@ -37,40 +37,40 @@ public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
         };
     }
 
-    /// <summary>The drive's Finished sample; asserts the count and that it follows every other sample.</summary>
+    /// <summary>The root's Finished sample; asserts the count and that it follows every other sample.</summary>
     static IndexScanProgress FinishedOf(ConcurrentQueue<IndexScanProgress> samples, char driveLetter,
         int expectedFinishedCount = 1)
     {
-        var drive = samples.Where(sample => sample.Drive == new VolumeKey(driveLetter)).ToArray();
-        var finished = drive.Where(sample => sample.Phase == IndexScanPhase.Finished).ToArray();
-        Assert.HasCount(expectedFinishedCount, finished, $"drive {driveLetter} finished count");
-        Assert.AreEqual(IndexScanPhase.Finished, drive[^1].Phase, "Finished follows every other sample");
-        Assert.IsTrue(drive.Where(sample => sample.Phase != IndexScanPhase.Finished)
+        var root = samples.Where(sample => sample.Root == new VolumeKey(driveLetter)).ToArray();
+        var finished = root.Where(sample => sample.Phase == IndexScanPhase.Finished).ToArray();
+        Assert.HasCount(expectedFinishedCount, finished, $"root {driveLetter} finished count");
+        Assert.AreEqual(IndexScanPhase.Finished, root[^1].Phase, "Finished follows every other sample");
+        Assert.IsTrue(root.Where(sample => sample.Phase != IndexScanPhase.Finished)
             .All(sample => sample.Outcome is null));
         return finished[^1];
     }
 
     static Task<MftBlockProduceResult> ProduceBlock(MftBlockProduceRequest request)
     {
-        request.Progress?.Report(new IndexScanProgress(request.Drive, IndexScanPhase.ParsingMft, 1));
+        request.Progress?.Report(new IndexScanProgress(request.Volume, IndexScanPhase.ParsingMft, 1));
         return Task.FromResult(new MftBlockProduceResult(
             SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment),
             SkippedRecordCount: 0));
     }
 
     [TestMethod]
-    public async Task OpenAsync_ConcurrentEnumerationDrives_EachFinishOnceAfterTheirLastSample()
+    public async Task OpenAsync_ConcurrentEnumerationRoots_EachFinishOnceAfterTheirLastSample()
     {
         var samples = new ConcurrentQueue<IndexScanProgress>();
-        var drives = new[]
+        var roots = new[]
         {
-            MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), CreateDriveRoot("first"), 1),
-            MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('U'), CreateDriveRoot("second"), 2),
-            MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('V'), CreateDriveRoot("third"), 3)
+            MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1),
+            MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('U'), CreateRoot("second"), 2),
+            MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('V'), CreateRoot("third"), 3)
         };
 
-        var opened = await Task.WhenAll(drives.Select(drive =>
-            FileIndex.OpenAsync(Options(drive, samples), TestContext.CancellationToken)));
+        var opened = await Task.WhenAll(roots.Select(root =>
+            FileIndex.OpenAsync(Options(root, samples), TestContext.CancellationToken)));
         try
         {
             foreach (var driveLetter in "TUV")
@@ -79,7 +79,7 @@ public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
                 Assert.AreEqual(IndexScanOutcome.Succeeded, finished.Outcome);
                 Assert.IsGreaterThan(0u, finished.WrittenRowCount);
                 Assert.Contains(sample =>
-                    sample.Drive == new VolumeKey(driveLetter) && sample.Phase == IndexScanPhase.Enumerating, samples);
+                    sample.Root == new VolumeKey(driveLetter) && sample.Phase == IndexScanPhase.Enumerating, samples);
             }
         }
         finally
@@ -92,13 +92,13 @@ public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
     }
 
     [TestMethod]
-    public async Task OpenAsync_MftDrive_FinishesAfterProducerSamples()
+    public async Task OpenAsync_MftRoot_FinishesAfterProducerSamples()
     {
         var samples = new ConcurrentQueue<IndexScanProgress>();
-        var drive = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), CreateDriveRoot("first"), 1);
+        var root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1);
 
         await using var index = await FileIndex.OpenAsync(
-            Options(drive, samples, ProducerKind.Mft, (request, _) => ProduceBlock(request)),
+            Options(root, samples, ProducerKind.Mft, (request, _) => ProduceBlock(request)),
             TestContext.CancellationToken);
 
         var finished = FinishedOf(samples, 'T');
@@ -110,10 +110,10 @@ public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
     public async Task OpenAsync_MftProducerFails_FinishesFailedWithZeroRows()
     {
         var samples = new ConcurrentQueue<IndexScanProgress>();
-        var drive = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), CreateDriveRoot("first"), 1);
+        var root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1);
 
         await using var index = await FileIndex.OpenAsync(
-            Options(drive, samples, ProducerKind.Mft,
+            Options(root, samples, ProducerKind.Mft,
                 (_, _) => throw new InvalidOperationException("producer failed")),
             TestContext.CancellationToken);
 
@@ -126,8 +126,8 @@ public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
     public async Task OpenAsync_CancelledScan_FinishesCancelledOnce()
     {
         var samples = new ConcurrentQueue<IndexScanProgress>();
-        var drive = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), CreateDriveRoot("first"), 1);
-        var options = Options(drive, samples, ProducerKind.Mft,
+        var root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1);
+        var options = Options(root, samples, ProducerKind.Mft,
             (_, _) => throw new OperationCanceledException());
         await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () =>
         {
@@ -141,17 +141,17 @@ public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
     public async Task RescanAsync_ReportsOneMoreFinishedPerScan()
     {
         var samples = new ConcurrentQueue<IndexScanProgress>();
-        var driveT = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), CreateDriveRoot("first"), 1);
-        var driveU = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('U'), CreateDriveRoot("second"), 2);
-        await using var indexT = await FileIndex.OpenAsync(Options(driveT, samples), TestContext.CancellationToken);
-        await using var indexU = await FileIndex.OpenAsync(Options(driveU, samples), TestContext.CancellationToken);
+        var rootT = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1);
+        var rootU = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('U'), CreateRoot("second"), 2);
+        await using var indexT = await FileIndex.OpenAsync(Options(rootT, samples), TestContext.CancellationToken);
+        await using var indexU = await FileIndex.OpenAsync(Options(rootU, samples), TestContext.CancellationToken);
         Assert.AreEqual(IndexScanOutcome.Succeeded, FinishedOf(samples, 'T').Outcome);
 
         await indexT.RescanAsync(TestContext.CancellationToken);
 
         Assert.AreEqual(IndexScanOutcome.Succeeded, FinishedOf(samples, 'T', expectedFinishedCount: 2).Outcome);
         Assert.ContainsSingle(sample =>
-            sample.Drive == new VolumeKey('U') && sample.Phase == IndexScanPhase.Finished, samples);
+            sample.Root == new VolumeKey('U') && sample.Phase == IndexScanPhase.Finished, samples);
     }
 
     sealed class ThrowingOnFinished : IProgress<IndexScanProgress>
@@ -166,10 +166,10 @@ public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
     }
 
     [TestMethod]
-    public async Task OpenAsync_FinishedHandlerThrowsAfterSuccess_DriveStillReadyAndFaultLogged()
+    public async Task OpenAsync_FinishedHandlerThrowsAfterSuccess_RootStillReadyAndFaultLogged()
     {
         var diagnostics = new ConcurrentQueue<string>();
-        var options = Options(MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), CreateDriveRoot("first"), 1), new ConcurrentQueue<IndexScanProgress>(),
+        var options = Options(MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1), new ConcurrentQueue<IndexScanProgress>(),
             ProducerKind.Mft, (request, _) => ProduceBlock(request)) with
         {
             ScanProgress = new ThrowingOnFinished(),
@@ -178,14 +178,14 @@ public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
 
-        Assert.AreEqual(DriveState.Ready, index.Status.State);
+        Assert.AreEqual(RootState.Ready, index.Status.State);
         Assert.Contains(line => line.Contains("handler boom"), diagnostics);
     }
 
     [TestMethod]
     public async Task OpenAsync_FinishedHandlerThrowsAfterCancellation_OriginalCancellationWins()
     {
-        var options = Options(MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), CreateDriveRoot("first"), 1), new ConcurrentQueue<IndexScanProgress>(),
+        var options = Options(MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1), new ConcurrentQueue<IndexScanProgress>(),
             ProducerKind.Mft, (_, _) => throw new OperationCanceledException()) with
         {
             ScanProgress = new ThrowingOnFinished()
@@ -198,9 +198,9 @@ public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
     }
 
     [TestMethod]
-    public async Task OpenAsync_FinishedHandlerAndDiagnosticsBothThrowAfterSuccess_DriveReadyWithBlockAdopted()
+    public async Task OpenAsync_FinishedHandlerAndDiagnosticsBothThrowAfterSuccess_RootReadyWithBlockAdopted()
     {
-        var options = Options(MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), CreateDriveRoot("first"), 1), new ConcurrentQueue<IndexScanProgress>(),
+        var options = Options(MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1), new ConcurrentQueue<IndexScanProgress>(),
             ProducerKind.Mft, (request, _) => ProduceBlock(request)) with
         {
             ScanProgress = new ThrowingOnFinished(),
@@ -210,14 +210,14 @@ public sealed class FileIndexScanFinishedTests : IndexTreeTestBase
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
 
         var status = index.Status;
-        Assert.AreEqual(DriveState.Ready, status.State);
+        Assert.AreEqual(RootState.Ready, status.State);
         Assert.AreEqual(BlockOrigin.ProducedByScan, status.Block!.Origin);
     }
 
     [TestMethod]
     public async Task OpenAsync_FinishedHandlerAndDiagnosticsBothThrowAfterCancellation_CancellationPreserved()
     {
-        var options = Options(MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), CreateDriveRoot("first"), 1), new ConcurrentQueue<IndexScanProgress>(),
+        var options = Options(MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), CreateRoot("first"), 1), new ConcurrentQueue<IndexScanProgress>(),
             ProducerKind.Mft, (_, _) => throw new OperationCanceledException()) with
         {
             ScanProgress = new ThrowingOnFinished(),

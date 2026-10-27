@@ -3,16 +3,16 @@ using System.Text.RegularExpressions;
 namespace MFTLib.Index;
 
 /// <summary>
-///     How enumeration drives walk their tree. A pruned directory is written as a row, like any other
-///     entry, but its children are not enumerated. The drive's root is never pruned. Hidden and system
+///     How enumeration roots walk their tree. A pruned directory is written as a row, like any other
+///     entry, but its children are not enumerated. The walk's root directory is never pruned. Hidden and system
 ///     entries are walked unless a rule prunes them, and a reparse point is always recorded and never
-///     entered. MFT drives ignore these options. A cached enumeration block records the options that
+///     entered. MFT volumes ignore these options. A cached enumeration block records the options that
 ///     shaped it, so a warm start under different options discards the block and scans again.
 /// </summary>
 public sealed record DirectoryWalkOptions
 {
     /// <summary>
-    ///     Directory names that are recorded but not entered, compared with the drive's path comparison:
+    ///     Directory names that are recorded but not entered, compared with the root's path comparison:
     ///     ignoring case on Windows, ordinal elsewhere. <see cref="FileIndex.OpenAsync" /> rejects a null
     ///     collection and a null, blank, separator-containing or unpaired-surrogate name.
     /// </summary>
@@ -20,8 +20,8 @@ public sealed record DirectoryWalkOptions
 
     /// <summary>
     ///     Regular expressions matched against each directory name. A directory whose name matches any
-    ///     pattern is recorded but not entered; the drive's root is never pruned. Each <see cref="Regex" />
-    ///     carries its own <see cref="RegexOptions" /> and match timeout rather than using the drive's path
+    ///     pattern is recorded but not entered; the walk's root directory is never pruned. Each <see cref="Regex" />
+    ///     carries its own <see cref="RegexOptions" /> and match timeout rather than using the root's path
     ///     comparison. <see cref="FileIndex.OpenAsync" /> rejects a null collection and a null element.
     /// </summary>
     public IReadOnlyCollection<Regex> PrunedDirectoryNamePatterns { get; init; } = [];
@@ -30,7 +30,7 @@ public sealed record DirectoryWalkOptions
     ///     Fully qualified directory paths that are recorded but not entered. A directory is pruned when its
     ///     full path equals one of these after <see cref="Path.GetFullPath(string)" /> and
     ///     <see cref="Path.TrimEndingDirectorySeparator(string)" />, so everything beneath it is skipped too.
-    ///     A path outside a drive's root has no effect on that drive. <see cref="FileIndex.OpenAsync" />
+    ///     A path outside a root's directory has no effect on that root. <see cref="FileIndex.OpenAsync" />
     ///     rejects a null collection and a null, blank, relative or unpaired-surrogate path.
     /// </summary>
     public IReadOnlyCollection<string> PrunedDirectoryPaths { get; init; } = [];
@@ -81,10 +81,10 @@ public sealed record DirectoryWalkOptions
 
     /// <summary>
     ///     The admitted pruned paths that can match a directory under <paramref name="rootDirectory" />: those
-    ///     equal to it or beneath it, by the drive comparison.
+    ///     equal to it or beneath it, by the root comparison.
     /// </summary>
-    /// <param name="rootDirectory">The drive's root directory.</param>
-    /// <returns>The paths that can affect the drive, in the admitted order.</returns>
+    /// <param name="rootDirectory">The root's directory.</param>
+    /// <returns>The paths that can affect the root, in the admitted order.</returns>
     internal string[] PathsWithin(string rootDirectory)
     {
         var root = NormalizePath(rootDirectory);

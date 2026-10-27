@@ -29,7 +29,7 @@ public sealed class InProcessBrokerHandle : IAsyncDisposable
     /// <summary>
     ///     Simulates the broker process dying: every pipe end the host holds closes at once, without
     ///     the client's cooperation and without a graceful session end, so the client reads EOF on
-    ///     the control pipe and on every drive channel, exactly as it does when an elevated broker
+    ///     the control pipe and on every volume channel, exactly as it does when an elevated broker
     ///     exits. <see cref="Ended" /> then reports the loss, and every
     ///     pending or later request fails with an <see cref="IOException" />. Idempotent;
     ///     the handle still disposes normally afterwards.

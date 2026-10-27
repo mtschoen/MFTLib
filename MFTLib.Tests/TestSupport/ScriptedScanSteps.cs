@@ -7,7 +7,7 @@ static class ScriptedScanSteps
 {
     extension(ScriptedBroker broker)
     {
-        /// <summary>Answers a scan's volume query, accepts its drive channel, and reads its ArmAndScan order.</summary>
+        /// <summary>Answers a scan's volume query, accepts its volume channel, and reads its ArmAndScan order.</summary>
         public async Task<(Stream Pipe, BrokerFrame Order)> AcceptScanAsync(NtfsVolumeInformation volume)
         {
             await broker.AnswerQueryVolumeAsync(volume);

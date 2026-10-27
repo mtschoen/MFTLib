@@ -191,8 +191,8 @@ public partial class BenchmarkRunnerTests
         Assert.HasCount(2 + declined.Length, originals);
         Assert.AreEqual(1, await runner.RunAsync(["index", "--cache-directory", directory]));
         var output = _output.ToString();
-        Assert.Contains("Drive: T", output);
-        Assert.Contains("Drive: U", output);
+        Assert.Contains("Root: T", output);
+        Assert.Contains("Root: U", output);
         Assert.Contains("Rows: 2", output);
         Assert.Contains("Matches: 1", output);
         var usedNameBytes = (directory.Length + "file-0000000001".Length) * 2;

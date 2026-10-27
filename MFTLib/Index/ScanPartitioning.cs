@@ -1,8 +1,8 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     Splits one drive block's row range into contiguous partitions for a parallel scan. Small
-///     drives get a single partition: below the threshold, starting tasks costs more than the
+///     Splits one root block's row range into contiguous partitions for a parallel scan. Small
+///     roots get a single partition: below the threshold, starting tasks costs more than the
 ///     scan itself.
 /// </summary>
 static class ScanPartitioning

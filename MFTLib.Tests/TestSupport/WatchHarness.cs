@@ -66,7 +66,7 @@ sealed class WatchHarness : IDisposable
             {
                 var index = FileIndex.OpenAsync(new FileIndexOptions
                 {
-                    Root = SyntheticIndexedDrive.Create(new VolumeKey(letter), builder.DirectoryPath, builder.VolumeSerial),
+                    Root = SyntheticIndexedRoot.Create(new VolumeKey(letter), builder.DirectoryPath, builder.VolumeSerial),
                     CacheDirectory = CacheDirectory,
                     MftSource = mftSource
                 }, CancellationToken.None).GetAwaiter().GetResult();
@@ -96,9 +96,9 @@ sealed class WatchHarness : IDisposable
 
     /// <summary>
     ///     Stands the indices up with the producer failing every scan of <paramref name="blocklessDrives" />,
-    ///     so those drives open <see cref="DriveState.Failed" /> with no MFT-backed block.
+    ///     so those roots open <see cref="RootState.Failed" /> with no MFT-backed block.
     /// </summary>
-    public static WatchHarness WithBlocklessDrives(char[] blocklessDrives, params char[] driveLetters) =>
+    public static WatchHarness WithBlocklessRoots(char[] blocklessDrives, params char[] driveLetters) =>
         new(null, [.. blocklessDrives.Select(char.ToUpperInvariant)], driveLetters);
 
     public FileIndex Index { get; }
@@ -127,12 +127,12 @@ sealed class WatchHarness : IDisposable
 
     public BlockFile BlockFor(char driveLetter) => _producedBlocks[char.ToUpperInvariant(driveLetter)];
 
-    public RootStatus DriveFor(char driveLetter) => IndexFor(driveLetter).Status;
+    public RootStatus RootFor(char driveLetter) => IndexFor(driveLetter).Status;
 
-    /// <summary>Completes with the first fault of <paramref name="kind" /> on the drive, recorded or future.</summary>
+    /// <summary>Completes with the first fault of <paramref name="kind" /> on the root, recorded or future.</summary>
     public Task<WatchFault> WaitForFaultAsync(WatchFaultKind kind, char driveLetter)
     {
-        bool Match(WatchFault fault) => fault.Kind == kind && fault.Drive == char.ToUpperInvariant(driveLetter);
+        bool Match(WatchFault fault) => fault.Kind == kind && fault.Volume == char.ToUpperInvariant(driveLetter);
         lock (_faults)
         {
             if (_faults.FirstOrDefault(Match) is { } recorded)
@@ -158,14 +158,14 @@ sealed class WatchHarness : IDisposable
         });
     }
 
-    /// <summary>Makes the producer throw on this drive's next scan.</summary>
+    /// <summary>Makes the producer throw on this root's next scan.</summary>
     public void FailNextProduction(char driveLetter, Exception failure)
     {
         _productionFailuresByDrive[char.ToUpperInvariant(driveLetter)] = failure;
     }
 
     /// <summary>
-    ///     Scripts this drive's next scans, one entry per scan in order. Scans past the script
+    ///     Scripts this root's next scans, one entry per scan in order. Scans past the script
     ///     return a block whose catch-up held.
     /// </summary>
     public void ScriptScans(char driveLetter, params WatchHarnessScan[] scans)
@@ -177,12 +177,12 @@ sealed class WatchHarness : IDisposable
         }
     }
 
-    /// <summary>How many times the producer has been called for this drive, the open's scan included.</summary>
+    /// <summary>How many times the producer has been called for this root, the open's scan included.</summary>
     public int ProductionCount(char driveLetter) =>
         _productionCountsByDrive.GetValueOrDefault(char.ToUpperInvariant(driveLetter));
 
     /// <summary>
-    ///     Parks this drive's next scan inside the producer until the returned gate is released.
+    ///     Parks this root's next scan inside the producer until the returned gate is released.
     ///     The gate's <see cref="TestGate.Entered" /> completes once the scan has started.
     /// </summary>
     public TestGate HoldNextProduction(char driveLetter)
@@ -267,7 +267,7 @@ sealed class WatchHarness : IDisposable
     }
 
     /// <summary>
-    ///     Completes when the drive's latest recovery has ended.
+    ///     Completes when the root's latest recovery has ended.
     /// </summary>
     public Task WaitForRecoveryAsync(char driveLetter)
     {
@@ -275,12 +275,12 @@ sealed class WatchHarness : IDisposable
         {
             return _recoveriesByDrive.TryGetValue(char.ToUpperInvariant(driveLetter), out var recoveries)
                 ? recoveries[^1].WaitAsync(HangGuard)
-                : throw new InvalidOperationException($"No recovery of drive {driveLetter} was queued.");
+                : throw new InvalidOperationException($"No recovery of root {driveLetter} was queued.");
         }
     }
 
     /// <summary>
-    ///     The drive's latest recovery's own completion, the task the index's disposal waits for,
+    ///     The root's latest recovery's own completion, the task the index's disposal waits for,
     ///     unwrapped.
     /// </summary>
     public Task RecoveryCompletion(char driveLetter)
@@ -289,11 +289,11 @@ sealed class WatchHarness : IDisposable
         {
             return _recoveriesByDrive.TryGetValue(char.ToUpperInvariant(driveLetter), out var recoveries)
                 ? recoveries[^1]
-                : throw new InvalidOperationException($"No recovery of drive {driveLetter} was queued.");
+                : throw new InvalidOperationException($"No recovery of root {driveLetter} was queued.");
         }
     }
 
-    /// <summary>How many distinct recoveries of the drive were queued when one of its faults was raised.</summary>
+    /// <summary>How many distinct recoveries of the root were queued when one of its faults was raised.</summary>
     public int RecoveryCount(char driveLetter)
     {
         lock (_faults)
@@ -311,14 +311,14 @@ sealed class WatchHarness : IDisposable
     {
         _faultStatuses.Record(index, fault);
         List<TaskCompletionSource<WatchFault>> matched = [];
-        _ = index.TryGetRecoveryCompletionForTest(new VolumeKey((fault.Drive).Letter), out var recovery);
+        _ = index.TryGetRecoveryCompletionForTest(new VolumeKey((fault.Volume).Letter), out var recovery);
         lock (_faults)
         {
             _faults.Add(fault);
             if (recovery is not null)
             {
-                var recoveries = _recoveriesByDrive.GetValueOrDefault(fault.Drive.Letter) ?? [];
-                _recoveriesByDrive[(fault.Drive).Letter] = recoveries;
+                var recoveries = _recoveriesByDrive.GetValueOrDefault(fault.Volume.Letter) ?? [];
+                _recoveriesByDrive[(fault.Volume).Letter] = recoveries;
                 if (!recoveries.Contains(recovery))
                 {
                     recoveries.Add(recovery);
@@ -344,11 +344,11 @@ sealed class WatchHarness : IDisposable
     async Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var driveLetter = char.ToUpperInvariant((request.Drive).Letter);
+        var driveLetter = char.ToUpperInvariant((request.Volume).Letter);
         _productionCountsByDrive.AddOrUpdate(driveLetter, 1, (_, count) => count + 1);
         if (_blocklessDrives.Contains(driveLetter))
         {
-            throw new IOException($"Drive {driveLetter} cannot be scanned.");
+            throw new IOException($"Root {driveLetter} cannot be scanned.");
         }
 
         if (_productionHoldsByDrive.TryRemove(driveLetter, out var hold))
@@ -399,7 +399,7 @@ sealed class WatchHarness : IDisposable
 }
 
 /// <summary>
-///     One scripted scan of a <see cref="WatchHarness" /> drive: parked on <paramref name="Hold" />
+///     One scripted scan of a <see cref="WatchHarness" /> root: parked on <paramref name="Hold" />
 ///     when set, then throwing <paramref name="Failure" /> when set, and otherwise returning a block
 ///     whose catch-up <paramref name="CatchUpLoss" /> says was lost, or held when it is null. A
 ///     hold gate should come from <see cref="WatchHarness.TrackGate" />, so teardown releases it.

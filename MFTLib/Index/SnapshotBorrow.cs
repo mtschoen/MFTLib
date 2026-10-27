@@ -1,7 +1,7 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     A reader's claim on a mapped drive block, held for the whole of a query. While
+///     A reader's claim on a mapped root block, held for the whole of a query. While
 ///     one is outstanding, every deterministic release path waits rather than unmapping, so a scan
 ///     that is partway through a block never reads freed memory. Holding the block itself is
 ///     also what keeps it reachable, which is why the finalizer path needs no borrow check of its
@@ -11,22 +11,22 @@ sealed class SnapshotBorrow : IDisposable
 {
     int _acquired;
 
-    internal SnapshotBorrow(DriveBlock? driveBlock)
+    internal SnapshotBorrow(RootBlock? rootBlock)
     {
-        if (driveBlock is not null && !driveBlock.ReleaseState.TryTakeBorrow())
+        if (rootBlock is not null && !rootBlock.ReleaseState.TryTakeBorrow())
         {
-            throw new ObjectDisposedException(nameof(DriveBlock),
-                "This drive block has been released and can no longer be read.");
+            throw new ObjectDisposedException(nameof(RootBlock),
+                "This root block has been released and can no longer be read.");
         }
 
-        DriveBlock = driveBlock;
+        RootBlock = rootBlock;
 
         // Failed construction is finalizable too; only an admitted reader owns a count.
         _acquired = 1;
     }
 
     /// <summary>The block this borrow keeps mapped, for the query that took it to read through, or null when the query reads no block.</summary>
-    internal DriveBlock? DriveBlock { get; }
+    internal RootBlock? RootBlock { get; }
 
     /// <summary>Shared by value-type scope copies; independent of a block's release starting.</summary>
     internal bool IsReturned => _acquired == 0;
@@ -40,7 +40,7 @@ sealed class SnapshotBorrow : IDisposable
     {
         if (Interlocked.Exchange(ref _acquired, 0) != 0)
         {
-            DriveBlock?.ReleaseState.ReturnBorrow();
+            RootBlock?.ReleaseState.ReturnBorrow();
             GC.SuppressFinalize(this);
         }
     }

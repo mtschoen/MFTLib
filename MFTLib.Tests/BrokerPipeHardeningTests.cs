@@ -95,14 +95,14 @@ public class BrokerPipeHardeningTests
         });
 
         await using var process = await BrokerProcess.LaunchAsync(launchBroker, null,
-            BrokerProcess.CreateRealDriveBlockSection, cancellation.Token);
+            BrokerProcess.CreateRealVolumeBlockSection, cancellation.Token);
         await checkTask!.WaitAsync(cancellation.Token);
     }
 
     [TestMethod]
     [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
-    public async Task Listen_DrivePipe_IsOpenToTheCurrentUserOnly()
+    public async Task Listen_VolumePipe_IsOpenToTheCurrentUserOnly()
     {
         using var cancellation = new CancellationTokenSource(HangGuard);
         var pipeName = "mftlib-hardening-test-" + Guid.NewGuid().ToString("N");
@@ -120,7 +120,7 @@ public class BrokerPipeHardeningTests
     [TestMethod]
     [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
-    public async Task ConnectDrivePipeAsync_ServerGrantingEveryoneAccess_IsRefused()
+    public async Task ConnectVolumePipeAsync_ServerGrantingEveryoneAccess_IsRefused()
     {
         using var cancellation = new CancellationTokenSource(HangGuard);
         var pipeName = "mftlib-hardening-test-" + Guid.NewGuid().ToString("N");
@@ -129,7 +129,7 @@ public class BrokerPipeHardeningTests
         var accepted = server.WaitForConnectionAsync(cancellation.Token);
 
         await Assert.ThrowsExactlyAsync<UnauthorizedAccessException>(() =>
-            DefaultElevatedEntryRunner.ConnectDrivePipeAsync(pipeName, BrokerLiveness.ElevatedConnectTimeout,
+            DefaultElevatedEntryRunner.ConnectVolumePipeAsync(pipeName, BrokerLiveness.ElevatedConnectTimeout,
                 TimeProvider.System, cancellation.Token));
         await accepted;
     }
@@ -137,14 +137,14 @@ public class BrokerPipeHardeningTests
     [TestMethod]
     [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")]
-    public async Task ConnectDrivePipeAsync_OffersOnlyIdentificationToTheServer()
+    public async Task ConnectVolumePipeAsync_OffersOnlyIdentificationToTheServer()
     {
         using var cancellation = new CancellationTokenSource(HangGuard);
         var pipeName = "mftlib-hardening-test-" + Guid.NewGuid().ToString("N");
         await using var server = BrokerPipeAccess.CreateServer(pipeName);
         var accepted = server.WaitForConnectionAsync(cancellation.Token);
 
-        await using var client = await DefaultElevatedEntryRunner.ConnectDrivePipeAsync(pipeName,
+        await using var client = await DefaultElevatedEntryRunner.ConnectVolumePipeAsync(pipeName,
             BrokerLiveness.ElevatedConnectTimeout, TimeProvider.System, cancellation.Token);
         await accepted;
         // The server can only impersonate once the client has written.
@@ -159,12 +159,12 @@ public class BrokerPipeHardeningTests
     }
 
     [TestMethod]
-    public async Task ConnectDrivePipeAsync_NoServerAnswers_TimesOutOnTheInjectedClock()
+    public async Task ConnectVolumePipeAsync_NoServerAnswers_TimesOutOnTheInjectedClock()
     {
         var pipeName = "mftlib-hardening-test-" + Guid.NewGuid().ToString("N");
         var clock = new TimerSignalingClock();
         var timeout = TimeSpan.FromSeconds(7);
-        var connect = DefaultElevatedEntryRunner.ConnectDrivePipeAsync(pipeName, timeout, clock,
+        var connect = DefaultElevatedEntryRunner.ConnectVolumePipeAsync(pipeName, timeout, clock,
             TestContext.CancellationToken);
 
         await clock.TimerCreated.WaitAsync(HangGuard, TestContext.CancellationToken);

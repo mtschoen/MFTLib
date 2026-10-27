@@ -11,23 +11,23 @@ cache and rescan on a normal open. The stored producer kind must also match
 `IndexedRoot.Producer`: warm adoption rejects a mismatch before cache-tag,
 scan-shape, root and journal checks, closes the mapping and best-effort deletes the file under
 the owner lock. A normal open scans with the requested producer; a cache-only open
-reports `DriveState.Failed` with `DriveFailureKind.CacheDeclined`. A cache-only open never
+reports `RootState.Failed` with `RootFailureKind.CacheDeclined`. A cache-only open never
 scans, so it never deletes a rejected block either: every rejection on a cache-only open
 leaves the file in place for a writing open to rebuild.
 
 ## Scan diagnostics
 
-`DriveBlockStatus.AccessDeniedSubtreeCount` counts subtrees the enumeration producer could
+`RootBlockStatus.AccessDeniedSubtreeCount` counts subtrees the enumeration producer could
 not enter during the scan that built the block, including directories that vanished before entry.
 The header stores it, so a warm start reports the count of the scan that built the block.
-`DriveBlockStatus.SkippedRecordCount` counts records the MFT producer could not place,
+`RootBlockStatus.SkippedRecordCount` counts records the MFT producer could not place,
 including unsupported record identifiers, empty names and exhausted block capacity.
 All MFT producers saturate this diagnostic at `int.MaxValue` when the scan's count is larger.
 Records excluded by `FileIndexOptions.RetainedFileNames` or `MftScanOptions.IncludeFreed` contribute to neither count,
 and neither does a directory `FileIndexOptions.DirectoryWalk` records without entering. These diagnostics describe the
 current block's production: successful rescans replace the counts, and failed or cancelled
 rescans retain them with the block. A warm start reports zero skipped records, because that
-count is not stored in the block header. `DriveBlockStatus.IsCapacityExhausted` reads the header's
+count is not stored in the block header. `RootBlockStatus.IsCapacityExhausted` reads the header's
 capacity-exhausted flag independently of either count.
 
 ## File name
@@ -43,7 +43,7 @@ uppercase hexadecimal digits and the extension `.mlix`:
   mapping, the one `OrdinalIgnoreCase` equality of root keys uses, so every pair of equal keys
   (including sigma and final sigma) shares one name; on a case-sensitive platform it is hashed as written.
 
-The serial is part of the name so a re-lettered drive never matches the wrong block. A hashed
+The serial is part of the name so a re-lettered volume never matches the wrong block. A hashed
 name cannot be turned back into a path, so every block stores its root key text in page 0
 (see [Root key text](#root-key-text)); the name is derived from that text and the header's
 volume serial, and a block whose file name differs from the derived name is invalid.
@@ -62,7 +62,7 @@ directory-shaped file has no identity until its key page is read; when its lock 
 to say which root is in use, and a file whose key cannot be read (or whose name is not the one the key derives) has no
 identity to report and is reported through `rejectedFile` like any other non-canonical name, never deleted.
 
-`InspectCached` accepts an optional `Action<CachedBlockRejection>? rejectedFile` parameter. Each non-canonical filename encountered by the existing top-level `*.mlix` enumeration is reported with its full `Path` and a human-readable `Message` (`Invalid block filename.`). The canonical lists returned by these APIs do not include rejected files. Rejections are reported before drive filtering, including when the selected drive set is empty, because a rejected name has no validated drive identity. A lowercase drive letter, an uppercase hash digit or a lowercase hexadecimal serial is non-canonical even on a case-insensitive filesystem.
+`InspectCached` accepts an optional `Action<CachedBlockRejection>? rejectedFile` parameter. Each non-canonical filename encountered by the existing top-level `*.mlix` enumeration is reported with its full `Path` and a human-readable `Message` (`Invalid block filename.`). The canonical lists returned by these APIs do not include rejected files. Rejections are reported before volume filtering, including when the selected volume set is empty, because a rejected name has no validated volume identity. A lowercase drive letter, an uppercase hash digit or a lowercase hexadecimal serial is non-canonical even on a case-insensitive filesystem.
 
 Reporting does not open, validate, lock, rename, or delete the rejected file. Lock siblings, retired siblings, and subdirectories are not inventory candidates. The callback is synchronous, its ordering is unspecified, and it should return promptly without modifying the enumerated directory. A thrown callback exception aborts the call before any canonical inspection or deletion begins. Missing or empty directories produce no notifications. A call that omits `rejectedFile` silently excludes rejected names.
 
@@ -75,35 +75,35 @@ foreach (var entry in rejected)
 }
 ```
 
-Each `CachedBlockStatus` carries a `CachedBlockFile` (drive, volume serial, full path, size and
+Each `CachedBlockStatus` carries a `CachedBlockFile` (volume, volume serial, full path, size and
 last-write time) and an `Availability` of `Available`, `InUse` or `Invalid`. `Validation` is
 null unless the block is invalid, and then gives the rejection reason.
 
 ## Cache ownership
 
-A live index owns its canonical block through a sibling `<drive>-<serial>.mlix.lock` file held
+A live index owns its canonical block through a sibling `<volume>-<serial>.mlix.lock` file held
 open with `FileShare.None` for the block's whole lifetime (an exclusive flock on Unix). A
 second `FileIndex` that cannot take the lock never validates, renames, or deletes the block:
 validating a block another index is mutating can observe a half-updated header or name
 descriptor, and deleting a mapped file's name succeeds on Windows. Cache-only opens report the
-drive `Failed` with `DriveFailureKind.InUse`; other opens scan into a private
+root `Failed` with `RootFailureKind.InUse`; other opens scan into a private
 `mftlib-private-<guid>-<name>` temp file with delete-on-close, the same shape `CacheMode.Disabled` uses
 with its `mftlib-cache-disabled-` prefix. The lock file itself is never deleted, because unlinking it
 races another opener's create-and-lock; a leftover lock file matches no block-file pattern and
 is re-locked in place.
 
-### Observing a drive's backing
+### Observing a root's backing
 
-Read `FileIndex.Status` and inspect `DriveBlockStatus.CacheLocation`:
+Read `FileIndex.Status` and inspect `RootBlockStatus.CacheLocation`:
 
 | Value | Meaning |
 | --- | --- |
-| `CacheLocation.OwnedCanonical` | This drive's current block belongs to the canonical cache slot held by this index. |
-| `CacheLocation.PrivateFallback` | This drive's current block was scanned privately because its canonical slot was unavailable when the scan target was selected. |
-| null | The block is not backed by a cache slot: `CacheMode.Disabled` is in effect. A failed or offline drive has no `RootStatus.Block` to inspect. |
+| `CacheLocation.OwnedCanonical` | This root's current block belongs to the canonical cache slot held by this index. |
+| `CacheLocation.PrivateFallback` | This root's current block was scanned privately because its canonical slot was unavailable when the scan target was selected. |
+| null | The block is not backed by a cache slot: `CacheMode.Disabled` is in effect. A failed or offline root has no `RootStatus.Block` to inspect. |
 
 Ready blocks retain their backing classification, including when capacity is exhausted. This is
-separate from `DriveBlockStatus.Origin`: a canonical cold scan and a private
+separate from `RootBlockStatus.Origin`: a canonical cold scan and a private
 fallback scan both read `ProducedByScan`; a canonical warm start reads
 `WarmStartedFromCache`.
 
@@ -126,7 +126,7 @@ the ownership rules above govern contention and private-block lifetime.
 
 ## Deleting cached blocks
 
-`CacheDirectory.DeleteCached(cacheDirectoryPath, drives = null)` is the
+`CacheDirectory.DeleteCached(cacheDirectoryPath, roots = null)` is the
 lock-safe way to clear cache blocks: it enumerates the directory the same way `InspectCached`
 does, then for each candidate takes that block's owner lock non-blockingly and deletes the block
 file only while holding it, so it is bound by the same ownership rule as `FileIndex` itself and
@@ -143,11 +143,11 @@ only for `Failed`. Lock files are never deleted by this path, for the same creat
 reason as above, so a `*.mlix.lock` file survives every outcome. Consumers render or log `CachedBlockDeletionResult` values after the call returns.
 
 `DeleteCached` has an internal overload taking
-`Action<CachedBlockRejection>? rejectedFile` after the drive selection.
+`Action<CachedBlockRejection>? rejectedFile` after the root selection.
 Rejected entries never become deletion results and are always left untouched.
 Supplying a null rejection callback disables reporting. The public two-parameter
 method supplies null. Rejection callbacks run during eager enumeration, before
-drive filtering and canonical deletion; a callback exception aborts the call
+root filtering and canonical deletion; a callback exception aborts the call
 before any canonical block is locked or deleted.
 
 ## Layout
@@ -178,7 +178,7 @@ Little-endian throughout. Every region boundary is 4096-byte aligned.
 | 44 | name pool capacity | u32 | Bytes |
 | 48 | USN journal identifier | u64 | Zero for enumeration blocks |
 | 56 | USN next USN | i64 | |
-| 64 | generation | u64 | Change version: bumped once per applied mutation batch; a rescan starts its replacement block at the superseded block's value plus one (a first scan with no predecessor starts at 1); a warm start adopts the cached value. Read as `DriveBlockStatus.Generation`; comparable only within one `FileIndex` |
+| 64 | generation | u64 | Change version: bumped once per applied mutation batch; a rescan starts its replacement block at the superseded block's value plus one (a first scan with no predecessor starts at 1); a warm start adopts the cached value. Read as `RootBlockStatus.Generation`; comparable only within one `FileIndex` |
 | 72 | row region offset | u64 | |
 | 80 | name pool offset | u64 | |
 | 88 | live row count | u32 | Rows in use and not tombstoned; maintained by `BlockWriter` |
@@ -191,7 +191,7 @@ Little-endian throughout. Every region boundary is 4096-byte aligned.
 
 The format version is 7. The declared header ends at byte 128 within a
 4096-byte header page; the root key text follows it. A version mismatch rejects the block: normal opens
-rebuild it, and cache-only opens decline the drive and leave the block in place.
+rebuild it, and cache-only opens decline the root and leave the block in place.
 
 ## Root key text
 
@@ -242,14 +242,14 @@ After structural validation, warm opening compares both fields to the
 requested tag before adopting the block or checking its journal cursor.
 A mismatch records `BlockValidationResult.WrongCacheTag`, disposes and
 best-effort deletes the rejected cache under its owner lock, then cold-scans.
-With `CacheMode.ExistingOnly`, it instead leaves the block in place and reports `DriveState.Failed` and
-`DriveFailureKind.CacheIdentityMismatch`. `RescanAsync` can recover that drive.
+With `CacheMode.ExistingOnly`, it instead leaves the block in place and reports `RootState.Failed` and
+`RootFailureKind.CacheIdentityMismatch`. `RescanAsync` can recover that root.
 Both paths emit a `Diagnostics` line identifying the stored and requested
 tags. ASCII control characters in tag diagnostics are escaped.
 
 `CacheDirectory.InspectCached` returns `CachedBlockStatus.CacheTag` for an
 Available block. Invalid or InUse results have null tags because their headers
-were not safely inspected. Cache filenames still contain only drive and serial.
+were not safely inspected. Cache filenames still contain only volume and serial.
 The tag does not provide shared-cache multiplexing.
 
 ## Scan shape
@@ -261,7 +261,7 @@ a string set is a u32 count followed by each string as a u32 UTF-8 byte count an
 bytes, deduplicated and sorted ordinally after folding. Retention is a flag that is 1
 when `FileIndexOptions.RetainedFileNames` is non-null, followed, when it is, by the
 names folded to upper-invariant for MFT blocks. Enumeration retention folds that way on
-Windows and stays as given elsewhere, matching the drive comparison.
+Windows and stays as given elsewhere, matching the root comparison.
 Every name or path string in those sets is well-formed UTF-16, so the UTF-8 form is lossless:
 admission rejects an unpaired surrogate in a retained name, a pruned directory name or a pruned path
 before any cache work. A pruned directory name pattern sequence is a u32 count followed by each
@@ -276,16 +276,16 @@ is excluded).
 | Enumeration | producer kind u32 (2); retention; pruned directory names; pruned directory attributes u32; `PruneDotDirectories` flag; pruned directory paths; pruned directory name patterns |
 
 For an enumeration block, retained names, exact pruned names and pruned paths fold to upper-invariant
-on Windows and stay as given elsewhere, matching the drive's path comparison; regex pattern text is
-never folded by the drive comparison because each `Regex` carries its own `RegexOptions`. Paths are normalized with
+on Windows and stay as given elsewhere, matching the root's path comparison; regex pattern text is
+never folded by the root comparison because each `Regex` carries its own `RegexOptions`. Paths are normalized with
 `Path.GetFullPath` and `Path.TrimEndingDirectorySeparator`, and only the paths equal to
-or beneath the drive's root are encoded, so editing a pruned path under one drive leaves
-every other drive's block valid. MFT blocks ignore `FileIndexOptions.DirectoryWalk`, including
+or beneath the root's directory are encoded, so editing a pruned path under one root leaves
+every other volume's block valid. MFT blocks ignore `FileIndexOptions.DirectoryWalk`, including
 `PrunedDirectoryNamePatterns`. The
 MFT `IncludeFreed` value comes from the scan options of `FileIndexOptions.MftSource`; an
 open with no source computes it as false.
 
-The index computes the expected shape for each drive and passes it to the producer in
+The index computes the expected shape for each root and passes it to the producer in
 `MftBlockProduceRequest.ScanShape`, or writes it itself for an enumeration block. A
 custom `MftBlockProducer` copies the value into `BlockFileCreateOptions.ScanShape`, as it
 copies the cache tag; returning a block with another shape is a producer failure.
@@ -293,8 +293,8 @@ copies the cache tag; returning a block with another shape is a producer failure
 
 Warm opening compares the scan shape after the cache tag. A mismatch records
 `BlockValidationResult.WrongScanShape`, disposes and best-effort deletes the block under
-its owner lock, and cold-scans. With `CacheMode.ExistingOnly` the block stays in place and the drive fails with
-`DriveFailureKind.CacheIdentityMismatch`, the kind a cache-tag mismatch reports, and
+its owner lock, and cold-scans. With `CacheMode.ExistingOnly` the block stays in place and the root fails with
+`RootFailureKind.CacheIdentityMismatch`, the kind a cache-tag mismatch reports, and
 `RescanAsync` can recover it. Both paths emit a `Diagnostics` line with the stored and
 requested shapes as sixteen hexadecimal digits. The shape has no public accessor, and
 `CacheDirectory.InspectCached` does not report it.
@@ -403,8 +403,8 @@ layout's maximum of 2147483647 each, while the walk continues from its frontier.
 name offsets are unchanged by the copy, so no directory is read twice. Growth is geometric, so
 copies are bounded. Only an enumeration tree that still cannot fit at that maximum publishes an
 exhausted block.
-An MFT producer or mutator keeps what fits and the drive remains Ready and queryable.
-Read `DriveBlockStatus.IsCapacityExhausted` to offer a rescan. The flag remains until a successful rescan publishes a replacement without it;
+An MFT producer or mutator keeps what fits and the volume remains Ready and queryable.
+Read `RootBlockStatus.IsCapacityExhausted` to offer a rescan. The flag remains until a successful rescan publishes a replacement without it;
 failed or cancelled rescans retain the old block and its flag.
 
 ## Name pool
@@ -430,7 +430,7 @@ Rows are dense by NTFS record number: row i is record i, with unused slots left
 empty and the volume root at row 5 (`BlockHeader.RootRow`). `RowCount` is the
 highest written slot plus one. `LiveRowCount` counts records that are in use and
 not tombstoned, excluding free slots and deleted files. Use the live count when
-displaying a file count; `DriveBlockStatus.LiveRowCount` reads it from the header. A
+displaying a file count; `RootBlockStatus.LiveRowCount` reads it from the header. A
 size-unknown row carries `RowFlags.SizeUnknown` and a zero size when no usable data size was
 found in the base record, including data in an extension record that the parser
 does not follow or a negative non-resident data size. A known zero size means an
@@ -460,7 +460,7 @@ only when its capacities equal the client block's own.
 Journal mutation coalesces NTFS close records. NTFS ends every open cycle with a record
 that repeats the cycle's reasons plus `USN_REASON_CLOSE`, and the watch reads with
 `ReturnOnlyOnClose = 0`, so every intermediate record arrives. `JournalMutator` tracks,
-per drive block, the reasons each row's open cycle already reported; a close record that
+per root block, the reasons each row's open cycle already reported; a close record that
 adds no new reason refreshes the row's attributes without emitting a
 second change, so one real transition raises one change. Writes inside the create cycle (records
 whose reasons still include `USN_REASON_FILE_CREATE` before the cycle's close) are part of the
@@ -476,53 +476,53 @@ the row resets the cycle, since the MFT segment was reused by a new file.
 
 ## Watch catch-up
 
-Each MFT-backed drive has its own watch handle and catch-up state. When
-`FileIndex.StartWatchingAsync([drive], cancellationToken)` starts a drive, or a rescan restarts
-one whose watch is still requested, that drive arms from the journal cursor persisted in its
-block header (`USN journal identifier` and `USN next USN`). Other drives' handles and blocks are
+Each MFT-backed volume has its own watch handle and catch-up state. When
+`FileIndex.StartWatchingAsync([root], cancellationToken)` starts a root, or a rescan restarts
+one whose watch is still requested, that volume arms from the journal cursor persisted in its
+block header (`USN journal identifier` and `USN next USN`). Other volumes' handles and blocks are
 untouched.
 
 The source captures the journal tip for the arm. Backlog batches between the persisted
 cursor and that tip are streamed and applied to the block in place, advancing the header's
-`USN next USN` and updating `LiveRowCount` and file rows under the drive's write gate. A
-`DriveCaughtUp` item transitions `DriveWatchStatus.State` from
+`USN next USN` and updating `LiveRowCount` and file rows under the volume's write gate. A
+`VolumeCaughtUp` item transitions `RootWatchStatus.State` from
 `WatchState.CatchingUp` to `WatchState.CaughtUp`. Live mutations continue on
 the same handle.
 
-`FileIndex.WaitForCatchUpAsync([drive], cancellationToken)` follows that drive's current
-handle. Its result succeeds immediately when the drive is already caught up, is `Failed` with the
-drive's exception when the watch failed or its last start was refused, and is `NotApplicable`
-when the drive's watch is not requested and it has no current watch. Stop retires that handle
-with a cancelled per-drive result; index disposal cancels the whole wait. A rescan
+`FileIndex.WaitForCatchUpAsync([root], cancellationToken)` follows that root's current
+handle. Its result succeeds immediately when the root is already caught up, is `Failed` with the
+root's exception when the watch failed or its last start was refused, and is `NotApplicable`
+when the root's watch is not requested and it has no current watch. Stop retires that handle
+with a cancelled per-root result; index disposal cancels the whole wait. A rescan
 keeps it attached during production and cancels it only when the replacement commits and
 retires the old handle; a wait issued after that commit and before the replacement registers
 follows the replacement handle.
 Failed or cancelled production leaves the watch and its waits untouched. Cancelling the wait's own
-token cancels only the wait, not the drive's watch.
+token cancels only the wait, not the root's watch.
 
-A `Drive` or `Apply` fault moves the drive to `WatchState.Recovering` and starts an
-automatic rescan. A wait issued during recovery settles that drive's result as `Failed` with
-the exception that ended the prior watch; a batched wait still waits for its other drives. After
-recovery starts the replacement handle and the drive reads
+A `Volume` or `Apply` fault moves the root to `WatchState.Recovering` and starts an
+automatic rescan. A wait issued during recovery settles that root's result as `Failed` with
+the exception that ended the prior watch; a batched wait still waits for its other roots. After
+recovery starts the replacement handle and the root reads
 `CatchingUp`, call the wait again to follow that handle. If recovery fails, or the
 replacement handle faults before reaching `CaughtUp`, the index raises a `Recovery` fault
-and leaves the drive `Faulted` until a consumer starts or rescans it. A `Channel` fault does
+and leaves the volume `Faulted` until a consumer starts or rescans it. A `Channel` fault does
 not recover automatically. A successful manual rescan whose replacement watch cannot start
-raises `RescanRestart` and leaves the drive `Faulted` without automatic recovery; the scan
-returns normally. The fault and `DriveWatchStatus.FailureMessage` name the rescan, and the start failure
+raises `RescanRestart` and leaves the root `Faulted` without automatic recovery; the scan
+returns normally. The fault and `RootWatchStatus.FailureMessage` name the rescan, and the start failure
 is the inner exception. Stop returns the fault once as `Failed`. Across a successful swap, old `Changed`
 events can arrive after publication and repeat during the new watch's catch-up; queries can
 lag until it reports `CaughtUp`.
 
-`WaitForCatchUpAsync(CancellationToken)` returns one `DriveOperationResult` for the index's
-root after its watch settles. A failed watch has `DriveOperationOutcome.Failed` and carries the
+`WaitForCatchUpAsync(CancellationToken)` returns one `RootOperationResult` for the index's
+root after its watch settles. A failed watch has `RootOperationOutcome.Failed` and carries the
 exception in `Failure`. A root with no watch is `NotApplicable`.
 Caller cancellation cancels the call; disposal cancels it through the
 index's disposal token.
 
 Calling the wait is optional. The index observes each handle's failure even when
-no caller waits; faults still reach `WatchFaulted`, `DriveWatchStatus.FailureMessage`, and
-`DriveWatchStatus.State`.
+no caller waits; faults still reach `WatchFaulted`, `RootWatchStatus.FailureMessage`, and
+`RootWatchStatus.State`.
 
 ## Sidecars
 

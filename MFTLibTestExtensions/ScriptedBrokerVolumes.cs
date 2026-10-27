@@ -10,14 +10,14 @@ namespace MFTLibTestExtensions;
 /// </summary>
 public sealed record ScriptedBrokerVolumes
 {
-    /// <summary>Arms a drive's journal cursor before its scan, and bounds a watch's backlog.</summary>
+    /// <summary>Arms a volume's journal cursor before its scan, and bounds a watch's backlog.</summary>
     public required Func<VolumeKey, SyntheticJournalCursor> QueryJournalCursor { get; init; }
 
     /// <summary>
-    ///     The records of one drive scan, in batches. The harness writes them through the production row
+    ///     The records of one volume scan, in batches. The harness writes them through the production row
     ///     writer and filter. Null refuses every scan with "Broker has no scan source".
     /// </summary>
-    public Func<ScriptedScan, IEnumerable<IReadOnlyList<SyntheticScanRecord>>>? ScanDrive { get; init; }
+    public Func<ScriptedScan, IEnumerable<IReadOnlyList<SyntheticScanRecord>>>? ScanVolume { get; init; }
 
     /// <summary>Bounded catch-up after a scan. Null answers "nothing new" from every cursor.</summary>
     public Func<VolumeKey, SyntheticJournalCursor, int, (IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Updated)>? ReadJournal
@@ -26,9 +26,9 @@ public sealed record ScriptedBrokerVolumes
         init;
     }
 
-    /// <summary>Streams a drive's journal for a watch. Null refuses every watch.</summary>
+    /// <summary>Streams a volume's journal for a watch. Null refuses every watch.</summary>
     public Func<VolumeKey, SyntheticJournalCursor, CancellationToken,
-        IAsyncEnumerable<(IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Cursor)>>? WatchDrive
+        IAsyncEnumerable<(IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Cursor)>>? WatchVolume
     { get; init; }
 
     // BrokerProcessTests.ScriptedVolumes_QueryVolumeOverridesTheDefault uses this
@@ -36,6 +36,6 @@ public sealed record ScriptedBrokerVolumes
     /// <summary>Answers volume sizing queries. Null answers a small fixed volume (256 KiB of 1024-byte records).</summary>
     internal Func<VolumeKey, NtfsVolumeInformation>? QueryVolume { get; init; }
 
-    /// <summary>Grows a drive's journal to the requested settings. Null refuses every grow request.</summary>
+    /// <summary>Grows a volume's journal to the requested settings. Null refuses every grow request.</summary>
     public Func<VolumeKey, UsnJournalSettings, UsnJournalSettings>? GrowUsnJournal { get; init; }
 }

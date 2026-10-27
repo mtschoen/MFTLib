@@ -34,7 +34,7 @@ public sealed partial class FileIndex
     ///         collection, whose timing is not guaranteed. <see cref="FileEntry.Children" />
     ///         is the exception: a handle carries no reference to its index, so there is no
     ///         disposal token to link and this method waits that listing out instead, which is one
-    ///         pass over the drive's rows unless its caller passes a token of its own.
+    ///         pass over the root's rows unless its caller passes a token of its own.
     ///     </para>
     ///     <para>
     ///         Every other member of <see cref="FileEntry" /> reads in place rather than
@@ -140,7 +140,7 @@ public sealed partial class FileIndex
         {
             await _runtime.ReleaseRetiredBlocksAsync().ConfigureAwait(false);
 
-            DriveBlock? current;
+            RootBlock? current;
             lock (_stateLock)
             {
                 current = _runtime.DetachCurrentBlockLocked();

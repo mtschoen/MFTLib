@@ -11,7 +11,7 @@ namespace MFTLib.Tests;
 public class BrokerIndexWatchSourceTests
 {
     [TestMethod]
-    public async Task WatchSource_StartsOnePipePerDriveAndEachBatchArrivesOnItsOwnHandle()
+    public async Task WatchSource_StartsOnePipePerVolumeAndEachBatchArrivesOnItsOwnHandle()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
         var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateIndexSource().WatchSource!;
@@ -27,8 +27,8 @@ public class BrokerIndexWatchSourceTests
         var runD = await harness.Watch('D').RunAsync(1);
         Assert.AreEqual(new UsnJournalCursor(7, 100), runC.Since);
         Assert.AreEqual(new UsnJournalCursor(7, 200), runD.Since);
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerC));
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerD));
+        Assert.IsInstanceOfType<VolumeCaughtUp>(await WatchReads.NextAsync(readerC));
+        Assert.IsInstanceOfType<VolumeCaughtUp>(await WatchReads.NextAsync(readerD));
         runC.Push(1, "c.txt", 110);
         runD.Push(2, "d.txt", 210);
 
@@ -51,7 +51,7 @@ public class BrokerIndexWatchSourceTests
         var token = harness.CancellationToken;
         var first = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
         var firstReader = first.ReadAsync(token).GetAsyncEnumerator(token);
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(firstReader));
+        Assert.IsInstanceOfType<VolumeCaughtUp>(await WatchReads.NextAsync(firstReader));
         var firstRun = await harness.Watch('C').RunAsync(1);
         firstRun.Push(1, "before.txt", 110);
         await WatchReads.NextBatchAsync(firstReader);
@@ -60,12 +60,12 @@ public class BrokerIndexWatchSourceTests
         await first.DisposeAsync();
         await firstRun.Cancelled.WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        // The process is the caller's: closing one drive's watch leaves it serving the next.
+        // The process is the caller's: closing one volume's watch leaves it serving the next.
         await using var second = await source.StartAsync(new IndexWatchTarget('C', 7, 110), token);
         var secondReader = second.ReadAsync(token).GetAsyncEnumerator(token);
         await using var _ = secondReader.ConfigureAwait(false);
         var secondRun = await harness.Watch('C').RunAsync(2);
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(secondReader));
+        Assert.IsInstanceOfType<VolumeCaughtUp>(await WatchReads.NextAsync(secondReader));
         secondRun.Push(2, "after.txt", 120);
         Assert.AreEqual("after.txt", (await WatchReads.NextBatchAsync(secondReader)).Entries.Single().FileName);
         Assert.IsFalse(harness.Process.Ended.IsCompleted);
@@ -80,7 +80,7 @@ public class BrokerIndexWatchSourceTests
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(harness.CancellationToken);
         var reader = handle.ReadAsync(cancellation.Token).GetAsyncEnumerator(cancellation.Token);
         await using var _ = reader.ConfigureAwait(false);
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
+        Assert.IsInstanceOfType<VolumeCaughtUp>(await WatchReads.NextAsync(reader));
         var pending = reader.MoveNextAsync().AsTask();
 
         await cancellation.CancelAsync();
@@ -97,7 +97,7 @@ public class BrokerIndexWatchSourceTests
         var cancelled = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
         var cancelledReader = cancelled.ReadAsync(cancellation.Token).GetAsyncEnumerator(cancellation.Token);
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(cancelledReader));
+        Assert.IsInstanceOfType<VolumeCaughtUp>(await WatchReads.NextAsync(cancelledReader));
         var pending = cancelledReader.MoveNextAsync().AsTask();
         await cancellation.CancelAsync();
         await Assert.ThrowsAsync<OperationCanceledException>(() => pending.WaitAsync(HangGuard, TestContext.CancellationToken));
@@ -108,7 +108,7 @@ public class BrokerIndexWatchSourceTests
         var reader = restarted.ReadAsync(token).GetAsyncEnumerator(token);
         await using var _ = reader.ConfigureAwait(false);
         var run = await harness.Watch('C').RunAsync(2);
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
+        Assert.IsInstanceOfType<VolumeCaughtUp>(await WatchReads.NextAsync(reader));
         run.Push(1, "after-restart.txt", 110);
 
         var batch = await WatchReads.NextBatchAsync(reader);
@@ -124,12 +124,12 @@ public class BrokerIndexWatchSourceTests
         await using var handle = await source.StartAsync(new IndexWatchTarget('C', 7, 100), harness.CancellationToken);
         var reader = handle.ReadAsync(harness.CancellationToken).GetAsyncEnumerator(harness.CancellationToken);
         await using var _ = reader.ConfigureAwait(false);
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
+        Assert.IsInstanceOfType<VolumeCaughtUp>(await WatchReads.NextAsync(reader));
 
         (await harness.Watch('C').RunAsync(1)).End();
 
         var lost = await WatchReads.ThrowsNextAsync<BrokerChannelLostException>(reader);
-        Assert.AreEqual('C', lost.Drive);
+        Assert.AreEqual('C', lost.Volume);
     }
 
     [TestMethod]
@@ -169,7 +169,7 @@ public class BrokerIndexWatchSourceTests
         var run = await harness.Watch('C').RunAsync(1);
         using var pumpStop = CancellationTokenSource.CreateLinkedTokenSource(token);
         var reader = handle.ReadAsync(pumpStop.Token).GetAsyncEnumerator(pumpStop.Token);
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
+        Assert.IsInstanceOfType<VolumeCaughtUp>(await WatchReads.NextAsync(reader));
         var pending = reader.MoveNextAsync().AsTask();
 
         // The index's pump cancels its read first and disposes the handle only afterwards.
@@ -177,7 +177,7 @@ public class BrokerIndexWatchSourceTests
         await Assert.ThrowsAsync<OperationCanceledException>(() => pending.WaitAsync(HangGuard, TestContext.CancellationToken));
         await reader.DisposeAsync();
 
-        Assert.IsFalse(run.Cancelled.IsCompleted, "cancelling a read must leave the drive's pipe open");
+        Assert.IsFalse(run.Cancelled.IsCompleted, "cancelling a read must leave the volume's pipe open");
         var reread = handle.ReadAsync(token).GetAsyncEnumerator(token);
         await using var _ = reread.ConfigureAwait(false);
         run.Push(1, "after-cancel.txt", 110);
@@ -237,14 +237,14 @@ public class BrokerIndexWatchSourceTests
     {
         int _starts;
 
-        public async Task<IIndexDriveWatch> StartAsync(IndexWatchTarget target, CancellationToken cancellationToken)
+        public async Task<IIndexVolumeWatch> StartAsync(IndexWatchTarget target, CancellationToken cancellationToken)
         {
             var handle = await inner.StartAsync(target, cancellationToken);
             return Interlocked.Increment(ref _starts) == 1 ? new HeldDisposalWatch(handle, teardown) : handle;
         }
     }
 
-    sealed class HeldDisposalWatch(IIndexDriveWatch inner, TestGate teardown) : IIndexDriveWatch
+    sealed class HeldDisposalWatch(IIndexVolumeWatch inner, TestGate teardown) : IIndexVolumeWatch
     {
         public IAsyncEnumerable<WatchStreamItem> ReadAsync(CancellationToken cancellationToken) =>
             inner.ReadAsync(cancellationToken);

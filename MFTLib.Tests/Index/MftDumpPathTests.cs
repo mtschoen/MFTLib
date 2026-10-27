@@ -130,7 +130,7 @@ public class MftDumpPathTests
         var identity = new MftDumpSourceIdentity("relative.mft", 'q');
 
         Assert.AreEqual(Path.GetFullPath("relative.mft"), identity.DumpFilePath);
-        Assert.AreEqual('Q', identity.Drive);
+        Assert.AreEqual('Q', identity.Volume);
         Assert.AreEqual("dump:/Q", identity.Root);
         Assert.ThrowsExactly<ArgumentException>(() => new MftDumpSourceIdentity(" ", 'D'));
         Assert.ThrowsExactly<ArgumentException>(() => new MftDumpSourceIdentity("x.mft", '1'));

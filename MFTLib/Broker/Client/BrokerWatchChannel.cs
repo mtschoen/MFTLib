@@ -4,17 +4,17 @@ using MFTLib.Index;
 namespace MFTLib;
 
 /// <summary>
-///     One drive's live watch on its own broker pipe. Reading it decodes the host's frames one at a
-///     time straight off the pipe, with no queue between them, so a drive that is not being read
+///     One volume's live watch on its own broker pipe. Reading it decodes the host's frames one at a
+///     time straight off the pipe, with no queue between them, so a volume that is not being read
 ///     holds back only its own pipe. The index reads it from one pump and disposes it once.
 /// </summary>
-sealed class BrokerWatchChannel(BrokerDriveChannel channel) : IIndexDriveWatch
+sealed class BrokerWatchChannel(BrokerVolumeChannel channel) : IIndexVolumeWatch
 {
-    VolumeKey Drive { get; } = channel.Drive;
+    VolumeKey Volume { get; } = channel.Volume;
 
     /// <summary>
-    ///     Yields the drive's batches and its caught-up marker. The host's <c>Error</c> frame throws
-    ///     <see cref="DriveWatchFaultException" />; a stall report, an end of the pipe, a failed read
+    ///     Yields the volume's batches and its caught-up marker. The host's <c>Error</c> frame throws
+    ///     <see cref="VolumeWatchFaultException" />; a stall report, an end of the pipe, a failed read
     ///     or a frame that has no place in a watch throws <see cref="BrokerChannelLostException" />.
     ///     Cancelling <paramref name="cancellationToken" /> ends a pending read without disposing
     ///     the channel.
@@ -25,8 +25,8 @@ sealed class BrokerWatchChannel(BrokerDriveChannel channel) : IIndexDriveWatch
         while (true)
         {
             var frame = await channel.ReadAsync(cancellationToken).ConfigureAwait(false)
-                        ?? throw new BrokerChannelLostException(Drive.Letter,
-                            $"Drive {Drive} watch channel was closed by the broker.");
+                        ?? throw new BrokerChannelLostException(Volume.Letter,
+                            $"Volume {Volume} watch channel was closed by the broker.");
             switch (frame.Kind)
             {
                 case BrokerFrameKind.Heartbeat:
@@ -37,15 +37,15 @@ sealed class BrokerWatchChannel(BrokerDriveChannel channel) : IIndexDriveWatch
                     break;
 
                 case BrokerFrameKind.CaughtUp:
-                    yield return new DriveCaughtUp();
+                    yield return new VolumeCaughtUp();
                     break;
 
                 case BrokerFrameKind.Error:
-                    throw new DriveWatchFaultException(frame.RequireMessage());
+                    throw new VolumeWatchFaultException(frame.RequireMessage());
 
                 default:
-                    throw new BrokerChannelLostException(Drive.Letter,
-                        $"Drive {Drive} watch channel sent {frame.Kind}, which a watch does not carry.");
+                    throw new BrokerChannelLostException(Volume.Letter,
+                        $"Volume {Volume} watch channel sent {frame.Kind}, which a watch does not carry.");
             }
         }
     }

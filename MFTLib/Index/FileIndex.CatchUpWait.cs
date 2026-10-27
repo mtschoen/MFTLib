@@ -12,17 +12,17 @@ public sealed partial class FileIndex
     /// </summary>
     sealed class CatchUpWait
     {
-        readonly RootKey _drive;
+        readonly RootKey _root;
         readonly CancellationToken _callerToken;
         readonly CancellationToken _disposalToken;
-        readonly TaskCompletionSource<DriveOperationResult> _completion =
+        readonly TaskCompletionSource<RootOperationResult> _completion =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         int _settled;
 
-        public CatchUpWait(RootKey drive, Task? wait, CancellationToken callerToken,
+        public CatchUpWait(RootKey root, Task? wait, CancellationToken callerToken,
             CancellationToken disposalToken)
         {
-            _drive = drive;
+            _root = root;
             _callerToken = callerToken;
             _disposalToken = disposalToken;
             Follow(wait);
@@ -40,13 +40,13 @@ public sealed partial class FileIndex
             }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         }
 
-        public Task<DriveOperationResult> Completion => _completion.Task;
+        public Task<RootOperationResult> Completion => _completion.Task;
 
         void Follow(Task? wait)
         {
             if (wait is null)
             {
-                Settle(DriveOperationOutcome.NotApplicable, null);
+                Settle(RootOperationOutcome.NotApplicable, null);
                 return;
             }
 
@@ -54,30 +54,30 @@ public sealed partial class FileIndex
             {
                 if (antecedent.Exception is { } faulted)
                 {
-                    Settle(DriveOperationOutcome.Failed, faulted.InnerExceptions[0]);
+                    Settle(RootOperationOutcome.Failed, faulted.InnerExceptions[0]);
                 }
                 else if (antecedent.IsCanceled)
                 {
-                    Settle(DriveOperationOutcome.Failed, new TaskCanceledException(antecedent));
+                    Settle(RootOperationOutcome.Failed, new TaskCanceledException(antecedent));
                 }
                 else
                 {
-                    Settle(DriveOperationOutcome.Succeeded, null);
+                    Settle(RootOperationOutcome.Succeeded, null);
                 }
             }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         }
 
         void Cancel(CancellationToken token) =>
-            Settle(DriveOperationOutcome.Failed, new OperationCanceledException(token));
+            Settle(RootOperationOutcome.Failed, new OperationCanceledException(token));
 
-        void Settle(DriveOperationOutcome outcome, Exception? failure)
+        void Settle(RootOperationOutcome outcome, Exception? failure)
         {
             if (Interlocked.Exchange(ref _settled, 1) != 0)
             {
                 return;
             }
 
-            var result = new DriveOperationResult(_drive, outcome, failure);
+            var result = new RootOperationResult(_root, outcome, failure);
             if (_callerToken.IsCancellationRequested)
             {
                 _completion.TrySetCanceled(_callerToken);

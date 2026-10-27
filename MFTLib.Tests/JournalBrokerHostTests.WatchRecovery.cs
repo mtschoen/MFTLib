@@ -8,25 +8,25 @@ namespace MFTLib.Tests;
 public partial class JournalBrokerHostTests
 {
     [TestMethod]
-    public async Task StartWatch_StaleCachedCursor_EndsThatDrivesStreamWithARescanErrorAndTheOtherDriveKeepsStreaming()
+    public async Task StartWatch_StaleCachedCursor_EndsThatVolumesStreamWithARescanErrorAndTheOtherVolumeKeepsStreaming()
     {
-        using var journal = JournalIsolation.OverrideJournalWindow(drive => drive == 'C'
+        using var journal = JournalIsolation.OverrideJournalWindow(volume => volume == 'C'
             ? new SyntheticJournalWindow(8UL, 0L, 1000L, 64L, 4096L)
             : null);
         var queryCallCount = 0;
         (UsnJournalEntry[], UsnJournalCursor)[] batchD = [([WatchEntry()], new UsnJournalCursor(2UL, 210L))];
 
-        UsnJournalCursor QueryCursor(VolumeKey drive)
+        UsnJournalCursor QueryCursor(VolumeKey volume)
         {
             Interlocked.Increment(ref queryCallCount);
-            return drive.Letter == 'C' ? new UsnJournalCursor(1UL, 999L) : new UsnJournalCursor(2UL, 500L);
+            return volume.Letter == 'C' ? new UsnJournalCursor(1UL, 999L) : new UsnJournalCursor(2UL, 500L);
         }
 
-        IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> WatchDrive(
-            VolumeKey drive, UsnJournalCursor since, ISourceOperationReporter operation,
+        IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> WatchVolume(
+            VolumeKey volume, UsnJournalCursor since, ISourceOperationReporter operation,
             CancellationToken cancellationToken)
         {
-            if (drive.Letter == 'C' && since.JournalIdentifier == 7UL)
+            if (volume.Letter == 'C' && since.JournalIdentifier == 7UL)
             {
                 throw new InvalidOperationException("USN journal entries have been deleted; full rescan needed");
             }
@@ -34,7 +34,7 @@ public partial class JournalBrokerHostTests
             return LiveWatch(batchD, cancellationToken);
         }
 
-        var host = CreateWatchHost(QueryCursor, WatchDrive);
+        var host = CreateWatchHost(QueryCursor, WatchVolume);
         await using var harness = new HostChannelHarness(host);
 
         var pipeC = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
@@ -65,7 +65,7 @@ public partial class JournalBrokerHostTests
         });
         var host = CreateWatchHost(
             queryCursor: _ => default,
-            watchDrive: (_, _, _, _) => ThrowingWatchMidStream());
+            watchVolume: (_, _, _, _) => ThrowingWatchMidStream());
         await using var harness = new HostChannelHarness(host);
 
         var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
@@ -82,7 +82,7 @@ public partial class JournalBrokerHostTests
     {
         var host = CreateWatchHost(
             queryCursor: _ => new UsnJournalCursor(1UL, 0L),
-            watchDrive: (_, _, _, _) => throw new UnauthorizedAccessException("Access is denied"));
+            watchVolume: (_, _, _, _) => throw new UnauthorizedAccessException("Access is denied"));
         await using var harness = new HostChannelHarness(host);
 
         var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
@@ -96,7 +96,7 @@ public partial class JournalBrokerHostTests
     [TestMethod]
     public async Task StartWatch_StaleCachedCursor_NeverWatchesFromTheCurrentJournalPosition()
     {
-        using var journal = JournalIsolation.OverrideJournalWindow(drive => drive == 'C'
+        using var journal = JournalIsolation.OverrideJournalWindow(volume => volume == 'C'
             ? new SyntheticJournalWindow(8UL, 0L, 1000L, 64L, 4096L)
             : null);
         var queryCallCount = 0;
@@ -107,7 +107,7 @@ public partial class JournalBrokerHostTests
                 queryCallCount++;
                 return new UsnJournalCursor(1UL, 0L);
             },
-            watchDrive: (_, since, _, cancellationToken) =>
+            watchVolume: (_, since, _, cancellationToken) =>
             {
                 watchCallCount++;
                 return since == new UsnJournalCursor(7UL, 100L)
@@ -132,7 +132,7 @@ public partial class JournalBrokerHostTests
         const string failureMessage = "USN journal wrapped before watching could start";
         var host = CreateWatchHost(
             queryCursor: _ => new UsnJournalCursor(8UL, 50L),
-            watchDrive: (_, _, _, _) => throw new InvalidOperationException(failureMessage));
+            watchVolume: (_, _, _, _) => throw new InvalidOperationException(failureMessage));
         await using var harness = new HostChannelHarness(host);
 
         var pipe = await harness.OpenWatchChannelAsync('C', default);
@@ -145,7 +145,7 @@ public partial class JournalBrokerHostTests
     [TestMethod]
     public async Task StartWatch_JournalIdentifierMismatchOnTheCachedCursor_IsAlsoAStaleCursorError()
     {
-        using var journal = JournalIsolation.OverrideJournalWindow(drive => drive == 'C'
+        using var journal = JournalIsolation.OverrideJournalWindow(volume => volume == 'C'
             ? new SyntheticJournalWindow(8UL, 0L, 1000L, 64L, 4096L)
             : null);
         var queryCallCount = 0;
@@ -155,7 +155,7 @@ public partial class JournalBrokerHostTests
                 queryCallCount++;
                 return new UsnJournalCursor(8UL, 50L);
             },
-            watchDrive: (_, since, _, cancellationToken) => since.JournalIdentifier == 7UL
+            watchVolume: (_, since, _, cancellationToken) => since.JournalIdentifier == 7UL
                 ? throw new InvalidOperationException(
                     "Journal ID mismatch: the cached cursor refers to a journal that was recreated")
                 : LiveWatch([([WatchEntry()], new UsnJournalCursor(8UL, 60L))], cancellationToken));

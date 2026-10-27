@@ -572,10 +572,10 @@ public partial class BrokerSessionTests
     [TestMethod]
     public async Task GrowUsnJournalAsync_LaunchesOnFirstUseAndForwardsTheRequest()
     {
-        var received = new List<(VolumeKey Drive, long MaximumSize, long AllocationDelta)>();
-        await using var handle = StartBroker((drive, target) =>
+        var received = new List<(VolumeKey Volume, long MaximumSize, long AllocationDelta)>();
+        await using var handle = StartBroker((volume, target) =>
         {
-            received.Add((drive, target.MaximumSize, target.AllocationDelta));
+            received.Add((volume, target.MaximumSize, target.AllocationDelta));
             return target;
         });
         var brokerProcess = handle.Process;
@@ -593,13 +593,13 @@ public partial class BrokerSessionTests
         Assert.AreEqual(0x01000000L, settings.AllocationDelta);
         Assert.AreEqual(1, launches);
         Assert.HasCount(1, received);
-        Assert.AreEqual('C', received[0].Drive);
+        Assert.AreEqual('C', received[0].Volume);
         Assert.AreEqual(0x08000000L, received[0].MaximumSize);
         Assert.AreEqual(0x01000000L, received[0].AllocationDelta);
     }
 
     [TestMethod]
-    public async Task GrowUsnJournalAsync_DefaultDrive_DoesNotLaunch()
+    public async Task GrowUsnJournalAsync_DefaultVolume_DoesNotLaunch()
     {
         var launches = 0;
         await using var session = CreateSession(_ =>
@@ -653,7 +653,7 @@ public partial class BrokerSessionTests
         await using var handle = BrokerTestHarness.StartInProcess(new ScriptedBrokerVolumes
         {
             QueryJournalCursor = _ => new SyntheticJournalCursor(7, 1000),
-            ScanDrive = _ =>
+            ScanVolume = _ =>
             [
                 [
                     new SyntheticScanRecord
@@ -673,14 +673,14 @@ public partial class BrokerSessionTests
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = SyntheticIndexedDrive.Create(new VolumeKey('X'), roots.Path, 123),
+            Root = SyntheticIndexedRoot.Create(new VolumeKey('X'), roots.Path, 123),
             CacheDirectory = cache.Path,
             CacheMode = CacheMode.Disabled,
             MftSource = session.CreateIndexSource()
         }, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreEqual(1, launches);
-        Assert.AreEqual(DriveState.Ready, index.Status.State);
+        Assert.AreEqual(RootState.Ready, index.Status.State);
     }
 
     [TestMethod]

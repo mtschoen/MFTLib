@@ -8,8 +8,8 @@ using static MFTLib.Tests.TestSupport.JournalWindows;
 namespace MFTLib.Tests.Index;
 
 /// <summary>
-///     Who owns a <see cref="JournalCheckpointLoss" /> and how long it lives: a drive that
-///     never settles must not leave its report behind for whichever drive reuses its ordinal,
+///     Who owns a <see cref="JournalCheckpointLoss" /> and how long it lives: a root that
+///     never settles must not leave its report behind for whichever root reuses its ordinal,
 ///     a cache-only open that adopts a block despite a lost checkpoint must still say why, and
 ///     a rescan that replaces the block must drop a report that no longer explains the block
 ///     in place.
@@ -30,19 +30,19 @@ public sealed class FileIndexCheckpointLossLifetimeTests : IDisposable
     // --- Ordinal reuse ---
 
     /// <summary>
-    ///     A drive that loses its checkpoint and then fails to scan never adds a block, so the
-    ///     next drive takes the same ordinal. The report must go with the drive it describes,
+    ///     A root that loses its checkpoint and then fails to scan never adds a block, so the
+    ///     next root takes the same ordinal. The report must go with the root it describes,
     ///     not with the ordinal.
     /// </summary>
     [TestMethod]
-    public async Task FailedDriveKeepsItsOwnLoss_AndTheNextDriveOnThatOrdinalGetsNone()
+    public async Task FailedRootKeepsItsOwnLoss_AndTheNextRootOnThatOrdinalGetsNone()
     {
-        var first = _fixture.Drive();
-        var second = _fixture.Drive('U');
+        var first = _fixture.Root();
+        var second = _fixture.Root('U');
         await _fixture.Seed(_fixture.Options(root: first), TestContext.CancellationToken);
         await _fixture.Seed(_fixture.Options(root: second), TestContext.CancellationToken);
 
-        using var journals = ForDrives(new Dictionary<VolumeKey, SyntheticJournalWindow>
+        using var journals = ForVolumes(new Dictionary<VolumeKey, SyntheticJournalWindow>
         {
             ['T'] = TrimmedWindow,   // T loses its checkpoint
             ['U'] = HealthyWindow    // U can still resume
@@ -50,7 +50,7 @@ public sealed class FileIndexCheckpointLossLifetimeTests : IDisposable
 
         Task<MftBlockProduceResult> Producer(MftBlockProduceRequest request, CancellationToken token)
         {
-            return request.Drive == 'T'
+            return request.Volume == 'T'
                 ? throw new IOException("synthetic scan failure for T")
                 : ProduceMftShapedBlock(request, token);
         }
@@ -61,14 +61,14 @@ public sealed class FileIndexCheckpointLossLifetimeTests : IDisposable
             _fixture.Options(Producer, root: second), CancellationToken.None);
 
         var failed = failedIndex.Status;
-        Assert.AreEqual(DriveState.Failed, failed.State);
-        Assert.IsNotNull(failed.Watch.CheckpointLoss, "the failed drive keeps the report that describes it");
-        Assert.AreEqual('T', failed.Watch.CheckpointLoss.Drive);
+        Assert.AreEqual(RootState.Failed, failed.State);
+        Assert.IsNotNull(failed.Watch.CheckpointLoss, "the failed root keeps the report that describes it");
+        Assert.AreEqual('T', failed.Watch.CheckpointLoss.Volume);
 
         var settled = settledIndex.Status;
         Assert.AreEqual(BlockOrigin.WarmStartedFromCache, settled.Block!.Origin);
         Assert.IsNull(settled.Watch.CheckpointLoss,
-            "a second drive must not inherit another drive's report");
+            "a second root must not inherit another root's report");
     }
 
     // --- Cache-only ---
@@ -82,22 +82,22 @@ public sealed class FileIndexCheckpointLossLifetimeTests : IDisposable
     [TestMethod]
     public async Task CacheOnlyAdoptsATrimmedCheckpoint_ReportsWhyAndTheSize()
     {
-        var drive = _fixture.Drive();
-        await _fixture.Seed(_fixture.Options(root: drive), TestContext.CancellationToken);
+        var root = _fixture.Root();
+        await _fixture.Seed(_fixture.Options(root: root), TestContext.CancellationToken);
 
-        using var journals = ForDrives(new Dictionary<VolumeKey, SyntheticJournalWindow> { ['T'] = TrimmedWindow });
+        using var journals = ForVolumes(new Dictionary<VolumeKey, SyntheticJournalWindow> { ['T'] = TrimmedWindow });
         await using var index = await FileIndex.OpenAsync(
-            _fixture.Options(cacheMode: CacheMode.ExistingOnly, root: drive), CancellationToken.None);
+            _fixture.Options(cacheMode: CacheMode.ExistingOnly, root: root), CancellationToken.None);
 
         var status = index.Status;
-        Assert.AreEqual(DriveState.Ready, status.State);
+        Assert.AreEqual(RootState.Ready, status.State);
         Assert.AreEqual(BlockOrigin.WarmStartedFromCache, status.Block!.Origin);
         Assert.IsNull(status.Failure);
 
         var loss = status.Watch.CheckpointLoss;
         Assert.IsNotNull(loss, "a cache-only open must still say why the checkpoint could not be resumed");
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
-        Assert.AreEqual('T', loss.Drive);
+        Assert.AreEqual('T', loss.Volume);
         Assert.AreEqual(CachedNextUsn, loss.CheckpointUsn);
         Assert.AreEqual(500L, loss.BytesBehind);
         Assert.AreEqual(4_096L, loss.SizeThatWouldHaveRetained);
@@ -106,15 +106,15 @@ public sealed class FileIndexCheckpointLossLifetimeTests : IDisposable
     [TestMethod]
     public async Task CacheOnlyAdoptsOverARecreatedJournal_ReportsTheLossWithNoSize()
     {
-        var drive = _fixture.Drive();
-        await _fixture.Seed(_fixture.Options(root: drive), TestContext.CancellationToken);
+        var root = _fixture.Root();
+        await _fixture.Seed(_fixture.Options(root: root), TestContext.CancellationToken);
 
-        using var journals = ForDrives(new Dictionary<VolumeKey, SyntheticJournalWindow> { ['T'] = Recreated });
+        using var journals = ForVolumes(new Dictionary<VolumeKey, SyntheticJournalWindow> { ['T'] = Recreated });
         await using var index = await FileIndex.OpenAsync(
-            _fixture.Options(cacheMode: CacheMode.ExistingOnly, root: drive), CancellationToken.None);
+            _fixture.Options(cacheMode: CacheMode.ExistingOnly, root: root), CancellationToken.None);
 
         var status = index.Status;
-        Assert.AreEqual(DriveState.Ready, status.State);
+        Assert.AreEqual(RootState.Ready, status.State);
         Assert.IsNull(status.Failure);
 
         var loss = status.Watch.CheckpointLoss;
@@ -127,12 +127,12 @@ public sealed class FileIndexCheckpointLossLifetimeTests : IDisposable
     [TestMethod]
     public async Task CacheOnlyOverAHealthyBlock_WarmStartsAndReportsNoLoss()
     {
-        var drive = _fixture.Drive();
-        await _fixture.Seed(_fixture.Options(root: drive), TestContext.CancellationToken);
+        var root = _fixture.Root();
+        await _fixture.Seed(_fixture.Options(root: root), TestContext.CancellationToken);
 
-        using var journals = ForDrives(new Dictionary<VolumeKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
+        using var journals = ForVolumes(new Dictionary<VolumeKey, SyntheticJournalWindow> { ['T'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
-            _fixture.Options(cacheMode: CacheMode.ExistingOnly, root: drive), CancellationToken.None);
+            _fixture.Options(cacheMode: CacheMode.ExistingOnly, root: root), CancellationToken.None);
 
         var status = index.Status;
         Assert.AreEqual(BlockOrigin.WarmStartedFromCache, status.Block!.Origin);
@@ -149,12 +149,12 @@ public sealed class FileIndexCheckpointLossLifetimeTests : IDisposable
     [TestMethod]
     public async Task ASuccessfulRescanClearsTheLoss()
     {
-        var drive = _fixture.Drive();
-        await _fixture.Seed(_fixture.Options(root: drive), TestContext.CancellationToken);
+        var root = _fixture.Root();
+        await _fixture.Seed(_fixture.Options(root: root), TestContext.CancellationToken);
 
-        using var journals = ForDrives(new Dictionary<VolumeKey, SyntheticJournalWindow> { ['T'] = TrimmedWindow });
+        using var journals = ForVolumes(new Dictionary<VolumeKey, SyntheticJournalWindow> { ['T'] = TrimmedWindow });
         await using var index = await FileIndex.OpenAsync(
-            _fixture.Options(root: drive), CancellationToken.None);
+            _fixture.Options(root: root), CancellationToken.None);
         Assert.IsNotNull(index.Status.Watch.CheckpointLoss);
 
         await index.RescanAsync(CancellationToken.None);

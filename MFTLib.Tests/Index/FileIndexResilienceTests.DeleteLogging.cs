@@ -7,12 +7,12 @@ namespace MFTLib.Tests.Index;
 /// <summary>
 ///     Every block-file delete a <see cref="FileIndex" /> performs is reported through
 ///     <see cref="FileIndexOptions.Diagnostics" /> with the deleted path and the reason, and a
-///     cache-only open declines a drive whose cache was rejected.
+///     cache-only open declines a root whose cache was rejected.
 /// </summary>
 public partial class FileIndexResilienceTests
 {
     [TestMethod]
-    public async Task OpenAsync_CacheOnly_WithACorruptCache_DeclinesTheDriveWithNoBlock()
+    public async Task OpenAsync_CacheOnly_WithACorruptCache_DeclinesTheRootWithNoBlock()
     {
         await using (await FileIndex.OpenAsync(Options(), CancellationToken.None))
         {
@@ -28,8 +28,8 @@ public partial class FileIndexResilienceTests
         await using var index = await FileIndex.OpenAsync(cacheOnlyOptions, CancellationToken.None);
 
         var failed = index.Status;
-        Assert.AreEqual(DriveState.Failed, failed.State);
-        Assert.AreEqual(DriveFailureKind.CacheDeclined, failed.Failure?.Kind);
+        Assert.AreEqual(RootState.Failed, failed.State);
+        Assert.AreEqual(RootFailureKind.CacheDeclined, failed.Failure?.Kind);
         Assert.IsNull(failed.Block);
         Assert.AreSequenceEqual(bytes, await File.ReadAllBytesAsync(blockPath, TestContext.CancellationToken), "a cache-only open leaves the rejected block in place");
     }
@@ -85,7 +85,7 @@ public partial class FileIndexResilienceTests
         var deletions = new List<string>();
         var options = new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), secondRoot, UniqueVolumeSerial, ProducerKind.Enumeration),
+            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), secondRoot, UniqueVolumeSerial, ProducerKind.Enumeration),
             CacheDirectory = CacheDirectoryPath,
             Diagnostics = deletions.Add
         };

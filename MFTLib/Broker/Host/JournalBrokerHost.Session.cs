@@ -9,7 +9,7 @@ sealed partial class JournalBrokerHost
     ///     Serve a broker session. Reads request frames from <paramref name="control" /> and runs
     ///     each on its own task, so a slow request never delays another's reply; control writes
     ///     are serialized by a control-only lock. One heartbeat sender thread visits every pipe
-    ///     for as long as the session runs. <c>OpenChannel</c> connects the named drive pipe
+    ///     for as long as the session runs. <c>OpenChannel</c> connects the named volume pipe
     ///     through <paramref name="connectChannel" /> and serves one scan or one watch on it, on
     ///     its own task. <c>QueryVolume</c> and <c>GrowUsnJournal</c> answer with one reply or one
     ///     <c>Error</c> carrying the request id.
@@ -19,7 +19,7 @@ sealed partial class JournalBrokerHost
     ///     on the host's clock, then returns even if an operation ignores its cancellation.
     /// </summary>
     /// <param name="control">The connected control pipe.</param>
-    /// <param name="connectChannel">Connects a drive pipe the client created and named.</param>
+    /// <param name="connectChannel">Connects a volume pipe the client created and named.</param>
     /// <param name="blockSectionWriter">
     ///     Writes packed rows into the client-created section. Null serves a watch-only session;
     ///     a scan channel on such a session ends with one <c>Error</c> frame.

@@ -13,7 +13,7 @@ public partial class JournalBrokerHostTests
         var oversized = Enumerable.Range(0, 30_500)
             .Select(index => JournalEntries.Create((ulong)index, index, new string('e', 255))).ToArray();
         var host = CreateWatchHost(
-            watchDrive: (_, _, _, _) => FiniteWatch([(oversized, new UsnJournalCursor(7UL, 110L))]));
+            watchVolume: (_, _, _, _) => FiniteWatch([(oversized, new UsnJournalCursor(7UL, 110L))]));
         await using var harness = new HostChannelHarness(host);
 
         var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));

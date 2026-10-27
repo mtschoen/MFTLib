@@ -11,9 +11,9 @@ partial class SampleHost
             yield break;
         }
 
-        foreach (var drive in IndexedRoot.EnumerateWindowsVolumes())
+        foreach (var volume in IndexedRoot.EnumerateWindowsVolumes())
         {
-            yield return drive;
+            yield return volume;
         }
     }
 
@@ -26,15 +26,15 @@ partial class SampleHost
             return true;
         }
 
-        var drives = availableDrives as IReadOnlyList<WindowsVolume>
+        var volumes = availableDrives as IReadOnlyList<WindowsVolume>
             ?? availableDrives.ToList();
-        foreach (var drive in drives.Where(drive => !drive.IsIndexable))
+        foreach (var volume in volumes.Where(volume => !volume.IsIndexable))
         {
-            _output.WriteLine($"Skipping drive {drive.RootDirectory} ({drive.DriveType}, {(drive.IsReady ? "ready" : "not ready")}, format {drive.Format ?? "unknown"}: {drive.Reason})");
+            _output.WriteLine($"Skipping drive {volume.RootDirectory} ({volume.DriveType}, {(volume.IsReady ? "ready" : "not ready")}, format {volume.Format ?? "unknown"}: {volume.Reason})");
         }
 
-        var chosen = drives.Where(drive => drive.IsIndexable)
-            .Select(drive => drive.Drive.ToString())
+        var chosen = volumes.Where(volume => volume.IsIndexable)
+            .Select(volume => volume.Volume.ToString())
             .Order(StringComparer.Ordinal).ToArray();
         if (chosen.Length == 0)
         {

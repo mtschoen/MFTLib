@@ -6,7 +6,7 @@ namespace MFTLib.Tests.Index;
 public partial class IndexNavigationTests
 {
     [TestMethod]
-    public async Task Path_RendersTheBlockRootDirectory_NotTheDriveKey()
+    public async Task Path_RendersTheBlockRootDirectory_NotTheRootKey()
     {
         using var builder = new SyntheticBlockBuilder();
         var root = builder.AddRoot();
@@ -17,7 +17,7 @@ public partial class IndexNavigationTests
 
         var rootDirectory = Path.Combine(builder.DirectoryPath, "mftlib-path-root");
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('T'), block, rootDirectoryPath: rootDirectory)];
+        RootBlock[] snapshot = [new RootBlock(new VolumeKey('T'), block, rootDirectoryPath: rootDirectory)];
         try
         {
             Assert.AreEqual(rootDirectory, FileEntry.Create(snapshot[0], root).Path);
@@ -31,8 +31,8 @@ public partial class IndexNavigationTests
     }
 
     /// <summary>
-    ///     A bare drive specifier such as <c>C:</c> is drive-relative: joining it with a name
-    ///     chain yields <c>C:Documents</c>, which Windows resolves against that drive's
+    ///     A bare root specifier such as <c>C:</c> is root-relative: joining it with a name
+    ///     chain yields <c>C:Documents</c>, which Windows resolves against that root's
     ///     per-process current directory rather than its root, and which
     ///     <c>FileIndex.Find</c> then rejects because the character after the root is not a
     ///     separator. The block normalises the root as it comes in, so the rendered path is
@@ -50,11 +50,11 @@ public partial class IndexNavigationTests
 
         var separator = Path.DirectorySeparatorChar;
         var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock(new VolumeKey('C'), block, rootDirectoryPath: "C:");
-        DriveBlock[] snapshot = [driveBlock];
+        var rootBlock = new RootBlock(new VolumeKey('C'), block, rootDirectoryPath: "C:");
+        RootBlock[] snapshot = [rootBlock];
         try
         {
-            Assert.AreEqual($"C:{separator}", driveBlock.RootDirectoryPath);
+            Assert.AreEqual($"C:{separator}", rootBlock.RootDirectoryPath);
 
             var path = FileEntry.Create(snapshot[0], readme).Path;
             Assert.AreEqual($"C:{separator}Documents{separator}readme.md", path);
@@ -76,7 +76,7 @@ public partial class IndexNavigationTests
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('T'), block)];
+        RootBlock[] snapshot = [new RootBlock(new VolumeKey('T'), block)];
         try
         {
             var exception = Assert.ThrowsExactly<InvalidOperationException>(

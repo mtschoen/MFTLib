@@ -11,16 +11,16 @@ public sealed partial class FileIndex
     /// </summary>
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
-    /// <exception cref="InvalidOperationException">The call was made from inside a Changed, WatchFaulted or WatchStateChanged handler of this index.</exception>
-    public Task<DriveOperationResult> StartWatchingAsync(CancellationToken cancellationToken)
+    /// <exception cref="InvalidOperationException">The call was made from inside a Changed, WatchFaulted or WatchStateChanged handler of any index.</exception>
+    public Task<RootOperationResult> StartWatchingAsync(CancellationToken cancellationToken)
     {
-        if (RejectedTask<DriveOperationResult>(nameof(StartWatchingAsync)) is { } rejected)
+        if (RejectedTask<RootOperationResult>(nameof(StartWatchingAsync)) is { } rejected)
         {
             return rejected;
         }
 
         return RunLifecycleOperationAsync(HasWatchableBlock,
-            () => _runtime.StartDriveWatchingAsync(cancellationToken), cancellationToken);
+            () => _runtime.StartRootWatchingAsync(cancellationToken), cancellationToken);
     }
 
     /// <summary>
@@ -31,16 +31,16 @@ public sealed partial class FileIndex
     /// </summary>
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
-    /// <exception cref="InvalidOperationException">The call was made from inside a Changed, WatchFaulted or WatchStateChanged handler of this index.</exception>
-    public Task<DriveOperationResult> StopWatchingAsync(CancellationToken cancellationToken)
+    /// <exception cref="InvalidOperationException">The call was made from inside a Changed, WatchFaulted or WatchStateChanged handler of any index.</exception>
+    public Task<RootOperationResult> StopWatchingAsync(CancellationToken cancellationToken)
     {
-        if (RejectedTask<DriveOperationResult>(nameof(StopWatchingAsync)) is { } rejected)
+        if (RejectedTask<RootOperationResult>(nameof(StopWatchingAsync)) is { } rejected)
         {
             return rejected;
         }
 
         return RunLifecycleOperationAsync(IsWatching,
-            () => _runtime.StopDriveWatchingAsync(cancellationToken), cancellationToken);
+            () => _runtime.StopRootWatchingAsync(cancellationToken), cancellationToken);
     }
 
     /// <summary>
@@ -52,16 +52,16 @@ public sealed partial class FileIndex
     /// </summary>
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
-    /// <exception cref="InvalidOperationException">The call was made from inside a Changed, WatchFaulted or WatchStateChanged handler of this index.</exception>
-    public Task<DriveOperationResult> RescanAsync(CancellationToken cancellationToken)
+    /// <exception cref="InvalidOperationException">The call was made from inside a Changed, WatchFaulted or WatchStateChanged handler of any index.</exception>
+    public Task<RootOperationResult> RescanAsync(CancellationToken cancellationToken)
     {
-        if (RejectedTask<DriveOperationResult>(nameof(RescanAsync)) is { } rejected)
+        if (RejectedTask<RootOperationResult>(nameof(RescanAsync)) is { } rejected)
         {
             return rejected;
         }
 
         return RunLifecycleOperationAsync(applicable: null,
-            () => _runtime.RescanDriveAsync(cancellationToken), cancellationToken);
+            () => _runtime.RescanRootAsync(cancellationToken), cancellationToken);
     }
 
     /// <summary>
@@ -73,8 +73,8 @@ public sealed partial class FileIndex
     /// </summary>
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
-    /// <exception cref="InvalidOperationException">A wait that is not yet settled was requested from inside a Changed, WatchFaulted or WatchStateChanged handler of this index.</exception>
-    public Task<DriveOperationResult> WaitForCatchUpAsync(CancellationToken cancellationToken)
+    /// <exception cref="InvalidOperationException">A wait that is not yet settled was requested from inside a Changed, WatchFaulted or WatchStateChanged handler of any index.</exception>
+    public Task<RootOperationResult> WaitForCatchUpAsync(CancellationToken cancellationToken)
     {
         Task? wait;
         CancellationToken disposalToken;
@@ -90,17 +90,17 @@ public sealed partial class FileIndex
         }
         catch (ObjectDisposedException disposal) when (IsInsideHandler())
         {
-            return Task.FromException<DriveOperationResult>(
+            return Task.FromException<RootOperationResult>(
                 RejectInsideHandler(nameof(WaitForCatchUpAsync)) ?? disposal);
         }
 
         if (!cancellationToken.IsCancellationRequested && wait is { IsCompleted: false } &&
-            RejectedTask<DriveOperationResult>(nameof(WaitForCatchUpAsync)) is { } rejected)
+            RejectedTask<RootOperationResult>(nameof(WaitForCatchUpAsync)) is { } rejected)
         {
             return rejected;
         }
 
-        return new CatchUpWait(_runtime.Drive, wait, cancellationToken, disposalToken).Completion;
+        return new CatchUpWait(_runtime.Root, wait, cancellationToken, disposalToken).Completion;
     }
 
     bool HasWatchableBlock()
@@ -119,26 +119,26 @@ public sealed partial class FileIndex
         }
     }
 
-    async Task<DriveOperationResult> RunLifecycleOperationAsync(Func<bool>? applicable,
+    async Task<RootOperationResult> RunLifecycleOperationAsync(Func<bool>? applicable,
         Func<Task> operation, CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
-        DriveOperationResult result;
+        RootOperationResult result;
         try
         {
             if (applicable is not null && !applicable())
             {
-                result = new DriveOperationResult(_runtime.Drive, DriveOperationOutcome.NotApplicable, null);
+                result = new RootOperationResult(_runtime.Root, RootOperationOutcome.NotApplicable, null);
             }
             else
             {
                 await operation().ConfigureAwait(false);
-                result = new DriveOperationResult(_runtime.Drive, DriveOperationOutcome.Succeeded, null);
+                result = new RootOperationResult(_runtime.Root, RootOperationOutcome.Succeeded, null);
             }
         }
         catch (Exception failure)
         {
-            result = new DriveOperationResult(_runtime.Drive, DriveOperationOutcome.Failed, failure);
+            result = new RootOperationResult(_runtime.Root, RootOperationOutcome.Failed, failure);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -148,12 +148,12 @@ public sealed partial class FileIndex
     // No caller token: a direct apply has no stop of its own, and the index's disposal token would
     // let disposal turn a batch already queued for the gate into a cancellation instead of the
     // ObjectDisposedException a disposed index reports.
-    internal async Task<IReadOnlyList<FileChange>> ApplyJournalEntriesAsync(VolumeKey drive,
+    internal async Task<IReadOnlyList<FileChange>> ApplyJournalEntriesAsync(VolumeKey volume,
         IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn)
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(entries);
-        var runtime = GetDriveRuntime(drive);
+        var runtime = GetRootRuntime(volume);
         var changes = await runtime.ApplyJournalEntriesCoreAsync(null, entries, journalIdentifier, nextUsn,
             CancellationToken.None).ConfigureAwait(false);
         runtime.RaiseChanged(changes);

@@ -7,8 +7,8 @@ using static MFTLib.Tests.TestSupport.CatchUpLossTestSupport;
 namespace MFTLib.Tests.Index;
 
 /// <summary>
-///     The open's settle runs the same scan operation: a drive whose catch-up is lost at open is
-///     scanned again at once, and after the limit it settles <see cref="DriveState.Ready" /> with its
+///     The open's settle runs the same scan operation: a root whose catch-up is lost at open is
+///     scanned again at once, and after the limit it settles <see cref="RootState.Ready" /> with its
 ///     last block, unresumable, while <see cref="FileIndex.OpenAsync" /> does not throw. Each lost block
 ///     a retry supersedes leaves no file behind.
 /// </summary>
@@ -23,13 +23,13 @@ public partial class FileIndexCatchUpLossTests
         await using var index = await FileIndex.OpenAsync(cache.Options(), Token);
 
         Assert.AreEqual(2, cache.Productions);
-        var drive = index.Status;
-        Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(BlockOrigin.ProducedByScan, drive.Block!.Origin);
-        Assert.AreEqual(0, drive.Watch.ConsecutiveLostCatchUps);
-        Assert.IsFalse(drive.Watch.IsRecoveryStopped);
-        Assert.AreEqual(StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss, "the retry keeps the report the loss produced");
-        Assert.AreEqual(WatchState.NotStarted, drive.Watch.State);
+        var root = index.Status;
+        Assert.AreEqual(RootState.Ready, root.State);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, root.Block!.Origin);
+        Assert.AreEqual(0, root.Watch.ConsecutiveLostCatchUps);
+        Assert.IsFalse(root.Watch.IsRecoveryStopped);
+        Assert.AreEqual(StandardCatchUpLoss('T'), root.Watch.CheckpointLoss, "the retry keeps the report the loss produced");
+        Assert.AreEqual(WatchState.NotStarted, root.Watch.State);
         Assert.AreSequenceEqual([LossScriptedCache.CanonicalBlockName], cache.BlockFileNames());
         await index.StartWatchingAsync(Token);
         Assert.HasCount(1, cache.Source.TargetsFor('T'), "the retried block is resumable");
@@ -46,15 +46,15 @@ public partial class FileIndexCatchUpLossTests
         await using var index = await FileIndex.OpenAsync(cache.Options(), Token);
 
         Assert.AreEqual(3, cache.Productions);
-        var drive = index.Status;
-        Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(3, drive.Watch.ConsecutiveLostCatchUps);
-        Assert.IsTrue(drive.Watch.IsRecoveryStopped, "exhaustion is visible before open completes");
-        Assert.AreEqual(StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss);
-        Assert.AreEqual(WatchState.Faulted, drive.Watch.State);
-        Assert.Contains("12288", drive.Watch.FailureMessage!);
+        var root = index.Status;
+        Assert.AreEqual(RootState.Ready, root.State);
+        Assert.AreEqual(3, root.Watch.ConsecutiveLostCatchUps);
+        Assert.IsTrue(root.Watch.IsRecoveryStopped, "exhaustion is visible before open completes");
+        Assert.AreEqual(StandardCatchUpLoss('T'), root.Watch.CheckpointLoss);
+        Assert.AreEqual(WatchState.Faulted, root.Watch.State);
+        Assert.Contains("12288", root.Watch.FailureMessage!);
         Assert.AreSequenceEqual([LossScriptedCache.CanonicalBlockName], cache.BlockFileNames());
-        var refusal = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.StartWatchingAsync(Token));
+        var refusal = await RootResultAssertions.FailureAsync<InvalidOperationException>(() => index.StartWatchingAsync(Token));
         Assert.Contains("RescanAsync", refusal.Message);
     }
 
@@ -68,19 +68,19 @@ public partial class FileIndexCatchUpLossTests
         await using var index = await FileIndex.OpenAsync(cache.Options(), Token);
 
         Assert.AreEqual(2, cache.Productions);
-        var drive = index.Status;
-        Assert.AreEqual(DriveState.Ready, drive.State, "the lost block stays in place");
-        Assert.AreEqual(1, drive.Watch.ConsecutiveLostCatchUps);
-        Assert.IsFalse(drive.Watch.IsRecoveryStopped);
-        Assert.AreEqual(StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss);
-        Assert.AreEqual("the retry scan failed", drive.Failure?.Message);
+        var root = index.Status;
+        Assert.AreEqual(RootState.Ready, root.State, "the lost block stays in place");
+        Assert.AreEqual(1, root.Watch.ConsecutiveLostCatchUps);
+        Assert.IsFalse(root.Watch.IsRecoveryStopped);
+        Assert.AreEqual(StandardCatchUpLoss('T'), root.Watch.CheckpointLoss);
+        Assert.AreEqual("the retry scan failed", root.Failure?.Message);
         Assert.AreSequenceEqual([LossScriptedCache.CanonicalBlockName], cache.BlockFileNames());
-        var refusal = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => index.StartWatchingAsync(Token));
+        var refusal = await RootResultAssertions.FailureAsync<InvalidOperationException>(() => index.StartWatchingAsync(Token));
         Assert.Contains("RescanAsync", refusal.Message);
     }
 
     /// <summary>
-    ///     One MFT drive over an owned tree and cache directory, whose producer writes a real block
+    ///     One MFT volume over an owned tree and cache directory, whose producer writes a real block
     ///     at the requested path and attaches the next queued catch-up loss, if any.
     /// </summary>
     sealed class LossScriptedCache : IDisposable

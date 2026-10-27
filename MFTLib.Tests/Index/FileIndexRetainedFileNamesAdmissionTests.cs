@@ -36,7 +36,7 @@ public sealed class FileIndexRetainedFileNamesAdmissionTests : IndexTreeTestBase
     }
 
     [TestMethod]
-    public async Task OpenAsync_SetTooLongForOneBrokerFrame_IsAcceptedWhenNoDriveUsesTheMftProducer()
+    public async Task OpenAsync_SetTooLongForOneBrokerFrame_IsAcceptedWhenNoRootUsesTheMftProducer()
     {
         var options = Fixture.Options(producer: ProducerKind.Enumeration) with
         {
@@ -46,7 +46,7 @@ public sealed class FileIndexRetainedFileNamesAdmissionTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
 
-        Assert.AreEqual(DriveState.Ready, index.Status.State);
+        Assert.AreEqual(RootState.Ready, index.Status.State);
     }
 
     [TestMethod]
@@ -83,7 +83,7 @@ public sealed class FileIndexRetainedFileNamesAdmissionTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
 
-        Assert.AreEqual(DriveState.Ready, index.Status.State);
+        Assert.AreEqual(RootState.Ready, index.Status.State);
     }
 
     [TestMethod]

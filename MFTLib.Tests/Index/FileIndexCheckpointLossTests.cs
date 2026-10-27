@@ -9,7 +9,7 @@ namespace MFTLib.Tests.Index;
 
 /// <summary>
 ///     What a consumer sees when a cached block cannot be resumed because the journal no
-///     longer holds its checkpoint: the drive is cold-scanned, and its status carries the
+///     longer holds its checkpoint: the root is cold-scanned, and its status carries the
 ///     reason and the size a journal would need to be at least to have kept the checkpoint.
 ///     The journal read is swapped out through <c>JournalIsolation.OverrideJournalWindow</c>,
 ///     so these run on every platform and never touch a real volume.
@@ -38,9 +38,9 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
             watchCapable ? new ScriptedWatchSource().IndexSource : null);
         await using var reopened = await FileIndex.OpenAsync(options, CancellationToken.None);
 
-        var drive = reopened.Status;
-        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, drive.Block!.Origin);
-        Assert.IsNull(drive.Watch.CheckpointLoss);
+        var root = reopened.Status;
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, root.Block!.Origin);
+        Assert.IsNull(root.Watch.CheckpointLoss);
     }
 
     [TestMethod]
@@ -54,15 +54,15 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
 
         await using var reopened = await FileIndex.OpenAsync(_fixture.Options(), CancellationToken.None);
 
-        var drive = reopened.Status;
-        Assert.AreEqual(BlockOrigin.ProducedByScan, drive.Block!.Origin,
+        var root = reopened.Status;
+        Assert.AreEqual(BlockOrigin.ProducedByScan, root.Block!.Origin,
             "an unresumable checkpoint must cold-scan rather than warm-start");
-        Assert.AreEqual(DriveState.Ready, drive.State);
+        Assert.AreEqual(RootState.Ready, root.State);
 
-        var loss = drive.Watch.CheckpointLoss;
+        var loss = root.Watch.CheckpointLoss;
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
-        Assert.AreEqual('T', loss.Drive);
+        Assert.AreEqual('T', loss.Volume);
         Assert.AreEqual(CachedNextUsn, loss.CheckpointUsn);
         Assert.AreEqual(CachedNextUsn + 500, loss.FirstUsn);
         Assert.AreEqual(CachedNextUsn + 4_000, loss.NextUsn);
@@ -79,10 +79,10 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
 
         await using var reopened = await FileIndex.OpenAsync(_fixture.Options(), CancellationToken.None);
 
-        var drive = reopened.Status;
-        Assert.AreEqual(BlockOrigin.ProducedByScan, drive.Block!.Origin);
+        var root = reopened.Status;
+        Assert.AreEqual(BlockOrigin.ProducedByScan, root.Block!.Origin);
 
-        var loss = drive.Watch.CheckpointLoss;
+        var loss = root.Watch.CheckpointLoss;
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.JournalRecreated, loss.Cause);
         Assert.IsNull(loss.SizeThatWouldHaveRetained, "different journal instances have no comparable span");
@@ -97,10 +97,10 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
 
         await using var reopened = await FileIndex.OpenAsync(_fixture.Options(), CancellationToken.None);
 
-        var drive = reopened.Status;
-        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, drive.Block!.Origin,
+        var root = reopened.Status;
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, root.Block!.Origin,
             "a volume that cannot answer is not evidence against the cached block");
-        Assert.IsNull(drive.Watch.CheckpointLoss);
+        Assert.IsNull(root.Watch.CheckpointLoss);
     }
 
     /// <summary>
@@ -112,17 +112,17 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
     {
         var enumerationOptions = new FileIndexOptions
         {
-            Root = SyntheticIndexedDrive.Create(new VolumeKey('T'), _fixture.Drive().RootDirectory, 0x0BADF00D, ProducerKind.Enumeration),
+            Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), _fixture.Root().RootDirectory, 0x0BADF00D, ProducerKind.Enumeration),
             CacheDirectory = _fixture.CacheDirectory
         };
         await using (await FileIndex.OpenAsync(enumerationOptions, CancellationToken.None))
         {
         }
 
-        var checkedDrives = 0;
+        var checkedRoots = 0;
         using var journal = JournalIsolation.OverrideJournalWindow(_ =>
         {
-            checkedDrives++;
+            checkedRoots++;
             return null;
         });
 
@@ -130,7 +130,7 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
 
         Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopened.Status.Block!.Origin);
         Assert.IsNull(reopened.Status.Watch.CheckpointLoss);
-        Assert.AreEqual(0, checkedDrives);
+        Assert.AreEqual(0, checkedRoots);
     }
 
     [TestMethod]
@@ -159,10 +159,10 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
         await using var reopened = await FileIndex.OpenAsync(options, CancellationToken.None);
 
         Assert.AreEqual(1, scanCount);
-        var drive = reopened.Status;
-        Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(BlockOrigin.ProducedByScan, drive.Block!.Origin);
-        var loss = drive.Watch.CheckpointLoss;
+        var root = reopened.Status;
+        Assert.AreEqual(RootState.Ready, root.State);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, root.Block!.Origin);
+        var loss = root.Watch.CheckpointLoss;
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
         Assert.AreEqual(CachedNextUsn, loss.CheckpointUsn);
@@ -175,7 +175,7 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
 
     /// <summary>
     ///     A cache-only open never watches and the block is still a correct snapshot as of its
-    ///     age, so it is adopted despite the lost checkpoint rather than failing the drive; the
+    ///     age, so it is adopted despite the lost checkpoint rather than failing the root; the
     ///     size hint that does not fit in a <see cref="long" /> is exactly as absent as it is on
     ///     the non-cache-only path.
     /// </summary>
@@ -192,13 +192,13 @@ public sealed class FileIndexCheckpointLossTests : IDisposable
 
         await using var reopened = await FileIndex.OpenAsync(options, CancellationToken.None);
 
-        var drive = reopened.Status;
-        Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, drive.Block!.Origin);
-        Assert.IsNull(drive.Failure);
-        Assert.IsNotNull(drive.Watch.CheckpointLoss);
-        Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, drive.Watch.CheckpointLoss.Cause);
-        Assert.IsNull(drive.Watch.CheckpointLoss.SizeThatWouldHaveRetained);
+        var root = reopened.Status;
+        Assert.AreEqual(RootState.Ready, root.State);
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, root.Block!.Origin);
+        Assert.IsNull(root.Failure);
+        Assert.IsNotNull(root.Watch.CheckpointLoss);
+        Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, root.Watch.CheckpointLoss.Cause);
+        Assert.IsNull(root.Watch.CheckpointLoss.SizeThatWouldHaveRetained);
         Assert.IsTrue(reopened.Root(TestContext.CancellationToken).IsValid, "the adopted block must still answer queries");
     }
 

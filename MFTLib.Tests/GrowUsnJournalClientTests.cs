@@ -11,14 +11,14 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
     [TestMethod]
     public async Task GrowUsnJournalAsync_Success_SendsRequestAndReturnsSettings()
     {
-        var received = new List<(VolumeKey Drive, long MaximumSize, long AllocationDelta)>();
+        var received = new List<(VolumeKey Volume, long MaximumSize, long AllocationDelta)>();
         await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => ArmedCursor,
             QueryVolumeInformation = _ => VolumeInformation,
-            GrowUsnJournal = (drive, maximumSize, allocationDelta) =>
+            GrowUsnJournal = (volume, maximumSize, allocationDelta) =>
             {
-                received.Add((drive, maximumSize, allocationDelta));
+                received.Add((volume, maximumSize, allocationDelta));
                 return new UsnJournalSettings { MaximumSize = maximumSize, AllocationDelta = allocationDelta };
             }
         }));
@@ -29,13 +29,13 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
         Assert.AreEqual(0x08000000L, settings.MaximumSize);
         Assert.AreEqual(0x01000000L, settings.AllocationDelta);
         Assert.HasCount(1, received);
-        Assert.AreEqual(new VolumeKey('C'), received[0].Drive);
+        Assert.AreEqual(new VolumeKey('C'), received[0].Volume);
         Assert.AreEqual(0x08000000L, received[0].MaximumSize);
         Assert.AreEqual(0x01000000L, received[0].AllocationDelta);
     }
 
     [TestMethod]
-    public async Task GrowUsnJournalAsync_DefaultDrive_ThrowsArgumentException()
+    public async Task GrowUsnJournalAsync_DefaultRoot_ThrowsArgumentException()
     {
         await using var broker = new ScriptedBroker();
         await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
@@ -71,10 +71,10 @@ public class GrowUsnJournalClientTests : BrokerBlockTestBase
         var exception = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => request.WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.AreEqual(BrokerFrameKind.GrowUsnJournal, sent.Kind);
-        Assert.AreEqual(new VolumeKey('C'), sent.RequireDrive());
+        Assert.AreEqual(new VolumeKey('C'), sent.RequireVolume());
         Assert.AreEqual(0x08000000L, sent.JournalMaximumSize);
         Assert.AreEqual(0x01000000L, sent.JournalAllocationDelta);
-        Assert.IsNull(exception.Drive);
+        Assert.IsNull(exception.Volume);
         Assert.IsFalse(string.IsNullOrEmpty(exception.Message));
     }
 

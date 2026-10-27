@@ -15,7 +15,7 @@ public partial class JournalBrokerHostTests
             ([WatchEntry()], new UsnJournalCursor(7UL, 120L))
         };
         var host = CreateWatchHost(
-            watchDrive: (_, _, _, cancellationToken) =>
+            watchVolume: (_, _, _, cancellationToken) =>
             {
                 cancellationToken.Register(() => cancelled.TrySetResult());
                 return LiveWatch(batches, cancellationToken);
@@ -42,7 +42,7 @@ public partial class JournalBrokerHostTests
         UsnJournalCursor watchedFrom = default;
         var host = CreateWatchHost(
             queryCursor: _ => new UsnJournalCursor(9UL, 500L),
-            watchDrive: (_, since, _, _) =>
+            watchVolume: (_, since, _, _) =>
             {
                 watchedFrom = since;
                 return FiniteWatch([([WatchEntry()], new UsnJournalCursor(9UL, 510L))]);
@@ -64,7 +64,7 @@ public partial class JournalBrokerHostTests
     {
         var host = CreateWatchHost(
             queryCursor: _ => new UsnJournalCursor(7, 100),
-            watchDrive: explicitFailure
+            watchVolume: explicitFailure
                 ? (_, _, _, _) => throw new NotSupportedException("Broker has no watch source")
                 : null);
         await using var harness = new HostChannelHarness(host);
@@ -81,7 +81,7 @@ public partial class JournalBrokerHostTests
     public async Task WatchChannel_SourceCompletesNaturally_ClosesWithoutError()
     {
         var host = CreateWatchHost(
-            watchDrive: (_, _, _, _) => FiniteWatch([([WatchEntry()], new UsnJournalCursor(7UL, 110L))]));
+            watchVolume: (_, _, _, _) => FiniteWatch([([WatchEntry()], new UsnJournalCursor(7UL, 110L))]));
         await using var harness = new HostChannelHarness(host);
 
         var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
@@ -99,14 +99,14 @@ public partial class JournalBrokerHostTests
         var armed = new UsnJournalCursor(7UL, 100L);
         var host = CreateWatchHost(
             queryCursor: _ => armed,
-            watchDrive: (drive, _, _, cancellationToken) => GatedWatch(
+            watchVolume: (volume, _, _, cancellationToken) => GatedWatch(
                 ([WatchEntry()], new UsnJournalCursor(7UL, 110L)),
-                drive == 'C' ? secondBatchGate.Task : siblingGate.Task,
+                volume == 'C' ? secondBatchGate.Task : siblingGate.Task,
                 ([WatchEntry()], new UsnJournalCursor(7UL, 120L)),
                 cancellationToken));
-        var drivePipe = new BreakableDrivePipe('C');
-        await using var harness = new HostChannelHarness(host, connectChannel: drivePipe.ConnectAsync);
-        drivePipe.Harness = harness;
+        var volumePipe = new BreakableVolumePipe('C');
+        await using var harness = new HostChannelHarness(host, connectChannel: volumePipe.ConnectAsync);
+        volumePipe.Harness = harness;
 
         // The watch is live over the healthy pipe: the leading CaughtUp (the armed cursor equals
         // the journal tip) and one batch arrive on each channel.
@@ -119,7 +119,7 @@ public partial class JournalBrokerHostTests
 
         // The client goes away while its watch is still armed. Breaking the pipe and only then
         // releasing the pending batch keeps the disconnect deterministic.
-        var brokenHostEnd = await drivePipe.Connected.WaitAsync(HangGuard, TestContext.CancellationToken);
+        var brokenHostEnd = await volumePipe.Connected.WaitAsync(HangGuard, TestContext.CancellationToken);
         brokenHostEnd.BreakPipe();
         secondBatchGate.SetResult();
         await brokenHostEnd.WriteFailureObserved.WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -135,14 +135,14 @@ public partial class JournalBrokerHostTests
         var armed = new UsnJournalCursor(7UL, 100L);
         var host = CreateWatchHost(
             queryCursor: _ => armed,
-            watchDrive: (drive, _, _, cancellationToken) => drive == 'C'
+            watchVolume: (volume, _, _, cancellationToken) => volume == 'C'
                 ? FaultingAfterGate(([WatchEntry()], new UsnJournalCursor(7UL, 110L)), faultGate.Task,
                     cancellationToken)
                 : GatedWatch(([WatchEntry()], new UsnJournalCursor(7UL, 110L)), siblingGate.Task,
                     ([WatchEntry()], new UsnJournalCursor(7UL, 120L)), cancellationToken));
-        var drivePipe = new BreakableDrivePipe('C');
-        await using var harness = new HostChannelHarness(host, connectChannel: drivePipe.ConnectAsync);
-        drivePipe.Harness = harness;
+        var volumePipe = new BreakableVolumePipe('C');
+        await using var harness = new HostChannelHarness(host, connectChannel: volumePipe.ConnectAsync);
+        volumePipe.Harness = harness;
 
         var pipe = await harness.OpenWatchChannelAsync('C', armed);
         var sibling = await harness.OpenWatchChannelAsync('D', armed);
@@ -153,7 +153,7 @@ public partial class JournalBrokerHostTests
 
         // The pipe dies, then the watch faults for real: the Error frame that reports the fault
         // has no one left to receive it, and its write fails too.
-        var brokenHostEnd = await drivePipe.Connected.WaitAsync(HangGuard, TestContext.CancellationToken);
+        var brokenHostEnd = await volumePipe.Connected.WaitAsync(HangGuard, TestContext.CancellationToken);
         brokenHostEnd.BreakPipe();
         faultGate.SetResult();
         await brokenHostEnd.WriteFailureObserved.WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -168,21 +168,21 @@ public partial class JournalBrokerHostTests
         var armed = new UsnJournalCursor(7UL, 100L);
         var host = CreateWatchHost(
             queryCursor: _ => armed,
-            watchDrive: (drive, _, _, cancellationToken) => drive == 'C'
+            watchVolume: (volume, _, _, cancellationToken) => volume == 'C'
                 ? LiveWatch([([WatchEntry()], new UsnJournalCursor(7UL, 110L))], cancellationToken)
                 : GatedWatch(([WatchEntry()], new UsnJournalCursor(7UL, 110L)), siblingGate.Task,
                     ([WatchEntry()], new UsnJournalCursor(7UL, 120L)), cancellationToken));
         // The pipe is already gone by the time the watch arms, so the leading CaughtUp for a
         // cursor that sits at the journal tip is the first frame to land on the dead client.
-        var drivePipe = new BreakableDrivePipe('C', brokenOnConnect: true);
-        await using var harness = new HostChannelHarness(host, connectChannel: drivePipe.ConnectAsync);
-        drivePipe.Harness = harness;
+        var volumePipe = new BreakableVolumePipe('C', brokenOnConnect: true);
+        await using var harness = new HostChannelHarness(host, connectChannel: volumePipe.ConnectAsync);
+        volumePipe.Harness = harness;
 
         var sibling = await harness.OpenWatchChannelAsync('D', armed);
         Assert.AreEqual(BrokerFrameKind.CaughtUp, (await HostChannelHarness.ReadFrameAsync(sibling))?.Kind);
         Assert.AreEqual(BrokerFrameKind.JournalBatch, (await HostChannelHarness.ReadFrameAsync(sibling))?.Kind);
         var pipe = await harness.OpenWatchChannelAsync('C', armed);
-        var brokenHostEnd = await drivePipe.Connected.WaitAsync(HangGuard, TestContext.CancellationToken);
+        var brokenHostEnd = await volumePipe.Connected.WaitAsync(HangGuard, TestContext.CancellationToken);
         await brokenHostEnd.WriteFailureObserved.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         await AssertOnlyThatChannelEndedAsync(harness, pipe, sibling, siblingGate);

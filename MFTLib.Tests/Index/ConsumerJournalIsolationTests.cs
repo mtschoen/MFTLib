@@ -9,7 +9,7 @@ namespace MFTLib.Tests.Index;
 /// <summary>
 ///     The consumer-facing journal isolation override drives open-time and watch-fault checks.
 ///     The override is process-global, so the fixture is nonparallel, scopes never nest, and every
-///     index is stopped and disposed before its scope. A drive's pump asks about its own drive,
+///     index is stopped and disposed before its scope. A volume's pump asks about its own volume,
 ///     so the window callback can run on a pump thread; the one used here is a concurrent
 ///     dictionary.
 /// </summary>
@@ -45,7 +45,7 @@ public sealed class ConsumerJournalIsolationTests : IDisposable
 
     FileIndexOptions Options(bool cacheOnly, IIndexWatchSource? source = null) => new()
     {
-        Root = SyntheticIndexedDrive.Create(new VolumeKey('T'), _directory, 0xBADF00D),
+        Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), _directory, 0xBADF00D),
         CacheDirectory = Path.Combine(_directory, "cache"),
         MftSource = new MftIndexSource(Produce, source),
         CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent
@@ -94,27 +94,27 @@ public sealed class ConsumerJournalIsolationTests : IDisposable
             ['T'] = Healthy
         };
         using var scope = JournalIsolation.OverrideJournalWindow(
-            drive => windows.TryGetValue(drive.Letter, out var window) ? window : null);
+            volume => windows.TryGetValue(volume.Letter, out var window) ? window : null);
         await SeedAsync();
         windows['T'] = Lost(recreated);
         var source = new ScriptedWatchSource();
         await using var index = await FileIndex.OpenAsync(Options(cacheOnly, source.IndexSource), Token);
         var status = index.Status;
-        Assert.AreEqual(DriveState.Ready, status.State);
+        Assert.AreEqual(RootState.Ready, status.State);
         Assert.AreEqual(cacheOnly ? 1 : 2, _productions);
         Assert.AreEqual(cacheOnly ? BlockOrigin.WarmStartedFromCache : BlockOrigin.ProducedByScan,
             status.Block!.Origin);
         Assert.IsNotNull(status.Watch.CheckpointLoss);
         Assert.AreEqual(recreated ? JournalCheckpointLossCause.JournalRecreated
             : JournalCheckpointLossCause.CheckpointTrimmed, status.Watch.CheckpointLoss.Cause);
-        Assert.AreEqual(JournalCheckpointLossDetection.DriveOpening,
+        Assert.AreEqual(JournalCheckpointLossDetection.RootOpening,
             status.Watch.CheckpointLoss.DetectedDuring);
         Assert.AreEqual(1_000L, status.Watch.CheckpointLoss.CheckpointUsn);
         Assert.IsNull(status.Watch.FailureMessage);
 
         if (cacheOnly)
         {
-            var refusal = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+            var refusal = await RootResultAssertions.FailureAsync<InvalidOperationException>(
                 () => index.StartWatchingAsync(Token));
             Assert.Contains("RescanAsync", refusal.Message);
             Assert.IsEmpty(source.Starts);
@@ -138,7 +138,7 @@ public sealed class ConsumerJournalIsolationTests : IDisposable
         Assert.AreEqual(BlockOrigin.WarmStartedFromCache, index.Status.Block!.Origin);
         Assert.IsNull(index.Status.Watch.CheckpointLoss);
         await index.StartWatchingAsync(Token);
-        Assert.AreEqual('T', source.Starts.Single().Drive);
+        Assert.AreEqual('T', source.Starts.Single().Volume);
         Assert.AreEqual(WatchState.CatchingUp, index.Status.Watch.State);
         Assert.IsNull(index.Status.Watch.FailureMessage);
         await index.StopWatchingAsync(Token);
@@ -155,7 +155,7 @@ public sealed class ConsumerJournalIsolationTests : IDisposable
             ['T'] = Healthy
         };
         using var scope = JournalIsolation.OverrideJournalWindow(
-            drive => windows.TryGetValue(drive.Letter, out var window) ? window : null);
+            volume => windows.TryGetValue(volume.Letter, out var window) ? window : null);
         await SeedAsync();
         var source = new ScriptedWatchSource();
         await using var index = await FileIndex.OpenAsync(Options(false, source.IndexSource), Token);
@@ -171,7 +171,7 @@ public sealed class ConsumerJournalIsolationTests : IDisposable
             2 => new SyntheticJournalWindow(8, 0, 6_000, 64, 8_192),
             _ => Healthy
         };
-        handle.FailDrive(new IOException("synthetic fault"));
+        handle.FailVolume(new IOException("synthetic fault"));
         await announced.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
         var status = index.Status;
         Assert.AreEqual(1, _productions);
@@ -190,7 +190,7 @@ public sealed class ConsumerJournalIsolationTests : IDisposable
             Assert.AreEqual(observation == 1 ? JournalCheckpointLossCause.CheckpointTrimmed
                 : JournalCheckpointLossCause.JournalRecreated, status.Watch.CheckpointLoss.Cause);
         }
-        await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(() => index.StopWatchingAsync(Token));
+        await RootResultAssertions.FailureAsync<VolumeWatchFaultException>(() => index.StopWatchingAsync(Token));
     }
 
     [TestMethod]

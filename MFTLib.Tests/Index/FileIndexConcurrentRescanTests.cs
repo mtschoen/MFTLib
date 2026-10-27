@@ -7,9 +7,9 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 /// <summary>
-///     Nothing index-wide serializes two drives: each drive's rescan holds only its own lifecycle
+///     Nothing index-wide serializes two volumes: each volume's rescan holds only its own lifecycle
 ///     gate through production and its own write gate for the commit, and a batch holds only its
-///     own drive's write gate (spec 5, amendment R8). Overlap is proven with <see cref="TestGate" />
+///     own root's write gate (spec 5, amendment R8). Overlap is proven with <see cref="TestGate" />
 ///     holds: both held steps are entered before either is released.
 /// </summary>
 [TestClass]
@@ -38,8 +38,8 @@ public sealed class FileIndexConcurrentRescanTests : IndexTreeTestBase
         heldU.Release();
         await Task.WhenAll(rescanT, rescanU).WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        Assert.AreSame(harness.BlockFor('T'), harness.IndexFor('T').Root(TestContext.CancellationToken).DriveBlock.Block);
-        Assert.AreSame(harness.BlockFor('U'), harness.IndexFor('U').Root(TestContext.CancellationToken).DriveBlock.Block);
+        Assert.AreSame(harness.BlockFor('T'), harness.IndexFor('T').Root(TestContext.CancellationToken).RootBlock.Block);
+        Assert.AreSame(harness.BlockFor('U'), harness.IndexFor('U').Root(TestContext.CancellationToken).RootBlock.Block);
     }
 
     [TestMethod]
@@ -56,14 +56,14 @@ public sealed class FileIndexConcurrentRescanTests : IndexTreeTestBase
         producers.Release('U');
         await Task.WhenAll(rescanT, rescanU).WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        Assert.AreEqual(new VolumeKey('T'), indexT.CurrentBlock!.Drive);
-        Assert.AreEqual(new VolumeKey('U'), indexU.CurrentBlock!.Drive);
+        Assert.AreEqual(new VolumeKey('T'), indexT.CurrentBlock!.Root);
+        Assert.AreEqual(new VolumeKey('U'), indexU.CurrentBlock!.Root);
     }
 
     [TestMethod]
     [DataRow(true)]
     [DataRow(false)]
-    public async Task ConcurrentBlocklessAdoption_OneFailsOneSucceeds_EachKeepsItsOwnStatus(bool failedDriveFirst)
+    public async Task ConcurrentBlocklessAdoption_OneFailsOneSucceeds_EachKeepsItsOwnStatus(bool failedRootFirst)
     {
         var producers = new GatedProducers(this);
         producers.Fail('T', new IOException("T lost its volume"));
@@ -73,12 +73,12 @@ public sealed class FileIndexConcurrentRescanTests : IndexTreeTestBase
         var rescanT = indexT.RescanAsync(Token);
         var rescanU = indexU.RescanAsync(Token);
         await producers.BothEnteredAsync();
-        foreach (var driveLetter in failedDriveFirst ? "TU" : "UT")
+        foreach (var driveLetter in failedRootFirst ? "TU" : "UT")
         {
             producers.Release(driveLetter);
             if (driveLetter == 'T')
             {
-                await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => rescanT.WaitAsync(HangGuard, TestContext.CancellationToken));
+                await RootResultAssertions.FailureAsync<InvalidOperationException>(() => rescanT.WaitAsync(HangGuard, TestContext.CancellationToken));
             }
             else
             {
@@ -86,13 +86,13 @@ public sealed class FileIndexConcurrentRescanTests : IndexTreeTestBase
             }
         }
 
-        var driveT = indexT.Status;
-        var driveU = indexU.Status;
-        Assert.AreEqual(DriveState.Failed, driveT.State);
-        Assert.AreEqual(DriveFailureKind.ProducerFailed, driveT.Failure?.Kind);
-        Assert.AreEqual("T lost its volume", driveT.Failure?.Message);
-        Assert.AreEqual(DriveState.Ready, driveU.State);
-        Assert.IsNull(driveU.Failure);
+        var rootT = indexT.Status;
+        var rootU = indexU.Status;
+        Assert.AreEqual(RootState.Failed, rootT.State);
+        Assert.AreEqual(RootFailureKind.ProducerFailed, rootT.Failure?.Kind);
+        Assert.AreEqual("T lost its volume", rootT.Failure?.Message);
+        Assert.AreEqual(RootState.Ready, rootU.State);
+        Assert.IsNull(rootU.Failure);
         GC.KeepAlive(indexT);
         GC.KeepAlive(indexU);
     }
@@ -111,8 +111,8 @@ public sealed class FileIndexConcurrentRescanTests : IndexTreeTestBase
         await producers.BothEnteredAsync();
         producers.Release('T');
         producers.Release('U');
-        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => rescanT.WaitAsync(HangGuard, TestContext.CancellationToken));
-        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => rescanU.WaitAsync(HangGuard, TestContext.CancellationToken));
+        await RootResultAssertions.FailureAsync<InvalidOperationException>(() => rescanT.WaitAsync(HangGuard, TestContext.CancellationToken));
+        await RootResultAssertions.FailureAsync<InvalidOperationException>(() => rescanU.WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.AreEqual("T lost its volume", indexT.Status.Failure?.Message);
         Assert.AreEqual("U declined elevation", indexU.Status.Failure?.Message);
@@ -140,7 +140,7 @@ public sealed class FileIndexConcurrentRescanTests : IndexTreeTestBase
 
         await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(9, "during.txt", nextUsn: 700));
 
-        Assert.AreEqual(700L, harness.IndexFor('T').Root(TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
+        Assert.AreEqual(700L, harness.IndexFor('T').Root(TestContext.CancellationToken).RootBlock.Block.Header.UsnNextUsn);
         Assert.IsFalse(rescanU.IsCompleted, "T's batch applied while U's commit still held U's write gate");
         commitOfU.Release();
         await rescanU.WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -171,12 +171,12 @@ public sealed class FileIndexConcurrentRescanTests : IndexTreeTestBase
 
         var change = harness.Changes.Single(candidate => candidate.Path.EndsWith("held.txt", StringComparison.Ordinal));
         Assert.AreEqual("held.txt", change.Entry.Name);
-        Assert.AreEqual(700L, harness.IndexFor('T').Root(TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
-        Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
+        Assert.AreEqual(700L, harness.IndexFor('T').Root(TestContext.CancellationToken).RootBlock.Block.Header.UsnNextUsn);
+        Assert.IsNull(harness.RootFor('T').Watch.FailureMessage);
     }
 
     [TestMethod]
-    public async Task ApplyJournalEntries_TakesOnlyItsDrivesWriteGate()
+    public async Task ApplyJournalEntries_TakesOnlyItsRootsWriteGate()
     {
         using var harness = new WatchHarness('T', 'U');
         var indexT = harness.IndexFor('T');
@@ -185,15 +185,15 @@ public sealed class FileIndexConcurrentRescanTests : IndexTreeTestBase
         bool? otherGatesFree = null;
         indexT.Hooks.ApplyJournalEntriesInsideWriteGate = driveLetter =>
         {
-            ownGateFree = indexT.AreDriveGatesFreeForTest(driveLetter);
-            otherGatesFree = indexU.AreDriveGatesFreeForTest(new VolumeKey('U'));
+            ownGateFree = indexT.AreRootGatesFreeForTest(driveLetter);
+            otherGatesFree = indexU.AreRootGatesFreeForTest(new VolumeKey('U'));
         };
 
         await indexT.ApplyJournalEntriesAsync('T', [WatchHarness.Create(9, "direct.txt")], WatchHarness.JournalIdentifier, 600);
 
         Assert.IsFalse(ownGateFree, "the apply holds T's write gate");
         Assert.IsTrue(otherGatesFree, "the apply holds none of U's gates");
-        Assert.AreEqual(600L, harness.IndexFor('T').Root(TestContext.CancellationToken).DriveBlock.Block.Header.UsnNextUsn);
+        Assert.AreEqual(600L, harness.IndexFor('T').Root(TestContext.CancellationToken).RootBlock.Block.Header.UsnNextUsn);
     }
 
     /// <summary>
@@ -234,7 +234,7 @@ public sealed class FileIndexConcurrentRescanTests : IndexTreeTestBase
 
         public FileIndexOptions CacheOnlyOptions(char driveLetter) => new()
         {
-            Root = SyntheticIndexedDrive.Create(new VolumeKey(driveLetter), owner.TreeRoot, driveLetter == 'T' ? 1u : 2u),
+            Root = SyntheticIndexedRoot.Create(new VolumeKey(driveLetter), owner.TreeRoot, driveLetter == 'T' ? 1u : 2u),
             CacheDirectory = owner.CacheDirectoryPath,
             CacheMode = CacheMode.ExistingOnly,
             MftSource = new MftIndexSource(ProduceAsync)
@@ -243,7 +243,7 @@ public sealed class FileIndexConcurrentRescanTests : IndexTreeTestBase
         async Task<MftBlockProduceResult> ProduceAsync(MftBlockProduceRequest request,
             CancellationToken cancellationToken)
         {
-            var driveLetter = char.ToUpperInvariant((request.Drive).Letter);
+            var driveLetter = char.ToUpperInvariant((request.Volume).Letter);
             var gate = _gates[driveLetter];
             gate.MarkEntered();
             await gate.WaitForReleaseAsync(cancellationToken);

@@ -7,9 +7,9 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 /// <summary>
-///     A <see cref="FileIndex" /> over drives <c>T</c> and <c>U</c> on one in-process broker: the
-///     index scans and watches every drive through its own pipes, so rescanning one drive
-///     reopens that drive's watch channel and touches no other.
+///     A <see cref="FileIndex" /> over volumes <c>T</c> and <c>U</c> on one in-process broker: the
+///     index scans and watches every volume through its own pipes, so rescanning one volume
+///     reopens that volume's watch channel and touches no other.
 /// </summary>
 // The host's arm query consults JournalCheckpointCheck, whose override other classes install.
 [TestClass]
@@ -121,7 +121,7 @@ public sealed class BrokerFileIndexRescanTests
             : connect(connectToken));
         await using var index = await scenario.OpenIndexAsync('T', producer.CreateIndexSource().Producer, source, token);
 
-        var failure = await DriveResultAssertions.FailureAsync<IOException>(() => index.StartWatchingAsync(token));
+        var failure = await RootResultAssertions.FailureAsync<IOException>(() => index.StartWatchingAsync(token));
 
         Assert.AreSame(connectionFailure, failure);
         Assert.AreEqual(WatchState.Faulted, index.Status.Watch.State);
@@ -174,8 +174,8 @@ public sealed class BrokerFileIndexRescanTests
     }
 
     /// <summary>
-    ///     Drives <c>T</c> and <c>U</c> scanned by the in-process host, each scan naming its one file
-    ///     after the drive's scan number, so a test can tell which scan produced a block.
+    ///     Volumes <c>T</c> and <c>U</c> scanned by the in-process host, each scan naming its one file
+    ///     after the volume's scan number, so a test can tell which scan produced a block.
     /// </summary>
     sealed class BrokerScenario : IDisposable
     {
@@ -197,7 +197,7 @@ public sealed class BrokerFileIndexRescanTests
             }
         }
 
-        public ScriptedWatchBrokerHarness CreateHarness() => new(scanDrive: Scan);
+        public ScriptedWatchBrokerHarness CreateHarness() => new(scanVolume: Scan);
 
         /// <summary>Parks T's second scan inside the host until the returned gate is released.</summary>
         public TestGate HoldSecondScanOfT() => _heldScanOfT = new TestGate();
@@ -207,19 +207,19 @@ public sealed class BrokerFileIndexRescanTests
         {
             return FileIndex.OpenAsync(new FileIndexOptions
             {
-                Root = SyntheticIndexedDrive.Create(new VolumeKey(drive), _roots.Path, drive == 'T' ? 123u : 456u),
+                Root = SyntheticIndexedRoot.Create(new VolumeKey(drive), _roots.Path, drive == 'T' ? 123u : 456u),
                 CacheDirectory = _cache.Path,
                 CacheMode = CacheMode.Disabled,
                 MftSource = new MftIndexSource(producer, watchSource)
             }, token);
         }
 
-        IEnumerable<IReadOnlyList<MftRecord>> Scan(VolumeKey drive, ParseThreadAllowance parseThreads,
+        IEnumerable<IReadOnlyList<MftRecord>> Scan(VolumeKey volume, ParseThreadAllowance parseThreads,
             BlockWriteReporting reporting,
             MftScanOptions scanOptions, Action<long> recordsOmitted, CancellationToken cancellationToken)
         {
-            var scanNumber = _scans.AddOrUpdate(drive, 1, (_, count) => count + 1);
-            if (drive == new VolumeKey('T') && scanNumber == 2 && _heldScanOfT is { } held)
+            var scanNumber = _scans.AddOrUpdate(volume, 1, (_, count) => count + 1);
+            if (volume == new VolumeKey('T') && scanNumber == 2 && _heldScanOfT is { } held)
             {
                 held.MarkEntered();
                 held.WaitForRelease();

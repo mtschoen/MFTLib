@@ -137,7 +137,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         {
             QueryCursor = _ => ArmedCursor,
             QueryVolumeInformation = _ => VolumeInformation,
-            ScanDrive = (_, _, _, _, _, _) =>
+            ScanVolume = (_, _, _, _, _, _) =>
                 throw new IOException("batch failed")
         }));
         var request = Request(Target());
@@ -145,7 +145,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => ProduceAsync(broker.Process, request).WaitAsync(HangGuard, TestContext.CancellationToken));
 
-        // The per-drive error reaches the caller as this exception.
+        // The per-volume error reaches the caller as this exception.
         Assert.Contains("batch failed", exception.Message);
         var section = broker.Sections.Single();
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
@@ -167,7 +167,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         result.Block.Dispose();
 
         Assert.IsNotEmpty(samples, "the broker reported no progress to the index channel");
-        Assert.IsTrue(samples.All(sample => sample.Drive == new VolumeKey('C')));
+        Assert.IsTrue(samples.All(sample => sample.Root == new VolumeKey('C')));
         Assert.Contains(sample => sample.Phase == IndexScanPhase.Transferring, samples);
         Assert.IsTrue(samples.All(sample => sample.ExpectedRowCount is null || sample.ExpectedRowCount.Value >= sample.WrittenRowCount),
             "when present, total rows should not be less than rows written");
@@ -196,7 +196,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         {
             QueryCursor = _ => ArmedCursor,
             QueryVolumeInformation = _ => VolumeInformation,
-            ScanDrive = (_, _, _, _, _, _) =>
+            ScanVolume = (_, _, _, _, _, _) =>
                 [[BrokerHostFactory.Record(5, ".", 3), BrokerHostFactory.Record(20, "file.txt"), BrokerHostFactory.Record(21, ""), BrokerHostFactory.Record((ulong)uint.MaxValue + 1, "overflow")]]
         }));
 

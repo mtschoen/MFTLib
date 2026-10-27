@@ -10,7 +10,7 @@ public class SyntheticIndexSourceTests
 {
     static MftBlockProduceRequest Request(string blockPath) => new()
     {
-        Drive = 'T',
+        Volume = 'T',
         VolumeSerial = 0x1234,
         BlockPath = blockPath,
         DeleteOnClose = true
@@ -33,7 +33,7 @@ public class SyntheticIndexSourceTests
         using var block = result.Block;
 
         Assert.AreSame(watches.IndexSource, source.WatchSource);
-        Assert.AreSequenceEqual(['T'], [.. producer.ProducedDrives]);
+        Assert.AreSequenceEqual(['T'], [.. producer.ProducedVolumes]);
         Assert.IsGreaterThan(0u, block.Header.RowCount);
     }
 

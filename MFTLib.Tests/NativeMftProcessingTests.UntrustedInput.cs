@@ -311,7 +311,7 @@ public partial class NativeMftProcessingTests
         NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
         var nextParse = NativeTestHooks.ParseImage(control);
         Assert.IsFalse(string.IsNullOrEmpty(nextParse.ErrorMessage),
-            "a rejected extension must not drive another read");
+            "a rejected extension must not volume another read");
     }
 
     [TestMethod]

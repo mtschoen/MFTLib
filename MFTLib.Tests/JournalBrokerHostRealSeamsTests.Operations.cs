@@ -326,16 +326,16 @@ public partial class JournalBrokerHostRealSeamsTests
     [DataRow(true)]
     [DataRow(false)]
     [OSCondition(OperatingSystems.Windows)]
-    public async Task ServeAsync_SessionEnd_AcrossSeveralWatchChannels_EmitsZeroErrorFrames(bool cancelDrivesIndividually)
+    public async Task ServeAsync_SessionEnd_AcrossSeveralWatchChannels_EmitsZeroErrorFrames(bool cancelVolumesIndividually)
     {
         FileUtilities.Hooks._getVolumeHandle = _ => FakeVolumeHandle.Create();
         MockWatchJournalTip();
 
-        // Every drive's watch reads its own idle pipe; the third read to start is the gate.
-        const int driveCount = 3;
+        // Every volume's watch reads its own idle pipe; the third read to start is the gate.
+        const int volumeCount = 3;
         using var pipeC = await IdleUsnPipe.CreateAsync();
         using var pipeD = await IdleUsnPipe.CreateAsync();
-        using var idlePipe = await IdleUsnPipe.CreateAsync(driveCount);
+        using var idlePipe = await IdleUsnPipe.CreateAsync(volumeCount);
         var idlePipes = new Dictionary<string, IdleUsnPipe>
         {
             [@"\\.\C:"] = pipeC,
@@ -345,7 +345,7 @@ public partial class JournalBrokerHostRealSeamsTests
         FileUtilities.Hooks._getWatchVolumeHandle = volumePath => idlePipes[volumePath].BorrowHandle();
         await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
 
-        // Watch several drives with cursors at or beyond the journal tip (7:200).
+        // Watch several volumes with cursors at or beyond the journal tip (7:200).
         var pipes = new List<Stream>
         {
             await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7, 200)),
@@ -353,28 +353,28 @@ public partial class JournalBrokerHostRealSeamsTests
             await harness.OpenWatchChannelAsync('E', new UsnJournalCursor(7, 300))
         };
 
-        // Verify each drive reaches CaughtUp.
+        // Verify each volume reaches CaughtUp.
         foreach (var pipe in pipes)
         {
             var frame = await HostChannelHarness.ReadFrameAsync(pipe);
             Assert.AreEqual(BrokerFrameKind.CaughtUp, frame?.Kind);
         }
 
-        // Ensure all drives are waiting inside the native watch before the session ends.
+        // Ensure all volumes are waiting inside the native watch before the session ends.
         await IdleUsnPipe.AwaitSignalAsync(idlePipe.BeforeIssue);
         idlePipe.ContinueIssue.Set();
         await IdleUsnPipe.AwaitSignalAsync(idlePipe.Issued);
 
-        if (cancelDrivesIndividually)
+        if (cancelVolumesIndividually)
         {
-            // Each drive's read stays pending until its own cancel: closing one client pipe cancels only that watch.
+            // Each volume's read stays pending until its own cancel: closing one client pipe cancels only that watch.
             foreach (var (pipe, own) in new[] { (pipes[0], pipeC), (pipes[1], pipeD) })
             {
                 await pipe.DisposeAsync();
                 await IdleUsnPipe.AwaitSignalAsync(own.CancelAttempted);
                 pipes.Remove(pipe);
-                Assert.AreEqual(driveCount - pipes.Count, IdleUsnPipe.CallOrder().Count(call => call == 'C'));
-                Assert.IsFalse(idlePipe.CancelAttempted.WaitOne(0), "A sibling's cancel must not reach this drive's read.");
+                Assert.AreEqual(volumeCount - pipes.Count, IdleUsnPipe.CallOrder().Count(call => call == 'C'));
+                Assert.IsFalse(idlePipe.CancelAttempted.WaitOne(0), "A sibling's cancel must not reach this volume's read.");
             }
         }
 
@@ -382,7 +382,7 @@ public partial class JournalBrokerHostRealSeamsTests
         await harness.CloseControlAsync();
         await harness.Serve.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.IsTrue(idlePipe.CancelAttempted.WaitOne(0));
-        Assert.AreEqual(driveCount, IdleUsnPipe.CallOrder().Count(call => call == 'C'));
+        Assert.AreEqual(volumeCount, IdleUsnPipe.CallOrder().Count(call => call == 'C'));
 
         foreach (var pipe in pipes)
         {

@@ -8,17 +8,17 @@ public sealed class ScriptedScan
 {
     readonly BlockWriteReporting _reporting;
 
-    internal ScriptedScan(VolumeKey drive, ParseThreadAllowance parseThreads, BlockWriteReporting reporting,
+    internal ScriptedScan(VolumeKey volume, ParseThreadAllowance parseThreads, BlockWriteReporting reporting,
         CancellationToken cancellationToken)
     {
-        Drive = drive.Validated();
+        Volume = volume.Validated();
         ParseThreads = parseThreads;
         CancellationToken = cancellationToken;
         _reporting = reporting;
     }
 
-    /// <summary>The drive the client asked to scan, as the host names it.</summary>
-    public VolumeKey Drive { get; }
+    /// <summary>The volume the client asked to scan, as the host names it.</summary>
+    public VolumeKey Volume { get; }
 
     /// <summary>The scan's share of the host's parse threads.</summary>
     internal ParseThreadAllowance ParseThreads { get; }

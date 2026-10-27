@@ -8,9 +8,9 @@ session.
 Use the broker when your application:
 
 - has a UI or other code that should not run as Administrator;
-- opens a `FileIndex` over MFT-backed drives;
+- opens a `FileIndex` over MFT-backed volumes;
 - scans, watches, or rescans several volumes after one UAC prompt; or
-- needs scan and watch failures isolated to the drive that produced them.
+- needs scan and watch failures isolated to the root that produced them.
 
 For a short tool that already runs elevated, use `MftIndexSources.FromLocalVolumes`.
 
@@ -64,7 +64,7 @@ first needed.
 See [session ownership](broker-lifetime.md#session-ownership) for shared launch,
 cancellation, subscriber exceptions, `Ended` and disposal rules.
 
-`BrokerSession.GrowUsnJournalAsync(drive, target, cancellationToken)`
+`BrokerSession.GrowUsnJournalAsync(loss.Volume, target, cancellationToken)`
 launches the broker if no use has yet, grows the journal, and returns the settings read back
 from the volume. `target` is a `UsnJournalSettings` carrying the requested maximum size and allocation delta.
 
@@ -75,7 +75,7 @@ Application code owns a `BrokerSession`; test sessions use
 ## 3. Build FileIndex over the broker
 
 `BrokerSession.CreateIndexSource()` adapts broker scans to `FileIndex`. Its watch source
-uses the same session and opens a separate broker channel for every drive watch.
+uses the same session and opens a separate broker channel for every volume watch.
 
 Given an `IndexedRoot` named `root` and an application-owned
 cache directory named `cacheDirectory`:
@@ -105,24 +105,24 @@ Tests use [owned temporary cache and isolated journal state](broker-testing.md#i
 `BrokerSession.CreateIndexSource()` returns the `MftIndexSource` that
 `FileIndexOptions.MftSource` takes. The source carries both halves of the
 connection: the block producer for cold opens and rescans, and the watch
-source, implemented by an internal MFTLib type. Each drive watch start
-connects through the session, opens the drive's pipe, writes its watch
-request, and returns the drive's running watch. The watch source, the drive
+source, implemented by an internal MFTLib type. Each root watch start
+connects through the session, opens the volume's pipe, writes its watch
+request, and returns the root's running watch. The watch source, the root
 watch handle and the block producer are internal to MFTLib; a consumer holds
 only the opaque `MftIndexSource`.
 
 A process with no MFT source leaves `FileIndexOptions.MftSource` null. When an
-MFT drive needs a scan, its failure kind is `DriveFailureKind.MftSourceMissing`
-and its library message is `Drive {drive}: no MFT source is available to scan this drive.`
+MFT volume needs a scan, its failure kind is `RootFailureKind.MftSourceMissing`
+and its library message is `Volume {volume}: no MFT source is available to scan this volume.`
 The application maps the kind to its own display text using its known context.
-A rescan cannot recover the drive while the source remains null. Usable cached
+A rescan cannot recover the root while the source remains null. Usable cached
 blocks still open, and a failed rescan retains an existing block. Enumeration
 roots ignore the source. Watch start reports `NotApplicable`, carries no
 failure exception, and records no watch request.
 
 The optional `FileIndexOptions.RetainedFileNames` selects retention for every producer: null keeps
 all eligible rows, an empty collection keeps directories only, and a nonempty collection keeps directories
-plus files whose names match by the drive's comparison. MFT sources ignore case, including dumps parsed on
+plus files whose names match by the volume's comparison. MFT sources ignore case, including dumps parsed on
 Linux; directory walks ignore case on Windows and compare ordinally elsewhere.
 `MftScanOptions.IncludeFreed` controls freed-record inclusion independently. Scan progress reaches the application as `IndexScanProgress`
 through `FileIndexOptions.ScanProgress`. A block that fails validation is disposed
@@ -147,7 +147,7 @@ A failed MFT scan never falls back to a directory walk. Enumeration roots accept
 `MftSource` and report `Watch.IsSupported == false`; a watch start reports `NotApplicable` for
 them, and `RescanAsync` refreshes them.
 
-A root that settles `DriveState.Failed` has no block, and `RootStatus.Failure.Kind` says why:
+A root that settles `RootState.Failed` has no block, and `RootStatus.Failure.Kind` says why:
 
 | Kind | Meaning |
 | --- | --- |
@@ -155,7 +155,7 @@ A root that settles `DriveState.Failed` has no block, and `RootStatus.Failure.Ki
 | `CacheIdentityMismatch` | `CacheMode.ExistingOnly` found a block whose cache tag differs from `FileIndexOptions.CacheTag`. |
 | `InUse` | `CacheMode.ExistingOnly` found the block owned by another live `FileIndex`. |
 | `ProducerFailed` | The selected producer ran and failed. |
-| `MftSourceMissing` | An MFT drive needed a scan but `MftSource` was null. Retrying with the same null source cannot recover it. |
+| `MftSourceMissing` | An MFT volume needed a scan but `MftSource` was null. Retrying with the same null source cannot recover it. |
 
 `RescanAsync` clears `Failure` only after successful publication. A failed attempt can retain a `Ready` block with `ProducerFailed` or `MftSourceMissing`. `CacheMode.ExistingOnly` opens still report their cache refusal before attempting production.
 
@@ -166,14 +166,14 @@ and terminal scan-progress contracts are in [watch lifetime](watch-lifetime.md).
 ## 4. Start and stop a root's watch
 
 Each lifecycle verb on `FileIndex` acts on its single root and returns one
-`DriveOperationResult`:
+`RootOperationResult`:
 
 ```csharp
 var start = await index.StartWatchingAsync(cancellationToken);
-if (start.Outcome == DriveOperationOutcome.Failed)
+if (start.Outcome == RootOperationOutcome.Failed)
 {
     Console.Error.WriteLine(
-        $"Drive {start.Drive} did not start: {start.Failure}");
+        $"Root {start.Root} did not start: {start.Failure}");
 }
 
 var catchUp = await index.WaitForCatchUpAsync(cancellationToken);
@@ -193,7 +193,7 @@ index.WatchFaulted += fault =>
     var status = index.Status;
 
     Console.Error.WriteLine(
-        $"Drive {fault.Drive}: {fault.Kind}, {status.Watch.State}, " +
+        $"Volume {fault.Volume}: {fault.Kind}, {status.Watch.State}, " +
         $"automatic recovery: {fault.IsRecovering}");
 };
 ```
@@ -208,24 +208,24 @@ To follow state without polling, subscribe to `WatchStateChanged`, then seed fro
 ```csharp
 var gate = new Lock();
 var applied = new Dictionary<VolumeKey, long>();
-void ApplyWatchState(VolumeKey driveLetter, DriveWatchStatus watch)
+void ApplyWatchState(VolumeKey volume, RootWatchStatus watch)
 {
     // The check and the publication share one lock, so an older event
     // delivered concurrently can never publish after a newer one.
     lock (gate)
     {
-        if (applied.TryGetValue(driveLetter, out var version) && version >= watch.StateVersion)
+        if (applied.TryGetValue(volume, out var version) && version >= watch.StateVersion)
         {
             return;
         }
 
-        applied[driveLetter] = watch.StateVersion;
-        Publish(driveLetter, watch.State);
+        applied[volume] = watch.StateVersion;
+        Publish(volume, watch.State);
     }
 }
-index.WatchStateChanged += change => ApplyWatchState(change.Drive, change.Watch);
+index.WatchStateChanged += change => ApplyWatchState(change.Volume, change.Watch);
 var status = index.Status;
-if (status.Drive.TryGetVolume(out var volume))
+if (status.Root.TryGetVolume(out var volume))
 {
     ApplyWatchState(volume, status.Watch);
 }
@@ -236,7 +236,7 @@ The snapshot, state-version and callback-reentrancy rules are in
 
 ## 6. Recover from a lost scan catch-up
 
-Read the root's `DriveWatchStatus.CheckpointLoss` using
+Read the root's `RootWatchStatus.CheckpointLoss` using
 [checkpoint loss](checkpoint-loss.md) and its [growth-target rules](checkpoint-loss.md#journal-growth-target).
 [Lost scan catch-up](broker-scan-tuning.md#lost-scan-catch-up) describes the tuning
 workflow. After the user chooses to grow the journal, use the session and rescan:
@@ -244,14 +244,14 @@ workflow. After the user chooses to grow the journal, use the session and rescan
 ```csharp
 if (loss.TryGetGrowthTarget(out var target))
 {
-    var current = index.QueryUsnJournalSettings(driveLetter);
+    var current = index.QueryUsnJournalSettings();
     if (target.MaximumSize > current.MaximumSize)
     {
-        await broker.GrowUsnJournalAsync(driveLetter, target, cancellationToken);
+        await broker.GrowUsnJournalAsync(loss.Volume, target, cancellationToken);
         var result = await index.RescanAsync(cancellationToken);
         if (result.Failure is not null)
         {
-            Console.Error.WriteLine($"Rescan {result.Drive}: {result.Failure}");
+            Console.Error.WriteLine($"Rescan {result.Root}: {result.Failure}");
         }
     }
 }
@@ -289,5 +289,5 @@ environment opt-in, role and child-path validation, drop notices and journal sel
 - Create one `BrokerSession` for the consumer session and retain ownership of it.
 - Assign `session.CreateIndexSource()` to every index of the session, so all roots share
   the one process.
-- Observe `Ended`, per-drive start results, watch faults, and lost catch-up.
+- Observe `Ended`, per-root start results, watch faults, and lost catch-up.
 - Dispose indexes before disposing the session during application shutdown.

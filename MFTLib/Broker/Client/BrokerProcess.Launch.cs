@@ -7,7 +7,7 @@ namespace MFTLib;
 /// <summary>Creates the control pipe, launches the elevated broker against it, and waits for it to connect.</summary>
 sealed partial class BrokerProcess
 {
-    // Internal launch seams let tests drive the connection deadline with fake time.
+    // Internal launch seams let tests volume the connection deadline with fake time.
     internal static TimeSpan _connectTimeout = BrokerLiveness.DefaultConnectTimeout;
     internal static TimeProvider _connectTimeProvider = TimeProvider.System;
 
@@ -21,7 +21,7 @@ sealed partial class BrokerProcess
     ///     Creates the control pipe, launches the elevated broker against it, and waits up to
     ///     <paramref name="connectTimeout" /> for the broker to connect. Scans write into the sections
     ///     <paramref name="createBlockSection" /> creates; production passes
-    ///     <see cref="CreateRealDriveBlockSection" />, whose named sections only Windows supports.
+    ///     <see cref="CreateRealVolumeBlockSection" />, whose named sections only Windows supports.
     /// </summary>
     /// <param name="launchBroker">
     ///     Receives the broker command line (<c>--broker --pipe NAME</c>, plus the diagnostics flags
@@ -111,10 +111,10 @@ sealed partial class BrokerProcess
     // NamedBlockSection.Create), so disposing it once the section is written only unpublishes the
     // name; the Block's own view keeps the mapping alive.
     [SupportedOSPlatform("windows")]
-    internal static (string SectionName, BlockFile Block, IDisposable Lifetime) CreateRealDriveBlockSection(
-        VolumeKey drive, BlockFileCreateOptions options)
+    internal static (string SectionName, BlockFile Block, IDisposable Lifetime) CreateRealVolumeBlockSection(
+        VolumeKey volume, BlockFileCreateOptions options)
     {
-        var sectionName = NamedBlockSection.BuildSectionName(drive);
+        var sectionName = NamedBlockSection.BuildSectionName(volume);
         var (block, lifetime) = NamedBlockSection.Create(options, sectionName);
         return (sectionName, block, lifetime);
     }

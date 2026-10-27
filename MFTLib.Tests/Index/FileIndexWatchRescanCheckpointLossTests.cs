@@ -6,8 +6,8 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 /// <summary>
-///     A rescan of one drive after every drive faulted, where another drive's live watch found its
-///     checkpoint gone from the journal. That drive needs its own rescan, so the rescan of the
+///     A rescan of one root after every root faulted, where another root's live watch found its
+///     checkpoint gone from the journal. That volume needs its own rescan, so the rescan of the
 ///     first leaves it alone rather than starting it from a cursor the journal already said it no
 ///     longer holds. The journal read is swapped out through
 ///     <c>JournalIsolation.OverrideJournalWindow</c>, a process-wide seam, hence
@@ -25,7 +25,7 @@ public class FileIndexWatchRescanCheckpointLossTests
     CancellationToken Token => TestContext.CancellationToken;
 
     [TestMethod]
-    public async Task RescanAsync_AfterEveryDriveFaulted_LeavesADriveWhoseLiveWatchLostItsCheckpointOutOfTheRestart()
+    public async Task RescanAsync_AfterEveryRootFaulted_LeavesARootWhoseLiveWatchLostItsCheckpointOutOfTheRestart()
     {
         // U's cursor has been trimmed out of its journal; T's volume cannot say.
         using var journal = JournalIsolation.OverrideJournalWindow(driveLetter =>
@@ -37,13 +37,13 @@ public class FileIndexWatchRescanCheckpointLossTests
         harness.HoldEveryRecovery();
         await harness.IndexFor('T').StartWatchingAsync(Token);
         await harness.IndexFor('U').StartWatchingAsync(Token);
-        harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
-        harness.Source.WatchFor('U').FailDrive(
+        harness.Source.WatchFor('T').FailVolume(new IOException("T's journal wrapped"));
+        harness.Source.WatchFor('U').FailVolume(
             new IOException("USN journal entries have been deleted; full rescan needed"));
-        await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
-        var uFault = await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'U');
+        await harness.WaitForFaultAsync(WatchFaultKind.Volume, 'T');
+        var uFault = await harness.WaitForFaultAsync(WatchFaultKind.Volume, 'U');
 
-        var lostBefore = harness.DriveFor('U').Watch.CheckpointLoss;
+        var lostBefore = harness.RootFor('U').Watch.CheckpointLoss;
         Assert.IsNotNull(lostBefore);
         Assert.AreEqual(JournalCheckpointLossDetection.LiveWatch, lostBefore.DetectedDuring);
 
@@ -54,14 +54,14 @@ public class FileIndexWatchRescanCheckpointLossTests
         Assert.HasCount(2, harness.Source.TargetsFor('T'));
         Assert.HasCount(1, harness.Source.TargetsFor('U'), "U's condemned cursor is never started again");
 
-        var lostDrive = harness.DriveFor('U');
-        Assert.AreEqual(uFault.Exception.Message, lostDrive.Watch.FailureMessage);
-        Assert.AreEqual(lostBefore, lostDrive.Watch.CheckpointLoss);
-        Assert.AreEqual(WatchState.Recovering, lostDrive.Watch.State, "U's recovery is still held");
-        Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
+        var lostRoot = harness.RootFor('U');
+        Assert.AreEqual(uFault.Exception.Message, lostRoot.Watch.FailureMessage);
+        Assert.AreEqual(lostBefore, lostRoot.Watch.CheckpointLoss);
+        Assert.AreEqual(WatchState.Recovering, lostRoot.Watch.State, "U's recovery is still held");
+        Assert.IsNull(harness.RootFor('T').Watch.FailureMessage);
 
         // U's own fault is still outstanding, so its stop reports it.
-        var failure = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
+        var failure = await RootResultAssertions.FailureAsync<VolumeWatchFaultException>(
             () => harness.IndexFor('U').StopWatchingAsync(Token));
         Assert.AreSame(uFault.Exception, failure);
         await harness.IndexFor('T').StopWatchingAsync(Token);

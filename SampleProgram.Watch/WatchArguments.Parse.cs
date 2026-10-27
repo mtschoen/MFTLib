@@ -33,7 +33,7 @@ sealed partial record WatchArguments
             Clear = reader.Flag("--clear")
         };
         var tokens = reader.Positionals();
-        error = reader.Error ?? Validate(candidate, keep, directoriesOnly, seconds, connectTimeout) ?? NotApplicable(candidate.Verb, reader.Supplied) ?? NotADrive(tokens);
+        error = reader.Error ?? Validate(candidate, keep, directoriesOnly, seconds, connectTimeout) ?? NotApplicable(candidate.Verb, reader.Supplied) ?? NotARoot(tokens);
         if (error is not null)
         {
             return false;
@@ -43,9 +43,9 @@ sealed partial record WatchArguments
         return true;
     }
 
-    static string? NotADrive(IEnumerable<string> tokens)
+    static string? NotARoot(IEnumerable<string> tokens)
     {
-        var stray = tokens.FirstOrDefault(token => !ArgumentReader.IsDrive(token));
+        var stray = tokens.FirstOrDefault(token => !ArgumentReader.IsRoot(token));
         return stray is null ? null : $"'{stray}' is not a drive letter.";
     }
 

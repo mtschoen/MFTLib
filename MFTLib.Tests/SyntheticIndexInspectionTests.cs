@@ -27,12 +27,12 @@ public sealed class SyntheticIndexInspectionTests : IndexTreeTestBase
     FileIndexOptions Options(string root, CacheTag cacheTag = default) =>
         Fixture.Options(volumeSerial: Serial) with
         {
-            Root = SyntheticIndexedDrive.Create(new VolumeKey('T'), root, Serial, ProducerKind.Enumeration),
+            Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), root, Serial, ProducerKind.Enumeration),
             CacheTag = cacheTag
         };
 
     [TestMethod]
-    public async Task ReadHeader_OfAReadyDrive_ReportsTheBlockTheIndexHolds()
+    public async Task ReadHeader_OfAReadyRoot_ReportsTheBlockTheIndexHolds()
     {
         var tag = new CacheTag("INSP", 2);
         await using var index = await FileIndex.OpenAsync(Options(TreeRoot, tag), Token);
@@ -46,17 +46,17 @@ public sealed class SyntheticIndexInspectionTests : IndexTreeTestBase
     }
 
     [TestMethod]
-    public async Task ReadHeader_ForADriveWithNoBlock_IsNull()
+    public async Task ReadHeader_ForARootWithNoBlock_IsNull()
     {
         await using var index = await FileIndex.OpenAsync(
             Options(Path.Combine(TreeRoot, "absent")), Token);
 
-        Assert.AreEqual(DriveState.Offline, index.Status.State);
+        Assert.AreEqual(RootState.Offline, index.Status.State);
         Assert.IsNull(SyntheticIndexInspection.ReadHeader(index, new VolumeKey('T')));
     }
 
     [TestMethod]
-    public async Task ReadHeader_ForAnUnconfiguredDrive_IsNull()
+    public async Task ReadHeader_ForAnUnconfiguredRoot_IsNull()
     {
         await using var index = await FileIndex.OpenAsync(Options(TreeRoot), Token);
 

@@ -6,8 +6,8 @@ namespace MFTLib.Tests.Index;
 
 /// <summary>
 ///     <see cref="FileIndex.DisposeAsync" /> sets the disposal flag and cancels the disposal token
-///     before it waits for any drive's gate. A rescan in flight and a rescan queued behind it on the
-///     drive's lifecycle gate are both linked to that token, so both end cancelled rather than
+///     before it waits for any root's gate. A rescan in flight and a rescan queued behind it on the
+///     root's lifecycle gate are both linked to that token, so both end cancelled rather than
 ///     publishing, and a call made after disposal is refused by the flag.
 /// </summary>
 [TestClass]
@@ -71,9 +71,9 @@ public sealed class FileIndexDisposalRaceTests : IndexTreeTestBase
         try
         {
             progress.Armed = true;
-            var original = index.Root(TestContext.CancellationToken).DriveBlock;
+            var original = index.Root(TestContext.CancellationToken).RootBlock;
 
-            // Parks inside the scan while holding the drive's lifecycle gate, so the call below
+            // Parks inside the scan while holding the root's lifecycle gate, so the call below
             // queues behind it.
             var gateHolder = index.RescanAsync(CancellationToken.None);
             Assert.IsTrue(progress.WaitUntilParked(),
@@ -83,12 +83,12 @@ public sealed class FileIndexDisposalRaceTests : IndexTreeTestBase
             var queuedRescan = index.RescanAsync(CancellationToken.None);
 
             // Sets the disposal flag and cancels the token both rescans are linked to, then waits
-            // for the drive's gates.
+            // for the root's gates.
             var disposal = index.DisposeAsync();
 
             progress.Release();
-            await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => gateHolder);
-            await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => queuedRescan);
+            await RootResultAssertions.FailureAsync<OperationCanceledException>(() => gateHolder);
+            await RootResultAssertions.FailureAsync<OperationCanceledException>(() => queuedRescan);
             await disposal;
             Assert.IsTrue(original.IsReleased, "the block neither rescan replaced was released by the disposal");
         }
@@ -114,7 +114,7 @@ public sealed class FileIndexDisposalRaceTests : IndexTreeTestBase
         try
         {
             progress.Armed = true;
-            var original = index.Root(TestContext.CancellationToken).DriveBlock;
+            var original = index.Root(TestContext.CancellationToken).RootBlock;
             var gateHolder = index.RescanAsync(CancellationToken.None);
             Assert.IsTrue(progress.WaitUntilParked(),
                 "the first rescan never reached its progress callback, so it never took the gate");
@@ -138,9 +138,9 @@ public sealed class FileIndexDisposalRaceTests : IndexTreeTestBase
             var disposal = index.DisposeAsync().AsTask();
 
             Assert.IsTrue(settledInTheWindow, "both rescans settled before disposal cancelled its token");
-            await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => gateHolder)
+            await RootResultAssertions.FailureAsync<OperationCanceledException>(() => gateHolder)
                 .WaitAsync(HangGuard * 3, TestContext.CancellationToken);
-            await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => queuedRescan)
+            await RootResultAssertions.FailureAsync<OperationCanceledException>(() => queuedRescan)
                 .WaitAsync(HangGuard * 3, TestContext.CancellationToken);
             await disposal.WaitAsync(HangGuard * 3, TestContext.CancellationToken);
             Assert.IsTrue(original.IsReleased, "the block neither rescan replaced was released by the disposal");

@@ -28,8 +28,8 @@ sealed class BrokerDiagnosticsLogFilter
     // starts filtering from the next batch on while preserving rename handling for prior files.
     readonly List<string> _logPaths = [];
 
-    // Watched drive -> references to drop.
-    readonly Dictionary<VolumeKey, HashSet<ulong>> _referencesByDrive = [];
+    // Watched volume -> references to drop.
+    readonly Dictionary<VolumeKey, HashSet<ulong>> _referencesByVolume = [];
 
     internal BrokerDiagnosticsLogFilter(string ownLogPath, string? clientLogPath,
         Func<string, ulong?>? resolveFileReference = null)
@@ -47,11 +47,11 @@ sealed class BrokerDiagnosticsLogFilter
         }
     }
 
-    internal UsnJournalEntry[] Filter(VolumeKey drive, UsnJournalEntry[] entries)
+    internal UsnJournalEntry[] Filter(VolumeKey volume, UsnJournalEntry[] entries)
     {
-        ResolvePathsFor(drive);
+        ResolvePathsFor(volume);
         if (entries.Length == 0 ||
-            !_referencesByDrive.TryGetValue(drive, out var references) ||
+            !_referencesByVolume.TryGetValue(volume, out var references) ||
             references.Count == 0)
         {
             return entries;
@@ -86,13 +86,13 @@ sealed class BrokerDiagnosticsLogFilter
         return kept;
     }
 
-    void ResolvePathsFor(VolumeKey drive)
+    void ResolvePathsFor(VolumeKey volume)
     {
         foreach (var path in _logPaths)
         {
-            if (!TryGetDrive(path, out var pathDrive) || pathDrive != drive)
+            if (!TryGetDrive(path, out var pathVolume) || pathVolume != volume)
             {
-                continue; // rooted on another drive; that drive's watch resolves it
+                continue; // rooted on another volume; that volume's watch resolves it
             }
 
             if (_resolveFileReference(path) is not { } reference)
@@ -100,10 +100,10 @@ sealed class BrokerDiagnosticsLogFilter
                 continue; // not created yet or unresolvable; retried on the next batch
             }
 
-            if (!_referencesByDrive.TryGetValue(drive, out var set))
+            if (!_referencesByVolume.TryGetValue(volume, out var set))
             {
                 set = [];
-                _referencesByDrive[drive] = set;
+                _referencesByVolume[volume] = set;
             }
 
             set.Add(reference);
@@ -133,14 +133,14 @@ sealed class BrokerDiagnosticsLogFilter
     static ulong FileReferenceOf(UsnJournalEntry entry) =>
         ((ulong)entry.SequenceNumber << 48) | entry.RecordNumber;
 
-    // Extract the bare drive from a rooted path ("C:\...", "C:...", or extended "\\?\C:\...");
-    // anything else (UNC, non-Windows root) never matches a watched drive and stays pending.
-    internal static bool TryGetDrive(string path, out VolumeKey drive) =>
-        TryGetDrive(path, OperatingSystem.IsWindows(), out drive);
+    // Extract the bare volume from a rooted path ("C:\...", "C:...", or extended "\\?\C:\...");
+    // anything else (UNC, non-Windows root) never matches a watched volume and stays pending.
+    internal static bool TryGetDrive(string path, out VolumeKey volume) =>
+        TryGetDrive(path, OperatingSystem.IsWindows(), out volume);
 
-    internal static bool TryGetDrive(string path, bool isWindows, out VolumeKey drive)
+    internal static bool TryGetDrive(string path, bool isWindows, out VolumeKey volume)
     {
-        drive = default;
+        volume = default;
         if (string.IsNullOrWhiteSpace(path))
         {
             return false;
@@ -149,7 +149,7 @@ sealed class BrokerDiagnosticsLogFilter
         // Standard Windows drive-letter path: "C:\...", "C:/...", "C:file"
         if (path.Length >= 2 && path[1] == ':' && char.IsAsciiLetter(path[0]))
         {
-            drive = new VolumeKey(path[0]);
+            volume = new VolumeKey(path[0]);
             return true;
         }
 
@@ -163,7 +163,7 @@ sealed class BrokerDiagnosticsLogFilter
             path[5] == ':' &&
             char.IsAsciiLetter(path[4]))
         {
-            drive = new VolumeKey(path[4]);
+            volume = new VolumeKey(path[4]);
             return true;
         }
 
@@ -174,7 +174,7 @@ sealed class BrokerDiagnosticsLogFilter
                 var fullPath = Path.GetFullPath(path);
                 if (fullPath.Length >= 2 && fullPath[1] == ':' && char.IsAsciiLetter(fullPath[0]))
                 {
-                    drive = new VolumeKey(fullPath[0]);
+                    volume = new VolumeKey(fullPath[0]);
                     return true;
                 }
             }

@@ -13,7 +13,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     /// <summary>
     ///     Cancelled by <see cref="DisposeAsync" /> before it waits for anything. Every query's
     ///     effective token is linked to this one, so a scan in flight is told to stop rather than
-    ///     holding disposal open for the rest of a whole-drive pass. Every rescan's token is linked
+    ///     holding disposal open for the rest of a whole-root pass. Every rescan's token is linked
     ///     to it as well. Deliberately not disposed, for the same reason as the runtime's gates: a
     ///     query that raced the disposal still reads this token, and a disposed source would
     ///     answer it with an exception naming the source rather than the index.
@@ -31,7 +31,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     ///     that publishes a block: a commit of the root's block and the
     ///     retirement of the replaced block happen under it, so a reader (<see cref="Status" />,
     ///     <see cref="CurrentBlock" />) never observes a partial swap. It is innermost in the
-    ///     lock order (see <see cref="DriveRuntime" />) and never held across an <c>await</c>.
+    ///     lock order (see <see cref="RootRuntime" />) and never held across an <c>await</c>.
     /// </summary>
     readonly Lock _stateLock = new();
 
@@ -49,14 +49,14 @@ public sealed partial class FileIndex : IAsyncDisposable
         CacheDirectoryPath = cacheDirectoryPath;
         Hooks = hooks;
         var configuredRoot = _options.Root ?? throw new InvalidOperationException("Prepared options must have a Root.");
-        _runtime = new DriveRuntime(this, configuredRoot);
-        Kind = DriveKind.For(configuredRoot.Producer, _options.MftSource);
+        _runtime = new RootRuntime(this, configuredRoot);
+        Kind = RootKind.For(configuredRoot.Producer, _options.MftSource);
         MatchableRootDirectoryPath = Kind.ToMatchablePrefix(Kind.NormalizeRoot(configuredRoot.RootDirectory));
     }
 
-    internal RootKey RootKey => _runtime.Drive;
+    internal RootKey RootKey => _runtime.Root;
 
-    internal DriveKind Kind { get; }
+    internal RootKind Kind { get; }
 
     internal string? MatchableRootDirectoryPath { get; }
 
@@ -80,7 +80,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     {
         get
         {
-            Hooks.DrivesReadBeforeLock?.Invoke();
+            Hooks.RootsReadBeforeLock?.Invoke();
             lock (_stateLock)
             {
                 // Checked under the lock: disposal sets the flag under it before it unpublishes
@@ -91,7 +91,7 @@ public sealed partial class FileIndex : IAsyncDisposable
         }
     }
 
-    internal DriveBlock? CurrentBlock
+    internal RootBlock? CurrentBlock
     {
         get
         {
@@ -105,8 +105,8 @@ public sealed partial class FileIndex : IAsyncDisposable
 
     /// <summary>
     ///     Opens an index over the configured root, adopting a valid cached block or
-    ///     producing a fresh one. A missing root settles as <see cref="DriveState.Offline" />, and an
-    ///     operational scan failure settles as <see cref="DriveState.Failed" /> in <see cref="Status" />
+    ///     producing a fresh one. A missing root settles as <see cref="RootState.Offline" />, and an
+    ///     operational scan failure settles as <see cref="RootState.Failed" /> in <see cref="Status" />
     ///     without failing the open, for both MFT and enumeration producers; this includes an MFT root
     ///     that needs a scan when <see cref="FileIndexOptions.MftSource" /> is null. Argument validation
     ///     performed before production throws. Caller cancellation fails the open and releases any adopted block.
@@ -138,7 +138,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        options = DriveKind.PrepareOpenOptions(options);
+        options = RootKind.PrepareOpenOptions(options);
         var cacheDirectoryPath = string.Empty;
         if (options.CacheMode != CacheMode.Disabled)
         {
@@ -157,7 +157,7 @@ public sealed partial class FileIndex : IAsyncDisposable
         var index = new FileIndex(options, cacheDirectoryPath, hooks);
         try
         {
-            await index.SettleDriveAsync(cancellationToken).ConfigureAwait(false);
+            await index.SettleRootAsync(cancellationToken).ConfigureAwait(false);
         }
         catch
         {

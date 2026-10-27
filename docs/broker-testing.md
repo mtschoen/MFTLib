@@ -1,14 +1,14 @@
 # Testing your integration
 
 Reference **`MFTLib.TestExtensions`** from consumer test projects. It provides an
-in-process broker harness, a scripted drive watch, synthetic journal entries and
+in-process broker harness, a scripted volume watch, synthetic journal entries and
 records, synthetic cache blocks and their editor, and an opt-in guard against the index's automatic
 checkpoint observations reading a real volume's USN journal. Tests supply application-owned
 temporary cache directories.
 
 ## Synthetic events and operation results
 
-`WatchStateChange` and `DriveOperationResult` are library-constructed records.
+`WatchStateChange` and `RootOperationResult` are library-constructed records.
 Consumer tests that feed event handlers or result presenters use
 `SyntheticNotifications` from the test package:
 
@@ -16,15 +16,15 @@ Consumer tests that feed event handlers or result presenters use
 using MFTLib.Index;
 using MFTLibTestExtensions;
 
-var watch = SyntheticNotifications.CreateDriveStatus('T', DriveState.Offline, null, null).Watch
+var watch = SyntheticNotifications.CreateRootStatus('T', RootState.Offline, null, null).Watch
     with { State = WatchState.CatchingUp, StateVersion = 1 };
 var change = SyntheticNotifications.CreateWatchStateChange('T', watch, null);
 var failure = new System.IO.IOException("scan failed");
-var result = SyntheticNotifications.CreateDriveOperationResult('T', DriveOperationOutcome.Failed, failure);
+var result = SyntheticNotifications.CreateRootOperationResult('T', RootOperationOutcome.Failed, failure);
 ```
 
 The factories retain the supplied watch, fault, and exception references and
-forward to the library constructors, including their drive-key validation.
+forward to the library constructors, including their root-key validation.
 Both nullable trailing arguments are explicit: pass null when there is no
 fault or failure. Read the records' properties instead of positional
 deconstruction.
@@ -38,9 +38,9 @@ an application-owned refusal stays in the application's own error path.
 
 `BrokerTestHarness.StartInProcess(ScriptedBrokerVolumes)` runs the real broker host on a
 background task and returns an `InProcessBrokerHandle` exposing `Ended`, `Crash()`,
-`Scans` and `DisposeAsync`, connected through in-memory control and drive pipes. It needs no
+`Scans` and `DisposeAsync`, connected through in-memory control and volume pipes. It needs no
 elevation and launches no child process. Consumer tests therefore exercise the same
-request routing, per-drive channels, frame decoding, timeouts, producer, and watch source
+request routing, per-volume channels, frame decoding, timeouts, producer, and watch source
 used in production. The harness supplies everything except the volumes: the client creates
 real block sections, and each scan's records are written through the production row writer
 and filter.
@@ -53,9 +53,9 @@ launched handle and disposes it after its indexes and the session. The callback 
 `ScriptedBrokerVolumes` is the fake volumes the host serves. Only `QueryJournalCursor` is
 required; a null source refuses that operation as the real host does.
 
-- `QueryJournalCursor` arms a drive's journal cursor before its scan and bounds a watch's
+- `QueryJournalCursor` arms a volume's journal cursor before its scan and bounds a watch's
   backlog.
-- `ScanDrive` receives a `ScriptedScan` (the drive letter and cancellation token)
+- `ScanVolume` receives a `ScriptedScan` (the drive letter and cancellation token)
   and returns the scan's records in batches. `ScriptedScan.ReportParsed`
   emits one parsing-phase progress frame, which the client reports as
   `IndexScanPhase.ParsingMft`. A batch sequence that yields lazily is written as it is
@@ -64,15 +64,15 @@ required; a null source refuses that operation as the real host does.
   source".
 - `ReadJournal` answers the bounded catch-up read after a scan. Null answers "nothing new"
   from every cursor.
-- `WatchDrive` streams a drive's journal for a watch. Null refuses every watch.
+- `WatchVolume` streams a volume's journal for a watch. Null refuses every watch.
 - Volume sizing is supplied by the harness (256 KiB of 1024-byte records).
-- `GrowUsnJournal` grows a drive's journal. Null refuses every grow request.
+- `GrowUsnJournal` grows a volume's journal. Null refuses every grow request.
 
 ```csharp
 await using var broker = BrokerTestHarness.StartInProcess(new ScriptedBrokerVolumes
 {
     QueryJournalCursor = _ => new SyntheticJournalCursor(7, 1000),
-    ScanDrive = scan =>
+    ScanVolume = scan =>
     {
         scan.ReportParsed(1, 1);
         return [[new SyntheticScanRecord
@@ -84,23 +84,23 @@ await using var broker = BrokerTestHarness.StartInProcess(new ScriptedBrokerVolu
 ```
 
 `InProcessBrokerHandle.Scans` lists every scan the host served, in order, as an
-`InProcessBrokerScan` (the drive and nullable `RetainedFileNames` the client
+`InProcessBrokerScan` (the volume and nullable `RetainedFileNames` the client
 requested), so a test asserts what it asked for. Null means full retention, an empty
 collection means directories only, and names mean directories plus matching files.
 The observation preserves null versus empty. The harness does not offer the section
 lifetime or the write path: those are MFTLib's own, and `MFTLib.Tests` covers them. A consumer
 asserts the outcome it owns, such as the block file under its cache directory.
-The harness constructs each `InProcessBrokerScan`. Consumers read its public `Drive` and
+The harness constructs each `InProcessBrokerScan`. Consumers read its public `Volume` and
 `RetainedFileNames` properties; record copies retain the validated init-only property contract.
 
 The handle owns the harness session from the client side. Disposing the handle
-disposes the process: it closes the control pipe, ends the host, closes the drive pipes, waits for
+disposes the process: it closes the control pipe, ends the host, closes the volume pipes, waits for
 the session task, and then releases the block sections the scans wrote into. Disposal is
 safe to repeat. The harness has no separate fault event or stored host
 exception. A host failure reaches the test through the production surfaces:
 
 - the `InProcessBrokerHandle.Ended` task;
-- an `IOException` on pending control or drive operations; or
+- an `IOException` on pending control or root operations; or
 - a host `Error` frame translated by the operation reading that channel.
 
 Host exception detail is written only to broker diagnostics. Disposing the
@@ -108,7 +108,7 @@ process does not throw the host fault again.
 
 `InProcessBrokerHandle.Crash()` simulates the broker process dying: it closes every
 host pipe end at once, without the client's cooperation, so the client reads EOF on
-the control pipe and every drive channel, `Ended` reports the loss, and pending
+the control pipe and every volume channel, `Ended` reports the loss, and pending
 operations fail with an `IOException`; a later session use fails with
 `InvalidOperationException` naming the end reason. It differs from disposing the
 process, which ends with the reason "The broker process was disposed.". The handle
@@ -142,11 +142,11 @@ processor count are not exposed: no consumer drives them. They stay internal sea
 `MFTLib.Tests` reaches through the same assembly, together with the section recorders that
 back `Scans`, which live in `MFTLibTestExtensions` as internal types.
 
-## Script a drive watch
+## Script a root watch
 
 A test focused on `FileIndex` policy does not need a broker. `ScriptedWatchSource`
-answers every watch start the index asks for with one `ScriptedDriveWatch` for
-that drive, and the test then scripts what the watch yields and how it ends. Hand
+answers every watch start the index asks for with one `ScriptedVolumeWatch` for
+that root, and the test then scripts what the watch yields and how it ends. Hand
 it to the index beside a producer with
 `FileIndexOptions.MftSource = SyntheticIndexSource.Create(producer, source)`.
 
@@ -168,26 +168,26 @@ await watch.PublishBatchAsync(
         Reason = SyntheticJournalReason.FileCreate | SyntheticJournalReason.Close
     }],
     new SyntheticJournalCursor(
-        source.Starts.Last(start => start.Drive == watch.Drive).Cursor.JournalIdentifier,
+        source.Starts.Last(start => start.Volume == watch.Volume).Cursor.JournalIdentifier,
         1300));
 await watch.PublishCaughtUpAsync();
 ```
 
-The source records every start in `Starts` (the drive and the cursor it resumed
+The source records every start in `Starts` (the root and the cursor it resumed
 from, including starts that were then failed) and every watch it handed out in
-`Watches`; `WatchFor` returns the latest watch of one drive and
-`WaitForStartAsync(drive, startNumber, token)` completes with the drive's
+`Watches`; `WatchFor` returns the latest watch of one root and
+`WaitForStartAsync(root, startNumber, token)` completes with the root's
 `startNumber`th watch (one for the first). A watch handed out before the call satisfies it
 at once, so a test may trigger the start and wait afterwards, or wait first; neither misses it.
-A drive the index restarts gets a new watch each time: the first start is number one, the
+A root the index restarts gets a new watch each time: the first start is number one, the
 restart number two. A start that failed or is held has handed out no watch and is not
-counted. A test that needs both drives started awaits one call per drive. Starts are
+counted. A test that needs both roots started awaits one call per root. Starts are
 scripted per source:
 
 - `CatchUpOnStart` queues the caught-up marker the moment each watch starts, for a
   test that only needs the watch to settle;
 - `StartFailure` is consulted on every start and throws whatever it returns; and
-- a start for a drive whose previous watch has not been disposed throws
+- a start for a root whose previous watch has not been disposed throws
   `InvalidOperationException`, because the index disposes a watch before it
   restarts one.
 
@@ -197,8 +197,8 @@ A watch scripts the read the index's pump performs:
   changes and advances the block cursor; the publishing form completes once the
   pump has taken the item after it and throws `TimeoutException` after ten
   seconds, and the queueing form returns the task that completes then;
-- `PublishCaughtUpAsync` settles that drive's catch-up wait;
-- `FailDrive` produces `WatchFaultKind.Drive` and automatic recovery;
+- `PublishCaughtUpAsync` settles that root's catch-up wait;
+- `FailVolume` produces `WatchFaultKind.Volume` and automatic recovery;
 - `FailApply` queues a batch whose application throws, producing `WatchFaultKind.Apply` and automatic recovery;
 - `LoseChannel`, or `End` for a normal end before the index cancels the read,
   produces `WatchFaultKind.Channel` with no automatic recovery.
@@ -208,8 +208,8 @@ read ends, however it ends, or when it is disposed: every delivery method then t
 `InvalidOperationException`, and each unread item's task settles once, faulted with
 the read's failure or cancelled, before `ReadEnded` completes. The index disposes a
 watch exactly once, so a second disposal throws. An idle watch is a source nobody
-publishes to. Keep one source per index and one watch per drive: sharing a queue
-between watches would reintroduce cross-drive ordering and failure coupling that
+publishes to. Keep one source per index and one watch per root: sharing a queue
+between watches would reintroduce cross-root ordering and failure coupling that
 the public seam is designed to exclude.
 
 ## Seed and edit cache blocks
@@ -243,9 +243,9 @@ SyntheticBlock.Edit(path, 0x1234, editor =>
 });
 ```
 
-- `CachedPath` is the canonical file path for a drive, so a test never builds the
+- `CachedPath` is the canonical file path for a root, so a test never builds the
   file name itself.
-- `WriteCached` writes a complete block into the drive's cache slot. Set
+- `WriteCached` writes a complete block into the root's cache slot. Set
   `ProducerKind = ProducerKind.Enumeration` and `RootRow = 0` for an enumeration block.
 - `Edit` opens an existing block and hands a `SyntheticBlockEditor` to the callback,
   then flushes and closes it. The editor sets attributes, marks sizes unknown
@@ -258,7 +258,7 @@ SyntheticBlock.Edit(path, 0x1234, editor =>
   `SetCacheTag(new CacheTag("TEST", 7))` replaces only the stored cache identity,
   preserving the scan timestamp, journal cursor, other header fields and every row;
   passing `default` stores the all-zero identity. A cache-only `FileIndex` opened
-  with a different requested tag reports `DriveFailureKind.CacheIdentityMismatch`.
+  with a different requested tag reports `RootFailureKind.CacheIdentityMismatch`.
   `CorruptNamePool` makes the next open reject the block with
   `BlockValidationResult.InvalidNameDescriptor`. Using the editor after the edit
   returns throws `InvalidOperationException`.
@@ -270,7 +270,7 @@ before seeding or editing its block. A missing block or one that fails
 validation throws the same exception naming the problem.
 
 `SyntheticMftProducer` is the block producer of a test index. It writes the rows a
-callback returns for each drive through the same writer and reports a real
+callback returns for each root through the same writer and reports a real
 produce result carrying the request's cache tag. Its settings model what a
 test needs from a scan:
 
@@ -280,7 +280,7 @@ test needs from a scan:
 - `BeforeProduceAsync` is awaited before each production, so a test holds a scan or
   rescan in progress and releases it when ready;
 - `CatchUpLoss` returns the proven catch-up loss a production reports, which the
-  index surfaces as `DriveWatchStatus.CheckpointLoss`.
+  index surfaces as `RootWatchStatus.CheckpointLoss`.
 
 The callback must return the root row (row 5 for an MFT block).
 
@@ -321,4 +321,4 @@ to a live read. The returned scope is process-global, so mark the whole fixture
 nonparallel, keep the scope through all awaited work, and stop and dispose every
 index and watch before disposing it. Nested or overlapping public scopes throw
 `InvalidOperationException`. Mutable callback state must be synchronized because
-different drive pumps can query it concurrently.
+different root pumps can query it concurrently.

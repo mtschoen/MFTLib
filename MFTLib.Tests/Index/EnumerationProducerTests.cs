@@ -25,7 +25,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
 
     int _blockId;
 
-    DriveBlock[] Produce(out BlockFile block,
+    RootBlock[] Produce(out BlockFile block,
         IReadOnlyCollection<string>? retainedFileNames = null, DirectoryWalkOptions? directoryWalk = null,
         string? rootDirectory = null, int maximumWorkers = int.MaxValue)
     {
@@ -39,7 +39,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = root,
-            Drive = new VolumeKey('T'),
+            Root = new VolumeKey('T'),
             RetainedFileNames = retainedFileNames,
             DirectoryWalk = DirectoryWalkOptions.Admit(directoryWalk ?? new DirectoryWalkOptions())
         });
@@ -47,7 +47,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
         using var lease = EnumerationWalkLimit.EnterAsync(CancellationToken.None).AsTask().GetAwaiter().GetResult();
         producer.Produce(created.Writer, progress: null, lease, CancellationToken.None, maximumWorkers);
         created.Writer.Complete(new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc), null);
-        return [new DriveBlock(new VolumeKey('T'), block, rootDirectoryPath: root)];
+        return [new RootBlock(new VolumeKey('T'), block, rootDirectoryPath: root)];
     }
 
     [TestMethod]
@@ -103,12 +103,12 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
     }
 
     [TestMethod]
-    public async Task Produce_RetainedFileNamesFollowTheDriveComparison()
+    public async Task Produce_RetainedFileNamesFollowTheRootComparison()
     {
         var root = Path.Combine(_treeRoot, "RetainedNames");
         Directory.CreateDirectory(root);
         await File.WriteAllTextAsync(Path.Combine(root, "README.md"), "upper", TestContext.CancellationToken);
-        if (!DriveComparisonIgnoresCase)
+        if (!RootComparisonIgnoresCase)
         {
             await File.WriteAllTextAsync(Path.Combine(root, "readme.md"), "lower", TestContext.CancellationToken);
         }
@@ -130,7 +130,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
 
             Assert.AreEqual(2u, block.Header.RowCount);
             Assert.HasCount(1, fileNames);
-            Assert.AreEqual(DriveComparisonIgnoresCase ? "README.md" : "readme.md", fileNames[0]);
+            Assert.AreEqual(RootComparisonIgnoresCase ? "README.md" : "readme.md", fileNames[0]);
         }
         finally
         {
@@ -293,7 +293,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = _treeRoot,
-            Drive = new VolumeKey('T')
+            Root = new VolumeKey('T')
         });
 
         using var lease = await EnumerationWalkLimit.EnterAsync(CancellationToken.None);
@@ -308,7 +308,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
         Assert.HasCount(1, reportingThreadIds, "all progress reports came from one thread");
         Assert.AreEqual(callingThreadId, reportingThreadIds.Single(), "all progress reports came from the calling thread");
         Assert.AreEqual(IndexScanPhase.Enumerating, observed[0].Phase);
-        Assert.AreEqual(new VolumeKey('T'), observed[0].Drive);
+        Assert.AreEqual(new VolumeKey('T'), observed[0].Root);
         Assert.AreAllDistinct(observed.Select(report => report.CurrentDirectory!).ToArray());
         for (var i = 1; i < observed.Count; i++)
         {
@@ -327,7 +327,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = _treeRoot,
-            Drive = new VolumeKey('T')
+            Root = new VolumeKey('T')
         });
         var progress = new RecordingProgress();
 
@@ -412,7 +412,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = Path.Combine(_treeRoot, "does-not-exist"),
-            Drive = new VolumeKey('T')
+            Root = new VolumeKey('T')
         });
 
         using var lease = await EnumerationWalkLimit.EnterAsync(CancellationToken.None);
@@ -439,7 +439,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = _treeRoot,
-            Drive = new VolumeKey('T')
+            Root = new VolumeKey('T')
         });
 
         using var lease = await EnumerationWalkLimit.EnterAsync(CancellationToken.None);
@@ -462,7 +462,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
         };
 
         var observations = new List<int>();
-        var options = new EnumerationProducerOptions { RootDirectory = _treeRoot, Drive = new VolumeKey('T') };
+        var options = new EnumerationProducerOptions { RootDirectory = _treeRoot, Root = new VolumeKey('T') };
         var reader = new EnumerationDirectoryReader(options)
         {
             BeforeMoveNext = (_, observed) =>
@@ -488,7 +488,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
     {
         var observations = new List<int>();
         var failure = new InvalidOperationException("unexpected reader fault");
-        var options = new EnumerationProducerOptions { RootDirectory = _treeRoot, Drive = new VolumeKey('T') };
+        var options = new EnumerationProducerOptions { RootDirectory = _treeRoot, Root = new VolumeKey('T') };
         var reader = new EnumerationDirectoryReader(options)
         {
             BeforeMoveNext = (_, observed) =>
@@ -520,7 +520,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
         {
             File.WriteAllText(Path.Combine(directory.FullName, $"entry-{entry}"), "content");
         }
-        var options = new EnumerationProducerOptions { RootDirectory = directory.FullName, Drive = new VolumeKey('T') };
+        var options = new EnumerationProducerOptions { RootDirectory = directory.FullName, Root = new VolumeKey('T') };
         var reader = new EnumerationDirectoryReader(options)
         {
             BeforeMoveNext = (_, observed) =>
@@ -617,7 +617,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
             var producer = new EnumerationProducer(new EnumerationProducerOptions
             {
                 RootDirectory = _treeRoot,
-                Drive = new VolumeKey('T')
+                Root = new VolumeKey('T')
             });
 
             var task = EnumerationWalkTestSupport.ProduceAsync(producer, created.Writer, null, CancellationToken.None);
@@ -711,7 +711,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
             var producer = new EnumerationProducer(new EnumerationProducerOptions
             {
                 RootDirectory = _treeRoot,
-                Drive = new VolumeKey('T')
+                Root = new VolumeKey('T')
             });
 
             var progress = new SynchronousProgress<IndexScanProgress>(report =>
@@ -782,16 +782,16 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = _treeRoot,
-            Drive = new VolumeKey('T')
+            Root = new VolumeKey('T')
         });
 
         var observation = new EnumerationReadObservation();
         var exitGate = new TestGate();
         var childEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        EnumerationWalkLimit.Hooks._directoryEntered = (drive, path, readerToken) =>
+        EnumerationWalkLimit.Hooks._directoryEntered = (root, path, readerToken) =>
         {
-            observation.Enter(drive, path, readerToken);
+            observation.Enter(root, path, readerToken);
             if (!string.Equals(path, _treeRoot, StringComparison.OrdinalIgnoreCase))
             {
                 if (childEntered.TrySetResult())
@@ -801,7 +801,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
             }
         };
 
-        EnumerationWalkLimit.Hooks._directoryExited = (drive, path) =>
+        EnumerationWalkLimit.Hooks._directoryExited = (root, path) =>
         {
             try
             {
@@ -813,7 +813,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
             }
             finally
             {
-                observation.Exit(drive, path);
+                observation.Exit(root, path);
             }
         };
 
@@ -873,7 +873,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = _treeRoot,
-            Drive = new VolumeKey('T')
+            Root = new VolumeKey('T')
         })
         {
             BeforeMoveNext = (path, observed) =>
@@ -901,7 +901,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
             Assert.IsFalse(observation.Visits.ContainsKey(childOfFailing), "Descendant of skipped directory must not be visited");
             Assert.IsTrue(observation.Visits.ContainsKey(healthyDir), "Healthy sibling directory must be visited");
 
-            var snapshot = new DriveBlock(new VolumeKey('T'), block, rootDirectoryPath: _treeRoot);
+            var snapshot = new RootBlock(new VolumeKey('T'), block, rootDirectoryPath: _treeRoot);
             var healthyEntry = EnumerationLookupTestAccess.FindByPath([snapshot], Path.Combine(healthyDir, "healthy.txt"));
             Assert.IsNotNull(healthyEntry);
             Assert.IsNotNull(EnumerationLookupTestAccess.FindByPath([snapshot], childOfFailing));
@@ -923,7 +923,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = _treeRoot,
-            Drive = new VolumeKey('T')
+            Root = new VolumeKey('T')
         })
         {
             BeforeMoveNext = observation.FailActiveRead(sentinel)
@@ -989,7 +989,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = _treeRoot,
-            Drive = new VolumeKey('T')
+            Root = new VolumeKey('T')
         });
 
         using var block = TestBlocks.Create(
@@ -1058,7 +1058,7 @@ public sealed partial class EnumerationProducerTests : IndexTreeTestBase
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = _treeRoot,
-            Drive = new VolumeKey('T')
+            Root = new VolumeKey('T')
         });
 
         using var block = TestBlocks.Create(
@@ -1149,7 +1149,7 @@ sealed class RecordingProgress : IProgress<IndexScanProgress>
 /// </summary>
 static class EnumerationLookupTestAccess
 {
-    public static FileEntry? FindByPath(DriveBlock[] snapshot, string fullPath)
+    public static FileEntry? FindByPath(RootBlock[] snapshot, string fullPath)
     {
         var block = snapshot[0].Block;
         for (var rowIndex = 0u; rowIndex < block.Header.RowCount; rowIndex++)

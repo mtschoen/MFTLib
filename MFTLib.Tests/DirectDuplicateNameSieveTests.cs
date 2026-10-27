@@ -15,12 +15,12 @@ public class DirectDuplicateNameSieveTests
     {
         var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey(builder.Drive), builder.DirectoryPath,
+            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey(builder.Drive), builder.DirectoryPath,
                 builder.VolumeSerial, ProducerKind.Enumeration),
             CacheDirectory = builder.DirectoryPath,
             CacheMode = CacheMode.ExistingOnly
         }, CancellationToken.None);
-        Assert.AreEqual(DriveState.Ready, index.Status.State, index.Status.Failure?.Message);
+        Assert.AreEqual(RootState.Ready, index.Status.State, index.Status.Failure?.Message);
 
         return index;
     }

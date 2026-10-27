@@ -1,7 +1,7 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     The path rules of an MFT dump's virtual root <c>dump:/{drive}</c>. A dump has no host
+///     The path rules of an MFT dump's virtual root <c>dump:/{volume}</c>. A dump has no host
 ///     directory, so its paths are opaque strings: the separator is always <c>/</c>, a backslash is
 ///     accepted wherever a separator is read, and nothing here touches the filesystem or the
 ///     host's separator rules, which keeps a rendered path and a lookup of it agreeing on every
@@ -15,12 +15,12 @@ static class MftDumpPaths
 
     const string RootPrefix = "dump:/";
 
-    /// <summary>The virtual root of the dump assigned <paramref name="drive" />, in upper case.</summary>
-    internal static string CanonicalRoot(VolumeKey drive) => RootPrefix + drive;
+    /// <summary>The virtual root of the dump assigned <paramref name="volume" />, in upper case.</summary>
+    internal static string CanonicalRoot(VolumeKey volume) => RootPrefix + volume;
 
-    /// <summary>True when <paramref name="root" /> is exactly the canonical root of <paramref name="drive" />.</summary>
-    internal static bool IsCanonicalRoot(string? root, VolumeKey drive) =>
-        string.Equals(root, CanonicalRoot(drive), StringComparison.Ordinal);
+    /// <summary>True when <paramref name="root" /> is exactly the canonical root of <paramref name="volume" />.</summary>
+    internal static bool IsCanonicalRoot(string? root, VolumeKey volume) =>
+        string.Equals(root, CanonicalRoot(volume), StringComparison.Ordinal);
 
     /// <summary>
     ///     The root as lookups compare it: backslashes folded to <c>/</c> and any trailing separator

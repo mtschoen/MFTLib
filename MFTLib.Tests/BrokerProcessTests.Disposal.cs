@@ -14,16 +14,16 @@ public partial class BrokerProcessTests
         var sourceCancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, cancellationToken) => WaitForCancellation(scanning, sourceCancelled, cancellationToken)
+            ScanVolume = (_, _, _, _, _, cancellationToken) => WaitForCancellation(scanning, sourceCancelled, cancellationToken)
         }));
 
-        var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
+        var scan = broker.Process.ScanVolumeAsync('C', TestBlockSections.Target(), new MftScanOptions(),
             null, CancellationToken.None);
         await scanning.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard, TestContext.CancellationToken));
-        Assert.AreEqual('C', lost.Drive);
+        Assert.AreEqual('C', lost.Volume);
         await sourceCancelled.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
         var section = broker.Sections.Single();
         AssertSectionReleased(section);
@@ -41,7 +41,7 @@ public partial class BrokerProcessTests
         await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
             TimeProvider = hostClock,
-            ScanDrive = (_, _, _, _, _, _) =>
+            ScanVolume = (_, _, _, _, _, _) =>
             {
                 scanning.MarkEntered();
                 scanning.WaitForRelease();
@@ -50,7 +50,7 @@ public partial class BrokerProcessTests
         }));
         try
         {
-            var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
+            var scan = broker.Process.ScanVolumeAsync('C', TestBlockSections.Target(), new MftScanOptions(),
                 null, CancellationToken.None);
             await scanning.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
             var dispose = broker.Process.DisposeAsync().AsTask();
@@ -61,7 +61,7 @@ public partial class BrokerProcessTests
             await dispose.WaitAsync(HangGuard, TestContext.CancellationToken);
 
             var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard, TestContext.CancellationToken));
-            Assert.AreEqual('C', lost.Drive);
+            Assert.AreEqual('C', lost.Volume);
             AssertSectionReleased(broker.Sections.Single());
         }
         finally
@@ -70,7 +70,7 @@ public partial class BrokerProcessTests
         }
     }
 
-    // Closing the control pipe can fail; disposal still closes every drive channel and joins the
+    // Closing the control pipe can fail; disposal still closes every volume channel and joins the
     // control reader, and does not throw.
     [TestMethod]
     public async Task Dispose_ControlCloseThrows_CompletesTeardownWithoutThrowing()
@@ -86,7 +86,7 @@ public partial class BrokerProcessTests
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsTrue(ended.IsCompleted, "The control reader was joined.");
-        Assert.IsNull(await HostChannelHarness.ReadFrameAsync(hostEnd), "The drive channel was closed first.");
+        Assert.IsNull(await HostChannelHarness.ReadFrameAsync(hostEnd), "The volume channel was closed first.");
     }
 
     // A closed in-memory pipe end fails reads and writes the way a closed named pipe does, so a
@@ -111,8 +111,8 @@ public partial class BrokerProcessTests
     public async Task Dispose_DuringScanWithHostEndHeldOpen_EndsPendingReadWithChannelLost()
     {
         var clientReads = new ReadCounter();
-        await using var broker = new ScriptedBroker(wrapClientDrivePipe: (_, stream) => clientReads.Wrap(stream));
-        var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
+        await using var broker = new ScriptedBroker(wrapClientVolumePipe: (_, stream) => clientReads.Wrap(stream));
+        var scan = broker.Process.ScanVolumeAsync('C', TestBlockSections.Target(), new MftScanOptions(),
             null, CancellationToken.None);
         await broker.AnswerQueryVolumeAsync(Volume);
         await using var hostEnd = await broker.AcceptChannelAsync();
@@ -126,7 +126,7 @@ public partial class BrokerProcessTests
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard, TestContext.CancellationToken));
-        Assert.AreEqual('C', lost.Drive);
+        Assert.AreEqual('C', lost.Volume);
         AssertSectionReleased(broker.Sections.Single());
     }
 
@@ -136,8 +136,8 @@ public partial class BrokerProcessTests
     public async Task Dispose_AfterTerminalFrameRead_ScanReturnsItsResult()
     {
         var clientReads = new ReadCounter();
-        await using var broker = new ScriptedBroker(wrapClientDrivePipe: (_, stream) => clientReads.Wrap(stream));
-        var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
+        await using var broker = new ScriptedBroker(wrapClientVolumePipe: (_, stream) => clientReads.Wrap(stream));
+        var scan = broker.Process.ScanVolumeAsync('C', TestBlockSections.Target(), new MftScanOptions(),
             null, CancellationToken.None);
         await broker.AnswerQueryVolumeAsync(Volume);
         await using var hostEnd = await broker.AcceptChannelAsync();
@@ -165,8 +165,8 @@ public partial class BrokerProcessTests
     public async Task Dispose_WhileFrameAfterTerminalIsPartlyRead_FailsScanWithChannelLost()
     {
         var clientReads = new ReadCounter();
-        await using var broker = new ScriptedBroker(wrapClientDrivePipe: (_, stream) => clientReads.Wrap(stream));
-        var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
+        await using var broker = new ScriptedBroker(wrapClientVolumePipe: (_, stream) => clientReads.Wrap(stream));
+        var scan = broker.Process.ScanVolumeAsync('C', TestBlockSections.Target(), new MftScanOptions(),
             null, CancellationToken.None);
         await broker.AnswerQueryVolumeAsync(Volume);
         await using var hostEnd = await broker.AcceptChannelAsync();
@@ -184,7 +184,7 @@ public partial class BrokerProcessTests
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard, TestContext.CancellationToken));
-        Assert.AreEqual('C', lost.Drive);
+        Assert.AreEqual('C', lost.Volume);
         AssertSectionReleased(broker.Sections.Single());
     }
 
@@ -196,7 +196,7 @@ public partial class BrokerProcessTests
         DisposalRecordingStream? clientPipe = null;
         await using var broker = new ScriptedBroker(
             wrapClientControl: controlReads.Wrap,
-            wrapClientDrivePipe: (_, stream) => RecordClientPipe(stream, pipe => clientPipe = pipe),
+            wrapClientVolumePipe: (_, stream) => RecordClientPipe(stream, pipe => clientPipe = pipe),
             wrapPipeFactory: pipes => new ConnectedPipeGate(pipes, connectionGate));
         var firstRequestWritten = false;
         var open = broker.Process.OpenChannelAsync('C', writer =>
@@ -227,7 +227,7 @@ public partial class BrokerProcessTests
             connectionGate.Release();
 
             var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => open.WaitAsync(HangGuard, TestContext.CancellationToken));
-            Assert.AreEqual('C', lost.Drive);
+            Assert.AreEqual('C', lost.Volume);
             Assert.Contains("the broker process was disposed", lost.Message);
             Assert.IsFalse(firstRequestWritten, "Tracking rejects the channel before its first request is built.");
             await clientPipe.Disposed.WaitAsync(HangGuard, TestContext.CancellationToken);

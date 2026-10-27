@@ -22,9 +22,9 @@ public partial class JournalBrokerHostTests
     public async Task StartWatch_RetainedCursor_PreservesMessageDespiteFormerKeywords(string message)
     {
         var queriedDrives = new List<char>();
-        using var journal = JournalIsolation.OverrideJournalWindow(drive =>
+        using var journal = JournalIsolation.OverrideJournalWindow(volume =>
         {
-            queriedDrives.Add(drive.Letter);
+            queriedDrives.Add(volume.Letter);
             return new SyntheticJournalWindow(7UL, 100L, 1000L, 64L, 4096L);
         });
 
@@ -42,9 +42,9 @@ public partial class JournalBrokerHostTests
 
         const string message = "Read failed: opaque native diagnostic";
         Assert.AreEqual(
-            "Drive C cannot resume its live watch from journal cursor 7:100: " +
+            "Volume C cannot resume its live watch from journal cursor 7:100: " +
             message + ". The records between that cursor and the current journal position " +
-            "are gone, so this drive needs a rescan before it can be watched again.",
+            "are gone, so this volume needs a rescan before it can be watched again.",
             await ReadStartupErrorAsync(message, CachedCursor));
     }
 
@@ -80,7 +80,7 @@ public partial class JournalBrokerHostTests
     {
         var host = CreateWatchHost(
             queryCursor: _ => new UsnJournalCursor(7UL, 1000L),
-            watchDrive: (_, _, _, _) => throw new InvalidOperationException(message));
+            watchVolume: (_, _, _, _) => throw new InvalidOperationException(message));
         await using var harness = new HostChannelHarness(host);
 
         var pipe = await harness.OpenWatchChannelAsync('C', since);

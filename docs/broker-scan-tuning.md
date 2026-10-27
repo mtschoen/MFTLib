@@ -7,7 +7,7 @@ recovering when the journal outruns scan catch-up.
 ## Sizing the block
 
 Before a cold scan, the producer queries the elevated broker
-for the drive's MFT geometry and creates a file-backed named section at the
+for the volume's MFT geometry and creates a file-backed named section at the
 `BlockScanTarget` path. `BrokerMftBlockProducer` creates that target from the
 path, volume serial, delete-on-close choice, and cache tag in the index's
 `MftBlockProduceRequest`.
@@ -24,7 +24,7 @@ for that query. The internal client derives `MftRecordCount` from that geometry.
 
 ## Concurrent scans and parse threads
 
-Every scan has its own drive channel. The host owns one process-wide parse-thread
+Every scan has its own volume channel. The host owns one process-wide parse-thread
 budget equal to its processor count. At most that many scans run at once, so
 every admitted scan has at least one parse thread; additional scan channels wait
 in admission order and continue receiving heartbeats.
@@ -40,7 +40,7 @@ it started with, so admission can make the total briefly exceed the processor
 count for at most one chunk. Callers do not choose a thread count:
 `MftScanOptions`, `MftBlockProduceRequest`, and the broker wire request carry
 none. The same allocator governs open scans, scans requested through `RescanAsync`
-for one or more drive keys, and automatic recovery scans.
+for one or more root keys, and automatic recovery scans.
 
 ## Lost scan catch-up
 
@@ -57,28 +57,28 @@ failure as an ordinary scan error.
 
 `FileIndex` publishes the complete block from a proven loss, marks it
 unresumable, raises `WatchFaultKind.CatchUpLost` when handlers exist, and rescans
-the drive. A successful catch-up clears `DriveWatchStatus.IsRecoveryStopped`.
+the root. A successful catch-up clears `RootWatchStatus.IsRecoveryStopped`.
 When consecutive losses exhaust the internal retry policy, the flag is set before
 loss notification or open completion, automatic retries stop,
 and the block stays queryable but cannot be watched. A manual or recovery rescan
-at the limit leaves the drive `WatchState.Faulted`. During
-`FileIndex.OpenAsync`, the same retry loop settles the drive `DriveState.Ready`
+at the limit leaves the root `WatchState.Faulted`. During
+`FileIndex.OpenAsync`, the same retry loop settles the root `RootState.Ready`
 with the last block at the limit rather than failing the whole open, while its
 watch catch-up state is already `WatchState.Faulted`. A later
 `StartWatchingAsync` is refused until `RescanAsync` succeeds. The refusal retains
 the watch request, so a successful rescan clears the refusal and starts the watch.
 Failed or cancelled production and stopping the watch do not clear recovery exhaustion.
 
-The `JournalCheckpointLoss` report in the drive's `DriveWatchStatus.CheckpointLoss` tells the
+The `JournalCheckpointLoss` report in the volume's `RootWatchStatus.CheckpointLoss` tells the
 consumer what happened. `loss.TryGetGrowthTarget(out var target)` returns the recorded
 retention size and allocation delta when an eligible growth target exists. It returns
 false for non-trimming losses, absent or nonpositive retention sizes, targets at or
 below the recorded maximum, or nonpositive allocation deltas. `loss.GrowthTargetRefusalReason`
 explains refusal and is null when a target exists. The library reports the size that
 would have retained the checkpoint; the consumer decides whether to grow.
-After user consent, query fresh settings with `index.QueryUsnJournalSettings(driveLetter)`
+After user consent, query fresh settings with `index.QueryUsnJournalSettings()`
 and require `target.MaximumSize` to exceed the current `MaximumSize`. Grow through
-`BrokerSession.GrowUsnJournalAsync(driveLetter, target, cancellationToken)`. Then rescan the
-drive. Journal growth cannot recover records already discarded, so the rescan is
+`BrokerSession.GrowUsnJournalAsync(loss.Volume, target, cancellationToken)`. Then rescan the
+volume. Journal growth cannot recover records already discarded, so the rescan is
 required. If watching had been refused over the unresumable block, the successful
 rescan clears the refusal and starts the requested watch.

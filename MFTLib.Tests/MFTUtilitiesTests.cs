@@ -11,13 +11,13 @@ public class MFTUtilitiesTests
     [DataRow('C', @"\\.\C:")]
     [DataRow('c', @"\\.\C:")]
     [DataRow('D', @"\\.\D:")]
-    public void GetVolumePath_FormatsDrive(char character, string expected)
+    public void GetVolumePath_FormatsRoot(char character, string expected)
     {
         Assert.AreEqual(expected, MFTUtilities.GetVolumePath(new VolumeKey(character)));
     }
 
     [TestMethod]
-    public void GetVolumePath_DefaultDrive_ThrowsArgumentException()
+    public void GetVolumePath_DefaultRoot_ThrowsArgumentException()
     {
         Assert.ThrowsExactly<ArgumentException>(() => MFTUtilities.GetVolumePath(default));
     }

@@ -13,7 +13,7 @@ public enum BlockValidationResult
     WrongFormatVersion,
     /// <summary>The completion marker was never published, so the partially written file must be discarded.</summary>
     Incomplete,
-    /// <summary>The cached identifiers arise from another volume, so they cannot identify files on the requested drive.</summary>
+    /// <summary>The cached identifiers arise from another volume, so they cannot identify files on the requested volume.</summary>
     WrongVolumeSerial,
     /// <summary>
     ///     The on-disk layout cannot be mapped safely because its regions contradict the header, or the root key
@@ -41,7 +41,7 @@ public enum BlockValidationResult
     /// <summary>
     ///     The block was built under other row-shaping options than the open requests: another
     ///     <see cref="FileIndexOptions.RetainedFileNames" />, <see cref="FileIndexOptions.DirectoryWalk" /> for an
-    ///     enumeration drive, or <see cref="MftScanOptions.IncludeFreed" /> for an MFT drive. The library
+    ///     enumeration root, or <see cref="MftScanOptions.IncludeFreed" /> for an MFT volume. The library
     ///     compares this itself, so the consumer's <see cref="CacheTag" /> need not change with these options.
     /// </summary>
     WrongScanShape

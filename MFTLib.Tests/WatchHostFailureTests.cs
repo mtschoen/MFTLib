@@ -13,7 +13,7 @@ public class WatchHostFailureTests
     {
         return new SampleHost(new LineCollectingWriter(lines), input)
         {
-            _isElevated = () => throw new InvalidOperationException("drive listing failed", new IOException("device gone"))
+            _isElevated = () => throw new InvalidOperationException("root listing failed", new IOException("device gone"))
         };
     }
 
@@ -29,7 +29,7 @@ public class WatchHostFailureTests
 
         var report = string.Join(Environment.NewLine, lines);
         Assert.AreEqual(1, result, report);
-        Assert.Contains("Error: InvalidOperationException: drive listing failed", lines, report);
+        Assert.Contains("Error: InvalidOperationException: root listing failed", lines, report);
         Assert.Contains("  caused by IOException: device gone", lines, report);
         Assert.IsFalse(report.Contains("   at ", StringComparison.Ordinal), report);
         Assert.AreEqual(SampleHost.PausePrompt, lines[^1], "The prompt follows the failure and is the last line before the key read.");
@@ -46,7 +46,7 @@ public class WatchHostFailureTests
         var result = host.RunAndPause(["rescan", "C", "--cache-directory", "cache"], ownsWindow: false);
 
         Assert.AreEqual(1, result);
-        Assert.Contains("Error: InvalidOperationException: drive listing failed", lines, string.Join(Environment.NewLine, lines));
+        Assert.Contains("Error: InvalidOperationException: root listing failed", lines, string.Join(Environment.NewLine, lines));
         Assert.DoesNotContain(SampleHost.PausePrompt, lines);
     }
 

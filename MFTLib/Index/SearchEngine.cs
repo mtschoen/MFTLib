@@ -5,22 +5,22 @@ namespace MFTLib.Index;
 /// <summary>
 ///     The parallel column scan behind every name search. There are no secondary indexes in v1,
 ///     so a search reads the name, flags, size, and modified columns of every live row on the
-///     current drive block and materializes the whole match set. Callers page by slicing.
+///     current root block and materializes the whole match set. Callers page by slicing.
 /// </summary>
 static class SearchEngine
 {
-    internal static List<FileEntry> Search(DriveBlock? driveBlock, SearchQuery query,
+    internal static List<FileEntry> Search(RootBlock? rootBlock, SearchQuery query,
         CancellationToken cancellationToken = default)
     {
         NameMatching.ThrowIfUndefined(query);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var subtree = SubtreeAnchor.Resolve(driveBlock, query);
+        var subtree = SubtreeAnchor.Resolve(rootBlock, query);
         var results = new List<FileEntry>();
-        if (driveBlock is not null)
+        if (rootBlock is not null)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            SearchOneDrive(new DriveScan(driveBlock, query, subtree?.RowIndex), results, cancellationToken);
+            SearchOneRoot(new RootScan(rootBlock, query, subtree?.RowIndex), results, cancellationToken);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -34,17 +34,17 @@ static class SearchEngine
     ///     time, and the borrow <see cref="FileIndex.Enumerate" /> takes is what keeps the
     ///     block mapped while it does.
     /// </summary>
-    internal static IEnumerable<FileEntry> Enumerate(DriveBlock? driveBlock, SearchQuery query,
+    internal static IEnumerable<FileEntry> Enumerate(RootBlock? rootBlock, SearchQuery query,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var subtree = SubtreeAnchor.Resolve(driveBlock, query);
-        if (driveBlock is not null)
+        var subtree = SubtreeAnchor.Resolve(rootBlock, query);
+        if (rootBlock is not null)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var scan = new DriveScan(driveBlock, query, subtree?.RowIndex);
-            foreach (var entry in EnumerateDrive(scan, cancellationToken))
+            var scan = new RootScan(rootBlock, query, subtree?.RowIndex);
+            foreach (var entry in EnumerateRoot(scan, cancellationToken))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 yield return entry;
@@ -115,15 +115,15 @@ static class SearchEngine
     }
 
     /// <summary>
-    ///     One drive's share of a query: the borrowed drive block, the query, and the row the
+    ///     One root's share of a query: the borrowed root block, the query, and the row the
     ///     subtree restriction is anchored at, resolved by <see cref="SubtreeAnchor" />. It is null when the
     ///     query has no restriction.
     /// </summary>
-    readonly record struct DriveScan(DriveBlock DriveBlock, SearchQuery Query, uint? UnderRow);
+    readonly record struct RootScan(RootBlock RootBlock, SearchQuery Query, uint? UnderRow);
 
-    static void SearchOneDrive(DriveScan scan, List<FileEntry> results, CancellationToken cancellationToken)
+    static void SearchOneRoot(RootScan scan, List<FileEntry> results, CancellationToken cancellationToken)
     {
-        var rowCount = scan.DriveBlock.Block.Header.RowCount;
+        var rowCount = scan.RootBlock.Block.Header.RowCount;
         var partitions = ScanPartitioning.Partition(rowCount, ScanPartitioning.DefaultPartitionCount(rowCount));
         if (partitions.Count == 0)
         {
@@ -157,12 +157,12 @@ static class SearchEngine
         }
     }
 
-    static void CollectPartition(DriveScan scan, (uint StartRow, uint EndRowExclusive) partition,
+    static void CollectPartition(RootScan scan, (uint StartRow, uint EndRowExclusive) partition,
         List<FileEntry> destination, CancellationToken cancellationToken)
     {
-        var (driveBlock, query, underRow) = scan;
+        var (rootBlock, query, underRow) = scan;
         var candidates = new List<uint>();
-        var scanner = new RowScanner(driveBlock, partition.StartRow, partition.EndRowExclusive, cancellationToken);
+        var scanner = new RowScanner(rootBlock, partition.StartRow, partition.EndRowExclusive, cancellationToken);
         while (scanner.MoveNext())
         {
             if (RowMatches(in scanner.Current, scanner.CurrentName, query))
@@ -173,7 +173,7 @@ static class SearchEngine
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        var block = driveBlock.Block;
+        var block = rootBlock.Block;
         var checkCadence = 0;
 
         foreach (var rowIndex in candidates)
@@ -191,24 +191,24 @@ static class SearchEngine
                 cancellationToken.ThrowIfCancellationRequested();
             }
 
-            destination.Add(FileEntry.Create(driveBlock, rowIndex));
+            destination.Add(FileEntry.Create(rootBlock, rowIndex));
         }
 
         cancellationToken.ThrowIfCancellationRequested();
     }
 
     /// <summary>
-    ///     One drive's matching rows in ascending row order. The cancellation cadence mirrors
+    ///     One root's matching rows in ascending row order. The cancellation cadence mirrors
     ///     <see cref="RowScanner" />: the first row is a checkpoint, then one every
     ///     <see cref="RowScanner.CancellationCheckIntervalRows" /> rows. A scanner itself
     ///     cannot be used here because an iterator may not hold a ref struct across a
     ///     <c>yield return</c>, so the row and its name are re-read per iteration by
     ///     <see cref="RowMatches(BlockFile, uint, SearchQuery)" /> instead.
     /// </summary>
-    static IEnumerable<FileEntry> EnumerateDrive(DriveScan scan, CancellationToken cancellationToken)
+    static IEnumerable<FileEntry> EnumerateRoot(RootScan scan, CancellationToken cancellationToken)
     {
-        var (driveBlock, query, underRow) = scan;
-        var block = driveBlock.Block;
+        var (rootBlock, query, underRow) = scan;
+        var block = rootBlock.Block;
         var rowCount = block.Header.RowCount;
         var rowsUntilCancellationCheck = 1u;
 
@@ -231,7 +231,7 @@ static class SearchEngine
                 continue;
             }
 
-            yield return FileEntry.Create(driveBlock, rowIndex);
+            yield return FileEntry.Create(rootBlock, rowIndex);
         }
     }
 

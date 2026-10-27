@@ -1,7 +1,7 @@
 namespace MFTLib;
 
 /// <summary>
-///     Progress sample emitted during an elevated broker drive scan.
+///     Progress sample emitted during an elevated broker volume scan.
 /// </summary>
 readonly record struct BrokerScanProgress
 {

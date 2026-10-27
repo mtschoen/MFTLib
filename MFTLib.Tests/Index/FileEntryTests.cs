@@ -15,7 +15,7 @@ public class FileEntryTests
     static readonly DateTime FileMoment = new(2026, 8, 30, 14, 5, 0, DateTimeKind.Utc);
 
     SyntheticBlockBuilder _builder = null!;
-    DriveBlock[] _snapshot = null!;
+    RootBlock[] _snapshot = null!;
     uint _directoryRow;
     uint _fileRow;
     uint _deletedRow;
@@ -34,8 +34,8 @@ public class FileEntryTests
         _builder.Complete(ScanMoment);
 
         var block = _builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock(new VolumeKey(_builder.Drive), block);
-        _snapshot = [driveBlock];
+        var rootBlock = new RootBlock(new VolumeKey(_builder.Drive), block);
+        _snapshot = [rootBlock];
     }
 
     [TestCleanup]
@@ -70,7 +70,7 @@ public class FileEntryTests
     public void DirectoryEntry_ReadsAsDirectoryWithZeroSize()
     {
         var entry = FileEntry.Create(_snapshot[0], _directoryRow);
-        Assert.AreEqual(entry.RecordKey.Drive, entry.Drive);
+        Assert.AreEqual(entry.RecordKey.Root, entry.Root);
         Assert.IsTrue(entry.IsDirectory);
         Assert.AreEqual(0L, entry.Size);
         Assert.AreEqual("Documents", entry.Name);
@@ -80,7 +80,7 @@ public class FileEntryTests
     public void TombstonedEntry_ReadsAsDeletedAndKeepsItsName()
     {
         var entry = FileEntry.Create(_snapshot[0], _deletedRow);
-        Assert.AreEqual(entry.RecordKey.Drive, entry.Drive);
+        Assert.AreEqual(entry.RecordKey.Root, entry.Root);
         Assert.IsTrue(entry.IsDeleted);
         Assert.AreEqual("gone.tmp", entry.Name);
     }
@@ -91,9 +91,9 @@ public class FileEntryTests
         var entry = FileEntry.Create(_snapshot[0], _fileRow);
         var id = entry.RecordKey;
 
-        Assert.AreEqual(new VolumeKey('T'), entry.Drive);
-        Assert.AreEqual(id.Drive, entry.Drive);
-        Assert.AreEqual(new VolumeKey('T'), id.Drive);
+        Assert.AreEqual(new VolumeKey('T'), entry.Root);
+        Assert.AreEqual(id.Root, entry.Root);
+        Assert.AreEqual(new VolumeKey('T'), id.Root);
         Assert.AreEqual(_fileRow, id.RecordNumber);
         Assert.AreEqual(ProducerKind.Enumeration, id.ProducerKind);
     }
@@ -107,12 +107,12 @@ public class FileEntryTests
         builder.Complete(ScanMoment);
 
         var block = builder.OpenForReading(out _)!;
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('V'), block)];
+        RootBlock[] snapshot = [new RootBlock(new VolumeKey('V'), block)];
         try
         {
             var entry = FileEntry.Create(snapshot[0], row);
-            Assert.AreEqual(new VolumeKey('V'), entry.Drive);
-            Assert.AreEqual(entry.RecordKey.Drive, entry.Drive);
+            Assert.AreEqual(new VolumeKey('V'), entry.Root);
+            Assert.AreEqual(entry.RecordKey.Root, entry.Root);
             Assert.IsFalse(entry.IsSizeKnown);
             Assert.AreEqual(0L, entry.Size);
         }
@@ -129,13 +129,13 @@ public class FileEntryTests
         Assert.IsFalse(entry.IsValid);
         Assert.IsFalse(entry.IsDisposed);
         Assert.ThrowsExactly<InvalidOperationException>(() => _ = entry.RecordKey);
-        Assert.ThrowsExactly<InvalidOperationException>(() => _ = entry.Drive);
+        Assert.ThrowsExactly<InvalidOperationException>(() => _ = entry.Root);
         var failure = Assert.ThrowsExactly<InvalidOperationException>(() => entry.Open(FileAccess.Read));
         Assert.Contains(entry.ToString(), failure.Message);
     }
 
     [TestMethod]
-    public void Equality_ComparesSnapshotDriveAndRow()
+    public void Equality_ComparesSnapshotRootAndRow()
     {
         var first = FileEntry.Create(_snapshot[0], _fileRow);
         var second = FileEntry.Create(_snapshot[0], _fileRow);
@@ -155,8 +155,8 @@ public class FileEntryTests
         builder.MutateHeader((ref header) => header.ProducerKind = ProducerKind.Mft);
 
         var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock(new VolumeKey(builder.Drive), block);
-        DriveBlock[] snapshot = [driveBlock];
+        var rootBlock = new RootBlock(new VolumeKey(builder.Drive), block);
+        RootBlock[] snapshot = [rootBlock];
         try
         {
             var entry = FileEntry.Create(snapshot[0], fileRow);

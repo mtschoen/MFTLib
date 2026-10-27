@@ -51,7 +51,7 @@ public partial class JournalBrokerHostTests
             };
             var host = CreateWatchHost(
                 queryCursor: _ => new UsnJournalCursor(7UL, 140L), // journal tip at arm time
-                watchDrive: (_, _, _, _) => FiniteWatch(batches),
+                watchVolume: (_, _, _, _) => FiniteWatch(batches),
                 createLogFilter: createLogFilter);
             await using var harness = new HostChannelHarness(host);
 
@@ -91,7 +91,7 @@ public partial class JournalBrokerHostTests
             // so no CaughtUp frame precedes the batch.
             var host = CreateWatchHost(
                 queryCursor: _ => default,
-                watchDrive: (_, _, _, _) => FiniteWatch(batches),
+                watchVolume: (_, _, _, _) => FiniteWatch(batches),
                 createLogFilter: createLogFilter);
             await using var harness = new HostChannelHarness(host);
 
@@ -120,7 +120,7 @@ public partial class JournalBrokerHostTests
         // so no CaughtUp frame precedes the batch.
         var host = CreateWatchHost(
             queryCursor: _ => default,
-            watchDrive: (_, _, _, _) => FiniteWatch(batches));
+            watchVolume: (_, _, _, _) => FiniteWatch(batches));
         await using var harness = new HostChannelHarness(host);
 
         var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));

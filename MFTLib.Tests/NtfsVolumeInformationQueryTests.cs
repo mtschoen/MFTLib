@@ -59,7 +59,7 @@ public class NtfsVolumeInformationQueryTests
         Assert.AreEqual(1024u, info.BytesPerFileRecordSegment);
         Assert.AreEqual(8_000_000L, info.MftRecordCount);
 
-        FileUtilities.Hooks._getVolumeHandle = _ => throw new AssertFailedException("Default drive reached volume I/O.");
+        FileUtilities.Hooks._getVolumeHandle = _ => throw new AssertFailedException("Default volume reached volume I/O.");
         Assert.ThrowsExactly<ArgumentException>(() => NtfsVolumeInformation.Query(default, isWindows: true));
     }
 

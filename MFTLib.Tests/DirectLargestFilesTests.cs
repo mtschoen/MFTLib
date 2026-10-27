@@ -41,11 +41,11 @@ public class DirectLargestFilesTests
     {
         var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey(builder.Drive), builder.DirectoryPath, builder.VolumeSerial, ProducerKind.Enumeration),
+            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey(builder.Drive), builder.DirectoryPath, builder.VolumeSerial, ProducerKind.Enumeration),
             CacheDirectory = builder.DirectoryPath,
             CacheMode = CacheMode.ExistingOnly
         }, CancellationToken.None);
-        Assert.AreEqual(DriveState.Ready, index.Status.State, index.Status.Failure?.Message);
+        Assert.AreEqual(RootState.Ready, index.Status.State, index.Status.Failure?.Message);
         return index;
     }
 
@@ -106,7 +106,7 @@ public class DirectLargestFilesTests
     }
 
     [TestMethod]
-    public void Largest_CountLargerThanTheDriveReturnsEverything()
+    public void Largest_CountLargerThanTheRootReturnsEverything()
     {
         var results = LargestFiles.Find(_index, 1000, under: null, CancellationToken.None);
         Assert.HasCount(6, results);

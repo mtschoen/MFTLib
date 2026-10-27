@@ -15,7 +15,7 @@ public partial class BrokerProcessTests
         await using var broker = new InProcessBroker(
             BrokerHostFactory.Create(new()
             {
-                WatchDrive = (_, _, _, cancellationToken) =>
+                WatchVolume = (_, _, _, cancellationToken) =>
                 {
                     Interlocked.Increment(ref watchStarts);
                     return WatchUntilCancelledAsync(new TestGate(), new TaskCompletionSource(), cancellationToken);
@@ -74,7 +74,7 @@ public partial class BrokerProcessTests
         await using var broker = new InProcessBroker(BrokerHostFactory.Create(), new BrokerTestHarnessOptions
         {
             FailConnection = pipeName => pipeName.StartsWith(BrokerFrame.PipeNamePrefix, StringComparison.Ordinal)
-                ? new IOException("no pipe for drive C")
+                ? new IOException("no pipe for volume C")
                 : null
         });
 
@@ -82,7 +82,7 @@ public partial class BrokerProcessTests
             broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, BrokerFrame.StartWatch(Armed)),
                 CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
 
-        Assert.Contains("no pipe for drive C", exception.Message);
+        Assert.Contains("no pipe for volume C", exception.Message);
         Assert.IsFalse(broker.Process.Ended.IsCompleted);
     }
 
@@ -100,9 +100,9 @@ public partial class BrokerProcessTests
             broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, BrokerFrame.StartWatch(Armed)),
                 CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
 
-        Assert.AreEqual('C', lost.Drive);
+        Assert.AreEqual('C', lost.Volume);
         await clientEnd.Disposed.WaitAsync(HangGuard, TestContext.CancellationToken);
         await (await hostEnd.Task.WaitAsync(HangGuard, TestContext.CancellationToken)).Disposed.WaitAsync(HangGuard, TestContext.CancellationToken);
-        Assert.IsFalse(broker.Process.Ended.IsCompleted, "A lost drive channel leaves the process running.");
+        Assert.IsFalse(broker.Process.Ended.IsCompleted, "A lost volume channel leaves the process running.");
     }
 }

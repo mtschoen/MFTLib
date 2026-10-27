@@ -10,9 +10,9 @@ namespace MFTLib.Tests.Index;
 /// <summary>
 ///     A cache block file the process is not allowed to open is "no usable block here" exactly
 ///     like a corrupt one: <see cref="FileIndex.OpenAsync" /> must discard it and cold-scan the
-///     drive rather than letting the permission failure escape. A block left read-protected by a
+///     root rather than letting the permission failure escape. A block left read-protected by a
 ///     backup tool, by another user's ownership, or by a profile copy would otherwise make every
-///     later open of that drive throw permanently.
+///     later open of that root throw permanently.
 /// </summary>
 [TestClass]
 public sealed class UnreadableBlockTests : IndexTreeTestBase
@@ -32,7 +32,7 @@ public sealed class UnreadableBlockTests : IndexTreeTestBase
     FileIndexOptions Options() => Fixture.Options();
 
     [TestMethod]
-    public async Task OpenAsync_UnreadableBlockFile_IsDiscardedAndTheDriveIsColdScanned()
+    public async Task OpenAsync_UnreadableBlockFile_IsDiscardedAndTheRootIsColdScanned()
     {
         await using (await FileIndex.OpenAsync(Options(), CancellationToken.None))
         {
@@ -55,9 +55,9 @@ public sealed class UnreadableBlockTests : IndexTreeTestBase
             await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
 
             Assert.AreEqual(BlockOrigin.ProducedByScan, reopened.Status.Block!.Origin);
-            Assert.AreEqual(DriveState.Ready, reopened.Status.State);
+            Assert.AreEqual(RootState.Ready, reopened.Status.State);
             Assert.IsGreaterThanOrEqualTo(3u, reopened.HeaderOf().RowCount,
-                "the drive must be cold-scanned rather than left empty");
+                "the root must be cold-scanned rather than left empty");
         }
         finally
         {

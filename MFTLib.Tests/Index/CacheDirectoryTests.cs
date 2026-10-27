@@ -135,7 +135,7 @@ public sealed class CacheDirectoryTests : IDisposable
                 new FileIndexOptions
                 {
                     CacheDirectory = directory,
-                    Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), _root, 1)
+                    Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), _root, 1)
                 },
                 CancellationToken.None);
         });
@@ -153,7 +153,7 @@ public sealed class CacheDirectoryTests : IDisposable
         await using var index = await FileIndex.OpenAsync(
             new FileIndexOptions
             {
-                Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), Path.Combine(_root, "absent"), 1),
+                Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), Path.Combine(_root, "absent"), 1),
                 CacheMode = CacheMode.Disabled,
                 CacheDirectory = supplyDirectory ? _root : null
             },
@@ -170,7 +170,7 @@ public sealed class CacheDirectoryTests : IDisposable
         await using var index = await FileIndex.OpenAsync(
             new FileIndexOptions
             {
-                Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), Path.Combine(_root, "absent"), 1),
+                Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), Path.Combine(_root, "absent"), 1),
                 CacheDirectory = _root
             },
             CancellationToken.None);

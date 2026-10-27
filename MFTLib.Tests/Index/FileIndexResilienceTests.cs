@@ -74,7 +74,7 @@ public sealed partial class FileIndexResilienceTests : IndexTreeTestBase
         }
 
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        Assert.AreEqual(DriveState.Ready, reopened.Status.State);
+        Assert.AreEqual(RootState.Ready, reopened.Status.State);
         Assert.IsGreaterThanOrEqualTo(3u, reopened.HeaderOf().RowCount);
     }
 
@@ -106,7 +106,7 @@ public sealed partial class FileIndexResilienceTests : IndexTreeTestBase
 
         Assert.AreEqual(rowsBefore, index.HeaderOf().RowCount);
         Assert.AreEqual(timestampBefore, index.Status.Block!.ScanTimestamp);
-        Assert.AreEqual(DriveState.Ready, index.Status.State);
+        Assert.AreEqual(RootState.Ready, index.Status.State);
     }
 
     [TestMethod]
@@ -134,7 +134,7 @@ public sealed partial class FileIndexResilienceTests : IndexTreeTestBase
         }
 
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        Assert.AreEqual(DriveState.Ready, reopened.Status.State);
+        Assert.AreEqual(RootState.Ready, reopened.Status.State);
         Assert.AreEqual(rowsBefore, reopened.HeaderOf().RowCount);
         Assert.AreEqual(timestampBefore, reopened.Status.Block!.ScanTimestamp);
         Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopened.Status.Block!.Origin);
@@ -249,7 +249,7 @@ public sealed partial class FileIndexResilienceTests : IndexTreeTestBase
         Assert.AreNotEqual(retiredPaths[0], retiredPaths[1]);
         Assert.IsTrue(retiredPaths.All(File.Exists));
         Assert.HasCount(1, Directory.GetFiles(CacheDirectoryPath, "*.mlix"), "exactly one canonical block file remains");
-        Assert.AreEqual(DriveState.Ready, index.Status.State);
+        Assert.AreEqual(RootState.Ready, index.Status.State);
 
         await firstBlock.ReleaseNowAsync();
         await secondBlock.ReleaseNowAsync();

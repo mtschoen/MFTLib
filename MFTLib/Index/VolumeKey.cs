@@ -21,9 +21,9 @@ public readonly record struct VolumeKey
     ///     Parses one ASCII drive letter with an optional colon and an optional final slash or backslash,
     ///     ignoring surrounding whitespace and letter case.
     /// </summary>
-    /// <param name="text">The drive spec to parse.</param>
+    /// <param name="text">The root spec to parse.</param>
     /// <param name="result">The normalized key on success; the invalid default key on failure.</param>
-    /// <returns>True for a valid drive spec; false for null or invalid input.</returns>
+    /// <returns>True for a valid root spec; false for null or invalid input.</returns>
     public static bool TryParse(string? text, out VolumeKey result)
     {
         result = default;

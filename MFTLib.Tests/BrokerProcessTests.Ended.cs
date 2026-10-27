@@ -60,14 +60,14 @@ public partial class BrokerProcessTests
         {
             var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(
                 () => request.WaitAsync(HangGuard, TestContext.CancellationToken));
-            Assert.IsNull(lost.Drive);
+            Assert.IsNull(lost.Volume);
             Assert.AreEqual(expectedReason, lost.Message);
         }
 
         var rejected = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(
             () => broker.Process.QueryVolumeAsync('E', CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual(expectedReason, rejected.Message);
-        Assert.IsNull(rejected.Drive, "the control pipe is what was lost");
+        Assert.IsNull(rejected.Volume, "the control pipe is what was lost");
     }
 
     [TestMethod]

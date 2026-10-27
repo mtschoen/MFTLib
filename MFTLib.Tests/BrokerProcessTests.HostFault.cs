@@ -17,7 +17,7 @@ public partial class BrokerProcessTests
         var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
             broker.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
 
-        Assert.IsNull(lost.Drive);
+        Assert.IsNull(lost.Volume);
         await broker.Process.Ended.WaitAsync(HangGuard, TestContext.CancellationToken);
         await broker.DisposeAsync();
     }
@@ -31,18 +31,18 @@ public partial class BrokerProcessTests
         var corrupt = new CorruptFrameWrite(corruptWriteNumber: 3);
         var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, cancellationToken) =>
+            ScanVolume = (_, _, _, _, _, cancellationToken) =>
                 WaitForCancellation(scanning, sourceCancelled, cancellationToken)
         }),
             wrapClientStream: ControlOnly(corrupt));
 
-        var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
+        var scan = broker.Process.ScanVolumeAsync('C', TestBlockSections.Target(), new MftScanOptions(),
             null, CancellationToken.None);
         await scanning.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         var query = broker.Process.QueryVolumeAsync('D', CancellationToken.None);
 
         var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard, TestContext.CancellationToken));
-        Assert.AreEqual('C', lost.Drive);
+        Assert.AreEqual('C', lost.Volume);
         await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => query.WaitAsync(HangGuard, TestContext.CancellationToken));
         await broker.Process.Ended.WaitAsync(HangGuard, TestContext.CancellationToken);
         AssertSectionReleased(broker.Sections.Single());

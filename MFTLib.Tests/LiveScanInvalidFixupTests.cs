@@ -9,7 +9,7 @@ namespace MFTLib.Tests;
 /// <summary>
 ///     A live volume scan passes over an allocated record whose fixup is invalid, and that record
 ///     does not vanish: the parse counts it, and the shared block scan adds the count to the
-///     skipped records the drive reports.
+///     skipped records the root reports.
 /// </summary>
 [TestClass]
 [DoNotParallelize]
@@ -73,7 +73,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
             volumeSerial: 0, rootRow: 5, deleteOnClose: true);
 
         long omitted = 0;
-        var batches = LiveVolumeSources.ScanDriveRecordBatches('C', new ParseThreadAllowance(2),
+        var batches = LiveVolumeSources.ScanVolumeRecordBatches('C', new ParseThreadAllowance(2),
             new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions(), count => omitted += count, CancellationToken.None);
         var written = MftBlockScan.WriteToBlock(block, new BlockStamp(default, TimeProvider.System), batches,
             new MftRowSelection(new MftScanOptions()), new BlockWriteReporting(null, null), CancellationToken.None);
@@ -97,7 +97,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
         ServeImageAsVolume(imagePath);
         var request = new MftBlockProduceRequest
         {
-            Drive = 'C',
+            Volume = 'C',
             VolumeSerial = 0,
             BlockPath = Path.Combine(TemporaryDirectoryPath, "local.mlix"),
             DeleteOnClose = true
@@ -128,7 +128,7 @@ public sealed class LiveScanInvalidFixupTests : IDisposable
             volumeSerial: 0, rootRow: 5, deleteOnClose: true);
 
         long omitted = 0;
-        var batches = LiveVolumeSources.ScanDriveRecordBatches('C', new ParseThreadAllowance(1),
+        var batches = LiveVolumeSources.ScanVolumeRecordBatches('C', new ParseThreadAllowance(1),
             new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions(), count => omitted += count, CancellationToken.None);
         var written = MftBlockScan.WriteToBlock(block, new BlockStamp(default, TimeProvider.System), batches,
             new MftRowSelection(new MftScanOptions()), new BlockWriteReporting(null, null), CancellationToken.None);

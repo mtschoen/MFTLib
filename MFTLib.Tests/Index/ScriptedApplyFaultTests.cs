@@ -6,7 +6,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 /// <summary>
-///     <see cref="ScriptedDriveWatch.FailApply" /> makes the index's own apply step fail, so the
+///     <see cref="ScriptedVolumeWatch.FailApply" /> makes the index's own apply step fail, so the
 ///     fault reaches the consumer through the production classification and recovery.
 /// </summary>
 [TestClass]
@@ -31,8 +31,8 @@ public class ScriptedApplyFaultTests
 
         Assert.AreSame(failure, fault.Exception);
         Assert.HasCount(1, harness.Faults);
-        Assert.AreEqual("the batch cannot be applied", harness.DriveFor('T').Watch.FailureMessage);
-        Assert.AreEqual(9000L, harness.BlockFor('U').Header.UsnNextUsn, "the other drive keeps watching");
+        Assert.AreEqual("the batch cannot be applied", harness.RootFor('T').Watch.FailureMessage);
+        Assert.AreEqual(9000L, harness.BlockFor('U').Header.UsnNextUsn, "the other volume keeps watching");
     }
 
     [TestMethod]
@@ -58,7 +58,7 @@ public class ScriptedApplyFaultTests
     }
 
     [TestMethod]
-    public async Task FailApply_RecoversTheDriveOntoAFreshWatchThatAcceptsBatches()
+    public async Task FailApply_RecoversTheVolumeOntoAFreshWatchThatAcceptsBatches()
     {
         using var harness = new WatchHarness('T');
         await harness.IndexFor('T').StartWatchingAsync(Token);

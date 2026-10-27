@@ -41,7 +41,7 @@ public class LocalMftCacheFreshnessTests
         };
         await using (var initial = await FileIndex.OpenAsync(options, TestContext.CancellationToken))
         {
-            Assert.AreEqual(DriveState.Ready, initial.Status.State);
+            Assert.AreEqual(RootState.Ready, initial.Status.State);
         }
         using var journal = JournalIsolation.OverrideJournalWindow(
             _ => new SyntheticJournalWindow(journalIdentifier, firstUsn, nextUsn, 64, 32768));
@@ -49,7 +49,7 @@ public class LocalMftCacheFreshnessTests
         await using var reopened = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
         var status = reopened.Status;
         Assert.AreEqual(cacheOnly ? 1 : 2, scans);
-        Assert.AreEqual(DriveState.Ready, status.State);
+        Assert.AreEqual(RootState.Ready, status.State);
         Assert.AreEqual(cacheOnly ? BlockOrigin.WarmStartedFromCache : BlockOrigin.ProducedByScan, status.Block!.Origin);
         Assert.AreEqual(cause, status.Watch.CheckpointLoss?.Cause);
         Assert.IsFalse(status.Watch.IsSupported);

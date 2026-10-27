@@ -33,12 +33,12 @@ public class FileIndexDisposalOrderTests
             harness.IndexFor('U').DisposeAsync().AsTask(),
             harness.IndexFor('V').DisposeAsync().AsTask()).WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescanT.WaitAsync(HangGuard, TestContext.CancellationToken));
-        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescanU.WaitAsync(HangGuard, TestContext.CancellationToken));
+        await RootResultAssertions.FailureAsync<OperationCanceledException>(() => rescanT.WaitAsync(HangGuard, TestContext.CancellationToken));
+        await RootResultAssertions.FailureAsync<OperationCanceledException>(() => rescanU.WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreEqual(1, watchOfV.DisposeCount, "disposal awaited V's pump, which disposed its handle");
         foreach (var driveLetter in "TUV")
         {
-            Assert.IsTrue(harness.IndexFor(driveLetter).AreDriveGatesFreeForTest(new VolumeKey(driveLetter)),
+            Assert.IsTrue(harness.IndexFor(driveLetter).AreRootGatesFreeForTest(new VolumeKey(driveLetter)),
                 $"a gate of {driveLetter} is still held");
         }
     }
@@ -53,7 +53,7 @@ public class FileIndexDisposalOrderTests
 
         var disposal = harness.Index.DisposeAsync().AsTask();
 
-        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescan.WaitAsync(HangGuard, TestContext.CancellationToken));
+        await RootResultAssertions.FailureAsync<OperationCanceledException>(() => rescan.WaitAsync(HangGuard, TestContext.CancellationToken));
         await disposal.WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 
@@ -80,7 +80,7 @@ public class FileIndexDisposalOrderTests
         var disposal = index.DisposeAsync().AsTask();
         await lifecycleGatesTaken.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        Assert.IsFalse(index.AreDriveGatesFreeForTest(new VolumeKey('T')), "disposal holds every lifecycle gate");
+        Assert.IsFalse(index.AreRootGatesFreeForTest(new VolumeKey('T')), "disposal holds every lifecycle gate");
         Assert.IsFalse(disposal.IsCompleted, "disposal waits for the batch that holds T's write gate");
         batch.Release();
         var changes = await apply.WaitAsync(HangGuard, TestContext.CancellationToken);

@@ -83,7 +83,7 @@ public sealed class CacheDirectoryInspectionTests : IDisposable
         var enumeration = TestBlocks.WriteCache(_cacheDirectory, 'C');
         var mft = TestBlocks.WriteCache(_cacheDirectory, 'D', producer: ProducerKind.Mft);
         var statuses = CacheDirectory.InspectCached(_cacheDirectory)
-            .OrderBy(status => status.File.Drive).ToArray();
+            .OrderBy(status => status.File.Root).ToArray();
 
         Assert.HasCount(2, statuses);
         Assert.AreEqual(_cacheDirectory, statuses[0].RootDirectory);
@@ -112,7 +112,7 @@ public sealed class CacheDirectoryInspectionTests : IDisposable
         var available = TestBlocks.WriteCache(_cacheDirectory, 'D');
 
         var statuses = CacheDirectory.InspectCached(_cacheDirectory)
-            .OrderBy(status => status.File.Drive).ToArray();
+            .OrderBy(status => status.File.Root).ToArray();
 
         Assert.HasCount(2, statuses);
         Assert.AreEqual(CachedBlockAvailability.InUse, statuses[0].Availability);
@@ -133,7 +133,7 @@ public sealed class CacheDirectoryInspectionTests : IDisposable
         TestBlocks.WriteCache(_cacheDirectory, 'F');
 
         var statuses = CacheDirectory.InspectCached(_cacheDirectory)
-            .OrderBy(status => status.File.Drive).ToArray();
+            .OrderBy(status => status.File.Root).ToArray();
 
         Assert.HasCount(4, statuses);
         var reasons = new[] { BlockValidationResult.WrongVolumeSerial,

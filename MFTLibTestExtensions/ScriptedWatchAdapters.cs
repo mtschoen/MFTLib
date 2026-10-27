@@ -5,15 +5,15 @@ namespace MFTLibTestExtensions;
 /// <summary>Presents a <see cref="ScriptedWatchSource" /> to the index as an <see cref="IIndexWatchSource" />.</summary>
 sealed class ScriptedWatchSourceAdapter(ScriptedWatchSource source) : IIndexWatchSource
 {
-    public async Task<IIndexDriveWatch> StartAsync(IndexWatchTarget target, CancellationToken cancellationToken)
+    public async Task<IIndexVolumeWatch> StartAsync(IndexWatchTarget target, CancellationToken cancellationToken)
     {
         var watch = await source.StartAsync(target, cancellationToken).ConfigureAwait(false);
         return watch.IndexWatch;
     }
 }
 
-/// <summary>Presents a <see cref="ScriptedDriveWatch" /> to the index as an <see cref="IIndexDriveWatch" />.</summary>
-sealed class ScriptedDriveWatchAdapter(ScriptedDriveWatch watch) : IIndexDriveWatch
+/// <summary>Presents a <see cref="ScriptedVolumeWatch" /> to the index as an <see cref="IIndexVolumeWatch" />.</summary>
+sealed class ScriptedVolumeWatchAdapter(ScriptedVolumeWatch watch) : IIndexVolumeWatch
 {
     public IAsyncEnumerable<WatchStreamItem> ReadAsync(CancellationToken cancellationToken) =>
         watch.ReadAsync(cancellationToken);

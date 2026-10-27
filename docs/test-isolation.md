@@ -74,7 +74,7 @@ require an explicit nonblank `FileIndexOptions.CacheDirectory` and a non-null `F
 Missing configuration throws `ArgumentException`
 before creating a directory. Tests supply temporary directories they own. `Disabled` opens
 require no cache path and ignore supplied paths without resolving or creating
-them. A dump source supplies its own drive: validation runs first and requires
+them. A dump source supplies its own volume: validation runs first and requires
 null `Root`, `CacheMode` and `CacheDirectory`, and
 default `CacheTag`. Every non-null cache mode, including `Disabled`, is rejected.
 
@@ -83,10 +83,10 @@ MFTLib.Tests activates journal isolation from a module initializer, through
 assemblies must call it from their own `[ModuleInitializer]`; referencing the
 assembly alone does not activate it. Activation is one-way and idempotent, has
 no reset and is not inherited by child processes.
-Opening a drive reads the live USN journal to decide
+Opening a volume reads the live USN journal to decide
 whether a cached block's checkpoint is still resumable, and a faulting watch
-reads it again to decide whether that drive's position is still in the journal,
-so a test that warm-starts or watches a synthetic MFT-kind block over a drive
+reads it again to decide whether that volume's position is still in the journal,
+so a test that warm-starts or watches a synthetic MFT-kind block over a volume
 letter that happens to name a real NTFS volume would have that block rejected as
 `JournalRecreated`: a synthetic journal identifier never matches a real one. The same
 test would cold-scan on one machine and warm-start on another.
@@ -98,11 +98,11 @@ no readable journal already answers; the outcome becomes deterministic instead
 of becoming an error. Without a synthetic override, a new index opened under the guard reports no
 CheckpointLoss from journal observations. Consumer tests can call
 MFTLibTestExtensions.JournalIsolation.OverrideJournalWindow with a
-Func<VolumeKey, SyntheticJournalWindow?> to drive real open-time and watch-fault
+Func<VolumeKey, SyntheticJournalWindow?> to volume real open-time and watch-fault
 checks. SyntheticJournalWindow carries JournalIdentifier, FirstUsn, NextUsn,
 AllocationDelta, and MaximumSize; null means "cannot say" and never falls back
 to a live read. The callback is evaluated for each query and may run on any
-drive's pump thread, concurrently for different drives, so mutable per-drive
+root's pump thread, concurrently for different roots, so mutable per-root
 observations need synchronization.
 
 The data owner is `JournalCheckpointCheck.Hooks` (`JournalHooks`), and the exclusive scope owner is `ProcessGlobalScope` through public `JournalIsolation.OverrideJournalWindow`. Nested and overlapping scopes throw InvalidOperationException. Callback publication is volatile, and mutable callback captures must be independently synchronized. Disposal does not drain callbacks already in flight, and restores the guard-controlled observation behavior exactly once, including when a using block exits through an exception; it does not clear reports already recorded on an index. The one-way live-read guard stays enabled after scope exit and is not inherited by children. Mark the entire consumer fixture nonparallel (class-level [DoNotParallelize] in MSTest), keep the scope alive through all awaited work, and stop/dispose indexes and watches before disposing it.
@@ -126,7 +126,7 @@ the owner path after opening a mapping. Raw `Path.GetTempPath()` in `MFTLib.Test
 is limited to `TempDirectory` itself and temp-path assertions/inputs
 (`ElevatedEntryPointTests`, `BrokerDiagnosticsTests`, and
 `DefenderExclusionSequenceTests.AssertNoScriptFile`). Non-existent path literals
-that never touch disk use `AppContext.BaseDirectory`, `TestDriveRoot.For(...)`, or
+that never touch disk use `AppContext.BaseDirectory`, `TestRootDirectory.For(...)`, or
 a `TempDirectory(..., create: false)` owner.
 
 `TempFile` owns one uniquely created temporary file; dispose its streams before
@@ -142,15 +142,15 @@ test classes require `[DoNotParallelize]`.
 
 `IndexTreeFixture` owns a tree and a deferred cache path. Its default tree contains
 `Documents/readme.md` with `hello`; custom-tree scenarios opt out of that seed and
-write their own data. Its `Drive` and `Options` methods retain explicit producer,
+write their own data. Its `Root` and `Options` methods retain explicit producer,
 serial and cache-mode choices. `CheckpointLossFixture` adds MFT cache seeding and
-named drives; scenario code still owns watch and fault choreography.
+named roots; scenario code still owns watch and fault choreography.
 
 MSTest classes sharing an index tree inherit `IndexTreeTestBase`. Its inherited
 `InitializeIndexTree` creates the fixture and a unique serial before derived
 `TestInitialize` methods run. `TreeRoot` and `CacheDirectoryPath` expose the owned
 paths; `SeedDocuments` defaults to true and empty-tree scenarios override it to
-false. Scenarios needing a unique drive identity pass `UniqueVolumeSerial`
+false. Scenarios needing a unique volume identity pass `UniqueVolumeSerial`
 explicitly to the fixture's options. Derived setup owns only scenario data.
 Derived disposal preserves hook resets and releases indexes and additional
 resources before calling `base.Dispose()` in a finally block. Async owners await
@@ -196,7 +196,7 @@ These hooks are instance-local and do not themselves require DoNotParallelize.
 The channel-open disposal test uses ScriptedBroker's pipe-factory wrapper and
 TestGate to hold delivery of an already-connected stream. It routes ChannelOpened
 before disposing the process, then releases the connection result and verifies
-that tracking rejects the drive and disposes its pipe before writing a request.
+that tracking rejects the volume and disposes its pipe before writing a request.
 Release gates in finally blocks and observe the pending open before fixture cleanup.
 
 BrokerLauncher.Dependencies is the process-global LaunchDependencies owner of
@@ -254,7 +254,7 @@ drop notice and completion only after the accepted lines drain.
 Each FileIndex owns one internal Hooks object of type FileIndex.IndexHooks.
 Public OpenAsync creates a fresh default object. Tests that replace cache listing
 use OpenWithHooksAsync(options, hooks, cancellationToken), which supplies that
-object to construction before any drive settles. A hooks object belongs to one
+object to construction before any root settles. A hooks object belongs to one
 index and is instance-local, so it needs no DoNotParallelize. FileIndex.Hooks.cs
 documents each member's lock context and waiting restriction. Release test gates
 in finally blocks, and dispose the index before discarding callback state.
@@ -262,7 +262,7 @@ in finally blocks, and dispose the index before discarding callback state.
 | Member | Purpose | Test owner |
 | --- | --- | --- |
 | `EnumerateCacheFiles` | stale-sibling sweep listing | `FileIndexResilienceTests.RetiredSiblings.cs:OpenAsync_CacheMode_RetiredSiblingListingFails_OpensAndLeavesTheSibling` |
-| `DrivesReadBeforeLock` | Drives read before the state lock | `FileIndexDriveStatusTests.cs`; `FileIndexQueryTests.cs:RootAcrossDisposalAsync` |
+| `RootsReadBeforeLock` | Roots read before the state lock | `FileIndexRootStatusTests.cs`; `FileIndexQueryTests.cs:RootAcrossDisposalAsync` |
 | `ReaderAdmitted` | query admitted, before first row | `FileIndexDisposeCancelsQueryTests.cs:ReadAcrossDisposalAsync`; `SubtreeAnchorTests.cs` |
 | `LifecycleGatesTakenForDisposal` | disposal holds lifecycle gates | `FileIndexDisposalOrderTests.cs` |
 | `DisposedFlagSet` | disposed flag set, before cancel | `FileIndexAdmittedOperationDisposalTests.cs`; `FileIndexDisposalRaceTests.cs` |
@@ -284,14 +284,14 @@ in finally blocks, and dispose the index before discarding callback state.
 ### Retained observations and controls
 
 Single access paths remain for non-substitutable test observation and gate control:
-- `Task FileIndex.WaitForDriveWriteGateForTest(RootKey)` and `void FileIndex.ReleaseDriveWriteGateForTest(RootKey)` in `MFTLib/Index/FileIndex.Drives.cs`: Tests own a real gate acquisition and release it in `finally`. Used by `FileIndexRescanCleanupTests.cs:RescanAsync_CancelledAtTheWriteGate_RestoresTheRenamedAsideCacheFile` and `FileIndexWatchFailedRescanTests.cs:CancelledPublication_PreservesFaultAndDisposesUnpublishedBlock` to test cancellation while queued at the write gate, and by handoff tests to observe publication leaving its write gate.
-- `bool FileIndex.AreDriveGatesFreeForTest(RootKey)` in `MFTLib/Index/FileIndex.Drives.cs`: Nonblocking acquire/release of lifecycle and write gates under a test-controlled ordering. Owned by `FileIndexConcurrentRescanTests.cs:ApplyJournalEntries_TakesOnlyItsDrivesWriteGate`, `FileIndexCatchUpLossTests.cs:CatchUpLost_HandlerRunsWithLifecycleGateHeld`, and `FileIndexDisposalOrderTests.cs:Dispose_DuringGatedRescans_CancelsThemAwaitsPumpsReleasesGates`.
-- `bool FileIndex.TryGetRecoveryCompletionForTest(RootKey, [NotNullWhen(true)] out Task?)` in `MFTLib/Index/FileIndex.Drives.cs`: Exposes exact recovery ticket completion identity under the state lock. Owned by `FileIndexWatchRecoveryTests.cs:RecoveryTicketCompletion_ContinuationNotInline`, `QueuedRecovery_SupersededByConsumerStart_DoesNotScan`, and harness recovery waits.
-- `long FileIndex.ContendedWatchStateDeliveriesForTest` in `MFTLib/Index/FileIndex.Drives.cs` observes actual failed `DeliveryLock.TryEnter` attempts through the per-drive Interlocked counter in `FileIndex.DriveRuntime.Notifications.cs`. `FileIndexWatchStateChangedTests.Paths.cs:FaultStateTakenByAConcurrentStop_IsDeliveredBeforeTheFaultIsReported` holds the stop's Faulted subscriber until the pump has actually contended for delivery. `BeforeWatchChanged` belongs to file-change delivery after journal application and is absent from this fault path. A signal before lock acquisition, or the final event history alone, cannot establish that the pump attempted delivery while the subscriber was held. Retain the counter to preserve that deterministic race witness.
+- `Task FileIndex.WaitForRootWriteGateForTest(RootKey)` and `void FileIndex.ReleaseRootWriteGateForTest(RootKey)` in `MFTLib/Index/FileIndex.Roots.cs`: Tests own a real gate acquisition and release it in `finally`. Used by `FileIndexRescanCleanupTests.cs:RescanAsync_CancelledAtTheWriteGate_RestoresTheRenamedAsideCacheFile` and `FileIndexWatchFailedRescanTests.cs:CancelledPublication_PreservesFaultAndDisposesUnpublishedBlock` to test cancellation while queued at the write gate, and by handoff tests to observe publication leaving its write gate.
+- `bool FileIndex.AreRootGatesFreeForTest(RootKey)` in `MFTLib/Index/FileIndex.Roots.cs`: Nonblocking acquire/release of lifecycle and write gates under a test-controlled ordering. Owned by `FileIndexConcurrentRescanTests.cs:ApplyJournalEntries_TakesOnlyItsRootsWriteGate`, `FileIndexCatchUpLossTests.cs:CatchUpLost_HandlerRunsWithLifecycleGateHeld`, and `FileIndexDisposalOrderTests.cs:Dispose_DuringGatedRescans_CancelsThemAwaitsPumpsReleasesGates`.
+- `bool FileIndex.TryGetRecoveryCompletionForTest(RootKey, [NotNullWhen(true)] out Task?)` in `MFTLib/Index/FileIndex.Roots.cs`: Exposes exact recovery ticket completion identity under the state lock. Owned by `FileIndexWatchRecoveryTests.cs:RecoveryTicketCompletion_ContinuationNotInline`, `QueuedRecovery_SupersededByConsumerStart_DoesNotScan`, and harness recovery waits.
+- `long FileIndex.ContendedWatchStateDeliveriesForTest` in `MFTLib/Index/FileIndex.Roots.cs` observes actual failed `DeliveryLock.TryEnter` attempts through the per-volume Interlocked counter in `FileIndex.RootRuntime.Notifications.cs`. `FileIndexWatchStateChangedTests.Paths.cs:FaultStateTakenByAConcurrentStop_IsDeliveredBeforeTheFaultIsReported` holds the stop's Faulted subscriber until the pump has actually contended for delivery. `BeforeWatchChanged` belongs to file-change delivery after journal application and is absent from this fault path. A signal before lock acquisition, or the final event history alone, cannot establish that the pump attempted delivery while the subscriber was held. Retain the counter to preserve that deterministic race witness.
 
 Lifecycle races are tested behaviorally without one-use test seams:
 - Freedom from `_stateLock` during `WatchStateChanged` delivery is tested positively in `FileIndexWatchStateChangedTests.cs:Handler_RunsWithoutTheStateLock_SeesItsChange_AndCannotCallLifecycleMethods`: a held subscriber permits a concurrent second thread to read `Drives` while asserting that the subscriber has not yet exited.
-- Callback reentrancy rejection during disposal is tested positively in `FileIndexCallbackReentrancyTests.cs:ChangedHandler_CallsWaitWhileDisposalBeginsDuringDriveEnumeration_GetsTheGuardException`: a caller-owned deferred `Drives` read throws `ObjectDisposedException` during `ValidateBatch` materialization, which `WaitForCatchUpAsync` translates to the reentrancy guard exception.
+- Callback reentrancy rejection during disposal is tested positively in `FileIndexCallbackReentrancyTests.cs:ChangedHandler_CallsWaitWhileDisposalBegins_GetsTheGuardException`: a caller-owned deferred `Drives` read throws `ObjectDisposedException` during `ValidateBatch` materialization, which `WaitForCatchUpAsync` translates to the reentrancy guard exception.
 
 ## Broker host component hooks
 
@@ -304,7 +304,7 @@ class-level isolation.
 | Member | Purpose and execution context | Test owner |
 | --- | --- | --- |
 | `ScanStarting` | Records an admitted scan before its cursor query, including attempts that subsequently fail. Runs on the scan worker without pipe locks and with its parse registration held; callbacks must be thread-safe, nonblocking and nonthrowing. | `BrokerTestHarness` connects `ScriptedBrokerResources.RecordScan`; `BrokerProcessTests.TestExtensions.cs` verifies public scan-log ordering, failed attempts and retention values. |
-| `HeartbeatVisited` | Signals completion of a sender pass on the dedicated background thread, outside pipe and sender-list locks. Started writes may still be in flight. Callbacks must not block, throw or wait for session disposal. | `JournalBrokerHostLivenessTests` paces fake-clock ticks and proves thread identity; `ScriptedWatchBrokerHarness` supplies `CrossDriveScenario` synchronization. |
+| `HeartbeatVisited` | Signals completion of a sender pass on the dedicated background thread, outside pipe and sender-list locks. Started writes may still be in flight. Callbacks must not block, throw or wait for session disposal. | `JournalBrokerHostLivenessTests` paces fake-clock ticks and proves thread identity; `ScriptedWatchBrokerHarness` supplies `CrossRootScenario` synchronization. |
 
 Scan progress uses a fixed 250 ms minimum interval between intermediate reports. `JournalBrokerHostTests.Progress.cs` supplies per-host `FakeTimeProvider` instances: frozen clocks exercise throttling and completion flushing, and advancing one host by 250 ms exercises emission independently of another host. Source gates and consumed pipe frames order reports against clock advancement. A source iterator can pause after a yielded batch because the real block writer reports its byte progress before requesting the next batch. Tests release all gates in `finally` before host disposal.
 
@@ -323,13 +323,13 @@ before disposing the host harness.
 | --- | --- | --- |
 | `EnumerationWalkLimit.Hooks._walkQueued` | Process-global; reset after opens drain. | `FileIndexConcurrentOpenTests.Open_EnumerationWalks_NeverExceedTheWalkLimit` |
 | `CacheDirectory.Hooks._beforeDelete` | Process-global; runs under the owner lock, reset after deletion drains. | `CacheDirectoryDeletionLiveOwnerTests`; `CacheDirectoryDeletionTests` |
-| `IndexedRoot.Dependencies._volumeSerialReader` | Process-global; null selects the native reader. | `IndexedDriveTests`; `ReadmeWalkthroughTests` |
+| `IndexedRoot.Dependencies._volumeSerialReader` | Process-global; null selects the native reader. | `IndexedRootTests`; `ReadmeWalkthroughTests` |
 | `FileEntry.Dependencies._openById` | Process-global; defaults to `DefaultOpenById`. | `FileEntryOpenTests`; `FileEntryIncarnationTests`; `MftDumpPathTests`; `DirectHostTests` |
 | `UsnJournalSettingsQuery.Dependencies._queryOverride` | Process-global; null selects the platform query. | `FileIndexJournalSettingsTests`; `MftDumpApplicabilityTests`; `UsnJournalSettingsQueryLiveTests` |
 | `JournalCheckpointCheck.Hooks.ObservationOverride` and one-way guard | Process-global; exclusive scope only through public `JournalIsolation`, the guard never resets. | `JournalWindowOverrideTests`; `ConsumerJournalIsolationTests`; `UsnJournalVolumeInteropTests` |
 | `BlockWriter.Hooks._rowCaptured`, `_completeAccessTaken` | Per writer; set before work, no reset. | `BlockWriterDisposalRaceTests`; `BlockWriterCompleteDisposalRaceTests`; `JournalMutatorMetadataDisposalRaceTests` |
 | `BlockFile.Hooks` (`_disposeStarted`, `_flushRangeBytes`, `_flushViewRange`, `_synchronizeViewRange`, `_pauseMilliseconds`, `_spinOnce`) | Per block; set before work, ends with the block. | `BlockFileFlushDisposalRaceTests`; `BlockFileRangedFlushTests`; the writer race classes |
-| `DriveBlockRelease.Hooks` (`_releaseStarted`, `_readerAdmitted`, `OutstandingBorrowCount`) | Per release object; count read under `_gate`. | `DriveBlockTests`; `FileIndexBlockReleaseTests`; `FileIndexDisposeCancelsQueryTests`; `SnapshotBorrowTests` |
+| `RootBlockRelease.Hooks` (`_releaseStarted`, `_readerAdmitted`, `OutstandingBorrowCount`) | Per release object; count read under `_gate`. | `RootBlockTests`; `FileIndexBlockReleaseTests`; `FileIndexDisposeCancelsQueryTests`; `SnapshotBorrowTests` |
 | `DeletedChildLinks.Observations` (`_descendantsVisited`, `_siblingsExamined`) | Per links object; accumulates, no reset. | `DeletedChildLinksTests`; `JournalMutatorFreedRowTests` |
 
 ## Direct sample algorithm observations

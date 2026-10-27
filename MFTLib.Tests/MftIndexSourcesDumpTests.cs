@@ -51,7 +51,7 @@ public class MftIndexSourcesDumpTests
     {
         var source = MftIndexSources.FromMftDumpFile("volume.mft", driveLetter);
 
-        Assert.AreEqual(expected, source.DumpIdentity!.Drive);
+        Assert.AreEqual(expected, source.DumpIdentity!.Volume);
         Assert.AreEqual($"dump:/{expected}", source.DumpIdentity.Root);
     }
 

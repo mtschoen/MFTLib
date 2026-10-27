@@ -7,7 +7,7 @@ namespace MFTLib.Tests.Index;
 public class WatchFaultTests
 {
     [TestMethod]
-    [DataRow(WatchFaultKind.Drive, true)]
+    [DataRow(WatchFaultKind.Volume, true)]
     [DataRow(WatchFaultKind.Apply, true)]
     [DataRow(WatchFaultKind.CatchUpLost, false)]
     [DataRow(WatchFaultKind.Subscriber, false)]

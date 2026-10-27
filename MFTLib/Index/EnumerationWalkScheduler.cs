@@ -14,7 +14,7 @@ using System.Threading.Channels;
 sealed class EnumerationWalkScheduler : IDisposable
 {
     readonly EnumerationDirectoryReader _reader;
-    readonly RootKey _drive;
+    readonly RootKey _root;
     readonly int _maximumReaders;
     readonly int _maximumOutstandingJobs;
     readonly CancellationTokenSource _stopSource;
@@ -31,16 +31,16 @@ sealed class EnumerationWalkScheduler : IDisposable
 
     /// <summary>Creates a scheduler for one walk; no reader runs until <see cref="TryStart" />.</summary>
     /// <param name="reader">Reads one directory into an owned buffer.</param>
-    /// <param name="drive">The drive reported to the walk hooks.</param>
+    /// <param name="root">The root reported to the walk hooks.</param>
     /// <param name="maximumReaders">Concurrent readers for this walk, including the one on the base permit.</param>
     /// <param name="cancellationToken">Stops the walk; joined with the scheduler's own stop.</param>
-    public EnumerationWalkScheduler(EnumerationDirectoryReader reader, RootKey drive,
+    public EnumerationWalkScheduler(EnumerationDirectoryReader reader, RootKey root,
         int maximumReaders, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(reader);
         ArgumentOutOfRangeException.ThrowIfLessThan(maximumReaders, 1);
         _reader = reader;
-        _drive = drive;
+        _root = root;
         _maximumReaders = maximumReaders;
         _maximumOutstandingJobs = 2 * maximumReaders;
         _stopSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -158,14 +158,14 @@ sealed class EnumerationWalkScheduler : IDisposable
 
     EnumerationDirectoryBuffer ReadWithHooks(EnumerationDirectoryWork directory, CancellationToken token)
     {
-        EnumerationWalkLimit.Hooks._directoryEntered?.Invoke(_drive, directory.Path, token);
+        EnumerationWalkLimit.Hooks._directoryEntered?.Invoke(_root, directory.Path, token);
         try
         {
             return _reader.Read(directory, token);
         }
         finally
         {
-            EnumerationWalkLimit.Hooks._directoryExited?.Invoke(_drive, directory.Path);
+            EnumerationWalkLimit.Hooks._directoryExited?.Invoke(_root, directory.Path);
         }
     }
 

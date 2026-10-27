@@ -41,7 +41,7 @@ public sealed class FileIndexCacheTagTests : IDisposable
 
     FileIndexOptions Options(CacheTag tag, bool cacheOnly = false) => new()
     {
-        Root = SyntheticIndexedDrive.Create(new VolumeKey('T'), Root, 123),
+        Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), Root, 123),
         CacheDirectory = Cache,
         CacheTag = tag,
         CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent,
@@ -80,7 +80,7 @@ public sealed class FileIndexCacheTagTests : IDisposable
     {
         using var block = Build(new MftBlockProduceRequest
         {
-            Drive = 'T',
+            Volume = 'T',
             VolumeSerial = 123,
             BlockPath = BlockPath,
             CacheTag = tag,
@@ -97,12 +97,12 @@ public sealed class FileIndexCacheTagTests : IDisposable
     {
         var options = Options(OriginalTag) with
         {
-            Root = SyntheticIndexedDrive.Create(new VolumeKey('T'), Root, 123, producerKind),
+            Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), Root, 123, producerKind),
             CacheMode = cacheDisabled ? CacheMode.Disabled : CacheMode.Persistent
         };
         await using (var index = await FileIndex.OpenAsync(options, CancellationToken.None))
         {
-            Assert.AreEqual(DriveState.Ready, index.Status.State);
+            Assert.AreEqual(RootState.Ready, index.Status.State);
             Assert.AreEqual(OriginalTag, index.CurrentBlock!.Block.Header.CacheTag);
             await index.RescanAsync(CancellationToken.None);
             Assert.AreEqual(OriginalTag, index.CurrentBlock!.Block.Header.CacheTag);
@@ -126,8 +126,8 @@ public sealed class FileIndexCacheTagTests : IDisposable
         };
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         var status = index.Status;
-        Assert.AreEqual(DriveState.Failed, status.State);
-        Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind);
+        Assert.AreEqual(RootState.Failed, status.State);
+        Assert.AreEqual(RootFailureKind.ProducerFailed, status.Failure?.Kind);
         Assert.Contains("cache tag", status.Failure?.Message!);
         Assert.IsFalse(File.Exists(BlockPath));
     }
@@ -156,7 +156,7 @@ public sealed class FileIndexCacheTagTests : IDisposable
             MftSource = new MftIndexSource((_, _) => throw new AssertFailedException("A matching cache must not scan."))
         };
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
-        Assert.AreEqual(DriveState.Ready, index.Status.State);
+        Assert.AreEqual(RootState.Ready, index.Status.State);
         Assert.AreEqual(BlockOrigin.WarmStartedFromCache, index.Status.Block!.Origin);
         Assert.IsNull(index.Status.Watch.CheckpointLoss);
     }
@@ -187,20 +187,20 @@ public sealed class FileIndexCacheTagTests : IDisposable
                 line.Contains(stored.ToString()) && line.Contains(requested.ToString()), diagnostics);
             if (cacheOnly)
             {
-                Assert.AreEqual(DriveState.Failed, status.State);
-                Assert.AreEqual(DriveFailureKind.CacheIdentityMismatch, status.Failure?.Kind);
+                Assert.AreEqual(RootState.Failed, status.State);
+                Assert.AreEqual(RootFailureKind.CacheIdentityMismatch, status.Failure?.Kind);
                 Assert.IsNull(status.Block);
                 using (var left = BlockFile.Open(BlockPath, 123, out _))
                 {
                     Assert.AreEqual(stored, left?.Header.CacheTag, "a cache-only open leaves the rejected block in place");
                 }
                 await index.RescanAsync(CancellationToken.None);
-                Assert.AreEqual(DriveState.Ready, index.Status.State);
+                Assert.AreEqual(RootState.Ready, index.Status.State);
                 Assert.IsNull(index.Status.Failure);
             }
             else
             {
-                Assert.AreEqual(DriveState.Ready, status.State);
+                Assert.AreEqual(RootState.Ready, status.State);
                 Assert.AreEqual(BlockOrigin.ProducedByScan, status.Block!.Origin);
             }
         }
@@ -242,7 +242,7 @@ public sealed class FileIndexCacheTagTests : IDisposable
         await using (var declined = await FileIndex.OpenAsync(
             Options(requested, true) with { Diagnostics = diagnostics.Add }, CancellationToken.None))
         {
-            Assert.AreEqual(DriveFailureKind.InUse, declined.Status.Failure?.Kind);
+            Assert.AreEqual(RootFailureKind.InUse, declined.Status.Failure?.Kind);
         }
         await using (var privateIndex = await FileIndex.OpenAsync(
             Options(requested) with { Diagnostics = diagnostics.Add }, CancellationToken.None))

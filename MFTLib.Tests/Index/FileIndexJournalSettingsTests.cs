@@ -7,8 +7,8 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 /// <summary>
-///     <see cref="FileIndex.QueryUsnJournalSettings" />: drive membership validation and
-///     delegation to the query engine. The engine itself is swapped out through
+///     <see cref="FileIndex.QueryUsnJournalSettings" />: refusal for sources without live journal settings
+///     and delegation to the query engine. The engine itself is swapped out through
 ///     <c>UsnJournalSettingsQuery.Dependencies._queryOverride</c>, so these run on every platform
 ///     through <see cref="FileIndex.ReadUsnJournalSettings" />, the logic behind the Windows-only entry point.
 /// </summary>
@@ -38,7 +38,7 @@ public sealed class FileIndexJournalSettingsTests : IndexTreeTestBase
         FileIndex.OpenAsync(Fixture.Options(), CancellationToken.None);
 
     [TestMethod]
-    public async Task QueryUsnJournalSettings_ConfiguredDrive_ReturnsEngineResult()
+    public async Task QueryUsnJournalSettings_ConfiguredRoot_ReturnsEngineResult()
     {
         var expected = new UsnJournalSettings
         {
@@ -46,13 +46,13 @@ public sealed class FileIndexJournalSettingsTests : IndexTreeTestBase
             AllocationDelta = 8L * 1024 * 1024
         };
         UsnJournalSettingsQuery.Dependencies._queryOverride =
-            drive => drive == 'T'
+            volume => volume == 'T'
                 ? expected
-                : throw new IOException($"Unexpected drive {drive}");
+                : throw new IOException($"Unexpected volume {volume}");
         await using var index = await OpenIndexAsync();
 
         // Lowercase input normalizes to the configured uppercase letter.
-        var settings = index.ReadUsnJournalSettings('t');
+        var settings = index.ReadUsnJournalSettings();
 
         Assert.AreEqual(expected.MaximumSize, settings.MaximumSize);
         Assert.AreEqual(expected.AllocationDelta, settings.AllocationDelta);
@@ -74,7 +74,7 @@ public sealed class FileIndexJournalSettingsTests : IndexTreeTestBase
         using var volume = MftVolume.Open('C');
 
         var fromVolume = volume.Journal.QueryUsnJournalSettings();
-        var fromIndex = index.QueryUsnJournalSettings('C');
+        var fromIndex = index.QueryUsnJournalSettings();
 
         Assert.AreEqual(fromVolume, fromIndex);
         Assert.AreEqual(0x08000000L, fromVolume.MaximumSize);
@@ -82,21 +82,11 @@ public sealed class FileIndexJournalSettingsTests : IndexTreeTestBase
     }
 
     [TestMethod]
-    public async Task QueryUsnJournalSettings_UnconfiguredDrive_ThrowsArgumentException()
+    public async Task QueryUsnJournalSettings_DisposedIndex_ThrowsObjectDisposedException()
     {
-        await using var index = await OpenIndexAsync();
-        ArgumentException? caught = null;
+        var index = await OpenIndexAsync();
+        await index.DisposeAsync();
 
-        try
-        {
-            index.ReadUsnJournalSettings('Q');
-        }
-        catch (ArgumentException exception)
-        {
-            caught = exception;
-        }
-
-        Assert.IsNotNull(caught);
-        Assert.Contains("Q", caught.Message);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => index.ReadUsnJournalSettings());
     }
 }

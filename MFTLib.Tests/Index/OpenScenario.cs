@@ -7,8 +7,8 @@ namespace MFTLib.Tests.Index;
 
 /// <summary>
 ///     A set of MFT roots over one owned tree and cache directory whose producer parks on a
-///     per-drive <see cref="TestGate" /> when the test holds one, throws the failure set for its
-///     drive, and otherwise writes a real block at the requested path with the next queued catch-up
+///     per-root <see cref="TestGate" /> when the test holds one, throws the failure set for its
+///     root, and otherwise writes a real block at the requested path with the next queued catch-up
 ///     loss attached.
 /// </summary>
 sealed class OpenScenario : IDisposable
@@ -29,7 +29,7 @@ sealed class OpenScenario : IDisposable
     /// <summary>Producers currently between entering and leaving, so a test can prove none is left running.</summary>
     public int ActiveProducers => Volatile.Read(ref _activeProducers);
 
-    /// <summary>Parks every production of the drive until the returned gate is released.</summary>
+    /// <summary>Parks every production of the root until the returned gate is released.</summary>
     public TestGate Hold(char driveLetter)
     {
         var gate = new TestGate();
@@ -37,13 +37,13 @@ sealed class OpenScenario : IDisposable
         return gate;
     }
 
-    /// <summary>Lets the drive's first <paramref name="productions" /> productions through before its held gate applies.</summary>
+    /// <summary>Lets the root's first <paramref name="productions" /> productions through before its held gate applies.</summary>
     public void LetProductionsThrough(char driveLetter, int productions) =>
         _productionsBeforeHold[driveLetter] = productions;
 
     public void Fail(char driveLetter, Exception failure) => _failures[driveLetter] = failure;
 
-    /// <summary>Queues a lost catch-up for the drive's next production.</summary>
+    /// <summary>Queues a lost catch-up for the root's next production.</summary>
     public void ScriptLoss(char driveLetter) =>
         _losses.GetOrAdd(driveLetter, _ => new ConcurrentQueue<JournalCheckpointLoss>()).Enqueue(CatchUpLossTestSupport.StandardCatchUpLoss(driveLetter));
 
@@ -63,7 +63,7 @@ sealed class OpenScenario : IDisposable
 
     public FileIndexOptions Options(char driveLetter, bool cacheOnly = false) => new()
     {
-        Root = SyntheticIndexedDrive.Create(new VolumeKey(driveLetter), TreeRoot, SerialOf(driveLetter)),
+        Root = SyntheticIndexedRoot.Create(new VolumeKey(driveLetter), TreeRoot, SerialOf(driveLetter)),
         CacheDirectory = CacheDirectory,
         MftSource = new MftIndexSource(ProduceAsync, Source.IndexSource),
         CacheMode = cacheOnly ? CacheMode.ExistingOnly : CacheMode.Persistent
@@ -75,7 +75,7 @@ sealed class OpenScenario : IDisposable
 
     async Task<MftBlockProduceResult> ProduceAsync(MftBlockProduceRequest request, CancellationToken cancellationToken)
     {
-        var driveLetter = char.ToUpperInvariant((request.Drive).Letter);
+        var driveLetter = char.ToUpperInvariant((request.Volume).Letter);
         Interlocked.Increment(ref _activeProducers);
         try
         {

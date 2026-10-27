@@ -26,15 +26,15 @@ sealed class LocalMftBlockProducer(TimeProvider timeProvider, MftScanOptions? sc
         CancellationToken cancellationToken)
     {
         var options = scanOptions ?? new MftScanOptions();
-        var drive = request.Drive;
-        var volume = _volumeAccess.QueryVolumeInformation(drive);
-        var cursor = request.DeleteOnClose ? default : _volumeAccess.QueryCursor(drive);
+        var volume = request.Volume;
+        var information = _volumeAccess.QueryVolumeInformation(volume);
+        var cursor = request.DeleteOnClose ? default : _volumeAccess.QueryCursor(volume);
         var progress = MftBlockProgressAdapter.Create(request);
-        var plan = new MftBlockProducerPipeline.WritePlan(volume, new BlockStamp(cursor, timeProvider),
+        var plan = new MftBlockProducerPipeline.WritePlan(information, new BlockStamp(cursor, timeProvider),
             new MftRowSelection(options, request.RetainedFileNames));
         // No host watchdog watches a direct scan, so there is no operation to tell what the source is doing.
         return MftBlockProducerPipeline.Write(request, plan,
-            (_, recordsOmitted) => _volumeAccess.ScanDriveRecordBatches(drive, allowance,
+            (_, recordsOmitted) => _volumeAccess.ScanVolumeRecordBatches(volume, allowance,
                 new BlockWriteReporting(progress, null), options, recordsOmitted, cancellationToken),
             progress, cancellationToken);
     }

@@ -1,7 +1,7 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     Where an index gets the blocks of its MFT-backed drives and the live watch of each.
+///     Where an index gets the blocks of its MFT-backed volumes and the live watch of each.
 ///     Obtained from <see cref="MFTLib.BrokerSession.CreateIndexSource" /> or
 ///     <see cref="MFTLib.MftIndexSources" />. Leave <see cref="FileIndexOptions.MftSource" />
 ///     null when no source is available.
@@ -9,15 +9,15 @@ namespace MFTLib.Index;
 public sealed class MftIndexSource
 {
     /// <summary>Carries a block producer and, optionally, the watch source that runs beside it.</summary>
-    /// <param name="producer">Fills the block that each MFT-backed drive scan requests.</param>
+    /// <param name="producer">Fills the block that each MFT-backed volume scan requests.</param>
     /// <param name="watchSource">
-    ///     Starts each drive's live watch. Null means the index cannot watch an MFT-backed drive:
-    ///     <see cref="FileIndex.StartWatchingAsync" /> returns a per-drive
-    ///     <see cref="DriveOperationOutcome.NotApplicable" /> result with no failure and records no
+    ///     Starts each volume's live watch. Null means the index cannot watch an MFT-backed volume:
+    ///     <see cref="FileIndex.StartWatchingAsync" /> returns a per-root
+    ///     <see cref="RootOperationOutcome.NotApplicable" /> result with no failure and records no
     ///     watch request.
     /// </param>
     /// <param name="dumpIdentity">
-    ///     Set when the producer loads an MFT dump file. The index then treats the drive as a virtual
+    ///     Set when the producer loads an MFT dump file. The index then treats the volume as a virtual
     ///     inventory: it is never probed, opened, journaled or watched as the live volume that shares
     ///     its letter, and the options it opens with are validated by
     ///     <see cref="MftDumpSourceIdentity.ValidateOptions" />.
@@ -67,5 +67,5 @@ public sealed class MftIndexSource
     internal const string NoJournalSettingsReason = "this source has no live journal settings";
 
 
-    internal static string FormatUnavailable(VolumeKey drive, string reason) => $"Drive {drive}: {reason}.";
+    internal static string FormatUnavailable(VolumeKey volume, string reason) => $"Volume {volume}: {reason}.";
 }

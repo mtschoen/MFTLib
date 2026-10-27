@@ -6,7 +6,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
 
-/// <summary>A current watch's apply fault during production remains a real fault of the drive.</summary>
+/// <summary>A current watch's apply fault during production remains a real fault of the root.</summary>
 [TestClass]
 [DoNotParallelize]
 public class FileIndexWatchRescanFaultDuringProductionTests
@@ -48,11 +48,11 @@ public class FileIndexWatchRescanFaultDuringProductionTests
         applyGate.Release();
         var fault = await harness.WaitForFaultAsync(WatchFaultKind.Apply, 'T');
         Assert.AreSame(applyFailure, fault.Exception);
-        Assert.AreEqual(JournalCheckpointLossDetection.LiveWatch, harness.DriveFor('T').Watch.CheckpointLoss!.DetectedDuring);
+        Assert.AreEqual(JournalCheckpointLossDetection.LiveWatch, harness.RootFor('T').Watch.CheckpointLoss!.DetectedDuring);
         production.Release();
         if (scanFails)
         {
-            await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => rescan);
+            await RootResultAssertions.FailureAsync<InvalidOperationException>(() => rescan);
         }
         else
         {
@@ -63,8 +63,8 @@ public class FileIndexWatchRescanFaultDuringProductionTests
         await harness.WaitForRecoveryAsync('T');
         Assert.AreEqual(scanFails ? 3 : 2, harness.ProductionCount('T'));
         Assert.ContainsSingle(item => item.Kind == WatchFaultKind.Apply, harness.Faults);
-        Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
-        Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
+        Assert.IsNull(harness.RootFor('T').Watch.FailureMessage);
+        Assert.AreEqual(WatchState.CatchingUp, harness.RootFor('T').Watch.State);
         Assert.HasCount(2, harness.Source.TargetsFor('T'));
         await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(9, "after.txt", nextUsn: 4500));
         Assert.AreEqual(4500L, harness.BlockFor('T').Header.UsnNextUsn);

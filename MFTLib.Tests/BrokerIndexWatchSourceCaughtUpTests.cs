@@ -25,7 +25,7 @@ public class BrokerIndexWatchSourceCaughtUpTests
         run.Push(2, "tip.txt", ScriptedWatchBrokerHarness.DefaultTip.NextUsn);
 
         Assert.AreEqual(ScriptedWatchBrokerHarness.DefaultTip.NextUsn, (await WatchReads.NextBatchAsync(reader)).NextUsn);
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
+        Assert.IsInstanceOfType<VolumeCaughtUp>(await WatchReads.NextAsync(reader));
     }
 
     [TestMethod]
@@ -36,7 +36,7 @@ public class BrokerIndexWatchSourceCaughtUpTests
         var token = harness.CancellationToken;
         var first = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
         var firstReader = first.ReadAsync(token).GetAsyncEnumerator(token);
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(firstReader));
+        Assert.IsInstanceOfType<VolumeCaughtUp>(await WatchReads.NextAsync(firstReader));
 
         // The host writes the marker before it starts the watch source, so a watch closed on the
         // marker alone may never start one and would shift the numbering of the restarted watch's run.
@@ -56,7 +56,7 @@ public class BrokerIndexWatchSourceCaughtUpTests
 
         Assert.AreEqual(80L, (await WatchReads.NextBatchAsync(reader)).NextUsn);
         Assert.AreEqual(ScriptedWatchBrokerHarness.DefaultTip.NextUsn, (await WatchReads.NextBatchAsync(reader)).NextUsn);
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
+        Assert.IsInstanceOfType<VolumeCaughtUp>(await WatchReads.NextAsync(reader));
         Assert.AreEqual(200L, (await WatchReads.NextBatchAsync(reader)).NextUsn);
     }
 }

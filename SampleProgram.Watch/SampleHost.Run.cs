@@ -98,7 +98,7 @@ partial class SampleHost
         }
 
         // The console entry point has no synchronization context, so blocking here cannot deadlock.
-        var exitCode = RunThroughBrokerAsync(parsed, session, ResolveDriveNative, CancellationToken.None).GetAwaiter().GetResult();
+        var exitCode = RunThroughBrokerAsync(parsed, session, ResolveRootNative, CancellationToken.None).GetAwaiter().GetResult();
         if (exitCode == 0)
         {
             _output.WriteLine($"Completed at {_timeProvider.GetUtcNow():u}");

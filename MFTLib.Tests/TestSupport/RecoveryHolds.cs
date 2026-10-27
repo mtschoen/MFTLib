@@ -4,13 +4,13 @@ namespace MFTLib.Tests.TestSupport;
 
 /// <summary>
 ///     For tests whose subject is a watch fault's own bookkeeping rather than the recovery it
-///     queues (spec 2.6.5): the drive's recovery stays queued, so the drive keeps its faulted
+///     queues (spec 2.6.5): the root's recovery stays queued, so the root keeps its faulted
 ///     instance and reads <see cref="WatchState.Recovering" />.
 /// </summary>
 static class RecoveryHolds
 {
     /// <summary>
-    ///     Parks every recovery of <paramref name="index" /> before it takes its drive's lifecycle
+    ///     Parks every recovery of <paramref name="index" /> before it takes its root's lifecycle
     ///     gate, until the index's disposal cancels it.
     /// </summary>
     public static void HoldEveryRecovery(this FileIndex index)

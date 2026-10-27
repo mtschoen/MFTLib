@@ -1,8 +1,8 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     One item a drive's <see cref="IIndexDriveWatch" /> yields: a <see cref="JournalBatch" /> to
-///     apply, or the <see cref="DriveCaughtUp" /> marker. The handle belongs to one drive, so no
+///     One item a root's <see cref="IIndexVolumeWatch" /> yields: a <see cref="JournalBatch" /> to
+///     apply, or the <see cref="VolumeCaughtUp" /> marker. The handle belongs to one root, so no
 ///     item names one. A failure is not an item: the handle's read throws instead.
 /// </summary>
 abstract record WatchStreamItem
@@ -13,8 +13,8 @@ abstract record WatchStreamItem
 }
 
 /// <summary>
-///     The journal backlog present when the drive's watch started has been delivered in full;
+///     The journal backlog present when the volume's watch started has been delivered in full;
 ///     every batch after this marker is a live entry. A handle yields it once, immediately when
 ///     there is no backlog.
 /// </summary>
-sealed record DriveCaughtUp : WatchStreamItem;
+sealed record VolumeCaughtUp : WatchStreamItem;

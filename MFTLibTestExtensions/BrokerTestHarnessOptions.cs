@@ -10,13 +10,13 @@ sealed record BrokerTestHarnessOptions
     public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 
     /// <summary>
-    ///     By drive pipe name: an exception the host's connect to that pipe throws, or null to
+    ///     By volume pipe name: an exception the host's connect to that pipe throws, or null to
     ///     connect normally.
     /// </summary>
     public Func<string, Exception?>? FailConnection { get; init; }
 
     /// <summary>
-    ///     By pipe name (<c>"control"</c> or a drive pipe's name): every host write to that pipe
+    ///     By pipe name (<c>"control"</c> or a volume pipe's name): every host write to that pipe
     ///     waits on the returned task before any byte is written. Null holds nothing.
     /// </summary>
     public Func<string, Task>? HoldWrites { get; init; }

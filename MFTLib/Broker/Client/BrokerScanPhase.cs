@@ -1,7 +1,7 @@
 namespace MFTLib;
 
 /// <summary>
-///     Identifies the phase of a broker drive scan.
+///     Identifies the phase of a broker volume scan.
 /// </summary>
 enum BrokerScanPhase : byte
 {

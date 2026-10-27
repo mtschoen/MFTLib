@@ -8,12 +8,12 @@ static class BlockSectionNaming
     /// <summary>The length of every section name: the prefix, one drive letter, a dash and 32 hexadecimal digits.</summary>
     internal const int Length = 13 + 1 + 1 + 32;
 
-    internal static bool IsValid(string name, VolumeKey drive)
+    internal static bool IsValid(string name, VolumeKey volume)
     {
-        drive = drive.Validated();
+        volume = volume.Validated();
         if (name.Length != Length ||
             !name.StartsWith(Prefix, StringComparison.Ordinal) ||
-            name[Prefix.Length] != drive.Letter ||
+            name[Prefix.Length] != volume.Letter ||
             name[Prefix.Length + 1] != '-')
         {
             return false;

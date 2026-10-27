@@ -38,8 +38,8 @@ public partial class FileIndexWatchRecoveryTests
         await stop.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(0, registrationsReached, "the start's first step already saw the stop");
         Assert.HasCount(1, harness.Source.TargetsFor('T'), "no watch starts after the stop");
-        Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
-        await DriveResultAssertions.NotApplicableAsync(
+        Assert.AreEqual(WatchState.NotStarted, harness.RootFor('T').Watch.State);
+        await RootResultAssertions.NotApplicableAsync(
             () => index.StopWatchingAsync(Token), "the stop's cleared request stands").WaitAsync(HangGuard, TestContext.CancellationToken);
     }
 }

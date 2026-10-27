@@ -6,21 +6,21 @@ namespace MFTLibTestExtensions;
 
 /// <summary>
 ///     Runs the production broker host in process and returns a handle whose client is connected to it, so
-///     consumer tests drive the real client and the real host over in-memory pipes with no elevation and no
+///     consumer tests volume the real client and the real host over in-memory pipes with no elevation and no
 ///     child process.
 /// </summary>
 public static class BrokerTestHarness
 {
     /// <summary>
     ///     Starts an in-process broker that serves <paramref name="volumes" />, over an in-memory control
-    ///     pipe; every drive pipe the returned process opens is connected in memory by name. The
+    ///     pipe; every volume pipe the returned process opens is connected in memory by name. The
     ///     host is the real broker host, the client creates real block sections, and each
     ///     scan's records are written through the production row writer and filter. Disposing the handle
     ///     disposes the process, which ends the host's session and waits for it to return, then releases the
     ///     sections.
     /// </summary>
     /// <param name="volumes">The fake volumes the host serves.</param>
-    /// <returns>The handle a test passes to <see cref="CreateSession" /> to drive the in-process broker.</returns>
+    /// <returns>The handle a test passes to <see cref="CreateSession" /> to volume the in-process broker.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="volumes" /> is null.</exception>
     public static InProcessBrokerHandle StartInProcess(ScriptedBrokerVolumes volumes)
     {
@@ -55,30 +55,30 @@ public static class BrokerTestHarness
     static JournalBrokerHost CreateHost(ScriptedBrokerVolumes volumes)
     {
         var queryCursor = volumes.QueryJournalCursor;
-        var scan = volumes.ScanDrive;
+        var scan = volumes.ScanVolume;
         var readJournal = volumes.ReadJournal ?? NothingNew;
-        var watch = volumes.WatchDrive;
+        var watch = volumes.WatchVolume;
         var queryVolume = volumes.QueryVolume ?? SmallVolume;
         var grow = volumes.GrowUsnJournal;
         return new JournalBrokerHost(new ScriptedVolumeAccess
         {
-            CursorQuery = drive => queryCursor(drive).ToProduction(),
+            CursorQuery = volume => queryCursor(volume).ToProduction(),
             RecordBatches = scan is null ? ScriptedVolumeAccess.UnsupportedScan :
-                (drive, parseThreads, reporting, _, _, cancellationToken) =>
-                    ConvertScan(scan(new ScriptedScan(drive, parseThreads, reporting, cancellationToken))),
-            JournalRead = (drive, since, maximumBufferReads) =>
-                ConvertJournal(readJournal(drive, since.ToSynthetic(), maximumBufferReads)),
+                (volume, parseThreads, reporting, _, _, cancellationToken) =>
+                    ConvertScan(scan(new ScriptedScan(volume, parseThreads, reporting, cancellationToken))),
+            JournalRead = (volume, since, maximumBufferReads) =>
+                ConvertJournal(readJournal(volume, since.ToSynthetic(), maximumBufferReads)),
             JournalWatch = watch is null ? ScriptedVolumeAccess.UnsupportedWatch :
-                (drive, since, _, cancellationToken) => ConvertWatch(
-                    watch(drive, since.ToSynthetic(), cancellationToken), cancellationToken),
+                (volume, since, _, cancellationToken) => ConvertWatch(
+                    watch(volume, since.ToSynthetic(), cancellationToken), cancellationToken),
             VolumeInformation = queryVolume,
             JournalGrow = grow is null ? ScriptedVolumeAccess.UnsupportedGrow :
-                (drive, maximumSize, allocationDelta) => grow(drive,
+                (volume, maximumSize, allocationDelta) => grow(volume,
                     new UsnJournalSettings { MaximumSize = maximumSize, AllocationDelta = allocationDelta })
         });
     }
 
-    static (IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Updated) NothingNew(VolumeKey drive,
+    static (IReadOnlyList<SyntheticJournalRecord> Entries, SyntheticJournalCursor Updated) NothingNew(VolumeKey volume,
         SyntheticJournalCursor since, int maximumBufferReads) => ([], since);
 
     static IEnumerable<IReadOnlyList<MftRecord>> ConvertScan(
@@ -104,7 +104,7 @@ public static class BrokerTestHarness
         }
     }
 
-    static NtfsVolumeInformation SmallVolume(VolumeKey drive) => new(256 * 1024, 1024);
+    static NtfsVolumeInformation SmallVolume(VolumeKey volume) => new(256 * 1024, 1024);
 
     // The start MFTLib's own tests use: any host, section writer and client section factory, plus the
     // client's clock, per-pipe connection failures and held host writes, a wrapper around each client end

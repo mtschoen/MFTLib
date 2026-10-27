@@ -10,7 +10,7 @@ namespace MFTLib;
 /// </summary>
 sealed class BrokerDiagnosticsWriter
 {
-    /// <summary>Sized so a burst of frame traces from every drive fits while a slow disk catches up.</summary>
+    /// <summary>Sized so a burst of frame traces from every volume fits while a slow disk catches up.</summary>
     public const int Capacity = 8192;
 
     readonly Channel<string> _channel;

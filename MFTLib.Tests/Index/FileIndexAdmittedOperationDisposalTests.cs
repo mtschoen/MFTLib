@@ -49,8 +49,8 @@ public class FileIndexAdmittedOperationDisposalTests
         var disposal = index.DisposeAsync().AsTask();
 
         Assert.IsTrue(settledInTheWindow, "the rescan and the start settled before disposal cancelled its token");
-        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => gateHolder).WaitAsync(HangGuard, TestContext.CancellationToken);
-        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => start).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await RootResultAssertions.FailureAsync<OperationCanceledException>(() => gateHolder).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await RootResultAssertions.FailureAsync<OperationCanceledException>(() => start).WaitAsync(HangGuard, TestContext.CancellationToken);
         await disposal.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.IsEmpty(harness.Source.TargetsFor('T'), "the cancelled start never invoked the source");
     }
@@ -93,7 +93,7 @@ public class FileIndexAdmittedOperationDisposalTests
 
         var disposal = index.DisposeAsync().AsTask();
 
-        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescan).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await RootResultAssertions.FailureAsync<OperationCanceledException>(() => rescan).WaitAsync(HangGuard, TestContext.CancellationToken);
         await disposal.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore, "the retry never scanned");
     }
@@ -122,7 +122,7 @@ public class FileIndexAdmittedOperationDisposalTests
 
         await index.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescan).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await RootResultAssertions.FailureAsync<OperationCanceledException>(() => rescan).WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.HasCount(1, harness.Source.TargetsFor('T'), "the restart never invoked the source");
     }
 
@@ -146,7 +146,7 @@ public class FileIndexAdmittedOperationDisposalTests
             TestGate.WaitSynchronously(flagSet.Task);
         };
         var producedBefore = harness.ProductionCount('T');
-        harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
+        harness.Source.WatchFor('T').FailVolume(new IOException("T's journal wrapped"));
         await decisionReached.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
         var recovery = harness.RecoveryCompletion('T');
 
@@ -155,7 +155,7 @@ public class FileIndexAdmittedOperationDisposalTests
         await recovery.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore, "the recovery scanned once");
         Assert.HasCount(1, harness.Source.TargetsFor('T'), "the recovery restarted nothing");
-        Assert.AreSequenceEqual([WatchFaultKind.Drive], [.. harness.Faults.Where(fault => fault.Drive == 'T').Select(fault => fault.Kind)]);
+        Assert.AreSequenceEqual([WatchFaultKind.Volume], [.. harness.Faults.Where(fault => fault.Volume == 'T').Select(fault => fault.Kind)]);
     }
 
     [TestMethod]
@@ -167,7 +167,7 @@ public class FileIndexAdmittedOperationDisposalTests
         Task? disposal = null;
         index.Hooks.RestartRequested = _ => disposal ??= index.DisposeAsync().AsTask();
 
-        await DriveResultAssertions.FailureAsync<OperationCanceledException>(
+        await RootResultAssertions.FailureAsync<OperationCanceledException>(
             () => index.RescanAsync(Token)).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsNotNull(disposal, "the restart decided to start the watch again");
@@ -188,7 +188,7 @@ public class FileIndexAdmittedOperationDisposalTests
             return Task.CompletedTask;
         };
 
-        await DriveResultAssertions.FailureAsync<OperationCanceledException>(
+        await RootResultAssertions.FailureAsync<OperationCanceledException>(
             () => index.RescanAsync(Token)).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsNotNull(disposal, "the restart reached its registration");

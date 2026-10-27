@@ -12,7 +12,7 @@ sealed partial class JournalBrokerHost
         NtfsVolumeInformation info;
         try
         {
-            info = _volumeAccess.QueryVolumeInformation(request.RequireDrive());
+            info = _volumeAccess.QueryVolumeInformation(request.RequireVolume());
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {

@@ -187,9 +187,9 @@ public partial class SyntheticBlockTests
 
         await using var index = await FileIndex.OpenAsync(
             CacheOnly(enumeration) with { CacheTag = originalTag }, Token);
-        var drive = index.Status;
-        Assert.AreEqual(DriveState.Failed, drive.State);
-        Assert.AreEqual(DriveFailureKind.CacheIdentityMismatch, drive.Failure?.Kind);
-        Assert.IsNull(drive.Block);
+        var root = index.Status;
+        Assert.AreEqual(RootState.Failed, root.State);
+        Assert.AreEqual(RootFailureKind.CacheIdentityMismatch, root.Failure?.Kind);
+        Assert.IsNull(root.Block);
     }
 }

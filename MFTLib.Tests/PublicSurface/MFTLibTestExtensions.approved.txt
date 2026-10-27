@@ -7,7 +7,7 @@ MFTLibTestExtensions.BrokerTestHarness :: method public static StartInProcess(MF
 MFTLibTestExtensions.BrokerTestHarness :: type public static class
 MFTLibTestExtensions.DefenderExclusionIsolation :: method public static ScriptPowerShell(bool succeeds = true) : MFTLibTestExtensions.ScriptedPowerShell
 MFTLibTestExtensions.DefenderExclusionIsolation :: type public static class
-MFTLibTestExtensions.FileIndexTestAccess :: method public static ApplyJournalEntriesAsync(MFTLib.Index.FileIndex index, MFTLib.Index.VolumeKey drive, System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord> entries, MFTLibTestExtensions.SyntheticJournalCursor cursor) : System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileChange>>
+MFTLibTestExtensions.FileIndexTestAccess :: method public static ApplyJournalEntriesAsync(MFTLib.Index.FileIndex index, MFTLib.Index.VolumeKey volume, System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord> entries, MFTLibTestExtensions.SyntheticJournalCursor cursor) : System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileChange>>
 MFTLibTestExtensions.FileIndexTestAccess :: type public static class
 MFTLibTestExtensions.InProcessBrokerHandle :: method public Crash() : void
 MFTLibTestExtensions.InProcessBrokerHandle :: method public DisposeAsync() : System.Threading.Tasks.ValueTask
@@ -21,8 +21,8 @@ MFTLibTestExtensions.InProcessBrokerScan :: method public override GetHashCode()
 MFTLibTestExtensions.InProcessBrokerScan :: method public override ToString() : string
 MFTLibTestExtensions.InProcessBrokerScan :: method public static op_Equality(MFTLibTestExtensions.InProcessBrokerScan? left, MFTLibTestExtensions.InProcessBrokerScan? right) : bool
 MFTLibTestExtensions.InProcessBrokerScan :: method public static op_Inequality(MFTLibTestExtensions.InProcessBrokerScan? left, MFTLibTestExtensions.InProcessBrokerScan? right) : bool
-MFTLibTestExtensions.InProcessBrokerScan :: property public Drive { get; init; } : MFTLib.Index.VolumeKey
 MFTLibTestExtensions.InProcessBrokerScan :: property public RetainedFileNames { get; init; } : System.Collections.Generic.IReadOnlyCollection<string>?
+MFTLibTestExtensions.InProcessBrokerScan :: property public Volume { get; init; } : MFTLib.Index.VolumeKey
 MFTLibTestExtensions.InProcessBrokerScan :: type public sealed class : System.IEquatable<MFTLibTestExtensions.InProcessBrokerScan>
 MFTLibTestExtensions.JournalIsolation :: method public static ForbidLiveJournalReads() : void
 MFTLibTestExtensions.JournalIsolation :: method public static OverrideJournalWindow(System.Func<MFTLib.Index.VolumeKey, MFTLibTestExtensions.SyntheticJournalWindow?> journal) : System.IDisposable
@@ -40,37 +40,37 @@ MFTLibTestExtensions.ScriptedBrokerVolumes :: method public static op_Equality(M
 MFTLibTestExtensions.ScriptedBrokerVolumes :: method public static op_Inequality(MFTLibTestExtensions.ScriptedBrokerVolumes? left, MFTLibTestExtensions.ScriptedBrokerVolumes? right) : bool
 MFTLibTestExtensions.ScriptedBrokerVolumes :: property public GrowUsnJournal { get; init; } : System.Func<MFTLib.Index.VolumeKey, MFTLib.UsnJournalSettings, MFTLib.UsnJournalSettings>?
 MFTLibTestExtensions.ScriptedBrokerVolumes :: property public ReadJournal { get; init; } : System.Func<MFTLib.Index.VolumeKey, MFTLibTestExtensions.SyntheticJournalCursor, int, System.ValueTuple<System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord>, MFTLibTestExtensions.SyntheticJournalCursor>>?
-MFTLibTestExtensions.ScriptedBrokerVolumes :: property public ScanDrive { get; init; } : System.Func<MFTLibTestExtensions.ScriptedScan, System.Collections.Generic.IEnumerable<System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticScanRecord>>>?
-MFTLibTestExtensions.ScriptedBrokerVolumes :: property public WatchDrive { get; init; } : System.Func<MFTLib.Index.VolumeKey, MFTLibTestExtensions.SyntheticJournalCursor, System.Threading.CancellationToken, System.Collections.Generic.IAsyncEnumerable<System.ValueTuple<System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord>, MFTLibTestExtensions.SyntheticJournalCursor>>>?
+MFTLibTestExtensions.ScriptedBrokerVolumes :: property public ScanVolume { get; init; } : System.Func<MFTLibTestExtensions.ScriptedScan, System.Collections.Generic.IEnumerable<System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticScanRecord>>>?
+MFTLibTestExtensions.ScriptedBrokerVolumes :: property public WatchVolume { get; init; } : System.Func<MFTLib.Index.VolumeKey, MFTLibTestExtensions.SyntheticJournalCursor, System.Threading.CancellationToken, System.Collections.Generic.IAsyncEnumerable<System.ValueTuple<System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord>, MFTLibTestExtensions.SyntheticJournalCursor>>>?
 MFTLibTestExtensions.ScriptedBrokerVolumes :: property public required QueryJournalCursor { get; init; } : System.Func<MFTLib.Index.VolumeKey, MFTLibTestExtensions.SyntheticJournalCursor>
 MFTLibTestExtensions.ScriptedBrokerVolumes :: type public sealed class : System.IEquatable<MFTLibTestExtensions.ScriptedBrokerVolumes>
-MFTLibTestExtensions.ScriptedDriveWatch :: method public End() : void
-MFTLibTestExtensions.ScriptedDriveWatch :: method public FailApply(System.Exception exception) : void
-MFTLibTestExtensions.ScriptedDriveWatch :: method public FailDrive(System.Exception exception) : void
-MFTLibTestExtensions.ScriptedDriveWatch :: method public LoseChannel(System.Exception exception) : void
-MFTLibTestExtensions.ScriptedDriveWatch :: method public PublishBatchAsync(System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord> entries, MFTLibTestExtensions.SyntheticJournalCursor cursor) : System.Threading.Tasks.Task
-MFTLibTestExtensions.ScriptedDriveWatch :: method public PublishCaughtUpAsync() : System.Threading.Tasks.Task
-MFTLibTestExtensions.ScriptedDriveWatch :: method public QueueBatchAsync(System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord> entries, MFTLibTestExtensions.SyntheticJournalCursor cursor) : System.Threading.Tasks.Task
-MFTLibTestExtensions.ScriptedDriveWatch :: property public Drive { get; } : MFTLib.Index.VolumeKey
-MFTLibTestExtensions.ScriptedDriveWatch :: property public ReadEnded { get; } : System.Threading.Tasks.Task<bool>
-MFTLibTestExtensions.ScriptedDriveWatch :: type public sealed class
 MFTLibTestExtensions.ScriptedPowerShell :: method public Dispose() : void
 MFTLibTestExtensions.ScriptedPowerShell :: property public Launches { get; } : System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.PowerShellLaunch>
 MFTLibTestExtensions.ScriptedPowerShell :: type public sealed class : System.IDisposable
 MFTLibTestExtensions.ScriptedScan :: method public ReportParsed(long recordsProcessed, long? totalRecords) : void
 MFTLibTestExtensions.ScriptedScan :: property public CancellationToken { get; } : System.Threading.CancellationToken
-MFTLibTestExtensions.ScriptedScan :: property public Drive { get; } : MFTLib.Index.VolumeKey
+MFTLibTestExtensions.ScriptedScan :: property public Volume { get; } : MFTLib.Index.VolumeKey
 MFTLibTestExtensions.ScriptedScan :: type public sealed class
+MFTLibTestExtensions.ScriptedVolumeWatch :: method public End() : void
+MFTLibTestExtensions.ScriptedVolumeWatch :: method public FailApply(System.Exception exception) : void
+MFTLibTestExtensions.ScriptedVolumeWatch :: method public FailVolume(System.Exception exception) : void
+MFTLibTestExtensions.ScriptedVolumeWatch :: method public LoseChannel(System.Exception exception) : void
+MFTLibTestExtensions.ScriptedVolumeWatch :: method public PublishBatchAsync(System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord> entries, MFTLibTestExtensions.SyntheticJournalCursor cursor) : System.Threading.Tasks.Task
+MFTLibTestExtensions.ScriptedVolumeWatch :: method public PublishCaughtUpAsync() : System.Threading.Tasks.Task
+MFTLibTestExtensions.ScriptedVolumeWatch :: method public QueueBatchAsync(System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord> entries, MFTLibTestExtensions.SyntheticJournalCursor cursor) : System.Threading.Tasks.Task
+MFTLibTestExtensions.ScriptedVolumeWatch :: property public ReadEnded { get; } : System.Threading.Tasks.Task<bool>
+MFTLibTestExtensions.ScriptedVolumeWatch :: property public Volume { get; } : MFTLib.Index.VolumeKey
+MFTLibTestExtensions.ScriptedVolumeWatch :: type public sealed class
 MFTLibTestExtensions.ScriptedWatchSource :: constructor public ()
-MFTLibTestExtensions.ScriptedWatchSource :: method public WaitForStartAsync(MFTLib.Index.VolumeKey drive, int startNumber, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLibTestExtensions.ScriptedDriveWatch>
-MFTLibTestExtensions.ScriptedWatchSource :: method public WatchFor(MFTLib.Index.VolumeKey drive) : MFTLibTestExtensions.ScriptedDriveWatch
+MFTLibTestExtensions.ScriptedWatchSource :: method public WaitForStartAsync(MFTLib.Index.VolumeKey volume, int startNumber, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLibTestExtensions.ScriptedVolumeWatch>
+MFTLibTestExtensions.ScriptedWatchSource :: method public WatchFor(MFTLib.Index.VolumeKey volume) : MFTLibTestExtensions.ScriptedVolumeWatch
 MFTLibTestExtensions.ScriptedWatchSource :: property public CatchUpOnStart { get; init; } : bool
 MFTLibTestExtensions.ScriptedWatchSource :: property public StartFailure { get; set; } : System.Func<MFTLib.Index.VolumeKey, System.Exception?>?
 MFTLibTestExtensions.ScriptedWatchSource :: property public Starts { get; } : System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.ScriptedWatchStart>
-MFTLibTestExtensions.ScriptedWatchSource :: property public Watches { get; } : System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.ScriptedDriveWatch>
+MFTLibTestExtensions.ScriptedWatchSource :: property public Watches { get; } : System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.ScriptedVolumeWatch>
 MFTLibTestExtensions.ScriptedWatchSource :: type public sealed class
-MFTLibTestExtensions.ScriptedWatchStart :: constructor public (MFTLib.Index.VolumeKey Drive, MFTLibTestExtensions.SyntheticJournalCursor Cursor)
-MFTLibTestExtensions.ScriptedWatchStart :: method public Deconstruct(out MFTLib.Index.VolumeKey Drive, out MFTLibTestExtensions.SyntheticJournalCursor Cursor) : void
+MFTLibTestExtensions.ScriptedWatchStart :: constructor public (MFTLib.Index.VolumeKey Volume, MFTLibTestExtensions.SyntheticJournalCursor Cursor)
+MFTLibTestExtensions.ScriptedWatchStart :: method public Deconstruct(out MFTLib.Index.VolumeKey Volume, out MFTLibTestExtensions.SyntheticJournalCursor Cursor) : void
 MFTLibTestExtensions.ScriptedWatchStart :: method public Equals(MFTLibTestExtensions.ScriptedWatchStart other) : bool
 MFTLibTestExtensions.ScriptedWatchStart :: method public override Equals(object obj) : bool
 MFTLibTestExtensions.ScriptedWatchStart :: method public override GetHashCode() : int
@@ -78,11 +78,11 @@ MFTLibTestExtensions.ScriptedWatchStart :: method public override ToString() : s
 MFTLibTestExtensions.ScriptedWatchStart :: method public static op_Equality(MFTLibTestExtensions.ScriptedWatchStart left, MFTLibTestExtensions.ScriptedWatchStart right) : bool
 MFTLibTestExtensions.ScriptedWatchStart :: method public static op_Inequality(MFTLibTestExtensions.ScriptedWatchStart left, MFTLibTestExtensions.ScriptedWatchStart right) : bool
 MFTLibTestExtensions.ScriptedWatchStart :: property public Cursor { get; init; } : MFTLibTestExtensions.SyntheticJournalCursor
-MFTLibTestExtensions.ScriptedWatchStart :: property public Drive { get; init; } : MFTLib.Index.VolumeKey
+MFTLibTestExtensions.ScriptedWatchStart :: property public Volume { get; init; } : MFTLib.Index.VolumeKey
 MFTLibTestExtensions.ScriptedWatchStart :: type public readonly struct : System.IEquatable<MFTLibTestExtensions.ScriptedWatchStart>
-MFTLibTestExtensions.SyntheticBlock :: method public static CachedPath(string cacheDirectory, MFTLib.Index.RootKey drive, uint volumeSerial) : string
+MFTLibTestExtensions.SyntheticBlock :: method public static CachedPath(string cacheDirectory, MFTLib.Index.RootKey root, uint volumeSerial) : string
 MFTLibTestExtensions.SyntheticBlock :: method public static Edit(string blockPath, uint volumeSerial, System.Action<MFTLibTestExtensions.SyntheticBlockEditor> edit) : void
-MFTLibTestExtensions.SyntheticBlock :: method public static WriteCached(string cacheDirectory, MFTLib.Index.RootKey drive, uint volumeSerial, MFTLibTestExtensions.SyntheticBlockOptions options, System.Collections.Generic.IEnumerable<MFTLibTestExtensions.SyntheticRow> rows) : string
+MFTLibTestExtensions.SyntheticBlock :: method public static WriteCached(string cacheDirectory, MFTLib.Index.RootKey root, uint volumeSerial, MFTLibTestExtensions.SyntheticBlockOptions options, System.Collections.Generic.IEnumerable<MFTLibTestExtensions.SyntheticRow> rows) : string
 MFTLibTestExtensions.SyntheticBlock :: property public static MaximumPathDepth { get; } : int
 MFTLibTestExtensions.SyntheticBlock :: type public static class
 MFTLibTestExtensions.SyntheticBlockEditor :: method public Complete(System.DateTime completed) : void
@@ -108,7 +108,7 @@ MFTLibTestExtensions.SyntheticBlockOptions :: property public RootRow { get; ini
 MFTLibTestExtensions.SyntheticBlockOptions :: property public ScanTimestamp { get; init; } : System.DateTime
 MFTLibTestExtensions.SyntheticBlockOptions :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticBlockOptions>
 MFTLibTestExtensions.SyntheticCacheSlot :: method public Dispose() : void
-MFTLibTestExtensions.SyntheticCacheSlot :: method public static Acquire(string cacheDirectory, MFTLib.Index.RootKey drive, uint volumeSerial) : MFTLibTestExtensions.SyntheticCacheSlot
+MFTLibTestExtensions.SyntheticCacheSlot :: method public static Acquire(string cacheDirectory, MFTLib.Index.RootKey root, uint volumeSerial) : MFTLibTestExtensions.SyntheticCacheSlot
 MFTLibTestExtensions.SyntheticCacheSlot :: method public static LockPathFor(string blockPath) : string
 MFTLibTestExtensions.SyntheticCacheSlot :: property public BlockPath { get; } : string
 MFTLibTestExtensions.SyntheticCacheSlot :: property public LockPath { get; } : string
@@ -120,8 +120,8 @@ MFTLibTestExtensions.SyntheticCheckpointLoss :: method public static WithJournal
 MFTLibTestExtensions.SyntheticCheckpointLoss :: type public static class
 MFTLibTestExtensions.SyntheticIndexSource :: method public static Create(MFTLibTestExtensions.SyntheticMftProducer? producer = default, MFTLibTestExtensions.ScriptedWatchSource? watches = default) : MFTLib.Index.MftIndexSource
 MFTLibTestExtensions.SyntheticIndexSource :: type public static class
-MFTLibTestExtensions.SyntheticIndexedDrive :: method public static Create(MFTLib.Index.RootKey drive, string rootDirectory, uint volumeSerial, MFTLib.Index.ProducerKind producer = 1) : MFTLib.Index.IndexedRoot
-MFTLibTestExtensions.SyntheticIndexedDrive :: type public static class
+MFTLibTestExtensions.SyntheticIndexedRoot :: method public static Create(MFTLib.Index.RootKey root, string rootDirectory, uint volumeSerial, MFTLib.Index.ProducerKind producer = 1) : MFTLib.Index.IndexedRoot
+MFTLibTestExtensions.SyntheticIndexedRoot :: type public static class
 MFTLibTestExtensions.SyntheticJournalCursor :: constructor public (ulong JournalIdentifier, long NextUsn)
 MFTLibTestExtensions.SyntheticJournalCursor :: method public Deconstruct(out ulong JournalIdentifier, out long NextUsn) : void
 MFTLibTestExtensions.SyntheticJournalCursor :: method public Equals(MFTLibTestExtensions.SyntheticJournalCursor other) : bool
@@ -196,20 +196,20 @@ MFTLibTestExtensions.SyntheticMftProducer :: property public JournalCursor { get
 MFTLibTestExtensions.SyntheticMftProducer :: property public ScanTimestamp { get; init; } : System.DateTime
 MFTLibTestExtensions.SyntheticMftProducer :: type public sealed class
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockDeletionResult(MFTLib.Index.CachedBlockFile file, MFTLib.Index.CachedBlockDeletionOutcome outcome, string? failureMessage) : MFTLib.Index.CachedBlockDeletionResult
-MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockFile(MFTLib.Index.RootKey drive, uint volumeSerial, string path, long size, System.DateTime lastWriteTime) : MFTLib.Index.CachedBlockFile
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockFile(MFTLib.Index.RootKey root, uint volumeSerial, string path, long size, System.DateTime lastWriteTime) : MFTLib.Index.CachedBlockFile
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockRejection(string path, string message) : MFTLib.Index.CachedBlockRejection
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockStatus(MFTLib.Index.CachedBlockFile file, MFTLib.Index.CachedBlockAvailability availability, MFTLib.Index.BlockValidationResult? validation, MFTLib.Index.ProducerKind? producerKind, string? rootDirectory, MFTLib.Index.CacheTag? cacheTag = default) : MFTLib.Index.CachedBlockStatus
-MFTLibTestExtensions.SyntheticNotifications :: method public static CreateDriveBlockStatus(MFTLib.Index.BlockOrigin blockOrigin, uint liveRowCount, bool capacityExhausted, System.DateTime scanTimestamp) : MFTLib.Index.DriveBlockStatus
-MFTLibTestExtensions.SyntheticNotifications :: method public static CreateDriveFailure(MFTLib.Index.DriveFailureKind kind, string message) : MFTLib.Index.DriveFailure
-MFTLibTestExtensions.SyntheticNotifications :: method public static CreateDriveOperationResult(MFTLib.Index.RootKey drive, MFTLib.Index.DriveOperationOutcome outcome, System.Exception? failure) : MFTLib.Index.DriveOperationResult
-MFTLibTestExtensions.SyntheticNotifications :: method public static CreateDriveStatus(MFTLib.Index.RootKey drive, MFTLib.Index.DriveState state, MFTLib.Index.DriveBlockStatus? block, MFTLib.Index.DriveFailure? failure) : MFTLib.Index.RootStatus
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateFileChange(MFTLib.Index.FileChangeKind kind, MFTLib.Index.FileEntry entry, string path, System.DateTime timestamp, string? previousPath = default) : MFTLib.Index.FileChange
-MFTLibTestExtensions.SyntheticNotifications :: method public static CreateIndexScanProgress(MFTLib.Index.RootKey drive, MFTLib.Index.IndexScanPhase phase, uint writtenRowCount, uint? expectedRowCount = default, string? currentDirectory = default, MFTLib.Index.IndexScanOutcome? outcome = default) : MFTLib.Index.IndexScanProgress
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateIndexScanProgress(MFTLib.Index.RootKey root, MFTLib.Index.IndexScanPhase phase, uint writtenRowCount, uint? expectedRowCount = default, string? currentDirectory = default, MFTLib.Index.IndexScanOutcome? outcome = default) : MFTLib.Index.IndexScanProgress
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateJournalCatchUpLostException(bool recoveryStopped, string message) : MFTLib.Index.JournalCatchUpLostException
-MFTLibTestExtensions.SyntheticNotifications :: method public static CreateJournalCheckpointLoss(MFTLib.Index.VolumeKey drive, MFTLib.Index.JournalCheckpointLossCause cause, MFTLib.Index.JournalCheckpointLossDetection detectedDuring, MFTLib.UsnJournalSettings journalSettings) : MFTLib.Index.JournalCheckpointLoss
-MFTLibTestExtensions.SyntheticNotifications :: method public static CreateWatchFault(MFTLib.Index.WatchFaultKind kind, MFTLib.Index.VolumeKey drive, System.Exception exception) : MFTLib.Index.WatchFault
-MFTLibTestExtensions.SyntheticNotifications :: method public static CreateWatchStateChange(MFTLib.Index.VolumeKey drive, MFTLib.Index.DriveWatchStatus watch, MFTLib.Index.WatchFault? fault) : MFTLib.Index.WatchStateChange
-MFTLibTestExtensions.SyntheticNotifications :: method public static CreateWindowsVolume(MFTLib.Index.VolumeKey drive, string rootDirectory, System.IO.DriveType driveType) : MFTLib.Index.WindowsVolume
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateJournalCheckpointLoss(MFTLib.Index.VolumeKey volume, MFTLib.Index.JournalCheckpointLossCause cause, MFTLib.Index.JournalCheckpointLossDetection detectedDuring, MFTLib.UsnJournalSettings journalSettings) : MFTLib.Index.JournalCheckpointLoss
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateRootBlockStatus(MFTLib.Index.BlockOrigin blockOrigin, uint liveRowCount, bool capacityExhausted, System.DateTime scanTimestamp) : MFTLib.Index.RootBlockStatus
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateRootFailure(MFTLib.Index.RootFailureKind kind, string message) : MFTLib.Index.RootFailure
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateRootOperationResult(MFTLib.Index.RootKey root, MFTLib.Index.RootOperationOutcome outcome, System.Exception? failure) : MFTLib.Index.RootOperationResult
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateRootStatus(MFTLib.Index.RootKey root, MFTLib.Index.RootState state, MFTLib.Index.RootBlockStatus? block, MFTLib.Index.RootFailure? failure) : MFTLib.Index.RootStatus
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateWatchFault(MFTLib.Index.WatchFaultKind kind, MFTLib.Index.VolumeKey volume, System.Exception exception) : MFTLib.Index.WatchFault
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateWatchStateChange(MFTLib.Index.VolumeKey volume, MFTLib.Index.RootWatchStatus watch, MFTLib.Index.WatchFault? fault) : MFTLib.Index.WatchStateChange
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateWindowsVolume(MFTLib.Index.VolumeKey volume, string rootDirectory, System.IO.DriveType driveType) : MFTLib.Index.WindowsVolume
 MFTLibTestExtensions.SyntheticNotifications :: type public static class
 MFTLibTestExtensions.SyntheticRow :: constructor public (uint Row, string Name, uint ParentRow)
 MFTLibTestExtensions.SyntheticRow :: method public <Clone>$() : MFTLibTestExtensions.SyntheticRow

@@ -3,8 +3,8 @@ using MFTLib.Index;
 namespace MFTLib;
 
 /// <summary>
-///     Scans and watches drives through a broker. The process returned by the connect callback
-///     remains owned by the caller, which decides whether to share it across drives.
+///     Scans and watches volumes through a broker. The process returned by the connect callback
+///     remains owned by the caller, which decides whether to share it across volumes.
 /// </summary>
 sealed class BrokerMftBlockProducer
 {
@@ -27,8 +27,8 @@ sealed class BrokerMftBlockProducer
 
     /// <summary>
     ///     The index source over this broker connection, to assign to
-    ///     <see cref="FileIndexOptions.MftSource" />. Each drive scan runs on a broker obtained from
-    ///     the connect function, and each drive's watch runs on a pipe of its own.
+    ///     <see cref="FileIndexOptions.MftSource" />. Each volume scan runs on a broker obtained from
+    ///     the connect function, and each volume's watch runs on a pipe of its own.
     /// </summary>
     /// <returns>A source whose scans fill the block named by each request through the broker.</returns>
     internal MftIndexSource CreateIndexSource() => new(ProduceAsync, new BrokerIndexWatchSource(_connectAsync),
@@ -36,7 +36,7 @@ sealed class BrokerMftBlockProducer
 
     /// <summary>
     ///     Refuses a retained-name set that no scan request frame can carry, so the open fails before any
-    ///     cache directory exists rather than each drive's scan failing later.
+    ///     cache directory exists rather than each volume's scan failing later.
     /// </summary>
     /// <exception cref="ArgumentException">The set is too long for one request frame.</exception>
     static void ValidateRetainedFileNames(IReadOnlyCollection<string> retainedFileNames)
@@ -64,7 +64,7 @@ sealed class BrokerMftBlockProducer
             RetainedFileNames = request.RetainedFileNames
         };
         var process = await _connectAsync(cancellationToken).ConfigureAwait(false);
-        var result = await process.ScanDriveAsync(request.Drive, target, options, progress, cancellationToken)
+        var result = await process.ScanVolumeAsync(request.Volume, target, options, progress, cancellationToken)
             .ConfigureAwait(false);
         return MftBlockValidation.Finish(request, result.Block.Block, result.ArmedCursor,
             MftBlockScan.SaturateSkippedRecordCount(result.Block.SkippedRecordCount), result.CatchUpLoss);

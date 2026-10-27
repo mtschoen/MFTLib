@@ -199,7 +199,7 @@ public partial class BrokerProtocolTests
     [DataRow((int)BrokerFrameKind.OpenChannel)]
     [DataRow((int)BrokerFrameKind.QueryVolume)]
     [DataRow((int)BrokerFrameKind.GrowUsnJournal)]
-    public void ReadFrame_ControlDriveRejectsMalformedPayload(int kindValue)
+    public void ReadFrame_ControlVolumeRejectsMalformedPayload(int kindValue)
     {
         var kind = (BrokerFrameKind)kindValue;
         var suffix = kind switch
@@ -220,7 +220,7 @@ public partial class BrokerProtocolTests
             var frame = FrameWithPayload(kind, [1, 0, 0, 0, .. characterBytes]);
             Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(frame, out _));
         }
-        // A valid C character followed by path-shaped trailing bytes is not a drive request.
+        // A valid C character followed by path-shaped trailing bytes is not a volume request.
         var trailing = FrameWithPayload(kind, [1, 0, 0, 0, (byte)'C', 0, .. suffix, (byte)':', 0, (byte)'\\', 0]);
         Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(trailing, out _));
         // Old length-prefixed string payloads must not survive as an alternate grammar.

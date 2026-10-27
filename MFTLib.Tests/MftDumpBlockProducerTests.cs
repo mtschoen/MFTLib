@@ -32,7 +32,7 @@ public sealed class MftDumpBlockProducerTests : IDisposable
 
     MftBlockProduceRequest Request() => new()
     {
-        Drive = 'T',
+        Volume = 'T',
         VolumeSerial = 0,
         BlockPath = Path.Combine(TemporaryDirectoryPath, "block.mlix"),
         DeleteOnClose = true

@@ -14,7 +14,7 @@ namespace MFTLib.Tests.Index;
 ///     The unelevated volume-root handle both index journal reads share, and what they do
 ///     when the volume refuses the IOCTL. The handle is a real unelevated one on C:, because
 ///     opening it is the part worth exercising for real; only the IOCTL is swapped out,
-///     through <c>Kernel32.Hooks._deviceIoControl</c>, so a drive whose journal is healthy
+///     through <c>Kernel32.Hooks._deviceIoControl</c>, so a volume whose journal is healthy
 ///     can still stand in for one that is not.
 /// </summary>
 [TestClass]
@@ -81,8 +81,8 @@ public class UsnJournalVolumeInteropTests
         return data;
     }
 
-    static SyntheticJournalWindow? ReadLive(VolumeKey drive) =>
-        JournalCheckpointCheck.ReadLiveJournal(drive) is { } window
+    static SyntheticJournalWindow? ReadLive(VolumeKey volume) =>
+        JournalCheckpointCheck.ReadLiveJournal(volume) is { } window
             ? new SyntheticJournalWindow(window.JournalIdentifier, window.FirstUsn,
                 window.NextUsn, window.AllocationDelta, window.MaximumSize)
             : null;
@@ -140,7 +140,7 @@ public class UsnJournalVolumeInteropTests
         using var live = JournalIsolation.OverrideJournalWindow(ReadLive);
 
         Assert.IsNull(JournalCheckpointCheck.Check('C', checkpointJournalIdentifier: 0xABCD, checkpointUsn: 10,
-            JournalCheckpointLossDetection.DriveOpening));
+            JournalCheckpointLossDetection.RootOpening));
     }
 
     /// <summary>
@@ -178,11 +178,11 @@ public class UsnJournalVolumeInteropTests
     {
         using var live = JournalIsolation.OverrideJournalWindow(ReadLive);
         var loss = JournalCheckpointCheck.Check('C', checkpointJournalIdentifier: 0, checkpointUsn: 0,
-            JournalCheckpointLossDetection.DriveOpening);
+            JournalCheckpointLossDetection.RootOpening);
 
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.JournalRecreated, loss.Cause);
-        Assert.AreEqual('C', loss.Drive);
+        Assert.AreEqual('C', loss.Volume);
         Assert.IsGreaterThanOrEqualTo(loss.FirstUsn, loss.NextUsn, "the journal window should not run backwards");
         Assert.IsGreaterThan(0, loss.JournalSettings.AllocationDelta);
         Assert.IsGreaterThan(0, loss.JournalSettings.MaximumSize);
@@ -203,12 +203,12 @@ public class UsnJournalVolumeInteropTests
     {
         // C: really does have a journal, and really would answer, yet the check says nothing.
         Assert.IsNull(JournalCheckpointCheck.Check('C', checkpointJournalIdentifier: 0, checkpointUsn: 0,
-            JournalCheckpointLossDetection.DriveOpening));
+            JournalCheckpointLossDetection.RootOpening));
 
         // The real read is still reachable for a test that asks for it.
         using var live = JournalIsolation.OverrideJournalWindow(ReadLive);
         Assert.IsNotNull(JournalCheckpointCheck.Check('C', checkpointJournalIdentifier: 0, checkpointUsn: 0,
-            JournalCheckpointLossDetection.DriveOpening));
+            JournalCheckpointLossDetection.RootOpening));
     }
 
     /// <summary>
@@ -232,7 +232,7 @@ public class UsnJournalVolumeInteropTests
 
         JournalCheckpointLoss? Check() => JournalCheckpointCheck.Check(
             'C', checkpointJournalIdentifier: 0, checkpointUsn: 0,
-            JournalCheckpointLossDetection.DriveOpening);
+            JournalCheckpointLossDetection.RootOpening);
 
         Assert.IsNull(Check());
         Assert.AreEqual(0, openedVolumes, "guarded checks must not open a volume");

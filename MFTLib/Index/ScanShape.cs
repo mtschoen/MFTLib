@@ -16,13 +16,13 @@ namespace MFTLib.Index;
 /// </summary>
 static class ScanShape
 {
-    /// <summary>The shape a drive's block must carry under the given admitted options.</summary>
-    /// <param name="drive">The drive's configuration, which names its producer and root.</param>
+    /// <summary>The shape a root's block must carry under the given admitted options.</summary>
+    /// <param name="root">The root's configuration, which names its producer and root.</param>
     /// <param name="options">The admitted index options.</param>
     /// <returns>The expected scan shape.</returns>
-    public static ulong For(IndexedRoot drive, FileIndexOptions options) =>
-        drive.Producer == ProducerKind.Enumeration
-            ? ForEnumeration(options.RetainedFileNames, options.DirectoryWalk, drive.RootDirectory)
+    public static ulong For(IndexedRoot root, FileIndexOptions options) =>
+        root.Producer == ProducerKind.Enumeration
+            ? ForEnumeration(options.RetainedFileNames, options.DirectoryWalk, root.RootDirectory)
             : ForMft(options.RetainedFileNames, options.MftSource?.IncludeFreed ?? false);
 
     /// <summary>The shape of an MFT block: retention, then freed-record inclusion.</summary>
@@ -44,18 +44,18 @@ static class ScanShape
     /// </summary>
     /// <param name="retainedFileNames">The retention set; null retains every row.</param>
     /// <param name="walk">The admitted walk options.</param>
-    /// <param name="rootDirectory">The drive's root directory.</param>
+    /// <param name="rootDirectory">The root's directory.</param>
     /// <returns>The scan shape.</returns>
     public static ulong ForEnumeration(IReadOnlyCollection<string>? retainedFileNames, DirectoryWalkOptions walk,
         string rootDirectory)
     {
         var buffer = new ArrayBufferWriter<byte>();
         WriteUInt32(buffer, (uint)ProducerKind.Enumeration);
-        WriteRetention(buffer, retainedFileNames, FoldForDrive);
-        WriteStrings(buffer, walk.PrunedDirectoryNames.Select(FoldForDrive));
+        WriteRetention(buffer, retainedFileNames, FoldForVolume);
+        WriteStrings(buffer, walk.PrunedDirectoryNames.Select(FoldForVolume));
         WriteUInt32(buffer, (uint)walk.PrunedDirectoryAttributes);
         WriteFlag(buffer, walk.PruneDotDirectories);
-        WriteStrings(buffer, walk.PathsWithin(rootDirectory).Select(FoldForDrive));
+        WriteStrings(buffer, walk.PathsWithin(rootDirectory).Select(FoldForVolume));
         WritePatterns(buffer, walk.PrunedDirectoryNamePatterns);
         return Digest(buffer);
     }
@@ -73,7 +73,7 @@ static class ScanShape
 
     static string FoldForMft(string value) => value.ToUpperInvariant();
 
-    static string FoldForDrive(string value) => OperatingSystem.IsWindows() ? value.ToUpperInvariant() : value;
+    static string FoldForVolume(string value) => OperatingSystem.IsWindows() ? value.ToUpperInvariant() : value;
 
     static void WriteStrings(ArrayBufferWriter<byte> buffer, IEnumerable<string> values)
     {

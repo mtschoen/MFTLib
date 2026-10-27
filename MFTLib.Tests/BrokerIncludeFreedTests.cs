@@ -22,7 +22,7 @@ public class BrokerIncludeFreedTests : BrokerBlockTestBase
         {
             QueryCursor = _ => ArmedCursor,
             QueryVolumeInformation = _ => VolumeInformation,
-            ScanDrive = (_, _, _, options, _, _) =>
+            ScanVolume = (_, _, _, options, _, _) =>
             {
                 seen.Add(options.IncludeFreed);
                 return Batches(options);
@@ -48,7 +48,7 @@ public class BrokerIncludeFreedTests : BrokerBlockTestBase
         {
             QueryCursor = _ => ArmedCursor,
             QueryVolumeInformation = _ => VolumeInformation,
-            ScanDrive = (_, _, _, options, _, _) =>
+            ScanVolume = (_, _, _, options, _, _) =>
             {
                 seen.Add(options.IncludeFreed);
                 return Batches(options);
@@ -69,7 +69,7 @@ public class BrokerIncludeFreedTests : BrokerBlockTestBase
         {
             QueryCursor = _ => ArmedCursor,
             QueryVolumeInformation = _ => VolumeInformation,
-            ScanDrive = (_, _, _, _, _, _) =>
+            ScanVolume = (_, _, _, _, _, _) =>
                 Batches(new MftScanOptions { IncludeFreed = true })
         }));
 

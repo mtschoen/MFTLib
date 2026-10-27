@@ -11,16 +11,16 @@ public partial class JournalBrokerHostChannelTests
     static readonly UsnJournalCursor Tip = new(7, 300);
 
     [TestMethod]
-    public async Task WatchChannel_StreamsBatchesAndCaughtUp_NoDriveFields()
+    public async Task WatchChannel_StreamsBatchesAndCaughtUp_NoVolumeFields()
     {
         var since = new UsnJournalCursor(7, 100);
-        VolumeKey? watchedDrive = null;
+        VolumeKey? watchedVolume = null;
         UsnJournalCursor? watchedSince = null;
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryCursor = _ => Tip,
-            WatchDrive = Watch,
+            WatchVolume = Watch,
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
         });
         await using var harness = new HostChannelHarness(host);
@@ -28,21 +28,21 @@ public partial class JournalBrokerHostChannelTests
         var pipe = await harness.OpenWatchChannelAsync('C', since);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.AreEqual(new VolumeKey('C'), watchedDrive);
+        Assert.AreEqual(new VolumeKey('C'), watchedVolume);
         Assert.AreEqual(since, watchedSince);
         Assert.AreSequenceEqual(
             [BrokerFrameKind.JournalBatch, BrokerFrameKind.JournalBatch, BrokerFrameKind.CaughtUp], [.. frames.Select(frame => frame.Kind)]);
         Assert.AreEqual(200L, frames[0].Cursor.NextUsn);
         Assert.AreEqual("a.txt", frames[0].Entries.Single().FileName);
         Assert.AreEqual(Tip, frames[1].Cursor);
-        Assert.IsTrue(frames.All(frame => frame.Drive == null && frame.RequestId == 0));
+        Assert.IsTrue(frames.All(frame => frame.Volume == null && frame.RequestId == 0));
         return;
 
-        async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> Watch(VolumeKey drive,
+        async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> Watch(VolumeKey volume,
             UsnJournalCursor from, ISourceOperationReporter operation,
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
-            watchedDrive = drive;
+            watchedVolume = volume;
             watchedSince = from;
             await Task.Yield();
             operation.Processing("journal batch");
@@ -56,9 +56,9 @@ public partial class JournalBrokerHostChannelTests
     {
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryCursor = _ => Tip,
-            WatchDrive = FailingWatch,
+            WatchVolume = FailingWatch,
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
         });
         await using var harness = new HostChannelHarness(host);
@@ -71,7 +71,7 @@ public partial class JournalBrokerHostChannelTests
         return;
 
         static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> FailingWatch(
-            VolumeKey drive, UsnJournalCursor since, ISourceOperationReporter operation,
+            VolumeKey volume, UsnJournalCursor since, ISourceOperationReporter operation,
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             await Task.Yield();
@@ -94,9 +94,9 @@ public partial class JournalBrokerHostChannelTests
         };
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryCursor = _ => Tip,
-            WatchDrive = (drive, _, _, token) => sources[drive].RunAsync(token),
+            WatchVolume = (volume, _, _, token) => sources[volume].RunAsync(token),
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
         });
         await using var harness = new HostChannelHarness(host);
@@ -125,10 +125,10 @@ public partial class JournalBrokerHostChannelTests
         var cooperative = new ScriptedWatch();
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryCursor = _ => Tip,
             TimeProvider = clock,
-            WatchDrive = (drive, _, _, token) => (drive.Letter == 'C' ? stubborn : cooperative).RunAsync(token),
+            WatchVolume = (volume, _, _, token) => (volume.Letter == 'C' ? stubborn : cooperative).RunAsync(token),
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
         });
         var harness = new HostChannelHarness(host);
@@ -163,11 +163,11 @@ public partial class JournalBrokerHostChannelTests
         var cooperative = new ScriptedWatch();
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryCursor = _ => Tip,
             TimeProvider = clock,
             QueryVolumeInformation = _ => Volume,
-            WatchDrive = (drive, _, _, token) => (drive.Letter == 'C' ? stubborn : cooperative).RunAsync(token)
+            WatchVolume = (volume, _, _, token) => (volume.Letter == 'C' ? stubborn : cooperative).RunAsync(token)
         });
         var harness = new HostChannelHarness(host, breakableControl: true);
         var hostControl = harness.BreakableControl!;

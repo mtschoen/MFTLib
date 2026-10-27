@@ -80,7 +80,7 @@ public partial class BrokerProcessTests
 
         var wrongReply = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
             answered.WaitAsync(HangGuard, TestContext.CancellationToken));
-        Assert.IsNull(wrongReply.Drive);
+        Assert.IsNull(wrongReply.Volume);
         Assert.Contains("UsnJournalSettings instead of VolumeInfo", wrongReply.Message);
         Assert.AreEqual(wrongReply.Message, await ended.WaitAsync(HangGuard, TestContext.CancellationToken),
             "The process ends with the mismatch as its reason.");
@@ -106,7 +106,7 @@ public partial class BrokerProcessTests
         await broker.CloseControlAsync();
 
         var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => open.WaitAsync(HangGuard, TestContext.CancellationToken));
-        Assert.AreEqual('C', lost.Drive);
+        Assert.AreEqual('C', lost.Volume);
         Assert.Contains("the broker process ended", lost.Message);
     }
 }

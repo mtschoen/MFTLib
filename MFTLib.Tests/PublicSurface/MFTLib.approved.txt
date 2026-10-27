@@ -8,7 +8,7 @@ MFTLib.BrokerSession :: event public Connected : System.Action?
 MFTLib.BrokerSession :: event public Connecting : System.Action?
 MFTLib.BrokerSession :: method public CreateIndexSource(MFTLib.MftScanOptions? scanOptions = default) : MFTLib.Index.MftIndexSource
 MFTLib.BrokerSession :: method public DisposeAsync() : System.Threading.Tasks.ValueTask
-MFTLib.BrokerSession :: method public GrowUsnJournalAsync(MFTLib.Index.VolumeKey drive, MFTLib.UsnJournalSettings target, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.UsnJournalSettings>
+MFTLib.BrokerSession :: method public GrowUsnJournalAsync(MFTLib.Index.VolumeKey volume, MFTLib.UsnJournalSettings target, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.UsnJournalSettings>
 MFTLib.BrokerSession :: property public Ended { get; } : System.Threading.Tasks.Task<string>
 MFTLib.BrokerSession :: type public sealed class : System.IAsyncDisposable
 MFTLib.ElevatedEntryPoint :: method public static RunBrokerIfRequested(string[] arguments) : bool
@@ -21,7 +21,7 @@ MFTLib.IElevationProvider :: method public abstract IsElevated() : bool
 MFTLib.IElevationProvider :: method public abstract TryRunElevated(System.Collections.Generic.IReadOnlyList<string> arguments, System.TimeSpan timeout) : bool
 MFTLib.IElevationProvider :: type public interface
 MFTLib.MftIndexSources :: method public static FromLocalVolumes(MFTLib.MftScanOptions? scanOptions = default) : MFTLib.Index.MftIndexSource
-MFTLib.MftIndexSources :: method public static FromMftDumpFile(string filePath, MFTLib.Index.VolumeKey drive) : MFTLib.Index.MftIndexSource
+MFTLib.MftIndexSources :: method public static FromMftDumpFile(string filePath, MFTLib.Index.VolumeKey volume) : MFTLib.Index.MftIndexSource
 MFTLib.MftIndexSources :: type public static class
 MFTLib.MftScanOptions :: constructor public ()
 MFTLib.MftScanOptions :: method public <Clone>$() : MFTLib.MftScanOptions

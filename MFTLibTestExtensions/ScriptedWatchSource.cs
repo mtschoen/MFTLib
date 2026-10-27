@@ -4,16 +4,16 @@ namespace MFTLibTestExtensions;
 
 /// <summary>
 ///     A scripted stand-in for the live watch an index runs beside its scan: every start the index
-///     requests is recorded and answered with a fresh <see cref="ScriptedDriveWatch" /> the test
+///     requests is recorded and answered with a fresh <see cref="ScriptedVolumeWatch" /> the test
 ///     then drives. A start fails when the <see cref="StartFailure" /> callback returns an exception.
 /// </summary>
 public sealed class ScriptedWatchSource
 {
     readonly Lock _stateLock = new();
     readonly List<IndexWatchTarget> _targets = [];
-    readonly List<ScriptedDriveWatch> _watches = [];
-    readonly Dictionary<VolumeKey, HeldStart> _holdsByDrive = [];
-    readonly Dictionary<VolumeKey, Exception> _failuresByDrive = [];
+    readonly List<ScriptedVolumeWatch> _watches = [];
+    readonly Dictionary<VolumeKey, HeldStart> _holdsByVolume = [];
+    readonly Dictionary<VolumeKey, Exception> _failuresByVolume = [];
     readonly Dictionary<VolumeKey, List<StartWaiter>> _startWaiters = [];
     ScriptedWatchSourceAdapter? _indexSource;
     HeldStart? _nextHold;
@@ -36,13 +36,13 @@ public sealed class ScriptedWatchSource
             lock (_stateLock)
             {
                 return [.. _targets.Select(target =>
-                    new ScriptedWatchStart(target.Drive, new SyntheticJournalCursor(target.JournalIdentifier, target.NextUsn)))];
+                    new ScriptedWatchStart(target.Volume, new SyntheticJournalCursor(target.JournalIdentifier, target.NextUsn)))];
             }
         }
     }
 
     /// <summary>Every watch handed to the index, in order.</summary>
-    public IReadOnlyList<ScriptedDriveWatch> Watches
+    public IReadOnlyList<ScriptedVolumeWatch> Watches
     {
         get
         {
@@ -65,43 +65,43 @@ public sealed class ScriptedWatchSource
         }
     }
 
-    /// <summary>The most recent watch started for the drive, matched without regard to letter case.</summary>
-    /// <param name="drive">The drive to look up.</param>
-    /// <returns>The most recent watch for that drive.</returns>
-    /// <exception cref="InvalidOperationException">No watch was handed out for the drive.</exception>
-    public ScriptedDriveWatch WatchFor(VolumeKey drive)
+    /// <summary>The most recent watch started for the volume, matched without regard to letter case.</summary>
+    /// <param name="volume">The volume to look up.</param>
+    /// <returns>The most recent watch for that volume.</returns>
+    /// <exception cref="InvalidOperationException">No watch was handed out for the volume.</exception>
+    public ScriptedVolumeWatch WatchFor(VolumeKey volume)
     {
-        drive.Validated();
-        return Watches.Last(watch => Same(watch.Drive, drive));
+        volume.Validated();
+        return Watches.Last(watch => Same(watch.Volume, volume));
     }
 
     /// <summary>
-    ///     Completes with the watch handed out for the drive as its <paramref name="startNumber" />th, counting
+    ///     Completes with the watch handed out for the volume as its <paramref name="startNumber" />th, counting
     ///     from one in the order the watches were handed out. A watch handed out before this call satisfies
-    ///     the wait at once, so a test may trigger the start and wait afterwards without racing it. A drive
+    ///     the wait at once, so a test may trigger the start and wait afterwards without racing it. A volume
     ///     the index restarts gets a new watch each time: the first start is number one, the restart number
     ///     two. A start that failed or is still held has handed out no watch and is not counted.
     /// </summary>
-    /// <param name="drive">The drive to wait for, matched without regard to letter case.</param>
-    /// <param name="startNumber">Which watch of the drive to wait for, one for the first.</param>
+    /// <param name="volume">The volume to wait for, matched without regard to letter case.</param>
+    /// <param name="startNumber">Which watch of the volume to wait for, one for the first.</param>
     /// <param name="cancellationToken">Ends the wait with <see cref="OperationCanceledException" />.</param>
     /// <returns>The watch the index received.</returns>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="startNumber" /> is less than one.</exception>
-    public Task<ScriptedDriveWatch> WaitForStartAsync(VolumeKey drive, int startNumber,
+    public Task<ScriptedVolumeWatch> WaitForStartAsync(VolumeKey volume, int startNumber,
         CancellationToken cancellationToken)
     {
-        drive.Validated();
+        volume.Validated();
         ArgumentOutOfRangeException.ThrowIfLessThan(startNumber, 1);
         var waiter = new StartWaiter(startNumber);
         lock (_stateLock)
         {
-            var handedOut = _watches.Where(watch => Same(watch.Drive, drive)).ToList();
+            var handedOut = _watches.Where(watch => Same(watch.Volume, volume)).ToList();
             if (handedOut.Count >= startNumber)
             {
                 return Task.FromResult(handedOut[startNumber - 1]);
             }
 
-            var key = drive;
+            var key = volume;
             if (!_startWaiters.TryGetValue(key, out var waiters))
             {
                 waiters = [];
@@ -124,20 +124,20 @@ public sealed class ScriptedWatchSource
         }
     }
 
-    /// <summary>Makes the next start of one drive throw <paramref name="failure" />, whichever call order the starts arrive in.</summary>
-    /// <param name="drive">The drive whose next start fails.</param>
+    /// <summary>Makes the next start of one volume throw <paramref name="failure" />, whichever call order the starts arrive in.</summary>
+    /// <param name="volume">The volume whose next start fails.</param>
     /// <param name="failure">The exception the start throws.</param>
-    internal void FailNextStartFor(VolumeKey drive, Exception failure)
+    internal void FailNextStartFor(VolumeKey volume, Exception failure)
     {
         lock (_stateLock)
         {
-            _failuresByDrive[drive] = failure;
+            _failuresByVolume[volume] = failure;
         }
     }
 
-    /// <summary>The targets requested for one drive, in order.</summary>
-    internal IReadOnlyList<IndexWatchTarget> TargetsFor(VolumeKey drive) =>
-        Targets.Where(target => Same(target.Drive, drive)).ToArray();
+    /// <summary>The targets requested for one volume, in order.</summary>
+    internal IReadOnlyList<IndexWatchTarget> TargetsFor(VolumeKey volume) =>
+        Targets.Where(target => Same(target.Volume, volume)).ToArray();
 
     /// <summary>
     ///     Parks the next start on <paramref name="gate" /> until it is released. With
@@ -153,31 +153,31 @@ public sealed class ScriptedWatchSource
         }
     }
 
-    /// <summary>Parks the next start of one drive on <paramref name="gate" />, whichever call order the starts arrive in.</summary>
-    internal void HoldStartFor(VolumeKey drive, TestGate gate, bool observeToken = true)
+    /// <summary>Parks the next start of one volume on <paramref name="gate" />, whichever call order the starts arrive in.</summary>
+    internal void HoldStartFor(VolumeKey volume, TestGate gate, bool observeToken = true)
     {
         lock (_stateLock)
         {
-            _holdsByDrive[drive] = new HeldStart(gate, observeToken);
+            _holdsByVolume[volume] = new HeldStart(gate, observeToken);
         }
     }
 
     /// <summary>Records the start, applies any hold or failure scripted for it, and hands out the watch.</summary>
-    internal async Task<ScriptedDriveWatch> StartAsync(IndexWatchTarget target, CancellationToken cancellationToken)
+    internal async Task<ScriptedVolumeWatch> StartAsync(IndexWatchTarget target, CancellationToken cancellationToken)
     {
         HeldStart? hold;
         Exception? failure;
         lock (_stateLock)
         {
             _targets.Add(target);
-            var drive = target.Drive;
-            if (!_holdsByDrive.Remove(drive, out hold))
+            var volume = target.Volume;
+            if (!_holdsByVolume.Remove(volume, out hold))
             {
                 hold = _nextHold;
                 _nextHold = null;
             }
 
-            if (!_failuresByDrive.Remove(drive, out failure))
+            if (!_failuresByVolume.Remove(volume, out failure))
             {
                 failure = _nextFailure;
                 _nextFailure = null;
@@ -191,7 +191,7 @@ public sealed class ScriptedWatchSource
                 .WaitAsync(TestTimeouts.HangGuard, CancellationToken.None).ConfigureAwait(false);
         }
 
-        failure ??= StartFailure?.Invoke(target.Drive);
+        failure ??= StartFailure?.Invoke(target.Volume);
         if (failure is not null)
         {
             throw failure;
@@ -203,23 +203,23 @@ public sealed class ScriptedWatchSource
     /// <summary>The source as the index starts watches from it, through an adapter so no public type names the internal interface.</summary>
     internal IIndexWatchSource IndexSource => _indexSource ??= new ScriptedWatchSourceAdapter(this);
 
-    ScriptedDriveWatch HandOut(IndexWatchTarget target)
+    ScriptedVolumeWatch HandOut(IndexWatchTarget target)
     {
-        var watch = new ScriptedDriveWatch(target);
+        var watch = new ScriptedVolumeWatch(target);
         List<StartWaiter> satisfied = [];
         lock (_stateLock)
         {
-            var previous = _watches.LastOrDefault(existing => Same(existing.Drive, target.Drive));
+            var previous = _watches.LastOrDefault(existing => Same(existing.Volume, target.Volume));
             if (previous is { DisposeCount: 0 })
             {
                 throw new InvalidOperationException(
-                    $"A watch for drive {target.Drive} was started while the previous one was still running.");
+                    $"A watch for volume {target.Volume} was started while the previous one was still running.");
             }
 
             _watches.Add(watch);
-            if (_startWaiters.TryGetValue(target.Drive, out var waiters))
+            if (_startWaiters.TryGetValue(target.Volume, out var waiters))
             {
-                var startNumber = _watches.Count(existing => Same(existing.Drive, target.Drive));
+                var startNumber = _watches.Count(existing => Same(existing.Volume, target.Volume));
                 satisfied = [.. waiters.Where(waiter => waiter.StartNumber <= startNumber)];
                 waiters.RemoveAll(satisfied.Contains);
             }
@@ -246,7 +246,7 @@ public sealed class ScriptedWatchSource
     {
         public int StartNumber { get; } = startNumber;
 
-        public TaskCompletionSource<ScriptedDriveWatch> Completion { get; } =
+        public TaskCompletionSource<ScriptedVolumeWatch> Completion { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 }

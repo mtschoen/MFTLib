@@ -22,12 +22,12 @@ static class UsnJournalVolumeInterop
     internal const uint FsctlQueryUsnJournal = 0x000900F4;
 
     /// <summary>
-    ///     Opens a drive's root directory for journal queries. <paramref name="purpose" />
+    ///     Opens a volume's root directory for journal queries. <paramref name="purpose" />
     ///     names the query in the failure message, since the caller knows which one it is.
     /// </summary>
-    internal static SafeFileHandle OpenVolumeRoot(VolumeKey drive, string purpose)
+    internal static SafeFileHandle OpenVolumeRoot(VolumeKey volume, string purpose)
     {
-        var rootDirectory = drive + @":\";
+        var rootDirectory = volume + @":\";
         var handle = Kernel32.Hooks._createFile(rootDirectory, FileReadAttributes, ShareAll, IntPtr.Zero,
             OpenExisting, FileFlagBackupSemantics, IntPtr.Zero);
         if (handle.IsInvalid)

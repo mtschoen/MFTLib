@@ -35,30 +35,30 @@ static class IndexNavigation
     }
 
     /// <summary>
-    ///     Joins the normalized root and collected name chain using the drive kind's path
+    ///     Joins the normalized root and collected name chain using the root kind's path
     ///     rules. Host roots use host separators; dump roots use virtual separators.
     ///     Root normalization and lookup use the same policy so rendered paths round-trip.
-    ///     The drive key identifies the indexed drive and is not a host path.
+    ///     The root key identifies the indexed root and is not a host path.
     /// </summary>
     /// <exception cref="InvalidOperationException">
-    ///     The drive block has no configured root directory, so there is nothing to root the name
+    ///     The root block has no configured root directory, so there is nothing to root the name
     ///     chain in. Every production block sets one; a synthetic test block need not.
     /// </exception>
-    internal static string BuildPath(DriveBlock driveBlock, uint rowIndex)
+    internal static string BuildPath(RootBlock rootBlock, uint rowIndex)
     {
         // A detached row has no verified ancestor, so a root prefix would invent one.
-        if (rowIndex < driveBlock.Block.Header.RowCount && IsDetached(driveBlock.Block, rowIndex))
+        if (rowIndex < rootBlock.Block.Header.RowCount && IsDetached(rootBlock.Block, rowIndex))
         {
-            return new string(NamePool.ReadRowName(driveBlock.Block, rowIndex));
+            return new string(NamePool.ReadRowName(rootBlock.Block, rowIndex));
         }
 
-        if (driveBlock.RootDirectoryPath is not { } rootDirectoryPath)
+        if (rootBlock.RootDirectoryPath is not { } rootDirectoryPath)
         {
             throw new InvalidOperationException(
-                $"Drive block {driveBlock.Drive} has no configured root directory to build a path from.");
+                $"Root block {rootBlock.Root} has no configured root directory to build a path from.");
         }
 
-        var segments = CollectSegments(driveBlock.Block, rowIndex);
+        var segments = CollectSegments(rootBlock.Block, rowIndex);
         var components = new string[segments.Count + 1];
         components[0] = rootDirectoryPath;
         for (var index = 0; index < segments.Count; index++)
@@ -66,25 +66,25 @@ static class IndexNavigation
             components[index + 1] = segments[segments.Count - 1 - index];
         }
 
-        return driveBlock.Kind.JoinPath(components);
+        return rootBlock.Kind.JoinPath(components);
     }
 
     /// <summary>
     ///     Direct live children only. A tombstoned row is excluded here even though
     ///     <see cref="TryGetParentRow" /> and the path walk still pass through it.
     /// </summary>
-    internal static List<FileEntry> GetChildren(DriveBlock driveBlock, uint rowIndex,
+    internal static List<FileEntry> GetChildren(RootBlock rootBlock, uint rowIndex,
         CancellationToken cancellationToken = default)
     {
         var children = new List<FileEntry>();
-        var scanner = new RowScanner(driveBlock, cancellationToken);
+        var scanner = new RowScanner(rootBlock, cancellationToken);
         while (scanner.MoveNext())
         {
             ref readonly var row = ref scanner.Current;
             var candidate = scanner.CurrentRowIndex;
             if (row.IsInUse && !row.IsDeleted && row.ParentRow == rowIndex && candidate != rowIndex)
             {
-                children.Add(FileEntry.Create(driveBlock, candidate));
+                children.Add(FileEntry.Create(rootBlock, candidate));
             }
         }
 

@@ -4,11 +4,11 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.TestSupport;
 
-/// <summary>Reads the block header an open index holds for a drive, the way a consumer test does.</summary>
+/// <summary>Reads the block header an open index holds for a root, the way a consumer test does.</summary>
 static class IndexHeaderReads
 {
-    /// <summary>The header of the drive's current block; fails the test when the drive has none.</summary>
-    internal static SyntheticDriveHeader HeaderOf(this FileIndex index, char driveLetter = 'T') =>
+    /// <summary>The header of the root's current block; fails the test when the root has none.</summary>
+    internal static SyntheticRootHeader HeaderOf(this FileIndex index, char driveLetter = 'T') =>
         SyntheticIndexInspection.ReadHeader(index, new VolumeKey(driveLetter))
-        ?? throw new AssertFailedException($"Drive {driveLetter} has no block, so it has no header.");
+        ?? throw new AssertFailedException($"Root {driveLetter} has no block, so it has no header.");
 }

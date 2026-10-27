@@ -10,7 +10,7 @@ sealed partial class JournalBrokerHost
         return CreateDefault(null);
     }
 
-    /// <summary>The production host on a given clock, so a test can drive its timeouts.</summary>
+    /// <summary>The production host on a given clock, so a test can volume its timeouts.</summary>
     internal static JournalBrokerHost CreateDefault(TimeProvider? timeProvider)
     {
         return new JournalBrokerHost(LiveVolumeAccess.Instance, timeProvider: timeProvider);

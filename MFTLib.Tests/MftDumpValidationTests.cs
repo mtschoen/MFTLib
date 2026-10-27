@@ -9,7 +9,7 @@ namespace MFTLib.Tests;
 
 /// <summary>
 ///     What a dump import accepts and what it rejects, through the producer and through an index
-///     opened on the public factory. A rejected dump settles the drive as a producer failure with
+///     opened on the public factory. A rejected dump settles the volume as a producer failure with
 ///     the check's own message; an accepted one is a complete block with a zero journal cursor.
 /// </summary>
 [TestClass]
@@ -75,11 +75,11 @@ public sealed class MftDumpValidationTests : IDisposable
 
         await using var index = await FileIndex.OpenAsync(Options(path), CancellationToken.None);
 
-        var drive = index.Status;
-        Assert.AreEqual(DriveState.Failed, drive.State, description);
-        Assert.AreEqual(DriveFailureKind.ProducerFailed, drive.Failure?.Kind, description);
-        Assert.AreEqual(message, drive.Failure?.Message, description);
-        Assert.IsFalse(drive.Watch.IsSupported, description);
+        var root = index.Status;
+        Assert.AreEqual(RootState.Failed, root.State, description);
+        Assert.AreEqual(RootFailureKind.ProducerFailed, root.Failure?.Kind, description);
+        Assert.AreEqual(message, root.Failure?.Message, description);
+        Assert.IsFalse(root.Watch.IsSupported, description);
     }
 
     [TestMethod]
@@ -88,9 +88,9 @@ public sealed class MftDumpValidationTests : IDisposable
         await using var index = await FileIndex.OpenAsync(Options(Path.Combine(TemporaryDirectoryPath, "absent.mft")),
             CancellationToken.None);
 
-        var drive = index.Status;
-        Assert.AreEqual(DriveFailureKind.ProducerFailed, drive.Failure?.Kind);
-        Assert.StartsWith("Failed to open file. Error: ", drive.Failure?.Message);
+        var root = index.Status;
+        Assert.AreEqual(RootFailureKind.ProducerFailed, root.Failure?.Kind);
+        Assert.StartsWith("Failed to open file. Error: ", root.Failure?.Message);
     }
 
     [TestMethod]
@@ -102,14 +102,14 @@ public sealed class MftDumpValidationTests : IDisposable
 
         await using var index = await FileIndex.OpenAsync(Options(path), CancellationToken.None);
 
-        var drive = index.Status;
-        Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(BlockOrigin.ProducedByScan, drive.Block!.Origin);
-        Assert.AreEqual(0, drive.Block.SkippedRecordCount);
-        Assert.AreEqual(7u, drive.Block.LiveRowCount);
-        Assert.IsFalse(drive.Block.IsCapacityExhausted);
-        Assert.IsFalse(drive.Watch.IsSupported);
-        Assert.IsNull(drive.Failure);
+        var root = index.Status;
+        Assert.AreEqual(RootState.Ready, root.State);
+        Assert.AreEqual(BlockOrigin.ProducedByScan, root.Block!.Origin);
+        Assert.AreEqual(0, root.Block.SkippedRecordCount);
+        Assert.AreEqual(7u, root.Block.LiveRowCount);
+        Assert.IsFalse(root.Block.IsCapacityExhausted);
+        Assert.IsFalse(root.Watch.IsSupported);
+        Assert.IsNull(root.Failure);
 
         var notes = index.Find("dump:/D/documents/Notes.txt", TestContext.CancellationToken)!.Value;
         Assert.AreEqual(11L, notes.Size);
@@ -128,10 +128,10 @@ public sealed class MftDumpValidationTests : IDisposable
 
         await using var index = await FileIndex.OpenAsync(Options(path), CancellationToken.None);
 
-        var drive = index.Status;
-        Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(0, drive.Block!.SkippedRecordCount);
-        Assert.AreEqual(6u, drive.Block.LiveRowCount);
+        var root = index.Status;
+        Assert.AreEqual(RootState.Ready, root.State);
+        Assert.AreEqual(0, root.Block!.SkippedRecordCount);
+        Assert.AreEqual(6u, root.Block.LiveRowCount);
         Assert.IsNull(index.Find("dump:/D/documents/Deep/leaf.txt", TestContext.CancellationToken));
         Assert.IsNotNull(index.Find("dump:/D/documents/Deep", TestContext.CancellationToken));
     }
@@ -148,7 +148,7 @@ public sealed class MftDumpValidationTests : IDisposable
         await using var index = await FileIndex.OpenAsync(
             Options(path, MftIndexSources.FromMftDumpFile(path, 'c'), 'C'), CancellationToken.None);
 
-        Assert.AreEqual(DriveState.Ready, index.Status.State);
+        Assert.AreEqual(RootState.Ready, index.Status.State);
         Assert.AreEqual("dump:/C/documents/Notes.txt", index.Find("dump:/C/documents/Notes.txt", TestContext.CancellationToken)!.Value.Path);
     }
 
@@ -190,7 +190,7 @@ public sealed class MftDumpValidationTests : IDisposable
         Assert.AreEqual(16u, parsing[^1].ExpectedRowCount);
         Assert.AreEqual(7u, transferring[^1].WrittenRowCount);
         Assert.IsNull(transferring[^1].ExpectedRowCount);
-        Assert.IsTrue(samples.All(sample => sample.Drive == new VolumeKey('D') && sample.Outcome is null));
+        Assert.IsTrue(samples.All(sample => sample.Root == new VolumeKey('D') && sample.Outcome is null));
         Assert.IsLessThan(samples.IndexOf(transferring[0]), samples.IndexOf(parsing[^1]),
             "the parse total is reported before the first transfer sample");
     }
@@ -424,7 +424,7 @@ public sealed class MftDumpValidationTests : IDisposable
 
     MftBlockProduceRequest Request() => new()
     {
-        Drive = 'D',
+        Volume = 'D',
         VolumeSerial = 0,
         BlockPath = Path.Combine(TemporaryDirectoryPath, $"{Guid.NewGuid():N}.mlix"),
         DeleteOnClose = true

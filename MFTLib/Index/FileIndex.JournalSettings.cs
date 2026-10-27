@@ -6,41 +6,27 @@ namespace MFTLib.Index;
 public sealed partial class FileIndex
 {
     /// <summary>
-    ///     Reads current sizing without elevation. The library reports the size that would have retained
-    ///     a lost checkpoint in JournalCheckpointLoss; the consumer owns the decision to grow.
-    ///     Resizing is an explicit elevated broker operation.
+    ///     Reads the current sizing of the USN journal of this index's root volume without elevation. The
+    ///     library reports the size that would have retained a lost checkpoint in JournalCheckpointLoss; the
+    ///     consumer owns the decision to grow. Resizing is an explicit elevated broker operation.
     /// </summary>
-    /// <param name="drive">A configured drive key. The default key is invalid.</param>
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
-    /// <exception cref="ArgumentException"><paramref name="drive" /> is the default key or not part of this index.</exception>
-    /// <exception cref="InvalidOperationException">The drive's source has no live journal settings.</exception>
+    /// <exception cref="InvalidOperationException">The root's source has no live journal settings, or the root is a walked folder rather than a volume.</exception>
     /// <exception cref="PlatformNotSupportedException">The host is not Windows.</exception>
-    /// <exception cref="IOException">The drive's root directory could not be opened.</exception>
+    /// <exception cref="IOException">The volume's root directory could not be opened.</exception>
     /// <exception cref="System.ComponentModel.Win32Exception">Windows rejects the journal query, for example because the journal is not active.</exception>
     [SupportedOSPlatform("windows")]
     [ExcludeFromCodeCoverage(Justification = "Windows-only pass-through to ReadUsnJournalSettings; the target is covered.")]
-    public UsnJournalSettings QueryUsnJournalSettings(VolumeKey drive) => ReadUsnJournalSettings(drive);
+    public UsnJournalSettings QueryUsnJournalSettings() => ReadUsnJournalSettings();
 
     /// <summary>
-    ///     The logic behind <see cref="QueryUsnJournalSettings" />: validates the drive, refuses a source without
-    ///     live journal settings, and otherwise reads the volume, which throws
+    ///     The logic behind <see cref="QueryUsnJournalSettings" />: refuses a source without live journal
+    ///     settings, and otherwise reads the root's volume, which throws
     ///     <see cref="PlatformNotSupportedException" /> off Windows.
     /// </summary>
-    internal UsnJournalSettings ReadUsnJournalSettings(VolumeKey drive)
-    {
-        var validatedDrive = RequireConfiguredDrive(drive);
-        return GetDriveRuntime(validatedDrive).QueryUsnJournalSettings();
-    }
-
-    VolumeKey RequireConfiguredDrive(VolumeKey drive)
+    internal UsnJournalSettings ReadUsnJournalSettings()
     {
         ThrowIfDisposed();
-        var validatedDrive = drive.Validated();
-        if (_runtime.Drive != validatedDrive)
-        {
-            throw new ArgumentException($"Drive {validatedDrive} is not part of this index.", nameof(drive));
-        }
-
-        return validatedDrive;
+        return _runtime.QueryUsnJournalSettings();
     }
 }

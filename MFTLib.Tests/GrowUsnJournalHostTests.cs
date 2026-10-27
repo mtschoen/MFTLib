@@ -17,7 +17,7 @@ public class GrowUsnJournalHostTests
         await using var harness = new HostChannelHarness(BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => default,
-            ScanDrive = (_, _, _, _, _, _) => [],
+            ScanVolume = (_, _, _, _, _, _) => [],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
             ProcessorCount = null,
             GrowUsnJournal = (_, maximumSize, allocationDelta) =>
@@ -43,7 +43,7 @@ public class GrowUsnJournalHostTests
         await using var harness = new HostChannelHarness(BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => default,
-            ScanDrive = (_, _, _, _, _, _) => [],
+            ScanVolume = (_, _, _, _, _, _) => [],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
             ProcessorCount = null,
             GrowUsnJournal = (_, _, _) =>
@@ -64,7 +64,7 @@ public class GrowUsnJournalHostTests
         await using var harness = new HostChannelHarness(BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => default,
-            ScanDrive = (_, _, _, _, _, _) => [],
+            ScanVolume = (_, _, _, _, _, _) => [],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
             ProcessorCount = null
         }));

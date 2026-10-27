@@ -14,7 +14,7 @@ public class SearchQueryMatchModeTests
     static readonly DateTime Moment = new(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc);
 
     SyntheticBlockBuilder _builder = null!;
-    DriveBlock _driveBlock = null!;
+    RootBlock _rootBlock = null!;
 
     [TestInitialize]
     public void Initialize()
@@ -27,21 +27,21 @@ public class SearchQueryMatchModeTests
         }
 
         _builder.Complete(Moment);
-        _driveBlock = new DriveBlock(new VolumeKey('T'), _builder.OpenForReading(out _)!);
+        _rootBlock = new RootBlock(new VolumeKey('T'), _builder.OpenForReading(out _)!);
     }
 
     [TestCleanup]
     public async Task Cleanup()
     {
-        await _driveBlock.ReleaseNowAsync();
+        await _rootBlock.ReleaseNowAsync();
         _builder.Dispose();
     }
 
     string[] Names(string? pattern, NameMatchMode mode, bool caseSensitive = false)
     {
-        var results = SearchEngine.Search(_driveBlock, new SearchQuery(pattern, mode, caseSensitive),
+        var results = SearchEngine.Search(_rootBlock, new SearchQuery(pattern, mode, caseSensitive),
             TestContext.CancellationToken);
-        var streamed = SearchEngine.Enumerate(_driveBlock, new SearchQuery(pattern, mode, caseSensitive),
+        var streamed = SearchEngine.Enumerate(_rootBlock, new SearchQuery(pattern, mode, caseSensitive),
             TestContext.CancellationToken).ToList();
         Assert.AreSequenceEqual([.. results.Select(entry => entry.Name)], [.. streamed.Select(entry => entry.Name)], "Search and Enumerate must share one predicate.");
         return [.. results.Select(entry => entry.Name).OrderBy(name => name, StringComparer.Ordinal)];
@@ -111,7 +111,7 @@ public class SearchQueryMatchModeTests
         var query = new SearchQuery(null, (NameMatchMode)99);
 
         var searchFailure = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
-            () => SearchEngine.Search(_driveBlock, query, TestContext.CancellationToken));
+            () => SearchEngine.Search(_rootBlock, query, TestContext.CancellationToken));
 
         Assert.AreEqual("query", searchFailure.ParamName);
         Assert.StartsWith("Unknown name match mode.", searchFailure.Message);

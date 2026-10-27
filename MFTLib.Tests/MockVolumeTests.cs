@@ -145,7 +145,7 @@ public class MockVolumeTests
         Assert.IsNotNull(volume);
         Assert.AreEqual(@"\\.\C:", openedPath);
 
-        FileUtilities.Hooks._getVolumeHandle = _ => throw new AssertFailedException("Default drive reached volume I/O.");
+        FileUtilities.Hooks._getVolumeHandle = _ => throw new AssertFailedException("Default volume reached volume I/O.");
         Assert.ThrowsExactly<ArgumentException>(() => MftVolume.Open(default));
     }
 

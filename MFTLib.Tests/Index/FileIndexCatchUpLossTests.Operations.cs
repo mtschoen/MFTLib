@@ -7,7 +7,7 @@ namespace MFTLib.Tests.Index;
 
 /// <summary>
 ///     How a lost catch-up sits inside its scan operation: the operation raises the fault while it
-///     still holds the drive's lifecycle gate, a superseded lost block leaves no file behind, and a
+///     still holds the root's lifecycle gate, a superseded lost block leaves no file behind, and a
 ///     start queued behind the operation judges the block the operation left, not the one it
 ///     replaced.
 /// </summary>
@@ -44,7 +44,7 @@ public partial class FileIndexCatchUpLossTests
         var queued = await queuedRescan.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsFalse(queued.IsCompleted, "the queued rescan waits for the operation's lifecycle gate");
-        Assert.IsFalse(harness.Index.AreDriveGatesFreeForTest(new VolumeKey('T')));
+        Assert.IsFalse(harness.Index.AreRootGatesFreeForTest(new VolumeKey('T')));
         Assert.AreEqual(2, harness.ProductionCount('T') - producedBefore, "the queued rescan has not scanned");
 
         heldRetry.Release();
@@ -72,11 +72,11 @@ public partial class FileIndexCatchUpLossTests
     }
 
     [TestMethod]
-    public async Task StartDuringRescanOfUnresumableDrive_JudgesTheFreshBlock()
+    public async Task StartDuringRescanOfUnresumableRoot_JudgesTheFreshBlock()
     {
         using var harness = new WatchHarness('T');
         harness.ScriptScans('T', Lost('T'), Lost('T'), Lost('T'));
-        await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(() => harness.IndexFor('T').RescanAsync(Token));
+        await RootResultAssertions.FailureAsync<JournalCatchUpLostException>(() => harness.IndexFor('T').RescanAsync(Token));
         var heldScan = harness.HoldNextProduction('T');
         harness.SetNextProducedCursor('T', journalIdentifier: 21, nextUsn: 7700);
 
@@ -89,26 +89,26 @@ public partial class FileIndexCatchUpLossTests
         await rescan.WaitAsync(HangGuard, TestContext.CancellationToken);
         await start.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(new IndexWatchTarget('T', 21, 7700), harness.Source.TargetsFor('T').Single());
-        Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
+        Assert.AreEqual(WatchState.CatchingUp, harness.RootFor('T').Watch.State);
     }
 
     [TestMethod]
-    public async Task Rescan_ProducerFailureWithNoMessage_ReportsFailureNamingTheDriveAndKeepsThePreviousFailure()
+    public async Task Rescan_ProducerFailureWithNoMessage_ReportsFailureNamingTheRootAndKeepsThePreviousFailure()
     {
         using var harness = new WatchHarness('T');
         harness.FailNextProduction('T', new MessagelessException("the first scan failed", new IOException()));
-        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => harness.IndexFor('T').RescanAsync(Token));
-        Assert.AreEqual("the first scan failed", harness.DriveFor('T').Failure?.Message);
+        await RootResultAssertions.FailureAsync<InvalidOperationException>(() => harness.IndexFor('T').RescanAsync(Token));
+        Assert.AreEqual("the first scan failed", harness.RootFor('T').Failure?.Message);
 
         harness.FailNextProduction('T', new MessagelessException());
-        var messageless = await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => harness.IndexFor('T').RescanAsync(Token));
-        Assert.Contains("Drive T failed without a failure message", messageless.Message);
-        Assert.AreEqual("the first scan failed", harness.DriveFor('T').Failure?.Message);
-        Assert.AreEqual(DriveState.Ready, harness.DriveFor('T').State);
+        var messageless = await RootResultAssertions.FailureAsync<InvalidOperationException>(() => harness.IndexFor('T').RescanAsync(Token));
+        Assert.Contains("Root T failed without a failure message", messageless.Message);
+        Assert.AreEqual("the first scan failed", harness.RootFor('T').Failure?.Message);
+        Assert.AreEqual(RootState.Ready, harness.RootFor('T').State);
 
         harness.FailNextProduction('T', new MessagelessException("the third scan failed"));
-        await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => harness.IndexFor('T').RescanAsync(Token));
-        Assert.AreEqual("the third scan failed", harness.DriveFor('T').Failure?.Message);
+        await RootResultAssertions.FailureAsync<InvalidOperationException>(() => harness.IndexFor('T').RescanAsync(Token));
+        Assert.AreEqual("the third scan failed", harness.RootFor('T').Failure?.Message);
     }
 
     /// <summary>A producer failure whose <see cref="Message" /> can be null, which no framework exception produces.</summary>

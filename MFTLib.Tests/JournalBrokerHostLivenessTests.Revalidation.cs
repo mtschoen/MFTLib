@@ -63,8 +63,8 @@ public partial class JournalBrokerHostLivenessTests
         public static async Task<SweepScenario> StartAsync()
         {
             var scenario = new SweepScenario();
-            scenario._harness = new HostChannelHarness(scenario._liveness.Host(watchDrive: scenario.WatchAsync),
-                wrapDrivePipe: scenario.Wrap);
+            scenario._harness = new HostChannelHarness(scenario._liveness.Host(watchVolume: scenario.WatchAsync),
+                wrapVolumePipe: scenario.Wrap);
             await scenario._harness.OpenWatchChannelAsync('Z', BehindTip);
             await scenario._quietEntered.Entered.WaitAsync(HangGuard);
             scenario._wedgedPipe = await scenario._harness.OpenWatchChannelAsync('C', BehindTip);
@@ -98,9 +98,9 @@ public partial class JournalBrokerHostLivenessTests
         }
 
         IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> WatchAsync(
-            VolumeKey drive, UsnJournalCursor since, ISourceOperationReporter reporter, CancellationToken cancellationToken)
+            VolumeKey volume, UsnJournalCursor since, ISourceOperationReporter reporter, CancellationToken cancellationToken)
         {
-            if (drive == 'Z')
+            if (volume == 'Z')
             {
                 return QuietWatchAsync(_quietEntered, cancellationToken);
             }

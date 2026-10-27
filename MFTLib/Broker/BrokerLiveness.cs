@@ -23,7 +23,7 @@ internal static class BrokerLiveness
 
     /// <summary>
     ///     How long the client waits between incoming frames (data or heartbeat) on the control pipe
-    ///     or a drive channel before treating the stream as stalled.
+    ///     or a volume channel before treating the stream as stalled.
     /// </summary>
     public static readonly TimeSpan StallLimit = TimeSpan.FromSeconds(30);
 
@@ -68,7 +68,7 @@ internal static class BrokerLiveness
 
     /// <summary>
     ///     Default minimum interval between <c>ScanProgress</c> frames emitted by the host during a
-    ///     drive block scan.
+    ///     root block scan.
     /// </summary>
     public static readonly TimeSpan ProgressThrottleInterval = TimeSpan.FromMilliseconds(250);
 

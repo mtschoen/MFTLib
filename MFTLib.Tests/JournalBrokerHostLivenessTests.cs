@@ -28,7 +28,7 @@ public partial class JournalBrokerHostLivenessTests
         var liveness = new Liveness();
         var entered = new TestGate();
         await using var harness = new HostChannelHarness(liveness.Host(
-            watchDrive: (_, _, _, token) => QuietWatchAsync(entered, token)));
+            watchVolume: (_, _, _, token) => QuietWatchAsync(entered, token)));
         var pipe = await harness.OpenWatchChannelAsync('C', BehindTip);
         await entered.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
@@ -50,7 +50,7 @@ public partial class JournalBrokerHostLivenessTests
         var liveness = new Liveness();
         var entered = new TestGate();
         using var sectionWriter = new RecordingBlockSectionWriter();
-        await using var harness = new HostChannelHarness(liveness.Host(scanDrive: (_, _, reporting, _, _, token) =>
+        await using var harness = new HostChannelHarness(liveness.Host(scanVolume: (_, _, reporting, _, _, token) =>
         {
             reporting.Operation!.Processing("wedged step");
             entered.MarkEntered();
@@ -82,7 +82,7 @@ public partial class JournalBrokerHostLivenessTests
         var liveness = new Liveness();
         var steps = Enumerable.Range(0, 12).Select(_ => new TestGate()).ToArray();
         using var sectionWriter = new RecordingBlockSectionWriter();
-        await using var harness = new HostChannelHarness(liveness.Host(scanDrive: (_, _, reporting, _, _, _) =>
+        await using var harness = new HostChannelHarness(liveness.Host(scanVolume: (_, _, reporting, _, _, _) =>
         {
             foreach (var step in steps)
             {
@@ -116,9 +116,9 @@ public partial class JournalBrokerHostLivenessTests
         var liveness = new Liveness();
         var admitted = new TestGate();
         var queuedSourceEntered = new TestGate();
-        var host = liveness.Host(scanDrive: (drive, _, reporting, _, _, token) =>
+        var host = liveness.Host(scanVolume: (volume, _, reporting, _, _, token) =>
         {
-            if (drive == 'C')
+            if (volume == 'C')
             {
                 // Holds the only parse thread, waiting on its volume, which never stalls.
                 reporting.Operation!.WaitingOnVolume();
@@ -217,16 +217,16 @@ public partial class JournalBrokerHostLivenessTests
 
         public JournalBrokerHost Host(
             Func<VolumeKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
-            Func<VolumeKey, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchDrive = null,
-            MftRecordBatchSource? scanDrive = null, int processorCount = 4)
+            Func<VolumeKey, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchVolume = null,
+            MftRecordBatchSource? scanVolume = null, int processorCount = 4)
         {
             var host = new JournalBrokerHost(
                 new ScriptedVolumeAccess
                 {
                     CursorQuery = _ => Tip,
-                    RecordBatches = scanDrive ?? ((_, _, _, _, _, _) => []),
+                    RecordBatches = scanVolume ?? ((_, _, _, _, _, _) => []),
                     JournalRead = readJournal ?? ((_, since, _) => ([], since)),
-                    JournalWatch = watchDrive ?? ScriptedVolumeAccess.UnsupportedWatch
+                    JournalWatch = watchVolume ?? ScriptedVolumeAccess.UnsupportedWatch
                 },
                 processorCount: processorCount,
                 timeProvider: Clock)

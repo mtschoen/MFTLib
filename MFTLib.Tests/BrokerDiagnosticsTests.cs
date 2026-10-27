@@ -251,7 +251,7 @@ public sealed partial class BrokerDiagnosticsTests : IDisposable
                 .ToArray();
             Assert.AreSequenceEqual(["read", "write"], [.. traces.Select(trace => trace.Groups["direction"].Value)], SequenceOrder.InAnyOrder);
             var tag = traces[0].Groups["tag"].Value;
-            Assert.AreEqual(tag, traces[1].Groups["tag"].Value, $"Client and host tags differ for drive {drive}.");
+            Assert.AreEqual(tag, traces[1].Groups["tag"].Value, $"Client and host tags differ for volume {drive}.");
             Assert.IsTrue(seenTags.Add(tag), "Each channel must have its own identity, including repeated drives.");
             lines.Clear();
         }

@@ -16,8 +16,8 @@ public partial class JournalBrokerHostLivenessTests
         var held = new HeldWrites();
         var enteredX = new TestGate();
         var enteredY = new TestGate();
-        var host = liveness.Host(watchDrive: (drive, _, _, token) =>
-            QuietWatchAsync(drive == 'X' ? enteredX : enteredY, token));
+        var host = liveness.Host(watchVolume: (volume, _, _, token) =>
+            QuietWatchAsync(volume == 'X' ? enteredX : enteredY, token));
         await using var harness = HarnessHoldingWritesTo('X', host, held);
         var blocked = await harness.OpenWatchChannelAsync('X', BehindTip);
         var healthy = await harness.OpenWatchChannelAsync('Y', BehindTip);
@@ -147,7 +147,7 @@ public partial class JournalBrokerHostLivenessTests
             Assert.AreEqual(3L, ranges);
             var flushes = Enumerable.Range(0, checked((int)ranges)).Select(_ => new TestGate()).ToArray();
             await using var harness = new HostChannelHarness(
-                liveness.Host(scanDrive: (_, _, _, _, _, _) => [[new MftRecord(5, 5, new MftRecordFields(3), ".")]]),
+                liveness.Host(scanVolume: (_, _, _, _, _, _) => [[new MftRecord(5, 5, new MftRecordFields(3), ".")]]),
                 new GatedFlushWriter(flushes, liveness.Clock));
             try
             {
@@ -221,10 +221,10 @@ public partial class JournalBrokerHostLivenessTests
         }
     }
 
-    // Holds every write to the named drive's pipes; other drives' pipes pass through.
+    // Holds every write to the named volume's pipes; other volumes' pipes pass through.
     static HostChannelHarness HarnessHoldingWritesTo(char drive, JournalBrokerHost host, HeldWrites held)
     {
-        return new HostChannelHarness(host, wrapDrivePipe: (pipeName, hostEnd) =>
+        return new HostChannelHarness(host, wrapVolumePipe: (pipeName, hostEnd) =>
             pipeName.StartsWith(HostChannelHarness.PipePrefix(drive), StringComparison.Ordinal) ? held.Wrap(hostEnd) : hostEnd);
     }
 }

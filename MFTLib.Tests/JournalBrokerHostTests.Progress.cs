@@ -6,7 +6,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 // A scan channel's progress frames. The progress pump is private to the host, so each case
-// drives it through a scan and reads what reaches the drive pipe.
+// drives it through a scan and reads what reaches the volume pipe.
 public partial class JournalBrokerHostTests
 {
     [TestMethod]
@@ -63,7 +63,7 @@ public partial class JournalBrokerHostTests
 
         static JournalBrokerHost CreateProgressHost(TestGate first, TestGate second,
             TimeProvider timeProvider) =>
-            ScanHost(scanDrive: (_, _, reporting, _, _, _) =>
+            ScanHost(scanVolume: (_, _, reporting, _, _, _) =>
             {
                 reporting.Progress!.Report(new BlockWriteProgress(5, 0, 20, null, BlockScanPhase.Parsing));
                 first.WaitForRelease();
@@ -79,7 +79,7 @@ public partial class JournalBrokerHostTests
     public async Task ProgressPump_ThrottledLastReportIsFlushedOnCompletion()
     {
         var afterFirstReport = new TestGate();
-        var host = ScanHost(scanDrive: (_, _, reporting, _, _, _) =>
+        var host = ScanHost(scanVolume: (_, _, reporting, _, _, _) =>
         {
             reporting.Progress!.Report(new BlockWriteProgress(5, 0, 20, null, BlockScanPhase.Parsing));
             afterFirstReport.MarkEntered();
@@ -115,7 +115,7 @@ public partial class JournalBrokerHostTests
     [TestMethod]
     public async Task ScanProgress_CancelledScan_EndsCleanlyWithoutErrorFrame()
     {
-        var host = ScanHost(scanDrive: (_, _, _, _, _, cancellationToken) => throw new OperationCanceledException(cancellationToken));
+        var host = ScanHost(scanVolume: (_, _, _, _, _, cancellationToken) => throw new OperationCanceledException(cancellationToken));
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
 
         var frames = await ScanFramesAsync(harness);
@@ -130,7 +130,7 @@ public partial class JournalBrokerHostTests
         var clock = new FakeTimeProvider();
         var parsingReported = new TestGate();
         using var blockWriter = new RecordingBlockSectionWriter();
-        var host = ScanHost(scanDrive: (_, _, reporting, _, _, _) => Batches(reporting),
+        var host = ScanHost(scanVolume: (_, _, reporting, _, _, _) => Batches(reporting),
             timeProvider: clock);
         await using var harness = new HostChannelHarness(host, blockWriter);
         List<BrokerFrame> frames;
@@ -180,7 +180,7 @@ public partial class JournalBrokerHostTests
         // Time is frozen. The bounded channel may coalesce intermediate reports;
         // validate every emitted frame and the mandatory final frame.
         using var blockWriter = new RecordingBlockSectionWriter();
-        var host = ScanHost(scanDrive: (_, _, reporting, _, _, _) =>
+        var host = ScanHost(scanVolume: (_, _, reporting, _, _, _) =>
         {
             for (var i = 1; i <= 5; i++)
             {
@@ -243,7 +243,7 @@ public partial class JournalBrokerHostTests
         // section writer, letting the write phase's per-batch byte progress flow through.
         var firstBatchWritten = new TestGate();
         using var blockWriter = new RecordingBlockSectionWriter();
-        var host = ScanHost(scanDrive: (_, _, _, _, _, _) => Batches(),
+        var host = ScanHost(scanVolume: (_, _, _, _, _, _) => Batches(),
             timeProvider: new FakeTimeProvider());
         await using var harness = new HostChannelHarness(host, blockWriter);
         List<BrokerFrame> frames;
@@ -285,7 +285,7 @@ public partial class JournalBrokerHostTests
     public async Task ScanProgress_ScanCancelledBeforeAnyProgressReported_EndsWithoutErrorFrame()
     {
         var scanStarted = new TestGate();
-        var host = ScanHost(scanDrive: (_, _, _, _, _, cancellationToken) =>
+        var host = ScanHost(scanVolume: (_, _, _, _, _, cancellationToken) =>
         {
             scanStarted.MarkEntered();
             // Blocks without ever reporting progress, so the progress pump stays parked in its
@@ -311,7 +311,7 @@ public partial class JournalBrokerHostTests
         // More records processed than the (deliberately understated) TotalRecords, so the final
         // frame has to bump both counts up to the processed maximum instead of trusting the
         // last reported total.
-        var host = ScanHost(scanDrive: (_, _, reporting, _, _, _) =>
+        var host = ScanHost(scanVolume: (_, _, reporting, _, _, _) =>
         {
             reporting.Progress!.Report(new BlockWriteProgress(10, 500, 5, 1000, BlockScanPhase.Parsing));
             return [[new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "r1.txt")]];
@@ -336,7 +336,7 @@ public partial class JournalBrokerHostTests
         using var blockWriter = new RecordingBlockSectionWriter();
         var host = ScanHost(
             queryCursor: _ => new UsnJournalCursor(7UL, 0L),
-            scanDrive: (_, _, _, _, _, _) =>
+            scanVolume: (_, _, _, _, _, _) =>
             [
                 [new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "r1.txt")],
                 [new MftRecord(2, 0, new MftRecordFields(1, FileAttributes.Archive, 200), "r2.txt")]
@@ -367,7 +367,7 @@ public partial class JournalBrokerHostTests
         using var blockWriter = new RecordingBlockSectionWriter();
         var host = ScanHost(
             queryCursor: _ => new UsnJournalCursor(7UL, 0L),
-            scanDrive: (_, _, reporting, _, _, _) =>
+            scanVolume: (_, _, reporting, _, _, _) =>
             {
                 var batches = new List<IReadOnlyList<MftRecord>>();
                 for (var i = 0; i < 20; i++)

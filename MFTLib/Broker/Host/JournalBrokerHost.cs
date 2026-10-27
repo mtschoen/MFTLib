@@ -3,8 +3,8 @@ using MFTLib.Index;
 namespace MFTLib;
 
 /// <summary>
-///     Elevated-side broker logic. One control pipe carries requests; each drive operation (one
-///     scan, or one watch) runs on its own pipe, so drives never share a stream, a write lock or
+///     Elevated-side broker logic. One control pipe carries requests; each root operation (one
+///     scan, or one watch) runs on its own pipe, so volumes never share a stream, a write lock or
 ///     a failure. A scan arms the journal cursor BEFORE scanning, so changes made during the scan
 ///     are replayed by catch-up. Volume access is injected so the core is testable without real
 ///     elevation; <see cref="CreateDefault()" /> wires the real MFTLib seams.
@@ -38,13 +38,13 @@ sealed partial class JournalBrokerHost
     /// <summary>The parse-thread budget every scan on this host is admitted to.</summary>
     internal ParseThreadAllocator ParseThreads { get; }
 
-    // One watch channel: stream this drive's journal from the requested cursor until the
+    // One watch channel: stream this volume's journal from the requested cursor until the
     // channel is cancelled (its pipe closed or the session ended) or the watch fails. The loop
     // publishes WaitingOnVolume before each read, which heartbeats however long the journal stays
     // quiet, and Processing while it ships a batch.
-    async Task StreamWatchAsync(DriveChannel channel, UsnJournalCursor since, CancellationToken cancellationToken)
+    async Task StreamWatchAsync(VolumeChannel channel, UsnJournalCursor since, CancellationToken cancellationToken)
     {
-        var drive = channel.Drive;
+        var volume = channel.Volume;
         var yieldedAny = false;
         try
         {
@@ -56,7 +56,7 @@ sealed partial class JournalBrokerHost
             // it would keep the loop alive, because even an empty frame gets logged.
             var logFilter = _createLogFilter();
             var caughtUpReported = arm.CaughtUpReported;
-            var batches = _volumeAccess.WatchDrive(drive, arm.Since, channel.Pipe, cancellationToken)
+            var batches = _volumeAccess.WatchVolume(volume, arm.Since, channel.Pipe, cancellationToken)
                 .GetAsyncEnumerator(cancellationToken);
             await using var batchesLifetime = batches.ConfigureAwait(false);
             if (caughtUpReported)
@@ -76,7 +76,7 @@ sealed partial class JournalBrokerHost
                 channel.Pipe.Processing(JournalBatchStep);
                 var (entries, cursor) = batches.Current;
                 yieldedAny = true;
-                var filtered = logFilter?.Filter(drive, entries) ?? entries;
+                var filtered = logFilter?.Filter(volume, entries) ?? entries;
                 if (filtered.Length > 0)
                 {
                     await channel.Pipe.WriteFrameAsync(
@@ -100,7 +100,7 @@ sealed partial class JournalBrokerHost
             // the current journal position, because a consumer that applied batches from the far
             // side of a lost replay gap would advance past USN records nothing will ever replay and
             // diverge from the volume in silence. A rescan is the only recovery.
-            await WriteChannelErrorAsync(channel, DescribeWatchFailure(drive, since, yieldedAny, exception),
+            await WriteChannelErrorAsync(channel, DescribeWatchFailure(volume, since, yieldedAny, exception),
                 cancellationToken).ConfigureAwait(false);
         }
     }
@@ -108,17 +108,17 @@ sealed partial class JournalBrokerHost
     // Resolves what bounds this watch's backlog and reports the leading CaughtUp marker when the
     // requested cursor already sits at the journal tip.
     (UsnJournalCursor Tip, UsnJournalCursor Since, bool CaughtUpReported) ArmWatch(
-        DriveChannel channel, UsnJournalCursor since)
+        VolumeChannel channel, UsnJournalCursor since)
     {
         // The journal tip at arm time is what bounds this watch's backlog: every record up to it
-        // must be delivered before the drive can be called caught up. One query per watch, and the
+        // must be delivered before the volume can be called caught up. One query per watch, and the
         // same query resolves a (0,0) sentinel into a watch-from-now cursor, so only the
         // pre-launch gap is lost, and there is no cached cursor that could have gone stale.
         channel.Pipe.WaitingOnVolume();
-        var tip = _volumeAccess.QueryCursor(channel.Drive);
+        var tip = _volumeAccess.QueryCursor(channel.Volume);
         var effectiveSince = since.JournalIdentifier == 0 ? tip : since;
 
-        // No backlog at all: the drive starts on live entries, so the marker leads. The journal identifier
+        // No backlog at all: the volume starts on live entries, so the marker leads. The journal identifier
         // guard runs on both comparisons: two journals' USN offsets are not comparable, and a
         // mismatched tip belongs to a dead journal generation.
         var caughtUpReported = effectiveSince.JournalIdentifier == tip.JournalIdentifier &&
@@ -130,18 +130,18 @@ sealed partial class JournalBrokerHost
     // A failed cached-cursor startup gets rescan wording only when the journal now proves that
     // position is lost. Unknown journal state preserves the original error, as do sentinel starts
     // and failures after batches have flowed.
-    static string DescribeWatchFailure(VolumeKey drive, UsnJournalCursor since, bool yieldedAny, Exception exception)
+    static string DescribeWatchFailure(VolumeKey volume, UsnJournalCursor since, bool yieldedAny, Exception exception)
     {
         if (yieldedAny || since.JournalIdentifier == 0 ||
-            JournalCheckpointCheck.Check(drive, since.JournalIdentifier, since.NextUsn,
+            JournalCheckpointCheck.Check(volume, since.JournalIdentifier, since.NextUsn,
                 JournalCheckpointLossDetection.LiveWatch) is null)
         {
             return exception.Message;
         }
 
         var cursorText = FormattableString.Invariant($"{since.JournalIdentifier}:{since.NextUsn}");
-        return $"Drive {drive} cannot resume its live watch from journal cursor {cursorText}: " +
+        return $"Volume {volume} cannot resume its live watch from journal cursor {cursorText}: " +
                $"{exception.Message}. The records between that cursor and the current journal position " +
-               "are gone, so this drive needs a rescan before it can be watched again.";
+               "are gone, so this volume needs a rescan before it can be watched again.";
     }
 }

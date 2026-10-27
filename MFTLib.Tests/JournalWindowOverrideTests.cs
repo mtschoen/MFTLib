@@ -12,16 +12,16 @@ public class JournalWindowOverrideTests
 
     static JournalCheckpointLoss? Check(char drive = 'T') =>
         JournalCheckpointCheck.Check(drive, 7, 1_000,
-            JournalCheckpointLossDetection.DriveOpening);
+            JournalCheckpointLossDetection.RootOpening);
 
     [TestMethod]
-    public void Override_MapsEveryFieldAndPassesDriveThrough()
+    public void Override_MapsEveryFieldAndPassesRootThrough()
     {
         char? observed = null;
-        using var scope = JournalIsolation.OverrideJournalWindow(drive =>
+        using var scope = JournalIsolation.OverrideJournalWindow(volume =>
         {
-            observed = drive.Letter;
-            return drive == 'T' ? Trimmed : null;
+            observed = volume.Letter;
+            return volume == 'T' ? Trimmed : null;
         });
         var loss = Check();
         Assert.AreEqual('T', observed);

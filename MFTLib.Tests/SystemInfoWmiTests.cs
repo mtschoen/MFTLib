@@ -49,14 +49,14 @@ public class SystemInfoWmiTests
     }
 
     [TestMethod]
-    public void DefaultQueryPartitionIds_WithValidDrive_ReturnsPartitions()
+    public void DefaultQueryPartitionIds_WithValidRoot_ReturnsPartitions()
     {
         var partitions = SystemInfo.DefaultQueryPartitionIds("C").ToList();
         Assert.IsNotEmpty(partitions);
     }
 
     [TestMethod]
-    public void DefaultQueryPartitionIds_WithInvalidDrive_ReturnsEmptyOrThrows()
+    public void DefaultQueryPartitionIds_WithInvalidRoot_ReturnsEmptyOrThrows()
     {
         try
         {

@@ -10,7 +10,7 @@ namespace MFTLib.Tests.Index;
 public partial class FileIndexResilienceTests
 {
     [TestMethod]
-    public async Task OpenAsync_CacheMode_DeletesAPreExistingRetiredSiblingForTheDrive()
+    public async Task OpenAsync_CacheMode_DeletesAPreExistingRetiredSiblingForTheRoot()
     {
         Directory.CreateDirectory(CacheDirectoryPath);
         var staleRetiredPath = Path.Combine(CacheDirectoryPath,
@@ -19,7 +19,7 @@ public partial class FileIndexResilienceTests
 
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
 
-        Assert.AreEqual(DriveState.Ready, index.Status.State);
+        Assert.AreEqual(RootState.Ready, index.Status.State);
         Assert.IsFalse(File.Exists(staleRetiredPath));
     }
 
@@ -41,7 +41,7 @@ public partial class FileIndexResilienceTests
 
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
 
-        Assert.AreEqual(DriveState.Ready, index.Status.State);
+        Assert.AreEqual(RootState.Ready, index.Status.State);
     }
 
     [TestMethod]
@@ -60,7 +60,7 @@ public partial class FileIndexResilienceTests
             // Either way the open itself must not fail.
             await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
 
-            Assert.AreEqual(DriveState.Ready, index.Status.State);
+            Assert.AreEqual(RootState.Ready, index.Status.State);
         }
         finally
         {
@@ -73,7 +73,7 @@ public partial class FileIndexResilienceTests
 
     /// <summary>
     ///     A cache directory that cannot be listed while the sweep runs neither fails the open nor
-    ///     stops the drive settling; the stale sibling it could not see is simply left for a later
+    ///     stops the root settling; the stale sibling it could not see is simply left for a later
     ///     open to sweep.
     /// </summary>
     [TestMethod]
@@ -101,7 +101,7 @@ public partial class FileIndexResilienceTests
         try
         {
             Assert.AreSequenceEqual([CacheDirectory.BlockFileName(new VolumeKey('T'), UniqueVolumeSerial) + ".retired-*"], listings);
-            Assert.AreEqual(DriveState.Ready, index.Status.State);
+            Assert.AreEqual(RootState.Ready, index.Status.State);
             Assert.IsTrue(File.Exists(staleRetiredPath), "the sweep that could not list deleted nothing");
         }
         finally

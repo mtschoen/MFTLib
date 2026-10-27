@@ -47,7 +47,7 @@ public sealed class FileIndexEnumerationGrowthTests : IndexTreeTestBase
             Assert.Contains(line => line.Contains("capacity exhausted", StringComparison.OrdinalIgnoreCase), diagnostics);
             Assert.IsTrue(observation.Visits.Values.All(visits => visits == 1),
                 "Growing the block must not read any directory a second time.");
-            Assert.AreEqual(DriveState.Ready, index.Status.State);
+            Assert.AreEqual(RootState.Ready, index.Status.State);
             Assert.IsFalse(index.Status.Block!.IsCapacityExhausted);
             Assert.AreEqual((uint)FileCount + 3, index.Status.Block!.LiveRowCount);
             var expectedFiles = Directory.GetFiles(Path.Combine(TreeRoot, "crowded1"))

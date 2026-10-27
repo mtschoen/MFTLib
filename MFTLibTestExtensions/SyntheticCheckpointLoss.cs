@@ -11,7 +11,7 @@ public static class SyntheticCheckpointLoss
 {
     /// <summary>Copies a report with exact raw journal positions and every public value unchanged.</summary>
     /// <param name="report">The report to copy.</param>
-    /// <param name="checkpointUsn">Where the drive's block left off.</param>
+    /// <param name="checkpointUsn">Where the root's block left off.</param>
     /// <param name="firstUsn">The oldest USN the journal still retained.</param>
     /// <param name="nextUsn">The USN the journal's next record would be written at.</param>
     /// <returns>The copy; the derived sizes, the cause and the detection are not recomputed.</returns>

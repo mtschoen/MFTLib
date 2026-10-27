@@ -27,22 +27,22 @@ readonly record struct NtfsVolumeInformation(
     public long MftRecordCount => BytesPerFileRecordSegment == 0 ? 0 : MftValidDataLength / BytesPerFileRecordSegment;
 
     /// <summary>
-    ///     Queries live NTFS volume data for <paramref name="drive" /> via
+    ///     Queries live NTFS volume data for <paramref name="volume" /> via
     ///     <c>FSCTL_GET_NTFS_VOLUME_DATA</c>. Opening the volume handle requires
     ///     <c>GENERIC_READ</c>, which in turn requires administrator elevation on a live
     ///     volume; throws <see cref="Win32Exception" /> on failure, including
     ///     access-denied when not elevated.
     /// </summary>
-    /// <exception cref="ArgumentException"><paramref name="drive" /> is invalid.</exception>
+    /// <exception cref="ArgumentException"><paramref name="volume" /> is invalid.</exception>
     [SupportedOSPlatform("windows")]
-    public static NtfsVolumeInformation Query(VolumeKey drive) => Query(drive, OperatingSystem.IsWindows());
+    public static NtfsVolumeInformation Query(VolumeKey volume) => Query(volume, OperatingSystem.IsWindows());
 
     /// <summary>
     ///     The real query behind <see cref="Query(VolumeKey)" />, given whether the host is Windows, so
     ///     the refusal off Windows is tested on every platform. Depends only on its arguments and
     ///     the platform APIs.
     /// </summary>
-    internal static NtfsVolumeInformation Query(VolumeKey drive, bool isWindows)
+    internal static NtfsVolumeInformation Query(VolumeKey volume, bool isWindows)
     {
         if (!isWindows || !OperatingSystem.IsWindows())
         {
@@ -50,7 +50,7 @@ readonly record struct NtfsVolumeInformation(
                 "NTFS volume information queries require Windows (FSCTL_GET_NTFS_VOLUME_DATA).");
         }
 
-        var normalizedPath = MFTUtilities.GetVolumePath(drive);
+        var normalizedPath = MFTUtilities.GetVolumePath(volume);
         using var handle = FileUtilities.Hooks._getVolumeHandle(normalizedPath);
 
         var bufferSize = Marshal.SizeOf<NtfsVolumeDataBufferNative>();

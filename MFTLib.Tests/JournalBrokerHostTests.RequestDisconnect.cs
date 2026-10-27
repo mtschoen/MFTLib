@@ -5,7 +5,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
-// A client that closes its end of a pipe while a request is being answered. On a drive pipe the
+// A client that closes its end of a pipe while a request is being answered. On a volume pipe the
 // write that finds the client gone ends that channel quietly and leaves the session serving; on
 // the control pipe it ends the session normally instead of throwing the broken pipe's
 // IOException out of ServeAsync and the elevated broker child (MFTLib#199).
@@ -16,7 +16,7 @@ public partial class JournalBrokerHostTests
     {
         var scanParked = new TestGate();
         var host = ScanHost(
-            scanDrive: (_, _, _, _, _, _) =>
+            scanVolume: (_, _, _, _, _, _) =>
             {
                 scanParked.MarkEntered();
                 scanParked.WaitForRelease();
@@ -83,7 +83,7 @@ public partial class JournalBrokerHostTests
     {
         var watchStopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var host = ScanHost(
-            watchDrive: (_, _, _, cancellationToken) => ParkedUntilStopped(watchStopped, cancellationToken),
+            watchVolume: (_, _, _, cancellationToken) => ParkedUntilStopped(watchStopped, cancellationToken),
             queryVolumeInfo: _ => ControlVolume);
         await using var harness = new HostChannelHarness(host, breakableControl: true);
 

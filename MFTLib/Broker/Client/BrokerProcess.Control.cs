@@ -18,42 +18,42 @@ sealed partial class BrokerProcess
 
 
     /// <summary>
-    ///     The drive's NTFS sizing, as the broker reads it: the fields a block's capacity is
+    ///     The volume's NTFS sizing, as the broker reads it: the fields a block's capacity is
     ///     planned from (<see cref="NtfsVolumeInformation.MftValidDataLength" /> and
     ///     <see cref="NtfsVolumeInformation.BytesPerFileRecordSegment" />).
     /// </summary>
-    /// <param name="drive">The drive to query.</param>
+    /// <param name="volume">The volume to query.</param>
     /// <param name="cancellationToken">
     ///     Stops waiting. Before the request starts writing nothing is sent; after, the reply is
     ///     dropped when it arrives.
     /// </param>
-    /// <exception cref="InvalidOperationException">The broker could not query the drive.</exception>
+    /// <exception cref="InvalidOperationException">The broker could not query the volume.</exception>
     /// <exception cref="BrokerChannelLostException">The process ended first.</exception>
     /// <exception cref="TimeoutException">The broker did not answer within the reply timeout.</exception>
-    internal async Task<NtfsVolumeInformation> QueryVolumeAsync(VolumeKey drive, CancellationToken cancellationToken)
+    internal async Task<NtfsVolumeInformation> QueryVolumeAsync(VolumeKey volume, CancellationToken cancellationToken)
     {
-        drive = drive.Validated();
-        var reply = await RequestAsync((writer, requestId) => BrokerProtocol.WriteQueryVolume(writer, BrokerFrame.QueryVolume(requestId, drive)),
+        volume = volume.Validated();
+        var reply = await RequestAsync((writer, requestId) => BrokerProtocol.WriteQueryVolume(writer, BrokerFrame.QueryVolume(requestId, volume)),
             BrokerFrameKind.VolumeInfo, cancellationToken).ConfigureAwait(false);
         return new NtfsVolumeInformation(reply.MftValidDataLength, reply.BytesPerFileRecordSegment);
     }
 
     /// <summary>
-    ///     Grows the drive's USN journal (never shrinks it) and returns the sizing the volume
+    ///     Grows the volume's USN journal (never shrinks it) and returns the sizing the volume
     ///     reports afterwards.
     /// </summary>
-    /// <param name="drive">The drive whose journal grows.</param>
+    /// <param name="volume">The volume whose journal grows.</param>
     /// <param name="target">The requested maximum size and allocation delta in bytes; the broker refuses a maximum at or below the current.</param>
     /// <param name="cancellationToken">Stops waiting, as for <see cref="QueryVolumeAsync" />.</param>
     /// <exception cref="InvalidOperationException">The broker refused or failed the change.</exception>
     /// <exception cref="BrokerChannelLostException">The process ended first.</exception>
     /// <exception cref="TimeoutException">The broker did not answer within the reply timeout.</exception>
-    internal async Task<UsnJournalSettings> GrowUsnJournalAsync(VolumeKey drive, UsnJournalSettings target,
+    internal async Task<UsnJournalSettings> GrowUsnJournalAsync(VolumeKey volume, UsnJournalSettings target,
         CancellationToken cancellationToken)
     {
-        drive = drive.Validated();
+        volume = volume.Validated();
         var reply = await RequestAsync((writer, requestId) =>
-                BrokerProtocol.WriteGrowUsnJournal(writer, BrokerFrame.GrowUsnJournal(requestId, drive, target.MaximumSize, target.AllocationDelta)),
+                BrokerProtocol.WriteGrowUsnJournal(writer, BrokerFrame.GrowUsnJournal(requestId, volume, target.MaximumSize, target.AllocationDelta)),
             BrokerFrameKind.UsnJournalSettings, cancellationToken).ConfigureAwait(false);
         return new UsnJournalSettings
         {
@@ -102,7 +102,7 @@ sealed partial class BrokerProcess
         }
 
         // A known reply of the wrong kind means the control session is out of step with the host,
-        // so the whole process ends, as a null-drive loss promises.
+        // so the whole process ends, as a null-volume loss promises.
         var reason = $"The broker answered request {requestId} with {frame.Kind} instead of {expectedReply}.";
         RequestEnd(reason);
         throw new BrokerChannelLostException(null, reason);

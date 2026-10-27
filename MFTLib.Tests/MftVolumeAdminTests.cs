@@ -22,7 +22,7 @@ public class MftVolumeAdminTests
     }
 
     [TestMethod]
-    public void Open_ValidDrive_Succeeds()
+    public void Open_ValidRoot_Succeeds()
     {
         RequireElevation();
         using var volume = MftVolume.Open('C');

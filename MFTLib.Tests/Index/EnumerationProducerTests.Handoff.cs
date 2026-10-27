@@ -38,9 +38,9 @@ public sealed partial class EnumerationProducerTests
         var handoffWaiting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var observation = new EnumerationReadObservation();
         EnumerationWalkLimit.Hooks._directoryEntered = observation.Enter;
-        EnumerationWalkLimit.Hooks._directoryExited = (drive, path) =>
+        EnumerationWalkLimit.Hooks._directoryExited = (root, path) =>
         {
-            observation.Exit(drive, path);
+            observation.Exit(root, path);
             if (path != _treeRoot && Interlocked.Increment(ref childReadsExited) == HandoffReaders)
             {
                 firstRoundExited.TrySetResult();
@@ -67,7 +67,7 @@ public sealed partial class EnumerationProducerTests
         var producer = new EnumerationProducer(new EnumerationProducerOptions
         {
             RootDirectory = _treeRoot,
-            Drive = new VolumeKey('T')
+            Root = new VolumeKey('T')
         })
         {
             HandoffWaiting = () => handoffWaiting.TrySetResult(),

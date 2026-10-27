@@ -158,7 +158,7 @@ public partial class BenchmarkRunner
         }
 
         var exitCode = 0;
-        foreach (var candidate in cached.OrderBy(candidate => candidate.File.Drive))
+        foreach (var candidate in cached.OrderBy(candidate => candidate.File.Root))
         {
             if (candidate.Availability != CachedBlockAvailability.Available || candidate.RootDirectory is null ||
                 candidate.CacheTag is not { } cacheTag || candidate.ProducerKind is not { } producer ||
@@ -188,23 +188,23 @@ public partial class BenchmarkRunner
                 CacheDirectory = directory,
                 CacheMode = CacheMode.ExistingOnly,
                 CacheTag = cacheTag,
-                Root = new IndexedRoot(candidate.File.Drive, candidate.RootDirectory, candidate.File.VolumeSerial,
+                Root = new IndexedRoot(candidate.File.Root, candidate.RootDirectory, candidate.File.VolumeSerial,
                     producer)
             }, CancellationToken.None))
             {
                 using var borrow = index.BorrowCurrentSnapshot();
-                var drive = borrow.DriveBlock;
-                if (drive is null)
+                var root = borrow.RootBlock;
+                if (root is null)
                 {
-                    log($"Error: Drive {candidate.File.Drive}: {index.Status.State}.");
+                    log($"Error: Root {candidate.File.Root}: {index.Status.State}.");
                     exitCode = 1;
                     continue;
                 }
 
-                PrintIndexMetrics(index, drive, iterations, lines.Add);
+                PrintIndexMetrics(index, root, iterations, lines.Add);
             }
 
-            var input = new IndexMemoryInput(candidate.File.Drive.ToString(), candidate.RootDirectory,
+            var input = new IndexMemoryInput(candidate.File.Root.ToString(), candidate.RootDirectory,
                 candidate.File.VolumeSerial, producer, cacheTag.PackedFourCc, cacheTag.Version, storedShape);
             await AppendIndexMemoryAsync(lines, directory, iterations, input, log).ConfigureAwait(false);
         }
@@ -240,11 +240,11 @@ public partial class BenchmarkRunner
         }
     }
 
-    void PrintIndexMetrics(FileIndex index, DriveBlock drive, int iterations, Action<string> log)
+    void PrintIndexMetrics(FileIndex index, RootBlock root, int iterations, Action<string> log)
     {
-        var header = drive.Block.Header;
-        var bytes = drive.Block.Length;
-        log($"Drive: {drive.Drive}");
+        var header = root.Block.Header;
+        var bytes = root.Block.Length;
+        log($"Root: {root.Root}");
         log($"  Rows: {header.RowCount}");
         log($"  Slot capacity: {header.SlotCapacity}");
         log($"  File bytes: {bytes}");

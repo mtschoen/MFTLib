@@ -51,24 +51,24 @@ static class EnumerationWalkTestSupport
     }
 
     internal static HashSet<(string Path, string ParentPath, string Name, uint Attributes, long Size, long ModifiedTicks, RowFlags Flags, ushort SequenceNumber)>
-        Inventory(DriveBlock drive)
+        Inventory(RootBlock root)
     {
         var result = new HashSet<(string Path, string ParentPath, string Name, uint Attributes, long Size, long ModifiedTicks, RowFlags Flags, ushort SequenceNumber)>();
-        var rowCount = drive.Block.Header.RowCount;
-        var rootPath = FileEntry.Create(drive, 0).Path;
+        var rowCount = root.Block.Header.RowCount;
+        var rootPath = FileEntry.Create(root, 0).Path;
 
         for (uint row = 0; row < rowCount; row++)
         {
-            var entry = FileEntry.Create(drive, row);
+            var entry = FileEntry.Create(root, row);
             var path = entry.Path;
-            var fileRow = drive.Block.Rows[(int)row];
-            var parentPath = row == 0 ? rootPath : FileEntry.Create(drive, fileRow.ParentRow).Path;
-            var name = new string(NamePool.ReadRowName(drive.Block, row));
+            var fileRow = root.Block.Rows[(int)row];
+            var parentPath = row == 0 ? rootPath : FileEntry.Create(root, fileRow.ParentRow).Path;
+            var name = new string(NamePool.ReadRowName(root.Block, row));
             var attributes = fileRow.Attributes;
             var size = fileRow.Size;
             var modifiedTicks = fileRow.ModifiedTicks;
             var flags = fileRow.Flags;
-            var sequenceNumber = drive.Block.SequenceNumbers[(int)row];
+            var sequenceNumber = root.Block.SequenceNumbers[(int)row];
 
             result.Add((path, parentPath, name, attributes, size, modifiedTicks, flags, sequenceNumber));
         }
@@ -155,7 +155,7 @@ sealed class EnumerationReadObservation
         }
     }
 
-    public void Enter(RootKey drive, string path, CancellationToken token)
+    public void Enter(RootKey root, string path, CancellationToken token)
     {
         var active = Interlocked.Increment(ref _active);
         while (true)
@@ -176,7 +176,7 @@ sealed class EnumerationReadObservation
         }
     }
 
-    public void Exit(RootKey drive, string path)
+    public void Exit(RootKey root, string path)
     {
         Interlocked.Decrement(ref _active);
     }

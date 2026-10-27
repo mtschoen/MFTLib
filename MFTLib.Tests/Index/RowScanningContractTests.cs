@@ -5,7 +5,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 /// <summary>
-///     One contract per behavior, run over all six row-scanning operations: results across a multi-drive
+///     One contract per behavior, run over all six row-scanning operations: results across a multi-root
 ///     index, call-time argument checks, cancellation, disposal, and the snapshot borrow each holds.
 /// </summary>
 [TestClass]
@@ -142,7 +142,7 @@ public sealed class RowScanningContractTests
         Func<uint, uint>? parentFactory = null) =>
         FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), AppContext.BaseDirectory, 1),
+            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), AppContext.BaseDirectory, 1),
             CacheMode = CacheMode.Disabled,
             MftSource = new MftIndexSource((request, _) => Task.FromResult(
                 new MftBlockProduceResult(
@@ -193,9 +193,9 @@ public sealed class RowScanningContractTests
         index.CurrentBlock is { } block ? block.ReleaseState.Hooks.OutstandingBorrowCount : 0;
 
     [TestMethod]
-    public async Task StreamingResults_MatchSearchAcrossAMultiDriveIndex()
+    public async Task StreamingResults_MatchSearchAcrossAMultiRootIndex()
     {
-        using var tree = new TwoDriveQueryFixture();
+        using var tree = new TwoRootQueryFixture();
         var set = await tree.OpenSetAsync();
         var documents = set.Find(Path.Combine(tree.FirstRoot, "Documents"), TestContext.CancellationToken)!.Value;
         var pictures = set.Find(Path.Combine(tree.SecondRoot, "Pictures"), TestContext.CancellationToken)!.Value;
@@ -224,7 +224,7 @@ public sealed class RowScanningContractTests
     [TestMethod]
     public async Task UndefinedMatchModeAndNullQuery_ThrowAtCallTime()
     {
-        using var tree = new TwoDriveQueryFixture();
+        using var tree = new TwoRootQueryFixture();
         await using var index = await tree.OpenAsync();
         Action<FileIndex, SearchQuery?>[] begins =
         [
@@ -249,7 +249,7 @@ public sealed class RowScanningContractTests
     [DynamicData(nameof(ApiCases))]
     public async Task CancelledToken_Throws_AndTakesNoBorrow(string api, QueryCall call, int expectedCount)
     {
-        using var tree = new TwoDriveQueryFixture();
+        using var tree = new TwoRootQueryFixture();
         await using var index = await tree.OpenAsync();
 
         Assert.AreEqual(typeof(OperationCanceledException),
@@ -261,7 +261,7 @@ public sealed class RowScanningContractTests
     [DynamicData(nameof(ApiCases))]
     public async Task DisposedIndex_Rejects(string api, QueryCall call, int expectedCount)
     {
-        using var tree = new TwoDriveQueryFixture();
+        using var tree = new TwoRootQueryFixture();
         var index = await tree.OpenAsync();
         var root = index.Root(TestContext.CancellationToken);
         var path = Path.Combine(tree.FirstRoot, "Documents", "readme.md");
@@ -276,7 +276,7 @@ public sealed class RowScanningContractTests
     [DynamicData(nameof(ApiCases))]
     public async Task CompletedOperation_ReturnsItsBorrow(string api, QueryCall call, int expectedCount)
     {
-        using var tree = new TwoDriveQueryFixture();
+        using var tree = new TwoRootQueryFixture();
         await using var index = await tree.OpenAsync();
 
         var path = Path.Combine(tree.FirstRoot, "Documents", "readme.md");
@@ -291,7 +291,7 @@ public sealed class RowScanningContractTests
     [DataRow(true, "GetEnumerator", "GetEnumerator")]
     public async Task StreamingExceptionBoundaries_AreDocumented(bool rows, string cancelledStep, string disposedStep)
     {
-        using var tree = new TwoDriveQueryFixture();
+        using var tree = new TwoRootQueryFixture();
         var index = await tree.OpenAsync();
 
         Assert.AreEqual((cancelledStep, typeof(OperationCanceledException)), Probe(index, rows, Cancelled));
@@ -316,7 +316,7 @@ public sealed class RowScanningContractTests
     [DataRow(true, true)]
     public async Task StreamingExitedPartway_ReturnsItsBorrow(bool rows, bool throwFromBody)
     {
-        using var tree = new TwoDriveQueryFixture();
+        using var tree = new TwoRootQueryFixture();
         await using var index = await tree.OpenAsync();
         var record = new BodyRecord();
         var failed = false;
@@ -353,7 +353,7 @@ public sealed class RowScanningContractTests
 
     // Rows 6-133 chain one directory per row below the root; row 4300 is a matching file under the last
     // of them, so its subtree check exceeds the path depth and throws InvalidDataException before the
-    // per-yield token check. Only the drive-scan checkpoint at row 4096 can end the scan cancelled.
+    // per-yield token check. Only the root-scan checkpoint at row 4096 can end the scan cancelled.
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]

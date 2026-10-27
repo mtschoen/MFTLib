@@ -58,7 +58,7 @@ public sealed class FileIndexDisposeCancelsQueryTests : IndexTreeTestBase
     }
 
     /// <summary>
-    ///     A handle's children listing is a whole-drive scan too, and it holds the same borrow.
+    ///     A handle's children listing is a whole-root scan too, and it holds the same borrow.
     ///     It carries no reference to the index, so disposal has no token to cancel it with and
     ///     waits it out instead: the listing answers, and only then does the block close.
     /// </summary>
@@ -74,7 +74,7 @@ public sealed class FileIndexDisposeCancelsQueryTests : IndexTreeTestBase
     /// <summary>
     ///     A streaming enumeration in flight when disposal begins holds the same borrow and
     ///     observes the same disposal-linked token as every other query on the index, so
-    ///     disposal cancels it rather than waiting out a whole-drive pass, and the block
+    ///     disposal cancels it rather than waiting out a whole-root pass, and the block
     ///     closes once the enumerator's borrow is returned.
     /// </summary>
     [TestMethod]
@@ -166,7 +166,7 @@ public sealed class FileIndexDisposeCancelsQueryTests : IndexTreeTestBase
         Func<FileIndex, FileEntry, CancellationToken, TResult> read,
         bool cancelWhileAdmitted = false)
     {
-        var index = await FileIndex.OpenAsync(SyntheticDriveOptions(), CancellationToken.None);
+        var index = await FileIndex.OpenAsync(SyntheticRootOptions(), CancellationToken.None);
         using var runnerCancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
         var token = runnerCancellation.Token;
         var released = new TaskCompletionSource();
@@ -237,7 +237,7 @@ public sealed class FileIndexDisposeCancelsQueryTests : IndexTreeTestBase
     Task<TResult> ReadAcrossDisposalAsync<TResult>(Func<FileIndex, FileEntry, TResult> read) =>
         ReadAcrossDisposalAsync((index, root, _) => read(index, root));
 
-    FileIndexOptions SyntheticDriveOptions() =>
+    FileIndexOptions SyntheticRootOptions() =>
         Fixture.Options(producer: ProducerKind.Mft) with
         {
             MftSource = new MftIndexSource((request, _) => Task.FromResult(

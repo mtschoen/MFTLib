@@ -10,7 +10,7 @@ public partial class JournalBrokerHostTests
     {
         var host = CreateWatchHost(
             queryCursor: _ => new UsnJournalCursor(7UL, 100L),
-            watchDrive: (_, _, _, _) => FiniteWatch([([WatchEntry()], new UsnJournalCursor(7UL, 110L))]));
+            watchVolume: (_, _, _, _) => FiniteWatch([([WatchEntry()], new UsnJournalCursor(7UL, 110L))]));
         await using var harness = new HostChannelHarness(host);
 
         var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
@@ -24,7 +24,7 @@ public partial class JournalBrokerHostTests
     {
         var host = CreateWatchHost(
             queryCursor: _ => new UsnJournalCursor(7UL, 150L),
-            watchDrive: (_, _, _, _) => FiniteWatch(
+            watchVolume: (_, _, _, _) => FiniteWatch(
             [
                 ([WatchEntry()], new UsnJournalCursor(7UL, 140L)),
                 ([WatchEntry()], new UsnJournalCursor(7UL, 160L))
@@ -45,7 +45,7 @@ public partial class JournalBrokerHostTests
     {
         var host = CreateWatchHost(
             queryCursor: _ => new UsnJournalCursor(7UL, 150L),
-            watchDrive: (_, _, _, _) => FiniteWatch([([WatchEntry()], new UsnJournalCursor(7UL, 140L))]));
+            watchVolume: (_, _, _, _) => FiniteWatch([([WatchEntry()], new UsnJournalCursor(7UL, 140L))]));
         await using var harness = new HostChannelHarness(host);
 
         var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
@@ -60,7 +60,7 @@ public partial class JournalBrokerHostTests
     {
         var host = CreateWatchHost(
             queryCursor: _ => new UsnJournalCursor(8UL, 50L),
-            watchDrive: (_, _, _, _) => FiniteWatch([]));
+            watchVolume: (_, _, _, _) => FiniteWatch([]));
         await using var harness = new HostChannelHarness(host);
 
         var pipe = await harness.OpenWatchChannelAsync('C', default);
@@ -79,7 +79,7 @@ public partial class JournalBrokerHostTests
                 queryCallCount++;
                 return new UsnJournalCursor(7UL, 150L);
             },
-            watchDrive: (_, _, _, _) => FiniteWatch([([WatchEntry()], new UsnJournalCursor(7UL, 140L))]));
+            watchVolume: (_, _, _, _) => FiniteWatch([([WatchEntry()], new UsnJournalCursor(7UL, 140L))]));
         await using var harness = new HostChannelHarness(host);
 
         var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
@@ -89,11 +89,11 @@ public partial class JournalBrokerHostTests
     }
 
     [TestMethod]
-    public async Task StartWatch_TipQueryFailure_EndsTheDrivesStreamWithAnError()
+    public async Task StartWatch_TipQueryFailure_EndsTheVolumesStreamWithAnError()
     {
         var host = CreateWatchHost(
             queryCursor: _ => throw new UnauthorizedAccessException("Access is denied"),
-            watchDrive: (_, _, _, _) => FiniteWatch([([WatchEntry()], new UsnJournalCursor(7UL, 110L))]));
+            watchVolume: (_, _, _, _) => FiniteWatch([([WatchEntry()], new UsnJournalCursor(7UL, 110L))]));
         await using var harness = new HostChannelHarness(host);
 
         var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));

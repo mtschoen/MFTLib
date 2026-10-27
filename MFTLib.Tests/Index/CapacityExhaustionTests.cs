@@ -16,7 +16,7 @@ public sealed class CapacityExhaustionTests : IDisposable
 
     public void Dispose() => _directory.Dispose();
 
-    (BlockFile Block, BlockWriter Writer, DriveBlock[] Snapshot) BuildTinyDrive(
+    (BlockFile Block, BlockWriter Writer, RootBlock[] Snapshot) BuildTinyRoot(
         uint slotCapacity, uint namePoolCapacity)
     {
         // aislop-ignore-next-line dotnet/IDISP001 -- ownership moves to the returned DriveBlock snapshot, which callers release via ReleaseNowAsync
@@ -26,7 +26,7 @@ public sealed class CapacityExhaustionTests : IDisposable
         writer.TryWriteRow(0, "", new RowColumns(ParentRow: 0,
             RowFlags.InUse | RowFlags.Directory, Attributes: 16, Size: 0, Moment.Ticks, SequenceNumber: 0));
         writer.Complete(Moment, null);
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('T'), block, rootDirectoryPath: TestDriveRoot.For('T'))];
+        RootBlock[] snapshot = [new RootBlock(new VolumeKey('T'), block, rootDirectoryPath: TestRootDirectory.For('T'))];
         return (block, writer, snapshot);
     }
 
@@ -47,7 +47,7 @@ public sealed class CapacityExhaustionTests : IDisposable
     [TestMethod]
     public async Task SlotExhaustion_FlagsCapacityExhaustionKeepsWhatFitsAndNeverThrows()
     {
-        var (block, writer, snapshot) = BuildTinyDrive(slotCapacity: 4, namePoolCapacity: 512);
+        var (block, writer, snapshot) = BuildTinyRoot(slotCapacity: 4, namePoolCapacity: 512);
         try
         {
             var mutator = new JournalMutator(writer);
@@ -72,7 +72,7 @@ public sealed class CapacityExhaustionTests : IDisposable
         // Capacity for exactly one "name-number-N.txt" name (17 characters, 34 bytes) with no
         // room left for a second one, so the first create survives and every later one is the
         // exhaustion case, mirroring the fits/does-not-fit split in the slot exhaustion test.
-        var (block, writer, snapshot) = BuildTinyDrive(slotCapacity: 64, namePoolCapacity: 40);
+        var (block, writer, snapshot) = BuildTinyRoot(slotCapacity: 64, namePoolCapacity: 40);
         try
         {
             var mutator = new JournalMutator(writer);
@@ -99,7 +99,7 @@ public sealed class CapacityExhaustionTests : IDisposable
     [TestMethod]
     public async Task SearchOverAnExhaustedBlock_StillReturnsWhatWasApplied()
     {
-        var (_, writer, snapshot) = BuildTinyDrive(slotCapacity: 4, namePoolCapacity: 512);
+        var (_, writer, snapshot) = BuildTinyRoot(slotCapacity: 4, namePoolCapacity: 512);
         try
         {
             var mutator = new JournalMutator(writer);

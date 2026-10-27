@@ -37,7 +37,7 @@ public partial class JournalBrokerHostChannelTests
         var host = BrokerHostFactory.Create(new()
         {
             ProcessorCount = 4,
-            ScanDrive = scans.Source,
+            ScanVolume = scans.Source,
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
         });
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
@@ -65,7 +65,7 @@ public partial class JournalBrokerHostChannelTests
         var host = BrokerHostFactory.Create(new()
         {
             ProcessorCount = 4,
-            ScanDrive = scans.Source,
+            ScanVolume = scans.Source,
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
         });
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
@@ -157,7 +157,7 @@ public partial class JournalBrokerHostChannelTests
         var host = BrokerHostFactory.Create(new()
         {
             ProcessorCount = 1,
-            ScanDrive = scans.Source,
+            ScanVolume = scans.Source,
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
         });
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
@@ -188,7 +188,7 @@ public partial class JournalBrokerHostChannelTests
         var host = BrokerHostFactory.Create(new()
         {
             ProcessorCount = 2,
-            ScanDrive = scans.Source,
+            ScanVolume = scans.Source,
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
         });
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
@@ -221,7 +221,7 @@ public partial class JournalBrokerHostChannelTests
         var host = BrokerHostFactory.Create(new()
         {
             ProcessorCount = 4,
-            ScanDrive = scans.Source,
+            ScanVolume = scans.Source,
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
         });
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
@@ -276,7 +276,7 @@ public partial class JournalBrokerHostChannelTests
         }
     }
 
-    // One held scan source per drive: records its allowance and token, reports entry, and parks
+    // One held scan source per volume: records its allowance and token, reports entry, and parks
     // until released. A source that honors cancellation stops when its pipe closes; one that does
     // not keeps the native-work stand-in running until released.
     sealed class HeldScans
@@ -284,22 +284,22 @@ public partial class JournalBrokerHostChannelTests
         readonly Dictionary<VolumeKey, HeldScan> _scans = [];
         readonly Dictionary<VolumeKey, int> _invocations = [];
 
-        public HeldScan this[VolumeKey drive]
+        public HeldScan this[VolumeKey volume]
         {
             get
             {
                 lock (_scans)
                 {
-                    return _scans.TryGetValue(drive, out var scan) ? scan : _scans[drive] = new HeldScan();
+                    return _scans.TryGetValue(volume, out var scan) ? scan : _scans[volume] = new HeldScan();
                 }
             }
         }
 
-        public int InvocationCount(VolumeKey drive)
+        public int InvocationCount(VolumeKey volume)
         {
             lock (_scans)
             {
-                return _invocations.GetValueOrDefault(drive);
+                return _invocations.GetValueOrDefault(volume);
             }
         }
 
@@ -314,16 +314,16 @@ public partial class JournalBrokerHostChannelTests
             }
         }
 
-        public IEnumerable<IReadOnlyList<MftRecord>> Source(VolumeKey drive, ParseThreadAllowance parseThreads,
+        public IEnumerable<IReadOnlyList<MftRecord>> Source(VolumeKey volume, ParseThreadAllowance parseThreads,
             BlockWriteReporting reporting,
             MftScanOptions scanOptions, Action<long> recordsOmitted, CancellationToken cancellationToken)
         {
             lock (_scans)
             {
-                _invocations[drive] = _invocations.GetValueOrDefault(drive) + 1;
+                _invocations[volume] = _invocations.GetValueOrDefault(volume) + 1;
             }
 
-            return this[drive].Run(parseThreads, cancellationToken);
+            return this[volume].Run(parseThreads, cancellationToken);
         }
     }
 

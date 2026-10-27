@@ -15,11 +15,11 @@ namespace MFTLib.Index;
 /// <param name="CaseSensitive">False folds case with invariant upper-casing, which is what NTFS does for the ASCII range.</param>
 /// <param name="Subtree">
 ///     Restricts the result to the subtree below this entry, the entry itself included. The anchor must be a
-///     handle taken from the index being queried, for its drive's current block: the query validates it against
+///     handle taken from the index being queried, for its root's current block: the query validates it against
 ///     the snapshot it borrows. A default <see cref="FileEntry" /> is not an anchor (leave this null for no
 ///     restriction); a handle from another index, from a block a rescan replaced, or superseded by a newer file
-///     reusing its row slot is rejected. Rescanning a different drive does not invalidate an anchor. After a
-///     rescan of the anchor's own drive, take a new anchor from the index.
+///     reusing its row slot is rejected. Rescanning a different root does not invalidate an anchor. After a
+///     rescan of the anchor's own root, take a new anchor from the index.
 /// </param>
 /// <param name="IsDirectory">True returns only directories, false returns only files, null applies no filter.</param>
 /// <param name="SizeMinimum">

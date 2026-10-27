@@ -22,7 +22,7 @@ public class FileIndexWatchRescanCacheTests
         var source = new ScriptedWatchSource();
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = SyntheticIndexedDrive.Create(new VolumeKey('T'), directory.Path, 1),
+            Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), directory.Path, 1),
             CacheDirectory = directory.Path,
             MftSource = new MftIndexSource(async (request, cancellationToken) =>
             {
@@ -40,7 +40,7 @@ public class FileIndexWatchRescanCacheTests
         try
         {
             await index.StartWatchingAsync(token);
-            var original = index.Root(TestContext.CancellationToken).DriveBlock;
+            var original = index.Root(TestContext.CancellationToken).RootBlock;
             var handle = source.WatchFor('T');
             var catchUp = index.WaitForCatchUpAsync(token);
             using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -58,10 +58,10 @@ public class FileIndexWatchRescanCacheTests
             else
             {
                 production.Release();
-                await DriveResultAssertions.FailureAsync<InvalidOperationException>(() => rescan);
+                await RootResultAssertions.FailureAsync<InvalidOperationException>(() => rescan);
             }
 
-            Assert.AreSame(original, index.Root(TestContext.CancellationToken).DriveBlock);
+            Assert.AreSame(original, index.Root(TestContext.CancellationToken).RootBlock);
             Assert.AreSame(handle, source.WatchFor('T'));
             Assert.HasCount(1, source.TargetsFor('T'));
             Assert.IsFalse(catchUp.IsCompleted);
@@ -70,7 +70,7 @@ public class FileIndexWatchRescanCacheTests
             using var restored = BlockFile.Open(original.Block.Path, 1, out var validation);
             Assert.IsNotNull(restored, validation.ToString());
             Assert.AreEqual(700L, restored.Header.UsnNextUsn);
-            await handle.Publish(new DriveCaughtUp());
+            await handle.Publish(new VolumeCaughtUp());
             await catchUp.WaitAsync(HangGuard, TestContext.CancellationToken);
             await index.StopWatchingAsync(token);
         }

@@ -38,7 +38,7 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
     MftBlockProduceRequest Request(bool deleteOnClose = true, IProgress<IndexScanProgress>? progress = null,
         char drive = 'T') => new()
         {
-            Drive = drive,
+            Volume = drive,
             VolumeSerial = 123,
             BlockPath = Path.Combine(CacheDirectoryPath,
             deleteOnClose ? $"{drive}-temporary.mlix" : $"{drive}-canonical.mlix"),
@@ -105,9 +105,9 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
 
         var request = Request();
         var queried = new List<VolumeKey>();
-        var producer = new LocalMftBlockProducer(timeProvider, null, Scripted(drive =>
+        var producer = new LocalMftBlockProducer(timeProvider, null, Scripted(volume =>
         {
-            queried.Add(drive);
+            queried.Add(volume);
             return Volume;
         }, scan: (_, _, _, _, _, _) => TimedBatches()));
 
@@ -180,10 +180,10 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
             TestContext.CancellationToken))
         {
             Assert.AreEqual(1, scanCalls);
-            var initialDrive = initialIndex.Status;
-            Assert.AreEqual(DriveState.Ready, initialDrive.State);
-            Assert.AreEqual(BlockOrigin.ProducedByScan, initialDrive.Block!.Origin);
-            Assert.IsNull(initialDrive.Watch.CheckpointLoss);
+            var initialRoot = initialIndex.Status;
+            Assert.AreEqual(RootState.Ready, initialRoot.State);
+            Assert.AreEqual(BlockOrigin.ProducedByScan, initialRoot.Block!.Origin);
+            Assert.IsNull(initialRoot.Watch.CheckpointLoss);
         }
 
         var canonicalPath = Path.Combine(CacheDirectoryPath,
@@ -194,10 +194,10 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
             TestContext.CancellationToken))
         {
             Assert.AreEqual(1, scanCalls, "A cached block must not scan again on reopening.");
-            var reopenedDrive = reopenedIndex.Status;
-            Assert.AreEqual(DriveState.Ready, reopenedDrive.State);
-            Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopenedDrive.Block!.Origin);
-            Assert.IsNull(reopenedDrive.Watch.CheckpointLoss);
+            var reopenedRoot = reopenedIndex.Status;
+            Assert.AreEqual(RootState.Ready, reopenedRoot.State);
+            Assert.AreEqual(BlockOrigin.WarmStartedFromCache, reopenedRoot.Block!.Origin);
+            Assert.IsNull(reopenedRoot.Watch.CheckpointLoss);
         }
     }
 
@@ -220,16 +220,16 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
         ParseThreadAllowance? allowanceT = null;
         ParseThreadAllowance? allowanceU = null;
 
-        var producer = new LocalMftBlockProducer(TimeProvider.System, null, Scripted(scan: (drive, allowance, _, _, _, token) =>
+        var producer = new LocalMftBlockProducer(TimeProvider.System, null, Scripted(scan: (volume, allowance, _, _, _, token) =>
         {
-            if (drive.Letter == 'T')
+            if (volume.Letter == 'T')
             {
                 allowanceT = allowance;
                 gateT.MarkEntered();
                 gateT.WaitForRelease();
                 if (termination == ScanTermination.Fails)
                 {
-                    throw new IOException("Scan for drive T failed.");
+                    throw new IOException("Scan for root T failed.");
                 }
 
                 token.ThrowIfCancellationRequested();
@@ -299,7 +299,7 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
         var parsing = samples.Single(sample => sample.Phase == IndexScanPhase.ParsingMft);
         Assert.AreEqual(expected, parsing.WrittenRowCount);
         Assert.AreEqual(expected, parsing.ExpectedRowCount);
-        Assert.IsTrue(samples.All(sample => sample.Drive == new VolumeKey('T')));
+        Assert.IsTrue(samples.All(sample => sample.Root == new VolumeKey('T')));
         Assert.AreEqual(IndexScanPhase.Transferring, samples[^1].Phase);
         Assert.IsNull(samples[^1].ExpectedRowCount);
     }
@@ -386,7 +386,7 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
         var names = index.Search(new SearchQuery("file.txt"), TestContext.CancellationToken).Select(entry => entry.Name).ToArray();
         Assert.AreSequenceEqual(["file.txt"], names);
         var status = index.Status;
-        Assert.AreEqual(DriveState.Ready, status.State);
+        Assert.AreEqual(RootState.Ready, status.State);
         Assert.AreEqual(BlockOrigin.ProducedByScan, status.Block!.Origin);
         Assert.IsFalse(status.Watch.IsSupported);
         Assert.IsFalse(status.Watch.IsRequested);
@@ -398,8 +398,8 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
     {
         var source = new LocalMftBlockProducer(TimeProvider.System, null, Scripted()).CreateIndexSource();
         await using var index = await FileIndex.OpenAsync(Options(source), TestContext.CancellationToken);
-        await DriveResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync(CancellationToken.None));
-        await DriveResultAssertions.NotApplicableAsync(() => index.WaitForCatchUpAsync(CancellationToken.None));
+        await RootResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync(CancellationToken.None));
+        await RootResultAssertions.NotApplicableAsync(() => index.WaitForCatchUpAsync(CancellationToken.None));
 
         Assert.IsFalse(index.Status.Watch.IsSupported);
         Assert.IsFalse(index.Status.Watch.IsRequested);
@@ -415,8 +415,8 @@ public sealed class LocalMftBlockProducerTests : IndexTreeTestBase
         await using var index = await FileIndex.OpenAsync(Options(source), TestContext.CancellationToken);
 
         var status = index.Status;
-        Assert.AreEqual(DriveState.Failed, status.State);
-        Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind);
+        Assert.AreEqual(RootState.Failed, status.State);
+        Assert.AreEqual(RootFailureKind.ProducerFailed, status.Failure?.Kind);
         Assert.Contains(message, status.Failure?.Message!);
     }
 

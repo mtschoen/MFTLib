@@ -15,18 +15,18 @@ public partial class JournalBrokerHostTests
 
     static JournalBrokerHost CreateWatchHost(
         Func<VolumeKey, UsnJournalCursor>? queryCursor = null,
-        Func<VolumeKey, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchDrive = null,
+        Func<VolumeKey, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchVolume = null,
         Func<VolumeKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
-        MftRecordBatchSource? scanDrive = null,
+        MftRecordBatchSource? scanVolume = null,
         Func<BrokerDiagnosticsLogFilter?>? createLogFilter = null)
     {
         return new JournalBrokerHost(
             new ScriptedVolumeAccess
             {
                 CursorQuery = queryCursor ?? (_ => new UsnJournalCursor(7, 1000)),
-                RecordBatches = scanDrive ?? ((_, _, _, _, _, _) => [[WatchRecord(5, ".", 3)]]),
+                RecordBatches = scanVolume ?? ((_, _, _, _, _, _) => [[WatchRecord(5, ".", 3)]]),
                 JournalRead = readJournal ?? ((_, since, _) => ([], since)),
-                JournalWatch = watchDrive ?? ScriptedVolumeAccess.UnsupportedWatch,
+                JournalWatch = watchVolume ?? ScriptedVolumeAccess.UnsupportedWatch,
                 VolumeInformation = _ => WatchVolume
             },
             4,
@@ -113,9 +113,9 @@ public partial class JournalBrokerHostTests
         Assert.IsFalse(harness.Serve.IsCompleted, "The session must outlive one channel's failure.");
     }
 
-    // Connects the named in-memory pipe of one drive through a BrokenPipeStream on the host's
-    // end, so a test can make that drive's writes fail while every other drive's pipe stays healthy.
-    sealed class BreakableDrivePipe(char drive, bool brokenOnConnect = false)
+    // Connects the named in-memory pipe of one volume through a BrokenPipeStream on the host's
+    // end, so a test can make that volume's writes fail while every other volume's pipe stays healthy.
+    sealed class BreakableVolumePipe(char drive, bool brokenOnConnect = false)
     {
         readonly TaskCompletionSource<BrokenPipeStream> _connected =
             new(TaskCreationOptions.RunContinuationsAsynchronously);

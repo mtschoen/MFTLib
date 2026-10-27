@@ -13,11 +13,11 @@ namespace MFTLib.Index;
 public static partial class CacheDirectory
 {
     /// <summary>
-    ///     The cached drives in <paramref name="cacheDirectoryPath" />, one record per file whose
+    ///     The cached roots in <paramref name="cacheDirectoryPath" />, one record per file whose
     ///     name this class wrote. The listing is eager rather than lazy so a missing directory is
     ///     an empty result at the call rather than a deferred throw from the caller's own
     ///     <c>foreach</c>. Nothing is validated here, and only a directory-shaped file is opened (to read its
-    ///     stored key); validation stays in the open path, which already reports per-drive failures, and
+    ///     stored key); validation stays in the open path, which already reports per-root failures, and
     ///     every other field on the record comes from the directory entry the walk already read.
     ///     Rejected filenames are silently excluded; use the callback overload to observe them.
     /// </summary>
@@ -25,11 +25,11 @@ public static partial class CacheDirectory
         => EnumerateCached(cacheDirectoryPath, null);
 
     /// <summary>
-    ///     The cached drives in <paramref name="cacheDirectoryPath" />, one record per file whose
+    ///     The cached roots in <paramref name="cacheDirectoryPath" />, one record per file whose
     ///     name this class wrote. The listing is eager rather than lazy so a missing directory is
     ///     an empty result at the call rather than a deferred throw from the caller's own
     ///     <c>foreach</c>. Nothing is validated here, and only a directory-shaped file is opened (to read its
-    ///     stored key); validation stays in the open path, which already reports per-drive failures, and
+    ///     stored key); validation stays in the open path, which already reports per-root failures, and
     ///     every other field on the record comes from the directory entry the walk already read.
     /// </summary>
     /// <param name="cacheDirectoryPath">The cache directory to enumerate.</param>
@@ -114,25 +114,25 @@ public static partial class CacheDirectory
     ///     Rejected filenames are silently excluded unless <paramref name="rejectedFile" /> is supplied.
     /// </summary>
     /// <param name="cacheDirectoryPath">The cache directory to inspect.</param>
-    /// <param name="drives">
-    ///     Drive keys to include, or null for all. The default key is rejected. Filtering happens before any
+    /// <param name="roots">
+    ///     Root keys to include, or null for all. The default key is rejected. Filtering happens before any
     ///     lock attempt, so excluded blocks have no lock file opened or created.
     /// </param>
     /// <param name="rejectedFile">
     ///     Optional synchronous callback for each non-canonical filename encountered by the
     ///     top-level block-file enumeration. Reports the full path and a human-readable reason;
     ///     no file contents are opened and no lock is created for the rejected entry. Reports
-    ///     are not filtered by drive selection. Ordering is unspecified. Exceptions propagate
+    ///     are not filtered by root selection. Ordering is unspecified. Exceptions propagate
     ///     immediately, before any canonical inspection or deletion in this call. Return promptly
     ///     and do not mutate the directory during enumeration.
     /// </param>
-    /// <exception cref="ArgumentException"><paramref name="cacheDirectoryPath" /> is null or empty, or <paramref name="drives" /> holds the default key.</exception>
+    /// <exception cref="ArgumentException"><paramref name="cacheDirectoryPath" /> is null or empty, or <paramref name="roots" /> holds the default key.</exception>
     public static IReadOnlyList<CachedBlockStatus> InspectCached(
-        string cacheDirectoryPath, IEnumerable<RootKey>? drives = null,
+        string cacheDirectoryPath, IEnumerable<RootKey>? roots = null,
         Action<CachedBlockRejection>? rejectedFile = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(cacheDirectoryPath);
-        var selected = SelectedRoots(drives);
+        var selected = SelectedRoots(roots);
         var statuses = new List<CachedBlockStatus>();
         foreach (var candidate in EnumerateCandidates(cacheDirectoryPath, rejectedFile, selected))
         {
@@ -207,7 +207,7 @@ public static partial class CacheDirectory
         var producerKind = block.Header.ProducerKind;
         var rootDirectory = producerKind switch
         {
-            ProducerKind.Mft => $"{file.Drive}:\\",
+            ProducerKind.Mft => $"{file.Root}:\\",
             ProducerKind.Enumeration when block.Header.RowCount > 0 =>
                 NamePool.ReadRowName(block, 0).ToString(),
             _ => null
@@ -230,16 +230,16 @@ public static partial class CacheDirectory
     ///     Each returned result carries the deletion outcome and a failure reason when applicable.
     /// </summary>
     /// <param name="cacheDirectoryPath">The cache directory to clear.</param>
-    /// <param name="drives">Drive keys to include, or null for all. The default key is rejected.</param>
+    /// <param name="roots">Root keys to include, or null for all. The default key is rejected.</param>
     /// <remarks>
     ///     Deleted includes an inventory entry already removed before this attempt. Directory-level
     ///     enumeration lists only files whose name this class wrote. Filtering precedes lock acquisition. Retired siblings,
     ///     unrelated names and subdirectories are not candidates.
     /// </remarks>
-    /// <exception cref="ArgumentException"><paramref name="cacheDirectoryPath" /> is null or empty, or <paramref name="drives" /> holds the default key.</exception>
+    /// <exception cref="ArgumentException"><paramref name="cacheDirectoryPath" /> is null or empty, or <paramref name="roots" /> holds the default key.</exception>
     public static IReadOnlyList<CachedBlockDeletionResult> DeleteCached(
-        string cacheDirectoryPath, IEnumerable<RootKey>? drives = null)
-        => DeleteCached(cacheDirectoryPath, drives, null);
+        string cacheDirectoryPath, IEnumerable<RootKey>? roots = null)
+        => DeleteCached(cacheDirectoryPath, roots, null);
 
     /// <summary>
     ///     Eagerly deletes selected canonical cached blocks under their non-blocking slot locks.
@@ -250,12 +250,12 @@ public static partial class CacheDirectory
     ///     Each returned result carries the deletion outcome and a failure reason when applicable.
     /// </summary>
     /// <param name="cacheDirectoryPath">The cache directory to clear.</param>
-    /// <param name="drives">Drive keys to include, or null for all. The default key is rejected.</param>
+    /// <param name="roots">Root keys to include, or null for all. The default key is rejected.</param>
     /// <param name="rejectedFile">
     ///     Optional synchronous callback for each non-canonical filename encountered by the
     ///     top-level block-file enumeration. Reports the full path and a human-readable reason;
     ///     no file contents are opened and no lock is created for the rejected entry. Reports
-    ///     are not filtered by drive selection. Ordering is unspecified. Exceptions propagate
+    ///     are not filtered by root selection. Ordering is unspecified. Exceptions propagate
     ///     immediately, before any canonical inspection or deletion in this call. Return promptly
     ///     and do not mutate the directory during enumeration.
     /// </param>
@@ -265,11 +265,11 @@ public static partial class CacheDirectory
     ///     unrelated names and subdirectories are not candidates.
     /// </remarks>
     internal static IReadOnlyList<CachedBlockDeletionResult> DeleteCached(
-        string cacheDirectoryPath, IEnumerable<RootKey>? drives,
+        string cacheDirectoryPath, IEnumerable<RootKey>? roots,
         Action<CachedBlockRejection>? rejectedFile)
     {
         ArgumentException.ThrowIfNullOrEmpty(cacheDirectoryPath);
-        var selected = SelectedRoots(drives);
+        var selected = SelectedRoots(roots);
         var results = new List<CachedBlockDeletionResult>();
         foreach (var candidate in EnumerateCandidates(cacheDirectoryPath, rejectedFile, selected))
         {
@@ -323,17 +323,17 @@ public static partial class CacheDirectory
         return new CachedBlockDeletionResult(file, CachedBlockDeletionOutcome.Deleted, null);
     }
 
-    static Dictionary<string, RootKey>? SelectedRoots(IEnumerable<RootKey>? drives)
+    static Dictionary<string, RootKey>? SelectedRoots(IEnumerable<RootKey>? roots)
     {
-        if (drives is null)
+        if (roots is null)
         {
             return null;
         }
 
         var selected = new Dictionary<string, RootKey>(StringComparer.Ordinal);
-        foreach (var drive in drives)
+        foreach (var root in roots)
         {
-            selected.TryAdd(NameStem(drive.Validated()), drive);
+            selected.TryAdd(NameStem(root.Validated()), root);
         }
 
         return selected;

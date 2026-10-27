@@ -15,9 +15,9 @@ public partial class JournalBrokerHostTests
 
     static JournalBrokerHost ScanHost(
         Func<VolumeKey, UsnJournalCursor>? queryCursor = null,
-        MftRecordBatchSource? scanDrive = null,
+        MftRecordBatchSource? scanVolume = null,
         Func<VolumeKey, UsnJournalCursor, int, (UsnJournalEntry[] Entries, UsnJournalCursor Updated)>? readJournal = null,
-        Func<VolumeKey, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchDrive = null,
+        Func<VolumeKey, UsnJournalCursor, ISourceOperationReporter, CancellationToken, IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>? watchVolume = null,
         Func<VolumeKey, NtfsVolumeInformation>? queryVolumeInfo = null,
         Func<VolumeKey, long, long, UsnJournalSettings>? growUsnJournal = null,
         int processorCount = 4,
@@ -25,9 +25,9 @@ public partial class JournalBrokerHostTests
         BrokerHostFactory.Create(new()
         {
             QueryCursor = queryCursor ?? (_ => ScanArmedCursor),
-            ScanDrive = scanDrive ?? ((_, _, _, _, _, _) => [[ScanRecord(5, ".", 3)]]),
+            ScanVolume = scanVolume ?? ((_, _, _, _, _, _) => [[ScanRecord(5, ".", 3)]]),
             ReadJournal = readJournal,
-            WatchDrive = watchDrive,
+            WatchVolume = watchVolume,
             QueryVolumeInformation = queryVolumeInfo ?? BrokerHostFactory.NoVolumeInformation,
             GrowUsnJournal = growUsnJournal,
             ProcessorCount = processorCount,
@@ -39,7 +39,7 @@ public partial class JournalBrokerHostTests
         return new MftRecord(recordNumber, 5, new MftRecordFields(flags, FileAttributes.Archive, 100), name);
     }
 
-    // Opens a scan channel on the drive and returns everything the host writes on it, in order,
+    // Opens a scan channel on the volume and returns everything the host writes on it, in order,
     // until it closes the pipe.
     static async Task<List<BrokerFrame>> ScanFramesAsync(HostChannelHarness harness, char drive = 'C',
         string? sectionName = null, IReadOnlyCollection<string>? retainedFileNames = null)

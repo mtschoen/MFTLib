@@ -48,7 +48,7 @@ public class DefaultElevatedEntryRunnerTests
         using var cts = new CancellationTokenSource(HangGuard);
 
         // RunBroker blocks synchronously (.GetAwaiter().GetResult()) for the whole session, so
-        // drive it from a background thread while this thread plays the non-elevated caller's
+        // root it from a background thread while this thread plays the non-elevated caller's
         // side of the real control pipe. Closing that end is the control EOF that ends the session.
         var server = BrokerPipeAccess.CreateServer(pipeName);
         var runTask = Task.Run(() => new DefaultElevatedEntryRunner(TimeProvider.System, code => exitCode = code, BrokerLiveness.ElevatedConnectTimeout).RunBroker(pipeName), TestContext.CancellationToken);
@@ -104,16 +104,16 @@ public class DefaultElevatedEntryRunnerTests
             using var cts = new CancellationTokenSource(HangGuard);
             await using var timeoutRelease = cts.Token.Register(idlePipe.UnblockForCleanup); // never leak the parked read
 
-            var (control, drive, runTask) = StartRunnerWithDrivePipe(code => exitCode = code);
+            var (control, volume, runTask) = StartRunnerWithVolumePipe(code => exitCode = code);
             try
             {
-                await AcceptDriveChannelAsync(control, drive, cts.Token);
+                await AcceptVolumeChannelAsync(control, volume, cts.Token);
 
                 // Arm the live watch with a cursor at the journal tip: the host reports CaughtUp
                 // over the still-healthy pipe, then parks in the mocked kernel wait above.
-                await HostChannelHarness.WriteFrameAsync(drive,
+                await HostChannelHarness.WriteFrameAsync(volume,
                     writer => BrokerProtocol.WriteStartWatch(writer, BrokerFrame.StartWatch(new UsnJournalCursor(7, 200))));
-                var caughtUp = await HostChannelHarness.ReadFrameAsync(drive);
+                var caughtUp = await HostChannelHarness.ReadFrameAsync(volume);
                 Assert.AreEqual(BrokerFrameKind.CaughtUp, caughtUp?.Kind);
 
                 await IdleUsnPipe.AwaitSignalAsync(idlePipe.BeforeIssue);
@@ -125,7 +125,7 @@ public class DefaultElevatedEntryRunnerTests
                     await failure.Entered.WaitAsync(cts.Token);
                 }
 
-                await drive.DisposeAsync();
+                await volume.DisposeAsync();
                 if (cancelBeforeFailure)
                 {
                     // Prove the disconnect reached the live registration before failing the read.
@@ -142,7 +142,7 @@ public class DefaultElevatedEntryRunnerTests
             {
                 failure.Release();
                 idlePipe.UnblockForCleanup();
-                await EnsureRunnerLeavesAsync(runTask, drive, control);
+                await EnsureRunnerLeavesAsync(runTask, volume, control);
             }
 
             var calls = IdleUsnPipe.CallOrder();
@@ -187,11 +187,11 @@ public class DefaultElevatedEntryRunnerTests
         using var cts = new CancellationTokenSource(HangGuard);
         await using var timeoutRelease = cts.Token.Register(() => releaseCursorQuery.TrySetResult());
 
-        var (control, drive, runTask) = StartRunnerWithDrivePipe(code => exitCode = code);
+        var (control, volume, runTask) = StartRunnerWithVolumePipe(code => exitCode = code);
         try
         {
-            await AcceptDriveChannelAsync(control, drive, cts.Token);
-            await HostChannelHarness.WriteFrameAsync(drive,
+            await AcceptVolumeChannelAsync(control, volume, cts.Token);
+            await HostChannelHarness.WriteFrameAsync(volume,
                 writer => BrokerProtocol.WriteArmAndScan(writer, BrokerFrame.ArmAndScan(NamedBlockSection.BuildSectionName('C'))));
 
             // Reach the cursor query before taking the client ends away, so the reply that
@@ -203,7 +203,7 @@ public class DefaultElevatedEntryRunnerTests
             // The consumer's process has now closed its ends mid-scan, so the armed-cursor reply
             // fails on the broken pipe for real - the write that used to kill the child. The
             // native record scan itself never starts: the channel ends at that first reply.
-            await drive.DisposeAsync();
+            await volume.DisposeAsync();
             await control.DisposeAsync();
             releaseCursorQuery.TrySetResult();
 
@@ -212,7 +212,7 @@ public class DefaultElevatedEntryRunnerTests
         finally
         {
             releaseCursorQuery.TrySetResult();
-            await EnsureRunnerLeavesAsync(runTask, drive, control);
+            await EnsureRunnerLeavesAsync(runTask, volume, control);
         }
 
         Assert.AreEqual(0, exitCode);
@@ -294,26 +294,26 @@ public class DefaultElevatedEntryRunnerTests
 
     // RunBroker blocks synchronously for the whole session, so it runs on a background thread
     // while this thread plays the non-elevated caller's side of the real control pipe and of one
-    // real drive pipe, both created here the way the caller creates them.
-    (NamedPipeServerStream Control, NamedPipeServerStream Drive, Task RunTask) StartRunnerWithDrivePipe(Action<int> exitProcess)
+    // real volume pipe, both created here the way the caller creates them.
+    (NamedPipeServerStream Control, NamedPipeServerStream Volume, Task RunTask) StartRunnerWithVolumePipe(Action<int> exitProcess)
     {
         var controlName = "mftlib-runner-test-" + Guid.NewGuid().ToString("N");
         _drivePipeName = "mftlib-broker-" + Guid.NewGuid().ToString("N");
         var control = BrokerPipeAccess.CreateServer(controlName);
-        var drive = BrokerPipeAccess.CreateServer(_drivePipeName);
+        var volume = BrokerPipeAccess.CreateServer(_drivePipeName);
         var runTask = Task.Run(() => new DefaultElevatedEntryRunner(TimeProvider.System, exitProcess, BrokerLiveness.ElevatedConnectTimeout).RunBroker(controlName), TestContext.CancellationToken);
-        return (control, drive, runTask);
+        return (control, volume, runTask);
     }
 
-    // Connects the control pipe, asks the broker to open drive C's channel on the drive pipe, and
-    // returns once the broker has connected the drive pipe and answered ChannelOpened.
-    async Task AcceptDriveChannelAsync(NamedPipeServerStream control, NamedPipeServerStream drive,
+    // Connects the control pipe, asks the broker to open volume C's channel on the volume pipe, and
+    // returns once the broker has connected the volume pipe and answered ChannelOpened.
+    async Task AcceptVolumeChannelAsync(NamedPipeServerStream control, NamedPipeServerStream volume,
         CancellationToken cancellationToken)
     {
         await control.WaitForConnectionAsync(cancellationToken);
         await HostChannelHarness.WriteFrameAsync(control,
             writer => BrokerProtocol.WriteOpenChannel(writer, BrokerFrame.OpenChannel(1, 'C', _drivePipeName)));
-        await drive.WaitForConnectionAsync(cancellationToken);
+        await volume.WaitForConnectionAsync(cancellationToken);
         var opened = await HostChannelHarness.ReadFrameAsync(control);
         Assert.AreEqual(BrokerFrameKind.ChannelOpened, opened?.Kind);
     }
@@ -354,12 +354,12 @@ public class DefaultElevatedEntryRunnerTests
     public async Task CleanupTimeout_DisposesPipesAndKeepsInjectedExit()
     {
         var runner = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var drive = new RecordingCleanupPipe();
+        var root = new RecordingCleanupPipe();
         var control = new RecordingCleanupPipe();
         var timeout = new TimeoutException("injected runner drain timeout");
         _waitForRunnerExit = _ =>
         {
-            Assert.IsTrue(drive.Disposed);
+            Assert.IsTrue(root.Disposed);
             Assert.IsTrue(control.Disposed);
             return Task.FromException(timeout);
         };
@@ -367,7 +367,7 @@ public class DefaultElevatedEntryRunnerTests
         try
         {
             var observed = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
-                EnsureRunnerLeavesAsync(runner.Task, drive, control));
+                EnsureRunnerLeavesAsync(runner.Task, root, control));
             Assert.AreSame(timeout, observed);
 
             var exits = new List<int>();

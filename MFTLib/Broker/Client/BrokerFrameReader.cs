@@ -4,7 +4,7 @@ namespace MFTLib;
 
 /// <summary>
 ///     Reads the frames of one client pipe. Every failure other than cancellation surfaces as
-///     <see cref="BrokerChannelLostException" /> naming the pipe's drive, or no drive for the
+///     <see cref="BrokerChannelLostException" /> naming the pipe's volume, or no volume for the
 ///     control pipe. A pipe that delivers no frame of any kind for <see cref="BrokerLiveness.StallLimit" />
 ///     while a read waits on it is closed and fails that read the same way.
 /// </summary>
@@ -20,7 +20,7 @@ namespace MFTLib;
 sealed class BrokerFrameReader : IAsyncDisposable
 {
     readonly Stream _stream;
-    readonly VolumeKey? _drive;
+    readonly VolumeKey? _volume;
     readonly string _channelTag;
     readonly TimeProvider _timeProvider;
     readonly Action _markFrameStarted;
@@ -32,10 +32,10 @@ sealed class BrokerFrameReader : IAsyncDisposable
     long _readStarted;
     bool _disposed;
 
-    public BrokerFrameReader(Stream stream, VolumeKey? drive, string channelTag, TimeProvider timeProvider)
+    public BrokerFrameReader(Stream stream, VolumeKey? volume, string channelTag, TimeProvider timeProvider)
     {
         _stream = stream;
-        _drive = drive?.Validated();
+        _volume = volume?.Validated();
         _channelTag = channelTag;
         _timeProvider = timeProvider;
         _markFrameStarted = () => FrameStarted = true;
@@ -69,8 +69,8 @@ sealed class BrokerFrameReader : IAsyncDisposable
         catch (Exception exception) when (exception is IOException or InvalidDataException
                                               or ObjectDisposedException)
         {
-            var pipe = _drive is { } drive ? $"Drive {drive} broker channel" : "The broker control pipe";
-            throw new BrokerChannelLostException(_drive, $"{pipe} failed: {exception.Message}", exception);
+            var pipe = _volume is { } volume ? $"Volume {volume} broker channel" : "The broker control pipe";
+            throw new BrokerChannelLostException(_volume, $"{pipe} failed: {exception.Message}", exception);
         }
         finally
         {
@@ -151,7 +151,7 @@ sealed class BrokerFrameReader : IAsyncDisposable
     async Task<BrokerChannelLostException> CloseStalledAsync()
     {
         await _stream.DisposeAsync().ConfigureAwait(false);
-        return new BrokerChannelLostException(_drive,
+        return new BrokerChannelLostException(_volume,
             $"No frame from the broker for {BrokerLiveness.FormatSeconds(BrokerLiveness.StallLimit)} seconds",
             new TimeoutException("The stall limit passed."));
     }

@@ -32,14 +32,14 @@ public class JournalCheckpointCheckTests
             return new SyntheticJournalWindow(journalIdentifier, firstUsn, nextUsn, 64, 32768);
         });
         var loss = JournalCheckpointCheck.CheckUnmoved('T', JournalIdentifier, 2000,
-            JournalCheckpointLossDetection.DriveOpening);
+            JournalCheckpointLossDetection.RootOpening);
         Assert.AreEqual(1, reads);
         Assert.AreEqual(expectedCause, loss?.Cause);
         if (loss is null)
         {
             return;
         }
-        Assert.AreEqual(JournalCheckpointLossDetection.DriveOpening, loss.DetectedDuring);
+        Assert.AreEqual(JournalCheckpointLossDetection.RootOpening, loss.DetectedDuring);
         Assert.AreEqual(2000L, loss.CheckpointUsn);
         Assert.AreEqual(nextUsn, loss.NextUsn);
         Assert.AreEqual(64L, loss.JournalSettings.AllocationDelta);
@@ -58,7 +58,7 @@ public class JournalCheckpointCheckTests
     {
         using var journal = JournalIsolation.OverrideJournalWindow(_ => null);
         Assert.IsNull(JournalCheckpointCheck.CheckUnmoved('T', JournalIdentifier, 2000,
-            JournalCheckpointLossDetection.DriveOpening));
+            JournalCheckpointLossDetection.RootOpening));
     }
 
     [TestMethod]
@@ -66,14 +66,14 @@ public class JournalCheckpointCheckTests
     {
         using var journal = Journal(firstUsn: 3000, nextUsn: 2000);
         Assert.IsNull(JournalCheckpointCheck.CheckUnmoved('T', JournalIdentifier, 2000,
-            JournalCheckpointLossDetection.DriveOpening));
+            JournalCheckpointLossDetection.RootOpening));
     }
     /// <summary>
     ///     The check does not decide which moment it is running in; its caller does, and every
     ///     loss carries whichever it was told, for both causes.
     /// </summary>
     [TestMethod]
-    [DataRow(JournalCheckpointLossDetection.DriveOpening)]
+    [DataRow(JournalCheckpointLossDetection.RootOpening)]
     [DataRow(JournalCheckpointLossDetection.LiveWatch)]
     public void EveryLossCarriesTheDetectionItsCallerPassed(JournalCheckpointLossDetection detectedDuring)
     {
@@ -101,11 +101,11 @@ public class JournalCheckpointCheckTests
 
         // At the oldest retained USN the checkpoint is still readable, and past it plainly so.
         Assert.IsNull(JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 1_000,
-            JournalCheckpointLossDetection.DriveOpening));
+            JournalCheckpointLossDetection.RootOpening));
         Assert.IsNull(JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 4_000,
-            JournalCheckpointLossDetection.DriveOpening));
+            JournalCheckpointLossDetection.RootOpening));
         Assert.IsNull(JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 5_000,
-            JournalCheckpointLossDetection.DriveOpening));
+            JournalCheckpointLossDetection.RootOpening));
     }
 
     [TestMethod]
@@ -114,11 +114,11 @@ public class JournalCheckpointCheckTests
         using var journal = Journal(firstUsn: 1_000, nextUsn: 5_000, allocationDelta: 64);
 
         var loss = JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 900,
-            JournalCheckpointLossDetection.DriveOpening);
+            JournalCheckpointLossDetection.RootOpening);
 
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
-        Assert.AreEqual('C', loss.Drive);
+        Assert.AreEqual('C', loss.Volume);
         Assert.AreEqual(900L, loss.CheckpointUsn);
         Assert.AreEqual(1_000L, loss.FirstUsn);
         Assert.AreEqual(5_000L, loss.NextUsn);
@@ -140,7 +140,7 @@ public class JournalCheckpointCheckTests
         // The checkpoint names a record in a journal instance that no longer exists, so its
         // USN and this journal's USNs are not comparable at all.
         var loss = JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 900,
-            JournalCheckpointLossDetection.DriveOpening);
+            JournalCheckpointLossDetection.RootOpening);
 
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.JournalRecreated, loss.Cause);
@@ -160,7 +160,7 @@ public class JournalCheckpointCheckTests
         using var journal = Journal(journalIdentifier: 0xFEED, firstUsn: 0, nextUsn: 5_000);
 
         var loss = JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 900,
-            JournalCheckpointLossDetection.DriveOpening);
+            JournalCheckpointLossDetection.RootOpening);
 
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.JournalRecreated, loss.Cause);
@@ -173,7 +173,7 @@ public class JournalCheckpointCheckTests
         using var journal = JournalIsolation.OverrideJournalWindow(_ => null);
 
         Assert.IsNull(JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 0,
-            JournalCheckpointLossDetection.DriveOpening));
+            JournalCheckpointLossDetection.RootOpening));
     }
 
     /// <summary>
@@ -186,28 +186,28 @@ public class JournalCheckpointCheckTests
         using (Journal(firstUsn: -1))
         {
             Assert.IsNull(JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 10,
-                JournalCheckpointLossDetection.DriveOpening));
+                JournalCheckpointLossDetection.RootOpening));
         }
 
         // A window that runs backwards.
         using (Journal(firstUsn: 5_000, nextUsn: 1_000))
         {
             Assert.IsNull(JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 10,
-                JournalCheckpointLossDetection.DriveOpening));
+                JournalCheckpointLossDetection.RootOpening));
         }
 
         // No allocation unit to round a suggested size to.
         using (Journal(allocationDelta: 0))
         {
             Assert.IsNull(JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 10,
-                JournalCheckpointLossDetection.DriveOpening));
+                JournalCheckpointLossDetection.RootOpening));
         }
 
         // A negative checkpoint is a corrupt block header, not a very old checkpoint.
         using (Journal())
         {
             Assert.IsNull(JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: -1,
-                JournalCheckpointLossDetection.DriveOpening));
+                JournalCheckpointLossDetection.RootOpening));
         }
     }
 
@@ -223,7 +223,7 @@ public class JournalCheckpointCheckTests
 
         // The 320 MB span plus one 64 MB trimming margin yields an at-least size of 384 MB.
         var loss = JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 1_000_000_000 - (20 * megabyte),
-            JournalCheckpointLossDetection.DriveOpening);
+            JournalCheckpointLossDetection.RootOpening);
 
         Assert.IsNotNull(loss);
         Assert.AreEqual(20 * megabyte, loss.BytesBehind);
@@ -238,11 +238,11 @@ public class JournalCheckpointCheckTests
         using var journal = Journal(firstUsn: 1, nextUsn: long.MaxValue, allocationDelta: 64);
 
         var loss = JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 0,
-            JournalCheckpointLossDetection.DriveOpening);
+            JournalCheckpointLossDetection.RootOpening);
 
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
-        Assert.AreEqual('C', loss.Drive);
+        Assert.AreEqual('C', loss.Volume);
         Assert.AreEqual(0L, loss.CheckpointUsn);
         Assert.AreEqual(1L, loss.FirstUsn);
         Assert.AreEqual(long.MaxValue, loss.NextUsn);
@@ -262,7 +262,7 @@ public class JournalCheckpointCheckTests
         using var journal = Journal(firstUsn: 1, nextUsn: largestAlignedSize - 64, allocationDelta: 64);
 
         var loss = JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 0,
-            JournalCheckpointLossDetection.DriveOpening);
+            JournalCheckpointLossDetection.RootOpening);
 
         Assert.IsNotNull(loss);
         Assert.AreEqual(largestAlignedSize, loss.SizeThatWouldHaveRetained);

@@ -44,10 +44,10 @@ public class JournalBrokerHostScanTests
                 cursorArmed = true;
                 return Armed;
             },
-            ScanDrive = (drive, _, reporting, _, _, _) =>
+            ScanVolume = (volume, _, reporting, _, _, _) =>
             {
                 Assert.IsTrue(cursorArmed);
-                Assert.AreEqual(new VolumeKey('C'), drive);
+                Assert.AreEqual(new VolumeKey('C'), volume);
                 reporting.Operation!.Processing("MFT parse");
                 reporting.Progress?.Report(new BlockWriteProgress(2, 0, 2, null, BlockScanPhase.Parsing));
                 return [[BrokerHostFactory.Record(5, ".", 3)], [BrokerHostFactory.Record(20, "file.txt")]];
@@ -94,8 +94,8 @@ public class JournalBrokerHostScanTests
         Assert.AreEqual(Armed, caughtUpFrom);
         Assert.AreEqual(sectionName, sectionWriter.LastSectionName);
         Assert.StartsWith("mftlib-block-C-", sectionWriter.LastSectionName!);
-        Assert.IsTrue(frames.All(frame => frame.Drive == null && frame.RequestId == 0),
-            "A drive pipe carries no drive and no request id.");
+        Assert.IsTrue(frames.All(frame => frame.Volume == null && frame.RequestId == 0),
+            "A volume pipe carries no volume and no request id.");
         Assert.DoesNotContain(frame => frame.Kind == BrokerFrameKind.Error, frames);
     }
 
@@ -109,7 +109,7 @@ public class JournalBrokerHostScanTests
 
         AssertScanReadyThen(frames, BrokerFrameKind.CatchUpLost);
         var loss = frames[^1].RequireCatchUpLoss('C');
-        Assert.AreEqual('C', loss.Drive);
+        Assert.AreEqual('C', loss.Volume);
         Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, loss.DetectedDuring);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
         Assert.AreEqual(Armed.NextUsn, loss.CheckpointUsn);
@@ -174,7 +174,7 @@ public class JournalBrokerHostScanTests
         var host = BrokerHostFactory.Create(new()
         {
             ProcessorCount = 8,
-            ScanDrive = (_, parseThreads, _, _, _, _) =>
+            ScanVolume = (_, parseThreads, _, _, _, _) =>
             {
                 allowance = parseThreads.Count;
                 return [[BrokerHostFactory.Record(5, ".", 3)]];
@@ -196,7 +196,7 @@ public class JournalBrokerHostScanTests
         var tip = new UsnJournalCursor(7, 1500);
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             ReadJournal = (_, _, _) => ([JournalEntries.Create(20, 1200, "file.txt")], tip),
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
         });
@@ -217,7 +217,7 @@ public class JournalBrokerHostScanTests
         var host = BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => new UsnJournalCursor(7UL, 0L),
-            ScanDrive = (_, _, _, _, _, _) =>
+            ScanVolume = (_, _, _, _, _, _) =>
             [
                 [new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "batch1.txt")],
                 [new MftRecord(2, 0, new MftRecordFields(1, FileAttributes.Archive, 200), "batch2.txt")]
@@ -256,7 +256,7 @@ public class JournalBrokerHostScanTests
         var host = BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => ScanArmedCursor,
-            ScanDrive = (_, _, _, _, _, _) => [[ScanRecord(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[ScanRecord(5, ".", 3)]],
             QueryVolumeInformation = _ => ControlVolume
         });
         using var blockWriter = new RecordingBlockSectionWriter();
@@ -285,12 +285,12 @@ public class JournalBrokerHostScanTests
     }
 
     [TestMethod]
-    public async Task DriveFailure_EmitsErrorFrameAndSessionContinues()
+    public async Task VolumeFailure_EmitsErrorFrameAndSessionContinues()
     {
         var host = BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => throw new InvalidOperationException("journal wrapped"),
-            ScanDrive = (_, _, _, _, _, _) => [[ScanRecord(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[ScanRecord(5, ".", 3)]],
             QueryVolumeInformation = _ => ControlVolume
         });
         using var blockWriter = new RecordingBlockSectionWriter();
@@ -306,14 +306,14 @@ public class JournalBrokerHostScanTests
     }
 
     [TestMethod]
-    public async Task CatchUpThrows_EmitsErrorAfterScanReady_OtherDriveUnaffected()
+    public async Task CatchUpThrows_EmitsErrorAfterScanReady_OtherVolumeUnaffected()
     {
         using var journal = JournalIsolation.OverrideJournalWindow(_ => null);
         var host = BrokerHostFactory.Create(new()
         {
-            QueryCursor = drive => drive == 'C' ? new UsnJournalCursor(1UL, 100L) : new UsnJournalCursor(2UL, 200L),
-            ScanDrive = (_, _, _, _, _, _) => [[ScanRecord(5, ".", 3)]],
-            ReadJournal = (drive, since, _) => drive == 'C'
+            QueryCursor = volume => volume == 'C' ? new UsnJournalCursor(1UL, 100L) : new UsnJournalCursor(2UL, 200L),
+            ScanVolume = (_, _, _, _, _, _) => [[ScanRecord(5, ".", 3)]],
+            ReadJournal = (volume, since, _) => volume == 'C'
                 ? throw new InvalidOperationException("journal wrapped")
                 : (Array.Empty<UsnJournalEntry>(), since),
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
@@ -386,7 +386,7 @@ public class JournalBrokerHostScanTests
             var host = BrokerHostFactory.Create(new()
             {
                 QueryCursor = _ => ScanArmedCursor,
-                ScanDrive = (_, _, _, _, _, _) => [[ScanRecord(100, "a.txt")]],
+                ScanVolume = (_, _, _, _, _, _) => [[ScanRecord(100, "a.txt")]],
                 QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
             });
             await using var harness = new HostChannelHarness(host, new RealBlockSectionWriter(TimeProvider.System));
@@ -406,7 +406,7 @@ public class JournalBrokerHostScanTests
         var host = BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => ArmedCursor,
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)], [BrokerHostFactory.Record(20, "file.txt")]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)], [BrokerHostFactory.Record(20, "file.txt")]],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
             ProcessorCount = null
         });
@@ -429,7 +429,7 @@ public class JournalBrokerHostScanTests
         var host = BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => ArmedCursor,
-            ScanDrive = (_, _, _, _, recordsOmitted, _) =>
+            ScanVolume = (_, _, _, _, recordsOmitted, _) =>
             {
                 recordsOmitted(3);
                 return [[BrokerHostFactory.Record(5, ".", 3)], [BrokerHostFactory.Record(20, "file.txt"), BrokerHostFactory.Record(uint.MaxValue + 1UL, "wide")]];
@@ -450,7 +450,7 @@ public class JournalBrokerHostScanTests
         var host = BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => ArmedCursor,
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
             ProcessorCount = null
         });
@@ -476,7 +476,7 @@ public class JournalBrokerHostScanTests
         var frames = await ScanAsync(BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => ArmedCursor,
-            ScanDrive = (_, _, _, _, _, _) => Batches(),
+            ScanVolume = (_, _, _, _, _, _) => Batches(),
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
             ProcessorCount = null
         }), blockWriter);
@@ -496,7 +496,7 @@ public class JournalBrokerHostScanTests
         var host = BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => ArmedCursor,
-            ScanDrive = (_, _, reporting, _, _, _) =>
+            ScanVolume = (_, _, reporting, _, _, _) =>
             {
                 reporting.Progress!.Report(new BlockWriteProgress(500, 0, 1000, null, BlockScanPhase.Parsing));
                 parsingReported.MarkEntered();
@@ -548,7 +548,7 @@ public class JournalBrokerHostScanTests
         var host = BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => ArmedCursor,
-            ScanDrive = (_, _, _, _, _, cancellationToken) => Batches(cancellationToken),
+            ScanVolume = (_, _, _, _, _, cancellationToken) => Batches(cancellationToken),
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
             ProcessorCount = null
         });
@@ -593,7 +593,7 @@ public class JournalBrokerHostScanTests
                 Interlocked.Increment(ref cursorQueries);
                 return ArmedCursor;
             },
-            ScanDrive = (_, _, _, _, _, _) =>
+            ScanVolume = (_, _, _, _, _, _) =>
             {
                 Interlocked.Increment(ref scanCalls);
                 return [[BrokerHostFactory.Record(5, ".", 3)]];
@@ -629,7 +629,7 @@ public class JournalBrokerHostScanTests
         var host = BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => ArmedCursor,
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
             ProcessorCount = null
         });
@@ -656,7 +656,7 @@ public class JournalBrokerHostScanTests
         var hostFrames = await ScanAsync(BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => ArmedCursor,
-            ScanDrive = (_, _, _, _, _, _) => batches,
+            ScanVolume = (_, _, _, _, _, _) => batches,
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
             ProcessorCount = null
         }), hostWriter);
@@ -679,7 +679,7 @@ public class JournalBrokerHostScanTests
     {
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryCursor = _ =>
             {
                 onCursorQuery?.Invoke();
@@ -707,7 +707,7 @@ public class JournalBrokerHostScanTests
         var host = BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => ScanArmedCursor,
-            ScanDrive = (_, _, _, _, _, _) => [records],
+            ScanVolume = (_, _, _, _, _, _) => [records],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
         });
         await using var harness = new HostChannelHarness(host, writer);
@@ -744,7 +744,7 @@ public class JournalBrokerHostScanTests
         Assert.AreEqual(31u, block.Header.RowCount);
         Assert.AreEqual(RowFlags.None, block.Rows[21].Flags);
         var rootPath = Path.Combine(Path.GetDirectoryName(block.Path)!, "scan-oracle");
-        var driveBlock = new DriveBlock(new VolumeKey('C'), block, rootPath);
+        var rootBlock = new RootBlock(new VolumeKey('C'), block, rootPath);
         try
         {
             (string RelativePath, uint Row, string Name, uint Parent, RowFlags Flags)[] expected =
@@ -756,7 +756,7 @@ public class JournalBrokerHostScanTests
             ];
             foreach (var row in expected)
             {
-                var entry = LookupEngine.Find(driveBlock, Path.Combine(rootPath, row.RelativePath));
+                var entry = LookupEngine.Find(rootBlock, Path.Combine(rootPath, row.RelativePath));
                 Assert.IsNotNull(entry, $"Expected lookup for {row.RelativePath}");
                 Assert.AreEqual(row.Row, entry.Value.RowIndex);
                 Assert.AreEqual(row.Name, entry.Value.Name);
@@ -764,11 +764,11 @@ public class JournalBrokerHostScanTests
                 Assert.AreEqual(row.Flags, entry.Value.Row.Flags);
             }
 
-            Assert.IsNull(LookupEngine.Find(driveBlock, Path.Combine(rootPath, "huge")));
+            Assert.IsNull(LookupEngine.Find(rootBlock, Path.Combine(rootPath, "huge")));
         }
         finally
         {
-            await driveBlock.ReleaseNowAsync();
+            await rootBlock.ReleaseNowAsync();
         }
     }
 

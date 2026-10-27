@@ -9,7 +9,7 @@ Self-elevation requires Windows, a known executable other than the `dotnet` host
 
 The unelevated client creates the broker's pipes with a DACL that grants only the current user's SID, and the elevated broker connects as the client end. The broker does not use `PipeOptions.CurrentUserOnly`: .NET compares the pipe owner with the token's owner SID, and an elevated token's owner is Administrators while its user SID is the same as the unelevated user's, so the option would refuse the connection. The broker instead checks the connected pipe's DACL names only its own user SID and offers only `TokenImpersonationLevel.Identification`. A broker that finds no control pipe within 30 seconds exits with code 1. [Broker lifetime](broker-lifetime.md) has the contract.
 
-Once an elevated broker is running, it serves whole-volume metadata (the full MFT and live USN journal of any NTFS volume) to any same-user process able to drive the client; Windows UAC does not treat the boundary between an unelevated process and an elevated process under the same user account as a security boundary. Validating that channel pipe names match `mftlib-broker-` plus 32 ASCII hex digits and that scan section names match `mftlib-block-<drive>-` plus 32 ASCII hex digits for the channel's drive constrains which kernel objects the broker will open or map, without providing authentication or an ownership guarantee over those names. `GrowUsnJournal` caps the requested maximum size at the smaller of 8 GiB and 5% of the volume's total size read at request time so a same-user process cannot use the broker to fill a volume with journal space.
+Once an elevated broker is running, it serves whole-volume metadata (the full MFT and live USN journal of any NTFS volume) to any same-user process able to volume the client; Windows UAC does not treat the boundary between an unelevated process and an elevated process under the same user account as a security boundary. Validating that channel pipe names match `mftlib-broker-` plus 32 ASCII hex digits and that scan section names match `mftlib-block-<volume>-` plus 32 ASCII hex digits for the channel's volume constrains which kernel objects the broker will open or map, without providing authentication or an ownership guarantee over those names. `GrowUsnJournal` caps the requested maximum size at the smaller of 8 GiB and 5% of the volume's total size read at request time so a same-user process cannot use the broker to fill a volume with journal space.
 
 A full `dotnet test` run raises no prompt in either mode. The only tests that reach a sample's entry point
 are `SampleProgramWatch_EntryPoint_UnknownOption_PrintsUsageAndReturnsTwo` (a command line the parser refuses) and the Benchmark entry-point test (which cannot elevate); every other test of the relaunch stubs the
@@ -36,9 +36,9 @@ Cancel or the five-minute timeout skips the launch with the same fallback text a
 `elevation-status` touch no volume and show no dialog, and neither does Direct with `--source dump`.
 
 The heads-up gate precedes creation of the scan's `BrokerSession`. One session serves the
-whole run and launches its broker only when a drive needs a scan; offline drives do not
+whole run and launches its broker only when a volume needs a scan; offline volumes do not
 launch it. A session-construction failure is printed as `Error creating broker session: ...`.
-A lazy launch failure is reported as `Error on drive X: ...` for the drive that settles failed, or `Error opening the index: ...` when the open itself throws.
+A lazy launch failure is reported as `Error on root X: ...` for the root that settles failed, or `Error opening the index: ...` when the open itself throws.
 Watch waits the default 30 seconds for the elevated broker to connect unless `--connect-timeout N` names another wait in seconds.
 
 ## Double-click and bare launches
@@ -53,11 +53,11 @@ Direct local scans relaunch themselves elevated, waiting indefinitely for the el
 elevated run writes to `output.log` beside the executable, the unelevated console prints that path before it starts
 the elevated run, and the elevated window closes without waiting.
 
-Watch with no arguments is `watch` over every ready NTFS fixed drive: it prints which drives it chose, scans each with a
+Watch with no arguments is `watch` over every ready NTFS fixed volume: it prints which volumes it chose, scans each with a
 running row count (a line each 250000 rows within a scan phase), then prints changes until a key press. `--seconds N`
 replaces the key press with a fixed length, and an unattended run that is elevated, or one whose input is redirected,
 watches for ten seconds. An unattended run that is not elevated exits 1 without watching, as the Unattended section
-below describes. `scan` makes one pass per listed drive and returns. Any drive that failed makes the exit code 1.
+below describes. `scan` makes one pass per listed root and returns. Any root that failed makes the exit code 1.
 
 ## Windows Defender process exclusions
 
@@ -90,7 +90,7 @@ Tests use `MFTLibTestExtensions.DefenderExclusionIsolation.ScriptPowerShell`, a 
 fixture) that records each PowerShell launch and reports a chosen outcome. A fake `IElevationProvider` decides the
 branch, so no test raises a UAC prompt, starts a real PowerShell or changes real Defender settings.
 
-`SampleProgram.Direct exclude-defender` calls it for its own executable. The verb takes no drive and runs only when named.
+`SampleProgram.Direct exclude-defender` calls it for its own executable. The verb takes no root and runs only when named.
 An elevated run (the relaunched child) writes to `output.log` and never waits for a key. An attended, unelevated run shows
 the heads-up dialog once, before the library call and so before either UAC route; Cancel or the five-minute timeout means
 no library call, a printed line and exit 1. Under `MFTLIB_SAMPLE_UNATTENDED=1` an unelevated run prints that elevation was

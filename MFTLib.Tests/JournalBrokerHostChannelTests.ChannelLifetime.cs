@@ -10,16 +10,16 @@ namespace MFTLib.Tests;
 public partial class JournalBrokerHostChannelTests
 {
     [TestMethod]
-    public async Task OpenChannel_InvalidDrive_EndsMalformedControlSessionBeforeConnecting()
+    public async Task OpenChannel_InvalidVolume_EndsMalformedControlSessionBeforeConnecting()
     {
         await using var pair = new InMemoryPipePair();
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
         });
         var serve = host.ServeAsync(pair.Host,
-            (_, _) => throw new AssertFailedException("Invalid drive reached the connector."),
+            (_, _) => throw new AssertFailedException("Invalid volume reached the connector."),
             null, CancellationToken.None);
         // length 13, OpenChannel, request 31, invalid UTF-16 character '1', pipe name 'p'.
         byte[] frame = [13, 0, 0, 0, 1, 31, 0, 0, 0, (byte)'1', 0, 2, 0, 0, 0, (byte)'p', 0];
@@ -28,11 +28,11 @@ public partial class JournalBrokerHostChannelTests
     }
 
     [TestMethod]
-    public async Task ControlPipe_DriveOperationFrame_RepliesErrorNamingTheKind()
+    public async Task ControlPipe_VolumeOperationFrame_RepliesErrorNamingTheKind()
     {
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
         });
         await using var harness = new HostChannelHarness(host);
@@ -51,7 +51,7 @@ public partial class JournalBrokerHostChannelTests
     {
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = _ => throw new OperationCanceledException("the source gave up")
         });
         await using var harness = new HostChannelHarness(host);
@@ -72,13 +72,13 @@ public partial class JournalBrokerHostChannelTests
         var connected = new DisposalRecordingStream(pair.Host);
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
         });
         await using var harness = new HostChannelHarness(host, connectChannel: (_, _) => Task.FromResult<Stream>(connected),
 breakableControl: true);
         // The client is gone when its request arrives, so the ChannelOpened reply is the first
-        // frame to land on the dead control pipe, after the host connected the drive pipe.
+        // frame to land on the dead control pipe, after the host connected the volume pipe.
         harness.BreakableControl!.BreakPipe();
 
         await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, BrokerFrame.OpenChannel(8, 'C', harness.NextPipeName('C'))));
@@ -94,7 +94,7 @@ breakableControl: true);
         var connecting = new TestGate();
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation
         });
         await using var harness = new HostChannelHarness(host, connectChannel: (_, _) =>
@@ -120,14 +120,14 @@ breakableControl: true);
         var clock = new TimerSignalingClock();
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
             TimeProvider = clock
         });
         var readCancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseRead = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var connectionsReleased = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var harness = new HostChannelHarness(host, wrapDrivePipe: (_, hostEnd) =>
+        await using var harness = new HostChannelHarness(host, wrapVolumePipe: (_, hostEnd) =>
             new UncancellableReadStream(hostEnd, readCancelled, releaseRead.Task),
             connectionsReleased: connectionsReleased.Task);
         var pipe = await OpenChannelAfterConnectBoundAsync(harness, clock, connectionsReleased, 'C');
@@ -150,11 +150,11 @@ breakableControl: true);
         var watchStopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
-            WatchDrive = (_, _, _, token) => ParkedUntilCancelled(watchStopped, token)
+            WatchVolume = (_, _, _, token) => ParkedUntilCancelled(watchStopped, token)
         });
-        await using var harness = new HostChannelHarness(host, wrapDrivePipe: readBreaker.Wrap);
+        await using var harness = new HostChannelHarness(host, wrapVolumePipe: readBreaker.Wrap);
         var pipe = await harness.OpenWatchChannelAsync('C', Armed);
         Assert.AreEqual(BrokerFrameKind.CaughtUp, (await HostChannelHarness.ReadFrameAsync(pipe))?.Kind);
 
@@ -172,7 +172,7 @@ breakableControl: true);
         var clock = new TimerSignalingClock();
         var host = BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
             TimeProvider = clock
         });

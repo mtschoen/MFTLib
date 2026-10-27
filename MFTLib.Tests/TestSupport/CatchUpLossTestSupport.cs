@@ -19,5 +19,5 @@ static class CatchUpLossTestSupport
         new(StandardCatchUpLoss(driveLetter), Hold: hold);
 
     public static JournalCatchUpLostException[] CatchUpLosses(WatchHarness harness, char driveLetter) =>
-        [.. harness.Faults.Where(fault => fault.Kind == WatchFaultKind.CatchUpLost && fault.Drive == driveLetter).Select(fault => (JournalCatchUpLostException)fault.Exception)];
+        [.. harness.Faults.Where(fault => fault.Kind == WatchFaultKind.CatchUpLost && fault.Volume == driveLetter).Select(fault => (JournalCatchUpLostException)fault.Exception)];
 }

@@ -8,10 +8,10 @@ static partial class BrokerProtocol
 {
     // Control pipe
 
-    // payload: [requestId u32][drive UTF-16 character][pipeName string]
+    // payload: [requestId u32][volume UTF-16 character][pipeName string]
     public static void WriteOpenChannel(IBufferWriter<byte> writer, BrokerFrame frame)
     {
-        new PayloadWriter().UInt32(frame.RequestId).Drive(frame.RequireDrive()).String(frame.PipeName)
+        new PayloadWriter().UInt32(frame.RequestId).Volume(frame.RequireVolume()).String(frame.PipeName)
             .WriteTo(writer, BrokerFrameKind.OpenChannel);
     }
 
@@ -21,10 +21,10 @@ static partial class BrokerProtocol
         new PayloadWriter().UInt32(frame.RequestId).WriteTo(writer, BrokerFrameKind.ChannelOpened);
     }
 
-    // payload: [requestId u32][drive UTF-16 character]
+    // payload: [requestId u32][volume UTF-16 character]
     public static void WriteQueryVolume(IBufferWriter<byte> writer, BrokerFrame frame)
     {
-        new PayloadWriter().UInt32(frame.RequestId).Drive(frame.RequireDrive()).WriteTo(writer, BrokerFrameKind.QueryVolume);
+        new PayloadWriter().UInt32(frame.RequestId).Volume(frame.RequireVolume()).WriteTo(writer, BrokerFrameKind.QueryVolume);
     }
 
     // payload: [requestId u32][bytesPerFileRecordSegment u32][mftValidDataLength i64]
@@ -34,10 +34,10 @@ static partial class BrokerProtocol
             .Int64(frame.MftValidDataLength).WriteTo(writer, BrokerFrameKind.VolumeInfo);
     }
 
-    // payload: [requestId u32][drive UTF-16 character][maximumSize i64][allocationDelta i64]
+    // payload: [requestId u32][volume UTF-16 character][maximumSize i64][allocationDelta i64]
     public static void WriteGrowUsnJournal(IBufferWriter<byte> writer, BrokerFrame frame)
     {
-        new PayloadWriter().UInt32(frame.RequestId).Drive(frame.RequireDrive()).Int64(frame.JournalMaximumSize)
+        new PayloadWriter().UInt32(frame.RequestId).Volume(frame.RequireVolume()).Int64(frame.JournalMaximumSize)
             .Int64(frame.JournalAllocationDelta).WriteTo(writer, BrokerFrameKind.GrowUsnJournal);
     }
 
@@ -62,7 +62,7 @@ static partial class BrokerProtocol
             : string.Concat(message.AsSpan(0, MaximumMessageUnits - TruncationMarker.Length), TruncationMarker);
     }
 
-    // payload: [requestId u32 (0 on a drive pipe)][message string]
+    // payload: [requestId u32 (0 on a volume pipe)][message string]
     public static void WriteError(IBufferWriter<byte> writer, BrokerFrame frame)
     {
         new PayloadWriter().UInt32(frame.RequestId).String(FitMessage(frame.RequireMessage()))
@@ -81,7 +81,7 @@ static partial class BrokerProtocol
         new PayloadWriter().String(FitMessage(frame.RequireMessage())).WriteTo(writer, BrokerFrameKind.Stalled);
     }
 
-    // Drive pipe
+    // Volume pipe
 
     // The ArmAndScan frame's length (kind byte plus payload), so a caller can refuse a keep list
     // the frame limit cannot carry before anything is sent.
@@ -117,7 +117,7 @@ static partial class BrokerProtocol
 
     // payload: [phase i32][recordsProcessed i64][bytesProcessed i64][totalRecords nullable i64]
     //          [totalBytes nullable i64]
-    // The drive is the channel's, so the progress sample's drive letter is not written.
+    // The volume is the channel's, so the progress sample's drive letter is not written.
     public static void WriteScanProgress(IBufferWriter<byte> writer, BrokerFrame frame)
     {
         var progress = frame.Progress.GetValueOrDefault();

@@ -131,8 +131,8 @@ public partial class JournalBrokerHostRealSeamsTests
         return resultPtr;
     }
 
-    // Scans drive C through the default host over a raw ArmAndScan frame and returns every frame
-    // the drive pipe carried. The default host reads the catch-up journal through the real seam.
+    // Scans volume C through the default host over a raw ArmAndScan frame and returns every frame
+    // the volume pipe carried. The default host reads the catch-up journal through the real seam.
     static async Task<List<BrokerFrame>> ServeDefaultScanAsync(RecordingBlockSectionWriter writer, long armedNextUsn)
     {
         if (!OperatingSystem.IsWindows())

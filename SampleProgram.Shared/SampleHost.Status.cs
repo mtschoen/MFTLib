@@ -10,15 +10,15 @@ namespace SampleProgram.Direct;
 partial class SampleHost
 {
     // An offline or failed drive settles without a usable index, so a verb stops here with the reason.
-    static DriveBlockStatus RequireReadyBlock(RootStatus status)
+    static RootBlockStatus RequireReadyBlock(RootStatus status)
     {
-        if (status is { State: DriveState.Failed, Failure: { } failure })
+        if (status is { State: RootState.Failed, Failure: { } failure })
         {
-            throw new InvalidOperationException($"The drive failed ({failure.Kind}): {failure.Message}");
+            throw new InvalidOperationException($"The root failed ({failure.Kind}): {failure.Message}");
         }
 
         // An offline drive settles without a scan, so there is no catch-up to report.
-        return status.Block ?? throw new InvalidOperationException("The drive is offline; nothing was scanned.");
+        return status.Block ?? throw new InvalidOperationException("The root is offline; nothing was scanned.");
     }
 
     void WriteStatus(RootStatus status)
@@ -38,21 +38,21 @@ partial class SampleHost
         internal const uint ProgressRowInterval = 250_000;
 
         readonly Lock _gate = new();
-        readonly Dictionary<RootKey, (IndexScanPhase Phase, uint Rows)> _lastReportByDrive = [];
+        readonly Dictionary<RootKey, (IndexScanPhase Phase, uint Rows)> _lastReportByRoot = [];
 
         public void Report(IndexScanProgress value)
         {
             lock (_gate)
             {
-                if (_lastReportByDrive.TryGetValue(value.Drive, out var last)
+                if (_lastReportByRoot.TryGetValue(value.Root, out var last)
                     && last.Phase == value.Phase
                     && value.WrittenRowCount - last.Rows < ProgressRowInterval)
                 {
                     return;
                 }
 
-                _lastReportByDrive[value.Drive] = (value.Phase, value.WrittenRowCount);
-                output.WriteLine($"  {value.Drive}: {value.Phase}: {value.WrittenRowCount} rows{(value.ExpectedRowCount is { } total ? $" of {total}" : string.Empty)}{(value.Outcome is { } outcome ? $" ({outcome})" : string.Empty)}{(value.CurrentDirectory is { } directory ? $" in {directory}" : string.Empty)}");
+                _lastReportByRoot[value.Root] = (value.Phase, value.WrittenRowCount);
+                output.WriteLine($"  {value.Root}: {value.Phase}: {value.WrittenRowCount} rows{(value.ExpectedRowCount is { } total ? $" of {total}" : string.Empty)}{(value.Outcome is { } outcome ? $" ({outcome})" : string.Empty)}{(value.CurrentDirectory is { } directory ? $" in {directory}" : string.Empty)}");
             }
         }
     }

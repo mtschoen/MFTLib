@@ -6,18 +6,18 @@ namespace MFTLib.Index;
 /// </summary>
 public sealed partial record IndexedRoot
 {
-    internal IndexedRoot(RootKey drive, string rootDirectory, uint volumeSerial,
+    internal IndexedRoot(RootKey root, string rootDirectory, uint volumeSerial,
         ProducerKind producer = ProducerKind.Mft)
     {
-        Drive = drive;
+        Root = root;
         RootDirectory = rootDirectory;
         VolumeSerial = volumeSerial;
         Producer = producer;
-        ValidateRootProducer(drive, producer);
+        ValidateRootProducer(root, producer);
     }
 
     /// <summary>The index root identity; assigning the default key throws <see cref="ArgumentException" />.</summary>
-    public RootKey Drive { get; init => field = value.Validated(); }
+    public RootKey Root { get; init => field = value.Validated(); }
 
     /// <summary>
     ///     Root directory where an enumeration walk starts; assigning null throws
@@ -29,7 +29,7 @@ public sealed partial record IndexedRoot
     public uint VolumeSerial { get; init; }
 
     /// <summary>
-    ///     Which producer builds this drive's block; assigning the default or an undefined kind throws
+    ///     Which producer builds this root's block; assigning the default or an undefined kind throws
     ///     <see cref="ArgumentOutOfRangeException" />. <see cref="ProducerKind.Mft" /> requires a volume root and uses
     ///     <see cref="FileIndexOptions.MftSource" />. <see cref="ProducerKind.Enumeration" /> walks the directory tree,
     ///     ignoring <see cref="FileIndexOptions.MftSource" /> entirely, and is never selected on a caller's behalf.
@@ -38,18 +38,18 @@ public sealed partial record IndexedRoot
 
     internal IndexedRoot Validated()
     {
-        _ = Drive.Validated();
+        _ = Root.Validated();
         _ = ValidateRootDirectory(RootDirectory);
         _ = ValidateProducer(Producer);
-        ValidateRootProducer(Drive, Producer);
+        ValidateRootProducer(Root, Producer);
         return this;
     }
 
-    static void ValidateRootProducer(RootKey drive, ProducerKind producer)
+    static void ValidateRootProducer(RootKey root, ProducerKind producer)
     {
-        if (producer == ProducerKind.Mft && !drive.IsVolume)
+        if (producer == ProducerKind.Mft && !root.IsVolume)
         {
-            throw new ArgumentException("An MFT producer requires a volume root.", nameof(drive));
+            throw new ArgumentException("An MFT producer requires a volume root.", nameof(root));
         }
     }
 

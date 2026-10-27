@@ -19,7 +19,7 @@ public class FileEntryDisposalTests
     static readonly DateTime Moment = new(2026, 9, 13, 0, 0, 0, DateTimeKind.Utc);
 
     SyntheticBlockBuilder _builder = null!;
-    DriveBlock[] _snapshot = null!;
+    RootBlock[] _snapshot = null!;
     FileEntry _entry;
 
     [TestInitialize]
@@ -33,7 +33,7 @@ public class FileEntryDisposalTests
         _builder.Complete(Moment);
 
         var block = _builder.OpenForReading(out _)!;
-        _snapshot = [new DriveBlock(new VolumeKey('T'), block, rootDirectoryPath: TestDriveRoot.For('T'))];
+        _snapshot = [new RootBlock(new VolumeKey('T'), block, rootDirectoryPath: TestRootDirectory.For('T'))];
         _entry = FileEntry.Create(_snapshot[0], readme);
     }
 
@@ -82,8 +82,8 @@ public class FileEntryDisposalTests
 
         var deepest = builder.AddRow("deep.txt", parent, RowFlags.InUse, 1, Moment, sequenceNumber: 0);
         builder.Complete(Moment);
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('T'), builder.OpenForReading(out _)!,
-            rootDirectoryPath: TestDriveRoot.For('T'))];
+        RootBlock[] snapshot = [new RootBlock(new VolumeKey('T'), builder.OpenForReading(out _)!,
+            rootDirectoryPath: TestRootDirectory.For('T'))];
         try
         {
             var entry = FileEntry.Create(snapshot[0], deepest);
@@ -99,13 +99,13 @@ public class FileEntryDisposalTests
     }
 
     [TestMethod]
-    public async Task ToString_OnAnEntryWhoseDriveHasNoRootDirectory_FallsBackToTheNameAndKey()
+    public async Task ToString_OnAnEntryWhoseRootHasNoRootDirectory_FallsBackToTheNameAndKey()
     {
         using var builder = new SyntheticBlockBuilder();
         var root = builder.AddRoot();
         var file = builder.AddRow("rootless.txt", root, RowFlags.InUse, 1, Moment, sequenceNumber: 0);
         builder.Complete(Moment);
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey('T'), builder.OpenForReading(out _)!)];
+        RootBlock[] snapshot = [new RootBlock(new VolumeKey('T'), builder.OpenForReading(out _)!)];
         try
         {
             var entry = FileEntry.Create(snapshot[0], file);
@@ -164,7 +164,7 @@ public class FileEntryDisposalTests
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.IsDirectory);
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.IsDeleted);
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.RecordKey);
-        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.Drive);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.Root);
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.Path);
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = entry.Parent);
         Assert.ThrowsExactly<ObjectDisposedException>(() => entry.Children(TestContext.CancellationToken));

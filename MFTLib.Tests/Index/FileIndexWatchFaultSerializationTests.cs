@@ -4,7 +4,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
 
-/// <summary>One drive's <see cref="FileIndex.WatchFaulted" /> callbacks never overlap, even across a recovery.</summary>
+/// <summary>One root's <see cref="FileIndex.WatchFaulted" /> callbacks never overlap, even across a recovery.</summary>
 [TestClass]
 public class FileIndexWatchFaultSerializationTests
 {
@@ -40,7 +40,7 @@ public class FileIndexWatchFaultSerializationTests
             ? Thread.CurrentThread
             : successorPump;
 
-        harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
+        harness.Source.WatchFor('T').FailVolume(new IOException("T's journal wrapped"));
         await recoveryHandlerEntered.Task.WaitAsync(HangGuard, Token);
         await harness.IndexFor('T').StartWatchingAsync(Token);
         harness.Source.WatchFor('T').LoseChannel(new IOException("the successor's broker died"));

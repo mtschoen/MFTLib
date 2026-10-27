@@ -293,7 +293,7 @@ sealed partial class BlockWriter
     }
 
     /// <summary>
-    ///     Raises the generation of a replacement block above the superseded block's, so a drive's
+    ///     Raises the generation of a replacement block above the superseded block's, so a root's
     ///     generation never repeats across a rescan. A generation already higher is kept.
     /// </summary>
     /// <param name="supersededGeneration">The generation of the block this one replaces.</param>

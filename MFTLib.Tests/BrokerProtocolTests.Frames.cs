@@ -39,13 +39,13 @@ public partial class BrokerProtocolTests
     }
 
     [TestMethod]
-    public void OpenChannelFrame_RoundTrips_RequestIdDriveAndPipeName()
+    public void OpenChannelFrame_RoundTrips_RequestIdVolumeAndPipeName()
     {
         var frame = RoundTrip(BrokerFrame.OpenChannel(0xDEADBEEF, 'C', "mftlib-drive-C-1"), BrokerProtocol.WriteOpenChannel);
 
         Assert.AreEqual(BrokerFrameKind.OpenChannel, frame.Kind);
         Assert.AreEqual(0xDEADBEEF, frame.RequestId);
-        Assert.AreEqual(new VolumeKey('C'), frame.RequireDrive());
+        Assert.AreEqual(new VolumeKey('C'), frame.RequireVolume());
         Assert.AreEqual("mftlib-drive-C-1", frame.PipeName);
         Assert.IsEmpty(frame.Entries);
         Assert.IsNull(frame.RetainedFileNames);
@@ -61,13 +61,13 @@ public partial class BrokerProtocolTests
     }
 
     [TestMethod]
-    public void QueryVolumeFrame_RoundTrips_RequestIdAndDrive()
+    public void QueryVolumeFrame_RoundTrips_RequestIdAndVolume()
     {
         var frame = RoundTrip(BrokerFrame.QueryVolume(4, 'D'), BrokerProtocol.WriteQueryVolume);
 
         Assert.AreEqual(BrokerFrameKind.QueryVolume, frame.Kind);
         Assert.AreEqual(4u, frame.RequestId);
-        Assert.AreEqual(new VolumeKey('D'), frame.RequireDrive());
+        Assert.AreEqual(new VolumeKey('D'), frame.RequireVolume());
     }
 
     [TestMethod]
@@ -79,7 +79,7 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(9u, frame.RequestId);
         Assert.AreEqual(1024U, frame.BytesPerFileRecordSegment);
         Assert.AreEqual(8_192_000_000L, frame.MftValidDataLength);
-        Assert.IsNull(frame.Drive, "The reply is matched by its request id, not by a drive.");
+        Assert.IsNull(frame.Volume, "The reply is matched by its request id, not by a volume.");
         Assert.IsEmpty(frame.Entries);
     }
 
@@ -91,12 +91,12 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
         Assert.AreEqual(42u, frame.RequestId);
         Assert.AreEqual("journal wrapped", frame.Message);
-        Assert.IsNull(frame.Drive);
+        Assert.IsNull(frame.Volume);
         Assert.IsEmpty(frame.Entries);
     }
 
     [TestMethod]
-    public void ErrorFrame_OnDrivePipe_RoundTripsRequestIdZero()
+    public void ErrorFrame_OnVolumePipe_RoundTripsRequestIdZero()
     {
         var frame = RoundTrip(BrokerFrame.Error(0, "no watch source"), BrokerProtocol.WriteError);
 
@@ -138,7 +138,7 @@ public partial class BrokerProtocolTests
             0x0D, 0x00, 0x00, 0x00, // totalLength = 13
             0x01, // kind = OpenChannel
             0x01, 0x00, 0x00, 0x00, // requestId = 1
-            0x43, 0x00, // drive 'C'
+            0x43, 0x00, // volume 'C'
             0x02, 0x00, 0x00, 0x00, 0x70, 0x00 // pipeName "p"
         ]);
 
@@ -162,7 +162,7 @@ public partial class BrokerProtocolTests
             0x07, 0x00, 0x00, 0x00, // totalLength = 7
             0x03, // kind = QueryVolume
             0x02, 0x00, 0x00, 0x00, // requestId = 2
-            0x43, 0x00 // drive 'C'
+            0x43, 0x00 // volume 'C'
         ]);
 
         var buffer = new ArrayBufferWriter<byte>();

@@ -4,7 +4,7 @@ namespace MFTLib.Tests.Index;
 
 /// <summary>
 ///     Wraps a <see cref="SyntheticBlockBuilder.MftShaped" /> block in a
-///     <see cref="DriveBlock" />/<see cref="BlockWriter" /> pair so a test can apply journal
+///     <see cref="RootBlock" />/<see cref="BlockWriter" /> pair so a test can apply journal
 ///     entries directly through a <see cref="JournalMutator" /> without repeating the setup.
 /// </summary>
 sealed class MutatorFixture : IAsyncDisposable
@@ -17,15 +17,15 @@ sealed class MutatorFixture : IAsyncDisposable
     {
         _builder = SyntheticBlockBuilder.MftShaped();
         var block = _builder.OpenForWriting();
-        var driveBlock = new DriveBlock(new VolumeKey(_builder.Drive), block,
-            rootDirectoryPath: TestDriveRoot.For(_builder.Drive));
-        Snapshot = [driveBlock];
+        var rootBlock = new RootBlock(new VolumeKey(_builder.Drive), block,
+            rootDirectoryPath: TestRootDirectory.For(_builder.Drive));
+        Snapshot = [rootBlock];
         _mutator = new JournalMutator(new BlockWriter(block));
     }
 
     public DateTime Timestamp { get; } = new(2026, 9, 2, 6, 0, 0, DateTimeKind.Utc);
     public BlockFile Block => _mutator.Writer.Block;
-    public DriveBlock[] Snapshot { get; }
+    public RootBlock[] Snapshot { get; }
 
     public IReadOnlyList<FileChange> Apply(IReadOnlyList<UsnJournalEntry> entries)
     {

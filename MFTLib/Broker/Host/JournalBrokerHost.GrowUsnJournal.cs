@@ -1,7 +1,7 @@
 
 namespace MFTLib;
 
-/// <summary>Grows one drive's USN journal in place.</summary>
+/// <summary>Grows one volume's USN journal in place.</summary>
 sealed partial class JournalBrokerHost
 {
     // Exactly one reply per request, carrying its id: UsnJournalSettings on success, Error
@@ -12,7 +12,7 @@ sealed partial class JournalBrokerHost
         UsnJournalSettings settings;
         try
         {
-            settings = _volumeAccess.GrowUsnJournal(request.RequireDrive(),
+            settings = _volumeAccess.GrowUsnJournal(request.RequireVolume(),
                 request.JournalMaximumSize, request.JournalAllocationDelta);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)

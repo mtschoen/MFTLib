@@ -6,15 +6,15 @@ namespace MFTLib.Index;
 /// </summary>
 static class LookupEngine
 {
-    internal static FileEntry Root(DriveBlock driveBlock, CancellationToken cancellationToken = default)
+    internal static FileEntry Root(RootBlock rootBlock, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(driveBlock);
+        ArgumentNullException.ThrowIfNull(rootBlock);
         cancellationToken.ThrowIfCancellationRequested();
-        return FileEntry.Create(driveBlock, driveBlock.Block.Header.RootRow);
+        return FileEntry.Create(rootBlock, rootBlock.Block.Header.RootRow);
     }
 
     /// <summary>The block <see cref="Find" /> reads for this path, or null when the root does not match.</summary>
-    internal static DriveBlock? SelectPathBlock(DriveBlock? current, string nativePath)
+    internal static RootBlock? SelectPathBlock(RootBlock? current, string nativePath)
     {
         if (current is null)
         {
@@ -32,28 +32,28 @@ static class LookupEngine
     ///     directory is a prefix of the path, the remaining segments are walked down from that
     ///     block's root row.
     /// </summary>
-    internal static FileEntry? Find(DriveBlock? driveBlock, string nativePath,
+    internal static FileEntry? Find(RootBlock? rootBlock, string nativePath,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(nativePath);
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (driveBlock is null)
+        if (rootBlock is null)
         {
             return null;
         }
 
         string? foldedPath = null;
-        if (!TryMatchRootPrefix(driveBlock.Kind, driveBlock.MatchableRootDirectoryPath, nativePath, ref foldedPath,
+        if (!TryMatchRootPrefix(rootBlock.Kind, rootBlock.MatchableRootDirectoryPath, nativePath, ref foldedPath,
                 out var rootLength))
         {
             return null;
         }
 
         var remainder = nativePath.AsSpan(rootLength);
-        var currentRow = driveBlock.Block.Header.RootRow;
-        var descent = new PathDescent(driveBlock, IsCaseSensitive(driveBlock), cancellationToken);
-        foreach (var segmentRange in remainder.SplitAny(driveBlock.Kind.Separators))
+        var currentRow = rootBlock.Block.Header.RootRow;
+        var descent = new PathDescent(rootBlock, IsCaseSensitive(rootBlock), cancellationToken);
+        foreach (var segmentRange in remainder.SplitAny(rootBlock.Kind.Separators))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var segment = remainder[segmentRange];
@@ -69,7 +69,7 @@ static class LookupEngine
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        return FileEntry.Create(driveBlock, currentRow);
+        return FileEntry.Create(rootBlock, currentRow);
     }
 
     /// <summary>
@@ -78,10 +78,10 @@ static class LookupEngine
     ///     inherits the host's rule, which is the same decision
     ///     <c>FileIndex.TryOpenExistingBlock</c> already makes when it compares a cached root.
     /// </summary>
-    static bool IsCaseSensitive(DriveBlock driveBlock)
+    static bool IsCaseSensitive(RootBlock rootBlock)
     {
-        ArgumentNullException.ThrowIfNull(driveBlock);
-        return driveBlock.Kind.IsCaseSensitive;
+        ArgumentNullException.ThrowIfNull(rootBlock);
+        return rootBlock.Kind.IsCaseSensitive;
     }
 
     /// <summary>
@@ -91,7 +91,7 @@ static class LookupEngine
     ///     side is not significant, so a root of <c>T:\</c> matches <c>T:\Documents</c> and a root
     ///     of <c>/data/files</c> matches <c>/data/files/</c>.
     /// </summary>
-    internal static bool TryMatchRootPrefix(DriveKind kind, string? matchableRootDirectoryPath,
+    internal static bool TryMatchRootPrefix(RootKind kind, string? matchableRootDirectoryPath,
         string nativePath, ref string? foldedPath, out int rootLength)
     {
         if (nativePath.Length == 0 || matchableRootDirectoryPath is not { } trimmed)
@@ -125,14 +125,14 @@ static class LookupEngine
     ///     level's call carries only what actually changes between levels.
     /// </summary>
     readonly record struct PathDescent(
-        DriveBlock DriveBlock,
+        RootBlock RootBlock,
         bool CaseSensitive,
         CancellationToken CancellationToken);
 
     static bool TryFindChild(in PathDescent descent, uint parentRow, ReadOnlySpan<char> segment,
         out uint childRow)
     {
-        var scanner = new RowScanner(descent.DriveBlock, descent.CancellationToken);
+        var scanner = new RowScanner(descent.RootBlock, descent.CancellationToken);
         while (scanner.MoveNext())
         {
             ref readonly var row = ref scanner.Current;

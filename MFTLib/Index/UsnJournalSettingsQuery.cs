@@ -19,14 +19,14 @@ static class UsnJournalSettingsQuery
         internal void ResetToDefaults() => _queryOverride = null;
     }
 
-    public static UsnJournalSettings Query(VolumeKey drive)
+    public static UsnJournalSettings Query(VolumeKey volume)
     {
         if (Dependencies._queryOverride is { } queryOverride)
         {
-            return queryOverride(drive);
+            return queryOverride(volume);
         }
 
-        return Query(drive, OperatingSystem.IsWindows());
+        return Query(volume, OperatingSystem.IsWindows());
     }
 
     /// <summary>
@@ -34,7 +34,7 @@ static class UsnJournalSettingsQuery
     ///     the refusal off Windows is tested on every platform. Depends only on its arguments and
     ///     the platform APIs; the test override is handled by <see cref="Query(VolumeKey)" />.
     /// </summary>
-    internal static UsnJournalSettings Query(VolumeKey drive, bool isWindows)
+    internal static UsnJournalSettings Query(VolumeKey volume, bool isWindows)
     {
         if (!isWindows || !OperatingSystem.IsWindows())
         {
@@ -43,7 +43,7 @@ static class UsnJournalSettingsQuery
         }
 
         using var handle = UsnJournalVolumeInterop.OpenVolumeRoot(
-            drive, "query its USN journal settings");
+            volume, "query its USN journal settings");
         return UsnJournalVolumeInterop.QueryJournalData(handle).ToSettings();
     }
 }

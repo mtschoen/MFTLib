@@ -4,7 +4,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
 
-/// <summary>Tracks the origin of each drive's current block across opens and rescans.</summary>
+/// <summary>Tracks the origin of each root's current block across opens and rescans.</summary>
 [TestClass]
 public sealed class FileIndexBlockOriginTests : IndexTreeTestBase
 {
@@ -17,7 +17,7 @@ public sealed class FileIndexBlockOriginTests : IndexTreeTestBase
         };
 
     [TestMethod]
-    public async Task Drives_AFirstEverScanReportsTheBlockAsProduced()
+    public async Task Roots_AFirstEverScanReportsTheBlockAsProduced()
     {
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
 
@@ -25,7 +25,7 @@ public sealed class FileIndexBlockOriginTests : IndexTreeTestBase
     }
 
     [TestMethod]
-    public async Task Drives_ASecondOpenReportsTheBlockAsWarmStarted()
+    public async Task Roots_ASecondOpenReportsTheBlockAsWarmStarted()
     {
         await using (await FileIndex.OpenAsync(Options(), CancellationToken.None))
         {
@@ -37,7 +37,7 @@ public sealed class FileIndexBlockOriginTests : IndexTreeTestBase
     }
 
     [TestMethod]
-    public async Task Drives_AfterARescanTheBlockReadsAsProduced()
+    public async Task Roots_AfterARescanTheBlockReadsAsProduced()
     {
         await using (await FileIndex.OpenAsync(Options(), CancellationToken.None))
         {
@@ -52,27 +52,27 @@ public sealed class FileIndexBlockOriginTests : IndexTreeTestBase
     }
 
     [TestMethod]
-    public async Task Drives_AnOfflineDriveReportsNoBlockOrigin()
+    public async Task Roots_AnOfflineRootReportsNoBlockOrigin()
     {
         var options = new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration),
+            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('Z'), Path.Combine(TreeRoot, "absent"), 1, ProducerKind.Enumeration),
             CacheDirectory = CacheDirectoryPath
         };
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
-        Assert.AreEqual(DriveState.Offline, index.Status.State);
+        Assert.AreEqual(RootState.Offline, index.Status.State);
         Assert.IsNull(index.Status.Block);
     }
 
     /// <summary>
     ///     MFTLib#146's acceptance: a consumer's "build and rebuild everything" loop rescans only
-    ///     the drives that warm-started, so a first-ever open scans each drive once rather than
+    ///     the roots that warm-started, so a first-ever open scans each root once rather than
     ///     twice, and an open with a cache present still gets exactly one real scan.
     /// </summary>
     [TestMethod]
-    public async Task ConsumerRebuildLoop_SkipsDrivesTheOpenJustScanned()
+    public async Task ConsumerRebuildLoop_SkipsRootsTheOpenJustScanned()
     {
         var invocationCount = 0;
         Task<MftBlockProduceResult> CountingProducer(MftBlockProduceRequest request, CancellationToken _)
@@ -82,7 +82,7 @@ public sealed class FileIndexBlockOriginTests : IndexTreeTestBase
                 SkippedRecordCount: 0));
         }
 
-        static async Task RebuildWarmStartedDrivesAsync(FileIndex index)
+        static async Task RebuildWarmStartedRootsAsync(FileIndex index)
         {
             if (index.Status.Block?.Origin == BlockOrigin.WarmStartedFromCache)
             {
@@ -94,17 +94,17 @@ public sealed class FileIndexBlockOriginTests : IndexTreeTestBase
                          CancellationToken.None))
         {
             Assert.AreEqual(BlockOrigin.ProducedByScan, firstOpen.Status.Block!.Origin);
-            await RebuildWarmStartedDrivesAsync(firstOpen);
-            Assert.AreEqual(1, invocationCount, "the open already scanned this drive, so the loop must skip it");
+            await RebuildWarmStartedRootsAsync(firstOpen);
+            Assert.AreEqual(1, invocationCount, "the open already scanned this root, so the loop must skip it");
         }
 
         await using var secondOpen = await FileIndex.OpenAsync(Options(ProducerKind.Mft, CountingProducer),
             CancellationToken.None);
         Assert.AreEqual(BlockOrigin.WarmStartedFromCache, secondOpen.Status.Block!.Origin);
 
-        await RebuildWarmStartedDrivesAsync(secondOpen);
+        await RebuildWarmStartedRootsAsync(secondOpen);
 
-        Assert.AreEqual(2, invocationCount, "a warm-started drive is the one the loop must rescan");
+        Assert.AreEqual(2, invocationCount, "a warm-started root is the one the loop must rescan");
         Assert.AreEqual(BlockOrigin.ProducedByScan, secondOpen.Status.Block!.Origin);
     }
 }

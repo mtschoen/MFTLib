@@ -169,7 +169,7 @@ public class BrokerProcessLaunchTests
                     PipeOptions.Asynchronous);
                 await pipe.ConnectAsync(token);
 
-                // A minimal fake host over the real control pipe, real drive pipes and the
+                // A minimal fake host over the real control pipe, real volume pipes and the
                 // client-created named block section.
                 var host = new JournalBrokerHost(new ScriptedVolumeAccess
                 {
@@ -178,18 +178,18 @@ public class BrokerProcessLaunchTests
                     JournalRead = (_, cursor, _) => ([], cursor),
                     VolumeInformation = _ => new NtfsVolumeInformation(1024 * 1000, 1024)
                 });
-                await host.ServeAsync(pipe, (driveName, driveToken) => DefaultElevatedEntryRunner.ConnectDrivePipeAsync(
-                driveName, BrokerLiveness.ElevatedConnectTimeout, TimeProvider.System, driveToken),
+                await host.ServeAsync(pipe, (driveName, volumeToken) => DefaultElevatedEntryRunner.ConnectVolumePipeAsync(
+                driveName, BrokerLiveness.ElevatedConnectTimeout, TimeProvider.System, volumeToken),
                     new RealBlockSectionWriter(TimeProvider.System), CancellationToken.None);
             }, TestContext.CancellationToken);
             return true;
         });
 
-        var process = await BrokerProcess.LaunchAsync(launchBroker, null, BrokerProcess.CreateRealDriveBlockSection,
+        var process = await BrokerProcess.LaunchAsync(launchBroker, null, BrokerProcess.CreateRealVolumeBlockSection,
             cancellation.Token);
         try
         {
-            var result = await process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
+            var result = await process.ScanVolumeAsync('C', TestBlockSections.Target(), new MftScanOptions(),
                 null, cancellation.Token);
             // The real section factory built this block; a block returned from a scan is the caller's.
             using var block = result.Block.Block;

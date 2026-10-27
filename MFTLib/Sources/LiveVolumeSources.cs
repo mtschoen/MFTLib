@@ -19,16 +19,16 @@ static class LiveVolumeSources
     // Supplies native record batches without path resolution for the block writer. The scan's
     // allowance and token reach the native parse, so a rebalance takes effect at its next chunk
     // and a closed pipe stops it.
-    internal static IEnumerable<IReadOnlyList<MftRecord>> ScanDriveRecordBatches(VolumeKey drive,
+    internal static IEnumerable<IReadOnlyList<MftRecord>> ScanVolumeRecordBatches(VolumeKey volume,
         ParseThreadAllowance parseThreads, BlockWriteReporting reporting, MftScanOptions scanOptions,
         Action<long> recordsOmitted, CancellationToken cancellationToken)
     {
         reporting.Operation?.WaitingOnVolume();
-        var bytesPerFileRecordSegment = QueryVolumeInfo(drive).BytesPerFileRecordSegment;
-        using var volume = MftVolume.Open(drive, HostScanChunkRecords(bytesPerFileRecordSegment));
+        var bytesPerFileRecordSegment = QueryVolumeInfo(volume).BytesPerFileRecordSegment;
+        using var mftVolume = MftVolume.Open(volume, HostScanChunkRecords(bytesPerFileRecordSegment));
         reporting.Operation?.Processing("MFT parse");
         var mftProgress = MftBlockProgressAdapter.CreateParse(reporting.Progress, reporting.Operation);
-        foreach (var batch in volume.ReadRecordBatches(4096, mftProgress, parseThreads, cancellationToken,
+        foreach (var batch in mftVolume.ReadRecordBatches(4096, mftProgress, parseThreads, cancellationToken,
                      scanOptions, recordsOmitted))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -45,12 +45,12 @@ static class LiveVolumeSources
     // the watch ends. The native read blocks until the journal changes, so the source reports
     // waiting on the volume before each read and processing once a batch arrives.
     internal static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> WatchAndDisposeAsync(
-        VolumeKey drive, UsnJournalCursor since, ISourceOperationReporter operation,
+        VolumeKey volume, UsnJournalCursor since, ISourceOperationReporter operation,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         operation.WaitingOnVolume();
-        using var volume = MftVolume.Open(drive);
-        var batches = volume.Journal.WatchUsnJournal(since, cancellationToken)
+        using var mftVolume = MftVolume.Open(volume);
+        var batches = mftVolume.Journal.WatchUsnJournal(since, cancellationToken)
             .GetAsyncEnumerator(cancellationToken);
         try
         {
@@ -72,30 +72,30 @@ static class LiveVolumeSources
         }
     }
 
-    internal static UsnJournalSettings GrowUsnJournal(VolumeKey drive, long maximumSize, long allocationDelta)
+    internal static UsnJournalSettings GrowUsnJournal(VolumeKey volume, long maximumSize, long allocationDelta)
     {
-        using var volume = MftVolume.Open(drive);
-        return volume.Journal.GrowUsnJournal(maximumSize, allocationDelta);
+        using var mftVolume = MftVolume.Open(volume);
+        return mftVolume.Journal.GrowUsnJournal(maximumSize, allocationDelta);
     }
 
-    internal static UsnJournalCursor QueryCursor(VolumeKey drive)
+    internal static UsnJournalCursor QueryCursor(VolumeKey volume)
     {
-        using var volume = MftVolume.Open(drive);
-        return volume.Journal.QueryUsnJournalCursor();
+        using var mftVolume = MftVolume.Open(volume);
+        return mftVolume.Journal.QueryUsnJournalCursor();
     }
 
     // The internal overload carries the platform refusal, so a broker built for this cross-platform
     // library throws a clear PlatformNotSupportedException on a non-Windows host instead of failing to
     // compile there.
-    internal static NtfsVolumeInformation QueryVolumeInfo(VolumeKey drive)
+    internal static NtfsVolumeInformation QueryVolumeInfo(VolumeKey volume)
     {
-        return NtfsVolumeInformation.Query(drive, OperatingSystem.IsWindows());
+        return NtfsVolumeInformation.Query(volume, OperatingSystem.IsWindows());
     }
 
-    internal static (UsnJournalEntry[] Entries, UsnJournalCursor Updated) ReadJournal(VolumeKey drive, UsnJournalCursor since,
+    internal static (UsnJournalEntry[] Entries, UsnJournalCursor Updated) ReadJournal(VolumeKey volume, UsnJournalCursor since,
         int maximumBufferReads)
     {
-        using var volume = MftVolume.Open(drive);
-        return volume.Journal.ReadUsnJournalBounded(since, maximumBufferReads);
+        using var mftVolume = MftVolume.Open(volume);
+        return mftVolume.Journal.ReadUsnJournalBounded(since, maximumBufferReads);
     }
 }

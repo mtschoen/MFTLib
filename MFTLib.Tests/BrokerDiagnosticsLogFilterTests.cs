@@ -75,7 +75,7 @@ public class BrokerDiagnosticsLogFilterTests
     }
 
     [TestMethod]
-    public void Filter_ScopesReferencesToTheLogPathsDrive()
+    public void Filter_ScopesReferencesToTheLogPathsVolume()
     {
         const string otherDriveClientPath = @"D:\client-diag\broker-diagnostics.ui.log";
         var filter = new BrokerDiagnosticsLogFilter(OwnLogPath, otherDriveClientPath, path =>
@@ -100,9 +100,9 @@ public class BrokerDiagnosticsLogFilterTests
     }
 
     [TestMethod]
-    [DataRow(@"\\?\C:\broker-diag\broker-diagnostics.broker.log", DisplayName = "extended drive root")]
-    [DataRow(@"\\.\C:\broker-diag\broker-diagnostics.broker.log", DisplayName = "device drive root")]
-    public void Filter_PrefixedDriveRootPath_ResolvesAndFiltersMatchingEntries(string prefixedPath)
+    [DataRow(@"\\?\C:\broker-diag\broker-diagnostics.broker.log", DisplayName = "extended volume root")]
+    [DataRow(@"\\.\C:\broker-diag\broker-diagnostics.broker.log", DisplayName = "device volume root")]
+    public void Filter_PrefixedVolumeRootPath_ResolvesAndFiltersMatchingEntries(string prefixedPath)
     {
         var resolvedPath = string.Empty;
         var filter = new BrokerDiagnosticsLogFilter(prefixedPath, null, path =>
@@ -171,23 +171,23 @@ public class BrokerDiagnosticsLogFilterTests
     [TestMethod]
     public void TryGetDrive_ValidDriveFormats_ReturnsTrueAndVolumeKey()
     {
-        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDrive(@"C:\logs\diag.log", out var drive1));
-        Assert.AreEqual(new VolumeKey('C'), drive1);
+        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDrive(@"C:\logs\diag.log", out var volume1));
+        Assert.AreEqual(new VolumeKey('C'), volume1);
 
-        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDrive(@"c:\logs\diag.log", out var drive2));
-        Assert.AreEqual(new VolumeKey('C'), drive2);
+        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDrive(@"c:\logs\diag.log", out var volume2));
+        Assert.AreEqual(new VolumeKey('C'), volume2);
 
-        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDrive("D:/logs/diag.log", out var drive3));
-        Assert.AreEqual(new VolumeKey('D'), drive3);
+        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDrive("D:/logs/diag.log", out var volume3));
+        Assert.AreEqual(new VolumeKey('D'), volume3);
 
-        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDrive(@"\\?\E:\logs\diag.log", out var drive4));
-        Assert.AreEqual(new VolumeKey('E'), drive4);
+        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDrive(@"\\?\E:\logs\diag.log", out var volume4));
+        Assert.AreEqual(new VolumeKey('E'), volume4);
 
-        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDrive(@"\\.\F:\logs\diag.log", out var drive5));
-        Assert.AreEqual(new VolumeKey('F'), drive5);
+        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDrive(@"\\.\F:\logs\diag.log", out var volume5));
+        Assert.AreEqual(new VolumeKey('F'), volume5);
 
-        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDrive(@"\??\G:\logs\diag.log", out var drive6));
-        Assert.AreEqual(new VolumeKey('G'), drive6);
+        Assert.IsTrue(BrokerDiagnosticsLogFilter.TryGetDrive(@"\??\G:\logs\diag.log", out var volume6));
+        Assert.AreEqual(new VolumeKey('G'), volume6);
     }
 
     [TestMethod]
@@ -303,12 +303,12 @@ public class BrokerDiagnosticsLogFilterTests
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     public void TryGetDrive_ForARelativePath_ResolvesAgainstTheCurrentDrive()
     {
-        var resolved = BrokerDiagnosticsLogFilter.TryGetDrive("relative-name.log", out var drive);
+        var resolved = BrokerDiagnosticsLogFilter.TryGetDrive("relative-name.log", out var volume);
 
         Assert.IsTrue(resolved);
         var currentRoot = Path.GetPathRoot(Environment.CurrentDirectory);
         Assert.IsNotNull(currentRoot);
-        Assert.AreEqual(new VolumeKey(currentRoot[0]), drive);
+        Assert.AreEqual(new VolumeKey(currentRoot[0]), volume);
     }
 
     [TestMethod]
@@ -316,8 +316,8 @@ public class BrokerDiagnosticsLogFilterTests
     {
         // An embedded NUL makes Path.GetFullPath throw ArgumentException on Windows;
         // the filter treats the path as unmatchable rather than letting it escape.
-        Assert.IsFalse(BrokerDiagnosticsLogFilter.TryGetDrive("bad\0path.log", out var drive));
-        Assert.AreEqual(default(VolumeKey), drive);
+        Assert.IsFalse(BrokerDiagnosticsLogFilter.TryGetDrive("bad\0path.log", out var volume));
+        Assert.AreEqual(default(VolumeKey), volume);
     }
 
     [TestMethod]
@@ -327,7 +327,7 @@ public class BrokerDiagnosticsLogFilterTests
     {
         // A whitespace path is kept as-is (nothing to normalize); an embedded NUL makes
         // Path.GetFullPath throw and the raw path is kept rather than throwing from the ctor.
-        // Neither can resolve to a drive's file reference, so the filter stays inert.
+        // Neither can resolve to a volume's file reference, so the filter stays inert.
         var filter = new BrokerDiagnosticsLogFilter(ownLogPath, null);
         var entries = new[] { Entry(4242, "unrelated.txt") };
 

@@ -33,8 +33,8 @@ public sealed record FileIndexOptions
     /// <summary>
     ///     Supplies MFT-derived blocks and the root's live watch from one place. Null is legal at
     ///     admission and for warm cache adoption. An attempted MFT scan reports
-    ///     <see cref="DriveFailureKind.MftSourceMissing" /> when this is null; watching reports
-    ///     <see cref="DriveOperationOutcome.NotApplicable" /> without recording a watch request;
+    ///     <see cref="RootFailureKind.MftSourceMissing" /> when this is null; watching reports
+    ///     <see cref="RootOperationOutcome.NotApplicable" /> without recording a watch request;
     ///     enumeration roots ignore the source. A rescan of a watched root stops its watch
     ///     when the replacement block commits and starts a fresh one from the new block's cursor through
     ///     the same source; a rescan whose production fails or is cancelled leaves a healthy watch running.
@@ -84,7 +84,7 @@ public sealed record FileIndexOptions
     ///     Which files the index keeps, applied by every producer: the MFT producers filter records and
     ///     the directory walk filters entries. Null (the default) keeps every eligible row. An empty
     ///     collection keeps directories only. A nonempty collection also keeps files whose names match by the
-    ///     drive's comparison. MFT sources use NTFS name comparison, ordinal and ignoring case, including dumps
+    ///     volume's comparison. MFT sources use NTFS name comparison, ordinal and ignoring case, including dumps
     ///     parsed on Linux. The directory walk uses one comparison for retained names and exact name/path pruning: ignoring case
     ///     on Windows and ordinal elsewhere. The root row is always kept. <see cref="FileIndex.OpenAsync" />
     ///     materializes the collection once and rejects a null or malformed UTF-16 element, or a set too long for the
@@ -94,10 +94,10 @@ public sealed record FileIndexOptions
     public IReadOnlyCollection<string>? RetainedFileNames { get; init; }
 
     /// <summary>
-    ///     How enumeration drives walk: the directories they record but do not enter. MFT drives ignore it.
+    ///     How enumeration roots walk: the directories they record but do not enter. MFT volumes ignore it.
     ///     <see cref="FileIndex.OpenAsync" /> rejects a null value and invalid rules (see
     ///     <see cref="DirectoryWalkOptions" />) before creating a cache directory or starting a scan. A cached
-    ///     enumeration block records the options that shaped it, counting only pruned paths within its drive's
+    ///     enumeration block records the options that shaped it, counting only pruned paths within its root's
     ///     root, so a warm start under other options discards the block and scans again.
     /// </summary>
     public DirectoryWalkOptions DirectoryWalk { get; init; } = new();

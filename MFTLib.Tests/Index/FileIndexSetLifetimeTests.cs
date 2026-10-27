@@ -17,7 +17,7 @@ public sealed class FileIndexSetLifetimeTests
     [TestMethod]
     public async Task DisposedMember_CausesEverySetEntryPointToThrowObjectDisposedException()
     {
-        using var fixture = new TwoDriveQueryFixture();
+        using var fixture = new TwoRootQueryFixture();
         await using var first = await fixture.OpenAsync();
         var second = await fixture.OpenSecondAsync();
         var set = new FileIndexSet([first, second]);
@@ -39,7 +39,7 @@ public sealed class FileIndexSetLifetimeTests
     [TestMethod]
     public async Task Enumerate_BorrowsOneMemberAtATimeAndReleasesOnTransitionAndEarlyBreak()
     {
-        using var fixture = new TwoDriveQueryFixture();
+        using var fixture = new TwoRootQueryFixture();
         await using var first = await fixture.OpenAsync();
         await using var second = await fixture.OpenSecondAsync();
         var set = new FileIndexSet([first, second]);
@@ -48,13 +48,13 @@ public sealed class FileIndexSetLifetimeTests
         var seenU = false;
         foreach (var entry in set.Enumerate(new SearchQuery("readme.md", NameMatchMode.Exact), Token))
         {
-            if (entry.Drive == new VolumeKey('T'))
+            if (entry.Root == new VolumeKey('T'))
             {
                 seenT = true;
                 Assert.AreEqual(1, BorrowCount(first), "first member is borrowed while yielding its entries");
                 Assert.AreEqual(0, BorrowCount(second), "second member is not yet borrowed");
             }
-            else if (entry.Drive == new VolumeKey('U'))
+            else if (entry.Root == new VolumeKey('U'))
             {
                 seenU = true;
                 Assert.AreEqual(0, BorrowCount(first), "first member's borrow was released before advancing to second");
@@ -84,7 +84,7 @@ public sealed class FileIndexSetLifetimeTests
     [TestMethod]
     public async Task EnumerateRows_BorrowsOneMemberAtATimeAndSharesStateAcrossStructCopies()
     {
-        using var fixture = new TwoDriveQueryFixture();
+        using var fixture = new TwoRootQueryFixture();
         await using var first = await fixture.OpenAsync();
         await using var second = await fixture.OpenSecondAsync();
         var set = new FileIndexSet([first, second]);
@@ -93,13 +93,13 @@ public sealed class FileIndexSetLifetimeTests
         var seenU = false;
         foreach (var row in set.EnumerateRows(new SearchQuery("readme.md", NameMatchMode.Exact), Token))
         {
-            if (row.Drive == new VolumeKey('T'))
+            if (row.Root == new VolumeKey('T'))
             {
                 seenT = true;
                 Assert.AreEqual(1, BorrowCount(first));
                 Assert.AreEqual(0, BorrowCount(second));
             }
-            else if (row.Drive == new VolumeKey('U'))
+            else if (row.Root == new VolumeKey('U'))
             {
                 seenU = true;
                 Assert.AreEqual(0, BorrowCount(first));
@@ -116,15 +116,15 @@ public sealed class FileIndexSetLifetimeTests
         var enumerable = set.EnumerateRows(new SearchQuery("readme.md", NameMatchMode.Exact), Token);
         using var enumerator = enumerable.GetEnumerator();
         Assert.IsTrue(enumerator.MoveNext());
-        Assert.AreEqual(new VolumeKey('T'), enumerator.Current.Drive);
+        Assert.AreEqual(new VolumeKey('T'), enumerator.Current.Root);
         using var copy = enumerator;
 
         // Advance original enumerator into member 1 ('U').
-        while (enumerator.MoveNext() && enumerator.Current.Drive == new VolumeKey('T'))
+        while (enumerator.MoveNext() && enumerator.Current.Root == new VolumeKey('T'))
         {
         }
 
-        Assert.AreEqual(new VolumeKey('U'), enumerator.Current.Drive);
+        Assert.AreEqual(new VolumeKey('U'), enumerator.Current.Root);
         Assert.AreEqual(0, BorrowCount(first));
         Assert.AreEqual(1, BorrowCount(second));
 
@@ -140,7 +140,7 @@ public sealed class FileIndexSetLifetimeTests
     [TestMethod]
     public async Task DisposingActiveMemberDuringSuspendedRowEnumeration_CancelsAndReleasesBorrow()
     {
-        using var fixture = new TwoDriveQueryFixture();
+        using var fixture = new TwoRootQueryFixture();
         var first = await fixture.OpenAsync();
         await using var second = await fixture.OpenSecondAsync();
         var set = new FileIndexSet([first, second]);

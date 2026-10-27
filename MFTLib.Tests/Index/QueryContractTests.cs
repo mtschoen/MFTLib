@@ -23,10 +23,10 @@ public class QueryContractTests
     }
 
     [TestMethod]
-    public void DriveStatus_DefaultsMatchThePublishedContract()
+    public void RootStatus_DefaultsMatchThePublishedContract()
     {
-        var status = SyntheticNotifications.CreateDriveStatus(new VolumeKey('T'), DriveState.Ready,
-            SyntheticNotifications.CreateDriveBlockStatus(BlockOrigin.ProducedByScan, 40, false,
+        var status = SyntheticNotifications.CreateRootStatus(new VolumeKey('T'), RootState.Ready,
+            SyntheticNotifications.CreateRootBlockStatus(BlockOrigin.ProducedByScan, 40, false,
                 new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc)), null);
 
         Assert.AreEqual(0, status.Block!.AccessDeniedSubtreeCount);

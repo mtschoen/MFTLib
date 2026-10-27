@@ -25,7 +25,7 @@ public sealed class CacheDirectoryNamingTests : IDisposable
     [TestCleanup]
     public void Cleanup()
     {
-        DriveKind._directoryCaseSensitiveOverride = null;
+        RootKind._directoryCaseSensitiveOverride = null;
         _directoryOwner.Dispose();
     }
 
@@ -52,7 +52,7 @@ public sealed class CacheDirectoryNamingTests : IDisposable
     [TestMethod]
     public void BlockFileName_DirectoryRoot_IsHashOfTheKeyTextAndTheSerial()
     {
-        DriveKind._directoryCaseSensitiveOverride = true;
+        RootKind._directoryCaseSensitiveOverride = true;
         var key = Folder("Folder");
 
         var name = CacheDirectory.BlockFileName(key, Serial);
@@ -64,7 +64,7 @@ public sealed class CacheDirectoryNamingTests : IDisposable
     [TestMethod]
     public void BlockFileName_CaseInsensitivePlatform_IsCaseStable()
     {
-        DriveKind._directoryCaseSensitiveOverride = false;
+        RootKind._directoryCaseSensitiveOverride = false;
         var upper = Folder("Folder");
         var lower = Folder("folder");
 
@@ -76,7 +76,7 @@ public sealed class CacheDirectoryNamingTests : IDisposable
     [TestMethod]
     public void BlockFileName_CaseSensitivePlatform_DistinguishesCase()
     {
-        DriveKind._directoryCaseSensitiveOverride = true;
+        RootKind._directoryCaseSensitiveOverride = true;
 
         Assert.AreNotEqual(CacheDirectory.BlockFileName(Folder("Folder"), Serial),
             CacheDirectory.BlockFileName(Folder("folder"), Serial));
@@ -144,7 +144,7 @@ public sealed class CacheDirectoryNamingTests : IDisposable
 
         var cached = CacheDirectory.EnumerateCached(_cacheDirectory).Single();
 
-        Assert.AreEqual(key, cached.Drive);
+        Assert.AreEqual(key, cached.Root);
         Assert.AreEqual(Serial, cached.VolumeSerial);
         Assert.AreEqual(path, cached.Path);
     }
@@ -187,7 +187,7 @@ public sealed class CacheDirectoryNamingTests : IDisposable
 
         Assert.HasCount(3, all);
         Assert.IsTrue(all.All(status => status.Availability == CachedBlockAvailability.Available));
-        Assert.AreEqual(wanted, selected.Single().File.Drive);
+        Assert.AreEqual(wanted, selected.Single().File.Root);
         Assert.AreEqual(wanted.ToString(), selected.Single().RootDirectory);
     }
 
@@ -213,7 +213,7 @@ public sealed class CacheDirectoryNamingTests : IDisposable
         var results = CacheDirectory.DeleteCached(_cacheDirectory, [wanted]);
 
         Assert.AreEqual(CachedBlockDeletionOutcome.Deleted, results.Single().Outcome);
-        Assert.AreEqual(wanted, results.Single().File.Drive);
+        Assert.AreEqual(wanted, results.Single().File.Root);
         Assert.IsFalse(File.Exists(wantedPath));
         Assert.IsTrue(File.Exists(otherPath));
     }
@@ -248,7 +248,7 @@ public sealed class CacheDirectoryNamingTests : IDisposable
     [TestMethod]
     public void EqualNonAsciiKeys_ShareOneSlotAcrossNamingInspectionAndDeletion()
     {
-        DriveKind._directoryCaseSensitiveOverride = false;
+        RootKind._directoryCaseSensitiveOverride = false;
         var medial = Folder("\u03C3");
         var final = Folder("\u03C2");
         Assert.AreEqual(medial, final);

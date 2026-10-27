@@ -13,7 +13,7 @@ public class RowScannerTests
     static readonly DateTime Moment = new(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
 
     SyntheticBlockBuilder _builder = null!;
-    DriveBlock[] _snapshot = null!;
+    RootBlock[] _snapshot = null!;
 
     [TestInitialize]
     public void Initialize()
@@ -26,7 +26,7 @@ public class RowScannerTests
         _builder.Complete(Moment);
 
         var block = _builder.OpenForReading(out _)!;
-        _snapshot = [new DriveBlock(new VolumeKey('T'), block)];
+        _snapshot = [new RootBlock(new VolumeKey('T'), block)];
     }
 
     [TestCleanup]
@@ -102,7 +102,7 @@ public class RowScannerTests
     /// <summary>
     ///     A scanner whose range holds no rows still reads the token once. That is what makes the
     ///     per-block half of the contract true for an empty block: an engine that opens one
-    ///     scanner per drive block observes cancellation for every block, not only the ones with
+    ///     scanner per root block observes cancellation for every block, not only the ones with
     ///     rows in them.
     /// </summary>
     [TestMethod]

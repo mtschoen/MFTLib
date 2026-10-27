@@ -2,7 +2,7 @@ namespace MFTLib.Tests.TestSupport;
 
 /// <summary>
 ///     Consumes every batch and counts rows without writing a block, for scans whose block content
-///     is not under test or that run on several drives at once (a recording writer owns one block).
+///     is not under test or that run on several roots at once (a recording writer owns one block).
 /// </summary>
 sealed class CountingBlockSectionWriter : IBlockSectionWriter
 {

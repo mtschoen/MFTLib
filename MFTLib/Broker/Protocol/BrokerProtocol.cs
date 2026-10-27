@@ -89,13 +89,13 @@ static partial class BrokerProtocol
         var frame = kind switch
         {
             BrokerFrameKind.OpenChannel => BrokerFrame.OpenChannel(
-                payload.UInt32(), payload.Drive(), payload.String()),
+                payload.UInt32(), payload.Volume(), payload.String()),
             BrokerFrameKind.ChannelOpened => BrokerFrame.ChannelOpened(payload.UInt32()),
-            BrokerFrameKind.QueryVolume => BrokerFrame.QueryVolume(payload.UInt32(), payload.Drive()),
+            BrokerFrameKind.QueryVolume => BrokerFrame.QueryVolume(payload.UInt32(), payload.Volume()),
             BrokerFrameKind.VolumeInfo => BrokerFrame.VolumeInfo(
                 payload.UInt32(), payload.UInt32(), payload.Int64()),
             BrokerFrameKind.GrowUsnJournal => BrokerFrame.GrowUsnJournal(
-                payload.UInt32(), payload.Drive(), payload.Int64(), payload.Int64()),
+                payload.UInt32(), payload.Volume(), payload.Int64(), payload.Int64()),
             BrokerFrameKind.UsnJournalSettings => BrokerFrame.UsnJournalSettings(
                 payload.UInt32(), payload.Int64(), payload.Int64()),
             BrokerFrameKind.Error => BrokerFrame.Error(payload.UInt32(), payload.String()),

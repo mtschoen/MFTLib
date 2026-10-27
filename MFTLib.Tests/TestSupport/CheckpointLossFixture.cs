@@ -36,12 +36,12 @@ sealed class CheckpointLossFixture : IDisposable
 
     public string CacheDirectory => _trees.First().Value.CacheDirectory;
 
-    public IndexedRoot Drive(char driveLetter = 'T')
+    public IndexedRoot Root(char driveLetter = 'T')
     {
         var key = new VolumeKey(char.ToUpperInvariant(driveLetter));
         var fixture = _trees[key];
         var serial = key.Letter == 'U' ? 0x0BADBEEFu : 0x0BADF00Du;
-        return fixture.Drive(key.Letter, serial, producer: ProducerKind.Mft);
+        return fixture.Root(key.Letter, serial, producer: ProducerKind.Mft);
     }
 
     public FileIndexOptions Options(MftBlockProducer? producer = null,
@@ -50,7 +50,7 @@ sealed class CheckpointLossFixture : IDisposable
     {
         return new FileIndexOptions
         {
-            Root = root ?? Drive(driveLetter),
+            Root = root ?? Root(driveLetter),
             CacheDirectory = CacheDirectory,
             CacheMode = cacheMode,
             MftSource = new MftIndexSource(producer ?? ProduceMftShapedBlock, watchSource)
@@ -64,10 +64,10 @@ sealed class CheckpointLossFixture : IDisposable
     {
         var roots = options?.Root is { } explicitRoot
             ? [explicitRoot]
-            : _trees.Keys.Select(key => Drive(key.Letter)).ToArray();
+            : _trees.Keys.Select(key => Root(key.Letter)).ToArray();
         var baseOptions = options ?? Options();
-        using var journals = JournalWindows.ForDrives(
-            roots.ToDictionary(drive => VolumeOf(drive.Drive), _ => HealthyWindow));
+        using var journals = JournalWindows.ForVolumes(
+            roots.ToDictionary(root => VolumeOf(root.Root), _ => HealthyWindow));
         foreach (var root in roots)
         {
             await using var index = await FileIndex.OpenAsync(baseOptions with { Root = root }, cancellationToken);

@@ -1,7 +1,7 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     The reason bits already reported for each row's current open cycle on one drive
+///     The reason bits already reported for each row's current open cycle on one root
 ///     block, plus the name and parent the cycle's reported rename carried. NTFS ends every
 ///     open cycle with a close record that repeats the cycle's reasons plus
 ///     <see cref="UsnReason.Close" />; this state is what lets <see cref="JournalMutator" />
@@ -16,10 +16,10 @@ namespace MFTLib.Index;
 ///     transition, not an echo. Only rows with an open cycle occupy an entry, and a close
 ///     record removes its row, so the dictionary stays small no matter how large the block
 ///     is. Runtime-only state: it is not persisted in the block and dies with the
-///     <see cref="DriveBlock" /> that owns it, which is the lifecycle reset a rescan (block
+///     <see cref="RootBlock" /> that owns it, which is the lifecycle reset a rescan (block
 ///     replacement) provides. Not thread-safe: every journal mutation
-///     of a drive's block is already serialized by that drive's write gate
-///     (<see cref="FileIndex.ApplyJournalEntriesAsync" />), and tests drive it single-threaded.
+///     of a volume's block is already serialized by that volume's write gate
+///     (<see cref="FileIndex.ApplyJournalEntriesAsync" />), and tests root it single-threaded.
 /// </summary>
 sealed class ReportedReasonCycles
 {

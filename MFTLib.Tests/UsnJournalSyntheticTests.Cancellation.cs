@@ -25,8 +25,8 @@ public partial class UsnJournalSyntheticTests
             var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault(new FakeTimeProvider()));
             try
             {
-                var drivePipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7, 200));
-                Assert.AreEqual(BrokerFrameKind.CaughtUp, (await HostChannelHarness.ReadFrameAsync(drivePipe))?.Kind);
+                var rootPipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7, 200));
+                Assert.AreEqual(BrokerFrameKind.CaughtUp, (await HostChannelHarness.ReadFrameAsync(rootPipe))?.Kind);
                 if (readNumber == 2)
                 {
                     await pipe.SendEmptyBatchAsync(201);
@@ -38,8 +38,8 @@ public partial class UsnJournalSyntheticTests
                     await IdleUsnPipe.AwaitSignalAsync(pipe.Issued);
                 }
 
-                // Closing the drive pipe is how a client stops a watch.
-                await drivePipe.DisposeAsync();
+                // Closing the volume pipe is how a client stops a watch.
+                await rootPipe.DisposeAsync();
                 await IdleUsnPipe.AwaitSignalAsync(pipe.CancelAttempted);
                 if (cancelBeforeIssue)
                 {

@@ -9,7 +9,7 @@ namespace MFTLib.Tests.Index;
 /// <summary>
 ///     The single-root lifecycle entry points (<see cref="FileIndex.StartWatchingAsync" />,
 ///     <see cref="FileIndex.StopWatchingAsync" />, <see cref="FileIndex.RescanAsync" />, and
-///     <see cref="FileIndex.WaitForCatchUpAsync" />): each returns a <see cref="DriveOperationResult" />
+///     <see cref="FileIndex.WaitForCatchUpAsync" />): each returns a <see cref="RootOperationResult" />
 ///     for the index's root and throws only for disposal or caller cancellation. Ordering is proven
 ///     with <see cref="TestGate" /> holds and scripted producers, never with time.
 /// </summary>
@@ -24,9 +24,9 @@ public class FileIndexBatchedOperationTests
     CancellationToken Token => TestContext.CancellationToken;
 
     [TestMethod]
-    public async Task StartWatching_SucceededFailedAndNotApplicable_ReportsPerDrive_DoesNotThrow()
+    public async Task StartWatching_SucceededFailedAndNotApplicable_ReportsPerRoot_DoesNotThrow()
     {
-        using var harness = WatchHarness.WithBlocklessDrives(['V'], 'T', 'U', 'V');
+        using var harness = WatchHarness.WithBlocklessRoots(['V'], 'T', 'U', 'V');
         var failure = new IOException("the broker refused U");
         harness.Source.FailNextStartFor('U', failure);
 
@@ -34,14 +34,14 @@ public class FileIndexBatchedOperationTests
         var resultU = await harness.IndexFor('U').StartWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         var resultV = await harness.IndexFor('V').StartWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        Assert.AreEqual(DriveOperationOutcome.Succeeded, resultT.Outcome);
+        Assert.AreEqual(RootOperationOutcome.Succeeded, resultT.Outcome);
         Assert.IsNull(resultT.Failure);
-        Assert.AreEqual(DriveOperationOutcome.Failed, resultU.Outcome);
+        Assert.AreEqual(RootOperationOutcome.Failed, resultU.Outcome);
         Assert.AreSame(failure, resultU.Failure);
-        Assert.AreEqual(DriveOperationOutcome.NotApplicable, resultV.Outcome);
+        Assert.AreEqual(RootOperationOutcome.NotApplicable, resultV.Outcome);
         Assert.IsNull(resultV.Failure);
-        Assert.AreEqual(WatchState.CatchingUp, harness.DriveFor('T').Watch.State);
-        Assert.IsEmpty(harness.Source.TargetsFor('V'), "a drive with no block never reaches the source");
+        Assert.AreEqual(WatchState.CatchingUp, harness.RootFor('T').Watch.State);
+        Assert.IsEmpty(harness.Source.TargetsFor('V'), "a root with no block never reaches the source");
         Assert.IsEmpty(harness.Faults, "a failed source start raises no WatchFaulted");
     }
 
@@ -68,8 +68,8 @@ public class FileIndexBatchedOperationTests
 
         Assert.HasCount(1, harness.Source.TargetsFor('U'), "U's start reached the source and was cancelled there");
         Assert.IsEmpty(harness.Source.Watches, "no handle was published");
-        Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('U').Watch.State,
-            "a start cancelled in flight leaves the drive with no running watch");
+        Assert.AreEqual(WatchState.NotStarted, harness.RootFor('U').Watch.State,
+            "a start cancelled in flight leaves the root with no running watch");
     }
 
     [TestMethod]
@@ -106,19 +106,19 @@ public class FileIndexBatchedOperationTests
         harness.HoldEveryRecovery();
         await harness.IndexFor('T').StartWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         await harness.IndexFor('U').StartWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
-        var faulted = harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
-        harness.Source.WatchFor('T').FailDrive(new IOException("the volume went away"));
+        var faulted = harness.WaitForFaultAsync(WatchFaultKind.Volume, 'T');
+        harness.Source.WatchFor('T').FailVolume(new IOException("the volume went away"));
         var fault = await faulted.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         var resultT = await harness.IndexFor('T').StopWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         var resultU = await harness.IndexFor('U').StopWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         var resultV = await harness.IndexFor('V').StopWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        Assert.AreEqual(DriveOperationOutcome.Failed, resultT.Outcome);
+        Assert.AreEqual(RootOperationOutcome.Failed, resultT.Outcome);
         Assert.AreSame(fault.Exception, resultT.Failure, "stop carries the fault that had ended T's watch");
-        Assert.AreEqual(DriveOperationOutcome.Succeeded, resultU.Outcome);
-        Assert.AreEqual(DriveOperationOutcome.NotApplicable, resultV.Outcome, "V was never watching");
-        Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
+        Assert.AreEqual(RootOperationOutcome.Succeeded, resultU.Outcome);
+        Assert.AreEqual(RootOperationOutcome.NotApplicable, resultV.Outcome, "V was never watching");
+        Assert.AreEqual(WatchState.NotStarted, harness.RootFor('T').Watch.State);
     }
 
     [TestMethod]
@@ -140,18 +140,18 @@ public class FileIndexBatchedOperationTests
                 _settlingPumpFault = false;
             }
         };
-        var waiter = WaitThenStopOtherDriveAsync(harness);
+        var waiter = WaitThenStopOtherRootAsync(harness);
 
-        harness.Source.WatchFor('T').FailDrive(new IOException("the volume went away"));
+        harness.Source.WatchFor('T').FailVolume(new IOException("the volume went away"));
 
         Assert.IsFalse(await waiter.WaitAsync(HangGuard, TestContext.CancellationToken), "the waiter's continuation ran on the settling stack");
-        Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('U').Watch.State);
+        Assert.AreEqual(WatchState.NotStarted, harness.RootFor('U').Watch.State);
         return;
 
-        async Task<bool> WaitThenStopOtherDriveAsync(WatchHarness watchHarness)
+        async Task<bool> WaitThenStopOtherRootAsync(WatchHarness watchHarness)
         {
             var result = await watchHarness.IndexFor('T').WaitForCatchUpAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
-            Assert.AreEqual(DriveOperationOutcome.Failed, result.Outcome);
+            Assert.AreEqual(RootOperationOutcome.Failed, result.Outcome);
             var observedWhileSettling = _settlingPumpFault;
             await watchHarness.IndexFor('U').StopWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
             return observedWhileSettling;
@@ -159,7 +159,7 @@ public class FileIndexBatchedOperationTests
     }
 
     [TestMethod]
-    public async Task Rescan_OneDriveStopsAfterThreeLostCatchUps_ReportsFailedWithMessage_OtherSucceeds()
+    public async Task Rescan_OneRootStopsAfterThreeLostCatchUps_ReportsFailedWithMessage_OtherSucceeds()
     {
         using var harness = new WatchHarness('T', 'U');
         harness.ScriptScans('T', Lost('T'), Lost('T'), Lost('T'));
@@ -167,15 +167,15 @@ public class FileIndexBatchedOperationTests
         var resultT = await harness.IndexFor('T').RescanAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
         var resultU = await harness.IndexFor('U').RescanAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        Assert.AreEqual(DriveOperationOutcome.Failed, resultT.Outcome);
+        Assert.AreEqual(RootOperationOutcome.Failed, resultT.Outcome);
         var lost = (JournalCatchUpLostException)resultT.Failure!;
         Assert.IsTrue(lost.IsRecoveryStopped);
-        Assert.IsTrue(harness.DriveFor('T').Watch.IsRecoveryStopped);
-        Assert.IsFalse(harness.DriveFor('U').Watch.IsRecoveryStopped);
-        Assert.AreEqual(3, harness.DriveFor('T').Watch.ConsecutiveLostCatchUps);
+        Assert.IsTrue(harness.RootFor('T').Watch.IsRecoveryStopped);
+        Assert.IsFalse(harness.RootFor('U').Watch.IsRecoveryStopped);
+        Assert.AreEqual(3, harness.RootFor('T').Watch.ConsecutiveLostCatchUps);
         Assert.Contains("12288", lost.Message, "the message carries the journal size to grow to");
-        Assert.AreEqual(DriveOperationOutcome.Succeeded, resultU.Outcome);
-        Assert.AreEqual(DriveState.Ready, harness.DriveFor('U').State);
+        Assert.AreEqual(RootOperationOutcome.Succeeded, resultU.Outcome);
+        Assert.AreEqual(RootState.Ready, harness.RootFor('U').State);
     }
 
     [TestMethod]
@@ -184,11 +184,11 @@ public class FileIndexBatchedOperationTests
         using var harness = new WatchHarness('T');
         harness.ScriptScans('T', Lost('T'), Lost('T'), Lost('T'));
 
-        var failure = await DriveResultAssertions.FailureAsync<JournalCatchUpLostException>(
+        var failure = await RootResultAssertions.FailureAsync<JournalCatchUpLostException>(
             () => harness.Index.RescanAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.IsTrue(failure.IsRecoveryStopped);
-        Assert.AreEqual(3, harness.DriveFor('T').Watch.ConsecutiveLostCatchUps);
+        Assert.AreEqual(3, harness.RootFor('T').Watch.ConsecutiveLostCatchUps);
         Assert.Contains("12288", failure.Message);
     }
 
@@ -199,11 +199,11 @@ public class FileIndexBatchedOperationTests
         var producerFailure = new IOException("the scan could not read the volume");
         harness.FailNextProduction('T', producerFailure);
 
-        var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+        var failure = await RootResultAssertions.FailureAsync<InvalidOperationException>(
             () => harness.Index.RescanAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.Contains("the scan could not read the volume", failure.Message);
         Assert.AreSame(producerFailure, failure.InnerException);
-        Assert.AreEqual("the scan could not read the volume", harness.DriveFor('T').Failure?.Message);
+        Assert.AreEqual("the scan could not read the volume", harness.RootFor('T').Failure?.Message);
     }
 }

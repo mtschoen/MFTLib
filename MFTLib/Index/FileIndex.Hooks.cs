@@ -10,8 +10,8 @@ public sealed partial class FileIndex
     /// <summary>
     ///     Per-instance test seams for <see cref="FileIndex" />.
     ///     Gate and recovery observation/control methods remain directly on <see cref="FileIndex" />:
-    ///     <see cref="WaitForDriveWriteGateForTest" />, <see cref="ReleaseDriveWriteGateForTest" />,
-    ///     <see cref="AreDriveGatesFreeForTest" />, <see cref="TryGetRecoveryCompletionForTest" />, and
+    ///     <see cref="WaitForRootWriteGateForTest" />, <see cref="ReleaseRootWriteGateForTest" />,
+    ///     <see cref="AreRootGatesFreeForTest" />, <see cref="TryGetRecoveryCompletionForTest" />, and
     ///     <see cref="ContendedWatchStateDeliveriesForTest" />.
     /// </summary>
     internal sealed class IndexHooks
@@ -27,7 +27,7 @@ public sealed partial class FileIndex
         ///     Invoked by the <see cref="Status" /> getter before state-lock acquisition; no lifecycle/write/state lock held.
         ///     The caller can hold an outer lock, so a hold must not wait on one.
         /// </summary>
-        internal Action? DrivesReadBeforeLock { get; set; }
+        internal Action? RootsReadBeforeLock { get; set; }
 
         /// <summary>
         ///     Invoked after the counted borrow and state-lock release, before the first row is read.
@@ -96,13 +96,13 @@ public sealed partial class FileIndex
         internal Action<RootKey>? ApplyJournalEntriesInsideWriteGate { get; set; }
 
         /// <summary>
-        ///     Wraps the Settle action in <see cref="DriveRuntime.RecordPumpFault" />; pump holds no gate or state lock at entry.
+        ///     Wraps the Settle action in <see cref="RootRuntime.RecordPumpFault" />; pump holds no gate or state lock at entry.
         ///     Cannot wait for pump drainage or full stop completion.
         /// </summary>
         internal Action<Action>? PumpFaultSettlementWrapper { get; set; }
 
         /// <summary>
-        ///     Invoked after apply released the write gate, before <see cref="DriveRuntime.RaiseChanged" />; no lifecycle/write/state lock.
+        ///     Invoked after apply released the write gate, before <see cref="RootRuntime.RaiseChanged" />; no lifecycle/write/state lock.
         ///     Cannot await a rescan that drains this same pump.
         /// </summary>
         internal Action<RootKey>? BeforeWatchChanged { get; set; }

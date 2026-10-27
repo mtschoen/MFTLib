@@ -46,10 +46,10 @@ public sealed class MftDumpRescanTests : IDisposable
 
         Assert.IsNull(index.Find(NotesPath, TestContext.CancellationToken));
         Assert.AreEqual(33L, index.Find(RenamedPath, TestContext.CancellationToken)!.Value.Size);
-        var drive = index.Status;
-        Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.IsNull(drive.Failure);
-        Assert.IsFalse(drive.Watch.IsSupported);
+        var root = index.Status;
+        Assert.AreEqual(RootState.Ready, root.State);
+        Assert.IsNull(root.Failure);
+        Assert.IsFalse(root.Watch.IsSupported);
     }
 
     [TestMethod]
@@ -61,17 +61,17 @@ public sealed class MftDumpRescanTests : IDisposable
         invalid[(7 * 1024) + 510] ^= 0xFF;
 
         await File.WriteAllBytesAsync(path, invalid, TestContext.CancellationToken);
-        var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+        var failure = await RootResultAssertions.FailureAsync<InvalidOperationException>(
             () => index.RescanAsync(CancellationToken.None));
 
         Assert.IsInstanceOfType<InvalidOperationException>(failure);
         Assert.IsInstanceOfType<InvalidDataException>(failure.InnerException);
         Assert.AreEqual(InvalidFixupMessage, failure.InnerException.Message);
-        Assert.AreEqual($"Drive D was not rescanned: {InvalidFixupMessage}", failure.Message);
+        Assert.AreEqual($"Root D was not rescanned: {InvalidFixupMessage}", failure.Message);
         Assert.AreEqual(11L, index.Find(NotesPath, TestContext.CancellationToken)!.Value.Size, "the last good block still answers queries");
-        var drive = index.Status;
-        Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(InvalidFixupMessage, drive.Failure?.Message);
+        var root = index.Status;
+        Assert.AreEqual(RootState.Ready, root.State);
+        Assert.AreEqual(InvalidFixupMessage, root.Failure?.Message);
 
         await File.WriteAllBytesAsync(path, Renamed(1024), TestContext.CancellationToken);
         await index.RescanAsync(CancellationToken.None);
@@ -87,7 +87,7 @@ public sealed class MftDumpRescanTests : IDisposable
         await using var index = await OpenAsync(MftIndexSources.FromMftDumpFile(path, 'D'));
 
         File.Delete(path);
-        var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+        var failure = await RootResultAssertions.FailureAsync<InvalidOperationException>(
             () => index.RescanAsync(CancellationToken.None));
 
         Assert.IsInstanceOfType<IOException>(failure.InnerException);
@@ -108,7 +108,7 @@ public sealed class MftDumpRescanTests : IDisposable
             () => index.RescanAsync(cancellation.Token));
         Assert.IsNotNull(index.Find(NotesPath, TestContext.CancellationToken));
         Assert.IsNull(index.Find(RenamedPath, TestContext.CancellationToken));
-        Assert.AreEqual(DriveState.Ready, index.Status.State);
+        Assert.AreEqual(RootState.Ready, index.Status.State);
     }
 
     [TestMethod]
@@ -140,7 +140,7 @@ public sealed class MftDumpRescanTests : IDisposable
         Assert.HasCount(2, inputs.Distinct());
         await indexes[0].DisposeAsync();
         await using var remaining = indexes[1];
-        Assert.AreEqual(DriveState.Ready, remaining.Status.State);
+        Assert.AreEqual(RootState.Ready, remaining.Status.State);
         Assert.AreEqual(11L, remaining.Find(NotesPath, TestContext.CancellationToken)!.Value.Size, "one index's disposal leaves the other's block mapped");
     }
 
@@ -167,7 +167,7 @@ public sealed class MftDumpRescanTests : IDisposable
         var path = MftDumpFixture.WriteFile(TemporaryDirectoryPath, MftDumpFixture.Standard());
         await using var index = await OpenAsync(MftIndexSources.FromMftDumpFile(path, 'D'));
 
-        await DriveResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync(CancellationToken.None));
+        await RootResultAssertions.NotApplicableAsync(() => index.StartWatchingAsync(CancellationToken.None));
     }
 
     static MftDumpRecordSource CancelOnTheSecondScan(CancellationTokenSource cancellation)

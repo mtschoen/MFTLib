@@ -72,7 +72,7 @@ public readonly record struct RootKey : IComparable<RootKey>
             : new RootKey(normalizedPath);
     }
 
-    /// <summary>Parses a drive spec as a volume or any other valid full path as a normalized directory.</summary>
+    /// <summary>Parses a volume spec as a volume or any other valid full path as a normalized directory.</summary>
     public static bool TryParse(string? text, out RootKey result)
     {
         if (VolumeKey.TryParse(text, out var volume))
@@ -136,7 +136,7 @@ public readonly record struct RootKey : IComparable<RootKey>
         return _kind switch
         {
             Kind.Volume => _volume.Equals(other._volume),
-            Kind.Directory => string.Equals(_directory, other._directory, DriveKind.DirectoryWalk.Comparison),
+            Kind.Directory => string.Equals(_directory, other._directory, RootKind.DirectoryWalk.Comparison),
             _ => true
         };
     }
@@ -145,7 +145,7 @@ public readonly record struct RootKey : IComparable<RootKey>
     public override int GetHashCode() => _kind switch
     {
         Kind.Volume => _volume.GetHashCode(),
-        Kind.Directory when _directory is not null => (DriveKind.DirectoryWalk.IsCaseSensitive
+        Kind.Directory when _directory is not null => (RootKind.DirectoryWalk.IsCaseSensitive
             ? StringComparer.Ordinal
             : StringComparer.OrdinalIgnoreCase).GetHashCode(_directory),
         _ => 0

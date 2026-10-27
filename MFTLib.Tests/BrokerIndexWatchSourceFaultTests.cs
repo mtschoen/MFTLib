@@ -5,8 +5,8 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 /// <summary>
-///     The broker-side half of per-drive fault isolation: each drive's watch is its own pipe, so a
-///     fault or a lost pipe on one drive reaches that drive's handle and no other.
+///     The broker-side half of per-volume fault isolation: each volume's watch is its own pipe, so a
+///     fault or a lost pipe on one volume reaches that volume's handle and no other.
 /// </summary>
 // The host's arm query consults JournalCheckpointCheck, whose override other classes install.
 [TestClass]
@@ -14,7 +14,7 @@ namespace MFTLib.Tests;
 public class BrokerIndexWatchSourceFaultTests
 {
     [TestMethod]
-    public async Task WatchSource_OneDrivesFaultIsThatHandlesAndTheOtherDriveKeepsFlowing()
+    public async Task WatchSource_OneVolumesFaultIsThatHandlesAndTheOtherVolumeKeepsFlowing()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
         var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateIndexSource().WatchSource!;
@@ -27,12 +27,12 @@ public class BrokerIndexWatchSourceFaultTests
         await using var __ = readerD.ConfigureAwait(false);
         var runC = await harness.Watch('C').RunAsync(1);
         var runD = await harness.Watch('D').RunAsync(1);
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerC));
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerD));
+        Assert.IsInstanceOfType<VolumeCaughtUp>(await WatchReads.NextAsync(readerC));
+        Assert.IsInstanceOfType<VolumeCaughtUp>(await WatchReads.NextAsync(readerD));
 
         runD.Fail(new IOException("journal wrapped"));
 
-        var fault = await WatchReads.ThrowsNextAsync<DriveWatchFaultException>(readerD);
+        var fault = await WatchReads.ThrowsNextAsync<VolumeWatchFaultException>(readerD);
         Assert.IsNull(fault.InnerException);
         Assert.AreEqual("journal wrapped", fault.Message);
         runC.Push(1, "c.txt", 110);
@@ -43,7 +43,7 @@ public class BrokerIndexWatchSourceFaultTests
     }
 
     [TestMethod]
-    public async Task WatchSource_EveryDriveFaultsOnItsOwnHandle()
+    public async Task WatchSource_EveryVolumeFaultsOnItsOwnHandle()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
         var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateIndexSource().WatchSource!;
@@ -56,11 +56,11 @@ public class BrokerIndexWatchSourceFaultTests
         await using var __ = readerD.ConfigureAwait(false);
         (await harness.Watch('C').RunAsync(1)).Fail(new IOException("C wrapped"));
         (await harness.Watch('D').RunAsync(1)).Fail(new IOException("D wrapped"));
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerC));
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerD));
+        Assert.IsInstanceOfType<VolumeCaughtUp>(await WatchReads.NextAsync(readerC));
+        Assert.IsInstanceOfType<VolumeCaughtUp>(await WatchReads.NextAsync(readerD));
 
-        var faultC = await WatchReads.ThrowsNextAsync<DriveWatchFaultException>(readerC);
-        var faultD = await WatchReads.ThrowsNextAsync<DriveWatchFaultException>(readerD);
+        var faultC = await WatchReads.ThrowsNextAsync<VolumeWatchFaultException>(readerC);
+        var faultD = await WatchReads.ThrowsNextAsync<VolumeWatchFaultException>(readerD);
 
         Assert.AreEqual("C wrapped", faultC.Message);
         Assert.AreEqual("D wrapped", faultD.Message);
@@ -79,7 +79,7 @@ public class BrokerIndexWatchSourceFaultTests
     }
 
     [TestMethod]
-    public async Task OneChannelLost_OnlyThatDriveFaults()
+    public async Task OneChannelLost_OnlyThatVolumeFaults()
     {
         await using var broker = new ScriptedWatchBrokerHarness();
         var token = broker.CancellationToken;
@@ -102,17 +102,17 @@ public class BrokerIndexWatchSourceFaultTests
         await appliedOnU;
 
         Assert.IsInstanceOfType<BrokerChannelLostException>(fault.Exception);
-        Assert.AreEqual('T', ((BrokerChannelLostException)fault.Exception).Drive);
+        Assert.AreEqual('T', ((BrokerChannelLostException)fault.Exception).Volume);
         Assert.HasCount(1, harness.Faults);
-        Assert.AreEqual(WatchState.Faulted, harness.DriveFor('T').Watch.State);
-        Assert.IsNotNull(harness.DriveFor('T').Watch.FailureMessage);
-        Assert.AreEqual(WatchState.CaughtUp, harness.DriveFor('U').Watch.State);
-        Assert.IsNull(harness.DriveFor('U').Watch.FailureMessage);
-        Assert.IsFalse(broker.Process.Ended.IsCompleted, "one lost drive channel does not end the process");
+        Assert.AreEqual(WatchState.Faulted, harness.RootFor('T').Watch.State);
+        Assert.IsNotNull(harness.RootFor('T').Watch.FailureMessage);
+        Assert.AreEqual(WatchState.CaughtUp, harness.RootFor('U').Watch.State);
+        Assert.IsNull(harness.RootFor('U').Watch.FailureMessage);
+        Assert.IsFalse(broker.Process.Ended.IsCompleted, "one lost volume channel does not end the process");
     }
 
     [TestMethod]
-    public async Task HostError_IsDriveWatchFault()
+    public async Task HostError_IsVolumeWatchFault()
     {
         await using var broker = new ScriptedWatchBrokerHarness();
         var token = broker.CancellationToken;
@@ -126,14 +126,14 @@ public class BrokerIndexWatchSourceFaultTests
 
         (await broker.Watch('T').RunAsync(1)).Fail(new IOException("journal wrapped"));
 
-        var fault = await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
-        Assert.IsInstanceOfType<DriveWatchFaultException>(fault.Exception);
-        Assert.AreEqual('T', fault.Drive);
+        var fault = await harness.WaitForFaultAsync(WatchFaultKind.Volume, 'T');
+        Assert.IsInstanceOfType<VolumeWatchFaultException>(fault.Exception);
+        Assert.AreEqual('T', fault.Volume);
         Assert.AreEqual("journal wrapped", fault.Exception.Message);
         var appliedOnU = ChangeSignal.WhenApplied(indexU, "u.txt");
         runU.Push(10, "u.txt", 300);
         await appliedOnU;
-        Assert.IsTrue(harness.Faults.All(raised => raised.Drive == 'T'), "only T raised a fault");
+        Assert.IsTrue(harness.Faults.All(raised => raised.Volume == 'T'), "only T raised a fault");
     }
 
     public TestContext TestContext { get; set; } = null!;

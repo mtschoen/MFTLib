@@ -4,9 +4,9 @@
     - **VolumeBroker**: `BrokerProcess` owns one elevated process and its control pipe, with one
       UAC prompt per consumer session. Nonzero request ids route concurrent `OpenChannel`,
       `QueryVolume`, and `GrowUsnJournal` replies; an id remains reserved until its reply arrives
-      or the process ends. Opening a drive operation creates a client-owned pipe, sends its name
+      or the process ends. Opening a volume operation creates a client-owned pipe, sends its name
       on the control pipe, waits for both the host connection and `ChannelOpened`, and writes one
-      request. Each scan or watch then owns that drive channel, so closing or faulting it cancels
+      request. Each scan or watch then owns that volume channel, so closing or faulting it cancels
       only that operation. Control EOF ends the process and every channel;
       the `BrokerProcess.Ended` task completes with the reason, and pending work fails with
       `BrokerChannelLostException`. The host admits concurrent scans under one processor-sized
@@ -23,11 +23,11 @@
       that visit. A pipe with a frame write in flight is also skipped, so it cannot delay other
       pipes; the client's 30-second no-frame limit then closes that pipe. Any frame resets the
       client limit. EOF, write/read failure, silence, `Stalled`, and invalid frames surface as
-      `IOException`, not drive-reported errors. A slow scan or watch reader holds back only
+      `IOException`, not root-reported errors. A slow scan or watch reader holds back only
       its own channel. See [session ownership](#session-ownership) for the public lifetime.
       `BrokerMftBlockProducer` validates
       completed blocks and transfers them to the index, while `BrokerIndexWatchSource` opens one
-      channel per drive watch. `ElevatedEntryPoint` and `BrokerLauncher` dispatch `--broker` mode.
+      channel per volume watch. `ElevatedEntryPoint` and `BrokerLauncher` dispatch `--broker` mode.
       `BrokerDiagnostics` writes through a bounded background queue and filters the two diagnostic
       logs from journal batches unless `MFTLIB_BROKER_DIAG_INCLUDE_SELF=1` opts in.
 
@@ -40,7 +40,7 @@ formatting (`BrokerLiveness.FormatSeconds`):
 - `ProcessingLimit` (30 seconds): maximum host processing time without progress before
   the pipe writes `Stalled` and cancels the operation.
 - `StallLimit` (30 seconds): maximum client wait between incoming frames on the control
-  pipe or a drive channel.
+  pipe or a volume channel.
 - `ControlReplyTimeout` (30 seconds): client wait for a control request write, a control
   reply, or the host's channel pipe connection after `ChannelOpened`.
 - `ControlClosedGracePeriod` (5 seconds): host drain grace period for in-flight channel
@@ -52,11 +52,11 @@ formatting (`BrokerLiveness.FormatSeconds`):
 - `DefaultConnectTimeout` (30 seconds): default client wait for an elevated broker
   process to connect back to the caller's control pipe during launch.
 - `ElevatedConnectTimeout` (30 seconds): default wait in the elevated `--broker` child
-  for the caller's control pipe and each drive pipe.
+  for the caller's control pipe and each volume pipe.
 - `DiagnosticsFlushTimeout` (2 seconds): elevated `--broker` exit wait for diagnostic
   log flushing.
 - `ProgressThrottleInterval` (250 milliseconds): default minimum interval between
-  intermediate `ScanProgress` frames during a drive block scan.
+  intermediate `ScanProgress` frames during a root block scan.
 
 ## Session ownership
 
@@ -70,7 +70,7 @@ throws `TimeoutException`, for callers waiting on that attempt. Failed launches 
 not cached: the next use launches again and raises `Connecting` again, including a
 rescan after a declined prompt.
 
-The unelevated client creates every pipe server (the control pipe and each drive pipe) with a DACL that grants only its own user SID, single instance. The elevated broker connects as the client end with `TokenImpersonationLevel.Identification`, so a server cannot impersonate the elevated token, and after each connect refuses the pipe (`UnauthorizedAccessException`; the control pipe ends the broker with exit code 1) unless its DACL names only the broker's own user SID. `PipeOptions.CurrentUserOnly` is not used on the broker's ends: .NET compares the pipe owner with the token's owner SID, which is Administrators in an elevated token, so it would refuse the unelevated user's pipe. The broker waits 30 seconds, on its runner's clock, for the control pipe and for each drive pipe (`TimeoutException` for a drive); with no server the broker exits with code 1 instead of hanging elevated. The client does not compare the connecting process id with the launched process, which would change the public launch delegate.
+The unelevated client creates every pipe server (the control pipe and each volume pipe) with a DACL that grants only its own user SID, single instance. The elevated broker connects as the client end with `TokenImpersonationLevel.Identification`, so a server cannot impersonate the elevated token, and after each connect refuses the pipe (`UnauthorizedAccessException`; the control pipe ends the broker with exit code 1) unless its DACL names only the broker's own user SID. `PipeOptions.CurrentUserOnly` is not used on the broker's ends: .NET compares the pipe owner with the token's owner SID, which is Administrators in an elevated token, so it would refuse the unelevated user's pipe. The broker waits 30 seconds, on its runner's clock, for the control pipe and for each volume pipe (`TimeoutException` for a volume); with no server the broker exits with code 1 instead of hanging elevated. The client does not compare the connecting process id with the launched process, which would change the public launch delegate.
 
 The launch runs on the thread pool, never the caller's thread or synchronization
 context, so the blocking UAC prompt does not block a UI caller. Disposal is checked
@@ -114,11 +114,11 @@ defines the volume query and capacity planning.
 
 The broker-internal scan result carries the completed block, independently received armed cursor and optional `CatchUpLoss`. The producer validates that cursor against the completed header before transferring ownership. The index-facing result carries the block, skipped record count and optional loss; the header supplies the durable cursor used to start watching. The index validates returned block structure, producer kind and requested cache tag before adoption. Rejected completed output is closed and deleted under the caller's ownership, with cleanup diagnostics, so a later open cannot warm-start it.
 
-`DriveStatus` exposes the block's row and skipped counts and, after proven loss, `DriveWatchStatus.CheckpointLoss`. Proven loss still returns the completed block. `BlockScanOutcome` carries the block and skipped record count; row count and name-pool size are in the header. The section writer returns row count, name-pool usage and skipped record count; capacity exhaustion is read from the block header. The watch replays the scan window and anything after it, provided those entries are still retained when watching starts. A loss after scanning is reported by the watch.
+`RootStatus` exposes the block's row and skipped counts and, after proven loss, `RootWatchStatus.CheckpointLoss`. Proven loss still returns the completed block. `BlockScanOutcome` carries the block and skipped record count; row count and name-pool size are in the header. The section writer returns row count, name-pool usage and skipped record count; capacity exhaustion is read from the block header. The watch replays the scan window and anything after it, provided those entries are still retained when watching starts. A loss after scanning is reported by the watch.
 
 Frames are `Cursor`, zero or more `ScanProgress`, `ScanReady` (skipped record count), then one terminal frame: payload-free `ScanCompleted` for successful catch-up or `CatchUpLost` with the journal facts of proven loss. Catch-up entries stay on the host. `Error` replaces any of these frames, including an unproven catch-up failure. `BrokerMftBlockProducer` disposes a block that fails validation and fails its scan; a validated block transfers to the index.
 
-`ScanProgress` carries a 32-bit phase (Parsing = 0, Transferring = 1), two signed 64-bit values (records processed and name-pool bytes processed), and two nullable signed 64-bit totals (total records and total name-pool bytes, each a presence byte followed by an 8-byte signed integer). The length field is 39 (kind plus payload), for 43 bytes including the four-byte prefix. The channel identifies the drive. Watchdog progress and progress throttling use their own clocks.
+`ScanProgress` carries a 32-bit phase (Parsing = 0, Transferring = 1), two signed 64-bit values (records processed and name-pool bytes processed), and two nullable signed 64-bit totals (total records and total name-pool bytes, each a presence byte followed by an 8-byte signed integer). The length field is 39 (kind plus payload), for 43 bytes including the four-byte prefix. The channel identifies the volume. Watchdog progress and progress throttling use their own clocks.
 
 The frame length limit is 16 MiB, checked before sending and before allocating a
 received frame. Every frame kind must consume its declared payload completely; any
@@ -128,13 +128,13 @@ declared frame length belong to subsequent frames in a combined input. A native-
 `Error` and `Stalled` text is truncated to 32,768 UTF-16 units. A
 `FileIndexOptions.RetainedFileNames` list making `ArmAndScan` exceed the limit
 (32,640 maximum-length names with the fixed 47-unit section name) throws `ArgumentException`
-from `FileIndex.OpenAsync` for an index with an MFT-producer drive, before any cache directory is created. An oversized journal batch fails that watch with `Error`, like any
+from `FileIndex.OpenAsync` for an index with an MFT-producer volume, before any cache directory is created. An oversized journal batch fails that watch with `Error`, like any
 source failure.
 
 `ArmAndScan` encodes the section name, a 1-byte include-freed flag (0 or 1), then
 a nullable signed 32-bit name count (a presence byte followed by a 4-byte signed integer): absent for full retention, present 0 for directories only, or present with the
-number of following UTF-16 names. The section name must match `mftlib-block-<drive>-`
-followed by 32 ASCII hex digits (`0-9`, `a-f`, `A-F`) for the scan channel's drive
+number of following UTF-16 names. The section name must match `mftlib-block-<root>-`
+followed by 32 ASCII hex digits (`0-9`, `a-f`, `A-F`) for the scan channel's volume
 letter (47 UTF-16 units); any other section name, negative present counts or counts beyond the
 remaining payload, truncated fields, invalid flags and trailing data are malformed
 requests and write an `Error` frame on the scan channel before the host touches the
@@ -181,7 +181,7 @@ the diagnostics arguments and does not configure diagnostics. Extended-length Wi
 allow literal reserved device directory names while retaining the component checks.
 
 Diagnostics are best effort and disabled by default. Queued disk writes do not
-block channels. Each line carries `control` or the complete client-created drive pipe name,
+block channels. Each line carries `control` or the complete client-created volume pipe name,
 shared by both endpoints. Applications
 with an opt-in switch honor either it or `MFTLIB_BROKER_DIAG=1` by enabling diagnostics
 after child dispatch. The broker relies on the forwarded command line, not inherited
@@ -198,7 +198,7 @@ best effort, emitted before a later append, and retain queue and append-failure
 counts if the notice itself fails. Broker session exit, including a faulted session, completes diagnostic admission and waits for accepted records and sink closure for at most two seconds on the runner's clock. Flush during a session is nonterminal and waits only for its accepted-record snapshot. Filesystem work, including sink closure, stays on the background drain.
 
 Each watch filters the broker and client diagnostics paths by full file reference
-(record number and sequence number), scoped to the watched drive. Paths are
+(record number and sequence number), scoped to the watched root. Paths are
 resolved again on every batch so newly created or replaced logs become filtered;
 prior references remain tracked for renamed logs. A filtered-empty batch emits
 no JournalBatch, but its cursor still advances the CaughtUp decision.

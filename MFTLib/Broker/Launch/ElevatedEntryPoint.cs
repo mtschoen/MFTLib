@@ -46,7 +46,7 @@ public static class ElevatedEntryPoint
             switch (arg)
             {
                 case "--broker":
-                    // The broker is reactive: drives, pipe names, cursors and section names
+                    // The broker is reactive: volumes, pipe names, cursors and section names
                     // arrive over the control pipe, so it needs only that pipe's name.
                     // --diag turns on frame tracing in the elevated child too (a runas
                     // launch does not reliably inherit the MFTLIB_BROKER_DIAG env var).

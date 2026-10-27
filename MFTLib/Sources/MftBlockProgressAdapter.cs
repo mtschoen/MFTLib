@@ -8,7 +8,7 @@ static class MftBlockProgressAdapter
     {
         return request.Progress is { } destination
             ? new DirectProgress<BlockWriteProgress>(sample => destination.Report(
-                new IndexScanProgress(request.Drive,
+                new IndexScanProgress(request.Volume,
                     sample.Phase == BlockScanPhase.Parsing
                         ? IndexScanPhase.ParsingMft : IndexScanPhase.Transferring,
                     ClampRows(sample.RecordsProcessed))

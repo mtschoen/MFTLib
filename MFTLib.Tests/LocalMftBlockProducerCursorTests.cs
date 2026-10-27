@@ -38,7 +38,7 @@ public sealed class LocalMftBlockProducerCursorTests : IndexTreeTestBase
             new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 0, 0, 0, TimeSpan.Zero)), null, access)
             .CreateIndexSource().Producer(new MftBlockProduceRequest
             {
-                Drive = 'T',
+                Volume = 'T',
                 VolumeSerial = 123,
                 BlockPath = Path.Combine(CacheDirectoryPath, "cached.mlix")
             }, TestContext.CancellationToken);
@@ -51,7 +51,7 @@ public sealed class LocalMftBlockProducerCursorTests : IndexTreeTestBase
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public async Task JournalLessVolume_FailsCachedDriveButSkipsQueryWithoutCache(bool cacheDisabled)
+    public async Task JournalLessVolume_FailsCachedRootButSkipsQueryWithoutCache(bool cacheDisabled)
     {
         Directory.CreateDirectory(CacheDirectoryPath);
         var scans = 0;
@@ -84,10 +84,10 @@ public sealed class LocalMftBlockProducerCursorTests : IndexTreeTestBase
         var status = index.Status;
         Assert.AreEqual(cacheDisabled ? 0 : 1, queries);
         Assert.AreEqual(cacheDisabled ? 1 : 0, scans);
-        Assert.AreEqual(cacheDisabled ? DriveState.Ready : DriveState.Failed, status.State);
+        Assert.AreEqual(cacheDisabled ? RootState.Ready : RootState.Failed, status.State);
         if (!cacheDisabled)
         {
-            Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind);
+            Assert.AreEqual(RootFailureKind.ProducerFailed, status.Failure?.Kind);
             Assert.IsEmpty(Directory.GetFiles(CacheDirectoryPath, "*.mlix"));
         }
     }

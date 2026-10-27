@@ -54,7 +54,7 @@ public sealed class CacheDirectoryDirectoryOwnershipTests : IDisposable
         var status = CacheDirectory.InspectCached(CacheDirectoryPath, [wanted], rejected.Add).Single();
 
         Assert.AreEqual(CachedBlockAvailability.InUse, status.Availability);
-        Assert.AreEqual(wanted, status.File.Drive);
+        Assert.AreEqual(wanted, status.File.Root);
         Assert.IsEmpty(rejected);
         Assert.AreSequenceEqual(before, File.ReadAllBytes(path));
     }
@@ -73,7 +73,7 @@ public sealed class CacheDirectoryDirectoryOwnershipTests : IDisposable
         var result = CacheDirectory.DeleteCached(CacheDirectoryPath, [wanted], rejected.Add).Single();
 
         Assert.AreEqual(CachedBlockDeletionOutcome.InUse, result.Outcome);
-        Assert.AreEqual(wanted, result.File.Drive);
+        Assert.AreEqual(wanted, result.File.Root);
         Assert.IsEmpty(rejected);
         Assert.IsTrue(File.Exists(path));
     }
@@ -89,7 +89,7 @@ public sealed class CacheDirectoryDirectoryOwnershipTests : IDisposable
         var result = CacheDirectory.DeleteCached(CacheDirectoryPath).Single();
 
         Assert.AreEqual(CachedBlockAvailability.InUse, status.Availability);
-        Assert.AreEqual(key, status.File.Drive);
+        Assert.AreEqual(key, status.File.Root);
         Assert.AreEqual(CachedBlockDeletionOutcome.InUse, result.Outcome);
         Assert.IsTrue(File.Exists(path));
     }
@@ -118,7 +118,7 @@ public sealed class CacheDirectoryDirectoryOwnershipTests : IDisposable
         var status = CacheDirectory.InspectCached(CacheDirectoryPath, [wanted]).Single();
 
         Assert.AreEqual(CachedBlockAvailability.Invalid, status.Availability);
-        Assert.AreEqual(wanted, status.File.Drive);
+        Assert.AreEqual(wanted, status.File.Root);
     }
 
     [TestMethod]

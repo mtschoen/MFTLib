@@ -5,7 +5,7 @@ namespace MFTLib;
 /// <summary>
 ///     Signals that a frame could not be written because the client closed its end of a broker
 ///     pipe. It reports the end of a pipe rather than a fault: no frame can reach a client that is
-///     gone. On a drive pipe it ends that channel quietly; on the control pipe it ends the session,
+///     gone. On a volume pipe it ends that channel quietly; on the control pipe it ends the session,
 ///     and <see cref="JournalBrokerHost.ServeAsync" /> returns normally. It is internal and never
 ///     reaches a consumer of the library.
 /// </summary>

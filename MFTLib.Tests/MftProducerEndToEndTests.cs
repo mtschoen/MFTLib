@@ -38,7 +38,7 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
         {
             QueryCursor = _ => ArmedCursor,
             QueryVolumeInformation = _ => VolumeInformation,
-            ScanDrive = (_, _, _, _, _, _) => Records(),
+            ScanVolume = (_, _, _, _, _, _) => Records(),
             ReadJournal = CatchUpSources.ToTip(AdvancedCursor, CatchUpEntries())
         }));
         var source = new BrokerMftBlockProducer(Connect(broker.Process)).CreateIndexSource();
@@ -60,7 +60,7 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
         var deleted = index.Find(At("documents", "obsolete.txt"), TestContext.CancellationToken)!.Value;
         var renamed = index.Find(At("documents", "draft.txt"), TestContext.CancellationToken)!.Value;
         Assert.IsNull(index.Status.Watch.CheckpointLoss);
-        var block = index.Root(TestContext.CancellationToken).DriveBlock.Block;
+        var block = index.Root(TestContext.CancellationToken).RootBlock.Block;
         Assert.AreEqual(ArmedCursor.NextUsn, block.Header.UsnNextUsn);
         Assert.IsNull(index.Find(At("documents", "created.txt"), TestContext.CancellationToken));
 
@@ -88,7 +88,7 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
         {
             QueryCursor = _ => ArmedCursor,
             QueryVolumeInformation = _ => VolumeInformation,
-            ScanDrive = (_, _, reporting, _, _, cancellationToken) =>
+            ScanVolume = (_, _, reporting, _, _, cancellationToken) =>
             {
                 reporting.Progress?.Report(new BlockWriteProgress(6, 0, 6, null, BlockScanPhase.Parsing));
                 parsingReceived.Task.Wait(HangGuard, cancellationToken);
@@ -113,7 +113,7 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
         AssertReady(index);
         Assert.Contains(value => value.Phase == IndexScanPhase.ParsingMft, progress);
         Assert.Contains(value => value.Phase == IndexScanPhase.Transferring, progress);
-        Assert.IsTrue(progress.All(value => value.Drive == new VolumeKey('C')));
+        Assert.IsTrue(progress.All(value => value.Root == new VolumeKey('C')));
         var transferring = progress.FindLast(value => value.Phase == IndexScanPhase.Transferring);
         Assert.IsNotNull(transferring);
         Assert.IsNotNull(transferring.ExpectedRowCount);
@@ -132,7 +132,7 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
         await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => ArmedCursor,
-            ScanDrive = (_, _, _, _, _, _) => Records().Append([Record(1_000_000, 5, "beyond.txt")]),
+            ScanVolume = (_, _, _, _, _, _) => Records().Append([Record(1_000_000, 5, "beyond.txt")]),
             QueryVolumeInformation = _ => new NtfsVolumeInformation(1024, 1024)
         }));
         var source = new BrokerMftBlockProducer(Connect(broker.Process)).CreateIndexSource();
@@ -143,7 +143,7 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
         Assert.IsTrue(created.Header.IsComplete);
         Assert.IsTrue(created.Header.IsCapacityExhausted);
         Assert.IsTrue(index.Status.Block!.IsCapacityExhausted);
-        Assert.AreEqual(DriveState.Ready, index.Status.State);
+        Assert.AreEqual(RootState.Ready, index.Status.State);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf('C').ProducerKind);
         Assert.IsNotNull(index.Find(At("documents", "notes.txt"), TestContext.CancellationToken));
         Assert.IsNull(index.Find(At("beyond.txt"), TestContext.CancellationToken));
@@ -152,7 +152,7 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
     [TestMethod]
     public async Task BlockSession_ReplacesParkedWatchCursorAndIndexRescanPreservesOldHandles()
     {
-        // The watch a drive runs is armed from its published block's cursor, not from the cursor
+        // The watch a root runs is armed from its published block's cursor, not from the cursor
         // catch-up advanced to (FileIndex.WatchCheckpointLoss.cs, BuildWatchTarget). A rescan publishes a
         // block with a fresh armed cursor, and the restarted watch follows it.
         var rearmed = new StrongBox<int>();
@@ -162,7 +162,7 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
         {
             QueryVolumeInformation = _ => VolumeInformation,
             QueryCursor = _ => Volatile.Read(ref rearmed.Value) == 0 ? ArmedCursor : RearmedCursor,
-            ScanDrive = (_, _, _, _, _, _) => Interlocked.Increment(ref scanCount.Value) == 1
+            ScanVolume = (_, _, _, _, _, _) => Interlocked.Increment(ref scanCount.Value) == 1
                 ? Records()
                 : [[Record(5, 5, ".", directory: true), Record(40, 5, "replacement.txt")]],
             ReadJournal = (_, since, _) => ([], Volatile.Read(ref rearmed.Value) == 0 ? AdvancedCursor : since)
@@ -171,7 +171,7 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
         await using var index = await FileIndex.OpenAsync(Options(new MftIndexSource(producer, watchSource.IndexSource)),
             CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
         var previous = index.Find(At("documents", "notes.txt"), TestContext.CancellationToken)!.Value;
-        var previousBlock = previous.DriveBlock.Block;
+        var previousBlock = previous.RootBlock.Block;
         var firstBlockCursor = new UsnJournalCursor(previousBlock.Header.UsnJournalIdentifier, previousBlock.Header.UsnNextUsn);
 
         await index.StartWatchingAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -185,8 +185,8 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
         await index.RescanAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.AreEqual(2, scanCount.Value);
-        var replacementBlock = index.Root(TestContext.CancellationToken).DriveBlock.Block;
-        Assert.AreEqual(DriveState.Ready, index.Status.State);
+        var replacementBlock = index.Root(TestContext.CancellationToken).RootBlock.Block;
+        Assert.AreEqual(RootState.Ready, index.Status.State);
         Assert.AreNotSame(previousBlock, replacementBlock);
         Assert.AreEqual(RearmedCursor.NextUsn, replacementBlock.Header.UsnNextUsn);
         Assert.AreEqual(40UL, index.Find(At("replacement.txt"), TestContext.CancellationToken)!.Value.RecordKey.RecordNumber);
@@ -208,7 +208,7 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
         {
             QueryCursor = _ => ArmedCursor,
             QueryVolumeInformation = _ => VolumeInformation,
-            ScanDrive = (_, _, _, _, _, _) => Records(),
+            ScanVolume = (_, _, _, _, _, _) => Records(),
             ReadJournal = (_, _, _) => throw new IOException("journal wrapped during scan")
         }));
         var source = new BrokerMftBlockProducer(Connect(broker.Process)).CreateIndexSource();
@@ -217,7 +217,7 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
         var loss = index.Status.Watch.CheckpointLoss;
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, loss.DetectedDuring);
-        var block = index.Root(TestContext.CancellationToken).DriveBlock.Block;
+        var block = index.Root(TestContext.CancellationToken).RootBlock.Block;
         Assert.IsTrue(block.Header.IsComplete);
         Assert.AreEqual(ArmedCursor.NextUsn, block.Header.UsnNextUsn);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf('C').ProducerKind);
@@ -239,14 +239,14 @@ public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
 
     FileIndexOptions Options(MftIndexSource source) => new()
     {
-        Root = SyntheticIndexedDrive.Create(new VolumeKey('C'), _rootDirectory, 123),
+        Root = SyntheticIndexedRoot.Create(new VolumeKey('C'), _rootDirectory, 123),
         CacheDirectory = _cacheDirectory,
         MftSource = source
     };
 
     static void AssertReady(FileIndex index)
     {
-        Assert.AreEqual(DriveState.Ready, index.Status.State);
+        Assert.AreEqual(RootState.Ready, index.Status.State);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf('C').ProducerKind);
         Assert.IsTrue(index.Status.Watch.IsSupported);
         Assert.IsFalse(index.Status.Block!.IsCapacityExhausted);

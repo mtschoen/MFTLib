@@ -12,15 +12,15 @@ namespace MFTLibTestExtensions;
 public static class SyntheticNotifications
 {
     /// <summary>Builds a cache inventory entry.</summary>
-    /// <param name="drive">The uppercase ASCII drive letter from the file name.</param>
+    /// <param name="root">The uppercase ASCII drive letter from the file name.</param>
     /// <param name="volumeSerial">The volume serial from the file name.</param>
     /// <param name="path">The full path to the cached file.</param>
     /// <param name="size">The file size in bytes.</param>
     /// <param name="lastWriteTime">The file last-write time in UTC.</param>
     /// <returns>The entry.</returns>
-    public static CachedBlockFile CreateCachedBlockFile(RootKey drive, uint volumeSerial, string path,
+    public static CachedBlockFile CreateCachedBlockFile(RootKey root, uint volumeSerial, string path,
         long size, DateTime lastWriteTime) =>
-        new(drive, volumeSerial, path, size, lastWriteTime);
+        new(root, volumeSerial, path, size, lastWriteTime);
 
     /// <summary>Builds the result of deleting one cached block.</summary>
     /// <param name="file">The inventory entry captured before deletion.</param>
@@ -64,29 +64,29 @@ public static class SyntheticNotifications
 
     /// <summary>Builds a live watch fault.</summary>
     /// <param name="kind">Which boundary raised the fault.</param>
-    /// <param name="drive">The drive the fault names.</param>
+    /// <param name="volume">The root the fault names.</param>
     /// <param name="exception">The exception behind the fault.</param>
     /// <returns>The fault.</returns>
-    public static WatchFault CreateWatchFault(WatchFaultKind kind, VolumeKey drive, Exception exception) =>
-        new(kind, drive, exception);
+    public static WatchFault CreateWatchFault(WatchFaultKind kind, VolumeKey volume, Exception exception) =>
+        new(kind, volume, exception);
 
     /// <summary>Builds a watch state change for a consumer event handler.</summary>
-    /// <param name="drive">The drive whose watch changed state.</param>
-    /// <param name="watch">The drive's watch status after the change.</param>
+    /// <param name="volume">The root whose watch changed state.</param>
+    /// <param name="watch">The root's watch status after the change.</param>
     /// <param name="fault">The fault that caused the change, or null.</param>
     /// <returns>The state change.</returns>
-    public static WatchStateChange CreateWatchStateChange(VolumeKey drive, DriveWatchStatus watch,
+    public static WatchStateChange CreateWatchStateChange(VolumeKey volume, RootWatchStatus watch,
         WatchFault? fault) =>
-        new(drive, watch, fault);
+        new(volume, watch, fault);
 
-    /// <summary>Builds one drive's operation result for a consumer result handler.</summary>
-    /// <param name="drive">The drive the result describes.</param>
-    /// <param name="outcome">What the operation did for the drive.</param>
-    /// <param name="failure">The per-drive exception for a failure; otherwise null.</param>
+    /// <summary>Builds one root's operation result for a consumer result handler.</summary>
+    /// <param name="root">The root the result describes.</param>
+    /// <param name="outcome">What the operation did for the root.</param>
+    /// <param name="failure">The per-root exception for a failure; otherwise null.</param>
     /// <returns>The operation result.</returns>
-    public static DriveOperationResult CreateDriveOperationResult(RootKey drive,
-        DriveOperationOutcome outcome, Exception? failure) =>
-        new(drive, outcome, failure);
+    public static RootOperationResult CreateRootOperationResult(RootKey root,
+        RootOperationOutcome outcome, Exception? failure) =>
+        new(root, outcome, failure);
 
     /// <summary>Builds the exception a scan carries when it loses its journal catch-up.</summary>
     /// <param name="recoveryStopped">Whether the scan operation stopped retrying at this loss.</param>
@@ -97,18 +97,18 @@ public static class SyntheticNotifications
         new(recoveryStopped, message);
 
     /// <summary>
-    ///     Builds the identity of one drive root. A fixture sets the readiness facts and verdict with a <c>with</c>
+    ///     Builds the identity of one volume root. A fixture sets the readiness facts and verdict with a <c>with</c>
     ///     expression on the result.
     /// </summary>
-    /// <param name="drive">The drive letter of <paramref name="rootDirectory" />.</param>
-    /// <param name="rootDirectory">The drive root, for example <c>C:\</c>.</param>
-    /// <param name="driveType">The operating system's classification of the drive.</param>
+    /// <param name="volume">The drive letter of <paramref name="rootDirectory" />.</param>
+    /// <param name="rootDirectory">The volume root, for example <c>C:\</c>.</param>
+    /// <param name="driveType">The operating system's classification of the root.</param>
     /// <returns>The volume, not ready and not indexable until the fixture says otherwise.</returns>
-    public static WindowsVolume CreateWindowsVolume(VolumeKey drive, string rootDirectory, DriveType driveType) =>
-        new(drive, rootDirectory, driveType);
+    public static WindowsVolume CreateWindowsVolume(VolumeKey volume, string rootDirectory, DriveType driveType) =>
+        new(volume, rootDirectory, driveType);
 
     /// <summary>Builds one scan progress sample.</summary>
-    /// <param name="drive">The drive whose block is being produced.</param>
+    /// <param name="root">The root whose block is being produced.</param>
     /// <param name="phase">The current stage of the scan.</param>
     /// <param name="writtenRowCount">
     ///     Records scanned during parsing, rows transferred during intermediate transfer samples, or rows written during enumeration.
@@ -122,10 +122,10 @@ public static class SyntheticNotifications
     /// <param name="currentDirectory">The directory being enumerated, or null.</param>
     /// <param name="outcome">The terminal outcome on a finished sample; otherwise null.</param>
     /// <returns>The sample.</returns>
-    public static IndexScanProgress CreateIndexScanProgress(RootKey drive, IndexScanPhase phase,
+    public static IndexScanProgress CreateIndexScanProgress(RootKey root, IndexScanPhase phase,
         uint writtenRowCount, uint? expectedRowCount = null, string? currentDirectory = null,
         IndexScanOutcome? outcome = null) =>
-        new(drive, phase, writtenRowCount)
+        new(root, phase, writtenRowCount)
         {
             ExpectedRowCount = expectedRowCount,
             CurrentDirectory = currentDirectory,
@@ -137,21 +137,21 @@ public static class SyntheticNotifications
     ///     <c>with</c> expression on the result, nesting one for <see cref="RootStatus.Watch" /> (for example
     ///     <c>status with { Watch = status.Watch with { IsSupported = true } }</c>).
     /// </summary>
-    /// <param name="drive">The drive.</param>
-    /// <param name="state">Whether the drive can answer queries, needs a rescan, or has no block.</param>
-    /// <param name="block">The block behind a <see cref="DriveState.Ready" /> drive; null otherwise.</param>
-    /// <param name="failure">Why the drive failed; null for a drive that did not.</param>
+    /// <param name="root">The root.</param>
+    /// <param name="state">Whether the root can answer queries, needs a rescan, or has no block.</param>
+    /// <param name="block">The block behind a <see cref="RootState.Ready" /> root; null otherwise.</param>
+    /// <param name="failure">Why the root failed; null for a root that did not.</param>
     /// <returns>The status.</returns>
-    public static RootStatus CreateDriveStatus(RootKey drive, DriveState state, DriveBlockStatus? block,
-        DriveFailure? failure) =>
-        new(drive, state)
+    public static RootStatus CreateRootStatus(RootKey root, RootState state, RootBlockStatus? block,
+        RootFailure? failure) =>
+        new(root, state)
         {
             Block = block,
             Failure = failure
         };
 
     /// <summary>
-    ///     Builds the block part of a drive status. A fixture sets the optional cache-location and skipped-record
+    ///     Builds the block part of a root status. A fixture sets the optional cache-location and skipped-record
     ///     values with a <c>with</c> expression on the result.
     /// </summary>
     /// <param name="blockOrigin">Where the block came from.</param>
@@ -159,7 +159,7 @@ public static class SyntheticNotifications
     /// <param name="capacityExhausted">The block header capacity-exhausted flag.</param>
     /// <param name="scanTimestamp">When the current block production completed.</param>
     /// <returns>The block status.</returns>
-    public static DriveBlockStatus CreateDriveBlockStatus(BlockOrigin blockOrigin, uint liveRowCount,
+    public static RootBlockStatus CreateRootBlockStatus(BlockOrigin blockOrigin, uint liveRowCount,
         bool capacityExhausted, DateTime scanTimestamp) =>
         new()
         {
@@ -169,11 +169,11 @@ public static class SyntheticNotifications
             ScanTimestamp = scanTimestamp
         };
 
-    /// <summary>Builds a drive failure.</summary>
+    /// <summary>Builds a root failure.</summary>
     /// <param name="kind">Which failure it is.</param>
     /// <param name="message">The detail a consumer shows.</param>
     /// <returns>The failure.</returns>
-    public static DriveFailure CreateDriveFailure(DriveFailureKind kind, string message) => new(kind, message);
+    public static RootFailure CreateRootFailure(RootFailureKind kind, string message) => new(kind, message);
 
     /// <summary>
     ///     Builds a journal checkpoint loss report with no derived sizes and no raw journal positions. A
@@ -181,13 +181,13 @@ public static class SyntheticNotifications
     ///     <see cref="JournalCheckpointLoss.SizeThatWouldHaveRetained" /> with a <c>with</c> expression on the
     ///     result, and the positions with <see cref="SyntheticCheckpointLoss.WithJournalPositions" />.
     /// </summary>
-    /// <param name="drive">The drive, in upper case.</param>
+    /// <param name="volume">The root, in upper case.</param>
     /// <param name="cause">Which situation the loss was.</param>
     /// <param name="detectedDuring">Which check found the loss.</param>
     /// <param name="journalSettings">The journal sizing when the loss was detected.</param>
     /// <returns>The report.</returns>
-    public static JournalCheckpointLoss CreateJournalCheckpointLoss(VolumeKey drive,
+    public static JournalCheckpointLoss CreateJournalCheckpointLoss(VolumeKey volume,
         JournalCheckpointLossCause cause, JournalCheckpointLossDetection detectedDuring,
         UsnJournalSettings journalSettings) =>
-        new(drive, detectedDuring, cause, journalSettings);
+        new(volume, detectedDuring, cause, journalSettings);
 }

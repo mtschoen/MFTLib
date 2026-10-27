@@ -65,7 +65,7 @@ public partial class BenchmarkRunner
             throw new ArgumentException($"Invalid index memory scenario '{request.Scenario}'.");
         }
 
-        var input = request.Index ?? throw new ArgumentException("Index memory request requires drive metadata.");
+        var input = request.Index ?? throw new ArgumentException("Index memory request requires root metadata.");
         if (string.IsNullOrWhiteSpace(request.InputPath) || string.IsNullOrWhiteSpace(input.RootDirectory) ||
             !RootKey.TryParse(input.Drive, out var rootKey) || !Enum.IsDefined(input.Producer) ||
             !CacheTag.IsValidStorage(input.PackedFourCc))
@@ -90,10 +90,10 @@ public partial class BenchmarkRunner
             Root = new IndexedRoot(rootKey, input.RootDirectory, input.VolumeSerial, input.Producer)
         }, CancellationToken.None).ConfigureAwait(false);
         using var borrow = index.BorrowCurrentSnapshot();
-        var drive = borrow.DriveBlock;
-        if (drive is null || drive.Block.Header.ScanShape != input.ScanShape)
+        var root = borrow.RootBlock;
+        if (root is null || root.Block.Header.ScanShape != input.ScanShape)
         {
-            throw new InvalidOperationException($"Drive {input.Drive}: unavailable or replaced during memory measurement.");
+            throw new InvalidOperationException($"Root {input.Drive}: unavailable or replaced during memory measurement.");
         }
 
         var query = request.Scenario == "exact-search"

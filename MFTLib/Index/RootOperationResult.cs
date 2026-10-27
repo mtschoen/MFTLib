@@ -1,0 +1,48 @@
+namespace MFTLib.Index;
+
+/// <summary>
+///     The verdict on one root of a batched <see cref="FileIndex" /> call. One root's failure is a verdict,
+///     not a throw, so the other roots' results survive it.
+/// </summary>
+public enum RootOperationOutcome
+{
+    /// <summary>Nothing failed and nothing was skipped: the root's part ran to its end.</summary>
+    Succeeded,
+
+    /// <summary>The operation failed for the root; the result carries the exception.</summary>
+    Failed,
+
+    /// <summary>
+    ///     The operation does not apply to the volume: it has no MFT-backed block (start), or it is
+    ///     not watching (stop and catch-up wait).
+    /// </summary>
+    NotApplicable
+}
+
+/// <summary>The result of one root's part of a batched <see cref="FileIndex" /> operation.</summary>
+public sealed record RootOperationResult
+{
+    /// <summary>Creates the result of one root's operation.</summary>
+    /// <param name="root">The normalized root key.</param>
+    /// <param name="outcome">What the operation did for the root.</param>
+    /// <param name="failure">The per-root exception for a failure; otherwise null.</param>
+    internal RootOperationResult(RootKey root, RootOperationOutcome outcome, Exception? failure)
+    {
+        Root = root;
+        Outcome = outcome;
+        Failure = failure;
+    }
+
+    /// <summary>Matches the request key; assigning the invalid default throws ArgumentException.</summary>
+    public RootKey Root { get; init => field = value.Validated(); }
+
+    /// <summary>What the operation did for the root.</summary>
+    public RootOperationOutcome Outcome { get; init; }
+
+    /// <summary>
+    ///     The per-root exception when <see cref="Outcome" /> is
+    ///     <see cref="RootOperationOutcome.Failed" />; otherwise null. For a stop, the fault that had
+    ///     ended the root's watch.
+    /// </summary>
+    public Exception? Failure { get; init; }
+}

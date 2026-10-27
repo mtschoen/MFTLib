@@ -49,7 +49,7 @@ public sealed class FileIndexQueryTests : IndexTreeTestBase, IAsyncDisposable
     }
 
     [TestMethod]
-    public void Search_ExactMode_SpansTheWholeDrive()
+    public void Search_ExactMode_SpansTheWholeRoot()
     {
         var results = _index!.Search(new SearchQuery("readme.md", NameMatchMode.Exact), TestContext.CancellationToken);
         Assert.HasCount(2, results);
@@ -82,27 +82,27 @@ public sealed class FileIndexQueryTests : IndexTreeTestBase, IAsyncDisposable
     }
 
     [TestMethod]
-    public void Root_ReturnsTheDriveRoot()
+    public void Root_ReturnsTheRootRoot()
     {
         Assert.AreEqual(TreeRoot, _index!.Root(TestContext.CancellationToken).Path);
     }
 
     [TestMethod]
-    [DataRow(DriveState.Offline, 'T', false)]
-    [DataRow(DriveState.Offline, 'T', true)]
-    [DataRow(DriveState.Offline, 't', false)]
-    [DataRow(DriveState.Offline, 't', true)]
-    [DataRow(DriveState.Failed, 'T', false)]
-    [DataRow(DriveState.Failed, 'T', true)]
-    [DataRow(DriveState.Failed, 't', false)]
-    [DataRow(DriveState.Failed, 't', true)]
-    public async Task FileIndexSet_RejectsBlocklessDuplicateDriveConfiguration(DriveState blocklessState,
+    [DataRow(RootState.Offline, 'T', false)]
+    [DataRow(RootState.Offline, 'T', true)]
+    [DataRow(RootState.Offline, 't', false)]
+    [DataRow(RootState.Offline, 't', true)]
+    [DataRow(RootState.Failed, 'T', false)]
+    [DataRow(RootState.Failed, 'T', true)]
+    [DataRow(RootState.Failed, 't', false)]
+    [DataRow(RootState.Failed, 't', true)]
+    public async Task FileIndexSet_RejectsBlocklessDuplicateRootConfiguration(RootState blocklessState,
         char duplicateLetter, bool blocklessFirst)
     {
-        var policy = blocklessState == DriveState.Offline ? ProducerKind.Enumeration : ProducerKind.Mft;
-        var ready = SyntheticIndexedDrive.Create(new VolumeKey('T'), TreeRoot, 1, ProducerKind.Enumeration);
-        var blockless = SyntheticIndexedDrive.Create(new VolumeKey(duplicateLetter),
-            blocklessState == DriveState.Offline ? Path.Combine(TreeRoot, "absent") : TreeRoot, 2, policy);
+        var policy = blocklessState == RootState.Offline ? ProducerKind.Enumeration : ProducerKind.Mft;
+        var ready = SyntheticIndexedRoot.Create(new VolumeKey('T'), TreeRoot, 1, ProducerKind.Enumeration);
+        var blockless = SyntheticIndexedRoot.Create(new VolumeKey(duplicateLetter),
+            blocklessState == RootState.Offline ? Path.Combine(TreeRoot, "absent") : TreeRoot, 2, policy);
         await using var readyIndex = await FileIndex.OpenAsync(new FileIndexOptions
         {
             Root = ready,
@@ -120,23 +120,23 @@ public sealed class FileIndexQueryTests : IndexTreeTestBase, IAsyncDisposable
             blocklessFirst ? [blocklessIndex, readyIndex] : [readyIndex, blocklessIndex]));
 
         Assert.AreEqual("indices", exception.ParamName);
-        Assert.Contains("Drive T is listed more than once.", exception.Message);
+        Assert.Contains("Root T is listed more than once.", exception.Message);
     }
 
     [TestMethod]
-    [DataRow(DriveState.Failed, 'T', "normal")]
-    [DataRow(DriveState.Failed, 't', "normal")]
-    [DataRow(DriveState.Offline, 'T', "normal")]
-    [DataRow(DriveState.Offline, 't', "normal")]
-    [DataRow(DriveState.Failed, 'T', "rescan")]
-    [DataRow(DriveState.Failed, 't', "rescan")]
-    [DataRow(DriveState.Failed, 'T', "rescan-cancelled")]
-    [DataRow(DriveState.Failed, 't', "rescan-cancelled")]
-    [DataRow(DriveState.Failed, 'T', "dispose-at-admission")]
-    [DataRow(DriveState.Failed, 't', "dispose-at-admission")]
-    [DataRow(DriveState.Failed, 'T', "dispose-at-drive-read")]
-    [DataRow(DriveState.Failed, 't', "dispose-at-drive-read")]
-    public async Task Root_ConfiguredDriveWithoutBlock_ReportsCurrentState(DriveState state, char driveLetter,
+    [DataRow(RootState.Failed, 'T', "normal")]
+    [DataRow(RootState.Failed, 't', "normal")]
+    [DataRow(RootState.Offline, 'T', "normal")]
+    [DataRow(RootState.Offline, 't', "normal")]
+    [DataRow(RootState.Failed, 'T', "rescan")]
+    [DataRow(RootState.Failed, 't', "rescan")]
+    [DataRow(RootState.Failed, 'T', "rescan-cancelled")]
+    [DataRow(RootState.Failed, 't', "rescan-cancelled")]
+    [DataRow(RootState.Failed, 'T', "dispose-at-admission")]
+    [DataRow(RootState.Failed, 't', "dispose-at-admission")]
+    [DataRow(RootState.Failed, 'T', "dispose-at-drive-read")]
+    [DataRow(RootState.Failed, 't', "dispose-at-drive-read")]
+    public async Task Root_ConfiguredRootWithoutBlock_ReportsCurrentState(RootState state, char driveLetter,
         string scenario)
     {
         var canProduce = false;
@@ -148,7 +148,7 @@ public sealed class FileIndexQueryTests : IndexTreeTestBase, IAsyncDisposable
         };
         var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Root = SyntheticIndexedDrive.Create(new VolumeKey('T'), state == DriveState.Offline ? Path.Combine(TreeRoot, "absent") : TreeRoot, 1),
+            Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), state == RootState.Offline ? Path.Combine(TreeRoot, "absent") : TreeRoot, 1),
             CacheMode = CacheMode.Disabled,
             MftSource = SyntheticIndexSource.Create(producer)
         }, CancellationToken.None);
@@ -174,7 +174,7 @@ public sealed class FileIndexQueryTests : IndexTreeTestBase, IAsyncDisposable
                 {
                     canProduce = true;
                     await index.RescanAsync(CancellationToken.None);
-                    Assert.AreEqual(DriveState.Ready, index.Status.State);
+                    Assert.AreEqual(RootState.Ready, index.Status.State);
                     Assert.IsNotNull(index.Status.Block);
                 }, rescanCancellation.Token);
 
@@ -199,7 +199,7 @@ public sealed class FileIndexQueryTests : IndexTreeTestBase, IAsyncDisposable
             }
 
             Assert.IsInstanceOfType<InvalidOperationException>(outcome);
-            Assert.Contains($"Drive {new VolumeKey(driveLetter)} has no block (state: {state}).", outcome.Message);
+            Assert.Contains($"Root {new VolumeKey(driveLetter)} has no block (state: {state}).", outcome.Message);
             Assert.IsFalse(outcome.Message.Contains("not part of this index", StringComparison.Ordinal));
         }
         finally
@@ -274,13 +274,13 @@ public sealed class FileIndexQueryTests : IndexTreeTestBase, IAsyncDisposable
         return await reader;
     }
 
-    static async Task<Exception> RootAcrossDisposalAsync(FileIndex index, bool atDriveRead)
+    static async Task<Exception> RootAcrossDisposalAsync(FileIndex index, bool atRootRead)
     {
         using var callerCancellation = new CancellationTokenSource();
         var cancellationDelivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Task? disposal = null;
         index.Hooks.LifecycleGatesTakenForDisposal = () => cancellationDelivered.TrySetResult();
-        index.Hooks.DrivesReadBeforeLock = () =>
+        index.Hooks.RootsReadBeforeLock = () =>
         {
             disposal = index.DisposeAsync().AsTask();
             cancellationDelivered.Task.GetAwaiter().GetResult();
@@ -289,7 +289,7 @@ public sealed class FileIndexQueryTests : IndexTreeTestBase, IAsyncDisposable
         {
             return await RootAfterAdmissionAsync(index, async () =>
             {
-                if (!atDriveRead)
+                if (!atRootRead)
                 {
                     disposal = index.DisposeAsync().AsTask();
                     await cancellationDelivered.Task;
@@ -298,7 +298,7 @@ public sealed class FileIndexQueryTests : IndexTreeTestBase, IAsyncDisposable
         }
         finally
         {
-            index.Hooks.DrivesReadBeforeLock = null;
+            index.Hooks.RootsReadBeforeLock = null;
             index.Hooks.LifecycleGatesTakenForDisposal = null;
             await (disposal ?? index.DisposeAsync().AsTask());
             Assert.IsFalse(callerCancellation.IsCancellationRequested);

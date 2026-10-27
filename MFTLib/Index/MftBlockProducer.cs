@@ -1,7 +1,7 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     Builds one drive's block from the Master File Table. Declared here rather than in the
+///     Builds one root's block from the Master File Table. Declared here rather than in the
 ///     broker so <see cref="MFTLib.Index" /> states what it needs without referencing the
 ///     elevated broker that supplies it, which is the namespace boundary the library keeps.
 ///     A caller closes over its own broker launcher inside the delegate.
@@ -10,15 +10,15 @@ delegate Task<MftBlockProduceResult> MftBlockProducer(
     MftBlockProduceRequest request, CancellationToken cancellationToken);
 
 /// <summary>
-///     What the index needs one drive's block to be. The producer creates the file at
+///     What the index needs one root's block to be. The producer creates the file at
 ///     <see cref="BlockPath" /> exactly: cache mode, no-cache mode, and the private block an
 ///     in-use canonical slot falls back to are already resolved by the time this request is
 ///     built, and <see cref="DeleteOnClose" /> says which one it was.
 /// </summary>
 sealed record MftBlockProduceRequest
 {
-    /// <summary>The drive to scan: its MFT is read, and the block that results is filed under this letter in the index.</summary>
-    public required VolumeKey Drive { get; init; }
+    /// <summary>The volume to scan: its MFT is read, and the block that results is filed under this letter in the index.</summary>
+    public required VolumeKey Volume { get; init; }
 
     /// <summary>
     ///     The volume serial number to stamp into the block header; a later open rejects a
@@ -71,7 +71,7 @@ sealed record MftBlockProduceRequest
 
 /// <summary>
 ///     One finished block. <paramref name="SkippedRecordCount" /> counts records the producer could
-///     not place, reported as <see cref="DriveBlockStatus.SkippedRecordCount" />.
+///     not place, reported as <see cref="RootBlockStatus.SkippedRecordCount" />.
 /// </summary>
 sealed record MftBlockProduceResult(BlockFile Block, int SkippedRecordCount)
 {

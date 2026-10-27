@@ -6,7 +6,7 @@ namespace MFTLib.Tests.Index;
 
 /// <summary>
 ///     A <see cref="SearchQuery.Subtree" /> anchor belongs to the queried index's current block for the
-///     anchor's drive. All three query forms validate it against the block they borrowed.
+///     anchor's root. All three query forms validate it against the block they borrowed.
 /// </summary>
 [TestClass]
 public class SubtreeAnchorTests
@@ -125,12 +125,12 @@ public class SubtreeAnchorTests
     }
 
     [TestMethod]
-    [DataRow(QueryForm.Search, 'T', 'U', DisplayName = "Search, foreign index with different drive key")]
-    [DataRow(QueryForm.Enumerate, 'T', 'U', DisplayName = "Enumerate, foreign index with different drive key")]
-    [DataRow(QueryForm.EnumerateRows, 'T', 'U', DisplayName = "EnumerateRows, foreign index with different drive key")]
-    [DataRow(QueryForm.Search, 'T', 'T', DisplayName = "Search, foreign index with the same drive key")]
-    [DataRow(QueryForm.Enumerate, 'T', 'T', DisplayName = "Enumerate, foreign index with the same drive key")]
-    [DataRow(QueryForm.EnumerateRows, 'T', 'T', DisplayName = "EnumerateRows, foreign index with the same drive key")]
+    [DataRow(QueryForm.Search, 'T', 'U', DisplayName = "Search, foreign index with different root key")]
+    [DataRow(QueryForm.Enumerate, 'T', 'U', DisplayName = "Enumerate, foreign index with different root key")]
+    [DataRow(QueryForm.EnumerateRows, 'T', 'U', DisplayName = "EnumerateRows, foreign index with different root key")]
+    [DataRow(QueryForm.Search, 'T', 'T', DisplayName = "Search, foreign index with the same root key")]
+    [DataRow(QueryForm.Enumerate, 'T', 'T', DisplayName = "Enumerate, foreign index with the same root key")]
+    [DataRow(QueryForm.EnumerateRows, 'T', 'T', DisplayName = "EnumerateRows, foreign index with the same root key")]
     public void ForeignAnchor_IsRejected(QueryForm form, char anchorDrive, char queriedDrive)
     {
         using var anchorOwner = new WatchHarness(anchorDrive);
@@ -180,7 +180,7 @@ public class SubtreeAnchorTests
     [DataRow(QueryForm.Search)]
     [DataRow(QueryForm.Enumerate)]
     [DataRow(QueryForm.EnumerateRows)]
-    public async Task AnchorOfAReplacedDriveBlock_IsRejectedButStaysReadable(QueryForm form)
+    public async Task AnchorOfAReplacedRootBlock_IsRejectedButStaysReadable(QueryForm form)
     {
         using var harness = new WatchHarness('T');
         var anchor = Documents(harness.Index);
@@ -197,7 +197,7 @@ public class SubtreeAnchorTests
     [DataRow(QueryForm.Search)]
     [DataRow(QueryForm.Enumerate)]
     [DataRow(QueryForm.EnumerateRows)]
-    public async Task RescanningAnotherDrive_KeepsTheAnchorValid(QueryForm form)
+    public async Task RescanningAnotherRoot_KeepsTheAnchorValid(QueryForm form)
     {
         using var harness = new WatchHarness('T', 'U');
         var anchor = harness.IndexFor('T').Search(new SearchQuery("documents", NameMatchMode.Exact), TestContext.CancellationToken)

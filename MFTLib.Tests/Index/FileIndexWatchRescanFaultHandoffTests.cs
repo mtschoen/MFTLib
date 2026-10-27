@@ -43,7 +43,7 @@ public class FileIndexWatchRescanFaultHandoffTests
         var production = faultDuringProduction ? harness.HoldNextProduction('T') : null;
         var delivery = faultAfterRetirement ? harness.TrackGate() : null;
         var faultAnnounced = delayedOverlappingStop ? harness.TrackGate() : null;
-        var rescan = Task.FromResult(new DriveOperationResult(new VolumeKey('T'), DriveOperationOutcome.Succeeded, null));
+        var rescan = Task.FromResult(new RootOperationResult(new VolumeKey('T'), RootOperationOutcome.Succeeded, null));
         if (delayedOverlappingStop)
         {
             index.Hooks.BeforeWatchChanged = _ => HoldSynchronously(delivery!);
@@ -63,17 +63,17 @@ public class FileIndexWatchRescanFaultHandoffTests
             index.Hooks.BeforeWatchChanged = _ => HoldSynchronously(held);
             var delivering = handle.Queue(WatchHarness.Batch(10, "during.txt"));
             await held.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
-            var original = index.Root(TestContext.CancellationToken).DriveBlock;
+            var original = index.Root(TestContext.CancellationToken).RootBlock;
             harness.SetNextProducedCursor('T', 13, 9000);
             rescan = index.RescanAsync(Token);
-            Assert.AreNotSame(original, index.Root(TestContext.CancellationToken).DriveBlock);
+            Assert.AreNotSame(original, index.Root(TestContext.CancellationToken).RootBlock);
             Assert.IsFalse(delivering.IsCompleted, "the retired pump is held during its drain");
             Assert.AreEqual(0, handle.DisposeCount);
         }
         else
         {
             var published = faultAfterRetirement ? harness.TrackGate() : null;
-            var original = index.Root(TestContext.CancellationToken).DriveBlock;
+            var original = index.Root(TestContext.CancellationToken).RootBlock;
             if (faultAfterRetirement)
             {
                 index.Hooks.BeforeWatchChanged = _ => HoldSynchronously(delivery!);
@@ -113,7 +113,7 @@ public class FileIndexWatchRescanFaultHandoffTests
             if (faultAfterRetirement)
             {
                 await published!.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
-                while (ReferenceEquals(original, index.Root(TestContext.CancellationToken).DriveBlock))
+                while (ReferenceEquals(original, index.Root(TestContext.CancellationToken).RootBlock))
                 {
                     await Task.Yield();
                 }
@@ -125,8 +125,8 @@ public class FileIndexWatchRescanFaultHandoffTests
             await held.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         }
 
-        Task<DriveOperationResult> stopping;
-        Task<DriveOperationResult> overlappingStop;
+        Task<RootOperationResult> stopping;
+        Task<RootOperationResult> overlappingStop;
         if (delayedOverlappingStop)
         {
             stopping = index.StopWatchingAsync(Token);
@@ -149,16 +149,16 @@ public class FileIndexWatchRescanFaultHandoffTests
         {
             stopping = index.StopWatchingAsync(Token);
             overlappingStop = stage == "drain" ? index.StopWatchingAsync(Token)
-                : Task.FromResult(new DriveOperationResult(new VolumeKey('T'), DriveOperationOutcome.Succeeded, null));
+                : Task.FromResult(new RootOperationResult(new VolumeKey('T'), RootOperationOutcome.Succeeded, null));
             held.Release();
-            var failure = await DriveResultAssertions.FailureAsync<IOException>(() => stopping);
+            var failure = await RootResultAssertions.FailureAsync<IOException>(() => stopping);
             Assert.AreSame(subscriberFailure, failure);
             await overlappingStop.WaitAsync(HangGuard, TestContext.CancellationToken);
         }
 
         if (stage == "starting")
         {
-            await DriveResultAssertions.FailureAsync<OperationCanceledException>(() => rescan);
+            await RootResultAssertions.FailureAsync<OperationCanceledException>(() => rescan);
         }
         else
         {
@@ -167,7 +167,7 @@ public class FileIndexWatchRescanFaultHandoffTests
 
         Assert.AreEqual(1, handle.DisposeCount);
         Assert.AreEqual(WatchState.NotStarted, index.Status.Watch.State);
-        await DriveResultAssertions.NotApplicableAsync(() => index.StopWatchingAsync(Token));
+        await RootResultAssertions.NotApplicableAsync(() => index.StopWatchingAsync(Token));
     }
 
     [TestMethod]
@@ -196,13 +196,13 @@ public class FileIndexWatchRescanFaultHandoffTests
         {
             var fault = harness.Faults.Single(item => item.Kind == WatchFaultKind.RescanRestart);
             Assert.AreSame(startFailure, fault.Exception.InnerException);
-            var failure = await DriveResultAssertions.FailureAsync<InvalidOperationException>(
+            var failure = await RootResultAssertions.FailureAsync<InvalidOperationException>(
                 () => index.StopWatchingAsync(Token));
             Assert.AreSame(fault.Exception, failure);
         }
         else
         {
-            await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
+            await harness.Source.WatchFor('T').Publish(new VolumeCaughtUp());
             await index.WaitForCatchUpAsync(Token);
             await index.StopWatchingAsync(Token);
         }
@@ -216,14 +216,14 @@ public class FileIndexWatchRescanFaultHandoffTests
         using var harness = new WatchHarness('T');
         var index = harness.Index;
         await index.StartWatchingAsync(Token);
-        var original = index.Root(TestContext.CancellationToken).DriveBlock;
+        var original = index.Root(TestContext.CancellationToken).RootBlock;
         var handle = harness.Source.WatchFor('T');
         var production = harness.HoldNextProduction('T');
         var rescan = index.RescanAsync(Token);
         await production.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         var faultHandler = harness.TrackGate();
         index.WatchFaulted += _ => HoldSynchronously(faultHandler);
-        handle.FailDrive(new IOException("watch failed during production"));
+        handle.FailVolume(new IOException("watch failed during production"));
         await faultHandler.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
         Assert.AreEqual(WatchState.Recovering, index.Status.Watch.State);
         Assert.IsTrue(index.TryGetRecoveryCompletionForTest(new VolumeKey('T'), out var recovery));
@@ -244,7 +244,7 @@ public class FileIndexWatchRescanFaultHandoffTests
             try
             {
                 using var queuedCancellation = new CancellationTokenSource();
-                var cancelledWait = index.WaitForDriveWriteGateForTest(new VolumeKey('T'), queuedCancellation.Token);
+                var cancelledWait = index.WaitForRootWriteGateForTest(new VolumeKey('T'), queuedCancellation.Token);
                 await queuedCancellation.CancelAsync();
                 await Assert.ThrowsAsync<OperationCanceledException>(() => cancelledWait);
             }
@@ -254,9 +254,9 @@ public class FileIndexWatchRescanFaultHandoffTests
             }
         }
 
-        await DrainDriveWriteGateForTest(index, 'T', HangGuard, TestContext.CancellationToken);
+        await DrainRootWriteGateForTest(index, 'T', HangGuard, TestContext.CancellationToken);
 
-        Assert.AreNotSame(original, index.Root(TestContext.CancellationToken).DriveBlock);
+        Assert.AreNotSame(original, index.Root(TestContext.CancellationToken).RootBlock);
         Assert.AreEqual(0, handle.DisposeCount, "the fault handler still holds the old pump");
         Assert.IsFalse(rescan.IsCompleted);
         Assert.AreEqual(WatchState.Faulted, index.Status.Watch.State,
@@ -277,10 +277,10 @@ public class FileIndexWatchRescanFaultHandoffTests
         gate.WaitForRelease();
     }
 
-    static async Task<Exception?> CaptureFailureAsync(Task<DriveOperationResult> task)
+    static async Task<Exception?> CaptureFailureAsync(Task<RootOperationResult> task)
     {
         var result = await task.WaitAsync(HangGuard);
-        if (result.Outcome == DriveOperationOutcome.Failed)
+        if (result.Outcome == RootOperationOutcome.Failed)
         {
             Assert.IsInstanceOfType<IOException>(result.Failure);
         }
@@ -292,13 +292,13 @@ public class FileIndexWatchRescanFaultHandoffTests
         return result.Failure;
     }
 
-    static async Task DrainDriveWriteGateForTest(FileIndex index, VolumeKey drive, TimeSpan timeout, CancellationToken cancellationToken)
+    static async Task DrainRootWriteGateForTest(FileIndex index, VolumeKey volume, TimeSpan timeout, CancellationToken cancellationToken)
     {
-        var waitTask = index.WaitForDriveWriteGateForTest(drive, cancellationToken);
+        var waitTask = index.WaitForRootWriteGateForTest(volume, cancellationToken);
         try
         {
             await waitTask.WaitAsync(timeout, cancellationToken);
-            index.ReleaseDriveWriteGateForTest(drive);
+            index.ReleaseRootWriteGateForTest(volume);
         }
         catch
         {
@@ -306,7 +306,7 @@ public class FileIndexWatchRescanFaultHandoffTests
             {
                 if (task.Status == TaskStatus.RanToCompletion)
                 {
-                    index.ReleaseDriveWriteGateForTest(drive);
+                    index.ReleaseRootWriteGateForTest(volume);
                 }
             }, TaskScheduler.Default);
             throw;

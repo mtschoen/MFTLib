@@ -22,7 +22,7 @@ public sealed class BlockValidationMatrixTests : IndexTreeTestBase
 
     /// <summary>
     ///     The open deletes the cached block for <paramref name="expectedRejection" />, which its
-    ///     diagnostics name, and cold-scans the drive.
+    ///     diagnostics name, and cold-scans the root.
     /// </summary>
     static async Task AssertColdScansAsync(FileIndexOptions options, BlockValidationResult expectedRejection)
     {
@@ -31,7 +31,7 @@ public sealed class BlockValidationMatrixTests : IndexTreeTestBase
             CancellationToken.None);
         Assert.Contains(line => line.Contains($"cache validation failed: {expectedRejection}"), diagnostics,
             $"the rejection reason {expectedRejection} is logged");
-        Assert.AreEqual(DriveState.Ready, index.Status.State);
+        Assert.AreEqual(RootState.Ready, index.Status.State);
         Assert.AreEqual(BlockOrigin.ProducedByScan, index.Status.Block!.Origin);
         Assert.IsGreaterThanOrEqualTo(3u, index.HeaderOf().RowCount);
     }
@@ -73,7 +73,7 @@ public sealed class BlockValidationMatrixTests : IndexTreeTestBase
     ///     Patches the volume serial field inside the block already sitting at its canonical
     ///     cache path (rather than opening with a differently configured serial, which would
     ///     point at a different cache file name and never exercise this rejection at all) and
-    ///     reopens with the drive's original serial, so the header's serial no longer matches
+    ///     reopens with the volume's original serial, so the header's serial no longer matches
     ///     what the caller expects.
     /// </summary>
     [TestMethod]
@@ -142,7 +142,7 @@ public sealed class BlockValidationMatrixTests : IndexTreeTestBase
         await File.WriteAllTextAsync(Path.Combine(differentTreeRoot, "Documents", "readme.md"), "hello", TestContext.CancellationToken);
         var options = new FileIndexOptions
         {
-            Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('T'), differentTreeRoot, 0x0BADF00D, ProducerKind.Enumeration),
+            Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('T'), differentTreeRoot, 0x0BADF00D, ProducerKind.Enumeration),
             CacheDirectory = CacheDirectoryPath
         };
 

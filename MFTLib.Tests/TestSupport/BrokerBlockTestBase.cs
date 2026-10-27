@@ -18,7 +18,7 @@ public abstract class BrokerBlockTestBase
 
     internal static MftBlockProduceRequest Request(BlockScanTarget target) => new()
     {
-        Drive = 'C',
+        Volume = 'C',
         VolumeSerial = target.VolumeSerial,
         BlockPath = target.Path,
         DeleteOnClose = true
@@ -30,17 +30,17 @@ public abstract class BrokerBlockTestBase
             CancellationToken.None);
 
     /// <summary>
-    ///     A broker whose host hands <paramref name="change" /> the drive's block once the host has
+    ///     A broker whose host hands <paramref name="change" /> the volume's block once the host has
     ///     written it and sent ScanReady, before the client validates it.
     /// </summary>
     internal static InProcessBroker CreateBrokerChangingBlock(Action<BlockFile> change,
-        MftRecordBatchSource? scanDrive = null, Func<VolumeKey, NtfsVolumeInformation>? queryVolumeInfo = null)
+        MftRecordBatchSource? scanVolume = null, Func<VolumeKey, NtfsVolumeInformation>? queryVolumeInfo = null)
     {
         var created = new StrongBox<InProcessBroker?>();
         created.Value = new InProcessBroker(BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => ArmedCursor,
-            ScanDrive = scanDrive,
+            ScanVolume = scanVolume,
             QueryVolumeInformation = queryVolumeInfo ?? (_ => VolumeInformation),
             ReadJournal = (_, since, _) =>
             {

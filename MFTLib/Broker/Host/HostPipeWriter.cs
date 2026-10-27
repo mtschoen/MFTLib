@@ -4,7 +4,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace MFTLib;
 
 /// <summary>
-///     One host pipe (the control pipe or one drive pipe): serializes its frame writes under a
+///     One host pipe (the control pipe or one volume pipe): serializes its frame writes under a
 ///     write lock, records whether it wrote since the heartbeat sender's last visit, and holds the
 ///     operation state its loop and its source publish. It is the <see cref="ISourceOperationReporter" />
 ///     every source on that pipe receives. A frame write or a publication restarts the progress
@@ -83,7 +83,7 @@ sealed class HostPipeWriter : ISourceOperationReporter
 
     /// <summary>
     ///     Writes one frame. A write that finds the pipe gone (IOException: "Pipe is broken" /
-    ///     ERROR_NO_DATA) throws <see cref="ClientDisconnectedException" />: on a drive pipe that ends
+    ///     ERROR_NO_DATA) throws <see cref="ClientDisconnectedException" />: on a volume pipe that ends
     ///     only that channel, quietly, and on the control pipe it ends the session. A pipe that has
     ///     reported a stall writes nothing more and throws <see cref="OperationCanceledException" />.
     ///     Everything else a write can throw (cancellation, frame serialization) propagates unchanged.

@@ -23,7 +23,7 @@ sealed class DefaultElevatedEntryRunner
     /// <summary>Captures the clock and exit behavior for this runner's complete lifetime.</summary>
     /// <param name="timeProvider">The clock for block completion and the diagnostics flush bound.</param>
     /// <param name="exitProcess">Called with 1 for a missing or unreachable pipe and 0 after normal session completion.</param>
-    /// <param name="connectTimeout">How long to wait, on <paramref name="timeProvider" />, for the control pipe and each drive pipe to connect.</param>
+    /// <param name="connectTimeout">How long to wait, on <paramref name="timeProvider" />, for the control pipe and each volume pipe to connect.</param>
     internal DefaultElevatedEntryRunner(TimeProvider timeProvider, Action<int> exitProcess,
         TimeSpan connectTimeout)
     {
@@ -76,7 +76,7 @@ sealed class DefaultElevatedEntryRunner
         try
         {
             JournalBrokerHost.CreateDefault()
-                .ServeAsync(control, ConnectDrivePipeAsync, new RealBlockSectionWriter(_timeProvider), CancellationToken.None)
+                .ServeAsync(control, ConnectVolumePipeAsync, new RealBlockSectionWriter(_timeProvider), CancellationToken.None)
                 // aislop-ignore-next-line csharp-sync-over-async -- every await in the ServeAsync chain uses ConfigureAwait(false), so no continuation needs the calling thread's SynchronizationContext and GetResult() cannot deadlock even when the entry thread has one
                 .GetAwaiter().GetResult();
         }
@@ -88,14 +88,14 @@ sealed class DefaultElevatedEntryRunner
         _exitProcess(0);
     }
 
-    /// <summary>The production <see cref="BrokerChannelConnector" />: the client end of the named drive pipe, bounded by this runner's connect timeout.</summary>
-    Task<Stream> ConnectDrivePipeAsync(string pipeName, CancellationToken cancellationToken)
+    /// <summary>The production <see cref="BrokerChannelConnector" />: the client end of the named volume pipe, bounded by this runner's connect timeout.</summary>
+    Task<Stream> ConnectVolumePipeAsync(string pipeName, CancellationToken cancellationToken)
     {
-        return ConnectDrivePipeAsync(pipeName, _connectTimeout, _timeProvider, cancellationToken);
+        return ConnectVolumePipeAsync(pipeName, _connectTimeout, _timeProvider, cancellationToken);
     }
 
-    /// <summary>Connects the named drive pipe, verifies its DACL, and fails with <see cref="TimeoutException" /> when no server answers within <paramref name="timeout" />.</summary>
-    internal static async Task<Stream> ConnectDrivePipeAsync(string pipeName, TimeSpan timeout,
+    /// <summary>Connects the named volume pipe, verifies its DACL, and fails with <see cref="TimeoutException" /> when no server answers within <paramref name="timeout" />.</summary>
+    internal static async Task<Stream> ConnectVolumePipeAsync(string pipeName, TimeSpan timeout,
         TimeProvider timeProvider, CancellationToken cancellationToken)
     {
         var pipe = new NamedPipeClientStream(
@@ -112,7 +112,7 @@ sealed class DefaultElevatedEntryRunner
                                                      !cancellationToken.IsCancellationRequested)
             {
                 throw new TimeoutException(
-                    $"No server answered drive pipe '{pipeName}' within {BrokerLiveness.FormatSeconds(timeout)} seconds.");
+                    $"No server answered volume pipe '{pipeName}' within {BrokerLiveness.FormatSeconds(timeout)} seconds.");
             }
 
             BrokerPipeAccess.VerifyServerRestrictedToCurrentUser(pipe);

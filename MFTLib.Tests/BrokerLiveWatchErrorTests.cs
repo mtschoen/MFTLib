@@ -5,9 +5,9 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 /// <summary>
-///     What a drive's watch handle does with the frames its pipe carries: an <c>Error</c> frame
-///     faults only that drive's handle, and a frame a watch does not carry, a stall report or a
-///     closed pipe loses only that drive's channel.
+///     What a volume's watch handle does with the frames its pipe carries: an <c>Error</c> frame
+///     faults only that volume's handle, and a frame a watch does not carry, a stall report or a
+///     closed pipe loses only that volume's channel.
 /// </summary>
 // The host's arm query consults JournalCheckpointCheck, whose override other classes install.
 [TestClass]
@@ -15,7 +15,7 @@ namespace MFTLib.Tests;
 public class BrokerLiveWatchErrorTests
 {
     [TestMethod]
-    public async Task LiveWatch_ErrorFrameForDrive_FaultsThatDrivesHandle()
+    public async Task LiveWatch_ErrorFrameForVolume_FaultsThatVolumesHandle()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
         var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateIndexSource().WatchSource!;
@@ -23,11 +23,11 @@ public class BrokerLiveWatchErrorTests
         await using var handle = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
         var reader = handle.ReadAsync(token).GetAsyncEnumerator(token);
         await using var _ = reader.ConfigureAwait(false);
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
+        Assert.IsInstanceOfType<VolumeCaughtUp>(await WatchReads.NextAsync(reader));
 
         (await harness.Watch('C').RunAsync(1)).Fail(new IOException("journal wrapped"));
 
-        var fault = await WatchReads.ThrowsNextAsync<DriveWatchFaultException>(reader);
+        var fault = await WatchReads.ThrowsNextAsync<VolumeWatchFaultException>(reader);
         Assert.AreEqual("journal wrapped", fault.Message);
         Assert.IsNull(fault.InnerException);
     }
@@ -47,13 +47,13 @@ public class BrokerLiveWatchErrorTests
 
         var reader = handle.ReadAsync(token).GetAsyncEnumerator(token);
         await using var _ = reader.ConfigureAwait(false);
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
-        var fault = await WatchReads.ThrowsNextAsync<DriveWatchFaultException>(reader);
+        Assert.IsInstanceOfType<VolumeCaughtUp>(await WatchReads.NextAsync(reader));
+        var fault = await WatchReads.ThrowsNextAsync<VolumeWatchFaultException>(reader);
         Assert.AreEqual("journal wrapped", fault.Message);
     }
 
     [TestMethod]
-    public async Task LiveWatch_FrameOutsideAWatch_LosesThatDrivesChannelAndLeavesTheOthers()
+    public async Task LiveWatch_FrameOutsideAWatch_LosesThatVolumesChannelAndLeavesTheOthers()
     {
         await using var broker = new ScriptedBroker();
         var process = broker.Process;
@@ -73,9 +73,9 @@ public class BrokerLiveWatchErrorTests
         await HostChannelHarness.WriteFrameAsync(hostD, writer => BrokerProtocol.WriteCaughtUp(writer, BrokerFrame.CaughtUp()));
 
         var lost = await WatchReads.ThrowsNextAsync<BrokerChannelLostException>(readerC);
-        Assert.AreEqual('C', lost.Drive);
+        Assert.AreEqual('C', lost.Volume);
         Assert.Contains(nameof(BrokerFrameKind.Cursor), lost.Message);
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerD));
+        Assert.IsInstanceOfType<VolumeCaughtUp>(await WatchReads.NextAsync(readerD));
     }
 
     [TestMethod]
@@ -93,7 +93,7 @@ public class BrokerLiveWatchErrorTests
         await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteStalled(writer, BrokerFrame.Stalled("the volume stopped answering")));
 
         var lost = await WatchReads.ThrowsNextAsync<BrokerChannelLostException>(reader);
-        Assert.AreEqual('C', lost.Drive);
+        Assert.AreEqual('C', lost.Volume);
         Assert.AreEqual("the volume stopped answering", lost.Message);
     }
 
@@ -115,12 +115,12 @@ public class BrokerLiveWatchErrorTests
         await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteJournalBatch(writer,
             BrokerFrame.JournalBatch(new UsnJournalCursor(7, 110), [JournalEntries.Create(1, 105, "c.txt")])));
 
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
+        Assert.IsInstanceOfType<VolumeCaughtUp>(await WatchReads.NextAsync(reader));
         Assert.AreEqual(110L, (await WatchReads.NextBatchAsync(reader)).NextUsn);
     }
 
     [TestMethod]
-    public async Task LiveWatch_TruncatedFrame_LosesThatDrivesChannelWithTheTruncationMessage()
+    public async Task LiveWatch_TruncatedFrame_LosesThatVolumesChannelWithTheTruncationMessage()
     {
         await using var broker = new ScriptedBroker();
         var process = broker.Process;
@@ -131,7 +131,7 @@ public class BrokerLiveWatchErrorTests
         var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator(TestContext.CancellationToken);
         await using var ___ = reader.ConfigureAwait(false);
         await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteCaughtUp(writer, BrokerFrame.CaughtUp()));
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
+        Assert.IsInstanceOfType<VolumeCaughtUp>(await WatchReads.NextAsync(reader));
 
         // A length prefix claiming ten bytes, three body bytes, then the pipe closes: the host died mid-frame.
         await host.WriteAsync(new byte[] { 10, 0, 0, 0, 1, 2, 3 }, TestContext.CancellationToken).AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -139,14 +139,14 @@ public class BrokerLiveWatchErrorTests
         await host.DisposeAsync();
 
         var lost = await WatchReads.ThrowsNextAsync<BrokerChannelLostException>(reader);
-        Assert.AreEqual('C', lost.Drive);
+        Assert.AreEqual('C', lost.Volume);
         Assert.Contains("Truncated broker frame", lost.Message);
-        Assert.IsFalse(process.Ended.IsCompleted, "a broken drive pipe loses that drive's channel, not the process");
+        Assert.IsFalse(process.Ended.IsCompleted, "a broken volume pipe loses that volume's channel, not the process");
     }
 
     // Starts a watch on the scripted broker and returns its handle with the host's end of its pipe,
     // once the client has written StartWatch.
-    static async Task<(IIndexDriveWatch Handle, Stream Host)> StartAsync(BrokerIndexWatchSource source,
+    static async Task<(IIndexVolumeWatch Handle, Stream Host)> StartAsync(BrokerIndexWatchSource source,
         ScriptedBroker broker, char drive)
     {
         var starting = source.StartAsync(new IndexWatchTarget(drive, 7, 100), CancellationToken.None);

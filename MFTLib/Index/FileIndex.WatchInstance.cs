@@ -3,9 +3,9 @@ namespace MFTLib.Index;
 public sealed partial class FileIndex
 {
     /// <summary>
-    ///     One start of one drive's watch, with its own identity: the object reference, plus
+    ///     One start of one root's watch, with its own identity: the object reference, plus
     ///     <see cref="Generation" /> for diagnostics. Every effect its pump has is conditioned on
-    ///     the instance still being its drive's <see cref="DriveRuntime.Current" />, so a retiring
+    ///     the instance still being its root's <see cref="RootRuntime.Current" />, so a retiring
     ///     pump never touches its successor's block or state.
     /// </summary>
     sealed class WatchInstance
@@ -13,10 +13,10 @@ public sealed partial class FileIndex
         readonly TaskCompletionSource _drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
         readonly CancellationTokenRegistration _disposalLink;
 
-        public WatchInstance(RootKey drive, long generation, DriveBlock armedBlock,
+        public WatchInstance(RootKey root, long generation, RootBlock armedBlock,
             TaskCompletionSource? catchUpWaiter, CancellationToken disposalToken)
         {
-            Drive = drive;
+            Root = root;
             Generation = generation;
             ArmedBlock = armedBlock;
             CatchUp = new WatchCatchUpSlot(catchUpWaiter);
@@ -29,12 +29,12 @@ public sealed partial class FileIndex
                 static state => (state as CancellationTokenSource)?.Cancel(), StartCancellation);
         }
 
-        public RootKey Drive { get; }
+        public RootKey Root { get; }
 
         public long Generation { get; }
 
         /// <summary>The block the watch was started from. A batch applies only while it is still published.</summary>
-        public DriveBlock ArmedBlock { get; }
+        public RootBlock ArmedBlock { get; }
 
         /// <summary>Cancels the source's start. Cancelled by the index's disposal as well.</summary>
         public CancellationTokenSource StartCancellation { get; } = new();

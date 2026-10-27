@@ -45,15 +45,15 @@ public sealed class CacheDirectoryEnumerationTests : IDisposable
         WriteFile(CacheDirectory.BlockFileName(new VolumeKey('F'), 2) + ".retired-" + Guid.NewGuid().ToString("N"), "retired");
 
         var cached = CacheDirectory.EnumerateCached(_cacheDirectory)
-            .OrderBy(entry => entry.Drive).ToArray();
+            .OrderBy(entry => entry.Root).ToArray();
 
         Assert.HasCount(2, cached);
-        Assert.AreEqual(new VolumeKey('C'), cached[0].Drive);
+        Assert.AreEqual(new VolumeKey('C'), cached[0].Root);
         Assert.AreEqual(0x0BADF00Du, cached[0].VolumeSerial);
         Assert.AreEqual(first, cached[0].Path);
         Assert.AreEqual(new FileInfo(first).Length, cached[0].Size);
         Assert.AreEqual(File.GetLastWriteTimeUtc(first), cached[0].LastWriteTime);
-        Assert.AreEqual(new VolumeKey('D'), cached[1].Drive);
+        Assert.AreEqual(new VolumeKey('D'), cached[1].Root);
         Assert.AreEqual(0x12345678u, cached[1].VolumeSerial);
         Assert.AreEqual(second, cached[1].Path);
     }
@@ -61,7 +61,7 @@ public sealed class CacheDirectoryEnumerationTests : IDisposable
     [TestMethod]
     public void EnumerateCached_IsTheInverseOfBlockFileNameAcrossTheLetterRangeAndEdgeSerials()
     {
-        var expected = new List<(RootKey Drive, uint VolumeSerial)>();
+        var expected = new List<(RootKey Root, uint VolumeSerial)>();
         var serials = new[] { 0u, 1u, 0x0BADF00Du, uint.MaxValue };
         for (var driveLetter = 'A'; driveLetter <= 'Z'; driveLetter++)
         {
@@ -71,7 +71,7 @@ public sealed class CacheDirectoryEnumerationTests : IDisposable
         }
 
         var cached = CacheDirectory.EnumerateCached(_cacheDirectory)
-            .Select(entry => (entry.Drive, entry.VolumeSerial)).ToArray();
+            .Select(entry => (entry.Root, entry.VolumeSerial)).ToArray();
 
         Assert.AreSequenceEqual(expected, cached, SequenceOrder.InAnyOrder);
     }

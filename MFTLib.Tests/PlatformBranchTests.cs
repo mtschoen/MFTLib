@@ -16,7 +16,7 @@ public class PlatformBranchTests
     }
 
     [TestMethod]
-    public void ResolveLogPath_NonWindowsHostWithADriveRoot_KeepsTheWindowsPathUnchanged()
+    public void ResolveLogPath_NonWindowsHostWithARootRoot_KeepsTheWindowsPathUnchanged()
     {
         const string driveRooted = @"C:\broker-diag\broker-diagnostics.client.log";
         var extended = string.Concat(@"\\", "?", @"\D:", @"\broker-diag\broker-diagnostics.client.log");

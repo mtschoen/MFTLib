@@ -47,9 +47,9 @@ sealed class ScriptedBrokerResources : IDisposable
         Sections.Dispose();
     }
 
-    public void RecordScan(VolumeKey drive, IReadOnlyCollection<string>? retainedFileNames)
+    public void RecordScan(VolumeKey volume, IReadOnlyCollection<string>? retainedFileNames)
     {
-        var scan = new InProcessBrokerScan(drive, retainedFileNames);
+        var scan = new InProcessBrokerScan(volume, retainedFileNames);
         lock (_scans)
         {
             _scans.Add(scan);

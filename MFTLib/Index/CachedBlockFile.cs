@@ -10,16 +10,16 @@ namespace MFTLib.Index;
 public sealed record CachedBlockFile
 {
     /// <summary>Creates an inventory entry.</summary>
-    /// <param name="drive">The root: from the file name for a volume, from the stored key for a directory.</param>
+    /// <param name="root">The root: from the file name for a volume, from the stored key for a directory.</param>
     /// <param name="volumeSerial">The volume serial from the file name.</param>
     /// <param name="path">The full path to the cached file.</param>
     /// <param name="sizeBytes">The file size in bytes.</param>
     /// <param name="lastWriteTimeUtc">The file's last-write time in UTC.</param>
-    internal CachedBlockFile(RootKey drive, uint volumeSerial, string path, long sizeBytes,
+    internal CachedBlockFile(RootKey root, uint volumeSerial, string path, long sizeBytes,
         DateTime lastWriteTimeUtc)
     {
         ArgumentNullException.ThrowIfNull(path);
-        Drive = drive;
+        Root = root;
         VolumeSerial = volumeSerial;
         Path = path;
         Size = sizeBytes;
@@ -27,7 +27,7 @@ public sealed record CachedBlockFile
     }
 
     /// <summary>The root this block belongs to: the volume letter from the file name, or the key stored in the block for a directory root.</summary>
-    public RootKey Drive { get; init => field = value.Validated(); }
+    public RootKey Root { get; init => field = value.Validated(); }
 
     /// <summary>Serial of the volume containing the root, distinguishing volumes mounted at one letter over time; parsed from the file name.</summary>
     public uint VolumeSerial { get; init; }

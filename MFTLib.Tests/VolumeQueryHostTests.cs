@@ -18,8 +18,8 @@ public class VolumeQueryHostTests
         var host = BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => new UsnJournalCursor(7, 0),
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
-            QueryVolumeInformation = drive => drive == 'C'
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            QueryVolumeInformation = volume => volume == 'C'
                 ? new NtfsVolumeInformation(8_192_000_000L, 1024)
                 : throw new InvalidOperationException("access denied"),
             ProcessorCount = null
@@ -46,7 +46,7 @@ public class VolumeQueryHostTests
         await using var harness = new HostChannelHarness(BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => new UsnJournalCursor(7, 0),
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = BrokerHostFactory.NoVolumeInformation,
             ProcessorCount = null
         }));
@@ -65,7 +65,7 @@ public class VolumeQueryHostTests
         var host = BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => new UsnJournalCursor(7, 0),
-            ScanDrive = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
+            ScanVolume = (_, _, _, _, _, _) => [[BrokerHostFactory.Record(5, ".", 3)]],
             QueryVolumeInformation = _ => new NtfsVolumeInformation(1024, 1024),
             ProcessorCount = null
         });

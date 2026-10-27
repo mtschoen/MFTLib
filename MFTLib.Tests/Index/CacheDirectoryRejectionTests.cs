@@ -58,7 +58,7 @@ public sealed class CacheDirectoryRejectionTests : IDisposable
     [TestMethod]
     [DataRow("enumerate")]
     [DataRow("inspect")]
-    [DataRow("inspect-default-drives", DisplayName = "F20: named callback with default drive selection")]
+    [DataRow("inspect-default-drives", DisplayName = "F20: named callback with default root selection")]
     [DataRow("delete")]
     public void Inventory_ReportsRejectedPathsAndPreservesForeignFiles(string operation)
     {
@@ -102,7 +102,7 @@ public sealed class CacheDirectoryRejectionTests : IDisposable
     [DataRow("inspect", true)]
     [DataRow("delete", false)]
     [DataRow("delete", true)]
-    public void Rejections_AreReportedEvenWhenCanonicalDrivesAreExcluded(string operation, bool empty)
+    public void Rejections_AreReportedEvenWhenCanonicalRootsAreExcluded(string operation, bool empty)
     {
         var canonical = TestBlocks.WriteCache(_directory, 'T', volumeSerial: 1);
         var foreign = WriteFile("t-invalid.mlix");
@@ -121,7 +121,7 @@ public sealed class CacheDirectoryRejectionTests : IDisposable
     [TestMethod]
     [DataRow("enumerate")]
     [DataRow("inspect")]
-    [DataRow("inspect-default-drives", DisplayName = "F20: named callback with default drive selection")]
+    [DataRow("inspect-default-drives", DisplayName = "F20: named callback with default root selection")]
     [DataRow("delete")]
     public void RejectionCallbackFailure_PropagatesBeforeCanonicalOperations(string operation)
     {
@@ -142,7 +142,7 @@ public sealed class CacheDirectoryRejectionTests : IDisposable
     [TestMethod]
     [DataRow("enumerate")]
     [DataRow("inspect")]
-    [DataRow("inspect-default-drives", DisplayName = "F20: named callback with default drive selection")]
+    [DataRow("inspect-default-drives", DisplayName = "F20: named callback with default root selection")]
     [DataRow("delete")]
     public void Reporting_IsOptionalAndEmptyDirectoriesDoNotNotify(string operation)
     {

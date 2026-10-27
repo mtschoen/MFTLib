@@ -13,8 +13,8 @@ public static class JournalIsolation
     ///     settings queries still open the volume; this guard does not restrict them.
     /// </summary>
     /// <remarks>
-    ///     Opening a drive normally reads the live journal to decide whether a cached block's
-    ///     checkpoint can still be resumed, and a drive whose live watch faults reads it again
+    ///     Opening a volume normally reads the live journal to decide whether a cached block's
+    ///     checkpoint can still be resumed, and a volume whose live watch faults reads it again
     ///     to decide whether the position that watch reached is still in the journal. A test
     ///     that warm-starts or watches a synthetic block over a drive letter that happens to
     ///     name a real NTFS volume would have that block rejected as
@@ -28,7 +28,7 @@ public static class JournalIsolation
     ///         to do and have no reason to care about the journal, so the guard makes the
     ///         outcome deterministic rather than making the call an error.
     ///         Without a synthetic override, a new index opened under this guard reports no
-    ///         <see cref="DriveWatchStatus.CheckpointLoss" /> from journal observations.
+    ///         <see cref="RootWatchStatus.CheckpointLoss" /> from journal observations.
     ///         Consumer tests can use <see cref="OverrideJournalWindow" /> to supply retained,
     ///         trimmed, or recreated windows and exercise real open-time and watch-fault
     ///         transitions. The scope restores the previous behavior on disposal; the guard
@@ -65,8 +65,8 @@ public static class JournalIsolation
         ArgumentNullException.ThrowIfNull(journal);
         return ProcessGlobalScope.Acquire("A synthetic journal-window override", () =>
         {
-            JournalCheckpointCheck.Hooks.ObservationOverride = drive =>
-                journal(drive) is { } window
+            JournalCheckpointCheck.Hooks.ObservationOverride = volume =>
+                journal(volume) is { } window
                     ? new JournalWindow(window.JournalIdentifier, window.FirstUsn,
                         window.NextUsn, window.AllocationDelta, window.MaximumSize)
                     : null;

@@ -11,7 +11,7 @@ namespace MFTLib.Index;
 /// </summary>
 sealed class EnumerationProducer
 {
-    /// <summary>A drive is never sized below this, so a tiny sample cannot starve the block.</summary>
+    /// <summary>A root is never sized below this, so a tiny sample cannot starve the block.</summary>
     const uint MinimumEstimatedRowCount = 4096;
 
     /// <summary>Bytes of name pool budgeted per row: 24 UTF-16 units is a generous mean name.</summary>
@@ -129,7 +129,7 @@ sealed class EnumerationProducer
         var pending = new Queue<EnumerationDirectoryWork>();
         pending.Enqueue(new EnumerationDirectoryWork(Options.RootDirectory, 0u));
 
-        using var scheduler = new EnumerationWalkScheduler(reader, Options.Drive, workers, cancellationToken)
+        using var scheduler = new EnumerationWalkScheduler(reader, Options.Root, workers, cancellationToken)
         {
             HandoffWaiting = HandoffWaiting,
             HandoffPublished = HandoffPublished
@@ -138,7 +138,7 @@ sealed class EnumerationProducer
         ExceptionDispatchInfo? productionFailure = null;
         try
         {
-            DriveFrontier(ref writer, progress, scheduler, pending, ref state, cancellationToken);
+            RootFrontier(ref writer, progress, scheduler, pending, ref state, cancellationToken);
         }
         catch (Exception exception)
         {
@@ -153,7 +153,7 @@ sealed class EnumerationProducer
         writer.SetAccessDeniedSubtreeCount((uint)state.SkippedCount);
     }
 
-    void DriveFrontier(ref BlockWriter writer, IProgress<IndexScanProgress>? progress,
+    void RootFrontier(ref BlockWriter writer, IProgress<IndexScanProgress>? progress,
         EnumerationWalkScheduler scheduler, Queue<EnumerationDirectoryWork> pending,
         ref (uint NextRow, int SkippedCount) state, CancellationToken cancellationToken)
     {
@@ -177,7 +177,7 @@ sealed class EnumerationProducer
             }
 
             CommitDirectory(completed, ref writer, pending, ref state.NextRow, ref state.SkippedCount, cancellationToken);
-            progress?.Report(new IndexScanProgress(Options.Drive, IndexScanPhase.Enumerating, state.NextRow)
+            progress?.Report(new IndexScanProgress(Options.Root, IndexScanPhase.Enumerating, state.NextRow)
             {
                 CurrentDirectory = completed.Directory.Path
             });

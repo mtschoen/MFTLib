@@ -14,8 +14,8 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
     TempDirectory _directory = null!;
     BlockFile _block = null!;
     BlockWriter _writer = null!;
-    DriveBlock _driveBlock = null!;
-    DriveBlock[] _snapshot = null!;
+    RootBlock _rootBlock = null!;
+    RootBlock[] _snapshot = null!;
 
     [TestInitialize]
     public void Initialize()
@@ -32,8 +32,8 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
             Attributes: 32, Size: 100, Moment.Ticks, SequenceNumber: 0));
         _writer.Complete(Moment, null);
 
-        _driveBlock = new DriveBlock(new VolumeKey('T'), _block, rootDirectoryPath: TestDriveRoot.For('T'));
-        _snapshot = [_driveBlock];
+        _rootBlock = new RootBlock(new VolumeKey('T'), _block, rootDirectoryPath: TestRootDirectory.For('T'));
+        _snapshot = [_rootBlock];
     }
 
     public async ValueTask DisposeAsync()
@@ -108,7 +108,7 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
             journalIdentifier: 7, nextUsn: 2000);
 
         Assert.AreEqual(FileChangeKind.Renamed, changes[0].Kind);
-        Assert.AreEqual(Path.Combine(TestDriveRoot.For('T'), "Documents", "existing.txt"), changes[0].PreviousPath);
+        Assert.AreEqual(Path.Combine(TestRootDirectory.For('T'), "Documents", "existing.txt"), changes[0].PreviousPath);
         Assert.AreEqual("renamed.txt", new string(NamePool.ReadRowName(_block, 2)));
     }
 
@@ -131,8 +131,8 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
         var change = fixture.Apply([moved]).Single();
 
         Assert.AreEqual(FileChangeKind.Renamed, change.Kind);
-        Assert.AreEqual(Path.Combine(TestDriveRoot.For('T'), "renamed.txt"), change.Path);
-        Assert.AreEqual(Path.Combine(TestDriveRoot.For('T'), "documents", "notes.txt"), change.PreviousPath);
+        Assert.AreEqual(Path.Combine(TestRootDirectory.For('T'), "renamed.txt"), change.Path);
+        Assert.AreEqual(Path.Combine(TestRootDirectory.For('T'), "documents", "notes.txt"), change.PreviousPath);
     }
 
     [TestMethod]
@@ -164,9 +164,9 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
 
         var changes = fixture.Apply([created, renamed]);
 
-        Assert.AreEqual(Path.Combine(TestDriveRoot.For('T'), "documents", "first.txt"), changes[0].Path);
-        Assert.AreEqual(Path.Combine(TestDriveRoot.For('T'), "second.txt"), changes[1].Path);
-        Assert.AreEqual(Path.Combine(TestDriveRoot.For('T'), "documents", "first.txt"), changes[1].PreviousPath);
+        Assert.AreEqual(Path.Combine(TestRootDirectory.For('T'), "documents", "first.txt"), changes[0].Path);
+        Assert.AreEqual(Path.Combine(TestRootDirectory.For('T'), "second.txt"), changes[1].Path);
+        Assert.AreEqual(Path.Combine(TestRootDirectory.For('T'), "documents", "first.txt"), changes[1].PreviousPath);
     }
 
     [TestMethod]
@@ -188,7 +188,7 @@ public sealed partial class JournalMutatorTests : IAsyncDisposable
         var change = fixture.Apply([deleted]).Single();
 
         Assert.AreEqual(FileChangeKind.Deleted, change.Kind);
-        Assert.AreEqual(Path.Combine(TestDriveRoot.For('T'), "documents", "notes.txt"), change.Path);
+        Assert.AreEqual(Path.Combine(TestRootDirectory.For('T'), "documents", "notes.txt"), change.Path);
         Assert.IsNull(change.PreviousPath);
     }
 

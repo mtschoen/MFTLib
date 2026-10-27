@@ -1,7 +1,7 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     Which producer builds a drive's block and identifies it in the block header so a reader can tell an
+///     Which producer builds a root's block and identifies it in the block header so a reader can tell an
 ///     MFT-derived block (record numbers are real NTFS segment indexes) from an
 ///     enumeration-derived block (row indexes are assigned sequentially in traversal order).
 /// </summary>

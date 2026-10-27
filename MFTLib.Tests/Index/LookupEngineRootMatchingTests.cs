@@ -26,18 +26,18 @@ public class LookupEngineRootMatchingTests
     {
         using var builder = SyntheticBlockBuilder.MftShaped();
         var block = builder.OpenForReading(out _)!;
-        var root = TestDriveRoot.For('T');
-        var driveBlock = new DriveBlock(new VolumeKey('T'), block, rootDirectoryPath: root);
+        var root = TestRootDirectory.For('T');
+        var rootBlock = new RootBlock(new VolumeKey('T'), block, rootDirectoryPath: root);
         try
         {
-            Assert.IsNotNull(LookupEngine.Find(driveBlock,
+            Assert.IsNotNull(LookupEngine.Find(rootBlock,
                 Path.Combine(root, "documents", "notes.txt"), TestContext.CancellationToken));
-            Assert.IsNotNull(LookupEngine.Find(driveBlock,
+            Assert.IsNotNull(LookupEngine.Find(rootBlock,
                 Path.Combine(root, "DOCUMENTS", "NOTES.TXT"), TestContext.CancellationToken));
         }
         finally
         {
-            await driveBlock.ReleaseNowAsync();
+            await rootBlock.ReleaseNowAsync();
         }
     }
 
@@ -47,12 +47,12 @@ public class LookupEngineRootMatchingTests
         using var rootDirectory = new TempDirectory("mftlib-case", create: false);
         var root = rootDirectory.Path;
         using var builder = BuildSingleFileBlock('E', "Readme.md");
-        var driveBlock = new DriveBlock(new VolumeKey('E'), builder.OpenForReading(out _)!, rootDirectoryPath: root);
+        var rootBlock = new RootBlock(new VolumeKey('E'), builder.OpenForReading(out _)!, rootDirectoryPath: root);
         try
         {
-            Assert.IsNotNull(LookupEngine.Find(driveBlock, Path.Combine(root, "Readme.md"), TestContext.CancellationToken));
+            Assert.IsNotNull(LookupEngine.Find(rootBlock, Path.Combine(root, "Readme.md"), TestContext.CancellationToken));
 
-            var mismatchedCase = LookupEngine.Find(driveBlock, Path.Combine(root, "README.MD"), TestContext.CancellationToken);
+            var mismatchedCase = LookupEngine.Find(rootBlock, Path.Combine(root, "README.MD"), TestContext.CancellationToken);
             if (OperatingSystem.IsWindows())
             {
                 Assert.IsNotNull(mismatchedCase, "a Windows enumeration block folds case the way the host does");
@@ -64,16 +64,16 @@ public class LookupEngineRootMatchingTests
         }
         finally
         {
-            await driveBlock.ReleaseNowAsync();
+            await rootBlock.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
     public async Task Find_ReturnsNullForBlockWithNoRootDirectory()
     {
-        var root = TestDriveRoot.For('T');
+        var root = TestRootDirectory.For('T');
         using var rootlessBuilder = BuildSingleFileBlock('N', "visible.txt");
-        var rootlessBlock = new DriveBlock(new VolumeKey('N'), rootlessBuilder.OpenForReading(out _)!);
+        var rootlessBlock = new RootBlock(new VolumeKey('N'), rootlessBuilder.OpenForReading(out _)!);
         try
         {
             Assert.IsNull(LookupEngine.Find(rootlessBlock, Path.Combine(root, "visible.txt"), TestContext.CancellationToken));
@@ -90,11 +90,11 @@ public class LookupEngineRootMatchingTests
         using var rootDirectory = new TempDirectory("mftlib-mixed", create: false);
         var root = Path.Combine(rootDirectory.Path, "Users", "test");
         using var builder = BuildSingleFileBlock('E', "file.txt");
-        var driveBlock = new DriveBlock(new VolumeKey('E'), builder.OpenForReading(out _)!, rootDirectoryPath: root);
+        var rootBlock = new RootBlock(new VolumeKey('E'), builder.OpenForReading(out _)!, rootDirectoryPath: root);
         try
         {
             var mixedPath = root.Replace('\\', '/').Replace("/Users/", @"\Users/") + @"\file.txt";
-            var entry = LookupEngine.Find(driveBlock, mixedPath, TestContext.CancellationToken);
+            var entry = LookupEngine.Find(rootBlock, mixedPath, TestContext.CancellationToken);
             if (OperatingSystem.IsWindows())
             {
                 Assert.IsTrue(entry.HasValue);
@@ -107,7 +107,7 @@ public class LookupEngineRootMatchingTests
         }
         finally
         {
-            await driveBlock.ReleaseNowAsync();
+            await rootBlock.ReleaseNowAsync();
         }
     }
 
@@ -126,11 +126,11 @@ public class LookupEngineRootMatchingTests
             sequenceNumber: 0);
         builder.Complete(Moment);
 
-        var driveBlock = new DriveBlock(new VolumeKey('E'), builder.OpenForReading(out _)!, rootDirectoryPath: root);
+        var rootBlock = new RootBlock(new VolumeKey('E'), builder.OpenForReading(out _)!, rootDirectoryPath: root);
         try
         {
-            var expected = FileEntry.Create(driveBlock, backslashFile);
-            var resolved = LookupEngine.Find(driveBlock, expected.Path, TestContext.CancellationToken);
+            var expected = FileEntry.Create(rootBlock, backslashFile);
+            var resolved = LookupEngine.Find(rootBlock, expected.Path, TestContext.CancellationToken);
 
             Assert.IsTrue(resolved.HasValue);
             var resolvedVal = resolved.GetValueOrDefault();
@@ -139,7 +139,7 @@ public class LookupEngineRootMatchingTests
         }
         finally
         {
-            await driveBlock.ReleaseNowAsync();
+            await rootBlock.ReleaseNowAsync();
         }
     }
 
@@ -155,7 +155,7 @@ public class LookupEngineRootMatchingTests
             RowFlags.InUse | RowFlags.Directory, 0, Moment, sequenceNumber: 0);
         outerBuilder.AddRow("file.txt", misleadingDirectory, RowFlags.InUse, 1, Moment, sequenceNumber: 0);
         outerBuilder.Complete(Moment);
-        var outerBlock = new DriveBlock(new VolumeKey('O'), outerBuilder.OpenForReading(out _)!, rootDirectoryPath: outerRoot);
+        var outerBlock = new RootBlock(new VolumeKey('O'), outerBuilder.OpenForReading(out _)!, rootDirectoryPath: outerRoot);
         try
         {
             Assert.IsNull(LookupEngine.Find(outerBlock, Path.Combine(secondRoot, "file.txt"), TestContext.CancellationToken),
@@ -179,7 +179,7 @@ public class LookupEngineRootMatchingTests
         {
             await using var index = await FileIndex.OpenAsync(new FileIndexOptions
             {
-                Root = MFTLibTestExtensions.SyntheticIndexedDrive.Create(new VolumeKey('E'), indexedRoot, TestVolumeSerial.GetNext(), ProducerKind.Enumeration),
+                Root = MFTLibTestExtensions.SyntheticIndexedRoot.Create(new VolumeKey('E'), indexedRoot, TestVolumeSerial.GetNext(), ProducerKind.Enumeration),
                 CacheDirectory = cacheDirectory
             }, CancellationToken.None);
 

@@ -1,44 +1,44 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     One Windows drive root with the facts <see cref="IndexedRoot.EnumerateWindowsVolumes" /> read and its
+///     One Windows volume root with the facts <see cref="IndexedRoot.EnumerateWindowsVolumes" /> read and its
 ///     verdict. A consumer branches on the fields and renders its own words.
 /// </summary>
 public sealed record WindowsVolume
 {
-    /// <summary>Creates the identity of one drive root; the readiness facts and verdict are set by initializers.</summary>
-    /// <param name="drive">The drive letter of <paramref name="rootDirectory" />.</param>
-    /// <param name="rootDirectory">The drive root, for example <c>C:\</c>.</param>
-    /// <param name="driveType">The operating system's classification of the drive.</param>
-    internal WindowsVolume(VolumeKey drive, string rootDirectory, DriveType driveType)
+    /// <summary>Creates the identity of one volume root; the readiness facts and verdict are set by initializers.</summary>
+    /// <param name="volume">The drive letter of <paramref name="rootDirectory" />.</param>
+    /// <param name="rootDirectory">The volume root, for example <c>C:\</c>.</param>
+    /// <param name="driveType">The operating system's classification of the root.</param>
+    internal WindowsVolume(VolumeKey volume, string rootDirectory, DriveType driveType)
     {
-        Drive = drive;
+        Volume = volume;
         RootDirectory = rootDirectory;
         DriveType = driveType;
     }
 
     /// <summary>The drive letter of <see cref="RootDirectory" />.</summary>
-    public VolumeKey Drive { get; init => field = value.Validated(); }
+    public VolumeKey Volume { get; init => field = value.Validated(); }
 
-    /// <summary>The drive root, for example <c>C:\</c>.</summary>
+    /// <summary>The volume root, for example <c>C:\</c>.</summary>
     public string RootDirectory { get; init; }
 
-    /// <summary>The operating system's classification of the drive.</summary>
+    /// <summary>The operating system's classification of the root.</summary>
     public DriveType DriveType { get; init; }
 
     /// <summary>
-    ///     True only when the drive was read as ready. Readiness is read for fixed drives alone, so every other
+    ///     True only when the root was read as ready. Readiness is read for fixed roots alone, so every other
     ///     drive type reports false.
     /// </summary>
     public bool IsReady { get; init; }
 
     /// <summary>
-    ///     The file system name, for example <c>NTFS</c> or <c>exFAT</c>. Null unless the drive is a ready fixed drive
+    ///     The file system name, for example <c>NTFS</c> or <c>exFAT</c>. Null unless the root is a ready fixed root
     ///     whose format was read.
     /// </summary>
     public string? Format { get; init; }
 
-    /// <summary>True only for a ready fixed NTFS drive, which an MFT scan can index.</summary>
+    /// <summary>True only for a ready fixed NTFS volume, which an MFT scan can index.</summary>
     public bool IsIndexable { get; init; }
 
     /// <summary>

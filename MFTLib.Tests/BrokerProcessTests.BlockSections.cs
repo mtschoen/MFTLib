@@ -8,35 +8,35 @@ namespace MFTLib.Tests;
 public partial class BrokerProcessTests
 {
     [TestMethod]
-    public async Task ScanDriveAsync_ScanReady_ReleasesThatDrivesSectionWhileAnUnreadDriveStaysLive()
+    public async Task ScanVolumeAsync_ScanReady_ReleasesThatVolumesSectionWhileAnUnreadVolumeStaysLive()
     {
         var armedC = new UsnJournalCursor(7, 100);
         var armedD = new UsnJournalCursor(8, 200);
         await using var broker = new ScriptedBroker();
 
-        var scanC = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(), null, CancellationToken.None);
+        var scanC = broker.Process.ScanVolumeAsync('C', TestBlockSections.Target(), new MftScanOptions(), null, CancellationToken.None);
         var (pipeC, _) = await broker.AcceptScanAsync(Volume);
         var channelC = pipeC;
-        var sectionC = broker.Sections.ForDrive('C');
+        var sectionC = broker.Sections.ForVolume('C');
         broker.WriteSection(sectionC.SectionName, armedC);
         await HostChannelHarness.WriteFrameAsync(channelC, writer => BrokerProtocol.WriteCursor(writer, BrokerFrame.ArmedCursor(armedC)));
         await HostChannelHarness.WriteFrameAsync(channelC, writer => BrokerProtocol.WriteScanReady(writer, BrokerFrame.ScanReady(0)));
         await sectionC.Lifetime.Disposed.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         // C's section is released after its ScanReady while its scan still waits for catch-up.
-        var scanD = broker.Process.ScanDriveAsync('D', TestBlockSections.Target(), new MftScanOptions(), null, CancellationToken.None);
+        var scanD = broker.Process.ScanVolumeAsync('D', TestBlockSections.Target(), new MftScanOptions(), null, CancellationToken.None);
         var (pipeD, _) = await broker.AcceptScanAsync(Volume);
         var channelD = pipeD;
-        var sectionD = broker.Sections.ForDrive('D');
+        var sectionD = broker.Sections.ForVolume('D');
 
-        Assert.AreEqual(1, sectionC.Lifetime.DisposeCount, "Drive C's section must be released once its ScanReady is consumed");
-        Assert.AreEqual(0, sectionD.Lifetime.DisposeCount, "Drive D's section must stay live while its scan is unread");
+        Assert.AreEqual(1, sectionC.Lifetime.DisposeCount, "Volume C's section must be released once its ScanReady is consumed");
+        Assert.AreEqual(0, sectionD.Lifetime.DisposeCount, "Volume D's section must stay live while its scan is unread");
         Assert.IsFalse(scanC.IsCompleted);
 
         await HostChannelHarness.WriteFrameAsync(channelC, writer => BrokerProtocol.WriteScanCompleted(writer, BrokerFrame.ScanCompleted()));
         await channelC.DisposeAsync();
         var resultC = await scanC.WaitAsync(HangGuard, TestContext.CancellationToken);
-        Assert.AreEqual(0, sectionD.Lifetime.DisposeCount, "Drive C completing must not release drive D's section");
+        Assert.AreEqual(0, sectionD.Lifetime.DisposeCount, "Volume C completing must not release volume D's section");
 
         broker.WriteSection(sectionD.SectionName, armedD);
         await HostChannelHarness.WriteFrameAsync(channelD, writer => BrokerProtocol.WriteCursor(writer, BrokerFrame.ArmedCursor(armedD)));
@@ -58,29 +58,29 @@ public partial class BrokerProcessTests
     }
 
     [TestMethod]
-    public async Task ScanDriveAsync_ErrorFrame_DisposesSectionLifetimeImmediately()
+    public async Task ScanVolumeAsync_ErrorFrame_DisposesSectionLifetimeImmediately()
     {
         await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
-            ScanDrive = (_, _, _, _, _, _) =>
-                throw new IOException("drive failed")
+            ScanVolume = (_, _, _, _, _, _) =>
+                throw new IOException("volume failed")
         }));
 
-        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => broker.Process.ScanDriveAsync('C',
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => broker.Process.ScanVolumeAsync('C',
             TestBlockSections.Target(), new MftScanOptions(), null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
 
         var section = broker.Sections.Single();
-        Assert.AreEqual("drive failed", exception.Message);
-        Assert.AreEqual(1, section.Lifetime.DisposeCount, "an Error frame must immediately release the failed drive's section");
+        Assert.AreEqual("volume failed", exception.Message);
+        Assert.AreEqual(1, section.Lifetime.DisposeCount, "an Error frame must immediately release the failed volume's section");
         BlockFileAssertions.IsDisposed(section.Block);
     }
 
     [TestMethod]
-    public async Task ScanDriveAsync_ScanProgressFrames_ReachTheOptionsProgressCallback()
+    public async Task ScanVolumeAsync_ScanProgressFrames_ReachTheOptionsProgressCallback()
     {
         var reports = new List<BlockWriteProgress>();
         await using var broker = new ScriptedBroker();
-        var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
+        var scan = broker.Process.ScanVolumeAsync('C', TestBlockSections.Target(), new MftScanOptions(),
             new SynchronousProgress<BlockWriteProgress>(reports.Add), CancellationToken.None);
 
         var (pipe, _) = await broker.AcceptScanAsync(Volume);
@@ -121,12 +121,12 @@ public partial class BrokerProcessTests
     }
 
     [TestMethod]
-    public async Task ScanDriveAsync_ScanProgressFrame_DoesNotCompleteTheScan()
+    public async Task ScanVolumeAsync_ScanProgressFrame_DoesNotCompleteTheScan()
     {
         var progressReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var reports = new List<BlockWriteProgress>();
         await using var broker = new ScriptedBroker();
-        var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
+        var scan = broker.Process.ScanVolumeAsync('C', TestBlockSections.Target(), new MftScanOptions(),
             new SynchronousProgress<BlockWriteProgress>(report =>
             {
                 reports.Add(report);
@@ -148,7 +148,7 @@ public partial class BrokerProcessTests
             })));
         await progressReceived.Task.WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        Assert.IsFalse(scan.IsCompleted, "a ScanProgress frame must not complete the drive");
+        Assert.IsFalse(scan.IsCompleted, "a ScanProgress frame must not complete the volume");
         Assert.AreEqual(0, section.Lifetime.DisposeCount, "the section is released by ScanReady, not by progress");
 
         broker.WriteSection(section.SectionName, Armed);
@@ -166,7 +166,7 @@ public partial class BrokerProcessTests
     }
 
     [TestMethod]
-    public async Task ScanDrive_LifetimeDisposeThrowingAfterScanReady_IsNotRetriedAndBlockIsReleased()
+    public async Task ScanVolume_LifetimeDisposeThrowingAfterScanReady_IsNotRetriedAndBlockIsReleased()
     {
         var sections = new ThrowingLifetimeSections();
         var writer = new RecordingBlockSectionWriter(sections.Inner.Resolve);
@@ -175,7 +175,7 @@ public partial class BrokerProcessTests
         await using var handle = BrokerTestHarness.Start(BrokerHostFactory.Create(), resources,
             new BrokerTestHarnessOptions(), null, null);
 
-        var exception = await Assert.ThrowsExactlyAsync<IOException>(() => handle.Process.ScanDriveAsync('C',
+        var exception = await Assert.ThrowsExactlyAsync<IOException>(() => handle.Process.ScanVolumeAsync('C',
             TestBlockSections.Target(), new MftScanOptions(), null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.AreEqual("release failed", exception.Message);
@@ -189,10 +189,10 @@ public partial class BrokerProcessTests
 
         public ThrowingLifetime Lifetime { get; } = new();
 
-        public (string SectionName, BlockFile Block, IDisposable Lifetime) Create(VolumeKey drive,
+        public (string SectionName, BlockFile Block, IDisposable Lifetime) Create(VolumeKey volume,
             BlockFileCreateOptions options)
         {
-            var (sectionName, block, _) = Inner.Create(drive, options);
+            var (sectionName, block, _) = Inner.Create(volume, options);
             return (sectionName, block, Lifetime);
         }
     }

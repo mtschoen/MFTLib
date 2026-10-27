@@ -9,7 +9,7 @@ namespace MFTLib.Tests.Index;
 /// <summary>
 ///     The library compares the scan shape a block was built under on warm start: a change to any row-shaping
 ///     option records <see cref="BlockValidationResult.WrongScanShape" /> and cold-scans, or fails a cache-only
-///     drive with <see cref="DriveFailureKind.CacheIdentityMismatch" />. A pruned path counts only on the drive
+///     root with <see cref="RootFailureKind.CacheIdentityMismatch" />. A pruned path counts only on the root
 ///     whose root contains it.
 /// </summary>
 [TestClass]
@@ -56,7 +56,7 @@ public sealed class FileIndexScanShapeTests : IDisposable
 
     FileIndexOptions EnumerationOptions(List<string> diagnostics, CacheMode mode = CacheMode.Persistent) => new()
     {
-        Root = SyntheticIndexedDrive.Create(new VolumeKey('A'), RootA, 1, ProducerKind.Enumeration),
+        Root = SyntheticIndexedRoot.Create(new VolumeKey('A'), RootA, 1, ProducerKind.Enumeration),
         CacheDirectory = Cache,
         CacheMode = mode,
         Diagnostics = line =>
@@ -70,7 +70,7 @@ public sealed class FileIndexScanShapeTests : IDisposable
 
     FileIndexOptions ForB(FileIndexOptions baseOptions) => baseOptions with
     {
-        Root = SyntheticIndexedDrive.Create(new VolumeKey('B'), RootB, 2, ProducerKind.Enumeration)
+        Root = SyntheticIndexedRoot.Create(new VolumeKey('B'), RootB, 2, ProducerKind.Enumeration)
     };
 
     static bool RecordedWrongScanShape(List<string> diagnostics)
@@ -85,8 +85,8 @@ public sealed class FileIndexScanShapeTests : IDisposable
     {
         await using var indexA = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
         await using var indexB = await FileIndex.OpenAsync(ForB(options), TestContext.CancellationToken);
-        Assert.AreEqual(DriveState.Ready, indexA.Status.State);
-        Assert.AreEqual(DriveState.Ready, indexB.Status.State);
+        Assert.AreEqual(RootState.Ready, indexA.Status.State);
+        Assert.AreEqual(RootState.Ready, indexB.Status.State);
     }
 
     FileIndexOptions Changed(string option, List<string> diagnostics)
@@ -177,7 +177,7 @@ public sealed class FileIndexScanShapeTests : IDisposable
         var ignoreCase = Shape(new Regex(@"^\.git$", RegexOptions.IgnoreCase));
         var otherText = Shape(new Regex(@"^build$", RegexOptions.None));
 
-        Assert.AreNotEqual(lower, upper, "pattern text is not folded by the drive comparison");
+        Assert.AreNotEqual(lower, upper, "pattern text is not folded by the root comparison");
         Assert.AreNotEqual(lower, ignoreCase, "pattern options are part of the scan shape");
         Assert.AreNotEqual(lower, otherText, "pattern text is part of the scan shape");
 
@@ -219,7 +219,7 @@ public sealed class FileIndexScanShapeTests : IDisposable
     }
 
     [TestMethod]
-    public async Task UnchangedOptions_WarmStartBothDrives()
+    public async Task UnchangedOptions_WarmStartBothRoots()
     {
         var diagnostics = new List<string>();
         var walk = new DirectoryWalkOptions
@@ -256,7 +256,7 @@ public sealed class FileIndexScanShapeTests : IDisposable
     }
 
     [TestMethod]
-    public async Task EnumerationRetentionCasingFollowsTheDriveComparison()
+    public async Task EnumerationRetentionCasingFollowsTheRootComparison()
     {
         var diagnostics = new List<string>();
         await OpenOnce(EnumerationOptions(diagnostics) with { RetainedFileNames = ["app.dll"] });
@@ -272,7 +272,7 @@ public sealed class FileIndexScanShapeTests : IDisposable
     }
 
     [TestMethod]
-    public async Task EditingAPrunedPathUnderDriveB_LeavesDriveAsBlockAdopted()
+    public async Task EditingAPrunedPathUnderRootB_LeavesRootAsBlockAdopted()
     {
         var diagnostics = new List<string>();
         await OpenOnce(EnumerationOptions(diagnostics) with
@@ -291,7 +291,7 @@ public sealed class FileIndexScanShapeTests : IDisposable
         Assert.AreEqual(BlockOrigin.ProducedByScan, reopenedB.Status.Block?.Origin);
         Assert.IsNotNull(reopenedB.Find(Path.Combine(RootB, "build", "output", "app.dll"), TestContext.CancellationToken));
         Assert.IsNotNull(reopenedA.Find(Path.Combine(RootA, "build", "output", "app.dll"), TestContext.CancellationToken),
-            "drive A's warm block still holds its rows");
+            "root A's warm block still holds its rows");
     }
 
     [TestMethod]
@@ -312,8 +312,8 @@ public sealed class FileIndexScanShapeTests : IDisposable
 
         foreach (var status in new[] { reopenedA.Status, reopenedB.Status })
         {
-            Assert.AreEqual(DriveState.Failed, status.State);
-            Assert.AreEqual(DriveFailureKind.CacheIdentityMismatch, status.Failure?.Kind);
+            Assert.AreEqual(RootState.Failed, status.State);
+            Assert.AreEqual(RootFailureKind.CacheIdentityMismatch, status.Failure?.Kind);
         }
 
         Assert.IsTrue(RecordedWrongScanShape(diagnostics));
@@ -323,7 +323,7 @@ public sealed class FileIndexScanShapeTests : IDisposable
     FileIndexOptions MftOptions(bool includeFreed, IReadOnlyCollection<string>? retained, List<string> diagnostics,
         CacheMode mode = CacheMode.Persistent) => new()
         {
-            Root = SyntheticIndexedDrive.Create(new VolumeKey('T'), RootA, 123),
+            Root = SyntheticIndexedRoot.Create(new VolumeKey('T'), RootA, 123),
             CacheDirectory = Cache,
             CacheMode = mode,
             RetainedFileNames = retained,
@@ -364,7 +364,7 @@ public sealed class FileIndexScanShapeTests : IDisposable
         var diagnostics = new List<string>();
         await using (var first = await FileIndex.OpenAsync(MftOptions(false, null, diagnostics), TestContext.CancellationToken))
         {
-            Assert.AreEqual(DriveState.Ready, first.Status.State);
+            Assert.AreEqual(RootState.Ready, first.Status.State);
         }
 
         IReadOnlyCollection<string>? retained = retainedName is null ? null : [retainedName];
@@ -377,12 +377,12 @@ public sealed class FileIndexScanShapeTests : IDisposable
     }
 
     [TestMethod]
-    public async Task MftDrives_IgnoreTheWalkOptions()
+    public async Task MftRoots_IgnoreTheWalkOptions()
     {
         var diagnostics = new List<string>();
         await using (var first = await FileIndex.OpenAsync(MftOptions(false, ["head"], diagnostics), TestContext.CancellationToken))
         {
-            Assert.AreEqual(DriveState.Ready, first.Status.State);
+            Assert.AreEqual(RootState.Ready, first.Status.State);
         }
 
         // MFT retention compares ignoring case, so another spelling of the same name is the same shape.
@@ -402,7 +402,7 @@ public sealed class FileIndexScanShapeTests : IDisposable
     }
 
     [TestMethod]
-    public async Task AProducerReturningAnotherShape_FailsTheDrive()
+    public async Task AProducerReturningAnotherShape_FailsTheRoot()
     {
         var diagnostics = new List<string>();
         var options = MftOptions(false, null, diagnostics) with
@@ -413,7 +413,7 @@ public sealed class FileIndexScanShapeTests : IDisposable
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
 
         var status = index.Status;
-        Assert.AreEqual(DriveFailureKind.ProducerFailed, status.Failure?.Kind);
+        Assert.AreEqual(RootFailureKind.ProducerFailed, status.Failure?.Kind);
         Assert.Contains("scan shape", status.Failure?.Message!);
     }
 }

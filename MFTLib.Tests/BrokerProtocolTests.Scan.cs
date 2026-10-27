@@ -6,8 +6,8 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
-// The frames of a drive pipe: the two requests (ArmAndScan, StartWatch) and everything the host
-// writes back on it. A drive pipe names no drive: the channel is the drive.
+// The frames of a volume pipe: the two requests (ArmAndScan, StartWatch) and everything the host
+// writes back on it. A volume pipe names no volume: the channel is the volume.
 public partial class BrokerProtocolTests
 {
     static readonly BrokerCatchUpLoss FullLoss = new(
@@ -21,7 +21,7 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(BrokerFrameKind.ArmAndScan, frame.Kind);
         Assert.AreEqual("mftlib-scan-C", frame.SectionName);
         Assert.IsNull(frame.RetainedFileNames);
-        Assert.IsNull(frame.Drive, "The drive pipe names no drive.");
+        Assert.IsNull(frame.Volume, "The volume pipe names no volume.");
         Assert.IsEmpty(frame.Entries);
     }
 
@@ -96,7 +96,7 @@ public partial class BrokerProtocolTests
 
         Assert.AreEqual(BrokerFrameKind.Cursor, frame.Kind);
         Assert.AreEqual(cursor, frame.Cursor);
-        Assert.IsNull(frame.Drive);
+        Assert.IsNull(frame.Volume);
         Assert.IsEmpty(frame.Entries);
     }
 
@@ -171,7 +171,7 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(BrokerFrameKind.CatchUpLost, frame.Kind);
         Assert.IsNull(frame.Message);
         var loss = frame.RequireCatchUpLoss('C');
-        Assert.AreEqual('C', loss.Drive);
+        Assert.AreEqual('C', loss.Volume);
         Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, loss.DetectedDuring);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
         Assert.AreEqual(1000L, loss.CheckpointUsn);
@@ -195,7 +195,7 @@ public partial class BrokerProtocolTests
         var frame = RoundTrip(BrokerFrame.CatchUpLost(recreated), BrokerProtocol.WriteCatchUpLost);
 
         var loss = frame.RequireCatchUpLoss('D');
-        Assert.AreEqual('D', loss.Drive, "The drive is the channel's, not the wire's.");
+        Assert.AreEqual('D', loss.Volume, "The volume is the channel's, not the wire's.");
         Assert.AreEqual(JournalCheckpointLossCause.JournalRecreated, loss.Cause);
         Assert.IsNull(loss.BytesBehind);
         Assert.IsNull(loss.SizeThatWouldHaveRetained);
@@ -257,7 +257,7 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(cursor, frame.Cursor);
         Assert.HasCount(2, frame.Entries);
         Assert.AreEqual("b", frame.Entries[1].FileName);
-        Assert.IsNull(frame.Drive);
+        Assert.IsNull(frame.Volume);
     }
 
     [TestMethod]

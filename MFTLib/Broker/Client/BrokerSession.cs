@@ -7,7 +7,7 @@ namespace MFTLib;
 
 /// <summary>
 ///     Owns one elevated broker process for a consumer session: launches it on first use,
-///     reports its end and disposes it. Each scan or watch opens its own drive channel on the process.
+///     reports its end and disposes it. Each scan or watch opens its own volume channel on the process.
 /// </summary>
 /// <remarks>
 ///     <para>
@@ -74,7 +74,7 @@ public sealed class BrokerSession : IAsyncDisposable
     [SupportedOSPlatform("windows")]
     [ExcludeFromCodeCoverage(Justification = "Windows-only pass-through to the internal constructor with the named-section factory; the target is covered.")]
     public BrokerSession(Func<string, bool> launchBroker, TimeSpan? connectTimeout = null)
-        : this(launchBroker, connectTimeout, BrokerProcess.CreateRealDriveBlockSection)
+        : this(launchBroker, connectTimeout, BrokerProcess.CreateRealVolumeBlockSection)
     {
     }
 
@@ -120,7 +120,7 @@ public sealed class BrokerSession : IAsyncDisposable
 
     /// <summary>
     ///     The index source over this session, to assign to <see cref="FileIndexOptions.MftSource" />. Nothing
-    ///     launches until an index scans or watches a drive.
+    ///     launches until an index scans or watches a volume.
     /// </summary>
     /// <param name="scanOptions">
     ///     Base options for every scan: freed-record inclusion. Scan progress arrives through
@@ -131,10 +131,10 @@ public sealed class BrokerSession : IAsyncDisposable
         new BrokerMftBlockProducer(ConnectAsync, scanOptions).CreateIndexSource();
 
     /// <summary>
-    ///     Grows the drive's USN journal within the broker's volume-size cap (never shrinks it) and returns the sizing
+    ///     Grows the volume's USN journal within the broker's volume-size cap (never shrinks it) and returns the sizing
     ///     the volume reports afterwards, launching the broker first if no use has yet.
     /// </summary>
-    /// <param name="drive">The drive whose journal grows.</param>
+    /// <param name="volume">The volume whose journal grows.</param>
     /// <param name="target">
     ///     The requested maximum size and allocation delta in bytes; the broker refuses a maximum at or below the
     ///     current size or above the smaller of 8 GiB and 5% of the volume's total size queried at request time.
@@ -147,12 +147,12 @@ public sealed class BrokerSession : IAsyncDisposable
     /// <exception cref="ObjectDisposedException">The session was disposed.</exception>
     /// <exception cref="IOException">The process ended first. <see cref="Ended" /> says why.</exception>
     /// <exception cref="TimeoutException">The broker never connected, or did not answer within the reply timeout.</exception>
-    public async Task<UsnJournalSettings> GrowUsnJournalAsync(VolumeKey drive, UsnJournalSettings target,
+    public async Task<UsnJournalSettings> GrowUsnJournalAsync(VolumeKey volume, UsnJournalSettings target,
         CancellationToken cancellationToken)
     {
-        drive = drive.Validated();
+        volume = volume.Validated();
         var process = await ConnectAsync(cancellationToken).ConfigureAwait(false);
-        return await process.GrowUsnJournalAsync(drive, target, cancellationToken)
+        return await process.GrowUsnJournalAsync(volume, target, cancellationToken)
             .ConfigureAwait(false);
     }
 

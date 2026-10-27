@@ -25,10 +25,10 @@ public partial class BrokerProcessTests
         };
 
     static ScriptedBrokerVolumes ScriptedVolumes(
-        Func<ScriptedScan, IEnumerable<IReadOnlyList<SyntheticScanRecord>>>? scanDrive = null) => new()
+        Func<ScriptedScan, IEnumerable<IReadOnlyList<SyntheticScanRecord>>>? scanVolume = null) => new()
         {
             QueryJournalCursor = _ => ArmedSynthetic,
-            ScanDrive = scanDrive
+            ScanVolume = scanVolume
         };
 
     public enum HandleDisposalEdge
@@ -89,12 +89,12 @@ public partial class BrokerProcessTests
         var activeProcess = handleWithScan.Process;
         try
         {
-            var scanTask = activeProcess.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
+            var scanTask = activeProcess.ScanVolumeAsync('C', TestBlockSections.Target(), new MftScanOptions(),
                 null, CancellationToken.None);
             await scanStarted.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
             var scan = handleWithScan.Scans.Single();
-            Assert.AreEqual(new VolumeKey('C'), scan.Drive);
+            Assert.AreEqual(new VolumeKey('C'), scan.Volume);
 
             var first = edge == HandleDisposalEdge.ProcessFirst
                 ? activeProcess.DisposeAsync().AsTask()
@@ -191,18 +191,18 @@ public partial class BrokerProcessTests
     }
 
     [TestMethod]
-    public async Task ScriptedVolumes_WithoutScanDriveRefuseAScanWithAClearError()
+    public async Task ScriptedVolumes_WithoutScanVolumeRefuseAScanWithAClearError()
     {
         using var directory = new TempDirectory("control-only");
         var target = new BlockScanTarget(Path.Combine(directory.Path, "scan.mlix"), 1, true);
         await using var handle = BrokerTestHarness.StartInProcess(ScriptedVolumes());
 
         var failure = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-            handle.Process.ScanDriveAsync('C', target, new MftScanOptions(), null, CancellationToken.None)
+            handle.Process.ScanVolumeAsync('C', target, new MftScanOptions(), null, CancellationToken.None)
                 .WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.Contains("no scan source", failure.Message);
-        Assert.AreEqual(new VolumeKey('C'), handle.Scans.Single().Drive);
+        Assert.AreEqual(new VolumeKey('C'), handle.Scans.Single().Volume);
     }
 
     public enum ScanRecordingCase
@@ -230,9 +230,9 @@ public partial class BrokerProcessTests
             await using var handle = BrokerTestHarness.StartInProcess(new ScriptedBrokerVolumes
             {
                 QueryJournalCursor = _ => ArmedSynthetic,
-                ScanDrive = scan =>
+                ScanVolume = scan =>
                 {
-                    if (scan.Drive == 'C')
+                    if (scan.Volume == 'C')
                     {
                         firstCallbackEntered.MarkEntered();
                         firstCallbackRelease.WaitForRelease();
@@ -242,22 +242,22 @@ public partial class BrokerProcessTests
                 }
             });
 
-            var scanC = handle.Process.ScanDriveAsync('c', target, options, null, CancellationToken.None);
+            var scanC = handle.Process.ScanVolumeAsync('c', target, options, null, CancellationToken.None);
             await firstCallbackEntered.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
-            var resultD = await handle.Process.ScanDriveAsync('d', TestBlockSections.Target(), options, null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
-            Assert.AreEqual(new VolumeKey('D'), resultD.Drive);
+            var resultD = await handle.Process.ScanVolumeAsync('d', TestBlockSections.Target(), options, null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
+            Assert.AreEqual(new VolumeKey('D'), resultD.Volume);
 
             Assert.HasCount(2, handle.Scans);
-            Assert.AreEqual('C', handle.Scans[0].Drive);
-            Assert.AreEqual('D', handle.Scans[1].Drive);
+            Assert.AreEqual('C', handle.Scans[0].Volume);
+            Assert.AreEqual('D', handle.Scans[1].Volume);
 
             firstCallbackRelease.Release();
             var resultC = await scanC.WaitAsync(HangGuard, TestContext.CancellationToken);
-            Assert.AreEqual(new VolumeKey('C'), resultC.Drive);
+            Assert.AreEqual(new VolumeKey('C'), resultC.Volume);
             Assert.HasCount(2, handle.Scans);
-            Assert.AreEqual('C', handle.Scans[0].Drive);
-            Assert.AreEqual('D', handle.Scans[1].Drive);
+            Assert.AreEqual('C', handle.Scans[0].Volume);
+            Assert.AreEqual('D', handle.Scans[1].Volume);
             return;
         }
 
@@ -265,7 +265,7 @@ public partial class BrokerProcessTests
             ? _ => throw new InvalidOperationException("scripted cursor failure")
             : _ => ArmedSynthetic;
 
-        Func<ScriptedScan, IEnumerable<IReadOnlyList<SyntheticScanRecord>>> scanDrive = recordingCase switch
+        Func<ScriptedScan, IEnumerable<IReadOnlyList<SyntheticScanRecord>>> scanVolume = recordingCase switch
         {
             ScanRecordingCase.SynchronousSourceFailure => _ => throw new InvalidOperationException("scripted scan failure"),
             _ => _ => [[SyntheticRecord(5, ".", 3)], [SyntheticRecord(20, "file.txt")]]
@@ -274,7 +274,7 @@ public partial class BrokerProcessTests
         var volumes = new ScriptedBrokerVolumes
         {
             QueryJournalCursor = queryCursor,
-            ScanDrive = scanDrive
+            ScanVolume = scanVolume
         };
 
         await using var singleHandle = BrokerTestHarness.StartInProcess(volumes);
@@ -285,25 +285,25 @@ public partial class BrokerProcessTests
                 ? "scripted scan failure"
                 : "scripted cursor failure";
             var failure = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-                singleHandle.Process.ScanDriveAsync('c', target, options, null, CancellationToken.None)
+                singleHandle.Process.ScanVolumeAsync('c', target, options, null, CancellationToken.None)
                     .WaitAsync(HangGuard, TestContext.CancellationToken));
             Assert.Contains(expectedMessage, failure.Message);
 
             var recorded = singleHandle.Scans.Single();
-            Assert.AreEqual('C', recorded.Drive);
+            Assert.AreEqual('C', recorded.Volume);
             Assert.AreSequenceEqual([".git"], [.. recorded.RetainedFileNames!]);
             return;
         }
 
-        var result = await singleHandle.Process.ScanDriveAsync('c', target, options,
+        var result = await singleHandle.Process.ScanVolumeAsync('c', target, options,
             null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        Assert.AreEqual(new VolumeKey('C'), result.Drive);
+        Assert.AreEqual(new VolumeKey('C'), result.Volume);
         Assert.AreEqual(Armed, result.ArmedCursor);
         Assert.IsNull(result.CatchUpLoss);
         Assert.IsGreaterThan(0u, result.Block.Block.Header.RowCount);
         var scan = singleHandle.Scans.Single();
-        Assert.AreEqual('C', scan.Drive);
+        Assert.AreEqual('C', scan.Volume);
         Assert.AreSequenceEqual([".git"], [.. scan.RetainedFileNames!]);
     }
 
@@ -315,9 +315,9 @@ public partial class BrokerProcessTests
         await using var handle = BrokerTestHarness.StartInProcess(new ScriptedBrokerVolumes
         {
             QueryJournalCursor = _ => ArmedSynthetic,
-            ScanDrive = _ => [[SyntheticRecord(5, ".", 3)]]
+            ScanVolume = _ => [[SyntheticRecord(5, ".", 3)]]
         });
-        await handle.Process.ScanDriveAsync('C', TestBlockSections.Target() with { RetainedFileNames = names },
+        await handle.Process.ScanVolumeAsync('C', TestBlockSections.Target() with { RetainedFileNames = names },
             new MftScanOptions(), null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
         var scan = handle.Scans.Single();
         if (names is null)
@@ -337,10 +337,10 @@ public partial class BrokerProcessTests
         // The host throttles progress, so the scan waits until the client has seen the parse frame; the first
         // frame the host emits is never throttled, and the parse report is the first it is given.
         var parsedSeen = new TaskCompletionSource<BlockWriteProgress>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var seen = new List<(VolumeKey Drive, int ParseThreads, bool Cancelled)>();
+        var seen = new List<(VolumeKey Volume, int ParseThreads, bool Cancelled)>();
         await using var handle = BrokerTestHarness.StartInProcess(ScriptedVolumes(scan =>
         {
-            seen.Add((scan.Drive, scan.ParseThreads.Count, scan.CancellationToken.IsCancellationRequested));
+            seen.Add((scan.Volume, scan.ParseThreads.Count, scan.CancellationToken.IsCancellationRequested));
             scan.ReportParsed(2, 2);
             parsedSeen.Task.Wait(HangGuard, TestContext.CancellationToken);
             return [[SyntheticRecord(5, ".", 3)], [SyntheticRecord(20, "file.txt")]];
@@ -353,11 +353,11 @@ public partial class BrokerProcessTests
             }
         });
 
-        await handle.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(), progressSink, CancellationToken.None)
+        await handle.Process.ScanVolumeAsync('C', TestBlockSections.Target(), new MftScanOptions(), progressSink, CancellationToken.None)
             .WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.HasCount(1, seen);
-        Assert.AreEqual('C', seen[0].Drive);
+        Assert.AreEqual('C', seen[0].Volume);
         Assert.IsGreaterThanOrEqualTo(1, seen[0].ParseThreads);
         Assert.IsFalse(seen[0].Cancelled);
         Assert.IsTrue(parsedSeen.Task.IsCompletedSuccessfully);
@@ -413,7 +413,7 @@ public partial class BrokerProcessTests
         };
         await using var handle = BrokerTestHarness.StartInProcess(volumes);
 
-        var scan = await handle.Process.ScanDriveAsync('C', TestBlockSections.Target(), new MftScanOptions(),
+        var scan = await handle.Process.ScanVolumeAsync('C', TestBlockSections.Target(), new MftScanOptions(),
             null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
         var settings = await handle.Process.GrowUsnJournalAsync('C', new UsnJournalSettings { MaximumSize = 0x08000000, AllocationDelta = 0x01000000 }, CancellationToken.None)
             .WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -444,7 +444,7 @@ public partial class BrokerProcessTests
     }
 
     [TestMethod]
-    public async Task ScriptedVolumes_WatchDriveStreamsItsBatchesToTheClient()
+    public async Task ScriptedVolumes_WatchVolumeStreamsItsBatchesToTheClient()
     {
         var entry = new SyntheticJournalRecord
         {
@@ -456,7 +456,7 @@ public partial class BrokerProcessTests
         var cursor = new SyntheticJournalCursor(7, 1500);
         var volumes = ScriptedVolumes() with
         {
-            WatchDrive = (_, _, cancellationToken) => ScriptedJournalStreams.OneBatchThenQuiet([entry], cursor, cancellationToken)
+            WatchVolume = (_, _, cancellationToken) => ScriptedJournalStreams.OneBatchThenQuiet([entry], cursor, cancellationToken)
         };
         await using var handle = BrokerTestHarness.StartInProcess(volumes);
         using var deadline = new CancellationTokenSource(HangGuard);
@@ -477,7 +477,7 @@ public partial class BrokerProcessTests
     }
 
     [TestMethod]
-    public async Task ScriptedVolumes_WatchDriveThatEndsAfterItsBatchIsEnumeratedToTheEnd()
+    public async Task ScriptedVolumes_WatchVolumeThatEndsAfterItsBatchIsEnumeratedToTheEnd()
     {
         var entry = new SyntheticJournalRecord
         {
@@ -490,7 +490,7 @@ public partial class BrokerProcessTests
         var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var volumes = ScriptedVolumes() with
         {
-            WatchDrive = (_, _, _) => OneBatchThenEnd([entry], cursor, ended)
+            WatchVolume = (_, _, _) => OneBatchThenEnd([entry], cursor, ended)
         };
         await using var handle = BrokerTestHarness.StartInProcess(volumes);
         using var deadline = new CancellationTokenSource(HangGuard);
@@ -502,7 +502,7 @@ public partial class BrokerProcessTests
     }
 
     [TestMethod]
-    public async Task ScriptedVolumes_WithoutWatchDriveRefuseTheWatch()
+    public async Task ScriptedVolumes_WithoutWatchVolumeRefuseTheWatch()
     {
         await using var handle = BrokerTestHarness.StartInProcess(ScriptedVolumes());
         using var deadline = new CancellationTokenSource(HangGuard);
@@ -512,7 +512,7 @@ public partial class BrokerProcessTests
         var reader = channel.ReadAsync(deadline.Token).GetAsyncEnumerator(deadline.Token);
         await using var readerLifetime = reader;
 
-        var failure = await Assert.ThrowsExactlyAsync<DriveWatchFaultException>(async () =>
+        var failure = await Assert.ThrowsExactlyAsync<VolumeWatchFaultException>(async () =>
             await reader.MoveNextAsync());
         Assert.Contains("no watch source", failure.Message);
     }

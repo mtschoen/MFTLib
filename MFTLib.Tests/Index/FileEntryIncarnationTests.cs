@@ -127,11 +127,11 @@ public class FileEntryIncarnationTests
     }
 
     [TestMethod]
-    public async Task Equality_ComparesTheDriveBlockNotTheSnapshot()
+    public async Task Equality_ComparesTheRootBlockNotTheSnapshot()
     {
         await using var fixture = SeededFixture();
         var first = FileEntry.Create(fixture.Snapshot[0], DirectoryRow);
-        DriveBlock[] secondSnapshot = [fixture.Snapshot[0]];
+        RootBlock[] secondSnapshot = [fixture.Snapshot[0]];
         try
         {
             var second = FileEntry.Create(secondSnapshot[0], DirectoryRow);

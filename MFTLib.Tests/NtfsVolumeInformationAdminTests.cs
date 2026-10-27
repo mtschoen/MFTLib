@@ -23,7 +23,7 @@ public class NtfsVolumeInformationAdminTests
     [TestMethod]
     [OSCondition(OperatingSystems.Windows)]
     [SupportedOSPlatform("windows")] // NtfsVolumeInformation.Query is Windows-only (FSCTL_GET_NTFS_VOLUME_DATA)
-    public void Query_SystemDrive_ReturnsPlausibleMftSizing()
+    public void Query_SystemRoot_ReturnsPlausibleMftSizing()
     {
         RequireElevation();
 

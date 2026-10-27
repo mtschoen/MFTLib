@@ -1,11 +1,11 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     A ref-struct enumerator over one drive block's rows and names, working directly on the
+///     A ref-struct enumerator over one root block's rows and names, working directly on the
 ///     mapped spans with no allocation. Internal by design (MFTLib#122): the public query
 ///     surface is lists, streaming <see cref="FileIndex.Enumerate" /> and row views from
 ///     <see cref="FileIndex.EnumerateRows" />. Their engines use this scanner. The range constructor partitions
-///     one drive across threads.
+///     one root across threads.
 /// </summary>
 ref struct RowScanner
 {
@@ -25,16 +25,16 @@ ref struct RowScanner
     uint _rowsUntilCancellationCheck;
     bool _started;
 
-    internal RowScanner(DriveBlock driveBlock, CancellationToken cancellationToken = default)
-        : this(driveBlock, 0, uint.MaxValue, cancellationToken)
+    internal RowScanner(RootBlock rootBlock, CancellationToken cancellationToken = default)
+        : this(rootBlock, 0, uint.MaxValue, cancellationToken)
     {
     }
 
-    internal RowScanner(DriveBlock driveBlock, uint startRow, uint endRowExclusive,
+    internal RowScanner(RootBlock rootBlock, uint startRow, uint endRowExclusive,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(driveBlock);
-        var block = driveBlock.Block;
+        ArgumentNullException.ThrowIfNull(rootBlock);
+        var block = rootBlock.Block;
         _rows = block.Rows;
         _namePool = block.NamePoolCharacters;
         _endRowExclusive = Math.Min(endRowExclusive, block.Header.RowCount);
@@ -42,7 +42,7 @@ ref struct RowScanner
 
         // One, not the interval: the first row a scanner produces is itself a checkpoint, so a
         // query whose token was already cancelled stops before reading a row, and an engine that
-        // opens one scanner per drive block observes the token at least once for every block.
+        // opens one scanner per root block observes the token at least once for every block.
         _rowsUntilCancellationCheck = 1;
         CurrentRowIndex = startRow;
         _started = false;

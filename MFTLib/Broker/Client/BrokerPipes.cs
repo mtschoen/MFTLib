@@ -2,7 +2,7 @@ using System.IO.Pipes;
 
 namespace MFTLib;
 
-/// <summary>Creates the server end of each drive pipe a <see cref="BrokerProcess" /> opens.</summary>
+/// <summary>Creates the server end of each volume pipe a <see cref="BrokerProcess" /> opens.</summary>
 interface IBrokerPipeFactory
 {
     /// <summary>Starts listening on a new pipe named <paramref name="pipeName" />.</summary>
@@ -10,7 +10,7 @@ interface IBrokerPipeFactory
 }
 
 /// <summary>
-///     One listening drive pipe. Disposing it releases the pipe, connected or not, so the host
+///     One listening volume pipe. Disposing it releases the pipe, connected or not, so the host
 ///     reads EOF on whatever end it holds; the stream <see cref="WaitForConnectionAsync" /> returns
 ///     is the pipe itself and needs no separate disposal. Disposal is idempotent.
 /// </summary>
@@ -36,7 +36,7 @@ sealed class BrokerPipeListener(
 }
 
 /// <summary>
-///     Production drive pipes: one <see cref="NamedPipeServerStream" /> per channel. The
+///     Production volume pipes: one <see cref="NamedPipeServerStream" /> per channel. The
 ///     unelevated client creates every pipe server and the elevated broker connects as the client,
 ///     the only safe direction across integrity levels.
 /// </summary>

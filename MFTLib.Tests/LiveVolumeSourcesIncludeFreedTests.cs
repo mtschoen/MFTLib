@@ -39,7 +39,7 @@ public sealed class LiveVolumeSourcesIncludeFreedTests : IDisposable
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public void ScanDriveRecordBatches_KeepsFreedRecordsOnlyWhenAsked(bool includeFreed)
+    public void ScanVolumeRecordBatches_KeepsFreedRecordsOnlyWhenAsked(bool includeFreed)
     {
         if (WindowsOnlyLiveScan.Skip())
         {
@@ -56,7 +56,7 @@ public sealed class LiveVolumeSourcesIncludeFreedTests : IDisposable
             return parse(handle, freed, bufferSize, control, callback);
         };
 
-        var records = LiveVolumeSources.ScanDriveRecordBatches('C', new ParseThreadAllowance(2),
+        var records = LiveVolumeSources.ScanVolumeRecordBatches('C', new ParseThreadAllowance(2),
                 new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions { IncludeFreed = includeFreed }, _ => { }, CancellationToken.None)
             .SelectMany(batch => batch).ToArray();
 
@@ -82,7 +82,7 @@ public sealed class LiveVolumeSourcesIncludeFreedTests : IDisposable
         ServeImageAsVolume(imagePath);
         using var block = TestBlocks.Create(Path.Combine(TemporaryDirectoryPath, "freed.mlix"), ProducerKind.Mft, 128, 16 * 1024, volumeSerial: 0, rootRow: 5, deleteOnClose: true);
 
-        var batches = LiveVolumeSources.ScanDriveRecordBatches('C', new ParseThreadAllowance(2),
+        var batches = LiveVolumeSources.ScanVolumeRecordBatches('C', new ParseThreadAllowance(2),
             new BlockWriteReporting(null, new QuietReporter()), new MftScanOptions { IncludeFreed = true }, _ => { }, CancellationToken.None);
         MftBlockScan.WriteToBlock(block, new BlockStamp(default, TimeProvider.System), batches,
             new MftRowSelection(new MftScanOptions { IncludeFreed = true }), new BlockWriteReporting(null, null),

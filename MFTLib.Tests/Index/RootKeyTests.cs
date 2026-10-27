@@ -11,7 +11,7 @@ namespace MFTLib.Tests.Index;
 public class RootKeyTests
 {
     [TestCleanup]
-    public void Cleanup() => DriveKind._directoryCaseSensitiveOverride = null;
+    public void Cleanup() => RootKind._directoryCaseSensitiveOverride = null;
 
     [TestMethod]
     public void VolumeCase_WidensAndNarrowsWithoutConversion()
@@ -113,7 +113,7 @@ public class RootKeyTests
     [DataRow(true)]
     public void DirectoryEqualityAndHashCode_UsePlatformCasePolicy(bool caseSensitive)
     {
-        DriveKind._directoryCaseSensitiveOverride = caseSensitive;
+        RootKind._directoryCaseSensitiveOverride = caseSensitive;
         var root = Path.GetPathRoot(Environment.CurrentDirectory)!;
         var first = RootKey.FromDirectory(Path.Combine(root, "Parent", "Folder"));
         var second = RootKey.FromDirectory(Path.Combine(root, "Parent", "folder"));
@@ -125,7 +125,7 @@ public class RootKeyTests
     [TestMethod]
     public void CompareTo_OrdersVolumesByLetterBeforeDirectoriesByOrdinalText()
     {
-        DriveKind._directoryCaseSensitiveOverride = false;
+        RootKind._directoryCaseSensitiveOverride = false;
         var root = Path.GetPathRoot(Environment.CurrentDirectory)!;
         RootKey volumeA = new VolumeKey('A');
         RootKey volumeC = new VolumeKey('C');
@@ -159,18 +159,18 @@ public class RootKeyTests
     {
         var settings = new UsnJournalSettings { MaximumSize = 65536, AllocationDelta = 4096 };
         var cachedBlockFile = new CachedBlockFile(new VolumeKey('C'), 1, "unused", 0, DateTime.UnixEpoch);
-        var driveStatus = new RootStatus(new VolumeKey('C'), DriveState.Offline);
+        var rootStatus = new RootStatus(new VolumeKey('C'), RootState.Offline);
         var scanProgress = new IndexScanProgress(new VolumeKey('C'), IndexScanPhase.Finished, 0);
         var checkpointLoss = new JournalCheckpointLoss(new VolumeKey('C'), JournalCheckpointLossDetection.LiveWatch,
             JournalCheckpointLossCause.CheckpointTrimmed, settings);
         var watchFault = new WatchFault(WatchFaultKind.Channel, new VolumeKey('C'), new InvalidOperationException());
         var windowsVolume = SyntheticNotifications.CreateWindowsVolume(new VolumeKey('C'), "C:\\", DriveType.Fixed);
-        Assert.ThrowsExactly<ArgumentException>(() => cachedBlockFile with { Drive = default });
-        Assert.ThrowsExactly<ArgumentException>(() => driveStatus with { Drive = default });
-        Assert.ThrowsExactly<ArgumentException>(() => scanProgress with { Drive = default });
-        Assert.ThrowsExactly<ArgumentException>(() => checkpointLoss with { Drive = default });
-        Assert.ThrowsExactly<ArgumentException>(() => watchFault with { Drive = default });
-        Assert.ThrowsExactly<ArgumentException>(() => windowsVolume with { Drive = default });
+        Assert.ThrowsExactly<ArgumentException>(() => cachedBlockFile with { Root = default });
+        Assert.ThrowsExactly<ArgumentException>(() => rootStatus with { Root = default });
+        Assert.ThrowsExactly<ArgumentException>(() => scanProgress with { Root = default });
+        Assert.ThrowsExactly<ArgumentException>(() => checkpointLoss with { Volume = default });
+        Assert.ThrowsExactly<ArgumentException>(() => watchFault with { Volume = default });
+        Assert.ThrowsExactly<ArgumentException>(() => windowsVolume with { Volume = default });
         Assert.ThrowsExactly<ArgumentException>(() =>
             SyntheticNotifications.CreateWindowsVolume(default, "C:\\", DriveType.Fixed));
     }
@@ -178,22 +178,22 @@ public class RootKeyTests
     [TestMethod]
     public void PublicRecords_RejectDefaultKeysOnConstructionAndWithInitialization()
     {
-        Assert.ThrowsExactly<ArgumentException>(() => SyntheticIndexedDrive.Create(default, "unused", 0));
+        Assert.ThrowsExactly<ArgumentException>(() => SyntheticIndexedRoot.Create(default, "unused", 0));
         Assert.ThrowsExactly<ArgumentException>(() => new IndexRecordKey(default, 5, ProducerKind.Mft));
-        Assert.ThrowsExactly<ArgumentException>(() => new DriveOperationResult(default, DriveOperationOutcome.Succeeded, null));
-        Assert.ThrowsExactly<ArgumentException>(() => new WatchStateChange(default, new DriveWatchStatus(), null));
-        var drive = SyntheticIndexedDrive.Create(new VolumeKey('c'), "unused", 0);
+        Assert.ThrowsExactly<ArgumentException>(() => new RootOperationResult(default, RootOperationOutcome.Succeeded, null));
+        Assert.ThrowsExactly<ArgumentException>(() => new WatchStateChange(default, new RootWatchStatus(), null));
+        var root = SyntheticIndexedRoot.Create(new VolumeKey('c'), "unused", 0);
         var recordKey = new IndexRecordKey(new VolumeKey('C'), 5, ProducerKind.Mft);
-        var operationResult = new DriveOperationResult(new VolumeKey('C'), DriveOperationOutcome.Succeeded, null);
-        var stateChange = new WatchStateChange(new VolumeKey('C'), new DriveWatchStatus(), null);
-        Assert.ThrowsExactly<ArgumentException>(() => drive with { Drive = default });
-        Assert.ThrowsExactly<ArgumentException>(() => recordKey with { Drive = default });
-        Assert.ThrowsExactly<ArgumentException>(() => operationResult with { Drive = default });
-        Assert.ThrowsExactly<ArgumentException>(() => stateChange with { Drive = default });
+        var operationResult = new RootOperationResult(new VolumeKey('C'), RootOperationOutcome.Succeeded, null);
+        var stateChange = new WatchStateChange(new VolumeKey('C'), new RootWatchStatus(), null);
+        Assert.ThrowsExactly<ArgumentException>(() => root with { Root = default });
+        Assert.ThrowsExactly<ArgumentException>(() => recordKey with { Root = default });
+        Assert.ThrowsExactly<ArgumentException>(() => operationResult with { Root = default });
+        Assert.ThrowsExactly<ArgumentException>(() => stateChange with { Volume = default });
         Assert.ThrowsExactly<ArgumentException>(() =>
-            SyntheticNotifications.CreateWatchStateChange(default, new DriveWatchStatus(), null));
+            SyntheticNotifications.CreateWatchStateChange(default, new RootWatchStatus(), null));
         Assert.ThrowsExactly<ArgumentException>(() =>
-            SyntheticNotifications.CreateDriveOperationResult(default, DriveOperationOutcome.Succeeded, null));
+            SyntheticNotifications.CreateRootOperationResult(default, RootOperationOutcome.Succeeded, null));
     }
 
     [TestMethod]
@@ -224,14 +224,14 @@ public class RootKeyTests
         Assert.IsEmpty(new InProcessBrokerScan('c', Array.Empty<string>()).RetainedFileNames!);
         Assert.AreSequenceEqual(["marker"], [.. (scan with { RetainedFileNames = new[] { "marker" } }).RetainedFileNames!]);
         var start = new ScriptedWatchStart('c', default);
-        Assert.AreEqual('C', scan.Drive);
-        Assert.AreEqual('C', start.Drive);
-        Assert.AreEqual('D', (scan with { Drive = 'd' }).Drive);
-        Assert.AreEqual('D', (start with { Drive = 'd' }).Drive);
+        Assert.AreEqual('C', scan.Volume);
+        Assert.AreEqual('C', start.Volume);
+        Assert.AreEqual('D', (scan with { Volume = 'd' }).Volume);
+        Assert.AreEqual('D', (start with { Volume = 'd' }).Volume);
         Assert.ThrowsExactly<ArgumentException>(() => new InProcessBrokerScan(default, null));
         Assert.ThrowsExactly<ArgumentException>(() => new ScriptedWatchStart(default, default));
-        Assert.ThrowsExactly<ArgumentException>(() => scan with { Drive = default });
-        Assert.ThrowsExactly<ArgumentException>(() => start with { Drive = default });
+        Assert.ThrowsExactly<ArgumentException>(() => scan with { Volume = default });
+        Assert.ThrowsExactly<ArgumentException>(() => start with { Volume = default });
     }
 
     static string FullPathWithLength(int length)

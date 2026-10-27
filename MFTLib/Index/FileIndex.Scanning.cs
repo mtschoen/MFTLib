@@ -5,12 +5,12 @@ public sealed partial class FileIndex
     /// <summary>
     ///     Settles the configured root and returns once it has settled.
     /// </summary>
-    async Task SettleDriveAsync(CancellationToken cancellationToken)
+    async Task SettleRootAsync(CancellationToken cancellationToken)
     {
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await Task.Run(() => _runtime.AddDriveAsync(cancellationToken), CancellationToken.None)
+            await Task.Run(() => _runtime.AddRootAsync(cancellationToken), CancellationToken.None)
                 .ConfigureAwait(false);
         }
         catch when (cancellationToken.IsCancellationRequested)

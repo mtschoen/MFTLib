@@ -16,6 +16,6 @@ static class JournalWindows
     public static IDisposable Override(Func<VolumeKey, SyntheticJournalWindow?> query) =>
         JournalIsolation.OverrideJournalWindow(query);
 
-    public static IDisposable ForDrives(IReadOnlyDictionary<VolumeKey, SyntheticJournalWindow> windows) =>
-        Override(drive => windows.TryGetValue(drive, out var window) ? window : null);
+    public static IDisposable ForVolumes(IReadOnlyDictionary<VolumeKey, SyntheticJournalWindow> windows) =>
+        Override(volume => windows.TryGetValue(volume, out var window) ? window : null);
 }

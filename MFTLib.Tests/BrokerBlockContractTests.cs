@@ -15,7 +15,7 @@ public class BrokerBlockContractTests : BrokerBlockTestBase
         await using var broker = new ScriptedBroker();
 
         await Assert.ThrowsExactlyAsync<ArgumentNullException>(() =>
-            broker.Process.ScanDriveAsync('C', null!, new MftScanOptions(), null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
+            broker.Process.ScanVolumeAsync('C', null!, new MftScanOptions(), null, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.IsEmpty(broker.Sections.All());
@@ -26,23 +26,23 @@ public class BrokerBlockContractTests : BrokerBlockTestBase
     [TestMethod]
     public async Task Scan_NormalizesTheDriveLetter()
     {
-        var drives = new List<VolumeKey>();
+        var volumes = new List<VolumeKey>();
         await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => ArmedCursor,
-            QueryVolumeInformation = drive =>
+            QueryVolumeInformation = volume =>
             {
-                drives.Add(drive);
+                volumes.Add(volume);
                 return VolumeInformation;
             }
         }));
 
-        var result = await broker.Process.ScanDriveAsync('c', Target(), new MftScanOptions(), null, CancellationToken.None)
+        var result = await broker.Process.ScanVolumeAsync('c', Target(), new MftScanOptions(), null, CancellationToken.None)
             .WaitAsync(HangGuard, TestContext.CancellationToken);
         result.Block.Block.Dispose();
 
-        Assert.AreEqual(new VolumeKey('C'), result.Drive);
-        Assert.AreSequenceEqual([new VolumeKey('C')], drives);
+        Assert.AreEqual(new VolumeKey('C'), result.Volume);
+        Assert.AreSequenceEqual([new VolumeKey('C')], volumes);
         Assert.StartsWith("mftlib-block-C-", broker.Sections.Single().SectionName);
     }
 
@@ -72,7 +72,7 @@ public class BrokerBlockContractTests : BrokerBlockTestBase
         {
             QueryCursor = _ => ArmedCursor,
             QueryVolumeInformation = _ => VolumeInformation,
-            ScanDrive = (_, _, _, _, _, _) =>
+            ScanVolume = (_, _, _, _, _, _) =>
             [
                 [BrokerHostFactory.Record(5, ".", 3), BrokerHostFactory.Record(20, string.Empty)]
             ]

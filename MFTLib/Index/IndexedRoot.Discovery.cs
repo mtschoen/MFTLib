@@ -5,9 +5,9 @@ namespace MFTLib.Index;
 public sealed partial record IndexedRoot
 {
     /// <summary>
-    ///     Reports every drive root with an <c>IsIndexable</c> flag and, when false, a display reason.
-    ///     Only ready fixed NTFS drives are indexable (the format matches ordinally, ignoring case).
-    ///     A drive that vanishes or refuses access mid-read is reported as not ready.
+    ///     Reports every volume root with an <c>IsIndexable</c> flag and, when false, a display reason.
+    ///     Only ready fixed NTFS volumes are indexable (the format matches ordinally, ignoring case).
+    ///     A root that vanishes or refuses access mid-read is reported as not ready.
     /// </summary>
     [SupportedOSPlatform("windows")]
     public static IReadOnlyList<WindowsVolume> EnumerateWindowsVolumes() =>
@@ -15,17 +15,17 @@ public sealed partial record IndexedRoot
             drive => drive.DriveType, drive => drive.IsReady, drive => drive.DriveFormat);
 
     internal static IReadOnlyList<WindowsVolume> ReadVolumeVerdicts<T>(
-        IEnumerable<T> drives, Func<T, string> rootDirectory, Func<T, DriveType> driveType,
+        IEnumerable<T> candidates, Func<T, string> rootDirectory, Func<T, DriveType> driveType,
         Func<T, bool> isReady, Func<T, string> driveFormat)
     {
-        WindowsVolume Classify(T drive)
+        WindowsVolume Classify(T candidate)
         {
-            var root = rootDirectory(drive);
+            var root = rootDirectory(candidate);
             var key = new VolumeKey(root[0]);
             var type = DriveType.Unknown;
             try
             {
-                type = driveType(drive);
+                type = driveType(candidate);
                 string? reason;
                 switch (type)
                 {
@@ -52,11 +52,11 @@ public sealed partial record IndexedRoot
                 {
                     return new WindowsVolume(key, root, type) { Reason = reason };
                 }
-                if (!isReady(drive))
+                if (!isReady(candidate))
                 {
                     return new WindowsVolume(key, root, type) { Reason = "not ready" };
                 }
-                var format = driveFormat(drive);
+                var format = driveFormat(candidate);
                 var isNtfs = string.Equals(format, "NTFS", StringComparison.OrdinalIgnoreCase);
                 return new WindowsVolume(key, root, type)
                 {
@@ -73,6 +73,6 @@ public sealed partial record IndexedRoot
             }
         }
 
-        return [.. drives.Select(Classify)];
+        return [.. candidates.Select(Classify)];
     }
 }

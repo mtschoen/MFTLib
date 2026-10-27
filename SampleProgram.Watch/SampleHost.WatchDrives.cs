@@ -5,7 +5,7 @@ namespace SampleProgram.Watch;
 // The watch mode: one FileIndex per drive is watched, and a FileIndexSet over all of them counts entries across the machine.
 partial class SampleHost
 {
-    // Returns how many drive operations failed.
+    // Returns how many root operations failed.
     async Task<int> WatchIndexAsync(FileIndexSet indexSet, WatchArguments parsed, CancellationToken cancellationToken)
     {
         var failureCount = 0;
@@ -13,16 +13,16 @@ partial class SampleHost
         foreach (var index in indexSet.Indices)
         {
             var status = index.Status;
-            await _output.WriteLineAsync($"=== Drive {status.Drive}: ===").ConfigureAwait(false);
+            await _output.WriteLineAsync($"=== Root {status.Root}: ===").ConfigureAwait(false);
             try
             {
-                ReportDrive(parsed, status);
+                ReportRoot(parsed, status);
                 ready.Add(index);
             }
             catch (Exception exception)
             {
                 failureCount++;
-                await _output.WriteLineAsync($"Error on drive {status.Drive}: {exception.Message}").ConfigureAwait(false);
+                await _output.WriteLineAsync($"Error on root {status.Root}: {exception.Message}").ConfigureAwait(false);
             }
 
             await _output.WriteLineAsync(string.Empty).ConfigureAwait(false);
@@ -34,17 +34,17 @@ partial class SampleHost
         }
 
         var counter = ReportChanges(ready);
-        var operations = new List<DriveOperationResult>();
+        var operations = new List<RootOperationResult>();
         operations.AddRange(Report("start", await Task.WhenAll(ready.Select(index => index.StartWatchingAsync(cancellationToken))).ConfigureAwait(false)));
         operations.AddRange(Report("catch-up", await Task.WhenAll(ready.Select(index => index.WaitForCatchUpAsync(cancellationToken))).ConfigureAwait(false)));
 
-        var waited = await WaitWhileWatchingAsync(parsed, ready.Select(index => index.Status.Drive.ToString()), cancellationToken).ConfigureAwait(false);
+        var waited = await WaitWhileWatchingAsync(parsed, ready.Select(index => index.Status.Root.ToString()), cancellationToken).ConfigureAwait(false);
         operations.AddRange(Report("stop", await Task.WhenAll(ready.Select(index => index.StopWatchingAsync(cancellationToken))).ConfigureAwait(false)));
         var rows = indexSet.Enumerate(new SearchQuery(null), cancellationToken).Count();
         await _output.WriteLineAsync($"Saw {counter.Count} changes {waited}; the index now holds {rows} entries").ConfigureAwait(false);
         await ReportSetQueriesAsync(indexSet, ready[0], cancellationToken).ConfigureAwait(false);
 
-        return failureCount + operations.Count(result => result.Outcome is DriveOperationOutcome.Failed);
+        return failureCount + operations.Count(result => result.Outcome is RootOperationOutcome.Failed);
     }
 
     // Queries every index through the set: Find routes the first ready root's own path back to its index, Search
@@ -92,7 +92,7 @@ partial class SampleHost
         return "until a key was pressed";
     }
 
-    sealed class DriveChangeCounter
+    sealed class RootChangeCounter
     {
         readonly Lock _gate = new();
         FileEntry? _previousEntry;
@@ -116,9 +116,9 @@ partial class SampleHost
     }
 
     // Prints the watch states, faults and each change as they happen, and counts the changes.
-    DriveChangeCounter ReportChanges(IEnumerable<FileIndex> indices)
+    RootChangeCounter ReportChanges(IEnumerable<FileIndex> indices)
     {
-        var counter = new DriveChangeCounter();
+        var counter = new RootChangeCounter();
         foreach (var index in indices)
         {
             ReportIndexChanges(index, counter);
@@ -127,20 +127,20 @@ partial class SampleHost
         return counter;
     }
 
-    void ReportIndexChanges(FileIndex index, DriveChangeCounter counter)
+    void ReportIndexChanges(FileIndex index, RootChangeCounter counter)
     {
-        index.WatchStateChanged += state => _output.WriteLine($"  watch {state.Drive}: {state.Watch.State} (version {state.Watch.StateVersion}){(state.Fault is { } fault ? $", fault {fault.Kind}" : string.Empty)}");
-        index.WatchFaulted += fault => _output.WriteLine($"  watch fault {fault.Drive}: {fault.Kind}: {fault.Exception.Message}{(fault.Exception is JournalCatchUpLostException lost ? $" (recovery stopped: {lost.IsRecoveryStopped})" : string.Empty)}");
+        index.WatchStateChanged += state => _output.WriteLine($"  watch {state.Volume}: {state.Watch.State} (version {state.Watch.StateVersion}){(state.Fault is { } fault ? $", fault {fault.Kind}" : string.Empty)}");
+        index.WatchFaulted += fault => _output.WriteLine($"  watch fault {fault.Volume}: {fault.Kind}: {fault.Exception.Message}{(fault.Exception is JournalCatchUpLostException lost ? $" (recovery stopped: {lost.IsRecoveryStopped})" : string.Empty)}");
         index.Changed += change =>
         {
             var isSameFile = counter.Add(change.Entry);
             // The entry handle is live, so its columns are unreadable once a later change reuses its row slot;
             // the change's own path is the fact of this event.
-            _output.WriteLine($"  {change.Kind}: {change.Path}{(change.PreviousPath is { } previous ? $" (was {previous})" : string.Empty)} at {change.Timestamp:u}{(isSameFile ? ", same file as the previous change" : string.Empty)}, file id {change.Entry.GetHashCode():x8}, drive {change.Entry.Drive}, entry {Path.GetFileName(change.Path)}");
+            _output.WriteLine($"  {change.Kind}: {change.Path}{(change.PreviousPath is { } previous ? $" (was {previous})" : string.Empty)} at {change.Timestamp:u}{(isSameFile ? ", same file as the previous change" : string.Empty)}, file id {change.Entry.GetHashCode():x8}, root {change.Entry.Root}, entry {Path.GetFileName(change.Path)}");
         };
     }
 
-    List<DriveOperationResult> Report(string operation, IEnumerable<DriveOperationResult> results)
+    List<RootOperationResult> Report(string operation, IEnumerable<RootOperationResult> results)
     {
         var all = results.ToList();
         WriteResults(operation, all);

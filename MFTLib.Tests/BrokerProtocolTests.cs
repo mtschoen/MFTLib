@@ -7,7 +7,7 @@ namespace MFTLib.Tests;
 ///     The broker wire: every frame kind round-trips through its writer and reader, the golden
 ///     bytes pin the layout, and a frame the reader cannot decode fails as
 ///     <see cref="InvalidDataException" />. Control-pipe kinds are in the Frames partial,
-///     drive-pipe kinds in the Scan partial, the journal grow pair in the GrowUsnJournalFrames partial.
+///     volume-pipe kinds in the Scan partial, the journal grow pair in the GrowUsnJournalFrames partial.
 /// </summary>
 [TestClass]
 public partial class BrokerProtocolTests
@@ -37,7 +37,7 @@ public partial class BrokerProtocolTests
     {
         Assert.AreEqual(expected.Kind, actual.Kind);
         Assert.AreEqual(expected.RequestId, actual.RequestId);
-        Assert.AreEqual(expected.Drive, actual.Drive);
+        Assert.AreEqual(expected.Volume, actual.Volume);
         Assert.AreEqual(expected.PipeName, actual.PipeName);
         Assert.AreEqual(expected.SectionName, actual.SectionName);
         Assert.AreEqual(expected.IncludeFreed, actual.IncludeFreed);
@@ -123,9 +123,9 @@ public partial class BrokerProtocolTests
     // otherwise-invalid frame.
 
     [TestMethod]
-    public void RequireDrive_NullDrive_ThrowsInvalidDataException()
+    public void RequireVolume_NullVolume_ThrowsInvalidDataException()
     {
-        Assert.ThrowsExactly<InvalidDataException>(() => default(BrokerFrame).RequireDrive());
+        Assert.ThrowsExactly<InvalidDataException>(() => default(BrokerFrame).RequireVolume());
     }
 
     [TestMethod]

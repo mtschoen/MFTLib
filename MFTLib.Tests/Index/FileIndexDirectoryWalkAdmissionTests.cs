@@ -73,7 +73,7 @@ public sealed class FileIndexDirectoryWalkAdmissionTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationToken);
 
-        Assert.AreEqual(DriveState.Ready, index.Status.State);
+        Assert.AreEqual(RootState.Ready, index.Status.State);
     }
 
     [TestMethod]
@@ -107,7 +107,7 @@ public sealed class FileIndexDirectoryWalkAdmissionTests : IndexTreeTestBase
             "PrunedDirectoryAttributes");
 
     [TestMethod]
-    public async Task OpenAsync_MftDrivesStillAdmitTheWalkOptions()
+    public async Task OpenAsync_MftRootsStillAdmitTheWalkOptions()
     {
         var options = Fixture.Options(producer: ProducerKind.Mft) with
         {
@@ -151,7 +151,7 @@ public sealed class FileIndexDirectoryWalkAdmissionTests : IndexTreeTestBase
         patterns.Clear();
 
         var rescan = await index.RescanAsync(TestContext.CancellationToken);
-        Assert.AreEqual(DriveOperationOutcome.Succeeded, rescan.Outcome);
+        Assert.AreEqual(RootOperationOutcome.Succeeded, rescan.Outcome);
 
         Assert.IsNotNull(index.Find(Path.Combine(Fixture.TreeRoot, "Documents"), TestContext.CancellationToken));
         Assert.IsNull(index.Find(Path.Combine(Fixture.TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken));

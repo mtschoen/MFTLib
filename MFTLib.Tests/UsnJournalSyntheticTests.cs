@@ -977,7 +977,7 @@ public partial class UsnJournalSyntheticTests
 
     [TestMethod]
     [OSCondition(OperatingSystems.Windows)]
-    public void GetDiskSpaceInformation_OnWindowsSystemDrive_ReturnsPositiveGeometry()
+    public void GetDiskSpaceInformation_OnWindowsSystemRoot_ReturnsPositiveGeometry()
     {
         var hresult = Kernel32.Hooks._getDiskSpaceInformation(@"C:\", out var diskSpace);
 

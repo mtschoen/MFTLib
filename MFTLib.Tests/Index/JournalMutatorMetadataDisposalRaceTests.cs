@@ -17,8 +17,8 @@ public class JournalMutatorMetadataDisposalRaceTests
     {
         using var builder = SyntheticBlockBuilder.MftShaped();
         var block = builder.OpenForWriting();
-        DriveBlock[] snapshot = [new DriveBlock(new VolumeKey(builder.Drive), block,
-            rootDirectoryPath: TestDriveRoot.For(builder.Drive))];
+        RootBlock[] snapshot = [new RootBlock(new VolumeKey(builder.Drive), block,
+            rootDirectoryPath: TestRootDirectory.For(builder.Drive))];
         var writer = new BlockWriter(block);
         var mutator = new JournalMutator(writer);
         var rowCaptured = new TestGate();

@@ -73,9 +73,9 @@ static partial class BrokerProtocol
             return this;
         }
 
-        public PayloadWriter Drive(VolumeKey drive)
+        public PayloadWriter Volume(VolumeKey volume)
         {
-            BinaryPrimitives.WriteUInt16LittleEndian(_payload.GetSpan(2), drive.Letter);
+            BinaryPrimitives.WriteUInt16LittleEndian(_payload.GetSpan(2), volume.Letter);
             _payload.Advance(2);
             return this;
         }
@@ -168,23 +168,23 @@ static partial class BrokerProtocol
             return Encoding.Unicode.GetString(Take(Length()));
         }
 
-        public VolumeKey Drive()
+        public VolumeKey Volume()
         {
             var character = (char)BinaryPrimitives.ReadUInt16LittleEndian(Take(2));
-            VolumeKey drive;
+            VolumeKey volume;
             try
             {
-                drive = new VolumeKey(character);
+                volume = new VolumeKey(character);
             }
             catch (ArgumentException exception)
             {
                 throw new InvalidDataException("Broker frame has an invalid drive character.", exception);
             }
-            if (drive.Letter != character)
+            if (volume.Letter != character)
             {
                 throw new InvalidDataException("Broker frame drive character is not normalized.");
             }
-            return drive;
+            return volume;
         }
 
         // A count of items that each take at least minimumItemBytes; a count the remaining bytes

@@ -31,7 +31,7 @@ public sealed class FileIndexSet
 
             if (!seen.Add(index.RootKey))
             {
-                throw new ArgumentException($"Drive {index.RootKey} is listed more than once.", nameof(indices));
+                throw new ArgumentException($"Root {index.RootKey} is listed more than once.", nameof(indices));
             }
         }
 
@@ -91,7 +91,7 @@ public sealed class FileIndexSet
         SubtreeAnchor.ThrowIfDefault(query);
         ThrowIfAnyDisposed();
 
-        if (query.Subtree is { NamedDriveBlock: { } anchorBlock })
+        if (query.Subtree is { NamedRootBlock: { } anchorBlock })
         {
             return ResolveSubtreeOwner(anchorBlock, cancellationToken).Search(query, cancellationToken);
         }
@@ -167,7 +167,7 @@ public sealed class FileIndexSet
     internal IndexRowEnumerator BeginRowEnumeration(SearchQuery query, CancellationToken cancellationToken)
     {
         ThrowIfAnyDisposed();
-        if (query.Subtree is { NamedDriveBlock: { } anchorBlock })
+        if (query.Subtree is { NamedRootBlock: { } anchorBlock })
         {
             return ResolveSubtreeOwner(anchorBlock, cancellationToken)
                 .BeginRowEnumeration(query, cancellationToken);
@@ -180,7 +180,7 @@ public sealed class FileIndexSet
     IEnumerable<FileEntry> EnumerateCore(SearchQuery query, CancellationToken cancellationToken)
     {
         ThrowIfAnyDisposed();
-        if (query.Subtree is { NamedDriveBlock: { } anchorBlock })
+        if (query.Subtree is { NamedRootBlock: { } anchorBlock })
         {
             foreach (var entry in ResolveSubtreeOwner(anchorBlock, cancellationToken).Enumerate(query, cancellationToken))
             {
@@ -203,11 +203,11 @@ public sealed class FileIndexSet
         cancellationToken.ThrowIfCancellationRequested();
     }
 
-    FileIndex ResolveSubtreeOwner(DriveBlock anchorBlock, CancellationToken cancellationToken)
+    FileIndex ResolveSubtreeOwner(RootBlock anchorBlock, CancellationToken cancellationToken)
     {
         foreach (var index in _indices)
         {
-            if (index.RootKey == anchorBlock.Drive)
+            if (index.RootKey == anchorBlock.Root)
             {
                 return index;
             }

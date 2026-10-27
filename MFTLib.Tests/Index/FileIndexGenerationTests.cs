@@ -5,7 +5,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 /// <summary>
-///     <see cref="DriveBlockStatus.Generation" />: a drive's change version strictly increases on every
+///     <see cref="RootBlockStatus.Generation" />: a root's change version strictly increases on every
 ///     applied mutation batch and every rescan, and a warm start adopts the cached block's value.
 /// </summary>
 [TestClass]

@@ -76,7 +76,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IndexTreeTestBase
         Assert.IsTrue(File.Exists(BlockOwnerLock.LockPathFor(unownedSecond)),
             "a lock file created while deleting an unowned block must be preserved");
 
-        Assert.AreEqual(DriveState.Ready, owner.Status.State);
+        Assert.AreEqual(RootState.Ready, owner.Status.State);
         Assert.IsNotNull(owner.Find(Path.Combine(TreeRoot, "Documents", "readme.md"), TestContext.CancellationToken),
             "the live index keeps working after unrelated blocks are cleared out from under it");
     }
@@ -112,7 +112,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IndexTreeTestBase
             await rescan;
         }
 
-        Assert.AreEqual(DriveState.Ready, owner.Status.State);
+        Assert.AreEqual(RootState.Ready, owner.Status.State);
         var canonicalBytesAfterRescan = await SharedFileReader.ReadAllBytesAsync(CanonicalPath);
         Assert.AreNotSequenceEqual(canonicalBytesBeforeRescan, canonicalBytesAfterRescan,
             "the rescan completed normally once the clear backed off from the held lock");
@@ -159,8 +159,8 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IndexTreeTestBase
         await using (var cacheOnlyOpen = await FileIndex.OpenAsync(Options(cacheOnly: true), CancellationToken.None))
         {
             var status = cacheOnlyOpen.Status;
-            Assert.AreEqual(DriveState.Failed, status.State);
-            Assert.AreEqual(DriveFailureKind.InUse, status.Failure?.Kind);
+            Assert.AreEqual(RootState.Failed, status.State);
+            Assert.AreEqual(RootFailureKind.InUse, status.Failure?.Kind);
             Assert.IsTrue(File.Exists(CanonicalPath),
                 "a cache-only open racing a parked delete must not delete or adopt the slot");
             Assert.AreSequenceEqual(canonicalBytesBeforeRace, await SharedFileReader.ReadAllBytesAsync(CanonicalPath), "the slot must be byte-identical while the delete still holds it");
@@ -170,7 +170,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IndexTreeTestBase
         await using (var fallbackOpen = await FileIndex.OpenAsync(Options(), CancellationToken.None))
         {
             var status = fallbackOpen.Status;
-            Assert.AreEqual(DriveState.Ready, status.State);
+            Assert.AreEqual(RootState.Ready, status.State);
             Assert.AreEqual(BlockOrigin.ProducedByScan, status.Block!.Origin);
             privateBlockPath = fallbackOpen.CurrentBlock!.Block.Path;
             Assert.Contains("mftlib-private-", privateBlockPath);
@@ -191,7 +191,7 @@ public sealed class CacheDirectoryDeletionLiveOwnerTests : IndexTreeTestBase
 
         await using var freshOpen = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         var freshStatus = freshOpen.Status;
-        Assert.AreEqual(DriveState.Ready, freshStatus.State);
+        Assert.AreEqual(RootState.Ready, freshStatus.State);
         Assert.AreEqual(BlockOrigin.ProducedByScan, freshStatus.Block!.Origin);
         Assert.AreEqual(CanonicalPath, freshOpen.CurrentBlock!.Block.Path,
             "once the clear has released the lock, a fresh open takes the slot normally");

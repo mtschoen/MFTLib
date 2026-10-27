@@ -34,15 +34,15 @@ public sealed class SyntheticCacheSlot : IDisposable
         return BlockOwnerLock.LockPathFor(blockPath);
     }
 
-    /// <summary>Takes ownership of the drive's cache slot until the returned slot is disposed.</summary>
+    /// <summary>Takes ownership of the root's cache slot until the returned slot is disposed.</summary>
     /// <param name="cacheDirectory">The cache directory, created when missing.</param>
-    /// <param name="drive">The drive letter.</param>
-    /// <param name="volumeSerial">The volume serial number the index reports for the drive.</param>
+    /// <param name="root">The drive letter.</param>
+    /// <param name="volumeSerial">The volume serial number the index reports for the volume.</param>
     /// <returns>The held slot.</returns>
     /// <exception cref="InvalidOperationException">An open index or another slot already owns it.</exception>
-    public static SyntheticCacheSlot Acquire(string cacheDirectory, RootKey drive, uint volumeSerial)
+    public static SyntheticCacheSlot Acquire(string cacheDirectory, RootKey root, uint volumeSerial)
     {
-        var blockPath = SyntheticBlock.CachedPath(cacheDirectory, drive, volumeSerial);
+        var blockPath = SyntheticBlock.CachedPath(cacheDirectory, root, volumeSerial);
         Directory.CreateDirectory(cacheDirectory);
         var owner = BlockOwnerLock.TryAcquire(blockPath) ?? throw new InvalidOperationException(
             $"The cache slot of {blockPath} is already owned. Dispose the index or slot that holds it first.");

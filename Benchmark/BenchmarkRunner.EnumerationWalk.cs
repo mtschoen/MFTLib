@@ -162,7 +162,7 @@ public partial class BenchmarkRunner
             ScanShape = ScanShape.ForEnumeration(null, new DirectoryWalkOptions(), root)
         });
         var writer = new BlockWriter(block);
-        var producer = new EnumerationProducer(new EnumerationProducerOptions { RootDirectory = root, Drive = new VolumeKey('T') });
+        var producer = new EnumerationProducer(new EnumerationProducerOptions { RootDirectory = root, Root = new VolumeKey('T') });
         using var lease = await EnumerationWalkLimit.EnterAsync(CancellationToken.None).ConfigureAwait(false);
         // The existing per-walk ceiling prevents taking any extra shared permits in sequential mode.
         var started = _timeProvider.GetTimestamp();

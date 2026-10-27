@@ -62,7 +62,7 @@ sealed partial record DirectArguments
         return positionals switch
         {
             not { Count: 1 } => "Expected exactly one drive letter.",
-            _ when !ArgumentReader.IsDrive(positionals[0]) => $"'{positionals[0]}' is not a drive letter.",
+            _ when !ArgumentReader.IsRoot(positionals[0]) => $"'{positionals[0]}' is not a drive letter.",
             _ when candidate.Source is SourceKind.Local && !source.Equals("local", StringComparison.OrdinalIgnoreCase) => $"Unknown source {source}.",
             _ when candidate.Source is SourceKind.Dump && candidate.DumpFile is null => "--source dump needs --dump-file PATH.",
             _ when candidate.Source is SourceKind.Local && candidate.DumpFile is not null => "--dump-file needs --source dump.",

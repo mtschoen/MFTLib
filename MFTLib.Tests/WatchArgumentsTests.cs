@@ -61,7 +61,7 @@ public class WatchArgumentsTests
     [DataRow("elevation-status", false)]
     [DataRow("rescan", true)]
     [DataRow("journal", true)]
-    public void NeedsDrives_OnlyTheVerbsThatOpenAnIndex(string name, bool expected)
+    public void NeedsRoots_OnlyTheVerbsThatOpenAnIndex(string name, bool expected)
     {
         Assert.IsTrue(WatchArguments.TryParse([name], out var parsed, out _));
 
@@ -300,7 +300,7 @@ public class WatchArgumentsTests
     }
 
     [TestMethod]
-    public void RetainedFileNames_RetentionStates_DriveTheIndexOption()
+    public void RetainedFileNames_RetentionStates_RootTheIndexOption()
     {
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", "desktop.ini, .gitignore"], out var parsed, out _));
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C"], out var plain, out _));

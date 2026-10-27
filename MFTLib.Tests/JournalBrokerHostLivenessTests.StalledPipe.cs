@@ -15,7 +15,7 @@ public partial class JournalBrokerHostLivenessTests
         var entered = new TestGate();
         var release = new TestGate();
         using var sectionWriter = new RecordingBlockSectionWriter();
-        await using var harness = new HostChannelHarness(liveness.Host(scanDrive: (_, _, reporting, _, _, _) =>
+        await using var harness = new HostChannelHarness(liveness.Host(scanVolume: (_, _, reporting, _, _, _) =>
         {
             reporting.Operation!.Processing("wedged step");
             entered.MarkEntered();
@@ -53,7 +53,7 @@ public partial class JournalBrokerHostLivenessTests
         BrokerDiagnostics.Enable("broker", diagnosticsDirectory.Path);
         BrokerDiagnostics.Dependencies.InstallWriter(new BrokerDiagnosticsWriter(line =>
         {
-            // A frame written to drive C's pipe after the Stalled write began, other than the
+            // A frame written to volume C's pipe after the Stalled write began, other than the
             // liveness frames: the operation's own, which is about to wait for the pipe's write lock.
             var match = FrameWrite.Match(line);
             if (match.Success && stalledWrite.Started.IsCompleted &&
@@ -66,13 +66,13 @@ public partial class JournalBrokerHostLivenessTests
         try
         {
             using var sectionWriter = new RecordingBlockSectionWriter();
-            await using var harness = new HostChannelHarness(liveness.Host(scanDrive: (_, _, reporting, _, _, _) =>
+            await using var harness = new HostChannelHarness(liveness.Host(scanVolume: (_, _, reporting, _, _, _) =>
             {
                 reporting.Operation!.Processing("wedged step");
                 entered.MarkEntered();
                 release.WaitForRelease();
                 return [];
-            }), sectionWriter, wrapDrivePipe: (_, hostEnd) => stalledWrite.Wrap(hostEnd));
+            }), sectionWriter, wrapVolumePipe: (_, hostEnd) => stalledWrite.Wrap(hostEnd));
             try
             {
                 var pipe = await harness.OpenScanChannelAsync('C');

@@ -41,25 +41,25 @@ sealed class WatchStateRecorder
         }
     }
 
-    /// <summary>The drive's recorded states and faults, in order.</summary>
+    /// <summary>The root's recorded states and faults, in order.</summary>
     public IReadOnlyList<object> EventsFor(char driveLetter) => [.. Events.Where(item => DriveOf(item) == driveLetter)];
 
-    /// <summary>The drive's recorded states, in order.</summary>
+    /// <summary>The root's recorded states, in order.</summary>
     public IReadOnlyList<WatchStateChange> StatesFor(char driveLetter) =>
         [.. EventsFor(driveLetter).OfType<WatchStateChange>()];
 
-    /// <summary>Completes with the first state of the drive, recorded or future, that <paramref name="match" /> accepts.</summary>
+    /// <summary>Completes with the first state of the root, recorded or future, that <paramref name="match" /> accepts.</summary>
     public async Task<WatchStateChange> WaitForStateAsync(char driveLetter, Func<WatchStateChange, bool> match) =>
         (WatchStateChange)await WaitForAsync(item =>
-            item is WatchStateChange state && state.Drive == driveLetter && match(state));
+            item is WatchStateChange state && state.Volume == driveLetter && match(state));
 
-    /// <summary>Completes with the first fault of <paramref name="kind" /> on the drive that this recorder has seen.</summary>
+    /// <summary>Completes with the first fault of <paramref name="kind" /> on the root that this recorder has seen.</summary>
     public async Task<WatchFault> WaitForFaultAsync(WatchFaultKind kind, char driveLetter) =>
         (WatchFault)await WaitForAsync(item =>
-            item is WatchFault fault && fault.Kind == kind && fault.Drive == driveLetter);
+            item is WatchFault fault && fault.Kind == kind && fault.Volume == driveLetter);
 
     static char DriveOf(object item) =>
-        item is WatchStateChange state ? state.Drive.Letter : ((WatchFault)item).Drive.Letter;
+        item is WatchStateChange state ? state.Volume.Letter : ((WatchFault)item).Volume.Letter;
 
     Task<object> WaitForAsync(Func<object, bool> match)
     {

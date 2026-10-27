@@ -111,7 +111,7 @@ public sealed class DirectHostTests : IDisposable
     }
 
     [TestMethod]
-    public void Run_ChildrenWithoutAPath_ListsTheDriveRootsChildren()
+    public void Run_ChildrenWithoutAPath_ListsTheRootRootsChildren()
     {
         var lines = new List<string>();
 
@@ -188,7 +188,7 @@ public sealed class DirectHostTests : IDisposable
         await using var output = new StringWriter();
         var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
 
-        await host.RunSourceAsync(parsed!, ScriptedSource(), SyntheticIndexedDrive.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None);
+        await host.RunSourceAsync(parsed!, ScriptedSource(), SyntheticIndexedRoot.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None);
 
         Assert.Contains("C: 2 live files, 2 live directories, 1 retained deleted rows", output.ToString());
     }
@@ -231,7 +231,7 @@ public sealed class DirectHostTests : IDisposable
             new FileStream(path, FileMode.Open, access, FileShare.Read);
 
         Assert.IsTrue(DirectArguments.TryParse(["open", "C", "--path", path], out var parsed, out var error), error);
-        await host.RunSourceAsync(parsed!, source, SyntheticIndexedDrive.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None);
+        await host.RunSourceAsync(parsed!, source, SyntheticIndexedRoot.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None);
 
         var report = output.ToString();
         Assert.Contains($"{path} ({new IndexRecordKey(new VolumeKey('C'), 7, ProducerKind.Mft)}): record ", report);
@@ -300,7 +300,7 @@ public sealed class DirectHostTests : IDisposable
         {
             Assert.IsTrue(DirectArguments.TryParse(["search", "C", "--name", "a.txt", "--include-freed"], out var parsed, out var error), error);
             seen = parsed;
-            host.RunSourceAsync(parsed!, ScriptedSource(), SyntheticIndexedDrive.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None).GetAwaiter().GetResult();
+            host.RunSourceAsync(parsed!, ScriptedSource(), SyntheticIndexedRoot.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None).GetAwaiter().GetResult();
             return 0;
         });
 
@@ -324,7 +324,7 @@ public sealed class DirectHostTests : IDisposable
         await using var output = new StringWriter();
         var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
 
-        await host.RunSourceAsync(parsed!, ScriptedSource(), SyntheticIndexedDrive.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None);
+        await host.RunSourceAsync(parsed!, ScriptedSource(), SyntheticIndexedRoot.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None);
 
         var report = output.ToString();
         Assert.DoesNotContain("deleted=", report, report);
@@ -348,7 +348,7 @@ public sealed class DirectHostTests : IDisposable
             new SyntheticRow(10, "Notes.txt", 5) { Size = 11 }
         ]));
 
-        await elevatedHost.RunSourceAsync(parsed!, source, SyntheticIndexedDrive.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None);
+        await elevatedHost.RunSourceAsync(parsed!, source, SyntheticIndexedRoot.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None);
 
         var elevatedLines = elevatedOutput.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
         var matches = elevatedLines.Where(line => line.Contains(".log", StringComparison.Ordinal) && !line.StartsWith("Indexing ", StringComparison.Ordinal)).ToList();
@@ -378,21 +378,21 @@ public sealed class DirectHostTests : IDisposable
         await using var output = new StringWriter();
         var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
 
-        await host.RunSourceAsync(parsed!, ScriptedSource(), SyntheticIndexedDrive.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None);
+        await host.RunSourceAsync(parsed!, ScriptedSource(), SyntheticIndexedRoot.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None);
 
         Assert.Contains("a.txt: 2 entries", output.ToString());
     }
 
     [TestMethod]
-    public async Task Run_DriveThatIsOffline_ReportsItAndReturnsOne()
+    public async Task Run_RootThatIsOffline_ReportsItAndReturnsOne()
     {
         Assert.IsTrue(DirectArguments.TryParse(["scan", "Q"], out var parsed, out var error), error);
         await using var output = new StringWriter();
         var host = new SampleHost(output, TextReader.Null, TemporaryDirectoryPath);
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-            host.RunSourceAsync(parsed!, ScriptedSource(), SyntheticIndexedDrive.Create(new VolumeKey('Q'), Path.Combine(TemporaryDirectoryPath, "missing-root"), 4242), CancellationToken.None));
-        Assert.Contains("The drive is offline; nothing was scanned.", exception.Message);
+            host.RunSourceAsync(parsed!, ScriptedSource(), SyntheticIndexedRoot.Create(new VolumeKey('Q'), Path.Combine(TemporaryDirectoryPath, "missing-root"), 4242), CancellationToken.None));
+        Assert.Contains("The root is offline; nothing was scanned.", exception.Message);
     }
 
     [TestMethod]
@@ -404,7 +404,7 @@ public sealed class DirectHostTests : IDisposable
         var source = SyntheticIndexSource.Create(new SyntheticMftProducer(_ => throw new IOException("volume unreadable")));
 
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-            host.RunSourceAsync(parsed!, source, SyntheticIndexedDrive.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None));
+            host.RunSourceAsync(parsed!, source, SyntheticIndexedRoot.Create(new VolumeKey('C'), TemporaryDirectoryPath, 4242), CancellationToken.None));
         Assert.Contains("volume unreadable", exception.Message);
     }
 

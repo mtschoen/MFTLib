@@ -3,8 +3,8 @@ namespace MFTLib;
 /// <summary>
 ///     The elevated broker process of one consumer session, reached through its control pipe.
 ///     Control requests (volume queries, journal growth, channel opens) share the control pipe
-///     under request ids; each drive operation runs on a drive pipe of its own, so a slow or lost
-///     drive never delays another. When the control pipe is lost the process has ended: every
+///     under request ids; each root operation runs on a volume pipe of its own, so a slow or lost
+///     volume never delays another. When the control pipe is lost the process has ended: every
 ///     pending request fails with <see cref="BrokerChannelLostException" /> and <see cref="Ended" />
 ///     completes with the reason.
 /// </summary>
@@ -20,7 +20,7 @@ sealed partial class BrokerProcess : IAsyncDisposable
     // and a control write that fails after disposal can still cancel it.
     readonly CancellationTokenSource _lifetime = new();
     readonly Lock _gate = new();
-    readonly HashSet<BrokerDriveChannel> _channels = [];
+    readonly HashSet<BrokerVolumeChannel> _channels = [];
     readonly Task _controlReader;
     int _disposed;
 
@@ -32,7 +32,7 @@ sealed partial class BrokerProcess : IAsyncDisposable
 
     /// <summary>Builds a process over a connected control pipe. Tests reach it through the harness.</summary>
     /// <param name="control">The connected control pipe.</param>
-    /// <param name="pipes">Creates each drive pipe the process opens.</param>
+    /// <param name="pipes">Creates each volume pipe the process opens.</param>
     /// <param name="createBlockSection">Creates the block section each scan writes into.</param>
     /// <param name="timeProvider">The clock of every client write and reply timeout.</param>
     internal BrokerProcess(Stream control, IBrokerPipeFactory pipes, BrokerBlockSectionFactory createBlockSection,
@@ -49,7 +49,7 @@ sealed partial class BrokerProcess : IAsyncDisposable
     /// <summary>
     ///     Completes once, from the control pipe's reader, when the process ends for any reason
     ///     (the broker exited or crashed, the control pipe failed, or this process was disposed),
-    ///     with the reason. Pending requests have been failed by then and every drive channel reads
+    ///     with the reason. Pending requests have been failed by then and every volume channel reads
     ///     EOF. A caller that looks after the end still gets the reason. The task never faults and
     ///     never stays uncompleted past disposal; its continuations run asynchronously.
     /// </summary>
@@ -58,12 +58,12 @@ sealed partial class BrokerProcess : IAsyncDisposable
     Task? _disposeTask;
 
     /// <summary>
-    ///     Closes the control pipe, which ends every channel on the host, then closes every drive
+    ///     Closes the control pipe, which ends every channel on the host, then closes every volume
     ///     channel still open here and waits for the control reader, so <see cref="Ended" /> is
     ///     complete when it returns. Idempotent. How the broker ended never makes it throw: the
     ///     client has already reported that through <see cref="Ended" /> and its failed requests and
     ///     channels, and a control pipe that fails to close is only logged. An exception from
-    ///     closing a drive channel still propagates.
+    ///     closing a volume channel still propagates.
     /// </summary>
     public ValueTask DisposeAsync()
     {
@@ -105,7 +105,7 @@ sealed partial class BrokerProcess : IAsyncDisposable
 
     async Task CloseChannelsAsync()
     {
-        BrokerDriveChannel[] open;
+        BrokerVolumeChannel[] open;
         lock (_gate)
         {
             open = [.. _channels];

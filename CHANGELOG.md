@@ -3,34 +3,35 @@
 ## 0.3.0
 
 MFTLib 0.3.0 replaces the 0.2 record arrays with one file index. `FileIndex` builds a packed,
-memory-mapped index per drive from a live volume through the elevated broker, an in-process scan
-of a live volume, a saved MFT dump, or a directory walk. It keeps MFT-backed drives current from
+memory-mapped index per volume from a live volume through the elevated broker, an in-process scan
+of a live volume, a saved MFT dump, or a directory walk. It keeps MFT-backed volumes current from
 the USN journal and caches blocks between runs. The MFT scanner, journal reader and native parser
 are internal; applications reach them through `FileIndex`, `MftIndexSources` and `BrokerSession`.
 Test support ships as the separate `MFTLib.TestExtensions` package.
 
 ### Added
 
-- `FileIndex` in `MFTLib.Index`: `OpenAsync`, per-drive `Drives` status, and the queries `Search`, `Enumerate`, `EnumerateRows`, `Find` and `Root`.
+- `FileIndex` in `MFTLib.Index` holds one root: `OpenAsync`, `Status` for that root, and the queries `Search`, `Enumerate`, `EnumerateRows`, `Find` and `Root`.
+- `FileIndexSet` answers `Search`, `Enumerate`, `EnumerateRows` and `Find` across several indexes, so an application that holds a volume, a walked folder and a dump together queries them as one.
 - `FileEntry` handles with `Name`, `Path`, `Size`, `LastWriteTime`, `Attributes`, `Parent`, `Children()` and `Open`, with `IsSizeKnown` and `IsLastWriteTimeKnown` for values a scan could not observe.
 - `SearchQuery`: exact, substring and glob name matching, case sensitivity, subtree, file or directory, size and last-write bounds, and deleted rows.
-- `EnumerateRows` yields non-allocating `IndexRow` views for whole-drive passes.
+- `EnumerateRows` yields non-allocating `IndexRow` views for whole-root passes.
 - Index sources: `BrokerSession.CreateIndexSource`, `MftIndexSources.FromLocalVolumes` for an elevated process, and `MftIndexSources.FromMftDumpFile` for a saved `$MFT` file on Windows or Linux without elevation.
-- `VolumeKey` names an NTFS volume by ASCII letter, normalized to upper case, and `VolumeKey.TryParse` accepts a drive spec such as `C`, `c:` or `C:\`. `RootKey` names any indexed root, a `VolumeKey` or a normalized directory path, with `IsVolume`, `TryGetVolume`, `FromDirectory`, `TryParse` and ordering by `CompareTo`; it has no `Letter`. Every lifecycle verb takes enumerable `RootKey` values.
-- `IndexedDrive.FromDirectory` builds a directory-walk root and derives its key and its volume serial (the containing volume's serial, or zero when the platform does not report one). There is no public constructor for an arbitrary key and serial.
-- `IndexedDrive.Producer` selects an MFT scan or a directory walk per drive, so one index can mix NTFS volumes with any other filesystem. `IndexedDrive.FromWindowsDrive` builds an MFT drive from a `VolumeKey`.
-- `IndexedDrive.EnumerateWindowsVolumes()` returns `IReadOnlyList<WindowsVolume>`, a record of `Drive`, `RootDirectory`, `DriveType`, `IsReady`, `Format`, `IsIndexable` and a display `Reason`. Read `IsReady` and `Format` instead of matching the reason text.
-- Live USN watching per drive: `StartWatchingAsync`, `StopWatchingAsync`, `WaitForCatchUpAsync` and `RescanAsync` each take a cancellation token and return one `DriveOperationResult` for the index's one root.
-- `Changed` raises a `FileChange` with kind, path, previous path and journal timestamp. `WatchFaulted` raises a `WatchFault` with its kind and `IsRecovering`. `WatchStateChanged` reports every watch state change with a per-drive version.
-- Drive and apply faults recover automatically by rescanning the affected drive.
+- `VolumeKey` names an NTFS volume by ASCII letter, normalized to upper case, and `VolumeKey.TryParse` accepts a volume spec such as `C`, `c:` or `C:\`. `RootKey` names any indexed root, a `VolumeKey` or a normalized directory path, with `IsVolume`, `TryGetVolume`, `FromDirectory`, `TryParse` and ordering by `CompareTo`; it has no `Letter`.
+- `IndexedRoot.FromDirectory` builds a directory-walk root and derives its key and its volume serial (the containing volume's serial, or zero when the platform does not report one). There is no public constructor for an arbitrary key and serial.
+- `IndexedRoot.Producer` selects an MFT scan or a directory walk for the root. `IndexedRoot.FromWindowsDrive` builds an MFT volume from a `VolumeKey`.
+- `IndexedRoot.EnumerateWindowsVolumes()` returns `IReadOnlyList<WindowsVolume>`, a record of `Volume`, `RootDirectory`, `DriveType`, `IsReady`, `Format`, `IsIndexable` and a display `Reason`. Read `IsReady` and `Format` instead of matching the reason text.
+- Live USN watching per volume: `StartWatchingAsync`, `StopWatchingAsync`, `WaitForCatchUpAsync` and `RescanAsync` each take a cancellation token and return one `RootOperationResult` for the index's one root.
+- `Changed` raises a `FileChange` with kind, path, previous path and journal timestamp. `WatchFaulted` raises a `WatchFault` with its kind and `IsRecovering`. `WatchStateChanged` reports every watch state change with a per-volume version.
+- Root and apply faults recover automatically by rescanning the affected root.
 - Cache blocks store their root key in page 0 (block format 7); a directory root is cached under a hashed file name (`D` plus 16 hexadecimal digits, then the serial) and a block whose name is not the one its stored key derives is discarded and rescanned.
 - Persistent block cache: `FileIndexOptions.CacheMode`, `CacheDirectory` and `CacheTag`, plus `CacheDirectory.EnsureCreated`, `InspectCached` and `DeleteCached`. A per-block owner lock keeps two live indexes from sharing a cache block.
-- `FileIndex.Status` reports the root's `DriveState`, `DriveFailure`, `DriveBlockStatus` and `DriveWatchStatus`. A missing MFT source reports `DriveFailureKind.MftSourceMissing` with a drive-specific library message; applications choose their own contextual wording.
-- `DriveWatchStatus.CheckpointLoss` explains a rescan forced by the journal moving past a drive's position, with the journal size that would have retained it. `JournalCheckpointLoss.TryGetGrowthTarget`, `FileIndex.QueryUsnJournalSettings` and `BrokerSession.GrowUsnJournalAsync` support an explicit journal growth.
+- `FileIndex.Status` reports the root's `RootState`, `RootFailure`, `RootBlockStatus` and `RootWatchStatus`. A missing MFT source reports `RootFailureKind.MftSourceMissing` with a volume-specific library message; applications choose their own contextual wording.
+- `RootWatchStatus.CheckpointLoss` explains a rescan forced by the journal moving past a volume's position, with the journal size that would have retained it. `JournalCheckpointLoss.TryGetGrowthTarget`, `FileIndex.QueryUsnJournalSettings()` (the journal of the index's own root volume) and `BrokerSession.GrowUsnJournalAsync` support an explicit journal growth.
 - `FileIndexOptions.ScanProgress` and `Diagnostics` report scan progress and block-file deletions.
-- `FileIndexOptions.RetainedFileNames` selects which files an index keeps, and every producer applies it: null keeps every row, an empty collection keeps directories only, and a nonempty collection keeps directories plus files whose names match by the drive's comparison. MFT sources ignore case, including dumps parsed on Linux; directory walks ignore case on Windows and compare ordinally elsewhere. The root row is always kept. A set too long for one broker request frame fails `OpenAsync` with `ArgumentException`.
+- `FileIndexOptions.RetainedFileNames` selects which files an index keeps, and every producer applies it: null keeps every row, an empty collection keeps directories only, and a nonempty collection keeps directories plus files whose names match by the volume's comparison. MFT sources ignore case, including dumps parsed on Linux; directory walks ignore case on Windows and compare ordinally elsewhere. The root row is always kept. A set too long for one broker request frame fails `OpenAsync` with `ArgumentException`.
 - `MftScanOptions.IncludeFreed` imports freed MFT records as deleted rows.
-- `FileIndexOptions.DirectoryWalk` takes a `DirectoryWalkOptions` with `PrunedDirectoryNames`, `PrunedDirectoryNamePatterns`, `PrunedDirectoryPaths`, `PrunedDirectoryAttributes` and `PruneDotDirectories`. A pruned directory is recorded but not entered, and the root is never pruned. MFT drives ignore it.
+- `FileIndexOptions.DirectoryWalk` takes a `DirectoryWalkOptions` with `PrunedDirectoryNames`, `PrunedDirectoryNamePatterns`, `PrunedDirectoryPaths`, `PrunedDirectoryAttributes` and `PruneDotDirectories`. A pruned directory is recorded but not entered, and the root is never pruned. MFT volumes ignore it.
 - Block format 6 stores a library-computed scan shape of the retention, walk and freed-record options, so a warm start under other options cold-scans without a cache tag change, and records `BlockValidationResult.WrongScanShape`. It also stores the walk's access-denied subtree count, so a warm start reports it.
 - `BrokerSession` owns one elevated broker process per consumer session. `ElevatedEntryPoint.RunBrokerIfRequested` dispatches broker mode, and `BrokerDiagnostics.Enable` writes per-role diagnostics logs.
 - `ElevationUtilities.TryAddDefenderProcessExclusions` adds Windows Defender process exclusions, elevating when needed.
@@ -63,7 +64,7 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 ### Migrating from 0.2
 
 - `MftVolume.Open` with `ReadAllRecords`, `FindByName` or `StreamRecords` -> `FileIndex.OpenAsync` over `MftIndexSources.FromLocalVolumes()` or `BrokerSession.CreateIndexSource()`, then `Search`, `Enumerate` or `EnumerateRows`
-- `MftVolume.ParseMFTFromFile` -> `MftIndexSources.FromMftDumpFile(filePath, drive)`
+- `MftVolume.ParseMFTFromFile` -> `MftIndexSources.FromMftDumpFile(filePath, volume)`
 - `MftVolume.FindDirectories`, `FindFiles` and `FindRecords` -> `SearchQuery` with `IsDirectory` true, false or null
 - `MatchFlags.ExactMatch` and `MatchFlags.Contains` -> `NameMatchMode.Exact` and `NameMatchMode.Substring`
 - `MatchFlags.ResolvePaths`, `MftRecord.FullPath` and `MftPathUtilities.ResolvePath` -> `FileEntry.Path`
@@ -72,7 +73,7 @@ Test support ships as the separate `MFTLib.TestExtensions` package.
 - `MftResult.Timings` and `MftParseTimings` -> removed; `FileIndexOptions.ScanProgress` reports scan progress
 - `bufferSizeRecords` parameters -> removed
 - `MftScanOptions.RetainedFileNames` -> `FileIndexOptions.RetainedFileNames`, which the directory walk applies too
-- `DriveFailureKind.CacheTagMismatch` -> `DriveFailureKind.CacheIdentityMismatch`, which also covers a scan-shape mismatch
+- `RootFailureKind.CacheTagMismatch` -> `RootFailureKind.CacheIdentityMismatch`, which also covers a scan-shape mismatch
 - A `CacheTag` version bumped for retention or freed-record changes -> no bump; the library compares those options as the scan shape
 - `MftVolume.GenerateSyntheticMFT` -> internal test support, used by MFTLib's own tests and Benchmark; `SyntheticBlock` and `SyntheticMftProducer` in `MFTLib.TestExtensions` build index cache blocks, not MFT dumps
 - `ElevationUtilities.IsElevated()` and `CanSelfElevate()` -> `ElevationUtilities.DefaultProvider.IsElevated()` and `CanSelfElevate()`

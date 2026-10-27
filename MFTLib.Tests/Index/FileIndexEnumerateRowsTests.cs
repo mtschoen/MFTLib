@@ -11,10 +11,10 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public sealed class FileIndexEnumerateRowsTests : IDisposable
 {
-    TwoDriveQueryFixture _fixture = null!;
+    TwoRootQueryFixture _fixture = null!;
 
     [TestInitialize]
-    public void Initialize() => _fixture = new TwoDriveQueryFixture();
+    public void Initialize() => _fixture = new TwoRootQueryFixture();
 
     public void Dispose() => _fixture.Dispose();
 
@@ -32,7 +32,7 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
         {
             var entry = row.ToEntry();
             Assert.AreEqual(entry.Name, row.Name.ToString());
-            Assert.AreEqual(entry.RecordKey.Drive, row.Drive);
+            Assert.AreEqual(entry.RecordKey.Root, row.Root);
             Assert.AreEqual(entry.Size, row.Size);
             Assert.AreEqual(entry.IsSizeKnown, row.IsSizeKnown);
             Assert.AreEqual(entry.IsDirectory, row.IsDirectory);
@@ -40,7 +40,7 @@ public sealed class FileIndexEnumerateRowsTests : IDisposable
             seen++;
         }
 
-        Assert.IsGreaterThan(0, seen, "The two-drive fixture has rows.");
+        Assert.IsGreaterThan(0, seen, "The two-root fixture has rows.");
     }
 
     [TestMethod]

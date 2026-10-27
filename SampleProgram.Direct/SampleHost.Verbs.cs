@@ -8,14 +8,14 @@ partial class SampleHost
     Task RunVerbAsync(DirectArguments parsed, CancellationToken cancellationToken)
     {
         var source = CreateSourceNative(parsed);
-        var drive = parsed.Source is SourceKind.Dump ? null : ResolveDriveNative(parsed.Drive);
-        return RunSourceAsync(parsed, source, drive, cancellationToken);
+        var root = parsed.Source is SourceKind.Dump ? null : ResolveRootNative(parsed.Drive);
+        return RunSourceAsync(parsed, source, root, cancellationToken);
     }
 
     internal async Task RunSourceAsync(DirectArguments parsed, MftIndexSource source,
-        IndexedRoot? drive, CancellationToken cancellationToken)
+        IndexedRoot? root, CancellationToken cancellationToken)
     {
-        await using var index = await OpenIndexAsync(source, drive, cancellationToken).ConfigureAwait(false);
+        await using var index = await OpenIndexAsync(source, root, cancellationToken).ConfigureAwait(false);
         WriteVerb(index, parsed, cancellationToken);
     }
 
@@ -63,7 +63,7 @@ partial class SampleHost
         var freshness = new Dictionary<RootKey, (long UnknownSize, long UnknownLastWrite, long Hidden, DateTime Newest)>();
         foreach (var row in index.EnumerateRows(new SearchQuery(null, IncludeDeleted: true), cancellationToken))
         {
-            counts.TryGetValue(row.Drive, out var count);
+            counts.TryGetValue(row.Root, out var count);
             if (row.IsDeleted)
             {
                 count.Deleted++;
@@ -75,23 +75,23 @@ partial class SampleHost
             else
             {
                 count.Files++;
-                freshness.TryGetValue(row.Drive, out var seen);
+                freshness.TryGetValue(row.Root, out var seen);
                 seen.UnknownSize += row.IsSizeKnown ? 0 : 1;
                 seen.UnknownLastWrite += row.IsLastWriteTimeKnown ? 0 : 1;
                 seen.Hidden += (row.Attributes & FileAttributes.Hidden) != 0 ? 1 : 0;
                 seen.Newest = row.IsLastWriteTimeKnown && row.LastWriteTime > seen.Newest ? row.LastWriteTime : seen.Newest;
-                freshness[row.Drive] = seen;
+                freshness[row.Root] = seen;
             }
 
-            counts[row.Drive] = count;
+            counts[row.Root] = count;
         }
 
-        var drive = index.Status;
+        var root = index.Status;
         cancellationToken.ThrowIfCancellationRequested();
-        counts.TryGetValue(drive.Drive, out var driveCount);
-        _output.WriteLine($"{drive.Drive}: {driveCount.Files} live files, {driveCount.Directories} live directories, {driveCount.Deleted} retained deleted rows");
-        freshness.TryGetValue(drive.Drive, out var driveSeen);
-        _output.WriteLine($"{drive.Drive}: {driveSeen.UnknownSize} files with unknown size, {driveSeen.UnknownLastWrite} with unknown last-write time, {driveSeen.Hidden} hidden, newest known last write {driveSeen.Newest:u}");
+        counts.TryGetValue(root.Root, out var rootCount);
+        _output.WriteLine($"{root.Root}: {rootCount.Files} live files, {rootCount.Directories} live directories, {rootCount.Deleted} retained deleted rows");
+        freshness.TryGetValue(root.Root, out var rootSeen);
+        _output.WriteLine($"{root.Root}: {rootSeen.UnknownSize} files with unknown size, {rootSeen.UnknownLastWrite} with unknown last-write time, {rootSeen.Hidden} hidden, newest known last write {rootSeen.Newest:u}");
     }
 
     /// <summary>The query a search runs: every flag lands on the matching <see cref="SearchQuery" /> member.</summary>
@@ -181,7 +181,7 @@ partial class SampleHost
         var lastWriteTime = entry.IsLastWriteTimeKnown
             ? entry.LastWriteTime.ToString("u", CultureInfo.InvariantCulture)
             : "<unknown>";
-        _output.WriteLine($"{entry.ToString()}: record {key.RecordNumber} on {key.Drive} ({key.ProducerKind}), {entry.Attributes}, modified {lastWriteTime}, parent {entry.Parent?.Path}, valid {entry.IsValid}, disposed {entry.IsDisposed}");
+        _output.WriteLine($"{entry.ToString()}: record {key.RecordNumber} on {key.Root} ({key.ProducerKind}), {entry.Attributes}, modified {lastWriteTime}, parent {entry.Parent?.Path}, valid {entry.IsValid}, disposed {entry.IsDisposed}");
         using var stream = entry.Open(FileAccess.Read);
         var buffer = new byte[16];
         var read = stream.Read(buffer, 0, buffer.Length);

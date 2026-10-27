@@ -79,7 +79,7 @@ sealed class FailingWrites
     sealed class FailingWriteStream(Stream inner, TaskCompletionSource disposed) : DelegatingStream(inner)
     {
         public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
-            ValueTask.FromException(new IOException("The drive pipe refused the write."));
+            ValueTask.FromException(new IOException("The volume pipe refused the write."));
 
         protected override void Dispose(bool disposing)
         {

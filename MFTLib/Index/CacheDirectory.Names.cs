@@ -47,7 +47,7 @@ public static partial class CacheDirectory
         }
 
         var text = root.ToString();
-        if (!DriveKind.DirectoryWalk.IsCaseSensitive)
+        if (!RootKind.DirectoryWalk.IsCaseSensitive)
         {
             text = text.ToUpperInvariant();
         }

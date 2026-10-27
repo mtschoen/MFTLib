@@ -6,7 +6,7 @@ enum BlockScanPhase : byte
     Transferring = 1
 }
 
-/// <summary>Reports record and byte counts for parsing or transferring a drive's packed block.</summary>
+/// <summary>Reports record and byte counts for parsing or transferring a volume's packed block.</summary>
 readonly record struct BlockWriteProgress(
     long RecordsProcessed,
     long BytesProcessed,

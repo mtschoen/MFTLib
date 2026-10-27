@@ -20,36 +20,36 @@ sealed class ScriptedVolumeAccess : IVolumeAccess
     internal Func<VolumeKey, long, long, UsnJournalSettings> JournalGrow { get; init; } = UnsupportedGrow;
 
     internal static IEnumerable<IReadOnlyList<MftRecord>> UnsupportedScan(
-        VolumeKey drive, ParseThreadAllowance parseThreads, BlockWriteReporting reporting,
+        VolumeKey volume, ParseThreadAllowance parseThreads, BlockWriteReporting reporting,
         MftScanOptions scanOptions, Action<long> recordsOmitted, CancellationToken cancellationToken)
     {
         throw new NotSupportedException("Broker has no scan source");
     }
 
     internal static IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> UnsupportedWatch(
-        VolumeKey drive, UsnJournalCursor since, ISourceOperationReporter operation,
+        VolumeKey volume, UsnJournalCursor since, ISourceOperationReporter operation,
         CancellationToken cancellationToken)
     {
         throw new NotSupportedException("Broker has no watch source");
     }
 
-    internal static UsnJournalSettings UnsupportedGrow(VolumeKey drive, long maximumSize, long allocationDelta)
+    internal static UsnJournalSettings UnsupportedGrow(VolumeKey volume, long maximumSize, long allocationDelta)
     {
         throw new NotSupportedException("Broker has no journal grow source");
     }
 
-    public UsnJournalCursor QueryCursor(VolumeKey drive) => CursorQuery(drive);
-    public IEnumerable<IReadOnlyList<MftRecord>> ScanDriveRecordBatches(
-        VolumeKey drive, ParseThreadAllowance parseThreads, BlockWriteReporting reporting,
+    public UsnJournalCursor QueryCursor(VolumeKey volume) => CursorQuery(volume);
+    public IEnumerable<IReadOnlyList<MftRecord>> ScanVolumeRecordBatches(
+        VolumeKey volume, ParseThreadAllowance parseThreads, BlockWriteReporting reporting,
         MftScanOptions scanOptions, Action<long> recordsOmitted, CancellationToken cancellationToken) =>
-        RecordBatches(drive, parseThreads, reporting, scanOptions, recordsOmitted, cancellationToken);
+        RecordBatches(volume, parseThreads, reporting, scanOptions, recordsOmitted, cancellationToken);
     public (UsnJournalEntry[] Entries, UsnJournalCursor Updated) ReadJournal(
-        VolumeKey drive, UsnJournalCursor since, int maximumBufferReads) =>
-        JournalRead(drive, since, maximumBufferReads);
-    public IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> WatchDrive(
-        VolumeKey drive, UsnJournalCursor since, ISourceOperationReporter operation,
-        CancellationToken cancellationToken) => JournalWatch(drive, since, operation, cancellationToken);
-    public NtfsVolumeInformation QueryVolumeInformation(VolumeKey drive) => VolumeInformation(drive);
-    public UsnJournalSettings GrowUsnJournal(VolumeKey drive, long maximumSize, long allocationDelta) =>
-        JournalGrow(drive, maximumSize, allocationDelta);
+        VolumeKey volume, UsnJournalCursor since, int maximumBufferReads) =>
+        JournalRead(volume, since, maximumBufferReads);
+    public IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> WatchVolume(
+        VolumeKey volume, UsnJournalCursor since, ISourceOperationReporter operation,
+        CancellationToken cancellationToken) => JournalWatch(volume, since, operation, cancellationToken);
+    public NtfsVolumeInformation QueryVolumeInformation(VolumeKey volume) => VolumeInformation(volume);
+    public UsnJournalSettings GrowUsnJournal(VolumeKey volume, long maximumSize, long allocationDelta) =>
+        JournalGrow(volume, maximumSize, allocationDelta);
 }

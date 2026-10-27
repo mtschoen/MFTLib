@@ -18,28 +18,28 @@ public sealed partial record IndexedRoot
     }
 
     /// <summary>
-    ///     Builds a drive from a Windows drive letter, reading its real volume serial so a
+    ///     Builds a volume from a Windows drive letter, reading its real volume serial so a
     ///     re-lettered or replaced volume never matches the wrong cached block.
     /// </summary>
-    /// <param name="drive">The drive letter to read.</param>
-    /// <exception cref="ArgumentException"><paramref name="drive" /> is the default key.</exception>
+    /// <param name="volume">The drive letter to read.</param>
+    /// <exception cref="ArgumentException"><paramref name="volume" /> is the default key.</exception>
     /// <exception cref="IOException">The volume serial could not be read.</exception>
     [SupportedOSPlatform("windows")]
     [ExcludeFromCodeCoverage(Justification = "Windows-only pass-through to ReadWindowsVolume; the target is covered.")]
-    public static IndexedRoot FromWindowsDrive(VolumeKey drive) => ReadWindowsVolume(drive);
+    public static IndexedRoot FromWindowsDrive(VolumeKey volume) => ReadWindowsVolume(volume);
 
     /// <summary>
     ///     The logic behind <see cref="FromWindowsDrive" />. The test seam answers when set; otherwise the serial
     ///     comes from <c>GetVolumeInformationW</c>, and the read throws <see cref="PlatformNotSupportedException" />
     ///     off Windows.
     /// </summary>
-    internal static IndexedRoot ReadWindowsVolume(VolumeKey drive)
+    internal static IndexedRoot ReadWindowsVolume(VolumeKey volume)
     {
-        var rootDirectory = drive.Letter + @":\";
+        var rootDirectory = volume.Letter + @":\";
         var reader = Dependencies._volumeSerialReader ?? ReadVolumeSerial;
         var serial = reader(rootDirectory) ?? throw new IOException(
-            $"Could not read the volume serial for drive {drive}.");
-        return new IndexedRoot(drive, rootDirectory, serial);
+            $"Could not read the volume serial for volume {volume}.");
+        return new IndexedRoot(volume, rootDirectory, serial);
     }
 
     static uint? ReadVolumeSerial(string rootDirectory)

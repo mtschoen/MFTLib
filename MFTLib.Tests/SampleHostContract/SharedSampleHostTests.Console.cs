@@ -49,7 +49,7 @@ partial class SharedSampleHostTests
     }
 
     [TestMethod]
-    public void PhaseReporter_PrintsTheDriveAndTheDirectoryWhenTheProducerReportsOne()
+    public void PhaseReporter_PrintsTheRootAndTheDirectoryWhenTheProducerReportsOne()
     {
         using var output = new StringWriter();
         var reporter = Probe.CreateReporter(output);
@@ -87,7 +87,7 @@ partial class SharedSampleHostTests
     }
 
     [TestMethod]
-    public void PhaseReporter_KeepsEachDrivesPhaseAndCompletionWhenDriveProgressInterleaves()
+    public void PhaseReporter_KeepsEachRootsPhaseAndCompletionWhenRootProgressInterleaves()
     {
         using var output = new StringWriter();
         var reporter = Probe.CreateReporter(output);

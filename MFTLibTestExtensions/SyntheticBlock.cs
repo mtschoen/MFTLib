@@ -13,36 +13,36 @@ public static class SyntheticBlock
     /// <summary>The deepest path the index resolves. A parent chain longer than this makes path resolution throw <see cref="InvalidDataException" />, so a test of that limit builds a chain one row longer.</summary>
     public static int MaximumPathDepth => BlockLayout.MaximumPathDepth;
 
-    /// <summary>The file an index looks for when it warm-starts a drive, so a seeded block is adopted only at this path.</summary>
+    /// <summary>The file an index looks for when it warm-starts a root, so a seeded block is adopted only at this path.</summary>
     /// <param name="cacheDirectory">The cache directory the index is opened over.</param>
-    /// <param name="drive">The drive letter.</param>
-    /// <param name="volumeSerial">The volume serial number the index reports for the drive.</param>
-    /// <returns>The full path of the drive's block file.</returns>
-    public static string CachedPath(string cacheDirectory, RootKey drive, uint volumeSerial)
+    /// <param name="root">The drive letter.</param>
+    /// <param name="volumeSerial">The volume serial number the index reports for the volume.</param>
+    /// <returns>The full path of the root's block file.</returns>
+    public static string CachedPath(string cacheDirectory, RootKey root, uint volumeSerial)
     {
         ArgumentException.ThrowIfNullOrEmpty(cacheDirectory);
-        return Path.Combine(cacheDirectory, CacheDirectory.BlockFileName(drive, volumeSerial));
+        return Path.Combine(cacheDirectory, CacheDirectory.BlockFileName(root, volumeSerial));
     }
 
     /// <summary>
-    ///     Writes a complete block into the drive's cache slot, closes it and returns its path.
+    ///     Writes a complete block into the root's cache slot, closes it and returns its path.
     ///     Capacity is planned from the rows, with headroom for later edits.
     /// </summary>
     /// <param name="cacheDirectory">The cache directory, created when missing.</param>
-    /// <param name="drive">The drive letter.</param>
+    /// <param name="root">The drive letter.</param>
     /// <param name="volumeSerial">The volume serial number stamped into the header.</param>
     /// <param name="options">The header values.</param>
     /// <param name="rows">The rows to write, including the root row named by <see cref="SyntheticBlockOptions.RootRow" />.</param>
     /// <returns>The full path of the block file.</returns>
-    public static string WriteCached(string cacheDirectory, RootKey drive, uint volumeSerial,
+    public static string WriteCached(string cacheDirectory, RootKey root, uint volumeSerial,
         SyntheticBlockOptions options, IEnumerable<SyntheticRow> rows)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(rows);
-        var path = CachedPath(cacheDirectory, drive, volumeSerial);
+        var path = CachedPath(cacheDirectory, root, volumeSerial);
         Directory.CreateDirectory(cacheDirectory);
         using var owner = AcquireSlot(path);
-        using var block = Build(path, drive, volumeSerial, deleteOnClose: false, options, rows);
+        using var block = Build(path, root, volumeSerial, deleteOnClose: false, options, rows);
         return path;
     }
 
@@ -97,12 +97,12 @@ public static class SyntheticBlock
     /// <param name="volumeSerial">The volume serial number the block was written for.</param>
     /// <returns>The producer, row count and cache tag the header stores.</returns>
     /// <exception cref="InvalidOperationException">The block is missing, fails validation, or is owned by an open index.</exception>
-    internal static SyntheticDriveHeader ReadHeader(string blockPath, uint volumeSerial)
+    internal static SyntheticRootHeader ReadHeader(string blockPath, uint volumeSerial)
     {
         RequireExists(blockPath);
         using var owner = AcquireSlot(blockPath);
         using var block = OpenExisting(blockPath, volumeSerial);
-        return SyntheticDriveHeader.From(block);
+        return SyntheticRootHeader.From(block);
     }
 
     /// <summary>

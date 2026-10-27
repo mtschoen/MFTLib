@@ -55,16 +55,16 @@ sealed class MftVolume : IDisposable
     void IDisposable.Dispose() => Dispose();
 
     /// <summary>Opens a volume for reading.</summary>
-    /// <param name="drive">The drive to open.</param>
+    /// <param name="volume">The root to open.</param>
     /// <param name="bufferSizeRecords">Records the native parser reads per chunk; also the unit at which cancellation is observed.</param>
     /// <returns>The open volume, which the caller disposes.</returns>
-    /// <exception cref="ArgumentException"><paramref name="drive" /> is invalid.</exception>
+    /// <exception cref="ArgumentException"><paramref name="volume" /> is invalid.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="bufferSizeRecords" /> is zero.</exception>
     /// <exception cref="IOException">The volume could not be opened, for example without elevation.</exception>
-    internal static MftVolume Open(VolumeKey drive, uint bufferSizeRecords = DefaultBufferSizeRecords)
+    internal static MftVolume Open(VolumeKey volume, uint bufferSizeRecords = DefaultBufferSizeRecords)
     {
         ArgumentOutOfRangeException.ThrowIfZero(bufferSizeRecords);
-        var volumePath = MFTUtilities.GetVolumePath(drive);
+        var volumePath = MFTUtilities.GetVolumePath(volume);
         var handle = FileUtilities.Hooks._getVolumeHandle(volumePath);
 
         return new MftVolume(handle, volumePath, bufferSizeRecords);

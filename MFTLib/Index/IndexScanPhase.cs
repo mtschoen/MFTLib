@@ -20,11 +20,11 @@ public enum IndexScanPhase
     Transferring,
 
     /// <summary>
-    ///     Emitted by <see cref="FileIndex" /> exactly once per drive scan, after the producer's
-    ///     last sample for that drive, whether the scan succeeded, failed or was cancelled
+    ///     Emitted by <see cref="FileIndex" /> exactly once per root scan, after the producer's
+    ///     last sample for that root, whether the scan succeeded, failed or was cancelled
     ///     (<see cref="IndexScanProgress.Outcome" /> says which). Every producer, enumeration
     ///     or MFT-backed, is covered. A rescan, and a retry after a lost catch-up, are each a
-    ///     scan of their own and each report one, so track finished drives as a set.
+    ///     scan of their own and each report one, so track finished roots as a set.
     /// </summary>
     Finished
 }

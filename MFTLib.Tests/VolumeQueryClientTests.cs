@@ -8,13 +8,13 @@ namespace MFTLib.Tests;
 public class VolumeQueryClientTests : BrokerBlockTestBase
 {
     [TestMethod]
-    public async Task QueryVolumeAsync_OneDriveSucceedsAndOneErrors_ReturnsTheVolumeAndThrowsTheHostMessage()
+    public async Task QueryVolumeAsync_OneRootSucceedsAndOneErrors_ReturnsTheVolumeAndThrowsTheHostMessage()
     {
         var reply = new NtfsVolumeInformation(8_192_000_000, 1024);
         await using var broker = new InProcessBroker(BrokerHostFactory.Create(new()
         {
             QueryCursor = _ => ArmedCursor,
-            QueryVolumeInformation = drive => drive == 'C'
+            QueryVolumeInformation = volume => volume == 'C'
                 ? reply
                 : throw new UnauthorizedAccessException("access denied")
         }));
@@ -30,7 +30,7 @@ public class VolumeQueryClientTests : BrokerBlockTestBase
     }
 
     [TestMethod]
-    public async Task QueryVolumeAsync_DefaultDrive_ThrowsArgumentException()
+    public async Task QueryVolumeAsync_DefaultRoot_ThrowsArgumentException()
     {
         await using var broker = new ScriptedBroker();
         await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
@@ -55,7 +55,7 @@ public class VolumeQueryClientTests : BrokerBlockTestBase
         Assert.AreEqual(8_000_000L, volume.MftRecordCount);
         Assert.AreEqual(1024U, volume.BytesPerFileRecordSegment);
         Assert.AreEqual(8_192_000_000L, volume.MftValidDataLength);
-        Assert.IsNull(exception.Drive);
+        Assert.IsNull(exception.Volume);
     }
 
     public TestContext TestContext { get; set; } = null!;

@@ -20,7 +20,7 @@ public sealed partial class FileIndex
     {
         ArgumentNullException.ThrowIfNull(path);
         using var query = BeginQuery(cancellationToken, current => LookupEngine.SelectPathBlock(current, path));
-        return LookupEngine.Find(query.DriveBlock, path, query.CancellationToken);
+        return LookupEngine.Find(query.RootBlock, path, query.CancellationToken);
     }
 
     /// <summary>
@@ -39,7 +39,7 @@ public sealed partial class FileIndex
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
     /// <exception cref="ArgumentException">
     ///     <see cref="SearchQuery.Subtree" /> is the default <see cref="FileEntry" />, belongs to another
-    ///     <see cref="FileIndex" /> or to a drive block a rescan replaced, or has been superseded by a newer
+    ///     <see cref="FileIndex" /> or to a root block a rescan replaced, or has been superseded by a newer
     ///     file reusing its row slot. The default value is rejected before the index is touched; the others are
     ///     judged against the block this query borrowed.
     /// </exception>
@@ -50,7 +50,7 @@ public sealed partial class FileIndex
         ArgumentNullException.ThrowIfNull(query);
         SubtreeAnchor.ThrowIfDefault(query);
         using var scope = BeginQuery(cancellationToken, current => SubtreeAnchor.SelectBlock(current, query));
-        return SearchEngine.Search(scope.DriveBlock, query, scope.CancellationToken);
+        return SearchEngine.Search(scope.RootBlock, query, scope.CancellationToken);
     }
 
     /// <summary>
@@ -84,7 +84,7 @@ public sealed partial class FileIndex
     /// <exception cref="ArgumentException">
     ///     At call time: <see cref="SearchQuery.Subtree" /> is the default <see cref="FileEntry" />. From the
     ///     first MoveNext, which takes the borrow the anchor is validated against: the anchor belongs to another
-    ///     <see cref="FileIndex" /> or to a drive block a rescan replaced, or has been superseded by a newer file
+    ///     <see cref="FileIndex" /> or to a root block a rescan replaced, or has been superseded by a newer file
     ///     reusing its row slot.
     /// </exception>
     /// <seealso cref="Search" />
@@ -123,7 +123,7 @@ public sealed partial class FileIndex
     /// <exception cref="ArgumentException">
     ///     At call time: <see cref="SearchQuery.Subtree" /> is the default <see cref="FileEntry" />. At
     ///     GetEnumerator, which takes the borrow the anchor is validated against: the anchor belongs to another
-    ///     <see cref="FileIndex" /> or to a drive block a rescan replaced, or has been superseded by a newer file
+    ///     <see cref="FileIndex" /> or to a root block a rescan replaced, or has been superseded by a newer file
     ///     reusing its row slot. The borrow is returned when GetEnumerator throws.
     /// </exception>
     /// <exception cref="ObjectDisposedException">At GetEnumerator: the index has been disposed, or the subtree anchor's own index has. At Current or MoveNext: this enumeration's shared borrow has been returned.</exception>
@@ -153,7 +153,7 @@ public sealed partial class FileIndex
     IEnumerable<FileEntry> EnumerateCore(SearchQuery query, CancellationToken cancellationToken)
     {
         using var scope = BeginQuery(cancellationToken, current => SubtreeAnchor.SelectBlock(current, query));
-        foreach (var entry in SearchEngine.Enumerate(scope.DriveBlock, query, scope.CancellationToken))
+        foreach (var entry in SearchEngine.Enumerate(scope.RootBlock, query, scope.CancellationToken))
         {
             yield return entry;
         }
@@ -173,19 +173,19 @@ public sealed partial class FileIndex
     {
         using var query = BeginQuery(cancellationToken);
         query.CancellationToken.ThrowIfCancellationRequested();
-        if (query.DriveBlock is null)
+        if (query.RootBlock is null)
         {
-            Hooks.DrivesReadBeforeLock?.Invoke();
+            Hooks.RootsReadBeforeLock?.Invoke();
             string message;
             lock (_stateLock)
             {
-                message = $"Drive {_runtime.Drive} has no block (state: {_runtime.BlocklessState}).";
+                message = $"Root {_runtime.Root} has no block (state: {_runtime.BlocklessState}).";
             }
 
             throw new InvalidOperationException(message);
         }
 
-        return LookupEngine.Root(query.DriveBlock, query.CancellationToken);
+        return LookupEngine.Root(query.RootBlock, query.CancellationToken);
     }
 
     /// <summary>
@@ -202,7 +202,7 @@ public sealed partial class FileIndex
     ///     to hold the current block under the state lock, and null holds it unconditionally.
     /// </summary>
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
-    SnapshotBorrow BorrowBlock(Func<DriveBlock?, DriveBlock?>? select)
+    SnapshotBorrow BorrowBlock(Func<RootBlock?, RootBlock?>? select)
     {
         lock (_stateLock)
         {
@@ -218,7 +218,7 @@ public sealed partial class FileIndex
     ///     returns, whether it answered or threw.
     /// </summary>
     internal QueryScope BeginQuery(CancellationToken cancellationToken,
-        Func<DriveBlock?, DriveBlock?>? select = null)
+        Func<RootBlock?, RootBlock?>? select = null)
     {
         var scope = AdmitQuery(cancellationToken, select);
         Hooks.ReaderAdmitted?.Invoke();
@@ -230,7 +230,7 @@ public sealed partial class FileIndex
     ///     linked to disposal when it can be cancelled at all, and the borrow is taken last.
     /// </summary>
     QueryScope AdmitQuery(CancellationToken cancellationToken,
-        Func<DriveBlock?, DriveBlock?>? select = null)
+        Func<RootBlock?, RootBlock?>? select = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!cancellationToken.CanBeCanceled)
@@ -277,7 +277,7 @@ public sealed partial class FileIndex
             _linkedCancellation = linkedCancellation;
         }
 
-        internal DriveBlock? DriveBlock => _borrow.DriveBlock;
+        internal RootBlock? RootBlock => _borrow.RootBlock;
 
         internal bool IsDisposed => _borrow.IsReturned;
 

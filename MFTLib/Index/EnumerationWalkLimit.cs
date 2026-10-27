@@ -2,9 +2,9 @@ namespace MFTLib.Index;
 
 /// <summary>
 ///     The process-wide directory-reader budget: one permit per processor, shared by base walks
-///     and their opportunistic workers across every <see cref="FileIndex" /> and drive. An MFT scan
+///     and their opportunistic workers across every <see cref="FileIndex" /> and volume. An MFT scan
 ///     is bounded by the broker's parse-thread allocator; an enumeration walk never reaches the
-///     broker, so this limit is what keeps the bound on scans true wherever drives are scanned.
+///     broker, so this limit is what keeps the bound on scans true wherever volumes are scanned.
 /// </summary>
 static class EnumerationWalkLimit
 {

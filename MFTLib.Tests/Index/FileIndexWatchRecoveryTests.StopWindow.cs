@@ -24,10 +24,10 @@ public partial class FileIndexWatchRecoveryTests
         var beforeRegistration = HoldRestartBeforeRegistration(harness, 'T');
         var producedBefore = harness.ProductionCount('T');
         var watchFailure = new IOException("T's journal wrapped");
-        harness.Source.WatchFor('T').FailDrive(watchFailure);
+        harness.Source.WatchFor('T').FailVolume(watchFailure);
         await beforeRegistration.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        var failure = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
+        var failure = await RootResultAssertions.FailureAsync<VolumeWatchFaultException>(
             () => harness.IndexFor('T').StopWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreSame(watchFailure, failure.InnerException, "the stop reports the fault it stopped");
         beforeRegistration.Release();
@@ -35,42 +35,42 @@ public partial class FileIndexWatchRecoveryTests
 
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore, "the recovery committed its block");
         Assert.HasCount(1, harness.Source.TargetsFor('T'), "no watch starts after the stop returned");
-        Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
-        Assert.AreSequenceEqual([WatchFaultKind.Drive], FaultKinds(harness, 'T'));
-        await DriveResultAssertions.NotApplicableAsync(
+        Assert.AreEqual(WatchState.NotStarted, harness.RootFor('T').Watch.State);
+        Assert.AreSequenceEqual([WatchFaultKind.Volume], FaultKinds(harness, 'T'));
+        await RootResultAssertions.NotApplicableAsync(
             () => harness.IndexFor('T').StopWatchingAsync(Token), "the stop's cleared request stands");
     }
 
     /// <summary>
-    ///     The same window in a consumer rescan's restart of a faulted drive: the stop reports the
+    ///     The same window in a consumer rescan's restart of a faulted root: the stop reports the
     ///     faulted watch's fault in a failed result, and the rescan starts no watch.
     /// </summary>
     [TestMethod]
-    public async Task StopWhileRescanOfAFaultedDriveRegistersItsRestart_ReportsFailedResultWithTheFault()
+    public async Task StopWhileRescanOfAFaultedRootRegistersItsRestart_ReportsFailedResultWithTheFault()
     {
         using var harness = new WatchHarness('T');
         harness.HoldEveryRecovery();
         await harness.IndexFor('T').StartWatchingAsync(Token);
         var watchFailure = new IOException("T's journal wrapped");
-        harness.Source.WatchFor('T').FailDrive(watchFailure);
-        await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
+        harness.Source.WatchFor('T').FailVolume(watchFailure);
+        await harness.WaitForFaultAsync(WatchFaultKind.Volume, 'T');
         var beforeRegistration = HoldRestartBeforeRegistration(harness, 'T');
         var rescan = harness.IndexFor('T').RescanAsync(Token);
         await beforeRegistration.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
 
-        var failure = await DriveResultAssertions.FailureAsync<DriveWatchFaultException>(
+        var failure = await RootResultAssertions.FailureAsync<VolumeWatchFaultException>(
             () => harness.IndexFor('T').StopWatchingAsync(Token).WaitAsync(HangGuard, TestContext.CancellationToken));
         Assert.AreSame(watchFailure, failure.InnerException, "the stop reports the fault it stopped");
         beforeRegistration.Release();
         await rescan.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.HasCount(1, harness.Source.TargetsFor('T'), "no watch starts after the stop returned");
-        Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
-        await DriveResultAssertions.NotApplicableAsync(
+        Assert.AreEqual(WatchState.NotStarted, harness.RootFor('T').Watch.State);
+        await RootResultAssertions.NotApplicableAsync(
             () => harness.IndexFor('T').StopWatchingAsync(Token), "the stop's cleared request stands");
     }
 
-    /// <summary>The same window in a consumer rescan's restart of a healthy drive.</summary>
+    /// <summary>The same window in a consumer rescan's restart of a healthy root.</summary>
     [TestMethod]
     public async Task StopWhileRescanRegistersItsRestart_StopWins()
     {
@@ -85,13 +85,13 @@ public partial class FileIndexWatchRecoveryTests
         await rescan.WaitAsync(HangGuard, TestContext.CancellationToken);
 
         Assert.HasCount(1, harness.Source.TargetsFor('T'), "no watch starts after the stop returned");
-        Assert.AreEqual(WatchState.NotStarted, harness.DriveFor('T').Watch.State);
-        await DriveResultAssertions.NotApplicableAsync(
+        Assert.AreEqual(WatchState.NotStarted, harness.RootFor('T').Watch.State);
+        await RootResultAssertions.NotApplicableAsync(
             () => harness.IndexFor('T').StopWatchingAsync(Token), "the stop's cleared request stands");
     }
 
     /// <summary>
-    ///     Parks the drive's next restart (a rescan's or a recovery's) just before it registers its
+    ///     Parks the root's next restart (a rescan's or a recovery's) just before it registers its
     ///     instance, until the returned gate is released.
     /// </summary>
     static TestGate HoldRestartBeforeRegistration(WatchHarness harness, char driveLetter)

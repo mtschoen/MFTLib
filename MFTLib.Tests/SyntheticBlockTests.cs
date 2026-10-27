@@ -108,12 +108,12 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
-        var drive = index.Status;
-        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, drive.Block!.Origin);
+        var root = index.Status;
+        Assert.AreEqual(BlockOrigin.WarmStartedFromCache, root.Block!.Origin);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
-        Assert.AreEqual(Moment, drive.Block.ScanTimestamp);
+        Assert.AreEqual(Moment, root.Block.ScanTimestamp);
         Assert.AreEqual(10u, index.HeaderOf().RowCount);
-        Assert.AreEqual(5u, drive.Block.LiveRowCount);
+        Assert.AreEqual(5u, root.Block.LiveRowCount);
         var report = index.Search(new SearchQuery("report.txt", NameMatchMode.Exact), TestContext.CancellationToken).Single();
         Assert.AreEqual(1234, report.Size);
         Assert.AreEqual(FileAttributes.ReadOnly | FileAttributes.Archive, report.Attributes);
@@ -201,9 +201,9 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
-        var drive = index.Status;
-        Assert.IsTrue(drive.Block!.IsCapacityExhausted);
-        Assert.AreEqual(DriveState.Ready, drive.State);
+        var root = index.Status;
+        Assert.IsTrue(root.Block!.IsCapacityExhausted);
+        Assert.AreEqual(RootState.Ready, root.State);
         Assert.HasCount(1, index.Search(new SearchQuery("report.txt", NameMatchMode.Exact), TestContext.CancellationToken));
     }
 
@@ -239,8 +239,8 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
         Assert.AreEqual(BlockValidationResult.InvalidNameDescriptor, status.Validation);
         var producer = SampleProducer();
         await using var index = await FileIndex.OpenAsync(Scanning(producer), Token);
-        var drive = index.Status;
-        Assert.AreEqual(BlockOrigin.ProducedByScan, drive.Block!.Origin);
+        var root = index.Status;
+        Assert.AreEqual(BlockOrigin.ProducedByScan, root.Block!.Origin);
     }
 
     [TestMethod]
@@ -340,10 +340,10 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
 
         await using (var index = await FileIndex.OpenAsync(Scanning(producer, tag), Token))
         {
-            var drive = index.Status;
-            Assert.AreEqual(BlockOrigin.ProducedByScan, drive.Block!.Origin);
-            Assert.AreEqual(3, drive.Block.SkippedRecordCount);
-            Assert.AreEqual(Moment, drive.Block.ScanTimestamp);
+            var root = index.Status;
+            Assert.AreEqual(BlockOrigin.ProducedByScan, root.Block!.Origin);
+            Assert.AreEqual(3, root.Block.SkippedRecordCount);
+            Assert.AreEqual(Moment, root.Block.ScanTimestamp);
             Assert.AreEqual(1234, index.Search(new SearchQuery("report.txt", NameMatchMode.Exact), TestContext.CancellationToken).Single().Size);
         }
 
@@ -359,11 +359,11 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
     {
         var producer = SampleProducer();
         await using var index = await FileIndex.OpenAsync(Scanning(producer), Token);
-        Assert.AreSequenceEqual(['T'], [.. producer.ProducedDrives]);
+        Assert.AreSequenceEqual(['T'], [.. producer.ProducedVolumes]);
 
         await index.RescanAsync(Token);
 
-        Assert.AreSequenceEqual(['T', 'T'], [.. producer.ProducedDrives]);
+        Assert.AreSequenceEqual(['T', 'T'], [.. producer.ProducedVolumes]);
     }
 
     [TestMethod]
@@ -382,16 +382,16 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
         await entered.Task.WaitAsync(Token);
 
         Assert.IsFalse(opening.IsCompleted, "the held scan keeps the open pending");
-        Assert.HasCount(1, producer.ProducedDrives, "a held production is already counted");
+        Assert.HasCount(1, producer.ProducedVolumes, "a held production is already counted");
         release.SetResult();
         await using var index = await opening;
-        Assert.AreEqual(DriveState.Ready, index.Status.State);
+        Assert.AreEqual(RootState.Ready, index.Status.State);
     }
 
     [TestMethod]
     [DataRow(false, DisplayName = "retry-on-loss")]
     [DataRow(true, DisplayName = "#360-throw-disposes-block")]
-    public async Task Producer_CatchUpLoss_SurfacesAsTheDrivesCheckpointLossAndTriggersARetry(bool throwOnEvaluation)
+    public async Task Producer_CatchUpLoss_SurfacesAsTheRootsCheckpointLossAndTriggersARetry(bool throwOnEvaluation)
     {
         var loss = CatchUpLossTestSupport.StandardCatchUpLoss('T');
         if (throwOnEvaluation)
@@ -399,10 +399,10 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
             var throwing = SampleProducer(
                 _ => throw new InvalidOperationException("catch-up evaluation failed"));
             await using var failedIndex = await FileIndex.OpenAsync(Scanning(throwing), Token);
-            var failedDrive = failedIndex.Status;
-            Assert.AreEqual(DriveState.Failed, failedDrive.State);
-            Assert.AreEqual(DriveFailureKind.ProducerFailed, failedDrive.Failure?.Kind);
-            Assert.Contains("catch-up evaluation failed", failedDrive.Failure?.Message!);
+            var failedRoot = failedIndex.Status;
+            Assert.AreEqual(RootState.Failed, failedRoot.State);
+            Assert.AreEqual(RootFailureKind.ProducerFailed, failedRoot.Failure?.Kind);
+            Assert.Contains("catch-up evaluation failed", failedRoot.Failure?.Message!);
             return;
         }
 
@@ -411,10 +411,10 @@ public sealed partial class SyntheticBlockTests : IndexTreeTestBase
 
         await using var index = await FileIndex.OpenAsync(Scanning(producer), Token);
 
-        var drive = index.Status;
-        Assert.AreEqual(loss, drive.Watch.CheckpointLoss);
-        Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.HasCount(2, producer.ProducedDrives, "the lost catch-up is scanned again");
+        var root = index.Status;
+        Assert.AreEqual(loss, root.Watch.CheckpointLoss);
+        Assert.AreEqual(RootState.Ready, root.State);
+        Assert.HasCount(2, producer.ProducedVolumes, "the lost catch-up is scanned again");
     }
 
     [TestMethod]

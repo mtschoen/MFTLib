@@ -45,7 +45,7 @@ public class BrokerProcessLivenessTests
         await session.Process.Ended.WaitAsync(HangGuard, TestContext.CancellationToken);
         var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
             session.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken));
-        Assert.IsNull(lost.Drive);
+        Assert.IsNull(lost.Volume);
         Assert.AreEqual(StallMessage, lost.Message);
     }
 
@@ -90,7 +90,7 @@ public class BrokerProcessLivenessTests
 
         var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
             silent.Scan.WaitAsync(HangGuard, TestContext.CancellationToken));
-        Assert.AreEqual('C', lost.Drive);
+        Assert.AreEqual('C', lost.Volume);
         Assert.AreEqual(StallMessage, lost.Message);
         Assert.IsNull(await HostChannelHarness.ReadFrameAsync(silent.HostPipe).WaitAsync(HangGuard, TestContext.CancellationToken),
             "The client closes the silent pipe, which the host reads as EOF.");
@@ -99,7 +99,7 @@ public class BrokerProcessLivenessTests
         await healthy.FinishAsync();
         var result = await healthy.Scan.WaitAsync(HangGuard, TestContext.CancellationToken);
         result.Block.Block.Dispose();
-        Assert.AreEqual(new VolumeKey('D'), result.Drive);
+        Assert.AreEqual(new VolumeKey('D'), result.Volume);
     }
 
     [TestMethod]
@@ -153,7 +153,7 @@ public class BrokerProcessLivenessTests
         // The host never closed the channel after its terminal frame. The stall is the peer's
         // silence, not this scan closing its own channel, so the complete result is not returned.
         var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.Scan.WaitAsync(HangGuard, TestContext.CancellationToken));
-        Assert.AreEqual('C', lost.Drive);
+        Assert.AreEqual('C', lost.Volume);
         Assert.AreEqual(StallMessage, lost.Message);
     }
 
@@ -164,13 +164,13 @@ public class BrokerProcessLivenessTests
         await using var session = new LivenessSession(clock);
         var stalled = await session.StartScanAsync('C');
         var other = await session.StartScanAsync('D');
-        const string hostMessage = "Drive C stalled in step Parsing MFT records for 30 seconds";
+        const string hostMessage = "Volume C stalled in step Parsing MFT records for 30 seconds";
 
         await stalled.SendAsync(writer => BrokerProtocol.WriteStalled(writer, BrokerFrame.Stalled(hostMessage)));
 
         var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() =>
             stalled.Scan.WaitAsync(HangGuard, TestContext.CancellationToken));
-        Assert.AreEqual('C', lost.Drive);
+        Assert.AreEqual('C', lost.Volume);
         Assert.AreEqual(hostMessage, lost.Message);
         Assert.IsFalse(session.Process.Ended.IsCompleted);
         Assert.IsFalse(other.Scan.IsCompleted);
@@ -239,7 +239,7 @@ public class BrokerProcessLivenessTests
 
         Assert.IsTrue(stallTimer.Fired);
         var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => read.WaitAsync(HangGuard, TestContext.CancellationToken));
-        Assert.AreEqual('C', lost.Drive);
+        Assert.AreEqual('C', lost.Volume);
         Assert.AreEqual(StallMessage, lost.Message);
         Assert.IsNull(await HostChannelHarness.ReadFrameAsync(hostPipe).WaitAsync(HangGuard, TestContext.CancellationToken));
     }
@@ -337,7 +337,7 @@ public class BrokerProcessLivenessTests
         return buffer.WrittenCount;
     }
 
-    // A ScriptedBroker on a fake clock whose control pipe and drive pipes count what the client has read.
+    // A ScriptedBroker on a fake clock whose control pipe and volume pipes count what the client has read.
     sealed class LivenessSession : IAsyncDisposable
     {
         readonly ConcurrentDictionary<string, ReadCounter> _driveReads = new(StringComparer.Ordinal);
@@ -346,7 +346,7 @@ public class BrokerProcessLivenessTests
         public LivenessSession(TimeProvider clock)
         {
             Broker = new ScriptedBroker(clock, ControlReads.Wrap,
-                (pipeName, stream) => DriveReads(pipeName).Wrap(stream));
+                (pipeName, stream) => VolumeReads(pipeName).Wrap(stream));
         }
 
         public ScriptedBroker Broker { get; }
@@ -355,7 +355,7 @@ public class BrokerProcessLivenessTests
 
         public ReadCounter ControlReads { get; } = new();
 
-        ReadCounter DriveReads(string pipeName) => _driveReads.GetOrAdd(pipeName, _ => new ReadCounter());
+        ReadCounter VolumeReads(string pipeName) => _driveReads.GetOrAdd(pipeName, _ => new ReadCounter());
 
         public Task SendControlAsync(Action<IBufferWriter<byte>> write)
         {
@@ -377,7 +377,7 @@ public class BrokerProcessLivenessTests
         // Starts a scan and scripts it to the point where the client waits for ScanReady.
         public async Task<StubbedScan> StartScanAsync(char letter, IProgress<BlockWriteProgress>? progress = null)
         {
-            var scan = Broker.Process.ScanDriveAsync(letter, TestBlockSections.Target(),
+            var scan = Broker.Process.ScanVolumeAsync(letter, TestBlockSections.Target(),
                 new MftScanOptions(), progress, CancellationToken.None);
             await AnswerQueryVolumeAsync(Volume);
             var open = await Broker.ReadRequestAsync();
@@ -387,7 +387,7 @@ public class BrokerProcessLivenessTests
                 .WaitAsync(HangGuard);
             await SendControlAsync(writer => BrokerProtocol.WriteChannelOpened(writer, BrokerFrame.ChannelOpened(open.RequestId)));
             Assert.AreEqual(BrokerFrameKind.ArmAndScan, (await HostChannelHarness.ReadFrameAsync(pipe).WaitAsync(HangGuard))?.Kind);
-            var scripted = new StubbedScan(pipe, DriveReads(pipeName), scan);
+            var scripted = new StubbedScan(pipe, VolumeReads(pipeName), scan);
             await scripted.SendAsync(writer => BrokerProtocol.WriteCursor(writer, BrokerFrame.ArmedCursor(new UsnJournalCursor(7, 1000))));
             await scripted.SettledAsync();
             return scripted;
@@ -397,13 +397,13 @@ public class BrokerProcessLivenessTests
     }
 
     // The host's end of one scan channel, with the count of bytes it has sent.
-    sealed class StubbedScan(Stream hostPipe, ReadCounter reads, Task<BrokerDriveScanResult> scan)
+    sealed class StubbedScan(Stream hostPipe, ReadCounter reads, Task<BrokerVolumeScanResult> scan)
     {
         long _sent;
 
         public Stream HostPipe => hostPipe;
 
-        public Task<BrokerDriveScanResult> Scan => scan;
+        public Task<BrokerVolumeScanResult> Scan => scan;
 
         public Task SendAsync(Action<IBufferWriter<byte>> write)
         {
