@@ -38,6 +38,15 @@ public sealed record DriveBlockStatus
     /// </summary>
     public DateTime ScanTimestamp { get; init; }
 
+    /// <summary>
+    ///     The current block's change version. It increases on every applied journal change batch and on
+    ///     every rescan, and a warm start adopts the cached block's value. It is comparable only within
+    ///     one <see cref="FileIndex" /> instance: a deleted cache or a new process can restart it. A
+    ///     consumer remembers the last value it saw for a drive and compares; a different value means
+    ///     the drive's rows may have changed.
+    /// </summary>
+    public ulong Generation { get; init; }
+
     /// <summary>A producer write or mutation could not fit; the inventory is incomplete or stale and only a rescan repairs it.</summary>
     public bool IsCapacityExhausted { get; init; }
 

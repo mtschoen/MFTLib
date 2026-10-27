@@ -45,6 +45,8 @@ public class PublicMemberCallerTests
             "file-wizard FileWizard/ContentHashSidecar.cs creates the cache directory before it writes beside it",
         ["method MFTLib.Index.CacheTag.ToString() : System.String"] =
             "reached through string interpolation, which emits no member reference; file-wizard file-wizard/BlockCacheCatalog.cs:98 and git-wizard GitWizard/MftIndexCacheStatusFormatter.cs:50 print the stored and requested tags",
+        ["property MFTLib.Index.DriveBlockStatus.Generation : System.UInt64"] =
+            "file-wizard FileWizardMaui.Logic/DuplicateNameCounter.cs skips a duplicate-name recount when no drive's Generation changed (lands in file-wizard's 0.3.0 pin-bump pull request)",
         ["method MFTLib.Index.DriveKey.TryParse(System.String, MFTLib.Index.DriveKey&) : System.Boolean"] =
             "Owner-approved consumer migrations: file-wizard FileWizard/DriveSelectionParser.cs and FileWizard/FileWizardSettings.cs parse CLI and saved drive specs; git-wizard GitWizard/MftIndexSession.Windows.cs NormalizeVolume parses requested volumes",
         ["method MFTLib.Index.JournalCheckpointLoss.TryGetGrowthTarget(MFTLib.UsnJournalSettings&) : System.Boolean"] =

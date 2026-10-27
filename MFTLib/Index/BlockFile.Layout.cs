@@ -14,6 +14,7 @@ sealed partial class BlockFile
     readonly long _namePoolOffset;
     uint _rowCount;
     uint _namePoolUsed;
+    ulong _generation;
 
     /// <summary>Row slot count from the validated layout this block was built from.</summary>
     internal uint SlotCapacity { get; }
@@ -26,6 +27,16 @@ sealed partial class BlockFile
 
     /// <summary>Used name-pool bytes, as this block's writers have published them.</summary>
     internal uint NamePoolUsed => _namePoolUsed;
+
+    /// <summary>The change version, as this block's writers have published it; never re-read from the mapped header.</summary>
+    internal ulong Generation => _generation;
+
+    /// <summary>Records a new change version and publishes it to the header.</summary>
+    internal void PublishGeneration(ulong generation)
+    {
+        _generation = generation;
+        Header.Generation = generation;
+    }
 
     /// <summary>Records a new row count and publishes it to the header.</summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="rowCount" /> exceeds <see cref="SlotCapacity" />.</exception>
@@ -63,6 +74,7 @@ sealed partial class BlockFile
 
         _rowCount = published.RowCount;
         _namePoolUsed = published.NamePoolUsed;
+        _generation = published.Generation;
         return true;
     }
 }

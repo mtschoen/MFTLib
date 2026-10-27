@@ -82,6 +82,11 @@ public sealed partial class FileIndex
             lock (StateLock)
             {
                 var driveOrdinal = replacing?.DriveOrdinal ?? Index.AllocateDriveOrdinalLocked();
+                if (replacing is not null)
+                {
+                    new BlockWriter(block).AdvanceGenerationPast(replacing.Block.Generation);
+                }
+
                 var adopted = BuildDriveBlock(driveOrdinal, block);
                 Block = adopted;
 

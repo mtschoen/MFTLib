@@ -157,7 +157,7 @@ Little-endian throughout. Every region boundary is 4096-byte aligned.
 | 44 | name pool capacity | u32 | Bytes |
 | 48 | USN journal identifier | u64 | Zero for enumeration blocks |
 | 56 | USN next USN | i64 | |
-| 64 | generation | u64 | Bumped once per mutation batch |
+| 64 | generation | u64 | Change version: bumped once per applied mutation batch; a rescan starts its replacement block at the superseded block's value plus one (a first scan with no predecessor starts at 1); a warm start adopts the cached value. Read as `DriveBlockStatus.Generation`; comparable only within one `FileIndex` |
 | 72 | row region offset | u64 | |
 | 80 | name pool offset | u64 | |
 | 88 | live row count | u32 | Rows in use and not tombstoned; maintained by `BlockWriter` |
@@ -481,5 +481,6 @@ no caller waits; faults still reach `WatchFaulted`, `DriveWatchStatus.FailureMes
 
 ## Sidecars
 
-A follow-up children table or name index is a separate file next to the block,
-keyed by the block's generation. It is never a format change.
+A follow-up children table or name index is a separate file next to the block.
+It is never a format change. A sidecar is bound to the block file it was built from,
+not to `generation`, which restarts when a cache is deleted or a process starts anew.

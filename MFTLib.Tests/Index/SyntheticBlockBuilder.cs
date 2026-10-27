@@ -154,7 +154,7 @@ sealed class SyntheticBlockBuilder : IDisposable
 
         header.LiveRowCount = liveRowCount;
         header.ScanTimestampTicks = scanTimestampUtc.Ticks;
-        header.Generation = 1;
+        _block.PublishGeneration(1);
         header.Flags |= BlockFlags.Complete;
         _block.Flush(null);
     }

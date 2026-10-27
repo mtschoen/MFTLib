@@ -297,9 +297,20 @@ sealed partial class BlockWriter
     public ulong BumpGeneration()
     {
         using var access = Block.TakeAccess();
-        ref var header = ref Block.Header;
-        header.Generation++;
-        return header.Generation;
+        var next = Block.Generation + 1;
+        Block.PublishGeneration(next);
+        return next;
+    }
+
+    /// <summary>
+    ///     Raises the generation of a replacement block above the superseded block's, so a drive's
+    ///     generation never repeats across a rescan. A generation already higher is kept.
+    /// </summary>
+    /// <param name="supersededGeneration">The generation of the block this one replaces.</param>
+    public void AdvanceGenerationPast(ulong supersededGeneration)
+    {
+        using var access = Block.TakeAccess();
+        Block.PublishGeneration(Math.Max(Block.Generation, supersededGeneration + 1));
     }
 
     /// <summary>
@@ -315,9 +326,9 @@ sealed partial class BlockWriter
         Hooks._completeAccessTaken?.Invoke();
         ref var header = ref Block.Header;
         header.ScanTimestampTicks = scanTimestampUtc.Ticks;
-        if (header.Generation == 0)
+        if (Block.Generation == 0)
         {
-            header.Generation = 1;
+            Block.PublishGeneration(1);
         }
 
         header.Flags |= BlockFlags.Complete;

@@ -78,6 +78,7 @@ sealed unsafe partial class BlockFile : IDisposable
         _namePoolOffset = BlockLayout.NamePoolOffset(layout.SlotCapacity);
         _rowCount = layout.RowCount;
         _namePoolUsed = layout.NamePoolUsed;
+        _generation = layout.Generation;
         Hooks = new BlockHooks(this);
         byte* pointer = null;
         _view.SafeMemoryMappedViewHandle.AcquirePointer(ref pointer);

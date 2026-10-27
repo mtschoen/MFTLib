@@ -27,6 +27,7 @@ public sealed partial class FileIndex
                     CacheLocation = result.CacheLocation,
                     LiveRowCount = header.LiveRowCount,
                     ScanTimestamp = header.ScanTimestampUtc,
+                    Generation = driveBlock.Block.Generation,
                     IsCapacityExhausted = header.IsCapacityExhausted,
                     SkippedRecordCount = result.SkippedRecordCount,
                     AccessDeniedSubtreeCount = (int)Math.Min(header.AccessDeniedSubtreeCount, int.MaxValue)

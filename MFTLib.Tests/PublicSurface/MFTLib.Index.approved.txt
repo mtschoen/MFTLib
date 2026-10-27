@@ -108,6 +108,7 @@ MFTLib.Index.DriveBlockStatus :: method public static op_Equality(MFTLib.Index.D
 MFTLib.Index.DriveBlockStatus :: method public static op_Inequality(MFTLib.Index.DriveBlockStatus? left, MFTLib.Index.DriveBlockStatus? right) : bool
 MFTLib.Index.DriveBlockStatus :: property public AccessDeniedSubtreeCount { get; init; } : int
 MFTLib.Index.DriveBlockStatus :: property public CacheLocation { get; init; } : MFTLib.Index.CacheLocation?
+MFTLib.Index.DriveBlockStatus :: property public Generation { get; init; } : ulong
 MFTLib.Index.DriveBlockStatus :: property public IsCapacityExhausted { get; init; } : bool
 MFTLib.Index.DriveBlockStatus :: property public LiveRowCount { get; init; } : uint
 MFTLib.Index.DriveBlockStatus :: property public Origin { get; init; } : MFTLib.Index.BlockOrigin

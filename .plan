@@ -11,7 +11,7 @@
 
 - **Children table (CSR)**: revisit when measured tree UI expand latency exceeds 50 ms.
 - **Name interning**: revisit when the measured name pool exceeds 40 percent of block size.
-- **Secondary name index**: revisit when the median warm exact or substring `FileIndex.Search` query exceeds 200 ms (`Benchmark.exe index --cache-directory <path> --iterations 3`); sidecars are keyed by block generation.
+- **Secondary name index**: revisit when the median warm exact or substring `FileIndex.Search` query exceeds 200 ms (`Benchmark.exe index --cache-directory <path> --iterations 3`).
 - **Subtree exclusion**: revisit when a user asks.
 - **Hard links as multiple rows per record**: revisit when a consumer needs the second name.
 

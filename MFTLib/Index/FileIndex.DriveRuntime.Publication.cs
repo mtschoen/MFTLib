@@ -73,6 +73,11 @@ public sealed partial class FileIndex
                     var replaced = Block;
                     var driveOrdinal = replaced?.DriveOrdinal ?? Index.AllocateDriveOrdinalLocked();
 
+                    if (replaced is not null)
+                    {
+                        new BlockWriter(block).AdvanceGenerationPast(replaced.Block.Generation);
+                    }
+
                     var driveBlock = BuildDriveBlock(driveOrdinal, block);
                     var handoff = RetireWatchAtCommitLocked();
                     if (recovery is null)

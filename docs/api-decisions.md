@@ -913,6 +913,21 @@ synchronous shape.
 
 **Revisit only if:** a consumer needs to apply journal entries from a context that cannot await.
 
+## Block Generation is a per-drive change version
+
+**Decision (2026-10-26, owner ruling B8):** the block header's `Generation` stays and is exposed as
+`DriveBlockStatus.Generation` (`ulong`). Within one `FileIndex` it strictly increases on every applied journal
+mutation batch and on every rescan: a replacement block starts at the superseded block's value plus one, a warm
+start adopts the cached block's value, and a cold scan with no previous block starts at 1. It is comparable only
+within one `FileIndex` instance; a deleted cache or a new process can restart it, so a consumer remembers the last
+value it saw for a drive and compares for inequality.
+
+**Reason:** the field was written but never read, and a rescan restarted it at 1, so no single value could say
+whether a drive changed. file-wizard `FileWizardMaui.Logic/DuplicateNameCounter.cs` uses it to skip a
+duplicate-name recount when no drive's Generation changed.
+
+**Revisit only if:** a consumer needs change versions that survive a deleted cache or span processes.
+
 ## FileEntry.Children stays, with the Direct sample as its caller
 
 **Decision (2026-10-26, issue 759):** `FileEntry.Children` stays as the supported direct-child navigation primitive.
