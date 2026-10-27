@@ -537,6 +537,28 @@ automatically. No consumer needs rejected filenames from public cache deletion.
 **Revisit only if:** a concrete consumer requirement changes these responsibilities,
 such as a production need for rejected-filename reporting during deletion.
 
+## No privacy promise: full MFT metadata retention is the default
+
+**Decision (owner ruling 2026-10-26):** MFTLib makes no promise to hide any file's metadata from a
+process running as the indexing user. MFT scans offer no subtree-exclusion option, and full metadata
+retention is their default. `FileIndexOptions.RetainedFileNames` can filter retained file rows, and
+`DirectoryWalkOptions.PrunedDirectoryPaths` and the other directory-walk pruning rules can skip
+enumeration subtrees. These are existing filtering features, not privacy boundaries. What MFTLib
+does do: `CacheDirectory.EnsureCreated`, which every cached open calls, gives the cache directory an
+access list of the current user plus SYSTEM with inheritance removed (owner-only mode on Unix), and
+file contents are never read.
+
+**Reason:** a scan reads the raw MFT, through the elevated broker or an elevated process, and that
+read applies no per-file access checks. With default retention, the index and its cache file hold
+the name, parent folder, attributes, size and timestamps of every file on the volume, including
+files the user's account cannot open. At some point the full table is in the consuming process's
+memory, where anything able to read that process can read it. Filename retention does not change
+what the raw MFT scan reads. Neither it nor enumeration pruning is a privacy guarantee. An MFT
+subtree-exclusion option presented as a privacy boundary would be a promise MFTLib cannot keep.
+
+**Revisit only if:** a consumer asks for MFT subtree exclusion for a reason other than privacy, for
+example size.
+
 ## Cache deletion reports per-file outcomes through results
 
 **Decision:**
