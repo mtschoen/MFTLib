@@ -40,6 +40,115 @@ public partial class BrokerProtocolTests
         return [.. buffer.WrittenSpan];
     }
 
+    static byte[] ValidFrame(BrokerFrameKind kind)
+    {
+        if (kind == BrokerFrameKind.JournalBatch)
+        {
+            return BatchFrameWithOneEntry("a.txt");
+        }
+
+        var buffer = new ArrayBufferWriter<byte>();
+        switch (kind)
+        {
+            case BrokerFrameKind.OpenChannel:
+                BrokerProtocol.WriteOpenChannel(buffer, 1, 'C', "p");
+                break;
+            case BrokerFrameKind.ChannelOpened:
+                BrokerProtocol.WriteChannelOpened(buffer, 1);
+                break;
+            case BrokerFrameKind.QueryVolume:
+                BrokerProtocol.WriteQueryVolume(buffer, 1, 'C');
+                break;
+            case BrokerFrameKind.VolumeInfo:
+                BrokerProtocol.WriteVolumeInfo(buffer, 1, 1024, 4096);
+                break;
+            case BrokerFrameKind.GrowUsnJournal:
+                BrokerProtocol.WriteGrowUsnJournal(buffer, 1, 'C', 0x08000000, 0x01000000);
+                break;
+            case BrokerFrameKind.UsnJournalSettings:
+                BrokerProtocol.WriteUsnJournalSettings(buffer, 1, 0x08000000, 0x01000000);
+                break;
+            case BrokerFrameKind.Error:
+                BrokerProtocol.WriteError(buffer, 1, "e");
+                break;
+            case BrokerFrameKind.Heartbeat:
+                BrokerProtocol.WriteHeartbeat(buffer);
+                break;
+            case BrokerFrameKind.Stalled:
+                BrokerProtocol.WriteStalled(buffer, "s");
+                break;
+            case BrokerFrameKind.ArmAndScan:
+                BrokerProtocol.WriteArmAndScan(buffer, "s", RetainedFileNamesGitAndNonAscii, includeFreed: true);
+                break;
+            case BrokerFrameKind.Cursor:
+                BrokerProtocol.WriteCursor(buffer, new UsnJournalCursor(1, 2));
+                break;
+            case BrokerFrameKind.ScanProgress:
+                BrokerProtocol.WriteScanProgress(buffer, new BrokerScanProgress
+                {
+                    Phase = BrokerScanPhase.Parsing,
+                    RecordsProcessed = 1,
+                    BytesProcessed = 2,
+                    TotalRecords = 3,
+                    TotalBytes = 4
+                });
+                break;
+            case BrokerFrameKind.CatchUpLost:
+                BrokerProtocol.WriteCatchUpLost(buffer, FullLoss);
+                break;
+            case BrokerFrameKind.ScanReady:
+                BrokerProtocol.WriteScanReady(buffer, 1);
+                break;
+            case BrokerFrameKind.StartWatch:
+                BrokerProtocol.WriteStartWatch(buffer, new UsnJournalCursor(1, 2));
+                break;
+            case BrokerFrameKind.CaughtUp:
+                BrokerProtocol.WriteCaughtUp(buffer);
+                break;
+            case BrokerFrameKind.ScanCompleted:
+                BrokerProtocol.WriteScanCompleted(buffer);
+                break;
+        }
+
+        return [.. buffer.WrittenSpan];
+    }
+
+    [TestMethod]
+    [DataRow((int)BrokerFrameKind.OpenChannel)]
+    [DataRow((int)BrokerFrameKind.ChannelOpened)]
+    [DataRow((int)BrokerFrameKind.QueryVolume)]
+    [DataRow((int)BrokerFrameKind.VolumeInfo)]
+    [DataRow((int)BrokerFrameKind.GrowUsnJournal)]
+    [DataRow((int)BrokerFrameKind.UsnJournalSettings)]
+    [DataRow((int)BrokerFrameKind.Error)]
+    [DataRow((int)BrokerFrameKind.Heartbeat)]
+    [DataRow((int)BrokerFrameKind.Stalled)]
+    [DataRow((int)BrokerFrameKind.ArmAndScan)]
+    [DataRow((int)BrokerFrameKind.Cursor)]
+    [DataRow((int)BrokerFrameKind.ScanProgress)]
+    [DataRow((int)BrokerFrameKind.CatchUpLost)]
+    [DataRow((int)BrokerFrameKind.ScanReady)]
+    [DataRow((int)BrokerFrameKind.JournalBatch)]
+    [DataRow((int)BrokerFrameKind.StartWatch)]
+    [DataRow((int)BrokerFrameKind.CaughtUp)]
+    [DataRow((int)BrokerFrameKind.ScanCompleted)]
+    public void ReadFrame_TrailingPayloadByte_ThrowsInvalidDataException(int kindValue)
+    {
+        var kind = (BrokerFrameKind)kindValue;
+        var bytes = ValidFrame(kind);
+
+        var decoded = BrokerProtocol.ReadFrame(bytes, out var consumed);
+        Assert.AreEqual(kind, decoded.Kind);
+        Assert.AreEqual(bytes.Length, consumed);
+
+        byte[] trailing = [.. bytes, 0xFF];
+        var declaredLength = BinaryPrimitives.ReadInt32LittleEndian(trailing);
+        BinaryPrimitives.WriteInt32LittleEndian(trailing, declaredLength + 1);
+
+        var exception = Assert.ThrowsExactly<InvalidDataException>(() => BrokerProtocol.ReadFrame(trailing, out _));
+        Assert.Contains("trailing bytes", exception.Message);
+    }
+
     [TestMethod]
     public void ReadFrame_FixedFieldPastTheEndOfThePayload_ThrowsInvalidDataExceptionNamingTheShortfall()
     {

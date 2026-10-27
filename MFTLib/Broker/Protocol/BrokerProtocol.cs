@@ -113,11 +113,7 @@ static partial class BrokerProtocol
             _ => throw new InvalidDataException($"Unknown frame kind: {kind}")
         };
 
-        if (kind is BrokerFrameKind.OpenChannel or BrokerFrameKind.QueryVolume or BrokerFrameKind.GrowUsnJournal)
-        {
-            payload.RequireComplete();
-        }
-
+        payload.RequireComplete();
         return frame;
     }
 
@@ -145,7 +141,6 @@ static partial class BrokerProtocol
             retainedFileNames.Add(payload.String());
         }
 
-        payload.RequireComplete();
         return BrokerFrame.ArmAndScan(sectionName, retainedFileNames, includeFreedValue == 1);
     }
 
@@ -188,7 +183,6 @@ static partial class BrokerProtocol
         var bytesProcessed = payload.Int64();
         var totalRecordsRaw = payload.Int64();
         var totalBytesRaw = payload.Int64();
-        payload.RequireComplete();
 
         return new BrokerScanProgress
         {

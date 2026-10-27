@@ -121,7 +121,10 @@ Frames are `Cursor`, zero or more `ScanProgress`, `ScanReady` (skipped record co
 `ScanProgress` carries a 32-bit phase (Parsing = 0, Transferring = 1), then four signed 64-bit values: records processed, name-pool bytes processed, total records and total name-pool bytes. Unknown totals are encoded as -1. The length field is 37 (kind plus payload), for 41 bytes including the four-byte prefix. The channel identifies the drive. Watchdog progress and progress throttling use their own clocks.
 
 The frame length limit is 16 MiB, checked before sending and before allocating a
-received frame. A native-source watch `JournalBatch` is one 64 KiB journal read;
+received frame. Every frame kind must consume its declared payload completely; any
+unconsumed bytes inside a frame's declared payload fail decoding with
+`InvalidDataException`, including for payload-free frames, while bytes after the
+declared frame length belong to subsequent frames in a combined input. A native-source watch `JournalBatch` is one 64 KiB journal read;
 `Error` and `Stalled` text is truncated to 32,768 UTF-16 units. A
 `FileIndexOptions.RetainedFileNames` list making `ArmAndScan` exceed the limit
 (32,640 maximum-length names with the fixed 47-unit section name) throws `ArgumentException`

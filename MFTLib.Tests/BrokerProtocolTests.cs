@@ -39,9 +39,15 @@ public partial class BrokerProtocolTests
         BrokerProtocol.WriteError(buffer, 1, "test");
         BrokerProtocol.WriteHeartbeat(buffer);
 
-        BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
+        var firstFrame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
 
+        Assert.AreEqual(BrokerFrameKind.Error, firstFrame.Kind);
         Assert.AreEqual(buffer.WrittenCount - 5, consumed, "The reader stops at the end of the first frame.");
+
+        var secondFrame = BrokerProtocol.ReadFrame(buffer.WrittenSpan[consumed..], out var secondConsumed);
+
+        Assert.AreEqual(BrokerFrameKind.Heartbeat, secondFrame.Kind);
+        Assert.AreEqual(5, secondConsumed);
     }
 
     [TestMethod]
