@@ -12,15 +12,16 @@ namespace MFTLib.Tests;
 // in-process broker) and the self-elevation relaunch.
 [TestClass]
 [DoNotParallelize]
-public class WatchHostModeTests
+public sealed class WatchHostModeTests : IDisposable
 {
+    TempDirectory _directoryOwner = null!;
     string _directory = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _directory = Path.Combine(Path.GetTempPath(), $"watchHostModes-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_directory);
+        _directoryOwner = new TempDirectory("watchHostModes");
+        _directory = _directoryOwner.Path;
         FileUtilities.Hooks._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
     }
 
@@ -29,8 +30,10 @@ public class WatchHostModeTests
     {
         MFTLibNative.Hooks.ResetToDefaults();
         FileUtilities.Hooks.ResetToDefaults();
-        Directory.Delete(_directory, recursive: true);
+        _directoryOwner.Dispose();
     }
+
+    public void Dispose() => Cleanup();
 
     [TestMethod]
     public void Run_UnknownOption_PrintsUsageAndReturnsTwoWithoutTouchingElevation()

@@ -19,17 +19,9 @@ static class SyntheticNtfsImage
     /// </summary>
     public static void Write(string path, int recordCount)
     {
-        var mftPath = Path.GetTempFileName();
-        try
-        {
-            File.Delete(mftPath);
-            MftVolume.GenerateSyntheticMFT(mftPath, (ulong)recordCount, 256);
-            Write(path, File.ReadAllBytes(mftPath));
-        }
-        finally
-        {
-            File.Delete(mftPath);
-        }
+        using var temporaryFile = new TempFile(create: false);
+        MftVolume.GenerateSyntheticMFT(temporaryFile.Path, (ulong)recordCount, 256);
+        Write(path, File.ReadAllBytes(temporaryFile.Path));
     }
 
     /// <summary>

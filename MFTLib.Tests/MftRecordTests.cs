@@ -92,22 +92,16 @@ public class MftRecordTests
     [TestMethod]
     public void Parse_SequenceNumberMatchesSyntheticRecord()
     {
-        var path = Path.Combine(Path.GetTempPath(), $"mftlib-sequence-{Guid.NewGuid():N}.mft");
-        try
-        {
-            MftVolume.GenerateSyntheticMFT(path, 100, 256);
-            var records = DirectParse.ParseFile(path, out _);
-            Assert.IsGreaterThanOrEqualTo(10, records.Length, $"Expected at least 10 records, got {records.Length}");
+        using var temporaryFile = new TempFile("mftlib-sequence", create: false);
+        var path = temporaryFile.Path;
+        MftVolume.GenerateSyntheticMFT(path, 100, 256);
+        var records = DirectParse.ParseFile(path, out _);
+        Assert.IsGreaterThanOrEqualTo(10, records.Length, $"Expected at least 10 records, got {records.Length}");
 
-            foreach (var record in records.Take(10))
-            {
-                Assert.AreEqual((ushort)(record.RecordNumber + 1), record.SequenceNumber,
-                    $"record {record.RecordNumber}");
-            }
-        }
-        finally
+        foreach (var record in records.Take(10))
         {
-            File.Delete(path);
+            Assert.AreEqual((ushort)(record.RecordNumber + 1), record.SequenceNumber,
+                $"record {record.RecordNumber}");
         }
     }
 

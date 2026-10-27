@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -25,8 +26,9 @@ public class SyntheticIndexSourceTests
         ]);
         var watches = new ScriptedWatchSource();
 
+        using var directory = new TempDirectory("synthetic-index-source");
         var source = SyntheticIndexSource.Create(producer, watches);
-        var path = Path.Combine(Path.GetTempPath(), "synthetic-index-source-" + Guid.NewGuid().ToString("N") + ".mlix");
+        var path = Path.Combine(directory.Path, "scan.mlix");
         var result = await source.Producer(Request(path), CancellationToken.None);
         using var block = result.Block;
 
@@ -38,10 +40,11 @@ public class SyntheticIndexSourceTests
     [TestMethod]
     public async Task Create_WithoutAProducerFailsEveryScanClearly()
     {
+        using var directory = new TempDirectory("synthetic-index-source", create: false);
         var source = SyntheticIndexSource.Create();
 
         var failure = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-            source.Producer(Request(Path.Combine(Path.GetTempPath(), "never-created.mlix")), CancellationToken.None));
+            source.Producer(Request(Path.Combine(directory.Path, "never-created.mlix")), CancellationToken.None));
 
         Assert.Contains("no synthetic producer was supplied", failure.Message);
         Assert.IsNull(source.WatchSource);

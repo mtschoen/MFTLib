@@ -1,3 +1,4 @@
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -43,26 +44,20 @@ public class UsnJournalLiveTests
         var cursor = volume.Journal.QueryUsnJournalCursor();
 
         // Create and delete a temp file to generate journal entries
-        var tempPath = Path.Combine(Path.GetTempPath(), $"mftlib-usn-test-{Guid.NewGuid()}.tmp");
+        using var temporaryFile = new TempFile("mftlib-usn-test", create: false);
+        var tempPath = temporaryFile.Path;
         File.WriteAllText(tempPath, "usn test");
         var tempFileName = Path.GetFileName(tempPath);
 
-        try
-        {
-            // Read journal since our cursor
-            var (entries, updatedCursor) = volume.Journal.ReadUsnJournalBounded(cursor, 0);
+        // Read journal since our cursor
+        var (entries, updatedCursor) = volume.Journal.ReadUsnJournalBounded(cursor, 0);
 
-            Assert.IsNotEmpty(entries, "Should have at least one journal entry");
-            Assert.IsGreaterThanOrEqualTo(cursor.NextUsn, updatedCursor.NextUsn, "Cursor should advance");
+        Assert.IsNotEmpty(entries, "Should have at least one journal entry");
+        Assert.IsGreaterThanOrEqualTo(cursor.NextUsn, updatedCursor.NextUsn, "Cursor should advance");
 
-            // Find our temp file in the entries
-            var found = entries.Any(e => e.FileName.Equals(tempFileName, StringComparison.OrdinalIgnoreCase));
-            Assert.IsTrue(found, $"Should find {tempFileName} in USN journal entries");
-        }
-        finally
-        {
-            File.Delete(tempPath);
-        }
+        // Find our temp file in the entries
+        var found = entries.Any(e => e.FileName.Equals(tempFileName, StringComparison.OrdinalIgnoreCase));
+        Assert.IsTrue(found, $"Should find {tempFileName} in USN journal entries");
     }
 
     [TestMethod]
@@ -98,7 +93,8 @@ public class UsnJournalLiveTests
         using var volume = MftVolume.Open('C');
         var cursor = volume.Journal.QueryUsnJournalCursor();
 
-        var tempPath = Path.Combine(Path.GetTempPath(), $"mftlib-watch-test-{Guid.NewGuid()}.tmp");
+        using var temporaryFile = new TempFile("mftlib-watch-test", create: false);
+        var tempPath = temporaryFile.Path;
         var tempFileName = Path.GetFileName(tempPath);
 
         var batches = new List<UsnJournalEntry[]>();
@@ -127,10 +123,6 @@ public class UsnJournalLiveTests
         catch (OperationCanceledException) when (!TestContext.CancellationToken.IsCancellationRequested)
         {
             // Timeout is acceptable
-        }
-        finally
-        {
-            File.Delete(tempPath);
         }
 
         var allEntries = batches.SelectMany(b => b).ToArray();

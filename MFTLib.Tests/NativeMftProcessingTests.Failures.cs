@@ -114,21 +114,11 @@ public partial class NativeMftProcessingTests
     {
         // More than one buffer makes the generator observe the failed asynchronous
         // write before scheduling the final batch.
-        var path = Path.GetTempFileName();
-        try
-        {
-            File.Delete(path);
-            NativeTestHooks.NativeSetFailPlatformWrite(1);
-            var success = MFTLibNative.GenerateSyntheticMftSized(path, 600, 256, 1024);
-            Assert.IsFalse(success, "Generation should report failure when the write fails");
-        }
-        finally
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
+        using var temporaryFile = new TempFile(create: false);
+        var path = temporaryFile.Path;
+        NativeTestHooks.NativeSetFailPlatformWrite(1);
+        var success = MFTLibNative.GenerateSyntheticMftSized(path, 600, 256, 1024);
+        Assert.IsFalse(success, "Generation should report failure when the write fails");
     }
 
     // --- Helpers for building synthetic NTFS data ---

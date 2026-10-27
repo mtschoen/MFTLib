@@ -114,8 +114,20 @@ MFTLib.Tests calls `JournalIsolation.OverrideJournalWindow` directly for every j
 TestSupport owns temporary resources. `TempDirectory` gives each owned root a GUID,
 supports a deferred path for missing-directory scenarios, and retries recursive
 deletion five times before tolerating a Windows IOException from a still-locked
-file. Other deletion failures propagate. Dispose indexes, watches, enumerators,
-writers and mapped blocks before disposing their directory owners.
+file. Other deletion failures propagate. `TempFile` composes `TempDirectory` for
+single-file inputs and generated `.mft`/`.img` siblings so every temporary file
+and companion lives under a disposable directory owner. Dispose indexes, watches,
+enumerators, writers, handles and mapped blocks before disposing their directory
+or file owners.
+
+Helper methods that allocate a mapped block or temporary directory return a
+composite disposable or accept a caller-owned `TempDirectory`; they never discard
+the owner path after opening a mapping. Raw `Path.GetTempPath()` in `MFTLib.Tests`
+is limited to `TempDirectory` itself and temp-path assertions/inputs
+(`ElevatedEntryPointTests`, `BrokerDiagnosticsTests`, and
+`DefenderExclusionSequenceTests.AssertNoScriptFile`). Non-existent path literals
+that never touch disk use `AppContext.BaseDirectory`, `TestDriveRoot.For(...)`, or
+a `TempDirectory(..., create: false)` owner.
 
 `TempFile` owns one uniquely created temporary file; dispose its streams before
 disposing the owner. `NativeTestHooks.ParseImage(byte[] image, uint bufferSizeRecords = 256)`

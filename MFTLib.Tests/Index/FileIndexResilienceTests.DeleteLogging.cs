@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -79,29 +80,22 @@ public partial class FileIndexResilienceTests
         {
         }
 
-        var secondRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree2-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(secondRoot);
-        try
+        using var secondRootOwner = new TempDirectory("mftlib-tree2");
+        var secondRoot = secondRootOwner.Path;
+        var deletions = new List<string>();
+        var options = new FileIndexOptions
         {
-            var deletions = new List<string>();
-            var options = new FileIndexOptions
-            {
-                Drives = [new IndexedDrive('T', secondRoot, UniqueVolumeSerial, ProducerKind.Enumeration)],
-                CacheDirectory = CacheDirectoryPath,
-                Diagnostics = deletions.Add
-            };
-            await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
+            Drives = [new IndexedDrive('T', secondRoot, UniqueVolumeSerial, ProducerKind.Enumeration)],
+            CacheDirectory = CacheDirectoryPath,
+            Diagnostics = deletions.Add
+        };
+        await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
-            var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
-            Assert.AreEqual(BlockOrigin.ProducedByScan, index.Drives[0].Block!.Origin);
-            var line = deletions.SingleOrDefault(entry => entry.Contains(blockPath));
-            Assert.IsNotNull(line, "the wrong-root discard must be logged with its path");
-            Assert.Contains(nameof(BlockValidationResult.WrongRootDirectory), line);
-        }
-        finally
-        {
-            Directory.Delete(secondRoot, recursive: true);
-        }
+        var blockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', UniqueVolumeSerial));
+        Assert.AreEqual(BlockOrigin.ProducedByScan, index.Drives[0].Block!.Origin);
+        var line = deletions.SingleOrDefault(entry => entry.Contains(blockPath));
+        Assert.IsNotNull(line, "the wrong-root discard must be logged with its path");
+        Assert.Contains(nameof(BlockValidationResult.WrongRootDirectory), line);
     }
 
     [TestMethod]

@@ -9,24 +9,27 @@ namespace MFTLib.Tests;
 // The catch-up loss test installs JournalCheckpointCheck's process-wide journal override.
 [TestClass]
 [DoNotParallelize]
-public class MftProducerEndToEndTests : BrokerBlockTestBase
+public sealed class MftProducerEndToEndTests : BrokerBlockTestBase, IDisposable
 {
     static readonly DateTime Modified = new(2026, 9, 3, 12, 30, 0, DateTimeKind.Utc);
     static readonly UsnJournalCursor RearmedCursor = new(71, 13000);
     static readonly SyntheticJournalWindow TrimmedWindow = new(71, 20000, 30000, 4096, 32768);
+    TempDirectory _rootOwner = null!;
     string _rootDirectory = null!;
     string _cacheDirectory = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _rootDirectory = Path.Combine(Path.GetTempPath(), $"mft-end-to-end-{Guid.NewGuid():N}");
+        _rootOwner = new TempDirectory("mft-end-to-end");
+        _rootDirectory = _rootOwner.Path;
         _cacheDirectory = Path.Combine(_rootDirectory, "cache");
-        Directory.CreateDirectory(_rootDirectory);
     }
 
     [TestCleanup]
-    public void Cleanup() => Directory.Delete(_rootDirectory, recursive: true);
+    public void Cleanup() => _rootOwner.Dispose();
+
+    public void Dispose() => Cleanup();
 
     [TestMethod]
     public async Task OpenAsync_AdoptsBrokerBlockAndAppliesCatchUpAtRecordNumbers()

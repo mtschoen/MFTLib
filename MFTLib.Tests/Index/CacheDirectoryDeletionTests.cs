@@ -6,24 +6,26 @@ namespace MFTLib.Tests.Index;
 
 [TestClass]
 [DoNotParallelize]
-public class CacheDirectoryDeletionTests
+public sealed class CacheDirectoryDeletionTests : IDisposable
 {
+    TempDirectory _directoryOwner = null!;
     string _directory = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _directory = Path.Combine(Path.GetTempPath(), $"mftlib-delete-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_directory);
+        _directoryOwner = new TempDirectory("mftlib-delete");
+        _directory = _directoryOwner.Path;
     }
 
     [TestCleanup]
     public void Cleanup()
     {
         CacheDirectory.Hooks.ResetToDefaults();
-        Directory.Delete(_directory, recursive: true);
+        _directoryOwner.Dispose();
     }
 
+    public void Dispose() => Cleanup();
     [TestMethod]
     public void DeleteCached_DeletesSelectedSerialsAndPreservesOtherEntries()
     {

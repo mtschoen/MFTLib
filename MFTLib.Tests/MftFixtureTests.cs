@@ -5,17 +5,19 @@ namespace MFTLib.Tests;
 
 [TestClass]
 [DoNotParallelize]
-public class MftFixtureTests
+public sealed class MftFixtureTests : IDisposable
 {
     internal const long ModifiedBaseFileTime = 132000000000000000L;
     internal const long ModifiedStepFileTime = 10000000L;
 
+    TempFile _fixtureFile = null!;
     string _fixturePath = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _fixturePath = Path.Combine(Path.GetTempPath(), $"mftlib-fixture-{Guid.NewGuid():N}.mft");
+        _fixtureFile = new TempFile("mftlib-fixture", create: false);
+        _fixturePath = _fixtureFile.Path;
         MftFixture.Generate(_fixturePath);
     }
 
@@ -23,11 +25,10 @@ public class MftFixtureTests
     public void Cleanup()
     {
         NativeTestHooks.NativeResetTestState();
-        if (File.Exists(_fixturePath))
-        {
-            File.Delete(_fixturePath);
-        }
+        _fixtureFile.Dispose();
     }
+
+    public void Dispose() => Cleanup();
 
     [TestMethod]
     public void Fixture_Parses_EightInUseRecords()

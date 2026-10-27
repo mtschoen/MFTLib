@@ -1,28 +1,27 @@
 using System.Runtime.Versioning;
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
 
 [TestClass]
-public class CacheDirectoryTests
+public sealed class CacheDirectoryTests : IDisposable
 {
+    TempDirectory _rootOwner = null!;
     string _root = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _root = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
+        _rootOwner = new TempDirectory("mftlib-cache", create: false);
+        _root = _rootOwner.Path;
     }
 
     [TestCleanup]
-    public void Cleanup()
-    {
-        if (Directory.Exists(_root))
-        {
-            Directory.Delete(_root, recursive: true);
-        }
-    }
+    public void Cleanup() => _rootOwner.Dispose();
+
+    public void Dispose() => Cleanup();
 
     [TestMethod]
     public void EnsureCreated_CreatesTheDirectory()

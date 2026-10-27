@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 
 namespace MFTLib.Tests.Index;
@@ -12,34 +13,41 @@ delegate void HeaderMutation(ref BlockHeader header);
 /// </summary>
 sealed class SyntheticBlockBuilder : IDisposable
 {
+    readonly TempDirectory _directory = new("mftlib-index");
     readonly BlockFile _block;
     uint _nextRow;
 
     public SyntheticBlockBuilder(char driveLetter = 'T', uint volumeSerial = 0x0BADF00D,
         uint slotCapacity = 256, uint namePoolCapacity = 4096)
     {
-        Drive = driveLetter;
-        VolumeSerial = volumeSerial;
-        DirectoryPath = Path.Combine(Path.GetTempPath(), $"mftlib-index-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(DirectoryPath);
-        BlockPath = Path.Combine(DirectoryPath, $"{driveLetter}-{volumeSerial:X8}.mlix");
-
-        _block = BlockFile.Create(new BlockFileCreateOptions
+        try
         {
-            Path = BlockPath,
-            VolumeSerial = volumeSerial,
-            ProducerKind = ProducerKind.Enumeration,
-            SlotCapacity = slotCapacity,
-            NamePoolCapacity = namePoolCapacity,
-            ScanShape = SyntheticScanShape.Default(ProducerKind.Enumeration)
-        });
+            Drive = driveLetter;
+            VolumeSerial = volumeSerial;
+            BlockPath = Path.Combine(DirectoryPath, $"{driveLetter}-{volumeSerial:X8}.mlix");
+
+            _block = BlockFile.Create(new BlockFileCreateOptions
+            {
+                Path = BlockPath,
+                VolumeSerial = volumeSerial,
+                ProducerKind = ProducerKind.Enumeration,
+                SlotCapacity = slotCapacity,
+                NamePoolCapacity = namePoolCapacity,
+                ScanShape = SyntheticScanShape.Default(ProducerKind.Enumeration)
+            });
+        }
+        catch
+        {
+            _directory.Dispose();
+            throw;
+        }
     }
 
     public char Drive { get; }
 
     public uint VolumeSerial { get; }
 
-    public string DirectoryPath { get; }
+    public string DirectoryPath => _directory.Path;
 
     public string BlockPath { get; }
 
@@ -171,15 +179,13 @@ sealed class SyntheticBlockBuilder : IDisposable
 
     public void Dispose()
     {
-        _block.Dispose();
         try
         {
-            Directory.Delete(DirectoryPath, recursive: true);
+            _block.Dispose();
         }
-        catch (IOException)
+        finally
         {
-            // A mapping a test still holds open keeps the file locked on Windows. The temp
-            // directory is disposable either way, so a failed cleanup is not a test failure.
+            _directory.Dispose();
         }
     }
 }

@@ -90,64 +90,78 @@ public class DefaultElevatedEntryRunnerTests
         {
             failure.Release();
         }
+        using var diagnosticsDirectory = new TempDirectory("broker-diagnostics");
         var diagnostics = new System.Collections.Concurrent.ConcurrentQueue<string>();
-        BrokerDiagnostics.Enable("broker", Path.GetTempPath());
+        BrokerDiagnostics.Enable("broker", diagnosticsDirectory.Path);
         BrokerDiagnostics.Dependencies.InstallWriter(new BrokerDiagnosticsWriter(diagnostics.Enqueue));
-
-        using var idlePipe = await IdleUsnPipe.CreateAsync(gateReadNumber: 1);
-
-        int? exitCode = null;
-
-        using var cts = new CancellationTokenSource(HangGuard);
-        await using var timeoutRelease = cts.Token.Register(idlePipe.UnblockForCleanup); // never leak the parked read
-
-        var (control, drive, runTask) = StartRunnerWithDrivePipe(code => exitCode = code);
         try
         {
-            await AcceptDriveChannelAsync(control, drive, cts.Token);
+            using var idlePipe = await IdleUsnPipe.CreateAsync(gateReadNumber: 1);
 
-            // Arm the live watch with a cursor at the journal tip: the host reports CaughtUp
-            // over the still-healthy pipe, then parks in the mocked kernel wait above.
-            await HostChannelHarness.WriteFrameAsync(drive,
-                writer => BrokerProtocol.WriteStartWatch(writer, new UsnJournalCursor(7, 200)));
-            var caughtUp = await HostChannelHarness.ReadFrameAsync(drive);
-            Assert.AreEqual(BrokerFrameKind.CaughtUp, caughtUp?.Kind);
+            int? exitCode = null;
 
-            await IdleUsnPipe.AwaitSignalAsync(idlePipe.BeforeIssue);
+            using var cts = new CancellationTokenSource(HangGuard);
+            await using var timeoutRelease = cts.Token.Register(idlePipe.UnblockForCleanup); // never leak the parked read
 
-            if (!cancelBeforeFailure)
+            var (control, drive, runTask) = StartRunnerWithDrivePipe(code => exitCode = code);
+            try
             {
+                await AcceptDriveChannelAsync(control, drive, cts.Token);
+
+                // Arm the live watch with a cursor at the journal tip: the host reports CaughtUp
+                // over the still-healthy pipe, then parks in the mocked kernel wait above.
+                await HostChannelHarness.WriteFrameAsync(drive,
+                    writer => BrokerProtocol.WriteStartWatch(writer, new UsnJournalCursor(7, 200)));
+                var caughtUp = await HostChannelHarness.ReadFrameAsync(drive);
+                Assert.AreEqual(BrokerFrameKind.CaughtUp, caughtUp?.Kind);
+
+                await IdleUsnPipe.AwaitSignalAsync(idlePipe.BeforeIssue);
+
+                if (!cancelBeforeFailure)
+                {
+                    idlePipe.Break();
+                    idlePipe.ContinueIssue.Set();
+                    await failure.Entered.WaitAsync(cts.Token);
+                }
+
+                await drive.DisposeAsync();
+                if (cancelBeforeFailure)
+                {
+                    // Prove the disconnect reached the live registration before failing the read.
+                    await IdleUsnPipe.AwaitSignalAsync(idlePipe.CancelAttempted);
+                }
+                await control.DisposeAsync();
                 idlePipe.Break();
                 idlePipe.ContinueIssue.Set();
-                await failure.Entered.WaitAsync(cts.Token);
-            }
+                failure.Release();
 
-            await drive.DisposeAsync();
-            if (cancelBeforeFailure)
+                await runTask.WaitAsync(cts.Token);
+            }
+            finally
             {
-                // Prove the disconnect reached the live registration before failing the read.
-                await IdleUsnPipe.AwaitSignalAsync(idlePipe.CancelAttempted);
+                failure.Release();
+                idlePipe.UnblockForCleanup();
+                await EnsureRunnerLeavesAsync(runTask, drive, control);
             }
-            await control.DisposeAsync();
-            idlePipe.Break();
-            idlePipe.ContinueIssue.Set();
-            failure.Release();
 
-            await runTask.WaitAsync(cts.Token);
+            var calls = IdleUsnPipe.CallOrder();
+            var context = $"cancelBeforeFailure={cancelBeforeFailure}; calls={calls}; diagnostics={string.Join(Environment.NewLine, diagnostics)}";
+            Assert.AreEqual(0, exitCode, context);
+            // A failed read frees its result and unregisters cancellation before failure classification.
+            // Only a disconnect delivered before that cleanup must cancel the native handle.
+            Assert.AreEqual(cancelBeforeFailure ? "CF" : "F", calls, context);
         }
         finally
         {
-            failure.Release();
-            idlePipe.UnblockForCleanup();
-            await EnsureRunnerLeavesAsync(runTask, drive, control);
+            try
+            {
+                await BrokerDiagnosticsTestSupport.DrainAsync();
+            }
+            finally
+            {
+                BrokerDiagnostics.Dependencies.ResetToDefaults();
+            }
         }
-
-        var calls = IdleUsnPipe.CallOrder();
-        var context = $"cancelBeforeFailure={cancelBeforeFailure}; calls={calls}; diagnostics={string.Join(Environment.NewLine, diagnostics)}";
-        Assert.AreEqual(0, exitCode, context);
-        // A failed read frees its result and unregisters cancellation before failure classification.
-        // Only a disconnect delivered before that cleanup must cancel the native handle.
-        Assert.AreEqual(cancelBeforeFailure ? "CF" : "F", calls, context);
     }
 
     [TestMethod]
@@ -211,9 +225,10 @@ public class DefaultElevatedEntryRunnerTests
 
         // The first diagnostics line parks the log writer on a gate, so lines are still queued when
         // the session fails. The clock is never advanced, so the flush's bound cannot end the wait.
+        using var diagnosticsDirectory = new TempDirectory("broker-diagnostics");
         var sink = new TestGate();
         var appended = new List<string>();
-        BrokerDiagnostics.Enable("broker", Path.GetTempPath());
+        BrokerDiagnostics.Enable("broker", diagnosticsDirectory.Path);
         var writer = new BrokerDiagnosticsWriter(line =>
         {
             sink.MarkEntered();
@@ -256,7 +271,21 @@ public class DefaultElevatedEntryRunnerTests
         {
             // Release the sink on every exit before draining the runner.
             sink.Release();
-            await EnsureRunnerLeavesAsync(runTask, server);
+            try
+            {
+                await EnsureRunnerLeavesAsync(runTask, server);
+            }
+            finally
+            {
+                try
+                {
+                    await BrokerDiagnosticsTestSupport.DrainAsync();
+                }
+                finally
+                {
+                    BrokerDiagnostics.Dependencies.ResetToDefaults();
+                }
+            }
         }
     }
 

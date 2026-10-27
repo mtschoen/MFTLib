@@ -648,48 +648,39 @@ public partial class BrokerSessionTests
     [TestMethod]
     public async Task CreateIndexSource_OpensAnIndexThroughTheSessionsProcess()
     {
-        var cacheDirectory = Path.Combine(Path.GetTempPath(), "mftlib-session-" + Guid.NewGuid().ToString("N"));
-        try
+        using var cache = new TempDirectory("mftlib-session", create: false);
+        using var roots = new TempDirectory("mftlib-session-roots");
+        await using var handle = BrokerTestHarness.StartInProcess(new ScriptedBrokerVolumes
         {
-            await using var handle = BrokerTestHarness.StartInProcess(new ScriptedBrokerVolumes
-            {
-                QueryJournalCursor = _ => new SyntheticJournalCursor(7, 1000),
-                ScanDrive = _ =>
+            QueryJournalCursor = _ => new SyntheticJournalCursor(7, 1000),
+            ScanDrive = _ =>
+            [
                 [
-                    [
-                        new SyntheticScanRecord
-                        {
-                            RecordNumber = 5, ParentRecordNumber = 5, FileName = ".", IsDirectory = true
-                        }
-                    ]
+                    new SyntheticScanRecord
+                    {
+                        RecordNumber = 5, ParentRecordNumber = 5, FileName = ".", IsDirectory = true
+                    }
                 ]
-            });
-            var brokerProcess = handle.Process;
-            var launches = 0;
-            await using var session = CreateSession(_ =>
-            {
-                Interlocked.Increment(ref launches);
-                return Task.FromResult(brokerProcess);
-            });
-
-            await using var index = await FileIndex.OpenAsync(new FileIndexOptions
-            {
-                Drives = [new IndexedDrive('X', Path.GetTempPath(), 123)],
-                CacheDirectory = cacheDirectory,
-                CacheMode = CacheMode.Disabled,
-                MftSource = session.CreateIndexSource()
-            }, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
-
-            Assert.AreEqual(1, launches);
-            Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
-        }
-        finally
+            ]
+        });
+        var brokerProcess = handle.Process;
+        var launches = 0;
+        await using var session = CreateSession(_ =>
         {
-            if (Directory.Exists(cacheDirectory))
-            {
-                Directory.Delete(cacheDirectory, true);
-            }
-        }
+            Interlocked.Increment(ref launches);
+            return Task.FromResult(brokerProcess);
+        });
+
+        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
+        {
+            Drives = [new IndexedDrive('X', roots.Path, 123)],
+            CacheDirectory = cache.Path,
+            CacheMode = CacheMode.Disabled,
+            MftSource = session.CreateIndexSource()
+        }, CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
+
+        Assert.AreEqual(1, launches);
+        Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
     }
 
     [TestMethod]

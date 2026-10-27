@@ -7,10 +7,11 @@ namespace MFTLib.Tests.Index;
 
 [TestClass]
 [DoNotParallelize]
-public class FileIndexCacheTagTests
+public sealed class FileIndexCacheTagTests : IDisposable
 {
     static readonly CacheTag OriginalTag = new("GITW", 1);
     static readonly DateTime Moment = new(2026, 9, 22, 0, 0, 0, DateTimeKind.Utc);
+    TempDirectory _directoryOwner = null!;
     string _directory = null!;
     IDisposable? _journalScope;
     string Root => Path.Combine(_directory, "root");
@@ -20,7 +21,8 @@ public class FileIndexCacheTagTests
     [TestInitialize]
     public void Initialize()
     {
-        _directory = Path.Combine(Path.GetTempPath(), $"mftlib-index-tag-{Guid.NewGuid():N}");
+        _directoryOwner = new TempDirectory("mftlib-index-tag");
+        _directory = _directoryOwner.Path;
         Directory.CreateDirectory(Root);
         Directory.CreateDirectory(Cache);
         _journalScope = JournalIsolation.OverrideJournalWindow(
@@ -32,8 +34,10 @@ public class FileIndexCacheTagTests
     {
         _journalScope?.Dispose();
         _journalScope = null;
-        Directory.Delete(_directory, recursive: true);
+        _directoryOwner.Dispose();
     }
+
+    public void Dispose() => Cleanup();
 
     FileIndexOptions Options(CacheTag tag, bool cacheOnly = false) => new()
     {

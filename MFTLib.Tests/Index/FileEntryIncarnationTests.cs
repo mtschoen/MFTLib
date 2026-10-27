@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -151,11 +152,13 @@ public class FileEntryIncarnationTests
     {
         await using var fixture = SeededFixture();
         var retained = FileEntry.Create(fixture.Snapshot[0], DirectoryRow);
+        using var temporaryFile = new TempFile("mftlib-openbyid-seam", create: false);
+        var temporaryPath = temporaryFile.Path;
         var calls = new List<(uint Record, ushort Sequence)>();
         FileEntry.Dependencies._openById = (_, record, sequence, _) =>
         {
             calls.Add((record, sequence));
-            return new MemoryBackedFileStream();
+            return new MemoryBackedFileStream(temporaryPath);
         };
 
         await using (retained.Open(FileAccess.Read))
@@ -225,11 +228,13 @@ public class FileEntryIncarnationTests
     {
         await using var fixture = SeededFixture();
         var retained = FileEntry.Create(fixture.Snapshot[0], DirectoryRow);
+        using var temporaryFile = new TempFile("mftlib-openbyid-seam", create: false);
+        var temporaryPath = temporaryFile.Path;
         var calls = new List<ushort>();
         FileEntry.Dependencies._openById = (_, _, sequence, _) =>
         {
             calls.Add(sequence);
-            return new MemoryBackedFileStream();
+            return new MemoryBackedFileStream(temporaryPath);
         };
 
         fixture.Apply([Record(DirectoryRow, UsnReason.FileCreate | UsnReason.Close, "documents", 5,
@@ -318,11 +323,13 @@ public class FileEntryIncarnationTests
         await using var fixture = SeededFixture();
         fixture.Block.SequenceNumbers[(int)ChildRow] = 11;
         var retained = FileEntry.Create(fixture.Snapshot[0], ChildRow);
+        using var temporaryFile = new TempFile("mftlib-openbyid-seam", create: false);
+        var temporaryPath = temporaryFile.Path;
         var calls = new List<ushort>();
         FileEntry.Dependencies._openById = (_, _, sequence, _) =>
         {
             calls.Add(sequence);
-            return new MemoryBackedFileStream();
+            return new MemoryBackedFileStream(temporaryPath);
         };
 
         var changes = fixture.Apply([
@@ -373,11 +380,13 @@ public class FileEntryIncarnationTests
     {
         await using var fixture = SeededFixture();
         fixture.Block.SequenceNumbers[(int)ChildRow] = ushort.MaxValue;
+        using var temporaryFile = new TempFile("mftlib-openbyid-seam", create: false);
+        var temporaryPath = temporaryFile.Path;
         var calls = new List<ushort>();
         FileEntry.Dependencies._openById = (_, _, sequence, _) =>
         {
             calls.Add(sequence);
-            return new MemoryBackedFileStream();
+            return new MemoryBackedFileStream(temporaryPath);
         };
         var retained = FileEntry.Create(fixture.Snapshot[0], ChildRow);
 

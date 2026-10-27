@@ -7,15 +7,16 @@ namespace MFTLib.Tests;
 
 [TestClass]
 [DoNotParallelize]
-public partial class BrokerDiagnosticsTests
+public sealed partial class BrokerDiagnosticsTests : IDisposable
 {
+    TempDirectory _rootOwner = null!;
     string _temporaryRoot = null!;
 
     [TestInitialize]
     public void Setup()
     {
-        _temporaryRoot = Path.Combine(Path.GetTempPath(), "BrokerDiagTests_" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(_temporaryRoot);
+        _rootOwner = new TempDirectory("BrokerDiagTests");
+        _temporaryRoot = _rootOwner.Path;
     }
 
     [TestCleanup]
@@ -24,19 +25,10 @@ public partial class BrokerDiagnosticsTests
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", null);
         await BrokerDiagnosticsTestSupport.DrainAsync();
         BrokerDiagnostics.Dependencies.ResetToDefaults();
-        // Best-effort cleanup only: a locked file or already-missing directory must
-        // not fail the test.
-        try
-        {
-            Directory.Delete(_temporaryRoot, true);
-        }
-        catch (IOException)
-        {
-        }
-        catch (UnauthorizedAccessException)
-        {
-        }
+        _rootOwner.Dispose();
     }
+
+    public void Dispose() => _rootOwner.Dispose();
 
     [TestMethod]
     public async Task IsolationReset_RestoresTheDefaultDiagnosticsState()

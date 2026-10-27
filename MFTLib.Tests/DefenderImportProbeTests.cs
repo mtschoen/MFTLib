@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -30,49 +31,43 @@ public class DefenderImportProbeTests
         }
 
         var importLine = DefenderExclusionSequence.BuildScript(["probe.exe"]).Split("; ")[0];
-        var root = Path.Combine(Path.GetTempPath(), "MFTLib.DefenderImportProbeTests", Guid.NewGuid().ToString("N"));
+        using var rootOwner = new TempDirectory("MFTLib.DefenderImportProbeTests");
+        var root = rootOwner.Path;
         var fakeModules = Directory.CreateDirectory(Path.Combine(root, "modules")).FullName;
         var fakeModule = Directory.CreateDirectory(Path.Combine(fakeModules, "Defender")).FullName;
         var marker = Path.Combine(root, "fake-module-ran.txt");
-        try
+        File.WriteAllText(Path.Combine(fakeModule, "Defender.psm1"), "Set-Content -LiteralPath $env:FAKE_DEFENDER_MARKER -Value 'ran'");
+        File.WriteAllText(Path.Combine(fakeModule, "Defender.psd1"), "@{ ModuleVersion = '9.9.9'; RootModule = 'Defender.psm1' }");
+        var startInfo = new ProcessStartInfo(DefenderExclusionSequence.PowerShellPath)
         {
-            File.WriteAllText(Path.Combine(fakeModule, "Defender.psm1"), "Set-Content -LiteralPath $env:FAKE_DEFENDER_MARKER -Value 'ran'");
-            File.WriteAllText(Path.Combine(fakeModule, "Defender.psd1"), "@{ ModuleVersion = '9.9.9'; RootModule = 'Defender.psm1' }");
-            var startInfo = new ProcessStartInfo(DefenderExclusionSequence.PowerShellPath)
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            Environment =
             {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                Environment =
-                {
-                    ["FAKE_DEFENDER_MARKER"] = marker,
-                    ["PSModulePath"] = fakeModules + ";" + Environment.GetEnvironmentVariable("PSModulePath")
-                }
-            };
-            foreach (var argument in new[]
-                     {
-                         "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
-                         importLine + "; (Get-Module -Name Defender).ModuleBase"
-                     })
-            {
-                startInfo.ArgumentList.Add(argument);
+                ["FAKE_DEFENDER_MARKER"] = marker,
+                ["PSModulePath"] = fakeModules + ";" + Environment.GetEnvironmentVariable("PSModulePath")
             }
-
-            using var process = Process.Start(startInfo)!;
-            var errorTask = process.StandardError.ReadToEndAsync(TestContext.CancellationToken);
-            var output = process.StandardOutput.ReadToEnd().Trim();
-            process.WaitForExit();
-            var error = errorTask.Result;
-
-            Assert.AreEqual(0, process.ExitCode, error);
-            Assert.AreEqual(systemModuleDirectory, output, ignoreCase: true);
-            Assert.IsFalse(File.Exists(marker), "The planted Defender module must never execute.");
-        }
-        finally
+        };
+        foreach (var argument in new[]
+                 {
+                     "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+                     importLine + "; (Get-Module -Name Defender).ModuleBase"
+                 })
         {
-            Directory.Delete(root, recursive: true);
+            startInfo.ArgumentList.Add(argument);
         }
+
+        using var process = Process.Start(startInfo)!;
+        var errorTask = process.StandardError.ReadToEndAsync(TestContext.CancellationToken);
+        var output = process.StandardOutput.ReadToEnd().Trim();
+        process.WaitForExit();
+        var error = errorTask.Result;
+
+        Assert.AreEqual(0, process.ExitCode, error);
+        Assert.AreEqual(systemModuleDirectory, output, ignoreCase: true);
+        Assert.IsFalse(File.Exists(marker), "The planted Defender module must never execute.");
     }
 
     public TestContext TestContext { get; set; } = null!;

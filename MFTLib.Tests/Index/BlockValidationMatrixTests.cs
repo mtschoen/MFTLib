@@ -136,26 +136,17 @@ public sealed class BlockValidationMatrixTests : IndexTreeTestBase
     public async Task WrongRootDirectory_ColdScans()
     {
         await SeedCacheAsync();
-        var differentTreeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-other-{Guid.NewGuid():N}");
+        using var differentTreeRootOwner = new TempDirectory("mftlib-other");
+        var differentTreeRoot = differentTreeRootOwner.Path;
         Directory.CreateDirectory(Path.Combine(differentTreeRoot, "Documents"));
         await File.WriteAllTextAsync(Path.Combine(differentTreeRoot, "Documents", "readme.md"), "hello", TestContext.CancellationToken);
-        try
+        var options = new FileIndexOptions
         {
-            var options = new FileIndexOptions
-            {
-                Drives = [new IndexedDrive('T', differentTreeRoot, 0x0BADF00D, ProducerKind.Enumeration)],
-                CacheDirectory = CacheDirectoryPath
-            };
+            Drives = [new IndexedDrive('T', differentTreeRoot, 0x0BADF00D, ProducerKind.Enumeration)],
+            CacheDirectory = CacheDirectoryPath
+        };
 
-            await AssertColdScansAsync(options, BlockValidationResult.WrongRootDirectory);
-        }
-        finally
-        {
-            if (Directory.Exists(differentTreeRoot))
-            {
-                Directory.Delete(differentTreeRoot, recursive: true);
-            }
-        }
+        await AssertColdScansAsync(options, BlockValidationResult.WrongRootDirectory);
     }
 
     public TestContext TestContext { get; set; } = null!;

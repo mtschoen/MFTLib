@@ -16,7 +16,7 @@ static class MftDumpIndexes
 
     internal static readonly string Root = MftDumpPaths.CanonicalRoot(DriveLetter);
 
-    internal static readonly string DumpFilePath = Path.Combine(Path.GetTempPath(), "mftlib-synthetic.mft");
+    internal static readonly string DumpFilePath = Path.Combine(AppContext.BaseDirectory, "mftlib-synthetic.mft");
 
     static readonly DateTime Moment = new(2026, 10, 6, 0, 0, 0, DateTimeKind.Utc);
 

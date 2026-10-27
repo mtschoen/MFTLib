@@ -11,7 +11,7 @@ namespace MFTLib.Tests;
 // applied off Windows, so the success cases expect that platform's outcome.
 [TestClass]
 [DoNotParallelize]
-public class DirectExcludeDefenderTests
+public sealed class DirectExcludeDefenderTests : IDisposable
 {
     static readonly int AppliedExitCode = OperatingSystem.IsWindows() ? 0 : 1;
 
@@ -21,13 +21,15 @@ public class DirectExcludeDefenderTests
         public List<string> Dialogs { get; } = [];
     }
 
+    TempDirectory _directoryOwner = null!;
     string _directory = null!;
     string? _previousUnattended;
 
     [TestInitialize]
     public void SetUp()
     {
-        _directory = Directory.CreateTempSubdirectory("defender-tests-").FullName;
+        _directoryOwner = new TempDirectory("defender-tests");
+        _directory = _directoryOwner.Path;
         _previousUnattended = Environment.GetEnvironmentVariable(SampleHost.UnattendedVariableName);
         Environment.SetEnvironmentVariable(SampleHost.UnattendedVariableName, null);
     }
@@ -36,8 +38,10 @@ public class DirectExcludeDefenderTests
     public void TearDown()
     {
         Environment.SetEnvironmentVariable(SampleHost.UnattendedVariableName, _previousUnattended);
-        Directory.Delete(_directory, true);
+        _directoryOwner.Dispose();
     }
+
+    public void Dispose() => TearDown();
 
     sealed class CountingReader(ConsoleLog console) : TextReader
     {

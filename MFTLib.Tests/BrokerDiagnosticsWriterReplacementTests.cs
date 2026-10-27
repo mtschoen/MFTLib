@@ -21,6 +21,7 @@ public class BrokerDiagnosticsWriterReplacementTests
     public async Task InstallWriter_NoWriterYet_RoutesLogLinesIntoTheReplacement()
     {
         BrokerDiagnostics.Dependencies.ResetToDefaults();
+        using var diagnosticsDirectory = new TempDirectory("broker-diagnostics");
         var lines = new List<string>();
         var writer = new BrokerDiagnosticsWriter(lines.Add, () => "broker");
         try
@@ -28,7 +29,7 @@ public class BrokerDiagnosticsWriterReplacementTests
             // Diagnostics are still off, so nothing has created the process's writer: the replacement
             // is the first.
             BrokerDiagnostics.Dependencies.InstallWriter(writer);
-            BrokerDiagnostics.Enable("broker", Path.GetTempPath());
+            BrokerDiagnostics.Enable("broker", diagnosticsDirectory.Path);
             BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "hello");
             await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard, TestContext.CancellationToken);
 
@@ -53,6 +54,7 @@ public class BrokerDiagnosticsWriterReplacementTests
     public async Task InstallWriter_ReplacingALiveWriter_RoutesLaterLinesOnlyToTheReplacement()
     {
         BrokerDiagnostics.Dependencies.ResetToDefaults();
+        using var diagnosticsDirectory = new TempDirectory("broker-diagnostics");
         var first = new List<string>();
         var second = new List<string>();
         var firstWriter = new BrokerDiagnosticsWriter(first.Add, () => "broker");
@@ -60,7 +62,7 @@ public class BrokerDiagnosticsWriterReplacementTests
         try
         {
             BrokerDiagnostics.Dependencies.InstallWriter(firstWriter);
-            BrokerDiagnostics.Enable("broker", Path.GetTempPath());
+            BrokerDiagnostics.Enable("broker", diagnosticsDirectory.Path);
 
             BrokerDiagnostics.Dependencies.InstallWriter(secondWriter);
             BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "after");
@@ -92,12 +94,13 @@ public class BrokerDiagnosticsWriterReplacementTests
     public async Task Log_BeforeAndAfterReplacement_DeliversEachLineExactlyOnce(int replacementCount)
     {
         BrokerDiagnostics.Dependencies.ResetToDefaults();
+        using var diagnosticsDirectory = new TempDirectory("broker-diagnostics");
         var gate = new TestGate();
         var writers = new List<BrokerDiagnosticsWriter>();
         var outputs = new List<ConcurrentQueue<string>>();
         var completedSinks = new ConcurrentQueue<int>();
         var installation = Task.CompletedTask;
-        BrokerDiagnostics.Enable("broker", Path.GetTempPath());
+        BrokerDiagnostics.Enable("broker", diagnosticsDirectory.Path);
         try
         {
             for (var index = 0; index <= replacementCount; index++)

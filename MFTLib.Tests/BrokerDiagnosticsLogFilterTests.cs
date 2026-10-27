@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -257,40 +258,33 @@ public class BrokerDiagnosticsLogFilterTests
     public void ResolveFileReference_RealFile_MatchesThatFilesJournalEntries()
     {
         // Exercise the real CreateFileW + GetFileInformationByHandle path, not the seam.
-        var directory = Path.Combine(Path.GetTempPath(), "BrokerDiagFilterTests_" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(directory);
-        try
+        using var directoryOwner = new TempDirectory("BrokerDiagFilterTests");
+        var directory = directoryOwner.Path;
+        var logPath = Path.Combine(directory, "broker-diagnostics.broker.log");
+        File.WriteAllText(logPath, "seed");
+        var reference = BrokerDiagnosticsLogFilter.ResolveFileReference(logPath);
+        Assert.IsTrue(reference.HasValue);
+
+        var filter = new BrokerDiagnosticsLogFilter(logPath, null);
+        var refVal = reference.GetValueOrDefault();
+        var matching = UsnJournalEntry.Create(new UsnJournalEntryOptions
         {
-            var logPath = Path.Combine(directory, "broker-diagnostics.broker.log");
-            File.WriteAllText(logPath, "seed");
-            var reference = BrokerDiagnosticsLogFilter.ResolveFileReference(logPath);
-            Assert.IsTrue(reference.HasValue);
+            RecordNumber = refVal & 0xFFFFFFFFFFFF,
+            SequenceNumber = (ushort)(refVal >> 48),
+            ParentRecordNumber = 5,
+            Usn = 110,
+            TimestampUtc = DateTime.UnixEpoch,
+            Reason = UsnReason.Close,
+            FileAttributes = FileAttributes.Normal,
+            FileName = "broker-diagnostics.broker.log"
+        });
+        var unrelated = Entry(4242, "unrelated.txt");
+        var drive = Path.GetPathRoot(logPath)![0];
 
-            var filter = new BrokerDiagnosticsLogFilter(logPath, null);
-            var refVal = reference.GetValueOrDefault();
-            var matching = UsnJournalEntry.Create(new UsnJournalEntryOptions
-            {
-                RecordNumber = refVal & 0xFFFFFFFFFFFF,
-                SequenceNumber = (ushort)(refVal >> 48),
-                ParentRecordNumber = 5,
-                Usn = 110,
-                TimestampUtc = DateTime.UnixEpoch,
-                Reason = UsnReason.Close,
-                FileAttributes = FileAttributes.Normal,
-                FileName = "broker-diagnostics.broker.log"
-            });
-            var unrelated = Entry(4242, "unrelated.txt");
-            var drive = Path.GetPathRoot(logPath)![0];
+        var kept = filter.Filter(drive, [matching, unrelated]);
 
-            var kept = filter.Filter(drive, [matching, unrelated]);
-
-            Assert.HasCount(1, kept);
-            Assert.AreEqual("unrelated.txt", kept[0].FileName);
-        }
-        finally
-        {
-            Directory.Delete(directory, true);
-        }
+        Assert.HasCount(1, kept);
+        Assert.AreEqual("unrelated.txt", kept[0].FileName);
     }
 
     [TestMethod]
@@ -298,8 +292,8 @@ public class BrokerDiagnosticsLogFilterTests
     {
         // Exercise the real CreateFileW + GetFileInformationByHandle path, not the seam:
         // a file that does not exist cannot be opened, so the reference stays null.
-        var missing = Path.Combine(Path.GetTempPath(),
-            $"mftlib-missing-{Guid.NewGuid():N}", "broker-diagnostics.broker.log");
+        using var missingDirectory = new TempDirectory("mftlib-missing", create: false);
+        var missing = Path.Combine(missingDirectory.Path, "broker-diagnostics.broker.log");
 
         Assert.IsNull(BrokerDiagnosticsLogFilter.ResolveFileReference(missing));
     }

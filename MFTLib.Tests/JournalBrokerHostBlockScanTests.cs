@@ -245,7 +245,9 @@ frames.Single(frame => frame.Kind == BrokerFrameKind.Error).Message!);
         }), hostWriter);
         var skippedByHost = hostFrames.Single(frame => frame.Kind == BrokerFrameKind.ScanReady).SkippedRecordCount;
 
-        using var directBlock = TestBlocks.Create(Path.Combine(Path.GetTempPath(), $"mft-block-direct-{Guid.NewGuid():N}.bin"), ProducerKind.Mft, 256, 4096, volumeSerial: 123, rootRow: 5, deleteOnClose: true);
+        using var blockDirectory = new TempDirectory("mftlib-broker-block");
+        using var directBlock = TestBlocks.Create(Path.Combine(blockDirectory.Path, "block.bin"),
+            ProducerKind.Mft, 256, 4096, volumeSerial: 123, rootRow: 5, deleteOnClose: true);
         var result = MftBlockScan.WriteToBlock(directBlock, new BlockStamp(ArmedCursor, timeProvider), batches,
             new MftRowSelection(new MftScanOptions()), default, CancellationToken.None);
 
@@ -261,7 +263,7 @@ frames.Single(frame => frame.Kind == BrokerFrameKind.Error).Message!);
         Assert.AreEqual(4u, block.Header.LiveRowCount);
         Assert.AreEqual(31u, block.Header.RowCount);
         Assert.AreEqual(RowFlags.None, block.Rows[21].Flags);
-        var rootPath = Path.Combine(Path.GetTempPath(), "scan-oracle");
+        var rootPath = Path.Combine(Path.GetDirectoryName(block.Path)!, "scan-oracle");
         DriveBlock[] snapshot = [new DriveBlock('C', 0, block, rootPath)];
         try
         {

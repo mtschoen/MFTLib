@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -9,32 +10,22 @@ namespace MFTLib.Tests.Index;
 ///     identically), released by dispose, and observable as a sibling file.
 /// </summary>
 [TestClass]
-public class BlockOwnerLockTests
+public sealed class BlockOwnerLockTests : IDisposable
 {
+    TempDirectory _directoryOwner = null!;
     string _cacheDirectory = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_cacheDirectory);
+        _directoryOwner = new TempDirectory("mftlib-cache");
+        _cacheDirectory = _directoryOwner.Path;
     }
 
     [TestCleanup]
-    public void Cleanup()
-    {
-        try
-        {
-            if (Directory.Exists(_cacheDirectory))
-            {
-                Directory.Delete(_cacheDirectory, recursive: true);
-            }
-        }
-        catch (IOException)
-        {
-            // A just-released lock file can stay visible briefly on Windows.
-        }
-    }
+    public void Cleanup() => _directoryOwner.Dispose();
+
+    public void Dispose() => Cleanup();
 
     [TestMethod]
     public void TryAcquire_SecondAcquisitionOnTheSamePathFailsUntilTheFirstIsDisposed()

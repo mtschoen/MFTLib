@@ -5,19 +5,22 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 [TestClass]
-public class CacheDirectoryRejectionTests
+public sealed class CacheDirectoryRejectionTests : IDisposable
 {
+    TempDirectory _directoryOwner = null!;
     string _directory = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _directory = Path.Combine(Path.GetTempPath(), $"mftlib-rejection-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_directory);
+        _directoryOwner = new TempDirectory("mftlib-rejection");
+        _directory = _directoryOwner.Path;
     }
 
     [TestCleanup]
-    public void Cleanup() => Directory.Delete(_directory, recursive: true);
+    public void Cleanup() => _directoryOwner.Dispose();
+
+    public void Dispose() => Cleanup();
 
     string WriteFile(string name)
     {

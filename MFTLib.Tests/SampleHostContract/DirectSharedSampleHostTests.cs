@@ -9,21 +9,17 @@ namespace MFTLib.Tests.SampleHostContract;
 // scan self-elevates, which the Watch sample's broker launch does not.
 [TestClass]
 [DoNotParallelize]
-public sealed class DirectSharedSampleHostTests : SharedSampleHostTests
+public sealed class DirectSharedSampleHostTests : SharedSampleHostTests, IDisposable
 {
-    string? _directoryPath;
+    TempDirectory? _directory;
 
     // The base class's setup already builds a subject, before this class's own setup could run.
-    string WorkingDirectory => _directoryPath ??= Directory.CreateTempSubdirectory("notice-tests-").FullName;
+    string WorkingDirectory => (_directory ??= new TempDirectory("notice-tests")).Path;
 
     [TestCleanup]
-    public void DeleteDirectory()
-    {
-        if (_directoryPath is not null)
-        {
-            Directory.Delete(_directoryPath, true);
-        }
-    }
+    public void DeleteDirectory() => _directory?.Dispose();
+
+    public void Dispose() => DeleteDirectory();
 
     internal override SampleHostSubject CreateSubject(TextWriter output, TextReader input, FakeTimeProvider clock, Action elevated) =>
         new DirectSampleHostSubject(output, input, WorkingDirectory, clock, elevated);

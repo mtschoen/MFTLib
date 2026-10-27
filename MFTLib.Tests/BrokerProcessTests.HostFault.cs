@@ -66,8 +66,9 @@ public partial class BrokerProcessTests
     [TestMethod]
     public async Task HostFault_ExceptionMessageIsWrittenToDiagnosticsLog()
     {
+        using var diagnosticsDirectory = new TempDirectory("broker-diagnostics");
         var lines = new List<string>();
-        BrokerDiagnostics.Enable("client", Path.GetTempPath());
+        BrokerDiagnostics.Enable("client", diagnosticsDirectory.Path);
         BrokerDiagnostics.Dependencies.InstallWriter(new BrokerDiagnosticsWriter(line =>
         {
             lock (lines)

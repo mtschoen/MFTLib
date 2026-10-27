@@ -15,7 +15,7 @@ public partial class IndexNavigationTests
         var readme = builder.AddRow("readme.md", documents, RowFlags.InUse, 5, Moment, sequenceNumber: 0);
         builder.Complete(Moment);
 
-        var rootDirectory = Path.Combine(Path.GetTempPath(), "mftlib-path-root");
+        var rootDirectory = Path.Combine(builder.DirectoryPath, "mftlib-path-root");
         var block = builder.OpenForReading(out _)!;
         DriveBlock[] snapshot = [new DriveBlock('T', 0, block, rootDirectoryPath: rootDirectory)];
         try

@@ -13,9 +13,10 @@ namespace MFTLib.Tests.Index;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public sealed class FileIndexScanShapeTests
+public sealed class FileIndexScanShapeTests : IDisposable
 {
     static readonly DateTime Moment = new(2026, 10, 18, 0, 0, 0, DateTimeKind.Utc);
+    TempDirectory _directoryOwner = null!;
     string _directory = null!;
     IDisposable? _journalScope;
     int _mftProductions;
@@ -29,7 +30,8 @@ public sealed class FileIndexScanShapeTests
     [TestInitialize]
     public void Initialize()
     {
-        _directory = Path.Combine(Path.GetTempPath(), $"mftlib-scan-shape-{Guid.NewGuid():N}");
+        _directoryOwner = new TempDirectory("mftlib-scan-shape");
+        _directory = _directoryOwner.Path;
         foreach (var root in new[] { RootA, RootB })
         {
             Directory.CreateDirectory(Path.Combine(root, "build", "output"));
@@ -46,8 +48,10 @@ public sealed class FileIndexScanShapeTests
     {
         _journalScope?.Dispose();
         _journalScope = null;
-        Directory.Delete(_directory, recursive: true);
+        _directoryOwner.Dispose();
     }
+
+    public void Dispose() => Cleanup();
 
     FileIndexOptions EnumerationOptions(List<string> diagnostics, CacheMode mode = CacheMode.Persistent) => new()
     {

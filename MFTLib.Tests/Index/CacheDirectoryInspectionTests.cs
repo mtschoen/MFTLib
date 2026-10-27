@@ -5,23 +5,23 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 [TestClass]
-public class CacheDirectoryInspectionTests
+public sealed class CacheDirectoryInspectionTests : IDisposable
 {
     const uint VolumeSerial = 0x0BADF00D;
+    TempDirectory _directoryOwner = null!;
     string _cacheDirectory = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-inspect-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_cacheDirectory);
+        _directoryOwner = new TempDirectory("mftlib-inspect");
+        _cacheDirectory = _directoryOwner.Path;
     }
 
     [TestCleanup]
-    public void Cleanup()
-    {
-        Directory.Delete(_cacheDirectory, recursive: true);
-    }
+    public void Cleanup() => _directoryOwner.Dispose();
+
+    public void Dispose() => Cleanup();
 
     static void AssertReleased(string path)
     {

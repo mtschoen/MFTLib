@@ -21,35 +21,23 @@ public class NativeMockTests
     [TestMethod]
     public void GenerateSyntheticMFT_ReturnsFalse_ThrowsInvalidOperation()
     {
-        var path = Path.GetTempFileName();
-        try
-        {
-            NativeTestHooks.NativeSetAllocFailCountdown(1);
-            Assert.ThrowsExactly<InvalidOperationException>(() =>
-                MftVolume.GenerateSyntheticMFT(path, 100));
-        }
-        finally
-        {
-            File.Delete(path);
-        }
+        using var temporaryFile = new TempFile();
+        var path = temporaryFile.Path;
+        NativeTestHooks.NativeSetAllocFailCountdown(1);
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
+            MftVolume.GenerateSyntheticMFT(path, 100));
     }
 
     [TestMethod]
     public void GenerateFixtureMFT_ReturnsFalse_ThrowsInvalidOperationNamingThePath()
     {
-        var path = Path.GetTempFileName();
-        try
-        {
-            NativeTestHooks.NativeSetAllocFailCountdown(1);
-            var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
-                MftFixture.Generate(path));
+        using var temporaryFile = new TempFile();
+        var path = temporaryFile.Path;
+        NativeTestHooks.NativeSetAllocFailCountdown(1);
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
+            MftFixture.Generate(path));
 
-            Assert.Contains(path, exception.Message);
-        }
-        finally
-        {
-            File.Delete(path);
-        }
+        Assert.Contains(path, exception.Message);
     }
 
     [TestMethod]

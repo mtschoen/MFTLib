@@ -23,7 +23,8 @@ sealed class CrossDriveScenario : IAsyncDisposable
     const string ControlPipeName = "control";
     static readonly int HeartbeatLength = MeasureHeartbeat();
 
-    readonly string _cacheDirectory = Path.Combine(Path.GetTempPath(), $"broker-cross-drive-{Guid.NewGuid():N}");
+    readonly TempDirectory _cache = new("broker-cross-drive-cache", create: false);
+    readonly TempDirectory _roots = new("broker-cross-drive-roots", create: false);
     readonly ConcurrentDictionary<char, int> _scans = new();
     readonly ConcurrentDictionary<char, bool> _frozen = new();
     readonly TaskCompletionSource _thaw = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -215,9 +216,13 @@ sealed class CrossDriveScenario : IAsyncDisposable
             }
             finally
             {
-                if (Directory.Exists(_cacheDirectory))
+                try
                 {
-                    Directory.Delete(_cacheDirectory, recursive: true);
+                    _cache.Dispose();
+                }
+                finally
+                {
+                    _roots.Dispose();
                 }
             }
         }
@@ -225,11 +230,12 @@ sealed class CrossDriveScenario : IAsyncDisposable
 
     async Task OpenIndexAsync()
     {
+        Directory.CreateDirectory(_roots.Path);
         var producer = new BrokerMftBlockProducer(Broker.ConnectAsync);
         _index = await FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', Path.GetTempPath(), 123), new IndexedDrive('U', Path.GetTempPath(), 456)],
-            CacheDirectory = _cacheDirectory,
+            Drives = [new IndexedDrive('T', _roots.Path, 123), new IndexedDrive('U', _roots.Path, 456)],
+            CacheDirectory = _cache.Path,
             CacheMode = CacheMode.Disabled,
             MftSource = producer.CreateIndexSource()
         }, Token);

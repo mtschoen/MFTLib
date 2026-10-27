@@ -173,31 +173,57 @@ public class FileIndexWatchPumpTests
     }
 
     [TestMethod]
-    public async Task DisposeAsync_StopsTheWatchBeforeReleasingBlocks()
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task DisposeAsync_StopsTheWatchBeforeReleasingBlocks(bool holdCacheFile)
     {
-        using var harness = new WatchHarness();
-        var applying = harness.TrackGate();
-        harness.Index.Changed += _ =>
+        if (holdCacheFile && !OperatingSystem.IsWindows())
         {
-            applying.MarkEntered();
-            applying.WaitForRelease();
-        };
-        await harness.Index.StartWatchingAsync(['T'], Token);
-        var handle = harness.Source.WatchFor('T');
-        _ = handle.Queue(WatchHarness.Batch(recordNumber: 9, "one.txt"));
-        await applying.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
-        var producedBlock = harness.BlockFor('T');
+            Assert.Inconclusive("Windows sharing-violation cleanup case.");
+        }
 
-        var dispose = harness.Index.DisposeAsync().AsTask();
+        var harness = new WatchHarness();
+        try
+        {
+            var applying = harness.TrackGate();
+            harness.Index.Changed += _ =>
+            {
+                applying.MarkEntered();
+                applying.WaitForRelease();
+            };
+            await harness.Index.StartWatchingAsync(['T'], Token);
+            var handle = harness.Source.WatchFor('T');
+            _ = handle.Queue(WatchHarness.Batch(recordNumber: 9, "one.txt"));
+            await applying.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
+            var producedBlock = harness.BlockFor('T');
 
-        Assert.IsFalse(dispose.IsCompleted, "disposal waits for the pump that is still applying");
-        Assert.AreEqual(WatchHarness.NextUsn + 100, producedBlock.Header.UsnNextUsn,
-            "the block is still mapped while the watch drains");
-        applying.Release();
-        await dispose.WaitAsync(HangGuard, TestContext.CancellationToken);
+            var dispose = harness.Index.DisposeAsync().AsTask();
 
-        Assert.AreEqual(1, handle.DisposeCount);
-        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = producedBlock.Header.Generation);
+            Assert.IsFalse(dispose.IsCompleted, "disposal waits for the pump that is still applying");
+            Assert.AreEqual(WatchHarness.NextUsn + 100, producedBlock.Header.UsnNextUsn,
+                "the block is still mapped while the watch drains");
+            applying.Release();
+            await dispose.WaitAsync(HangGuard, TestContext.CancellationToken);
+
+            Assert.AreEqual(1, handle.DisposeCount);
+            Assert.ThrowsExactly<ObjectDisposedException>(() => _ = producedBlock.Header.Generation);
+
+            using (holdCacheFile
+                       ? new FileStream(Path.Combine(harness.CacheDirectory, "held.tmp"),
+                           FileMode.Create, FileAccess.ReadWrite, FileShare.None)
+                       : null)
+            {
+                harness.Dispose();
+            }
+
+            // A second disposal after the outsider releases must remove the tolerated remnant.
+            harness.Dispose();
+            Assert.IsFalse(Directory.Exists(harness.CacheDirectory));
+        }
+        finally
+        {
+            harness.Dispose();
+        }
     }
 
     [TestMethod]

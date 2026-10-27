@@ -15,60 +15,53 @@ public class FileIndexWatchRescanHandoffTests
     [TestMethod]
     public async Task AppliedChange_DeliveredAfterCommit_CanRepeatDuringReplacementCatchUp()
     {
-        var directory = Directory.CreateTempSubdirectory("mftlib-rescan-events-");
+        using var directory = new TempDirectory("mftlib-rescan-events");
         var delivering = new TestGate();
+        var source = new ScriptedWatchSource();
+        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
+        {
+            Drives = [new IndexedDrive('T', directory.Path, 1)],
+            CacheDirectory = directory.Path,
+            MftSource = new MftIndexSource((request, cancellationToken) =>
+            {
+                SeededBlocks.Write(request.BlockPath, 1, WatchHarness.JournalIdentifier, 100, moment: SeededBlocks.SeededMoment);
+                var block = BlockFile.Open(request.BlockPath, 1, out _)!;
+                return Task.FromResult(new MftBlockProduceResult(block, 0));
+            }, source.IndexSource)
+        }, Token);
+        var changes = new System.Collections.Concurrent.ConcurrentQueue<FileChange>();
+        index.Changed += changes.Enqueue;
+        await index.StartWatchingAsync(['T'], Token);
+        index.Hooks.BeforeWatchChanged = _ =>
+        {
+            delivering.MarkEntered();
+            delivering.WaitForRelease();
+        };
         try
         {
-            var source = new ScriptedWatchSource();
-            await using var index = await FileIndex.OpenAsync(new FileIndexOptions
-            {
-                Drives = [new IndexedDrive('T', directory.FullName, 1)],
-                CacheDirectory = directory.FullName,
-                MftSource = new MftIndexSource((request, cancellationToken) =>
-                {
-                    SeededBlocks.Write(request.BlockPath, 1, WatchHarness.JournalIdentifier, 100, moment: SeededBlocks.SeededMoment);
-                    var block = BlockFile.Open(request.BlockPath, 1, out _)!;
-                    return Task.FromResult(new MftBlockProduceResult(block, 0));
-                }, source.IndexSource)
-            }, Token);
-            var changes = new System.Collections.Concurrent.ConcurrentQueue<FileChange>();
-            index.Changed += changes.Enqueue;
-            await index.StartWatchingAsync(['T'], Token);
-            index.Hooks.BeforeWatchChanged = _ =>
-            {
-                delivering.MarkEntered();
-                delivering.WaitForRelease();
-            };
-            try
-            {
-                var delivered = source.WatchFor('T').Queue(WatchHarness.Batch(9, "replayed.txt", 700));
-                await delivering.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
-                var original = index.Root('T', TestContext.CancellationToken).DriveBlock;
-                var rescan = index.RescanAsync(['T'], Token);
-                Assert.AreNotSame(original, index.Root('T', TestContext.CancellationToken).DriveBlock,
-                    "publication need not wait for an already applied change's delivery");
-                Assert.IsEmpty(changes);
-                Assert.IsEmpty(index.Search(new SearchQuery("replayed.txt", NameMatchMode.Exact), Token), "queries await the new catch-up");
-                delivering.Release();
-                await rescan.WaitAsync(HangGuard, TestContext.CancellationToken);
-                await delivered.WaitAsync(HangGuard, TestContext.CancellationToken);
-                Assert.HasCount(1, changes);
-                await source.WatchFor('T').Publish(WatchHarness.Batch(9, "replayed.txt", 700));
-                Assert.HasCount(2, changes);
-                Assert.AreEqual(WatchState.CatchingUp, index.Drives.Single().Watch.State);
-                await source.WatchFor('T').Publish(new DriveCaughtUp());
-                await index.WaitForCatchUpAsync(['T'], Token);
-                Assert.HasCount(1, index.Search(new SearchQuery("replayed.txt", NameMatchMode.Exact), Token));
-                await index.StopWatchingAsync(['T'], Token);
-            }
-            finally
-            {
-                delivering.Release();
-            }
+            var delivered = source.WatchFor('T').Queue(WatchHarness.Batch(9, "replayed.txt", 700));
+            await delivering.Entered.WaitAsync(HangGuard, TestContext.CancellationToken);
+            var original = index.Root('T', TestContext.CancellationToken).DriveBlock;
+            var rescan = index.RescanAsync(['T'], Token);
+            Assert.AreNotSame(original, index.Root('T', TestContext.CancellationToken).DriveBlock,
+                "publication need not wait for an already applied change's delivery");
+            Assert.IsEmpty(changes);
+            Assert.IsEmpty(index.Search(new SearchQuery("replayed.txt", NameMatchMode.Exact), Token), "queries await the new catch-up");
+            delivering.Release();
+            await rescan.WaitAsync(HangGuard, TestContext.CancellationToken);
+            await delivered.WaitAsync(HangGuard, TestContext.CancellationToken);
+            Assert.HasCount(1, changes);
+            await source.WatchFor('T').Publish(WatchHarness.Batch(9, "replayed.txt", 700));
+            Assert.HasCount(2, changes);
+            Assert.AreEqual(WatchState.CatchingUp, index.Drives.Single().Watch.State);
+            await source.WatchFor('T').Publish(new DriveCaughtUp());
+            await index.WaitForCatchUpAsync(['T'], Token);
+            Assert.HasCount(1, index.Search(new SearchQuery("replayed.txt", NameMatchMode.Exact), Token));
+            await index.StopWatchingAsync(['T'], Token);
         }
         finally
         {
-            directory.Delete(recursive: true);
+            delivering.Release();
         }
     }
 

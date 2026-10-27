@@ -129,12 +129,12 @@ public partial class BenchmarkRunnerTests
     [TestMethod]
     public async Task Run_NativeTimings_MissingDump_ReportsError()
     {
-        var path = Path.Combine(Path.GetTempPath(), $"missing-{Guid.NewGuid():N}.mft");
-        Assert.AreEqual(1, await _runner.RunAsync(["native-timings", "--dump", path]));
+        using var missingDump = new TempFile("missing-dump", create: false);
+        Assert.AreEqual(1, await _runner.RunAsync(["native-timings", "--dump", missingDump.Path]));
         Assert.Contains("Error:", _output.ToString());
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             ScenarioMemoryProcess.MeasureAsync(
-                new ScenarioMemoryRequest("native-parse-timings", path, 1), TestContext.CancellationToken));
+                new ScenarioMemoryRequest("native-parse-timings", missingDump.Path, 1), TestContext.CancellationToken));
         Assert.Contains("native-parse-timings", exception.Message);
     }
 
@@ -148,82 +148,79 @@ public partial class BenchmarkRunnerTests
     [TestMethod]
     public async Task Run_Index_CacheDirectory_UsesEachStoredTagAndLeavesBlocksIntact()
     {
-        var directory = Path.Combine(Path.GetTempPath(), $"benchmark-index-test-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(directory);
-        try
+        using var directoryOwner = new TempDirectory("benchmark-index-test");
+        var directory = directoryOwner.Path;
+
+        void WriteBlock(char drive, ulong scanShape, ProducerKind producer = ProducerKind.Enumeration) =>
+            WriteCacheBlock(directory, directory, drive, scanShape, producer);
+
+        var expectedShape = SyntheticScanShape.Default(ProducerKind.Enumeration);
+        WriteBlock('T', expectedShape);
+        WriteBlock('U', expectedShape);
+
+        // One block per row-shaping option the benchmark does not supply (issue #678): each must
+        // be declined as an unsupported scan shape and its bytes left intact.
+        var declined = new (char Drive, ulong Shape, ProducerKind Producer)[]
         {
-            void WriteBlock(char drive, ulong scanShape, ProducerKind producer = ProducerKind.Enumeration) =>
-                WriteCacheBlock(directory, directory, drive, scanShape, producer);
-
-            var expectedShape = SyntheticScanShape.Default(ProducerKind.Enumeration);
-            WriteBlock('T', expectedShape);
-            WriteBlock('U', expectedShape);
-
-            // One block per row-shaping option the benchmark does not supply (issue #678): each must
-            // be declined as an unsupported scan shape and its bytes left intact.
-            var declined = new (char Drive, ulong Shape, ProducerKind Producer)[]
-            {
-                ('V', ScanShape.ForEnumeration(["child.txt"], new DirectoryWalkOptions(), directory), ProducerKind.Enumeration),
-                ('W', ScanShape.ForEnumeration([], new DirectoryWalkOptions(), directory), ProducerKind.Enumeration),
-                ('X', ScanShape.ForEnumeration(null, new DirectoryWalkOptions { PrunedDirectoryNames = ["build"] }, directory), ProducerKind.Enumeration),
-                ('Y', ScanShape.ForEnumeration(null, new DirectoryWalkOptions { PrunedDirectoryPaths = [Path.Combine(directory, "build")] }, directory), ProducerKind.Enumeration),
-                ('Z', ScanShape.ForEnumeration(null, new DirectoryWalkOptions { PrunedDirectoryAttributes = FileAttributes.Hidden }, directory), ProducerKind.Enumeration),
-                ('S', ScanShape.ForEnumeration(null, new DirectoryWalkOptions { PruneDotDirectories = true }, directory), ProducerKind.Enumeration),
-                ('M', ScanShape.ForMft(["child.txt"], includeFreed: false), ProducerKind.Mft),
-                ('N', ScanShape.ForMft(null, includeFreed: true), ProducerKind.Mft)
-            };
-            foreach (var (drive, shape, producer) in declined)
-            {
-                WriteBlock(drive, shape, producer);
-            }
-
-            var requests = new List<ScenarioMemoryRequest>();
-            var runner = new BenchmarkRunner(_output, TimeProvider.System, request =>
-            {
-                requests.Add(request);
-                Assert.IsNotNull(request.Index);
-                var blockPath = Path.Combine(request.InputPath, $"{request.Index.Drive}-00000001.mlix");
-                using var lockHandle = BlockOwnerLock.TryAcquire(blockPath);
-                Assert.IsNotNull(lockHandle, "Parent must release block ownership before starting the memory worker.");
-                return FixedMemoryAsync(request);
-            });
-
-            var originals = Directory.GetFiles(directory, "*.mlix").ToDictionary(path => path, File.ReadAllBytes);
-            Assert.HasCount(2 + declined.Length, originals);
-            Assert.AreEqual(1, await runner.RunAsync(["index", "--cache-directory", directory]));
-            var output = _output.ToString();
-            Assert.Contains("Drive: T", output);
-            Assert.Contains("Drive: U", output);
-            Assert.Contains("Rows: 2", output);
-            Assert.Contains("Matches: 1", output);
-            var usedNameBytes = (directory.Length + "file-0000000001".Length) * 2;
-            var fileBytes = new FileInfo(Path.Combine(directory, "T-00000001.mlix")).Length;
-            Assert.Contains(string.Create(CultureInfo.InvariantCulture,
-                $"Name-pool bytes: {usedNameBytes} ({100.0 * usedNameBytes / fileBytes:F2}% of file)"), output);
-            foreach (var (drive, _, _) in declined)
-            {
-                Assert.Contains($"{drive}-00000001.mlix: unsupported scan shape", output);
-            }
-            foreach (var original in originals)
-            {
-                Assert.AreSequenceEqual(original.Value, await File.ReadAllBytesAsync(original.Key, TestContext.CancellationToken));
-            }
-            CollectionAssert.AreEqual(
-                new (char, string, uint, uint, ulong)[]
-                {
-                    ('T', "exact-search", new CacheTag("TEST", 'T').PackedFourCc, 'T', expectedShape),
-                    ('T', "substring-search", new CacheTag("TEST", 'T').PackedFourCc, 'T', expectedShape),
-                    ('U', "exact-search", new CacheTag("TEST", 'U').PackedFourCc, 'U', expectedShape),
-                    ('U', "substring-search", new CacheTag("TEST", 'U').PackedFourCc, 'U', expectedShape)
-                },
-                requests.Select(request => (
-                    request.Index!.Drive,
-                    request.Scenario,
-                    request.Index.PackedFourCc,
-                    request.Index.TagVersion,
-                    request.Index.ScanShape)).ToArray());
+            ('V', ScanShape.ForEnumeration(["child.txt"], new DirectoryWalkOptions(), directory), ProducerKind.Enumeration),
+            ('W', ScanShape.ForEnumeration([], new DirectoryWalkOptions(), directory), ProducerKind.Enumeration),
+            ('X', ScanShape.ForEnumeration(null, new DirectoryWalkOptions { PrunedDirectoryNames = ["build"] }, directory), ProducerKind.Enumeration),
+            ('Y', ScanShape.ForEnumeration(null, new DirectoryWalkOptions { PrunedDirectoryPaths = [Path.Combine(directory, "build")] }, directory), ProducerKind.Enumeration),
+            ('Z', ScanShape.ForEnumeration(null, new DirectoryWalkOptions { PrunedDirectoryAttributes = FileAttributes.Hidden }, directory), ProducerKind.Enumeration),
+            ('S', ScanShape.ForEnumeration(null, new DirectoryWalkOptions { PruneDotDirectories = true }, directory), ProducerKind.Enumeration),
+            ('M', ScanShape.ForMft(["child.txt"], includeFreed: false), ProducerKind.Mft),
+            ('N', ScanShape.ForMft(null, includeFreed: true), ProducerKind.Mft)
+        };
+        foreach (var (drive, shape, producer) in declined)
+        {
+            WriteBlock(drive, shape, producer);
         }
-        finally { Directory.Delete(directory, true); }
+
+        var requests = new List<ScenarioMemoryRequest>();
+        var runner = new BenchmarkRunner(_output, TimeProvider.System, request =>
+        {
+            requests.Add(request);
+            Assert.IsNotNull(request.Index);
+            var blockPath = Path.Combine(request.InputPath, $"{request.Index.Drive}-00000001.mlix");
+            using var lockHandle = BlockOwnerLock.TryAcquire(blockPath);
+            Assert.IsNotNull(lockHandle, "Parent must release block ownership before starting the memory worker.");
+            return FixedMemoryAsync(request);
+        });
+
+        var originals = Directory.GetFiles(directory, "*.mlix").ToDictionary(path => path, File.ReadAllBytes);
+        Assert.HasCount(2 + declined.Length, originals);
+        Assert.AreEqual(1, await runner.RunAsync(["index", "--cache-directory", directory]));
+        var output = _output.ToString();
+        Assert.Contains("Drive: T", output);
+        Assert.Contains("Drive: U", output);
+        Assert.Contains("Rows: 2", output);
+        Assert.Contains("Matches: 1", output);
+        var usedNameBytes = (directory.Length + "file-0000000001".Length) * 2;
+        var fileBytes = new FileInfo(Path.Combine(directory, "T-00000001.mlix")).Length;
+        Assert.Contains(string.Create(CultureInfo.InvariantCulture,
+            $"Name-pool bytes: {usedNameBytes} ({100.0 * usedNameBytes / fileBytes:F2}% of file)"), output);
+        foreach (var (drive, _, _) in declined)
+        {
+            Assert.Contains($"{drive}-00000001.mlix: unsupported scan shape", output);
+        }
+        foreach (var original in originals)
+        {
+            Assert.AreSequenceEqual(original.Value, await File.ReadAllBytesAsync(original.Key, TestContext.CancellationToken));
+        }
+        CollectionAssert.AreEqual(
+            new (char, string, uint, uint, ulong)[]
+            {
+                ('T', "exact-search", new CacheTag("TEST", 'T').PackedFourCc, 'T', expectedShape),
+                ('T', "substring-search", new CacheTag("TEST", 'T').PackedFourCc, 'T', expectedShape),
+                ('U', "exact-search", new CacheTag("TEST", 'U').PackedFourCc, 'U', expectedShape),
+                ('U', "substring-search", new CacheTag("TEST", 'U').PackedFourCc, 'U', expectedShape)
+            },
+            requests.Select(request => (
+                request.Index!.Drive,
+                request.Scenario,
+                request.Index.PackedFourCc,
+                request.Index.TagVersion,
+                request.Index.ScanShape)).ToArray());
     }
 
     [TestMethod]
@@ -231,18 +228,14 @@ public partial class BenchmarkRunnerTests
     [DataRow(true)]
     public async Task Run_Index_EmptyOrCorruptCache_FailsWithoutScanning(bool corrupt)
     {
-        var directory = Path.Combine(Path.GetTempPath(), $"benchmark-index-test-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(directory);
-        try
+        using var directoryOwner = new TempDirectory("benchmark-index-test");
+        var directory = directoryOwner.Path;
+        if (corrupt)
         {
-            if (corrupt)
-            {
-                await File.WriteAllTextAsync(Path.Combine(directory, "T-00000001.mlix"), "corrupt", TestContext.CancellationToken);
-            }
-            Assert.AreEqual(1, await _runner.RunAsync(["index", "--cache-directory", directory]));
-            Assert.Contains(corrupt ? "Invalid" : "No cache blocks", _output.ToString());
+            await File.WriteAllTextAsync(Path.Combine(directory, "T-00000001.mlix"), "corrupt", TestContext.CancellationToken);
         }
-        finally { Directory.Delete(directory, true); }
+        Assert.AreEqual(1, await _runner.RunAsync(["index", "--cache-directory", directory]));
+        Assert.Contains(corrupt ? "Invalid" : "No cache blocks", _output.ToString());
     }
 
     [TestMethod]
@@ -250,51 +243,43 @@ public partial class BenchmarkRunnerTests
     [DataRow(true)]
     public async Task Run_Index_OfflineOrLockedCache_ReportsUnavailable(bool locked)
     {
-        var directory = Path.Combine(Path.GetTempPath(), $"benchmark-index-test-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(directory);
+        using var directoryOwner = new TempDirectory("benchmark-index-test");
+        var directory = directoryOwner.Path;
         var path = Path.Combine(directory, "T-00000001.mlix");
-        try
+        using (var block = TestBlocks.Create(path, slotCapacity: 8, namePoolCapacity: 4096,
+            volumeSerial: 1, scanShape: SyntheticScanShape.Default(ProducerKind.Enumeration)))
         {
-            using (var block = TestBlocks.Create(path, slotCapacity: 8, namePoolCapacity: 4096,
-                volumeSerial: 1, scanShape: SyntheticScanShape.Default(ProducerKind.Enumeration)))
-            {
-                var writer = new BlockWriter(block);
-                writer.TryWriteRow(0, Path.Combine(directory, "missing-root"),
-                    new RowColumns(0, RowFlags.InUse | RowFlags.Directory, 0, 0, 0, 0));
-                writer.Complete(DateTime.UtcNow, null);
-            }
-            using var owner = locked ? BlockOwnerLock.TryAcquire(path) : null;
-            Assert.AreEqual(1, await _runner.RunAsync(["index", "--cache-directory", directory]));
-            Assert.Contains(locked ? "InUse" : "Offline", _output.ToString());
+            var writer = new BlockWriter(block);
+            writer.TryWriteRow(0, Path.Combine(directory, "missing-root"),
+                new RowColumns(0, RowFlags.InUse | RowFlags.Directory, 0, 0, 0, 0));
+            writer.Complete(DateTime.UtcNow, null);
         }
-        finally { Directory.Delete(directory, true); }
+        using var owner = locked ? BlockOwnerLock.TryAcquire(path) : null;
+        Assert.AreEqual(1, await _runner.RunAsync(["index", "--cache-directory", directory]));
+        Assert.Contains(locked ? "InUse" : "Offline", _output.ToString());
     }
 
     [TestMethod]
     [OSCondition(OperatingSystems.Windows)]
     public async Task Run_Index_MftCache_OpensWithJournalIsolationEnabled()
     {
-        var directory = Path.Combine(Path.GetTempPath(), $"benchmark-index-test-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(directory);
+        using var directoryOwner = new TempDirectory("benchmark-index-test");
+        var directory = directoryOwner.Path;
         var drive = Path.GetPathRoot(directory)![0];
-        try
+        using (var block = TestBlocks.Create(Path.Combine(directory, $"{drive}-00000001.mlix"),
+            ProducerKind.Mft, 8, 4096, volumeSerial: 1, rootRow: 5,
+            scanShape: SyntheticScanShape.Default(ProducerKind.Mft)))
         {
-            using (var block = TestBlocks.Create(Path.Combine(directory, $"{drive}-00000001.mlix"),
-                ProducerKind.Mft, 8, 4096, volumeSerial: 1, rootRow: 5,
-                scanShape: SyntheticScanShape.Default(ProducerKind.Mft)))
-            {
-                var writer = new BlockWriter(block);
-                writer.TryWriteRow(5, "", new RowColumns(5, RowFlags.InUse | RowFlags.Directory, 0, 0, 0, 0));
-                block.Header.UsnJournalIdentifier = 123;
-                block.Header.UsnNextUsn = 456;
-                writer.Complete(DateTime.UtcNow, null);
-            }
-            Assert.AreEqual(0, await _runner.RunAsync(["index", "--cache-directory", directory]),
-                _output.ToString());
-            Assert.Contains("Rows: 6", _output.ToString());
-            Assert.Contains("Name-pool bytes: 0 (0.00% of file)", _output.ToString());
+            var writer = new BlockWriter(block);
+            writer.TryWriteRow(5, "", new RowColumns(5, RowFlags.InUse | RowFlags.Directory, 0, 0, 0, 0));
+            block.Header.UsnJournalIdentifier = 123;
+            block.Header.UsnNextUsn = 456;
+            writer.Complete(DateTime.UtcNow, null);
         }
-        finally { Directory.Delete(directory, true); }
+        Assert.AreEqual(0, await _runner.RunAsync(["index", "--cache-directory", directory]),
+            _output.ToString());
+        Assert.Contains("Rows: 6", _output.ToString());
+        Assert.Contains("Name-pool bytes: 0 (0.00% of file)", _output.ToString());
     }
 
     [TestMethod]
@@ -685,6 +670,7 @@ public partial class BenchmarkRunnerTests
         return await _runner.RunAsync(["compare", before, after, scenario]);
     }
 
+    TempDirectory _directoryOwner = null!;
     string _directory = null!;
     StringWriter _output = null!;
     BenchmarkRunner _runner = null!;
@@ -692,7 +678,8 @@ public partial class BenchmarkRunnerTests
     [TestInitialize]
     public void Initialize()
     {
-        _directory = Directory.CreateTempSubdirectory("benchmark-host-").FullName;
+        _directoryOwner = new TempDirectory("benchmark-host");
+        _directory = _directoryOwner.Path;
         _output = new StringWriter();
         _runner = new BenchmarkRunner(_output, TimeProvider.System, FixedMemoryAsync);
     }
@@ -701,10 +688,7 @@ public partial class BenchmarkRunnerTests
     public void Cleanup()
     {
         _output.Dispose();
-        if (Directory.Exists(_directory))
-        {
-            Directory.Delete(_directory, true);
-        }
+        _directoryOwner.Dispose();
     }
 
     [GeneratedRegex(@"Bound: the (read \(I/O\)|parse \(CPU\)) stage dominates")]

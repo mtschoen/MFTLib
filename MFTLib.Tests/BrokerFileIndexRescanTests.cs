@@ -176,16 +176,21 @@ public sealed class BrokerFileIndexRescanTests
     /// </summary>
     sealed class BrokerScenario : IDisposable
     {
-        readonly string _cacheDirectory = Path.Combine(Path.GetTempPath(), $"broker-rescan-{Guid.NewGuid():N}");
+        readonly TempDirectory _cache = new("broker-rescan", create: false);
+        readonly TempDirectory _roots = new("broker-rescan-roots");
         readonly ConcurrentDictionary<DriveKey, int> _scans = new();
         TestGate? _heldScanOfT;
 
         public void Dispose()
         {
             _heldScanOfT?.Release();
-            if (Directory.Exists(_cacheDirectory))
+            try
             {
-                Directory.Delete(_cacheDirectory, recursive: true);
+                _cache.Dispose();
+            }
+            finally
+            {
+                _roots.Dispose();
             }
         }
 
@@ -199,8 +204,8 @@ public sealed class BrokerFileIndexRescanTests
         {
             return FileIndex.OpenAsync(new FileIndexOptions
             {
-                Drives = [new IndexedDrive('T', Path.GetTempPath(), 123), new IndexedDrive('U', Path.GetTempPath(), 456)],
-                CacheDirectory = _cacheDirectory,
+                Drives = [new IndexedDrive('T', _roots.Path, 123), new IndexedDrive('U', _roots.Path, 456)],
+                CacheDirectory = _cache.Path,
                 CacheMode = CacheMode.Disabled,
                 MftSource = new MftIndexSource(producer, watchSource)
             }, token);

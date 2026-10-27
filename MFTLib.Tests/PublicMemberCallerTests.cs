@@ -1,5 +1,6 @@
 using System.Reflection;
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.MetadataSurfaceReader;
 
@@ -360,7 +361,8 @@ public class PublicMemberCallerTests
     [TestMethod]
     public void TheGate_FailsOnWindowsWhenTheWatchSampleIsMissing()
     {
-        var absent = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        using var absentDirectory = new TempDirectory("mftlib-absent", create: false);
+        var absent = absentDirectory.Path;
 
         var failure = Assert.ThrowsExactly<AssertFailedException>(() => GateSamplePaths(true, absent));
         Assert.Contains(Path.Combine(absent, WatchSample), failure.Message);
@@ -370,7 +372,8 @@ public class PublicMemberCallerTests
     [TestMethod]
     public void AMissingLibraryOutput_Fails()
     {
-        var absent = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "MFTLib.dll");
+        using var absentDirectory = new TempDirectory("mftlib-absent", create: false);
+        var absent = Path.Combine(absentDirectory.Path, "MFTLib.dll");
 
         var failure = Assert.ThrowsExactly<AssertFailedException>(() => ResolveLibraryPath(absent));
         Assert.Contains(absent, failure.Message);

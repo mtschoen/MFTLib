@@ -62,17 +62,11 @@ public partial class UsnJournalSyntheticTests
     {
         NativeTestHooks.NativeResetTestState();
         NativeTestHooks.NativeSetMaxThreads(2);
-        var path = Path.GetTempFileName();
-        try
-        {
-            Assert.IsTrue(MFTLibNative.GenerateSyntheticMftSized(path, 256, 256, 1024));
-            using var input = MftDumpInput.Open(path);
-            using var result = input.Parse();
-            Assert.IsGreaterThan(0UL, result.UsedRecords);
-        }
-        finally
-        {
-            File.Delete(path);
-        }
+        using var temporaryFile = new TempFile();
+        var path = temporaryFile.Path;
+        Assert.IsTrue(MFTLibNative.GenerateSyntheticMftSized(path, 256, 256, 1024));
+        using var input = MftDumpInput.Open(path);
+        using var result = input.Parse();
+        Assert.IsGreaterThan(0UL, result.UsedRecords);
     }
 }

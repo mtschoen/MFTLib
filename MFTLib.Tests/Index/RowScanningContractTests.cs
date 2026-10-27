@@ -142,7 +142,7 @@ public sealed class RowScanningContractTests
         Func<uint, uint>? parentFactory = null) =>
         FileIndex.OpenAsync(new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', Path.GetTempPath(), 1)],
+            Drives = [new IndexedDrive('T', AppContext.BaseDirectory, 1)],
             CacheMode = CacheMode.Disabled,
             MftSource = new MftIndexSource((request, _) => Task.FromResult(
                 new MftBlockProduceResult(

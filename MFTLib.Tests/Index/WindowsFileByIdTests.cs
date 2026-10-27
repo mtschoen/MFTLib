@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using MFTLib.NativeInterop;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Win32.SafeHandles;
 
@@ -21,22 +22,16 @@ public class WindowsFileByIdTests
     [SupportedOSPlatform("windows")]
     public void Open_RoundTripsARealFileThroughItsFileReference()
     {
-        var path = Path.Combine(Path.GetTempPath(), $"mftlib-openbyid-{Guid.NewGuid():N}.txt");
+        using var temporaryFile = new TempFile("mftlib-openbyid", create: false);
+        var path = temporaryFile.Path;
         File.WriteAllText(path, "round trip");
-        try
-        {
-            var (recordNumber, sequenceNumber) = FileReferenceProbe.Read(path);
-            var volumeRoot = Path.GetPathRoot(Path.GetFullPath(path))!;
+        var (recordNumber, sequenceNumber) = FileReferenceProbe.Read(path);
+        var volumeRoot = Path.GetPathRoot(Path.GetFullPath(path))!;
 
-            using var stream = WindowsFileById.Open(volumeRoot, recordNumber, sequenceNumber, FileAccess.Read);
-            using var reader = new StreamReader(stream);
+        using var stream = WindowsFileById.Open(volumeRoot, recordNumber, sequenceNumber, FileAccess.Read);
+        using var reader = new StreamReader(stream);
 
-            Assert.AreEqual("round trip", reader.ReadToEnd());
-        }
-        finally
-        {
-            File.Delete(path);
-        }
+        Assert.AreEqual("round trip", reader.ReadToEnd());
     }
 
     [TestMethod]
@@ -44,26 +39,20 @@ public class WindowsFileByIdTests
     [SupportedOSPlatform("windows")]
     public void Open_WithWriteAccess_OpensAndAcceptsAWrite()
     {
-        var path = Path.Combine(Path.GetTempPath(), $"mftlib-openbyid-{Guid.NewGuid():N}.txt");
+        using var temporaryFile = new TempFile("mftlib-openbyid", create: false);
+        var path = temporaryFile.Path;
         File.WriteAllText(path, "before");
-        try
-        {
-            var (recordNumber, sequenceNumber) = FileReferenceProbe.Read(path);
-            var volumeRoot = Path.GetPathRoot(Path.GetFullPath(path))!;
+        var (recordNumber, sequenceNumber) = FileReferenceProbe.Read(path);
+        var volumeRoot = Path.GetPathRoot(Path.GetFullPath(path))!;
 
-            using (var stream = WindowsFileById.Open(volumeRoot, recordNumber, sequenceNumber, FileAccess.Write))
-            {
-                stream.SetLength(0);
-                using var writer = new StreamWriter(stream);
-                writer.Write("after");
-            }
-
-            Assert.AreEqual("after", File.ReadAllText(path));
-        }
-        finally
+        using (var stream = WindowsFileById.Open(volumeRoot, recordNumber, sequenceNumber, FileAccess.Write))
         {
-            File.Delete(path);
+            stream.SetLength(0);
+            using var writer = new StreamWriter(stream);
+            writer.Write("after");
         }
+
+        Assert.AreEqual("after", File.ReadAllText(path));
     }
 
     [TestMethod]
@@ -71,29 +60,23 @@ public class WindowsFileByIdTests
     [SupportedOSPlatform("windows")]
     public void Open_WithReadWriteAccess_ReadsAndWritesThroughTheSameHandle()
     {
-        var path = Path.Combine(Path.GetTempPath(), $"mftlib-openbyid-{Guid.NewGuid():N}.txt");
+        using var temporaryFile = new TempFile("mftlib-openbyid", create: false);
+        var path = temporaryFile.Path;
         File.WriteAllText(path, "before");
-        try
-        {
-            var (recordNumber, sequenceNumber) = FileReferenceProbe.Read(path);
-            var volumeRoot = Path.GetPathRoot(Path.GetFullPath(path))!;
+        var (recordNumber, sequenceNumber) = FileReferenceProbe.Read(path);
+        var volumeRoot = Path.GetPathRoot(Path.GetFullPath(path))!;
 
-            using var stream = WindowsFileById.Open(volumeRoot, recordNumber, sequenceNumber, FileAccess.ReadWrite);
-            using var reader = new StreamReader(stream);
-            Assert.AreEqual("before", reader.ReadToEnd());
+        using var stream = WindowsFileById.Open(volumeRoot, recordNumber, sequenceNumber, FileAccess.ReadWrite);
+        using var reader = new StreamReader(stream);
+        Assert.AreEqual("before", reader.ReadToEnd());
 
-            stream.SetLength(0);
-            stream.Seek(0, SeekOrigin.Begin);
-            using var writer = new StreamWriter(stream);
-            writer.Write("after");
-            writer.Flush();
+        stream.SetLength(0);
+        stream.Seek(0, SeekOrigin.Begin);
+        using var writer = new StreamWriter(stream);
+        writer.Write("after");
+        writer.Flush();
 
-            Assert.AreEqual(5, stream.Length);
-        }
-        finally
-        {
-            File.Delete(path);
-        }
+        Assert.AreEqual(5, stream.Length);
     }
 
     [TestMethod]
@@ -101,8 +84,8 @@ public class WindowsFileByIdTests
     [SupportedOSPlatform("windows")]
     public void Open_InvalidVolumeHintPath_ThrowsIOExceptionNamingThePath()
     {
-        var missingPath = Path.Combine(Path.GetTempPath(), $"mftlib-missing-hint-{Guid.NewGuid():N}",
-            "no-such-directory");
+        using var missingDirectory = new TempDirectory("mftlib-missing-hint", create: false);
+        var missingPath = Path.Combine(missingDirectory.Path, "no-such-directory");
 
         var failedHandle = new SafeFileHandle(new IntPtr(-1), false);
         Kernel32.Hooks._createFile = (_, _, _, _, _, _, _) =>
@@ -122,20 +105,14 @@ public class WindowsFileByIdTests
     [SupportedOSPlatform("windows")]
     public void Open_UnrecognizedFileAccessValue_ThrowsArgumentOutOfRangeException()
     {
-        var path = Path.Combine(Path.GetTempPath(), $"mftlib-openbyid-{Guid.NewGuid():N}.txt");
+        using var temporaryFile = new TempFile("mftlib-openbyid", create: false);
+        var path = temporaryFile.Path;
         File.WriteAllText(path, "x");
-        try
-        {
-            var (recordNumber, sequenceNumber) = FileReferenceProbe.Read(path);
-            var volumeRoot = Path.GetPathRoot(Path.GetFullPath(path))!;
+        var (recordNumber, sequenceNumber) = FileReferenceProbe.Read(path);
+        var volumeRoot = Path.GetPathRoot(Path.GetFullPath(path))!;
 
-            Assert.ThrowsExactly<ArgumentOutOfRangeException>(
-                () => WindowsFileById.Open(volumeRoot, recordNumber, sequenceNumber, default));
-        }
-        finally
-        {
-            File.Delete(path);
-        }
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => WindowsFileById.Open(volumeRoot, recordNumber, sequenceNumber, default));
     }
 
     [TestMethod]
@@ -143,22 +120,16 @@ public class WindowsFileByIdTests
     [SupportedOSPlatform("windows")]
     public void Open_ThrowsIOExceptionNamingTheRecordWhenTheSequenceNumberIsWrong()
     {
-        var path = Path.Combine(Path.GetTempPath(), $"mftlib-openbyid-{Guid.NewGuid():N}.txt");
+        using var temporaryFile = new TempFile("mftlib-openbyid", create: false);
+        var path = temporaryFile.Path;
         File.WriteAllText(path, "x");
-        try
-        {
-            var (recordNumber, sequenceNumber) = FileReferenceProbe.Read(path);
-            var volumeRoot = Path.GetPathRoot(Path.GetFullPath(path))!;
+        var (recordNumber, sequenceNumber) = FileReferenceProbe.Read(path);
+        var volumeRoot = Path.GetPathRoot(Path.GetFullPath(path))!;
 
-            var failure = Assert.ThrowsExactly<IOException>(
-                () => WindowsFileById.Open(volumeRoot, recordNumber, (ushort)(sequenceNumber + 1), FileAccess.Read));
+        var failure = Assert.ThrowsExactly<IOException>(
+            () => WindowsFileById.Open(volumeRoot, recordNumber, (ushort)(sequenceNumber + 1), FileAccess.Read));
 
-            Assert.Contains(recordNumber.ToString(CultureInfo.InvariantCulture), failure.Message);
-        }
-        finally
-        {
-            File.Delete(path);
-        }
+        Assert.Contains(recordNumber.ToString(CultureInfo.InvariantCulture), failure.Message);
     }
 }
 

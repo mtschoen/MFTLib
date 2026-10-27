@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -25,7 +26,8 @@ public class JournalCloseCoalescingLiveTests
             return;
         }
 
-        var tempPath = Path.Combine(Path.GetTempPath(), $"mftlib-close-test-{Guid.NewGuid():N}.tmp");
+        using var temporaryFile = new TempFile("mftlib-close-test", create: false);
+        var tempPath = temporaryFile.Path;
         var volumeRoot = Path.GetPathRoot(Path.GetFullPath(tempPath));
         var drive = !string.IsNullOrEmpty(volumeRoot) && volumeRoot.Length >= 2 && volumeRoot[1] == ':'
             ? new DriveKey(volumeRoot[0])

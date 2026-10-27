@@ -1,5 +1,6 @@
 using System.Reflection;
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -100,7 +101,8 @@ public class DriveKeyTests
     [TestMethod]
     public void CacheSelections_RejectDefaultEvenWhenDirectoryIsMissing()
     {
-        var directory = Path.Combine(Path.GetTempPath(), "mftlib-missing-drive-key-" + Guid.NewGuid().ToString("N"));
+        using var directoryOwner = new TempDirectory("mftlib-missing-drive-key", create: false);
+        var directory = directoryOwner.Path;
         Assert.ThrowsExactly<ArgumentException>(() => CacheDirectory.InspectCached(directory, [default]));
         Assert.ThrowsExactly<ArgumentException>(() => CacheDirectory.DeleteCached(directory, [default]));
         Assert.IsFalse(Directory.Exists(directory));

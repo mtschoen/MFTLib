@@ -133,8 +133,13 @@ public partial class JournalBrokerHostLivenessTests
     public async Task BlockFlush_EachRange_RestartsScanPipeProgressClock()
     {
         var liveness = new Liveness();
+        using var blockDirectory = new TempDirectory("mftlib-broker-block");
         var sectionName = NamedBlockSection.BuildSectionName('C');
-        var (block, lifetime) = NamedBlockSection.Create(TestBlocks.Options(Path.Combine(Path.GetTempPath(), $"broker-flush-{Guid.NewGuid():N}.bin"), ProducerKind.Mft, 128, (uint)(2 * BlockFile.FlushRangeBytes), volumeSerial: 123, rootRow: 5, deleteOnClose: true), sectionName);
+        // Two whole flush ranges of name pool, so the view spans three ranges.
+        var (block, lifetime) = NamedBlockSection.Create(
+            TestBlocks.Options(Path.Combine(blockDirectory.Path, "block.bin"), ProducerKind.Mft, 128,
+                (uint)(2 * BlockFile.FlushRangeBytes), volumeSerial: 123, rootRow: 5, deleteOnClose: true),
+            sectionName);
         using (block)
         using (lifetime)
         {

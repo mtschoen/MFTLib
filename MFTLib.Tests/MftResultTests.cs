@@ -31,31 +31,25 @@ public partial class MftResultTests
 
         // A native cancelled result carries the stride and the cancelled flag exactly where the
         // managed layout reads them.
-        var imagePath = Path.GetTempFileName();
+        using var temporaryFile = new TempFile();
+        var imagePath = temporaryFile.Path;
+        SyntheticNtfsImage.Write(imagePath, 64);
+        NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
+        using var control = new ParseControlBlock();
+        control.RequestCancel();
+        using var image = new FileStream(imagePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var resultPtr = MFTLibNative.Hooks._parseMftRecordsWithProgress(
+            image.SafeFileHandle, false, 64, control.Pointer, default);
         try
         {
-            SyntheticNtfsImage.Write(imagePath, 64);
-            NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
-            using var control = new ParseControlBlock();
-            control.RequestCancel();
-            using var image = new FileStream(imagePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var resultPtr = MFTLibNative.Hooks._parseMftRecordsWithProgress(
-                image.SafeFileHandle, false, 64, control.Pointer, default);
-            try
-            {
-                var entryStride = Marshal.ReadInt32(resultPtr, entryStrideOffset);
-                Assert.AreEqual(52, entryStride);
-                Assert.AreEqual((int)MFTLibNative.NativeCompactEntrySize, entryStride);
-                Assert.AreEqual(1, Marshal.ReadInt32(resultPtr, cancelledOffset));
-            }
-            finally
-            {
-                MFTLibNative.Hooks._freeMftResult(resultPtr);
-            }
+            var entryStride = Marshal.ReadInt32(resultPtr, entryStrideOffset);
+            Assert.AreEqual(52, entryStride);
+            Assert.AreEqual((int)MFTLibNative.NativeCompactEntrySize, entryStride);
+            Assert.AreEqual(1, Marshal.ReadInt32(resultPtr, cancelledOffset));
         }
         finally
         {
-            File.Delete(imagePath);
+            MFTLibNative.Hooks._freeMftResult(resultPtr);
         }
     }
 

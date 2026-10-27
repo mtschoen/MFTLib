@@ -81,7 +81,8 @@ public sealed partial class FileIndexResilienceTests : IndexTreeTestBase
     [TestMethod]
     public async Task OpenAsync_SecondDriveCancelledMidScan_UnwindsTheFirstDrivesAlreadyAddedBlock()
     {
-        var secondTreeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree2-{Guid.NewGuid():N}");
+        using var secondTreeRootOwner = new TempDirectory("mftlib-tree2");
+        var secondTreeRoot = secondTreeRootOwner.Path;
         Directory.CreateDirectory(Path.Combine(secondTreeRoot, "Documents"));
         await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "Documents", "readme2.md"), "hello2", TestContext.CancellationToken).WaitAsync(HangGuard * 3, TestContext.CancellationToken);
 
@@ -110,35 +111,28 @@ public sealed partial class FileIndexResilienceTests : IndexTreeTestBase
             ScanProgress = secondParked
         };
 
-        try
+        await AssertThrowsCancellation(async () =>
         {
-            await AssertThrowsCancellation(async () =>
-            {
-                var opening = FileIndex.OpenAsync(options, cancellationTokenSource.Token);
-                await Task.WhenAll(firstSettled.Reported, secondParked.Parked).WaitAsync(HangGuard * 3, TestContext.CancellationToken);
-                Assert.IsFalse(opening.IsCompleted, "the second drive is still mid-scan when the open is cancelled");
-                await cancellationTokenSource.CancelAsync().WaitAsync(HangGuard * 3, TestContext.CancellationToken);
-                await opening.WaitAsync(HangGuard * 3, TestContext.CancellationToken);
-            });
+            var opening = FileIndex.OpenAsync(options, cancellationTokenSource.Token);
+            await Task.WhenAll(firstSettled.Reported, secondParked.Parked).WaitAsync(HangGuard * 3, TestContext.CancellationToken);
+            Assert.IsFalse(opening.IsCompleted, "the second drive is still mid-scan when the open is cancelled");
+            await cancellationTokenSource.CancelAsync().WaitAsync(HangGuard * 3, TestContext.CancellationToken);
+            await opening.WaitAsync(HangGuard * 3, TestContext.CancellationToken);
+        });
 
-            var firstBlockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+        var firstBlockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('T', 0x0BADF00D));
 
-            // If the first drive's already-open mapping were not unwound, this exclusive
-            // reopen would fail with a sharing violation instead of succeeding.
-            await using var exclusive = new FileStream(firstBlockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        // If the first drive's already-open mapping were not unwound, this exclusive
+        // reopen would fail with a sharing violation instead of succeeding.
+        await using var exclusive = new FileStream(firstBlockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
 
-            // The second drive's partly written canonical file may remain (a canonical target is
-            // not delete-on-close); it must never be adoptable, so a later open cold-scans it.
-            var secondBlockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('U', 0x0BADF00E));
-            if (File.Exists(secondBlockPath))
-            {
-                Assert.IsNull(BlockFile.Open(secondBlockPath, 0x0BADF00E, out _),
-                    "a scan cancelled mid-write leaves nothing a later open could adopt");
-            }
-        }
-        finally
+        // The second drive's partly written canonical file may remain (a canonical target is
+        // not delete-on-close); it must never be adoptable, so a later open cold-scans it.
+        var secondBlockPath = Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName('U', 0x0BADF00E));
+        if (File.Exists(secondBlockPath))
         {
-            Directory.Delete(secondTreeRoot, recursive: true);
+            Assert.IsNull(BlockFile.Open(secondBlockPath, 0x0BADF00E, out _),
+                "a scan cancelled mid-write leaves nothing a later open could adopt");
         }
     }
 
@@ -192,7 +186,7 @@ public sealed partial class FileIndexResilienceTests : IndexTreeTestBase
 
         await AssertThrowsCancellation(() => FileIndex.OpenAsync(options, cancellationTokenSource.Token));
 
-        Assert.IsEmpty(Directory.EnumerateFiles(Path.GetTempPath(),
+        Assert.IsEmpty(Directory.EnumerateFiles(Directory.GetParent(TreeRoot)!.FullName,
             $"mftlib-cache-disabled-*-{CacheDirectory.BlockFileName('T', UniqueVolumeSerial)}"));
     }
 

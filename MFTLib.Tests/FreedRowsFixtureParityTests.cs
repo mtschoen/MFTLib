@@ -11,18 +11,20 @@ namespace MFTLib.Tests;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public class FreedRowsFixtureParityTests
+public sealed class FreedRowsFixtureParityTests : IDisposable
 {
     static readonly ulong[] TrustedFreedRecords = [12, 13, 14, 15];
     static readonly ulong[] UntrustedFreedRecords = [16, 17, 21, 22];
 
+    TempFile _fixtureFile = null!;
     string _fixturePath = null!;
     string _imagePath = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _fixturePath = Path.Combine(Path.GetTempPath(), $"mftlib-freed-parity-{Guid.NewGuid():N}.mft");
+        _fixtureFile = new TempFile("mftlib-freed-parity", create: false);
+        _fixturePath = _fixtureFile.Path;
         _imagePath = Path.ChangeExtension(_fixturePath, ".img");
         MftFixture.Generate(_fixturePath);
     }
@@ -31,16 +33,18 @@ public class FreedRowsFixtureParityTests
     public void Cleanup()
     {
         NativeTestHooks.NativeResetTestState();
-        File.Delete(_fixturePath);
-        File.Delete(_imagePath);
+        _fixtureFile.Dispose();
     }
+
+    public void Dispose() => Cleanup();
 
     [TestMethod]
     public void ManagedTrustRule_SplitsTheFixturesFreedRecordsByTheirParentChain()
     {
         using var scanned = FixtureVolume.Parse(_imagePath, File.ReadAllBytes(_fixturePath), true);
         var freedRecords = scanned.ToRecords().Where(record => !record.InUse).Select(record => record.RecordNumber).ToArray();
-        using var block = TestBlocks.Create(Path.Combine(Path.GetTempPath(), $"mft-parity-{Guid.NewGuid():N}.bin"), ProducerKind.Mft, 32, 4096, volumeSerial: 1, rootRow: 5, deleteOnClose: true);
+        using var block = TestBlocks.Create(Path.Combine(Path.GetDirectoryName(_fixturePath)!, "parity.bin"),
+            ProducerKind.Mft, 32, 4096, volumeSerial: 1, rootRow: 5, deleteOnClose: true);
         MftBlockRowWriter.WriteBatches(new BlockWriter(block), [scanned.ToRecords()],
             new MftScanOptions { IncludeFreed = true }, null, CancellationToken.None);
 

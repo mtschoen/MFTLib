@@ -2,10 +2,28 @@ namespace MFTLib.Tests.TestSupport;
 
 sealed class TempFile : IDisposable
 {
-    public string Path { get; } = System.IO.Path.GetTempFileName();
+    readonly TempDirectory _directory;
 
-    public void Dispose()
+    public string Path { get; }
+
+    public TempFile(string prefix = "mftlib-file", bool create = true)
     {
-        File.Delete(Path);
+        _directory = new TempDirectory(prefix);
+        try
+        {
+            Path = System.IO.Path.Combine(_directory.Path,
+                System.IO.Path.GetFileName(_directory.Path) + ".tmp");
+            if (create)
+            {
+                using var stream = File.Create(Path);
+            }
+        }
+        catch
+        {
+            _directory.Dispose();
+            throw;
+        }
     }
+
+    public void Dispose() => _directory.Dispose();
 }

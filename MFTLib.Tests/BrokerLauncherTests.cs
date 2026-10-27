@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -65,7 +66,8 @@ public class BrokerLauncherTests
     {
         var process = new Process();
         _process = process;
-        var executable = Path.Combine(Path.GetTempPath(), "broker-launch-" + Guid.NewGuid().ToString("N") + ".exe");
+        using var directory = new TempDirectory("broker-launch", create: false);
+        var executable = Path.Combine(directory.Path, "broker-launch.exe");
         ProcessStartInfo? launched = null;
         BrokerLauncher.Dependencies._getProcessPath = () => executable;
         BrokerLauncher.Dependencies._startProcess = startInfo =>

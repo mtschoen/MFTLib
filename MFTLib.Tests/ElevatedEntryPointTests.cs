@@ -8,9 +8,10 @@ namespace MFTLib.Tests;
 [DoNotParallelize]
 public class ElevatedEntryPointTests
 {
-    static readonly string InvalidDiagnosticsDirectory = Path.Combine(Path.GetTempPath(), "Invalid diagnostics " + Guid.NewGuid().ToString("N"));
-    static readonly string ClientLogPath = Path.Combine(Path.GetTempPath(), "Client diagnostics " + Guid.NewGuid().ToString("N"),
-        "broker-diagnostics.ui.log");
+    static readonly TempDirectory InvalidDiagnosticsOwner = new("Invalid diagnostics", create: false);
+    static readonly TempDirectory ClientDiagnosticsOwner = new("Client diagnostics", create: false);
+    static string InvalidDiagnosticsDirectory => InvalidDiagnosticsOwner.Path;
+    static string ClientLogPath => Path.Combine(ClientDiagnosticsOwner.Path, "broker-diagnostics.ui.log");
     static readonly string[] BrokerArgs = ["--broker", "--pipe", "mftlib-pipe-123"];
     static readonly string[] LeadingExecutablePathArgs = [@"C:\apps\SomeApp.exe", "--broker", "--pipe", "p"];
     static readonly string[] ScanOnlyArgs = ["--scan-only"];
@@ -22,6 +23,19 @@ public class ElevatedEntryPointTests
         ["--broker", "--pipe", "p", "--diag-log", @"C:\client-app\broker-diagnostics.ui.log"];
     static readonly string[] PipeFlagWithNoValueArgs = ["--broker", "--pipe"];
     static readonly string[] NoPipeFlagArgs = ["--broker"];
+
+    [ClassCleanup]
+    public static void CleanupDirectories()
+    {
+        try
+        {
+            InvalidDiagnosticsOwner.Dispose();
+        }
+        finally
+        {
+            ClientDiagnosticsOwner.Dispose();
+        }
+    }
 
     [TestMethod]
     public void RunBrokerIfRequested_BrokerMode_RoutesPipeName_AndReturnsTrue()
@@ -80,7 +94,8 @@ public class ElevatedEntryPointTests
     public async Task RunBrokerIfRequested_BrokerModeWithDiagFlag_EnablesDiagnostics(bool extendedLength, string directoryName)
     {
         var runner = new RecordingRunner();
-        var temporaryDirectory = Path.Combine(Path.GetTempPath(), "Elevated child diagnostics " + Guid.NewGuid().ToString("N"));
+        using var directoryOwner = new TempDirectory("Elevated child diagnostics");
+        var temporaryDirectory = directoryOwner.Path;
         var cleanupDirectory = extendedLength ? @"\\?\" + temporaryDirectory : temporaryDirectory;
         var clientDirectory = Path.Combine(cleanupDirectory, directoryName);
         try
@@ -134,7 +149,11 @@ public class ElevatedEntryPointTests
             }
             finally
             {
-                Directory.Delete(cleanupDirectory, true);
+                if (extendedLength && directoryName.Length != 0 && Directory.Exists(clientDirectory))
+                {
+                    // The child must be addressed through its extended path (NUL, CON, and similar names).
+                    Directory.Delete(clientDirectory, recursive: true);
+                }
             }
         }
     }
@@ -158,16 +177,9 @@ public class ElevatedEntryPointTests
     {
         var runner = new RecordingRunner();
         Directory.CreateDirectory(Path.Combine(InvalidDiagnosticsDirectory, BrokerDiagnostics.LogFileName));
-        try
-        {
-            Assert.IsTrue(ElevatedEntryPoint.RunBrokerIfRequested(arguments, runner.RunBroker, runner.RecordExit));
-            Assert.AreEqual(0, runner.TotalCalls);
-            Assert.AreSequenceEqual([1], runner.ExitCodes);
-        }
-        finally
-        {
-            Directory.Delete(InvalidDiagnosticsDirectory, true);
-        }
+        Assert.IsTrue(ElevatedEntryPoint.RunBrokerIfRequested(arguments, runner.RunBroker, runner.RecordExit));
+        Assert.AreEqual(0, runner.TotalCalls);
+        Assert.AreSequenceEqual([1], runner.ExitCodes);
     }
 
     public static IEnumerable<object[]> InvalidDiagnosticsArguments()
@@ -235,8 +247,8 @@ public class ElevatedEntryPointTests
     [DynamicData(nameof(OccupiedDiagnosticsTargets))]
     public async Task RunBrokerIfRequested_OccupiedBrokerLog_IsNotWritten_Issue780(string kind)
     {
-        var directory = Path.Combine(Path.GetTempPath(), "BrokerDiagOccupied_" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(directory);
+        using var directoryOwner = new TempDirectory("BrokerDiagOccupied");
+        var directory = directoryOwner.Path;
         var target = Path.Combine(directory, "target.txt");
         var logPath = Path.Combine(directory, "broker-diagnostics.broker.log");
         const string sentinel = "original target bytes";
@@ -271,8 +283,6 @@ public class ElevatedEntryPointTests
         {
             await BrokerDiagnosticsTestSupport.DrainAsync();
             BrokerDiagnostics.Dependencies.ResetToDefaults();
-            File.Delete(logPath);
-            Directory.Delete(directory, true);
         }
     }
 

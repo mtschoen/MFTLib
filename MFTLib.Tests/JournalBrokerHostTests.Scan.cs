@@ -150,8 +150,12 @@ public partial class JournalBrokerHostTests
     [SupportedOSPlatform("windows")]
     public void RealBlockSectionWriter_WritesBlock_ClientCanReadItBack()
     {
+        using var blockDirectory = new TempDirectory("mftlib-broker-block");
         var sectionName = NamedBlockSection.BuildSectionName('C');
-        var (block, lifetime) = NamedBlockSection.Create(TestBlocks.Options(Path.Combine(Path.GetTempPath(), $"broker-block-{Guid.NewGuid():N}.bin"), ProducerKind.Mft, 128, 1024, volumeSerial: 123, rootRow: 5, deleteOnClose: true), sectionName);
+        var (block, lifetime) = NamedBlockSection.Create(
+            TestBlocks.Options(Path.Combine(blockDirectory.Path, "block.bin"), ProducerKind.Mft, 128, 1024,
+                volumeSerial: 123, rootRow: 5, deleteOnClose: true),
+            sectionName);
         using (block)
         using (lifetime)
         {
@@ -177,8 +181,12 @@ public partial class JournalBrokerHostTests
     [SupportedOSPlatform("windows")]
     public async Task ArmAndScan_SectionHeaderRewrittenBeforeOpen_FailsTheScanWithTheRejection()
     {
+        using var blockDirectory = new TempDirectory("mftlib-broker-block");
         var sectionName = NamedBlockSection.BuildSectionName('C');
-        var (block, lifetime) = NamedBlockSection.Create(TestBlocks.Options(Path.Combine(Path.GetTempPath(), $"broker-block-{Guid.NewGuid():N}.bin"), ProducerKind.Mft, 128, 1024, volumeSerial: 123, rootRow: 5, deleteOnClose: true), sectionName);
+        var (block, lifetime) = NamedBlockSection.Create(
+            TestBlocks.Options(Path.Combine(blockDirectory.Path, "block.bin"), ProducerKind.Mft, 128, 1024,
+                volumeSerial: 123, rootRow: 5, deleteOnClose: true),
+            sectionName);
         using (block)
         using (lifetime)
         {

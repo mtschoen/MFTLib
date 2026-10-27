@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -8,25 +9,22 @@ namespace MFTLib.Tests.Index;
 ///     reimplements the inverse of <see cref="CacheDirectory.BlockFileName" />.
 /// </summary>
 [TestClass]
-public class CacheDirectoryEnumerationTests
+public sealed class CacheDirectoryEnumerationTests : IDisposable
 {
+    TempDirectory _directoryOwner = null!;
     string _cacheDirectory = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_cacheDirectory);
+        _directoryOwner = new TempDirectory("mftlib-cache");
+        _cacheDirectory = _directoryOwner.Path;
     }
 
     [TestCleanup]
-    public void Cleanup()
-    {
-        if (Directory.Exists(_cacheDirectory))
-        {
-            Directory.Delete(_cacheDirectory, recursive: true);
-        }
-    }
+    public void Cleanup() => _directoryOwner.Dispose();
+
+    public void Dispose() => Cleanup();
 
     string WriteFile(string fileName, string content)
     {

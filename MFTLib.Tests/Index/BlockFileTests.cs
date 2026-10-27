@@ -107,7 +107,8 @@ public class BlockFileTests
     [TestMethod]
     public void Open_MissingFile_IsReportedWithoutThrowing()
     {
-        var missing = Path.Combine(Path.GetTempPath(), $"mftlib-missing-{Guid.NewGuid():N}.mlix");
+        using var missingFile = new TempFile("mftlib-missing", create: false);
+        var missing = missingFile.Path;
         using var block = BlockFile.Open(missing, 1, out var validation);
         Assert.AreEqual(BlockValidationResult.WrongMagic, validation);
         Assert.IsNull(block);
@@ -121,7 +122,8 @@ public class BlockFileTests
     [TestMethod]
     public void Open_PathTheFileSystemCannotDescribe_IsReportedWithoutThrowing()
     {
-        var overLong = Path.Combine(Path.GetTempPath(), new string('a', 40_000));
+        using var directoryOwner = new TempDirectory("mftlib-overlong", create: false);
+        var overLong = Path.Combine(directoryOwner.Path, new string('a', 40_000));
 
         using var block = BlockFile.Open(overLong, 1, out var validation);
 
@@ -182,22 +184,15 @@ public class BlockFileTests
     [TestMethod]
     public void DeleteOnClose_RemovesTheFileWhenDisposed()
     {
-        var directory = Path.Combine(Path.GetTempPath(), $"mftlib-index-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(directory);
+        using var directoryOwner = new TempDirectory("mftlib-index");
+        var directory = directoryOwner.Path;
         var path = Path.Combine(directory, "volatile.mlix");
-        try
+        using (TestBlocks.Create(path, namePoolCapacity: 256, volumeSerial: 1, deleteOnClose: true))
         {
-            using (TestBlocks.Create(path, namePoolCapacity: 256, volumeSerial: 1, deleteOnClose: true))
-            {
-                Assert.IsTrue(File.Exists(path));
-            }
+            Assert.IsTrue(File.Exists(path));
+        }
 
-            Assert.IsFalse(File.Exists(path));
-        }
-        finally
-        {
-            Directory.Delete(directory, recursive: true);
-        }
+        Assert.IsFalse(File.Exists(path));
     }
 
     [TestMethod]
@@ -238,80 +233,62 @@ public class BlockFileTests
     [TestMethod]
     public void OpenMapping_MappedFileConstructionItselfFails_DisposesTheFileStreamBeforeRethrowing()
     {
-        var directory = Path.Combine(Path.GetTempPath(), $"mftlib-index-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(directory);
+        using var directoryOwner = new TempDirectory("mftlib-index");
+        var directory = directoryOwner.Path;
         var path = Path.Combine(directory, "empty.mlix");
         File.WriteAllBytes(path, []);
-        try
-        {
-            // An existing but empty file with a zero mapping capacity makes
-            // MemoryMappedFile.CreateFromFile itself throw, before it is ever assigned, which
-            // exercises the branch that disposes the FileStream directly rather than through it.
-            Assert.ThrowsExactly<ArgumentException>(() =>
-                BlockFile.OpenMapping(path, FileMode.Open, mappingCapacity: 0, viewLength: 0, fileOptions: FileOptions.None));
 
-            // If the failed attempt's FileStream were not disposed, this exclusive reopen would
-            // fail with a sharing violation instead of succeeding.
-            using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-        }
-        finally
-        {
-            Directory.Delete(directory, recursive: true);
-        }
+        // An existing but empty file with a zero mapping capacity makes
+        // MemoryMappedFile.CreateFromFile itself throw, before it is ever assigned, which
+        // exercises the branch that disposes the FileStream directly rather than through it.
+        Assert.ThrowsExactly<ArgumentException>(() =>
+            BlockFile.OpenMapping(path, FileMode.Open, mappingCapacity: 0, viewLength: 0, fileOptions: FileOptions.None));
+
+        // If the failed attempt's FileStream were not disposed, this exclusive reopen would
+        // fail with a sharing violation instead of succeeding.
+        using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
     }
 
     [TestMethod]
     public void OpenMapping_MappingConstructionFails_ReleasesTheFileHandleBeforeRethrowing()
     {
-        var directory = Path.Combine(Path.GetTempPath(), $"mftlib-index-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(directory);
+        using var directoryOwner = new TempDirectory("mftlib-index");
+        var directory = directoryOwner.Path;
         var path = Path.Combine(directory, "unmappable.mlix");
-        try
-        {
-            // A view larger than the mapping's own capacity makes CreateViewAccessor throw after
-            // the FileStream and MemoryMappedFile already exist, exercising the cleanup path.
-            Assert.ThrowsExactly<UnauthorizedAccessException>(() =>
-                BlockFile.OpenMapping(path, FileMode.Create, mappingCapacity: 4096, viewLength: 8192,
-                    fileOptions: FileOptions.None));
 
-            // If the failed attempt's FileStream were not disposed, this exclusive reopen would
-            // fail with a sharing violation instead of succeeding.
-            using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-        }
-        finally
-        {
-            Directory.Delete(directory, recursive: true);
-        }
+        // A view larger than the mapping's own capacity makes CreateViewAccessor throw after
+        // the FileStream and MemoryMappedFile already exist, exercising the cleanup path.
+        Assert.ThrowsExactly<UnauthorizedAccessException>(() =>
+            BlockFile.OpenMapping(path, FileMode.Create, mappingCapacity: 4096, viewLength: 8192,
+                fileOptions: FileOptions.None));
+
+        // If the failed attempt's FileStream were not disposed, this exclusive reopen would
+        // fail with a sharing violation instead of succeeding.
+        using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
     }
 
     [TestMethod]
     public void Open_FileLockedWithNoSharing_ReportsWrongMagicWithoutThrowing()
     {
-        var directory = Path.Combine(Path.GetTempPath(), $"mftlib-index-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(directory);
+        using var directoryOwner = new TempDirectory("mftlib-index");
+        var directory = directoryOwner.Path;
         var path = Path.Combine(directory, "locked.mlix");
         File.WriteAllBytes(path, new byte[BlockLayout.HeaderRegionBytes]);
-        try
-        {
-            // A handle opened with no sharing at all makes OpenMapping's own FileStream
-            // construction throw a sharing-violation IOException, exercising the branch
-            // that reports it as WrongMagic rather than a validation-level rejection.
-            using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-            using var block = BlockFile.Open(path, 1, out var validation);
-            Assert.AreEqual(BlockValidationResult.WrongMagic, validation);
-            Assert.IsNull(block);
-        }
-        finally
-        {
-            Directory.Delete(directory, recursive: true);
-        }
+
+        // A handle opened with no sharing at all makes OpenMapping's own FileStream
+        // construction throw a sharing-violation IOException, exercising the branch
+        // that reports it as WrongMagic rather than a validation-level rejection.
+        using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        using var block = BlockFile.Open(path, 1, out var validation);
+        Assert.AreEqual(BlockValidationResult.WrongMagic, validation);
+        Assert.IsNull(block);
     }
 
     [TestMethod]
     public void TryDeleteFailedCreate_FileIsReadOnly_DoesNotThrow()
     {
-        var directory = Path.Combine(Path.GetTempPath(), $"mftlib-index-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(directory);
+        using var directoryOwner = new TempDirectory("mftlib-index");
+        var directory = directoryOwner.Path;
         var path = Path.Combine(directory, "readonly.mlix");
         File.WriteAllBytes(path, [1, 2, 3]);
         File.SetAttributes(path, FileAttributes.ReadOnly);
@@ -329,82 +306,60 @@ public class BlockFileTests
             {
                 File.SetAttributes(path, FileAttributes.Normal);
             }
-
-            Directory.Delete(directory, recursive: true);
         }
     }
 
     [TestMethod]
     public void TryDeleteFailedCreate_FileIsLockedWithNoSharing_DoesNotThrow()
     {
-        var directory = Path.Combine(Path.GetTempPath(), $"mftlib-index-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(directory);
+        using var directoryOwner = new TempDirectory("mftlib-index");
+        var directory = directoryOwner.Path;
         var path = Path.Combine(directory, "locked.mlix");
         File.WriteAllBytes(path, [1, 2, 3]);
-        try
-        {
-            // FileShare.None makes Windows' delete fail with a sharing-violation IOException,
-            // swallowed by this call. Unix has no mandatory share-mode locking, so unlink
-            // succeeds there even with the handle still open. Either way this call must not
-            // throw.
-            using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-            BlockFile.TryDeleteFailedCreate(path);
-        }
-        finally
-        {
-            Directory.Delete(directory, recursive: true);
-        }
+
+        // FileShare.None makes Windows' delete fail with a sharing-violation IOException,
+        // swallowed by this call. Unix has no mandatory share-mode locking, so unlink
+        // succeeds there even with the handle still open. Either way this call must not
+        // throw.
+        using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        BlockFile.TryDeleteFailedCreate(path);
     }
 
     [TestMethod]
     public void BuildAndInitialize_ConstructionFails_DisposesTheMappingAndDeletesTheFile()
     {
-        var directory = Path.Combine(Path.GetTempPath(), $"mftlib-index-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(directory);
+        using var directoryOwner = new TempDirectory("mftlib-index");
+        var directory = directoryOwner.Path;
         var path = Path.Combine(directory, "partial.mlix");
-        try
-        {
-            var options = TestBlocks.Options(path, namePoolCapacity: 4096);
-            var length = BlockLayout.TotalBlockBytes(options.SlotCapacity, options.NamePoolCapacity);
-            var (mappedFile, view) = BlockFile.OpenMapping(path, FileMode.Create, length, length, FileOptions.None);
+        var options = TestBlocks.Options(path, namePoolCapacity: 4096);
+        var length = BlockLayout.TotalBlockBytes(options.SlotCapacity, options.NamePoolCapacity);
+        var (mappedFile, view) = BlockFile.OpenMapping(path, FileMode.Create, length, length, FileOptions.None);
 
-            // Disposing the view before handing it over makes acquiring the base pointer in the
-            // constructor throw, reproducing the state a real failure leaves behind: the mapping
-            // exists and the file is on disk, but no BlockFile owns either of them yet.
-            view.Dispose();
+        // Disposing the view before handing it over makes acquiring the base pointer in the
+        // constructor throw, reproducing the state a real failure leaves behind: the mapping
+        // exists and the file is on disk, but no BlockFile owns either of them yet.
+        view.Dispose();
 
-            Assert.ThrowsExactly<ObjectDisposedException>(
-                () => BlockFile.BuildAndInitialize(options, length, mappedFile, view));
+        Assert.ThrowsExactly<ObjectDisposedException>(
+            () => BlockFile.BuildAndInitialize(options, length, mappedFile, view));
 
-            // Cache mode does not delete on close, so nothing else would ever remove this file:
-            // it would occupy the canonical path carrying no valid header at all.
-            Assert.IsFalse(File.Exists(path), "a failed create must not leave a header-less file behind");
+        // Cache mode does not delete on close, so nothing else would ever remove this file:
+        // it would occupy the canonical path carrying no valid header at all.
+        Assert.IsFalse(File.Exists(path), "a failed create must not leave a header-less file behind");
 
-            // A surviving mapping would keep the deleted file alive and fail this outright.
-            Assert.IsEmpty(Directory.EnumerateFileSystemEntries(directory));
-        }
-        finally
-        {
-            Directory.Delete(directory, recursive: true);
-        }
+        // A surviving mapping would keep the deleted file alive and fail this outright.
+        Assert.IsEmpty(Directory.EnumerateFileSystemEntries(directory));
     }
 
     [TestMethod]
     public void TryDeleteFailedCreate_ThrowingDiagnosticStillDeletesWithoutThrowing()
     {
-        var directory = Path.Combine(Path.GetTempPath(), $"mftlib-cleanup-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(directory);
+        using var directoryOwner = new TempDirectory("mftlib-cleanup");
+        var directory = directoryOwner.Path;
         var path = Path.Combine(directory, "rejected.mlix");
         File.WriteAllBytes(path, [1, 2, 3]);
-        try
-        {
-            BlockFile.TryDeleteFailedCreate(path,
-                _ => throw new InvalidOperationException("diagnostic sink failed"));
-            Assert.IsFalse(File.Exists(path));
-        }
-        finally
-        {
-            Directory.Delete(directory, recursive: true);
-        }
+        BlockFile.TryDeleteFailedCreate(path,
+            _ => throw new InvalidOperationException("diagnostic sink failed"));
+        Assert.IsFalse(File.Exists(path));
     }
 }

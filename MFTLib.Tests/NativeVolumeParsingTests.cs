@@ -108,46 +108,37 @@ public partial class NativeVolumeParsingTests
     [TestMethod]
     public void ParseMFTRecordsWithProgress_RealCallback_ReportsPerChunkProgress()
     {
-        var path = Path.GetTempFileName();
+        using var temporaryFile = new TempFile();
+        var path = temporaryFile.Path;
+        var data = BuildBootSector();
+        WriteFileRecord(data, 4096);
+
+        const int a1 = 4096 + 0x38;
+        var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
+        WriteEndMarker(data, a1 + a1Len);
+
+        File.WriteAllBytes(path, data);
+
+        var invocations = new List<(ulong Scanned, ulong Total)>();
+        using var registration = new NativeProgressRegistration(new SynchronousProgress<MftScanProgress>(
+            sample => invocations.Add(((ulong)sample.RecordsScanned, (ulong)sample.TotalRecords))));
+
+        using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var resultPointer = MFTLibNative.Hooks._parseMftRecordsWithProgress(
+            fileStream.SafeFileHandle, false, 64, IntPtr.Zero, registration.Callback);
+        Assert.AreNotEqual(IntPtr.Zero, resultPointer);
         try
         {
-            var data = BuildBootSector();
-            WriteFileRecord(data, 4096);
-
-            const int a1 = 4096 + 0x38;
-            var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
-            WriteEndMarker(data, a1 + a1Len);
-
-            File.WriteAllBytes(path, data);
-
-            var invocations = new List<(ulong Scanned, ulong Total)>();
-            using var registration = new NativeProgressRegistration(new SynchronousProgress<MftScanProgress>(
-                sample => invocations.Add(((ulong)sample.RecordsScanned, (ulong)sample.TotalRecords))));
-
-            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var resultPointer = MFTLibNative.Hooks._parseMftRecordsWithProgress(
-                fileStream.SafeFileHandle, false, 64, IntPtr.Zero, registration.Callback);
-            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            try
-            {
-                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.IsGreaterThan(0UL, result.TotalRecords);
-                Assert.IsGreaterThanOrEqualTo(1, invocations.Count, "Expected at least one in-loop progress report");
-                Assert.IsTrue(
-                    invocations[^1].Scanned == result.TotalRecords && invocations[^1].Total == result.TotalRecords,
-                    "Last reported chunk must reach the full record count");
-            }
-            finally
-            {
-                MFTLibNative.Hooks._freeMftResult(resultPointer);
-            }
+            var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+            Assert.IsGreaterThan(0UL, result.TotalRecords);
+            Assert.IsGreaterThanOrEqualTo(1, invocations.Count, "Expected at least one in-loop progress report");
+            Assert.IsTrue(
+                invocations[^1].Scanned == result.TotalRecords && invocations[^1].Total == result.TotalRecords,
+                "Last reported chunk must reach the full record count");
         }
         finally
         {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
+            MFTLibNative.Hooks._freeMftResult(resultPointer);
         }
     }
 
@@ -158,47 +149,38 @@ public partial class NativeVolumeParsingTests
     [TestMethod]
     public void ParseMFTRecordsWithProgress_RealCallback_FirstChunkReadFails_FailsWithoutProgress()
     {
-        var path = Path.GetTempFileName();
+        using var temporaryFile = new TempFile();
+        var path = temporaryFile.Path;
+        var data = BuildBootSector();
+        WriteFileRecord(data, 4096);
+
+        const int a1 = 4096 + 0x38;
+        WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
+        WriteEndMarker(data, a1 + 0x48);
+
+        File.WriteAllBytes(path, data);
+
+        var invocations = new List<(ulong Scanned, ulong Total)>();
+        using var registration = new NativeProgressRegistration(new SynchronousProgress<MftScanProgress>(
+            sample => invocations.Add(((ulong)sample.RecordsScanned, (ulong)sample.TotalRecords))));
+
+        using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        // Fail the 3rd Read: 1=boot sector, 2=record 0, 3=VolumeReadChunk's
+        // first read, so the chunk loop body never executes.
+        NativeTestHooks.NativeSetReadFailCountdown(3);
+        var resultPointer = MFTLibNative.Hooks._parseMftRecordsWithProgress(
+            fileStream.SafeFileHandle, false, 64, IntPtr.Zero, registration.Callback);
+        Assert.AreNotEqual(IntPtr.Zero, resultPointer);
         try
         {
-            var data = BuildBootSector();
-            WriteFileRecord(data, 4096);
-
-            const int a1 = 4096 + 0x38;
-            WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
-            WriteEndMarker(data, a1 + 0x48);
-
-            File.WriteAllBytes(path, data);
-
-            var invocations = new List<(ulong Scanned, ulong Total)>();
-            using var registration = new NativeProgressRegistration(new SynchronousProgress<MftScanProgress>(
-                sample => invocations.Add(((ulong)sample.RecordsScanned, (ulong)sample.TotalRecords))));
-
-            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            // Fail the 3rd Read: 1=boot sector, 2=record 0, 3=VolumeReadChunk's
-            // first read, so the chunk loop body never executes.
-            NativeTestHooks.NativeSetReadFailCountdown(3);
-            var resultPointer = MFTLibNative.Hooks._parseMftRecordsWithProgress(
-                fileStream.SafeFileHandle, false, 64, IntPtr.Zero, registration.Callback);
-            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            try
-            {
-                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.AreEqual(0UL, result.UsedRecords);
-                Assert.IsFalse(string.IsNullOrEmpty(result.ErrorMessage), "a failed first chunk must fail the parse");
-                Assert.IsEmpty(invocations, "a scan that read nothing reports no progress");
-            }
-            finally
-            {
-                MFTLibNative.Hooks._freeMftResult(resultPointer);
-            }
+            var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+            Assert.AreEqual(0UL, result.UsedRecords);
+            Assert.IsFalse(string.IsNullOrEmpty(result.ErrorMessage), "a failed first chunk must fail the parse");
+            Assert.IsEmpty(invocations, "a scan that read nothing reports no progress");
         }
         finally
         {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
+            MFTLibNative.Hooks._freeMftResult(resultPointer);
         }
     }
 }

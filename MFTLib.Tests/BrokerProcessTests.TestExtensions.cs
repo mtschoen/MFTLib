@@ -173,9 +173,6 @@ public partial class BrokerProcessTests
         BlockFileAssertions.IsDisposed(resources.Writer.Block);
     }
 
-    static BlockScanTarget ScanTarget() =>
-        new(Path.Combine(Path.GetTempPath(), "control-only-" + Guid.NewGuid().ToString("N") + ".mlix"), 1, true);
-
     [TestMethod]
     public async Task Crash_EndsTheClientAsABrokerDeathDoes()
     {
@@ -196,10 +193,12 @@ public partial class BrokerProcessTests
     [TestMethod]
     public async Task ScriptedVolumes_WithoutScanDriveRefuseAScanWithAClearError()
     {
+        using var directory = new TempDirectory("control-only");
+        var target = new BlockScanTarget(Path.Combine(directory.Path, "scan.mlix"), 1, true);
         await using var handle = BrokerTestHarness.StartInProcess(ScriptedVolumes());
 
         var failure = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-            handle.Process.ScanDriveAsync('C', ScanTarget(), new MftScanOptions(), null, CancellationToken.None)
+            handle.Process.ScanDriveAsync('C', target, new MftScanOptions(), null, CancellationToken.None)
                 .WaitAsync(HangGuard, TestContext.CancellationToken));
 
         Assert.Contains("no scan source", failure.Message);

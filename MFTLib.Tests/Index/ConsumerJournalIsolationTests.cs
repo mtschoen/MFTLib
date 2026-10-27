@@ -15,10 +15,10 @@ namespace MFTLib.Tests.Index;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public class ConsumerJournalIsolationTests
+public sealed class ConsumerJournalIsolationTests : IDisposable
 {
-    readonly string _directory = Path.Combine(Path.GetTempPath(),
-        $"mftlib-consumer-journal-{Guid.NewGuid():N}");
+    TempDirectory _directoryOwner = null!;
+    string _directory = null!;
     int _productions;
 
     public TestContext TestContext { get; set; } = null!;
@@ -33,12 +33,15 @@ public class ConsumerJournalIsolationTests
     [TestInitialize]
     public void Initialize()
     {
-        Directory.CreateDirectory(_directory);
+        _directoryOwner = new TempDirectory("mftlib-consumer-journal");
+        _directory = _directoryOwner.Path;
         JournalIsolation.ForbidLiveJournalReads();
     }
 
     [TestCleanup]
-    public void Cleanup() => Directory.Delete(_directory, recursive: true);
+    public void Cleanup() => _directoryOwner.Dispose();
+
+    public void Dispose() => Cleanup();
 
     FileIndexOptions Options(bool cacheOnly, IIndexWatchSource? source = null) => new()
     {

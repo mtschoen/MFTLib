@@ -49,7 +49,8 @@ public partial class JournalBrokerHostLivenessTests
         var release = new TestGate();
         var stalledWrite = new HeldStalledWrite();
         var laterFrame = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        BrokerDiagnostics.Enable("broker", Path.GetTempPath());
+        using var diagnosticsDirectory = new TempDirectory("broker-diagnostics");
+        BrokerDiagnostics.Enable("broker", diagnosticsDirectory.Path);
         BrokerDiagnostics.Dependencies.InstallWriter(new BrokerDiagnosticsWriter(line =>
         {
             // A frame written to drive C's pipe after the Stalled write began, other than the

@@ -89,7 +89,7 @@ public class MftDumpPathTests
         Assert.IsNull(index.Find("dump:/", TestContext.CancellationToken));
         Assert.IsNull(index.Find("dump:/D/missing", TestContext.CancellationToken));
         Assert.IsNull(index.Find("dump:/D/documents/Deep/leaf.txt/extra", TestContext.CancellationToken));
-        Assert.IsNull(index.Find(Path.Combine(Path.GetTempPath(), "documents"), TestContext.CancellationToken));
+        Assert.IsNull(index.Find(Path.Combine(AppContext.BaseDirectory, "documents"), TestContext.CancellationToken));
     }
 
     [TestMethod]

@@ -217,16 +217,10 @@ public partial class NativeVolumeParsingTests
 
     static void WithImage(int recordCount, Action<string> test)
     {
-        var path = Path.GetTempFileName();
-        try
-        {
-            SyntheticNtfsImage.Write(path, recordCount);
-            test(path);
-        }
-        finally
-        {
-            File.Delete(path);
-        }
+        using var temporaryFile = new TempFile();
+        var path = temporaryFile.Path;
+        SyntheticNtfsImage.Write(path, recordCount);
+        test(path);
     }
 
     delegate void ControlProgressObserver(ParseControlBlock control, ulong scanned, ulong total);

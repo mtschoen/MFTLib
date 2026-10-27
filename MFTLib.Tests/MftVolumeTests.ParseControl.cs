@@ -86,18 +86,12 @@ public partial class MftVolumeTests
 
     static void WithImageVolume(Action<MftVolume> test)
     {
-        var path = Path.GetTempFileName();
-        try
-        {
-            SyntheticNtfsImage.Write(path, 1024);
-            NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
-            FileUtilities.Hooks._getVolumeHandle = _ => File.OpenHandle(path);
-            using var volume = MftVolume.Open('C', 64);
-            test(volume);
-        }
-        finally
-        {
-            File.Delete(path);
-        }
+        using var temporaryFile = new TempFile();
+        var path = temporaryFile.Path;
+        SyntheticNtfsImage.Write(path, 1024);
+        NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
+        FileUtilities.Hooks._getVolumeHandle = _ => File.OpenHandle(path);
+        using var volume = MftVolume.Open('C', 64);
+        test(volume);
     }
 }

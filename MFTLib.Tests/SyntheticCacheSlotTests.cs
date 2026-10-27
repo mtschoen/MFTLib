@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -9,21 +10,24 @@ namespace MFTLib.Tests;
 ///     judged by <see cref="CacheDirectory.InspectCached" />, the production reader of slot ownership.
 /// </summary>
 [TestClass]
-public sealed class SyntheticCacheSlotTests
+public sealed class SyntheticCacheSlotTests : IDisposable
 {
     const uint Serial = 0x1234;
     static readonly DriveKey Drive = new('T');
+    TempDirectory _directoryOwner = null!;
     string _cacheDirectory = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-slot-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_cacheDirectory);
+        _directoryOwner = new TempDirectory("mftlib-slot");
+        _cacheDirectory = _directoryOwner.Path;
     }
 
     [TestCleanup]
-    public void Cleanup() => Directory.Delete(_cacheDirectory, recursive: true);
+    public void Cleanup() => _directoryOwner.Dispose();
+
+    public void Dispose() => Cleanup();
 
     string WriteCorruptBlock()
     {

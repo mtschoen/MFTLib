@@ -10,23 +10,17 @@ public partial class NativeMftProcessingTests
     [TestMethod]
     public void GenerateDump_ThreadStartExceptionReturnsFalseAndNextGenerationSucceeds()
     {
-        var path = Path.GetTempFileName();
-        try
-        {
-            NativeTestHooks.NativeSetMaxThreads(2);
-            NativeTestHooks.NativeSetAllocFailCountdown(-2);
-            Assert.IsFalse(MFTLibNative.GenerateSyntheticMftSized(path, 1024, 256, 1024));
-            NativeTestHooks.NativeResetTestState();
-            NativeTestHooks.NativeSetMaxThreads(2);
-            Assert.IsTrue(MFTLibNative.GenerateSyntheticMftSized(path, 1024, 256, 1024));
-            using var input = MftDumpInput.Open(path);
-            using var result = input.Parse();
-            Assert.IsGreaterThan(0UL, result.UsedRecords);
-        }
-        finally
-        {
-            File.Delete(path);
-        }
+        using var temporaryFile = new TempFile();
+        var path = temporaryFile.Path;
+        NativeTestHooks.NativeSetMaxThreads(2);
+        NativeTestHooks.NativeSetAllocFailCountdown(-2);
+        Assert.IsFalse(MFTLibNative.GenerateSyntheticMftSized(path, 1024, 256, 1024));
+        NativeTestHooks.NativeResetTestState();
+        NativeTestHooks.NativeSetMaxThreads(2);
+        Assert.IsTrue(MFTLibNative.GenerateSyntheticMftSized(path, 1024, 256, 1024));
+        using var input = MftDumpInput.Open(path);
+        using var result = input.Parse();
+        Assert.IsGreaterThan(0UL, result.UsedRecords);
     }
 
     [TestMethod]
@@ -37,47 +31,41 @@ public partial class NativeMftProcessingTests
     [TestCategory("Smoke")]
     public void ParseDump_ExceptionReturnsEmptyFailureAndNextParseSucceeds(int mode, string message)
     {
-        var path = Path.GetTempFileName();
+        using var temporaryFile = new TempFile();
+        var path = temporaryFile.Path;
+        NativeTestHooks.NativeSetMaxThreads(2);
+        Assert.IsTrue(MFTLibNative.GenerateSyntheticMftSized(path, 1024, 256, 1024));
+        using var input = MFTLibNative.OpenMftDumpInput(MFTLibNative.NullTerminatedUtf8(path), out var info);
+        Assert.IsFalse(input.IsInvalid, info.ErrorMessage);
+        NativeTestHooks.NativeSetAllocFailCountdown(mode);
+        var pointer = MFTLibNative.ParseMftDumpInput(input, 256, IntPtr.Zero, default);
+        Assert.AreNotEqual(IntPtr.Zero, pointer);
         try
         {
-            NativeTestHooks.NativeSetMaxThreads(2);
-            Assert.IsTrue(MFTLibNative.GenerateSyntheticMftSized(path, 1024, 256, 1024));
-            using var input = MFTLibNative.OpenMftDumpInput(MFTLibNative.NullTerminatedUtf8(path), out var info);
-            Assert.IsFalse(input.IsInvalid, info.ErrorMessage);
-            NativeTestHooks.NativeSetAllocFailCountdown(mode);
-            var pointer = MFTLibNative.ParseMftDumpInput(input, 256, IntPtr.Zero, default);
-            Assert.AreNotEqual(IntPtr.Zero, pointer);
-            try
-            {
-                var result = Marshal.PtrToStructure<MftParseResult>(pointer);
-                Assert.AreEqual(message, result.ErrorMessage);
-                Assert.AreEqual(0UL, result.UsedRecords);
-                Assert.AreEqual(IntPtr.Zero, result.Entries);
-                Assert.AreEqual(IntPtr.Zero, result.EntryStrings);
-            }
-            finally
-            {
-                MFTLibNative.Hooks._freeMftResult(pointer);
-            }
-
-            NativeTestHooks.NativeResetTestState();
-            NativeTestHooks.NativeSetMaxThreads(2);
-            pointer = MFTLibNative.ParseMftDumpInput(input, 256, IntPtr.Zero, default);
-            Assert.AreNotEqual(IntPtr.Zero, pointer);
-            try
-            {
-                var result = Marshal.PtrToStructure<MftParseResult>(pointer);
-                Assert.AreEqual(string.Empty, result.ErrorMessage);
-                Assert.IsGreaterThan(0UL, result.UsedRecords);
-            }
-            finally
-            {
-                MFTLibNative.Hooks._freeMftResult(pointer);
-            }
+            var result = Marshal.PtrToStructure<MftParseResult>(pointer);
+            Assert.AreEqual(message, result.ErrorMessage);
+            Assert.AreEqual(0UL, result.UsedRecords);
+            Assert.AreEqual(IntPtr.Zero, result.Entries);
+            Assert.AreEqual(IntPtr.Zero, result.EntryStrings);
         }
         finally
         {
-            File.Delete(path);
+            MFTLibNative.Hooks._freeMftResult(pointer);
+        }
+
+        NativeTestHooks.NativeResetTestState();
+        NativeTestHooks.NativeSetMaxThreads(2);
+        pointer = MFTLibNative.ParseMftDumpInput(input, 256, IntPtr.Zero, default);
+        Assert.AreNotEqual(IntPtr.Zero, pointer);
+        try
+        {
+            var result = Marshal.PtrToStructure<MftParseResult>(pointer);
+            Assert.AreEqual(string.Empty, result.ErrorMessage);
+            Assert.IsGreaterThan(0UL, result.UsedRecords);
+        }
+        finally
+        {
+            MFTLibNative.Hooks._freeMftResult(pointer);
         }
     }
 
@@ -86,48 +74,42 @@ public partial class NativeMftProcessingTests
     [DataRow(2u)]
     public void ParseDump_ExceptionAfterCompletedChunkDiscardsPartialOutput(uint threads)
     {
-        var path = Path.GetTempFileName();
+        using var temporaryFile = new TempFile();
+        var path = temporaryFile.Path;
+        NativeTestHooks.NativeSetMaxThreads(threads);
+        Assert.IsTrue(MFTLibNative.GenerateSyntheticMftSized(path, 1024, 256, 1024));
+        using var input = MFTLibNative.OpenMftDumpInput(MFTLibNative.NullTerminatedUtf8(path), out var info);
+        Assert.IsFalse(input.IsInvalid, info.ErrorMessage);
+        using var registration = new NativeProgressRegistration(new SynchronousProgress<MftScanProgress>(
+            sample =>
+            {
+                if (sample.RecordsScanned == 256)
+                {
+                    NativeTestHooks.NativeSetAllocFailCountdown(-1);
+                }
+            }));
+        var pointer = MFTLibNative.ParseMftDumpInput(input, 256, IntPtr.Zero, registration.Callback);
+        Assert.AreNotEqual(IntPtr.Zero, pointer);
         try
         {
-            NativeTestHooks.NativeSetMaxThreads(threads);
-            Assert.IsTrue(MFTLibNative.GenerateSyntheticMftSized(path, 1024, 256, 1024));
-            using var input = MFTLibNative.OpenMftDumpInput(MFTLibNative.NullTerminatedUtf8(path), out var info);
-            Assert.IsFalse(input.IsInvalid, info.ErrorMessage);
-            using var registration = new NativeProgressRegistration(new SynchronousProgress<MftScanProgress>(
-                sample =>
-                {
-                    if (sample.RecordsScanned == 256)
-                    {
-                        NativeTestHooks.NativeSetAllocFailCountdown(-1);
-                    }
-                }));
-            var pointer = MFTLibNative.ParseMftDumpInput(input, 256, IntPtr.Zero, registration.Callback);
-            Assert.AreNotEqual(IntPtr.Zero, pointer);
-            try
-            {
-                var result = Marshal.PtrToStructure<MftParseResult>(pointer);
-                Assert.Contains("Out of memory", result.ErrorMessage);
-                Assert.AreEqual(0UL, result.UsedRecords);
-                Assert.AreEqual(IntPtr.Zero, result.Entries);
-                Assert.AreEqual(IntPtr.Zero, result.EntryStrings);
-            }
-            finally
-            {
-                MFTLibNative.Hooks._freeMftResult(pointer);
-            }
-
-            NativeTestHooks.NativeResetTestState();
-            using var managedInput = MftDumpInput.Open(path);
-            using var ordinaryResult = managedInput.Parse();
-            Assert.IsGreaterThan(0UL, ordinaryResult.UsedRecords);
-            using var failingInput = MftDumpInput.Open(path);
-            NativeTestHooks.NativeSetAllocFailCountdown(-1);
-            var failure = Assert.ThrowsExactly<InvalidOperationException>(() => failingInput.Parse().Dispose());
-            Assert.Contains("Out of memory", failure.Message);
+            var result = Marshal.PtrToStructure<MftParseResult>(pointer);
+            Assert.Contains("Out of memory", result.ErrorMessage);
+            Assert.AreEqual(0UL, result.UsedRecords);
+            Assert.AreEqual(IntPtr.Zero, result.Entries);
+            Assert.AreEqual(IntPtr.Zero, result.EntryStrings);
         }
         finally
         {
-            File.Delete(path);
+            MFTLibNative.Hooks._freeMftResult(pointer);
         }
+
+        NativeTestHooks.NativeResetTestState();
+        using var managedInput = MftDumpInput.Open(path);
+        using var ordinaryResult = managedInput.Parse();
+        Assert.IsGreaterThan(0UL, ordinaryResult.UsedRecords);
+        using var failingInput = MftDumpInput.Open(path);
+        NativeTestHooks.NativeSetAllocFailCountdown(-1);
+        var failure = Assert.ThrowsExactly<InvalidOperationException>(() => failingInput.Parse().Dispose());
+        Assert.Contains("Out of memory", failure.Message);
     }
 }

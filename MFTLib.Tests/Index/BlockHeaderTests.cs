@@ -206,7 +206,8 @@ public class BlockHeaderTests
     [TestMethod]
     public void BlockFileCreateOptions_SetsRootRowInHeader()
     {
-        var path = Path.Combine(Path.GetTempPath(), $"mftlib-test-{Guid.NewGuid():N}.mlix");
+        using var temporaryFile = new TempFile("mftlib-test", create: false);
+        var path = temporaryFile.Path;
         using var block = TestBlocks.Create(path, ProducerKind.Mft, 256, 4096, volumeSerial: 0x12345678, rootRow: 5, deleteOnClose: true);
         Assert.AreEqual(5u, block.Header.RootRow);
     }

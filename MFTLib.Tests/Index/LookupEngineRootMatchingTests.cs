@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -24,7 +25,8 @@ public class LookupEngineRootMatchingTests
     [TestMethod]
     public async Task Find_NestedIndexedRoots_ResolvesToTheLongestMatchingRoot()
     {
-        var outerRoot = Path.Combine(Path.GetTempPath(), "mftlib-outer");
+        using var rootDirectory = new TempDirectory("mftlib-outer", create: false);
+        var outerRoot = rootDirectory.Path;
         var innerRoot = Path.Combine(outerRoot, "inner");
 
         using var outerBuilder = BuildSingleFileBlock('O', "outer.txt");
@@ -77,7 +79,8 @@ public class LookupEngineRootMatchingTests
     [TestMethod]
     public async Task Find_AnEnumerationBlockFollowsTheHostCaseRule()
     {
-        var root = Path.Combine(Path.GetTempPath(), "mftlib-case");
+        using var rootDirectory = new TempDirectory("mftlib-case", create: false);
+        var root = rootDirectory.Path;
         using var builder = BuildSingleFileBlock('E', "Readme.md");
         DriveBlock[] snapshot = [
             new DriveBlock('E', 0, builder.OpenForReading(out _)!, rootDirectoryPath: root)
@@ -131,7 +134,8 @@ public class LookupEngineRootMatchingTests
     [TestMethod]
     public async Task Find_MultiSegmentRootAcceptsMixedSeparatorsThroughoutThePrefix()
     {
-        var root = Path.Combine(Path.GetTempPath(), "mftlib-mixed", "Users", "test");
+        using var rootDirectory = new TempDirectory("mftlib-mixed", create: false);
+        var root = Path.Combine(rootDirectory.Path, "Users", "test");
         using var builder = BuildSingleFileBlock('E', "file.txt");
         DriveBlock[] snapshot = [
             new DriveBlock('E', 0, builder.OpenForReading(out _)!, rootDirectoryPath: root)
@@ -160,7 +164,8 @@ public class LookupEngineRootMatchingTests
     [OSCondition(ConditionMode.Exclude, OperatingSystems.Windows)]
     public async Task Find_OnLinux_LeavesBackslashesInsideFileNamesUntouched()
     {
-        var root = Path.Combine(Path.GetTempPath(), "mftlib-backslash-name");
+        using var rootDirectory = new TempDirectory("mftlib-backslash-name", create: false);
+        var root = rootDirectory.Path;
         using var builder = new SyntheticBlockBuilder('E');
         var rootRow = builder.AddRoot();
         var directory = builder.AddRow("with", rootRow, RowFlags.InUse | RowFlags.Directory, 0, Moment,
@@ -192,7 +197,8 @@ public class LookupEngineRootMatchingTests
     [TestMethod]
     public async Task Find_StringPrefixRootsRequireAPathBoundary()
     {
-        var outerRoot = Path.Combine(Path.GetTempPath(), "mftlib-boundary", "root");
+        using var rootDirectory = new TempDirectory("mftlib-boundary", create: false);
+        var outerRoot = Path.Combine(rootDirectory.Path, "root");
         var secondRoot = outerRoot + "2";
         using var outerBuilder = new SyntheticBlockBuilder('O');
         var rootRow = outerBuilder.AddRoot();
@@ -225,31 +231,24 @@ public class LookupEngineRootMatchingTests
     [TestMethod]
     public async Task Find_IndexedRootWithAndWithoutTrailingSeparatorResolvesIdentically()
     {
-        var root = Path.Combine(Path.GetTempPath(), $"mftlib-trailing-{Guid.NewGuid():N}");
-        var cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-trailing-cache-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(root);
+        using var rootOwner = new TempDirectory("mftlib-trailing");
+        using var cacheOwner = new TempDirectory("mftlib-trailing-cache", create: false);
+        var root = rootOwner.Path;
+        var cacheDirectory = cacheOwner.Path;
         await File.WriteAllTextAsync(Path.Combine(root, "file.txt"), "hello", TestContext.CancellationToken);
-        try
+        foreach (var indexedRoot in new[] { root, root + Path.DirectorySeparatorChar })
         {
-            foreach (var indexedRoot in new[] { root, root + Path.DirectorySeparatorChar })
+            await using var index = await FileIndex.OpenAsync(new FileIndexOptions
             {
-                await using var index = await FileIndex.OpenAsync(new FileIndexOptions
-                {
-                    Drives = [new IndexedDrive('E', indexedRoot, TestVolumeSerial.GetNext(), ProducerKind.Enumeration)],
-                    CacheDirectory = cacheDirectory
-                }, CancellationToken.None);
+                Drives = [new IndexedDrive('E', indexedRoot, TestVolumeSerial.GetNext(), ProducerKind.Enumeration)],
+                CacheDirectory = cacheDirectory
+            }, CancellationToken.None);
 
-                var entry = index.Find(Path.Combine(root, "file.txt"), TestContext.CancellationToken);
-                Assert.IsTrue(entry.HasValue);
-                Assert.AreEqual(Path.Combine(root, "file.txt"), entry.GetValueOrDefault().Path);
-                Assert.AreEqual(index.Root('E', TestContext.CancellationToken).RecordKey, index.Find(root, TestContext.CancellationToken)!.Value.RecordKey);
-                Assert.AreEqual(index.Root('E', TestContext.CancellationToken).RecordKey, index.Find(root + Path.DirectorySeparatorChar, TestContext.CancellationToken)!.Value.RecordKey);
-            }
-        }
-        finally
-        {
-            Directory.Delete(root, recursive: true);
-            Directory.Delete(cacheDirectory, recursive: true);
+            var entry = index.Find(Path.Combine(root, "file.txt"), TestContext.CancellationToken);
+            Assert.IsTrue(entry.HasValue);
+            Assert.AreEqual(Path.Combine(root, "file.txt"), entry.GetValueOrDefault().Path);
+            Assert.AreEqual(index.Root('E', TestContext.CancellationToken).RecordKey, index.Find(root, TestContext.CancellationToken)!.Value.RecordKey);
+            Assert.AreEqual(index.Root('E', TestContext.CancellationToken).RecordKey, index.Find(root + Path.DirectorySeparatorChar, TestContext.CancellationToken)!.Value.RecordKey);
         }
     }
 

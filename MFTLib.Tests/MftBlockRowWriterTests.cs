@@ -5,14 +5,28 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 [TestClass]
-public class MftBlockRowWriterTests
+public sealed class MftBlockRowWriterTests : IDisposable
 {
     static readonly DateTime ModifiedUtc = new(2026, 9, 3, 12, 34, 56, DateTimeKind.Utc);
+    TempDirectory _directory = null!;
+    string _blockPath = null!;
+
+    [TestInitialize]
+    public void Initialize()
+    {
+        _directory = new TempDirectory("mftlib-row-writer");
+        _blockPath = Path.Combine(_directory.Path, "block.bin");
+    }
+
+    [TestCleanup]
+    public void Cleanup() => _directory.Dispose();
+
+    public void Dispose() => Cleanup();
 
     [TestMethod]
     public void WriteBatches_MapsColumnsAtRecordNumbersAndReturnsHeaderTotals()
     {
-        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+        using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
         MftRecord[] records =
         [
@@ -49,7 +63,7 @@ public class MftBlockRowWriterTests
     [TestMethod]
     public void WriteBatches_CopiesSequenceNumberIntoItsRecordSlot()
     {
-        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+        using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
         var record = new MftRecord(20, 5, new MftRecordFields(1, sequenceNumber: 37), "record");
 
@@ -62,7 +76,7 @@ public class MftBlockRowWriterTests
     [TestMethod]
     public void WriteBatches_SlotCapacityOverflowIsCountedAndMarksCapacityExhaustion()
     {
-        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+        using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
         var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block),
             [[Record(32, "overflow"), Record(31, "last")]], new MftScanOptions(), null, CancellationToken.None);
@@ -76,7 +90,7 @@ public class MftBlockRowWriterTests
     [TestMethod]
     public void WriteBatches_RecordNumberBeyondUInt32AndEmptyNamesAreSkipped()
     {
-        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+        using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
         var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block),
             [[Record((ulong)uint.MaxValue + 1, "overflow"), Record(6, ""), Record(7, "kept")]],
@@ -96,7 +110,7 @@ public class MftBlockRowWriterTests
         // Both identifiers are 48-bit on disk. Truncating the parent instead of skipping
         // the record would silently point the child at an unrelated row rather than leave
         // it out of the block.
-        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+        using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
         var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block),
             [[RecordWithParent(8, (ulong)uint.MaxValue + 1, "orphan"), Record(9, "kept")]],
@@ -110,7 +124,7 @@ public class MftBlockRowWriterTests
     [TestMethod]
     public void WriteBatches_NamePoolOverflowContinuesWithRecordsThatFit()
     {
-        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+        using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 8, volumeSerial: 123, rootRow: 5);
         var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block),
             [[Record(5, "abc"), Record(6, "long"), Record(7, "z")]], new MftScanOptions(), null, CancellationToken.None);
@@ -126,7 +140,7 @@ public class MftBlockRowWriterTests
     [TestMethod]
     public void WriteBatches_WritesEachBatchBeforeRequestingTheNextAndReportsTransferCounts()
     {
-        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+        using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
         var reports = new List<BlockWriteProgress>();
         var writer = new BlockWriter(block);
@@ -149,7 +163,7 @@ public class MftBlockRowWriterTests
     [TestMethod]
     public void WriteBatches_CancelledBeforeStartingDoesNotEnumerate()
     {
-        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+        using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
@@ -171,7 +185,7 @@ public class MftBlockRowWriterTests
     [TestMethod]
     public void WriteBatches_CancelledAfterBatchLeavesLaterRowsUnwritten()
     {
-        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+        using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
         using var cancellation = new CancellationTokenSource();
         var writer = new BlockWriter(block);
@@ -189,7 +203,7 @@ public class MftBlockRowWriterTests
     [TestMethod]
     public void WriteBatches_EmptyInputReturnsExistingHeaderState()
     {
-        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+        using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
         var writer = new BlockWriter(block);
         Assert.IsTrue(writer.TryWriteRow(5, ".", new RowColumns(5, RowFlags.InUse, 0, 0, 0, 0)));
@@ -204,7 +218,7 @@ public class MftBlockRowWriterTests
     [TestMethod]
     public void WriteBatches_NullRetention_WritesRowsForFilesInUseAndDirectories()
     {
-        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+        using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
         MftRecord[] records =
         [
@@ -225,7 +239,7 @@ public class MftBlockRowWriterTests
     [TestMethod]
     public void WriteBatches_EmptyRetention_WritesOnlyDirectoriesAndSlotsForFilesAreUnused()
     {
-        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+        using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
         MftRecord[] records =
         [
@@ -246,7 +260,7 @@ public class MftBlockRowWriterTests
     [TestMethod]
     public void WriteBatches_RetainedFileNames_PreservesNamedFileCaseInsensitively()
     {
-        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+        using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
         MftRecord[] records =
         [
@@ -269,7 +283,7 @@ public class MftBlockRowWriterTests
     [TestMethod]
     public void WriteBatches_FilteredRowsDoNotIncreaseSkippedRecordCountOrProgress()
     {
-        using var block = TestBlocks.Create(producer: ProducerKind.Mft,
+        using var block = TestBlocks.Create(_blockPath, ProducerKind.Mft,
             slotCapacity: 32, namePoolCapacity: 256, volumeSerial: 123, rootRow: 5);
         var reports = new List<BlockWriteProgress>();
         MftRecord[] records =

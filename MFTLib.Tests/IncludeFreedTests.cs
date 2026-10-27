@@ -9,16 +9,18 @@ namespace MFTLib.Tests;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public class IncludeFreedTests
+public sealed class IncludeFreedTests : IDisposable
 {
     const int RecordSize = 1024;
+    TempFile _fixtureFile = null!;
     string _fixturePath = null!;
     string _imagePath = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _fixturePath = Path.Combine(Path.GetTempPath(), $"mftlib-freed-{Guid.NewGuid():N}.mft");
+        _fixtureFile = new TempFile("mftlib-freed", create: false);
+        _fixturePath = _fixtureFile.Path;
         _imagePath = Path.ChangeExtension(_fixturePath, ".img");
         MftFixture.Generate(_fixturePath);
     }
@@ -27,9 +29,10 @@ public class IncludeFreedTests
     public void Cleanup()
     {
         NativeTestHooks.NativeResetTestState();
-        File.Delete(_fixturePath);
-        File.Delete(_imagePath);
+        _fixtureFile.Dispose();
     }
+
+    public void Dispose() => Cleanup();
 
     [TestMethod]
     public void Fixture_IncludeFreed_EmitsValidatedBaseRecords()

@@ -42,7 +42,8 @@ public class MftDumpApplicabilityTests
     [TestMethod]
     public async Task Open_RejectedCacheOptionsNeverCreateTheCacheDirectory()
     {
-        var cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-dump-cache-{Guid.NewGuid():N}");
+        using var cacheDirectoryOwner = new TempDirectory("mftlib-dump-cache", create: false);
+        var cacheDirectory = cacheDirectoryOwner.Path;
 
         await Assert.ThrowsExactlyAsync<ArgumentException>(() => FileIndex.OpenAsync(
             MftDumpIndexes.Options() with { CacheDirectory = cacheDirectory }, CancellationToken.None));

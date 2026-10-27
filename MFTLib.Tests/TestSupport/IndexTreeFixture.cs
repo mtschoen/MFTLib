@@ -17,6 +17,15 @@ sealed class IndexTreeFixture : IDisposable
         try
         {
             _cache = new TempDirectory("mftlib-cache", create: false);
+        }
+        catch
+        {
+            _tree.Dispose();
+            throw;
+        }
+
+        try
+        {
             if (seedDocuments)
             {
                 var documents = Path.Combine(TreeRoot, "Documents");
@@ -27,7 +36,7 @@ sealed class IndexTreeFixture : IDisposable
         catch
         {
             _tree.Dispose();
-            _cache?.Dispose();
+            _cache.Dispose();
             throw;
         }
     }

@@ -7,20 +7,23 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 [TestClass]
-public class CacheTagStorageTests
+public sealed class CacheTagStorageTests : IDisposable
 {
+    TempDirectory _directoryOwner = null!;
     string _directory = null!;
     string BlockPath => Path.Combine(_directory, CacheDirectory.BlockFileName('T', 123));
 
     [TestInitialize]
     public void Initialize()
     {
-        _directory = Path.Combine(Path.GetTempPath(), $"mftlib-tag-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_directory);
+        _directoryOwner = new TempDirectory("mftlib-tag");
+        _directory = _directoryOwner.Path;
     }
 
     [TestCleanup]
-    public void Cleanup() => Directory.Delete(_directory, recursive: true);
+    public void Cleanup() => _directoryOwner.Dispose();
+
+    public void Dispose() => Cleanup();
 
     void WriteBlock(CacheTag tag)
     {

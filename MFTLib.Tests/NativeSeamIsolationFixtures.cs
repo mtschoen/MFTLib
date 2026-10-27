@@ -158,7 +158,7 @@ static class IsolatedEnvironmentVariableReferenceFixture
 
 static class CurrentDirectoryReferenceFixture
 {
-    public static void Reference() => Environment.CurrentDirectory = Path.GetTempPath();
+    public static void Reference() => Environment.CurrentDirectory = AppContext.BaseDirectory;
 }
 
 static class ConsoleRedirectReferenceFixture

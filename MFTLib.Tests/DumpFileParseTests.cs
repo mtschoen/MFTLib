@@ -9,14 +9,16 @@ namespace MFTLib.Tests;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public partial class DumpFileParseTests
+public sealed partial class DumpFileParseTests : IDisposable
 {
+    TempFile _syntheticFile = null!;
     string _syntheticPath = null!;
 
     [TestInitialize]
     public void Setup()
     {
-        _syntheticPath = Path.GetTempFileName();
+        _syntheticFile = new TempFile();
+        _syntheticPath = _syntheticFile.Path;
         MftVolume.GenerateSyntheticMFT(_syntheticPath, 1000, 256);
     }
 
@@ -24,8 +26,10 @@ public partial class DumpFileParseTests
     public void Cleanup()
     {
         NativeTestHooks.NativeResetTestState();
-        File.Delete(_syntheticPath);
+        _syntheticFile.Dispose();
     }
+
+    public void Dispose() => Cleanup();
 
     // Parses the synthetic image in 256-record chunks, so several chunks run.
     const uint StreamFileChunkRecords = 256;
@@ -108,34 +112,22 @@ public partial class DumpFileParseTests
     [TestMethod]
     public void GenerateSyntheticMFT_CreatesFile()
     {
-        var path = Path.GetTempFileName();
-        try
-        {
-            MftVolume.GenerateSyntheticMFT(path, 100, 256);
-            Assert.IsGreaterThan(0, new FileInfo(path).Length);
-        }
-        finally
-        {
-            File.Delete(path);
-        }
+        using var temporaryFile = new TempFile();
+        var path = temporaryFile.Path;
+        MftVolume.GenerateSyntheticMFT(path, 100, 256);
+        Assert.IsGreaterThan(0, new FileInfo(path).Length);
     }
 
     [TestMethod]
     public void GenerateSyntheticMFT_FileSize_MatchesRecordCount()
     {
-        var path = Path.GetTempFileName();
-        try
-        {
-            const ulong recordCount = 500;
-            MftVolume.GenerateSyntheticMFT(path, recordCount, 256);
-            // Each MFT record is 1024 bytes
-            const long expectedSize = (long)recordCount * 1024;
-            Assert.AreEqual(expectedSize, new FileInfo(path).Length);
-        }
-        finally
-        {
-            File.Delete(path);
-        }
+        using var temporaryFile = new TempFile();
+        var path = temporaryFile.Path;
+        const ulong recordCount = 500;
+        MftVolume.GenerateSyntheticMFT(path, recordCount, 256);
+        // Each MFT record is 1024 bytes
+        const long expectedSize = (long)recordCount * 1024;
+        Assert.AreEqual(expectedSize, new FileInfo(path).Length);
     }
 
     [TestMethod]
@@ -144,31 +136,22 @@ public partial class DumpFileParseTests
     [TestCategory("Smoke")]
     public void Parse_RecordSizes_RoundTrip(uint recordSize)
     {
-        var tempPath = Path.GetTempFileName();
-        try
-        {
-            MftVolume.GenerateSyntheticMFT(tempPath, 1000, 256, recordSize);
-            var records = DirectParse.ParseFile(tempPath, out var totalRecords);
+        using var temporaryFile = new TempFile();
+        var tempPath = temporaryFile.Path;
+        MftVolume.GenerateSyntheticMFT(tempPath, 1000, 256, recordSize);
+        var records = DirectParse.ParseFile(tempPath, out var totalRecords);
 
-            Assert.IsNotEmpty(records);
-            Assert.AreEqual(1000UL, totalRecords);
+        Assert.IsNotEmpty(records);
+        Assert.AreEqual(1000UL, totalRecords);
 
-            Assert.Contains(r => r.RecordNumber == 0, records, "Record 0 ($MFT) must exist");
-            var rec0 = records.First(r => r.RecordNumber == 0);
-            Assert.AreEqual("$MFT", rec0.FileName);
+        Assert.Contains(r => r.RecordNumber == 0, records, "Record 0 ($MFT) must exist");
+        var rec0 = records.First(r => r.RecordNumber == 0);
+        Assert.AreEqual("$MFT", rec0.FileName);
 
-            Assert.Contains(r => r.RecordNumber == 5, records, "Record 5 (root directory) must exist");
-            var rec5 = records.First(r => r.RecordNumber == 5);
-            Assert.AreEqual(".", rec5.FileName);
-            Assert.IsTrue(rec5.IsDirectory, "Record 5 must be a directory");
-        }
-        finally
-        {
-            if (File.Exists(tempPath))
-            {
-                File.Delete(tempPath);
-            }
-        }
+        Assert.Contains(r => r.RecordNumber == 5, records, "Record 5 (root directory) must exist");
+        var rec5 = records.First(r => r.RecordNumber == 5);
+        Assert.AreEqual(".", rec5.FileName);
+        Assert.IsTrue(rec5.IsDirectory, "Record 5 must be a directory");
     }
 
     [TestMethod]
@@ -178,32 +161,17 @@ public partial class DumpFileParseTests
     [DataRow(131072u)]
     public void GenerateSyntheticMFT_UnsupportedRecordSizes_Throw(uint recordSize)
     {
-        var tempPath = Path.GetTempFileName();
-        try
-        {
-            Assert.ThrowsExactly<InvalidOperationException>(() =>
-                MftVolume.GenerateSyntheticMFT(tempPath, 100, 256, recordSize));
-        }
-        finally
-        {
-            if (File.Exists(tempPath))
-            {
-                File.Delete(tempPath);
-            }
-        }
+        using var temporaryFile = new TempFile();
+        var tempPath = temporaryFile.Path;
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
+            MftVolume.GenerateSyntheticMFT(tempPath, 100, 256, recordSize));
     }
 
     [TestMethod]
     public void GenerateSyntheticMFT_ZeroRecordsPerBuffer_Throws()
     {
-        var tempPath = Path.GetTempFileName();
-        try
-        {
-            Assert.ThrowsExactly<InvalidOperationException>(() => MftVolume.GenerateSyntheticMFT(tempPath, 100, 0));
-        }
-        finally
-        {
-            File.Delete(tempPath);
-        }
+        using var temporaryFile = new TempFile();
+        var tempPath = temporaryFile.Path;
+        Assert.ThrowsExactly<InvalidOperationException>(() => MftVolume.GenerateSyntheticMFT(tempPath, 100, 0));
     }
 }
