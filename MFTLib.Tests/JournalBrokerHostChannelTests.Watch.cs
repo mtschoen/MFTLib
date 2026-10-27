@@ -145,8 +145,8 @@ public partial class JournalBrokerHostChannelTests
             Assert.IsFalse(harness.Serve.IsCompleted, "A source still running must hold the session open.");
 
             // The heartbeat sender's 5 second timer is the first; the drain's grace period is the second.
-            await AdvanceWhenTimerExistsAsync(clock, JournalBrokerHost.ControlClosedGracePeriod, 2, harness.Serve);
-            Assert.IsGreaterThanOrEqualTo(JournalBrokerHost.ControlClosedGracePeriod, clock.GetUtcNow() - start);
+            await AdvanceWhenTimerExistsAsync(clock, BrokerLiveness.ControlClosedGracePeriod, 2, harness.Serve);
+            Assert.IsGreaterThanOrEqualTo(BrokerLiveness.ControlClosedGracePeriod, clock.GetUtcNow() - start);
         }
         finally
         {
@@ -183,7 +183,7 @@ public partial class JournalBrokerHostChannelTests
             await Task.WhenAll(stubborn.Cancelled, cooperative.Cancelled).WaitAsync(HangGuard, TestContext.CancellationToken);
 
             // The heartbeat sender's 5 second timer is the first; the drain's grace period is the second.
-            await AdvanceWhenTimerExistsAsync(clock, JournalBrokerHost.ControlClosedGracePeriod, 2, harness.Serve);
+            await AdvanceWhenTimerExistsAsync(clock, BrokerLiveness.ControlClosedGracePeriod, 2, harness.Serve);
         }
         finally
         {

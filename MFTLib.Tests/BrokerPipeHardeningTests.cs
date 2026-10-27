@@ -129,7 +129,7 @@ public class BrokerPipeHardeningTests
         var accepted = server.WaitForConnectionAsync(cancellation.Token);
 
         await Assert.ThrowsExactlyAsync<UnauthorizedAccessException>(() =>
-            DefaultElevatedEntryRunner.ConnectDrivePipeAsync(pipeName, DefaultElevatedEntryRunner.ConnectTimeout,
+            DefaultElevatedEntryRunner.ConnectDrivePipeAsync(pipeName, BrokerLiveness.ElevatedConnectTimeout,
                 TimeProvider.System, cancellation.Token));
         await accepted;
     }
@@ -145,7 +145,7 @@ public class BrokerPipeHardeningTests
         var accepted = server.WaitForConnectionAsync(cancellation.Token);
 
         await using var client = await DefaultElevatedEntryRunner.ConnectDrivePipeAsync(pipeName,
-            DefaultElevatedEntryRunner.ConnectTimeout, TimeProvider.System, cancellation.Token);
+            BrokerLiveness.ElevatedConnectTimeout, TimeProvider.System, cancellation.Token);
         await accepted;
         // The server can only impersonate once the client has written.
         var received = server.ReadAsync(new byte[1], cancellation.Token).AsTask();

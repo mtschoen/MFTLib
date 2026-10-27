@@ -1,4 +1,3 @@
-using System.Globalization;
 using MFTLib.Index;
 
 namespace MFTLib;
@@ -153,7 +152,7 @@ sealed class BrokerFrameReader : IAsyncDisposable
     {
         await _stream.DisposeAsync().ConfigureAwait(false);
         return new BrokerChannelLostException(_drive,
-            $"No frame from the broker for {BrokerLiveness.StallLimit.TotalSeconds.ToString(CultureInfo.InvariantCulture)} seconds",
+            $"No frame from the broker for {BrokerLiveness.FormatSeconds(BrokerLiveness.StallLimit)} seconds",
             new TimeoutException("The stall limit passed."));
     }
 

@@ -15,7 +15,7 @@ sealed partial class JournalBrokerHost
     ///     <c>Error</c> carrying the request id.
     ///     The session ends when the control pipe reaches EOF, when a control reply finds the
     ///     pipe gone, or when <paramref name="cancellationToken" /> is cancelled. Ending cancels
-    ///     every channel and waits for their tasks up to <see cref="ControlClosedGracePeriod" />
+    ///     every channel and waits for their tasks up to <see cref="BrokerLiveness.ControlClosedGracePeriod" />
     ///     on the host's clock, then returns even if an operation ignores its cancellation.
     /// </summary>
     /// <param name="control">The connected control pipe.</param>
@@ -127,7 +127,7 @@ sealed partial class JournalBrokerHost
     internal async Task DrainAsync(SessionTasks tasks)
     {
         using var stopDeadline = new CancellationTokenSource();
-        var deadline = Task.Delay(ControlClosedGracePeriod, _timeProvider, stopDeadline.Token);
+        var deadline = Task.Delay(BrokerLiveness.ControlClosedGracePeriod, _timeProvider, stopDeadline.Token);
         try
         {
             while (true)

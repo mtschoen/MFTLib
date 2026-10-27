@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Globalization;
 using MFTLib.Index;
 
 namespace MFTLib;
@@ -82,13 +81,13 @@ sealed partial class BrokerProcess
         BrokerFrame frame;
         try
         {
-            frame = await reply.Task.WaitAsync(ControlReplyTimeout, _timeProvider, cancellationToken)
+            frame = await reply.Task.WaitAsync(BrokerLiveness.ControlReplyTimeout, _timeProvider, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (TimeoutException exception)
         {
             throw new TimeoutException(
-                $"The broker did not answer request {requestId} within {Seconds(ControlReplyTimeout)} seconds.",
+                $"The broker did not answer request {requestId} within {BrokerLiveness.FormatSeconds(BrokerLiveness.ControlReplyTimeout)} seconds.",
                 exception);
         }
 
@@ -178,7 +177,7 @@ sealed partial class BrokerProcess
 
             BrokerDiagnostics.LogFrame(BrokerDiagnostics.ControlChannel, "write", buffer.WrittenSpan[4],
                 buffer.WrittenCount - 4);
-            using var timeout = new CancellationTokenSource(ControlReplyTimeout, _timeProvider);
+            using var timeout = new CancellationTokenSource(BrokerLiveness.ControlReplyTimeout, _timeProvider);
             using var bound = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token, timeout.Token);
             try
             {
@@ -189,7 +188,7 @@ sealed partial class BrokerProcess
                                                   or OperationCanceledException)
             {
                 RequestEnd(timeout.IsCancellationRequested
-                    ? $"A control request frame did not finish writing within {Seconds(ControlReplyTimeout)} seconds."
+                    ? $"A control request frame did not finish writing within {BrokerLiveness.FormatSeconds(BrokerLiveness.ControlReplyTimeout)} seconds."
                     : $"A control request frame could not be written: {exception.Message}");
             }
         }
@@ -314,10 +313,5 @@ sealed partial class BrokerProcess
         }
 
         _ended.TrySetResult(reason);
-    }
-
-    static string Seconds(TimeSpan duration)
-    {
-        return duration.TotalSeconds.ToString(CultureInfo.InvariantCulture);
     }
 }

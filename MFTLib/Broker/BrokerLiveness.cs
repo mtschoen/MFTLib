@@ -1,44 +1,80 @@
+using System.Globalization;
+
 namespace MFTLib;
 
 /// <summary>
-///     The liveness limits of the broker wire. Known failures arrive as explicit frames; these
-///     timers are the backstop for the ones nothing reports. Every limit is measured on an
-///     injected <see cref="TimeProvider" />, so tests advance a fake clock.
+///     Broker timing defaults and diagnostic seconds formatting. Known failures arrive as
+///     explicit frames; liveness limits bound failures nothing reports. Operations measure
+///     their timers on an injected <see cref="TimeProvider" />.
 /// </summary>
-static class BrokerLiveness
+internal static class BrokerLiveness
 {
     /// <summary>
-    ///     How often the host's heartbeat sender visits each pipe that wrote nothing since its last
-    ///     visit and writes a <see cref="BrokerFrameKind.Heartbeat" /> to an idle one. Enforced by
-    ///     the host's heartbeat sender.
+    ///     How often the host's liveness loop visits every open stream to send a heartbeat or check
+    ///     in-flight processing progress.
     /// </summary>
     public static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(5);
 
     /// <summary>
-    ///     How long a host operation may stay in its processing state without progress before the
-    ///     host writes <see cref="BrokerFrameKind.Stalled" /> naming the step and cancels that channel.
-    ///     Enforced by the host's heartbeat sender.
+    ///     How long an active host request may process without advancing its progress counter, or a
+    ///     pipe write may remain in flight, before the host faults the operation.
     /// </summary>
     public static readonly TimeSpan ProcessingLimit = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    ///     How long a client pipe may read no frame of any kind before the client closes it and
-    ///     fails its operation with <see cref="BrokerChannelLostException" />; on the control pipe
-    ///     that ends the process. Enforced by the client's frame reader.
+    ///     How long the client waits between incoming frames (data or heartbeat) on the control pipe
+    ///     or a drive channel before treating the stream as stalled.
     /// </summary>
     public static readonly TimeSpan StallLimit = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    ///     How long the client waits on one control request: to finish writing a request frame it
-    ///     has started, for a drive pipe to connect after its <see cref="BrokerFrameKind.ChannelOpened" />
-    ///     reply, and for the reply itself. Enforced by <see cref="BrokerProcess" />.
+    ///     How long the client waits for a control request write, a control reply, or the host's
+    ///     channel pipe connection after <c>ChannelOpened</c>.
     /// </summary>
     public static readonly TimeSpan ControlReplyTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    ///     The journal buffers (64 KB each, so 16 MB) one catch-up read after a scan takes at most,
-    ///     so a long backlog republishes the scan's progress per read instead of holding one step
-    ///     for the whole backlog.
+    ///     How long the host gives in-flight channel tasks to finish after the control pipe closes
+    ///     before cancelling the session.
     /// </summary>
-    public const int CatchUpBufferReadsPerCall = 256;
+    public static readonly TimeSpan ControlClosedGracePeriod = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    ///     How long the host waits for the client to connect to a newly opened channel pipe.
+    /// </summary>
+    public static readonly TimeSpan ChannelConnectTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    ///     How long the host waits for the opening request frame on a connected channel pipe.
+    /// </summary>
+    public static readonly TimeSpan FirstRequestTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    ///     Default time the client waits for an elevated broker process to connect back to the
+    ///     caller's control pipe during launch.
+    /// </summary>
+    public static readonly TimeSpan DefaultConnectTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    ///     Default time the elevated <c>--broker</c> child spends trying to connect to the caller's
+    ///     control pipe before aborting startup.
+    /// </summary>
+    public static readonly TimeSpan ElevatedConnectTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    ///     How long the elevated <c>--broker</c> child waits for its diagnostic log flush at exit.
+    /// </summary>
+    public static readonly TimeSpan DiagnosticsFlushTimeout = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    ///     Default minimum interval between <c>ScanProgress</c> frames emitted by the host during a
+    ///     drive block scan.
+    /// </summary>
+    public static readonly TimeSpan ProgressThrottleInterval = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>
+    ///     Formats a duration's total seconds using invariant culture for broker diagnostic messages.
+    /// </summary>
+    public static string FormatSeconds(TimeSpan duration, string format = "G") =>
+        duration.TotalSeconds.ToString(format, CultureInfo.InvariantCulture);
 }

@@ -31,6 +31,33 @@
       `BrokerDiagnostics` writes through a bounded background queue and filters the two diagnostic
       logs from journal batches unless `MFTLIB_BROKER_DIAG_INCLUDE_SELF=1` opts in.
 
+## Timing policy
+
+`BrokerLiveness` is the single home of broker timing defaults and diagnostic seconds
+formatting (`BrokerLiveness.FormatSeconds`):
+
+- `HeartbeatInterval` (5 seconds): host heartbeat and processing-progress visit interval.
+- `ProcessingLimit` (30 seconds): maximum host processing time without progress before
+  the pipe writes `Stalled` and cancels the operation.
+- `StallLimit` (30 seconds): maximum client wait between incoming frames on the control
+  pipe or a drive channel.
+- `ControlReplyTimeout` (30 seconds): client wait for a control request write, a control
+  reply, or the host's channel pipe connection after `ChannelOpened`.
+- `ControlClosedGracePeriod` (5 seconds): host drain grace period for in-flight channel
+  tasks after the control pipe closes.
+- `ChannelConnectTimeout` (30 seconds): host wait for a newly opened channel pipe to
+  connect.
+- `FirstRequestTimeout` (30 seconds): host wait for a connected channel pipe's opening
+  request frame.
+- `DefaultConnectTimeout` (30 seconds): default client wait for an elevated broker
+  process to connect back to the caller's control pipe during launch.
+- `ElevatedConnectTimeout` (30 seconds): default wait in the elevated `--broker` child
+  for the caller's control pipe and each drive pipe.
+- `DiagnosticsFlushTimeout` (2 seconds): elevated `--broker` exit wait for diagnostic
+  log flushing.
+- `ProgressThrottleInterval` (250 milliseconds): default minimum interval between
+  intermediate `ScanProgress` frames during a drive block scan.
+
 ## Session ownership
 
 `BrokerSession` owns one `BrokerProcess` for a consumer session. Construction launches

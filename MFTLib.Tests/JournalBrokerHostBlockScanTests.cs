@@ -27,7 +27,7 @@ public class JournalBrokerHostBlockScanTests
             JournalRead = (_, cursor, maximumBufferReads) =>
             {
                 Assert.IsTrue(capturedBlockWriter.Block.Header.IsComplete);
-                Assert.AreEqual(BrokerLiveness.CatchUpBufferReadsPerCall, maximumBufferReads);
+                Assert.AreEqual(256, maximumBufferReads);
                 return cursor == ArmedCursor
                     ? ([], cursor with { NextUsn = 12500 })
                     : (Array.Empty<UsnJournalEntry>(), cursor);

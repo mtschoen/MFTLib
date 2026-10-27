@@ -30,7 +30,6 @@ public partial class BrokerProcessTests
     public async Task ControlWrite_NeverFinishes_EndsProcessAfterReplyTimeout()
     {
         Assert.AreEqual(TimeSpan.FromSeconds(30), BrokerLiveness.ControlReplyTimeout);
-        Assert.AreEqual(BrokerLiveness.ControlReplyTimeout, BrokerProcess.ControlReplyTimeout);
         var clock = new TimerSignalingClock();
         var control = new SplitFrameWrite(splitWriteNumber: 1);
         var controlReads = new ReadCounter();

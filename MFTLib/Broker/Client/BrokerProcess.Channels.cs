@@ -68,13 +68,13 @@ sealed partial class BrokerProcess
     {
         try
         {
-            return await connection.WaitAsync(ControlReplyTimeout, _timeProvider, cancellationToken)
+            return await connection.WaitAsync(BrokerLiveness.ControlReplyTimeout, _timeProvider, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (TimeoutException exception)
         {
             throw new BrokerChannelLostException(drive,
-                $"Drive {drive} channel was opened but did not connect within {Seconds(ControlReplyTimeout)} seconds.",
+                $"Drive {drive} channel was opened but did not connect within {BrokerLiveness.FormatSeconds(BrokerLiveness.ControlReplyTimeout)} seconds.",
                 exception);
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested &&

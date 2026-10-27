@@ -7,16 +7,13 @@ namespace MFTLib;
 /// <summary>Creates the control pipe, launches the elevated broker against it, and waits for it to connect.</summary>
 sealed partial class BrokerProcess
 {
-    /// <summary>How long <see cref="LaunchAsync" /> waits for the broker to connect when given no timeout.</summary>
-    static readonly TimeSpan DefaultConnectTimeout = TimeSpan.FromSeconds(30);
-
     // Internal launch seams let tests drive the connection deadline with fake time.
-    internal static TimeSpan _connectTimeout = DefaultConnectTimeout;
+    internal static TimeSpan _connectTimeout = BrokerLiveness.DefaultConnectTimeout;
     internal static TimeProvider _connectTimeProvider = TimeProvider.System;
 
     internal static void ResetToDefaults()
     {
-        _connectTimeout = DefaultConnectTimeout;
+        _connectTimeout = BrokerLiveness.DefaultConnectTimeout;
         _connectTimeProvider = TimeProvider.System;
     }
 
@@ -103,7 +100,7 @@ sealed partial class BrokerProcess
                                                  !cancellationToken.IsCancellationRequested)
         {
             var duration = connectTimeout.TotalSeconds >= 1
-                ? FormattableString.Invariant($"{connectTimeout.TotalSeconds:G}s")
+                ? $"{BrokerLiveness.FormatSeconds(connectTimeout)}s"
                 : FormattableString.Invariant($"{connectTimeout.TotalMilliseconds:G}ms");
             throw new TimeoutException(FormattableString.Invariant(
                 $"Timed out waiting {duration} for the elevated broker to connect to pipe '{pipeName}'. The broker process was launched, but never connected (headless session, unserviced UAC prompt, or broker crash before connect)."));

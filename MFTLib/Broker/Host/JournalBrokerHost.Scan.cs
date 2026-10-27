@@ -10,6 +10,9 @@ sealed partial class JournalBrokerHost
     const string RecordBatchStep = "block write";
     const string CatchUpStep = "journal catch-up";
 
+    // At most 256 journal buffers (64 KB each, 16 MB) per catch-up read, so each read can report progress.
+    const int CatchUpBufferReadsPerCall = 256;
+
     // Frames, in order: Cursor, ScanProgress*, ScanReady, then one terminal frame - ScanCompleted
     // with no payload when catch-up held, or CatchUpLost when it failed and the live
     // journal proves the armed cursor lost - or Error at any point. A cancelled scan (its pipe closed, or the session
@@ -239,7 +242,7 @@ sealed partial class JournalBrokerHost
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var (chunk, updated) = _volumeAccess.ReadJournal(channel.Drive, cursor, BrokerLiveness.CatchUpBufferReadsPerCall);
+            var (chunk, updated) = _volumeAccess.ReadJournal(channel.Drive, cursor, CatchUpBufferReadsPerCall);
             if (updated == cursor)
             {
                 if (chunk.Length != 0)

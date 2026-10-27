@@ -24,6 +24,6 @@ sealed partial class JournalBrokerHost
         internal Action? HeartbeatVisited { get; set; }
 
         /// <summary>Minimum time between intermediate scan reports; set before serving.</summary>
-        internal TimeSpan ProgressThrottleInterval { get; set; } = TimeSpan.FromMilliseconds(250);
+        internal TimeSpan ProgressThrottleInterval { get; set; } = BrokerLiveness.ProgressThrottleInterval;
     }
 }

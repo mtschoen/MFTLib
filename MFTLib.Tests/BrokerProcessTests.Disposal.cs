@@ -56,8 +56,8 @@ public partial class BrokerProcessTests
             var dispose = broker.Process.DisposeAsync().AsTask();
             // The first host timer with this due time is the heartbeat sender's, created when the
             // session started; the second is the grace period the session's end starts.
-            await hostClock.TimerCreated(JournalBrokerHost.ControlClosedGracePeriod, occurrence: 2).WaitAsync(HangGuard, TestContext.CancellationToken);
-            hostClock.Advance(JournalBrokerHost.ControlClosedGracePeriod);
+            await hostClock.TimerCreated(BrokerLiveness.ControlClosedGracePeriod, occurrence: 2).WaitAsync(HangGuard, TestContext.CancellationToken);
+            hostClock.Advance(BrokerLiveness.ControlClosedGracePeriod);
             await dispose.WaitAsync(HangGuard, TestContext.CancellationToken);
 
             var lost = await Assert.ThrowsExactlyAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard, TestContext.CancellationToken));

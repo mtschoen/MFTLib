@@ -134,7 +134,7 @@ breakableControl: true);
 
         // The host times out, cancels its read, and the read finishes by returning end of stream
         // rather than by throwing: the Error is still written and the channel ends.
-        await AdvanceWhenTimerExistsAsync(clock, JournalBrokerHost.FirstRequestTimeout, 2, readCancelled.Task);
+        await AdvanceWhenTimerExistsAsync(clock, BrokerLiveness.FirstRequestTimeout, 2, readCancelled.Task);
         releaseRead.SetResult();
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
@@ -191,7 +191,7 @@ breakableControl: true);
         // The client goes away: the session ends and its drain starts (the drain's grace timer is
         // the second 5 second timer after the heartbeat sender's), holding only the request's task.
         await client.DisposeAsync();
-        await clock.TimerCreated(JournalBrokerHost.ControlClosedGracePeriod, 2).WaitAsync(HangGuard, TestContext.CancellationToken);
+        await clock.TimerCreated(BrokerLiveness.ControlClosedGracePeriod, 2).WaitAsync(HangGuard, TestContext.CancellationToken);
 
         // The reply completes, so the request tracks its channel task, which cannot finish while its
         // pipe is held open: the drain must take a second snapshot and wait for that task as well.

@@ -125,7 +125,7 @@ public partial class JournalBrokerHostChannelTests
         });
         await using var harness = new HostChannelHarness(host,
             connectChannel: (driveName, driveToken) => DefaultElevatedEntryRunner.ConnectDrivePipeAsync(
-                driveName, DefaultElevatedEntryRunner.ConnectTimeout, TimeProvider.System, driveToken));
+                driveName, BrokerLiveness.ElevatedConnectTimeout, TimeProvider.System, driveToken));
 
         await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 5, 'C', pipeName));
         await server.WaitForConnectionAsync(TestContext.CancellationToken).WaitAsync(HangGuard, TestContext.CancellationToken);
@@ -160,7 +160,7 @@ public partial class JournalBrokerHostChannelTests
 
         await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 12, 'C', "never"));
         var reply = harness.ReadControlAsync();
-        await AdvanceWhenTimerExistsAsync(clock, JournalBrokerHost.ChannelConnectTimeout, 1, reply);
+        await AdvanceWhenTimerExistsAsync(clock, BrokerLiveness.ChannelConnectTimeout, 1, reply);
 
         Assert.AreEqual(BrokerFrameKind.Error, (await reply).Kind);
         Assert.AreEqual(12u, (await reply).RequestId);
@@ -189,7 +189,7 @@ public partial class JournalBrokerHostChannelTests
         var pipe = await OpenChannelAfterConnectBoundAsync(harness, clock, connectionsReleased, 'C');
 
         var frame = HostChannelHarness.ReadFrameAsync(pipe);
-        await AdvanceWhenTimerExistsAsync(clock, JournalBrokerHost.FirstRequestTimeout, 2, frame);
+        await AdvanceWhenTimerExistsAsync(clock, BrokerLiveness.FirstRequestTimeout, 2, frame);
 
         Assert.AreEqual(BrokerFrameKind.Error, (await frame)?.Kind);
         Assert.AreEqual(0u, (await frame)?.RequestId);
@@ -325,7 +325,7 @@ public partial class JournalBrokerHostChannelTests
         TaskCompletionSource connectionsReleased, DriveKey drive)
     {
         var open = harness.OpenChannelAsync(drive);
-        await clock.TimerCreated(JournalBrokerHost.ChannelConnectTimeout).WaitAsync(HangGuard);
+        await clock.TimerCreated(BrokerLiveness.ChannelConnectTimeout).WaitAsync(HangGuard);
         connectionsReleased.SetResult();
         return await open.WaitAsync(HangGuard);
     }

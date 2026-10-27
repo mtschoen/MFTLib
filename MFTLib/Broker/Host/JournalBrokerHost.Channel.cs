@@ -1,4 +1,3 @@
-using System.Globalization;
 using MFTLib.Index;
 
 namespace MFTLib;
@@ -23,7 +22,7 @@ sealed partial class JournalBrokerHost
             cancellationToken);
     }
 
-    // Connects the pipe the client named, bounded by ChannelConnectTimeout on the host's clock.
+    // Connects the pipe the client named, bounded by BrokerLiveness.ChannelConnectTimeout on the host's clock.
     // On success the reply is ChannelOpened and the channel is served on its own tracked task; on
     // failure or timeout the reply is Error with the request id, and a connection that arrives
     // after the host stopped waiting for it is disposed.
@@ -61,14 +60,14 @@ sealed partial class JournalBrokerHost
         var connection = Task.Run(() => session.ConnectChannel(pipeName, connectToken), CancellationToken.None);
         try
         {
-            return await connection.WaitAsync(ChannelConnectTimeout, _timeProvider, session.Token)
+            return await connection.WaitAsync(BrokerLiveness.ChannelConnectTimeout, _timeProvider, session.Token)
                 .ConfigureAwait(false);
         }
         catch (TimeoutException)
         {
             await connectCancellation.CancelAsync().ConfigureAwait(false);
             DisposeLateConnection(connection);
-            var seconds = ChannelConnectTimeout.TotalSeconds.ToString(CultureInfo.InvariantCulture);
+            var seconds = BrokerLiveness.FormatSeconds(BrokerLiveness.ChannelConnectTimeout);
             await WriteControlErrorAsync(session, requestId,
                     $"Drive {drive} channel pipe '{pipeName}' did not connect within {seconds} seconds.")
                 .ConfigureAwait(false);
@@ -100,7 +99,7 @@ sealed partial class JournalBrokerHost
             TaskScheduler.Default);
     }
 
-    // The channel reads exactly one request frame, bounded by FirstRequestTimeout. Once it has
+    // The channel reads exactly one request frame, bounded by BrokerLiveness.FirstRequestTimeout. Once it has
     // one, a reader task watches for EOF, which cancels the channel's token, while the operation
     // runs; the operation's completion stops and joins the reader, so the channel leaves no task
     // behind. The host closes its end when the operation returns. The heartbeat sender visits the
@@ -176,14 +175,14 @@ sealed partial class JournalBrokerHost
         try
         {
             // The read observes the channel's token itself; this wait bounds only the time.
-            return await read.WaitAsync(FirstRequestTimeout, _timeProvider, CancellationToken.None)
+            return await read.WaitAsync(BrokerLiveness.FirstRequestTimeout, _timeProvider, CancellationToken.None)
                 .ConfigureAwait(false);
         }
         catch (TimeoutException)
         {
             await readCancellation.CancelAsync().ConfigureAwait(false);
             await AwaitCancelledReadAsync(read).ConfigureAwait(false);
-            var seconds = FirstRequestTimeout.TotalSeconds.ToString(CultureInfo.InvariantCulture);
+            var seconds = BrokerLiveness.FormatSeconds(BrokerLiveness.FirstRequestTimeout);
             await WriteChannelErrorAsync(channel,
                     $"Drive {channel.Drive} channel received no request within {seconds} seconds.", cancellationToken)
                 .ConfigureAwait(false);

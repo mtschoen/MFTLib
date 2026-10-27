@@ -10,19 +10,13 @@ namespace MFTLib;
 /// </summary>
 sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
 {
-    // How long an exiting broker waits for its queued diagnostics lines to reach the log.
-    static readonly TimeSpan DiagnosticsFlushTimeout = TimeSpan.FromSeconds(2);
-
-    // How long the broker waits for the control pipe, and for each drive pipe, before it gives up.
-    internal static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(30);
-
     readonly TimeProvider _timeProvider;
     readonly Action<int> _exitProcess;
     readonly TimeSpan _connectTimeout;
 
     /// <summary>Uses the system clock and terminates the production elevated child on completion.</summary>
     public DefaultElevatedEntryRunner()
-        : this(TimeProvider.System, Environment.Exit, ConnectTimeout)
+        : this(TimeProvider.System, Environment.Exit, BrokerLiveness.ElevatedConnectTimeout)
     {
     }
 
@@ -117,8 +111,8 @@ sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
             catch (OperationCanceledException) when (bound.IsCancellationRequested &&
                                                      !cancellationToken.IsCancellationRequested)
             {
-                throw new TimeoutException(FormattableString.Invariant(
-                    $"No server answered drive pipe '{pipeName}' within {timeout.TotalSeconds:G} seconds."));
+                throw new TimeoutException(
+                    $"No server answered drive pipe '{pipeName}' within {BrokerLiveness.FormatSeconds(timeout)} seconds.");
             }
 
             BrokerPipeAccess.VerifyServerRestrictedToCurrentUser(pipe);
@@ -159,7 +153,7 @@ sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
     {
         using var stopBound = new CancellationTokenSource();
         var flush = BrokerDiagnostics.FlushAsync(CancellationToken.None);
-        var bound = Task.Delay(DiagnosticsFlushTimeout, _timeProvider, stopBound.Token);
+        var bound = Task.Delay(BrokerLiveness.DiagnosticsFlushTimeout, _timeProvider, stopBound.Token);
         // aislop-ignore-next-line csharp-sync-over-async -- the wait covers only the diagnostics writer's drain and a timer, neither of which posts to the calling thread's SynchronizationContext
         Task.WhenAny(flush, bound).GetAwaiter().GetResult();
         stopBound.Cancel();

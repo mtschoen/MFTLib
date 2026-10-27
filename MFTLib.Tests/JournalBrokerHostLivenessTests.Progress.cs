@@ -84,7 +84,7 @@ public partial class JournalBrokerHostLivenessTests
             Assert.IsEmpty(rest[0].Entries);
             Assert.AreEqual(default(UsnJournalCursor), rest[0].Cursor);
             Assert.AreSequenceEqual([.. Enumerable.Range(0, 4).Select(index => Tip with { NextUsn = Tip.NextUsn + (index * 100) })], [.. observed.Select(read => read.Cursor)]);
-            Assert.AreSequenceEqual([.. Enumerable.Repeat(BrokerLiveness.CatchUpBufferReadsPerCall, 4)], [.. observed.Select(read => read.Limit)]);
+            Assert.AreSequenceEqual([256, 256, 256, 256], [.. observed.Select(read => read.Limit)]);
         }
         finally
         {

@@ -1,6 +1,5 @@
 using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
 
 namespace MFTLib;
 
@@ -181,7 +180,7 @@ sealed class HostPipeWriter : ISourceOperationReporter
                 return (BrokerProtocol.WriteHeartbeat, false);
 
             case ChannelOperationKind.Processing:
-                var seconds = (now - state.Since).TotalSeconds.ToString("0", CultureInfo.InvariantCulture);
+                var seconds = BrokerLiveness.FormatSeconds(now - state.Since, "0");
                 var message = $"Broker step '{state.Step}' on pipe {Tag} made no progress for {seconds} seconds.";
                 return (writer => BrokerProtocol.WriteStalled(writer, message), true);
 
