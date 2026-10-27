@@ -913,6 +913,27 @@ synchronous shape.
 
 **Revisit only if:** a consumer needs to apply journal entries from a context that cannot await.
 
+## The Watch sample opens one index over one cache folder
+
+**Decision (2026-10-26):**
+(B3) The Watch sample keeps every drive's cached block in the one cache directory. Its per-policy
+subfolders, the retention fingerprint behind them and the `cache` verb's per-folder loop are deleted;
+the library's scan-shape comparison rebuilds a block when row-shaping flags change.
+(B5) One `FileIndex` over several drives is a deliberate feature: one handle answers cross-drive
+queries. The Watch sample therefore opens one `FileIndex` over all named drives instead of one per drive,
+so open progress reports real "n of m" progress. No earlier ruling existed; this ratifies the multi-drive open.
+(B7) `BrokerSession(launchBroker, connectTimeout)` stays public because a future consumer may set its own
+wait. The Watch sample passes `--connect-timeout <seconds>` to it, which replaces the constructor's
+exemption in `PublicMemberCallerTests`.
+
+**Reason:** the library already compares the scan shape, so a consumer-side folder per policy duplicated a
+library responsibility and left stale folders behind. A per-drive index in the sample hid the multi-drive
+open that consumers use and made its progress meaningless. The connect timeout is a real operator choice
+that a sample can show.
+
+**Revisit only if:** a consumer needs the cache split by policy outside the library's scan-shape
+comparison, or the connect timeout stops being a consumer setting.
+
 ## Block Generation is a per-drive change version
 
 **Decision (2026-10-26, owner ruling B8):** the block header's `Generation` stays and is exposed as

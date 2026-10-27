@@ -36,8 +36,8 @@ Cancel or the five-minute timeout skips the launch with the same fallback text a
 The heads-up gate precedes creation of the scan's `BrokerSession`. One session serves the
 whole run and launches its broker only when a drive needs a scan; offline drives do not
 launch it. A session-construction failure is printed as `Error creating broker session: ...`.
-A lazy launch failure is reported through the affected drive as `Error on drive X: ...`;
-a later drive can retry a failed launch using the session's normal retry behavior.
+A lazy launch failure is reported as `Error on drive X: ...` for the drive that settles failed, or `Error opening the index: ...` when the open itself throws.
+Watch waits the default 30 seconds for the elevated broker to connect unless `--connect-timeout N` names another wait in seconds.
 
 ## Double-click and bare launches
 

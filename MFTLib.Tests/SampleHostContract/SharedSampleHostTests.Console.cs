@@ -85,4 +85,26 @@ partial class SharedSampleHostTests
                 $"  D: ParsingMft: {2 * interval} rows of {3 * interval}"
             ], lines);
     }
+
+    [TestMethod]
+    public void PhaseReporter_KeepsEachDrivesPhaseAndCompletionWhenDriveProgressInterleaves()
+    {
+        using var output = new StringWriter();
+        var reporter = Probe.CreateReporter(output);
+
+        reporter.Report(new IndexScanProgress('C', IndexScanPhase.ParsingMft, 5));
+        reporter.Report(new IndexScanProgress('D', IndexScanPhase.ParsingMft, 5));
+        reporter.Report(new IndexScanProgress('C', IndexScanPhase.Enumerating, 5));
+        reporter.Report(new IndexScanProgress('D', IndexScanPhase.Enumerating, 5));
+        reporter.Report(new IndexScanProgress('C', IndexScanPhase.Finished, 5));
+        reporter.Report(new IndexScanProgress('D', IndexScanPhase.Finished, 5));
+
+        var lines = output.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+        Assert.AreSequenceEqual(
+            [
+                "  C: ParsingMft: 5 rows", "  D: ParsingMft: 5 rows",
+                "  C: Enumerating: 5 rows", "  D: Enumerating: 5 rows",
+                "  C: Finished: 5 rows", "  D: Finished: 5 rows"
+            ], lines);
+    }
 }

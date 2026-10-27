@@ -1,11 +1,10 @@
-using System.Text.RegularExpressions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SampleProgram.Watch;
 
 namespace MFTLib.Tests;
 
 [TestClass]
-public partial class WatchArgumentsTests
+public class WatchArgumentsTests
 {
     [TestMethod]
     public void TryParse_NoArguments_WatchesAndLeavesTheDrivesToTheHost()
@@ -26,6 +25,15 @@ public partial class WatchArgumentsTests
 
         Assert.AreEqual(WatchVerb.Watch, parsed!.Verb);
         Assert.AreSequenceEqual(["C", "D"], [.. parsed.Drives]);
+    }
+
+    [TestMethod]
+    public void TryParse_RepeatedDrivesThatNormalizeToTheSameDrive_KeepsEachDriveOnce()
+    {
+        Assert.IsTrue(WatchArguments.TryParse(["scan", "c:", "C", "D"], out var parsed, out var error));
+
+        Assert.IsNull(error);
+        Assert.AreSequenceEqual(["C", "D"], [.. parsed!.Drives]);
     }
 
     [TestMethod]
@@ -239,34 +247,43 @@ public partial class WatchArgumentsTests
     }
 
     [TestMethod]
-    [DataRow("Aa", "BB")]
-    [DataRow("b", "a")]
-    [DataRow("keep63926.txt", "keep68897.txt")]
-    [DataRow("keep20143.txt", "keep118021.txt")]
-    [DataRow("policy96088.txt", "policy188525.txt")]
-    public void PolicyDirectoryName_DistinctRetainedNames_GetDifferentDirectories(string keepOne, string keepTwo)
+    [DataRow("scan")]
+    [DataRow("watch")]
+    [DataRow("rescan")]
+    [DataRow("journal")]
+    public void TryParse_ConnectTimeout_IsReadForEveryVerbThatLaunchesTheBroker(string verb)
     {
-        Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", keepOne], out var one, out _));
-        Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", keepTwo], out var two, out _));
+        Assert.IsTrue(WatchArguments.TryParse([verb, "C", "--connect-timeout", "90"], out var parsed, out var error), error);
+        Assert.IsTrue(WatchArguments.TryParse([verb, "C"], out var plain, out _));
 
-        Assert.AreNotEqual(one!.PolicyDirectoryName, two!.PolicyDirectoryName);
+        Assert.AreEqual(90, parsed!.ConnectTimeoutSeconds);
+        Assert.IsNull(plain!.ConnectTimeoutSeconds, "Without --connect-timeout the library default applies.");
     }
 
     [TestMethod]
-    public void PolicyDirectoryName_IsThePrefixAndTheFull64DigitSha256()
+    [DataRow("0")]
+    [DataRow("2147484")]
+    public void TryParse_ConnectTimeoutOutsideTheRange_IsRefusedNamingTheRange(string seconds)
     {
-        Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", "a.txt"], out var parsed, out _));
+        Assert.IsFalse(WatchArguments.TryParse(["watch", "C", "--connect-timeout", seconds], out _, out var error));
 
-        Assert.MatchesRegex(MyRegex(), parsed!.PolicyDirectoryName);
+        Assert.AreEqual("Option --connect-timeout must be from 1 to 2147483.", error);
     }
 
     [TestMethod]
-    public void PolicyDirectoryName_SameRetainedNamesInAnotherOrder_IsTheSameDirectory()
+    [DataRow("cache")]
+    [DataRow("elevation-status")]
+    public void TryParse_ConnectTimeoutOnAVerbThatLaunchesNoBroker_IsRefused(string verb)
     {
-        Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", "a.txt,b.txt"], out var one, out _));
-        Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", "b.txt, a.txt"], out var two, out _));
+        Assert.IsFalse(WatchArguments.TryParse([verb, "--connect-timeout", "5"], out _, out var error));
 
-        Assert.AreEqual(one!.PolicyDirectoryName, two!.PolicyDirectoryName);
+        Assert.AreEqual($"Option --connect-timeout does not apply to {verb}.", error);
+    }
+
+    [TestMethod]
+    public void Usage_NamesTheConnectTimeoutFlag()
+    {
+        Assert.Contains("--connect-timeout N", WatchArguments.Usage);
     }
 
     [TestMethod]
@@ -283,7 +300,7 @@ public partial class WatchArgumentsTests
     }
 
     [TestMethod]
-    public void RetainedFileNames_RetentionStates_DriveTheIndexOptionAndPolicyIdentity()
+    public void RetainedFileNames_RetentionStates_DriveTheIndexOption()
     {
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", "desktop.ini, .gitignore"], out var parsed, out _));
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C"], out var plain, out _));
@@ -291,13 +308,7 @@ public partial class WatchArgumentsTests
 
         Assert.AreSequenceEqual(["desktop.ini", ".gitignore"], [.. parsed!.RetainedFileNames!]);
         Assert.IsEmpty(directories!.RetainedFileNames!);
-        Assert.AreNotEqual(plain!.PolicyDirectoryName, directories.PolicyDirectoryName);
-        Assert.AreNotEqual(parsed.PolicyDirectoryName, directories.PolicyDirectoryName);
         Assert.AreEqual(new MFTLib.Index.CacheTag("SMPW", 2), WatchArguments.CacheTag);
-        Assert.IsNull(plain.RetainedFileNames);
-        Assert.AreNotEqual(plain.PolicyDirectoryName, parsed.PolicyDirectoryName, "A different retention policy is a different cache directory.");
+        Assert.IsNull(plain!.RetainedFileNames);
     }
-
-    [GeneratedRegex("^policy-[0-9a-f]{64}$")]
-    private static partial Regex MyRegex();
 }

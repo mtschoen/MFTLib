@@ -89,7 +89,7 @@ partial class SampleHost
         BrokerSession session;
         try
         {
-            session = CreateBrokerSessionNative();
+            session = CreateBrokerSessionNative(parsed.ConnectTimeoutSeconds);
         }
         catch (Exception exception)
         {

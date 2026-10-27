@@ -33,12 +33,6 @@ public class PublicMemberCallerTests
             "file-wizard file-wizard/ProgramEntry.cs and FileWizardMaui/App.xaml.cs enable broker diagnostics at startup",
         ["method MFTLib.BrokerDiagnostics.Enable(System.String, System.String) : System.Void"] =
             "file-wizard file-wizard/ProgramEntry.cs and FileWizardMaui/App.xaml.cs enable broker diagnostics at startup",
-        ["type MFTLib.BrokerLauncher"] =
-            "file-wizard file-wizard/BrokerSmoke.cs and git-wizard GitWizard/Discovery/RepositoryDiscoveryDependencies.cs launch the broker",
-        ["method MFTLib.BrokerLauncher.Launch(System.String) : System.Boolean"] =
-            "file-wizard file-wizard/BrokerSmoke.cs and git-wizard GitWizard/Discovery/RepositoryDiscoveryDependencies.cs launch the broker",
-        ["method MFTLib.BrokerSession..ctor(System.Func`2<System.String,System.Boolean>, System.Nullable`1<System.TimeSpan>) : System.Void"] =
-            "git-wizard GitWizard/MftIndexSession.Windows.cs builds the session with its own launcher and connect timeout",
         ["method MFTLib.BrokerSession.DisposeAsync() : System.Threading.Tasks.ValueTask"] =
             "reached through IAsyncDisposable, so no IL names it; file-wizard file-wizard/BrokerSmoke.cs disposes the session with await using",
         ["method MFTLib.Index.CacheDirectory.EnsureCreated(System.String) : System.IO.DirectoryInfo"] =

@@ -3,18 +3,20 @@ using MFTLib.Index;
 
 namespace SampleProgram.Watch;
 
-// Each drive opened as a FileIndex over the broker, the path every consumer ships. scan opens CacheMode.Disabled and only
+// One FileIndex over every named drive, opened through the broker, the path every consumer ships. scan opens CacheMode.Disabled and only
 // reports; the other modes open the cached index and act on it. This process stays unelevated.
 partial class SampleHost
 {
-    static BrokerSession CreateBrokerSessionNative()
+    static BrokerSession CreateBrokerSessionNative(int? connectTimeoutSeconds)
     {
         return OperatingSystem.IsWindows()
-            ? new BrokerSession()
+            ? connectTimeoutSeconds is { } seconds
+                ? new BrokerSession(BrokerLauncher.Launch, TimeSpan.FromSeconds(seconds))
+                : new BrokerSession()
             : throw new PlatformNotSupportedException("The broker is Windows only.");
     }
 
-    // One broker, so one elevation prompt, serves every drive of the run. The exit code is 1 when no broker session could be
+    // One broker, so one elevation prompt, serves every drive of the run, and one index answers for all of them. The exit code is 1 when no broker session could be
     // created, so nothing ran, or when any drive failed; otherwise 0.
     internal async Task<int> RunThroughBrokerAsync(
         WatchArguments parsed,
@@ -30,9 +32,7 @@ partial class SampleHost
         }
 
         var source = session.CreateIndexSource();
-        var failureCount = parsed.Verb is WatchVerb.Watch
-            ? await WatchDrivesAsync(source, parsed, resolveDrive, cancellationToken).ConfigureAwait(false)
-            : await RunEachDriveAsync(session, source, parsed, resolveDrive, cancellationToken).ConfigureAwait(false);
+        var failureCount = await RunIndexAsync(session, source, parsed, resolveDrive, cancellationToken).ConfigureAwait(false);
 
         if (session.Ended.IsCompleted)
         {
@@ -47,7 +47,9 @@ partial class SampleHost
         return failureCount > 0 ? 1 : 0;
     }
 
-    async Task<int> RunEachDriveAsync(
+    // Resolves the drives, opens the one index over those that resolved and runs the verb on it. Returns how many drive
+    // operations failed; a drive that cannot be resolved or settles unusable is printed and counted, the others run.
+    async Task<int> RunIndexAsync(
         BrokerSession session,
         MftIndexSource source,
         WatchArguments parsed,
@@ -55,9 +57,48 @@ partial class SampleHost
         CancellationToken cancellationToken)
     {
         var failureCount = 0;
+        var drives = new List<IndexedDrive>();
         foreach (var letter in parsed.Drives)
         {
-            if (!await RunOnDriveAsync(session, source, parsed, letter, resolveDrive, cancellationToken).ConfigureAwait(false))
+            try
+            {
+                drives.Add(resolveDrive(letter));
+            }
+            catch (Exception exception)
+            {
+                failureCount++;
+                await _output.WriteLineAsync($"Error on drive {letter}: {exception.Message}").ConfigureAwait(false);
+            }
+        }
+
+        if (drives.Count == 0)
+        {
+            return failureCount;
+        }
+
+        FileIndex index;
+        try
+        {
+            index = await OpenIndexAsync(source, parsed, drives, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            await _output.WriteLineAsync($"Error opening the index: {exception.Message}").ConfigureAwait(false);
+            return failureCount + 1;
+        }
+
+        await using var ownedIndex = index.ConfigureAwait(false);
+        return failureCount + (parsed.Verb is WatchVerb.Watch
+            ? await WatchIndexAsync(index, parsed, cancellationToken).ConfigureAwait(false)
+            : await RunEachDriveAsync(session, index, parsed, cancellationToken).ConfigureAwait(false));
+    }
+
+    async Task<int> RunEachDriveAsync(BrokerSession session, FileIndex index, WatchArguments parsed, CancellationToken cancellationToken)
+    {
+        var failureCount = 0;
+        foreach (var status in index.Drives)
+        {
+            if (!await RunOnDriveAsync(session, index, parsed, status, cancellationToken).ConfigureAwait(false))
             {
                 failureCount++;
             }
@@ -66,19 +107,19 @@ partial class SampleHost
         return failureCount;
     }
 
-    // Opens one drive's index and writes its status line; a failure after the open disposes the index again.
-    async Task<FileIndex> OpenDriveAsync(
+    // Opens one index over every drive; its open progress reports each drive settling as "n of m".
+    Task<FileIndex> OpenIndexAsync(
         MftIndexSource source,
         WatchArguments parsed,
-        IndexedDrive drive,
+        IReadOnlyList<IndexedDrive> drives,
         CancellationToken cancellationToken)
     {
         var cached = parsed.Verb is not WatchVerb.Scan;
         var options = new FileIndexOptions
         {
-            Drives = [drive],
+            Drives = drives,
             CacheMode = cached ? CacheMode.Persistent : CacheMode.Disabled,
-            CacheDirectory = cached && parsed.CacheDirectory is not null ? Path.Combine(parsed.CacheDirectory, parsed.PolicyDirectoryName) : null,
+            CacheDirectory = cached ? parsed.CacheDirectory : null,
             CacheTag = cached ? WatchArguments.CacheTag : default,
             Diagnostics = cached ? _output.WriteLine : null,
             MftSource = source,
@@ -87,54 +128,55 @@ partial class SampleHost
             DriveOpenProgress = new DriveOpenedReporter(_output)
         };
 
-        var index = await FileIndex.OpenAsync(options, cancellationToken).ConfigureAwait(false);
-        try
+        return FileIndex.OpenAsync(options, cancellationToken);
+    }
+
+    // A cached verb adds where the block came from, the watch state and any lost checkpoint to the status line.
+    void ReportDrive(WatchArguments parsed, DriveStatus status)
+    {
+        if (parsed.Verb is WatchVerb.Scan)
         {
-            Action<DriveStatus> report = cached ? WriteDriveDetail : WriteStatus;
-            report(index.Drives.Single());
-            return index;
+            WriteStatus(status);
         }
-        catch
+        else
         {
-            await index.DisposeAsync().ConfigureAwait(false);
-            throw;
+            WriteDriveDetail(status);
         }
     }
 
     // True when the drive ran to its end; a failure is printed and false.
     async Task<bool> RunOnDriveAsync(
         BrokerSession session,
-        MftIndexSource source,
+        FileIndex index,
         WatchArguments parsed,
-        string letter,
-        Func<string, IndexedDrive> resolveDrive,
+        DriveStatus status,
         CancellationToken cancellationToken)
     {
-        await _output.WriteLineAsync($"=== Drive {letter}: ===").ConfigureAwait(false);
+        var drive = status.Drive;
+        await _output.WriteLineAsync($"=== Drive {drive}: ===").ConfigureAwait(false);
         var succeeded = true;
         try
         {
-            await using var index = await OpenDriveAsync(source, parsed, resolveDrive(letter), cancellationToken).ConfigureAwait(false);
-            var drive = new DriveKey(letter[0]);
+            ReportDrive(parsed, status);
             switch (parsed.Verb)
             {
                 case WatchVerb.Rescan:
                     var results = await index.RescanAsync([drive], cancellationToken).ConfigureAwait(false);
                     WriteResults("rescan", results);
                     succeeded = results.All(result => result.Outcome == DriveOperationOutcome.Succeeded);
-                    WriteDriveDetail(index.Drives.Single());
+                    WriteDriveDetail(index.Drives.Single(candidate => candidate.Drive == drive));
                     break;
                 case WatchVerb.Journal:
                     await WriteJournalAsync(session, index, drive, parsed, cancellationToken).ConfigureAwait(false);
                     break;
             }
 
-            await _output.WriteLineAsync($"=== Drive {letter}: done ===").ConfigureAwait(false);
+            await _output.WriteLineAsync($"=== Drive {drive}: done ===").ConfigureAwait(false);
         }
         catch (Exception exception)
         {
             succeeded = false;
-            await _output.WriteLineAsync($"Error on drive {letter}: {exception.Message}").ConfigureAwait(false);
+            await _output.WriteLineAsync($"Error on drive {drive}: {exception.Message}").ConfigureAwait(false);
         }
 
         await _output.WriteLineAsync(string.Empty).ConfigureAwait(false);

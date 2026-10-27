@@ -42,33 +42,25 @@ partial class SampleHost
         await _output.WriteLineAsync($"Journal {drive}: maximum size {settings.MaximumSize}, allocation delta {settings.AllocationDelta}").ConfigureAwait(false);
     }
 
-    // Lists the cached blocks of the drives named (all when none), and removes them with --clear. Each scan policy keeps its
-    // blocks in its own policy-* folder under the cache directory, so the root and every such folder are covered.
+    // Lists the cached blocks of the drives named (all when none) in the cache directory, and removes them with --clear.
     int RunCache(WatchArguments parsed)
     {
         var exitCode = 0;
-        var root = parsed.CacheDirectory ?? string.Empty;
+        var directory = parsed.CacheDirectory ?? string.Empty;
         var drives = parsed.Drives.Count == 0 ? null : parsed.Drives.Select(drive => new DriveKey(drive[0])).ToArray();
-        IEnumerable<string> policies = Directory.Exists(root)
-            ? Directory.EnumerateDirectories(root, WatchArguments.PolicyDirectoryPrefix + "*").Order(StringComparer.Ordinal)
-            : [];
-        foreach (var directory in policies.Prepend(root))
+        foreach (var block in CacheDirectory.InspectCached(directory, drives, rejection => _output.WriteLine($"  rejected {rejection.Path}: {rejection.Reason}")))
         {
-            var origin = directory == root ? "root" : Path.GetFileName(directory);
-            foreach (var block in CacheDirectory.InspectCached(directory, drives, rejection => _output.WriteLine($"  rejected {rejection.Path}: {rejection.Reason}")))
-            {
-                _output.WriteLine($"{block.File.Drive}: {block.File.Path} (serial {block.File.VolumeSerial}, root {block.RootDirectory}), {block.Availability}{(block.Validation is { } reason ? $" ({reason})" : "")}, {block.File.Size} bytes, {block.ProducerKind}, tag {block.CacheTag}, written {block.File.LastWriteTime:u}, policy {origin}");
-            }
+            _output.WriteLine($"{block.File.Drive}: {block.File.Path} (serial {block.File.VolumeSerial}, root {block.RootDirectory}), {block.Availability}{(block.Validation is { } reason ? $" ({reason})" : "")}, {block.File.Size} bytes, {block.ProducerKind}, tag {block.CacheTag}, written {block.File.LastWriteTime:u}");
+        }
 
-            if (parsed.Clear)
+        if (parsed.Clear)
+        {
+            foreach (var result in CacheDirectory.DeleteCached(directory, drives))
             {
-                foreach (var result in CacheDirectory.DeleteCached(directory, drives))
+                _output.WriteLine($"  {result.File.Drive}: {result.Outcome}{(result.FailureReason is { } reason ? $" ({reason})" : string.Empty)}");
+                if (result.Outcome != CachedBlockDeletionOutcome.Deleted)
                 {
-                    _output.WriteLine($"  {result.File.Drive}: {result.Outcome}{(result.FailureReason is { } reason ? $" ({reason})" : string.Empty)}");
-                    if (result.Outcome != CachedBlockDeletionOutcome.Deleted)
-                    {
-                        exitCode = 1;
-                    }
+                    exitCode = 1;
                 }
             }
         }

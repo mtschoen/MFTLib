@@ -136,7 +136,6 @@ public sealed partial class WatchVerbTests : IDisposable
         Assert.AreEqual(0, HostOver(afterwards.Add).Run(["cache", "--cache-directory", cacheDirectory]));
 
         Assert.ContainsSingle(line => line.StartsWith("X: ", StringComparison.Ordinal), listing, string.Join(Environment.NewLine, listing));
-        Assert.Contains(line => line.StartsWith("X: ", StringComparison.Ordinal) && line.Contains(", policy policy-", StringComparison.Ordinal), listing, "The block lives in its policy folder and the listing names it.");
         Assert.ContainsSingle(line => line.Trim() == "X: Deleted",
 clearing, string.Join(Environment.NewLine, clearing));
         Assert.DoesNotContain(line => line.StartsWith("Deleted block file '", StringComparison.Ordinal), clearing,
@@ -147,15 +146,15 @@ clearing, string.Join(Environment.NewLine, clearing));
     [TestMethod]
     [DataRow(CachedBlockDeletionOutcome.InUse)]
     [DataRow(CachedBlockDeletionOutcome.Failed)]
-    public void Run_CacheClearWithAnUnavailableBlock_AttemptsEveryPolicyAndReturnsOne(CachedBlockDeletionOutcome unavailableOutcome)
+    public void Run_CacheClearWithAnUnavailableBlock_AttemptsEveryBlockAndReturnsOne(CachedBlockDeletionOutcome unavailableOutcome)
     {
         var root = Path.Combine(TemporaryDirectoryPath, "cache");
         var unavailable = CreateCacheBlock(root, 'T');
         var available = new[]
         {
             CreateCacheBlock(root, 'U'),
-            CreateCacheBlock(Path.Combine(root, "policy-first"), 'V'),
-            CreateCacheBlock(Path.Combine(root, "policy-second"), 'W')
+            CreateCacheBlock(root, 'V'),
+            CreateCacheBlock(root, 'W')
         };
         using var owner = unavailableOutcome == CachedBlockDeletionOutcome.InUse
             ? BlockOwnerLock.TryAcquire(unavailable)
@@ -204,7 +203,6 @@ clearing, string.Join(Environment.NewLine, clearing));
     {
         var root = Path.Combine(TemporaryDirectoryPath, "cache");
         Directory.CreateDirectory(root);
-        Directory.CreateDirectory(Path.Combine(root, "policy-empty"));
         var lines = new List<string>();
 
         Assert.AreEqual(0, HostOver(lines.Add).Run(["cache", "--clear", "--cache-directory", root]));

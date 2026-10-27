@@ -31,25 +31,29 @@ partial class SampleHost
     }
 
     // Reports each scan phase when it starts and again each time another ProgressRowInterval rows were written within it,
-    // on the reporting thread so the output keeps its order. The interval counts rows, never time.
+    // tracked per drive so one drive's progress never hides another's phase change or completion. The interval counts rows,
+    // never time. Reports from several drives can overlap, so the state and the write are serialized.
     internal sealed class PhaseReporter(TextWriter output) : IProgress<IndexScanProgress>
     {
         internal const uint ProgressRowInterval = 250_000;
 
-        IndexScanPhase? _lastPhase;
-        uint _lastReportedRows;
+        readonly Lock _gate = new();
+        readonly Dictionary<DriveKey, (IndexScanPhase Phase, uint Rows)> _lastReportByDrive = [];
 
         public void Report(IndexScanProgress value)
         {
-            var sameSpan = _lastPhase == value.Phase;
-            if (sameSpan && value.WrittenRowCount - _lastReportedRows < ProgressRowInterval)
+            lock (_gate)
             {
-                return;
-            }
+                if (_lastReportByDrive.TryGetValue(value.Drive, out var last)
+                    && last.Phase == value.Phase
+                    && value.WrittenRowCount - last.Rows < ProgressRowInterval)
+                {
+                    return;
+                }
 
-            _lastPhase = value.Phase;
-            _lastReportedRows = value.WrittenRowCount;
-            output.WriteLine($"  {value.Drive}: {value.Phase}: {value.WrittenRowCount} rows{(value.ExpectedRowCount is { } total ? $" of {total}" : string.Empty)}{(value.Outcome is { } outcome ? $" ({outcome})" : string.Empty)}{(value.CurrentDirectory is { } directory ? $" in {directory}" : string.Empty)}");
+                _lastReportByDrive[value.Drive] = (value.Phase, value.WrittenRowCount);
+                output.WriteLine($"  {value.Drive}: {value.Phase}: {value.WrittenRowCount} rows{(value.ExpectedRowCount is { } total ? $" of {total}" : string.Empty)}{(value.Outcome is { } outcome ? $" ({outcome})" : string.Empty)}{(value.CurrentDirectory is { } directory ? $" in {directory}" : string.Empty)}");
+            }
         }
     }
 }
